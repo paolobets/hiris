@@ -24,6 +24,7 @@ from .impostazioni_chat import ImpostazioniChat
 from .version import read_version
 from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
+from .azione.porta import PortaAzione
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import ricostruisci
 from .memoria.archivio import ArchivioMemoria
@@ -707,6 +708,18 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("Area registry load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
+
+    # L'unico punto del prodotto che esegue qualcosa su Home Assistant
+    # (`azione/porta.py`). Sta QUI, e non accanto a `registro_servizi` piu'
+    # sopra, per l'ordine: la porta ha bisogno dello specchio dello stato
+    # (`entity_cache`) per rileggere dopo aver agito, e sopra la cache non
+    # esiste ancora -- `app.get("entity_cache")` avrebbe dato `None` e la
+    # porta avrebbe rifiutato OGNI azione con «non vedo lo stato di questa
+    # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
+    # via `costruisci_dispatcher_conoscenza`, lo schedulatore e il brain
+    # domani, senza che ne nasca una seconda.
+    app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
+                                      app.get("entity_cache"))
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'

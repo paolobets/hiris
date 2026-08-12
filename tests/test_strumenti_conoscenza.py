@@ -84,11 +84,17 @@ def dispatcher_ambiguo(archivio_casa_ambiguo, memoria):
     return DispatcherConoscenza(archivio_casa_ambiguo, memoria)
 
 
-def test_gli_strumenti_sono_quattro_e_nessuno_tocca_la_casa():
-    """Da 34 a 4. E nessuno scrive in Home Assistant: la chat della 2.0
-    conosce, non agisce."""
+def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
+    """L'UNICO pin dell'identita' del catalogo: qui i nomi si scrivono a mano
+    apposta, cosi' che aggiungerne o toglierne uno sia una decisione e non un
+    effetto collaterale. Ovunque altro si DERIVANO da qui.
+
+    Da 34 a 4, e ora 5. Il quinto, `esegui`, e' l'unico che scrive in Home
+    Assistant -- e non lo fa da se': chiede alla porta unica
+    (`azione/porta.py`), che verifica prima e rilegge dopo. E' la differenza
+    con i trentaquattro usciti, dove ciascuno attuava per conto proprio."""
     nomi = {s["name"] for s in STRUMENTI_CONOSCENZA}
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi == {"cerca", "guarda", "ricorda", "richiama", "esegui"}
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():

@@ -148,14 +148,19 @@ def test_le_due_guide_non_convivono_mai_nello_stesso_prompt():
             prompts._GUIDA_SENZA_STRUMENTI in system)
 
 
-def test_i_quattro_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
+def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     """Nessun secondo catalogo: i nomi che finiscono in `--allowedTools` e nel
-    testo del prompt nascono da `STRUMENTI_CONOSCENZA`. Quattro stringhe
-    scritte a mano nel runner sarebbero l'errore che l'intera fetta E2 e'
-    esistita per chiudere (tre cataloghi divergenti della stessa cosa)."""
+    testo del prompt nascono da `STRUMENTI_CONOSCENZA`. Stringhe scritte a
+    mano nel runner sarebbero l'errore che l'intera fetta E2 e' esistita per
+    chiudere (tre cataloghi divergenti della stessa cosa).
+
+    Il numero letterale e' un filo teso di proposito: non aggiunge nulla alla
+    verifica dei nomi qui sotto, ma fa in modo che uno strumento che entra o
+    esce dal catalogo passi da una decisione esplicita invece che di
+    soppiatto. fetta "comandare" Task 5: da 4 a 5, entra `esegui`."""
     nomi = runner.nomi_mcp()
 
-    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 4
+    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 5
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

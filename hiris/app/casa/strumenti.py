@@ -37,6 +37,7 @@ gia' pagato piu' volte in altri moduli.
 """
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
@@ -53,8 +54,6 @@ from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 # e' l'ordine in cui `richiama` cerca quando il modello non specifica un
 # `tipo` -- vedi `_richiama`.
 _TIPI_ANCORA = tuple(CHIAVE_ARCHIVIO_PER_TIPO)
-
-_NOMI_STRUMENTI = frozenset({"cerca", "guarda", "ricorda", "richiama"})
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +246,69 @@ RICHIAMA_TOOL_DEF = {
     },
 }
 
+ESEGUI_TOOL_DEF = {
+    "name": "esegui",
+    "description": (
+        "Chiama un servizio di Home Assistant per far succedere qualcosa nella "
+        "casa: accendere, spegnere, impostare. Richiede `servizio` nella forma "
+        "«dominio.servizio» (per esempio «light.turn_off») e `bersaglio.entita`, "
+        "la lista degli id ESATTI delle entita' -- non nomi liberi: se hai solo "
+        "un nome o un'area, usa prima `cerca` per ottenere gli id. "
+        "`dati` porta i parametri del servizio, se ne servono. "
+        "La chiamata viene VERIFICATA contro questa installazione prima di "
+        "partire: se il servizio non esiste, se l'entita' non esiste, o se un "
+        "parametro non appartiene a quel servizio, ricevi un errore che dice "
+        "cosa esiste davvero -- usalo per correggerti invece di riprovare "
+        "uguale. Dopo l'esecuzione lo stato viene RILETTO: `prima`, `dopo` e "
+        "`cambiato` dicono cosa e' successo per davvero. Se `cambiato` e' vuoto "
+        "arriva un `avviso`: la chiamata e' riuscita ma nulla e' cambiato, e "
+        "va detto all'utente invece di dichiarare un successo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "servizio": {
+                "type": "string",
+                "description": "«dominio.servizio», per esempio «light.turn_off».",
+            },
+            "bersaglio": {
+                "type": "object",
+                "properties": {
+                    "entita": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Gli id esatti delle entita' da toccare.",
+                    },
+                },
+                "required": ["entita"],
+            },
+            "dati": {
+                "type": "object",
+                "description": (
+                    "I parametri del servizio, se ne servono (per esempio "
+                    "`brightness_pct`). Solo i parametri veri di quel servizio: "
+                    "uno inventato fa rifiutare la chiamata."
+                ),
+            },
+        },
+        "required": ["servizio", "bersaglio"],
+    },
+}
+
 STRUMENTI_CONOSCENZA: list[dict] = [
     CERCA_TOOL_DEF, GUARDA_TOOL_DEF, RICORDA_TOOL_DEF, RICHIAMA_TOOL_DEF,
+    ESEGUI_TOOL_DEF,
 ]
+
+# I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
+# quattro stringhe scritte a mano, cioe' un secondo elenco degli stessi nomi
+# da tenere allineato -- esattamente la forma di difetto che questo ramo ha
+# gia' pagato coi tre cataloghi divergenti dei trentaquattro strumenti. Con
+# quelle scritte a mano, uno strumento nuovo nel catalogo sarebbe arrivato al
+# modello (che legge `STRUMENTI_CONOSCENZA`) e poi si sarebbe sentito
+# rispondere «non e' fra quelli disponibili» dal dispatcher: il tipo di
+# incoerenza che il modello non puo' ne' capire ne' aggirare.
+_NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
 class DispatcherConoscenza:
@@ -266,7 +325,7 @@ class DispatcherConoscenza:
     """
 
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
-                 cache=None) -> None:
+                 cache=None, porta=None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -274,10 +333,16 @@ class DispatcherConoscenza:
         # specchio. Sapere che una luce e' accesa e' CONOSCENZA, non
         # azione: «conosce, non agisce» vuol dire che non SCRIVE.
         self._cache = cache
+        # La porta dell'azione (`azione/porta.py`), l'unico punto del prodotto
+        # che esegue. `None` e' legittimo: il dispatcher e' SEMPRE costruibile
+        # (contratto della classe), e senza porta `esegui` dichiara un errore
+        # invece di sollevare -- come gli altri quattro fanno senza archivi.
+        self._porta = porta
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
         "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
+        "esegui": ("porta",),
     }
 
     def _archivio_mancante(self, nome: str) -> str | None:
@@ -287,6 +352,8 @@ class DispatcherConoscenza:
                 return "la conoscenza della casa non e' ancora stata caricata"
             if quale == "memoria" and self._memoria is None:
                 return "l'archivio della memoria non e' ancora stato caricato"
+            if quale == "porta" and self._porta is None:
+                return "il collegamento con Home Assistant non e' disponibile"
         return None
 
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
@@ -316,9 +383,17 @@ class DispatcherConoscenza:
             "guarda": self._guarda,
             "ricorda": self._ricorda,
             "richiama": self._richiama,
+            "esegui": self._esegui,
         }[nome]
         try:
-            return gestore(argomenti)
+            # `_esegui` e' una coroutine (fa rete); gli altri quattro no. Si
+            # attende cio' che e' attendibile invece di rendere `async` anche
+            # i quattro sincroni: cambiare la loro firma avrebbe toccato
+            # cinque gestori per un bisogno di uno solo.
+            esito = gestore(argomenti)
+            if inspect.isawaitable(esito):
+                esito = await esito
+            return esito
         except Exception as errore:
             # Rete di sicurezza finale: qualunque guasto imprevisto (un
             # archivio chiuso a meta', un tipo inatteso negli argomenti) si
@@ -498,3 +573,15 @@ class DispatcherConoscenza:
                 ricordi.append(ricordo)
         ricordi.sort(key=lambda r: r["id"], reverse=True)
         return {"ricordi": ricordi}
+
+    # -- esegui --------------------------------------------------------
+
+    async def _esegui(self, argomenti: dict[str, Any]) -> dict:
+        """Non fa nulla: chiede alla porta.
+
+        E' voluto. Tutta la logica -- verifica, chiamata, rilettura, registro
+        -- vive in `azione/porta.py`, perche' domani lo schedulatore e il brain
+        chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
+        metodo cresce, la logica sta migrando nel posto sbagliato.
+        """
+        return await self._porta.esegui(argomenti, origine="chat")

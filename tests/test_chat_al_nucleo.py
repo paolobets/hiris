@@ -35,7 +35,7 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import DispatcherConoscenza
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherConoscenza
 from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.claude_runner import ClaudeRunner
@@ -169,7 +169,7 @@ async def test_il_ritratto_ora_entra_nel_contesto_della_chat(aiohttp_client, tmp
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_la_chat_offre_quattro_strumenti(aiohttp_client, tmp_path):
+async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path):
     client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -177,12 +177,15 @@ async def test_la_chat_offre_quattro_strumenti(aiohttp_client, tmp_path):
 
     call_kwargs = mock_runner.chat.call_args.kwargs
     nomi = {t["name"] for t in call_kwargs["strumenti"]}
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    # Derivati, non ricopiati: cio' che questo test prova e' che la rotta
+    # passi al runner IL catalogo (`STRUMENTI_CONOSCENZA`), non un elenco
+    # suo -- e quella proprieta' non dipende da quante voci abbia.
+    assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
     assert isinstance(call_kwargs["dispatcher"], DispatcherConoscenza)
 
 
 @pytest.mark.asyncio
-async def test_lo_streaming_offre_gli_stessi_quattro_strumenti(aiohttp_client, tmp_path):
+async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path):
     """Il buco oltre il brief: quando questo test e' stato scritto, le due
     superfici della chat sceglievano strade diverse -- la card Lovelace
     streammava, la pagina chat no -- e se solo una delle due ricevesse
@@ -225,7 +228,7 @@ async def test_lo_streaming_offre_gli_stessi_quattro_strumenti(aiohttp_client, t
     await resp.text()
 
     nomi = {t["name"] for t in catturati["strumenti"]}
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
     assert isinstance(catturati["dispatcher"], DispatcherConoscenza)
 
 
@@ -624,11 +627,15 @@ async def test_conversazione_4_accendi_la_luce_non_puo_e_lo_dice(aiohttp_client,
     assert resp.status == 200
     body = await resp.json()
 
-    # Nessuno strumento offerto scrive in Home Assistant -- non solo i
-    # quattro nomi esatti, ma esplicitamente NESSUNO dei nomi che nel
-    # catalogo vecchio (claude_runner.ALL_TOOL_DEFS) attuavano davvero.
+    # Il modello riceve IL catalogo e nient'altro. fetta "comandare" Task 5:
+    # la frase che stava qui -- «nessuno strumento offerto scrive in Home
+    # Assistant» -- non e' piu' vera, `esegui` scrive. Cio' che resta vero, ed
+    # e' cio' che questo test difende, e' che nessuno dei nomi del catalogo
+    # VECCHIO (claude_runner.ALL_TOOL_DEFS, i trentaquattro) sia tornato da
+    # una porta di servizio: quelli attuavano ciascuno per conto suo, mentre
+    # `esegui` passa dall'unica porta che verifica prima e rilegge dopo.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
-    assert nomi_offerti == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi_offerti == {d["name"] for d in STRUMENTI_CONOSCENZA}
     strumenti_che_scrivono = {
         "call_ha_service", "trigger_automation", "toggle_automation",
         "set_input_helper", "create_ha_config",

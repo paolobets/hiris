@@ -75,6 +75,7 @@ def costruisci_dispatcher_conoscenza(app) -> DispatcherConoscenza:
         app.get("archivio_casa"),
         app.get("archivio_memoria"),
         cache=app.get("entity_cache"),
+        porta=app.get("porta_azione"),
     )
 
 

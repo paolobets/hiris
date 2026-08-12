@@ -450,6 +450,30 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     assert "Salotto: luce accesa." in system
 
 
+# fetta "comandare" (Task 5, lo strumento `esegui`): questo test cade, e cade
+# per la ragione GIUSTA -- non perche' contasse quattro dove ora ce ne sono
+# cinque. Da questo commit l'argv passa `--allowedTools ... mcp__hiris__esegui`
+# (deriva da `STRUMENTI_CONOSCENZA`) mentre `_GUIDA_CON_STRUMENTI` nomina
+# ancora solo i quattro e per giunta dichiara «HIRIS non agisce comunque»:
+# l'invariante argv <=> prompt e' DAVVERO rotta, e questo test ha fatto
+# esattamente il suo mestiere segnalandolo.
+#
+# Non si allinea e non si indebolisce: il prompt e' materia del Task 6 della
+# stessa fetta ("il prompt sa di poter agire"), che riscrive entrambe le guide
+# e le due dichiarazioni di `claude_runner.py`. Spezzare quel lavoro in due --
+# un pezzo qui e il resto la', su un testo di cui conta l'equilibrio
+# complessivo -- e' il motivo per cui il piano lo tiene separato.
+#
+# `strict=True` non e' un dettaglio: e' cio' che rende questo debito
+# AUTO-ESIGIBILE. Appena il Task 6 nominera' `esegui` nella guida, questo test
+# passera' -- e con `strict` un XPASS e' un FALLIMENTO: la suite tornera'
+# rossa finche' qualcuno non toglie questa riga. Un `xfail` non-strict
+# sarebbe stato il modo silenzioso di dimenticarsene.
+@pytest.mark.xfail(strict=True, reason=(
+    "fetta comandare Task 5: `esegui` e' nell'argv ma non ancora nel prompt "
+    "-- lo nomina il Task 6, che riscrive le guide. TOGLIERE QUESTO MARKER "
+    "quando il Task 6 e' fatto: con strict=True il suo XPASS fara' rossa la "
+    "suite finche' non e' tolto."))
 def test_col_ramo_attivo_il_prompt_afferma_i_quattro_strumenti_prefissati():
     """Il GEMELLO del pin qui sopra, nato con la fetta "il ponte riceve gli
     strumenti" (parita' B, Task 3): sul ramo `strumenti_attivi=True` il prompt

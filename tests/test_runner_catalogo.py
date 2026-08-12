@@ -169,16 +169,27 @@ async def test_openai_senza_strumenti_non_offre_alcun_tool(openai_runner):
 
 # --- con `strumenti`: esattamente quelli, nessun altro ----------------------
 
+# fetta "comandare" Task 5: i nomi attesi si DERIVANO dal catalogo invece di
+# essere ricopiati qui. La proprieta' provata da questi tre test e' il
+# PASSAGGIO -- il runner offre esattamente cio' che il chiamante gli ha dato,
+# senza aggiungere ne' togliere -- e quella regge per qualunque catalogo. Chi
+# sono davvero le voci del catalogo e' pinnato in UN posto solo
+# (`tests/test_strumenti_conoscenza.py`): scriverle di nuovo qui era il
+# secondo elenco degli stessi nomi, che infatti e' caduto all'ingresso del
+# quinto strumento pur non essendoci nulla di rotto nel runner.
+_NOMI_DEL_CATALOGO = {d["name"] for d in STRUMENTI_CONOSCENZA}
+
+
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_offre_esattamente_quelli(claude_runner):
     nomi = await _tools_di_chat_claude(claude_runner, strumenti=STRUMENTI_CONOSCENZA)
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi == _NOMI_DEL_CATALOGO
 
 
 @pytest.mark.asyncio
 async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
     nomi = await _tools_di_chat_openai(openai_runner, strumenti=STRUMENTI_CONOSCENZA)
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi == _NOMI_DEL_CATALOGO
 
 
 # --- con `strumenti`, nessun filtro in cascata (mai esistito su questo ramo) -
@@ -327,7 +338,7 @@ async def test_openai_stream_con_strumenti_offre_esattamente_quelli(openai_runne
         pass
 
     nomi = {t["function"]["name"] for t in catturati.get("tools", [])}
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama"}
+    assert nomi == _NOMI_DEL_CATALOGO
 
 
 @pytest.mark.asyncio
