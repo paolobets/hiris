@@ -23,6 +23,7 @@ from .api.handlers_impostazioni import (
 from .impostazioni_chat import ImpostazioniChat
 from .version import read_version
 from .proxy.ha_client import HAClient
+from .azione.registro import RegistroServizi
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import ricostruisci
 from .memoria.archivio import ArchivioMemoria
@@ -676,6 +677,12 @@ async def _on_startup(app: web.Application) -> None:
     )
     await ha_client.start()
     app["ha_client"] = ha_client
+
+    # Cosa Home Assistant sa fare, in questa casa. Costruito vuoto: si carica
+    # al primo uso (`assicura_fresco`), non all'avvio -- un caricamento qui
+    # allungherebbe il boot per una cosa che potrebbe non servire in questa
+    # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
+    app["registro_servizi"] = RegistroServizi()
 
     # fetta E5 Task 5: qui l'add-on installava la card Lovelace dentro Home
     # Assistant (copia in www/, file di ingress, risorsa registrata). La card

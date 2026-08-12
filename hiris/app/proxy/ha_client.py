@@ -137,6 +137,21 @@ class HAClient:
             return [s for s in all_states if s["entity_id"] in entity_ids]
         return all_states
 
+    async def get_services(self) -> list[dict]:
+        """Il registro dei servizi di QUESTA installazione.
+
+        E' la fonte del «meccanismo» (spec dell'azione, §1): cosa e'
+        tecnicamente possibile qui dentro, dichiarato da Home Assistant e non
+        indovinato da noi. Include le integrazioni installate dall'utente, che
+        nessun catalogo scritto a mano potrebbe conoscere.
+
+        Legge e basta: nessuna scrittura verso HA vive in questo metodo.
+        """
+        url = f"{self._base_url}/api/services"
+        async with self._session.get(url) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
     # fetta E3 Task 8 ("escono i trentaquattro"): `get_history` e' uscito --
     # ORFANO DICHIARATO, i suoi call site (history_tools.py, calendar_tools.py)
     # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
