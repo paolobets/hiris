@@ -75,7 +75,6 @@
         (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
-        (route === 'history' && hash.indexOf('#/history') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
            voce di nav con data-route="settings" (tolta in v0.10.5) e nessuna
            route `#/settings` registrata sotto, quindi la condizione non
@@ -131,14 +130,9 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Modelli</div>';
     }
   });
-  HirisRouter.register(/^#\/history\/?$/, function() {
-    setCrumbHere('Storicizzazione');
-    if (window.HirisHistoryRoute) {
-      HirisHistoryRoute.mount();
-    } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Storicizzazione</div>';
-    }
-  });
+  /* fetta "esce il documentale": qui era registrata la route #/history
+     (Storicizzazione). Esce con la pagina, il suo modulo
+     (config/history-route.js) e le rotte /api/history/policy. */
   /* fetta E5 Task 2: la route che in v0.10.5 era stata rimossa perché
      placeholder vuoto (`#/settings`, «Implementata in Phase 11») rinasce qui
      con contenuto reale e con il nome italiano del resto della fetta:

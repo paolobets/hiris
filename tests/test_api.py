@@ -372,9 +372,11 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 # tests/test_chat_al_nucleo.py for the tests that replace these.
 # SemanticContextMap itself (and knowledge_db, its only persistence) are gone
 # now too -- fetta E3 Task 2 (2.0): the context-preview route was their last
-# caller. KnowledgeStore.search()/.declared() were not deleted: they simply
-# are not called from here anymore (their tests live in
-# tests/test_knowledge_store*.py, untouched by this task).
+# caller. KnowledgeStore.search()/.declared() were not deleted back then: they
+# simply stopped being called from here. La fetta "esce il documentale" le ha
+# poi cancellate insieme all'intero KnowledgeStore -- da allora non avevano
+# ripreso nessun chiamante di produzione -- e con loro
+# tests/test_knowledge_store*.py.
 
 
 # test_create_task_tool_via_chat, che viveva qui, e' cancellato dalla fetta
@@ -424,102 +426,19 @@ async def test_chat_debug_tools_called_returns_objects(client):
 # (chat/tasks.js) -- sono uscite con la fetta E5 Task 6.
 
 
-@pytest.mark.asyncio
-async def test_chat_detokenizes_response(aiohttp_client, tmp_path):
-    """Task 7 — de-tokenize: the handler must replace vault tokens in the
-    runner's reply with real PII values before returning the JSON response,
-    using ONLY the current exchange's own per-request token map (review
-    B/#7) — never a global/vault-wide lookup. ``last_pseudonym_map`` here
-    simulates the mapping the real recall_memory tool path would have
-    populated during THIS exchange's own pseudonymize call."""
-    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
-
-    vault = VaultStore(str(tmp_path / "vault.db"))
-    pseudonymizer = Pseudonymizer(vault)
-
-    app = create_app()
-
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    mock_runner = AsyncMock()
-    # Runner returns a response that contains the vault token (not the real IBAN)
-    mock_runner.chat = AsyncMock(return_value="Saldo su [IBAN_1].")
-    mock_runner.last_tool_calls = []
-    # This exchange's own per-request token map — as if recall_memory had
-    # pseudonymized this IBAN into [IBAN_1] earlier in THIS same tool loop.
-    mock_runner.last_pseudonym_map = {"[IBAN_1]": "IT60X0542811101000000123456"}
-
-    app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["pseudonymizer"] = pseudonymizer
-
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-
-    c = await aiohttp_client(app)
-    resp = await c.post("/api/chat", json={"message": "qual è il mio IBAN?"})
-    assert resp.status == 200
-    data = await resp.json()
-    # The token must be replaced with the real value
-    assert "IT60X0542811101000000123456" in data["response"]
-    assert "[IBAN_1]" not in data["response"]
-    vault.close()
-
-
-@pytest.mark.asyncio
-async def test_chat_does_not_detokenize_cross_request_token(aiohttp_client, tmp_path):
-    """SECURITY (review B/#7): a reply containing a [TYPE_N]-shaped token that
-    was NOT created by THIS exchange's own pseudonymize call (e.g. minted by
-    a different conversation/user, hallucinated by the model, or injected via
-    a poisoned document) must be returned VERBATIM — never expanded against
-    the shared vault, even though the vault happens to hold a real mapping
-    for that exact token string."""
-    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
-
-    # A DIFFERENT conversation's PII lives in the shared vault under [IBAN_1].
-    vault = VaultStore(str(tmp_path / "vault.db"))
-    vault.token_for("iban", "IT00OTHERUSERSECRET000000001")  # creates [IBAN_1]
-    pseudonymizer = Pseudonymizer(vault)
-
-    app = create_app()
-
-    mock_ha = AsyncMock()
-    mock_ha.get_states = AsyncMock(return_value=[])
-    mock_ha.start = AsyncMock()
-    mock_ha.stop = AsyncMock()
-    mock_ha.add_state_listener = MagicMock()
-    mock_ha.start_websocket = AsyncMock()
-
-    mock_runner = AsyncMock()
-    # THIS exchange's reply happens to mention the same token string, but
-    # THIS exchange never pseudonymized anything -- its own map is empty.
-    mock_runner.chat = AsyncMock(return_value="Il tuo saldo è su [IBAN_1].")
-    mock_runner.last_tool_calls = []
-    mock_runner.last_pseudonym_map = {}
-
-    app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["pseudonymizer"] = pseudonymizer
-
-    app.on_startup.clear()
-    app.on_cleanup.clear()
-
-    c = await aiohttp_client(app)
-    resp = await c.post("/api/chat", json={"message": "qual è il mio IBAN?"})
-    assert resp.status == 200
-    data = await resp.json()
-    # Must NOT leak the other conversation's real IBAN.
-    assert "IT00OTHERUSERSECRET000000001" not in data["response"]
-    assert "[IBAN_1]" in data["response"]
-    vault.close()
+# Fetta "esce il documentale": qui vivevano `test_chat_detokenizes_response` e
+# `test_chat_does_not_detokenize_cross_request_token`. Cadono PER COSTRUZIONE,
+# non per fastidio: il loro soggetto -- `hiris.app.brain.privacy`
+# (`VaultStore`/`Pseudonymizer`) e la chiamata a `pseudonymizer.detokenize()`
+# dentro `handle_chat` -- e' uscito con questa fetta. Entrambi importavano
+# `from hiris.app.brain.privacy import VaultStore, Pseudonymizer` alla prima
+# riga del corpo: senza il modulo sollevano ModuleNotFoundError prima ancora
+# di arrivare a un'asserzione, e non esiste una riscrittura che li salvi
+# perche' non c'e' piu' nessun token da riespandere.
+#
+# Non lasciano un buco di copertura: la pseudonimizzazione era INERTE da
+# tempo. Nessun percorso di produzione chiamava piu' `pseudonymize()`, quindi
+# `last_pseudonym_map` era sempre vuota; questi due test la valorizzavano A
+# MANO sul finto runner (`mock_runner.last_pseudonym_map = {...}`) per poter
+# osservare la riespansione. Provavano una funzione che nessun utente
+# raggiungeva.

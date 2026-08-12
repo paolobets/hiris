@@ -1,7 +1,5 @@
 from __future__ import annotations
 import logging
-import math
-import struct
 from typing import Protocol, runtime_checkable
 
 import aiohttp
@@ -205,23 +203,18 @@ def build_embedding_provider(
     return NullEmbedder()
 
 
-# ── Vector serialisation helpers (shared with memory_store) ─────────────────
-
-def vec_to_blob(vec: list[float]) -> bytes:
-    return struct.pack(f"{len(vec)}f", *vec)
-
-
-def blob_to_vec(blob: bytes) -> list[float]:
-    n = len(blob) // 4
-    return list(struct.unpack(f"{n}f", blob))
-
-
-def cosine_similarity(a: list[float], b: list[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(y * y for y in b))
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-    return dot / (mag_a * mag_b)
+# Fetta "esce il documentale": qui vivevano `vec_to_blob`, `blob_to_vec` e
+# `cosine_similarity` -- la serializzazione dei vettori e il confronto per
+# somiglianza. I loro unici chiamanti erano `brain/knowledge_store.py` e
+# `brain/memory_migration.py`, usciti con l'archivio di conoscenza: senza di
+# loro erano tre funzioni senza nessun chiamante, ne' di produzione ne' di
+# test. Tornano, se e quando i vettori si accenderanno, sopra l'archivio che
+# ci sara' allora -- non trascinando il formato blob di knowledge.db.
+#
+# I provider qui sopra restano, ma sono DICHIARATI INERTI: dopo questa fetta
+# nessun percorso di HIRIS chiama piu' `embed()`. Le opzioni
+# `memory.embedding_provider`/`memory.embedding_model` restano leggibili e
+# visibili nella pagina Modelli, e il CHANGELOG dice che oggi non hanno
+# effetto. La decisione "se e quando accendere i vettori" e' esplicitamente
+# rimandata dal contratto (docs/design/2026-08-05-la-conoscenza-di-hiris.md,
+# sezione 11), quindi non si anticipa qui ne' in un senso ne' nell'altro.

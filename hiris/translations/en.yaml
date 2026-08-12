@@ -48,18 +48,20 @@ configuration:
     request_timeout:
       name: "Ollama request timeout (seconds)"
       description: "Maximum wait time for a single Ollama call. Default 120s. Increase for slow hardware running large models (Pi 5 with gemma2:9b may need 240–300s). Range: 10–1800."
+  # "The documental integration leaves" slice: `rag_k` goes -- it was the
+  # number of results of the similarity recall over the knowledge archive,
+  # which left with that slice. The two remaining fields are DECLARED INERT
+  # below: nothing in HIRIS computes embeddings today, and saying so is the
+  # only way not to repeat the false sentence about sensitive documents.
   memory:
-    name: "Memory & RAG"
-    description: "Settings for HIRIS long-term memory and semantic search (RAG). Leave embedding fields empty to disable RAG."
+    name: "Embeddings (inactive today)"
+    description: "Provider and model for similarity search. THEY HAVE NO EFFECT TODAY: nothing in HIRIS computes embeddings, since the documental integration and the knowledge archive left. The two fields stay because similarity search is a postponed decision, not a cancelled one: when it is turned on, it will be configured from here."
     embedding_provider:
-      name: "Embedding Provider"
-      description: "Provider for semantic memory embeddings. Options: 'openai' (requires API key), 'ollama' (requires local server), 'model2vec' (fully local, no server, works on all platforms). Leave empty to disable RAG."
+      name: "Embedding Provider (inactive)"
+      description: "Provider for embeddings. Options: 'openai' (requires API key), 'ollama' (requires local server), 'model2vec' (fully local, no server). Today the value is read and shown on the Models page, but no text is ever vectorised."
     embedding_model:
-      name: "Embedding Model"
-      description: "Model for generating embeddings. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M or potion-base-32M (leave empty for default)."
-    rag_k:
-      name: "RAG Results (k)"
-      description: "Number of relevant memories returned during semantic search. Higher values give more context but increase token usage."
+      name: "Embedding Model (inactive)"
+      description: "Model for generating embeddings. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M or potion-base-32M (leave empty for default). Today it is never invoked."
   # fetta E4, bridge repair: see the twin comment in it.yaml. "Leave empty to
   # auto-generate" was a promise no code kept -- with the field empty (the
   # config.yaml default) every non-ingress call got 401 and the chat bridge
@@ -116,24 +118,12 @@ configuration:
   claude_code_oauth_token:
     name: "Claude Code OAuth token (subscription)"
     description: "OAuth token of the Claude subscription (Claude Max) that lets HIRIS reason without spending pay-per-use API credit. This is the field that turns on the subscription path: set it AND enable \"Enable provider: Subscription (Claude Max)\" above — with both present, chat is routed over the subscription even with \"Subscription bridge — enable\" and \"Chat via subscription — enable\" left off. Get it on the machine where you already have Claude Code installed and authenticated, with the `claude setup-token` command, and paste here the string it prints. WARNING: on this path usage is NOT measured — the subscription exposes neither the tokens nor the cost of an individual reply, and the Usage page says so instead of showing zeros — and the usage and retention terms of the Claude Max subscription apply, which differ from those of the pay-per-use API. Leave it empty if you only use API keys."
-  mayan:
-    name: "Mayan EDMS (documents)"
-    description: "Settings for ingesting documents from Mayan EDMS into the second brain. Leave url/token empty to disable. tag_id must be > 0 to enable polling."
-    url:
-      name: "Mayan URL"
-      description: "Base URL of the Mayan EDMS API v4. Example: http://192.168.1.31:8090/api/v4"
-    token:
-      name: "Mayan API Token"
-      description: "API token for Mayan authentication. Generate it in Mayan → Account → API Tokens."
-    tag_id:
-      name: "Tag ID"
-      description: "ID of the Mayan tag to ingest (e.g. the 'HIRIS' tag). Set to 0 to disable ingestion."
-    sensitivity:
-      name: "Document Sensitivity"
-      description: "Privacy level for ingested documents. 'sensitive' (default, recommended for bank statements, invoices) hides content from cloud AI. 'normal' allows full RAG recall."
-    poll_minutes:
-      name: "Poll Interval (minutes)"
-      description: "How often HIRIS polls Mayan for new documents. Default 60. Range: 5–1440."
+  # "The documental integration leaves" slice (owner's decision, 12 August
+  # 2026): the whole `mayan.*` block goes -- url, token, tag_id, sensitivity,
+  # poll_minutes. The `sensitivity` description said 'sensitive' "hides
+  # content from cloud AI": that was FALSE. No path in HIRIS pseudonymised
+  # anything any more, so nothing was hidden anywhere -- a protection promise
+  # never kept, withdrawn here together with the option that carried it.
   debug_expose_port:
     name: "🛠 Debug — expose port warning (DEV ONLY, does NOT open the port by itself)"
     description: >-

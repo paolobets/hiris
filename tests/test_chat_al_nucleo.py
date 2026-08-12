@@ -15,6 +15,11 @@ composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
 chiuse, non conoscenza sulla casa.
 
+Fetta "esce il documentale": `KnowledgeStore` e' uscito per intero -- non
+aveva piu' nessun lettore di produzione, e questo file e' la prova di quando
+la chat ha smesso di leggerlo. Le due chiamate citate qui sopra restano
+nominate perche' raccontano il PRIMA; non esistono piu' nel codice.
+
 Segue la convenzione REST-vera gia' in tests/test_handlers_casa.py (per
 `/api/nucleo`) e, prima di questa fetta, in tests/test_declared_block_chat.py
 (ora rimosso -- testava esattamente la sovrapposizione che questo task
@@ -63,9 +68,10 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
                              archivio_memoria=None, cache=None):
     """Stessa forma di `_build_chat_client` nei test di chat pre-esistenti
     (tests/test_memoria_ricorda.py e affini, prima che questa fetta la
-    ritirasse da li'), con gli archivi del nucleo al posto di
-    `knowledge_store`/`embedding_provider` -- e' cio' da cui la chat legge
-    adesso."""
+    ritirasse da li'; quel file e' poi uscito del tutto con la fetta "esce il
+    documentale", insieme al `KnowledgeStore` che esercitava), con gli
+    archivi del nucleo al posto di `knowledge_store`/`embedding_provider` --
+    e' cio' da cui la chat legge adesso."""
     app = create_app()
 
     mock_ha = AsyncMock()

@@ -50,7 +50,10 @@ const ROUTE = [
   ['#/memoria', 'Memoria'],
   ['#/usage', 'Consumi'],
   ['#/models', 'Modelli'],
-  ['#/history', 'Storicizzazione'],
+  // fetta «esce il documentale»: qui c'era ['#/history', 'Storicizzazione'].
+  // La pagina è uscita con la cattura dello storico che configurava, quindi
+  // la route non è più registrata da main.js: lasciarla qui avrebbe fatto
+  // fallire il conteggio, che è esattamente il compito di questo elenco.
   ['#/impostazioni', 'Impostazioni chat'],
 ];
 
@@ -70,7 +73,7 @@ test('main.js non dereferenzia nessun modulo di route al parse: senza NESSUNO di
   const { window } = avvia();
 
   for (const globale of ['HirisDashboard', 'HirisMemoriaRoute', 'HirisUsageRoute', 'HirisModelsRoute',
-                         'HirisHistoryRoute', 'HirisImpostazioniRoute']) {
+                         'HirisImpostazioniRoute']) {
     assert.equal(typeof window[globale], 'undefined',
       `precondizione: ${globale} non deve essere caricato in questo test`);
   }

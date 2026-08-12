@@ -1,5 +1,76 @@
 # HIRIS — Changelog
 
+## [2.1.0] — Esce l'integrazione documentale (2026-08-12)
+
+**HIRIS non legge più i tuoi documenti, e smette di registrare la tua casa per
+conto suo.** L'integrazione con Mayan EDMS esce da questa versione. È una scelta
+deliberata, non un guasto: sarà rivista più avanti, con un progetto.
+
+### Cosa non c'è più
+
+- **Mayan EDMS.** Le cinque opzioni `mayan.*` (URL, token, ID del tag,
+  sensibilità, intervallo di interrogazione) non compaiono più nella
+  configurazione dell'add-on, e HIRIS non interroga più Mayan.
+- **L'archivio dei documenti e dei ricordi «in coda»** — quello che HIRIS
+  riempiva con i documenti ingeriti e con i riepiloghi notturni.
+- **La pagina «Storicizzazione»** e la registrazione dello storico. HIRIS non
+  tiene più una cronaca propria della casa: la cronaca la tiene Home Assistant,
+  che lo fa già e lo fa meglio.
+- **Il riepilogo notturno delle 04:00** e la compattazione delle 03:30.
+
+### Se avevi configurato Mayan
+
+**Non devi fare niente, e non perdi niente.** Alla prima partenza HIRIS trova le
+tue vecchie opzioni `mayan.*` e semplicemente le ignora: Home Assistant le
+rimuove dalla configurazione dell'add-on da solo. **Nessun file viene
+cancellato**, né dentro HIRIS né sul tuo Mayan: i documenti restano dov'erano,
+in Mayan, e gli archivi che HIRIS si era creato (`knowledge.db`, `history.db`,
+`vault.db`, `history_policy.json`) restano intatti nella cartella dati
+dell'add-on. Se ci sono, HIRIS lo scrive nel log all'avvio, una riga per file,
+invece di incontrarli in silenzio.
+
+**Quello che ti sembrava di avere, però, non l'avevi.** Chi configurava Mayan
+credeva di alimentare la chat: non la alimentava. La chat 2.0 costruisce il suo
+contesto dal *nucleo* — l'anagrafe della casa, cosa è notevole adesso, cosa la
+casa fa da sola, e ciò che le hai detto tu — e quell'archivio non lo apriva mai.
+Nessuna pagina lo mostrava. HIRIS spendeva ogni notte chiamate a un servizio di
+embedding per riempire un cassetto che nessuno riapriva.
+
+### Una promessa che ritiriamo perché non era vera
+
+L'opzione `mayan.sensitivity` diceva, testualmente, che il valore `sensitive`
+**«nasconde il contenuto all'AI cloud»**. **Non era vero.** Il meccanismo che
+avrebbe dovuto sostituire i dati personali con dei segnaposto prima di parlare
+con un modello in cloud esisteva nel codice ma **non veniva più invocato da
+nessuna parte**: nessun testo veniva mai mascherato.
+
+Va detto con precisione cosa questo significa e cosa non significa. **Non c'è
+stata nessuna fuga di dati causata da questo difetto**: il meccanismo era
+completamente fermo in entrambi i versi, quindi non c'era nulla di mascherato
+che potesse essere smascherato per errore. Quello che c'era è **una promessa di
+protezione mai mantenuta** — l'etichetta di un'opzione che dichiarava una difesa
+inesistente. Chi ha ingerito estratti conto o fatture in HIRIS confidando in
+quella frase, li ha inviati al modello **come li avrebbe inviati con
+`sensitivity: normal`.**
+
+Preferiamo dirlo che nasconderlo. La frase esce insieme all'opzione, e il codice
+che la sosteneva a metà esce con lei: quando le difese torneranno, saranno
+progettate sui rischi veri di questo prodotto, non ereditate da quello di prima.
+
+### Embedding: le due opzioni restano, ma oggi non fanno niente
+
+`memory.embedding_provider` e `memory.embedding_model` si leggono ancora e la
+pagina **Modelli** le mostra, ma **da questa versione nessuna parte di HIRIS
+calcola più embedding**: gli ultimi tre pezzi che li usavano escono tutti qui.
+Le etichette nella configurazione lo dicono adesso a chiare lettere invece di
+lasciartelo scoprire. Restano perché la ricerca per somiglianza è una decisione
+**rimandata, non annullata**; quando verrà accesa, si configurerà da lì.
+
+Esce invece `memory.rag_k`: era il numero di risultati di quella ricerca, e la
+ricerca non c'è più.
+
+---
+
 ## [2.0.1] — La CLI dentro l'immagine adesso ha un numero (2026-08-12)
 
 **Due installazioni della stessa versione di HIRIS contengono adesso lo stesso

@@ -559,8 +559,9 @@ def test_i_modificatori_stanno_fra_la_persona_e_la_guida():
 
     (I rinvii sono ai NOMI, non ai numeri di riga: i tre che stavano qui
     erano gia' invecchiati -- `claude_runner.py:612-633` cadeva, a fetta
-    finita, dentro un commento su `pseudonym_map`. Un numero di riga
-    invecchia al primo commit che sposta il blocco; un nome no.)"""
+    finita, dentro un commento su `pseudonym_map`, oggi uscito a sua volta.
+    Un numero di riga invecchia al primo commit che sposta il blocco; un
+    nome no.)"""
     persona = "Sei HIRIS, la persona della chat."
     system, _user = prompts.build_chat_messages(
         persona, [], contesto=_CONTESTO, restrict_to_home=True, response_mode="compact")

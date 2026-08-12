@@ -1,14 +1,14 @@
 /* HIRIS · Configurazione · «Memoria» (route #/memoria)
 
    Sostituisce il pannello Memoria della chat, che interrogava la coda di
-   approvazione di knowledge_store (lo stato "pending" letto dall'handler
-   `handle_list_pending`, `hiris/app/api/handlers_knowledge.py`) — vuota per
-   costruzione dalla fetta memoria-unica (Task 2): nessuno scrive più quello
-   stato, verificato col grep su tutto `hiris/`. Un pannello con un badge
-   fermo a zero per sempre non era un pannello vuoto, era una promessa che
-   non arrivava mai. (Le rotte di quella coda restano — sono della fetta
-   conoscenza — ma perdono qui il loro unico chiamante frontend: il
-   censimento lo riflette.)
+   approvazione di knowledge_store (lo stato "pending") — vuota per
+   costruzione dalla fetta memoria-unica (Task 2): nessuno scriveva più
+   quello stato. Un pannello con un badge fermo a zero per sempre non era un
+   pannello vuoto, era una promessa che non arrivava mai. Dalla fetta «esce
+   il documentale» quella coda non esiste più affatto: l'archivio di
+   conoscenza, il suo handler e le sue quattro rotte /api/knowledge* sono
+   usciti, restando senza nessun consumatore vivo. Questa pagina è l'unica
+   vista della memoria, e legge l'archivio vero (/api/memoria).
 
    Questa pagina interroga invece l'archivio vero (`GET/PATCH/DELETE
    /api/memoria*`, `hiris/app/api/handlers_memoria.py`) ed esegue la
@@ -52,8 +52,7 @@
    sostituisce (chat/knowledge.js, uscito con questo stesso task).
 
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati
-   server (stessa disciplina di dashboard.js/history-route.js/
-   models-route.js) — il testo di un ricordo è stato scritto in chat,
+   server (stessa disciplina di dashboard.js/models-route.js) — il testo di un ricordo è stato scritto in chat,
    eventualmente da un modello su dettatura dell'utente. */
 window.HirisMemoriaRoute = (function () {
   'use strict';

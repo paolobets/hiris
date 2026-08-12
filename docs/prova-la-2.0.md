@@ -127,10 +127,11 @@ Due modi per accorgersene, senza aprire i log:
 | **CIDR ingress Supervisor fidata** | non toccarla se non sai di doverla toccare |
 | **Debug — warning esposizione porta** | da solo non apre nessuna porta: logga un promemoria. Lascialo spento |
 
-**Restano dalla 1.x e non servono a questa prova**: `Memoria & RAG` (embedding) e
-`Mayan EDMS`. Le opzioni ci sono ancora e configurano ancora l'archivio dei
-documenti, **ma la chat 2.0 quell'archivio non lo legge**: il suo contesto è il
-nucleo e basta. Lasciale vuote.
+**Resta dalla 1.x e non serve a questa prova**: `Embedding (oggi inattivi)` —
+provider e modello. Le due opzioni si leggono ancora e la pagina Modelli le
+mostra, **ma oggi non hanno alcun effetto**: nessuna parte di HIRIS calcola
+embedding. Lasciale vuote. Le opzioni `Mayan EDMS` non esistono più: dalla
+2.1.0 l'integrazione documentale è uscita.
 
 ### Quando serve riavviare
 

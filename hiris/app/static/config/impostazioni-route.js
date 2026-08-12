@@ -11,8 +11,10 @@
    sono `document` e `fetch`.
 
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati del
-   server (stesso vincolo di history-route.js; agentbot-route.js, citato qui
-   fino al Task 11, e' uscito con la fetta E5 Task 6 insieme al workbench).
+   server (stesso vincolo di models-route.js; history-route.js, citato qui
+   fino alla fetta "esce il documentale", e' uscito con la pagina
+   Storicizzazione; agentbot-route.js, citato fino al Task 11, era uscito con
+   la fetta E5 Task 6 insieme al workbench).
 
    Il selettore del modello, scelta dichiarata: si legge GET api/models (rotta
    viva, elenca i provider gia' credenziati coi loro modelli) e si costruisce

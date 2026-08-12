@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 import aiohttp
 from aiohttp import web
@@ -21,9 +20,6 @@ from .api.handlers_models import (
 from .api.handlers_impostazioni import (
     handle_get_impostazioni, handle_save_impostazioni,
 )
-from .api.handlers_knowledge import (
-    handle_list_pending, handle_approve, handle_reject, handle_manual_add,
-)
 from .impostazioni_chat import ImpostazioniChat
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -35,9 +31,6 @@ from .env_util import env_bool
 from .token_interno import prepara_token_interno
 from .proxy.entity_cache import EntityCache
 from .backends.embeddings import build_embedding_provider
-from .brain.knowledge_store import KnowledgeStore
-from .brain.memory_migration import migrate_agent_memories
-from .brain.privacy import VaultStore, Pseudonymizer
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
 from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
@@ -822,7 +815,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'entita' Chatbot -- ci viveva sopra solo perche' ChatbotEngine lo
     # ospitava (avviato/fermato nel suo start()/stop()), ma i lavori che
     # registra piu' sotto (ricarica inventario, sentinella comportamento,
-    # retention, digest, ingest Mayan, spazzata della coda di ragionamento)
+    # retention, spazzata della coda di ragionamento)
     # non hanno niente a che fare coi chatbot. Con l'entita' uscita per
     # intero, trova casa direttamente qui.
     scheduler = AsyncIOScheduler()
@@ -982,10 +975,20 @@ async def _on_startup(app: web.Application) -> None:
     # richieste chat accodate e mai servite. Simmetrico a should_start_agent_worker.
     _sub_first_class = _active["subscription"]
 
-    # Memory / RAG config
+    # Provider di embedding. Fetta "esce il documentale": `MEMORY_RAG_K`/
+    # `memory.rag_k` escono da qui e dalle altre quattro sedi dell'opzione --
+    # erano il `k` del richiamo per somiglianza sull'archivio di conoscenza,
+    # uscito con questa fetta; `app["memory_rag_k"]` non aveva gia' oggi
+    # nessun lettore. Il provider resta costruito e pubblicato, ma DICHIARATO
+    # INERTE: dopo questa fetta nessun percorso di HIRIS chiama piu'
+    # `embed()` -- gli ultimi tre chiamanti (ingest Mayan, digest storico,
+    # coda di approvazione della conoscenza) sono usciti tutti qui. Non e'
+    # cancellato perche' "se e quando accendere i vettori" e' una decisione
+    # esplicitamente rimandata dal contratto (docs/design/2026-08-05-la-
+    # conoscenza-di-hiris.md, sezione 11) e la pagina Modelli lo mostra gia'
+    # all'utente: la sua inerzia e' scritta nel CHANGELOG, non taciuta.
     mem_provider = os.environ.get("MEMORY_EMBEDDING_PROVIDER", "")
     mem_model = os.environ.get("MEMORY_EMBEDDING_MODEL", "")
-    memory_rag_k = int(os.environ.get("MEMORY_RAG_K", "5"))
 
     embedder = build_embedding_provider(
         provider=mem_provider,
@@ -994,38 +997,92 @@ async def _on_startup(app: web.Application) -> None:
         local_model_url=local_model_url,
     )
     app["embedding_provider"] = embedder
-    app["memory_rag_k"] = memory_rag_k
 
-    knowledge_store = KnowledgeStore(os.path.join(data_dir, "knowledge.db"))
-    app["knowledge_store"] = knowledge_store
+    # ── Fetta "esce il documentale" ────────────────────────────────────────
+    # Decisione del proprietario, 12 agosto 2026: «Al momento l'integrazione
+    # documentale puo' essere tolta, la rivedremo poi, non serve.» Con Mayan
+    # escono anche l'ARCHIVIO DI CONOSCENZA (`KnowledgeStore`, knowledge.db) e
+    # la CATTURA DELLO STORICO (`HistoryStore`/`HistoryCapture`, history.db),
+    # perche' scrivevano nello stesso posto e, letto il codice, non avevano
+    # nessun altro consumatore vivo:
+    #   - la chat prende il contesto da `costruisci_nucleo()` (Task 3 "il
+    #     contesto della chat viene dal nucleo"), mai da `KnowledgeStore`;
+    #   - la pagina Memoria interroga `memoria/archivio.py`, non la coda di
+    #     approvazione (config/memoria-route.js lo dichiara per iscritto);
+    #   - `search()`, `declared()`, `recent()`, `upcoming_obligations()` e
+    #     `search_chunks()` non avevano gia' oggi nessun chiamante di
+    #     produzione, e le quattro rotte /api/knowledge* nessun frontend.
+    # Cioe': HIRIS registrava la casa a ogni `state_changed`, spendeva
+    # embedding ogni notte alle 04:00 e ingeriva documenti in un archivio che
+    # nessuno riapriva. Escono insieme il digest storico (brain/
+    # history_digest.py), la migrazione una-tantum della memoria legacy
+    # (brain/memory_migration.py, che scriveva solo li'), la pagina
+    # Storicizzazione e le rotte /api/history/policy.
+    #
+    # Esce anche brain/privacy.py (`VaultStore`/`Pseudonymizer`, vault.db).
+    # Le traduzioni promettevano che `mayan.sensitivity: sensitive`
+    # "nasconde il contenuto all'AI cloud": era FALSO: nessun percorso
+    # chiamava piu' `pseudonymize()`, quindi `last_pseudonym_map` restava
+    # sempre vuota e i due `detokenize` lavoravano su un dizionario vuoto.
+    # Nessuna fuga -- non c'era nulla da detokenizzare -- ma una promessa di
+    # protezione non mantenuta, che esce con l'opzione che la dichiarava.
+    #
+    # SILENZIO DICHIARATO, stessa disciplina di advisory.db/portrait.db/
+    # sentinel.db piu' sotto: i file di un'installazione precedente NON
+    # vengono cancellati (mai dati utente in /data), ma il loro incontro si
+    # dichiara nel log invece di restare muto.
+    _knowledge_db_path = os.path.join(data_dir, "knowledge.db")
+    if os.path.exists(_knowledge_db_path):
+        logger.info(
+            "knowledge.db presente in %s da un'installazione precedente: "
+            "dalla fetta \"esce il documentale\" nessun codice lo legge ne' lo "
+            "scrive piu' (l'archivio di conoscenza, la coda di approvazione, "
+            "il digest storico e l'ingest dei documenti sono usciti). "
+            "Il file resta su disco, intatto.",
+            _knowledge_db_path,
+        )
 
-    # A migration failure must never brick add-on boot (Slice 3 Task 4, M1):
-    # log loudly and continue with an empty/partial KnowledgeStore rather
-    # than crashing startup over legacy hiris_memory.db data.
-    try:
-        _migrated_memories = migrate_agent_memories(data_dir, knowledge_store)
-        if _migrated_memories:
-            logger.info(
-                "Startup: migrated %d legacy agent memories into KnowledgeStore",
-                _migrated_memories,
-            )
-    except Exception as exc:
-        logger.error("Startup: migrate_agent_memories failed, continuing boot: %s", exc, exc_info=True)
+    _legacy_memory_db_path = os.path.join(data_dir, "hiris_memory.db")
+    if os.path.exists(_legacy_memory_db_path):
+        logger.info(
+            "hiris_memory.db presente in %s da un'installazione precedente: "
+            "la migrazione una-tantum che lo travasava nell'archivio di "
+            "conoscenza (brain/memory_migration.py) e' uscita con l'archivio "
+            "stesso, quindi nessun codice lo legge piu'. Il file resta su "
+            "disco, intatto.",
+            _legacy_memory_db_path,
+        )
 
-    from .history.store import HistoryStore
-    from .history.capture import HistoryCapture
-    from .api.handlers_history_policy import load_policy as _load_history_policy
+    _history_db_path = os.path.join(data_dir, "history.db")
+    if os.path.exists(_history_db_path):
+        logger.info(
+            "history.db presente in %s da un'installazione precedente: "
+            "dalla fetta \"esce il documentale\" nessun codice lo legge ne' lo "
+            "scrive piu' (la cattura dello storico, la compattazione delle "
+            "03:30 e il digest delle 04:00 sono usciti). La cronaca della "
+            "casa la tiene Home Assistant. Il file resta su disco, intatto.",
+            _history_db_path,
+        )
 
-    history_store = HistoryStore(os.path.join(data_dir, "history.db"))
-    app["history_store"] = history_store
-    history_capture = HistoryCapture(history_store, _load_history_policy(data_dir))
-    app["history_capture"] = history_capture
-    ha_client.add_state_listener(history_capture.on_state_changed)
+    _history_policy_path = os.path.join(data_dir, "history_policy.json")
+    if os.path.exists(_history_policy_path):
+        logger.info(
+            "history_policy.json presente in %s da un'installazione "
+            "precedente: la pagina Storicizzazione e le rotte "
+            "/api/history/policy che lo leggevano e scrivevano sono uscite. "
+            "Il file resta su disco, intatto.",
+            _history_policy_path,
+        )
 
-    vault = VaultStore(os.path.join(data_dir, "vault.db"))
-    pseudonymizer = Pseudonymizer(vault)
-    app["vault"] = vault
-    app["pseudonymizer"] = pseudonymizer
+    _vault_db_path = os.path.join(data_dir, "vault.db")
+    if os.path.exists(_vault_db_path):
+        logger.info(
+            "vault.db presente in %s da un'installazione precedente: "
+            "brain/privacy.py (VaultStore/Pseudonymizer) e' uscito. Nessun "
+            "percorso lo popolava piu' da tempo, quindi il file e' quasi "
+            "certamente vuoto. Resta su disco, intatto.",
+            _vault_db_path,
+        )
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
@@ -1083,87 +1140,18 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    def _run_history_compact() -> None:
-        from datetime import datetime, timezone
-        pol = _load_history_policy(data_dir)
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        try:
-            history_store.compact(today=today, retention_days=pol["retention_days"])
-        except Exception as exc:
-            logger.error("History compaction failed: %s", exc, exc_info=True)
-
-    scheduler.add_job(
-        _run_history_compact,
-        trigger="cron", hour=3, minute=30,
-        id="hiris_history_compact", replace_existing=True, misfire_grace_time=3600,
-    )
-
-    async def _run_history_digest_job() -> None:
-        from datetime import datetime, timezone
-        from .brain.history_digest import run_history_digest
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        try:
-            await run_history_digest(history_store, knowledge_store, embedder, today=today)
-        except Exception as exc:
-            logger.error("History digest failed: %s", exc, exc_info=True)
-
-    scheduler.add_job(
-        _run_history_digest_job,
-        trigger="cron", hour=4, minute=0,
-        id="hiris_history_digest", replace_existing=True, misfire_grace_time=3600,
-    )
-
-    # ── Mayan EDMS polling ingestion job (second-brain phase-3, Task 6) ────────
-    # Read config from env vars exported by run.sh (bashio::config 'mayan.*').
-    mayan_url = os.environ.get("MAYAN_URL", "").strip()
-    mayan_token = os.environ.get("MAYAN_TOKEN", "").strip()
-    mayan_tag_id = int(os.environ.get("MAYAN_TAG_ID", "0") or "0")
-    mayan_sensitivity = os.environ.get("MAYAN_SENSITIVITY", "sensitive").strip() or "sensitive"
-    mayan_poll_minutes = max(5, int(os.environ.get("MAYAN_POLL_MINUTES", "60") or "60"))
-
-    if mayan_url and mayan_token and mayan_tag_id > 0:
-        from .brain.mayan_client import MayanClient
-        from .brain.mayan_ingest import ingest_tag as _mayan_ingest_tag
-
-        mayan_client = MayanClient(mayan_url, mayan_token)
-        app["mayan_client"] = mayan_client
-        logger.info(
-            "Mayan EDMS enabled — url=%s tag_id=%d poll_minutes=%d sensitivity=%s",
-            mayan_url, mayan_tag_id, mayan_poll_minutes, mayan_sensitivity,
-        )
-
-        async def _run_mayan_ingest() -> None:
-            client = app.get("mayan_client")
-            store = app.get("knowledge_store")
-            embedder = app.get("embedding_provider")
-            if client is None or store is None or embedder is None:
-                return
-            try:
-                n = await _mayan_ingest_tag(
-                    client, store, embedder,
-                    tag_id=mayan_tag_id,
-                    sensitivity=mayan_sensitivity,
-                )
-                if n:
-                    logger.info("Mayan ingest: %d new document(s) ingested", n)
-            except Exception as exc:
-                logger.error("Mayan ingest job failed: %s", exc, exc_info=True)
-
-        scheduler.add_job(
-            _run_mayan_ingest,
-            trigger="interval",
-            minutes=mayan_poll_minutes,
-            id="hiris_mayan_ingest",
-            replace_existing=True,
-            misfire_grace_time=300,
-        )
-        # Also run one initial ingestion shortly after startup (non-blocking)
-        _spawn(_run_mayan_ingest(), name="mayan_ingest_initial")
-    else:
-        logger.debug(
-            "Mayan EDMS disabled (url=%r, token set=%s, tag_id=%d)",
-            mayan_url, bool(mayan_token), mayan_tag_id,
-        )
+    # Fetta "esce il documentale": qui vivevano tre lavori schedulati, usciti
+    # insieme ai loro soggetti.
+    #   - "hiris_history_compact" (03:30) compattava history.db;
+    #   - "hiris_history_digest" (04:00) chiamava il provider di embedding per
+    #     ogni entita' storicizzata e scriveva insight `status="approved"`
+    #     nell'archivio di conoscenza -- che nessun lettore di produzione
+    #     riapriva. Era la spesa notturna senza consumatore;
+    #   - "hiris_mayan_ingest" (ogni `mayan.poll_minutes`) piu' il giro
+    #     iniziale all'avvio: ingeriva i documenti taggati in Mayan nello
+    #     stesso archivio, con lo stesso esito.
+    # Nessuno slot app "mayan_client"/"knowledge_store"/"history_store",
+    # nessun listener `state_changed` per la cattura, nessuna rotta.
 
     from .backends.openai_compat_runner import OpenAICompatRunner
     from .backends.openrouter_runner import OpenRouterRunner
@@ -1266,25 +1254,18 @@ async def _on_startup(app: web.Application) -> None:
     async def _submit_chat_reply(reply_text: str) -> None:
         if not reply_text:
             return
-        # Final-review Fix 3 (Slice 4b): mirror the sync path's two
-        # persistence guards (handlers_chat.py, ~line 423) so a reply that
-        # arrived via the async runner gets the same treatment as one from
-        # the local runner. De-tokenize BEFORE the toxicity check, same order
-        # as the sync path, so both the stored history and the toxic-pattern
-        # match see real values rather than vault tokens.
-        _pseudonymizer = app.get("pseudonymizer")
-        if _pseudonymizer is not None:
-            # SECURITY (review B/#7): this async-bridge reply comes from an
-            # external runner process on a job claimed/submitted over the
-            # network, entirely outside this process's per-request
-            # ContextVar-scoped pseudonym map (_enqueue_chat_job never calls
-            # pseudonymize for this path either) — there is no legitimate
-            # per-job token mapping available here. Pass an explicit empty
-            # mapping so detokenize's new contract (expand ONLY tokens in the
-            # supplied mapping) safely leaves any [TYPE_N]-shaped text
-            # verbatim, instead of resolving it against the shared,
-            # unscoped vault as it used to.
-            reply_text = _pseudonymizer.detokenize(reply_text, {})
+        # Final-review Fix 3 (Slice 4b): mirror the sync path's persistence
+        # guard (handlers_chat.py) so a reply that arrived via the async
+        # runner gets the same treatment as one from the local runner.
+        #
+        # Fetta "esce il documentale": qui c'era anche una detokenizzazione
+        # (`app["pseudonymizer"].detokenize(reply_text, {})`), uscita con
+        # brain/privacy.py. Era gia' un no-op dichiarato: la si chiamava
+        # sempre con una mappa VUOTA -- questo percorso non pseudonimizza
+        # nulla di suo -- e dopo l'uscita del dispatcher che popolava
+        # `last_pseudonym_map` nessun percorso del prodotto pseudonimizzava
+        # piu' niente. Toglierla non cambia il testo persistito di un
+        # carattere.
         if _is_toxic_chat_reply(reply_text):
             # Drop silently, same as the sync path: the next turn must not
             # inherit a poisoned/leaked history. There's no HTTP response
@@ -1576,14 +1557,6 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
-    if app.get("mayan_client") is not None:
-        await app["mayan_client"].aclose()
-    if "knowledge_store" in app:
-        app["knowledge_store"].close()
-    if "vault" in app:
-        app["vault"].close()
-    if "history_store" in app:
-        app["history_store"].close()
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "archivio_casa" in app:
@@ -1705,16 +1678,11 @@ def create_app() -> web.Application:
     # sopra la ProposalStore che viveva qui. Restano rotte, senza rimpiazzo
     # in questa fetta: #/proposals, il pannello Proposte della chat e le
     # card/badge in Dashboard (elenco E5).
-    app.router.add_get("/api/knowledge/pending", handle_list_pending)
-    app.router.add_post("/api/knowledge/{id}/approve", handle_approve)
-    app.router.add_post("/api/knowledge/{id}/reject", handle_reject)
-    app.router.add_post("/api/knowledge", handle_manual_add)
-
-    from .api.handlers_history_policy import (
-        handle_get_history_policy, handle_save_history_policy,
-    )
-    app.router.add_get("/api/history/policy", handle_get_history_policy)
-    app.router.add_post("/api/history/policy", handle_save_history_policy)
+    # Fetta "esce il documentale": escono le quattro rotte /api/knowledge*
+    # (coda di approvazione, approva, rifiuta, aggiunta manuale -- nessun
+    # frontend le chiamava piu' da quando la pagina Memoria interroga
+    # /api/memoria) e le due /api/history/policy con la pagina
+    # Storicizzazione che le disegnava.
 
     # fetta E3 Task 3: le quattro rotte CRUD /api/agentbots sono uscite
     # insieme ad api/handlers_agentbots.py. La pagina #/agentbots

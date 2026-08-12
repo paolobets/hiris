@@ -49,17 +49,25 @@ export LOCAL_MODEL_NAME=$(bashio::config 'local_model.model' '')
 # need 240–300s before completion).
 export OLLAMA_REQUEST_TIMEOUT=$(bashio::config 'local_model.request_timeout' '120')
 
+# Fetta "esce il documentale": i due export qui sotto restano ma sono
+# DICHIARATI INERTI -- server.py li legge per costruire il provider, e la
+# pagina Modelli li mostra, ma dopo questa fetta nessun percorso chiama piu'
+# `embed()`. Esce invece MEMORY_RAG_K/memory.rag_k: era il k del richiamo per
+# somiglianza sull'archivio di conoscenza, uscito con la fetta.
 export MEMORY_EMBEDDING_PROVIDER=$(bashio::config 'memory.embedding_provider' '')
 export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
-export MEMORY_RAG_K=$(bashio::config 'memory.rag_k' '5')
 
-export MAYAN_URL=$(bashio::config 'mayan.url' '')
-export MAYAN_TOKEN=$(bashio::config 'mayan.token' '')
-export MAYAN_TAG_ID=$(bashio::config 'mayan.tag_id' '0')
-export MAYAN_SENSITIVITY=$(bashio::config 'mayan.sensitivity' 'sensitive')
-export MAYAN_POLL_MINUTES=$(bashio::config 'mayan.poll_minutes' '60')
+# fetta "esce il documentale" (decisione del proprietario, 12 agosto 2026):
+# escono MAYAN_URL/MAYAN_TOKEN/MAYAN_TAG_ID/MAYAN_SENSITIVITY/
+# MAYAN_POLL_MINUTES e il blocco `mayan.*` di config.yaml. Il connettore
+# Mayan, l'archivio di conoscenza in cui ingeriva e la cattura dello storico
+# sono usciti insieme: nessun lettore di produzione leggeva piu' quell'archivio.
 
-# HuggingFace model cache → persistent HA config directory
+# HuggingFace model cache → persistent HA config directory. Resta esportata:
+# la useranno i provider locali (model2vec/fastembed) se e quando i vettori
+# verranno accesi. Nota: e' una cartella DENTRO la configurazione dell'utente
+# (/config/hiris/models), fuori dall'add-on -- se un'installazione precedente
+# ci ha scaricato un modello, quel file NON viene toccato da questa fetta.
 export HF_HOME=/config/hiris/models/huggingface
 
 # v0.10.11: debug expose port — logging only. Il port mapping effettivo è

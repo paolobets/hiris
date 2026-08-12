@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "2.0.1"
+version: "2.1.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -58,11 +58,16 @@ options:
     model: ""
     request_timeout: 120
 
-  # ── Memory & RAG ──────────────────────────────────────────────────────────
+  # ── Embedding (oggi inattivi) ─────────────────────────────────────────────
+  # Fetta "esce il documentale": esce `rag_k` (era il k del richiamo per
+  # somiglianza sull'archivio di conoscenza, uscito con la fetta). I due campi
+  # che restano sono letti e mostrati nella pagina Modelli, ma DICHIARATI
+  # INERTI: nessun percorso di HIRIS chiama piu' `embed()`. Restano perche'
+  # "se e quando accendere i vettori" e' una decisione rimandata dal
+  # contratto, non annullata.
   memory:
     embedding_provider: ""
     embedding_model: ""
-    rag_k: 5
 
   # ── General ───────────────────────────────────────────────────────────────
   # Vuoto e' il default VOLUTO: all'avvio HIRIS genera il token e lo conserva
@@ -97,13 +102,13 @@ options:
   chat_via_subscription: false
   claude_code_oauth_token: ""
 
-  # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
-  mayan:
-    url: ""            # es. http://192.168.1.31:8090/api/v4
-    token: ""          # API token Mayan
-    tag_id: 0          # id del tag "HIRIS" da ingerire (0 = disabilitato)
-    sensitivity: "sensitive"
-    poll_minutes: 60
+  # fetta "esce il documentale" (decisione del proprietario, 12 agosto 2026):
+  # esce il blocco `mayan.*` (url, token, tag_id, sensitivity, poll_minutes).
+  # Il connettore Mayan, l'archivio di conoscenza in cui ingeriva e la cattura
+  # dello storico che scriveva nello stesso posto sono usciti tutti: non c'era
+  # nessun lettore di produzione a valle. `sensitivity` prometteva inoltre di
+  # "nascondere il contenuto all'AI cloud" e non lo faceva: la
+  # pseudonimizzazione era inerte da mesi.
 
   # ── Debug ─────────────────────────────────────────────────────────────────
   # v0.10.11: toggle che logga warning quando il port mapping host (Network)
@@ -132,11 +137,10 @@ schema:
     model: str
     request_timeout: int(10,1800)?
 
-  # ── Memory & RAG ──────────────────────────────────────────────────────────
+  # ── Embedding (oggi inattivi) ─────────────────────────────────────────────
   memory:
     embedding_provider: str
     embedding_model: str
-    rag_k: int(1,50)
 
   # ── General ───────────────────────────────────────────────────────────────
   internal_token: password
@@ -151,14 +155,6 @@ schema:
   chat_daily_cap: int(0,1000)?
   chat_via_subscription: bool?
   claude_code_oauth_token: password
-
-  # ── Mayan EDMS (documenti) ────────────────────────────────────────────────
-  mayan:
-    url: str
-    token: password
-    tag_id: int(0,100000)
-    sensitivity: "list(normal|sensitive)"
-    poll_minutes: int(5,1440)?
 
   # ── Debug ─────────────────────────────────────────────────────────────────
   debug_expose_port: bool

@@ -165,14 +165,13 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (15 file) handlers_* — la superficie HTTP
+    ├── api/        (13 file) handlers_* — la superficie HTTP
     ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
-    ├── brain/      (9)       knowledge_store, privacy, identity, chunking, mayan_*, history_digest
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
     ├── memoria/    (4)       archivio, interpretazione, riconoscitore
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
-    ├── history/    (3)  ·  reasoning/ (2)
+    ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
 
@@ -180,6 +179,12 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
 e — dopo le tre fette di demolizione del 2.0 — `app/chatbot_engine.py`, `app/task_engine.py`,
 `app/mqtt_publisher.py`, e le cartelle `tools/`, `watcher/`, `security/`, `mcp/`.
+Dalla fetta «esce il documentale» (2.1.0) non esistono più nemmeno le cartelle `app/brain/` e
+`app/history/`, né `api/handlers_knowledge.py` e `api/handlers_history_policy.py`: l'integrazione
+documentale (Mayan), l'archivio di conoscenza (`knowledge.db`), la cattura dello storico
+(`history.db`) e la pseudonimizzazione (`privacy.py`, `vault.db`) sono uscite insieme — nessuna
+aveva più un consumatore vivo. La conoscenza vive in `casa/` (l'anagrafe, il nucleo) e in
+`memoria/` (ciò che le persone hanno detto).
 Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la card Lovelace:
 è uscita per intero — file, copia dentro Home Assistant, registrazione della risorsa — e tornerà
 riscritta da zero come ultimo passo, quando il prodotto sarà completo. Al suo posto `server.py`
@@ -195,8 +200,8 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 1.068 test (2.0 @ fine fetta E4; erano ~2.070 prima delle demolizioni)
-npm test                     # 135 test frontend: node --test + jsdom
+python -m pytest -q          # 1.129 test + 1 skip (2.0 @ fetta «esce il documentale»)
+npm test                     # 92 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
@@ -222,8 +227,9 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
   ricostruito — non il codice. `/api/health` espone un `build` stamp per distinguere.
 - `save_policy` ricostruisce da `DEFAULT_POLICY` e **strippa ogni chiave top-level sconosciuta**:
   lo stato del Brain vive in file sidecar, non nella policy.
-- Molte funzioni sono **inerti di fabbrica** (semaforo spento, embedding vuoto, storico opt-in,
-  documentale spento). Prima di dare la caccia a un bug, verifica che la funzione sia accesa.
+- Alcune funzioni sono **inerti di fabbrica**. Prima di dare la caccia a un bug, verifica che la
+  funzione sia accesa. Caso limite di questa regola: dalla 2.1.0 l'embedder è inerte **sempre** —
+  le opzioni `memory.*` si leggono, ma nessun percorso chiama più `embed()`.
 
 ---
 

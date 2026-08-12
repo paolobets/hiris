@@ -71,8 +71,9 @@
     </a>
     <!-- fetta E5 Task 9: sostituisce il pannello Memoria della chat, che
          interrogava la coda di approvazione di knowledge_store -- vuota per
-         costruzione da mesi, vedi config/memoria-route.js. Qui si guarda e
-         si corregge l'archivio vero (GET/PATCH/DELETE /api/memoria*). -->
+         costruzione da mesi e, dalla fetta "esce il documentale", uscita del
+         tutto insieme all'archivio. Qui si guarda e si corregge l'archivio
+         vero (GET/PATCH/DELETE /api/memoria*). -->
     <a class="nav-item" href="#/memoria" data-route="memoria" title="Memoria" aria-label="Memoria">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h5M8 13h3"/></svg>
@@ -103,12 +104,11 @@
       </span>
       <span class="nav-label">Modelli</span>
     </a>
-    <a class="nav-item" href="#/history" data-route="history" title="Storicizzazione" aria-label="Storicizzazione">
-      <span class="nav-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-5"/></svg>
-      </span>
-      <span class="nav-label">Storicizzazione</span>
-    </a>
+    <!-- fetta "esce il documentale": qui c'era la voce Storicizzazione
+         (#/history). La pagina configurava quali entita' HIRIS registrava
+         nel proprio storico; quello storico alimentava solo il digest delle
+         04:00, che scriveva in un archivio di conoscenza che nessuno
+         rileggeva. La cronaca della casa la tiene Home Assistant. -->
     <!-- v0.10.8: rimossi nav-spacer + voce duplicata "Vai alla chat" in fondo
          (icona luna sbagliata + duplicava il link Chat ora in cima alla sidebar). -->
   </template>
@@ -152,7 +152,6 @@
        niente: sta accanto a models-route.js perche' e' l'altra pagina che
        parla di modelli. -->
   <script src="static/config/impostazioni-route.js"></script>
-  <script src="static/config/history-route.js"></script>
   <!-- fetta E5 Task 9: pagina #/memoria. Nessuna dipendenza (solo document e
        fetch, stesso pattern di impostazioni-route.js), quindi la posizione
        nell'ordine non vincola niente. -->

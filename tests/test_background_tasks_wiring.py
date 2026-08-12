@@ -13,8 +13,10 @@ GC itself is not directly testable/deterministic here, so this file verifies:
      while pending and removed once it completes (via the done-callback).
   2. Source-level wiring: no bare `asyncio.create_task(...)` call remains in
      server.py outside `_spawn()`'s own body (mirrors the existing
-     `test_*_wiring.py` inspect-source convention, e.g. test_mayan_wiring.py /
-     test_sentinel_wiring.py).
+     `test_*_wiring.py` inspect-source convention -- test_mayan_wiring.py e
+     test_sentinel_wiring.py, i due esempi citati qui in origine, sono usciti
+     coi loro soggetti; la convenzione resta, vedi test_casa_wiring.py e
+     test_reasoning_wiring.py).
 
 Fetta E2 Task 5 ("escono le conferme del gateway"): point 3 originally here
 asserted that the HA notification-action listener (the phone-tap

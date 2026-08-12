@@ -32,6 +32,15 @@ costruzione di PortraitStore) -- pinnato qui con lo stesso metodo. Il marcatore
 di chiusura del blocco advisory.db (`next_marker`) cambia di conseguenza: non
 punta piu' all'import di PortraitStore (uscito), ma all'inizio del nuovo
 blocco portrait.db.
+
+fetta "esce il documentale": l'integrazione documentale esce, e con lei
+l'archivio di conoscenza (knowledge.db), la cattura dello storico (history.db
++ history_policy.json) e la pseudonimizzazione (vault.db). Esce anche la
+migrazione una-tantum della memoria legacy, che era l'ultimo lettore di
+hiris_memory.db. Cinque file di un'installazione precedente restano cosi' su
+disco senza piu' nessun lettore ne' scrittore: stessa disciplina dei nove qui
+sopra -- non si cancellano, ma il loro incontro si dichiara -- pinnata in
+fondo a questo file con lo stesso metodo.
 """
 import inspect
 import logging
@@ -260,3 +269,105 @@ def test_chatbots_json_silent_when_both_files_absent(tmp_path, caplog):
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
     assert not caplog.records, "ne' chatbots.json ne' agents.json sul disco -- nessun log deve uscire"
+
+
+# ── fetta "esce il documentale" ─────────────────────────────────────────────
+# I cinque file che questa fetta lascia orfani in /data. Stessa disciplina e
+# stesso metodo di estrazione dei nove sopra: il blocco eseguito e' quello
+# VERO di `_on_startup`, non una parafrasi.
+
+
+def _check_documentale(path_literal, next_marker):
+    return _load_silence_check(path_literal, next_marker)
+
+
+_MARK_LEGACY = '_legacy_memory_db_path = os.path.join(data_dir, "hiris_memory.db")'
+_MARK_HISTORY = '_history_db_path = os.path.join(data_dir, "history.db")'
+_MARK_POLICY = '_history_policy_path = os.path.join(data_dir, "history_policy.json")'
+_MARK_VAULT = '_vault_db_path = os.path.join(data_dir, "vault.db")'
+_MARK_DOPO_VAULT = "# Ricarica dell'inventario entita' dopo un avvio senza Home Assistant."
+
+
+def test_knowledge_db_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _check_documentale("knowledge_db_path", _MARK_LEGACY)
+    (tmp_path / "knowledge.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_knowledge_silence"))
+    assert any("knowledge.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_knowledge_db_silent_when_file_absent(tmp_path, caplog):
+    check = _check_documentale("knowledge_db_path", _MARK_LEGACY)
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_knowledge_silence"))
+    assert not caplog.records, "nessun knowledge.db sul disco -- nessun log deve uscire"
+
+
+def test_legacy_memory_db_presence_logged_when_file_exists(tmp_path, caplog):
+    """`hiris_memory.db` aveva ancora UN lettore fino a questa fetta: la
+    migrazione una-tantum (brain/memory_migration.py), che lo travasava
+    nell'archivio di conoscenza e poi lo rinominava in `.migrated`. Uscito
+    l'archivio, la migrazione non ha piu' una destinazione: esce con lui, e
+    il file legacy diventa orfano come gli altri."""
+    check = _check_documentale("legacy_memory_db_path", _MARK_HISTORY)
+    (tmp_path / "hiris_memory.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_legacy_memory_silence"))
+    assert any("hiris_memory.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_legacy_memory_db_silent_when_file_absent(tmp_path, caplog):
+    check = _check_documentale("legacy_memory_db_path", _MARK_HISTORY)
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_legacy_memory_silence"))
+    assert not caplog.records, "nessun hiris_memory.db sul disco -- nessun log deve uscire"
+
+
+def test_history_db_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _check_documentale("history_db_path", _MARK_POLICY)
+    (tmp_path / "history.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_history_db_silence"))
+    assert any("history.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_history_db_silent_when_file_absent(tmp_path, caplog):
+    check = _check_documentale("history_db_path", _MARK_POLICY)
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_history_db_silence"))
+    assert not caplog.records, "nessun history.db sul disco -- nessun log deve uscire"
+
+
+def test_history_policy_json_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _check_documentale("history_policy_path", _MARK_VAULT)
+    (tmp_path / "history_policy.json").write_text("{}")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_history_policy_silence"))
+    assert any("history_policy.json" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_history_policy_json_silent_when_file_absent(tmp_path, caplog):
+    check = _check_documentale("history_policy_path", _MARK_VAULT)
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_history_policy_silence"))
+    assert not caplog.records, "nessun history_policy.json sul disco -- nessun log deve uscire"
+
+
+def test_vault_db_presence_logged_when_file_exists(tmp_path, caplog):
+    check = _check_documentale("vault_db_path", _MARK_DOPO_VAULT)
+    (tmp_path / "vault.db").write_text("x")
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_vault_silence"))
+    assert any("vault.db" in rec.message and "installazione precedente" in rec.message
+               for rec in caplog.records)
+
+
+def test_vault_db_silent_when_file_absent(tmp_path, caplog):
+    check = _check_documentale("vault_db_path", _MARK_DOPO_VAULT)
+    with caplog.at_level("INFO"):
+        check(str(tmp_path), __import__("os"), logging.getLogger("test_vault_silence"))
+    assert not caplog.records, "nessun vault.db sul disco -- nessun log deve uscire"

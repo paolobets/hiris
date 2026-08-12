@@ -1,11 +1,13 @@
 """La vista HTTP della memoria -- cio' che HIRIS sa, in chiaro e correggibile.
 
 E' la decisione (5) del progetto della memoria (docs/design/2026-08-05-la-
-conoscenza-di-hiris.md, §6), scritta a luglio e mai eseguita. Oggi la pagina
-"Memoria" interroga la coda di approvazione di knowledge_store, vuota per
-costruzione da mesi: nessuno la riempie piu'. Questa vista interroga invece
-l'archivio vero (memoria/archivio.py) e rende reale la regola (2) del
-contratto: si puo' ricordare subito solo se poi si puo' guardare e correggere.
+conoscenza-di-hiris.md, §6), scritta a luglio e mai eseguita. Fino alla fetta
+E5 Task 9 la pagina "Memoria" interrogava la coda di approvazione di
+knowledge_store, vuota per costruzione da mesi perche' nessuno la riempiva
+piu'; dalla fetta "esce il documentale" quella coda non esiste piu' affatto,
+uscita con l'archivio che la conteneva. Questa vista interroga l'archivio vero
+(memoria/archivio.py) ed e' l'unica: rende reale la regola (2) del contratto,
+si puo' ricordare subito solo se poi si puo' guardare e correggere.
 
 Tre cose, non di piu':
 

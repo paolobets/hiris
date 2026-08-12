@@ -33,7 +33,9 @@ than assumed:
     `test_chat_concurrent_calls_do_not_leak_pseudonym_map`) needed a
     dispatcher-shaped stand-in to keep proving the runner's OWN ContextVar
     isolation under concurrency; see their own comments for what replaced
-    `ToolDispatcher` there.
+    `ToolDispatcher` there. Il secondo dei due e' poi uscito con la fetta
+    "esce il documentale" (vedi la nota al suo posto): il suo soggetto,
+    `last_pseudonym_map`, non esiste piu'.
 
 fetta E4 Task 6 ("un bot solo"): the constructor `dispatcher=` kwarg (the
 "scorta" stand-in the two concurrency tests above used to plug their
@@ -572,142 +574,23 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
     assert tools_b == [{"tool": "get_home_status", "input": {"entity_id": "entity-B"}}]
 
 
-class _DispatcherPseudonimizzaDiScorta:
-    """fetta E2 Task 8: sostituisce `_DispatcherRecallMemoryDiScorta` (Task 7).
-
-    Quella classe stava al posto di `ToolDispatcher` (uscito nel Task 7) SOLO
-    per il test sotto, che deve provare l'isolamento per-Task di
-    `last_pseudonym_map` attraverso un dispatch VERO (non mockato) fino a
-    `Pseudonymizer` -- l'unico modo di far girare quella prova end-to-end.
-    Per arrivarci chiamava `tools/memory_tools.handle_recall_memory`, che pero'
-    e' uscita a sua volta in questo stesso task: era orfana dallo stesso Task
-    7 che le aveva gia' tolto l'unico chiamante (`ToolDispatcher`), quindi
-    nessun test doveva piu' dipenderne. Il soggetto di QUESTO test non e' mai
-    stato "la ricerca semantica trova il contenuto giusto" -- e' "due chat
-    concorrenti sullo stesso runner non si scambiano il vettore di
-    pseudonimizzazione" -- quindi qui si pseudonimizza direttamente un
-    contenuto canonico per query, senza passare da KnowledgeStore/embedder:
-    stessa `Pseudonymizer`/vault reali, stesso forwarding di `pseudonym_map`,
-    una dipendenza in meno.
-
-    fetta E4 Task 6 ("un bot solo"): questo stand-in si costruiva col
-    `dispatcher=` DEL COSTRUTTORE (il "dispatcher di scorta" `self._dispatcher`,
-    l'unico ramo che passava `pseudonym_map=` a `dispatch()`) -- uscito con
-    quel ramo, zero chiamanti di produzione lo popolavano (fetta E2 Task 7
-    commit 68d3670). Il ramo che sopravvive (`dispatcher` per-chiamata) chiama
-    `dispatch(nome, argomenti)` posizionale, SENZA `pseudonym_map` (e' la
-    stessa interfaccia minima di `DispatcherConoscenza`, casa/strumenti.py --
-    vedi tests/test_runner_catalogo.py). Per continuare a provare
-    l'isolamento per-Task del vettore di pseudonimizzazione senza quel kwarg,
-    lo stand-in tiene un riferimento al runner e scrive direttamente nel SUO
-    `last_pseudonym_map` (il descriptor ContextVar-backed) dentro il proprio
-    `dispatch()`: gira comunque nello stesso asyncio Task di `chat()`, quindi
-    la scrittura atterra nella copia di contesto di QUEL Task -- lo stesso
-    meccanismo che il test prova, solo innescato da un punto diverso."""
-
-    has_memory = True
-
-    _CONTENUTO_PER_QUERY = {
-        "query-A": "Bonifico su IT60X0542811101000000123456",
-        "query-B": "Contatto: segreto.userB@example.it",
-    }
-
-    def __init__(self, pseudonymizer, runner):
-        self._pseudonymizer = pseudonymizer
-        self._runner = runner
-
-    async def dispatch(self, name, inputs):
-        assert name == "recall_memory"
-        contenuto = self._pseudonymizer.pseudonymize(
-            self._CONTENUTO_PER_QUERY[inputs["query"]], self._runner.last_pseudonym_map)
-        return {"results": [{"content": contenuto}], "count": 1, "degraded": False}
-
-
-@pytest.mark.asyncio
-async def test_chat_concurrent_calls_do_not_leak_pseudonym_map(tmp_path):
-    """SECURITY (review B/#7): two overlapping chat() calls on the SAME
-    runner instance -- sharing the SAME dispatcher/Pseudonymizer/vault,
-    exactly as two concurrent real users would on a live server -- must never
-    leak each other's per-request pseudonymize token map. Each call's own
-    recall_memory tool invocation pseudonymizes DIFFERENT sensitive PII into
-    the SAME global vault; `last_pseudonym_map` read right after each call's
-    own `await runner.chat(...)` must contain ONLY that call's own token, and
-    using it to detokenize would never resolve the other call's PII.
-
-    This is the concurrency-flavored counterpart to
-    test_chat_concurrent_calls_do_not_leak_tool_calls above, exercising a
-    REAL dispatch -> Pseudonymizer path end-to-end (dispatch is not mocked
-    here) so the ContextVar-based per-Task isolation is proven against the
-    actual security-sensitive code path, not just last_tool_calls
-    bookkeeping. `ToolDispatcher` used to be that dispatcher; it is gone
-    (fetta E2 Task 7). `_DispatcherPseudonimizzaDiScorta` above stands in for
-    it -- see its own docstring for why it no longer routes through
-    KnowledgeStore/memory_tools (fetta E2 Task 8), and for the fetta E4
-    Task 6 update on how it now reaches `last_pseudonym_map` without the
-    constructor `dispatcher=`/`pseudonym_map=` kwarg."""
-    from hiris.app.brain.privacy import VaultStore, Pseudonymizer
-
-    vault = VaultStore(str(tmp_path / "vault.db"))
-    pseudonymizer = Pseudonymizer(vault)
-
-    with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test-key")
-    dispatcher = _DispatcherPseudonimizzaDiScorta(pseudonymizer, runner)
-
-    def _usage():
-        return MagicMock(input_tokens=1, output_tokens=1,
-                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
-
-    def _tool_response(query: str):
-        # k=1: with only 2 sensitive items in the store, an unbounded k would
-        # return BOTH regardless of query vector, defeating the point of this
-        # test (each call must only ever pseudonymize ITS OWN best match).
-        block = MagicMock(type="tool_use", id=f"id-{query}", input={"query": query, "k": 1})
-        block.name = "recall_memory"
-        return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
-
-    def _end_response(text: str):
-        block = MagicMock(type="text", text=text)
-        return MagicMock(stop_reason="end_turn", content=[block], usage=_usage())
-
-    async def fake_create(**kwargs):
-        msgs = kwargs["messages"]
-        is_call_a = msgs[0]["content"] == "call-A"
-        first_iteration = len(msgs) == 1
-        # Same deterministic interleave as the tool_calls test above.
-        await asyncio.sleep(0.02 if is_call_a else 0.01)
-        if first_iteration:
-            return _tool_response("query-A" if is_call_a else "query-B")
-        return _end_response("done-A" if is_call_a else "done-B")
-
-    runner._client.messages.create = AsyncMock(side_effect=fake_create)
-
-    async def call_a():
-        text = await runner.chat("call-A", dispatcher=dispatcher)
-        return text, dict(runner.last_pseudonym_map)
-
-    async def call_b():
-        text = await runner.chat("call-B", dispatcher=dispatcher)
-        return text, dict(runner.last_pseudonym_map)
-
-    (text_a, map_a), (text_b, map_b) = await asyncio.gather(call_a(), call_b())
-
-    assert text_a == "done-A"
-    assert text_b == "done-B"
-
-    # Each call's own map holds ONLY its own PII, never the other's.
-    assert "IT60X0542811101000000123456" in map_a.values()
-    assert "segreto.userB@example.it" not in map_a.values()
-    assert "segreto.userB@example.it" in map_b.values()
-    assert "IT60X0542811101000000123456" not in map_b.values()
-
-    # Cross-request expansion attempt: a token minted for call A must not
-    # resolve using call B's map (and vice versa) -- the exact shape of the
-    # review B/#7 leak, now proven against the real end-to-end path.
-    token_a = next(iter(map_a))
-    assert pseudonymizer.detokenize(f"testo con {token_a}", map_b) == f"testo con {token_a}"
-
-    vault.close()
+# Fetta "esce il documentale": qui vivevano
+# `_DispatcherPseudonimizzaDiScorta` e
+# `test_chat_concurrent_calls_do_not_leak_pseudonym_map`. Cadono PER
+# COSTRUZIONE: il loro soggetto -- `hiris.app.brain.privacy`
+# (`VaultStore`/`Pseudonymizer`) e l'attributo `ClaudeRunner.
+# last_pseudonym_map` -- e' uscito con questa fetta. Il test importava il
+# modulo alla prima riga del corpo e leggeva `runner.last_pseudonym_map`:
+# senza ne' l'uno ne' l'altro non c'e' niente da isolare fra due chiamate
+# concorrenti.
+#
+# L'isolamento per-Task che questo test provava NON resta scoperto:
+# `test_chat_concurrent_calls_do_not_leak_tool_calls`, qui sopra, prova lo
+# STESSO meccanismo (le ContextVar per-Task di `_PerCallList`) su
+# `last_tool_calls`, che resta. Ad andarsene e' solo la variante che lo
+# provava attraverso la pseudonimizzazione -- che nel prodotto non girava
+# piu': l'unico ramo che popolava la mappa era uscito con la fetta E2 Task 7,
+# ed e' il motivo per cui questo stand-in doveva scriverci dentro a mano.
 
 
 # fetta E4 Task 6 ("un bot solo"): silenzio dichiarato e pinnato per

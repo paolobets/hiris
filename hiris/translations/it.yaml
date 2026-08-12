@@ -56,18 +56,20 @@ configuration:
     request_timeout:
       name: "Timeout richiesta Ollama (secondi)"
       description: "Tempo massimo di attesa per una singola chiamata Ollama. Default 120s. Aumenta se hai hardware lento con modelli grandi (Pi 5 con gemma2:9b può richiedere 240–300s). Range: 10–1800."
+  # Fetta "esce il documentale": esce `rag_k` -- era il numero di risultati
+  # del richiamo per somiglianza sull'archivio di conoscenza, uscito con
+  # quella fetta. I due campi che restano sono DICHIARATI INERTI qui sotto:
+  # oggi nessuna parte di HIRIS calcola embedding, e dirlo all'utente e'
+  # l'unico modo di non ripetere l'errore della frase sui documenti sensibili.
   memory:
-    name: "Memoria & RAG"
-    description: "Impostazioni per la memoria a lungo termine di HIRIS e la ricerca semantica (RAG). Lascia vuoti i campi embedding per disabilitare il RAG."
+    name: "Embedding (oggi inattivi)"
+    description: "Provider e modello per la ricerca per somiglianza. OGGI NON HANNO EFFETTO: nessuna parte di HIRIS calcola embedding, da quando l'integrazione documentale e l'archivio di conoscenza sono usciti. I due campi restano perché la ricerca per somiglianza è una decisione rimandata, non annullata: quando verrà accesa, si configurerà da qui."
     embedding_provider:
-      name: "Provider Embedding"
-      description: "Provider per gli embedding della memoria semantica. Opzioni: 'openai' (richiede chiave API), 'ollama' (richiede server locale), 'model2vec' (completamente locale, nessun server, compatibile con tutti i sistemi). Lascia vuoto per disabilitare il RAG."
+      name: "Provider Embedding (inattivo)"
+      description: "Provider per gli embedding. Opzioni: 'openai' (richiede chiave API), 'ollama' (richiede server locale), 'model2vec' (completamente locale, nessun server). Oggi il valore viene letto e mostrato nella pagina Modelli, ma nessun testo viene mai vettorizzato."
     embedding_model:
-      name: "Modello Embedding"
-      description: "Modello per generare gli embedding. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M o potion-base-32M (lascia vuoto per il default)."
-    rag_k:
-      name: "Risultati RAG (k)"
-      description: "Numero di memorie rilevanti restituite durante la ricerca semantica. Valori più alti danno più contesto ma aumentano l'uso di token."
+      name: "Modello Embedding (inattivo)"
+      description: "Modello per generare gli embedding. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M o potion-base-32M (lascia vuoto per il default). Oggi non viene mai invocato."
   # fetta E4, riparazione del ponte: la descrizione diceva «Lascia vuoto per
   # generarlo automaticamente» ma nessuno generava niente -- con il campo vuoto
   # (il default di config.yaml) ogni chiamata non-ingress prendeva 401 e il
@@ -159,24 +161,13 @@ configuration:
   claude_code_oauth_token:
     name: "Token OAuth Claude Code (abbonamento)"
     description: "Token OAuth dell'abbonamento Claude (Claude Max) con cui HIRIS ragiona senza consumare credito dell'API a consumo. È il campo che accende il percorso abbonamento: valorizzalo E attiva «Attiva provider: Abbonamento (Claude Max)» qui sopra — con entrambi presenti, la chat viene instradata sull'abbonamento anche lasciando spente «Ponte abbonamento — attiva» e «Chat via abbonamento — attiva». Lo ottieni sulla macchina dove hai già Claude Code installato e autenticato, con il comando `claude setup-token`, e incolli qui la stringa che stampa. ATTENZIONE: su questo percorso i consumi NON si misurano — l'abbonamento non espone né i token né il costo della singola risposta, e la pagina Consumi lo dichiara invece di mostrare zeri — e valgono le condizioni d'uso e di conservazione dell'abbonamento Claude Max, diverse da quelle dell'API a consumo. Lascialo vuoto se usi solo chiavi API."
-  mayan:
-    name: "Mayan EDMS (documenti)"
-    description: "Impostazioni per ingerire documenti da Mayan EDMS nel second brain. Lascia url/token vuoti per disabilitare. tag_id deve essere > 0 per attivare il polling."
-    url:
-      name: "URL Mayan"
-      description: "URL base dell'API Mayan EDMS v4. Esempio: http://192.168.1.31:8090/api/v4"
-    token:
-      name: "Token API Mayan"
-      description: "Token API per l'autenticazione Mayan. Generalo in Mayan → Account → API Tokens."
-    tag_id:
-      name: "ID Tag"
-      description: "ID del tag Mayan da ingerire (es. il tag 'HIRIS'). Imposta 0 per disabilitare."
-    sensitivity:
-      name: "Sensibilità Documenti"
-      description: "Livello di privacy per i documenti ingeriti. 'sensitive' (default, consigliato per estratti conto, fatture) nasconde il contenuto all'AI cloud. 'normal' permette il recall RAG completo."
-    poll_minutes:
-      name: "Intervallo Polling (minuti)"
-      description: "Con quale frequenza HIRIS interroga Mayan per nuovi documenti. Default 60. Range: 5–1440."
+  # Fetta "esce il documentale" (decisione del proprietario, 12 agosto 2026):
+  # esce l'intero blocco `mayan.*` -- url, token, tag_id, sensitivity,
+  # poll_minutes. La descrizione di `sensitivity` diceva che 'sensitive'
+  # "nasconde il contenuto all'AI cloud": era FALSA. Nessun percorso di HIRIS
+  # pseudonimizzava piu' niente, quindi non c'era nessun nascondimento da
+  # nessuna parte -- una promessa di protezione mai mantenuta, ritirata qui
+  # insieme all'opzione che la portava.
   debug_expose_port:
     name: "🛠 Debug — warning esposizione porta (DEV ONLY, da solo NON apre la porta)"
     description: >-

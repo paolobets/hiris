@@ -386,18 +386,12 @@ _current_tool_calls: "contextvars.ContextVar[Optional[list]]" = contextvars.Cont
 _current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
     "hiris_current_thinking_blocks", default=None
 )
-# Per-request pseudonymization token map (review B/#7 — PII cross-leak fix).
-# Same ContextVar-per-Task isolation rationale as the two ContextVars above:
-# chat()/chat_stream() reset this dict to {} at the start of every call, the
-# recall_memory tool path (dispatcher.dispatch -> memory_tools) records
-# token->value pairs into it as it pseudonymizes sensitive content for THIS
-# exchange, and the caller (handlers_chat.py / server.py) reads it back
-# AFTER chat()/chat_stream() returns (same Task, so the ContextVar value is
-# still visible) to detokenize the model's reply using ONLY this exchange's
-# own tokens — never falling back to the shared, unscoped vault.
-_current_pseudonym_map: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar(
-    "hiris_current_pseudonym_map", default=None
-)
+# Fetta "esce il documentale": qui viveva `_current_pseudonym_map`, la
+# ContextVar per-Task della mappa token->PII di ogni scambio. Esce con
+# brain/privacy.py (VaultStore/Pseudonymizer): il suo unico scrittore -- il
+# ramo del dispatcher che passava `pseudonym_map=` a `dispatch()` -- era gia'
+# uscito con la fetta E2 Task 7, e i due `detokenize` che la leggevano
+# (handlers_chat.py) lavoravano da allora su un dizionario sempre vuoto.
 
 
 class _PerCallList:
@@ -429,21 +423,9 @@ class _PerCallList:
         self._var.set(value)
 
 
-class _PerCallDict:
-    """Same per-Task ContextVar-backed isolation as ``_PerCallList``, but for
-    a dict attribute (used by ``last_pseudonym_map`` — review B/#7)."""
-
-    def __init__(self, var: "contextvars.ContextVar[Optional[dict]]") -> None:
-        self._var = var
-
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self
-        val = self._var.get()
-        return val if val is not None else {}
-
-    def __set__(self, obj, value) -> None:
-        self._var.set(value)
+# Fetta "esce il documentale": qui viveva `_PerCallDict`, il descriptor
+# gemello di `_PerCallList` per un attributo dict. Il suo unico uso era
+# `last_pseudonym_map`, uscito con la pseudonimizzazione.
 
 
 class ClaudeRunner:
@@ -451,7 +433,6 @@ class ClaudeRunner:
     # even though this object is a long-lived singleton (see comment above).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_thinking_blocks = _PerCallList(_current_thinking_blocks)
-    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
 
     def __init__(
         self,
@@ -462,21 +443,15 @@ class ClaudeRunner:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._usage_path = usage_path
         self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
-        # fetta E4 Task 9 (il conto): qui c'era scritto "Anthropic cloud —
-        # always pseudonymize sensitive content". Dichiarazione falsa al
-        # presente su due fronti. Primo: in QUESTA classe nulla legge
-        # `self._is_cloud` (l'unico lettore era il ramo "dispatcher di
-        # scorta", uscito alla fetta E4 Task 6) -- e' stato scritto e mai
-        # letto, rilievo m1 della review del Task 6. Secondo: la
-        # pseudonimizzazione e' INERTE nell'intero prodotto -- nessun percorso
-        # popola piu' `last_pseudonym_map` (vedi il commento su di essa in
-        # `chat()`), quindi non si pseudonimizza proprio niente, ne' "always"
-        # ne' mai. Non riparato qui: e' debito preesistente dalla fetta E2
-        # Task 7, che va alla fase "poi le sicurezze" insieme a
-        # `proxy/_sanitize.py`. La riga resta perche' toglierla e' codice
-        # eseguibile, fuori dal perimetro di questo task (solo documentazione
-        # e commenti).
-        self._is_cloud = True
+        # Fetta "esce il documentale": qui c'era `self._is_cloud = True`, con
+        # accanto la dichiarazione (gia' corretta dalla fetta E4 Task 9) che
+        # nessuno lo leggeva e che serviva a un "always pseudonymize
+        # sensitive content" che il prodotto non faceva. L'attributo era
+        # scritto e mai letto in QUESTA classe -- verificato con grep: gli
+        # unici `_is_cloud` vivi sono quelli di OpenAICompatRunner/
+        # OpenRouterRunner, letti da `_backend_noun`. Il Task 9 lo aveva
+        # lasciato solo perche' era fuori dal suo perimetro (solo commenti);
+        # esce qui, insieme alla pseudonimizzazione che lo giustificava.
         # last_tool_calls / last_thinking_blocks are intentionally NOT
         # initialized here — they are per-call/per-Task class-level
         # descriptors (see above); chat() resets them at the start of every
@@ -645,26 +620,6 @@ class ClaudeRunner:
         dispatcher: Any | None = None,
     ) -> str:
         self.last_tool_calls = []
-        # Fresh per-exchange pseudonymization map (review B/#7), read by the
-        # caller afterwards (handlers_chat.py, pseudonymizer.detokenize).
-        # fix round 1 (Important 3 della review indipendente): this used to
-        # say "populated by the recall_memory tool path below" -- false since
-        # fetta E2 Task 7 ("esce il dispatcher"), and doubly so after this
-        # task's own removal of the scorta branch. No path in THIS file
-        # writes into it any more: the only writer used to be the removed
-        # `elif self._dispatcher is not None` branch, which alone passed
-        # `pseudonym_map=self.last_pseudonym_map` to `dispatch()`. The
-        # surviving per-call `dispatcher` path calls `dispatch(nome,
-        # argomenti)` positional-only (DispatcherConoscenza's minimal
-        # interface, casa/strumenti.py — see the dispatch loop below), with
-        # no `pseudonym_map` kwarg at all. So today this dict is always reset
-        # to `{}` and never filled: the two `pseudonymizer.detokenize(text,
-        # pseudonym_map)` calls in handlers_chat.py are currently no-ops
-        # (nothing to expand). Pre-existing since fetta E2 Task 7 — NOT a
-        # regression of this task — left as-is per this fix round's scope
-        # (not repairing, only correcting the comment that hid it); flagged
-        # here for the fetta's final review, see task-6-report.md.
-        self.last_pseudonym_map = {}
         # ── System prompt blocks with prompt caching ─────────────────────────
         # Anthropic prompt caching is *cumulative*: a single cache_control
         # breakpoint caches everything from the start of the request up to that

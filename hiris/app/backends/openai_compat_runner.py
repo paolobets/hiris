@@ -17,9 +17,7 @@ from ..claude_runner import (
     MINIMAL_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
-    _current_pseudonym_map,
     _PerCallList,
-    _PerCallDict,
 )
 from .pricing import PRICING as _PRICING
 
@@ -212,9 +210,6 @@ class OpenAICompatRunner:
     # backends don't support Anthropic Extended Thinking (thinking_budget is
     # accepted-and-ignored in chat() below).
     last_tool_calls = _PerCallList(_current_tool_calls)
-    # Per-request pseudonymization token map (review B/#7) — same ContextVar
-    # shared with ClaudeRunner; see claude_runner.py's module comment.
-    last_pseudonym_map = _PerCallDict(_current_pseudonym_map)
 
     def __init__(
         self,
@@ -511,8 +506,6 @@ class OpenAICompatRunner:
             )
 
         self.last_tool_calls = []
-        # Fresh per-exchange pseudonymization map (review B/#7).
-        self.last_pseudonym_map = {}
         self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
@@ -819,8 +812,6 @@ class OpenAICompatRunner:
             return
 
         self.last_tool_calls = []
-        # Fresh per-exchange pseudonymization map (review B/#7).
-        self.last_pseudonym_map = {}
         self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)

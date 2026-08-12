@@ -19,7 +19,7 @@
    lettore da quando il Brain è uscito con la E3. Il modello della chat si
    cambia dal Task 2 della E5 (impostazioni chat), dove è sempre dovuto stare.
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di history-route.js e impostazioni-route.js).
+   (stesso vincolo di dashboard.js e impostazioni-route.js).
 
    Task 7B ha arricchito GET /api/models/config con:
      providers: [{id: subscription|claude|openai|openrouter|ollama, label,

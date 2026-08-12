@@ -133,11 +133,14 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
     # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
     # ed e' lo stesso testo che vedranno il Brain e gli agenti quando
-    # torneranno (vedi il brief). Il blocco RAG e KnowledgeStore.declared()
-    # non sono stati cancellati: smettono solo di essere chiamati da QUI.
-    # SemanticContextMap invece e' uscita davvero (fetta E3 Task 2, 2.0):
-    # il suo unico altro chiamante era il context-preview dell'editor
-    # Chatbot, uscito con lei.
+    # torneranno (vedi il brief). All'epoca del Task 3 il blocco RAG e
+    # `KnowledgeStore.declared()` non erano stati cancellati: smettevano solo
+    # di essere chiamati da QUI. Dalla fetta "esce il documentale" sono
+    # cancellati davvero, insieme all'intero `KnowledgeStore` -- da allora non
+    # avevano ripreso nessun chiamante di produzione, e l'archivio che
+    # leggevano non aveva piu' nessuno che lo riaprisse. SemanticContextMap
+    # era uscita anche prima (fetta E3 Task 2, 2.0): il suo unico altro
+    # chiamante era il context-preview dell'editor Chatbot, uscito con lei.
     #
     # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
     # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun
@@ -581,17 +584,12 @@ async def handle_chat(request: web.Request) -> web.Response:
                 logger.debug("SSE chunk parse skipped: %s", exc)
         await stream_resp.write_eof()
         full_response = "".join(collected_tokens)
-        # De-tokenize pseudonymized tokens in the accumulated response so
-        # persisted history holds real values (consistent with what the user
-        # sees in the non-streaming path).
-        # Note: individual SSE chunks streamed to the client may still show
-        # tokens until a future streaming refactor re-emits de-tokenized text.
-        pseudonymizer = request.app.get("pseudonymizer")
-        if pseudonymizer is not None and full_response:
-            # Only expand tokens THIS exchange's own pseudonymize call minted
-            # (review B/#7) — never a global/cross-conversation lookup.
-            pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
-            full_response = pseudonymizer.detokenize(full_response, pseudonym_map)
+        # Fetta "esce il documentale": qui c'era la detokenizzazione della
+        # risposta accumulata (`pseudonymizer.detokenize(full_response,
+        # runner.last_pseudonym_map)`), uscita con brain/privacy.py. Era un
+        # no-op: nessun percorso del prodotto chiamava piu' `pseudonymize()`,
+        # quindi `last_pseudonym_map` era sempre vuota e non c'era nessun
+        # token da riespandere. Vedi il commento gemello nel ramo sincrono.
         # Skip persistence for toxic / synthetic-error responses so the next
         # turn does not see a poisoned history. discard_collected already
         # zeroes collected_tokens for tool-call leaks; this also covers the
@@ -630,15 +628,15 @@ async def handle_chat(request: web.Request) -> web.Response:
         # (detokenize/toxicity/persistence/serialization) is unaffected.
         response = exc.friendly_message
 
-    # De-tokenize pseudonymized tokens before toxicity check, persistence,
-    # and serialization so both the stored history and the returned JSON
-    # contain real values rather than vault tokens.
-    pseudonymizer = request.app.get("pseudonymizer")
-    if pseudonymizer is not None and isinstance(response, str) and response:
-        # Only expand tokens THIS exchange's own pseudonymize call minted
-        # (review B/#7) — never a global/cross-conversation lookup.
-        pseudonym_map = getattr(runner, "last_pseudonym_map", None) or {}
-        response = pseudonymizer.detokenize(response, pseudonym_map)
+    # Fetta "esce il documentale": qui c'era la detokenizzazione della
+    # risposta prima del controllo di tossicita', della persistenza e della
+    # serializzazione. Esce con brain/privacy.py, e non cambia il testo di un
+    # carattere: la pseudonimizzazione era INERTE nell'intero prodotto --
+    # l'unico ramo che popolava `last_pseudonym_map` (il dispatcher che
+    # passava `pseudonym_map=` a `dispatch()`) e' uscito con la fetta E2
+    # Task 7, quindi da allora `detokenize` girava su un dizionario vuoto.
+    # Era, testualmente, una promessa di protezione non mantenuta: la stessa
+    # famiglia della frase su `mayan.sensitivity` che esce con questa fetta.
 
     # Persist the new user+assistant exchange — but skip when the runner
     # returned a synthetic error / leak sentinel, so the next turn doesn't

@@ -38,12 +38,10 @@ but every one of them is internal housekeeping: none of them speaks to you, and
 none of them touches the house. They are: the entity-inventory reload every
 2 minutes (`hiris/app/server.py:969-974`), the `mtime` sentinel over
 `automations.yaml`/`scripts.yaml` every 5 minutes (`:980-985`), chat-history
-retention at 03:00 (`:1000-1008`), history compaction at 03:30 (`:1019-1023`),
-the nightly digest at 04:00, which writes rule-based insights into the
-knowledge store with no model call (`:1034-1038`,
-`hiris/app/brain/history_digest.py:1-2,135`), the reasoning-queue sweep every
-2 minutes (`:1305-1307`), and — only when `mayan.*` is configured — the Mayan
-document poll (`:1076-1083`).
+retention at 03:00, and the reasoning-queue sweep every 2 minutes. The
+03:30 history compaction, the 04:00 nightly digest and the Mayan document
+poll were removed in 2.1.0 together with the document integration and the
+knowledge archive they fed.
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
 (autonomous agents, a proactive brain, proposals, an action gate); most of it
@@ -262,18 +260,14 @@ and are what the add-on UI shows.
 | `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
 | `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
 
-### Carried over from 1.x
-
-These options are still read and still configure the second-brain archive
-(document ingestion, semantic search, the nightly digest), but **the 2.0 chat
-does not read that archive**: its context comes from the nucleo only
-(`hiris/app/api/handlers_chat.py:271-283,317,330-335`). They are listed for honesty, not
-recommended.
+### Carried over from 1.x — read, but inert
 
 | Option | Description |
 |---|---|
-| `memory.embedding_provider` · `memory.embedding_model` · `memory.rag_k` | Embeddings for the knowledge store's semantic search |
-| `mayan.*` | Polling a Mayan EDMS tag into the knowledge store |
+| `memory.embedding_provider` · `memory.embedding_model` | Read at startup, shown on the Models page — but **nothing in HIRIS computes an embedding today.** Similarity search is a postponed decision, not a cancelled one; when it is turned on, it will be configured from here. |
+
+The `mayan.*` block and `memory.rag_k` were removed in 2.1.0 together with the
+document integration and the knowledge archive — see the CHANGELOG.
 
 ---
 
