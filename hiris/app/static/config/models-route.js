@@ -209,12 +209,24 @@
      Non calcola NIENTE: posizione, nome, modello, natura, che cosa manca e
      perché una riga non si muove arrivano dal payload. */
   function rigaProvider(dati, dentro) {
-    var row = el('div', 'riga-provider' + (dentro ? '' : ' riga-fuori'));
+    /* `rifiuta` è un FATTO che arriva dal payload (`esito.tipo`), non una
+       deduzione dal testo di stato: leggere una regola dentro una frase è come
+       ricostruirla, e questa pagina ha smesso di ricostruire. Serve a due cose
+       sole, entrambe di aspetto -- il pallino e il peso del nome. */
+    var rifiuta = !!(dati.esito && dati.esito.tipo === 'rifiutato');
+    var row = el('div', 'riga-provider' + (dentro ? '' : ' riga-fuori')
+      + (rifiuta ? ' riga-muta' : ''));
     row.setAttribute('data-provider', dati.id);
     row.setAttribute('role', 'listitem');
     row.appendChild(el('span', 'riga-pos',
       dati.posizione == null ? '' : String(dati.posizione)));
-    row.appendChild(el('span', 'dot ' + (dati.ha_credenziale ? 'on' : 'off')));
+    /* Il pallino di chi ha rifiutato diventa grigio-ambra, non rosso: una riga
+       che non risponde deve SMETTERE DI SEMBRARE ATTIVA, che è la traduzione
+       grafica del ritiro della parola «Attivo» -- non diventare un allarme.
+       E non è mai l'unico segnale: la riga di stato qui sotto dice a parole
+       che cosa è successo (WCAG 1.4.1). */
+    row.appendChild(el('span', 'dot ' + (rifiuta ? 'muto'
+      : (dati.ha_credenziale ? 'on' : 'off'))));
     row.appendChild(el('span', 'riga-nome', dati.nome));
     /* Il modello sta NELLA RIGA, sempre visibile, e si clicca per cambiarlo.
        Un bottone e non uno `<span>` con un listener: apre e chiude una cosa, e
@@ -280,6 +292,25 @@
        l'assenza si legge come un guasto. La parola arriva dal payload
        (`componi_topologia`), perché è una regola del prodotto e cambia con
        lei. */
+    /* La riga di stato: l'ultimo esito OSSERVATO, e quanto è vecchio. È ciò
+       che chiude il caso del proprietario -- fino a questa fetta la pagina
+       sapeva dire «Claude è primo in catena» e non «e sta rifiutando da
+       quaranta richieste», mentre una chiave a credito zero veniva mostrata
+       come funzionante.
+
+       La frase arriva dal payload (`decisione_modelli.frase_esito`) e non si
+       compone qui: dice quanto tempo fa, con quale codice e da quante
+       richieste, cioè tre affermazioni sul prodotto. È anche il motivo per cui
+       questa riga non ha bisogno di essere toccata dal Task 14: quando il
+       ponte imparerà a ripiegare, la frase nuova arriverà già scritta.
+
+       Vuota quando non c'è niente da dire (nessuna credenziale e nessuna
+       osservazione: la riga dice già «manca la chiave»), e la pagina disegna
+       solo ciò che non è vuoto -- nessuna condizione sul provider vive qui. */
+    if (dati.stato_testo) {
+      row.appendChild(el('div', 'riga-stato' + (rifiuta ? ' stato-rifiutato' : ''),
+        dati.stato_testo));
+    }
     if (dati.nota) row.appendChild(el('div', 'riga-nota', dati.nota));
     return row;
   }

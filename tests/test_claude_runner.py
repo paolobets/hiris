@@ -714,3 +714,86 @@ def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
 # stesso (la riga `tools = [t for t in tools if t["name"] != "render_
 # template"]` in claude_runner.chat()) resta nel codice come no-op innocuo,
 # non e' stato toccato da questo task.
+
+
+# ---------------------------------------------------------------------------
+# L'errore porta con se' che cosa e' successo (Task 11)
+#
+# Claude NON HA NESSUNA PROTEZIONE -- niente circuito, niente soglia -- e
+# viene ritentato integralmente a ogni turno. E' esattamente perche' il
+# proprietario paga una chiamata fallita a messaggio da settimane senza che
+# niente ceda mai. Questa fetta non gliene da' una (sarebbe un cambio di
+# comportamento del ripiego, non una cosa che la pagina mostra): fa in modo
+# che la pagina lo DICA.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner):
+    """Il caso del proprietario, misurato: Anthropic risponde `400 credit
+    balance too low`. Fino a questa fetta il 400 moriva qui dentro -- ogni
+    `anthropic.APIError` diventava lo stesso «Errore temporaneo del servizio
+    AI», e la pagina Modelli non aveva niente da dire."""
+    import anthropic
+
+    from hiris.app.claude_runner import RunnerBackendError
+
+    class _Credito(anthropic.APIError):
+        def __init__(self):
+            Exception.__init__(self, "credit balance too low")
+            self.status_code = 400
+
+    with patch.object(runner, "_call_api", AsyncMock(side_effect=_Credito())):
+        with pytest.raises(RunnerBackendError) as info:
+            await runner.chat("Ciao")
+
+    assert info.value.famiglia == "credenziale"
+    assert info.value.codice == 400
+    # La frase per l'utente NON cambia: e' cio' che legge in chat, e la chat
+    # non e' il posto dove si spiega un guasto di configurazione.
+    assert info.value.friendly_message == (
+        "Errore temporaneo del servizio AI. Riprova tra poco."
+    )
+
+
+@pytest.mark.asyncio
+async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
+    """404 e 400 chiedono due azioni diverse a chi legge -- scegliere un altro
+    modello, oppure ricaricare il credito. Collassarli e' cio' che il codice
+    faceva."""
+    import anthropic
+
+    from hiris.app.claude_runner import RunnerBackendError
+
+    class _Sparito(anthropic.APIError):
+        def __init__(self):
+            Exception.__init__(self, "model not found")
+            self.status_code = 404
+
+    with patch.object(runner, "_call_api", AsyncMock(side_effect=_Sparito())):
+        with pytest.raises(RunnerBackendError) as info:
+            await runner.chat("Ciao")
+
+    assert info.value.famiglia == "modello" and info.value.codice == 404
+
+
+@pytest.mark.asyncio
+async def test_anthropic_irraggiungibile_non_porta_un_codice_inventato(runner):
+    """`anthropic.APIConnectionError` non ha uno stato HTTP: una risposta non
+    c'e' mai stata. Il `None` e' il fatto, e la pagina lo dice con parole sue
+    («non risponde all'indirizzo») invece di stampare un numero che nessuno ha
+    ricevuto."""
+    import anthropic
+
+    from hiris.app.claude_runner import RunnerBackendError
+
+    import httpx
+
+    giu = anthropic.APIConnectionError(
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+
+    with patch.object(runner, "_call_api", AsyncMock(side_effect=giu)):
+        with pytest.raises(RunnerBackendError) as info:
+            await runner.chat("Ciao")
+
+    assert info.value.famiglia == "irraggiungibile" and info.value.codice is None

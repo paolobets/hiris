@@ -207,8 +207,26 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 # ---------------------------------------------------------------------------
 
 from hiris.app.decisione_modelli import (componi_pannello,  # noqa: E402
-                                         componi_topologia, e_alias,
-                                         provenienza)
+                                         e_alias, provenienza)
+from hiris.app.decisione_modelli import \
+    componi_topologia as _componi_topologia  # noqa: E402
+
+
+def componi_topologia(**kw):
+    """I due parametri del Task 11 (`esiti`, `adesso`) sono OBBLIGATORI in
+    produzione -- un valore di comodo lascerebbe passare in silenzio un
+    chiamante che non li passa, e la pagina non direbbe mai niente sugli esiti.
+
+    Qui hanno un valore di comodo perche' i test di questo blocco parlano di
+    TOPOLOGIA (chi e' dentro, in che ordine, chi sta fuori) e non di esiti: un
+    registro vuoto e un orologio fermo sono la condizione di un add-on appena
+    partito, che e' la meno interessante per loro e la piu' onesta. Gli esiti
+    hanno i loro test, in `tests/test_esiti_provider.py` e piu' sotto in
+    questo stesso file.
+    """
+    kw.setdefault("esiti", {})
+    kw.setdefault("adesso", 1000.0)
+    return _componi_topologia(**kw)
 
 CRED = {"claude": True, "openrouter": True, "openai": False,
         "ollama": False, "subscription": True}
@@ -228,6 +246,12 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
                          "connettore": "se rifiuta, subito",
                          "connettore_nota": "",
                          "ha_credenziale": True, "posizione": 1,
+                         # Task 11: il fatto grezzo e la frase che lo racconta.
+                         # Qui il registro e' vuoto (add-on appena partito) e
+                         # Claude e' PRIMO: «non l'hai ancora usato», che in
+                         # prima posizione e' allarmante.
+                         "esito": None,
+                         "stato_testo": "non l'hai ancora usato",
                          "riordinabile": True}
 
 
@@ -574,3 +598,132 @@ def test_senza_indirizzo_la_riga_dice_QUELLO_e_non_il_modello():
     assert riga["manca"] == "manca l'indirizzo"
     assert riga["nota"] == ""
     assert riga["riordinabile"] is True
+
+
+# ---------------------------------------------------------------------------
+# La riga di stato: l'ultimo esito osservato, su ogni riga (Task 11)
+#
+# E' cio' che chiude il caso del proprietario per intero: senza, la pagina sa
+# dire «Claude e' primo» ma non «e sta rifiutando da quaranta richieste».
+# L'orologio e' un parametro in ogni prova qui sotto.
+# ---------------------------------------------------------------------------
+
+ADESSO = 10_000.0
+CREDITO_FINITO = {"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
+                  "messaggio": "credit balance too low", "quando": ADESSO - 180,
+                  "da_quante": 40, "durata_s": 0.4}
+HA_RISPOSTO = {"tipo": "risposto", "famiglia": "", "codice": None,
+               "messaggio": "", "quando": ADESSO - 180, "da_quante": 1,
+               "durata_s": 0.0}
+
+
+def test_il_caso_del_proprietario_si_legge_sulla_riga():
+    """La sua chiave Claude e' a credito zero, l'API risponde `400 credit
+    balance too low`, e per giorni la pagina l'ha mostrata come funzionante
+    mentre OpenRouter serviva ogni turno al posto suo. Adesso le due righe
+    dicono due cose diverse, ed e' la verita' misurata."""
+    catena, _ = _componi_topologia(
+        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO,
+        esiti={"claude": CREDITO_FINITO, "openrouter": HA_RISPOSTO})
+    righe = {r["id"]: r for r in catena}
+    assert righe["claude"]["stato_testo"] == (
+        "ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa")
+    assert righe["openrouter"]["stato_testo"] == "ha risposto 3 min fa"
+
+
+def test_il_fatto_grezzo_viaggia_accanto_alla_frase():
+    """La pagina disegna diverso cio' che ha rifiutato -- pallino grigio-ambra,
+    nome che perde peso -- e per farlo legge `esito.tipo`, non il testo.
+    Dedurre una regola da una frase e' come ricostruirla."""
+    catena, _ = _componi_topologia(
+        chain_order=["claude"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO, esiti={"claude": CREDITO_FINITO})
+    assert catena[0]["esito"] == CREDITO_FINITO
+
+
+def test_chi_non_e_stato_osservato_porta_esito_None_e_non_un_finto_successo():
+    catena, fuori = _componi_topologia(
+        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO, esiti={"claude": CREDITO_FINITO})
+    righe = {r["id"]: r for r in catena + fuori}
+    assert righe["openrouter"]["esito"] is None
+    assert righe["openrouter"]["stato_testo"] == "non è mai servito ripiegare qui"
+
+
+def test_mai_provato_dice_due_cose_diverse_in_prima_e_in_seconda_posizione():
+    """Stesso fatto -- nessuna osservazione -- due frasi. In testa e'
+    allarmante (chi dovrebbe rispondere a ogni messaggio non ha mai risposto a
+    nessuno), in seconda e' la notizia buona (il ripiego non e' mai servito).
+    UNA regola sola, ed e' la posizione."""
+    catena, _ = _componi_topologia(
+        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO, esiti={})
+    assert [r["stato_testo"] for r in catena] == [
+        "non l'hai ancora usato", "non è mai servito ripiegare qui"]
+
+
+def test_senza_credenziale_e_senza_osservazioni_la_riga_di_stato_tace():
+    """La riga dice gia' «manca la chiave», che e' la spiegazione COMPLETA di
+    perche' non e' mai stata interrogata. «Non l'hai ancora usato» sotto
+    sarebbe la stessa cosa detta due volte, la seconda con meno
+    informazione."""
+    _, fuori = _componi_topologia(
+        chain_order=["claude"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO, esiti={})
+    riga = {r["id"]: r for r in fuori}["openai"]
+    assert riga["ha_credenziale"] is False
+    assert riga["manca"] == "manca la chiave"
+    assert riga["stato_testo"] == "" and riga["esito"] is None
+
+
+def test_un_esito_sopravvive_alla_credenziale_tolta():
+    """Togliere la chiave a un provider non cancella cosa aveva risposto:
+    quella riga E' STATA interrogata davvero, e il fatto resta. Tacere qui
+    sarebbe cancellare un'osservazione per una ragione di configurazione."""
+    senza = {**CRED, "openrouter": False}
+    _, fuori = _componi_topologia(
+        chain_order=["claude"], credenziali=senza, modelli=MOD,
+        ponte_attivo=False, adesso=ADESSO,
+        esiti={"openrouter": dict(CREDITO_FINITO, famiglia="irraggiungibile",
+                                  codice=None, da_quante=2)})
+    riga = {r["id"]: r for r in fuori}["openrouter"]
+    assert riga["stato_testo"] == (
+        "non risponde all'indirizzo — ultimo tentativo 3 min fa")
+
+
+def test_l_eta_della_riga_cresce_col_solo_passare_del_tempo():
+    """Nessuna nuova chiamata, nessuna nuova osservazione: cambia SOLO
+    l'orologio del chiamante, e la riga lo dichiara. E' la prova che il
+    registro non ringiovanisce da solo, vista dal punto in cui la pagina la
+    legge."""
+    def _riga(adesso):
+        catena, _ = _componi_topologia(
+            chain_order=["claude"], credenziali=CRED, modelli=MOD,
+            ponte_attivo=False, adesso=adesso, esiti={"claude": CREDITO_FINITO})
+        return catena[0]["stato_testo"]
+
+    assert _riga(ADESSO).endswith("3 min fa")
+    assert _riga(ADESSO + 7200).endswith("2 h fa")
+    assert _riga(ADESSO + 86400 * 3).endswith("3 giorni fa")
+
+
+def test_anche_il_piano_ha_la_sua_riga_di_stato():
+    """Il piano e' un provider come gli altri per cio' che riguarda cosa e'
+    successo: se il ponte ha risposto, la riga lo dice. La sua eccezione e'
+    solo dove si entra in catena, non cosa si e' osservato."""
+    catena, _ = _componi_topologia(
+        chain_order=["claude"], credenziali=CRED, modelli=MOD,
+        ponte_attivo=True, adesso=ADESSO, esiti={"subscription": HA_RISPOSTO})
+    assert catena[0]["id"] == "subscription"
+    assert catena[0]["stato_testo"] == "ha risposto 3 min fa"
+
+
+def test_i_due_parametri_nuovi_sono_obbligatori():
+    """Con un valore di comodo, un chiamante che se ne dimenticasse
+    produrrebbe una pagina che non dice MAI niente sugli esiti -- e nessun
+    test se ne accorgerebbe. E' la forma di guasto peggiore che questa fetta
+    conosca, ed e' la ragione per cui il Task 14 dipende da questo."""
+    with pytest.raises(TypeError):
+        _componi_topologia(chain_order=["claude"], credenziali=CRED,
+                           modelli=MOD, ponte_attivo=False)

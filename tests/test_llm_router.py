@@ -417,3 +417,187 @@ async def test_un_turno_finisce_con_la_catena_con_cui_e_partito():
     # E il turno DOPO usa la catena nuova: la scrittura non e' andata persa,
     # e' solo arrivata dopo la partenza di quel turno.
     assert router._chat_policy == []
+
+
+# ---------------------------------------------------------------------------
+# Il ciclo di ripiego REGISTRA (Task 11)
+#
+# E' il solo posto in cui HIRIS vede davvero come si comporta un provider, e
+# fino a questa fetta lo buttava via: un `logger.warning` e avanti. La pagina
+# Modelli sapeva dire «Claude e' primo in catena» e non «e sta rifiutando da
+# quaranta richieste» -- che e' il caso del proprietario per intero.
+#
+# L'orologio del registro e' INIETTATO in ogni test qui sotto: senza, «quando»
+# sarebbe un numero che nessuna asserzione puo' nominare.
+# ---------------------------------------------------------------------------
+
+
+def _registro_fermo(t0=1000.0):
+    from hiris.app.esiti_provider import RegistroEsiti
+    adesso = [t0]
+    return RegistroEsiti(orologio=lambda: adesso[0]), adesso
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
+    """Un turno che ripiega lascia DUE fatti, non uno: il primo ha rifiutato,
+    il secondo ha risposto. Prima di questa fetta ne lasciava zero."""
+    registro, _ = _registro_fermo()
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+        "Errore temporaneo del servizio AI. Riprova tra poco.",
+        famiglia="credenziale", codice=400))
+    buono = MagicMock()
+    buono.chat = AsyncMock(return_value="risposta")
+    router = LLMRouter(claude=rotto, openrouter=buono,
+                       model_chain=["claude", "openrouter"], registro=registro)
+
+    assert await router.chat(model="auto") == "risposta"
+    claude = registro.esito("claude")
+    assert claude["tipo"] == "rifiutato"
+    assert claude["famiglia"] == "credenziale" and claude["codice"] == 400
+    assert claude["quando"] == 1000.0 and claude["da_quante"] == 1
+    assert registro.esito("openrouter")["tipo"] == "risposto"
+
+
+@pytest.mark.asyncio
+async def test_il_registro_distingue_openai_da_openrouter():
+    """LA MUTAZIONE CHE QUESTO TEST ESISTE PER PRENDERE: registrare con
+    `type(runner).__name__`. `OpenRouterRunner` E' UNA SOTTOCLASSE di
+    `OpenAICompatRunner`, quindi un rifiuto di OpenRouter finirebbe scritto
+    sulla riga di OpenAI -- un difetto silenzioso dentro la funzione nata per
+    toglierne uno. Le due finte sono di classi che si somigliano APPOSTA."""
+    class _Compat:
+        async def chat(self, **k):
+            raise RunnerBackendError("giu'", famiglia="modello", codice=404)
+
+    class _Router(_Compat):
+        pass
+
+    registro, _ = _registro_fermo()
+    router = LLMRouter(openai=_Compat(), openrouter=_Router(),
+                       model_chain=["openrouter"], registro=registro)
+    await router.chat(model="auto")
+
+    assert registro.esito("openrouter")["codice"] == 404
+    assert registro.esito("openai") is None, (
+        "OpenAI non e' stato interrogato: sulla sua riga non deve comparire "
+        "il rifiuto di un altro provider"
+    )
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_che_non_e_un_RunnerBackendError_si_registra_lo_stesso():
+    """Un bug nel runner (un `TypeError` su una firma cambiata) non porta ne'
+    famiglia ne' codice, e prima di questa fetta non lasciava traccia. Un
+    provider che esplode in modo imprevisto deve comparire nella pagina come
+    uno che ha rifiutato, non come uno di cui non si sa niente."""
+    registro, _ = _registro_fermo()
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=TypeError("firma cambiata"))
+    router = LLMRouter(claude=rotto, model_chain=["claude"], registro=registro)
+    await router.chat(model="auto")
+
+    e = registro.esito("claude")
+    assert e["tipo"] == "rifiutato" and e["famiglia"] == "altro" and e["codice"] is None
+    assert "firma cambiata" in e["messaggio"]
+
+
+@pytest.mark.asyncio
+async def test_chi_non_e_stato_interrogato_non_compare_nel_registro():
+    """La regola che il registro esiste per rispettare: chi legge deve poter
+    distinguere «non ha risposto» da «non l'ho interrogato». Il primo anello
+    risponde, il secondo non viene nemmeno chiamato -- e sulla sua riga non
+    deve comparire niente."""
+    registro, _ = _registro_fermo()
+    buono = MagicMock()
+    buono.chat = AsyncMock(return_value="risposta")
+    mai = MagicMock()
+    mai.chat = AsyncMock(return_value="mai chiamato")
+    router = LLMRouter(claude=buono, ollama=mai,
+                       model_chain=["claude", "ollama"], registro=registro)
+    await router.chat(model="auto")
+
+    assert set(registro.tutti()) == {"claude"}
+
+
+@pytest.mark.asyncio
+async def test_quaranta_turni_di_rifiuto_si_leggono_come_quaranta():
+    """Il caso del proprietario. Il registro non e' «l'ultimo errore»: e' «da
+    quante richieste dura», ed e' la differenza fra «ah, un errore» e «ah, sto
+    buttando via una chiamata a messaggio da settimane». L'orologio avanza
+    SOLO quando lo dice il test."""
+    registro, adesso = _registro_fermo()
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+        "Errore temporaneo del servizio AI. Riprova tra poco.",
+        famiglia="credenziale", codice=400))
+    buono = MagicMock()
+    buono.chat = AsyncMock(return_value="risposta")
+    router = LLMRouter(claude=rotto, openrouter=buono,
+                       model_chain=["claude", "openrouter"], registro=registro)
+    for _ in range(40):
+        adesso[0] += 60
+        await router.chat(model="auto")
+
+    e = registro.esito("claude")
+    assert e["da_quante"] == 40 and e["quando"] == 1000.0 + 40 * 60
+
+
+@pytest.mark.asyncio
+async def test_senza_registro_il_router_funziona_come_prima():
+    """`registro=None` e' il ramo di libreria (e di ogni test che non parla di
+    esiti): il ciclo di ripiego non deve cambiare comportamento, ne' esplodere
+    su un `None`."""
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
+    buono = MagicMock()
+    buono.chat = AsyncMock(return_value="risposta")
+    router = LLMRouter(claude=rotto, ollama=buono, strategy="quality_first")
+    assert await router.chat(model="auto") == "risposta"
+
+
+@pytest.mark.asyncio
+async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
+    """`durata_s` e' quanto e' costato il rifiuto, e si misura con l'orologio
+    MONOTONO invece che con quello di parete: un tentativo che dura otto
+    secondi prima di fallire e' un'altra cosa rispetto a uno che fallisce
+    subito, e le due si distinguono solo cosi'. Il tempo di parete puo'
+    saltare all'indietro; una durata no."""
+    import hiris.app.llm_router as modulo
+
+    passi = iter([100.0, 108.0])
+    registro, _ = _registro_fermo()
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
+    router = LLMRouter(claude=rotto, model_chain=["claude"], registro=registro)
+    with patch.object(modulo.time, "monotonic", lambda: next(passi)):
+        await router.chat(model="auto")
+
+    assert registro.esito("claude")["durata_s"] == 8.0
+
+
+def test_l_ordine_coi_nomi_e_l_ordine_senza_sono_LO_STESSO_calcolo():
+    """`_ordered_backends` e' DERIVATA da `_ordered_backends_con_nome`. Due
+    implementazioni della stessa lista sarebbero due rappresentazioni della
+    stessa cosa, libere di divergere -- e la seconda sceglie a chi chiedere
+    mentre la prima decide su chi si scrive."""
+    import ast
+    import inspect
+
+    from hiris.app import llm_router as modulo
+
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
+    assert r._ordered_backends() == [ollama, claude]
+    assert [n for n, _ in r._ordered_backends_con_nome()] == ["ollama", "claude"]
+
+    import textwrap
+    albero = ast.parse(textwrap.dedent(
+        inspect.getsource(modulo.LLMRouter._ordered_backends)))
+    chiamate = [n.func.attr for n in ast.walk(albero)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
+    assert "_ordered_backends_con_nome" in chiamate, (
+        "_ordered_backends deve derivare dall'altra, non rifare il giro sulla "
+        "policy per conto proprio"
+    )

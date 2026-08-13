@@ -18,6 +18,12 @@ import anthropic
 # (`strumenti=STRUMENTI_CONOSCENZA`, casa/strumenti.py: quattro strumenti che
 # conoscono la casa, piu' `esegui` che la comanda per la porta unica) da prima
 # di questo task.
+#
+# fetta «cosa è successo davvero»: la classificazione dell'errore vive in
+# `esiti_provider`, che non importa niente da qui a livello di modulo (il suo
+# unico import di `openai_compat_runner` è dentro `famiglia_errore`) -- quindi
+# nessun ciclo.
+from .esiti_provider import famiglia_errore
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +53,29 @@ class RunnerBackendError(Exception):
     crashing. (ChatbotEngine._run_chatbot used to be the other such caller —
     it's gone, fetta E4 Task 2: the manual "Test Run" it backed was dead by
     construction, see task-2-report.md.)
+
+    `famiglia` e `codice` sono ciò che il provider ha DETTO, e la fetta «cosa è
+    successo davvero» li porta fin qui perché fino ad allora andavano persi:
+    ogni errore d'API diventava lo stesso `friendly_message` («Errore
+    temporaneo del servizio AI. Riprova tra poco.») e il router lo scriveva nel
+    log e tirava avanti. Una chiave a credito zero -- `400 credit balance too
+    low`, il caso del proprietario -- era indistinguibile da un 500 passeggero,
+    e la pagina Modelli non aveva niente da dire.
+
+    `friendly_message` NON cambia: è ciò che l'utente legge in chat, e questi
+    due campi non sono per lui. Servono a `LLMRouter` per scrivere nel
+    `RegistroEsiti` che cosa è successo a quel provider, e da lì alla riga di
+    stato della pagina Modelli. I valori di scorta (`"altro"`, `None`) sono
+    quelli di un guasto non classificato, non un modo di dire «non lo so»:
+    `esiti_provider.famiglia_da_codice(None)` restituisce la stessa cosa.
     """
 
-    def __init__(self, friendly_message: str) -> None:
+    def __init__(self, friendly_message: str, *, famiglia: str = "altro",
+                 codice: int | None = None) -> None:
         super().__init__(friendly_message)
         self.friendly_message = friendly_message
+        self.famiglia = famiglia
+        self.codice = codice
 
     def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
         return self.friendly_message
@@ -851,8 +875,20 @@ class ClaudeRunner:
                 response = await self._call_api(**_api_kwargs)
             except anthropic.APIError as exc:
                 logger.error("Claude API error: %s", exc)
+                # Il codice e la causa smettono di andare persi qui. La frase
+                # per l'utente non cambia -- è quella che legge in chat, e non
+                # è il posto dove si spiega un guasto di configurazione -- ma
+                # `famiglia`/`codice` arrivano al router, che li scrive nel
+                # registro degli esiti: è l'unica strada per cui la pagina
+                # Modelli possa dire «credito esaurito (400)» invece di
+                # «Attivo». `status_code` è l'attributo di `anthropic.APIError`
+                # (assente su `APIConnectionError`, che infatti è
+                # «irraggiungibile» per un'altra strada).
+                _codice = getattr(exc, "status_code", None)
                 raise RunnerBackendError(
-                    "Errore temporaneo del servizio AI. Riprova tra poco."
+                    "Errore temporaneo del servizio AI. Riprova tra poco.",
+                    famiglia=famiglia_errore(exc),
+                    codice=_codice if isinstance(_codice, int) else None,
                 ) from exc
 
             for block in response.content:

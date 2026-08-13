@@ -30,6 +30,7 @@ from .casa.anagrafe import ricostruisci
 from .memoria.archivio import ArchivioMemoria
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
+from .esiti_provider import RegistroEsiti
 from .token_interno import prepara_token_interno
 from .proxy.entity_cache import EntityCache
 from .backends.embeddings import build_embedding_provider
@@ -1786,6 +1787,12 @@ async def _on_startup(app: web.Application) -> None:
             ollama=ollama_runner,
             strategy=llm_strategy,
             model_chain=_chain,
+            # Il ciclo di ripiego e' il SOLO posto in cui HIRIS vede come si
+            # comporta un provider davvero, e fino a questa fetta lo buttava
+            # via. Lo stesso oggetto che la pagina Modelli legge: se fossero
+            # due, divergerebbero -- e la pagina racconterebbe un traffico che
+            # non e' quello che c'e' stato.
+            registro=app["registro_esiti"],
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
@@ -1910,6 +1917,19 @@ def create_app() -> web.Application:
     # Build stamp: hash del contenuto del frontend, per verificare in UI/health
     # QUALE build gira davvero (diagnostica cache vs container non ricostruito).
     app["build_stamp"] = _compute_build_stamp(static_path)
+
+    # Che cosa e' successo davvero, per provider (fetta «cosa e' successo
+    # davvero», Task 11). Nasce QUI e non in `_on_startup` per due ragioni,
+    # entrambe di sostanza: non ha niente da cui dipendere (e' un dizionario in
+    # memoria con un orologio), e la pagina Modelli lo legge anche in un
+    # processo dove i runner non ci sono -- un add-on senza nessuna
+    # credenziale ha comunque una pagina Modelli, e quella pagina deve poter
+    # dire «non l'hai ancora usato» invece di non dire niente.
+    #
+    # Nessuna persistenza: muore col processo, e «da quando l'add-on e'
+    # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un
+    # esito di due ore fa resta li', vecchio, e la pagina ne dice l'eta'.
+    app["registro_esiti"] = RegistroEsiti()
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_index)

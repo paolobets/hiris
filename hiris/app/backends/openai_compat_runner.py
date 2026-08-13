@@ -19,6 +19,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _PerCallList,
 )
+from ..esiti_provider import famiglia_errore
 from .pricing import PRICING as _PRICING
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip
@@ -34,15 +35,38 @@ _CIRCUIT_COOLDOWN_SEC = 60
 # con lei, vedi il commento su `_track_usage` piu' sotto.
 
 
+def _codice_di(exc: Exception) -> int | None:
+    """Lo stato HTTP di un errore d'API, o `None` se non ne porta uno.
+
+    `openai.APIError` espone `status_code` sulle sottoclassi che nascono da una
+    risposta; `APIConnectionError`/`APITimeoutError` no, perché una risposta non
+    c'è mai stata. Il `None` di quel caso NON è un valore di comodo: è il fatto,
+    e la pagina lo dice con parole diverse («non risponde all'indirizzo»).
+    """
+    codice = getattr(exc, "status_code", None)
+    return codice if isinstance(codice, int) else None
+
+
 def _is_conn_error(exc: Exception) -> bool:
     """True for connection/timeout-class errors (endpoint unreachable), as
-    opposed to API/validation errors which should NOT trip the breaker."""
-    try:
-        import openai
-        if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError)):
-            return True
-    except Exception:
-        pass
+    opposed to API/validation errors which should NOT trip the breaker.
+
+    Dalla fetta «cosa è successo davvero» questa funzione ha un secondo
+    lettore, `esiti_provider.famiglia_errore`, che le chiede la stessa cosa per
+    un altro scopo: dire «non risponde all'indirizzo» invece di «errore
+    temporaneo». Da lì l'aggiunta di `anthropic` accanto a `openai` -- le due
+    SDK hanno la stessa coppia di eccezioni con lo stesso significato, e
+    riconoscerne una sola avrebbe fatto leggere «ha rifiutato» a un Claude che
+    non si era nemmeno raggiunto. È una definizione sola di
+    «irraggiungibile», che è il punto: due sarebbero libere di divergere.
+    """
+    for modulo in ("openai", "anthropic"):
+        try:
+            sdk = __import__(modulo)
+            if isinstance(exc, (sdk.APIConnectionError, sdk.APITimeoutError)):
+                return True
+        except Exception:
+            pass
     return isinstance(exc, (_httpx.ConnectError, _httpx.ConnectTimeout, ConnectionError))
 
 logger = logging.getLogger(__name__)
@@ -457,8 +481,23 @@ class OpenAICompatRunner:
     # Public API
     # ------------------------------------------------------------------
 
+    def stato_circuito(self) -> float:
+        """Secondi che mancano alla riapertura, 0 se il circuito è chiuso.
+
+        Esiste da prima di questa fetta (`_circuit_open_until`, soglia 3,
+        raffreddamento 60 s) e NESSUNA rotta lo restituiva: la pagina non poteva
+        dire «lo sto saltando» di un provider che il prodotto stava
+        effettivamente saltando.
+
+        È la SOLA lettura dello stato del circuito -- `_circuit_is_open` ne
+        deriva, invece di confrontare l'orologio una seconda volta: due
+        confronti sullo stesso numero sono due rappresentazioni della stessa
+        cosa, e questa fetta esiste per non averne.
+        """
+        return max(0.0, self._circuit_open_until - time.monotonic())
+
     def _circuit_is_open(self) -> bool:
-        return time.monotonic() < self._circuit_open_until
+        return self.stato_circuito() > 0.0
 
     def _record_conn_failure(self) -> None:
         self._conn_fail_count += 1
@@ -550,9 +589,17 @@ class OpenAICompatRunner:
         # dead Ollama endpoint was retried at full timeout every single turn
         # instead of failing fast like simple_chat() already does.
         if self._circuit_is_open():
+            # Il circuito aperto è «non l'ho interrogato», e si registra come
+            # tale: la famiglia è `irraggiungibile` (è l'unica cosa che fa
+            # scattare il circuito, vedi `_record_conn_failure`) e non c'è
+            # nessun codice, perché non c'è stata nessuna risposta da cui
+            # prenderlo. Senza questo, un provider che il prodotto sta
+            # saltando comparirebbe nella pagina come uno che ha avuto un
+            # «errore temporaneo» -- la parola più larga del fatto.
             raise RunnerBackendError(
                 f"{self._backend_noun} non risponde da diversi tentativi "
-                "consecutivi (circuito aperto). Riprova tra qualche istante."
+                "consecutivi (circuito aperto). Riprova tra qualche istante.",
+                famiglia="irraggiungibile", codice=None,
             )
 
         self.last_tool_calls = []
@@ -671,8 +718,14 @@ class OpenAICompatRunner:
                 self.total_rate_limit_errors += 1
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
+                # Un 429 è famiglia `altro`: è un guasto vero, ma non dice a
+                # chi legge che cosa fare, e inventargli un'azione sarebbe
+                # l'ipotesi sulla causa che questo prodotto non fa. Il codice
+                # invece si porta, perché è un fatto.
                 raise RunnerBackendError(
-                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco."
+                    upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
+                    famiglia=famiglia_errore(exc),
+                    codice=_codice_di(exc) or 429,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -697,7 +750,9 @@ class OpenAICompatRunner:
                         raise RunnerBackendError(
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
                             f"Riduci max_tokens dell'agente sotto {affordable} "
-                            f"oppure aggiungi credito su openrouter.ai."
+                            f"oppure aggiungi credito su openrouter.ai.",
+                            famiglia=famiglia_errore(retry_exc),
+                            codice=_codice_di(retry_exc),
                         ) from retry_exc
                 else:
                     # review M3/#2: connection-class failures (dead endpoint)
@@ -707,8 +762,14 @@ class OpenAICompatRunner:
                     if _is_conn_error(exc):
                         self._record_conn_failure()
                     logger.error("OpenAI/Ollama API error: %s", exc)
+                    # La frase per l'utente resta la stessa; il codice e la
+                    # famiglia smettono di andare persi. Era questo il punto
+                    # in cui «404, quel modello non esiste più» e «402, credito
+                    # finito» diventavano la stessa identica riga.
                     raise RunnerBackendError(
-                        "Errore temporaneo del servizio AI. Riprova tra poco."
+                        "Errore temporaneo del servizio AI. Riprova tra poco.",
+                        famiglia=famiglia_errore(exc),
+                        codice=_codice_di(exc),
                     ) from exc
 
             self._record_success()

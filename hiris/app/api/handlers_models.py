@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import time
 
 import aiohttp
 from aiohttp import web
@@ -389,6 +390,23 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         credenziali=_credenziali,
         modelli=_modelli,
         ponte_attivo=payload["ponte_attivo"],
+        # Che cosa è successo DAVVERO, per provider (Task 11). Non una sonda:
+        # `RegistroEsiti` è alimentato dal ciclo di ripiego del router, cioè
+        # dal traffico vero. Sondare cinque provider a ogni apertura della
+        # pagina costerebbe denaro e quota per un'informazione che scade
+        # subito, e trasformerebbe questa pagina in una cosa che conviene non
+        # aprire (progetto §11.2).
+        #
+        # Il `{}` non è un ripiego «comportati come prima»: è il registro di
+        # una app che non ne ha uno (una fixture che non fa girare
+        # `create_app`), e produce esattamente ciò che è vero in quel caso --
+        # nessuna osservazione, e la pagina lo dice.
+        esiti=(request.app["registro_esiti"].tutti()
+               if request.app.get("registro_esiti") is not None else {}),
+        # L'orologio di parete, letto QUI e passato: `decisione_modelli` è un
+        # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
+        # in cui «3 min fa» è una cosa che si possa provare.
+        adesso=time.time(),
         scadenza_ponte_min=_scadenza_ponte,
         timeout_ollama_s=_timeout_ollama,
     )

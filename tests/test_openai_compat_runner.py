@@ -941,3 +941,157 @@ def test_entrambi_i_percorsi_del_runner_avvisano():
         and any(isinstance(t, ast.Name) and t.id == "thinking_budget" for t in n.targets)
     ]
     assert len(scarti) == len(chiamate), "uno scarto muto e' rientrato"
+
+
+# ---------------------------------------------------------------------------
+# Il circuito, e cio' che l'errore porta con se' (Task 11)
+# ---------------------------------------------------------------------------
+
+
+def test_il_circuito_resta_aperto_per_tutto_il_raffreddamento(monkeypatch):
+    """Una finta che si richiude appena una chiamata riesce nasconderebbe il
+    comportamento vero: finche' il circuito e' aperto la rete NON viene toccata,
+    quindi non c'e' nessuna chiamata che possa richiuderlo."""
+    orologio = [100.0]
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.time.monotonic",
+                        lambda: orologio[0])
+    r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
+    for _ in range(3):
+        r._record_conn_failure()
+    assert r.stato_circuito() == 60.0
+    orologio[0] += 59
+    assert r.stato_circuito() == 1.0, "a 59 secondi il circuito e' ancora aperto"
+    orologio[0] += 2
+    assert r.stato_circuito() == 0.0
+
+
+def test_sotto_la_soglia_il_circuito_non_si_apre(monkeypatch):
+    """Due errori di connessione non bastano: la soglia e' tre. Un
+    `stato_circuito` che restituisse un numero prima della soglia farebbe
+    dire alla pagina «lo sto saltando» di un provider che il prodotto sta
+    ancora interrogando -- una parola piu' larga del fatto."""
+    orologio = [100.0]
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.time.monotonic",
+                        lambda: orologio[0])
+    r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
+    r._record_conn_failure()
+    r._record_conn_failure()
+    assert r.stato_circuito() == 0.0
+
+
+def test_lo_stato_del_circuito_e_letto_da_una_parte_sola(monkeypatch):
+    """`_circuit_is_open` DERIVA da `stato_circuito`: e' il confronto
+    sull'orologio scritto una volta. Due confronti sullo stesso numero
+    sarebbero due rappresentazioni della stessa cosa, e la rotta che la
+    espone potrebbe dire il contrario del ramo che salta la rete."""
+    orologio = [100.0]
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.time.monotonic",
+                        lambda: orologio[0])
+    r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
+    for _ in range(3):
+        r._record_conn_failure()
+    for salto in (0, 59, 2):
+        orologio[0] += salto
+        assert r._circuit_is_open() == (r.stato_circuito() > 0.0)
+    assert r._circuit_is_open() is False
+
+
+@pytest.mark.asyncio
+async def test_il_circuito_aperto_rifiuta_dicendo_che_non_ha_interrogato(monkeypatch):
+    """Il circuito aperto e' «non l'ho interrogato», non «errore temporaneo».
+    L'eccezione porta la famiglia `irraggiungibile` e NESSUN codice, perche'
+    nessuna risposta e' arrivata da cui prenderlo: e' cosi' che il registro
+    puo' scrivere «non risponde all'indirizzo» invece di inventare una causa.
+    """
+    orologio = [100.0]
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.time.monotonic",
+                        lambda: orologio[0])
+    r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
+    for _ in range(3):
+        r._record_conn_failure()
+
+    with pytest.raises(RunnerBackendError) as info:
+        await r.chat(user_message="ciao")
+    assert info.value.famiglia == "irraggiungibile"
+    assert info.value.codice is None
+    # La frase per l'utente NON cambia: questa fetta non tocca cio' che si
+    # legge in chat.
+    assert "circuito aperto" in info.value.friendly_message
+
+
+@pytest.mark.asyncio
+async def test_un_404_del_provider_arriva_al_router_come_famiglia_modello(tmp_path):
+    """Il punto in cui il codice smetteva di esistere. `chat()` collassava OGNI
+    `openai.APIError` in «Errore temporaneo del servizio AI», quindi «il
+    modello che hai scelto non esiste piu'» e «i crediti sono finiti» erano la
+    stessa identica riga -- e nessuna delle due arrivava alla pagina."""
+    import openai
+
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1", api_key="sk-test",
+        usage_path=str(tmp_path / "u.json"))
+
+    class _Sparito(openai.APIError):
+        def __init__(self):
+            Exception.__init__(self, "model_not_found")
+            self.status_code = 404
+            self.body = None
+
+    runner._client.chat.completions.create = AsyncMock(side_effect=_Sparito())
+    with pytest.raises(RunnerBackendError) as info:
+        await runner.chat(user_message="hi", model="gpt-4o")
+
+    assert info.value.famiglia == "modello" and info.value.codice == 404
+    assert info.value.friendly_message == (
+        "Errore temporaneo del servizio AI. Riprova tra poco."
+    )
+
+
+@pytest.mark.asyncio
+async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
+    """OpenRouter risponde 402 quando il credito e' finito: e' il gemello del
+    400 di Anthropic, e la pagina deve poterlo dire con le stesse parole."""
+    import openai
+
+    runner = OpenAICompatRunner(
+        base_url="https://openrouter.ai/api/v1", api_key="sk-or-test",
+        usage_path=str(tmp_path / "u.json"))
+
+    class _Credito(openai.APIError):
+        def __init__(self):
+            Exception.__init__(self, "insufficient credits")
+            self.status_code = 402
+            self.body = None
+
+    runner._client.chat.completions.create = AsyncMock(side_effect=_Credito())
+    with pytest.raises(RunnerBackendError) as info:
+        await runner.chat(user_message="hi", model="gpt-4o")
+
+    assert info.value.famiglia == "credenziale" and info.value.codice == 402
+
+
+def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():
+    """`_codice_di` e' il punto in cui il numero smette di andare perso.
+    `APIConnectionError` non ne ha uno -- una risposta non c'e' mai stata --
+    e il `None` di quel caso e' il fatto, non un valore di comodo."""
+    from hiris.app.backends.openai_compat_runner import _codice_di
+
+    class _Api(Exception):
+        status_code = 402
+
+    class _Conn(Exception):
+        status_code = None
+
+    class _Strano(Exception):
+        # Un provider dietro un proxy che mette una STRINGA li' dentro. Non e'
+        # teorico: `status_code` non e' garantito da nessun contratto, e la
+        # frase della pagina lo formatta con `%d`. Senza la guardia, la riga
+        # di stato di un provider farebbe esplodere il GET dell'intera pagina
+        # Modelli -- il registro nato per raccontare i guasti che ne produce
+        # uno nuovo.
+        status_code = "402"
+
+    assert _codice_di(_Api()) == 402
+    assert _codice_di(_Conn()) is None
+    assert _codice_di(Exception("nudo")) is None
+    assert _codice_di(_Strano()) is None

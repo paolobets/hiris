@@ -1376,6 +1376,29 @@
   line-height: var(--lh-snug);
   padding-left: calc(1.6em + 7px + 2 * var(--sp-3));
 }
+/* La riga di stato: l'ultimo esito OSSERVATO. Incolonnata sotto il nome, come
+   la nota, perche' e' della riga e non della sequenza (il connettore, che sta
+   FRA due righe, ha lo stesso rientro e un tratteggio sopra: e' quello che li
+   distingue). */
+.riga-stato {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: var(--lh-snug);
+  padding-left: calc(1.6em + 7px + 2 * var(--sp-3));
+}
+/* `--warn-ink` e NON `--warn`: la regola d'uso e' scritta in hiris-theme.css
+   (righe 70-82) -- `--x-ink` per il testo, `--x` per pallini e bordi -- e la
+   pagina Modelli era, secondo l'audit pre-UAT, l'ultima superficie rimasta
+   indietro. E ambra, non rosso: una riga che non risponde deve smettere di
+   sembrare attiva, non diventare un allarme. */
+.riga-stato.stato-rifiutato { color: var(--warn-ink); }
+/* Il nome perde peso, cosi' la riga *smette di sembrare attiva*: e' la
+   traduzione grafica del ritiro della parola «Attivo» (progetto §4.3). */
+.riga-muta .riga-nome { font-weight: 400; color: var(--text-2); }
+/* Grigio-ambra: acceso quanto basta per non sparire, spento quanto basta per
+   non essere un allarme. Niente alone -- l'alone di `.dot.on` e' il segno di
+   qualcosa che funziona. */
+.dot.muto { background: var(--warn); opacity: 0.55; box-shadow: none; }
 /* Chi sta fuori non ha una posizione e non ha un «dopo»: la colonna del numero
    resta, vuota, perche' le due liste si leggano incolonnate. */
 .riga-fuori .riga-nome { font-weight: 400; }

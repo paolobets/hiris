@@ -139,11 +139,16 @@ async def test_in_catena_segue_la_catena_del_runtime(client):
 
 @pytest.mark.asyncio
 async def test_il_payload_porta_la_topologia_gia_composta(client):
-    """Le due liste che la pagina disegnera'. Ogni voce ha esattamente DODICI
-    campi: se la pagina dovesse aggiungerne uno, lo starebbe calcolando --
-    l'invariante 2, rotto.
+    """Le due liste che la pagina disegnera'. Ogni voce ha esattamente
+    QUATTORDICI campi: se la pagina dovesse aggiungerne uno, lo starebbe
+    calcolando -- l'invariante 2, rotto.
 
-    Erano sette fino al Task 8, undici dopo. Le voci nuove non sono calcoli,
+    Erano sette fino al Task 8, undici dopo, dodici col Task 9. Il Task 11
+    aggiunge `esito` (il fatto grezzo: che cosa e' successo davvero a quel
+    provider, o `None` se non e' mai stato interrogato) e `stato_testo` (la
+    frase che lo racconta). Il fatto viaggia ACCANTO alla frase perche' la
+    pagina possa disegnare diverso cio' che ha rifiutato senza dedurlo dal
+    testo: leggere una regola dentro una frase e' come ricostruirla. Le voci nuove non sono calcoli,
     sono PAROLE o FATTI: quale credenziale manca (`manca`), perche' una riga
     non offre i gesti che offrono le altre (`nota`), cosa succede se quella
     riga non risponde (`connettore`), il tetto dei cinque minuti quando c'e'
@@ -166,7 +171,8 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
         assert set(r.keys()) == {"id", "nome", "modello", "modello_alias",
                                  "natura", "manca", "nota", "connettore",
                                  "connettore_nota", "ha_credenziale",
-                                 "posizione", "riordinabile"}
+                                 "posizione", "riordinabile",
+                                 "esito", "stato_testo"}
     # E la frase che chiude la catena e' della CATENA, non dell'ultima riga:
     # quale sia l'ultima cambia con un gesto, e la pagina riordina da se'.
     assert body["fine_catena"] == (
@@ -768,3 +774,150 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["ollama"]
     assert riga["connettore"] == "se non risponde entro 300 s"
+
+
+# ---------------------------------------------------------------------------
+# Cio' che il traffico vero ha gia' prodotto (Task 11)
+#
+# La rotta legge `app["registro_esiti"]`, che nasce in `create_app` e viene
+# scritto dal ciclo di ripiego del router. Nessuna sonda: la pagina riferisce
+# osservazioni, non ne provoca -- sondare cinque provider a ogni apertura
+# costerebbe denaro e quota (progetto §11.2).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
+    """Nasce in `create_app`, non in `_on_startup`: un add-on senza nessuna
+    credenziale ha comunque una pagina Modelli, e quella pagina deve poter
+    dire «non l'hai ancora usato» invece di non dire niente. `_on_startup` e'
+    anche cio' che OGNI fixture azzera -- un registro che nascesse li'
+    avrebbe copertura zero (la lezione del debito E del Task 1)."""
+    from hiris.app.esiti_provider import RegistroEsiti
+
+    assert isinstance(client.app["registro_esiti"], RegistroEsiti)
+
+
+@pytest.mark.asyncio
+async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
+    """Il caso del proprietario, dalla rotta: la chiave Claude a credito zero
+    (`400 credit balance too low`) mentre OpenRouter serve i turni. Il
+    registro e' scritto DA QUI, come lo scriverebbe il router, e la pagina
+    riceve le due frasi gia' fatte."""
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = ["claude", "openrouter"]
+    client.app["ponte_attivo"] = False
+    registro = client.app["registro_esiti"]
+    for _ in range(40):
+        registro.fallimento("claude", famiglia="credenziale", codice=400,
+                            messaggio="credit balance too low", durata_s=0.4)
+    registro.successo("openrouter")
+
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"]}
+    assert righe["claude"]["esito"]["famiglia"] == "credenziale"
+    assert righe["claude"]["esito"]["da_quante"] == 40
+    assert righe["claude"]["stato_testo"].startswith(
+        "ha rifiutato le ultime 40 richieste — credito esaurito (400), ")
+    assert righe["openrouter"]["stato_testo"].startswith("ha risposto ")
+
+
+@pytest.mark.asyncio
+async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
+    """Lo stato di un add-on appena partito: nessuna osservazione, e la pagina
+    lo dice invece di regalare un successo che nessuno ha misurato. E' anche
+    la prova che il registro non nasce popolato."""
+    client.app["catena_modelli"] = ["claude"]
+    client.app["ponte_attivo"] = False
+
+    body = await (await client.get("/api/models/config")).json()
+    riga = {r["id"]: r for r in body["catena"]}["claude"]
+    assert riga["esito"] is None
+    assert riga["stato_testo"] == "non l'hai ancora usato"
+
+
+@pytest.mark.asyncio
+async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypatch):
+    """Nessuna nuova chiamata fra le due letture: cambia SOLO l'orologio di
+    parete che l'handler legge, e la riga invecchia. Se `adesso` fosse cotto
+    dentro `componi_topologia` (o peggio, se il registro si aggiornasse da
+    solo), la riga direbbe per sempre «poco fa» -- che e' esattamente la
+    freschezza finta che ha fatto sopravvivere il difetto piu' grave della
+    settimana a 1207 test."""
+    import hiris.app.api.handlers_models as modulo
+
+    client.app["catena_modelli"] = ["claude"]
+    client.app["ponte_attivo"] = False
+    orologio = [5_000.0]
+    # Il registro dell'app usa `time.time` vero: gli si scrive dentro un esito
+    # con una data esplicita, cosi' l'unica variabile del test e' l'orologio
+    # dell'handler.
+    client.app["registro_esiti"]._per_provider["claude"] = {
+        "tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
+        "messaggio": "", "quando": 5_000.0, "da_quante": 2, "durata_s": 5.0}
+    monkeypatch.setattr(modulo.time, "time", lambda: orologio[0])
+
+    body = await (await client.get("/api/models/config")).json()
+    assert {r["id"]: r for r in body["catena"]}["claude"]["stato_testo"] == (
+        "non risponde all'indirizzo — ultimo tentativo poco fa")
+
+    orologio[0] += 7200
+    body = await (await client.get("/api/models/config")).json()
+    assert {r["id"]: r for r in body["catena"]}["claude"]["stato_testo"] == (
+        "non risponde all'indirizzo — ultimo tentativo 2 h fa")
+
+
+@pytest.mark.asyncio
+async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
+    """Due registri -- uno per il router, uno per la pagina -- sarebbero due
+    rappresentazioni dello stesso fatto, e la pagina racconterebbe un traffico
+    che non e' quello che c'e' stato. Qui il router e' costruito a mano con il
+    registro dell'app, come fa `_on_startup`, e un turno vero lo riempie."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    rotto = MagicMock()
+    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+        "giu'", famiglia="modello", codice=404))
+    buono = MagicMock()
+    buono.chat = AsyncMock(return_value="ok")
+    router = LLMRouter(claude=rotto, openrouter=buono,
+                       model_chain=["claude", "openrouter"],
+                       registro=client.app["registro_esiti"])
+    await router.chat(model="auto")
+
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = ["claude", "openrouter"]
+    client.app["ponte_attivo"] = False
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"]}
+    assert righe["claude"]["stato_testo"].startswith("il modello non esiste più (404), ")
+    assert righe["openrouter"]["stato_testo"].startswith("ha risposto ")
+
+
+def test_l_avvio_consegna_al_router_IL_registro_dell_app():
+    """Il cablaggio vero vive in `_on_startup`, che ogni fixture azzera
+    (`app.on_startup.clear()`): senza questa guardia sul sorgente,
+    `registro=app["registro_esiti"]` si potrebbe cancellare e la suite
+    resterebbe verde -- e' la tecnica del Task 6/7 per lo stesso problema.
+    Un router costruito SENZA registro non registra niente, e la pagina
+    tornerebbe a non sapere niente senza che un solo test cada."""
+    import ast
+    import inspect
+
+    from hiris.app import server as modulo
+
+    albero = ast.parse(inspect.getsource(modulo))
+    costruzioni = [n for n in ast.walk(albero)
+                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                   and n.func.id == "LLMRouter"]
+    assert costruzioni, "nessuna costruzione di LLMRouter trovata in server.py"
+    for chiamata in costruzioni:
+        nomi = {k.arg for k in chiamata.keywords}
+        assert "registro" in nomi, (
+            "ogni LLMRouter costruito dall'avvio deve ricevere il registro "
+            "degli esiti, o il ciclo di ripiego torna a buttare via cio' che "
+            "vede"
+        )

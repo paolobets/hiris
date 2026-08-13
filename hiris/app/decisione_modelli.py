@@ -98,6 +98,132 @@ def manca(provider_id: str) -> str:
     return MANCANZE.get(provider_id, "manca la credenziale")
 
 
+# ── La riga di stato: l'ultimo esito osservato, in parole ──────────────────
+#
+# Le parole degli esiti stanno qui, con le altre, per la ragione di sempre:
+# sono affermazioni sul prodotto. I FATTI stanno in `esiti_provider.py`, che
+# non sa dire niente e non deve: registra che cosa è successo, e questo modulo
+# lo racconta.
+#
+# `adesso` è un PARAMETRO e non `time.time()`: è la sola forma in cui «3 min
+# fa» si può provare, ed è la stessa disciplina del resto del file (funzioni
+# pure, nessun orologio, nessun `os.environ`).
+
+
+def _eta(secondi: float) -> str:
+    """Quanto tempo fa, in parole, senza dire più di quanto si sa.
+
+    Si arrotonda SEMPRE PER DIFETTO: a 90 minuti si dice «1 h fa», perché «2 h
+    fa» affermerebbe un tempo che non è passato. È la stessa regola di tutto il
+    resto della pagina, applicata a un numero.
+
+    Sotto il minuto non c'è una cifra da dare: «poco fa». Un «0 min fa» sarebbe
+    una precisione finta, e un «adesso» ruberebbe la parola al riquadro in cima
+    alla pagina, che parla del prossimo messaggio e non dell'ultimo.
+
+    Un valore NEGATIVO è possibile: `adesso` e `quando` vengono da due letture
+    diverse dello stesso orologio, e una sincronizzazione NTP fra l'una e
+    l'altra può farle scavalcare. Cade nel primo ramo e diventa «poco fa», mai
+    un futuro: questa pagina riferisce, non prevede. (Qui c'era un
+    `max(0.0, ...)` che difendeva una cosa già difesa: la prova per mutazione
+    l'ha tolto e non è caduto niente, perché `s < 60` prende anche i negativi.
+    Una guardia che non guarda niente è una riga che insegna a fidarsi delle
+    guardie.)
+    """
+    s = float(secondi)
+    if s < 60:
+        return "poco fa"
+    if s < 3600:
+        return "%d min fa" % int(s // 60)
+    if s < 86400:
+        return "%d h fa" % int(s // 3600)
+    if s < 172800:
+        return "ieri"
+    return "%d giorni fa" % int(s // 86400)
+
+
+def _quante(da_quante: int) -> str:
+    """«L'ultima richiesta» oppure «le ultime N richieste».
+
+    Il conteggio è la metà che conta: «ha rifiutato le ultime 40 richieste»
+    dice una cosa che «ha rifiutato 3 minuti fa» non dice -- che non è un
+    incidente, è lo stato. Nel caso del proprietario è la differenza fra «ah,
+    un errore» e «ah, sto buttando via una chiamata a messaggio da settimane».
+    """
+    return "l'ultima richiesta" if int(da_quante) <= 1 else (
+        "le ultime %d richieste" % int(da_quante))
+
+
+# La causa in parole, per la famiglia `credenziale`. Quattro codici, due azioni
+# diverse per chi legge: 400 e 402 dicono che i soldi sono finiti (Anthropic
+# risponde 400 con «credit balance too low» -- il caso del proprietario --,
+# OpenRouter 402), 401 e 403 dicono che la chiave non va bene. Chiamarle tutte
+# «credito esaurito» sarebbe un'ipotesi sulla causa, che è la cosa che questo
+# prodotto ha smesso di fare.
+_CAUSA_CREDENZIALE: dict[int, str] = {
+    400: "credito esaurito",
+    402: "credito esaurito",
+    401: "la chiave non è accettata",
+    403: "la chiave non è accettata",
+}
+
+
+def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> str:
+    """L'ultimo esito osservato, detto a chi guarda la riga (progetto §4.3).
+
+    `esito` è il dizionario di `esiti_provider.RegistroEsiti.esito`, oppure
+    `None` quando non c'è mai stata un'osservazione. «Non l'ho interrogato» e
+    «non ha risposto» sono due cose diverse e si leggono diverse.
+
+    **«Mai provato» cambia significato con la posizione, e la copia lo segue.**
+    In prima posizione è allarmante -- il provider che dovrebbe rispondere a
+    ogni messaggio non ha mai risposto a nessuno; in seconda è la notizia buona
+    -- il ripiego non è mai servito. Stesso fatto, due frasi, UNA regola sola,
+    ed è il parametro `posizione`. Fuori dalla catena una posizione non c'è
+    (`None`), e «non è mai servito ripiegare qui» direbbe che quella riga è un
+    anello di riserva, che non è.
+
+    Nessuna previsione e nessuna diagnosi: si dice che cosa è successo, con che
+    codice, e quanto tempo fa. Perché sia successo non lo sa nessuno qui.
+    """
+    if esito is None:
+        if posizione is None or int(posizione) <= 1:
+            return "non l'hai ancora usato"
+        return "non è mai servito ripiegare qui"
+
+    eta = _eta(float(adesso) - float(esito["quando"]))
+    if esito["tipo"] == "risposto":
+        return "ha risposto " + eta
+
+    famiglia = esito.get("famiglia") or "altro"
+    codice = esito.get("codice")
+    fra_parentesi = " (%d)" % codice if isinstance(codice, int) else ""
+
+    if famiglia == "modello":
+        # Quante volte HIRIS abbia chiesto un modello che non esiste non
+        # aggiunge niente: il fatto è che non esiste. Il conteggio serve dove
+        # distingue l'incidente dallo stato, non dove lo stato è ovvio.
+        return "il modello non esiste più%s, %s" % (fra_parentesi, eta)
+    if famiglia == "irraggiungibile":
+        # Nessun codice, perché non c'è stata nessuna risposta da cui prenderlo:
+        # «non risponde all'indirizzo» è tutto ciò che si è potuto vedere.
+        return "non risponde all'indirizzo — ultimo tentativo " + eta
+    if famiglia == "credenziale":
+        causa = _CAUSA_CREDENZIALE.get(codice if isinstance(codice, int) else 0,
+                                       "la credenziale non è accettata")
+        return "ha rifiutato %s — %s%s, %s" % (
+            _quante(esito["da_quante"]), causa, fra_parentesi, eta)
+    # `altro`: il ramo di ciò che NON si è saputo classificare. Riporta il
+    # numero e si ferma lì. Inventare una causa qui sarebbe rifare l'errore da
+    # cui è nata la regola -- il giorno in cui HIRIS, davanti a un comando
+    # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
+    # cercarlo.
+    if fra_parentesi:
+        return "ha rifiutato %s — errore %d, %s" % (
+            _quante(esito["da_quante"]), codice, eta)
+    return "ha rifiutato %s, %s" % (_quante(esito["da_quante"]), eta)
+
+
 def componi_adesso(
     *,
     catena: list[str],
@@ -211,6 +337,8 @@ def componi_topologia(
     credenziali: dict[str, bool],
     modelli: dict[str, str],
     ponte_attivo: bool,
+    esiti: dict[str, dict],
+    adesso: float,
     scadenza_ponte_min: int = 5,
     timeout_ollama_s: int = 120,
 ) -> tuple[list[dict], list[dict]]:
@@ -278,6 +406,17 @@ def componi_topologia(
     (Task 6): è un fatto, non un divieto. Sta accanto al numero perché è del
     numero che parla, ed è composta con lo stesso valore -- due letture non
     potrebbero divergere.
+
+    `esiti` è `esiti_provider.RegistroEsiti.tutti()`: che cosa è successo
+    DAVVERO, per provider, misurato dal traffico vero. Non c'è nessuna voce per
+    chi non è mai stato interrogato, e la differenza fra «non ha risposto» e
+    «non l'ho interrogato» sopravvive fino allo schermo. `adesso` è
+    l'orologio del chiamante, ed è un PARAMETRO perché questo modulo non ne
+    legge nessuno: «3 min fa» è provabile solo se il tempo non avanza da solo.
+    Entrambi sono OBBLIGATORI: con un valore di comodo, un chiamante che se ne
+    dimenticasse produrrebbe una pagina che non dice mai niente sugli esiti --
+    e nessun test se ne accorgerebbe, che è la forma di guasto peggiore che
+    questa fetta conosca.
 
     `manca` e `nota` sono due frasi, non due calcoli, e stanno qui per la
     stessa ragione delle altre parole di questo modulo. `manca` dice QUALE
@@ -361,6 +500,24 @@ def componi_topologia(
         return ("sopra i 5 minuti la chat smette di aspettare prima: la "
                 "risposta la trovi ricaricando")
 
+    def stato(pid: str, posizione: int | None, ha_credenziale: bool) -> str:
+        """La riga di stato: l'ultimo esito osservato, e quanto è vecchio.
+
+        Tace SOLO quando non c'è credenziale E non c'è nessuna osservazione:
+        lì la riga dice già `manca la chiave`, ed è la spiegazione completa di
+        perché non è mai stato interrogato -- «non l'hai ancora usato» sotto
+        «manca la chiave» sarebbe la stessa cosa detta due volte, la seconda
+        con meno informazione.
+
+        Un'osservazione vecchia invece si mostra SEMPRE, credenziale o no:
+        quella riga è stata interrogata davvero, e togliere la chiave a un
+        provider non cancella cosa aveva risposto.
+        """
+        misurato = esiti.get(pid)
+        if misurato is None and not ha_credenziale:
+            return ""
+        return frase_esito(misurato, posizione=posizione, adesso=adesso)
+
     def riga(pid: str, posizione: int | None) -> dict:
         ha_credenziale = bool(credenziali.get(pid))
         in_catena = posizione is not None
@@ -382,6 +539,15 @@ def componi_topologia(
             "connettore": connettore(pid) if in_catena else "",
             "connettore_nota": connettore_nota(pid) if in_catena else "",
             "ha_credenziale": ha_credenziale,
+            # Il fatto grezzo e la frase che lo racconta, accanto. Il fatto
+            # viaggia perché la pagina possa DISEGNARE diverso ciò che ha
+            # rifiutato (il pallino grigio-ambra, il nome che perde peso) senza
+            # dedurlo dal testo -- leggere una regola dentro una frase è come
+            # ricostruirla, e questa fetta esiste per non farlo più. `None`
+            # quando non c'è mai stata un'osservazione: «non ha risposto» e
+            # «non l'ho interrogato» restano due cose diverse fino allo schermo.
+            "esito": esiti.get(pid),
+            "stato_testo": stato(pid, posizione, ha_credenziale),
             "posizione": posizione,
             # `riordinabile` governa TUTTI E QUATTRO i gesti che scrivono
             # `chain_order` (frecce, ✕, «Usa»): dice «la presenza e la

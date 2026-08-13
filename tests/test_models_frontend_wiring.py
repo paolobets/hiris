@@ -152,13 +152,24 @@ def test_le_parole_del_prodotto_non_vivono_nella_pagina():
     corpo = _codice_senza_commenti(js)
     for parola in ("Piano Claude Max", "Claude API", "manca la chiave",
                    "manca il token", "a consumo", "nel piano",
-                   "se rifiuta, subito", "ultimo della catena"):
+                   "se rifiuta, subito", "ultimo della catena",
+                   # Task 11: le parole dell'ESITO OSSERVATO. Il Task 14
+                   # riscrive proprio queste (il ripiego dal ponte alla
+                   # catena) e la sua promessa e' che il frontend non venga
+                   # toccato: se una di queste vivesse anche qui, quel giorno
+                   # la pagina direbbe la frase di ieri e nessun test JS
+                   # cambierebbe -- il silenzio che questa fetta esiste per
+                   # togliere.
+                   "ha rifiutato", "ha risposto", "credito esaurito",
+                   "non l'hai ancora usato", "ripiegare qui",
+                   "non risponde all'indirizzo", " min fa", " h fa"):
         assert parola not in corpo, (
             f"«{parola}» e' una parola del prodotto: viene dal payload"
         )
     assert "dati.connettore" in corpo
     assert "dati.manca" in corpo
     assert "dati.nota" in corpo
+    assert "dati.stato_testo" in corpo
 
 
 def test_la_parola_attivo_non_torna_da_nessuna_porta():

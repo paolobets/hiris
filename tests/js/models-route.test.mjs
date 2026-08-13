@@ -1003,3 +1003,126 @@ test('il pannello segue la sua riga quando la riga si sposta', async () => {
     'il pannello è dentro la riga che si è mossa');
   assert.equal(ctx.document.querySelectorAll('.pannello-modello').length, 1);
 });
+
+/* ── La riga di stato: l'ultimo esito osservato ───────────────────────────
+   È ciò che chiude il caso del proprietario: la pagina sapeva dire «Claude è
+   primo in catena» e non «e sta rifiutando da quaranta richieste», mentre una
+   chiave a credito zero veniva mostrata come funzionante.
+
+   La frase arriva dal backend. Questi test guardano che la pagina la DISEGNI
+   e non la componga: nessun conteggio, nessuna età, nessun codice calcolato
+   qui -- se un giorno comparisse un `+ ' fa'` in questo file, cadono. */
+
+const RIFIUTA = {
+  tipo: 'rifiutato', famiglia: 'credenziale', codice: 400,
+  messaggio: 'credit balance too low', quando: 9820, da_quante: 40, durata_s: 0.4,
+};
+const RISPONDE = {
+  tipo: 'risposto', famiglia: '', codice: null, messaggio: '',
+  quando: 9820, da_quante: 1, durata_s: 0,
+};
+
+/* IL PAYLOAD È IN DISACCORDO CON SE STESSO, DI PROPOSITO: la frase di Claude
+   parla di 40 richieste e il suo `esito.da_quante` pure, ma la frase di
+   OpenRouter dice una cosa che il suo `esito` non basterebbe a comporre
+   («un'ora fa» contro un `quando` identico a quello di Claude). Una pagina che
+   ricomponesse la frase dai campi scriverebbe la stessa età sulle due righe. */
+const CATENA_OSSERVATA = [
+  Object.assign({}, CATENA[0], {
+    esito: RIFIUTA,
+    stato_testo: 'ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa',
+  }),
+  Object.assign({}, CATENA[1], {
+    esito: RISPONDE, stato_testo: 'ha risposto un\'ora fa',
+  }),
+];
+
+function statoDi(row) {
+  const n = row.querySelector('.riga-stato');
+  return n ? n.textContent : null;
+}
+
+test('ogni riga porta la frase del backend, parola per parola', async () => {
+  const ctx = monta({ config: { catena: CATENA_OSSERVATA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.equal(statoDi(righe[0]),
+    'ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa');
+  assert.equal(statoDi(righe[1]), 'ha risposto un\'ora fa',
+    'la seconda frase non si ricompone dai campi: viene dal payload');
+});
+
+test('chi ha rifiutato smette di sembrare attivo, e non diventa un allarme', async () => {
+  /* Non una riga rossa: il pallino diventa grigio-ambra e il nome perde peso.
+     È la traduzione grafica del ritiro della parola «Attivo» -- una riga che
+     non risponde deve smettere di sembrare attiva, non gridare. */
+  const ctx = monta({ config: { catena: CATENA_OSSERVATA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.ok(righe[0].classList.contains('riga-muta'));
+  assert.equal(righe[0].querySelector('.dot').className, 'dot muto');
+  assert.ok(righe[0].querySelector('.riga-stato').classList.contains('stato-rifiutato'));
+
+  assert.ok(!righe[1].classList.contains('riga-muta'),
+    'chi ha risposto resta com\'era');
+  assert.equal(righe[1].querySelector('.dot').className, 'dot on');
+  assert.ok(!righe[1].querySelector('.riga-stato').classList.contains('stato-rifiutato'));
+});
+
+test('l\'aspetto segue il FATTO, non la frase', async () => {
+  /* La riga si spegne perché `esito.tipo` dice «rifiutato», non perché la
+     frase contenga la parola «rifiutato». Qui la frase parla di un successo e
+     il fatto dice il contrario: se la pagina leggesse il testo, sbaglierebbe.
+     Dedurre una regola da una frase è come ricostruirla. */
+  const bugiarda = [Object.assign({}, CATENA[0], {
+    esito: RIFIUTA, stato_testo: 'ha risposto poco fa',
+  })];
+  const ctx = monta({ config: { catena: bugiarda, fuori_catena: [] } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const riga = righeCatena(ctx.document)[0];
+  assert.ok(riga.classList.contains('riga-muta'));
+  assert.equal(riga.querySelector('.dot').className, 'dot muto');
+});
+
+test('niente da dire, nessuna riga vuota a schermo', async () => {
+  /* `stato_testo` vuoto è ciò che il backend manda per una riga senza
+     credenziale e senza osservazioni: lì la riga dice già «manca la chiave».
+     Un div vuoto sotto ogni riga sarebbe rumore che allontana le altre. */
+  const ctx = monta({ config: {
+    catena: [Object.assign({}, CATENA[0], { esito: null, stato_testo: '' })],
+    fuori_catena: [] } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(ctx.document.querySelectorAll('.riga-stato').length, 0);
+});
+
+test('anche chi sta fuori dalla catena dice cosa gli è successo', async () => {
+  /* «Non l'hai ancora usato» su un provider credenziato e fuori dalla catena è
+     un'informazione: quella chiave la paghi e non l'hai mai messa alla prova. */
+  const fuori = [Object.assign({}, FUORI[0], {
+    esito: null, stato_testo: 'non l\'hai ancora usato',
+  })].concat(FUORI.slice(1));
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: fuori } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(statoDi(righeFuori(ctx.document)[0]), 'non l\'hai ancora usato');
+});
+
+test('la riga di stato non finisce dentro il pannello del modello', async () => {
+  /* Il pannello si apre DENTRO la riga (grid-column 1/-1, come la nota e lo
+     stato): tre blocchi a tutta larghezza nello stesso contenitore, e l'ordine
+     conta -- lo stato appartiene alla riga, non al pannello che ci si apre
+     dentro. */
+  const ctx = monta({ config: { catena: CATENA_OSSERVATA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const riga = righeCatena(ctx.document)[1];
+  assert.equal(riga.querySelectorAll('.riga-stato').length, 1);
+  assert.equal(riga.querySelector('.pannello-modello .riga-stato'), null);
+});
