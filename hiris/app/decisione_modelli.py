@@ -76,6 +76,7 @@ def componi_adesso(
     credenziali: dict[str, bool],
     modelli: dict[str, str],
     ponte_attivo: bool,
+    scadenza_ponte_min: int = 5,
 ) -> dict:
     """Chi risponde al prossimo messaggio, e perché.
 
@@ -88,25 +89,51 @@ def componi_adesso(
     PRIMA della riga che prende il router, e non c'è ritorno. È per questo che
     il ponte «scavalca» invece di «ripiegare», ed è per questo che la frase
     cambia soggetto invece di cambiare ordine.
+
+    `scadenza_ponte_min` è `BRIDGE_DEADLINE_MIN`, i minuti dopo i quali un
+    turno accodato sul ponte muore senza risposta. Lo passa il chiamante
+    perché questo modulo non legge `os.environ`: il numero è LO STESSO che
+    `api/handlers_chat._enqueue_chat_job` usa per scrivere la scadenza, non
+    un secondo default che può divergere da quello vero.
     """
     ponte_ha_token = bool(credenziali.get("subscription"))
     diagnosi: list[dict] = []
 
-    if ponte_attivo:
+    ponte_muto = ponte_attivo and not ponte_ha_token
+    if ponte_attivo and not ponte_muto:
         chi = "subscription"
         via = "ponte"
+    elif ponte_muto:
+        # Il quarto stato: «non può rispondere». Non è ipotetico -- è
+        # raggiungibile oggi e non lascia traccia. `server._ponte_attivo` è
+        # `BRIDGE_ENABLED or _sub_first_class`, ma il worker che risponde
+        # parte solo da `should_start_agent_worker()`, che pretende il token:
+        # il turno viene accodato e nessuno lo reclama.
+        chi = None
+        via = ""
     else:
         chi = catena[0] if catena else None
         via = "catena" if chi else ""
 
     if chi is None:
-        frase = "HIRIS non può ancora rispondere: la catena è vuota."
-        diagnosi.append({
-            "gravita": "guasto",
-            "testo": ("Non c'è nessun provider in catena: non c'è niente a cui "
-                      "chiedere una risposta."),
-            "azione": None,
-        })
+        if ponte_muto:
+            frase = ("HIRIS non può rispondere: il ponte è acceso e manca il "
+                     "token del Piano Claude Max.")
+            diagnosi.append({
+                "gravita": "guasto",
+                "testo": ("Il ponte è acceso ma manca il token: ogni messaggio "
+                          "viene accodato e scade dopo {} minuti senza "
+                          "risposta.".format(int(scadenza_ponte_min))),
+                "azione": None,
+            })
+        else:
+            frase = "HIRIS non può ancora rispondere: la catena è vuota."
+            diagnosi.append({
+                "gravita": "guasto",
+                "testo": ("Non c'è nessun provider in catena: non c'è niente a "
+                          "cui chiedere una risposta."),
+                "azione": None,
+            })
         return {"chi": None, "nome": "", "modello": "", "natura": "", "via": "",
                 "frase": frase, "diagnosi": diagnosi}
 
@@ -118,6 +145,14 @@ def componi_adesso(
     frase = ", ".join(pezzi) + "."
 
     if ponte_attivo:
+        # Qui il ponte ha il token (il caso senza è uscito sopra, con
+        # `chi = None`): il piano risponde davvero. La gravità dice quanto
+        # costa lo scavalco, ed è un fatto misurato sulla catena, non
+        # un'ipotesi: con dei provider sotto è SPRECO (li hai configurati e
+        # non li usa nessuno), senza niente sotto è GUASTO (il ponte è
+        # l'unica cosa che c'è: il giorno che non risponde, non risponde
+        # nessuno). Il Task 1 lasciò questa riga senza test; le due prove
+        # gemelle stanno in `tests/test_decisione_modelli.py`.
         diagnosi.append({
             "gravita": "guasto" if not catena else "spreco",
             "testo": ("Il ponte è acceso: ogni messaggio passa dal Piano Claude "

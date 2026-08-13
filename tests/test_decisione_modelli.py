@@ -116,3 +116,84 @@ def test_le_quattro_nature_e_non_un_prezzo(pid, atteso):
     """HIRIS non ha una fonte di prezzi e un prezzo vecchio è peggio di nessun
     prezzo. Le nature bastano per ordinare una catena (progetto §12.1)."""
     assert natura(pid) == atteso
+
+
+def test_ponte_acceso_senza_token_non_e_qualcuno_che_risponde():
+    """Lo stato che oggi passa in silenzio: il ponte è acceso, il worker che
+    risponde NON parte (gli manca il token), ogni messaggio viene accodato e
+    scade. La pagina non deve dire che «il piano risponde»: non risponde
+    nessuno."""
+    d = componi_adesso(
+        catena=["claude"],
+        credenziali={"claude": True, "subscription": False},
+        modelli={"claude": "claude-opus-4-7", "subscription": "sonnet"},
+        ponte_attivo=True,
+        scadenza_ponte_min=5,
+    )
+    assert d["chi"] is None
+    assert d["frase"] == (
+        "HIRIS non può rispondere: il ponte è acceso e manca il token del "
+        "Piano Claude Max."
+    )
+    guasti = [x for x in d["diagnosi"] if x["gravita"] == "guasto"]
+    assert len(guasti) == 1
+    assert guasti[0]["testo"] == (
+        "Il ponte è acceso ma manca il token: ogni messaggio viene accodato e "
+        "scade dopo 5 minuti senza risposta."
+    )
+
+
+def test_la_scadenza_dichiarata_e_quella_configurata_non_un_cinque_scritto_a_mano():
+    d = componi_adesso(
+        catena=[], credenziali={"subscription": False}, modelli={},
+        ponte_attivo=True, scadenza_ponte_min=20,
+    )
+    assert "dopo 20 minuti" in d["diagnosi"][0]["testo"]
+
+
+def test_col_token_presente_il_ponte_torna_a_essere_uno_che_risponde():
+    """La prova gemella: la diagnosi non è un avviso che si dà sempre."""
+    d = componi_adesso(
+        catena=["claude"],
+        credenziali={"claude": True, "subscription": True},
+        modelli={"subscription": "opus"},
+        ponte_attivo=True,
+    )
+    assert d["chi"] == "subscription"
+    assert not [x for x in d["diagnosi"]
+                if "manca il token" in x["testo"]]
+
+
+# ── Il debito del Task 1, chiuso qui ──────────────────────────────────────
+# Il ternario `"guasto" if not catena else "spreco"` del ramo del ponte era
+# l'unico comportamento di questo file che nessun test toccava: il Task 1 lo
+# dichiarò sopravvissuto alla prova per mutazione (costante `"spreco"`: 29
+# test verdi). È la differenza fra «hai una cosa rotta» e «hai una cosa che
+# paghi e non usi», e sotto sta due colori diversi a schermo
+# (`--err-ink` / `--warn-ink`): le due prove qui sotto sono gemelle, e una
+# costante al posto del ternario ne fa cadere sempre una.
+
+def test_col_ponte_acceso_e_una_catena_sotto_lo_scavalco_e_uno_spreco():
+    d = componi_adesso(
+        catena=["claude", "openrouter"],
+        credenziali={"claude": True, "openrouter": True, "subscription": True},
+        modelli={"subscription": "opus"},
+        ponte_attivo=True,
+    )
+    assert len(d["diagnosi"]) == 1
+    assert d["diagnosi"][0]["gravita"] == "spreco"
+
+
+def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
+    """Il piano risponde (il token c'è), ma sotto non c'è NIENTE: il giorno in
+    cui il ponte non risponde, non risponde nessuno. Lo stesso testo, un
+    colore diverso, perché il fatto misurato è diverso."""
+    d = componi_adesso(
+        catena=[],
+        credenziali={"subscription": True},
+        modelli={"subscription": "opus"},
+        ponte_attivo=True,
+    )
+    assert d["chi"] == "subscription"
+    assert len(d["diagnosi"]) == 1
+    assert d["diagnosi"][0]["gravita"] == "guasto"

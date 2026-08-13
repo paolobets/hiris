@@ -229,3 +229,19 @@ async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
     body = await resp.json()
     assert body["adesso"]["chi"] == "openrouter"
     assert body["adesso"]["nome"] == "OpenRouter"
+
+
+@pytest.mark.asyncio
+async def test_ponte_acceso_senza_token_lo_dichiara_nel_payload(client, monkeypatch):
+    """Invariante 5: lo stato «ponte acceso, nessun token» non deve poter
+    passare in silenzio. E la scadenza dichiarata è quella CONFIGURATA --
+    la stessa `BRIDGE_DEADLINE_MIN` che `_enqueue_chat_job` usa per far
+    morire il turno -- non un cinque scritto a mano nel testo."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "7")
+    client.app["ponte_attivo"] = True
+    resp = await client.get("/api/models/config")
+    body = await resp.json()
+    assert body["adesso"]["chi"] is None
+    assert any("scade dopo 7 minuti" in d["testo"]
+               for d in body["adesso"]["diagnosi"]), body["adesso"]["diagnosi"]

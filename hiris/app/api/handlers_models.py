@@ -231,6 +231,12 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         credenziali={p["id"]: p["has_credential"] for p in payload["providers"]},
         modelli=_modelli_in_uso(request, payload["provider_models"]),
         ponte_attivo=payload["ponte_attivo"],
+        # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
+        # turno per scrivere la scadenza (`now + BRIDGE_DEADLINE_MIN * 60`):
+        # un numero solo, letto allo stesso modo in due punti, invece di due
+        # default che possono divergere e far promettere alla pagina un'attesa
+        # diversa da quella che il turno subisce davvero.
+        scadenza_ponte_min=int(os.environ.get("BRIDGE_DEADLINE_MIN", "5") or 5),
     )
     return web.json_response(payload)
 

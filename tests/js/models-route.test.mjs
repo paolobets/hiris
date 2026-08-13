@@ -167,3 +167,23 @@ test('la risposta sta SOPRA le ragioni: il riquadro precede la prima sezione', a
   assert.ok(figli[1].classList.contains('page-subtitle'));
   assert.equal(posCard, 2);
 });
+
+test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () => {
+  /* Lo stato dell'invariante 5, visto dalla pagina. `chi` e' null e non c'e'
+     nessun nome da scrivere: se il riquadro sapesse comporre una frase da
+     solo, qui scriverebbe «Il prossimo messaggio va a .» -- disegna invece
+     `adesso.frase`, e la gravita' «guasto» diventa la classe che la CSS
+     colora di --err-ink invece che di --warn-ink. */
+  const { window, document } = monta({ config: { ponte_attivo: true, adesso: {
+    chi: null, nome: '', modello: '', natura: '', via: '',
+    frase: 'HIRIS non può rispondere: il ponte è acceso e manca il token del Piano Claude Max.',
+    diagnosi: [{ gravita: 'guasto',
+      testo: 'Il ponte è acceso ma manca il token: ogni messaggio viene accodato e scade dopo 5 minuti senza risposta.',
+      azione: null }],
+  } } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const card = adesso(document);
+  assert.match(card.querySelector('.adesso-frase').textContent, /manca il token/);
+  assert.equal(card.querySelectorAll('.diagnosi-guasto').length, 1);
+});
