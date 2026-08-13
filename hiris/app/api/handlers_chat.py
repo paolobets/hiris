@@ -713,18 +713,28 @@ async def handle_chat(request: web.Request) -> web.Response:
         # aver ancora configurato niente. Prima diceva, in inglese, «set
         # CLAUDE_API_KEY»: un nome di variabile d'ambiente che NON e'
         # un'opzione dell'add-on (l'opzione si chiama `claude_api_key`) e che
-        # chi usa l'abbonamento non deve compilare affatto. Ora e' in
-        # italiano, nomina i campi come li vede nel Supervisor, e dice le due
-        # strade invece di una.
+        # chi usa il piano a forfait non deve compilare affatto.
+        #
+        # Le quattro etichette fra «» sono i nomi VERI dei campi in
+        # `translations/it.yaml`, e devono restarlo: fino alla 2.4.1 erano
+        # quelli di una versione precedente («Attiva provider: Abbonamento
+        # (Claude Max)» e le altre tre), cioe' questo messaggio mandava chi
+        # aveva appena installato HIRIS a cercare quattro campi che nella sua
+        # pagina non esistevano. Debito dichiarato dal Task 5 di questa fetta e
+        # chiuso qui, con il pin che impedisce alla deriva di ripetersi:
+        # `tests/test_invarianti_modelli.py::test_il_messaggio_di_primo_avvio_
+        # nomina_campi_che_esistono_davvero`, che confronta ogni «...» con i
+        # `name` delle traduzioni. Chi cambia un'etichetta cambia anche questo
+        # messaggio, o il test cade.
         return web.json_response(
             {"error": (
                 "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
                 "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
-                "e scegli una strada: con l'abbonamento Claude, attiva «Attiva "
-                "provider: Abbonamento (Claude Max)» e incolla il token in «Token "
-                "OAuth Claude Code (abbonamento)»; con l'API a consumo, attiva "
-                "«Attiva provider: API Claude» e incolla la chiave in «Chiave API "
-                "Claude». Poi riavvia l'add-on."
+                "e scegli una strada: col piano a forfait, attiva «Provider · Piano "
+                "Claude Max (a forfait)» e incolla il token in «Provider · Piano "
+                "Claude Max — token»; con l'API a consumo, attiva «Provider · "
+                "Claude API (a consumo)» e incolla la chiave in «Provider · Claude "
+                "API — chiave». Poi riavvia l'add-on."
             )},
             status=503,
         )

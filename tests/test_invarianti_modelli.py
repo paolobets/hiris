@@ -1,0 +1,340 @@
+"""Cose che questo disegno rende vere e che possono tornare false senza che
+nessuno tocchi la pagina Modelli.
+
+Questo file non prova un comportamento nuovo: prova che il terreno sotto la
+fetta «la catena e' l'unica verita'» resti quello. Ogni test qui dentro
+corrisponde a un invariante della specifica (§7) o a un debito dichiarato nel
+registro dei quattordici task precedenti, e ha una sola ragione di esistere: il
+difetto che chiude non lascia traccia in nessun altro test.
+
+Due di questi test leggono un `.css`. Fino a oggi **nessun test di questo repo
+toccava un foglio di stile** (debito Task 2 -> 15, ridichiarato dai Task 8, 9 e
+11): il CSS della pagina Modelli non l'ha mai visto un browser e jsdom non
+calcola il layout. Questi due non sostituiscono la prova sulla casa vera --
+`docs/prova-modelli-e-catena.md` la chiede esplicitamente -- ma chiudono la
+meta' che si puo' chiudere da qui: che il nome della classe scritta nel JS
+esista nel CSS, e che i blocchi a tutta larghezza continuino a dichiararsi tali.
+"""
+import re
+from pathlib import Path
+
+import pytest
+
+BASE = Path(__file__).resolve().parents[1] / "hiris"
+STATIC = BASE / "app" / "static"
+MODELS_JS = STATIC / "config" / "models-route.js"
+CONFIG_HTML = STATIC / "config.html"
+
+
+def _righe_vive_js(p: Path) -> str:
+    """Il sorgente senza commenti. Serve perche' i commenti di questo ramo
+    CITANO le parole ritirate per spiegare perche' sono uscite: cercarle nel
+    file intero renderebbe il test impossibile da soddisfare senza cancellare
+    la memoria del difetto."""
+    testo = p.read_text(encoding="utf-8")
+    testo = re.sub(r"/\*.*?\*/", "", testo, flags=re.S)
+    return "\n".join(r for r in testo.splitlines() if not r.lstrip().startswith("//"))
+
+
+# ── Invariante 3: nessuna parola che affermi piu' di cio' che il sistema sa ──
+
+@pytest.mark.parametrize("parola", ["Attivo", "Disattivato", "Disponibile", "Funzionante"])
+def test_nessuna_parola_afferma_piu_di_cio_che_il_sistema_sa(parola):
+    """Invariante 3 della spec. «Attivo» significa «interruttore acceso e
+    credenziale presente» e si legge «funziona»: una chiave a credito esaurito
+    era «Attivo». Cio' che si afferma dev'essere cio' che si e' misurato.
+
+    Il confine di parola non e' un dettaglio: `state.ponteAttivo` contiene la
+    sequenza «Attivo» e non e' una parola a schermo, e' il nome di un campo del
+    payload. Cercare la sottostringa renderebbe questo test rosso oggi, cioe'
+    inutile domani -- e la lezione di questa fetta e' che un test che non puo'
+    passare e uno che non puo' fallire sono lo stesso errore.
+    """
+    vive = _righe_vive_js(MODELS_JS)
+    trovate = re.findall(r"\b" + parola + r"\b", vive)
+    assert not trovate, (
+        f"«{parola}» e' una parola ritirata dal prodotto: e' comparsa "
+        f"{len(trovate)} volte in righe vive di models-route.js"
+    )
+
+
+# ── L'invariante che regge tutto il disegno: la chat non fa streaming ───────
+
+def test_la_chat_non_fa_streaming_e_quindi_la_catena_e_onesta():
+    """Invariante che regge TUTTO il disegno (progetto §0.1 e §14.1):
+    `llm_router.chat` cicla la catena, `chat_stream` NO -- prende il primo e
+    basta. La chat di HIRIS non fa streaming (`static/chat/send.js` fa un POST
+    JSON e legge `r.json()`), quindi il ramo SSE e' raggiungibile solo da un
+    client API esterno. Il giorno in cui la chat chiedesse SSE, il ripiego
+    sparirebbe e questa pagina inizierebbe a mentire SENZA CHE NESSUNO LA
+    TOCCHI.
+
+    E non solo la pagina: dal Task 11 `chat_stream` non scrive nel registro
+    degli esiti, e dal Task 14 il ramo streaming non porta la nota del ripiego
+    (nessun payload JSON in cui metterla). Passare la chat allo streaming
+    costerebbe insieme il ripiego, il registro e l'annuncio -- tre promesse
+    fatte all'utente in questa versione."""
+    send = (STATIC / "chat" / "send.js").read_text(encoding="utf-8")
+    assert "text/event-stream" not in send
+    assert "stream: true" not in send and "stream:true" not in send
+
+
+# ── Invariante 4: una sola regola di instradamento ─────────────────────────
+
+def test_non_esiste_una_seconda_regola_di_instradamento():
+    """Invariante 4 del progetto. `llm_router.simple_chat` sceglieva con
+    `self._claude or self._openai or self._ollama` -- OpenRouter escluso,
+    nessun ripiego, catena ignorata. E' uscita col Task 7; questo test e' la
+    ragione per cui non puo' rientrare in silenzio (ci ha gia' provato tre
+    volte da altre porte: il ripiego di `_norm_policy`, il `or r._chat_policy`
+    del brief del Task 10, e il ripiego di strategia a catena vuota)."""
+    router = (BASE / "app" / "llm_router.py").read_text(encoding="utf-8")
+    assert "def simple_chat" not in router
+
+
+# ── Invariante 2: la pagina non calcola la topologia ───────────────────────
+
+# MISURATO, non indovinato (Task 15, Step 2). Dopo i Task 8-9-14 le letture
+# vive della credenziale in `models-route.js` sono SEI, e sono queste:
+#   rigaProvider        3  -- il pallino, la colonna «natura»/«manca», e il
+#                             gesto «Usa» che non si offre senza credenziale
+#   renderFuori         1  -- la nota «le chiavi si mettono in Configurazione
+#                             add-on», scritta una volta se manca a qualcuno
+#   ricomponiTopologia  1  -- LA DEROGA: riordina righe GIA' COMPOSTE dal
+#                             backend fra il gesto e la risposta del server
+#   rifaiCatena         1  -- i preset compongono un `chain_order` da MANDARE,
+#                             e non mandano chi non puo' rispondere
+# Il numero e' un limite superiore: serve a far scattare un test quando qualcuno
+# ne aggiunge una settima, che e' il modo in cui il difetto 3 tornerebbe.
+_LETTURE_VIVE_DELLA_CREDENZIALE = 6
+
+# Le quattro funzioni che possono leggerla. Questo e' il pin che conta davvero:
+# il conteggio dice QUANTE, questo dice DOVE -- e una settima lettura dentro una
+# `render*` qualunque sarebbe topologia ricalcolata nel frontend anche se il
+# totale restasse sei perche' qualcuno ne ha tolta un'altra.
+_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE = {
+    "rigaProvider", "renderFuori", "ricomponiTopologia", "rifaiCatena",
+}
+
+
+def _letture_per_funzione(sorgente: str) -> dict[str, int]:
+    """Le funzioni di primo livello dell'IIFE e quante volte ognuna nomina la
+    credenziale. Il file e' scritto tutto con `function nome(` (stile ES5 del
+    ramo, vincoli globali): la divisione sul sorgente vivo e' esatta quanto
+    serve a questo test."""
+    parti = re.split(r"\n\s*function\s+(\w+)\s*\(", sorgente)
+    assert parti[0].count("ha_credenziale") == 0, (
+        "una lettura della credenziale fuori da ogni funzione: e' codice di "
+        "modulo, gira al caricamento e nessuno puo' prevederne il momento"
+    )
+    return {
+        parti[i]: parti[i + 1].count("ha_credenziale")
+        for i in range(1, len(parti), 2)
+        if parti[i + 1].count("ha_credenziale")
+    }
+
+
+def test_la_pagina_non_contiene_la_regola_della_catena():
+    """Invariante 2 della spec: se un test trova logica di ordinamento nel
+    frontend, il difetto 3 e' tornato per un'altra porta.
+
+    L'UNICA deroga e' `ricomponiTopologia`, che riordina righe GIA' COMPOSTE dal
+    backend usando l'ordine che l'utente ha appena espresso, fra un gesto e la
+    risposta del server."""
+    js = _righe_vive_js(MODELS_JS)
+    assert "buildDisplayChain" not in js
+    assert "has_credential" not in js, (
+        "il nome inglese del campo non esiste piu' nel payload dal Task 7: "
+        "trovarlo qui vuol dire che qualcuno legge una seconda superficie"
+    )
+    quante = js.count("ha_credenziale")
+    assert quante <= _LETTURE_VIVE_DELLA_CREDENZIALE, (
+        f"l'appartenenza si decide nel backend: {quante} letture della "
+        f"credenziale nel frontend, il massimo misurato e' "
+        f"{_LETTURE_VIVE_DELLA_CREDENZIALE}"
+    )
+
+
+def test_solo_quattro_funzioni_della_pagina_leggono_la_credenziale():
+    """Il gemello del precedente, e il piu' severo dei due: il conteggio dice
+    quante letture, questo dice IN QUALI FUNZIONI. Una lettura dentro una
+    `render*` nuova sarebbe topologia ricalcolata nella pagina anche a totale
+    invariato."""
+    dove = _letture_per_funzione(_righe_vive_js(MODELS_JS))
+    assert set(dove) == _FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE, (
+        f"le funzioni che leggono la credenziale sono cambiate: {sorted(dove)}"
+    )
+
+
+# ── I token semantici del testo, e il resto del CSS che nessuno guardava ────
+
+def _fogli_della_pagina_config() -> list[Path]:
+    """I fogli che `config.html` carica davvero, letti da li' e non elencati a
+    mano: un foglio aggiunto alla pagina e non a questa lista renderebbe i due
+    test qui sotto ciechi proprio sul codice nuovo."""
+    html = CONFIG_HTML.read_text(encoding="utf-8")
+    nomi = re.findall(r'href="static/([\w.-]+\.css)"', html)
+    fogli = [STATIC / n for n in nomi]
+    assert fogli, "config.html non carica nessun foglio di stile: forma cambiata"
+    for f in fogli:
+        assert f.exists(), f"config.html carica un foglio che non esiste: {f.name}"
+    return fogli
+
+
+def test_il_testo_semantico_usa_i_token_ink():
+    """`hiris-theme.css` righe 76-82: `--x-ink` per il testo, `--x` per
+    pallini, bordi e riempimenti. Secondo l'audit pre-UAT `models-route.js` era
+    l'unica superficie rimasta indietro; dopo i Task 8-11-14 le sue regole sono
+    trenta e nessun test le guardava."""
+    css = (STATIC / "hiris-config.css").read_text(encoding="utf-8")
+    regole = re.findall(r"\.(?:adesso|riga|connettore)[^{]*\{[^}]*\}", css)
+    assert len(regole) >= 20, (
+        f"attese almeno venti regole della pagina Modelli, trovate "
+        f"{len(regole)}: la forma del file e' cambiata e questo test sta "
+        f"guardando altro"
+    )
+    for regola in regole:
+        for token in ("--ok", "--warn", "--err"):
+            assert f"color: var({token})" not in regola, (
+                f"testo su var({token}): la regola d'uso vuole var({token}-ink). "
+                f"{regola[:80]}")
+
+
+# `riga-usa` non ha una regola sua e non deve averla: e' un aggancio per i test
+# su un bottone gia' vestito da `btn btn-ghost btn-sm`. E' l'unica eccezione
+# ammessa, ed e' scritta qui perche' si veda -- una lista di eccezioni che
+# cresce e' il segno che questo test ha smesso di misurare qualcosa.
+_CLASSI_SENZA_REGOLA_PER_SCELTA = {"riga-usa"}
+
+
+def _classi_disegnate_dalla_pagina() -> set[str]:
+    js = _righe_vive_js(MODELS_JS)
+    classi: set[str] = set()
+    for gruppo in re.findall(r"el\(\s*'[a-z0-9]+'\s*,\s*'([^']*)'", js):
+        classi.update(gruppo.split())
+    classi.update(re.findall(r"classList\.add\('([^']+)'\)", js))
+    # I prefissi composti a runtime (`'diagnosi-' + gravita`) non sono classi:
+    # il loro suffisso arriva dal backend e questo test non puo' conoscerlo.
+    return {c for c in classi if not c.endswith("-")}
+
+
+def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
+    """Il difetto che questo test coglie e' l'unico difetto di CSS che si possa
+    cogliere senza un browser: il nome scritto in due posti e cambiato in uno
+    solo. Non prova che il layout regga -- quello lo prova solo la casa vera
+    (`docs/prova-modelli-e-catena.md`, prova 1) -- ma prova che il foglio e la
+    pagina parlino della stessa cosa.
+
+    E' il primo test di questo repo che apre un `.css`. Fino al Task 14 il
+    registro lo ha dichiarato quattro volte come debito aperto."""
+    css = "\n".join(f.read_text(encoding="utf-8") for f in _fogli_della_pagina_config())
+    orfane = sorted(
+        c for c in _classi_disegnate_dalla_pagina()
+        if c not in _CLASSI_SENZA_REGOLA_PER_SCELTA
+        and not re.search(r"\." + re.escape(c) + r"(?![\w-])", css)
+    )
+    assert not orfane, (
+        f"la pagina disegna classi che nessun foglio veste: {orfane}. "
+        f"O manca la regola, o il nome e' cambiato in un posto solo"
+    )
+
+
+# I tre blocchi che occupano l'intera riga dentro la griglia della
+# `.riga-provider`. La griglia ha SEI colonne in largo e QUATTRO sotto i 640px:
+# `1 / -1` e' scritto cosi' apposta, perche' regga in tutte e due. Un blocco che
+# perdesse questa riga si schiaccerebbe dentro una colonna -- e jsdom non se ne
+# accorgerebbe mai.
+_BLOCCHI_A_TUTTA_LARGHEZZA = ("riga-nota", "riga-stato", "pannello-modello")
+
+
+@pytest.mark.parametrize("classe", _BLOCCHI_A_TUTTA_LARGHEZZA)
+def test_i_blocchi_a_tutta_larghezza_restano_a_tutta_larghezza(classe):
+    """Task 8 -> 15, Task 9 -> 15, Task 11 -> 15: «terzo blocco a tutta
+    larghezza dentro una griglia a sei colonne», mai visto da un browser."""
+    css = (STATIC / "hiris-config.css").read_text(encoding="utf-8")
+    blocco = re.search(r"\." + classe + r"\s*\{([^}]*)\}", css)
+    assert blocco, f".{classe} non ha una regola in hiris-config.css"
+    assert re.search(r"grid-column:\s*1\s*/\s*-1", blocco.group(1)), (
+        f".{classe} sta dentro la griglia della riga-provider e deve "
+        f"dichiarare `grid-column: 1 / -1`: senza, si schiaccia in una colonna"
+    )
+
+
+# ── I tre alias del piano e la CLI che li produce ──────────────────────────
+
+def test_gli_alias_del_piano_sono_esattamente_quelli_che_la_cli_sa_produrre():
+    """Task 9 -> 15: `decisione_modelli.ALIAS_DEL_PIANO` e
+    `agent/runner.modello_cli` sono due liste che possono divergere in
+    silenzio. Il pannello del modello del piano offre i primi; la CLI
+    dell'abbonamento accetta solo i secondi. Offrirne uno in piu' vorrebbe dire
+    un modello sceglibile che `modello_cli` riduce a `sonnet` senza dirlo --
+    cioe' la pagina che torna a promettere piu' di quello che il sistema fa."""
+    from hiris.app.agent import runner
+    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+
+    sorgente = Path(runner.__file__).read_text(encoding="utf-8")
+    corpo = re.search(
+        r"def modello_cli\(.*?\n(?=\n\n|# )", sorgente, flags=re.S)
+    assert corpo, "modello_cli non si trova piu' nel sorgente: firma cambiata"
+    prodotti = set(re.findall(r'return\s+"([a-z]+)"', corpo.group(0)))
+    offerti = {v for v, _ in ALIAS_DEL_PIANO}
+    assert offerti == prodotti, (
+        f"il pannello offre {sorted(offerti)}, la CLI sa produrre "
+        f"{sorted(prodotti)}: uno dei due e' rimasto indietro"
+    )
+
+
+def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
+    """Il 503 «Nessun provider AI configurato» e' la PRIMA cosa che legge chi
+    installa HIRIS e apre la chat, e cita quattro campi della pagina di
+    configurazione fra virgolette basse. Fino alla 2.4.1 li citava con i nomi di
+    una versione precedente -- «Attiva provider: Abbonamento (Claude Max)» e le
+    altre tre -- cioe' mandava a cercare quattro campi che nella pagina non
+    esistevano piu': debito dichiarato dal Task 5 di questa fetta e mai chiuso.
+
+    Il difetto qui e' della stessa famiglia di quello che l'intera fetta chiude:
+    una frase vera quando fu scritta, rimasta a schermo dopo che il fatto era
+    cambiato. E si ripeterebbe da solo, perche' rinominare un'etichetta in
+    `translations/` non tocca questo file e nessun test le legava."""
+    import yaml
+
+    testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
+    blocco = re.search(r'"Nessun provider AI configurato.*?riavvia l\'add-on\."',
+                       testo, flags=re.S)
+    assert blocco, "il messaggio di primo avvio non si trova piu': testo cambiato"
+    # Le stringhe adiacenti del sorgente Python si concatenano: qui si toglie
+    # solo cio' che le separa, per leggere la frase come la legge l'utente.
+    frase = re.sub(r'"\s*\n\s*"', "", blocco.group(0))
+    citate = re.findall(r"«([^»]+)»", frase)
+    assert len(citate) == 4, f"attesi quattro campi citati, trovati {citate}"
+
+    voci = yaml.safe_load(
+        (BASE / "translations" / "it.yaml").read_text(encoding="utf-8"))
+    nomi = set()
+
+    def raccogli(albero):
+        for chiave, voce in albero.items():
+            if isinstance(voce, dict):
+                if isinstance(voce.get("name"), str):
+                    nomi.add(voce["name"])
+                raccogli(voce)
+
+    raccogli(voci["configuration"])
+    fantasma = [c for c in citate if c not in nomi]
+    assert not fantasma, (
+        f"il messaggio di primo avvio manda a cercare campi che non esistono: "
+        f"{fantasma}. I nomi veri stanno in translations/it.yaml"
+    )
+
+
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
+    """Il gemello di comportamento del precedente: leggere il sorgente prova che
+    i due elenchi coincidono, questo prova che scegliere una voce del pannello
+    e' davvero la voce che arriva alla CLI. Senza, `ALIAS_DEL_PIANO` potrebbe
+    contenere `Sonnet` maiuscolo e i due test sarebbero d'accordo su niente."""
+    from hiris.app.agent.runner import modello_cli
+    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+
+    assert alias in {v for v, _ in ALIAS_DEL_PIANO}
+    assert modello_cli(alias) == alias

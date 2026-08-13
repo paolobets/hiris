@@ -1,5 +1,172 @@
 # HIRIS — Changelog
 
+## [2.5.0] — La pagina Modelli smette di mentire, e il piano non è più un vicolo cieco (2026-08-14)
+
+**⚠️ Due cose cambiano quanto spendi, e vanno lette prima di aggiornare.** Il modello
+della chat **non si sceglie più** in «Impostazioni chat». E quando il Piano Claude Max non
+risponde, **il turno passa a un provider a pagamento** invece di andare perso. Entrambe
+sono spiegate qui sotto, sotto «Le due cose che cambiano il costo».
+
+### Cosa si vedeva
+
+La pagina Modelli era **vera riga per riga e falsa nel complesso**. Diceva tre cose:
+
+> Claude API: **Attivo** · Abbonamento: **Disattivato** · OpenRouter: **Attivo**
+
+Tutte e tre corrette. E non metteva mai in relazione le tre cose — non diceva **chi
+risponde**, non diceva **in che ordine**, non diceva **quanto costa**. Su un impianto con
+un Piano Claude Max pagato, una chiave Claude a credito esaurito e un OpenRouter a
+consumo, quella pagina si leggeva come «tutto a posto», e nel frattempo ogni singolo
+messaggio faceva una chiamata fallita alla chiave scarica e poi finiva su un provider a
+pagamento — **mentre l'abbonamento già pagato restava fermo**. Si pagava due volte per non
+usare il piano che si era già comprato.
+
+E la parola che teneva insieme l'inganno era **«Attivo»**: significava «l'interruttore è
+acceso e la credenziale c'è», e si leggeva «funziona». Una chiave a credito esaurito era
+«Attivo» per settimane.
+
+### Cosa si vede adesso
+
+**Una frase, in cima alla pagina**, prima di ogni altra cosa:
+
+> **Il prossimo messaggio va a OpenRouter, con anthropic/claude-sonnet-4-6, a consumo.**
+>
+> Claude API ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa.
+> Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.
+
+Sotto, **una catena**: chi risponde per primo, chi dopo, con che modello, a che costo, e
+che cosa ha fatto davvero l'ultima volta che gli è stato chiesto qualcosa. Si riordina con
+le frecce, si toglie con una ✕, si aggiunge con «Usa».
+
+**La parola «Attivo» è uscita dal prodotto.** Al suo posto ci sono cose misurate: «in
+catena» o «fuori dalla catena» (che è una posizione, non un'opinione), e la riga di stato,
+che riferisce l'ultimo esito **osservato** — «ha rifiutato le ultime 12 richieste — chiave
+rifiutata (401), 8 min fa», oppure «ha risposto, 2 min fa». Se un provider non è mai stato
+interrogato, la riga tace: non c'è una terza parola che finga di sapere.
+
+### Le due cose che cambiano il costo
+
+**1. Il modello non si sceglie più in «Impostazioni chat».** Quel campo scavalcava l'intera
+pagina Modelli: sceglieva il provider da sé, saltava la catena e annullava ogni ripiego.
+Adesso il modello si sceglie **per provider**, cliccandolo nella sua riga della pagina
+Modelli — e ogni provider mostra **il suo**, con i suoi identificatori. Se avevi un modello
+fissato lì, **non viene migrato**: la chat usa la catena, e il vecchio valore sparisce dal
+file al primo salvataggio (una riga nel registro dell'add-on lo dice, col valore che
+c'era). **Se avevi fissato un modello, ricontrolla la riga di Claude API nella pagina
+Modelli**: è lì che quella scelta vive adesso.
+
+**2. Quando il piano non risponde, il turno passa al provider successivo.** Fino a ieri il
+Piano Claude Max era un **bivio**: o rispondeva lui, o il messaggio si perdeva dopo cinque
+minuti con un errore. Adesso è il **primo anello** di una catena: se non risponde entro la
+scadenza, se non ha il token, o se ha esaurito il tetto giornaliero, il turno **scende al
+successivo** — che, se hai un provider in catena, è quasi sempre uno **a consumo**. La
+risposta arriva, ma la paghi. (Se sotto il piano non c'è nessuno, la pagina te lo dice a
+lettere chiare, in cima: *«il turno non ha dove andare»*.)
+
+Per questo **ogni ripiego si annuncia**, in chat, sotto la risposta, ogni volta:
+
+> *Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRouter, a consumo.*
+
+Non è un allarme e non dice perché — dice che cosa è successo e chi ha risposto al suo
+posto. Un passaggio dal forfait al consumo che nessuno annuncia si scopre a fine mese.
+
+**Conseguenza diretta:** l'errore **«Limite giornaliero di messaggi raggiunto»** non
+compare più. Quel turno adesso riceve una risposta, e la riceve **a pagamento**.
+
+### Il resto
+
+- **Un gesto ha effetto sul messaggio successivo.** Riordinare la catena, togliere un
+  provider, cambiare il modello: prima alcune di queste cose si applicavano solo al
+  riavvio dell'add-on — e la didascalia che lo prometteva **era sbagliata**, non
+  imprecisa: sul ponte il modello cambiava subito, sull'API no. Adesso vale sempre la
+  stessa regola: **quello che salvi vale dal messaggio dopo**, senza riavviare.
+- **Un provider è usato se e solo se sta in catena.** Quattro dei cinque interruttori
+  «Provider: acceso/spento» della configurazione dell'add-on **non decidono più niente**:
+  erano la seconda rappresentazione dello stato, ed è quella che permetteva alla pagina di
+  mentire. Restano a schermo per un rilascio ancora (vedi «Cosa devi rifare a mano»).
+  **L'eccezione è `provider_subscription`**, che continua ad accendere il ponte: per il
+  piano, l'interruttore che conta è ancora quello — insieme a `ponte.attivo`, e **basta
+  uno dei due**.
+- **La lista dei modelli si legge quando serve.** Il pannello di un provider interroga
+  quel provider **in quel momento**, dice se ci è riuscito e da dove arriva la lista.
+  Prima la pagina interrogava tre provider a ogni apertura, per un elenco che quasi
+  nessuno apriva.
+- **Ollama con l'indirizzo ma senza modello** adesso si vede: sta in catena, ma la pagina
+  dice che gli manca il modello e non lo fa riordinare finché non gliene dai uno. Prima
+  poteva stare in catena senza niente dietro.
+- **Il messaggio di benvenuto a chi non ha ancora configurato niente** nomina finalmente i
+  campi **come si chiamano davvero**. Citava quattro etichette di una versione precedente —
+  «Attiva provider: Abbonamento (Claude Max)» e le altre tre — e mandava chi aveva appena
+  installato HIRIS a cercare quattro campi che nella sua pagina non esistevano.
+- **Le impostazioni della chat** hanno guadagnato i **giorni di conservazione** della
+  cronologia — che erano un'opzione dell'add-on — e dicono, finalmente, il **secondo
+  lavoro** che quel numero faceva già in silenzio: non decide solo quanto si conserva,
+  decide anche **quanto indietro HIRIS rilegge** la conversazione in corso.
+
+### Cosa devi rifare a mano
+
+**Niente, se non tocchi niente.** All'avvio HIRIS copia una volta sola i valori che avevi
+nella configurazione dell'add-on dentro il suo archivio, e scrive nel registro due righe
+che dicono **che cosa ha copiato**. Da quel momento le decisioni si prendono nella pagina
+Modelli.
+
+Ma da quel momento, anche: **la configurazione dell'add-on continua a mostrare opzioni che
+non fanno più niente.** Non sono ancora state tolte — toglierle nello stesso aggiornamento
+che le copia farebbe perdere i valori, per come Home Assistant tratta le opzioni fuori
+schema — e **escono nella versione successiva**. Sono **quattro** dei cinque interruttori
+dei provider (`provider_subscription` no: accende ancora il ponte), la strategia,
+«nascondi i modelli gratuiti», il modello di Ollama, i giorni di conservazione, e i tre
+numeri qui sotto.
+
+**Tre numeri restano fermi dove li trovi, e questa versione non ti dà dove cambiarli:**
+
+| Opzione | Che cosa succede |
+|---|---|
+| `ponte.bridge_deadline_min` | il valore che aveva al momento dell'aggiornamento resta in vigore; cambiarlo nella configurazione dell'add-on non ha più effetto |
+| `ponte.chat_daily_cap` | idem |
+| `local_model.request_timeout` | idem |
+
+La pagina Modelli li **mostra** — stanno scritti fra una riga e la successiva, «se non
+risponde entro 5 minuti…» — ma **non li fa ancora cambiare**. È un debito dichiarato di
+questa versione, non una dimenticanza: se uno di quei tre non ti va bene, **cambialo prima
+di aggiornare**.
+
+### Cosa questa versione ancora non fa
+
+**Il caso del Piano Claude Max si legge tutto, ma si corregge a metà.** La pagina dice, con
+tutte le lettere, che il piano è pagato e fuori dalla catena. Per metterlo **in cima** alla
+catena serve ancora accendere il ponte dalla **configurazione dell'add-on** (`ponte.attivo`
+oppure `provider_subscription`: basta uno dei due): la pagina non ha il gesto, e non ce l'ha perché oggi sarebbe un bottone che scrive una cosa che il server
+butta via. Arriva col rilascio successivo, insieme alle opzioni che escono.
+
+**Il piano sta in testa o fuori.** Non lo si può mettere secondo o terzo: sarebbe un turno
+che comincia sulla catena e si sposta sul piano a metà strada, ed è una cosa sua da fare.
+
+**Sopra i cinque minuti di scadenza, il ripiego non avviene.** Il ripiego vive nel momento
+in cui la pagina della chat chiede «è pronto?», e quella pagina smette di chiedere dopo
+cinque minuti. Se metti `ponte.bridge_deadline_min` a 10, a cinque minuti leggi «Ho smesso
+di aspettare dopo cinque minuti…» e il ripiego parte **dopo**, senza che tu lo veda: la
+risposta si ritrova ricaricando la chat. **Con il valore predefinito (5) il caso è al
+confine, e non si presenta.** Sopra i 5, il numero costa più di prima.
+
+**Claude API non ha nessuna protezione.** OpenAI, OpenRouter e Ollama, dopo tre errori di
+connessione consecutivi, vengono saltati per un minuto. Claude no: viene **ritentato
+integralmente a ogni turno**, ed è il motivo per cui una chiave a credito esaurito costa
+una chiamata fallita per ogni messaggio, per settimane, senza che niente ceda mai. Questa
+versione **non** gliene dà una — sarebbe un cambio di comportamento del ripiego, non una
+cosa che la pagina mostra — ma da oggi **lo leggi a schermo**: «ha rifiutato le ultime 40
+richieste — credito esaurito (400)».
+
+**Un modello ritirato non fa scattare niente.** Se chiedi un modello che il provider non
+serve più, la risposta è un 404, il 404 non conta come guasto, il modello viene richiesto a
+ogni turno per sempre, e in cronologia resta «Errore temporaneo del servizio AI». È un
+difetto vero, dichiarato, e non è di questa versione.
+
+**Non si tocca nessuna chiave e non si costruisce nessun catalogo di modelli.** Le
+credenziali restano dove si custodiscono — la configurazione dell'add-on — e la pagina
+Modelli decide soltanto chi risponde, in che ordine e con che modello. *Un concetto per
+posto: le credenziali dove si custodiscono, le decisioni dove si prendono.*
+
 ## [2.4.1] — Accende la luce, e adesso se ne accorge (2026-08-13)
 
 ### Cosa si vedeva
