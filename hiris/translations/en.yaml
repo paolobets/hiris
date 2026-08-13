@@ -7,9 +7,12 @@ configuration:
   # not in the form, where whoever is configuring has to wade through it. The
   # full subscription path is in `docs/prova-la-2.0.md`.
   #
-  # The NAMES are not touched: "Provider · ", "Bridge · ", "Advanced · " are
-  # the grouping (the Supervisor renders no sections) and "(1 of 2)"/"(2 of 2)"
-  # already say half of what the old descriptions spelled out.
+  # The NAMES carry the grouping wherever there is no real section: the
+  # Supervisor only renders nested dicts on screen (`ponte:`, `local_model:`,
+  # `memory:`), and everywhere else the "Provider · " and "Advanced · "
+  # prefixes remain. Inside a section the prefix is NOT repeated: the heading
+  # already carries it. And "(1 of 2)"/"(2 of 2)" already say half of what the
+  # old descriptions spelled out.
   #
   # it/en parity pinned by `tests/test_traduzioni_coprono_le_opzioni.py`, which
   # also pins "not measured" in `claude_code_oauth_token`.
@@ -64,18 +67,26 @@ configuration:
     description: "The order it tries the providers you turned on when the model is \"auto\": 'balanced' starts at Claude, 'cost_first' local. The Models page wins."
 
   # ── 3. Bridge: the chat on the Claude Max plan ────────────────────────────
-  bridge_enabled:
-    name: "Bridge · turn the queue on (1 of 2)"
-    description: "Turns on the queue that carries messages to the runner. Not enough alone: (2 of 2) is needed too. An active Claude Max plan turns it on by itself."
-  chat_via_subscription:
-    name: "Bridge · send the chat over it (2 of 2)"
-    description: "Sends the chat to the plan's runner instead of the metered provider. (1 of 2) is needed too. There the chat knows and does as much as elsewhere."
-  bridge_deadline_min:
-    name: "Bridge · how long to wait for a reply (minutes)"
-    description: "Past this time the message expires: an error in chat, no fallback to the metered provider. From 1 to 120, default 5."
-  chat_daily_cap:
-    name: "Bridge · how many messages per day"
-    description: "Past this many messages a day over the bridge, the chat errors and does not send. Careful: 0 blocks them all, it does not mean unlimited. 0–1000."
+  # Nested under `ponte:` in 2.4.0: it is the only grouping the Supervisor
+  # renders on screen. With the section heading carrying it, the "Bridge · "
+  # prefix leaves the four names -- repeating it four times inside a block
+  # already called "Bridge" was exactly the redundancy this round removes. The
+  # names still stand on their own, because they name the bridge.
+  ponte:
+    name: "Bridge — the chat on the Claude Max plan"
+    description: "Only needed if you use the Claude Max plan. Both switches must be on, and an active plan turns them on by itself."
+    bridge_enabled:
+      name: "Turn the bridge on (1 of 2)"
+      description: "Turns on the queue that carries messages to the runner. Not enough alone: (2 of 2) is needed too. An active Claude Max plan turns it on by itself."
+    chat_via_subscription:
+      name: "Send the chat over the bridge (2 of 2)"
+      description: "Sends the chat to the plan's runner instead of the metered provider. (1 of 2) is needed too. There the chat knows and does as much as elsewhere."
+    bridge_deadline_min:
+      name: "How long to wait for a reply (minutes)"
+      description: "Past this time the message expires: an error in chat, no fallback to the metered provider. From 1 to 120, default 5."
+    chat_daily_cap:
+      name: "How many messages per day"
+      description: "Past this many messages a day over the bridge, the chat errors and does not send. Careful: 0 blocks them all, it does not mean unlimited. 0–1000."
 
   # ── 4. Appearance and retention ───────────────────────────────────────────
   theme:

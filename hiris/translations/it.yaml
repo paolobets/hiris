@@ -8,9 +8,12 @@ configuration:
   # non nel modulo, dove lo subisce chi configura. Il percorso completo
   # dell'abbonamento sta in `docs/prova-la-2.0.md`.
   #
-  # I NOMI non si toccano: «Provider · », «Ponte · », «Avanzate · » sono il
-  # raggruppamento (il Supervisor non rende sezioni) e «(1 di 2)»/«(2 di 2)»
-  # dicono da soli meta' di cio' che le vecchie descrizioni spiegavano.
+  # I NOMI portano il raggruppamento dove non c'e' una sezione vera: il
+  # Supervisor rende a schermo solo i dizionari annidati (`ponte:`,
+  # `local_model:`, `memory:`), e per tutto il resto restano i prefissi
+  # «Provider · » e «Avanzate · ». Dentro una sezione il prefisso NON si ripete:
+  # lo porta gia' l'intestazione. E «(1 di 2)»/«(2 di 2)» dicono da soli meta'
+  # di cio' che le vecchie descrizioni spiegavano.
   #
   # Parita' it/en pinnata da `tests/test_traduzioni_coprono_le_opzioni.py`, che
   # pinna anche «non si misurano» in `claude_code_oauth_token`.
@@ -65,18 +68,27 @@ configuration:
     description: "In che ordine prova i provider accesi quando il modello e' «auto»: 'balanced' parte da Claude, 'cost_first' dal locale. La pagina Modelli vince."
 
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
-  bridge_enabled:
-    name: "Ponte · accendi la coda (1 di 2)"
-    description: "Accende la coda che porta i messaggi al runner. Da solo non basta: serve anche (2 di 2). Il piano Claude Max attivo lo accende da se'."
-  chat_via_subscription:
-    name: "Ponte · mandaci la chat (2 di 2)"
-    description: "Manda la chat al runner del piano invece che al provider a consumo. Serve anche (1 di 2). Li' la chat sa e fa quanto nell'altra modalita'."
-  bridge_deadline_min:
-    name: "Ponte · quanto aspettare una risposta (minuti)"
-    description: "Passato questo tempo il messaggio scade: errore in chat, nessun ripiego sul provider a consumo. 1–120, predefinito 5."
-  chat_daily_cap:
-    name: "Ponte · quanti messaggi al giorno"
-    description: "Oltre questi messaggi al giorno sul ponte, la chat da' errore e non invia. Attenzione: 0 li blocca tutti, non vuol dire «illimitato». 0–1000."
+  # Annidate sotto `ponte:` nella 2.4.0: e' l'unico raggruppamento che il
+  # Supervisor rende a schermo. Con l'intestazione della sezione a portarlo, il
+  # prefisso «Ponte · » esce dai quattro nomi -- ripeterlo quattro volte dentro
+  # un blocco che gia' si chiama «Ponte» era esattamente la ridondanza che
+  # questo giro toglie. I nomi restano comunque autosufficienti se letti da
+  # soli, perche' nominano il ponte.
+  ponte:
+    name: "Ponte — la chat sul piano Claude Max"
+    description: "Serve solo se usi il piano Claude Max. I due interruttori vanno accesi tutti e due, e il piano attivo li accende da se'."
+    bridge_enabled:
+      name: "Accendi il ponte (1 di 2)"
+      description: "Accende la coda che porta i messaggi al runner. Da solo non basta: serve anche (2 di 2). Il piano Claude Max attivo lo accende da se'."
+    chat_via_subscription:
+      name: "Manda la chat sul ponte (2 di 2)"
+      description: "Manda la chat al runner del piano invece che al provider a consumo. Serve anche (1 di 2). Li' la chat sa e fa quanto nell'altra modalita'."
+    bridge_deadline_min:
+      name: "Quanto aspettare una risposta (minuti)"
+      description: "Passato questo tempo il messaggio scade: errore in chat, nessun ripiego sul provider a consumo. 1–120, predefinito 5."
+    chat_daily_cap:
+      name: "Quanti messaggi al giorno"
+      description: "Oltre questi messaggi al giorno sul ponte, la chat da' errore e non invia. Attenzione: 0 li blocca tutti, non vuol dire «illimitato». 0–1000."
 
   # ── 4. Aspetto e conservazione ────────────────────────────────────────────
   theme:

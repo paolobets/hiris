@@ -38,10 +38,19 @@ export OLLAMA_REQUEST_TIMEOUT=$(bashio::config 'local_model.request_timeout' '12
 export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
 
 # ── 3. Ponte: la chat sul piano Claude Max ──────────────────────────────────
-export BRIDGE_ENABLED=$(bashio::config 'bridge_enabled' 'false')
-export CHAT_VIA_SUBSCRIPTION=$(bashio::config 'chat_via_subscription' 'false')
-export BRIDGE_DEADLINE_MIN=$(bashio::config 'bridge_deadline_min' '5')
-export CHAT_DAILY_CAP=$(bashio::config 'chat_daily_cap' '50')
+# 2.4.0: le quattro opzioni del ponte sono annidate sotto `ponte:` (e' l'unico
+# raggruppamento che il Supervisor rende a schermo). Cambia SOLO il percorso
+# dell'opzione: i nomi delle variabili d'ambiente restano identici, quindi
+# nessun file Python e' toccato dall'annidamento.
+# Nessun ripiego sulla vecchia chiave piatta: il Supervisor scarta le chiavi
+# fuori schema prima di scrivere /data/options.json (verificato su
+# `supervisor/apps/options.py`), quindi `bashio::config 'bridge_enabled'`
+# tornerebbe vuoto comunque -- un ripiego darebbe l'illusione di una migrazione
+# che non puo' avvenire.
+export BRIDGE_ENABLED=$(bashio::config 'ponte.bridge_enabled' 'false')
+export CHAT_VIA_SUBSCRIPTION=$(bashio::config 'ponte.chat_via_subscription' 'false')
+export BRIDGE_DEADLINE_MIN=$(bashio::config 'ponte.bridge_deadline_min' '5')
+export CHAT_DAILY_CAP=$(bashio::config 'ponte.chat_daily_cap' '50')
 
 # fetta E3 Task 7: escono SENTINEL_DAILY_CAP/sentinel_daily_cap e
 # SENTINEL_COOLDOWN_SEC/sentinel_cooldown_min -- la Sentinella che li leggeva
@@ -132,6 +141,16 @@ fi
 if [ -z "${CLAUDE_CODE_OAUTH_TOKEN}" ] \
    && { [ "${PROVIDER_SUBSCRIPTION}" = "true" ] || [ "${CHAT_VIA_SUBSCRIPTION}" = "true" ] || [ "${BRIDGE_ENABLED}" = "true" ]; }; then
   bashio::log.warning "Il piano Claude Max e' acceso ma «Provider · Piano Claude Max — token» e' vuoto: nessuno rispondera' ai messaggi instradati sul ponte, che scadranno dopo ${BRIDGE_DEADLINE_MIN} minuti. Incolla il token, oppure spegni gli interruttori del piano e del ponte."
+fi
+
+# Il complemento dell'avviso qui sopra, e la rete dell'annidamento della 2.4.0:
+# il token del piano c'e', ma nessun interruttore che ci mandi la chat e'
+# acceso. E' esattamente lo stato in cui si ritrova chi aggiorna avendo usato i
+# due interruttori del ponte SENZA `provider_subscription`: le sue quattro
+# opzioni hanno cambiato nome e il Supervisor ha scartato i valori. Senza questa
+# riga la chat tornerebbe sul provider a consumo senza dirlo -- cioe' a pagare.
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]    && [ "${PROVIDER_SUBSCRIPTION}" != "true" ]    && [ "${CHAT_VIA_SUBSCRIPTION}" != "true" ] && [ "${BRIDGE_ENABLED}" != "true" ]; then
+  bashio::log.warning "Hai il token del piano Claude Max, ma nessun interruttore che ci mandi la chat e' acceso: le risposte passano dal provider a consumo. Se aggiorni dalla 2.3.x, le opzioni del ponte sono ora sotto la sezione «Ponte» e vanno riaccese una volta."
 fi
 
 if [ -z "${CLAUDE_API_KEY}" ] && [ -z "${OPENAI_API_KEY}" ] && [ -z "${OPENROUTER_API_KEY}" ] \

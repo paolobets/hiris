@@ -260,6 +260,10 @@ retention, and last the advanced fields that can open HIRIS's API on your LAN.
 `config.yaml`'s `options:` and `schema:` are kept in that same order — if you
 reorder one, reorder the other.
 
+Nested keys (`ponte`, `local_model`, `memory`) are the only thing the Supervisor
+renders as a titled section. They are used sparingly and never for credentials:
+nesting renames an option, and a renamed option loses its stored value silently.
+
 ### To get answers
 
 | Option | Description |
@@ -288,12 +292,22 @@ levers**: the chat goes over the bridge only when both are on
 so — "Bridge · turn the queue on (1 of 2)" and "Bridge · send the chat over it
 (2 of 2)" — and they sit next to each other on the page.
 
+Since 2.4.0 these four live under the `ponte:` key, which the Supervisor renders
+as a titled section — the only grouping it renders at all.
+
 | Option | Description |
 |---|---|
-| `bridge_enabled` | 1 of 2 — the queue that carries messages to the runner, and the sweep of expired ones. Alone it changes nothing you can see |
-| `chat_via_subscription` | 2 of 2 — routes chat turns into that queue. Alone it changes nothing: `bridge_enabled` must be on too |
-| `bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
-| `chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
+| `ponte.bridge_enabled` | 1 of 2 — the queue that carries messages to the runner, and the sweep of expired ones. Alone it changes nothing you can see |
+| `ponte.chat_via_subscription` | 2 of 2 — routes chat turns into that queue. Alone it changes nothing: `bridge_enabled` must be on too |
+| `ponte.bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
+| `ponte.chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
+
+> **Upgrading from 2.3.x?** Moving an option under a parent key changes its name,
+> and the Supervisor does not migrate values — it drops any key its schema does
+> not know (`supervisor/apps/options.py`). These four therefore come back at
+> their defaults, i.e. the bridge **off**. If you were using it, switch it back
+> on once under the new **Bridge** section. Everything else, credentials
+> included, was deliberately left flat and is untouched.
 
 ### General
 

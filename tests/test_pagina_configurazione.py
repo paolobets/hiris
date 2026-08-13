@@ -106,14 +106,16 @@ def test_le_opzioni_pericolose_lo_dicono_nell_etichetta(lingua):
         )
 
 
-def test_i_due_interruttori_del_ponte_sono_adiacenti():
+def test_i_due_interruttori_del_ponte_stanno_nella_stessa_sezione_e_adiacenti():
     """Non sono due decisioni: sono una decisione con due leve.
 
     `server.py::_chat_subscription_active` e' un AND: la chat passa dal ponte
     solo se sono accesi tutti e due. Separati da altri campi, come stavano fino
-    alla 2.2.1, quella congiunzione non era visibile da nessuna parte.
+    alla 2.2.1, quella congiunzione non era visibile da nessuna parte; dalla
+    2.4.0 stanno nella stessa sezione resa a schermo, uno sotto l'altro.
     """
-    ordine = list(_config()["options"])
+    ponte = _config()["options"]["ponte"]
+    ordine = list(ponte)
     assert abs(ordine.index("bridge_enabled") - ordine.index("chat_via_subscription")) == 1
 
 
@@ -122,9 +124,9 @@ def test_i_due_interruttori_del_ponte_sono_adiacenti():
     ("en", "(1 of 2)", "(2 of 2)"),
 ])
 def test_le_etichette_del_ponte_dichiarano_che_vanno_accesi_insieme(lingua, primo, secondo):
-    tradotte = _traduzioni(lingua)
-    assert primo in tradotte["bridge_enabled"]["name"]
-    assert secondo in tradotte["chat_via_subscription"]["name"]
+    ponte = _traduzioni(lingua)["ponte"]
+    assert primo in ponte["bridge_enabled"]["name"]
+    assert secondo in ponte["chat_via_subscription"]["name"]
 
 
 @pytest.mark.parametrize("lingua", ["it", "en"])
@@ -139,10 +141,17 @@ def test_nessuna_etichetta_ripete_la_parola_di_un_altro_concetto(lingua):
     parola vecchia non torna: se torna, torna anche l'ambiguita'.
     """
     parola = "abbonamento" if lingua == "it" else "subscription"
-    colpevoli = [
-        chiave for chiave, voce in _traduzioni(lingua).items()
-        if isinstance(voce, dict) and parola in voce.get("name", "").lower()
-    ]
+    colpevoli = []
+
+    def cerca(albero, prefisso=""):
+        for chiave, voce in albero.items():
+            if chiave in ("name", "description") or not isinstance(voce, dict):
+                continue
+            if parola in voce.get("name", "").lower():
+                colpevoli.append(prefisso + chiave)
+            cerca(voce, prefisso + chiave + ".")   # anche dentro le sezioni
+
+    cerca(_traduzioni(lingua))
     assert not colpevoli, (
         f"{lingua}.yaml: «{parola}» e' tornata nell'etichetta di {colpevoli}. "
         "Era la parola che tre interruttori diversi si contendevano"
@@ -192,12 +201,37 @@ def test_run_sh_esporta_ogni_opzione_dell_addon():
             attese.update(f"{nome}.{figlio}" for figlio in valore)
         else:
             attese.add(nome)
-    lette = set(re.findall(
-        r"bashio::config\s+'([^']+)'", (BASE / "run.sh").read_text(encoding="utf-8")))
+    # Solo le righe VIVE: il commento che spiega perche' una chiave si e'
+    # spostata cita la vecchia forma, e citarla non e' leggerla. (Stesso
+    # criterio di `test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti`.)
+    run_sh_vivo = "\n".join(
+        r for r in (BASE / "run.sh").read_text(encoding="utf-8").splitlines()
+        if not r.lstrip().startswith("#"))
+    lette = set(re.findall(r"bashio::config\s+'([^']+)'", run_sh_vivo))
     assert not (attese - lette), (
         f"opzioni che run.sh non esporta, quindi invisibili al codice: "
         f"{sorted(attese - lette)}"
     )
     assert not (lette - attese), (
         f"run.sh esporta opzioni che config.yaml non ha piu': {sorted(lette - attese)}"
+    )
+
+
+@pytest.mark.parametrize("lingua,prefisso", [("it", "Ponte"), ("en", "Bridge")])
+def test_dentro_la_sezione_ponte_le_etichette_non_ripetono_l_intestazione(lingua, prefisso):
+    """Il prefisso e l'intestazione fanno lo stesso lavoro: insieme lo fanno due
+    volte. Fuori da una sezione il prefisso e' l'unico raggruppamento che il
+    Supervisor mostra e quindi serve; dentro, lo porta gia' l'intestazione."""
+    ponte = _traduzioni(lingua)["ponte"]
+    assert prefisso.lower() in ponte["name"].lower(), (
+        "l'intestazione della sezione non nomina piu' il ponte: se sparisce da "
+        "li', i nomi dei figli restano senza contesto"
+    )
+    ripetitivi = [
+        chiave for chiave, voce in ponte.items()
+        if isinstance(voce, dict) and voce["name"].strip().lower().startswith(prefisso.lower() + " ·")
+    ]
+    assert not ripetitivi, (
+        f"{lingua}.yaml: dentro la sezione «{ponte['name']}» queste voci "
+        f"ripetono il prefisso che l'intestazione porta gia': {ripetitivi}"
     )

@@ -1,5 +1,50 @@
 # HIRIS — Changelog
 
+## [2.4.0] — La pagina ha una sezione vera (2026-08-13)
+
+**⚠️ Se aggiorni da una versione precedente, leggi il riquadro in fondo: quattro
+interruttori tornano al valore di partenza e vanno rimessi a mano una volta.**
+
+Le quattro opzioni del ponte — quelle che servono solo a chi usa il piano Claude Max —
+adesso stanno in un **blocco intitolato «Ponte — la chat sul piano Claude Max»**, invece
+di essere quattro voci sciolte in mezzo alle altre. La pagina passa da 20 voci di primo
+livello a 17, e chi non usa il piano ha un blocco solo da saltare invece di quattro campi
+da leggere e scartare.
+
+Dentro la sezione i nomi si accorciano, perché il titolo fa già il lavoro che facevano
+loro: «Ponte · accendi la coda (1 di 2)» diventa **«Accendi il ponte (1 di 2)»**.
+
+### Perché una sezione sola, e non cinque
+
+Perché il modo in cui Home Assistant disegna le sezioni ha un prezzo, e non è uguale per
+tutti i campi. Una sezione si ottiene solo mettendo le opzioni **sotto una voce madre**, e
+questo **cambia il nome dell'opzione**: al primo avvio dopo l'aggiornamento Home Assistant
+non riconosce più il vecchio nome e **butta via il valore che avevi salvato**, senza dirlo.
+Non è una cosa che si può aggirare: l'abbiamo verificata sul codice di Home Assistant, e
+non esiste nessun modo per l'add-on di recuperare il valore vecchio.
+
+Quindi la regola è stata: **si raggruppa solo dove perdere il valore costa poco.**
+
+- **Il ponte sì**, perché chi lo usa nel modo consigliato — «Provider · Piano Claude Max»
+  acceso, con il suo token — ha il ponte acceso *automaticamente* da quelle due voci, che
+  **non si sono mosse**. Per queste persone non cambia assolutamente niente.
+- **Le chiavi API e il token del piano no.** Sono la cosa più costosa da perdere e la più
+  noiosa da riscrivere: sono lunghe, sono segrete, e il token del piano si rigenera solo
+  da un'altra macchina. Restano dove sono.
+- **Le voci «Avanzate» no.** «Reti riconosciute come ingress» azzerata tornerebbe a un
+  valore **più largo** di quello che avevi messo tu — cioè aprirebbe l'accesso senza che
+  nessuno se ne accorga. E il token delle API interne rigenerato romperebbe in silenzio
+  chi ha collegato il gateway MCP. Una sezione a schermo non vale una porta che si apre
+  da sola.
+
+> **Cosa devi fare se aggiorni.** Se usavi il ponte accendendo a mano i due interruttori
+> **senza** «Provider · Piano Claude Max», dopo l'aggiornamento li trovi **spenti**,
+> insieme alla scadenza e al tetto giornaliero: la chat torna a rispondere dal provider a
+> pagamento. Riaccendili una volta nel nuovo blocco **«Ponte»** e rimetti i due numeri se
+> li avevi cambiati. Perché tu te ne accorga anche senza aver letto questa nota, all'avvio
+> HIRIS adesso **scrive nel registro** che hai il token del piano ma nessun interruttore
+> acceso. Tutto il resto — chiavi, provider, tema, conservazione, avanzate — è intatto.
+
 ## [2.3.1] — Sotto ogni campo c'era un tema, adesso c'è una riga (2026-08-13)
 
 La 2.3.0 aveva rimesso in ordine la pagina di configurazione. Restava il difetto che si
