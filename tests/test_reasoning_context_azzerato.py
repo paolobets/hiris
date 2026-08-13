@@ -194,7 +194,7 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     app["reasoning_queue"] = reasoning_queue
     app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
-    app["chat_via_subscription"] = True
+    app["ponte_attivo"] = True
 
     archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
     archivio_casa.sostituisci({

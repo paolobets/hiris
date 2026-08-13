@@ -1,18 +1,34 @@
 # HIRIS — Changelog
 
-## [2.4.0] — La pagina ha una sezione vera (2026-08-13)
+## [2.4.0] — La pagina ha una sezione vera, e il ponte un interruttore solo (2026-08-13)
 
-**⚠️ Se aggiorni da una versione precedente, leggi il riquadro in fondo: quattro
-interruttori tornano al valore di partenza e vanno rimessi a mano una volta.**
+**⚠️ Se aggiorni da una versione precedente, leggi il riquadro in fondo: le opzioni del
+ponte tornano al valore di partenza e vanno rimesse a mano una volta.**
 
-Le quattro opzioni del ponte — quelle che servono solo a chi usa il piano Claude Max —
-adesso stanno in un **blocco intitolato «Ponte — la chat sul piano Claude Max»**, invece
-di essere quattro voci sciolte in mezzo alle altre. La pagina passa da 20 voci di primo
-livello a 17, e chi non usa il piano ha un blocco solo da saltare invece di quattro campi
-da leggere e scartare.
+Le opzioni del ponte — quelle che servono solo a chi usa il piano Claude Max — adesso
+stanno in un **blocco intitolato «Ponte — la chat sul piano Claude Max»**, invece di essere
+voci sciolte in mezzo alle altre. E dentro quel blocco **gli interruttori sono diventati
+uno**.
 
-Dentro la sezione i nomi si accorciano, perché il titolo fa già il lavoro che facevano
-loro: «Ponte · accendi la coda (1 di 2)» diventa **«Accendi il ponte (1 di 2)»**.
+### Due interruttori che dovevano stare accesi insieme, adesso sono uno
+
+Fino a ieri il ponte si accendeva con **due** interruttori, e accenderne uno solo non
+faceva niente: dovevano essere accesi tutti e due. Li avevamo chiamati «(1 di 2)» e
+«(2 di 2)» proprio per farlo vedere. Ma un nome che dice *«sono una metà»* è la cura per
+un problema che si può togliere del tutto — e adesso si toglie: c'è **«Accendi il ponte»**,
+e basta.
+
+Non si perde niente per strada. La garanzia che i due interruttori proteggevano — che un
+messaggio non finisca mai in una coda che nessuno svuota — adesso non dipende più dal
+tenerli allineati: dipende dal fatto che il valore è uno solo, e non può essere in
+disaccordo con se stesso.
+
+**Se usi il piano Claude Max nel modo consigliato, non cambia niente per te**: il piano
+acceso con il suo token continua ad accendere il ponte da sé, come prima.
+
+La pagina passa da 20 voci di primo livello a 17, e chi non usa il piano ha un blocco solo
+da saltare invece di quattro campi da leggere e scartare. Dentro la sezione i nomi si
+accorciano, perché il titolo fa già il lavoro che facevano loro.
 
 ### Perché una sezione sola, e non cinque
 
@@ -37,13 +53,18 @@ Quindi la regola è stata: **si raggruppa solo dove perdere il valore costa poco
   chi ha collegato il gateway MCP. Una sezione a schermo non vale una porta che si apre
   da sola.
 
-> **Cosa devi fare se aggiorni.** Se usavi il ponte accendendo a mano i due interruttori
-> **senza** «Provider · Piano Claude Max», dopo l'aggiornamento li trovi **spenti**,
-> insieme alla scadenza e al tetto giornaliero: la chat torna a rispondere dal provider a
-> pagamento. Riaccendili una volta nel nuovo blocco **«Ponte»** e rimetti i due numeri se
-> li avevi cambiati. Perché tu te ne accorga anche senza aver letto questa nota, all'avvio
-> HIRIS adesso **scrive nel registro** che hai il token del piano ma nessun interruttore
-> acceso. Tutto il resto — chiavi, provider, tema, conservazione, avanzate — è intatto.
+> **Cosa devi fare se aggiorni.** Se usavi il ponte accendendolo a mano **senza**
+> «Provider · Piano Claude Max», dopo l'aggiornamento lo trovi **spento**, insieme alla
+> scadenza e al tetto giornaliero: la chat torna a rispondere dal provider a pagamento.
+> Cerca il blocco **«Ponte»**, accendi **«Accendi il ponte»** — è uno solo adesso, i due
+> di prima non esistono più — e rimetti i due numeri se li avevi cambiati. Perché tu te ne
+> accorga anche senza aver letto questa nota, all'avvio HIRIS adesso **scrive nel
+> registro** che hai il token del piano ma il ponte è spento.
+>
+> **Se usi il piano Claude Max nel modo consigliato** («Provider · Piano Claude Max»
+> acceso con il suo token) **non devi fare niente**: il ponte si riaccende da sé.
+>
+> Tutto il resto — chiavi, provider, tema, conservazione, avanzate — è intatto.
 
 ## [2.3.1] — Sotto ogni campo c'era un tema, adesso c'è una riga (2026-08-13)
 

@@ -106,27 +106,38 @@ def test_le_opzioni_pericolose_lo_dicono_nell_etichetta(lingua):
         )
 
 
-def test_i_due_interruttori_del_ponte_stanno_nella_stessa_sezione_e_adiacenti():
-    """Non sono due decisioni: sono una decisione con due leve.
+def test_il_ponte_ha_un_interruttore_solo():
+    """La fine di una storia lunga tre versioni.
 
-    `server.py::_chat_subscription_active` e' un AND: la chat passa dal ponte
-    solo se sono accesi tutti e due. Separati da altri campi, come stavano fino
-    alla 2.2.1, quella congiunzione non era visibile da nessuna parte; dalla
-    2.4.0 stanno nella stessa sezione resa a schermo, uno sotto l'altro.
+    Erano due leve che dovevano essere accese insieme (`bridge_enabled` e
+    `chat_via_subscription`, `_chat_subscription_active` = AND). La 2.2.1 le
+    aveva rese adiacenti, la 2.3.x le aveva chiamate «(1 di 2)» e «(2 di 2)»;
+    la 2.4.0 le fonde, perche' non erano due decisioni. Questo test e' l'unico
+    posto che impedisce alla seconda leva di ricomparire dalla porta di
+    servizio: una nuova opzione booleana dentro `ponte:` sarebbe di nuovo un
+    interruttore da tenere allineato a mano.
     """
     ponte = _config()["options"]["ponte"]
-    ordine = list(ponte)
-    assert abs(ordine.index("bridge_enabled") - ordine.index("chat_via_subscription")) == 1
+    interruttori = [k for k, v in ponte.items() if isinstance(v, bool)]
+    assert interruttori == ["attivo"], (
+        f"il ponte deve avere un interruttore solo, e chiamarsi «attivo»: {interruttori}"
+    )
+    assert "bridge_enabled" not in ponte and "chat_via_subscription" not in ponte
 
 
-@pytest.mark.parametrize("lingua,primo,secondo", [
-    ("it", "(1 di 2)", "(2 di 2)"),
-    ("en", "(1 of 2)", "(2 of 2)"),
-])
-def test_le_etichette_del_ponte_dichiarano_che_vanno_accesi_insieme(lingua, primo, secondo):
+@pytest.mark.parametrize("lingua", ["it", "en"])
+def test_l_etichetta_del_ponte_non_dice_piu_di_essere_una_meta(lingua):
+    """«(1 di 2)» e «(2 di 2)» erano la cura per una malattia -- due leve da
+    accendere insieme -- e se ne vanno con lei. Un nome deve dire cosa fa
+    l'interruttore, non che e' un pezzo di qualcos'altro."""
     ponte = _traduzioni(lingua)["ponte"]
-    assert primo in ponte["bridge_enabled"]["name"]
-    assert secondo in ponte["chat_via_subscription"]["name"]
+    nome = ponte["attivo"]["name"]
+    assert nome.strip()
+    for meta in ("(1 di 2)", "(2 di 2)", "(1 of 2)", "(2 of 2)"):
+        assert meta not in nome, (
+            f"{lingua}.yaml: «{meta}» e' tornata in «{nome}», ma il ponte "
+            "e' un interruttore solo: quel marcatore descriveva una coppia"
+        )
 
 
 @pytest.mark.parametrize("lingua", ["it", "en"])

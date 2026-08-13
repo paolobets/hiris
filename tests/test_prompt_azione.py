@@ -147,7 +147,7 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
 
 def test_il_benvenuto_dice_le_tre_cose_vere_dell_azione():
     """Le stesse tre di `claude_runner.BASE_REGOLE_STRUMENTI` e della voce
-    `chat_via_subscription`, e con le stesse parole: agisce SU RICHIESTA, non
+    `ponte.attivo`, e con le stesse parole: agisce SU RICHIESTA, non
     COSTRUISCE, non fa niente DA SOLA. Scritte in tre posti, divergono in una
     settimana se nessuno le tiene insieme."""
     benvenuto = _testi_che_legge_l_utente()["index.html"].lower()

@@ -135,13 +135,26 @@ options:
   llm_strategy: "balanced"
 
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
-  # I due interruttori sono ADIACENTI perche' non sono indipendenti: la chat
-  # passa dal ponte solo se sono accesi TUTTI E DUE (`server.py`,
-  # `_chat_subscription_active` = cfg AND bridge). Prima erano separati dai
-  # due valori numerici, e nessuno poteva vedere che vanno insieme.
-  # Il piano Claude Max attivo CON token li accende entrambi da solo
-  # (`_sub_first_class` e' OR-ato in tutti e due): l'etichetta e la
-  # descrizione lo dicono qui, dove l'utente li legge.
+  # UN INTERRUTTORE SOLO (decisione del proprietario, 13 agosto 2026).
+  # Fino alla 2.3.1 erano DUE -- `bridge_enabled` e `chat_via_subscription` --
+  # e la chat passava dal ponte solo se erano accesi tutti e due
+  # (`_chat_subscription_active` = cfg AND bridge). Non erano due decisioni: era
+  # una decisione con due leve, e nessuno stato in cui una sola fosse accesa
+  # produceva qualcosa di utile. L'AND sparisce, e con lui i nomi «(1 di 2)» /
+  # «(2 di 2)», che erano la cura per una malattia che qui si toglie.
+  #
+  # Il fail-safe che l'AND proteggeva -- non accodare mai un messaggio in una
+  # coda che nessuno spazza -- NON e' stato rimosso: e' diventato STRUTTURALE.
+  # La stessa espressione (`server.py::_ponte_attivo`) governa adesso sia la
+  # spazzata (`_reasoning_sweep`) sia l'instradamento, quindi i due non possono
+  # piu' essere in disaccordo. Prima potevano: con `chat_via_subscription`
+  # acceso e `bridge_enabled` spento il worker partiva e sondava una coda che
+  # nessuno riempiva.
+  #
+  # Il piano Claude Max attivo CON token continua ad accendere il ponte da solo
+  # (`_sub_first_class` e' OR-ato nell'unico gate rimasto): chi sta nella
+  # configurazione consigliata non si accorge di niente, ed e' la ragione per
+  # cui questa fusione costa poco.
   # «Li' la chat sa e fa quanto nell'altra modalita'» e' la forma corta di:
   # riceve il nucleo, i ricordi e le sessioni precedenti (parita' A) e -- QUANDO
   # la sonda `agent/runner.py::sonda_strumenti` riesce a ricollegarsi a
@@ -173,8 +186,7 @@ options:
   # run.sh adesso stampa un avviso esplicito all'avvio (token presente, ponte
   # spento) -- che trasforma un guasto silenzioso in uno rumoroso.
   ponte:
-    bridge_enabled: false
-    chat_via_subscription: false
+    attivo: false
     bridge_deadline_min: 5
     chat_daily_cap: 50
 
@@ -276,8 +288,7 @@ schema:
 
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
   ponte:
-    bridge_enabled: bool
-    chat_via_subscription: bool?
+    attivo: bool?
     bridge_deadline_min: int(1,120)
     chat_daily_cap: int(0,1000)?
 

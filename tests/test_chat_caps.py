@@ -5,7 +5,7 @@ untouched.
 
 Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
-- handle_chat gates on app["chat_via_subscription"] AND app["reasoning_queue"]
+- handle_chat gates on app["ponte_attivo"] AND app["reasoning_queue"]
   present (``_bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
   stores context as JSON; the chat job context carries "chatbot_id" (NOT
@@ -68,7 +68,7 @@ def _make_impostazioni(*, max_chat_turns=0):
     )
 
 
-def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
+def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
               chat_daily_cap=None, runner=None, max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -86,7 +86,7 @@ def _make_app(tmp_path, *, chat_via_subscription=True, with_queue=True,
     app["claude_runner"] = runner
     app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
-    app["chat_via_subscription"] = chat_via_subscription
+    app["ponte_attivo"] = ponte_attivo
     if chat_daily_cap is not None:
         app["chat_daily_cap"] = chat_daily_cap
 
@@ -241,10 +241,10 @@ async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
 
 @pytest.mark.asyncio
 async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
-    """With chat_via_subscription OFF, handle_chat must use the sync path
+    """Con il ponte SPENTO, handle_chat deve usare il percorso sincrono
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=False, chat_daily_cap=0)
+        tmp_path, ponte_attivo=False, chat_daily_cap=0)
     # Pre-seed a "pending" chat job on the queue -- fetta E4 Task 5:
     # has_pending_chat() is unconditional now (no id to key it by) -- if the
     # guard wrongly applied to the sync path this would still 409.
@@ -265,7 +265,7 @@ async def test_chat_accepts_new_chatbot_id_key(tmp_path):
     Chatbot (l'entita' e' uscita) -- viene accettato e ignorato. Quello che
     resta da verificare e' che mandarlo non rompa nulla: la chat risponde
     comunque sul percorso sincrono."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": "qualunque-id"})
         assert resp.status == 200
@@ -278,7 +278,7 @@ async def test_chat_still_accepts_legacy_agent_id_key(tmp_path):
     """Retro-compat: older clients / Lovelace card configs sending "agent_id"
     must keep working unchanged after the chat-wire rename to "chatbot_id" --
     stesso discorso di sopra, anche questo id non seleziona piu' niente."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": "qualunque-id"})
         assert resp.status == 200
@@ -304,7 +304,7 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     runner.last_tool_calls = []
     runner.last_thinking_blocks = []
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=False, chat_daily_cap=0, runner=runner)
+        tmp_path, ponte_attivo=False, chat_daily_cap=0, runner=runner)
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -315,11 +315,11 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
-    """chat_via_subscription on but bridge not wired (no reasoning_queue) ->
+    """ponte_attivo on but bridge not wired (no reasoning_queue) ->
     existing Task 2 fallback to sync path; the new guards must not blow up
     without a queue to query."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=True, with_queue=False, chat_daily_cap=0)
+        tmp_path, ponte_attivo=True, with_queue=False, chat_daily_cap=0)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200

@@ -34,7 +34,7 @@ def test_explicit_toggles_win_over_credentials():
 def test_legacy_subscription_flag_migrates():
     cfg = {"provider_subscription": False, "provider_claude": False,
            "provider_openai": False, "provider_openrouter": False,
-           "provider_ollama": False, "chat_via_subscription": True}
+           "provider_ollama": False, "ponte_attivo": True}
     creds = _creds(subscription=True)
     active = derive_active_providers(cfg, creds)
     assert active["subscription"] is True

@@ -63,17 +63,32 @@ def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
     return task
 
 
-def _chat_subscription_active(cfg_on: bool, bridge_on: bool) -> bool:
-    """Slice 4b final-review Fix 2: the release's #1 fail-safe, extracted to a
-    tiny pure function so the invariant is unit-tested against REAL code
-    (see test_chat_subscription_path.py) rather than a hand-copied
-    truth-table or a substring match on the source. The chat-via-abbonamento
-    addon option must NEVER activate unless the reasoning-queue bridge is
-    ALSO genuinely enabled (BRIDGE_ENABLED) — otherwise chat jobs get
-    enqueued into a queue nothing sweeps/claims/prunes and sit pending
-    forever. Both must be True; an ``or`` here would be a silent regression.
+def _ponte_attivo(interruttore: bool, piano_attivo: bool) -> bool:
+    """Il ponte e' acceso se lo accendi, o se il Piano Claude Max lo implica.
+
+    Fino alla 2.3.1 questa funzione si chiamava `_chat_subscription_active` ed
+    era un AND fra DUE opzioni dell'add-on (`chat_via_subscription` e
+    `bridge_enabled`). L'AND era il fail-safe numero uno del rilascio: senza,
+    si poteva instradare la chat in una coda che nessuno spazzava, e i
+    messaggi restavano pendenti per sempre.
+
+    Il proprietario ha fuso i due interruttori in uno solo (`ponte.attivo`,
+    13 agosto 2026), e il fail-safe NON e' stato rimosso: e' diventato
+    STRUTTURALE. Questa unica espressione governa adesso sia la spazzata
+    (`_reasoning_sweep`) sia l'instradamento, quindi i due non possono piu'
+    essere in disaccordo — mentre prima potevano, ed erano governati da leve
+    diverse. L'invariante «non accodare mai in una coda che nessuno spazza»
+    oggi non regge su un `and` da non sbagliare, ma sul fatto che c'e' un
+    valore solo.
+
+    `piano_attivo` e' `_sub_first_class`, cioe' Piano Claude Max acceso CON il
+    suo token: continua a implicare il ponte, cosi' chi sta nella
+    configurazione consigliata non deve accendere niente.
+
+    Rimettere qui un AND fra due valori farebbe cadere
+    `test_chat_subscription_path.py::test_il_ponte_e_un_interruttore_solo`.
     """
-    return cfg_on and bridge_on
+    return interruttore or piano_attivo
 
 
 # fetta «la pagina di configurazione» (2.3.0): `_parse_policy_csv` esce con la
@@ -426,12 +441,20 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
 
 
 def should_start_agent_worker() -> bool:
-    """Gate worker chat-via-abbonamento in-addon (SP-2): attivo quando
-    l'abbonamento è attivo (provider_subscription, o il legacy
-    chat_via_subscription) E un token OAuth è presente."""
+    """Gate worker del ponte in-addon: attivo quando il Piano Claude Max e'
+    acceso (`provider_subscription`) oppure il ponte lo e' (`ponte.attivo`,
+    che esporta BRIDGE_ENABLED), E un token OAuth e' presente.
+
+    Fino alla 2.3.1 la seconda meta' della condizione leggeva
+    CHAT_VIA_SUBSCRIPTION: era una delle tre cose che quell'opzione faceva, e
+    l'unica che `bridge_enabled` non faceva. Fuse le due opzioni, questo gate
+    e quello della spazzata leggono finalmente lo STESSO valore — prima si
+    poteva far partire il worker (via `chat_via_subscription`) lasciando
+    spenta la spazzata (`bridge_enabled`), e il worker sondava una coda che
+    nessuno riempiva."""
     sub_on = (
         env_bool("PROVIDER_SUBSCRIPTION")
-        or env_bool("CHAT_VIA_SUBSCRIPTION")
+        or env_bool("BRIDGE_ENABLED")
     )
     return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
@@ -968,7 +991,12 @@ async def _on_startup(app: web.Application) -> None:
         "provider_openai": env_bool("PROVIDER_OPENAI"),
         "provider_openrouter": env_bool("PROVIDER_OPENROUTER"),
         "provider_ollama": env_bool("PROVIDER_OLLAMA"),
-        "chat_via_subscription": env_bool("CHAT_VIA_SUBSCRIPTION"),
+        # Terza cosa che `chat_via_subscription` faceva, e la meno ovvia: su un
+        # install pre-SP-2 (nessun `provider_*` acceso) e' questa chiave a
+        # decidere se l'abbonamento conta come provider ATTIVO. Fusa nella
+        # sola `ponte.attivo`, il senso resta: «ho acceso il ponte e ho il
+        # token, quindi il mio provider e' l'abbonamento».
+        "ponte_attivo": env_bool("BRIDGE_ENABLED"),
     }
     _prov_creds = {
         "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
@@ -981,11 +1009,10 @@ async def _on_startup(app: web.Application) -> None:
     app["active_providers"] = _active
 
     # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
-    # bridge attivo -- il fail-safe #1 (_chat_subscription_active = cfg AND
-    # bridge, invariato) altrimenti bloccherebbe la chat lasciando i job
+    # bridge attivo -- senza, la chat resterebbe bloccata lasciando i job
     # 'chat' in coda senza nessuno che li spazzi/reclami/pruni. Calcolato qui,
     # PRIMA di ogni gate più sotto che legge BRIDGE_ENABLED dall'env
-    # (_reasoning_sweep, il wiring di chat_via_subscription poco più in
+    # (_reasoning_sweep e il cablaggio di `app["ponte_attivo"]` poco più in
     # basso -- fetta E3 Task 4: il terzo gate, l'enqueue di
     # `_holistic_reason`, e' uscito con lei), così ognuno di quei punti vede
     # l'abbonamento senza duplicare il parsing env. Vedi task-3-report.md per
@@ -1383,7 +1410,10 @@ async def _on_startup(app: web.Application) -> None:
     # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
     # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
     async def _reasoning_sweep() -> None:
-        if not env_bool("BRIDGE_ENABLED") and not _sub_first_class:
+        # Stesso combinatore dell'instradamento, piu' in basso: e' cosi' che il
+        # fail-safe «mai accodare in una coda che nessuno spazza» regge adesso
+        # che l'AND fra due opzioni non c'e' piu'.
+        if not _ponte_attivo(env_bool("BRIDGE_ENABLED"), _sub_first_class):
             return
         for job in reasoning_queue.sweep_expired(_time.time()):
             if job.get("kind") != "chat":
@@ -1396,38 +1426,27 @@ async def _on_startup(app: web.Application) -> None:
         _reasoning_sweep, trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
-    # Slice 4b Task 5: the chat_via_subscription addon option only takes
-    # effect when the bridge is ALSO truly usable. handlers_chat._bridge_on
-    # just checks that app["reasoning_queue"] is wired -- and it always is in
-    # prod (created unconditionally a few lines above) -- so on its own it's
-    # not a signal that anything actually claims/sweeps/prunes those jobs.
-    # That sweeping/pruning (_reasoning_sweep just above, for the chat kind
-    # it still processes) is gated on BRIDGE_ENABLED, read the same way here
-    # as everywhere else in this module. Gating the flag itself at this
-    # single wiring point -- rather than teaching _bridge_on about
-    # BRIDGE_ENABLED -- keeps handlers_chat.py's tests able to wire/unwire
-    # the queue directly without touching env vars, while still making sure
-    # chat_via_subscription=true + BRIDGE_ENABLED=0 enqueues nothing that
-    # would sit pending forever and grow the DB.
+    # Il punto di cablaggio: da qui `handle_chat` sa se instradare il turno
+    # sul ponte. `handlers_chat._bridge_on` verifica soltanto che
+    # `app["reasoning_queue"]` sia agganciata -- e in produzione lo e' sempre,
+    # perche' la coda si crea incondizionatamente poche righe piu' su -- quindi
+    # da sola non dice che qualcuno reclami o spazzi quei job. E' questo valore
+    # a dirlo. Tenere il gate QUI, invece di insegnare BRIDGE_ENABLED a
+    # `_bridge_on`, lascia ai test di handlers_chat.py la possibilita' di
+    # agganciare o sganciare la coda senza toccare le variabili d'ambiente.
     #
-    # SP-2 T3: provider_subscription (first-class) must ALSO force the bridge
-    # on, everywhere BRIDGE_ENABLED is read -- not just here. _sub_first_class
-    # (computed once, right after _active above) is OR'd into all remaining
-    # BRIDGE_ENABLED reads in this module: _reasoning_sweep's early-return
-    # (fetta E3 Task 4: this used to be one of three, the holistic-enqueue
-    # read went with `_holistic_reason`) and this cfg/bridge derivation.
-    # Missing it would leave a hole where the fail-safe below
-    # (_chat_subscription_active, still a strict AND) blocks chat while the
-    # sweep that's supposed to drain the queue never runs.
-    _bridge_enabled = (
-        env_bool("BRIDGE_ENABLED")
-        or _sub_first_class  # SP-2: abbonamento attivo implica il bridge (sweep coda)
-    )
-    _chat_via_subscription_cfg = (
-        env_bool("CHAT_VIA_SUBSCRIPTION")
-        or _sub_first_class
-    )
-    app["chat_via_subscription"] = _chat_subscription_active(_chat_via_subscription_cfg, _bridge_enabled)
+    # SP-2 T3: `provider_subscription` first-class deve forzare il ponte
+    # ovunque BRIDGE_ENABLED sia letto, non solo qui. `_sub_first_class`
+    # (calcolata una volta, subito dopo `_active`) entra in tutti e due i punti
+    # rimasti: l'uscita anticipata di `_reasoning_sweep` e questo cablaggio.
+    #
+    # Fusione dei due interruttori (2.4.0): qui c'erano DUE derivazioni --
+    # `_bridge_enabled` e `_chat_via_subscription_cfg` -- combinate da un AND,
+    # ed era quello il fail-safe. Adesso il valore e' uno, calcolato dalla
+    # stessa funzione che governa la spazzata: i due gate leggono la medesima
+    # espressione e non possono divergere. Il fail-safe non e' sparito, ha
+    # cambiato natura -- da regola da non sbagliare a struttura.
+    app["ponte_attivo"] = _ponte_attivo(env_bool("BRIDGE_ENABLED"), _sub_first_class)
 
     # fetta E3 Task 4: l'arrivo serale (watcher/arrival.py, ArrivalWatcher)
     # e' uscito -- riusava lo stesso adapter `_on_situation` della ronda,

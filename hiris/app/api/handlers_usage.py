@@ -55,7 +55,7 @@ _MSG_NESSUN_PROVIDER = (
 
 def _non_misurata(app) -> dict:
     """Il corpo che dichiara l'indisponibilità della misura, col suo perché."""
-    if app.get("chat_via_subscription"):
+    if app.get("ponte_attivo"):
         motivo, messaggio = "abbonamento", _MSG_ABBONAMENTO
     else:
         motivo, messaggio = "nessun_provider", _MSG_NESSUN_PROVIDER

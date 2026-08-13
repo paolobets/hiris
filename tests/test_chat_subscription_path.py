@@ -1,6 +1,6 @@
 """Slice 4b Task 2: async subscription path for handle_chat.
 
-When ``app["chat_via_subscription"]`` is truthy AND the reasoning-queue
+When ``app["ponte_attivo"]`` is truthy AND the reasoning-queue
 bridge is wired (``app["reasoning_queue"]`` present — see
 ``handlers_chat._bridge_on``), ``handle_chat`` must:
   1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
@@ -66,7 +66,7 @@ def _make_impostazioni(*, max_chat_turns=0):
     )
 
 
-def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=None,
+def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
               max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -84,7 +84,7 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
     app["claude_runner"] = runner
     app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
-    app["chat_via_subscription"] = chat_via_subscription
+    app["ponte_attivo"] = ponte_attivo
 
     q = None
     if with_queue:
@@ -102,7 +102,7 @@ def _make_app(tmp_path, *, chat_via_subscription=False, with_queue=True, runner=
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -138,7 +138,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #     ponte (regole-fetta.md), sono della fetta B.
     # Questo e' il test che impedisce a un task futuro di aggiungerne meta'
     # in silenzio, e quello che dice a chi verra' dopo dove guardare.
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -153,7 +153,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=False)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -165,7 +165,7 @@ async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
 
 @pytest.mark.asyncio
 async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=False, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -178,14 +178,14 @@ async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
 # ---------------------------------------------------------------------------
 # Final-review Fix 1: max_chat_turns must be enforced BEFORE the subscription
 # branch, not just on the sync path. Before the fix, an agent with a session
-# turn limit chatted indefinitely once chat_via_subscription was on, because
+# turn limit chatted indefinitely once the bridge was on, because
 # the check sat after the subscription branch's early return (unreachable in
 # that mode).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_max_turns_reached_blocks_subscription_path(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     impostazioni.max_chat_turns = 1
     from hiris.app.chat_store import append_messages
     append_messages([
@@ -210,7 +210,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_path):
     """Sanity check: the hoisted check must not block turns that are still
     under the limit -- the subscription path must remain reachable."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     impostazioni.max_chat_turns = 5
     from hiris.app.chat_store import append_messages
     append_messages([
@@ -233,7 +233,7 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
 
 @pytest.mark.asyncio
 async def test_user_message_persisted_before_enqueue(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
@@ -244,7 +244,7 @@ async def test_user_message_persisted_before_enqueue(tmp_path):
 
 @pytest.mark.asyncio
 async def test_job_context_history_includes_current_user_turn(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "prima domanda"})
         body = await resp.json()
@@ -262,7 +262,7 @@ async def test_job_context_history_includes_current_user_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_pending_then_done(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -285,7 +285,7 @@ async def test_poll_route_pending_then_done(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_unknown_job_id_404(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/chat/reply/does-not-exist")
         assert resp.status == 404
@@ -300,7 +300,7 @@ async def test_poll_route_unknown_job_id_404(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -319,7 +319,7 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -344,7 +344,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
     """Mirrors Task 1's chat_reply_skipped outcome: the job reached
     'decided' but the decision carries no truthy 'reply' (e.g. the runner's
     decision was empty/garbage). The UI must stop polling, not spin forever."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -364,7 +364,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
 async def test_poll_route_pending_job_still_returns_pending(tmp_path):
     """Sanity check: a genuinely in-flight job (not yet claimed) still polls
     as pending -- the terminal-state handling must not regress this."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -378,7 +378,7 @@ async def test_poll_route_pending_job_still_returns_pending(tmp_path):
 async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
     """A job claimed by the external runner but not yet submitted is still
     in-flight -- must poll as pending, not error."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -409,7 +409,7 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ricordati che la caldaia perde"})
         job_id = (await resp.json())["job_id"]
@@ -449,7 +449,7 @@ async def test_poll_route_decision_senza_tools_called_non_porta_debug(tmp_path):
     # un `debug` vuoto -- resta esattamente come prima di questo task
     # (`test_poll_route_pending_then_done`, sopra, lo pinna gia' su questo
     # stesso ramo: qui si pinna che il comportamento non e' cambiato).
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         job_id = (await resp.json())["job_id"]
@@ -471,7 +471,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
     # chiave (quella e' il caso del test sopra). La chiave deve comparire lo
     # stesso, con la lista vuota dentro: e' cosi' che la E5 distingue "il
     # ponte ha girato e non ha chiamato nulla" da "questa decision non lo sa".
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_via_subscription=True, with_queue=True)
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "che ore sono?"})
         job_id = (await resp.json())["job_id"]
@@ -511,84 +511,123 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # e' stato toccato dalla fetta senza aggiornare la nota.
 # ---------------------------------------------------------------------------
 
-def test_chat_via_subscription_wiring_requires_bridge_enabled_in_source():
-    import inspect
-    from hiris.app import server
+# ---------------------------------------------------------------------------
+# LA FUSIONE DEI DUE INTERRUTTORI (2.4.0).
+#
+# Qui stavano sei test che pinnavano un AND: `_chat_subscription_active(cfg,
+# bridge)` doveva essere `and`, mai `or`, perche' era il fail-safe numero uno
+# del rilascio -- senza, si poteva instradare la chat in una coda che nessuno
+# spazzava. Il proprietario ha fuso `bridge_enabled` e `chat_via_subscription`
+# in un interruttore solo (`ponte.attivo`): l'AND non ha piu' due valori da
+# combinare, e quei sei test non hanno piu' un soggetto.
+#
+# Il fail-safe pero' NON e' stato rimosso: e' diventato strutturale. La stessa
+# espressione (`server._ponte_attivo`) governa adesso la spazzata E
+# l'instradamento, quindi i due non possono divergere -- mentre prima erano
+# governati da opzioni diverse e potevano. Quello che segue pinna la nuova
+# forma dell'invariante, non la vecchia.
+# ---------------------------------------------------------------------------
 
-    src = inspect.getsource(server._on_startup)
-    assert 'app["chat_via_subscription"] =' in src
-    # The assigned expression must combine the CHAT_VIA_SUBSCRIPTION config
-    # read with a BRIDGE_ENABLED check -- not the config flag alone.
-    assign_pos = src.index('app["chat_via_subscription"] =')
-    tail = src[assign_pos:assign_pos + 400]
-    assert "CHAT_VIA_SUBSCRIPTION" in tail or "_chat_via_subscription_cfg" in tail
-    assert "_bridge_enabled" in tail or "BRIDGE_ENABLED" in tail
-
-
-def test_chat_via_subscription_env_var_read_same_convention_as_bridge_enabled():
-    """CHAT_VIA_SUBSCRIPTION must be parsed with the exact same truthy-string
-    convention used everywhere else in this module for boolean env vars
-    (BRIDGE_ENABLED, BRAIN_NOTIFY_HIGH, ...) --
-    '1'/'true'/'yes'/'on' -- so ops behavior is consistent across knobs.
-
-    SP-2 tech-debt: the idiom is now unified behind env_util.env_bool (still
-    the same '1'/'true'/'yes'/'on' truthy set), so this pins the call to the
-    shared helper instead of a hand-rolled `.strip().lower() in (...)`."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert 'env_bool("CHAT_VIA_SUBSCRIPTION")' in src
+from hiris.app.server import _ponte_attivo
 
 
-@pytest.mark.parametrize("cfg,bridge,expected", [
+@pytest.mark.parametrize("interruttore,piano,atteso", [
+    (True, False, True),    # l'interruttore da solo basta -- era False con l'AND
+    (False, True, True),    # il Piano Claude Max da solo basta -- era False con l'AND
     (True, True, True),
-    (True, False, False),
-    (False, True, False),
-    (False, False, False),
+    (False, False, False),  # nessuno dei due: il ponte resta spento
 ])
-def test_chat_via_subscription_gate_truth_table(cfg, bridge, expected):
-    """Final-review Fix 2: exercises the REAL gate combinator
-    (``server._chat_subscription_active``), not a hand-copied truth table --
-    so an ``and`` -> ``or`` regression in the actual function fails this
-    test. Config flag alone must NEVER activate the async path when the
-    bridge (BRIDGE_ENABLED) is off, and vice versa."""
-    from hiris.app.server import _chat_subscription_active
+def test_il_ponte_e_un_interruttore_solo(interruttore, piano, atteso):
+    """Prova per mutazione della fusione.
 
-    assert _chat_subscription_active(cfg, bridge) is expected
+    Le prime due righe sono quelle che cadono se qualcuno rimette l'AND: con
+    `and` darebbero entrambe False. Sono qui apposta, e il commento accanto
+    dice cosa valevano prima, cosi' chi legge il fallimento capisce subito che
+    ha riportato indietro la coppia di leve invece di aver rotto altro.
+
+    L'ultima riga e' l'invariante che sopravvive alla fusione: senza ne'
+    interruttore ne' piano, il ponte NON si accende.
+    """
+    assert _ponte_attivo(interruttore, piano) is atteso
 
 
-def test_on_startup_wires_chat_via_subscription_through_the_real_gate_function():
-    """Complements the truth-table test above: pins that _on_startup's
-    wiring point actually CALLS _chat_subscription_active rather than
-    reimplementing the boolean logic inline (where an ``and``->``or``
-    regression would be invisible to the truth-table test, which only
-    exercises the extracted function directly)."""
+def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
+    """E' cosi' che il fail-safe regge ora che non c'e' piu' un AND.
+
+    Prima l'invariante «non accodare mai in una coda che nessuno spazza» era
+    una regola da non sbagliare: due opzioni distinte, combinate a mano nel
+    punto giusto. Adesso e' una struttura: `_reasoning_sweep` e il cablaggio di
+    `app["ponte_attivo"]` chiamano la STESSA funzione sullo STESSO valore, e
+    non possono dire cose diverse. Se qualcuno riscrivesse uno dei due gate a
+    mano, l'invariante tornerebbe a dipendere dall'attenzione: questo test lo
+    impedisce.
+    """
     import inspect
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    assign_pos = src.index('app["chat_via_subscription"] =')
-    line_end = src.index("\n", assign_pos)
-    assert "_chat_subscription_active(" in src[assign_pos:line_end]
+
+    riga_cablaggio = next(
+        r for r in src.splitlines() if 'app["ponte_attivo"] =' in r)
+    assert "_ponte_attivo(" in riga_cablaggio, (
+        "il cablaggio non passa piu' dal combinatore condiviso: la logica "
+        "booleana e' stata riscritta a mano nel punto di assegnazione"
+    )
+
+    sweep_pos = src.index("async def _reasoning_sweep()")
+    corpo_sweep = src[sweep_pos:sweep_pos + 500]
+    assert "_ponte_attivo(" in corpo_sweep, (
+        "la spazzata non passa piu' dal combinatore condiviso: puo' tornare a "
+        "essere in disaccordo con l'instradamento, ed e' esattamente il buco "
+        "che l'AND di prima serviva a chiudere"
+    )
 
 
-# ---------------------------------------------------------------------------
-# SP-2 Task 3: provider_subscription first-class -- must derive BOTH cfg and
-# bridge, preserving the cfg AND bridge fail-safe (never weakened to an OR).
-# ---------------------------------------------------------------------------
+def test_il_gate_legge_la_variabile_col_convenzionale_env_bool():
+    """La convenzione dei booleani non cambia con la fusione: '1'/'true'/'yes'/
+    'on' via `env_util.env_bool`, come ogni altro interruttore del modulo."""
+    import inspect
+    from hiris.app import server
 
-from hiris.app.server import _chat_subscription_active
-
-
-def test_subscription_first_class_implies_bridge():
-    # provider_subscription attivo => cfg e bridge entrambi True => attivo
-    assert _chat_subscription_active(True, True) is True
+    src = inspect.getsource(server._on_startup)
+    assert 'env_bool("BRIDGE_ENABLED")' in src
 
 
-def test_subscription_without_bridge_still_fails_closed():
-    # invariante preservata: manca il bridge => NON attivo (fail-safe #1)
-    assert _chat_subscription_active(True, False) is False
+def test_la_seconda_leva_non_esiste_piu_da_nessuna_parte():
+    """L'opzione fusa non deve rientrare dalla porta di servizio.
+
+    Un'opzione vive in cinque posti: bastava che ne resuscitasse uno perche'
+    tornasse a esserci una seconda leva da tenere allineata a mano.
+    """
+    import pathlib as _pl
+
+    import yaml
+
+    base = _pl.Path(__file__).resolve().parents[1] / "hiris"
+    cfg = yaml.safe_load((base / "config.yaml").read_text(encoding="utf-8"))
+    assert "chat_via_subscription" not in cfg["options"]["ponte"]
+    assert "chat_via_subscription" not in cfg["schema"]["ponte"]
+
+    vive = [r for r in (base / "run.sh").read_text(encoding="utf-8").splitlines()
+            if not r.lstrip().startswith("#")]
+    assert not [r for r in vive if "CHAT_VIA_SUBSCRIPTION" in r]
+
+    for lingua in ("it", "en"):
+        testo = (base / "translations" / f"{lingua}.yaml").read_text(encoding="utf-8")
+        tradotte = yaml.safe_load(testo)["configuration"]
+        assert "chat_via_subscription" not in tradotte["ponte"]
+
+    app_py = (base / "app" / "server.py").read_text(encoding="utf-8").splitlines()
+    codice = [r for r in app_py if not r.lstrip().startswith("#")]
+    assert not [r for r in codice if 'env_bool("CHAT_VIA_SUBSCRIPTION")' in r]
+
+
+def test_il_piano_claude_max_continua_a_implicare_il_ponte():
+    """Il comportamento che la fusione NON doveva cambiare: chi sta nella
+    configurazione consigliata (Piano Claude Max acceso col suo token) ha il
+    ponte acceso senza toccare niente. E' la ragione per cui questa fusione
+    costava poco, quindi merita un test suo."""
+    assert _ponte_attivo(False, True) is True
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +648,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.memoria.archivio import ArchivioMemoria
 
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=True, with_queue=True)
+        tmp_path, ponte_attivo=True, with_queue=True)
 
     archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
     archivio_casa.sostituisci({
@@ -663,7 +702,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     Fino al fix round 1 non c'era una riga da nessuna parte -- l'impostazione
     risultava salvata e non faceva niente, in silenzio."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=True, with_queue=True)
+        tmp_path, ponte_attivo=True, with_queue=True)
     app["impostazioni_chat"] = ImpostazioniChat(
         nome="test-agent", system_prompt="You are a helpful assistant.",
         thinking_budget=8000,
@@ -686,7 +725,7 @@ async def test_il_ponte_non_dice_niente_con_thinking_budget_a_zero(tmp_path, cap
     """A 0 (il default) non c'e' niente da dichiarare: un warning a ogni turno
     su ogni installazione sarebbe rumore che insegna a ignorare i log."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, chat_via_subscription=True, with_queue=True)
+        tmp_path, ponte_attivo=True, with_queue=True)
     with caplog.at_level("WARNING"):
         async with TestClient(TestServer(app)) as client:
             assert (await client.post("/api/chat", json={"message": "ciao"})).status == 202

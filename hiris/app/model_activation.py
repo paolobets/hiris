@@ -26,7 +26,7 @@ def derive_active_providers(cfg: dict, creds: dict) -> dict[str, bool]:
         if legacy:
             # migrazione: attivo = credenziale presente (+ flag legacy abbonamento)
             if p == "subscription":
-                active[p] = has_cred and bool(cfg.get("chat_via_subscription", False))
+                active[p] = has_cred and bool(cfg.get("ponte_attivo", False))
             else:
                 active[p] = has_cred
         else:

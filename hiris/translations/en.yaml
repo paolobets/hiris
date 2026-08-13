@@ -11,8 +11,7 @@ configuration:
   # Supervisor only renders nested dicts on screen (`ponte:`, `local_model:`,
   # `memory:`), and everywhere else the "Provider · " and "Advanced · "
   # prefixes remain. Inside a section the prefix is NOT repeated: the heading
-  # already carries it. And "(1 of 2)"/"(2 of 2)" already say half of what the
-  # old descriptions spelled out.
+  # already carries it.
   #
   # it/en parity pinned by `tests/test_traduzioni_coprono_le_opzioni.py`, which
   # also pins "not measured" in `claude_code_oauth_token`.
@@ -69,18 +68,20 @@ configuration:
   # ── 3. Bridge: the chat on the Claude Max plan ────────────────────────────
   # Nested under `ponte:` in 2.4.0: it is the only grouping the Supervisor
   # renders on screen. With the section heading carrying it, the "Bridge · "
-  # prefix leaves the four names -- repeating it four times inside a block
-  # already called "Bridge" was exactly the redundancy this round removes. The
-  # names still stand on their own, because they name the bridge.
+  # prefix leaves the children's names -- repeating it inside a block already
+  # called "Bridge" was exactly the redundancy this work removes. The names
+  # still stand on their own.
+  #
+  # ONE SWITCH ONLY (13 August 2026). There were two, "(1 of 2)" and
+  # "(2 of 2)": those markers were the cure for an illness -- two levers that
+  # had to be on together -- and they leave with it. Now the name says what
+  # the switch DOES, which is what a name is for.
   ponte:
     name: "Bridge — the chat on the Claude Max plan"
-    description: "Only needed if you use the Claude Max plan. Both switches must be on, and an active plan turns them on by itself."
-    bridge_enabled:
-      name: "Turn the bridge on (1 of 2)"
-      description: "Turns on the queue that carries messages to the runner. Not enough alone: (2 of 2) is needed too. An active Claude Max plan turns it on by itself."
-    chat_via_subscription:
-      name: "Send the chat over the bridge (2 of 2)"
-      description: "Sends the chat to the plan's runner instead of the metered provider. (1 of 2) is needed too. There the chat knows and does as much as elsewhere."
+    description: "Only needed if you use the Claude Max plan. If the plan is on with its token, the bridge turns itself on and there is nothing to do here."
+    attivo:
+      name: "Turn the bridge on"
+      description: "Sends the chat to the plan's runner instead of the metered provider. There the chat knows and does as much as elsewhere."
     bridge_deadline_min:
       name: "How long to wait for a reply (minutes)"
       description: "Past this time the message expires: an error in chat, no fallback to the metered provider. From 1 to 120, default 5."

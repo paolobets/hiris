@@ -12,8 +12,7 @@ configuration:
   # Supervisor rende a schermo solo i dizionari annidati (`ponte:`,
   # `local_model:`, `memory:`), e per tutto il resto restano i prefissi
   # «Provider · » e «Avanzate · ». Dentro una sezione il prefisso NON si ripete:
-  # lo porta gia' l'intestazione. E «(1 di 2)»/«(2 di 2)» dicono da soli meta'
-  # di cio' che le vecchie descrizioni spiegavano.
+  # lo porta gia' l'intestazione.
   #
   # Parita' it/en pinnata da `tests/test_traduzioni_coprono_le_opzioni.py`, che
   # pinna anche «non si misurano» in `claude_code_oauth_token`.
@@ -70,19 +69,20 @@ configuration:
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
   # Annidate sotto `ponte:` nella 2.4.0: e' l'unico raggruppamento che il
   # Supervisor rende a schermo. Con l'intestazione della sezione a portarlo, il
-  # prefisso «Ponte · » esce dai quattro nomi -- ripeterlo quattro volte dentro
-  # un blocco che gia' si chiama «Ponte» era esattamente la ridondanza che
-  # questo giro toglie. I nomi restano comunque autosufficienti se letti da
-  # soli, perche' nominano il ponte.
+  # prefisso «Ponte · » esce dai nomi dei figli -- ripeterlo dentro un blocco
+  # che gia' si chiama «Ponte» era esattamente la ridondanza che questo lavoro
+  # toglie. I nomi restano comunque autosufficienti se letti da soli.
+  #
+  # UN INTERRUTTORE SOLO (13 agosto 2026). Erano due, «(1 di 2)» e «(2 di 2)»:
+  # quei marcatori erano la cura per una malattia -- due leve che dovevano
+  # essere accese insieme -- e se ne vanno con lei. Adesso il nome dice cosa
+  # l'interruttore FA, che e' quello che un nome deve dire.
   ponte:
     name: "Ponte — la chat sul piano Claude Max"
-    description: "Serve solo se usi il piano Claude Max. I due interruttori vanno accesi tutti e due, e il piano attivo li accende da se'."
-    bridge_enabled:
-      name: "Accendi il ponte (1 di 2)"
-      description: "Accende la coda che porta i messaggi al runner. Da solo non basta: serve anche (2 di 2). Il piano Claude Max attivo lo accende da se'."
-    chat_via_subscription:
-      name: "Manda la chat sul ponte (2 di 2)"
-      description: "Manda la chat al runner del piano invece che al provider a consumo. Serve anche (1 di 2). Li' la chat sa e fa quanto nell'altra modalita'."
+    description: "Serve solo se usi il piano Claude Max. Se il piano e' acceso col suo token, il ponte si accende da se' e qui non devi toccare niente."
+    attivo:
+      name: "Accendi il ponte"
+      description: "Manda la chat al runner del piano invece che al provider a consumo. Li' la chat sa e fa quanto nell'altra modalita'."
     bridge_deadline_min:
       name: "Quanto aspettare una risposta (minuti)"
       description: "Passato questo tempo il messaggio scade: errore in chat, nessun ripiego sul provider a consumo. 1–120, predefinito 5."

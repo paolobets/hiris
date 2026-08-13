@@ -47,8 +47,12 @@ export LLM_STRATEGY=$(bashio::config 'llm_strategy' 'balanced')
 # `supervisor/apps/options.py`), quindi `bashio::config 'bridge_enabled'`
 # tornerebbe vuoto comunque -- un ripiego darebbe l'illusione di una migrazione
 # che non puo' avvenire.
-export BRIDGE_ENABLED=$(bashio::config 'ponte.bridge_enabled' 'false')
-export CHAT_VIA_SUBSCRIPTION=$(bashio::config 'ponte.chat_via_subscription' 'false')
+# Un interruttore solo: `ponte.attivo` sostituisce la coppia
+# `bridge_enabled` + `chat_via_subscription`, che erano una decisione con due
+# leve. Sopravvive la variabile d'ambiente BRIDGE_ENABLED, che gia' nominava il
+# concetto giusto ("il ponte e' acceso"); CHAT_VIA_SUBSCRIPTION esce del tutto,
+# ed e' il segnale onesto che la seconda leva non c'e' piu'.
+export BRIDGE_ENABLED=$(bashio::config 'ponte.attivo' 'false')
 export BRIDGE_DEADLINE_MIN=$(bashio::config 'ponte.bridge_deadline_min' '5')
 export CHAT_DAILY_CAP=$(bashio::config 'ponte.chat_daily_cap' '50')
 
@@ -130,7 +134,7 @@ fi
 # dicesse. Un booleano solo, calcolato una volta, tiene i due avvisi coerenti.
 PIANO_UTILIZZABILE="false"
 if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ] \
-   && { [ "${PROVIDER_SUBSCRIPTION}" = "true" ] || [ "${CHAT_VIA_SUBSCRIPTION}" = "true" ]; }; then
+   && { [ "${PROVIDER_SUBSCRIPTION}" = "true" ] || [ "${BRIDGE_ENABLED}" = "true" ]; }; then
   PIANO_UTILIZZABILE="true"
 fi
 
@@ -139,18 +143,20 @@ fi
 # in coda e scadono dopo bridge_deadline_min minuti, e l'utente vede solo
 # errori di attesa senza nessun indizio sulla causa.
 if [ -z "${CLAUDE_CODE_OAUTH_TOKEN}" ] \
-   && { [ "${PROVIDER_SUBSCRIPTION}" = "true" ] || [ "${CHAT_VIA_SUBSCRIPTION}" = "true" ] || [ "${BRIDGE_ENABLED}" = "true" ]; }; then
-  bashio::log.warning "Il piano Claude Max e' acceso ma «Provider · Piano Claude Max — token» e' vuoto: nessuno rispondera' ai messaggi instradati sul ponte, che scadranno dopo ${BRIDGE_DEADLINE_MIN} minuti. Incolla il token, oppure spegni gli interruttori del piano e del ponte."
+   && { [ "${PROVIDER_SUBSCRIPTION}" = "true" ] || [ "${BRIDGE_ENABLED}" = "true" ]; }; then
+  bashio::log.warning "Il piano Claude Max e' acceso ma «Provider · Piano Claude Max — token» e' vuoto: nessuno rispondera' ai messaggi instradati sul ponte, che scadranno dopo ${BRIDGE_DEADLINE_MIN} minuti. Incolla il token, oppure spegni il piano e il ponte."
 fi
 
 # Il complemento dell'avviso qui sopra, e la rete dell'annidamento della 2.4.0:
-# il token del piano c'e', ma nessun interruttore che ci mandi la chat e'
-# acceso. E' esattamente lo stato in cui si ritrova chi aggiorna avendo usato i
-# due interruttori del ponte SENZA `provider_subscription`: le sue quattro
-# opzioni hanno cambiato nome e il Supervisor ha scartato i valori. Senza questa
-# riga la chat tornerebbe sul provider a consumo senza dirlo -- cioe' a pagare.
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]    && [ "${PROVIDER_SUBSCRIPTION}" != "true" ]    && [ "${CHAT_VIA_SUBSCRIPTION}" != "true" ] && [ "${BRIDGE_ENABLED}" != "true" ]; then
-  bashio::log.warning "Hai il token del piano Claude Max, ma nessun interruttore che ci mandi la chat e' acceso: le risposte passano dal provider a consumo. Se aggiorni dalla 2.3.x, le opzioni del ponte sono ora sotto la sezione «Ponte» e vanno riaccese una volta."
+# il token del piano c'e', ma il ponte e' spento. E' esattamente lo stato in cui
+# si ritrova chi aggiorna avendo usato il ponte SENZA `provider_subscription`:
+# le sue opzioni hanno cambiato nome (annidate sotto `ponte:`, e i due
+# interruttori fusi in uno) e il Supervisor ha scartato i valori, che non sa
+# migrare. Senza questa riga la chat tornerebbe sul provider a consumo senza
+# dirlo -- cioe' a pagare.
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ] \
+   && [ "${PROVIDER_SUBSCRIPTION}" != "true" ] && [ "${BRIDGE_ENABLED}" != "true" ]; then
+  bashio::log.warning "Hai il token del piano Claude Max, ma il ponte e' spento: le risposte passano dal provider a consumo. Se aggiorni da una 2.x precedente, il ponte e' adesso un interruttore solo -- sezione «Ponte», «Accendi il ponte» -- e va riacceso una volta."
 fi
 
 if [ -z "${CLAUDE_API_KEY}" ] && [ -z "${OPENAI_API_KEY}" ] && [ -z "${OPENROUTER_API_KEY}" ] \

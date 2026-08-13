@@ -104,7 +104,7 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         app = web.Application()
         app["impostazioni_chat"] = impostazioni
         app["data_dir"] = data_dir
-        app["chat_via_subscription"] = True
+        app["ponte_attivo"] = True
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
         app["reasoning_queue"] = q
         # nessun app["models_config"]: come una install dove non e' mai

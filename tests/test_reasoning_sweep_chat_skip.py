@@ -27,7 +27,8 @@ remaining free variable of interest (``reasoning_queue``) -- everything else
 it references (``_time``, ``logger``, ``env_bool``, ``_sub_first_class``) is
 either a plain importable symbol in server.py or a simple closure value
 supplied directly, not per-instance state, so binding them is exact, not a
-guess.
+guess. (Dalla 2.4.0 fra questi c'e' anche ``_ponte_attivo``, il combinatore
+che la spazzata condivide con l'instradamento della chat.)
 """
 import inspect
 import logging
@@ -56,6 +57,14 @@ def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False):
         # shared env_util.env_bool helper (module-level import in server.py);
         # the extracted-source exec namespace must provide it too.
         "env_bool": server.env_bool,
+        # Fusione dei due interruttori (2.4.0): la spazzata non combina piu' a
+        # mano BRIDGE_ENABLED e _sub_first_class, ma passa dal combinatore
+        # condiviso con l'instradamento. E' il simbolo nuovo che il namespace
+        # deve fornire -- ed e' anche la ragione per cui questo file estrae il
+        # sorgente vero invece di specchiarlo: un mirror sarebbe rimasto
+        # indietro in silenzio, questo namespace ha smesso di funzionare
+        # rumorosamente.
+        "_ponte_attivo": server._ponte_attivo,
     }
     exec(compile(func_src, "<_reasoning_sweep extracted from server.py>", "exec"), namespace)
     return namespace["_reasoning_sweep"]

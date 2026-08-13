@@ -93,14 +93,13 @@ Due campi:
   incolli qui la stringa che stampa.
 
 Con questi due presenti, la chat viene instradata sull'abbonamento **anche se
-lasci spenti** «Ponte · accendi la coda (1 di 2)» e «Ponte · mandaci la chat
-(2 di 2)». Non
-è un difetto da segnalare: è scritto nel codice ed è dichiarato nelle descrizioni
-delle opzioni. Su questo percorso valgono anche:
+lasci spento** «Accendi il ponte», nella sezione «Ponte». Non è un difetto da
+segnalare: è scritto nel codice ed è dichiarato nelle descrizioni delle opzioni.
+Su questo percorso valgono anche, nella stessa sezione:
 
-- **Ponte · quanto aspettare una risposta (minuti)**: 5 di default, entro cui la
+- **Quanto aspettare una risposta (minuti)**: 5 di default, entro cui la
   risposta deve arrivare;
-- **Ponte · quanti messaggi al giorno**: 50 di default. Superato il tetto
+- **Quanti messaggi al giorno**: 50 di default. Superato il tetto
   la chat risponde con un errore e il messaggio **non parte**: non c'è ripiego
   automatico su un altro provider;
 - **i consumi non si misurano.** L'abbonamento non espone né i token né il costo

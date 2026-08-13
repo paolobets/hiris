@@ -196,12 +196,12 @@ def _bridge_on(app) -> bool:
     """Whether the reasoning-queue bridge is wired into this app.
 
     server.py's ``_on_startup`` always creates ``app["reasoning_queue"]``
-    unconditionally — ``BRIDGE_ENABLED`` only gates whether server.py's
-    sweep (``_reasoning_sweep``) actually claims/prunes that queue and
-    whether ``chat_via_subscription`` is considered usable (fetta E3 Task 4
-    removed the third reader, the holistic path's own enqueue via
-    ``_holistic_reason`` — that path is gone entirely now), it doesn't
-    control whether the queue object exists. So presence of the key is the
+    unconditionally — ``BRIDGE_ENABLED`` (l'opzione ``ponte.attivo``) only
+    gates whether server.py's sweep (``_reasoning_sweep``) actually
+    claims/prunes that queue and whether ``app["ponte_attivo"]`` comes out
+    true (fetta E3 Task 4 removed the third reader, the holistic path's own
+    enqueue via ``_holistic_reason`` — that path is gone entirely now), it
+    doesn't control whether the queue object exists. So presence of the key is the
     right signal for chat: it's also how tests opt in/out (wire or don't
     wire ``app["reasoning_queue"]``) without touching env vars.
     """
@@ -385,7 +385,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # branch below — this check is branch-independent (it reads the turn
     # count from chat_store, never from the sync path's trimmed history) and
     # must run before anything is persisted/enqueued, otherwise a session
-    # turn limit is silently bypassed whenever chat_via_subscription is on
+    # turn limit is silently bypassed whenever the bridge is on
     # (the old position, after the subscription branch's early return, was
     # never reached in that mode).
     max_turns = impostazioni.max_chat_turns
@@ -405,7 +405,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # built the receiving end (kind="chat" submit -> chat_store); this is
     # the sending end. Checked BEFORE the runner-required guard below so
     # subscription mode works even without CLAUDE_API_KEY.
-    if request.app.get("chat_via_subscription") and _bridge_on(request.app):
+    if request.app.get("ponte_attivo") and _bridge_on(request.app):
         # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
         # above/below is unaffected when the flag is off. Checked before
         # anything is persisted/enqueued so a blocked turn leaves no trace.

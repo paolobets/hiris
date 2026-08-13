@@ -104,7 +104,7 @@ class ReasoningQueue:
         # Stesso azzeramento del commento sopra `submit()`, per la seconda
         # strada di chiusura di un job: quello che scade invece di essere
         # risolto. Un contesto che sopravvivesse solo su questo ramo sarebbe
-        # un buco, non un dettaglio -- un job in `chat_via_subscription` che
+        # un buco, non un dettaglio -- un job instradato sul ponte che
         # non riceve risposta in tempo (deadline breve, minuti) e' il caso
         # comune, non l'eccezione.
         #

@@ -54,7 +54,7 @@ def _chiama(handler, app):
 
 
 def test_senza_runner_risponde_200_e_dichiara_che_non_si_misura():
-    r = _chiama(handle_usage, {"chat_via_subscription": True})
+    r = _chiama(handle_usage, {"ponte_attivo": True})
     assert r.status == 200, (
         "503 dice «riprova» su un fatto permanente della configurazione: e' "
         "cosi' che una pagina viva e' diventata un vicolo cieco"
@@ -66,7 +66,7 @@ def test_senza_runner_risponde_200_e_dichiara_che_non_si_misura():
 
 
 def test_i_contatori_restano_null_e_non_zero():
-    corpo = _corpo(_chiama(handle_usage, {"chat_via_subscription": True}))
+    corpo = _corpo(_chiama(handle_usage, {"ponte_attivo": True}))
     for campo in ("total_requests", "input_tokens", "output_tokens",
                   "total_tokens", "cost_usd", "cost_eur",
                   "rate_limit_errors", "last_reset"):
@@ -79,7 +79,7 @@ def test_i_contatori_restano_null_e_non_zero():
 def test_il_motivo_distingue_abbonamento_da_nessun_provider():
     """Due assenze diverse, due frasi diverse: chi non ha configurato niente
     deve leggere «configura», non «l'abbonamento non espone i token»."""
-    abbonamento = _corpo(_chiama(handle_usage, {"chat_via_subscription": True}))
+    abbonamento = _corpo(_chiama(handle_usage, {"ponte_attivo": True}))
     vuoto = _corpo(_chiama(handle_usage, {}))
     assert abbonamento["motivo"] == "abbonamento"
     assert vuoto["motivo"] == "nessun_provider"
@@ -88,7 +88,7 @@ def test_il_motivo_distingue_abbonamento_da_nessun_provider():
 
 
 def test_azzerare_un_contatore_inesistente_e_un_conflitto_non_un_guasto():
-    r = _chiama(handle_reset_usage, {"chat_via_subscription": True})
+    r = _chiama(handle_reset_usage, {"ponte_attivo": True})
     assert r.status == 409
     corpo = _corpo(r)
     assert corpo["reset"] is False

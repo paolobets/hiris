@@ -201,11 +201,14 @@ Token counts and cumulative cost are tracked and readable at `GET /api/usage`.
 There is a second chat path. When it is active, a chat turn is handed to an
 external subscription runner through a queue instead of being answered locally.
 
-It is active when `bridge_enabled` **and** `chat_via_subscription` are both on
-— **and also**, regardless of those two options, whenever
-`provider_subscription` is enabled and `claude_code_oauth_token` is set: an
-active subscription provider implies both flags
-(`hiris/app/server.py:907,1332-1340`).
+It is active when `ponte.attivo` is on — **and also**, regardless of that
+option, whenever `provider_subscription` is enabled and
+`claude_code_oauth_token` is set: an active subscription provider implies the
+bridge (`hiris/app/server.py::_ponte_attivo`, fed by `_sub_first_class`).
+
+Until 2.3.1 this took **two** options that had to be on together
+(`bridge_enabled` and `chat_via_subscription`); they were merged in 2.4.0,
+because they were never two decisions.
 
 **That path now carries the nucleo, and — when it can — the tools.** The
 turn is enqueued together with the same context the synchronous chat composes
@@ -285,29 +288,31 @@ nesting renames an option, and a renamed option loses its stored value silently.
 
 | Option | Description |
 |---|---|
-`bridge_enabled` and `chat_via_subscription` are **one decision with two
-levers**: the chat goes over the bridge only when both are on
-(`server.py::_chat_subscription_active` is an `AND`), and an active
-`provider_subscription` with a token turns both on by itself. Their labels say
-so — "Bridge · turn the queue on (1 of 2)" and "Bridge · send the chat over it
-(2 of 2)" — and they sit next to each other on the page.
-
-Since 2.4.0 these four live under the `ponte:` key, which the Supervisor renders
-as a titled section — the only grouping it renders at all.
+Since 2.4.0 these live under the `ponte:` key, which the Supervisor renders as
+a titled section — the only grouping it renders at all — and the bridge is **one
+switch**. It used to be two (`bridge_enabled` and `chat_via_subscription`) that
+had to be on together; they were never two decisions, so they were merged. An
+active `provider_subscription` with a token still turns the bridge on by itself.
 
 | Option | Description |
 |---|---|
-| `ponte.bridge_enabled` | 1 of 2 — the queue that carries messages to the runner, and the sweep of expired ones. Alone it changes nothing you can see |
-| `ponte.chat_via_subscription` | 2 of 2 — routes chat turns into that queue. Alone it changes nothing: `bridge_enabled` must be on too |
+| `ponte.attivo` | Routes chat turns to the plan's runner instead of the metered provider |
 | `ponte.bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
 | `ponte.chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
 
-> **Upgrading from 2.3.x?** Moving an option under a parent key changes its name,
-> and the Supervisor does not migrate values — it drops any key its schema does
-> not know (`supervisor/apps/options.py`). These four therefore come back at
-> their defaults, i.e. the bridge **off**. If you were using it, switch it back
-> on once under the new **Bridge** section. Everything else, credentials
-> included, was deliberately left flat and is untouched.
+The fail-safe the old `AND` protected — never enqueue into a queue nothing
+sweeps — is now structural: one expression (`server.py::_ponte_attivo`) gates
+both the sweep and the routing, so they cannot disagree.
+
+> **Upgrading from an earlier 2.x?** These options changed name (nested under
+> `ponte:`, and the two switches merged into one), and the Supervisor does not
+> migrate values — it drops any key its schema does not know
+> (`supervisor/apps/options.py`). They therefore come back at their defaults,
+> i.e. the bridge **off**. If you were using it, switch it back on once under
+> the **Bridge** section. If you use the Claude Max plan the normal way
+> (`provider_subscription` + token) there is nothing to do: the bridge turns
+> itself on. Everything else, credentials included, was deliberately left flat
+> and is untouched.
 
 ### General
 
