@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "2.3.0"
+version: "2.3.1"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -72,13 +72,35 @@ options:
   # Ogni interruttore `provider_*` sta ATTACCATO alla credenziale che gli
   # serve: prima ne era separato da uno a diciannove campi, e chi accendeva il
   # provider non trovava dove mettere la chiave. Un provider e' usato solo se
-  # attivo E con credenziale. Se lasci tutti gli interruttori a false su un
-  # install esistente, HIRIS deriva gli attivi dalle credenziali gia' presenti
-  # (retro-compat).
+  # attivo E con credenziale.
+  #
+  # RETRO-COMPATIBILITA', per esteso (`model_activation.derive_active_providers`):
+  # finche' TUTTI e cinque gli interruttori sono false -- il caso di chi aggiorna
+  # da prima di SP-2 -- l'attivazione e' derivata dalla sola presenza della
+  # credenziale, cosi' un install esistente continua a funzionare identico senza
+  # riscrivere niente. Appena UNO qualsiasi viene acceso, la derivazione si
+  # spegne e valgono solo gli interruttori accesi: chi ne accende uno senza
+  # riaccendere gli altri si ritrova i provider che usava spenti. Nel modulo
+  # questa regola sta in una clausola sola, sulla PRIMA voce della pagina
+  # (`provider_claude`), perche' ripeterla su cinque campi costava 5x lo spazio
+  # per un'informazione che si legge una volta. Per intero sta qui e in
+  # `docs/prova-la-2.0.md`.
   # L'ordine dei provider e' quello in cui HIRIS ripiega con la strategia
   # `balanced`: cosi' l'ordine di lettura e l'ordine di tentativo coincidono.
   provider_claude: false
   claude_api_key: ""
+  # Il piano Claude Max, per esteso. Acceso CON il token presente,
+  # `_sub_first_class` (server.py) e' OR-ato sia in `_bridge_enabled` sia in
+  # `_chat_via_subscription_cfg`: la chat passa dal ponte anche lasciando spenti
+  # i due interruttori «Ponte · ...». Su quel percorso, insieme al messaggio,
+  # viaggiano la conoscenza della casa (il nucleo: aree, entita', cosa e'
+  # notevole adesso, cosa la casa fa da sola) e i ricordi di cio' che le persone
+  # hanno detto, sessioni precedenti comprese -- sotto le condizioni d'uso e di
+  # conservazione del piano Claude Max, DIVERSE da quelle dell'API a consumo.
+  # E i consumi non si misurano: il piano non espone ne' i token ne' il costo
+  # della singola risposta (la pagina Consumi lo dichiara invece di mostrare
+  # zeri). Nel modulo restano le due frasi che cambiano una decisione; il resto
+  # e' qui e in `docs/prova-la-2.0.md`, «Strada A».
   provider_subscription: false
   claude_code_oauth_token: ""
   provider_openrouter: false
@@ -104,6 +126,12 @@ options:
   # elemento. Il ramo `else` che leggeva l'opzione era irraggiungibile in
   # produzione. Stessa conclusione della revisione tecnica del 3 agosto 2026
   # (I041/I078/I093, `docs/design/2026-08-03-revisione-tecnica.md`).
+  # I tre ordini per esteso (`llm_router._STRATEGY_ORDER`), che nel modulo non
+  # entrano: balanced = claude, openrouter, openai, ollama; quality_first =
+  # claude, openai, openrouter, ollama; cost_first = ollama, openrouter, openai,
+  # claude. L'ordine salvato nella pagina Modelli (`chain_order`) vince, e i
+  # provider attivi che non nominava vengono aggiunti in coda nell'ordine della
+  # strategia (`reconcile_chain`) -- mai lasciati fuori dal ripiego.
   llm_strategy: "balanced"
 
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
@@ -114,13 +142,36 @@ options:
   # Il piano Claude Max attivo CON token li accende entrambi da solo
   # (`_sub_first_class` e' OR-ato in tutti e due): l'etichetta e la
   # descrizione lo dicono qui, dove l'utente li legge.
+  # «Li' la chat sa e fa quanto nell'altra modalita'» e' la forma corta di:
+  # riceve il nucleo, i ricordi e le sessioni precedenti (parita' A) e -- QUANDO
+  # la sonda `agent/runner.py::sonda_strumenti` riesce a ricollegarsi a
+  # `POST /api/mcp` -- anche gli strumenti, `esegui` compreso (parita' B); ogni
+  # chiamata e' verificata contro l'installazione prima di partire e lo stato
+  # riletto dopo; nessuna conferma viene chiesta e niente parte da solo. Quando
+  # la sonda FALLISCE la risposta e' preceduta da `AVVISO_STRUMENTI_ASSENTI` e
+  # in quel turno il modello risponde e basta. Sono due stati decisi da una
+  # sonda, non da una configurazione: non e' roba che si sceglie da questo
+  # modulo, ed e' per questo che ne esce. Il racconto per chi prova sta in
+  # `docs/prova-la-2.0.md` §8; cosa il prodotto fa e non fa sta nel campo
+  # `description:` in cima a questo file, che il Supervisor mostra sopra le
+  # opzioni.
   bridge_enabled: false
   chat_via_subscription: false
   bridge_deadline_min: 5
   chat_daily_cap: 50
 
   # ── 4. Aspetto e conservazione ────────────────────────────────────────────
+  # `theme` e' solo il tema d'apertura: `static/config/api.js::applyTheme` legge
+  # `localStorage['hiris-theme']` PRIMA di `api/config`, quindi appena l'utente
+  # tocca l'interruttore chiaro/scuro dentro HIRIS questa opzione non ha piu'
+  # effetto su quel browser.
   theme: "auto"
+  # Due lavori con un numero solo, ed e' la ragione per cui la descrizione lo
+  # dice invece di limitarsi a «giorni di conservazione»: oltre alla potatura
+  # notturna (`server.py::_run_retention`, cron alle 3) la stessa costante
+  # limita `chat_store.load_context()`, cioe' quanto HIRIS rilegge della
+  # conversazione in corso. `0` disattiva entrambi (`if HISTORY_RETENTION_DAYS
+  # > 0` in tutti e due i lettori): non cancella mai niente.
   history_retention_days: 90
 
   # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────

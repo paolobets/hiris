@@ -78,24 +78,29 @@ incollare la chiave senza attivare il toggle nemmeno.
 > `provider_*` spenti, HIRIS continua a derivare i provider attivi dalle credenziali
 > che trova (retro-compatibilità). Appena ne accendi **uno qualsiasi**, valgono solo
 > i toggle accesi: riattiva a mano ogni provider che vuoi tenere.
+>
+> Dalla 2.3.0 questa regola nel modulo del Supervisor sta in una clausola sola,
+> sulla prima voce della pagina: qui e nei commenti di `hiris/config.yaml` sta
+> per intero.
 
 ### Strada A — abbonamento Claude Max
 
 Due campi:
 
-- **Attiva provider: Abbonamento (Claude Max)** → acceso
-- **Token OAuth Claude Code (abbonamento)** → il token. Lo ottieni su una macchina
+- **Provider · Piano Claude Max (a forfait)** → acceso
+- **Provider · Piano Claude Max — token** → il token. Lo ottieni su una macchina
   dove Claude Code è già installato e autenticato, con `claude setup-token`, e
   incolli qui la stringa che stampa.
 
 Con questi due presenti, la chat viene instradata sull'abbonamento **anche se
-lasci spente** «Ponte abbonamento — attiva» e «Chat via abbonamento — attiva». Non
+lasci spenti** «Ponte · accendi la coda (1 di 2)» e «Ponte · mandaci la chat
+(2 di 2)». Non
 è un difetto da segnalare: è scritto nel codice ed è dichiarato nelle descrizioni
 delle opzioni. Su questo percorso valgono anche:
 
-- **Ponte abbonamento — scadenza (minuti)**: 5 di default, entro cui la risposta
-  deve arrivare;
-- **Chat via abbonamento — cap messaggi/giorno**: 50 di default. Superato il tetto
+- **Ponte · quanto aspettare una risposta (minuti)**: 5 di default, entro cui la
+  risposta deve arrivare;
+- **Ponte · quanti messaggi al giorno**: 50 di default. Superato il tetto
   la chat risponde con un errore e il messaggio **non parte**: non c'è ripiego
   automatico su un altro provider;
 - **i consumi non si misurano.** L'abbonamento non espone né i token né il costo
@@ -103,7 +108,7 @@ delle opzioni. Su questo percorso valgono anche:
 
 ### Strada B — chiave API a consumo
 
-- **Attiva provider: API Claude** → acceso, più **Chiave API Claude**.
+- **Provider · Claude API (a consumo)** → acceso, più **Provider · Claude API — chiave**.
 - Stessa forma per OpenAI e OpenRouter, ciascuno col suo toggle e la sua chiave.
 
 Qui i consumi si misurano: richieste, token, costo, sulla pagina Consumi e nel
@@ -111,8 +116,9 @@ riquadro «Utilizzo» della chat.
 
 ### Strada C — Ollama, tutto in casa
 
-**Attiva provider: Ollama (locale)** più **URL Ollama** e **Nome Modello Ollama**
-(e, se l'hardware è lento, alza il **Timeout richiesta Ollama**, default 120 s).
+**Provider · Ollama (sul tuo hardware)** più **Ollama — indirizzo** e **Ollama —
+nome del modello** (e, se l'hardware è lento, alza **Ollama — quanto aspettare una
+risposta**, default 120 s).
 Con questa strada HIRIS funziona senza nessuna chiave verso l'esterno.
 
 ### Quale strada sto usando davvero?

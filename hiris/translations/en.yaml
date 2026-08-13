@@ -1,123 +1,111 @@
 configuration:
-  # This file follows `config.yaml`, i.e. the order the fields appear in the
-  # Supervisor. The Supervisor renders neither sections nor separators: the
-  # grouping is done by the label PREFIX ("Provider · ", "Bridge · ",
-  # "Advanced · ") and by adjacency. One word, one meaning: "Claude Max plan"
-  # is how you pay, "Bridge" is the machinery that carries the chat there.
-  # Until 2.2.1 the word "subscription" appeared in three different labels
-  # with three different meanings.
+  # RULE FOR THIS FILE: a description answers ONE question — "what happens if I
+  # touch this?". Not what it is, not why it exists, not how we got here, not
+  # the edge cases. Ceiling: ~160 characters, two lines on a phone screen.
   #
-  # Descriptions say WHAT HAPPENS if you touch the field, not what it is: in
-  # the Supervisor they are the only help the user gets. Kept semantically
-  # identical to it.yaml, rewritten in the same commit.
+  # The "why" lives in `config.yaml`'s comments, where the maintainer reads it,
+  # not in the form, where whoever is configuring has to wade through it. The
+  # full subscription path is in `docs/prova-la-2.0.md`.
+  #
+  # The NAMES are not touched: "Provider · ", "Bridge · ", "Advanced · " are
+  # the grouping (the Supervisor renders no sections) and "(1 of 2)"/"(2 of 2)"
+  # already say half of what the old descriptions spelled out.
+  #
+  # it/en parity pinned by `tests/test_traduzioni_coprono_le_opzioni.py`, which
+  # also pins "not measured" in `claude_code_oauth_token`.
 
   # ── 1. AI providers ───────────────────────────────────────────────────────
   provider_claude:
     name: "Provider · Claude API (metered)"
-    description: "Turns Claude on as a provider, paid per use with the key below. You need both: this switch AND the key. Until you turn on any provider, HIRIS stays as it was and derives them from the credentials it finds; from the first one you turn on, only the ones you turned on count — so turn the others you were using back on too."
+    description: "Turns Claude on, paid per use. It also needs the key below. From the first provider you turn on, only those count: turn the others you used back on."
   claude_api_key:
     name: "Provider · Claude API — key"
-    description: "The key that pays for Claude's replies; get it at console.anthropic.com. Without it the switch above has no effect. PRIVACY: your messages and your home's context go through Anthropic's servers (USA) — anthropic.com/privacy."
+    description: "Pays for Claude's replies; get it at console.anthropic.com. PRIVACY: your messages and your home's context go through Anthropic (USA)."
   provider_subscription:
     name: "Provider · Claude Max plan (flat rate)"
-    description: "Makes HIRIS reason on your Claude Max plan instead of the metered API: replies do not eat into your credit. It also needs the token below. WARNING, this is what you should know before turning it on: with the token present, this switch routes the chat over the bridge BY ITSELF — the two \"Bridge · ...\" switches further down turn on anyway, even if you leave them off. On that path, along with your message, travel your home's knowledge and the memories of what people said, past sessions included, under the usage and retention terms of the Claude Max plan, which differ from those of the metered API. Until you turn on any provider HIRIS derives them from the credentials present; from the first one you turn on, only the ones you turned on count."
+    description: "Reasons on your Claude Max plan instead of the metered API. With the token below it turns the bridge on by itself: chat, home and memories go there."
   claude_code_oauth_token:
     name: "Provider · Claude Max plan — token"
-    description: "The token that opens your Claude Max plan. Get it on the machine where you already have Claude Code installed and authenticated, with the `claude setup-token` command, and paste here the string it prints. Without it the switch above has no effect and messages sent over the bridge expire unanswered. WARNING: on this path usage is NOT measured — the plan exposes neither the tokens nor the cost of an individual reply, and the Usage page says so instead of showing zeros. Leave it empty if you only use API keys."
+    description: "Opens the plan; generate it with `claude setup-token`. WARNING: usage here is not measured, and the Claude Max plan's terms apply."
   provider_openrouter:
     name: "Provider · OpenRouter"
-    description: "Turns OpenRouter on: one key for 200+ models (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek). It also needs the key below. As with the others: from the first switch you turn on, only the ones you turned on count."
+    description: "Turns OpenRouter on: one key for 200+ models. It also needs the key below."
   openrouter_api_key:
     name: "Provider · OpenRouter — key"
-    description: "Your openrouter.ai key. Free models are available too (':free' suffix): to use one, write 'openrouter:vendor/model-name' in a model field. PRIVACY: your messages go through OpenRouter (USA) and then through the vendor of the model you pick — openrouter.ai/privacy."
+    description: "Your openrouter.ai key; ':free' models are available too. PRIVACY: messages go through OpenRouter (USA) and the model's own vendor."
   hide_free_models:
     name: "OpenRouter — hide the free (:free) models"
-    description: "Removes ':free' models from the lists on the Models page and in the chat settings, so you do not pick one by mistake. Useful if you have OpenRouter credit and would rather avoid the free tier's low daily quota and frequent upstream rate limits."
+    description: "Removes ':free' models from the lists so you do not pick one by mistake: they have a low daily quota and frequent rate limits."
   provider_openai:
     name: "Provider · OpenAI"
-    description: "Turns the OpenAI models (GPT-4o, o1, ...) on as a provider. It also needs the key below. As with the others: from the first switch you turn on, only the ones you turned on count."
+    description: "Turns the OpenAI models (GPT-4o, o1...) on. It also needs the key below."
   openai_api_key:
     name: "Provider · OpenAI — key"
-    description: "The key that pays for OpenAI replies. Without it the switch above has no effect. PRIVACY: your messages go through OpenAI's servers (USA) — openai.com/policies."
+    description: "Pays for OpenAI replies. PRIVACY: your messages go through OpenAI's servers (USA)."
   provider_ollama:
     name: "Provider · Ollama (on your own hardware)"
-    description: "Turns on an Ollama model running in your own house: no cloud, no per-reply cost. It also needs the address and the model name below. With this as the only provider turned on, HIRIS works without any cloud key at all."
+    description: "Turns on a model running in your own house: no cloud, no per-reply cost. It also needs the address and model below."
   local_model:
     name: "Ollama — where it is and which model"
-    description: "Address and model name for Ollama. If you leave them empty, the \"Provider · Ollama\" switch above has no effect."
+    description: "Where to find Ollama and which model to use. Left empty, the switch above has no effect."
     url:
       name: "Ollama — address"
-      description: "Base URL of your Ollama instance, for example http://192.168.1.10:11434. HIRIS tries to reach it at startup: if it cannot, it says so in the log and calls to the local model will fail."
+      description: "Your instance's address, e.g. http://192.168.1.10:11434. If HIRIS cannot reach it at startup, it says so in the log."
     model:
       name: "Ollama — model name"
-      description: "The model to use, for example llama3, mistral, phi3. It must already be pulled on that instance: if it is missing, HIRIS flags it in the log at startup."
+      description: "The model to use, e.g. llama3. It must already be pulled there: if it is missing, HIRIS flags it in the log at startup."
     request_timeout:
       name: "Ollama — how long to wait for a reply (seconds)"
-      description: "Past this time a single Ollama call is abandoned and the chat shows an error. Raise it if your hardware is slow and the model large (a Pi 5 with a 9-billion-parameter model may need 240–300 s). From 10 to 1800, default 120."
+      description: "Past this time the call is abandoned and the chat shows an error. Raise it on slow hardware. 10–1800, default 120."
 
   # ── 2. Choosing between the providers you turned on ───────────────────────
-  # `chat_policy` left in 2.3.0: it was a CSV backend order that the router
-  # always discarded (`model_chain` overwrites it). Proof in `config.yaml`,
-  # block 2.
   llm_strategy:
     name: "Fallback order between the providers you turned on"
-    description: "The order in which HIRIS tries providers when you have more than one and the model is \"auto\": if the first fails it moves to the next. 'balanced' (default) Claude → OpenRouter → OpenAI → Ollama; 'quality_first' Claude → OpenAI → OpenRouter → Ollama; 'cost_first' starts from the local and the cheapest ones. It only concerns providers that are turned on. If you saved your own order on the Models page inside HIRIS, that one wins, and any provider it did not name is appended in the order chosen here."
+    description: "The order it tries the providers you turned on when the model is \"auto\": 'balanced' starts at Claude, 'cost_first' local. The Models page wins."
 
   # ── 3. Bridge: the chat on the Claude Max plan ────────────────────────────
-  # The two switches are a single decision wearing two levers: the chat goes
-  # over the bridge only if both are on, and an active Claude Max plan with a
-  # token turns both on by itself. As long as they stay two, the labels say so
-  # with "1 of 2" / "2 of 2" instead of leaving it to be discovered.
   bridge_enabled:
     name: "Bridge · turn the queue on (1 of 2)"
-    description: "First of the two switches that carry the chat onto the Claude Max plan. On its own it changes nothing you can see: it turns on the queue that carries messages to the runner and the sweep of the expired ones, but until you also turn on \"Bridge · send the chat over it (2 of 2)\" no message ever enters that queue. You need BOTH. If you turned on \"Provider · Claude Max plan\" and the token is there, this one is already on by itself: there is nothing to do here."
+    description: "Turns on the queue that carries messages to the runner. Not enough alone: (2 of 2) is needed too. An active Claude Max plan turns it on by itself."
   chat_via_subscription:
     name: "Bridge · send the chat over it (2 of 2)"
-    description: "Second of the two switches: it sends chat replies to the plan's runner instead of the metered provider, subject to the daily cap and the deadline below. On its own it changes nothing: \"Bridge · turn the queue on (1 of 2)\" above must be on as well. On this path the chat does receive your home's knowledge — the same core HIRIS uses in the other mode, memories and past sessions included — and, when the runner manages to call back into HIRIS, its tools as well: it can search your entities and look at the state NOW, not just the snapshot taken when the message was sent, it can remember and recall, and it can make something happen in the house — turn things on or off, set values — by calling a Home Assistant service. Every call is checked against your own installation before it is sent, and the state is read back afterwards, so what it tells you is what actually happened. You are never asked to confirm: it acts when you ask it to in chat, and never on its own. If that call back fails it still answers, from the core and the conversation, and it says so at the top of the reply instead of pretending it looked — but in that case it cannot act either. The chips under the reply show which tools it actually used. If you turned on \"Provider · Claude Max plan\" and the token is there, this one is already on by itself. Default: disabled."
+    description: "Sends the chat to the plan's runner instead of the metered provider. (1 of 2) is needed too. There the chat knows and does as much as elsewhere."
   bridge_deadline_min:
     name: "Bridge · how long to wait for a reply (minutes)"
-    description: "If the runner does not answer within this time the message expires: the chat shows an error and the message is lost. There is no automatic fallback to the metered provider. From 1 to 120, default 5."
+    description: "Past this time the message expires: an error in chat, no fallback to the metered provider. From 1 to 120, default 5."
   chat_daily_cap:
     name: "Bridge · how many messages per day"
-    description: "Past this many messages sent over the bridge in one day, the chat replies with an error and the message is not sent — again with no fallback to the metered provider. Only messages that went over the bridge are counted. Careful: 0 does not mean \"unlimited\", it means it blocks all of them. From 0 to 1000, default 50."
+    description: "Past this many messages a day over the bridge, the chat errors and does not send. Careful: 0 blocks them all, it does not mean unlimited. 0–1000."
 
   # ── 4. Appearance and retention ───────────────────────────────────────────
   theme:
     name: "Appearance — light or dark"
-    description: "The theme HIRIS's interface opens with; 'auto' follows your system preference. It holds until you use the light/dark toggle inside HIRIS: from that moment on, in that browser, the choice made there wins and this field has no further effect."
+    description: "The theme HIRIS opens with; 'auto' follows the system. If you then use the light/dark toggle inside HIRIS, that wins in that browser."
   history_retention_days:
     name: "How many days to keep conversations"
-    description: "Every night HIRIS deletes chat messages older than this many days. Careful, the same number does two things: besides deleting, it also limits how much of the ongoing conversation HIRIS reads back — lowering it does not only clean up, it also makes it forget sooner. 0 = never delete anything. From 0 to 3650, default 90."
+    description: "Every night it deletes older messages. The same number also limits how much of the conversation HIRIS reads back: lowering it makes it forget sooner. 0 = never."
 
   # ── 5. Embeddings (inactive today) ────────────────────────────────────────
-  # They stay at the bottom, with the technical knobs: they are declared inert
-  # by the owner's decision (similarity search is postponed, not cancelled),
-  # and saying so is the only way not to repeat the mistake of the sentence
-  # about sensitive documents — a promise the code never kept.
   memory:
     name: "Embeddings — no effect today"
-    description: "Provider and model for similarity search. THEY DO NOTHING TODAY: since the documental integration and the knowledge archive left, no part of HIRIS computes embeddings. The two fields stay because similarity search is a postponed decision, not a cancelled one: when it is turned on, it will be configured from here."
+    description: "Provider and model for similarity search. They do nothing today: no part of HIRIS computes embeddings."
     embedding_provider:
       name: "Embeddings — provider (inactive)"
-      description: "Which service would compute the embeddings: 'openai' (needs the API key), 'ollama' (needs the local server), 'model2vec' (fully local, no server). Today the value is read and shown on the Models page, and nothing else: no text is ever vectorised."
+      description: "Which service would compute them: openai, ollama, model2vec. Today the value is only read and shown on the Models page."
     embedding_model:
       name: "Embeddings — model (inactive)"
-      description: "Which model it would use. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M or potion-base-32M (empty = default). Today it is never invoked."
+      description: "Which model it would use: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Today it is never invoked."
 
   # ── 6. Advanced: log, security, diagnostics ───────────────────────────────
-  # At the bottom and prefixed "Advanced · " because the Supervisor cannot mark
-  # a field as dangerous: position and name are the only signal available.
-  # Until 2.2.1 `internal_token` and `supervisor_ingress_cidr` sat next to
-  # "Theme", with the same visual weight as a colour preference.
   log_level:
     name: "Advanced · log detail"
-    description: "How much HIRIS writes to the add-on log. 'debug' to understand a problem (very noisy), 'info' for normal use, 'warning' or 'error' to keep it almost silent. When reporting a fault: set it to 'debug', reproduce the problem, attach what you see."
+    description: "How much HIRIS writes to the log. To report a fault: set 'debug', reproduce the problem, attach what you see."
   internal_token:
     name: "Advanced · internal API token"
-    description: "Protects calls to /api/* that do not come from the Supervisor ingress, including the chat bridge's own. LEAVE IT EMPTY: at first startup HIRIS generates one, keeps it in the add-on's data and reuses it at every restart — there is nothing for you to do. Write your own only if another component (the MCP gateway, for instance) has to call HIRIS's API with a token you choose: in that case yours wins, and HIRIS neither generates nor writes anything."
+    description: "LEAVE IT EMPTY: HIRIS generates one at first startup and reuses it. Write your own only if another component must call its API."
   supervisor_ingress_cidr:
     name: "Advanced · networks recognised as ingress"
-    description: "Only requests coming from these IP ranges are treated as genuine Supervisor ingress and get in without a token; every other one must present the internal token above. Widening it opens HIRIS's API to anyone on those networks. Default 172.30.32.0/23, the Supervisor's Docker network; narrow it (172.30.32.2/32, for instance) if you expose the API to a tunnel."
+    description: "Requests from these networks get in without a token, all others do not. Widening it opens HIRIS's API. Default: the Supervisor's network."
   debug_expose_port:
     name: "Advanced · port 8099 reminder (diagnostics only)"
-    description: "BY ITSELF IT OPENS NO PORT: it only writes a reminder in the log at every add-on startup. What actually opens the port is the Network section further down this page (requires HA Advanced Mode): set '8099/tcp' = 8099, then Save and Restart. While that port is open, anyone on your local network can call /api/* in the clear, without HTTPS, with only the internal token as a barrier. Turn it on only while you are diagnosing, and turn it off — together with the port in Network — as soon as you are done."
+    description: "BY ITSELF IT OPENS NOTHING: it writes a reminder in the log. What opens the port is the Network section below — and then the LAN sees /api/*."

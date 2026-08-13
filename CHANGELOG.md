@@ -1,5 +1,35 @@
 # HIRIS — Changelog
 
+## [2.3.1] — Sotto ogni campo c'era un tema, adesso c'è una riga (2026-08-13)
+
+La 2.3.0 aveva rimesso in ordine la pagina di configurazione. Restava il difetto che si
+vede solo guardandola davvero: **sotto ogni campo c'era un paragrafo di quattro-sei righe
+in corpo minuscolo**, e il testo occupava più spazio dei campi. La pagina non era faticosa
+perché le voci fossero in disordine — era faticosa perché **c'era troppo da leggere, e
+tutto pesava uguale**.
+
+Le descrizioni passano da **9.706 a 3.507 caratteri**: da 346 di media a 125, e **nessuna
+supera le due righe** su uno schermo di telefono. La peggiore ne aveva 1.419 — circa 250
+parole per un interruttore — e adesso ne ha 136.
+
+**Non è stato tolto niente di vero.** Ogni descrizione adesso risponde a una domanda sola:
+*cosa succede se lo tocco?* Il resto — il perché, i compromessi, i casi limite — non è
+sparito: è nei commenti di `config.yaml`, dove lo legge chi mantiene l'add-on, e in
+`docs/prova-la-2.0.md`, dove lo trova chi sta provando il prodotto. Nel modulo restava a
+carico di chi voleva solo far funzionare la chat.
+
+Le cose che valeva la pena sapere sono rimaste, dette corte: che «Per quanti giorni tenere
+le conversazioni» governa **anche** quanto HIRIS rilegge della conversazione in corso e che
+`0` non cancella mai; che `0` messaggi al giorno **li blocca tutti**; che il tema
+dell'add-on vale finché non usi l'interruttore chiaro/scuro dentro HIRIS.
+
+I nomi dei campi non cambiano. Anzi, sono loro ad aver reso possibile il taglio: adesso che
+i due interruttori del ponte si chiamano **(1 di 2)** e **(2 di 2)**, il paragrafo che
+spiegava che vanno accesi insieme non serve più — lo dice l'etichetta.
+
+Allineate alle etichette nuove anche le istruzioni per chi prova (`docs/prova-la-2.0.md`),
+che nominavano ancora i campi con i nomi di due versioni fa.
+
 ## [2.3.0] — La pagina di configurazione smette di essere un labirinto (2026-08-13)
 
 **Non cambia niente in quello che HIRIS fa. Cambia la pagina in cui glielo dici.**
