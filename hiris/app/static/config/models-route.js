@@ -8,6 +8,13 @@
      02 Catena automatica (GET/PUT api/models/config chain_order, riordino
         frecce, preset llm_strategy)
      03 Embeddings (riga informativa, sola lettura, da GET api/models/config)
+   Fino alla 2.4.1 la pagina si apriva con la sezione 01. Dalla fetta «la
+   catena diventa l'unica verità» si apre, PRIMA delle tre sezioni, con il
+   riquadro «Adesso» (renderAdesso): chi risponde al prossimo messaggio, in
+   una frase che arriva già scritta dal backend (campo `adesso` del payload
+   GET api/models/config, composto da decisione_modelli.componi_adesso). Non
+   è numerato perché non fa decidere niente -- vedi il commento sopra la
+   funzione.
    La sezione 03 originale del design doc ("Assegnazione per entità": Chatbot
    -> PUT api/chatbots/{id}, Brain -> PUT api/models/config brain_model) è
    uscita alla fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): il
@@ -161,6 +168,12 @@
     llmStrategy: '',       // GET api/models/config -> llm_strategy
     embeddings: { provider: '', model: '' },  // GET api/models/config -> embeddings
     ollamaModel: '',       // GET api/models/config -> ollama_model
+    adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
+    /* Letto dal payload e non ancora consumato da nessuna render: e' lo
+       slot che il Task 8 usa per dire, nella catena, che il ponte la
+       scavalca. Sta qui perche' e' il posto in cui il payload si legge
+       una volta sola; se il Task 8 non arrivasse, va tolto con lui. */
+    ponteAttivo: false,    // GET api/models/config -> ponte_attivo
     cfg: { chain_order: [], provider_models: { claude: '', openai: '', openrouter: '' } }
   };
 
@@ -235,6 +248,39 @@
     orphan.value = val;
     sel.insertBefore(orphan, sel.firstChild);
     sel.value = val;
+  }
+
+  /* ── «Adesso»: la risposta, prima delle ragioni ────────────────────────
+     Non è una sezione e non è numerata: la numerazione, in questa pagina,
+     significa «qui si decide qualcosa». Questo riquadro non fa decidere
+     niente -- dice cosa succede.
+
+     Non compone NESSUNA frase: `adesso.frase` e ogni `diagnosi[].testo`
+     arrivano già scritti da `decisione_modelli.componi_adesso`. È l'invariante
+     2 della spec applicato al testo e non solo all'ordine: se le parole si
+     componessero qui, esisterebbero due posti che affermano cose sul
+     prodotto, e uno dei due prima o poi affermerebbe più di quanto il sistema
+     sa. */
+  function renderAdesso() {
+    var vecchio = byId('adesso-card');
+    if (vecchio && vecchio.parentNode) vecchio.parentNode.removeChild(vecchio);
+    if (!state.adesso || !state.adesso.frase) return null;
+
+    var card = el('div', 'adesso-card');
+    card.id = 'adesso-card';
+    card.appendChild(el('p', 'adesso-frase', state.adesso.frase));
+
+    var diagnosi = state.adesso.diagnosi;
+    if (Array.isArray(diagnosi) && diagnosi.length) {
+      var ul = el('ul', 'adesso-diagnosi');
+      diagnosi.forEach(function(d) {
+        if (!d || !d.testo) return;
+        var li = el('li', 'diagnosi-' + (d.gravita || 'guasto'), d.testo);
+        ul.appendChild(li);
+      });
+      if (ul.firstChild) card.appendChild(ul);
+    }
+    return card;
   }
 
   /* ── Sezione 1: Provider attivi ──────────────────────────────────────── */
@@ -522,6 +568,12 @@
       state.embeddings = (cfgRaw.embeddings && typeof cfgRaw.embeddings === 'object')
         ? cfgRaw.embeddings : { provider: '', model: '' };
       state.ollamaModel = cfgRaw.ollama_model || '';
+      state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
+      state.ponteAttivo = !!cfgRaw.ponte_attivo;
+      var outlet = document.getElementById('route-outlet');
+      var card = renderAdesso();
+      /* Sopra la prima section-card: la risposta viene prima delle ragioni. */
+      if (card && outlet) outlet.insertBefore(card, outlet.querySelector('.section-card'));
       renderSection1();
       renderSection2();
       renderSection4();

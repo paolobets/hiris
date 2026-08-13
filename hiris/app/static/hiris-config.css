@@ -1393,6 +1393,43 @@
   }
 }
 
+/* «Adesso»: la risposta della pagina Modelli, prima delle sue ragioni.
+   Deve essere il testo piu' grande della pagina dopo il titolo -- e' l'unica
+   cosa che chi apre la pagina sta cercando davvero. Misure prese dalla scala
+   del tema (`--fs-20`, 20px, fra `.page-title` a 24 e `.sc-title` a 17) e non
+   scritte a mano: un valore fuori scala qui sarebbe un secondo linguaggio
+   visivo dentro la stessa pagina.
+   Il fondo e' `--surface-2` e non `--surface` come `.section-card`: e' cio'
+   che lo distingue da una sezione, insieme all'assenza del numero. Non
+   decide niente, quindi non e' numerato; dice cosa succede, quindi sta in
+   cima. */
+.adesso-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.adesso-card .adesso-frase {
+  margin: 0;
+  font-size: var(--fs-20);
+  line-height: var(--lh-snug);
+  color: var(--text);
+}
+.adesso-card .adesso-diagnosi {
+  margin: var(--sp-3) 0 0;
+  padding-left: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+}
+/* Testo su token `*-ink`, mai su `--warn`/`--err`: la regola d'uso e' scritta
+   in hiris-theme.css (righe 76-82) e questa pagina e' l'ultima superficie che
+   non la rispettava. */
+.adesso-card .diagnosi-spreco { color: var(--warn-ink); }
+.adesso-card .diagnosi-guasto { color: var(--err-ink); }
+
 /* fetta E5 Task 11 ("il vocabolario che resta dice il vero"): qui viveva
    `.field-hint-block` (+ `.field-hint-block p`), orfanata dalla rimozione
    di editor-kit.js al Task 6 (era il wrapper del blocco hint sotto un

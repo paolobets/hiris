@@ -52,3 +52,24 @@ def test_models_route_puts_full_config_object():
     assert "JSON.stringify(state.cfg)" in js
     assert "api('api/chatbots/'" not in js
     assert "fetch('api/chatbots')" not in js
+
+def test_la_pagina_riceve_la_frase_e_non_la_compone():
+    """L'invariante 2 della spec, guardato dal lato del file: la pagina legge
+    `adesso.frase`, e non c'è nessuna composizione di frase in JS.
+
+    La prima forma di questo test era `assert "state.adesso.frase" in js`, e
+    una prova per mutazione l'ha vista SOPRAVVIVERE: sostituendo la riga che
+    disegna la frase con una stringa scritta a mano, la sottostringa restava
+    comunque nel file (la usa anche la guardia `if (!state.adesso ||
+    !state.adesso.frase)`). Quindi qui si pinna l'ESPRESSIONE CHE DISEGNA, non
+    una sottostringa che può vivere altrove.
+    """
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    assert "el('p', 'adesso-frase', state.adesso.frase)" in js, (
+        "la frase a schermo dev'essere quella del backend, non una composta qui"
+    )
+    assert "adesso-card" in js
+    # Le parole del prodotto stanno in `decisione_modelli.componi_adesso` e in
+    # nessun altro posto: se l'incipit della frase ricompare nel frontend,
+    # esistono due file che affermano cose sul prodotto (invariante 3).
+    assert "Il prossimo messaggio va a" not in js

@@ -32,7 +32,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # massa) invece di diventare un margine dentro cui si puo' erodere la suite
 # senza che nessuno se ne accorga. Chi la riabbassa deve scrivere qui perche',
 # come e' stato fatto ora.
-_MIN_JS_TEST_FILES = 8
+#
+# fetta «la catena diventa l'unica verita'» Task 2: la soglia era rimasta a 8
+# mentre i file erano diventati 11 -- tre file aggiunti dopo la riancora
+# (`chat-page`, `chat-usage-widget`, `chat-usage-non-misurata`) senza rialzarla,
+# cioe' un margine di 3 file cancellabili in silenzio: esattamente cio' che il
+# paragrafo qui sopra vieta. Piu' `models-route.test.mjs`, che questo task
+# aggiunge (la pagina #/models non aveva alcun test comportamentale, ed e' la
+# pagina che questa fetta riscrive): 11 + 1 = 12. Il numero e' CONTATO, non
+# incrementato a mano -- chi aggiunge o toglie un file conta di nuovo.
+_MIN_JS_TEST_FILES = 12
 
 
 def _js_test_files():
