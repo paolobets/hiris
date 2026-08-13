@@ -1,5 +1,51 @@
 # HIRIS — Changelog
 
+## [2.2.1] — «Le ho spente» invece di «non è cambiato niente» (2026-08-13)
+
+**Correzione del primo difetto trovato usando davvero la 2.2.0 in una casa.**
+
+**Cosa si vedeva.** Chiedevi di spegnere due abat-jour. Si spegnevano. E HIRIS ti
+rispondeva che erano ancora accese:
+
+> «Il comando è partito correttamente ma non ha avuto effetto — probabile problema di
+> comunicazione col dispositivo. Vuoi che riprovi?»
+
+Non capitava ogni tanto: capitava **quasi sempre**, su qualsiasi comando riuscito.
+Chiedendo di portare il termostato a 19.5° ci andava davvero, e HIRIS ti diceva che era
+rimasto a 17.5°.
+
+**Cosa si vede adesso.** «Le ho spente.» «Era a 17.5°, adesso è a 19.5°.» Quando qualcosa
+succede, HIRIS lo racconta come successo.
+
+**Perché sbagliava.** Guardava nel posto sbagliato. Dopo aver dato il comando rileggeva lo
+stato dalla sua copia interna della casa, che si aggiorna qualche istante più tardi: ci
+trovava sempre la situazione di prima. Adesso il «dopo» glielo dice **Home Assistant**,
+che gli riporta cosa è cambiato mentre eseguiva il comando — la sola misura presa nel
+momento giusto.
+
+**E soprattutto: HIRIS non inventa più una causa.** Quella frase sul «problema di
+comunicazione col dispositivo» era una diagnosi che HIRIS non aveva alcun modo di fare, e
+mandava a cercare un guasto che non esisteva. Quando davvero non risulta cambiato niente,
+adesso te lo dice per quello che è — *Home Assistant non ha riportato nessun cambiamento*
+— senza dare la colpa a un dispositivo che sta benissimo.
+
+**Una tapparella lenta resta un caso a parte, ed è giusto così.** Se ci mette venti
+secondi, nell'istante del comando non è ancora cambiato niente e HIRIS te lo dice; ma è
+un'osservazione, non un allarme, e la differenza fra «non è ancora cambiato» e «è rotto»
+adesso c'è.
+
+**Un dettaglio in più nel registro (`Log`).** Ogni azione porta ora anche quanti
+cambiamenti Home Assistant ha riportato, e al primo comando dopo ogni avvio compare una
+riga che descrive la forma esatta della risposta ricevuta. Serve a chi segnala un
+problema: è il dato che permette di capire cosa è successo senza tirare a indovinare.
+
+### E il benvenuto della chat non si smentisce più
+
+Aprendo HIRIS, la prima cosa che si leggeva era: *«Non agisco: non accendo, non spengo e
+non modifico niente»*. Da tre giorni non era più vero. Adesso dice cosa HIRIS fa davvero
+— accende, spegne, imposta se glielo chiedi — e cosa continua a non fare: non scrive
+automazioni né script, non programma niente per dopo, e **non parte mai da sola**.
+
 ## [2.2.0] — Adesso puoi chiedergli di fare (2026-08-12)
 
 **Fino a ieri HIRIS sapeva e basta. Da questa versione, se glielo chiedi, fa.**

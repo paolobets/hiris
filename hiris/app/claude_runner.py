@@ -201,21 +201,53 @@ BASE_IDENTITA = (
     "Rispondi nella lingua dell'utente.\n"
 )
 
+# La regola del racconto e la diagnosi inventata (2.2.1). Sulla prima casa
+# vera HIRIS ha spento due abat-jour -- si sono spente -- e ha risposto:
+# «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
+# Vuoi che riprovi?». Il difetto di FONTE che gli faceva vedere lo stato di
+# prima e' chiuso in `azione/porta.py`; ma la seconda meta' della frase --
+# quella che ha mandato il proprietario a cercare un guasto inesistente -- e'
+# nata QUI, e sarebbe rimasta.
+#
+# La riga diceva: «Se `cambiato` e' vuoto la chiamata e' riuscita ma nulla e'
+# cambiato in casa». Affermava una proprieta' della CASA a partire da un dato
+# che parla solo di cio' che HIRIS ha potuto vedere -- lo stesso errore di
+# scala dei fix m11/Task 6 sulle guide del ponte, qui su un altro soggetto. E
+# un modello a cui si dice, con autorita', che l'utente ha chiesto di spegnere
+# e in casa non e' cambiato niente, ha una sola conclusione disponibile: il
+# dispositivo. La speculazione non era un capriccio del modello, era l'unica
+# uscita che il testo gli lasciava.
+#
+# Adesso la riga afferma solo il fatto misurato (Home Assistant non ha
+# riportato cambiamenti), e la riga dopo vieta esplicitamente la deduzione
+# sulla causa nominando le tre ragioni banali che la rendono inutile. E' la
+# stessa disciplina del «preso nota»: non dire di sapere cio' che non sai.
 BASE_REGOLE_STRUMENTI = (
     "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
     " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
     " far succedere qualcosa: `esegui` chiama un servizio di Home Assistant"
     " su una o più entità — accendere, spegnere, impostare. La chiamata viene"
-    " verificata contro questa installazione prima di partire e lo stato"
-    " riletto dopo. Non scrivi automazioni né script, e non programmi niente"
+    " verificata contro questa installazione prima di partire, e dopo ti arriva"
+    " ciò che Home Assistant ha visto cambiare mentre il servizio girava."
+    " Non scrivi automazioni né script, e non programmi niente"
     " per dopo: ogni azione nasce da una richiesta di questa conversazione.\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- `esegui` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
     " se hai solo un nome, o un'area, chiama prima cerca e usa gli id che ti risponde.\n"
     "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"
-    " `esegui` porta `prima`, `dopo` e `cambiato`. Se `cambiato` è vuoto la chiamata è"
-    " riuscita ma nulla è cambiato in casa — dillo, invece di annunciare un successo.\n"
+    " `esegui` porta `prima`, `dopo` e `cambiato`, presi da ciò che Home Assistant ha"
+    " riportato durante la chiamata. Se `cambiato` non è vuoto il comando ha avuto effetto:"
+    " dillo, e di' da cosa a cosa.\n"
+    "- Se `cambiato` è vuoto, l'unica cosa vera è che Home Assistant non ha riportato nessun"
+    " cambiamento: dillo così — non «non è cambiato niente in casa», che è una cosa che non"
+    " puoi sapere — e riferisci l'`avviso` se c'è.\n"
+    "- E NON dedurne una causa. Non dire che il dispositivo non risponde, che c'è un problema"
+    " di comunicazione, che è offline o guasto: non hai nessun dato che lo dica, e mandare"
+    " qualcuno a cercare un guasto inesistente è peggio che dire «non lo so». Le ragioni vere"
+    " sono banali almeno quanto un guasto — era già così, il servizio non cambia nessuno"
+    " stato, oppure una tapparella o una valvola si sta ancora muovendo e finirà fra qualche"
+    " secondo.\n"
     "- Non dichiarare azioni mai eseguite: se non hai chiamato il tool, non dire di averlo fatto.\n"
     "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
     "  non aggiungere disclaimers come 'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"

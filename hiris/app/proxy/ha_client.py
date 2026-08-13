@@ -105,6 +105,70 @@ def _truncate(text: str, cap: int) -> str:
 # quando il progetto agenti lo richiedera' davvero: prima non c'era motivo di
 # tenerlo in piedi senza un chiamante che lo eserciti.
 
+# ── La risposta di POST /api/services, che nessuno aveva mai misurata ──────
+#
+# Home Assistant risponde a una chiamata di servizio con **gli stati che sono
+# cambiati durante l'esecuzione**, calcolati da lui mentre il servizio girava.
+# E' il dato che chiude il difetto misurato sulla prima casa vera (il
+# proprietario spegne due abat-jour, si spengono, e HIRIS risponde «nulla e'
+# cambiato ... probabile problema di comunicazione col dispositivo»): lo
+# specchio interno non poteva saperlo ancora, questa risposta si'.
+#
+# Era stata scartata di proposito, e l'argomento era serio -- «una seconda
+# forma non misurata della stessa risposta», della stessa specie dei due
+# difetti di `fields` in `azione/registro.py`. L'argomento non e' stato
+# ignorato: e' stato applicato. Questa e' la forma non misurata **trattata
+# come tale**, cioe' esattamente come `registro.py` tratta `fields`:
+#
+#   - difensiva -- ogni forma che non si sa leggere diventa «nessun
+#     cambiamento riportato», mai un'eccezione e mai un dato indovinato;
+#   - **dichiarata al primo uso** nel log, cosi' la prossima prova sulla casa
+#     ci dice com'e' fatta davvero invece di farcelo indovinare. E' la stessa
+#     disciplina della prova 1 del foglio (`docs/prova-azione.md`).
+#
+# Le due forme note. Quella storica e' una **lista** di stati completi
+# (`entity_id`, `state`, `attributes`, ...). Da HA 2023.7, quando si chiede
+# `?return_response` per un servizio che risponde dei dati, la risposta e'
+# invece una **mappa** `{"changed_states": [...], "service_response": {...}}`.
+# HIRIS non chiede `return_response` e quindi si aspetta la lista -- ma
+# accettare anche la mappa costa tre righe, ed e' il caso in cui il codice di
+# prima (`isinstance(cambiati, list) else []`) avrebbe buttato via in silenzio
+# proprio gli stati cambiati.
+_forma_cambiati_dichiarata = False
+
+
+def _cambiati_da(risposta) -> list[dict]:
+    """Gli stati che HA dichiara cambiati, da qualunque delle forme note.
+
+    Restituisce sempre una lista di dizionari che hanno un `entity_id`: cio'
+    che non ha quella chiave non e' uno stato e non serve a nessuno dei suoi
+    lettori. Non solleva mai.
+    """
+    global _forma_cambiati_dichiarata
+
+    grezzi = risposta
+    if isinstance(risposta, dict):
+        # forma `?return_response` (HA >= 2023.7)
+        grezzi = risposta.get("changed_states")
+    if not isinstance(grezzi, list):
+        grezzi = []
+
+    stati = [v for v in grezzi if isinstance(v, dict) and v.get("entity_id")]
+
+    if not _forma_cambiati_dichiarata:
+        _forma_cambiati_dichiarata = True
+        # `sorted(...)` di una sola voce: basta a riconoscere la forma, e non
+        # versa nel log gli attributi di mezza casa.
+        prima_voce = sorted(stati[0].keys()) if stati else None
+        logger.info(
+            "call_service: la risposta di Home Assistant e' %s, %s voci "
+            "utilizzabili, chiavi della prima: %s -- prima misura di questa "
+            "forma su questo impianto",
+            type(risposta).__name__,
+            len(stati),
+            prima_voce)
+    return stati
+
 
 class HAClient:
     def __init__(self, base_url: str, token: str) -> None:
@@ -166,22 +230,32 @@ class HAClient:
         stato tolto: descriveva un fatto che non e' piu' vero.
 
         **Non chiamarla direttamente.** L'unico chiamante di produzione e'
-        `azione/porta.py`, che verifica prima e rilegge dopo. Questa funzione
-        non verifica NIENTE: se le si passa un servizio inesistente, la
-        richiesta parte e Home Assistant risponde 400. E' voluto -- la verifica
-        e' un pezzo separato e testabile senza rete, e questa e' la primitiva
-        nuda.
+        `azione/porta.py`, che verifica prima e legge il suo ritorno. Questa
+        funzione non verifica NIENTE: se le si passa un servizio inesistente,
+        la richiesta parte e Home Assistant risponde 400. E' voluto -- la
+        verifica e' un pezzo separato e testabile senza rete, e questa e' la
+        primitiva nuda.
 
-        Restituisce la lista degli stati che Home Assistant dichiara cambiati.
-        Puo' essere vuota anche quando il servizio e' andato a buon fine (non
-        tutti i servizi cambiano uno stato): non usarla come prova di successo
-        -- per quello c'e' la rilettura nella porta.
+        **Restituisce gli stati che Home Assistant dichiara cambiati durante
+        l'esecuzione del servizio.** Non e' un dettaglio: e' l'unica fonte del
+        prodotto misurata dalla parte giusta e nel momento giusto -- da HA,
+        mentre il servizio gira. Lo specchio interno delle entita'
+        (`EntityCache`) e' alimentato dagli eventi `state_changed` del
+        websocket, che arrivano su un'ALTRA connessione e in un altro Task:
+        rileggerlo subito dopo questa `await` legge quasi sempre lo stato di
+        PRIMA. La porta usa quindi questo ritorno come fonte del «dopo», e lo
+        specchio solo come ripiego (vedi `azione/porta.py::esegui`).
+
+        Puo' essere vuota anche quando il servizio e' andato a buon fine: non
+        tutti i servizi cambiano uno stato, e un dispositivo lento puo' non
+        aver ancora finito. Vuota significa «HA non ha riportato cambiamenti»,
+        mai «il dispositivo e' guasto».
         """
         url = f"{self._base_url}/api/services/{dominio}/{servizio}"
         async with self._session.post(url, json=dati) as resp:
             resp.raise_for_status()
-            cambiati = await resp.json()
-        return cambiati if isinstance(cambiati, list) else []
+            risposta = await resp.json()
+        return _cambiati_da(risposta)
 
     # fetta E3 Task 12: `get_automations`/`create_automation`/
     # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/

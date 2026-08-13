@@ -92,6 +92,75 @@ def test_nessun_prompt_dichiara_piu_che_hiris_non_tocca_la_casa():
                 "«gli strumenti sono rotti»")
 
 
+# -- 1bis. Le stesse falsita', ma nella voce che le ricerche non conoscevano -
+#
+# La ricognizione del Task 7 cercava «non agisce»: la TERZA persona, quella con
+# cui il codice e le opzioni parlano DEL prodotto. Il testo di benvenuto della
+# chat (`static/index.html`) e' in PRIMA persona, perche' li' e' HIRIS che
+# parla all'utente -- «non agisco: non accendo, non spengo». La caccia
+# conosceva una voce sola, e quella frase e' rimasta falsa per tre giorni sulla
+# schermata iniziale del prodotto: la prima cosa che si legge aprendolo.
+#
+# Non e' una voce in piu' da aggiungere all'elenco: e' un buco di METODO, e
+# questo test lo chiude sorvegliando entrambe le voci su cio' che legge
+# l'UTENTE -- che e' l'altra meta' che i test qui sopra non guardano, perche'
+# guardano i prompt, cioe' cio' che legge il modello.
+
+_FALSITA_IN_ENTRAMBE_LE_VOCI = (
+    # terza persona: il codice che parla del prodotto
+    "non agisce", "non accende", "non spegne", "non tocca automazioni",
+    "never acts", "doesn't act", "does not act",
+    # prima persona: HIRIS che parla all'utente
+    "non agisco", "non accendo", "non spengo", "non modifico niente",
+    "i don't act", "i never act",
+)
+
+
+def _testi_che_legge_l_utente() -> dict[str, str]:
+    """Il benvenuto della chat e le due traduzioni delle opzioni, senza i
+    commenti: un commento che RACCONTA una falsita' corretta (ce ne sono due,
+    dal Task 7) non e' la falsita'."""
+    from pathlib import Path
+
+    radice = Path(__file__).resolve().parent.parent / "hiris"
+    sorgenti = [radice / "app" / "static" / "index.html",
+                radice / "translations" / "it.yaml",
+                radice / "translations" / "en.yaml"]
+    testi = {}
+    for percorso in sorgenti:
+        righe = percorso.read_text(encoding="utf-8").splitlines()
+        testi[percorso.name] = "\n".join(
+            r for r in righe if not r.lstrip().startswith("#"))
+    return testi
+
+
+def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci():
+    for nome, testo in _testi_che_legge_l_utente().items():
+        basso = testo.lower()
+        for falsita in _FALSITA_IN_ENTRAMBE_LE_VOCI:
+            assert falsita not in basso, (
+                f"«{falsita}» e' tornata in {nome}. Dal commit che ha dato "
+                "`esegui` al modello, HIRIS accende e spegne: una frase che lo "
+                "nega e' falsa, e se sta sulla schermata iniziale e' la prima "
+                "cosa che l'utente legge del prodotto")
+
+
+def test_il_benvenuto_dice_le_tre_cose_vere_dell_azione():
+    """Le stesse tre di `claude_runner.BASE_REGOLE_STRUMENTI` e della voce
+    `chat_via_subscription`, e con le stesse parole: agisce SU RICHIESTA, non
+    COSTRUISCE, non fa niente DA SOLA. Scritte in tre posti, divergono in una
+    settimana se nessuno le tiene insieme."""
+    benvenuto = _testi_che_legge_l_utente()["index.html"].lower()
+    assert "accendo, spengo, imposto" in benvenuto, (
+        "il benvenuto non dice piu' cosa HIRIS sa fare, o non lo dice con le "
+        "stesse parole degli altri due posti (accendere, spegnere, impostare)")
+    assert "non scrivo automazioni" in benvenuto, (
+        "il benvenuto non dice piu' il confine: HIRIS agisce ma non COSTRUISCE")
+    assert "mai da sola" in benvenuto, (
+        "il benvenuto non dice piu' che nessuna azione parte da sola: e' la "
+        "cosa che l'utente ha diritto di sapere prima di tutte le altre")
+
+
 # -- 2. Gli id, non i nomi --------------------------------------------------
 
 def test_la_guida_chiede_gli_id_non_i_nomi():
@@ -117,14 +186,63 @@ def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
 
 def test_entrambi_i_percorsi_chiedono_di_raccontare_cosa_e_successo():
     """La regola del prodotto (`vincoli-globali.md`) scritta come regola di
-    RISPOSTA: la porta rilegge lo stato e consegna `cambiato`; se e' vuoto la
-    chiamata e' riuscita e nulla e' successo, e dichiarare un successo
+    RISPOSTA: la porta consegna `cambiato`; se e' vuoto, cio' che si sa e' che
+    Home Assistant non ha riportato cambiamenti, e dichiarare un successo
     sarebbe dire cosa e' stato CHIESTO."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
         basso = testo.lower()
         assert "cambiato" in basso, (
             f"il prompt del percorso {percorso} non nomina `cambiato`, il "
             "campo che dice se qualcosa e' successo per davvero")
+
+
+# -- 3bis. La diagnosi inventata (2.2.1) ------------------------------------
+#
+# Il secondo difetto misurato sulla prima casa vera, e quello che ha fatto il
+# danno peggiore. HIRIS spegne due abat-jour -- si spengono -- e risponde:
+# «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
+# Vuoi che riprovi?». La prima meta' della frase e' un difetto di FONTE, chiuso
+# in `azione/porta.py`. La seconda e' nata QUI: il prompt diceva al modello,
+# con autorita', che «nulla e' cambiato IN CASA» -- un'affermazione sulla casa
+# ricavata da un dato che parla solo di cio' che HIRIS ha potuto vedere. A un
+# modello a cui si dice che l'utente ha chiesto di spegnere e in casa non e'
+# cambiato niente resta una sola conclusione disponibile: il dispositivo. La
+# speculazione non era un capriccio, era l'unica uscita che il testo lasciava.
+#
+# I due test guardano le due meta' della correzione: cosa il prompt AFFERMA
+# (solo il fatto misurato) e cosa VIETA (dedurne la causa).
+
+def test_nessuno_dei_due_percorsi_afferma_che_in_casa_non_e_cambiato_niente():
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        basso = testo.lower()
+        assert "nulla è cambiato in casa" not in basso, (
+            f"il prompt del percorso {percorso} afferma di nuovo una proprieta' "
+            "della CASA a partire da un dato che dice solo cosa Home Assistant "
+            "ha riportato: e' l'errore di scala da cui e' nata la diagnosi "
+            "inventata sulla casa vera")
+        assert "home assistant non ha riportato" in basso, (
+            f"il prompt del percorso {percorso} non dice piu' QUAL E' il fatto "
+            "che `cambiato` vuoto porta con se': senza soggetto, il modello "
+            "torna a leggerlo come «in casa non e' successo niente»")
+
+
+def test_entrambi_i_percorsi_vietano_di_inventare_una_causa():
+    """Non basta togliere l'affermazione falsa: il divieto dev'essere
+    esplicito, e deve nominare la frase vera che il prodotto ha prodotto --
+    «problema di comunicazione» -- perche' e' quella che ha mandato il
+    proprietario a cercare un guasto inesistente."""
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        basso = testo.lower()
+        assert "problema di comunicazione" in basso and "guasto" in basso, (
+            f"il prompt del percorso {percorso} non vieta piu' la diagnosi "
+            "inventata: il modello non ha nessun dato sul dispositivo, e "
+            "mandare qualcuno a cercare un guasto inesistente e' peggio che "
+            "dire «non lo so»")
+        assert "tapparella" in basso or "valvola" in basso, (
+            f"il prompt del percorso {percorso} vieta la diagnosi senza dare "
+            "la ragione banale che la rende inutile: un dispositivo lento che "
+            "non ha ancora finito resta un caso vero, e il modello deve avere "
+            "quella lettura a disposizione")
 
 
 # -- 4. L'ambiguita' --------------------------------------------------------

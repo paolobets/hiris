@@ -43,15 +43,26 @@ RISPOSTA_HA = [
 
 
 class FintoClient:
-    def __init__(self):
+    """Home Assistant visto dalla porta.
+
+    `cambiati` e' cio' che `call_service` restituisce: **gli stati completi**
+    (`entity_id`, `state`, `attributes`) che HA dichiara cambiati durante
+    l'esecuzione del servizio. Fino alla 2.2.0 questa finta restituiva sempre
+    `[]` e nessun test ne guardava il ritorno, perche' la porta lo buttava --
+    ed e' esattamente li' che il difetto della 2.2.0 e' passato (vedi il
+    commento sopra la famiglia 3 in fondo al file).
+    """
+
+    def __init__(self, cambiati=None):
         self.chiamate = []
+        self._cambiati = cambiati if cambiati is not None else []
 
     async def get_services(self):
         return RISPOSTA_HA
 
     async def call_service(self, dominio, servizio, dati):
         self.chiamate.append((dominio, servizio, dati))
-        return []
+        return list(self._cambiati)
 
 
 class FintaCache:
@@ -60,6 +71,12 @@ class FintaCache:
     Imita `EntityCache`: `all_states()` restituisce una lista di dizionari
     minimali (`id`, `state`, ...), e `loaded` dice se la prima lettura da Home
     Assistant e' mai arrivata in fondo.
+
+    **Attenzione a `dopo`.** Uno specchio che alla seconda lettura mostra gia'
+    lo stato nuovo e' cio' che la produzione NON fa: lo alimentano gli eventi
+    `state_changed` del websocket, che arrivano dopo. `dopo=None` -- lo
+    specchio che resta fermo -- e' quindi il caso REALE, ed e' quello che i
+    test della famiglia 3 usano.
     """
 
     def __init__(self, stati, dopo=None, loaded=True, rompe_dalla_lettura=None):
@@ -104,6 +121,36 @@ CLIMA_A_21 = {"climate.salotto": {"state": "heat", "attributes": {"temperature":
 METTI_A_21 = {"servizio": "climate.set_temperature",
               "bersaglio": {"entita": ["climate.salotto"]},
               "dati": {"temperature": 21}}
+
+# -- I due difetti misurati sulla prima casa vera (2.2.1) --------------------
+#
+# Ricostruiti con i dati veri delle due prove, e con lo specchio FERMO --
+# com'e' in produzione nell'istante della rilettura.
+#
+# Gli stati qui sotto sono nella forma di HOME ASSISTANT (`entity_id`, e
+# `attributes` INTERI), non nella voce minimale dello specchio: e' cio' che
+# `call_service` restituisce davvero, e la porta deve saperlo normalizzare.
+HA_RIPORTA_IL_SALOTTO_SPENTO = [
+    {"entity_id": "light.salotto", "state": "off",
+     "attributes": {"friendly_name": "Salotto",
+                    "supported_color_modes": ["hs"]}},
+]
+
+# Il termostato della camera: `state` resta «heat», cambia `temperature`, e
+# accanto viaggiano i valori con cui il modello ragiona (26.9 in stanza,
+# riscaldamento a riposo). La casa vera ha misurato che l'impronta li legge
+# bene: cio' che sbagliava era da dove veniva il «dopo».
+CAMERA_A_17_5 = {"climate.camera": {"state": "heat", "attributes": {
+    "hvac_action": "idle", "current_temperature": 26.9, "temperature": 17.5}}}
+METTI_LA_CAMERA_A_19_5 = {"servizio": "climate.set_temperature",
+                          "bersaglio": {"entita": ["climate.camera"]},
+                          "dati": {"temperature": 19.5}}
+HA_RIPORTA_LA_CAMERA_A_19_5 = [
+    {"entity_id": "climate.camera", "state": "heat",
+     "attributes": {"friendly_name": "Camera", "min_temp": 7, "max_temp": 35,
+                    "hvac_modes": ["off", "heat"], "hvac_action": "idle",
+                    "current_temperature": 26.9, "temperature": 19.5}},
+]
 
 
 async def _registro_pronto(client):
@@ -344,15 +391,15 @@ async def test_prima_e_dopo_mostrano_la_differenza_che_cambiato_dichiara():
 async def test_un_parametrico_che_davvero_non_cambia_niente_lo_dichiara_ancora():
     """L'altra faccia: allargare il confronto agli attributi non deve
     trasformare l'avviso in un ramo morto. Se ne' lo stato ne' gli attributi
-    si muovono, l'avviso resta -- ed e' il caso della valvola termostatica
-    gia' a 21."""
+    si muovono, e Home Assistant non riporta niente, l'avviso resta -- ed e'
+    il caso della valvola termostatica gia' a 21."""
     client = FintoClient()
     registro = await _registro_pronto(client)
     porta = PortaAzione(client, registro, FintaCache(CLIMA_A_21))
     esito = await porta.esegui(METTI_A_21, origine="chat")
     assert esito["eseguito"] is True
     assert esito["cambiato"] == []
-    assert "nessuno stato e' cambiato" in esito["avviso"]
+    assert "non ha riportato nessun cambiamento" in esito["avviso"]
 
 
 def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
@@ -374,3 +421,216 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
         "l'attributo che regge «metti il termostato a 21» non arriva piu' "
         "dall'inventario alla porta: o e' uscito da _DOMAIN_ATTRS, o la voce "
         "minimale ha cambiato forma")
+
+
+# --- la fonte del «dopo» ----------------------------------------------------
+#
+# **Il primo difetto trovato dal vivo, e il motivo per cui questa famiglia
+# esiste.** Sulla prima casa vera, alla prima prova: il proprietario chiede di
+# spegnere due abat-jour, si spengono davvero, e HIRIS risponde «entrambi
+# risultano ancora accesi sia prima che dopo ... probabile problema di
+# comunicazione col dispositivo». Seconda misura, stesso sintomo su un altro
+# dominio e un altro tipo di dato: «porta il termostato a 19.5», il termostato
+# ci va, e HIRIS dice che e' rimasto a 17.5.
+#
+# **Perche' nessuno dei 1207 test lo copriva.** Non e' che mancasse un caso:
+# la finta lo NEGAVA. `FintaCache(..., dopo=...)` mostra lo stato nuovo alla
+# seconda `all_states()` -- cioe' modella uno specchio che si aggiorna da solo
+# fra la chiamata e la rilettura. In produzione non succede: lo specchio lo
+# alimentano gli eventi `state_changed` del websocket, che arrivano su
+# un'altra connessione e in un altro Task, e la rilettura sincrona subito dopo
+# `await call_service` legge quasi sempre il valore di PRIMA. La finta
+# forniva, e in un solo punto, l'unica cosa che la produzione non puo' dare:
+# la freschezza. Il resto della suite era verde a ragione, perche' pinnava un
+# meccanismo che, dato uno specchio fresco, funziona -- e uno specchio fresco
+# non esiste. In piu' `FintoClient.call_service` restituiva `[]` e nessun test
+# ne guardava il ritorno: la fonte giusta non era rotta, era ignorata da
+# entrambe le parti.
+#
+# **La prova per mutazione.** I due test qui sotto tengono lo specchio FERMO
+# (`dopo=None`, il caso reale) e fanno riportare il cambiamento a Home
+# Assistant. Se qualcuno rimette la rilettura dal solo specchio, cadono
+# entrambi -- ed e' l'unica forma in cui questo difetto puo' essere sorvegliato
+# da un test, perche' e' un difetto di FONTE e non di logica.
+
+@pytest.mark.asyncio
+async def test_un_comando_riuscito_e_raccontato_come_riuscito_con_lo_specchio_indietro():
+    """Gli abat-jour. Lo specchio dice ancora «on» in entrambe le letture;
+    Home Assistant dice di averli visti passare a «off» mentre il servizio
+    girava. Vince Home Assistant, perche' e' l'unica delle due misure presa
+    nel momento giusto."""
+    client = FintoClient(cambiati=HA_RIPORTA_IL_SALOTTO_SPENTO)
+    registro = await _registro_pronto(client)
+    specchio_fermo = FintaCache(SALOTTO_ACCESO)  # dopo=None: non si aggiorna mai
+    porta = PortaAzione(client, registro, specchio_fermo)
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == ["light.salotto"], (
+        "la luce si e' spenta davvero e HA l'ha riportato: raccontarlo come "
+        "«nulla e' cambiato» e' l'esatto opposto dell'invariante di questa "
+        "fetta, ed e' il difetto misurato sulla casa vera")
+    assert esito["prima"] == {"light.salotto": {"state": "on"}}
+    assert esito["dopo"] == {"light.salotto": {"state": "off"}}
+    assert "avviso" not in esito, (
+        "un comando riuscito non porta avvisi: l'avviso era la meta' della "
+        "frase da cui il modello ha tratto la diagnosi inventata")
+
+
+@pytest.mark.asyncio
+async def test_lo_stesso_vale_per_un_attributo_e_prima_e_dopo_restano_ricchi():
+    """Il termostato. Stessa causa, altro dominio, altro tipo di dato -- ed e'
+    la ragione per cui la correzione e' UNA.
+
+    La seconda meta' del test guarda una cosa che non si vede dal difetto: la
+    risposta della casa vera conteneva anche un'osservazione BUONA («in stanza
+    ci sono 26.9, quindi resta a riposo»). Il modello la ricava da `prima` e
+    `dopo`, quindi il cambio di fonte non deve impoverirli -- e non li
+    impoverisce, perche' cio' che arriva da Home Assistant passa per la stessa
+    `_to_minimal` dello specchio."""
+    client = FintoClient(cambiati=HA_RIPORTA_LA_CAMERA_A_19_5)
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(CAMERA_A_17_5))
+
+    esito = await porta.esegui(METTI_LA_CAMERA_A_19_5, origine="chat")
+
+    assert esito["cambiato"] == ["climate.camera"]
+    assert esito["prima"]["climate.camera"]["temperature"] == 17.5
+    assert esito["dopo"]["climate.camera"]["temperature"] == 19.5
+    assert "avviso" not in esito
+    # i valori con cui il modello ragiona, da entrambi i lati
+    for lato in ("prima", "dopo"):
+        voce = esito[lato]["climate.camera"]
+        assert voce["current_temperature"] == 26.9, (
+            f"`{lato}` ha perso la temperatura ambiente: e' il dato con cui il "
+            "modello spiega perche' il riscaldamento resta a riposo")
+        assert voce["hvac_action"] == "idle"
+    # e la prova che le due fonti sono confrontabili: se lo fossero solo a
+    # meta', qui differirebbero anche le chiavi, non solo il valore cambiato
+    assert (set(esito["prima"]["climate.camera"])
+            == set(esito["dopo"]["climate.camera"])), (
+        "lo stato riportato da Home Assistant non passa piu' per `_to_minimal`: "
+        "insiemi di chiavi diversi fanno risultare cambiata OGNI entita', che e' "
+        "inventare col verso opposto")
+
+
+@pytest.mark.asyncio
+async def test_lo_specchio_resta_il_ripiego_di_cio_che_home_assistant_non_riporta():
+    """La fonte nuova non caccia quella vecchia. Se HA non riporta niente --
+    un servizio che non cambia stato, o un impianto che risponde con una lista
+    vuota -- lo specchio e' cio' che resta, ed e' cio' che distingue «non e'
+    cambiato» da «non l'ho visto»."""
+    client = FintoClient(cambiati=[])
+    registro = await _registro_pronto(client)
+    cache = FintaCache(SALOTTO_ACCESO, dopo=SALOTTO_SPENTO)
+    porta = PortaAzione(client, registro, cache)
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["cambiato"] == ["light.salotto"]
+    assert cache.letture == 2, (
+        "lo specchio non va piu' letto due volte: il ripiego e' sparito e con "
+        "lui la distinzione fra «non e' cambiato» e «non l'ho visto»")
+
+
+@pytest.mark.asyncio
+async def test_l_avviso_di_nessun_cambiamento_non_accusa_il_dispositivo():
+    """La seconda meta' del difetto, e quella che ha fatto il danno peggiore:
+    «probabile problema di comunicazione col dispositivo» ha mandato il
+    proprietario a cercare un guasto che non c'era. L'avviso dev'essere un
+    fatto su cio' che Home Assistant ha detto, mai un'ipotesi sulla causa --
+    e nemmeno un'affermazione sulla CASA, che HIRIS non e' in grado di fare."""
+    client = FintoClient(cambiati=[])
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_SPENTO))
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    avviso = esito["avviso"].lower()
+    assert "home assistant non ha riportato nessun cambiamento" in avviso, (
+        "l'avviso non dice piu' QUAL E' il fatto: senza il soggetto («Home "
+        "Assistant»), «nessun cambiamento» torna a suonare come un'affermazione "
+        "sulla casa")
+    for parola in ("guast", "comunicazione", "non risponde", "offline",
+                   "irraggiungibil"):
+        assert parola not in avviso, (
+            f"l'avviso contiene «{parola}»: e' una diagnosi che HIRIS non ha "
+            "modo di fare, ed e' esattamente la frase che sulla casa vera ha "
+            "mandato il proprietario a cercare un guasto inesistente")
+
+
+@pytest.mark.asyncio
+async def test_un_dispositivo_lento_resta_un_caso_vero():
+    """La tapparella che ci mette venti secondi. Home Assistant non riporta
+    niente perche' NON e' ancora cambiato niente, e lo specchio conferma:
+    l'avviso dice il vero, e non e' un guasto. Nessuna attesa arbitraria --
+    e' un problema di fonte, e la fonte adesso e' quella giusta."""
+    client = FintoClient(cambiati=[])
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == []
+    assert "avviso" in esito
+    assert esito["dopo"] == {"light.salotto": {"state": "on"}}, (
+        "lo stato che si e' potuto vedere va mostrato lo stesso: e' cio' che "
+        "distingue «non e' ancora cambiato» da «non l'ho visto»")
+
+
+@pytest.mark.asyncio
+async def test_un_cambiamento_che_l_impronta_non_sa_mostrare_non_diventa_nulla_e_cambiato():
+    """Il colore di una luce non sta in `_DOMAIN_ATTRS`: HA riporta un
+    cambiamento, l'impronta non lo mostra. Prima di questa versione il caso
+    finiva nell'avviso «nessuno stato e' cambiato», che qui e' FALSO -- il
+    comando ha avuto effetto. `cambiato` resta vuoto (dev'essere sempre
+    spiegabile da `prima` e `dopo`), ma l'avviso dice l'altra cosa."""
+    client = FintoClient(cambiati=[
+        {"entity_id": "light.salotto", "state": "on",
+         "attributes": {"rgb_color": [255, 0, 0]}}])
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["cambiato"] == []
+    assert "ha riportato un cambiamento" in esito["avviso"]
+    assert "non ha riportato nessun cambiamento" not in esito["avviso"], (
+        "Home Assistant HA riportato un cambiamento: dire il contrario e' la "
+        "stessa frase falsa detta con sicurezza, in un altro caso")
+
+
+@pytest.mark.asyncio
+async def test_una_voce_riportata_illeggibile_non_rompe_e_non_inventa():
+    """La forma della risposta di `call_service` non e' mai stata misurata su
+    un impianto vero. Cio' che non si sa leggere si salta -- l'entita' ricade
+    sullo specchio -- invece di sollevare o di essere indovinato."""
+    client = FintoClient(cambiati=["non un dizionario", {"senza": "entity_id"},
+                                   {"entity_id": "light.salotto", "state": "off"}])
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == ["light.salotto"]
+
+
+@pytest.mark.asyncio
+async def test_cio_che_nessuna_delle_due_fonti_vede_resta_dichiarato_sconosciuto():
+    """Il terzo esito, e l'unico che non e' un fatto sulla casa: HA non ha
+    riportato niente e lo specchio non e' rileggibile. `cambiato` non prende
+    l'entita' -- contarla direbbe che TUTTO e' cambiato -- e l'avviso dichiara
+    di non sapere invece di scegliere una delle due frasi false."""
+    client = FintoClient(cambiati=[])
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro,
+                        FintaCache(SALOTTO_ACCESO, rompe_dalla_lettura=2))
+
+    esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+    assert esito["cambiato"] == []
+    assert esito["dopo"] == {"light.salotto": None}
+    assert "non so dire cosa sia cambiato" in esito["avviso"].lower()

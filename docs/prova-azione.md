@@ -4,6 +4,13 @@
 sapere soltanto e comincia a fare. Si esegue in mezz'ora, su un impianto Home Assistant
 vero, e serve a decidere se questa versione è pubblicabile.*
 
+> **Aggiornato il 13 agosto 2026, con la prima casa vera in mano.** Le prove 2 e 9 sono
+> state fatte, ed **entrambe sono fallite** — nello stesso modo, per la stessa causa. Il
+> difetto è chiuso nella **2.2.1**; sotto, in ciascuna delle due prove, c'è cosa si è
+> visto e cosa si deve vedere adesso. **Questo foglio ha funzionato**: la riga di
+> fallimento della prova 2 descriveva il difetto con parole quasi identiche a quelle con
+> cui poi si è presentato, e nessuno dei 1207 test automatici lo vedeva.
+
 ---
 
 ## Perché questo foglio esiste
@@ -119,7 +126,7 @@ prima. Le targhette sotto la risposta lo mostrano — di solito un `cerca` segui
 **Come si riconosce il fallimento.**
 
 - La luce si spegne ma la riga di log dice `cambiati: nessuno`, oppure HIRIS aggiunge
-  l'avviso «nessuno stato e' cambiato» quando invece è cambiato: la rilettura non vede
+  l'avviso «nessun cambiamento» quando invece è cambiato: la rilettura non vede
   ciò che è successo.
 - HIRIS dichiara di aver spento e **la luce resta accesa**, senza nessun avviso. È il
   difetto peggiore possibile di questa versione: dire cosa è stato chiesto invece di cosa
@@ -127,6 +134,51 @@ prima. Le targhette sotto la risposta lo mostrano — di solito un `cerca` segui
 - Nessuna targhetta `esegui` e una risposta del tipo «non posso agire»: lo strumento non
   è arrivato al modello. Salta alla prova 8, che è la stessa cosa vista sull'altro
   percorso.
+
+### Esito reale, 13 agosto 2026 — **fallita**, ed è il primo caso
+
+Il proprietario ha chiesto di spegnere due abat-jour. **Si sono spente davvero.** HIRIS
+ha risposto:
+
+> «La chiamata è arrivata, ma nulla è cambiato: entrambi gli abat jour
+> (`light.abat_jour_sinistra_...` e `light.abat_jour_destra_...`) risultano ancora accesi
+> sia prima che dopo. Il comando è partito correttamente ma non ha avuto effetto —
+> **probabile problema di comunicazione col dispositivo**. Vuoi che riprovi?»
+
+È il primo trattino qui sopra, alla lettera, **più una cosa che questo foglio non aveva
+previsto**: HIRIS non si è limitato a dire il falso, ha aggiunto una **diagnosi
+inventata** e ha mandato il proprietario a cercare un guasto che non esisteva.
+
+**La causa era una sola, e non era il confronto.** La porta buttava via il valore di
+ritorno di `call_service` e rileggeva lo stato dallo **specchio interno** delle entità —
+che è alimentato dagli eventi `state_changed` del websocket, cioè arriva *dopo*. La
+rilettura vedeva quindi lo stato di prima **quasi sempre**, non ogni tanto: ogni comando
+riuscito veniva raccontato come «non è cambiato niente». Nessuno dei 1207 test lo
+copriva perché la finta dello specchio si aggiornava da sola fra le due letture — l'unica
+cosa che la produzione non può fare.
+
+**Cosa deve succedere adesso (2.2.1).** La luce si spegne, HIRIS dice che l'ha spenta, e
+nel log:
+
+```
+azione eseguita [origine=chat] light.turn_off su ['light.abat_jour_sinistra'] -- cambiati: ['light.abat_jour_sinistra'] (Home Assistant ne ha riportati 1)
+```
+
+Il numero fra parentesi è la novità e vale la pena guardarlo: è **quanti stati Home
+Assistant ha dichiarato cambiati** durante l'esecuzione del servizio — la fonte nuova.
+Se dicesse `0` su un comando che ha funzionato, il difetto sarebbe tornato da un'altra
+porta, e la cosa da segnalare sarebbe quella riga.
+
+**Cerca anche, una volta sola per avvio dell'add-on, questa riga:**
+
+```
+call_service: la risposta di Home Assistant e' list, 1 voci utilizzabili, chiavi della prima: ['attributes', 'context', 'entity_id', 'last_changed', 'last_updated', 'state'] -- prima misura di questa forma su questo impianto
+```
+
+**È la stessa disciplina della prova 1**, applicata alla seconda forma che nessuno aveva
+mai misurato. Se dicesse `dict` invece di `list`, o `0 voci utilizzabili` su un comando
+riuscito, **copiala e segnalala**: la forma vera è diversa da quella attesa e va riletta
+`_cambiati_da` in `hiris/app/proxy/ha_client.py`.
 
 ---
 
@@ -212,21 +264,29 @@ accetta parametri, e ne hai passato ...»*.
 **Cosa fare.** Con una tapparella ferma, in chat: *«apri la tapparella della camera»*.
 
 **Cosa deve succedere.** La tapparella **comincia a muoversi**, e HIRIS aggiunge
-l'avviso che la chiamata e' riuscita **ma nessuno stato e' cambiato**.
+l'avviso che la chiamata è andata a buon fine **ma Home Assistant non ha riportato nessun
+cambiamento di stato**.
 
-**Quell'avviso, qui, è corretto.** HIRIS rilegge lo stato pochi millisecondi dopo aver
-chiamato, e in quel momento la tapparella era ancora dov'era. Non aspetta apposta:
-un'attesa arbitraria trasformerebbe un fatto in un'ipotesi.
+**Quell'avviso, qui, è corretto — ed è l'unico caso in cui lo è.** Nella 2.2.0 la stessa
+frase usciva anche su ogni comando riuscito (prova 2), e questo la rendeva impossibile da
+credere. Adesso il «dopo» viene da ciò che Home Assistant ha visto cambiare mentre il
+servizio girava: se non ha riportato niente, non era ancora cambiato niente. Non si
+aspetta apposta: un'attesa arbitraria trasformerebbe un fatto in un'ipotesi, e adesso non
+ce ne sarebbe nemmeno il pretesto.
 
-**Come si riconosce il fallimento.** Nessun fallimento tecnico, ma **due cose da
-annotare**, perché è a questo che serve la prova:
+**Come si riconosce il fallimento.**
 
-- **quanto è fastidiosa** quella frase in una casa vera. Se ogni tapparella e ogni valvola
-  termostatica produce un avviso che sembra un errore, l'avviso è un difetto d'uso anche
-  se dice il vero;
-- **come la racconta HIRIS**. Deve dirti che il comando è partito e che nell'immediato non
-  era ancora cambiato niente — non «non è successo niente», che sarebbe falso.
+- **HIRIS ti dice che è un problema del dispositivo** — «non risponde», «probabilmente è
+  offline», «problema di comunicazione». È il difetto della 2.2.0 (prova 2, esito reale)
+  ed è **il** fallimento di questa prova: HIRIS non ha nessun dato che lo dica, e una
+  tapparella che ci mette venti secondi è la spiegazione ovvia. Se lo vedi, **copia la
+  frase intera**: è il testo del prompt che va corretto, non il codice.
+- HIRIS dice «non è successo niente» invece di «non è ancora cambiato niente»: la prima è
+  falsa, la seconda è vera.
 
+E **una cosa da annotare** comunque, perché è a questo che serve la prova: **quanto è
+fastidiosa** quella frase in una casa vera. Se ogni tapparella e ogni valvola termostatica
+produce un avviso che sembra un errore, l'avviso è un difetto d'uso anche se dice il vero.
 È il materiale che decide se nella prossima versione valga la pena rileggere lo stato una
 seconda volta, in ritardo. Scrivilo, non lasciarlo alla memoria.
 
@@ -307,19 +367,47 @@ azione eseguita [origine=chat] climate.set_temperature su ['climate.salotto'] --
 **Come si riconosce il fallimento.** Tre modi, e tutti e tre vanno segnalati con il
 dominio e il servizio esatti:
 
-- **la riga di log dice `cambiati: nessuno`** e HIRIS aggiunge l'avviso, mentre il
-  termostato è andato a 21 davvero. Significa che il valore che è cambiato **non è fra
-  quelli che HIRIS tiene in memoria**: l'inventario delle entità conserva un elenco corto
-  di attributi per dominio (`hiris/app/proxy/entity_cache.py`, `_DOMAIN_ATTRS`), e ciò
-  che non è lì dentro è invisibile al confronto. È un limite dichiarato, non una
-  sorpresa: **la segnalazione utile è quale attributo**, perché è quello il dato che
-  serve per allungare l'elenco con dei nomi *osservati* invece che indovinati.
+- **la riga di log dice `cambiati: nessuno` ma con `(Home Assistant ne ha riportati 1)`**,
+  e HIRIS ti dice che il comando **ha avuto effetto su qualcosa che non sa mostrare**.
+  Significa che il valore cambiato **non è fra quelli che HIRIS tiene in memoria**:
+  l'inventario delle entità conserva un elenco corto di attributi per dominio
+  (`hiris/app/proxy/entity_cache.py`, `_DOMAIN_ATTRS`), e ciò che non è lì dentro è
+  invisibile al confronto. È un limite dichiarato, non una sorpresa — e dalla 2.2.1 non è
+  più muto, perché Home Assistant il cambiamento lo riporta comunque. **La segnalazione
+  utile è quale attributo**, perché è quello il dato che serve per allungare l'elenco con
+  dei nomi *osservati* invece che indovinati.
 - **HIRIS dichiara i due numeri ma sono sbagliati** (dice «da 19 a 21» e il termostato è
-  fermo a 19): la rilettura sta arrivando prima dell'evento di Home Assistant. È la
-  stessa corsa della prova 6, vista su un valore invece che su uno stato.
+  fermo a 19): la rilettura sta arrivando prima dell'evento di Home Assistant.
 - **HIRIS risponde che non è cambiato niente e non è cambiato niente davvero**, perché il
   termostato era già a 21: non è un fallimento, è il caso giusto. Rifallo partendo da un
   valore diverso.
+
+### Esito reale, 13 agosto 2026 — **fallita**, e ha chiuso la diagnosi
+
+Il proprietario ha chiesto di portare il termostato della camera a 19.5°. **Ci è andato.**
+HIRIS ha risposto:
+
+> «La chiamata è arrivata, ma il termostato della camera matrimoniale
+> (`climate.camera_t_camera_t`) è rimasto impostato a **17.5°, non 19.5°** — nulla è
+> cambiato. La temperatura ambiente attuale è comunque 26.9°, quindi il riscaldamento è a
+> riposo (idle) anche a target basso. Vuoi che riprovi?»
+
+È il secondo trattino qui sopra, ed è **la stessa causa della prova 2** vista su un altro
+dominio e su un altro tipo di dato — un attributo numerico invece che uno stato. Vale la
+pena leggerlo per ciò che **non** dice: il confronto sugli attributi (la correzione che
+questa prova esiste per misurare) **funziona**, e ha riportato `temperature` con
+precisione. Sbagliata era la fonte da cui veniva il valore, non il confronto.
+
+**E c'è una cosa buona da preservare in quella risposta**, che non è un difetto: «in
+stanza ci sono 26.9°, quindi il riscaldamento è a riposo anche a target basso». È HIRIS
+che legge lo stato vivo e ne trae una conseguenza utile — il modello usa `prima` e `dopo`
+per **ragionare**, non solo per riferirli. La 2.2.1 non li impoverisce: ciò che arriva da
+Home Assistant passa per la stessa normalizzazione dello specchio, quindi `hvac_action` e
+`current_temperature` continuano a viaggiare accanto a `temperature`.
+
+**Cosa deve succedere adesso (2.2.1).** Il termostato va a 19.5, HIRIS dice «era a 17.5,
+adesso è a 19.5» **senza** avvisi, e il log porta `cambiati: ['climate.camera_t_camera_t']
+(Home Assistant ne ha riportati 1)`.
 
 ---
 
@@ -399,6 +487,11 @@ fallita ...`).
 
 Per la prova 1 aggiungi l'output del `curl`: è l'unico pezzo di questo foglio che non
 possiamo ricostruire da soli.
+
+Per le prove 2, 6 e 9 aggiungi la riga **`call_service: la risposta di Home Assistant e'
+...`**, che compare una volta sola per avvio dell'add-on. È la forma vera della risposta
+alle chiamate di servizio, e ha lo stesso peso del `curl` della prova 1: da questa
+versione è la fonte da cui HIRIS decide se un comando ha funzionato.
 
 E se la prova 1 fallisce, le altre non servono: **è quella che decide se questa versione
 sta in piedi.**

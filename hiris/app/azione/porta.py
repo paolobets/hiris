@@ -19,15 +19,36 @@ non esiste in questa casa» di entita' che esistono. Sono la stessa cosa vista
 due volte -- un ingresso vuoto che produce una frase falsa detta con
 sicurezza -- e chiuderli e' compito di questa porta, che i due ingressi li
 conosce. Le due guardie sono sotto, ciascuna col suo messaggio onesto.
+
+**Da dove viene il «dopo», e perche' non e' piu' lo specchio.** Il primo
+difetto trovato dal vivo di questa fetta, alla prima prova sulla prima casa
+vera, e' stato questo: ogni comando RIUSCITO veniva raccontato come «nulla e'
+cambiato». Due misure, due domini, un solo sintomo -- due abat-jour spenti
+davvero (`state` da `on` a `off`) e un termostato portato davvero a 19.5
+(`attributes.temperature` da 17.5) -- entrambi riletti col valore di PRIMA.
+
+La causa non era il confronto, che funzionava (vedi `_impronta`): era la
+FONTE. Lo specchio interno (`proxy/entity_cache.py`) e' alimentato dagli
+eventi `state_changed` del websocket, che arrivano su un'altra connessione e
+in un altro Task; rileggerlo nella riga subito dopo `await call_service`
+legge cio' che c'era prima. Non e' una gara che ogni tanto si perde: si perde
+quasi sempre, e l'invariante che questa fetta esiste per garantire -- dire
+cosa e' SUCCESSO, non cosa e' stato CHIESTO -- produceva l'esatto opposto.
+
+La fonte del «dopo» e' quindi **il ritorno di `call_service`**: gli stati che
+Home Assistant dichiara cambiati DURANTE l'esecuzione del servizio, misurati
+da lui, nel momento giusto. Lo specchio resta come ripiego per le entita' di
+cui HA non ha detto niente. E per cio' che nessuna delle due fonti sa dire,
+si dichiara di non saperlo -- come sempre in questo modulo.
 """
 import logging
 
-from ..proxy.entity_cache import inventario_leggibile
+from ..proxy.entity_cache import _to_minimal, inventario_leggibile
 from .verifica import verifica
 
 logger = logging.getLogger(__name__)
 
-# I tre messaggi delle guardie. Nessuno dei tre dice «non posso»: il rifiuto
+# I due messaggi delle guardie. Nessuno dei due dice «non posso»: il rifiuto
 # porta il motivo, e qui il motivo e' sempre lo stesso -- non ho guardato, e
 # non lo spaccio per «non c'e'».
 _REGISTRO_MUTO = ("non so ancora cosa Home Assistant sa fare: il registro dei "
@@ -36,8 +57,27 @@ _REGISTRO_MUTO = ("non so ancora cosa Home Assistant sa fare: il registro dei "
 _SPECCHIO_CIECO = ("non vedo lo stato di questa casa: l'inventario delle entita' "
                    "non e' disponibile. Non posso dire se l'entita' esista, solo "
                    "che non ho potuto controllare. Riprova fra poco.")
-_RILETTURA_CIECA = ("la chiamata e' partita, ma non sono riuscito a rileggere lo "
-                    "stato: non so dire cosa sia cambiato")
+
+# I tre avvisi dell'esito, e sono tre perche' i casi sono tre. Prima ce
+# n'erano due, e quello che diceva «nessuno stato e' cambiato» ne copriva
+# tre affermando una cosa che HIRIS non poteva sapere: che in casa non fosse
+# cambiato niente. Da li' il modello ha tratto -- sulla casa vera -- la frase
+# «probabile problema di comunicazione col dispositivo»: una diagnosi
+# inventata, che ha mandato il proprietario a cercare un guasto inesistente
+# mentre le luci erano spente. Un avviso e' un FATTO su cio' che HIRIS ha
+# potuto vedere, mai un'ipotesi sulla causa.
+_NON_VISTO = ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "
+              "dopo: Home Assistant non ha riportato niente su queste entita' e "
+              "l'inventario interno non e' leggibile. Non so dire cosa sia cambiato")
+_NESSUN_CAMBIAMENTO = ("la chiamata e' andata a buon fine e Home Assistant non ha "
+                       "riportato nessun cambiamento di stato. E' un fatto su cio' "
+                       "che Home Assistant ha detto adesso, non una diagnosi del "
+                       "dispositivo: puo' voler dire che era gia' cosi', oppure che "
+                       "sta ancora muovendosi")
+_CAMBIATO_NON_MOSTRABILE = ("Home Assistant ha riportato un cambiamento su queste "
+                            "entita', ma fra i valori che HIRIS confronta non ce n'e' "
+                            "nessuno diverso: il comando ha avuto effetto su qualcosa "
+                            "che non so mostrare")
 
 
 def _impronta(voce) -> dict | None:
@@ -52,7 +92,9 @@ def _impronta(voce) -> dict | None:
     si sentiva raccontare una frase falsa con sicurezza. Vale per l'intera
     classe dei comandi parametrici -- temperatura, luminosita', posizione di
     una tapparella, volume, velocita' di un ventilatore -- cioe' per una casa
-    vera tutti i giorni.
+    vera tutti i giorni. **La casa vera ha poi confermato che questa parte
+    funziona**: nella misura del termostato l'impronta aveva letto e riportato
+    `temperature` con precisione (17.5). Sbagliata era la fonte, non lei.
 
     **Gli attributi sono quelli che lo specchio gia' conserva**
     (`entity_cache._DOMAIN_ATTRS`: `temperature`, `brightness`,
@@ -61,27 +103,27 @@ def _impronta(voce) -> dict | None:
     tiene corto apposta, perche' lo legge tutto il prodotto -- non della
     porta. La conseguenza va detta invece di essere scoperta: un attributo
     che lo specchio non tiene (il colore di una luce, l'umidita' di un
-    umidificatore) resta invisibile a questo confronto, e quel comando
-    continuera' a portare l'avviso «nessuno stato e' cambiato». E' lo stesso
-    avviso onesto-ma-parziale della tapparella lenta: dice il vero su cio'
-    che HIRIS ha potuto guardare.
+    umidificatore) resta invisibile a questo confronto. Quel caso non e' piu'
+    muto: se Home Assistant riporta un cambiamento che l'impronta non sa
+    mostrare, l'esito lo dice con `_CAMBIATO_NON_MOSTRABILE` invece di
+    lasciar credere che non sia successo niente.
 
-    **Perche' non la lista dei cambiati di `call_service`.** Home Assistant
-    la restituisce, e chiuderebbe anche la corsa fra la rilettura e l'arrivo
-    dell'evento websocket. E' stata scartata per due ragioni. La prima: e'
-    una **seconda forma non misurata** della stessa risposta da cui vengono
-    entrambi gli altri difetti chiusi in questa passata (`fields` a sezioni,
-    `fields` non-mappa) -- lo specchio, invece, e' costruito da noi in
-    `_to_minimal`, e confrontarlo con se stesso non presuppone niente. La
-    seconda: metterebbe in `cambiato` entita' la cui differenza `prima` e
-    `dopo` non possono mostrare, cioe' un racconto che si contraddice da
-    solo. Resta un debito dichiarato, e la corsa e' sorvegliata dalla prova 2
-    del foglio.
+    **Vale per entrambe le fonti, ed e' il motivo per cui le due sono
+    confrontabili.** L'impronta si costruisce sempre sulla voce MINIMALE di
+    `entity_cache._to_minimal`: quella dello specchio lo e' gia'; quella che
+    arriva da `call_service` -- uno stato completo di Home Assistant -- ci
+    passa attraverso in `_impronte_riportate`. Senza quel passaggio i due
+    lati avrebbero insiemi di chiavi diversi e OGNI entita' risulterebbe
+    cambiata: cioe' inventare, col verso opposto al difetto di prima.
+    Passandoci, `prima` e `dopo` restano ricchi allo stesso modo -- per un
+    clima portano `hvac_action` e `current_temperature` accanto a
+    `temperature`, ed e' con quelli che il modello puo' dire non solo «da
+    17.5 a 19.5» ma anche «con 26.9 in stanza resta a riposo».
 
     `None` -- non `{}` -- quando dell'entita' non c'e' nessuna voce: e' la
     stessa distinzione «non ho guardato» / «ho guardato» del resto del
-    modulo, ed e' cio' che il modello legge nel `dopo` di una rilettura
-    cieca.
+    modulo, ed e' cio' che il modello legge nel `dopo` di un'entita' che
+    nessuna delle due fonti ha saputo mostrare.
     """
     if not isinstance(voce, dict):
         return None
@@ -92,6 +134,37 @@ def _impronta(voce) -> dict | None:
         # chiave che dice lo stato dev'essere sempre quella.
         impronta.update({k: v for k, v in attributi.items() if k != "state"})
     return impronta
+
+
+def _impronte_riportate(cambiati) -> dict[str, dict]:
+    """Le impronte degli stati che Home Assistant dichiara cambiati.
+
+    Ingresso: il ritorno di `HAClient.call_service`, cioe' una lista di stati
+    COMPLETI di Home Assistant (`entity_id`, `state`, `attributes`, ...) --
+    non le voci minimali dello specchio. `_to_minimal` e' quindi obbligatorio
+    e non decorativo: e' cio' che rende le due fonti confrontabili (vedi
+    `_impronta`).
+
+    Difensiva come il suo ingresso: e' una forma di Home Assistant che nessuno
+    aveva mai misurato (`proxy/ha_client._cambiati_da` la dichiara nel log al
+    primo uso). Una voce che `_to_minimal` non sa digerire viene SALTATA, non
+    indovinata e non fatta esplodere: l'entita' che porta ricadra' sullo
+    specchio, e al peggio sull'onesto «non so dire cosa sia cambiato».
+    """
+    impronte: dict[str, dict] = {}
+    for grezzo in cambiati or []:
+        if not isinstance(grezzo, dict) or not grezzo.get("entity_id"):
+            continue
+        try:
+            voce = _to_minimal(grezzo)
+        except Exception as errore:
+            logger.warning("stato riportato da call_service illeggibile (%s: %s)",
+                           type(errore).__name__, errore)
+            continue
+        impronta = _impronta(voce)
+        if impronta is not None:
+            impronte[grezzo["entity_id"]] = impronta
+    return impronte
 
 
 class PortaAzione:
@@ -167,46 +240,73 @@ class PortaAzione:
         dati = dict(chiamata.get("dati") or {})
         dati["entity_id"] = list(verdetto.entita)
         try:
-            await self._ha.call_service(verdetto.dominio, verdetto.servizio, dati)
+            # Il ritorno NON si butta: sono gli stati che Home Assistant ha
+            # visto cambiare mentre il servizio girava. Buttarlo e rileggere
+            # lo specchio e' esattamente il difetto misurato sulla prima casa
+            # vera (vedi il docstring del modulo).
+            riportati = await self._ha.call_service(
+                verdetto.dominio, verdetto.servizio, dati)
         except Exception as errore:
             logger.warning("azione fallita [origine=%s] %s.%s: %s",
                            origine, verdetto.dominio, verdetto.servizio, errore)
             return {"eseguito": False,
                     "errore": f"Home Assistant ha rifiutato la chiamata: {errore}"}
 
-        # La rilettura. Fra la chiamata e questa riga passano millisecondi: uno
-        # stato lento (una tapparella che impiega venti secondi) risultera'
-        # «non cambiato», e l'avviso dira' il vero -- in QUEL momento non era
-        # cambiato. Nessuna attesa: una `sleep` arbitraria trasformerebbe un
-        # fatto onesto in un'ipotesi.
+        # Le due fonti del «dopo», in ordine di merito.
         #
-        # Cio' che si confronta e' l'IMPRONTA, non il solo `state`: vedi
-        # `_impronta` qui sopra. `prima` e `dopo` portano al modello la stessa
-        # cosa che il confronto guarda, cosi' `cambiato` e' sempre spiegabile
-        # da loro due -- e il modello puo' dire «da 19 a 21» invece di «fatto».
+        # (1) Cio' che HA ha riportato: misurato da lui, durante l'esecuzione.
+        #     Nessuna gara da vincere -- e' il momento giusto per costruzione.
+        # (2) Lo specchio, per le sole entita' di cui HA non ha detto niente.
+        #     Non e' un doppione della (1) ne' un rattoppo alla gara: e' cio'
+        #     che resta quando HA non riporta nulla (un servizio che non
+        #     cambia stato, un dispositivo lento), e serve a distinguere «non
+        #     e' cambiato» da «non l'ho visto». Nessuna attesa, in nessuno dei
+        #     due casi: una `sleep` arbitraria trasformerebbe un fatto in
+        #     un'ipotesi, e adesso non ci sarebbe nemmeno il pretesto.
+        impronte_ha = _impronte_riportate(riportati)
         stati_dopo = self._stati()
+
         prima = {e: _impronta(stati_prima.get(e)) for e in verdetto.entita}
-        dopo = {e: _impronta((stati_dopo or {}).get(e)) for e in verdetto.entita}
-        # Se la rilettura non e' riuscita, `dopo` e' tutto `None` e il
-        # confronto direbbe che TUTTO e' cambiato: sarebbe inventare. Si
-        # dichiara di non saperlo.
-        cieco = stati_dopo is None
-        cambiato = [] if cieco else [e for e in verdetto.entita if prima.get(e) != dopo.get(e)]
+        dopo: dict[str, dict | None] = {}
+        for e in verdetto.entita:
+            impronta = impronte_ha.get(e)
+            if impronta is None and stati_dopo is not None:
+                impronta = _impronta(stati_dopo.get(e))
+            dopo[e] = impronta
+
+        # `dopo` a `None` significa una cosa sola, e la stessa in tutto il
+        # modulo: non l'ho potuto vedere. Un'entita' cosi' resta FUORI da
+        # `cambiato` -- contarla direbbe che TUTTO e' cambiato, cioe'
+        # inventare -- e produce l'avviso che lo dichiara.
+        non_viste = [e for e in verdetto.entita if dopo[e] is None]
+        cambiato = [e for e in verdetto.entita
+                    if dopo[e] is not None and prima.get(e) != dopo[e]]
+        riportate_qui = [e for e in verdetto.entita if e in impronte_ha]
 
         esito = {"eseguito": True,
                  "servizio": f"{verdetto.dominio}.{verdetto.servizio}",
                  "entita": list(verdetto.entita),
                  "prima": prima, "dopo": dopo, "cambiato": cambiato}
-        if cieco:
-            esito["avviso"] = _RILETTURA_CIECA
-        elif not cambiato:
-            # Non e' un errore -- molti servizi legittimi non cambiano stato --
-            # ma tacerlo sarebbe dire cosa e' stato CHIESTO invece di cosa e'
-            # SUCCESSO. Se l'utente ha chiesto di spegnere e la luce e' ancora
-            # accesa, deve saperlo dal modello, non accorgersene dopo.
-            esito["avviso"] = ("la chiamata e' andata a buon fine ma nessuno "
-                               "stato e' cambiato")
-        logger.info("azione eseguita [origine=%s] %s su %s -- cambiati: %s",
+        if non_viste:
+            esito["avviso"] = _NON_VISTO
+        elif cambiato:
+            pass  # il caso normale: c'e' una differenza, e `prima`/`dopo` la mostrano
+        elif riportate_qui:
+            # HA dice che qualcosa e' cambiato e l'impronta non lo mostra:
+            # tipicamente un attributo fuori da `_DOMAIN_ATTRS` (il colore di
+            # una luce). Dire «nessun cambiamento» qui sarebbe falso.
+            esito["avviso"] = _CAMBIATO_NON_MOSTRABILE
+        else:
+            # Non e' un errore -- molti servizi legittimi non cambiano stato,
+            # e una tapparella puo' non aver ancora finito -- ma tacerlo
+            # sarebbe dire cosa e' stato CHIESTO invece di cosa e' SUCCESSO.
+            # Cio' che si afferma e' solo cio' che si sa: che Home Assistant
+            # non ha riportato cambiamenti. Non che la casa non sia cambiata,
+            # e tanto meno perche'.
+            esito["avviso"] = _NESSUN_CAMBIAMENTO
+        logger.info("azione eseguita [origine=%s] %s su %s -- cambiati: %s "
+                    "(Home Assistant ne ha riportati %d)",
                     origine, esito["servizio"], list(verdetto.entita),
-                    cambiato or ("sconosciuto" if cieco else "nessuno"))
+                    cambiato or ("sconosciuto" if non_viste else "nessuno"),
+                    len(riportate_qui))
         return esito
