@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
@@ -16,36 +17,36 @@ def test_main_js_registers_route():
     assert "#/models" in js
     assert "'models'" in js  # updateNavActive branch
 
-def test_models_route_has_three_sections():
-    # fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): la sezione
-    # "Assegnazione per entità" (Chatbot + Brain) esce -- il ramo Chatbot
-    # faceva PUT su una rotta inesistente (404 a ogni salvataggio), il ramo
-    # Brain scriveva brain_model, una configurazione senza più lettori. Il
-    # numero di sezioni scende da quattro a tre; il soggetto del test (il
-    # file JS) sopravvive, quindi il test si adegua invece di sparire.
-    # Cerchiamo il titolo come LETTERALE passato a buildSectionShell (virgolette
-    # dritte), non come prosa nei commenti che spiegano la rimozione (quelli
-    # usano virgolette tipografiche): il file continua a *parlare* della
-    # sezione uscita, ma non la *rende* più.
+def test_models_route_ha_due_sezioni_e_una_riga_in_fondo():
+    # fetta «la catena e' l'unica verita'» (Task 8): le sezioni erano tre --
+    # «Provider e credenziali», «Catena automatica», «Embeddings» -- e le prime
+    # due erano DUE RAPPRESENTAZIONI DELLA STESSA COSA (un elenco di provider
+    # con un badge di stato, e una catena ricostruita a parte). Fuse in una, la
+    # divergenza fra le due e' impossibile per costruzione.
     #
-    # fetta «la catena diventa l'unica verita'»: il titolo della sezione 01 era
-    # "Provider attivi", e la sua descrizione diceva «Per attivare o
-    # disattivare un provider vai su Impostazioni -> Add-on». Da questa fetta
-    # e' falso: l'add-on non attiva piu' niente, tiene le credenziali. Il
-    # soggetto (la sezione resa) e' cambiato, quindi l'attesa si adegua -- e la
-    # nuova forma impedisce che il titolo torni a promettere un interruttore.
+    # Cerchiamo i titoli come LETTERALI passati a buildSectionShell (virgolette
+    # dritte), non come prosa nei commenti che spiegano la rimozione (quelli
+    # usano virgolette tipografiche): il file continua a *parlare* delle
+    # sezioni uscite, ma non le *rende* piu'.
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    assert "'Provider e credenziali'" in js
+    assert "'La catena'" in js
+    assert "'Fuori dalla catena'" in js
+    assert "'Provider e credenziali'" not in js
     assert "'Provider attivi'" not in js
-    assert "'Catena automatica'" in js
-    assert "'Assegnazione per entità'" not in js
-    # Riserva C-2 della review «esce l'integrazione documentale»: il titolo
-    # della terza sezione dichiara adesso l'inerzia, come già facevano
-    # config.yaml, run.sh e le due translations. Il soggetto del test è
-    # cambiato (il titolo reso a schermo), quindi l'attesa si adegua; e la
-    # forma dell'attesa impedisce che il titolo torni a tacere l'inerzia.
-    assert "'Embeddings (oggi inattivi)'" in js
-    assert "'Usati per RAG e memoria semantica" not in js
+    assert "'Catena automatica'" not in js
+    assert "'Assegnazione entita''" not in js
+    # Gli embedding restano dichiarati, ma NON come sezione numerata: la
+    # numerazione, in questa pagina, significa «qui si decide qualcosa», e gli
+    # embedding non decidono niente (progetto §8). Erano la sezione «03».
+    assert "'Embeddings (oggi inattivi)'" not in js
+    assert "'nota-embedding'" in js
+    assert "nessun testo viene vettorizzato" in js
+    # E il blocco «03 QUANDO NON DECIDE LA CATENA» del progetto §3 non si
+    # disegna: il campo che scavalcava la catena e' uscito col Task 4, e un
+    # avviso per uno stato irraggiungibile e' l'esatto contrario del principio
+    # di questa pagina.
+    assert "QUANDO NON DECIDE" not in _codice_senza_commenti(js).upper()
+
 
 def test_models_route_puts_full_config_object():
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
@@ -83,31 +84,113 @@ def test_la_pagina_riceve_la_frase_e_non_la_compone():
     assert "Il prossimo messaggio va a" not in js
 
 
-def test_la_pagina_legge_l_appartenenza_e_non_piu_l_interruttore():
-    """fetta «la catena diventa l'unica verita'»: il payload non porta piu'
-    `active` (interruttore add-on AND credenziale) ne' `toggle` (l'interruttore
-    grezzo). Se il file continuasse a leggerli, leggerebbe `undefined` e
-    disegnerebbe TUTTO spento mentre la catena lavora -- cioe' esattamente il
-    difetto che questa fetta esiste per chiudere, con i campi al contrario.
+def test_la_pagina_legge_le_due_liste_e_non_piu_gli_ingredienti():
+    """Il payload non porta piu' `providers[]` (l'appartenenza detta una
+    seconda volta accanto a `catena`/`fuori_catena`) ne' `llm_strategy` (il
+    preset letto dall'ambiente accanto a `strategia_ultima` letto
+    dall'archivio). Se il file continuasse a leggerli, leggerebbe `undefined` e
+    disegnerebbe una pagina vuota mentre la catena lavora -- cioe' esattamente
+    il difetto che questa fetta esiste per chiudere, con i campi al contrario.
 
     Il test guarda il FILE e non il DOM perche' cio' che pinna e' il contratto
     fra due processi (payload <-> pagina), che nessun test JS puo' rompere: la
     finta del test JS porta i campi che le si danno."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    assert "cp.in_catena" in js
-    assert "p.in_catena" in js
+    assert "cfgRaw.catena" in js
+    assert "cfgRaw.fuori_catena" in js
+    assert "cfgRaw.providers" not in js
+    assert "cfgRaw.llm_strategy" not in js
+    assert "cp.in_catena" not in js
+    assert "p.in_catena" not in js
     assert "cp.active" not in js
-    assert "p.active" not in js
     assert "cp.toggle" not in js
 
 
-def test_la_parola_attivo_non_e_piu_un_badge():
+def _codice_senza_commenti(js: str) -> str:
+    """Il file MENO i commenti. I commenti di questo file citano apposta le
+    scritture vietate («non c'e' nessun `if (dati.id === "subscription")` qui,
+    ed e' deliberato»): un test che le cercasse nel testo intero non potrebbe
+    mai passare, e uno che le cercasse riga per riga cadrebbe sulle righe
+    interne di un commento di blocco."""
+    senza = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", senza, flags=re.M)
+
+
+def test_la_pagina_non_conosce_il_caso_del_piano_ma_obbedisce_a_un_campo():
+    """L'invariante 2 nel punto in cui e' piu' facile romperlo. I gesti che
+    scrivono `chain_order` -- entrare, uscire, salire, scendere -- si disegnano
+    dove il backend dice `riordinabile`, e in nessun altro modo. Un
+    `if (id === 'subscription')` qui dentro sarebbe una regola del prodotto
+    scritta una seconda volta, in un altro linguaggio, libera di divergere da
+    `componi_topologia` -- che e' la forma esatta del difetto di questa fetta.
+
+    I due test JS gemelli (OpenRouter non riordinabile) provano il
+    COMPORTAMENTO; questo impedisce la scrittura che li farebbe passare per la
+    ragione sbagliata su un altro provider."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    assert "dati.riordinabile" in corpo
+    for sospetta in ("=== 'subscription'", '=== "subscription"',
+                     "!== 'subscription'", ".subscription"):
+        assert sospetta not in corpo, (
+            "la pagina non deve riconoscere il piano per id: obbedisce a un campo"
+        )
+    # L'unico posto in cui la parola compare e' l'ordine di «Fuori dalla
+    # catena», che e' un ordine di visualizzazione e non una regola: e' pinnato
+    # contro il backend dal test qui sotto.
+    assert corpo.count("subscription") == 1
+
+
+def test_le_parole_del_prodotto_non_vivono_nella_pagina():
+    """Nomi, nature, che cosa manca, cosa succede se un anello non risponde:
+    sono affermazioni sul prodotto e stanno in `decisione_modelli`, dove si
+    pinnano. Scritte anche qui sarebbero due file che affermano la stessa cosa,
+    e il giorno in cui la regola cambia (il ponte che impara a ripiegare, Task
+    14) uno dei due resterebbe a dire quella di ieri -- senza che nessun test
+    se ne accorga, perche' a schermo la frase ci sarebbe lo stesso."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    for parola in ("Piano Claude Max", "Claude API", "manca la chiave",
+                   "manca il token", "a consumo", "nel piano",
+                   "se rifiuta, subito", "ultimo della catena"):
+        assert parola not in corpo, (
+            f"«{parola}» e' una parola del prodotto: viene dal payload"
+        )
+    assert "dati.connettore" in corpo
+    assert "dati.manca" in corpo
+    assert "dati.nota" in corpo
+
+
+def test_la_parola_attivo_non_torna_da_nessuna_porta():
     """Invariante 3. «Attivo» significa «interruttore acceso e credenziale
     presente» e si legge «funziona»: una chiave a credito esaurito era
     «Attivo». La parola non deve poter tornare da nessuna porta -- e questo
-    file era l'ultima che restava aperta."""
+    file era l'ultima che restava aperta. I badge che la portavano sono usciti
+    con la sezione che li disegnava: quello che resta a schermo e' la catena,
+    dove stare dentro o fuori e' una posizione, non un aggettivo."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     assert "'Attivo'" not in js
     assert "'Disattivato'" not in js
-    assert "'In catena'" in js
+    assert "agent-badge" not in js
     assert "'Fuori dalla catena'" in js
+
+
+def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
+    """Due liste con lo stesso nome in due linguaggi sono la miniatura del
+    difetto che questa fetta chiude. Non si possono fondere (il frontend non
+    importa Python), ma si possono tenere legate da un test che si rompe."""
+    from hiris.app.decisione_modelli import ORDINE_FISSO
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    atteso = "var ORDINE_FISSO = [" + ", ".join(f"'{p}'" for p in ORDINE_FISSO) + "];"
+    assert atteso in js, f"atteso in models-route.js: {atteso}"
+
+
+def test_i_tre_preset_del_frontend_sono_quelli_del_router():
+    """Stessa ragione: i tre ordini esistono due volte. Un preset che
+    riscrivesse la catena in un ordine diverso da quello del router
+    prometterebbe un comportamento che il prodotto non ha."""
+    from hiris.app.llm_router import _STRATEGY_ORDER
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    for chiave, ordine in _STRATEGY_ORDER.items():
+        atteso = "ordine: [" + ", ".join(f"'{p}'" for p in ordine) + "]"
+        assert atteso in js, f"{chiave}: atteso {atteso} in models-route.js"

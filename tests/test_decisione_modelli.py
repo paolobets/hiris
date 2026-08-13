@@ -221,6 +221,9 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
     assert [r["posizione"] for r in catena] == [1, 2]
     assert catena[0] == {"id": "claude", "nome": "Claude API",
                          "modello": "claude-opus-4-7", "natura": "a consumo",
+                         "manca": "", "nota": "",
+                         "connettore": "se rifiuta, subito",
+                         "connettore_nota": "",
                          "ha_credenziale": True, "posizione": 1,
                          "riordinabile": True}
 
@@ -254,6 +257,131 @@ def test_il_piano_non_e_riordinabile_e_gli_altri_quattro_si():
     assert per_id["subscription"]["riordinabile"] is False
     for pid in ("claude", "openrouter", "openai", "ollama"):
         assert per_id[pid]["riordinabile"] is True, pid
+
+
+def test_il_connettore_del_ponte_non_promette_un_ripiego_che_non_esiste():
+    """La prova che vale piu' di tutte in questa funzione. Oggi il ponte non e'
+    un anello: e' un bivio a monte del router, e alla scadenza il messaggio va
+    perso -- non passa alla riga sotto. Un connettore che dicesse «se non
+    risponde, si passa al successivo» sarebbe il difetto 3 ricomparso come
+    didascalia: la pagina prometterebbe un ripiego che il prodotto non fa.
+    Il giorno del ripiego (Task 14) cambia QUESTA stringa, e la pagina dice la
+    cosa nuova senza essere toccata."""
+    catena, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                  modelli=MOD, ponte_attivo=True,
+                                  scadenza_ponte_min=5)
+    piano = catena[0]
+    assert piano["id"] == "subscription"
+    assert piano["connettore"] == (
+        "il ponte non ripiega: se non risponde entro 5 min il messaggio va perso")
+
+
+def test_il_connettore_mostra_un_numero_solo_quando_quel_numero_e_una_decisione():
+    """Progetto §5.1. Il tempo del ponte e il timeout di Ollama li ha scelti
+    qualcuno; un rifiuto immediato non e' un numero e si dice a parole. Un tempo
+    che nessuno ha scelto (i tre tentativi su un 429 di Claude, 5+15+45 secondi)
+    non si inventa qui: lo raccontera' la riga di stato dopo che e' successo."""
+    cred = dict(CRED, ollama=True)
+    catena, _ = componi_topologia(chain_order=["claude", "ollama"],
+                                  credenziali=cred, modelli=MOD,
+                                  ponte_attivo=False, timeout_ollama_s=300)
+    per_id = {r["id"]: r for r in catena}
+    assert per_id["ollama"]["connettore"] == "se non risponde entro 300 s"
+    assert per_id["claude"]["connettore"] == "se rifiuta, subito"
+
+
+def test_sopra_i_cinque_minuti_il_connettore_dichiara_il_tetto_che_lo_schema_non_ha():
+    """`scadenza_min` accetta 1..120, ma la chat smette di interrogare a
+    CHAT_POLL_MAX_MS (5 minuti), una costante indipendente e non collegata:
+    sopra i cinque il browser dichiara scaduta un'attesa che sul server e'
+    ancora viva. Questa fetta DICHIARA e non risolve -- e' un fatto, non un
+    divieto -- e lo dichiara accanto al numero, composto con lo stesso valore:
+    due letture non potrebbero divergere."""
+    sopra, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                 modelli=MOD, ponte_attivo=True,
+                                 scadenza_ponte_min=7)
+    assert "sopra i 5 minuti" in sopra[0]["connettore_nota"]
+    assert "7 min" in sopra[0]["connettore"]
+
+    sotto, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                 modelli=MOD, ponte_attivo=True,
+                                 scadenza_ponte_min=5)
+    assert sotto[0]["connettore_nota"] == "", (
+        "sotto il tetto non succede niente: dirlo sempre sarebbe un avviso per "
+        "uno stato che non c'e'"
+    )
+
+
+def test_chi_sta_fuori_dalla_catena_non_ha_un_dopo():
+    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                 modelli=MOD, ponte_attivo=False)
+    for r in fuori:
+        assert r["connettore"] == "", r["id"]
+        assert r["connettore_nota"] == "", r["id"]
+
+
+def test_quando_manca_la_credenziale_il_payload_dice_QUALE():
+    """Sono tre credenziali diverse -- un token, una chiave, un indirizzo -- e
+    la parola che le distingue e' un'affermazione sul prodotto: sta dove stanno
+    le altre (i nomi del Task 5, le frasi di `componi_adesso`), non nella
+    pagina. Scritta nella pagina sarebbe una seconda descrizione della regola
+    di credenziale, in un altro linguaggio, libera di divergere da
+    `_config_has_credential` senza che nessun test se ne accorga."""
+    senza = {"claude": False, "openrouter": False, "openai": False,
+             "ollama": False, "subscription": False}
+    _, fuori = componi_topologia(chain_order=[], credenziali=senza, modelli=MOD,
+                                 ponte_attivo=False)
+    per_id = {r["id"]: r for r in fuori}
+    assert per_id["subscription"]["manca"] == "manca il token"
+    assert per_id["claude"]["manca"] == "manca la chiave"
+    assert per_id["openrouter"]["manca"] == "manca la chiave"
+    assert per_id["openai"]["manca"] == "manca la chiave"
+    assert per_id["ollama"]["manca"] == "manca l'indirizzo"
+
+
+def test_chi_ha_la_credenziale_non_dice_che_ne_manca_una():
+    """`manca` e' vuoto quando non manca niente: la pagina disegna solo cio'
+    che non e' vuoto, e non ha nessuna condizione da valutare."""
+    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
+                                      credenziali=CRED, modelli=MOD,
+                                      ponte_attivo=False)
+    per_id = {r["id"]: r for r in catena + fuori}
+    assert per_id["claude"]["manca"] == ""
+    assert per_id["openrouter"]["manca"] == ""
+    assert per_id["subscription"]["manca"] == ""   # ha il token, e' solo fuori
+
+
+def test_il_piano_dice_perche_non_si_sposta_e_perche_non_si_mette_in_catena():
+    """Una riga che non offre i gesti che offrono le altre deve dire perche':
+    l'assenza di un gesto, senza una parola, si legge come un guasto. E la
+    parola sta qui perche' la ragione e' una regola del prodotto -- il piano
+    non e' un membro di `chain_order`, la sua presenza discende dal ponte -- e
+    il giorno in cui la regola cambia (Task 13 e 14) cambia questa stringa, in
+    un posto solo, senza che la pagina venga toccata."""
+    dentro, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                  modelli=MOD, ponte_attivo=True)
+    assert dentro[0]["id"] == "subscription"
+    assert "In testa o fuori" in dentro[0]["nota"]
+
+    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                 modelli=MOD, ponte_attivo=False)
+    piano = {r["id"]: r for r in fuori}["subscription"]
+    assert "ponte" in piano["nota"], (
+        "col token in mano e fuori dalla catena, la riga deve dire COME ci "
+        "entra: e' il caso del proprietario, che paga e non usa"
+    )
+
+
+def test_gli_altri_quattro_non_portano_nessuna_nota():
+    """La nota e' l'eccezione, non l'arredamento: quattro righe su cinque
+    offrono tutti i gesti e non hanno niente da spiegare. Se la nota comparisse
+    su tutte, la riga che conta non si distinguerebbe piu'."""
+    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
+                                      credenziali=CRED, modelli=MOD,
+                                      ponte_attivo=True)
+    per_id = {r["id"]: r for r in catena + fuori}
+    for pid in ("claude", "openrouter", "openai", "ollama"):
+        assert per_id[pid]["nota"] == "", pid
 
 
 def test_un_subscription_finito_in_chain_order_non_conta():

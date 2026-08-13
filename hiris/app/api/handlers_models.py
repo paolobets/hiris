@@ -7,7 +7,8 @@ import re
 import aiohttp
 from aiohttp import web
 
-from ..decisione_modelli import componi_adesso, componi_topologia, nome
+from ..decisione_modelli import (FINE_CATENA, componi_adesso,
+                                 componi_topologia, nome)
 from ..env_util import env_bool
 
 logger = logging.getLogger(__name__)
@@ -202,11 +203,10 @@ def save_models_config(data_dir: str, data: dict) -> dict:
 
 
 
-# SP-2 Task 7B: fixed provider order for the enriched config payload.
-# Distinct from handle_list_models' "anthropic" id — here we use the five ids
-# del prodotto (subscription/claude/openai/openrouter/ollama) so the UI can
-# honestly show ALL five, including subscription and any uncredentialed
-# provider, without needing a separate id-mapping table.
+# I cinque id del prodotto (subscription/claude/openai/openrouter/ollama),
+# distinti dagli id di `handle_list_models` ("anthropic" per storia
+# dell'endpoint): sono le cinque righe di cui questa rotta misura la
+# credenziale.
 #
 # fetta «la catena diventa l'unica verità»: il campo "toggle" è uscito insieme
 # a `_TOGGLE_ENV_VARS` e `_config_raw_toggle`. Leggevano i cinque interruttori
@@ -216,15 +216,11 @@ def save_models_config(data_dir: str, data: dict) -> dict:
 # opzioni da `config.yaml`; qui smettono di essere LETTE, che è la condizione
 # per poterle togliere.
 #
-# Task 5: la label non e' piu' letterale qui -- e' derivata da
-# decisione_modelli.NOMI (via nome()), l'unico posto dove i cinque nomi sono
-# scritti. L'ordine delle voci NON cambia (pinnato da
-# tests/test_models_api.py::test_get_models_config_enriched_providers).
+# Task 8: accanto viveva `_CONFIG_PROVIDERS`, le stesse cinque voci con la
+# label, per il payload `providers[]`. Le label le compone `decisione_modelli`
+# per le due liste vere (`catena`/`fuori_catena`), e un secondo elenco di nomi
+# non serviva più a nessuno.
 _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
-_CONFIG_PROVIDERS = tuple(
-    (pid, nome(pid))
-    for pid in _CONFIG_PROVIDER_IDS
-)
 
 
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
@@ -249,26 +245,26 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
     return False
 
 
-def _build_config_providers(request: web.Request) -> list[dict]:
-    """Il payload storico `providers[]`, tenuto in vita finché il Task 8 non
-    riscrive la pagina. `active` è stato rinominato `in_catena` perché è ciò
-    che significa adesso: non c'è più un interruttore da incrociare con una
-    credenziale, c'è l'appartenenza."""
-    catena = list(request.app.get("catena_modelli") or [])
-    ponte = bool(request.app.get("ponte_attivo"))
-    return [
-        {
-            "id": pid,
-            "label": label,
-            # Il piano non è un membro di `chain_order`: sta in testa alla
-            # catena quando il ponte è acceso, e fuori altrimenti. È la stessa
-            # regola di `componi_topologia`, e viene da lì il campo che la
-            # pagina disegnerà davvero (`catena`/`fuori_catena`).
-            "in_catena": ponte if pid == "subscription" else (pid in catena),
-            "has_credential": _config_has_credential(request, pid),
-        }
-        for pid, label in _CONFIG_PROVIDERS
-    ]
+def _credenziali_dei_cinque(request: web.Request) -> dict[str, bool]:
+    """I cinque fatti di credenziale, misurati UNA volta per richiesta.
+
+    Task 8: qui viveva `_build_config_providers`, che componeva il payload
+    storico `providers[]` -- `{id, label, in_catena, has_credential}` per tutti
+    e cinque. Il Task 7 l'aveva tenuto in vita con una data di scadenza scritta
+    nel docstring («finché il Task 8 non riscrive la pagina»), ed è oggi:
+    `in_catena` era l'APPARTENENZA ALLA CATENA detta una seconda volta, accanto
+    a `catena`/`fuori_catena` che la dicono per esteso. Due rappresentazioni
+    della stessa cosa nello stesso payload sono la miniatura del difetto che
+    questa fetta chiude, e l'unico lettore di quella seconda copia era la
+    pagina, che adesso disegna la prima.
+
+    Resta il fatto grezzo, che non è una rappresentazione dello stato ma la sua
+    misura, e serve a `componi_adesso` e a `componi_topologia`: entrambe la
+    ricevono dallo stesso dizionario, perché due misure degli stessi fatti
+    nello stesso handler sarebbero lo stesso difetto un piano più sotto.
+    """
+    return {pid: _config_has_credential(request, pid)
+            for pid in _CONFIG_PROVIDER_IDS}
 
 
 def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, str]:
@@ -313,8 +309,16 @@ def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, st
 async def handle_get_models_config(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
     payload = load_models_config(data_dir)
-    payload["providers"] = _build_config_providers(request)
-    payload["llm_strategy"] = os.environ.get("LLM_STRATEGY", "balanced")
+    # Task 8: qui stava `payload["llm_strategy"]`, l'ultimo residuo
+    # dell'invariante 1 in questo handler. Era il preset LETTO DALL'AMBIENTE
+    # accanto a `strategia_ultima` letto dall'archivio -- la stessa cosa detta
+    # due volte da due sorgenti che possono divergere -- e il suo unico lettore
+    # era la riga «Preset corrente: …» di una pagina che presentava un ordine
+    # come uno stato. Dalla fetta «la catena è l'unica verità» le tre strategie
+    # sono tre GESTI che riscrivono la catena, non uno stato da cui la catena si
+    # deriva: non c'è più un preset corrente da dichiarare, e quindi non c'è più
+    # niente da leggere. `LLM_STRATEGY` resta letta da `server.py` per costruire
+    # il router (l'opzione esce con il Task 13); qui smette di essere pubblicata.
     payload["embeddings"] = {
         "provider": os.environ.get("MEMORY_EMBEDDING_PROVIDER", ""),
         "model": os.environ.get("MEMORY_EMBEDDING_MODEL", ""),
@@ -324,7 +328,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
     # due derivazioni degli stessi fatti nello stesso handler sarebbero la
     # miniatura del difetto che questa fetta chiude.
-    _credenziali = {p["id"]: p["has_credential"] for p in payload["providers"]}
+    _credenziali = _credenziali_dei_cinque(request)
     _modelli = _modelli_in_uso(request, payload["provider_models"])
     # LA catena, una sola: quella che il router ha in mano adesso. Non si
     # riderivano i nomi da `payload["chain_order"]` (l'archivio) perché
@@ -333,17 +337,28 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
     _catena = list(request.app.get("catena_modelli") or [])
+    # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
+    # RUNTIME: `BRIDGE_DEADLINE_MIN` è quello con cui
+    # `handlers_chat._enqueue_chat_job` scrive la scadenza di ogni turno,
+    # `OLLAMA_REQUEST_TIMEOUT` quello con cui `OpenAICompatRunner.__init__`
+    # costruisce il client. L'archivio ne tiene una copia (Task 6) che oggi
+    # nessun runner legge: prenderla da lì farebbe promettere alla pagina
+    # un'attesa diversa da quella che il turno subisce davvero. Le due letture
+    # diventano una sola col Task 10, che fa leggere l'archivio ai runner.
+    # `_clamp_int` invece di `int()` perché un valore d'ambiente illeggibile
+    # non deve far tornare 500 la pagina che spiega perché non funziona niente.
+    _scadenza_ponte = _clamp_int(os.environ.get("BRIDGE_DEADLINE_MIN"), 5, 1, 120)
+    _timeout_ollama = _clamp_int(os.environ.get("OLLAMA_REQUEST_TIMEOUT"), 120, 10, 1800)
     payload["adesso"] = componi_adesso(
         catena=_catena,
         credenziali=_credenziali,
         modelli=_modelli,
         ponte_attivo=payload["ponte_attivo"],
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
-        # turno per scrivere la scadenza (`now + BRIDGE_DEADLINE_MIN * 60`):
-        # un numero solo, letto allo stesso modo in due punti, invece di due
-        # default che possono divergere e far promettere alla pagina un'attesa
-        # diversa da quella che il turno subisce davvero.
-        scadenza_ponte_min=int(os.environ.get("BRIDGE_DEADLINE_MIN", "5") or 5),
+        # turno per scrivere la scadenza (`now + BRIDGE_DEADLINE_MIN * 60`), e
+        # lo STESSO numero che va ai connettori qui sotto: la frase in cima e
+        # la riga sotto il piano non possono dire due minuti diversi.
+        scadenza_ponte_min=_scadenza_ponte,
     )
     # La topologia: chi è in catena, in che ordine, e chi ne sta fuori. La
     # pagina RICEVE due liste già ordinate e non ne calcola nessuna --
@@ -353,7 +368,14 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         credenziali=_credenziali,
         modelli=_modelli,
         ponte_attivo=payload["ponte_attivo"],
+        scadenza_ponte_min=_scadenza_ponte,
+        timeout_ollama_s=_timeout_ollama,
     )
+    # Cosa c'è dopo l'ultimo anello: una frase sulla catena, non su una riga.
+    # Quale riga sia l'ultima cambia con un gesto, e la pagina riordina da sé
+    # fra il gesto e la risposta del server -- attaccata a una riga, dopo un
+    # riordino direbbe «ultimo della catena» di uno che non lo è più.
+    payload["fine_catena"] = FINE_CATENA if payload["catena"] else ""
     return web.json_response(payload)
 
 

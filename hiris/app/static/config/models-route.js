@@ -1,77 +1,52 @@
-/* HIRIS · Config · models route mount (SP-2 Task 7 + Task 7-fix; fetta E5
-   Task 7 ha tolto la sezione "Assegnazione per entità" — vedi sotto)
-   Sezione #/models — implementa il contratto UX di
-   docs/design/2026-07-27-ux-models-section.md, ridotto a tre sezioni vive
-   dal contratto originale di quattro:
-     01 Provider e credenziali (GET api/models/config -> providers[], badge +
-        picker default per-provider da GET api/models)
-     02 Catena automatica (GET/PUT api/models/config chain_order, riordino
-        frecce, preset llm_strategy)
-     03 Embeddings (riga informativa, sola lettura, da GET api/models/config)
-   Fino alla 2.4.1 la pagina si apriva con la sezione 01. Dalla fetta «la
-   catena diventa l'unica verità» si apre, PRIMA delle tre sezioni, con il
-   riquadro «Adesso» (renderAdesso): chi risponde al prossimo messaggio, in
-   una frase che arriva già scritta dal backend (campo `adesso` del payload
-   GET api/models/config, composto da decisione_modelli.componi_adesso). Non
-   è numerato perché non fa decidere niente -- vedi il commento sopra la
-   funzione.
-   La sezione 03 originale del design doc ("Assegnazione per entità": Chatbot
-   -> PUT api/chatbots/{id}, Brain -> PUT api/models/config brain_model) è
-   uscita alla fetta E5 Task 7 ("Consumi e Modelli smettono di mentire"): il
-   ramo Chatbot faceva PUT su una rotta che non esisteva per quel metodo
-   (solo GET rispondeva su /api/chatbots — rotta uscita per intero, GET
-   compreso, alla fetta E5 Task 10) — ogni cambio di select falliva con
-   404, sel.value tornava al valore precedente e compariva il badge rosso; il
-   ramo Brain scriveva brain_model, una configurazione senza più nessun
-   lettore da quando il Brain è uscito con la E3. Il modello della chat si
-   cambia dal Task 2 della E5 (impostazioni chat), dove è sempre dovuto stare.
-   Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di dashboard.js e impostazioni-route.js).
+/* HIRIS · Config · la pagina #/models — «chi risponde alle tue domande, e in
+   che ordine».
 
-   Task 7B ha arricchito GET /api/models/config con:
-     providers: [{id: subscription|claude|openai|openrouter|ollama, label,
-                  in_catena, has_credential}]  (tutti e 5, ordine fisso)
-     -- fetta «la catena diventa l'unica verità»: il campo si chiamava
-     "active" (interruttore add-on AND credenziale) e viaggiava insieme a
-     "toggle" (il valore grezzo dell'interruttore). Erano DUE rappresentazioni
-     dello stato di un provider accanto all'appartenenza alla catena, ed è la
-     seconda rappresentazione che permetteva a questa pagina di mostrare
-     spento un provider che stava lavorando. Adesso ce n'è una: un provider è
-     usato se e solo se sta in catena. Questa pagina viene riscritta dal
-     Task 8 (che consumerà `catena`/`fuori_catena`, le due liste già ordinate
-     dal backend); qui si adegua ai nomi nuovi per non restare a leggere un
-     campo che non esiste più -- cioè per non ricominciare a mentire mentre
-     aspetta il suo turno.
-     llm_strategy: string
-     embeddings: {provider, model}
-     ollama_model: nome del modello Ollama fisso configurato
-   (oltre a chain_order/provider_models già presenti — brain_model è uscito
-   dal payload alla fetta E5 Task 7). Questo file consuma quell'arricchimento
-   invece di dedurre badge/stato da GET /api/models (che elenca solo i
-   provider già credenziati, senza i disattivi/senza credenziale — vedi
-   report Task 7-fix). */
+   Quattro blocchi, in quest'ordine (progetto §3):
+     «Adesso»   la risposta: chi risponde al prossimo messaggio. Non numerato,
+                perché non fa decidere niente -- dice cosa succede.
+     01 LA CATENA           le righe in uso, in ordine. È l'unica verità: un
+                            provider è usato se e solo se sta qui.
+     02 FUORI DALLA CATENA  chi potrebbe entrare, e chi non può finché manca
+                            la credenziale.
+     la riga degli embedding, senza numero: non è una decisione (progetto §8).
+
+   Il blocco «03 QUANDO NON DECIDE LA CATENA» del progetto §3 è CANCELLATO e
+   non si disegna: esisteva solo per dichiarare che un modello fissato in
+   «Impostazioni chat» scavalcava la catena, e quel campo è uscito col Task 4
+   (`handlers_chat` chiede sempre "auto", la PUT rifiuta la chiave). Disegnarlo
+   sarebbe un avviso per uno stato irraggiungibile.
+
+   Fino alla 2.4.1 questo file aveva tre sezioni -- «Provider e credenziali»,
+   «Catena automatica», «Embeddings» -- e le prime due erano DUE
+   RAPPRESENTAZIONI DELLA STESSA COSA: un elenco di provider con un badge di
+   stato, e una catena ricostruita a parte da `buildDisplayChain`, che
+   riproduceva in JavaScript la stessa regola che il backend applicava in
+   Python. Due rappresentazioni della stessa cosa possono divergere, ed è
+   esattamente il modo in cui questa pagina ha potuto essere vera riga per riga
+   e falsa nel complesso: mostrava «Attivo» un provider a credito esaurito e
+   mostrava spento un provider che stava lavorando. Fuse in una, la divergenza
+   è impossibile per costruzione.
+
+   LA REGOLA DI QUESTO FILE: la pagina disegna ciò che le viene detto e non
+   calcola niente. `catena[]` e `fuori_catena[]` arrivano già ordinate da
+   `decisione_modelli.componi_topologia`, la frase in cima da
+   `componi_adesso`, e ogni parola che afferma qualcosa sul prodotto (i nomi,
+   le nature, «manca il token», il perché una riga non si sposta) viene dal
+   payload. Se qui dentro comparisse un `.sort()`, un confronto fra
+   `chain_order` e le credenziali, o un `if (id === 'subscription')`, il
+   difetto sarebbe tornato per un'altra porta -- e il test «la pagina NON
+   ricostruisce la catena» (Task 2) è lì per accorgersene.
+   L'unica eccezione, delimitata e dichiarata, è `ricomponiTopologia`: vedi il
+   commento sopra la funzione.
+
+   La parola «Attivo» non compare in questo file e non deve comparirci.
+   Significava «interruttore acceso E credenziale presente» e si leggeva
+   «funziona»: una chiave a credito esaurito era «Attivo».
+
+   Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
+   (stesso vincolo di dashboard.js e impostazioni-route.js). */
 (function() {
   'use strict';
-
-  /* Ordine fisso di visualizzazione Parte 1 (design §3.1: "sempre in
-     quest'ordine, attivi o no, così la lista non salta"): Abbonamento, Claude
-     API, OpenAI, OpenRouter, Ollama.
-     - "configId" è l'id nel payload GET /api/models/config -> providers[]
-       (subscription/claude/openai/openrouter/ollama, Task 7B).
-     - "id" è l'id nel payload GET /api/models (anthropic/openai/openrouter/
-       ollama — SOLO per i provider già credenziati, usato per i modelli
-       disponibili nei picker; "anthropic" diverge da "claude" per storia
-       dell'endpoint, vedi handlers_models.py _ACTIVE_PROVIDERS_KEY).
-     - "key" è la chiave usata in chain_order / provider_models (vedi
-       handlers_models.py _VALID_BACKENDS) — null per "subscription", che non
-       fa parte della catena/assegnazione automatica nel contratto attuale. */
-  var PROVIDER_ORDER = [
-    { configId: 'subscription', id: null, key: null },
-    { configId: 'claude', id: 'anthropic', key: 'claude' },
-    { configId: 'openai', id: 'openai', key: 'openai' },
-    { configId: 'openrouter', id: 'openrouter', key: 'openrouter' },
-    { configId: 'ollama', id: 'ollama', key: 'ollama' }
-  ];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -86,8 +61,7 @@
   }
 
   function byId(id) {
-    var node = document.getElementById(id);
-    return node;
+    return document.getElementById(id);
   }
 
   function api(path, opts) {
@@ -98,138 +72,61 @@
     return fetch(path, opts);
   }
 
-  /* Etichetta leggibile per i modelli Claude (design §3.3: "Claude Opus 4.5"
-     invece dell'id tecnico grezzo). Gli altri provider non hanno un mapping
-     label lato backend: fallback all'id as-is (design §11 punto 2). */
-  function prettyClaudeLabel(id) {
-    var m = /^claude-(haiku|sonnet|opus)-(\d+)-(\d+)/.exec(id);
-    if (!m) return id;
-    var name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
-    return 'Claude ' + name + ' ' + m[2] + '.' + m[3];
-  }
+  /* L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
+     quindi non può contraddire niente. DUPLICA `decisione_modelli.ORDINE_FISSO`
+     (il frontend non importa Python): le due liste sono tenute legate da un
+     test che si rompe -- test_models_frontend_wiring.py. */
+  var ORDINE_FISSO = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
 
-  function modelLabel(providerId, modelId) {
-    if (modelId === 'auto') return 'auto';
-    if (providerId === 'anthropic') return prettyClaudeLabel(modelId);
-    return modelId;
-  }
-
-  /* ── Feedback di successo condiviso (design §7.2.3): un check "✓" che
-     compare per ~1.2s accanto al controllo toccato poi svanisce. Testo via
-     textContent (mai innerHTML), contenitore aria-live="polite" già impostato
-     da chi crea il badge con buildSuccessBadge(). Usato dal picker
-     default-provider di Parte 1 (§7.2); il secondo chiamante storico, il PUT
-     per-Chatbot (§7.3), è uscito con la fetta E5 Task 7 insieme alla sezione
-     che lo usava. */
-  function buildSuccessBadge() {
-    var b = el('span', 'agent-badge badge-on', '');
-    b.style.display = 'none';
-    b.setAttribute('aria-live', 'polite');
-    return b;
-  }
-
-  function flashSuccess(badge) {
-    if (!badge) return;
-    badge.textContent = '✓';
-    badge.style.display = '';
-    if (badge._flashTimer) clearTimeout(badge._flashTimer);
-    badge._flashTimer = setTimeout(function() {
-      badge.style.display = 'none';
-      badge.textContent = '';
-    }, 1200);
-  }
-
-  /* ── Feedback di errore condiviso (design §7.2/§7.3 + fix UX review) ────
-     aria-live="polite" annuncia MUTAZIONI di contenuto, non cambi di
-     visibilità: un badge creato una sola volta con testo fisso e poi solo
-     mostrato/nascosto via style.display non viene mai riletto da uno
-     screen reader al secondo fallimento (il testo non cambia mai). Per
-     questo showErrBadge svuota e riscrive textContent ad ogni fallimento —
-     così c'è sempre una mutazione da annunciare, anche quando il messaggio
-     è identico alla volta precedente. */
-  var ERR_BADGE_TEXT = '⚠ Salvataggio non riuscito';
-
-  function buildErrorBadge() {
-    var b = el('span', 'agent-badge badge-warn', '');
-    b.style.display = 'none';
-    b.setAttribute('aria-live', 'polite');
-    return b;
-  }
-
-  function showErrBadge(badge) {
-    if (!badge) return;
-    badge.textContent = '';
-    badge.style.display = '';
-    badge.textContent = ERR_BADGE_TEXT;
-  }
-
-  function hideErrBadge(badge) {
-    if (!badge) return;
-    badge.style.display = 'none';
-  }
-
-  /* ── Stato locale ──────────────────────────────────────────────────── */
-  var state = {
-    providers: [],        // GET api/models -> providers[] (solo credenziati, id anthropic/openai/openrouter/ollama)
-    configProviders: [],  // GET api/models/config -> providers[] (tutti e 5, id subscription/claude/openai/openrouter/ollama)
-    llmStrategy: '',       // GET api/models/config -> llm_strategy
-    embeddings: { provider: '', model: '' },  // GET api/models/config -> embeddings
-    ollamaModel: '',       // GET api/models/config -> ollama_model
-    adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
-    /* Letto dal payload e non ancora consumato da nessuna render: e' lo
-       slot che il Task 8 usa per dire, nella catena, che il ponte la
-       scavalca. Sta qui perche' e' il posto in cui il payload si legge
-       una volta sola; se il Task 8 non arrivasse, va tolto con lui. */
-    ponteAttivo: false,    // GET api/models/config -> ponte_attivo
-    cfg: { chain_order: [], provider_models: { claude: '', openai: '', openrouter: '' } }
+  /* I tre ordini per esteso, da `llm_router._STRATEGY_ORDER`. Vivono qui
+     perché un preset è un GESTO che riscrive la catena, non uno stato
+     persistente da cui la catena si deriva: `llm_strategy` come impostazione
+     esce con questa fetta. Nessun «preset corrente» da mostrare, nessuna
+     regola di precedenza da spiegare, nessun arbitro da mantenere.
+     Anche questi sono pinnati lato Python: gli ordini esistono due volte. */
+  var PRESET = {
+    balanced: { nome: 'Bilanciato', ordine: ['claude', 'openrouter', 'openai', 'ollama'] },
+    cost_first: { nome: 'Risparmio', ordine: ['ollama', 'openrouter', 'openai', 'claude'] },
+    quality_first: { nome: 'Qualità massima', ordine: ['claude', 'openai', 'openrouter', 'ollama'] }
   };
 
-  function findProvider(id) {
-    for (var i = 0; i < state.providers.length; i++) {
-      if (state.providers[i].id === id) return state.providers[i];
+  var ERR_SALVATAGGIO = '⚠ Salvataggio non riuscito';
+
+  /* ── Stato locale ──────────────────────────────────────────────────────
+     Tutto viene dal payload di GET api/models/config e niente si deriva:
+     `catena` e `fuoriCatena` sono le due liste già ordinate. */
+  var state = {
+    catena: [],            // GET api/models/config -> catena[]
+    fuoriCatena: [],       // GET api/models/config -> fuori_catena[]
+    adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
+    ponteAttivo: false,    // GET api/models/config -> ponte_attivo
+    fineCatena: '',        // GET api/models/config -> fine_catena
+    /* GET api/models: l'elenco dei modelli disponibili per provider. Da questa
+       fetta non ha lettori in questo file -- il picker «Modello di default»
+       della vecchia sezione 01 è uscito -- e torna ad averne uno con il
+       pannello del modello (Task 9), che è la sua unica ragione di esistere.
+       Dichiarato qui perché una fetch il cui risultato nessuno legge è un costo
+       (quella rotta interroga davvero OpenAI/OpenRouter/Ollama), non una svista:
+       se il Task 9 non arrivasse, la fetch esce con questa riga. */
+    providers: [],
+    cfg: {
+      chain_order: [],
+      provider_models: { claude: '', openai: '', openrouter: '' },
+      ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+      ollama: { modello: '', timeout_s: 120 },
+      nascondi_gratuiti: false,
+      strategia_ultima: '',
+      seminato: false
     }
-    return null;
-  }
-
-  function findConfigProvider(configId) {
-    for (var i = 0; i < state.configProviders.length; i++) {
-      if (state.configProviders[i].id === configId) return state.configProviders[i];
-    }
-    return null;
-  }
-
-  /* Provider "usabili" = in catena + con credenziale (design §0.5/§4.1),
-     fonte: GET /api/models (che lista solo chi ha già una lista modelli
-     disponibile). "subscription" (key null) non entra mai qui: non fa parte di
-     chain_order/provider_models nel contratto backend attuale
-     (_VALID_BACKENDS). */
-  function usableProviders() {
-    var list = [];
-    PROVIDER_ORDER.forEach(function(pd) {
-      if (!pd.key) return;
-      var p = findProvider(pd.id);
-      if (p && p.in_catena && p.has_credential) list.push(p);
-    });
-    return list;
-  }
-
-  function usableKeys() {
-    return usableProviders().map(function(p) {
-      var pd = PROVIDER_ORDER.filter(function(x) { return x.id === p.id; })[0];
-      return pd ? pd.key : p.id;
-    });
-  }
+  };
 
   /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2), serializzato ──
-     Task 7-fix punto 4: due controlli che scrivono quasi in contemporanea
-     (es. picker default-provider + riordino catena) potrebbero far arrivare
-     le risposte fuori ordine se le richieste partono in parallelo, e un PUT
-     con uno snapshot "vecchio" di state.cfg potrebbe sovrascrivere sul server
-     una modifica concorrente più recente. Mutex a catena di promise: al più
-     una richiesta in volo per volta, e ogni richiesta legge state.cfg SOLO
-     quando è il suo turno di partire (non quando viene accodata) — così
-     include sempre anche le modifiche sincrone fatte nel frattempo da altri
-     handler. */
+     Due controlli che scrivono quasi in contemporanea potrebbero far arrivare
+     le risposte fuori ordine se le richieste partissero in parallelo, e un PUT
+     con uno snapshot "vecchio" di state.cfg sovrascriverebbe sul server una
+     modifica più recente. Mutex a catena di promise: al più una richiesta in
+     volo per volta, e ogni richiesta legge state.cfg SOLO quando è il suo turno
+     di partire (non quando viene accodata). */
   var putChain = Promise.resolve();
   function putModelsConfig() {
     var result = putChain.then(function() {
@@ -243,21 +140,6 @@
     return result;
   }
 
-  /* Inserisce (in testa) e seleziona un'opzione "orfana" quando il valore
-     salvato non è (più) tra le opzioni disponibili — così il valore non viene
-     perso silenziosamente (design §5.1). Usata dal picker default-provider di
-     Parte 1 (Task 7-fix punto 5); il secondo chiamante storico — il picker
-     condiviso Brain/Chatbot, fillModelOptions — è uscito con la fetta E5
-     Task 7 insieme alla sezione che lo usava. */
-  function ensureOrphanOption(sel, val, suffix) {
-    if (!val) return;
-    if (sel.value === val) return; // già selezionabile, nessuna orfana da inserire
-    var orphan = el('option', null, val + suffix);
-    orphan.value = val;
-    sel.insertBefore(orphan, sel.firstChild);
-    sel.value = val;
-  }
-
   /* ── «Adesso»: la risposta, prima delle ragioni ────────────────────────
      Non è una sezione e non è numerata: la numerazione, in questa pagina,
      significa «qui si decide qualcosa». Questo riquadro non fa decidere
@@ -268,14 +150,25 @@
      2 della spec applicato al testo e non solo all'ordine: se le parole si
      componessero qui, esisterebbero due posti che affermano cose sul
      prodotto, e uno dei due prima o poi affermerebbe più di quanto il sistema
-     sa. */
-  function renderAdesso() {
-    var vecchio = byId('adesso-card');
-    if (vecchio && vecchio.parentNode) vecchio.parentNode.removeChild(vecchio);
-    if (!state.adesso || !state.adesso.frase) return null;
+     sa.
 
-    var card = el('div', 'adesso-card');
-    card.id = 'adesso-card';
+     `aria-live` (debito lasciato aperto dal Task 2, e chiuso qui). Il guscio
+     del riquadro nasce VUOTO in `mount()`, prima della fetch, ed è riempito
+     quando la risposta arriva: una regione viva annuncia le mutazioni di
+     contenuto, non la propria comparsa, quindi un riquadro creato già pieno e
+     poi inserito non verrebbe letto da nessuno. È la cosa più importante della
+     pagina e cambia UNA volta per caricamento: `polite` la fa leggere senza
+     interrompere, e non c'è nessun altro momento in cui questo testo cambi --
+     i gesti sulla catena non ridisegnano il riquadro (la decisione nuova la
+     dice il backend, alla prossima lettura). */
+  function renderAdesso() {
+    var card = byId('adesso-card');
+    if (!state.adesso || !state.adesso.frase) {
+      if (card && card.parentNode) card.parentNode.removeChild(card);
+      return;
+    }
+    if (!card) card = creaGuscioAdesso();
+    clearEl(card);
     card.appendChild(el('p', 'adesso-frase', state.adesso.frase));
 
     var diagnosi = state.adesso.diagnosi;
@@ -288,318 +181,355 @@
       });
       if (ul.firstChild) card.appendChild(ul);
     }
+  }
+
+  function creaGuscioAdesso() {
+    var card = el('div', 'adesso-card');
+    card.id = 'adesso-card';
+    card.setAttribute('aria-live', 'polite');
+    var outlet = byId('route-outlet');
+    /* Sopra la prima section-card: la risposta viene prima delle ragioni. */
+    if (outlet) outlet.insertBefore(card, outlet.querySelector('.section-card'));
     return card;
   }
 
-  /* ── Sezione 1: Provider e credenziali ───────────────────────────────── */
-  function renderSection1() {
-    var body = clearEl(byId('sec1-body'));
+  /* ── La riga-provider ──────────────────────────────────────────────────
+     Una riga è una frase su quattro colonne, e ogni colonna risponde a una
+     domanda diversa: dove sei (la posizione), chi sei (il nome), con che cosa
+     (il modello), quanto costi (la natura). Il pallino non è mai l'unico
+     segnale (WCAG 1.4.1): accanto c'è sempre il testo.
+
+     Non calcola NIENTE: posizione, nome, modello, natura, che cosa manca e
+     perché una riga non si muove arrivano dal payload. */
+  function rigaProvider(dati, dentro) {
+    var row = el('div', 'riga-provider' + (dentro ? '' : ' riga-fuori'));
+    row.setAttribute('data-provider', dati.id);
+    row.setAttribute('role', 'listitem');
+    row.appendChild(el('span', 'riga-pos',
+      dati.posizione == null ? '' : String(dati.posizione)));
+    row.appendChild(el('span', 'dot ' + (dati.ha_credenziale ? 'on' : 'off')));
+    row.appendChild(el('span', 'riga-nome', dati.nome));
+    row.appendChild(el('span', 'riga-modello', dati.modello || '—'));
+    row.appendChild(el('span', 'riga-natura',
+      dati.ha_credenziale ? dati.natura : (dati.manca || '')));
+
+    var azioni = el('span', 'riga-azioni');
+    /* I gesti che scrivono `chain_order` -- entrare, uscire, salire, scendere
+       -- si disegnano SOLO dove il backend dice `riordinabile`. Non c'è nessun
+       `if (dati.id === 'subscription')` qui, ed è deliberato: la pagina non sa
+       niente del piano, obbedisce a un campo. Il giorno in cui il piano si
+       governasse da `chain_order`, il backend risponderebbe `true` e i bottoni
+       comparirebbero senza che nessuno tocchi questo file -- e, cosa che conta
+       di più, non esiste nessun momento in cui la pagina possa offrire un gesto
+       che il backend rifiuterebbe. (Oggi lo rifiuterebbe davvero:
+       `save_models_config` scarta `subscription` da `chain_order`, quindi un
+       «Usa» sul piano scriverebbe una PUT accettata con 200 e buttata via.) */
+    if (dentro && dati.riordinabile) {
+      var su = bottoneIcona('↑', 'riga-su', 'Sposta «' + dati.nome + '» su',
+        function() { spostaInCatena(dati.id, -1); });
+      su.disabled = !vicinoInCatena(dati.id, -1);
+      var giu = bottoneIcona('↓', 'riga-giu', 'Sposta «' + dati.nome + '» giù',
+        function() { spostaInCatena(dati.id, 1); });
+      giu.disabled = !vicinoInCatena(dati.id, 1);
+      azioni.appendChild(su);
+      azioni.appendChild(giu);
+      /* Uscire dalla catena si può sempre, dove entrarci si può: è il gesto
+         simmetrico di «Usa», e toglierlo lascerebbe una riga che non si può
+         disfare. */
+      azioni.appendChild(bottoneIcona('✕', 'riga-esci',
+        'Togli «' + dati.nome + '» dalla catena',
+        function() { togliDallaCatena(dati.id); }));
+    } else if (!dentro && dati.ha_credenziale && dati.riordinabile) {
+      var usa = el('button', 'btn btn-ghost btn-sm riga-usa', 'Usa');
+      usa.type = 'button';
+      usa.addEventListener('click', function() { mettiInCatena(dati.id); });
+      azioni.appendChild(usa);
+    }
+    /* Senza credenziale non si offre «Usa»: sarebbe un bottone che non può
+       funzionare. E non si offre nemmeno un collegamento a «Configurazione
+       add-on»: da dentro l'iframe di ingress non esiste, oggi, nessuna
+       navigazione verso quella pagina che questo prodotto sappia fare -- un
+       link che non naviga è la stessa promessa non mantenuta di un bottone che
+       non fa niente. Dove si mette la credenziale lo dice una riga sola, in
+       fondo alla sezione (renderFuori), invece di cinque bottoni finti. */
+    row.appendChild(azioni);
+
+    /* Una riga che non offre i gesti delle altre deve dire perché, altrimenti
+       l'assenza si legge come un guasto. La parola arriva dal payload
+       (`componi_topologia`), perché è una regola del prodotto e cambia con
+       lei. */
+    if (dati.nota) row.appendChild(el('div', 'riga-nota', dati.nota));
+    return row;
+  }
+
+  function bottoneIcona(testo, cls, etichetta, azione) {
+    var b = el('button', 'btn-icon-only ' + cls, testo);
+    b.type = 'button';
+    b.setAttribute('aria-label', etichetta);
+    b.addEventListener('click', azione);
+    return b;
+  }
+
+  /* ── Il connettore ─────────────────────────────────────────────────────
+     Un elenco numerato dice l'ordine. Non dice la cosa che serve per
+     SCEGLIERE l'ordine: quanto costa passare oltre. E i costi qui non sono
+     paragonabili -- differiscono di due ordini di grandezza.
+
+     La frase arriva dal payload (`riga.connettore`), e non si compone qui: è
+     la SOLA affermazione di questa pagina che, scritta bene per domani,
+     sarebbe falsa oggi. Oggi il ponte non ripiega -- alla scadenza il messaggio
+     va perso -- e un «se non risponde, si passa al successivo» disegnato fra il
+     piano e la riga sotto prometterebbe un ripiego che il prodotto non fa: il
+     difetto 3, ricomparso come didascalia. Il giorno del ripiego (Task 14)
+     cambia una stringa in `componi_topologia` e questa pagina dice la cosa
+     nuova senza essere toccata.
+     `connettore_nota` è il tetto utile che nessuno schema dichiara (la chat
+     smette di aspettare a 5 minuti): sta FUORI dal connettore perché il
+     connettore è la frase, e la frase è il numero.
+
+     Qui la pagina decide solo DOVE, mai COSA: il connettore di una riga si
+     disegna fra quella riga e la successiva, e dopo l'ultima si disegna
+     `fine_catena`, che è una frase sulla catena e non su una riga -- quale sia
+     l'ultima cambia con un gesto, e la pagina riordina da sé fra il gesto e la
+     risposta del server. */
+  function connettore(cls, testo) {
+    var c = el('div', cls, testo);
+    c.setAttribute('role', 'listitem');
+    return c;
+  }
+
+  /* ── 01 LA CATENA ──────────────────────────────────────────────────────── */
+  function renderCatena() {
+    var body = clearEl(byId('catena-body'));
     if (!body) return;
-
-    var anyInCatena = false;
-    PROVIDER_ORDER.forEach(function(pd) {
-      var cp = findConfigProvider(pd.configId);
-      var inCatena = !!(cp && cp.in_catena);
-      var hasCred = !!(cp && cp.has_credential);
-      /* fetta «la catena diventa l'unica verità»: i due fatti sono adesso
-         INDIPENDENTI e nessuno dei due collassa nell'altro -- l'appartenenza
-         alla catena e la presenza della credenziale. Prima erano "active"
-         (interruttore AND credenziale) più "toggle" grezzo per recuperare lo
-         stato che l'AND aveva schiacciato: la parola «Attivo» ne era la
-         conseguenza, e diceva «funziona» mentre misurava una configurazione.
-         Qui non c'è più niente da recuperare, quindi non c'è più una parola
-         che affermi più di ciò che il sistema sa. */
-      var missingCred = !hasCred;
-      if (inCatena) anyInCatena = true;
-      var label = (cp && cp.label) || pd.configId;
-
-      var row = el('div', 'provider-row');
-      var head = el('div', 'provider-row-head');
-      var dotCls = inCatena ? 'on' : (missingCred ? 'warn' : 'off');
-      head.appendChild(el('span', 'dot ' + dotCls));
-      head.appendChild(el('span', 'provider-row-label', label));
-      var badgeCls = inCatena ? 'badge-on' : (missingCred ? 'badge-warn' : 'badge-off');
-      var badgeTxt = inCatena ? 'In catena' : (missingCred ? '⚠ manca credenziale' : 'Fuori dalla catena');
-      head.appendChild(el('span', 'agent-badge ' + badgeCls, badgeTxt));
-      row.appendChild(head);
-
-      if (missingCred) {
-        row.appendChild(el('p', 'field-hint', 'Aggiungi la chiave in Configurazione add-on: senza credenziale non può entrare in catena.'));
-      } else if (!inCatena) {
-        /* Lo stato che prima non esisteva: credenziale presente, fuori dalla
-           catena. Prima `reconcile_chain` lo accodava da solo alla catena, e
-           il provider entrava senza che nessuno ce l'avesse messo; adesso
-           resta fuori, ed è la pagina a doverlo dire invece di lasciarlo
-           dedurre da un pallino spento. */
-        row.appendChild(el('p', 'field-hint', 'Ha una credenziale ma non è in catena: HIRIS non lo consulta.'));
-      } else if (inCatena && hasCred && pd.configId === 'ollama') {
-        var fixedModel = state.ollamaModel || '';
-        row.appendChild(el('p', 'field-hint',
-          fixedModel ? ('Modello: ' + fixedModel + ' (fisso, da config add-on)') : 'Non configurato'));
-      } else if (inCatena && hasCred && pd.key) {
-        /* Picker "Modello di default" — SOLO per provider con una lista
-           modelli (claude/openai/openrouter): opzioni da GET /api/models
-           (id "anthropic"/"openai"/"openrouter"), non dal payload config
-           che non porta la lista modelli. */
-        var mp = findProvider(pd.id);
-        if (mp && mp.models && mp.models.length) {
-          var field = el('div', 'field');
-          var selId = 'model-provider-' + pd.key;
-          var lbl = el('label', null, 'Modello di default');
-          lbl.setAttribute('for', selId);
-          var sel = el('select', 'select');
-          sel.id = selId;
-          var currentVal = state.cfg.provider_models[pd.key] || '';
-          if (!currentVal) {
-            var ph = el('option', null, '(usa il default interno)');
-            ph.value = '';
-            ph.disabled = true;
-            ph.selected = true;
-            sel.appendChild(ph);
-          }
-          mp.models.forEach(function(m) {
-            if (m === 'auto') return; // design §3.3: nessuna "auto" nel picker default
-            var opt = el('option', null, modelLabel(mp.id, m));
-            opt.value = m;
-            if (m === currentVal) opt.selected = true;
-            sel.appendChild(opt);
-          });
-          if (currentVal) {
-            sel.value = currentVal;
-            ensureOrphanOption(sel, currentVal, ' (provider fuori dalla catena)');
-          }
-          field.appendChild(lbl);
-          field.appendChild(sel);
-          var okBadge = buildSuccessBadge();
-          field.appendChild(okBadge);
-          var errBadge = buildErrorBadge();
-          field.appendChild(errBadge);
-          field.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'add-on'));
-          row.appendChild(field);
-
-          sel.addEventListener('change', function() {
-            var prev = currentVal;
-            currentVal = sel.value;
-            state.cfg.provider_models[pd.key] = sel.value;
-            hideErrBadge(errBadge);
-            putModelsConfig().then(function(ok) {
-              if (!ok) {
-                currentVal = prev;
-                state.cfg.provider_models[pd.key] = prev;
-                sel.value = prev;
-                showErrBadge(errBadge);
-              } else {
-                flashSuccess(okBadge);
-              }
-            });
-          });
-        }
-      }
-      body.appendChild(row);
-    });
-
-    if (!anyInCatena) {
-      body.appendChild(el('p', 'banner-warn',
-        'Nessun provider in catena. HIRIS non può rispondere finché non ne metti almeno uno in catena.'));
+    var card = byId('catena-card');
+    /* Col ponte acceso la catena resta VISIBILE e riordinabile: nascondere ciò
+       che conta è proibito, e serve poterla preparare per quando il ponte si
+       spegne. È disegnata come ciò che è -- inerte, adesso -- e a DIRE che è
+       scavalcata è la nota della riga del piano, che arriva dal backend: una
+       frase scritta qui resterebbe quella di oggi anche il giorno in cui il
+       ponte imparerà a ripiegare (Task 14), cioè tornerebbe a mentire da sola.
+       Il colore non è mai l'unico segnale (WCAG 1.4.1). */
+    if (card) {
+      if (state.ponteAttivo) card.classList.add('catena-inerte');
+      else card.classList.remove('catena-inerte');
     }
 
-    var callout = el('div', 'info-callout');
-    callout.appendChild(el('span', null, 'ℹ'));
-    callout.appendChild(el('span', null,
-      'Le credenziali vivono nella configurazione dell\'add-on; la catena si decide qui. ' +
-      'Aggiungere una chiave non mette il provider in catena: lo rende disponibile, e sta a te metterlo in catena.'));
-    body.appendChild(callout);
-  }
-
-  function renderSection1Error() {
-    var body = clearEl(byId('sec1-body'));
-    if (!body) return;
-    body.appendChild(el('p', 'proposals-error', 'Errore caricamento provider.'));
-    var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
-    btn.type = 'button';
-    btn.addEventListener('click', function() { loadModelsAndConfig(); });
-    body.appendChild(btn);
-
-    var body2 = clearEl(byId('sec2-body'));
-    if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider e credenziali qui sopra.'));
-    var body4 = clearEl(byId('sec4-body'));
-    if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — si imposta da memory.embedding_provider in Configurazione add-on.'));
-  }
-
-  /* ── Sezione 2: Catena automatica ─────────────────────────────────────
-     design §4.3: chain_order persistito può contenere provider non-usabili
-     (es. openrouter senza credenziale) -- non mostrati, ma ricostruiti in
-     coda intatti a ogni PUT così non "saltano" in cima se tornano usabili. */
-  function buildDisplayChain(keys) {
-    var order = state.cfg.chain_order.filter(function(k) { return keys.indexOf(k) !== -1; });
-    keys.forEach(function(k) { if (order.indexOf(k) === -1) order.push(k); });
-    return order;
-  }
-
-  /* Mappa label preset llm_strategy -> IT (design §4, "Mappa label preset").
-     Fallback al valore grezzo se sconosciuto (design §11 punto 2, stesso
-     pattern di modelLabel per provider senza mapping). */
-  var STRATEGY_LABELS = {
-    balanced: 'Bilanciato',
-    cost_first: 'Risparmio',
-    quality_first: 'Qualità massima'
-  };
-
-  function strategyLabel(raw) {
-    raw = raw || 'balanced';
-    return STRATEGY_LABELS[raw] || raw;
-  }
-
-  function providerLabelForKey(key) {
-    var pd = PROVIDER_ORDER.filter(function(x) { return x.key === key; })[0];
-    if (!pd) return key;
-    var p = findProvider(pd.id);
-    if (p && p.label) return p.label;
-    var cp = findConfigProvider(pd.configId);
-    return (cp && cp.label) || key;
-  }
-
-  function renderSection2(errText) {
-    var body = clearEl(byId('sec2-body'));
-    if (!body) return;
-
-    /* Task 7-fix punto 6: preset reale da llm_strategy (payload config), non
-       una stringa generica. UX review: era duplicato con la sc-desc statica
-       ("Il preset attivo... si imposta in Configurazione add-on") — consolidato
-       in un'unica frase qui; la sc-desc statica ora parla solo di ordine/frecce. */
-    body.appendChild(el('p', 'field-hint', 'Preset corrente: ' + strategyLabel(state.llmStrategy) + '.'));
-
-    var keys = usableKeys();
-    var shown = buildDisplayChain(keys);
-
-    /* Una configurazione oggi INESPRIMIBILE da questa pagina, dichiarata
-       invece che taciuta: chi ha una credenziale e sta fuori dalla catena non
-       può essere messo in catena da qui -- il controllo che lo fa arriva con
-       il ridisegno di questa pagina. Fino ad allora la pagina lo dice, perché
-       il contrario (un provider configurato che non risponde mai, senza una
-       riga che spieghi perché) è la stessa opacità che questa pagina esiste
-       per togliere. */
-    var fuoriConCredenziale = (state.configProviders || []).filter(function(p) {
-      return p && p.has_credential && !p.in_catena && p.id !== 'subscription';
-    });
-    if (fuoriConCredenziale.length) {
-      body.appendChild(el('p', 'field-hint',
-        'Fuori dalla catena, con credenziale: ' +
-        fuoriConCredenziale.map(function(p) { return p.label; }).join(', ') +
-        '. Da qui la catena si riordina; per aggiungerne uno serve il prossimo aggiornamento della pagina.'));
-    }
-
-    if (shown.length === 0) {
-      body.appendChild(el('p', 'field-hint',
-        'Nessun provider in catena — mettine almeno uno in catena per definirne l\'ordine.'));
+    if (!state.catena.length) {
+      body.appendChild(el('p', 'field-hint', 'Vuota.'));
       return;
     }
 
-    shown.forEach(function(key, idx) {
-      var label = providerLabelForKey(key);
-      var row = el('div', 'chain-row');
-      row.setAttribute('role', 'listitem');
-      row.appendChild(el('span', 'chain-num', String(idx + 1)));
-      row.appendChild(el('span', 'chain-label', label));
-      if (shown.length > 1) {
-        var up = el('button', 'btn-icon-only', '↑');
-        up.type = 'button';
-        up.setAttribute('aria-label', 'Sposta "' + label + '" su, posizione ' + (idx + 1) + ' di ' + shown.length);
-        if (idx === 0) up.disabled = true;
-        up.addEventListener('click', function() { moveChain(idx, -1); });
-        var down = el('button', 'btn-icon-only', '↓');
-        down.type = 'button';
-        down.setAttribute('aria-label', 'Sposta "' + label + '" giù, posizione ' + (idx + 1) + ' di ' + shown.length);
-        if (idx === shown.length - 1) down.disabled = true;
-        down.addEventListener('click', function() { moveChain(idx, 1); });
-        row.appendChild(up);
-        row.appendChild(down);
-      } else {
-        row.appendChild(el('span'));
-        row.appendChild(el('span'));
+    state.catena.forEach(function(dati, i) {
+      body.appendChild(rigaProvider(dati, true));
+      if (dati.connettore && i < state.catena.length - 1) {
+        body.appendChild(connettore('connettore', dati.connettore));
       }
-      body.appendChild(row);
+      if (dati.connettore_nota) {
+        body.appendChild(connettore('connettore-nota', dati.connettore_nota));
+      }
     });
-
-    body.appendChild(el('p', 'model-boot-hint', 'riapplicato al riavvio dell\'add-on'));
-    if (errText) body.appendChild(el('p', 'proposals-error', errText));
-  }
-
-  function moveChain(idx, dir) {
-    var keys = usableKeys();
-    var shown = buildDisplayChain(keys);
-
-    /* Una configurazione oggi INESPRIMIBILE da questa pagina, dichiarata
-       invece che taciuta: chi ha una credenziale e sta fuori dalla catena non
-       può essere messo in catena da qui -- il controllo che lo fa arriva con
-       il ridisegno di questa pagina. Fino ad allora la pagina lo dice, perché
-       il contrario (un provider configurato che non risponde mai, senza una
-       riga che spieghi perché) è la stessa opacità che questa pagina esiste
-       per togliere. */
-    var fuoriConCredenziale = (state.configProviders || []).filter(function(p) {
-      return p && p.has_credential && !p.in_catena && p.id !== 'subscription';
-    });
-    if (fuoriConCredenziale.length) {
-      body.appendChild(el('p', 'field-hint',
-        'Fuori dalla catena, con credenziale: ' +
-        fuoriConCredenziale.map(function(p) { return p.label; }).join(', ') +
-        '. Da qui la catena si riordina; per aggiungerne uno serve il prossimo aggiornamento della pagina.'));
+    if (state.fineCatena) {
+      body.appendChild(connettore('connettore', state.fineCatena));
     }
-    var j = idx + dir;
-    if (j < 0 || j >= shown.length) return;
-    var tmp = shown[idx]; shown[idx] = shown[j]; shown[j] = tmp;
-    var rest = state.cfg.chain_order.filter(function(k) { return shown.indexOf(k) === -1; });
-    var prevOrder = state.cfg.chain_order.slice();
-    state.cfg.chain_order = shown.concat(rest);
-    renderSection2();
-    putModelsConfig().then(function(ok) {
-      if (!ok) {
-        state.cfg.chain_order = prevOrder;
-        renderSection2('Errore salvataggio ordine. Riprova.');
-      }
-    });
   }
 
-  /* ── Sezione 3 (Brain + Chatbot) uscita alla fetta E5 Task 7 ───────────
-     renderSection3Brain scriveva PUT api/models/config brain_model: il
-     Brain che lo leggeva è uscito con la E3, zero lettori di produzione da
-     allora (configurazione morta, tolta anche da handlers_models.py
-     load/save nello stesso commit). renderSection3Chatbot faceva PUT
-     api/chatbots/{id} a ogni cambio di select: quella rotta non esisteva
-     per il metodo PUT (solo GET rispondeva — uscita anch'essa, per intero,
-     alla fetta E5 Task 10) — ogni salvataggio falliva con 404, sel.value
-     tornava al valore precedente e compariva il badge rosso.
-     Il modello della chat si cambia dal Task 2 della E5 (impostazioni
-     chat), dove è sempre dovuto stare. */
-
-  /* ── Sezione 3 (id interno "sec4", invariato — vedi buildSectionShell in
-     mount()): Embeddings ─────────────────────────────────────────────────
-     Sola lettura. Task 7B ha aggiunto embeddings.{provider,model} al payload
-     GET /api/models/config — mostrato qui invece del fallback statico
-     precedente (assunzione aperta #1 del design doc, ora risolta). */
-  function renderSection4() {
-    var body = clearEl(byId('sec4-body'));
+  /* ── 02 FUORI DALLA CATENA ─────────────────────────────────────────────── */
+  function renderFuori() {
+    var body = clearEl(byId('fuori-body'));
     if (!body) return;
-    var provider = state.embeddings && state.embeddings.provider;
-    var model = state.embeddings && state.embeddings.model;
-    if (provider && model) {
-      body.appendChild(el('p', null, 'Provider: ' + provider + ' · Modello: ' + model));
-    } else {
-      body.appendChild(el('p', null, 'Non configurato — si imposta da memory.embedding_provider in Configurazione add-on.'));
+    var nota = byId('fuori-nota');
+    if (nota) nota.textContent = '';
+    if (!state.fuoriCatena.length) {
+      body.appendChild(el('p', 'field-hint', 'Nessuno: sono tutti in catena.'));
+      return;
     }
-    body.appendChild(el('p', 'field-hint', 'Oggi nessun testo viene vettorizzato: il valore è letto e mostrato, non usato. (L\'Abbonamento non fa embeddings.)'));
+    var manca = false;
+    state.fuoriCatena.forEach(function(dati) {
+      if (!dati.ha_credenziale) manca = true;
+      body.appendChild(rigaProvider(dati, false));
+    });
+    /* Il confine fra le due pagine, detto UNA volta e dove serve: le
+       credenziali si custodiscono nella configurazione dell'add-on, le
+       decisioni si prendono qui. Ripeterlo su ogni riga sarebbe cinque volte
+       la stessa frase; non dirlo lascerebbe «manca la chiave» senza il posto
+       dove metterla. */
+    if (manca && nota) {
+      nota.textContent = 'Le chiavi si mettono in Configurazione add-on: è '
+        + 'l\'unico posto che sa custodirle. Qui si decide chi risponde.';
+    }
+  }
+
+  /* ── Le scritture ──────────────────────────────────────────────────────
+     Schema unico: si muove `state.cfg.chain_order`, si ridisegna SUBITO (la
+     pagina non aspetta il server: è la disciplina di scrittura ottimistica che
+     questa pagina ha già), si salva, e se il salvataggio fallisce si torna
+     ESATTAMENTE allo stato precedente -- posizioni comprese, perché
+     `ricomponiTopologia` le ricalcola dall'ordine. */
+  function scriviCatena(nuovoOrdine, errText) {
+    var precedente = state.cfg.chain_order.slice();
+    var strategiaPrecedente = state.cfg.strategia_ultima;
+    state.cfg.chain_order = nuovoOrdine;
+    ricomponiTopologia();
+    pulisciErroreCatena();
+    renderCatena();
+    renderFuori();
+    putModelsConfig().then(function(ok) {
+      if (ok) return;
+      state.cfg.chain_order = precedente;
+      state.cfg.strategia_ultima = strategiaPrecedente;
+      ricomponiTopologia();
+      renderCatena();
+      renderFuori();
+      mostraErroreCatena(errText || ERR_SALVATAGGIO);
+    });
+  }
+
+  /* L'UNICA cosa che questa pagina ricompone da sé, e solo fra un gesto e la
+     risposta del server: le posizioni e l'appartenenza, che sono già
+     determinate dall'ordine che l'utente ha appena scelto. Non è la topologia
+     -- chi ha una credenziale, chi è il primo col ponte acceso, cosa costa,
+     che parole porta: quelli restano quelli che il backend ha detto, e tornano
+     aggiornati alla prossima lettura. Senza questo, un riordino resterebbe
+     fermo finché il server non risponde, e la freccia sembrerebbe rotta.
+     È la sola deroga all'invariante 2 in tutta la pagina, ed è delimitata: il
+     test «la pagina NON ricostruisce la catena» (Task 2) monta la pagina con un
+     payload in cui `chain_order` e `adesso` sono in disaccordo, e passa solo se
+     al PRIMO disegno vince il payload. */
+  function ricomponiTopologia() {
+    var perId = {};
+    state.catena.concat(state.fuoriCatena).forEach(function(r) { perId[r.id] = r; });
+    /* Le righe che NON si governano da `chain_order` restano dove il backend
+       le ha messe -- oggi è il piano col ponte acceso, e questa funzione non ha
+       bisogno di saperlo: le riconosce dal campo, come tutto il resto della
+       pagina. Senza, un gesto qualunque le farebbe sparire dalla catena fino
+       alla ricarica. */
+    var dentro = state.catena.filter(function(r) { return !r.riordinabile; });
+    state.cfg.chain_order.forEach(function(id) {
+      var r = perId[id];
+      if (r && r.riordinabile && r.ha_credenziale && dentro.indexOf(r) === -1) dentro.push(r);
+    });
+    state.catena = dentro.map(function(r, i) {
+      return Object.assign({}, r, { posizione: i + 1 });
+    });
+    var idDentro = state.catena.map(function(r) { return r.id; });
+    state.fuoriCatena = ORDINE_FISSO.filter(function(id) {
+      return perId[id] && idDentro.indexOf(id) === -1;
+    }).map(function(id) { return Object.assign({}, perId[id], { posizione: null }); });
+  }
+
+  function rigaById(id) {
+    var righe = state.catena.concat(state.fuoriCatena);
+    for (var i = 0; i < righe.length; i++) {
+      if (righe[i].id === id) return righe[i];
+    }
+    return null;
+  }
+
+  function riordinabileById(id) {
+    var r = rigaById(id);
+    return !!(r && r.riordinabile);
+  }
+
+  /* Chi c'è sopra (direzione -1) o sotto (+1) in catena, fra le righe che si
+     possono spostare -- ed è `null` quando non c'è nessuno, cioè quando quella
+     freccia non avrebbe niente da scambiare. Serve a due cose che devono dire
+     la stessa: disabilitare la freccia e rifiutare la scrittura. Si guarda alle
+     righe VISIBILI e non a `chain_order` perché l'ordine salvato può contenere
+     un provider senza credenziale, che non si disegna: scambiare con lui
+     sembrerebbe una freccia rotta. */
+  function vicinoInCatena(id, direzione) {
+    var mobili = state.catena.filter(function(r) { return r.riordinabile; })
+      .map(function(r) { return r.id; });
+    var k = mobili.indexOf(id);
+    if (k === -1) return null;
+    var vicino = mobili[k + direzione];
+    return vicino == null ? null : vicino;
+  }
+
+  function mettiInCatena(id) {
+    if (!riordinabileById(id)) return;
+    var ordine = state.cfg.chain_order.slice();
+    if (ordine.indexOf(id) === -1) ordine.push(id);
+    scriviCatena(ordine);
+  }
+
+  function togliDallaCatena(id) {
+    if (!riordinabileById(id)) return;
+    scriviCatena(state.cfg.chain_order.filter(function(k) { return k !== id; }));
+  }
+
+  function spostaInCatena(id, direzione) {
+    /* Seconda guardia, sulla scrittura e non solo sul disegno: `chain_order`
+       non contiene il piano (la sua posizione discende da `ponte.attivo`), e un
+       id non riordinabile qui non troverebbe niente da spostare scrivendo
+       comunque una PUT inutile. */
+    if (!riordinabileById(id)) return;
+    var vicino = vicinoInCatena(id, direzione);
+    if (!vicino) return;
+    var ordine = state.cfg.chain_order.slice();
+    var i = ordine.indexOf(id);
+    var j = ordine.indexOf(vicino);
+    if (i === -1 || j === -1) return;
+    ordine[i] = vicino;
+    ordine[j] = id;
+    scriviCatena(ordine, 'Errore salvataggio ordine. Riprova.');
+  }
+
+  function rifaiCatena(chiave) {
+    var p = PRESET[chiave];
+    if (!p) return;
+    /* Solo chi ha una credenziale: mettere in catena un provider senza
+       credenziale creerebbe una riga che non può funzionare, cioè la seconda
+       rappresentazione dello stato che questa pagina ha appena tolto. */
+    var credenziati = {};
+    state.catena.concat(state.fuoriCatena).forEach(function(r) {
+      credenziati[r.id] = r.ha_credenziale;
+    });
+    state.cfg.strategia_ultima = chiave;
+    scriviCatena(p.ordine.filter(function(id) { return credenziati[id]; }));
+  }
+
+  /* La riga di esito delle scritture. Vive nel guscio della sezione e non nel
+     corpo che viene ridisegnato, così è una regione viva che esiste PRIMA del
+     fallimento; e si riscrive svuotandola, perché `aria-live` annuncia le
+     mutazioni di contenuto e due fallimenti identici di seguito non
+     produrrebbero nessuna mutazione da annunciare. */
+  function mostraErroreCatena(testo) {
+    var p = byId('catena-stato');
+    if (!p) return;
+    p.textContent = '';
+    p.textContent = testo;
+  }
+
+  function pulisciErroreCatena() {
+    var p = byId('catena-stato');
+    if (p) p.textContent = '';
+  }
+
+  function renderErrore() {
+    renderAdesso();
+    var body = clearEl(byId('catena-body'));
+    if (body) {
+      body.appendChild(el('p', 'proposals-error', 'Errore caricamento provider.'));
+      var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
+      btn.type = 'button';
+      btn.addEventListener('click', function() { loadModelsAndConfig(); });
+      body.appendChild(btn);
+    }
+    var fuori = clearEl(byId('fuori-body'));
+    if (fuori) {
+      fuori.appendChild(el('p', 'field-hint',
+        'Impossibile leggere chi è fuori dalla catena — vedi qui sopra.'));
+    }
   }
 
   /* ── Caricamento dati ─────────────────────────────────────────────────
-     Le due fetch (models, models/config) partono in parallelo (§7.1);
-     trattate come un'unica unità dati perché Parte 1 (picker), Parte 2
-     (catena) e Parte 3 (embeddings) dipendono da entrambe. Non c'è più una
-     terza fetch verso api/chatbots: la sezione che la consumava (Chatbot,
-     dentro la vecchia "Assegnazione per entità") è uscita con la fetta E5
-     Task 7. */
+     Le due fetch (models, models/config) partono in parallelo e sono trattate
+     come un'unica unità dati. */
   function loadModelsAndConfig() {
-    var body1 = byId('sec1-body');
-    if (body1) { clearEl(body1); body1.appendChild(el('p', 'field-hint', 'Caricamento…')); }
+    var body = byId('catena-body');
+    if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }
     Promise.all([
       fetch('api/models').then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -610,29 +540,31 @@
         return r.json();
       })
     ]).then(function(results) {
-      state.providers = results[0].providers || [];
+      state.providers = (results[0] || {}).providers || [];
       var cfgRaw = results[1] || {};
-      state.cfg = {
-        chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
-        provider_models: Object.assign({ claude: '', openai: '', openrouter: '' }, cfgRaw.provider_models || {})
-      };
-      state.configProviders = Array.isArray(cfgRaw.providers) ? cfgRaw.providers : [];
-      state.llmStrategy = cfgRaw.llm_strategy || '';
-      state.embeddings = (cfgRaw.embeddings && typeof cfgRaw.embeddings === 'object')
-        ? cfgRaw.embeddings : { provider: '', model: '' };
-      state.ollamaModel = cfgRaw.ollama_model || '';
+      state.catena = Array.isArray(cfgRaw.catena) ? cfgRaw.catena : [];
+      state.fuoriCatena = Array.isArray(cfgRaw.fuori_catena) ? cfgRaw.fuori_catena : [];
       state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
       state.ponteAttivo = !!cfgRaw.ponte_attivo;
-      var outlet = document.getElementById('route-outlet');
-      var card = renderAdesso();
-      /* Sopra la prima section-card: la risposta viene prima delle ragioni. */
-      if (card && outlet) outlet.insertBefore(card, outlet.querySelector('.section-card'));
-      renderSection1();
-      renderSection2();
-      renderSection4();
+      state.fineCatena = typeof cfgRaw.fine_catena === 'string' ? cfgRaw.fine_catena : '';
+      state.cfg = {
+        chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
+        provider_models: Object.assign({ claude: '', openai: '', openrouter: '' },
+                                       cfgRaw.provider_models || {}),
+        ponte: Object.assign({ attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+                             cfgRaw.ponte || {}),
+        ollama: Object.assign({ modello: '', timeout_s: 120 }, cfgRaw.ollama || {}),
+        nascondi_gratuiti: !!cfgRaw.nascondi_gratuiti,
+        strategia_ultima: cfgRaw.strategia_ultima || '',
+        seminato: !!cfgRaw.seminato
+      };
+      pulisciErroreCatena();
+      renderAdesso();
+      renderCatena();
+      renderFuori();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
-      renderSection1Error();
+      renderErrore();
     });
   }
 
@@ -647,9 +579,9 @@
     section.appendChild(el('p', 'sc-desc', desc));
     var body = el('div', 'sc-body');
     body.id = idPrefix + '-body';
-    /* Sezione 2 (Catena automatica): le righe hanno role="listitem"
-       (renderSection2) — serve role="list" sul contenitore perché la
-       relazione list/listitem sia esposta correttamente all'AT. */
+    /* Le righe e i connettori hanno role="listitem": la relazione list/listitem
+       è ciò che fa leggere la catena come una sequenza, ed è la sequenza il
+       contenuto di questa pagina. */
     if (bodyRole) body.setAttribute('role', bodyRole);
     body.appendChild(el('p', 'field-hint', 'Caricamento…'));
     section.appendChild(body);
@@ -660,25 +592,62 @@
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
-    outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider, credenziali e catena automatica di failover.'));
+    outlet.appendChild(el('p', 'page-subtitle', 'Chi risponde alle tue domande, e in che ordine.'));
 
-    outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider e credenziali',
-      'Le credenziali vivono in Impostazioni → Add-on → HIRIS → Configurazione. Avere una credenziale non mette un provider in catena: HIRIS consulta soltanto chi sta in catena.'));
-    outlet.appendChild(buildSectionShell('02', 'sec2', 'Catena automatica',
-      'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce.', 'list'));
+    var catenaCard = buildSectionShell('01', 'catena', 'La catena',
+      'Le righe in uso, in ordine. È l\'unica verità: un provider è usato se e solo se sta qui.',
+      'list');
+    /* I tre preset: un gesto che RIFÀ la catena, non uno stato da cui la catena
+       si deriva (progetto §5.3). Effetto immediato e visibile, e da quel momento
+       la verità è di nuovo una sola. */
+    var azioni = el('div', 'sc-actions');
+    azioni.appendChild(el('span', 'sc-actions-label', 'Rifai la catena:'));
+    Object.keys(PRESET).forEach(function(chiave) {
+      var b = el('button', 'btn btn-ghost btn-sm', PRESET[chiave].nome);
+      b.type = 'button';
+      b.addEventListener('click', function() { rifaiCatena(chiave); });
+      azioni.appendChild(b);
+    });
+    catenaCard.querySelector('.sc-header').appendChild(azioni);
+    /* La confessione che questa pagina deve ancora fare, e che il Task 10
+       toglie rendendola falsa: `handle_save_models_config` aggiorna
+       `app["models_config"]`, ma `app["catena_modelli"]` e la policy del router
+       si costruiscono all'avvio. Quindi un riordino salvato NON cambia il
+       turno successivo -- e, peggio, la prossima lettura di questa pagina
+       descrive il RUNTIME (è la sola misura che ha), quindi ricaricando si
+       rivede l'ordine vecchio e il salvataggio sembra perso. Tacerlo qui
+       sarebbe la stessa opacità che questa pagina esiste per togliere, con il
+       silenzio al posto della parola sbagliata. */
+    catenaCard.appendChild(el('p', 'model-boot-hint',
+      'L\'ordine si applica al riavvio dell\'add-on: fino ad allora la chat usa '
+      + 'quello di prima, e ricaricando questa pagina lo rivedi.'));
+    var stato = el('p', 'catena-stato');
+    stato.id = 'catena-stato';
+    stato.setAttribute('aria-live', 'polite');
+    catenaCard.appendChild(stato);
+    outlet.appendChild(catenaCard);
 
-    /* La sezione 03 originale del design doc ("Assegnazione per entità":
-       Chatbot + Brain) è uscita alla fetta E5 Task 7 -- vedi il commento
-       sopra renderSection4 per il perché. Embeddings diventa così la terza
-       e ultima sezione della pagina (id interno invariato "sec4", numero
-       mostrato "03"). */
-    outlet.appendChild(buildSectionShell('03', 'sec4', 'Embeddings (oggi inattivi)',
-      'Oggi nessuna parte di HIRIS calcola embedding: qui vedi solo cosa hai configurato. La ricerca per somiglianza è rimandata, non annullata.'));
+    var fuoriCard = buildSectionShell('02', 'fuori', 'Fuori dalla catena',
+      'Chi potrebbe entrare, e chi non può finché manca la credenziale.', 'list');
+    var fuoriNota = el('p', 'fuori-nota');
+    fuoriNota.id = 'fuori-nota';
+    fuoriCard.appendChild(fuoriNota);
+    outlet.appendChild(fuoriCard);
 
-    /* La sezione "03" (Embeddings) parte con il placeholder "Caricamento…"
-       di buildSectionShell; viene popolata con i dati reali (o il
-       fallback) da loadModelsAndConfig una volta arrivato GET
-       /api/models/config (Task 7-fix punto 7). */
+    /* Il guscio del riquadro «Adesso», vuoto: esiste prima della fetch perché
+       una regione viva annuncia ciò che le arriva dentro, non la propria
+       comparsa. Sta sopra la prima sezione -- la risposta prima delle ragioni --
+       e sparisce se il payload non porta la decisione (renderAdesso). */
+    creaGuscioAdesso();
+
+    /* Gli embedding non sono una sezione e non sono numerati: la numerazione,
+       qui, significa «si decide qualcosa», e questi non fanno niente. Restano
+       in Configurazione add-on perché toglierli da lì costerebbe la perdita
+       silenziosa di un valore in cambio di nulla (progetto §8). */
+    outlet.appendChild(el('p', 'nota-embedding',
+      'Embedding: nessun testo viene vettorizzato, e i due campi in Configurazione add-on non ' +
+      'hanno effetto. La ricerca per somiglianza è rimandata, non annullata.'));
+
     loadModelsAndConfig();
   }
 

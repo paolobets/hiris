@@ -5,7 +5,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 /* La pagina #/models (config/models-route.js). Fino alla 2.4.1 rispondeva a
    «com'è configurato?»; la domanda che l'utente ha davvero è «chi risponderà
    al mio prossimo messaggio, e quanto mi costa?». Questi test guardano quella
-   risposta. */
+   risposta, e i gesti con cui si cambia. */
 
 const SCRIPTS = ['config/models-route.js'];
 
@@ -18,29 +18,43 @@ function jsonResponse(body, status) {
 }
 
 /* IL PAYLOAD È IN DISACCORDO CON SE STESSO, DI PROPOSITO.
-   `chain_order` dice claude-poi-openrouter; `adesso.chi` dice openrouter. In
-   produzione questo non succede (li compone lo stesso backend); qui succede
-   perché è l'unico modo di distinguere «la pagina disegna ciò che riceve» da
-   «la pagina ricalcola e per fortuna coincide». Se un giorno un
-   `buildDisplayChain` tornasse in questo file, questi test cadono. */
+   `chain_order` dice claude-poi-openrouter; `catena[]` e `adesso.chi` dicono
+   openrouter per primo. In produzione questo non succede (li compone lo stesso
+   backend); qui succede perché è l'unico modo di distinguere «la pagina disegna
+   ciò che riceve» da «la pagina ricalcola e per fortuna coincide». Se un giorno
+   un `buildDisplayChain` tornasse in questo file, questi test cadono. */
 const CONFIG = {
   chain_order: ['claude', 'openrouter'],
   provider_models: { claude: 'claude-opus-4-7', openai: '', openrouter: '' },
-  providers: [
-    /* fetta «la catena diventa l'unica verità»: `active` (interruttore add-on
-       AND credenziale) e `toggle` (l'interruttore grezzo) sono usciti dal
-       payload -- erano la seconda rappresentazione dello stato di un provider.
-       Resta l'appartenenza alla catena, `in_catena`, più la credenziale. */
-    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: true },
-    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
-    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: false },
-    { id: 'openrouter', label: 'OpenRouter', in_catena: true, has_credential: true },
-    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
-  ],
-  llm_strategy: 'balanced',
+  ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+  ollama: { modello: '', timeout_s: 120 },
+  nascondi_gratuiti: false,
+  strategia_ultima: 'balanced',
+  seminato: true,
   embeddings: { provider: '', model: '' },
   ollama_model: '',
   ponte_attivo: false,
+  fine_catena: 'ultimo della catena: se non risponde, la chat dà errore',
+  catena: [
+    { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
+      natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+      connettore_nota: '', ha_credenziale: true, posizione: 1, riordinabile: true },
+    { id: 'claude', nome: 'Claude API', modello: 'claude-opus-4-7',
+      natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+      connettore_nota: '', ha_credenziale: true, posizione: 2, riordinabile: true },
+  ],
+  fuori_catena: [
+    { id: 'subscription', nome: 'Piano Claude Max', modello: 'opus',
+      natura: 'nel piano', manca: '',
+      nota: 'Entra in catena quando il ponte è acceso, e il ponte si accende in Configurazione add-on.',
+      ha_credenziale: true, posizione: null, riordinabile: false },
+    { id: 'openai', nome: 'OpenAI', modello: 'gpt-4o', natura: 'a consumo',
+      manca: 'manca la chiave', nota: '', ha_credenziale: false,
+      posizione: null, riordinabile: true },
+    { id: 'ollama', nome: 'Ollama (in casa)', modello: '', natura: 'in casa',
+      manca: 'manca l\'indirizzo', nota: '', ha_credenziale: false,
+      posizione: null, riordinabile: true },
+  ],
   adesso: {
     chi: 'openrouter',
     nome: 'OpenRouter',
@@ -66,6 +80,15 @@ function monta(opts = {}) {
     chiamate.push({ url: u, opts: options || {} });
     if (u === 'api/models') return jsonResponse(opts.modelli || MODELLI);
     if (u === 'api/models/config') {
+      /* LA FINTA È SCOMODA DI PROPOSITO: dopo una PUT il server NON ricalcola
+         la topologia, restituisce la stessa risposta di prima. Un frontend che
+         si affidasse a un ricalcolo del server per aggiornare le posizioni
+         sembrerebbe funzionare in un test generoso; qui passa solo chi
+         aggiorna il proprio stato e si riordina i numeri da sé. */
+      if ((options || {}).method === 'PUT') {
+        return opts.putRotto ? jsonResponse({ error: 'boom' }, 503)
+          : jsonResponse({ ok: true });
+      }
       if (opts.configRotta) return jsonResponse({ error: 'boom' }, 503);
       /* `configRaw` consegna il payload TALE E QUALE, senza fonderlo con
          CONFIG: e' l'unico modo di esprimere una CHIAVE ASSENTE. Con la sola
@@ -84,6 +107,51 @@ function adesso(document) {
   return document.getElementById('adesso-card');
 }
 
+/* ── Le righe della catena: i dati del payload, non una ricostruzione ─────── */
+
+const CATENA = [
+  { id: 'claude', nome: 'Claude API', modello: 'claude-opus-4-7',
+    natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+    connettore_nota: '', ha_credenziale: true, posizione: 1, riordinabile: true },
+  { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
+    natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+    connettore_nota: '', ha_credenziale: true, posizione: 2, riordinabile: true },
+];
+const PIANO_FUORI = {
+  id: 'subscription', nome: 'Piano Claude Max', modello: 'opus',
+  natura: 'nel piano', manca: '',
+  nota: 'Entra in catena quando il ponte è acceso, e il ponte si accende in Configurazione add-on.',
+  connettore: '', connettore_nota: '',
+  ha_credenziale: true, posizione: null, riordinabile: false,
+};
+/* Col ponte acceso il piano è la riga 1 e porta le due frasi del backend: la
+   nota dice perché non si sposta, il connettore dice cosa succede se non
+   risponde -- e OGGI dice che il messaggio va perso, perché il ponte non
+   ripiega. Il giorno del ripiego cambia quella stringa, in Python. */
+const PIANO_DENTRO = Object.assign({}, PIANO_FUORI, {
+  posizione: 1,
+  nota: 'In testa o fuori: ci sta perché il ponte è acceso, e il ponte si spegne in Configurazione add-on.',
+  connettore: 'il ponte non ripiega: se non risponde entro 7 min il messaggio va perso',
+  connettore_nota: 'sopra i 5 minuti la chat smette di aspettare prima: la risposta la trovi ricaricando',
+});
+const FUORI = [
+  PIANO_FUORI,
+  { id: 'openai', nome: 'OpenAI', modello: 'gpt-4o', natura: 'a consumo',
+    manca: 'manca la chiave', nota: '', connettore: '', connettore_nota: '',
+    ha_credenziale: false, posizione: null, riordinabile: true },
+  { id: 'ollama', nome: 'Ollama (in casa)', modello: '', natura: 'in casa',
+    manca: 'manca l\'indirizzo', nota: '', connettore: '', connettore_nota: '',
+    ha_credenziale: false, posizione: null, riordinabile: true },
+];
+
+function righeCatena(document) {
+  return Array.from(document.querySelectorAll('#catena-card .riga-provider'));
+}
+
+function righeFuori(document) {
+  return Array.from(document.querySelectorAll('#fuori-card .riga-provider'));
+}
+
 test('la prima cosa della pagina è la frase, e viene dal backend', async () => {
   const { window, document } = monta();
   window.HirisModelsRoute.mount();
@@ -95,9 +163,26 @@ test('la prima cosa della pagina è la frase, e viene dal backend', async () => 
     'Il prossimo messaggio va a OpenRouter, con anthropic/claude-sonnet-4-6, a consumo.');
 });
 
+test('il riquadro «Adesso» è una regione viva che esiste PRIMA della risposta', async () => {
+  /* `aria-live` annuncia le mutazioni di CONTENUTO di una regione, non la
+     comparsa della regione stessa: un riquadro costruito già pieno e poi
+     inserito non verrebbe letto da nessuno. Chi usa uno screen reader
+     scoprirebbe la cosa più importante della pagina solo andandosela a cercare.
+     Il guscio nasce vuoto al mount e viene riempito quando la risposta arriva. */
+  const { window, document } = monta();
+  window.HirisModelsRoute.mount();
+  const guscio = adesso(document);
+  assert.ok(guscio, 'il guscio deve esistere prima che la fetch risponda');
+  assert.equal(guscio.getAttribute('aria-live'), 'polite');
+  assert.equal(guscio.textContent, '', 'vuoto: non c\'è ancora niente da dire');
+  await tick(20);
+  assert.match(adesso(document).textContent, /Il prossimo messaggio va a OpenRouter/);
+});
+
 test('la pagina NON ricostruisce la catena: se il backend dice openrouter, dice openrouter', async () => {
-  /* `chain_order` in questo payload dice claude per primo. Una pagina che
-     ricalcolasse la topologia scriverebbe «Claude API» qui. */
+  /* `chain_order` in questo payload dice claude per primo, `catena[]` dice
+     openrouter. Una pagina che ricalcolasse la topologia scriverebbe «Claude
+     API» in cima -- nella frase e nella prima riga. */
   const { window, document } = monta();
   window.HirisModelsRoute.mount();
   await tick(20);
@@ -106,6 +191,9 @@ test('la pagina NON ricostruisce la catena: se il backend dice openrouter, dice 
   assert.doesNotMatch(adesso(document).querySelector('.adesso-frase').textContent,
     /Claude API/,
     'la frase deve venire da adesso.frase, non da una ricostruzione di chain_order');
+  assert.deepEqual(righeCatena(document).map((r) => r.querySelector('.riga-nome').textContent),
+    ['OpenRouter', 'Claude API'],
+    'anche il disegno della catena viene dal payload, non da chain_order');
 });
 
 test('le diagnosi compaiono sotto la frase, una per riga', async () => {
@@ -192,88 +280,329 @@ test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () =
   assert.equal(card.querySelectorAll('.diagnosi-guasto').length, 1);
 });
 
-/* ── fetta «la catena diventa l'unica verità» ────────────────────────────
-   La pagina viene riscritta dal Task 8; qui si pinna solo che abbia smesso di
-   leggere la SECONDA rappresentazione dello stato (`active` + `toggle`) e la
-   parola che ne derivava. */
+/* ── 01 LA CATENA e 02 FUORI DALLA CATENA ────────────────────────────────── */
 
-function badgeDi(document, etichetta) {
-  const righe = Array.from(document.querySelectorAll('.provider-row'));
-  const riga = righe.filter(function (r) {
-    const l = r.querySelector('.provider-row-label');
-    return l && l.textContent === etichetta;
-  })[0];
-  return riga ? riga.querySelector('.agent-badge').textContent : null;
-}
-
-test('lo stato di un provider è la sua appartenenza alla catena, non un interruttore', async () => {
-  const { window, document } = monta();
+test('la catena mostra posizione, nome, modello e natura di ogni riga', async () => {
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(badgeDi(document, 'Claude API'), 'In catena');
-  assert.equal(badgeDi(document, 'Piano Claude Max'), 'Fuori dalla catena');
-  assert.equal(badgeDi(document, 'OpenAI'), '⚠ manca credenziale');
+  const righe = righeCatena(document);
+  assert.equal(righe.length, 2);
+  assert.equal(righe[0].querySelector('.riga-pos').textContent, '1');
+  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'Claude API');
+  assert.equal(righe[0].querySelector('.riga-modello').textContent, 'claude-opus-4-7');
+  assert.equal(righe[0].querySelector('.riga-natura').textContent, 'a consumo');
 });
 
-test('«Attivo» non compare più: diceva «funziona» misurando una configurazione', async () => {
-  /* Una chiave a credito esaurito era «Attivo». La parola non deve poter
-     rientrare da nessuna porta -- nemmeno da un badge che l'altra metà del
-     payload non alimenta più. */
-  const { window, document } = monta();
+test('fra due righe c\'è il connettore, e l\'ultimo dice cosa succede se non risponde nessuno', async () => {
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const badge = Array.from(document.querySelectorAll('.agent-badge'))
-    .map(function (b) { return b.textContent; });
-  assert.ok(badge.length >= 5);
-  assert.ok(badge.indexOf('Attivo') === -1, badge.join(' | '));
-  assert.ok(badge.indexOf('Disattivato') === -1, badge.join(' | '));
+  const conn = Array.from(document.querySelectorAll('#catena-card .connettore'))
+    .map((c) => c.textContent);
+  assert.equal(conn.length, 2, 'un connettore fra le righe, e uno in fondo');
+  assert.equal(conn[0], 'se rifiuta, subito');
+  assert.equal(conn[1], 'ultimo della catena: se non risponde, la chat dà errore');
 });
 
-test('un provider credenziato ma fuori catena non è «manca credenziale»', async () => {
-  /* I due fatti sono indipendenti: prima `active=false` li schiacciava
-     insieme, e serviva il `toggle` grezzo per rimetterli in fila. */
-  const { window, document } = monta({ config: { providers: [
-    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
-    { id: 'claude', label: 'Claude API', in_catena: false, has_credential: true },
-    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: false },
-    { id: 'openrouter', label: 'OpenRouter', in_catena: true, has_credential: true },
-    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
-  ] } });
+test('il connettore del piano dichiara i minuti, e non promette un ripiego che non esiste', async () => {
+  /* Il numero è una decisione di qualcuno e si mostra. Ma la frase intorno al
+     numero è quella del backend, ed è la sola affermazione di questa pagina
+     che, scritta bene per domani, sarebbe falsa oggi: oggi il ponte NON
+     ripiega, alla scadenza il messaggio va perso. Se la pagina componesse qui
+     un «se non risponde, si passa al successivo», prometterebbe un ripiego che
+     il prodotto non fa -- il difetto 3, ricomparso come didascalia. */
+  const catena = [PIANO_DENTRO, Object.assign({}, CATENA[0], { posizione: 2 })];
+  const { window, document } = monta({ config: {
+    ponte_attivo: true, catena: catena, fuori_catena: [] } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(badgeDi(document, 'Claude API'), 'Fuori dalla catena');
+  const conn = document.querySelectorAll('#catena-card .connettore')[0];
+  assert.equal(conn.textContent,
+    'il ponte non ripiega: se non risponde entro 7 min il messaggio va perso');
 });
 
-test('un provider con credenziale fuori dalla catena lo dice, invece di sembrare spento', async () => {
-  /* Prima `reconcile_chain` lo accodava da solo: entrava in catena senza che
-     nessuno ce l'avesse messo. Adesso resta fuori -- e ciò che si guadagna
-     (niente entra da solo) si paga con una riga che lo dichiara, altrimenti è
-     un provider configurato che non risponde mai senza spiegare perché. */
-  const { window, document } = monta({ config: { providers: [
-    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
-    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
-    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: true },
-    { id: 'openrouter', label: 'OpenRouter', in_catena: false, has_credential: false },
-    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
-  ] } });
-  window.HirisModelsRoute.mount();
+test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', async () => {
+  /* `scadenza_min` accetta 1..120, ma la chat smette di aspettare a
+     CHAT_POLL_MAX_MS (5 minuti): sopra i cinque, la risposta arriva quando il
+     browser non guarda più. Questa fetta DICHIARA e non risolve -- è un fatto,
+     non un divieto. Il testo sta in un nodo suo: il connettore è la frase, e la
+     frase è il numero. */
+  const catena = [PIANO_DENTRO, Object.assign({}, CATENA[0], { posizione: 2 })];
+  const sopra = monta({ config: {
+    ponte_attivo: true, catena: catena, fuori_catena: [] } });
+  sopra.window.HirisModelsRoute.mount();
   await tick(20);
-  const testo = document.getElementById('sec1-body').textContent;
-  assert.match(testo, /Ha una credenziale ma non è in catena/);
+  const nota = sopra.document.querySelector('#catena-card .connettore-nota');
+  assert.ok(nota, 'la riga in più deve esistere');
+  assert.match(nota.textContent, /sopra i 5 minuti la chat smette di aspettare prima/);
+  assert.doesNotMatch(
+    sopra.document.querySelectorAll('#catena-card .connettore')[0].textContent,
+    /sopra i 5 minuti/, "dentro il connettore no: li' c'e' la frase con il numero");
+
+  const senza = [Object.assign({}, PIANO_DENTRO, { connettore_nota: '' }),
+    Object.assign({}, CATENA[0], { posizione: 2 })];
+  const sotto = monta({ config: {
+    ponte_attivo: true, catena: senza, fuori_catena: [] } });
+  sotto.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(sotto.document.querySelector('#catena-card .connettore-nota'), null,
+    'sotto il tetto il backend non manda niente, e la pagina non inventa una riga');
 });
 
-test('la pagina dichiara ciò che da qui non si può ancora fare', async () => {
-  /* Una configurazione inesprimibile va detta, non taciuta: da questa pagina
-     la catena si RIORDINA, non si può ancora aggiungerci un provider. */
-  const { window, document } = monta({ config: { providers: [
-    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
-    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
-    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: true },
-    { id: 'openrouter', label: 'OpenRouter', in_catena: false, has_credential: false },
-    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
-  ] } });
+test('una riga senza credenziale non sta in catena: sta fuori, e dice cosa manca', async () => {
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const testo = document.getElementById('sec2-body').textContent;
-  assert.match(testo, /Fuori dalla catena, con credenziale: OpenAI/);
+  const fuori = righeFuori(document);
+  assert.deepEqual(fuori.map((r) => r.querySelector('.riga-nome').textContent),
+    ['Piano Claude Max', 'OpenAI', 'Ollama (in casa)']);
+  const openai = fuori[1];
+  assert.match(openai.textContent, /manca la chiave/);
+  assert.equal(openai.querySelector('button'), null,
+    'senza credenziale non si offre «Usa»: sarebbe un bottone che non può funzionare');
+  assert.equal(openai.querySelector('a'), null,
+    'e nemmeno un collegamento che non naviga da nessuna parte');
+  assert.match(document.getElementById('fuori-card').textContent,
+    /Le chiavi si mettono in Configurazione add-on/,
+    'dove si mette la credenziale si dice una volta, non su cinque righe');
+});
+
+test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero', async () => {
+  const fuori = [PIANO_FUORI,
+    Object.assign({}, FUORI[1], { ha_credenziale: true, manca: '' }),
+    FUORI[2]];
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: fuori } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const usa = Array.from(ctx.document.querySelectorAll('#fuori-card button'))
+    .find((b) => b.textContent === 'Usa');
+  usa.dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  assert.ok(put, 'un click deve produrre una PUT');
+  const corpo = JSON.parse(put.opts.body);
+  assert.deepEqual(corpo.chain_order, ['claude', 'openrouter', 'openai']);
+  assert.deepEqual(Object.keys(corpo).sort(),
+    ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
+      'seminato', 'strategia_ultima'],
+    'sempre l\'oggetto intero: una PUT parziale su un corpo di sette chiavi '
+    + 'perderebbe le altre sei');
+  assert.equal(righeCatena(ctx.document).length, 3, 'la riga si sposta subito');
+  assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-pos').textContent, '3');
+});
+
+test('il piano NON offre «Usa», perché quella PUT il server la butta via', async () => {
+  /* La prova che vale il doppio delle altre. `save_models_config` scarta
+     `subscription` da `chain_order` (`_VALID_BACKENDS` sono quattro nomi) e la
+     presenza del piano in catena discende da `ponte.attivo`, che questa pagina
+     non scrive e che nessuno legge dall'archivio finché il Task 13 non lo
+     cabla. Un «Usa» sul piano manderebbe una PUT accettata con 200 e buttata
+     via: la riga entrerebbe in catena a schermo e sarebbe di nuovo fuori alla
+     prima ricarica -- cioè la pagina tornerebbe a mentire, con un bottone
+     nuovo. Al suo posto la riga dice COME ci si entra, e la parola arriva dal
+     backend. */
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const piano = righeFuori(document)[0];
+  assert.equal(piano.querySelector('.riga-nome').textContent, 'Piano Claude Max');
+  assert.equal(piano.querySelector('button'), null);
+  assert.match(piano.textContent, /Entra in catena quando il ponte è acceso/);
+});
+
+test('«(x)» toglie dalla catena, e se il salvataggio fallisce si torna esattamente com\'era', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI }, putRotto: true });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const via = righeCatena(ctx.document)[0].querySelector('.riga-esci');
+  via.dispatchEvent(new ctx.window.Event('click'));
+  await tick(30);
+  const righe = righeCatena(ctx.document);
+  assert.equal(righe.length, 2);
+  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'Claude API');
+  assert.equal(righe[0].querySelector('.riga-pos').textContent, '1',
+    'anche i numeri di posizione devono tornare quelli di prima');
+  assert.equal(righeFuori(ctx.document).length, 3,
+    'e la riga non deve restare anche fuori: sarebbe in due posti insieme');
+  assert.match(ctx.document.getElementById('catena-card').textContent,
+    /Salvataggio non riuscito/);
+});
+
+test('le frecce riordinano, e i numeri seguono senza aspettare il server', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  righeCatena(ctx.document)[1].querySelector('.riga-su')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.deepEqual(righe.map((r) => r.querySelector('.riga-nome').textContent),
+    ['OpenRouter', 'Claude API']);
+  assert.deepEqual(righe.map((r) => r.querySelector('.riga-pos').textContent), ['1', '2']);
+});
+
+test('la freccia che non ha niente da scambiare è spenta, non finta', async () => {
+  /* Un bottone abilitato che non fa niente è la versione piccola del difetto
+     di questa fetta. La prima riga non può salire e l'ultima non può scendere:
+     lo dicono le frecce, prima del click. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.equal(righe[0].querySelector('.riga-su').disabled, true);
+  assert.equal(righe[0].querySelector('.riga-giu').disabled, false);
+  assert.equal(righe[1].querySelector('.riga-su').disabled, false);
+  assert.equal(righe[1].querySelector('.riga-giu').disabled, true);
+});
+
+test('col ponte acceso la catena resta visibile e riordinabile, e si dice scavalcata', async () => {
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [PIANO_DENTRO].concat(
+      CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
+    fuori_catena: FUORI.slice(1) } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(righeCatena(ctx.document).length, 3);
+  assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-su').disabled, false,
+    'la catena si prepara anche mentre è scavalcata');
+  assert.ok(ctx.document.getElementById('catena-card').classList.contains('catena-inerte'),
+    'disegnata come ciò che è: inerte, adesso -- ma non tolta');
+  assert.match(ctx.document.querySelectorAll('#catena-card .connettore')[0].textContent,
+    /il ponte non ripiega/,
+    'e a dirlo è il connettore del backend, che cambierà con la regola');
+});
+
+test('un gesto col ponte acceso non fa sparire il piano dalla catena', async () => {
+  /* La pagina si riordina da sé fra il gesto e la risposta del server, e quel
+     riordino nasce da `chain_order` -- dove il piano NON c'è. Se ricomponesse
+     solo da lì, il primo click su una freccia farebbe sparire la riga del piano
+     fino alla ricarica: una riga che c'è, che risponde a tutti i messaggi, e che
+     scompare perché hai spostato un'altra. Le righe che non si governano da
+     `chain_order` restano dove il backend le ha messe. */
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [PIANO_DENTRO].concat(
+      CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
+    fuori_catena: FUORI.slice(1) } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  righeCatena(ctx.document)[2].querySelector('.riga-su')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.deepEqual(righe.map((r) => r.querySelector('.riga-nome').textContent),
+    ['Piano Claude Max', 'OpenRouter', 'Claude API']);
+  assert.deepEqual(righe.map((r) => r.querySelector('.riga-pos').textContent),
+    ['1', '2', '3']);
+});
+
+test('la freccia scambia con la riga che si VEDE, non con una invisibile', async () => {
+  /* `chain_order` può contenere un provider senza credenziale: resta salvato ma
+     non si disegna. Scambiare con lui produrrebbe una freccia che si clicca e
+     non muove niente -- e il provider invisibile cambierebbe posto di
+     nascosto. Qui OpenAI sta in mezzo a `chain_order` senza credenziale: il
+     click su «giù» di Claude deve scavalcarlo, e lasciarlo dov'è. */
+  const ctx = monta({ config: {
+    chain_order: ['claude', 'openai', 'openrouter'],
+    catena: CATENA,
+    fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  righeCatena(ctx.document)[0].querySelector('.riga-giu')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  assert.deepEqual(JSON.parse(put.opts.body).chain_order,
+    ['openrouter', 'openai', 'claude']);
+  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.riga-nome').textContent),
+    ['OpenRouter', 'Claude API']);
+});
+
+test('la riga del piano non porta frecce né «(x)», e dice perché', async () => {
+  /* Il piano sta in testa o fuori. Una freccia che promettesse di spostarlo al
+     secondo posto -- o una «(x)» che promettesse di toglierlo -- offrirebbe una
+     cosa che il backend rifiuta: la sua presenza in catena discende dal ponte,
+     e `chain_order` non lo contiene nemmeno. È il difetto che questa fetta
+     esiste per chiudere, ricomparso nell'interfaccia. */
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [PIANO_DENTRO].concat(
+      CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
+    fuori_catena: FUORI.slice(1) } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const piano = righeCatena(ctx.document)[0];
+  assert.equal(piano.querySelector('.riga-su'), null);
+  assert.equal(piano.querySelector('.riga-giu'), null);
+  assert.equal(piano.querySelector('.riga-esci'), null);
+  assert.match(piano.textContent, /in testa o fuori/i);
+});
+
+test('la pagina non inventa gesti per una riga che il backend dice non riordinabile', async () => {
+  /* La prova gemella, e la sola che distingue «la pagina obbedisce» da «la
+     pagina conosce il caso del piano»: qui è OpenRouter a non essere
+     riordinabile, e la pagina non ha nessuna ragione di saperlo. */
+  const ctx = monta({ config: {
+    catena: [CATENA[0], Object.assign({}, CATENA[1], { riordinabile: false })],
+    fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-su'), null);
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-esci'), null);
+  assert.ok(righeCatena(ctx.document)[0].querySelector('.riga-su'));
+});
+
+test('nemmeno «Usa» si inventa: fuori catena, non riordinabile, niente bottone', async () => {
+  /* Il gemello del gemello, sul gesto d'ingresso: un provider qualunque con la
+     credenziale e `riordinabile: false` non deve ricevere «Usa». Senza questo,
+     l'assenza del bottone sul piano potrebbe essere scritta con un
+     `if (id === 'subscription')` e nessun test se ne accorgerebbe. */
+  const ctx = monta({ config: {
+    catena: CATENA,
+    fuori_catena: [Object.assign({}, FUORI[1], {
+      ha_credenziale: true, manca: '', riordinabile: false })] } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(righeFuori(ctx.document)[0].querySelector('button'), null);
+});
+
+test('«Risparmio» rifà la catena, e ci mette solo chi ha una credenziale', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  Array.from(ctx.document.querySelectorAll('#catena-card button'))
+    .find((b) => b.textContent === 'Risparmio')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  assert.deepEqual(JSON.parse(put.opts.body).chain_order, ['openrouter', 'claude'],
+    'ollama e openai non hanno credenziale: non entrano');
+  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.riga-nome').textContent),
+    ['OpenRouter', 'Claude API']);
+});
+
+test('la parola «Attivo» non compare da nessuna parte nella pagina', async () => {
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const testo = document.getElementById('route-outlet').textContent;
+  for (const parola of ['Attivo', 'Disattivato', 'Disponibile', 'Funzionante']) {
+    assert.ok(testo.indexOf(parola) === -1,
+      'la pagina non deve affermare più di ciò che il sistema sa: trovato «' + parola + '»');
+  }
+});
+
+test('la pagina confessa che il riordino parte al riavvio, finché è vero', async () => {
+  /* `handle_save_models_config` aggiorna `app["models_config"]`, ma la catena
+     del router si costruisce all'avvio: un riordino salvato non cambia il turno
+     successivo, e alla ricarica la pagina rimostra l'ordine vecchio perché
+     descrive il runtime. Tacerlo sarebbe la stessa opacità che questa pagina
+     esiste per togliere. Il Task 10 rende falsa questa riga e la toglie. */
+  const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.match(document.getElementById('catena-card').textContent,
+    /si applica al riavvio dell'add-on/);
 });

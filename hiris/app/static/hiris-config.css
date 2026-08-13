@@ -1309,88 +1309,144 @@
   height: 1px; background: var(--border); margin: var(--sp-4) 0;
 }
 /* ────────────────────────────────────────────────────────────
-   #/models (SP-2 Task 7) — provider rows, chain reorder, callouts
+   #/models — la riga-provider, il connettore, le due sezioni
+   Fetta «la catena e' l'unica verita'» (Task 8). Qui vivevano le classi delle
+   tre sezioni vecchie, e le prime due erano due rappresentazioni della stessa
+   cosa: `.provider-row*` (l'elenco con il badge di stato) e `.chain-row*` (la
+   catena ricostruita a parte). Sono uscite con loro anche `.info-callout` (il
+   riquadro informativo permanente sul confine fra le due pagine: adesso e' una
+   riga sola, dove serve), `.banner-warn` (l'avviso «nessun provider attivo»:
+   lo dice il riquadro «Adesso», dal backend) e `.agent-badge.badge-warn` piu'
+   `.dot.warn` (i badge di stato dei provider, cioe' la parola che affermava
+   piu' di cio' che il sistema sa).
    ──────────────────────────────────────────────────────────── */
-.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px oklch(from var(--warn) l c h / 0.18); }
 
-.agent-badge.badge-warn {
-  /* Gemello di `.badge-on`: qui c'e' scritto «manca credenziale», ed e' il
-     genere di frase che non deve costare fatica a leggere. */
-  color: var(--warn-ink);
-  background: var(--warn-tint);
-  border-color: var(--warn);
-}
+/* Il corpo delle due sezioni non e' un elenco di blocchi distanti: e' una
+   sequenza che si legge di seguito, riga-connettore-riga. Il `gap` grande del
+   `.sc-body` (--sp-5) spezzerebbe proprio cio' che tiene insieme la frase. */
+#catena-body, #fuori-body { gap: 0; }
 
-.provider-row {
+/* La riga-provider: quattro colonne, quattro domande. Dove sei (la posizione),
+   chi sei (il nome), con che cosa (il modello), quanto costi (la natura). Il
+   pallino non e' mai l'unico segnale (WCAG 1.4.1): la colonna accanto porta
+   sempre il testo -- la natura, oppure che cosa manca. */
+.riga-provider {
+  display: grid;
+  grid-template-columns: 1.6em 7px minmax(7em, auto) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
   padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--border);
 }
-.provider-row:last-child { border-bottom: none; }
-.provider-row .provider-row-head {
-  display: flex; align-items: center; gap: var(--sp-2);
+.riga-pos {
+  /* La posizione e' il dato della riga, non un ornamento: la posizione *e'* la
+     decisione. */
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  color: var(--text-3);
+  text-align: right;
 }
-.provider-row .provider-row-label {
-  flex: 1;
-  font-size: var(--fs-13); font-weight: 500;
-  color: var(--text);
+.riga-nome { font-size: var(--fs-13); font-weight: 500; color: var(--text); }
+.riga-modello {
+  /* Un identificatore, non un nome proprio: la tipografia lo dice prima della
+     didascalia. */
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }
-.provider-row .field { margin-top: var(--sp-3); padding-left: 15px; }
+.riga-natura { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; }
+.riga-azioni { display: flex; align-items: center; gap: var(--sp-2); }
+.riga-nota {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12); color: var(--text-2);
+  line-height: var(--lh-snug);
+  padding-left: calc(1.6em + 7px + 2 * var(--sp-3));
+}
+/* Chi sta fuori non ha una posizione e non ha un «dopo»: la colonna del numero
+   resta, vuota, perche' le due liste si leggano incolonnate. */
+.riga-fuori .riga-nome { font-weight: 400; }
 
-/* Boot-time hint — riapplicato al riavvio dell'addon (§8 design doc):
-   neutral, not a warning — no icon, small, italic. */
+/* Il connettore: la frase fra una riga e la successiva, e quella dopo
+   l'ultima. Tratteggiato perche' e' un passaggio, non un confine. */
+.connettore {
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: var(--lh-snug);
+  border-top: 1px dashed var(--border);
+  padding: var(--sp-2) 0 var(--sp-2) calc(1.6em + 7px + 2 * var(--sp-3));
+}
+/* Il tetto dei cinque minuti: sta sotto il numero di cui parla, non dentro la
+   frase. E' un fatto, non un divieto -- quindi `--text-2`, non `--warn-ink`. */
+.connettore-nota {
+  font-size: var(--fs-12); color: var(--text-2);
+  font-style: italic;
+  line-height: var(--lh-snug);
+  padding: 0 0 var(--sp-2) calc(1.6em + 7px + 2 * var(--sp-3));
+}
+
+/* Col ponte acceso la catena resta VISIBILE e riordinabile -- nascondere cio'
+   che conta e' proibito -- ma e' disegnata come cio' che e': inerte, adesso.
+   I bottoni NON si disabilitano: la catena si prepara anche mentre e'
+   scavalcata. E il colore non e' mai l'unico segnale: a dirlo, a parole, sono
+   il connettore e la nota della riga del piano, che arrivano dal backend. */
+.catena-inerte .riga-nome,
+.catena-inerte .riga-modello,
+.catena-inerte .riga-natura { color: var(--text-3); }
+
+.sc-actions {
+  margin-left: auto;
+  display: flex; align-items: center; gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.sc-actions-label { font-size: var(--fs-12); color: var(--text-3); }
+
+/* L'esito delle scritture: vive nel guscio della sezione, non nel corpo che
+   viene ridisegnato, cosi' e' una regione viva che esiste PRIMA del
+   fallimento. Vuota non occupa spazio. */
+.catena-stato {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-13); color: var(--err-ink);
+}
+.catena-stato:empty { display: none; }
+
+/* La confessione che la pagina deve ancora fare: l'ordine salvato parte al
+   riavvio. Neutra -- non e' un avviso, e' un fatto -- e destinata a sparire con
+   la scrittura a caldo (Task 10), che la rende falsa. */
 .model-boot-hint {
   font-size: 11px; color: var(--text-3);
   font-style: italic;
-  margin: var(--sp-1) 0 0;
+  margin: var(--sp-3) 0 0;
 }
 
-.info-callout {
-  display: flex; gap: var(--sp-2);
-  margin-top: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-12);
-  color: var(--text-2);
+.fuori-nota {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: var(--lh-snug);
+}
+.fuori-nota:empty { display: none; }
+
+/* Gli embedding: una riga, in fondo, sotto un filetto. Non sono una sezione e
+   non sono numerati -- la numerazione, in questa pagina, significa «qui si
+   decide qualcosa», e questi non fanno niente (progetto §8). */
+.nota-embedding {
+  margin: var(--sp-5) 0 0;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-12); color: var(--text-3);
   line-height: var(--lh-snug);
 }
 
-.banner-warn {
-  margin-top: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--warn-tint);
-  /* «Nessun provider attivo. HIRIS non puo' rispondere...»: e' un avviso di
-     blocco totale, in `--warn` era il testo meno leggibile della pagina. */
-  color: var(--warn-ink);
-  border: 1px solid oklch(from var(--warn) l c h / 0.3);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-13);
-}
-
-.chain-row {
-  display: grid;
-  grid-template-columns: 24px 1fr auto auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--border);
-}
-.chain-row:last-of-type { border-bottom: none; }
-.chain-row .chain-num {
-  font-family: var(--font-mono); font-size: var(--fs-12);
-  /* Terzo gemello: la posizione nella catena dei modelli e' il dato della
-     riga, non un ornamento. */
-  color: var(--text-3);
-}
-.chain-row .chain-label {
-  font-size: var(--fs-13); color: var(--text);
-}
 @media (pointer: coarse) {
-  .chain-row .btn-icon-only {
+  .riga-provider .btn-icon-only {
     min-width: 44px; min-height: 44px;
     margin: -4px -4px;
   }
+}
+@media (max-width: 640px) {
+  /* Due righe invece di sei colonne: nome e azioni sopra, modello e natura
+     sotto. Non si nasconde niente -- si manda a capo. */
+  .riga-provider { grid-template-columns: 1.6em 7px minmax(0, 1fr) auto; }
+  .riga-nome { grid-column: 3; grid-row: 1; }
+  .riga-azioni { grid-column: 4; grid-row: 1; }
+  .riga-modello { grid-column: 3; grid-row: 2; }
+  .riga-natura { grid-column: 4; grid-row: 2; text-align: right; }
 }
 
 /* «Adesso»: la risposta della pagina Modelli, prima delle sue ragioni.
@@ -1409,6 +1465,12 @@
   border-radius: var(--r-md);
   padding: var(--sp-4);
   margin-bottom: var(--sp-4);
+}
+/* Il guscio nasce vuoto al mount -- una regione viva annuncia cio' che le
+   arriva dentro, non la propria comparsa -- e finche' e' vuoto non c'e' niente
+   da mostrare: un riquadro bordato e vuoto durante la fetch sarebbe rumore. */
+.adesso-card:empty {
+  display: none;
 }
 .adesso-card .adesso-frase {
   margin: 0;
