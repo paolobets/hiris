@@ -166,7 +166,7 @@ MODELS = {
             {"id": "openrouter:google/gemma-4-31b-it:free", "label": "Gemma 4 31B (free)"},
             {"id": "openrouter:gemma2:e4b", "label": "Gemma 2 E4B"},
         ]},
-        {"label": "Ollama (locale)", "models": [
+        {"label": "Ollama (in casa)", "models": [
             {"id": "gemma2:e4b", "label": "gemma2:e4b"},
         ]},
     ]

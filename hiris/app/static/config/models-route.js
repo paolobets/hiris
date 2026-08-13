@@ -59,11 +59,11 @@
        handlers_models.py _VALID_BACKENDS) — null per "subscription", che non
        fa parte della catena/assegnazione automatica nel contratto attuale. */
   var PROVIDER_ORDER = [
-    { configId: 'subscription', id: null, key: null, fallbackLabel: 'Abbonamento (Claude Max)' },
-    { configId: 'claude', id: 'anthropic', key: 'claude', fallbackLabel: 'Claude API' },
-    { configId: 'openai', id: 'openai', key: 'openai', fallbackLabel: 'OpenAI' },
-    { configId: 'openrouter', id: 'openrouter', key: 'openrouter', fallbackLabel: 'OpenRouter' },
-    { configId: 'ollama', id: 'ollama', key: 'ollama', fallbackLabel: 'Ollama (locale)' }
+    { configId: 'subscription', id: null, key: null },
+    { configId: 'claude', id: 'anthropic', key: 'claude' },
+    { configId: 'openai', id: 'openai', key: 'openai' },
+    { configId: 'openrouter', id: 'openrouter', key: 'openrouter' },
+    { configId: 'ollama', id: 'ollama', key: 'ollama' }
   ];
 
   function el(tag, cls, text) {
@@ -301,7 +301,7 @@
          intermedio quando active è false. */
       var missingCred = !active && toggle && !hasCred;
       if (active) anyActive = true;
-      var label = cp ? cp.label : pd.fallbackLabel;
+      var label = (cp && cp.label) || pd.configId;
 
       var row = el('div', 'provider-row');
       var head = el('div', 'provider-row-head');
@@ -437,7 +437,9 @@
     var pd = PROVIDER_ORDER.filter(function(x) { return x.key === key; })[0];
     if (!pd) return key;
     var p = findProvider(pd.id);
-    return p ? p.label : pd.fallbackLabel;
+    if (p && p.label) return p.label;
+    var cp = findConfigProvider(pd.configId);
+    return (cp && cp.label) || key;
   }
 
   function renderSection2(errText) {

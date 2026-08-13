@@ -7,7 +7,7 @@ import re
 import aiohttp
 from aiohttp import web
 
-from ..decisione_modelli import componi_adesso
+from ..decisione_modelli import componi_adesso, nome
 from ..env_util import env_bool
 
 logger = logging.getLogger(__name__)
@@ -116,17 +116,20 @@ def save_models_config(data_dir: str, data: dict) -> dict:
 # the "toggle ON but credential MISSING" amber state instead of collapsing
 # it into "Disattivato".
 #
-# SP-2 Task 7B: fixed provider order + labels for the enriched config payload.
+# SP-2 Task 7B: fixed provider order for the enriched config payload.
 # Distinct from handle_list_models' "anthropic" id — here we use the same ids
 # as app["active_providers"] (subscription/claude/openai/openrouter/ollama) so
 # the UI can honestly show ALL five, including subscription and any
 # uncredentialed provider, without needing a separate id-mapping table.
-_CONFIG_PROVIDERS = (
-    ("subscription", "Abbonamento Claude (subscription)"),
-    ("claude", "Claude (Anthropic API)"),
-    ("openai", "OpenAI"),
-    ("openrouter", "OpenRouter"),
-    ("ollama", "Locale (Ollama)"),
+#
+# Task 5: la label non e' piu' letterale qui -- e' derivata da
+# decisione_modelli.NOMI (via nome()), l'unico posto dove i cinque nomi sono
+# scritti. L'ordine delle voci NON cambia (pinnato da
+# tests/test_models_api.py::test_get_models_config_enriched_providers).
+_CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
+_CONFIG_PROVIDERS = tuple(
+    (pid, nome(pid))
+    for pid in _CONFIG_PROVIDER_IDS
 )
 
 
@@ -474,7 +477,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
     if claude_runner is not None:
         providers.append(_enrich_provider(
             request,
-            {"id": "anthropic", "label": "Claude (Anthropic)", "models": _CLAUDE_MODELS},
+            {"id": "anthropic", "label": nome("claude"), "models": _CLAUDE_MODELS},
             has_credential=True,
         ))
 
@@ -484,7 +487,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
         models = await _fetch_openai_models(openai_key)
         providers.append(_enrich_provider(
             request,
-            {"id": "openai", "label": "OpenAI", "models": models},
+            {"id": "openai", "label": nome("openai"), "models": models},
             has_credential=bool(openai_key),
         ))
 
@@ -494,7 +497,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
         models = await _fetch_openrouter_models(openrouter_key)
         providers.append(_enrich_provider(
             request,
-            {"id": "openrouter", "label": "OpenRouter (200+ modelli)", "models": models},
+            {"id": "openrouter", "label": nome("openrouter"), "models": models},
             has_credential=bool(openrouter_key),
         ))
 
@@ -506,7 +509,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
         if models:
             providers.append(_enrich_provider(
                 request,
-                {"id": "ollama", "label": "Locale (Ollama)", "models": models},
+                {"id": "ollama", "label": nome("ollama"), "models": models},
                 has_credential=bool(local_url),
             ))
 
