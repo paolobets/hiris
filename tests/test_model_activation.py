@@ -253,3 +253,240 @@ def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(monkeypat
     risponde = _blocco_risponde_dallo_startup()(
         _archivio(""), {"ollama": True}, "http://ollama.local:11434")
     assert risponde["ollama"] is False
+
+
+# ---------------------------------------------------------------------------
+# LA SCRITTURA A CALDO (Task 10): `_ricalcola_catena`
+#
+# Fino alla 2.4.1 `handle_save_models_config` aggiornava `app["models_config"]`
+# e basta: la catena del router si costruiva all'avvio, quindi un riordino
+# salvato non cambiava il turno successivo e -- peggio -- la pagina, che
+# descrive il RUNTIME perche' e' la sola misura che ha, alla ricarica
+# rimostrava l'ordine vecchio. Il salvataggio sembrava perso, e c'era una riga
+# in pagina che lo confessava.
+#
+# `_ricalcola_catena` e' a livello di modulo apposta: e' l'UNICO calcolo che
+# rimette in vigore, lo chiama sia la PUT sia l'avvio, e si puo' provare senza
+# far girare `_on_startup`.
+# ---------------------------------------------------------------------------
+
+
+class _Runner:
+    """Un backend qualsiasi: al ricalcolo interessa solo se ESISTE."""
+
+
+class _RunnerLocale(_Runner):
+    def __init__(self):
+        self.timeout_applicati = []
+
+    def applica_timeout(self, secondi):
+        self.timeout_applicati.append(secondi)
+
+
+def _router(**backends):
+    from hiris.app.llm_router import LLMRouter
+    return LLMRouter(claude=backends.get("claude"), openai=backends.get("openai"),
+                     openrouter=backends.get("openrouter"), ollama=backends.get("ollama"),
+                     model_chain=list(backends.get("catena", [])))
+
+
+def _app(chain_order, *, ollama_modello="", timeout_s=120, router=None):
+    return {"models_config": {"chain_order": list(chain_order),
+                              "ollama": {"modello": ollama_modello,
+                                         "timeout_s": timeout_s}},
+            "llm_router": router}
+
+
+def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
+    """Il difetto che questo task chiude. Senza il ricalcolo, `catena_modelli`
+    resta quella dell'avvio e `_chat_policy` pure: la pagina inviterebbe a un
+    gesto e poi lo dimenticherebbe."""
+    from hiris.app.server import _ricalcola_catena
+
+    r = _router(claude=_Runner(), openrouter=_Runner(),
+                catena=["openrouter", "claude"])
+    app = _app(["claude", "openrouter"], router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == ["claude", "openrouter"]
+    assert r._chat_policy == ["claude", "openrouter"], (
+        "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
+        "cioe' la pagina torna a mentire"
+    )
+
+
+def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
+    """Lo stesso valore, due copie. Se fossero lo stesso oggetto, una modifica
+    dell'uno toccherebbe l'altro e i due potrebbero divergere senza che nessuno
+    abbia scritto una seconda regola (stessa ragione del `list(_chain)`
+    dell'avvio)."""
+    from hiris.app.server import _ricalcola_catena
+
+    r = _router(claude=_Runner(), openai=_Runner(), catena=[])
+    app = _app(["openai", "claude"], router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == r._chat_policy
+    assert app["catena_modelli"] is not r._chat_policy
+
+
+def test_una_catena_svuotata_svuota_ANCHE_il_router():
+    """NIENTE ripiego sull'ordine di prima. Un `or router._chat_policy`
+    rimetterebbe in piedi la regola legacy tolta al Task 7: pagina che dice
+    «la catena e' vuota, HIRIS non ha a chi chiedere» e chat che risponde lo
+    stesso, usando l'ordine di prima."""
+    from hiris.app.server import _ricalcola_catena
+
+    r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
+    app = _app([], router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == []
+    assert r._chat_policy == []
+    assert r._ordered_backends() == []
+
+
+def test_un_nome_senza_backend_costruito_non_entra_in_catena():
+    """Un anello che il router salta in silenzio, disegnato numerato dalla
+    pagina, e' la bugia che questa fetta ritira. La credenziale non basta: il
+    ricalcolo guarda i backend che il router ha in mano."""
+    from hiris.app.server import _ricalcola_catena
+
+    r = _router(claude=_Runner(), catena=["claude"])
+    app = _app(["openai", "claude", "openrouter"], router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == ["claude"]
+    assert r._chat_policy == ["claude"]
+
+
+def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
+    """Il runner locale nasce con l'indirizzo (e' la credenziale), ma senza un
+    modello scelto non puo' rispondere: `_resolve_model` manderebbe "". E' la
+    stessa regola dell'avvio (`_risponde`), riletta invece che ricordata."""
+    from hiris.app.server import _ricalcola_catena
+
+    r = _router(ollama=_RunnerLocale(), catena=[])
+    app = _app(["ollama"], ollama_modello="", router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == []
+
+
+def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
+    """Il gesto che il Task 9 ha reso possibile e che questo task deve far
+    valere: si sceglie il modello nel pannello, si mette in catena, e il
+    prossimo messaggio ci passa. Il runner locale esiste gia' perche' nasce con
+    l'indirizzo -- se nascesse con `indirizzo AND modello`, questo gesto
+    tornerebbe 200 e non farebbe niente fino al riavvio."""
+    from hiris.app.server import _ricalcola_catena
+
+    locale = _RunnerLocale()
+    r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
+    app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == ["claude", "ollama"]
+    assert r._ordered_backends()[-1] is locale
+
+
+def test_il_timeout_del_locale_viene_dall_archivio_a_ogni_ricalcolo():
+    """L'unico valore della fetta che non si puo' leggere al momento dell'uso:
+    `AsyncOpenAI` cuoce il timeout nel client alla costruzione. Il ricalcolo lo
+    riapplica, cosi' anche quel numero vale dal prossimo messaggio."""
+    from hiris.app.server import _ricalcola_catena
+
+    locale = _RunnerLocale()
+    app = _app(["ollama"], ollama_modello="llama3.1:8b", timeout_s=300,
+               router=_router(ollama=locale, catena=["ollama"]))
+    _ricalcola_catena(app)
+    assert locale.timeout_applicati == [300]
+
+
+def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
+    """Il ramo `else` di `_on_startup` (nessun provider configurato) e' il PRIMO
+    gesto di chi installa HIRIS: senza una funzione anche li', la prima PUT
+    solleverebbe `TypeError: 'NoneType' object is not callable`. E la catena
+    dev'essere vuota, non l'ordine scritto: senza backend non risponde
+    nessuno."""
+    from hiris.app.server import _ricalcola_catena
+
+    app = _app(["claude", "openrouter"], router=None)
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == []
+
+
+def test_il_ricalcolo_regge_un_archivio_assente():
+    from hiris.app.server import _ricalcola_catena
+
+    app: dict = {}
+    _ricalcola_catena(app)
+    assert app["catena_modelli"] == []
+
+
+def test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami():
+    """Il ramo `else` (nessun runner) deve pubblicarlo quanto l'altro, e con UNA
+    implementazione sola: due funzioni sarebbero due regole da tenere allineate,
+    cioe' il difetto di questa fetta un piano piu' sotto. La riga vive dentro
+    `_on_startup`, che ogni fixture azzera: si legge dal sorgente vero, stessa
+    tecnica dei pin gemelli in questo file."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    righe = [r for r in src.splitlines()
+             if 'app["ricalcola_catena"]' in r and not r.lstrip().startswith("#")]
+    assert len(righe) == 1, righe
+    assert righe[0].startswith('    app["ricalcola_catena"]'), (
+        "pubblicata con un rientro maggiore = dentro un ramo: l'altro resta "
+        "senza, e la prima PUT di chi installa HIRIS solleva TypeError"
+    )
+    assert "    _rimetti_in_vigore()" in src, (
+        "l'avvio deve passare dalla STESSA strada che rimette in vigore: se le "
+        "due derivazioni della catena potessero divergere, devono divergere "
+        "all'avvio, dove ogni prova le guarda"
+    )
+
+
+def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
+    """Il runner locale nasce con la credenziale (l'indirizzo) e non con
+    `indirizzo AND modello`. Se nascesse col modello, scegliere un modello
+    dalla pagina su un'installazione partita senza sarebbe un gesto che torna
+    200 e non fa niente fino al riavvio -- cioe' la didascalia che il Task 10
+    toglie, rimessa da un'altra porta. Chi puo' RISPONDERE resta `_risponde`
+    (indirizzo E modello) e governa la catena: il runner c'e', ma senza modello
+    nessuno lo mette in catena.
+
+    Il pin e' sul sorgente perche' la costruzione vive dentro `_on_startup`,
+    che ogni fixture azzera (stessa tecnica dei blocchi qui sopra)."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    i = src.index("    ollama_runner = None")
+    blocco = src[i:src.index("    openrouter_runner = None", i)]
+    guardia = [r for r in blocco.splitlines()
+               if r.startswith("    if ") and "ollama_runner = OpenAICompatRunner"
+               not in r]
+    assert guardia[0] == "    if local_model_url:", guardia
+    assert guardia[1] == '    if _risponde["ollama"]:', (
+        "la verifica di raggiungibilita' parla del MODELLO scaricato: senza un "
+        "modello scelto non c'e' niente da verificare"
+    )
+    assert "leggi_modello=_modello_locale," in blocco
+    assert "locale=True," in blocco
+
+
+def test_ogni_runner_riceve_la_lettura_del_SUO_provider():
+    """Tre chiamate alla stessa fabbrica, tre nomi diversi: uno scambio qui
+    sarebbe invisibile a ogni prova sui runner (la lettura funziona lo stesso,
+    legge solo la casella sbagliata) e produrrebbe una pagina che mostra un
+    modello e un turno che ne usa un altro -- la divergenza di questa fetta,
+    dentro un solo dizionario."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    for provider, costruttore in (("claude", "claude_runner = ClaudeRunner("),
+                                  ("openai", "openai_runner = OpenAICompatRunner("),
+                                  ("openrouter", "openrouter_runner = OpenRouterRunner(")):
+        i = src.index(costruttore)
+        blocco = src[i:src.index("        )", i)]
+        assert 'leggi_modello=_modello_di("%s")' % provider in blocco, blocco

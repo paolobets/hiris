@@ -356,24 +356,27 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
     _catena = list(request.app.get("catena_modelli") or [])
     # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
-    # RUNTIME: `BRIDGE_DEADLINE_MIN` è quello con cui
-    # `handlers_chat._enqueue_chat_job` scrive la scadenza di ogni turno,
-    # `OLLAMA_REQUEST_TIMEOUT` quello con cui `OpenAICompatRunner.__init__`
-    # costruisce il client. L'archivio ne tiene una copia (Task 6) che oggi
-    # nessun runner legge: prenderla da lì farebbe promettere alla pagina
-    # un'attesa diversa da quella che il turno subisce davvero. Le due letture
-    # diventano una sola col Task 10, che fa leggere l'archivio ai runner.
-    # `_clamp_int` invece di `int()` perché un valore d'ambiente illeggibile
-    # non deve far tornare 500 la pagina che spiega perché non funziona niente.
-    _scadenza_ponte = _clamp_int(os.environ.get("BRIDGE_DEADLINE_MIN"), 5, 1, 120)
-    _timeout_ollama = _clamp_int(os.environ.get("OLLAMA_REQUEST_TIMEOUT"), 120, 10, 1800)
+    # RUNTIME -- che dal Task 10 è l'ARCHIVIO, non l'ambiente. Fino alla 2.4.1
+    # venivano da `BRIDGE_DEADLINE_MIN` e `OLLAMA_REQUEST_TIMEOUT` perché era
+    # lì che li leggevano `_enqueue_chat_job` e `OpenAICompatRunner.__init__`,
+    # e la copia d'archivio (Task 6) non aveva lettori: due rappresentazioni
+    # dello stesso numero nello stesso payload (invariante 1), che divergevano
+    # appena qualcuno salvava da questa pagina. Adesso il numero è uno solo, e
+    # questa lettura è la STESSA che il turno subisce: `_enqueue_chat_job`
+    # legge `ponte.scadenza_min` e il runner locale riceve `ollama.timeout_s`
+    # (via `applica_timeout`, rifatto a ogni salvataggio).
+    #
+    # I valori arrivano già riportati dentro gli estremi da `load_models_config`
+    # (`_clamp_int`), quindi qui non si ripulisce una seconda volta.
+    _scadenza_ponte = payload["ponte"]["scadenza_min"]
+    _timeout_ollama = payload["ollama"]["timeout_s"]
     payload["adesso"] = componi_adesso(
         catena=_catena,
         credenziali=_credenziali,
         modelli=_modelli,
         ponte_attivo=payload["ponte_attivo"],
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
-        # turno per scrivere la scadenza (`now + BRIDGE_DEADLINE_MIN * 60`), e
+        # turno per scrivere la scadenza (`now + ponte.scadenza_min * 60`), e
         # lo STESSO numero che va ai connettori qui sotto: la frase in cima e
         # la riga sotto il piano non possono dire due minuti diversi.
         scadenza_ponte_min=_scadenza_ponte,
@@ -405,6 +408,20 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
     clean = save_models_config(data_dir, body if isinstance(body, dict) else {})
     request.app["models_config"] = clean   # hot-update per la sessione corrente
+    # E poi si RIMETTE IN VIGORE. Aggiornare solo il dizionario cambiava la
+    # PAGINA e non il RUNTIME: la catena del router e il timeout del backend
+    # locale si costruivano all'avvio, quindi un riordino salvato non toccava
+    # il turno successivo e, alla ricarica, questa stessa rotta rimostrava
+    # l'ordine vecchio (il GET descrive il runtime, che è la sola misura che
+    # ha). Fino al Task 10 la pagina aveva una riga che lo confessava.
+    #
+    # `callable` e non un `try`: in una app costruita da una fixture, o in un
+    # processo dove `_on_startup` non è girato, la funzione non c'è -- e non
+    # esserci non è un errore da inghiottire, è l'assenza del runtime da
+    # rimettere in vigore.
+    ricalcola = request.app.get("ricalcola_catena")
+    if callable(ricalcola):
+        ricalcola()
     return web.json_response({"ok": True, **clean})
 
 
@@ -722,7 +739,8 @@ async def handle_list_models(request: web.Request) -> web.Response:
             return (valori, fonte, provider_models.get("openrouter", ""),
                     in_uso["openrouter"])
         # Ollama. Nessuna voce «auto»: il runner locale usa SEMPRE il modello
-        # scelto (`fixed_model` vince su ogni altro ramo di `_resolve_model`),
+        # scelto (`locale=True` fa vincere `_modello_scelto()` su ogni altro
+        # ramo di `_resolve_model`),
         # perché quell'istanza ne ha scaricato uno solo e chiedergliene un
         # altro fallirebbe.
         if not local_url:

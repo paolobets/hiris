@@ -664,6 +664,53 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
     return innesca
 
 
+def _ricalcola_catena(app) -> None:
+    """Rimette in vigore, a caldo, ciò che la pagina Modelli ha appena salvato.
+
+    Senza questa funzione un riordino cambierebbe la PAGINA e non il RUNTIME:
+    `handle_save_models_config` aggiorna `app["models_config"]`, ma la catena
+    del router si costruiva solo all'avvio. Quindi il turno successivo usava
+    l'ordine di prima e -- peggio -- la pagina, che descrive il runtime perché
+    è la sola misura che ha, alla ricarica rimostrava l'ordine vecchio: il
+    salvataggio sembrava perso. Era la stessa divergenza che questa fetta
+    chiude, spostata di un livello, e fino al Task 10 c'era una riga in pagina
+    che la confessava.
+    """
+    from .model_activation import provider_in_catena
+    cfg = app.get("models_config") or {}
+    router = app.get("llm_router")
+    mappa = router._backend_map() if router is not None else {}
+    # Chi può rispondere ADESSO: la stessa regola dell'avvio (`_risponde`),
+    # RILETTA invece che ricordata. Un backend costruito, e -- per Ollama -- un
+    # modello scelto: il runner locale esiste con il solo indirizzo, ma senza
+    # un modello sarebbe un anello che `_ordered_backends` salta in silenzio
+    # mentre la pagina lo disegna numerato (il buco che il Task 9 ha chiuso).
+    risponde = {nome: b is not None for nome, b in mappa.items()}
+    if risponde.get("ollama"):
+        risponde["ollama"] = bool((cfg.get("ollama") or {}).get("modello"))
+    catena = provider_in_catena(cfg.get("chain_order") or [], risponde)
+    # UN calcolo, DUE copie: quella che la pagina riceve e quella che il router
+    # usa. Sono lo stesso valore -- se divergessero, divergerebbero da sé
+    # stesse -- e sono due oggetti perché nessuno dei due possa modificare
+    # l'altro per sbaglio (stessa ragione del `list(_chain)` dell'avvio).
+    app["catena_modelli"] = list(catena)
+    if router is None:
+        return
+    # NIENTE ripiego sulla policy precedente quando la catena è vuota: una
+    # catena esplicitamente vuota vale per quello che dice. Un `or
+    # router._chat_policy` rimetterebbe in piedi la regola legacy tolta al
+    # Task 7 -- pagina che dice «la catena è vuota, HIRIS non può rispondere»
+    # e chat che risponde lo stesso, usando l'ordine di prima.
+    router._chat_policy = list(catena)
+    ollama = mappa.get("ollama")
+    if ollama is not None:
+        # L'unico valore della fetta che non si può leggere al momento
+        # dell'uso: `AsyncOpenAI` cuoce il timeout nel client alla costruzione
+        # (vedi `OpenAICompatRunner.applica_timeout`, che è un no-op quando il
+        # numero non è cambiato).
+        ollama.applica_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .llm_router import LLMRouter
@@ -1075,7 +1122,6 @@ async def _on_startup(app: web.Application) -> None:
         # manca il modello.
         "ollama": bool(local_model_url),
     }
-    app["credenziali_provider"] = _credenziali
 
     # ── Migrazione della catena (versione A, seconda meta') ──────────────
     # L'ULTIMO istante in cui la vecchia regola esiste: la catena che HIRIS
@@ -1556,11 +1602,30 @@ async def _on_startup(app: web.Application) -> None:
     # nessun path di actuation restava dietro, solo una proposta che ora
     # nessuno genera piu'.
 
-    # SP-2 T5C: per-provider DEFAULT model chosen by the user (used when an
-    # entity's model is "auto"); Ollama escluso — usa sempre il suo modello,
-    # via `fixed_model`. Empty string ("") preserves today's behaviour
-    # (fall back to AUTO_MODEL_MAP).
-    _pm = app["models_config"].get("provider_models", {})
+    # Il modello per provider, come LETTURA e non come valore. È la metà
+    # nascosta del difetto peggiore trovato dal progetto: fino alla 2.4.1 qui
+    # si leggeva `provider_models` UNA volta e lo si passava ai runner come
+    # argomento di costruzione, mentre `api/handlers_chat._enqueue_chat_job`
+    # rilegge `app["models_config"]` a OGNI turno -- quindi lo stesso valore
+    # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la pagina
+    # ne dichiarava uno solo (invariante 4: «un valore si applica in un modo
+    # solo»). La chiusura chiude su `app`, non su un valore: `models_config` è
+    # RIASSEGNATO a ogni PUT (`handle_save_models_config`), quindi la lettura
+    # vede sempre l'ultimo archivio, e la sostituzione del dizionario intero
+    # è ciò che rende la lettura atomica -- un turno non può mai vedere metà
+    # di un salvataggio.
+    def _modello_di(provider: str):
+        def leggi() -> str:
+            return ((app.get("models_config") or {})
+                    .get("provider_models", {}).get(provider, ""))
+        return leggi
+
+    def _modello_locale() -> str:
+        """Il modello di Ollama non vive in `provider_models` (è un fantasma
+        lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
+        sua unica casa è `models_config["ollama"]["modello"]`."""
+        return (app.get("models_config") or {}).get("ollama", {}).get("modello", "")
+
     # Il modello di Ollama, dalla SUA UNICA CASA. Fino alla 2.4.1 veniva da
     # `LOCAL_MODEL_NAME`, cioè da un'opzione dell'add-on: era il modello messo
     # dove si custodiscono le credenziali invece che dove si prendono le
@@ -1585,7 +1650,7 @@ async def _on_startup(app: web.Application) -> None:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             usage_path=usage_path,
-            default_model=_pm.get("claude", ""),
+            leggi_modello=_modello_di("claude"),
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
@@ -1597,17 +1662,32 @@ async def _on_startup(app: web.Application) -> None:
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
             usage_path=f"{_usage_base}_openai{_usage_ext}",
-            default_model=_pm.get("openai", ""),
+            leggi_modello=_modello_di("openai"),
         )
 
     ollama_runner = None
-    if _risponde["ollama"]:
+    # Il runner locale nasce con l'INDIRIZZO, che è la credenziale, e non più
+    # con `url AND modello`. Il modello è una decisione, si legge a ogni uso, e
+    # cambiarlo dalla pagina Modelli deve poter valere dal prossimo messaggio:
+    # con la costruzione legata anche al modello, chi ne sceglieva uno su
+    # un'installazione partita senza si sarebbe trovato con un gesto che non fa
+    # niente -- il backend non esiste, e servirebbe un riavvio, cioè la
+    # didascalia che questa fetta toglie. Chi può RISPONDERE resta `_risponde`
+    # (indirizzo E modello) e governa la catena: senza modello il runner c'è ma
+    # nessuno lo mette in catena, quindi `_ordered_backends` non lo incontra.
+    if local_model_url:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
-            fixed_model=_modello_ollama,
+            locale=True,
             usage_path=f"{_usage_base}_ollama{_usage_ext}",
+            # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
+            # numero che la pagina Modelli mostra sul connettore, e leggerlo in
+            # due posti era la seconda rappresentazione (invariante 1).
+            timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
+            leggi_modello=_modello_locale,
         )
+    if _risponde["ollama"]:
         # Quick reachability check — warn but don't abort startup.
         try:
             import aiohttp as _aiohttp
@@ -1640,7 +1720,7 @@ async def _on_startup(app: web.Application) -> None:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
-            default_model=_pm.get("openrouter", ""),
+            leggi_modello=_modello_di("openrouter"),
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
@@ -1712,6 +1792,23 @@ async def _on_startup(app: web.Application) -> None:
     else:
         app["claude_runner"] = None
         app["llm_router"] = None
+
+    # ── Rimettere in vigore, a caldo ──────────────────────────────────────
+    # Fuori da entrambi i rami, e con UNA implementazione sola: il ramo `else`
+    # (nessun provider configurato) è il PRIMO gesto di chi installa HIRIS, e
+    # senza `app["ricalcola_catena"]` la prima PUT solleverebbe
+    # `TypeError: 'NoneType' object is not callable`.
+    #
+    # Si chiama anche QUI, all'avvio. Non serve a mettere in vigore niente di
+    # nuovo -- `_chain` è appena entrata nel router -- ma fa sì che la strada
+    # che rimette in vigore sia la STESSA che mette in vigore la prima volta:
+    # se le due derivazioni potessero divergere, divergerebbero all'avvio,
+    # dove ogni prova le guarda, invece che al primo salvataggio di un utente.
+    def _rimetti_in_vigore() -> None:
+        _ricalcola_catena(app)
+
+    app["ricalcola_catena"] = _rimetti_in_vigore
+    _rimetti_in_vigore()
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the

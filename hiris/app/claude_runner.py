@@ -545,11 +545,22 @@ class ClaudeRunner:
         self,
         api_key: str,
         usage_path: str = "",
-        default_model: str = "",
+        leggi_modello=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._usage_path = usage_path
-        self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto"
+        # fetta «la catena diventa l'unica verita'» (Task 10): il modello NON e'
+        # piu' un valore ricevuto alla costruzione. Era la meta' nascosta del
+        # difetto peggiore trovato dal progetto: lo STESSO valore aveva effetto
+        # immediato sul ponte (`api/handlers_chat._enqueue_chat_job` rilegge
+        # `app["models_config"]` a ogni turno) e solo al riavvio qui, e la
+        # pagina ne dichiarava uno solo -- sbagliata, non imprecisa
+        # (invariante 4: «un valore si applica in un modo solo»).
+        # Adesso e' una LETTURA, e la didascalia non serve piu': l'assenza di
+        # didascalie e' la cosa piu' onesta che la pagina possa dire di se'.
+        # `None` = nessuna lettura, cioe' il comportamento che aveva
+        # `default_model=""` (ripiego su AUTO_MODEL_MAP).
+        self._leggi_modello = leggi_modello
         # Fetta "esce il documentale": qui c'era `self._is_cloud = True`, con
         # accanto la dichiarazione (gia' corretta dalla fetta E4 Task 9) che
         # nessuno lo leggeva e che serviva a un "always pseudonymize
@@ -576,6 +587,17 @@ class ClaudeRunner:
         # impostazioni_chat.py, guards its own save the same way).
         self._save_lock = threading.Lock()
         self._load_usage()
+
+    def _modello_scelto(self) -> str:
+        """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
+        return (self._leggi_modello() if self._leggi_modello else "") or ""
+
+    def _resolve_modello_corrente(self) -> str:
+        """Il modello che questo runner userebbe adesso con `model="auto"`.
+
+        Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
+        di provarla sarebbe intercettare la chiamata all'API."""
+        return resolve_model("auto", "chat", self._modello_scelto())
 
     # fetta E4 Task 6 ("un bot solo"): il costruttore perdeva un `dispatcher`
     # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
@@ -771,7 +793,7 @@ class ClaudeRunner:
         system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
-        effective_model = resolve_model(model, agent_type, self._default_model)
+        effective_model = resolve_model(model, agent_type, self._modello_scelto())
         if strumenti is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. gli
             # strumenti di DispatcherStrumenti, casa/strumenti.py).

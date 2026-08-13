@@ -1422,15 +1422,6 @@
 }
 .catena-stato:empty { display: none; }
 
-/* La confessione che la pagina deve ancora fare: l'ordine salvato parte al
-   riavvio. Neutra -- non e' un avviso, e' un fatto -- e destinata a sparire con
-   la scrittura a caldo (Task 10), che la rende falsa. */
-.model-boot-hint {
-  font-size: 11px; color: var(--text-3);
-  font-style: italic;
-  margin: var(--sp-3) 0 0;
-}
-
 .fuori-nota {
   margin: var(--sp-4) 0 0;
   font-size: var(--fs-12); color: var(--text-3);

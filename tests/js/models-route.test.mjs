@@ -619,17 +619,24 @@ test('la parola «Attivo» non compare da nessuna parte nella pagina', async () 
   }
 });
 
-test('la pagina confessa che il riordino parte al riavvio, finché è vero', async () => {
-  /* `handle_save_models_config` aggiorna `app["models_config"]`, ma la catena
-     del router si costruisce all'avvio: un riordino salvato non cambia il turno
-     successivo, e alla ricarica la pagina rimostra l'ordine vecchio perché
-     descrive il runtime. Tacerlo sarebbe la stessa opacità che questa pagina
-     esiste per togliere. Il Task 10 rende falsa questa riga e la toglie. */
+test('la pagina non ha più niente da confessare sull\'ordine', async () => {
+  /* Qui viveva la confessione: «L'ordine si applica al riavvio dell'add-on:
+     fino ad allora la chat usa quello di prima, e ricaricando questa pagina lo
+     rivedi». Era vera -- `handle_save_models_config` aggiornava l'archivio, ma
+     la catena del router si costruiva all'avvio -- ed è uscita col difetto che
+     la rendeva necessaria (la PUT chiama `app["ricalcola_catena"]`).
+
+     Non è stata sostituita da un «vale subito»: l'assenza di didascalia È
+     l'affermazione. Quindi si guarda l'ASSENZA, su tutta la pagina e non solo
+     sulla card della catena, perché una didascalia di riavvio rimessa altrove
+     sarebbe la stessa pagina che torna a mentire da un'altra riga. */
   const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  assert.match(document.getElementById('catena-card').textContent,
-    /si applica al riavvio dell'add-on/);
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.ok(!/riavvi/i.test(testo),
+    'la pagina dichiara un riavvio che non serve più: ' + testo);
+  assert.equal(document.querySelector('.model-boot-hint'), null);
 });
 
 /* ── Il pannello del modello (Task 9) ─────────────────────────────────────
@@ -648,7 +655,7 @@ const PANNELLO_OR = {
   id: 'openrouter', nome: 'OpenRouter', alias: false, fonte: 'viva',
   provenienza: 'Letti da openrouter.ai adesso.',
   spiegazione: 'Solo modelli che sanno usare gli strumenti.',
-  quando: 'Si applica al riavvio dell\'add-on: fino ad allora la chat usa quello di prima.',
+  quando: 'Una frase qualsiasi del backend.',
   dove: ['provider_models', 'openrouter'],
   scelto: 'openrouter:anthropic/claude-sonnet-4-6',
   casella: { etichetta: 'nascondi i gratuiti', dove: ['nascondi_gratuiti'] },
@@ -675,7 +682,7 @@ const PANNELLO_PIANO = {
 const PANNELLO_OLLAMA = {
   id: 'ollama', nome: 'Ollama (in casa)', alias: false, fonte: 'viva',
   provenienza: 'Scaricati su http://192.168.1.42:11434 — letti adesso.',
-  spiegazione: '', quando: 'Si applica al riavvio dell\'add-on.',
+  spiegazione: '', quando: '',
   dove: ['ollama', 'modello'], scelto: 'llama3.1:8b', casella: null,
   modelli: [
     { valore: 'llama3.1:8b', nota: '' },
@@ -818,18 +825,21 @@ test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina ri
 });
 
 test('la didascalia del pannello è quella del backend, e sparisce quando il backend tace', async () => {
-  /* Oggi lo STESSO valore si applica in due modi -- subito sul ponte, al
-     riavvio sull'API -- e la pagina lo dice invece di sceglierne uno
-     (invariante 4). NON è scritta qui: il giorno della scrittura a caldo
-     (Task 10) il backend manda una stringa vuota e questa riga sparisce senza
-     che nessuno tocchi il frontend. La coppia di prove è la promessa. */
+  /* La promessa che il Task 9 aveva scritto, e che il Task 10 ha riscosso:
+     la didascalia non è scritta qui, quindi il giorno in cui il backend
+     smette di avere un tempo da dichiarare la riga sparisce da sé, senza che
+     nessuno tocchi il frontend. È successo -- `decisione_modelli` manda ""
+     per tutti e cinque i provider, perché ogni valore di questa pagina vale
+     dal prossimo messaggio -- e la coppia di prove resta: il canale è ancora
+     lì, e non inventa niente quando è vuoto. */
   const parlante = monta({ config: { catena: CATENA, fuori_catena: FUORI },
     pannelli: { openrouter: PANNELLO_OR } });
   parlante.window.HirisModelsRoute.mount();
   await tick(20);
   apriIlModello(parlante, righeCatena(parlante.document)[1]);
   await tick(20);
-  assert.match(pannello(parlante.document).textContent, /riavvio dell'add-on/);
+  assert.equal(pannello(parlante.document).querySelector('.pannello-quando').textContent,
+    'Una frase qualsiasi del backend.');
 
   const muto = monta({ config: { catena: CATENA, fuori_catena: FUORI },
     pannelli: { openrouter: Object.assign({}, PANNELLO_OR, { quando: '' }) } });

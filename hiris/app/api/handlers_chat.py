@@ -239,7 +239,15 @@ async def _enqueue_chat_job(
 
     reasoning_queue = request.app["reasoning_queue"]
     now = time.time()
-    deadline = now + int(os.environ.get("BRIDGE_DEADLINE_MIN", "5")) * 60
+    # La scadenza viene dall'ARCHIVIO, riletto a ogni turno come il modello
+    # qui sopra. Fino alla 2.4.1 veniva da `BRIDGE_DEADLINE_MIN`, cioè
+    # dall'opzione dell'add-on, mentre `models_config["ponte"]["scadenza_min"]`
+    # ne teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli
+    # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
+    # l'utente cambiava non era quella che il turno subiva.
+    _scadenza_min = ((request.app.get("models_config") or {})
+                     .get("ponte", {}).get("scadenza_min", 5))
+    deadline = now + int(_scadenza_min) * 60
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,

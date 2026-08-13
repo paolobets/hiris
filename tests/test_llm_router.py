@@ -265,7 +265,7 @@ def test_openrouter_runner_init(tmp_path):
         usage_path=str(tmp_path / "u.json"),
     )
     assert "openrouter.ai/api/v1" in str(runner._client.base_url)
-    # No fixed_model -> cloud retry profile
+    # locale=False -> cloud retry profile
     assert runner._client.max_retries == 2
 
 
@@ -376,3 +376,44 @@ async def test_niente_in_catena_non_e_una_risposta_che_invita_a_riprovare():
     risposta = await r.chat(model="auto")
     assert "catena" in risposta.lower()
     assert "riprova" not in risposta.lower()
+
+
+# ---------------------------------------------------------------------------
+# La scrittura a caldo vista da un turno CHE E' GIA' PARTITO (Task 10)
+#
+# Da questa fetta `app["ricalcola_catena"]` riassegna `_chat_policy` mentre
+# l'add-on gira, quindi una PUT puo' arrivare nel mezzo di un turno di chat.
+# E' il tipo di cosa che non si riproduce mai su un banco e si vede una volta
+# al mese in produzione, quindi si guarda apposta e si dichiara.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_un_turno_finisce_con_la_catena_con_cui_e_partito():
+    """`chat()` calcola `_ordered_backends()` UNA volta, in cima, e il
+    ricalcolo RIASSEGNA l'attributo invece di mutare la lista: il turno in
+    volo tiene in mano la lista di prima e la percorre tutta. Senza questo --
+    per esempio con un `_chat_policy[:] = ...` che muta sul posto -- un turno
+    partito su due anelli potrebbe ritrovarsene uno solo a meta' ripiego, e il
+    messaggio morirebbe con un errore che nessun log spiega."""
+    from hiris.app.claude_runner import RunnerBackendError
+    from hiris.app.llm_router import LLMRouter
+
+    class _Rotto:
+        async def chat(self, **k):
+            # La PUT arriva ESATTAMENTE adesso: fra il primo tentativo e il
+            # ripiego. E' l'istante scomodo, ed e' per questo che la finta lo
+            # sceglie invece di aspettare che capiti.
+            router._chat_policy = []
+            raise RunnerBackendError("giu'")
+
+    class _Buono:
+        async def chat(self, **k):
+            return "risposta"
+
+    router = LLMRouter(claude=_Rotto(), openrouter=_Buono(),
+                       model_chain=["claude", "openrouter"])
+    assert await router.chat(model="auto") == "risposta"
+    # E il turno DOPO usa la catena nuova: la scrittura non e' andata persa,
+    # e' solo arrivata dopo la partenza di quel turno.
+    assert router._chat_policy == []

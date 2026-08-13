@@ -460,10 +460,13 @@
     if (dati.spiegazione) {
       box.appendChild(el('p', 'pannello-spiegazione', dati.spiegazione));
     }
-    /* Da quando la scelta ha effetto. Oggi lo STESSO valore si applica in due
-       modi -- subito sul ponte, al riavvio sull'API -- e la pagina lo dice
-       invece di sceglierne uno. Il giorno della scrittura a caldo il backend
-       manda una stringa vuota e questa riga sparisce da sé. */
+    /* Da quando ha effetto la scelta, se mai avesse un tempo suo. Oggi il
+       backend tace su tutti e cinque i provider (`decisione_modelli`: ogni
+       valore di questa pagina vale dal prossimo messaggio) e questa riga non
+       si disegna. Il canale resta perché la pagina non deve imparare una
+       forma nuova il giorno in cui un campo tornasse ad avere un tempo
+       proprio -- e perché una frase così è un'affermazione sul prodotto, che
+       si scrive dove il prodotto la sa. */
     if (dati.quando) {
       box.appendChild(el('p', 'pannello-quando', dati.quando));
     }
@@ -962,18 +965,13 @@
       azioni.appendChild(b);
     });
     catenaCard.querySelector('.sc-header').appendChild(azioni);
-    /* La confessione che questa pagina deve ancora fare, e che il Task 10
-       toglie rendendola falsa: `handle_save_models_config` aggiorna
-       `app["models_config"]`, ma `app["catena_modelli"]` e la policy del router
-       si costruiscono all'avvio. Quindi un riordino salvato NON cambia il
-       turno successivo -- e, peggio, la prossima lettura di questa pagina
-       descrive il RUNTIME (è la sola misura che ha), quindi ricaricando si
-       rivede l'ordine vecchio e il salvataggio sembra perso. Tacerlo qui
-       sarebbe la stessa opacità che questa pagina esiste per togliere, con il
-       silenzio al posto della parola sbagliata. */
-    catenaCard.appendChild(el('p', 'model-boot-hint',
-      'L\'ordine si applica al riavvio dell\'add-on: fino ad allora la chat usa '
-      + 'quello di prima, e ricaricando questa pagina lo rivedi.'));
+    /* Qui viveva la confessione: «L'ordine si applica al riavvio
+       dell'add-on». Era vera -- `handle_save_models_config` aggiornava
+       l'archivio, ma la catena del router si costruiva all'avvio -- ed è
+       uscita col difetto che la rendeva necessaria: la PUT rimette in vigore,
+       e il riordino vale dal prossimo messaggio. Non è stata SOSTITUITA da un
+       «vale subito»: l'assenza di didascalia È l'affermazione, ed è la cosa
+       più onesta che questa pagina possa dire di sé. */
     var stato = el('p', 'catena-stato');
     stato.id = 'catena-stato';
     stato.setAttribute('aria-live', 'polite');

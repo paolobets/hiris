@@ -165,9 +165,9 @@ MODELS = {
                        "che HIRIS conosce. Quello che vedi qui potrebbe non "
                        "esistere piu'.",
         "spiegazione": "",
-        "quando": "Lo stesso valore, applicato in due modi: il Piano Claude Max "
-                  "lo usa dal prossimo messaggio, Claude API dal riavvio "
-                  "dell'add-on.",
+        # Task 10: nessun provider ha piu' un tempo da dichiarare -- ogni
+        # valore di questa pagina vale dal prossimo messaggio.
+        "quando": "",
         "dove": ["provider_models", "claude"], "scelto": "", "casella": None,
         "modelli": [
             {"valore": "", "nota": "scelto da HIRIS: oggi claude-sonnet-4-6"},
@@ -196,8 +196,7 @@ MODELS = {
         "id": "openrouter", "nome": "OpenRouter", "alias": False, "fonte": "viva",
         "provenienza": "Letti da openrouter.ai adesso.",
         "spiegazione": "Solo modelli che sanno usare gli strumenti.",
-        "quando": "Si applica al riavvio dell'add-on: fino ad allora la chat "
-                  "usa quello di prima.",
+        "quando": "",
         "dove": ["provider_models", "openrouter"],
         "scelto": "openrouter:anthropic/claude-sonnet-4-6",
         "casella": {"etichetta": "nascondi i gratuiti", "dove": ["nascondi_gratuiti"]},

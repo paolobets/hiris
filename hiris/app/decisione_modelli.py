@@ -406,12 +406,14 @@ def componi_topologia(
 # ── Il pannello del modello (progetto §6) ──────────────────────────────────
 #
 # Le parole del pannello stanno QUI per la stessa ragione delle altre: sono
-# affermazioni sul prodotto. Due in particolare sarebbero già false domani se
-# fossero scritte nella pagina -- `quando` (che oggi confessa l'invariante 4 e
-# tacerà con la scrittura a caldo) e `provenienza` (che dipende da un fatto
-# misurato ADESSO: se la lettura è riuscita o no). Scritte nel frontend, il
-# giorno in cui la regola cambia resterebbero a dire quella di ieri, e a
-# schermo la frase ci sarebbe lo stesso: nessun test se ne accorgerebbe.
+# affermazioni sul prodotto. `provenienza` sarebbe già falsa domani se fosse
+# scritta nella pagina: dipende da un fatto misurato ADESSO, se la lettura
+# dell'elenco è riuscita o no. E `quando` è la prova che il posto era giusto:
+# era la confessione dell'invariante 4, ha smesso di essere vera il giorno
+# della scrittura a caldo (Task 10) ed è uscita da qui, senza che nessuno
+# toccasse il frontend. Scritta nella pagina sarebbe rimasta a dire la regola
+# di ieri, e a schermo la frase ci sarebbe stata lo stesso: nessun test se ne
+# sarebbe accorto.
 
 # I TRE ALIAS DEL PIANO, e non uno di più. Non è una semplificazione
 # dell'interfaccia: `agent/runner.modello_cli` riduce QUALUNQUE modello risolto
@@ -521,28 +523,6 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
     return riga
 
 
-def quando(provider_id: str) -> str:
-    """Da quando ha effetto la scelta. È la confessione dell'invariante 4.
-
-    «Un valore si applica in un modo solo» è l'invariante, e il modello di
-    Claude API oggi lo viola: `api/handlers_chat._enqueue_chat_job` rilegge
-    `app["models_config"]` a OGNI turno (quindi il ponte lo usa subito), mentre
-    i tre runner ricevono il valore come argomento di costruzione (quindi
-    l'API lo usa solo dopo un riavvio). La pagina non può risolverlo -- lo fa
-    il Task 10, facendo LEGGERE il valore ai runner -- ma può smettere di
-    dichiarare una cosa sola su un valore che se ne comporta due. Quel giorno
-    queste due stringhe diventano "" e la pagina tace senza essere toccata.
-    """
-    if provider_id == "subscription":
-        return ""
-    if provider_id == "claude":
-        return ("Lo stesso valore, applicato in due modi: il {} lo usa dal "
-                "prossimo messaggio, {} dal riavvio dell'add-on."
-                .format(nome("subscription"), nome("claude")))
-    return ("Si applica al riavvio dell'add-on: fino ad allora la chat usa "
-            "quello di prima.")
-
-
 def spiegazione(provider_id: str) -> str:
     """La riga che serve solo a chi si chiede perché il pannello è così povero.
 
@@ -612,7 +592,18 @@ def componi_pannello(
             avviso_gratuiti=(provider_id == "openrouter"
                              and fonte == "riserva" and bool(nascondi_gratuiti))),
         "spiegazione": spiegazione(provider_id),
-        "quando": quando(provider_id),
+        # Da quando ha effetto la scelta: NIENTE, perché ha effetto dal
+        # prossimo messaggio, e questo vale per OGNI provider e per ogni campo
+        # di questa pagina. Qui viveva `quando()`, la confessione
+        # dell'invariante 4: lo stesso valore -- il modello di Claude API --
+        # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la
+        # pagina ne dichiarava uno solo. Il Task 10 ha tolto il problema invece
+        # della frase: i runner LEGGONO il modello al momento dell'uso.
+        # Il campo resta perché il canale resta -- la pagina disegna la riga
+        # solo se il backend gliela manda, e non ne inventa una quando il
+        # backend tace -- ma oggi il backend tace su tutti e cinque:
+        # l'assenza di didascalia È l'affermazione.
+        "quando": "",
         "dove": list(_DOVE_SI_SCRIVE.get(provider_id, ())),
         "scelto": scelto,
         # La casella vive SULLA LISTA CHE FILTRA e non in una pagina di

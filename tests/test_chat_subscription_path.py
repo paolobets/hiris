@@ -787,3 +787,54 @@ async def test_il_ponte_risolve_il_modello_dalla_pagina_modelli_non_dalle_impost
         assert resp.status == 202
         body = await resp.json()
     assert q.get(body["job_id"])["context"]["model"] == "opus"
+
+
+# ---------------------------------------------------------------------------
+# La scadenza del turno viene dall'ARCHIVIO (Task 10)
+#
+# Fino alla 2.4.1 `_enqueue_chat_job` leggeva `BRIDGE_DEADLINE_MIN`, cioe'
+# l'opzione dell'add-on, mentre `models_config["ponte"]["scadenza_min"]` ne
+# teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli poteva
+# riscrivere: due rappresentazioni dello stesso numero, e quella che l'utente
+# cambiava non era quella che il turno subiva. In piu' la pagina dichiarava il
+# numero d'ambiente sul connettore del piano, quindi mostrava un'attesa e ne
+# applicava un'altra appena qualcuno salvava da li'.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_la_scadenza_del_turno_viene_dall_archivio_non_dall_ambiente(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
+    app, q, runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app["models_config"] = {"ponte": {"scadenza_min": 9}}
+
+    prima = time.time()
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        job_id = (await resp.json())["job_id"]
+    dopo = time.time()
+
+    attesa = q.get(job_id)["deadline_ts"]
+    assert prima + 9 * 60 <= attesa <= dopo + 9 * 60, (
+        "il turno scade col numero che l'utente ha salvato, non con quello "
+        "dell'opzione dell'add-on"
+    )
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_la_scadenza_resta_il_predefinito_di_sempre(tmp_path):
+    """`_on_startup` puo' non essere girato (ogni fixture lo azzera) e un turno
+    puo' comunque arrivare: cinque minuti, come il predefinito dell'archivio e
+    dell'opzione da cui e' stato seminato."""
+    app, q, runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    assert "models_config" not in app
+
+    prima = time.time()
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        job_id = (await resp.json())["job_id"]
+    dopo = time.time()
+    attesa = q.get(job_id)["deadline_ts"]
+    assert prima + 5 * 60 <= attesa <= dopo + 5 * 60

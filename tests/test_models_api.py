@@ -290,18 +290,25 @@ async def test_la_riga_di_openrouter_non_mostra_piu_un_modello_di_openai(client)
 @pytest.mark.asyncio
 async def test_il_connettore_dichiara_il_tempo_CHE_IL_TURNO_SUBISCE(client, monkeypatch):
     """Il numero del connettore e' quello con cui `_enqueue_chat_job` scrive la
-    scadenza, non la copia nell'archivio: l'archivio ne tiene una che oggi
-    nessun runner legge, e prenderla da li' farebbe promettere alla pagina
-    un'attesa diversa da quella vera. Le due letture diventano una sola col
-    Task 10."""
+    scadenza. Fino al Task 10 erano DUE numeri -- `BRIDGE_DEADLINE_MIN` per il
+    turno, `ponte.scadenza_min` per l'archivio -- e la pagina mostrava il
+    primo perche' il secondo non aveva lettori: due rappresentazioni dello
+    stesso valore nello stesso payload (invariante 1), e quella che l'utente
+    poteva cambiare da questa pagina non era quella che il turno subiva.
+
+    L'ambiente qui e' messo al CONTRARIO dell'archivio apposta: se qualcuno
+    rimettesse la lettura d'ambiente, questo test lo direbbe subito."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "9")
+    monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
+    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 9}})
     client.app["catena_modelli"] = []
     client.app["ponte_attivo"] = True
 
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"][0]["id"] == "subscription"
     assert "9 min" in body["catena"][0]["connettore"]
+    assert "44" not in body["catena"][0]["connettore"]
+
 
 
 @pytest.mark.asyncio
@@ -553,24 +560,26 @@ async def test_la_casella_dei_gratuiti_viaggia_come_percorso_solo_per_openrouter
 
 
 @pytest.mark.asyncio
-async def test_il_pannello_confessa_i_DUE_modi_in_cui_il_modello_di_claude_si_applica(client):
-    """Invariante 4, reso visibile invece che taciuto: lo stesso valore ha
-    effetto IMMEDIATO sul ponte (`_enqueue_chat_job` rilegge
+async def test_nessun_pannello_ha_piu_niente_da_confessare(client):
+    """Invariante 4, chiuso invece che dichiarato. Fino al Task 10 questo campo
+    portava la confessione: lo stesso valore -- il modello di Claude API --
+    aveva effetto IMMEDIATO sul ponte (`_enqueue_chat_job` rilegge
     `app["models_config"]` a ogni turno) e SOLO AL RIAVVIO sull'API (i runner
-    lo ricevono alla costruzione). La pagina non puo' risolverlo -- lo fa il
-    Task 10 -- ma puo' smettere di dichiarare una cosa sola su un valore che
-    se ne comporta due. Quel giorno questa stringa diventa "" e la pagina tace
-    senza essere toccata."""
-    body = await (await client.get("/api/models?provider=claude")).json()
-    quando = body["providers"][0]["quando"]
-    assert "dal prossimo messaggio" in quando
-    assert "dal riavvio dell'add-on" in quando
+    lo ricevevano alla costruzione), e la pagina ne dichiarava uno solo:
+    sbagliata, non imprecisa. Adesso i runner LEGGONO, quindi non c'e' un
+    tempo da dichiarare per nessuno dei cinque -- e la pagina non ne inventa
+    uno quando il backend tace (pinnato in tests/js/models-route.test.mjs).
 
-    # Sul piano non c'e' niente da salvare, quindi non c'e' niente da
-    # confessare: una didascalia sopra un pannello che non scrive sarebbe una
-    # frase su un gesto che non esiste.
-    body = await (await client.get("/api/models?provider=subscription")).json()
-    assert body["providers"] == [] or body["providers"][0]["quando"] == ""
+    Si guardano tutti e cinque, non solo quello che confessava: una didascalia
+    di riavvio rimessa su un provider qualsiasi sarebbe la pagina che torna a
+    mentire da un'altra riga."""
+    for pid in _CONFIG_PROVIDER_IDS:
+        body = await (await client.get("/api/models?provider=" + pid)).json()
+        for p in body["providers"]:
+            assert p["quando"] == "", (
+                "il pannello di " + pid + " dichiara un tempo che non esiste: "
+                + repr(p["quando"])
+            )
 
 
 @pytest.mark.asyncio
@@ -612,11 +621,11 @@ async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
 @pytest.mark.asyncio
 async def test_ponte_acceso_senza_token_lo_dichiara_nel_payload(client, monkeypatch):
     """Invariante 5: lo stato «ponte acceso, nessun token» non deve poter
-    passare in silenzio. E la scadenza dichiarata è quella CONFIGURATA --
-    la stessa `BRIDGE_DEADLINE_MIN` che `_enqueue_chat_job` usa per far
-    morire il turno -- non un cinque scritto a mano nel testo."""
+    passare in silenzio. E la scadenza dichiarata è quella SALVATA -- lo
+    stesso `ponte.scadenza_min` che `_enqueue_chat_job` usa per far morire il
+    turno -- non un cinque scritto a mano nel testo."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "7")
+    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 7}})
     client.app["ponte_attivo"] = True
     resp = await client.get("/api/models/config")
     body = await resp.json()
@@ -662,3 +671,100 @@ async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(client):
         "«non c'e' nessun elenco da leggere» sarebbe la pagina che si "
         "contraddice in due righe"
     )
+
+
+# ---------------------------------------------------------------------------
+# LA PUT RIMETTE IN VIGORE (Task 10)
+#
+# Fino alla 2.4.1 questa rotta aggiornava `app["models_config"]` e basta. La
+# catena del router si costruiva all'avvio, quindi un riordino salvato non
+# cambiava il turno successivo; e siccome il GET qui sopra descrive il RUNTIME
+# (`app["catena_modelli"]`, che e' la sola misura che ha), ricaricando la
+# pagina si rivedeva l'ordine di prima e il salvataggio sembrava perso. C'era
+# una riga in pagina che lo confessava: e' uscita con il difetto.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
+    """L'ordine conta: `ricalcola_catena` rilegge `app["models_config"]`, quindi
+    chiamarla prima dell'aggiornamento rimetterebbe in vigore l'archivio
+    VECCHIO -- un salvataggio che si applica con un giro di ritardo, cioe' un
+    difetto peggiore di quello che sostituisce."""
+    visto = []
+    client.app["ricalcola_catena"] = lambda: visto.append(
+        list(client.app["models_config"]["chain_order"]))
+
+    resp = await client.put("/api/models/config",
+                            json={"chain_order": ["openrouter", "claude"]})
+    assert resp.status == 200
+    assert visto == [["openrouter", "claude"]]
+
+
+@pytest.mark.asyncio
+async def test_la_put_non_esplode_su_un_installazione_senza_provider(client):
+    """Il primo gesto di chi installa HIRIS. `app["ricalcola_catena"]` puo'
+    mancare (nessun `_on_startup`, o un'app costruita da una fixture), e
+    l'assenza del runtime da rimettere in vigore non e' un errore: e' 200."""
+    assert "ricalcola_catena" not in client.app
+    resp = await client.put("/api/models/config", json={"chain_order": ["claude"]})
+    assert resp.status == 200
+    assert (await resp.json())["chain_order"] == ["claude"]
+
+
+@pytest.mark.asyncio
+async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
+    """La promessa dell'utente, dal suo lato: si riordina, si ricarica, e si
+    rivede quello che si e' appena fatto. E' la stessa lista che il router usa
+    per il prossimo messaggio -- il GET la legge da `app["catena_modelli"]`,
+    che il ricalcolo riscrive.
+
+    Qui si usa la funzione VERA (`server._ricalcola_catena`), non una finta:
+    di sua natura questa prova esiste per non fidarsi del cablaggio."""
+    from hiris.app.llm_router import LLMRouter
+    from hiris.app.server import _ricalcola_catena
+
+    class _Runner:
+        pass
+
+    router = LLMRouter(claude=_Runner(), openrouter=_Runner(),
+                       model_chain=["claude", "openrouter"])
+    client.app["llm_router"] = router
+    client.app["ricalcola_catena"] = lambda: _ricalcola_catena(client.app)
+    client.app["models_config"] = {"chain_order": ["claude", "openrouter"]}
+    client.app["catena_modelli"] = ["claude", "openrouter"]
+    # Le due credenziali che il GET misura per disegnare le righe: senza,
+    # `componi_topologia` sposterebbe OpenRouter fra chi sta fuori e la prova
+    # guarderebbe un'altra cosa.
+    client.app["openrouter_api_key"] = "sk-or-presente"
+
+    await client.put("/api/models/config",
+                     json={"chain_order": ["openrouter", "claude"]})
+    body = await (await client.get("/api/models/config")).json()
+    assert [r["id"] for r in body["catena"]] == ["openrouter", "claude"]
+    assert router._chat_policy == ["openrouter", "claude"], (
+        "la pagina mostrerebbe un ordine che il router non usa: e' la stessa "
+        "divergenza che questa fetta chiude, spostata di un livello"
+    )
+
+
+@pytest.mark.asyncio
+async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client, monkeypatch):
+    """L'altro dei due numeri che il Task 8 aveva lasciato all'ambiente. Adesso
+    e' il runner locale a riceverlo dall'archivio (`applica_timeout`, rifatto a
+    ogni salvataggio), quindi la pagina lo legge dalla stessa casa: se lo
+    prendesse ancora da `OLLAMA_REQUEST_TIMEOUT` prometterebbe un'attesa che
+    nessuna richiesta subisce.
+
+    L'ambiente e' messo al CONTRARIO dell'archivio apposta."""
+    monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT", "777")
+    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    await client.put("/api/models/config", json={
+        "chain_order": ["ollama"],
+        "ollama": {"modello": "llama3.1:8b", "timeout_s": 300}})
+    client.app["catena_modelli"] = ["ollama"]
+    client.app["ponte_attivo"] = False
+
+    body = await (await client.get("/api/models/config")).json()
+    riga = {r["id"]: r for r in body["catena"]}["ollama"]
+    assert riga["connettore"] == "se non risponde entro 300 s"

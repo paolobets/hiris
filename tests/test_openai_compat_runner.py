@@ -17,7 +17,7 @@ from hiris.app.claude_runner import RunnerBackendError
 
 
 def test_init_openai_cloud_does_not_raise(tmp_path):
-    """Cloud variant (no fixed_model) must construct a valid httpx.Timeout."""
+    """Cloud variant (locale=False) must construct a valid httpx.Timeout."""
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
@@ -26,16 +26,24 @@ def test_init_openai_cloud_does_not_raise(tmp_path):
     assert isinstance(runner._client.timeout, httpx.Timeout)
 
 
-def test_init_ollama_local_does_not_raise(tmp_path, monkeypatch):
-    """Ollama variant (fixed_model set) must construct a valid httpx.Timeout."""
-    monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT", "90")
+def test_init_ollama_local_does_not_raise(tmp_path):
+    """Ollama variant (locale=True) must construct a valid httpx.Timeout.
+
+    Il numero NON viene piu' da `OLLAMA_REQUEST_TIMEOUT`: lo passa il
+    chiamante, che lo legge dall'archivio (`ollama.timeout_s`) -- la stessa
+    casa da cui la pagina Modelli lo mostra sul connettore. Erano due
+    rappresentazioni dello stesso numero (invariante 1), e quella che l'utente
+    poteva cambiare non era quella che il turno subiva.
+    """
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        timeout_s=90,
         usage_path=str(tmp_path / "usage_ollama.json"),
     )
     assert isinstance(runner._client.timeout, httpx.Timeout)
+    assert runner._client.timeout.read == 90.0
 
 
 # fetta E4 Task 6 ("un bot solo"): silenzio dichiarato e pinnato per
@@ -127,7 +135,7 @@ def test_circuit_open_message_names_local_backend(tmp_path):
     """Backlog #7 (local variant): Ollama keeps the 'backend locale' wording."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     assert runner._backend_noun == "Il backend locale"
@@ -138,7 +146,7 @@ def test_ollama_disables_sdk_retry(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        fixed_model="gemma4:e4b",
+        locale=True, leggi_modello=lambda: "gemma4:e4b",
         usage_path=str(tmp_path / "u.json"),
     )
     assert runner._client.max_retries == 0
@@ -160,7 +168,7 @@ async def test_ollama_chat_passes_think_false(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        fixed_model="gemma4:e4b",
+        locale=True, leggi_modello=lambda: "gemma4:e4b",
         usage_path=str(tmp_path / "u.json"),
     )
     # Mock the API to return a plain stop response
@@ -588,7 +596,7 @@ async def test_simple_chat_circuit_breaker_skips_dead_backend(tmp_path):
     from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
@@ -608,7 +616,7 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
     open, recovers cleanly)."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u2.json"),
     )
     ok = MagicMock()
@@ -632,18 +640,18 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_openai_compat_runner_ollama_is_not_cloud(tmp_path):
-    """Ollama runner (fixed_model set) must declare _is_cloud=False."""
+    """Ollama runner (locale=True) must declare _is_cloud=False."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     assert runner._is_cloud is False
 
 
 def test_openai_compat_runner_cloud_is_cloud(tmp_path):
-    """OpenAI cloud runner (no fixed_model) must declare _is_cloud=True."""
+    """OpenAI cloud runner (locale=False) must declare _is_cloud=True."""
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
@@ -786,7 +794,7 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
     timeout on every turn."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     runner._circuit_open_until = time.monotonic() + 60
@@ -804,7 +812,7 @@ async def test_chat_stream_short_circuits_when_breaker_open(tmp_path):
     error event instead of calling the network."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     runner._circuit_open_until = time.monotonic() + 60
@@ -828,7 +836,7 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
     import openai as _openai
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        fixed_model="llama3.1:8b",
+        locale=True, leggi_modello=lambda: "llama3.1:8b",
         usage_path=str(tmp_path / "u.json"),
     )
     conn_err = _openai.APIConnectionError(request=MagicMock())

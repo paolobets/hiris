@@ -216,43 +216,40 @@ class OpenAICompatRunner:
         base_url: str,
         api_key: str,
         *,
-        fixed_model: str = "",
+        locale: bool = False,
         usage_path: str = "",
-        default_model: str = "",
+        leggi_modello=None,
+        timeout_s: float = 0.0,
     ) -> None:
-        if fixed_model:
+        # fetta «la catena diventa l'unica verita'» (Task 10): `fixed_model`
+        # era UN parametro per TRE cose insieme -- «questo e' Ollama»,
+        # «valida l'URL», «usa sempre questo modello». Le prime due sono la
+        # MODALITA' e restano legate a `locale`; la terza e' una DECISIONE
+        # dell'utente, cambia da una PUT all'altra e adesso si LEGGE al
+        # momento dell'uso (`leggi_modello`) invece di essere cotta nel
+        # costruttore -- era il motivo per cui cambiare il modello di Ollama
+        # non poteva avere effetto senza riavviare l'add-on.
+        if locale:
             from ..backends.ollama import _validate_ollama_url
             _validate_ollama_url(base_url)
-        import openai as _openai
-        # Ollama su hardware lento: timeout esplicito per evitare hang infiniti.
-        # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe).
-        if fixed_model:
-            _req_timeout = float(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "120"))
-            _client_timeout = _httpx.Timeout(_req_timeout, connect=5.0)
-        else:
-            _client_timeout = _httpx.Timeout(600.0, connect=5.0)
-        # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
-        # cumulativamente possono superare il wrapper chatbot_engine 300s
-        # producendo "Timeout dopo 300s" generico senza log specifici. Con
-        # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
-        # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
-        _max_retries = 0 if fixed_model else 2
-        self._client = _openai.AsyncOpenAI(
-            api_key=api_key, base_url=base_url,
-            timeout=_client_timeout, max_retries=_max_retries,
-        )
-        # fetta E4 Task 6 ("un bot solo"): il costruttore perdeva un
-        # `dispatcher` "di scorta" -- vedi il commento gemello in
-        # ClaudeRunner.__init__ per la storia completa (fetta E2 Task 7,
-        # commit 68d3670: zero chiamanti di produzione lo popolavano).
-        self._default_model = default_model  # SP-2 T5C: user-chosen default for "auto" (unused for Ollama, see fixed_model)
-        self._fixed_model = fixed_model   # Ollama: always use this model; empty for OpenAI
-        self._is_cloud = not bool(fixed_model)  # True = cloud (OpenAI); False = local (Ollama)
+        self._api_key = api_key
+        self._base_url = base_url
+        self._locale = locale
+        self._leggi_modello = leggi_modello
+        self._is_cloud = not locale  # True = cloud (OpenAI); False = local (Ollama)
         # Circuit-breaker message noun, so a cloud backend doesn't report
         # itself as "il backend locale" (review backlog #7).
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
         self._usage_path = usage_path
-        self._base_url = base_url
+        # Ollama su hardware lento: timeout esplicito per evitare hang infiniti.
+        # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe). Il
+        # numero arriva dal chiamante -- per Ollama e' `ollama.timeout_s`
+        # dell'archivio, la stessa casa da cui la pagina Modelli lo mostra:
+        # fino a questa fetta veniva da `OLLAMA_REQUEST_TIMEOUT`, cioe' una
+        # SECONDA rappresentazione dello stesso numero accanto alla copia
+        # d'archivio (invariante 1), e le due potevano dire cose diverse.
+        self._timeout_s = 0.0
+        self.applica_timeout(float(timeout_s) if timeout_s else (120.0 if locale else 600.0))
         # Serialize usage.json writes (see ClaudeRunner._save_lock for rationale).
         self._save_lock = threading.Lock()
         # Circuit-breaker state for connection-class failures (dead endpoint).
@@ -399,12 +396,62 @@ class OpenAICompatRunner:
     # Model resolution
     # ------------------------------------------------------------------
 
+    def _modello_scelto(self) -> str:
+        """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
+        return (self._leggi_modello() if self._leggi_modello else "") or ""
+
+    def _resolve_modello_corrente(self) -> str:
+        """Il modello che questo runner userebbe adesso con `model="auto"`.
+
+        Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
+        di provarla sarebbe intercettare la chiamata all'API."""
+        return self._resolve_model("auto", "chat")
+
     def _resolve_model(self, model: str, agent_type: str) -> str:
-        if self._fixed_model:
-            return self._fixed_model
+        # Ollama: il modello scelto vince SEMPRE, anche su un modello passato
+        # esplicitamente -- era gia' cosi' (`if self._fixed_model: return
+        # self._fixed_model` come primo ramo) e resta, perche' l'istanza locale
+        # ne ha scaricato uno solo e chiedergliene un altro fallirebbe. La sola
+        # differenza e' che adesso il valore si LEGGE.
+        scelto = self._modello_scelto()
+        if self._locale:
+            return scelto
         if model == "auto":
-            return self._default_model or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
+            return scelto or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
         return model
+
+    def applica_timeout(self, secondi: float) -> None:
+        """Rifa' il client con un nuovo timeout.
+
+        E' l'unico valore di questa fetta che non si puo' leggere al momento
+        dell'uso: `AsyncOpenAI` cuoce `_httpx.Timeout(...)` nel client alla
+        costruzione. Rifarlo e' a costo locale (nessuna connessione viene
+        aperta finche' non parte una richiesta), e la sola alternativa --
+        dichiarare questo campo «solo al riavvio» -- rimetterebbe in pagina la
+        didascalia che questa fetta toglie.
+
+        NON si tocca il client vecchio: una richiesta puo' essere in volo su di
+        lui proprio adesso, e chiuderlo la ucciderebbe a meta' turno. Resta al
+        garbage collector, che lo raccoglie quando l'ultima richiesta finisce.
+        Per questo il rifacimento e' un NO-OP quando il numero non e' cambiato:
+        senza quella guardia ogni salvataggio della pagina Modelli lascerebbe
+        dietro un pool di connessioni, anche quando l'utente ha solo riordinato
+        la catena."""
+        secondi = float(secondi)
+        if secondi == self._timeout_s:
+            return
+        import openai as _openai
+        self._timeout_s = secondi
+        # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
+        # cumulativamente possono superare il wrapper chatbot_engine 300s
+        # producendo "Timeout dopo 300s" generico senza log specifici. Con
+        # max_retries=0 il primo APIError/Timeout viene loggato e ritornato.
+        # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
+        self._client = _openai.AsyncOpenAI(
+            api_key=self._api_key, base_url=self._base_url,
+            timeout=_httpx.Timeout(secondi, connect=5.0),
+            max_retries=0 if self._locale else 2,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -440,11 +487,14 @@ class OpenAICompatRunner:
         msgs.extend(messages)
         try:
             kwargs: dict = {
-                "model": self._fixed_model or "gpt-4o-mini",
+                # Cloud: lo stesso "gpt-4o-mini" scritto qui da sempre (questa
+                # chiamata non passa da `_resolve_model` e non ha un
+                # agent_type). Locale: il modello scelto, letto adesso.
+                "model": (self._modello_scelto() if self._locale else "") or "gpt-4o-mini",
                 "messages": msgs,
                 "max_tokens": 1024,
             }
-            if self._fixed_model:
+            if self._locale:
                 kwargs["extra_body"] = {"think": False}
             resp = await self._client.chat.completions.create(**kwargs)
             self._record_success()
@@ -573,14 +623,14 @@ class OpenAICompatRunner:
 
         # I modelli locali (Ollama) tendono a inventare nomi di tool non presenti nello schema.
         # Iniettare la lista esplicita nel system prompt riduce fortemente le allucinazioni.
-        if self._fixed_model and tools:
+        if self._locale and tools:
             tool_names = ", ".join(t["name"] for t in tools)
             messages[0]["content"] += (
                 f"\n\n---\n\nTool disponibili: {tool_names}.\n"
                 "NON chiamare tool non presenti in questa lista."
             )
 
-        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._fixed_model else MAX_TOOL_ITERATIONS
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._locale else MAX_TOOL_ITERATIONS
         for iter_idx in range(max_iter):
             try:
                 kwargs: dict = {
@@ -599,9 +649,9 @@ class OpenAICompatRunner:
                 # specifici. `think: false` e' un parametro non-OpenAI che
                 # viene passato via extra_body al body JSON: i modelli senza
                 # thinking lo ignorano, quelli con thinking lo disattivano.
-                if self._fixed_model:
+                if self._locale:
                     kwargs["extra_body"] = {"think": False}
-                if self._fixed_model:
+                if self._locale:
                     msg_chars = sum(len(str(m.get("content", ""))) for m in messages)
                     logger.info(
                         "Ollama call: model=%s iter=%d/%d tools=%d msg_chars=%d",
@@ -609,7 +659,7 @@ class OpenAICompatRunner:
                         len(oai_tools or []), msg_chars,
                     )
                 response = await self._client.chat.completions.create(**kwargs)
-                if self._fixed_model:
+                if self._locale:
                     _content = (response.choices[0].message.content or "") if response.choices else ""
                     logger.info(
                         "Ollama response: finish=%s content_len=%d tools=%d",
@@ -850,14 +900,14 @@ class OpenAICompatRunner:
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
-        if self._fixed_model and tools:
+        if self._locale and tools:
             tool_names = ", ".join(t["name"] for t in tools)
             messages[0]["content"] += (
                 f"\n\n---\n\nTool disponibili: {tool_names}.\n"
                 "NON chiamare tool non presenti in questa lista."
             )
 
-        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._fixed_model else MAX_TOOL_ITERATIONS
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._locale else MAX_TOOL_ITERATIONS
         try:
             for _ in range(max_iter):
                 kwargs: dict = {
@@ -869,7 +919,7 @@ class OpenAICompatRunner:
                 if oai_tools:
                     kwargs["tools"] = oai_tools
                 # Ollama-specific: vedi commento in chat() per think:false.
-                if self._fixed_model:
+                if self._locale:
                     kwargs["extra_body"] = {"think": False}
 
                 try:
