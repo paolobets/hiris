@@ -79,6 +79,15 @@ API, token del piano, OpenRouter, OpenAI), l'**indirizzo di Ollama** (un endpoin
 **nascondi i modelli gratuiti**, **quale modello Ollama** e il suo **timeout**, i tre del **ponte**
 (attivo, scadenza, tetto giornaliero), i due dell'**embedding** (inerti, gia' mostrati li').
 
+> **Correzione, 13 agosto 2026 (decisione del proprietario): i due dell'embedding NON si spostano.**
+> Questa riga diceva il falso, e il progetto della pagina aveva ragione contro di lei
+> (`2026-08-13-progetto-pagina-modelli.md` §8 e §13). Spostarli significa toglierli da `config.yaml`,
+> e il Supervisor scarta in silenzio le chiavi fuori schema: **chi aggiorna perde il valore salvato**,
+> senza migrazione possibile. Pagare una perdita di dato per due campi che oggi non fanno **niente**
+> e' il peggior rapporto costo/beneficio della lista. I due campi **restano dove sono**, a costo zero;
+> la pagina Modelli dichiara che sono inerti in una riga sola, in fondo, fuori da ogni sezione
+> numerata — che e' la sola cosa che qualcuno debba sapere.
+
 **Si sposta nelle impostazioni della chat**: `history_retention_days`. E li' si dichiara finalmente
 cio' che nessuno aveva scritto — governa **anche** quanto HIRIS rilegge della conversazione in corso,
 e `0` non cancella mai niente.
