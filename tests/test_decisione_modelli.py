@@ -21,21 +21,28 @@ def test_il_primo_della_catena_e_quello_che_risponde():
     assert d["frase"] == "Il prossimo messaggio va a Claude API, con claude-opus-4-7, a consumo."
 
 
-def test_col_ponte_acceso_risponde_il_piano_e_la_catena_non_viene_consultata():
-    """Il ponte NON è un anello: `handlers_chat.handle_chat` dirotta prima di
-    prendere il router, e la catena non viene consultata mai. La frase deve
-    dire quello, non l'ordine della catena."""
+def test_col_ponte_acceso_il_piano_prova_per_primo_e_la_catena_lo_segue():
+    """Il ponte è un ANELLO dal Task 14: prova per primo, e se non risponde il
+    turno passa al successivo. Il test si chiamava «e la catena non viene
+    consultata», ed era vero -- il ponte era un bivio a monte del router. Un
+    test che tiene il nome di ieri quando il comportamento è cambiato è una
+    dichiarazione falsa nel posto peggiore."""
     d = componi_adesso(
         catena=["claude", "openrouter"],
         credenziali={"claude": True, "openrouter": True, "subscription": True},
         modelli={"claude": "claude-opus-4-7", "subscription": "opus"},
         ponte_attivo=True,
+        scadenza_ponte_min=5,
     )
     assert d["chi"] == "subscription"
     assert d["via"] == "ponte"
     assert d["frase"] == "Il prossimo messaggio va a Piano Claude Max, con opus, nel piano."
     testi = [x["testo"] for x in d["diagnosi"]]
-    assert any("la catena qui sotto non viene consultata" in t for t in testi), testi
+    assert testi == [
+        "Il ponte è acceso: il Piano Claude Max prova per primo, e se non "
+        "risponde entro 5 minuti il turno passa al successivo della catena."
+    ], testi
+    assert not any("non viene consultata" in t for t in testi), testi
 
 
 def test_il_piano_pagato_e_fuori_dalla_catena_e_uno_spreco_dichiarato():
@@ -118,11 +125,17 @@ def test_le_quattro_nature_e_non_un_prezzo(pid, atteso):
     assert natura(pid) == atteso
 
 
-def test_ponte_acceso_senza_token_non_e_qualcuno_che_risponde():
-    """Lo stato che oggi passa in silenzio: il ponte è acceso, il worker che
-    risponde NON parte (gli manca il token), ogni messaggio viene accodato e
-    scade. La pagina non deve dire che «il piano risponde»: non risponde
-    nessuno."""
+def test_ponte_acceso_senza_token_risponde_la_catena_e_il_costo_si_dichiara():
+    """Lo stato che passava in silenzio -- ponte acceso, worker che non parte
+    (gli manca il token), ogni messaggio accodato e scaduto -- ha smesso di
+    essere una perdita: dal Task 14 il turno scende alla catena nella stessa
+    richiesta. Chi risponde è quindi il primo della catena, come col ponte
+    spento.
+
+    Ma resta un fatto che COSTA, e si dichiara: il piano non riceve niente e
+    ogni turno si paga a consumo. È la stessa ragione per cui la chat annuncia
+    ogni ripiego -- un passaggio silenzioso dal forfait al consumo si scopre a
+    fine mese."""
     d = componi_adesso(
         catena=["claude"],
         credenziali={"claude": True, "subscription": False},
@@ -130,25 +143,54 @@ def test_ponte_acceso_senza_token_non_e_qualcuno_che_risponde():
         ponte_attivo=True,
         scadenza_ponte_min=5,
     )
+    assert d["chi"] == "claude"
+    assert d["via"] == "catena"
+    assert d["frase"] == (
+        "Il prossimo messaggio va a Claude API, con claude-opus-4-7, a consumo.")
+    sprechi = [x for x in d["diagnosi"] if x["gravita"] == "spreco"]
+    assert len(sprechi) == 1
+    assert sprechi[0]["testo"] == (
+        "Il ponte è acceso ma manca il token: nessun messaggio arriva al Piano "
+        "Claude Max, e ogni turno passa alla catena — dal forfait al consumo."
+    )
+
+
+def test_ponte_acceso_senza_token_e_senza_catena_non_puo_rispondere_nessuno():
+    """La prova gemella della precedente: senza il token il turno passa alla
+    catena, ma se sotto non c'è nessuno non c'è nessun ripiego da fare."""
+    d = componi_adesso(
+        catena=[], credenziali={"subscription": False}, modelli={},
+        ponte_attivo=True, scadenza_ponte_min=5,
+    )
     assert d["chi"] is None
     assert d["frase"] == (
-        "HIRIS non può rispondere: il ponte è acceso e manca il token del "
-        "Piano Claude Max."
+        "HIRIS non può rispondere: il ponte è acceso, manca il token del Piano "
+        "Claude Max, e sotto di lui non c'è nessuno."
     )
     guasti = [x for x in d["diagnosi"] if x["gravita"] == "guasto"]
     assert len(guasti) == 1
     assert guasti[0]["testo"] == (
-        "Il ponte è acceso ma manca il token: ogni messaggio viene accodato e "
-        "scade dopo 5 minuti senza risposta."
+        "Il ponte è acceso ma manca il token: nessun messaggio arriva al Piano "
+        "Claude Max, e in catena non c'è nessun altro a cui passarlo."
     )
 
 
 def test_la_scadenza_dichiarata_e_quella_configurata_non_un_cinque_scritto_a_mano():
+    """Il numero è quello che il turno subisce (`ponte.scadenza_min`, letto da
+    `_enqueue_chat_job` a ogni accodamento), non un default scritto qui."""
     d = componi_adesso(
-        catena=[], credenziali={"subscription": False}, modelli={},
+        catena=["claude"], credenziali={"claude": True, "subscription": True},
+        modelli={"subscription": "opus"},
         ponte_attivo=True, scadenza_ponte_min=20,
     )
-    assert "dopo 20 minuti" in d["diagnosi"][0]["testo"]
+    assert "entro 20 minuti" in d["diagnosi"][0]["testo"]
+
+    vuota = componi_adesso(
+        catena=[], credenziali={"subscription": True},
+        modelli={"subscription": "opus"},
+        ponte_attivo=True, scadenza_ponte_min=20,
+    )
+    assert "entro 20 minuti" in vuota["diagnosi"][0]["testo"]
 
 
 def test_col_token_presente_il_ponte_torna_a_essere_uno_che_risponde():
@@ -173,7 +215,13 @@ def test_col_token_presente_il_ponte_torna_a_essere_uno_che_risponde():
 # (`--err-ink` / `--warn-ink`): le due prove qui sotto sono gemelle, e una
 # costante al posto del ternario ne fa cadere sempre una.
 
-def test_col_ponte_acceso_e_una_catena_sotto_lo_scavalco_e_uno_spreco():
+def test_col_ponte_acceso_e_una_catena_sotto_non_c_e_nessuno_spreco_da_dichiarare():
+    """La riga diceva «spreco»: li hai configurati e non li usa nessuno. Col
+    ripiego non è più vero -- quei provider servono, il giorno in cui il piano
+    non risponde -- e chiamarli spreco sarebbe una parola più larga del fatto,
+    per giunta contro l'utente, che ha costruito la rete giusta. Resta un
+    FATTO da dire (quanto si aspetta prima che la rete entri in funzione), e si
+    dice in tondo."""
     d = componi_adesso(
         catena=["claude", "openrouter"],
         credenziali={"claude": True, "openrouter": True, "subscription": True},
@@ -181,13 +229,15 @@ def test_col_ponte_acceso_e_una_catena_sotto_lo_scavalco_e_uno_spreco():
         ponte_attivo=True,
     )
     assert len(d["diagnosi"]) == 1
-    assert d["diagnosi"][0]["gravita"] == "spreco"
+    assert d["diagnosi"][0]["gravita"] == "fatto"
+    assert not [x for x in d["diagnosi"] if x["gravita"] in ("spreco", "guasto")]
 
 
 def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
     """Il piano risponde (il token c'è), ma sotto non c'è NIENTE: il giorno in
-    cui il ponte non risponde, non risponde nessuno. Lo stesso testo, un
-    colore diverso, perché il fatto misurato è diverso."""
+    cui il ponte non risponde, non risponde nessuno. La prova gemella della
+    precedente -- una gravità costante ne fa cadere sempre una -- e la frase
+    non promette un successivo che non esiste."""
     d = componi_adesso(
         catena=[],
         credenziali={"subscription": True},
@@ -197,6 +247,7 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
     assert d["chi"] == "subscription"
     assert len(d["diagnosi"]) == 1
     assert d["diagnosi"][0]["gravita"] == "guasto"
+    assert "passa al successivo" not in d["diagnosi"][0]["testo"]
 
 
 # ---------------------------------------------------------------------------
@@ -286,21 +337,39 @@ def test_il_piano_non_e_riordinabile_e_gli_altri_quattro_si():
         assert per_id[pid]["riordinabile"] is True, pid
 
 
-def test_il_connettore_del_ponte_non_promette_un_ripiego_che_non_esiste():
-    """La prova che vale piu' di tutte in questa funzione. Oggi il ponte non e'
-    un anello: e' un bivio a monte del router, e alla scadenza il messaggio va
-    perso -- non passa alla riga sotto. Un connettore che dicesse «se non
-    risponde, si passa al successivo» sarebbe il difetto 3 ricomparso come
-    didascalia: la pagina prometterebbe un ripiego che il prodotto non fa.
-    Il giorno del ripiego (Task 14) cambia QUESTA stringa, e la pagina dice la
-    cosa nuova senza essere toccata."""
+def test_il_connettore_del_ponte_dichiara_il_ripiego_adesso_che_esiste():
+    """La riga che ha dimostrato perche' le parole stanno nel backend.
+
+    Fino al Task 14 questo test si chiamava «non promette un ripiego che non
+    esiste» e pretendeva «il ponte non ripiega: se non risponde entro 5 min il
+    messaggio va perso» -- che era vero, e per questo era giusto scriverlo. Il
+    ripiego adesso c'e': e' cambiata QUESTA stringa, in Python, e la pagina
+    disegna un anello senza che nessuno tocchi il frontend. Nessun test di
+    `tests/js/` e' cambiato con lei, ed e' la prova che il progetto §11.1
+    chiedeva."""
     catena, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
                                   modelli=MOD, ponte_attivo=True,
                                   scadenza_ponte_min=5)
     piano = catena[0]
     assert piano["id"] == "subscription"
-    assert piano["connettore"] == (
-        "il ponte non ripiega: se non risponde entro 5 min il messaggio va perso")
+    assert piano["connettore"] == "se non risponde entro 5 min"
+    assert "va perso" not in piano["connettore"]
+
+
+def test_col_ripiego_il_piano_e_un_anello_e_la_catena_continua_sotto_di_lui():
+    """Il piano in posizione 1, e la catena numerata sotto di lui: e' cosi' che
+    si legge un ANELLO invece di un bivio. Il disegno non e' cambiato col
+    Task 14 (era gia' una riga in posizione 1); e' cambiata la frase che sta
+    fra lui e la riga sotto, e questo test tiene insieme le due cose -- una
+    posizione senza il connettore giusto sarebbe di nuovo una pagina vera riga
+    per riga e falsa nel complesso."""
+    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
+                                      credenziali=CRED, modelli=MOD,
+                                      ponte_attivo=True, scadenza_ponte_min=5)
+    assert [r["id"] for r in catena] == ["subscription", "claude", "openrouter"]
+    assert [r["posizione"] for r in catena] == [1, 2, 3]
+    assert catena[0]["connettore"] == "se non risponde entro 5 min"
+    assert "subscription" not in [r["id"] for r in fuori]
 
 
 def test_il_connettore_mostra_un_numero_solo_quando_quel_numero_e_una_decisione():
@@ -323,11 +392,19 @@ def test_sopra_i_cinque_minuti_il_connettore_dichiara_il_tetto_che_lo_schema_non
     sopra i cinque il browser dichiara scaduta un'attesa che sul server e'
     ancora viva. Questa fetta DICHIARA e non risolve -- e' un fatto, non un
     divieto -- e lo dichiara accanto al numero, composto con lo stesso valore:
-    due letture non potrebbero divergere."""
+    due letture non potrebbero divergere.
+
+    Il Task 14 lo ha reso PIU' caro, non meno: il ripiego vive nella rotta di
+    poll, quindi sopra i cinque minuti non arriva nessun poll dopo la scadenza
+    e il turno non passa al successivo affatto. La nota diceva «la risposta la
+    trovi ricaricando» -- vero allora (il worker del ponte poteva ancora
+    rispondere), falso adesso per il ripiego, che non avviene."""
     sopra, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
                                  modelli=MOD, ponte_attivo=True,
                                  scadenza_ponte_min=7)
-    assert "sopra i 5 minuti" in sopra[0]["connettore_nota"]
+    assert sopra[0]["connettore_nota"] == (
+        "sopra i 5 minuti la chat smette di aspettare prima della scadenza, e "
+        "il turno non passa al successivo")
     assert "7 min" in sopra[0]["connettore"]
 
     sotto, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
@@ -727,3 +804,76 @@ def test_i_due_parametri_nuovi_sono_obbligatori():
     with pytest.raises(TypeError):
         _componi_topologia(chain_order=["claude"], credenziali=CRED,
                            modelli=MOD, ponte_attivo=False)
+
+
+# ── La nota del ripiego (Task 14) ─────────────────────────────────────────
+#
+# Non e' un test sul codice: e' un test sulle PAROLE. Il ripiego si annuncia
+# ogni volta (decisione del proprietario, 13 agosto), e cio' che la riga dice
+# e' l'unica cosa che l'utente vedra' mai di tutta questa fetta.
+
+from hiris.app.decisione_modelli import nota_ripiego  # noqa: E402
+
+
+def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():
+    assert nota_ripiego(motivo="scadenza", chi_ha_risposto="openrouter") == (
+        "Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRouter, "
+        "a consumo.")
+
+
+def test_i_tre_motivi_sono_tre_fatti_diversi():
+    """Tre fatti osservati, non una diagnosi: «non ha risposto in tempo» non e'
+    «non ha un token», e chi legge fa due cose diverse."""
+    assert "non ha un token" in nota_ripiego(
+        motivo="manca il token", chi_ha_risposto="claude")
+    assert "tetto di messaggi per oggi" in nota_ripiego(
+        motivo="tetto giornaliero", chi_ha_risposto="claude")
+    assert "non ha risposto in tempo" in nota_ripiego(
+        motivo="scadenza", chi_ha_risposto="claude")
+
+
+@pytest.mark.parametrize("motivo", ["scadenza", "manca il token", "tetto giornaliero"])
+def test_la_nota_non_diagnostica_e_non_allarma(motivo):
+    """Stessa disciplina degli avvisi di `esegui` (`azione/porta.py`): un
+    avviso e' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla
+    causa. Una parola di troppo qui e il modello -- che rilegge la cronologia --
+    la trasforma in una diagnosi inventata: e' successo davvero, il giorno in
+    cui HIRIS, davanti a un comando riuscito, si invento' un guasto del
+    dispositivo e mando' il proprietario a cercarlo."""
+    testo = nota_ripiego(motivo=motivo, chi_ha_risposto="openrouter")
+    for vietata in ("attenzione", "errore", "problema", "probabilmente", "forse",
+                    "sembra", "potrebbe", "verifica", "controlla"):
+        assert vietata not in testo.lower(), (vietata, testo)
+
+
+def test_la_natura_di_chi_risponde_e_sempre_dichiarata():
+    """E' l'unica parte della nota che riguarda i soldi, ed e' la ragione per
+    cui la nota esiste."""
+    for pid, attesa in (("openrouter", "a consumo"), ("ollama", "in casa"),
+                        ("claude", "a consumo"), ("openai", "a consumo")):
+        assert attesa in nota_ripiego(motivo="scadenza", chi_ha_risposto=pid), pid
+
+
+def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
+    """La prova gemella del silenzio. Senza la natura la nota perderebbe la
+    meta' per cui esiste, e «ha risposto pinco, .» sarebbe una riga rotta che
+    parla di soldi: meglio non scriverla. Stessa regola di
+    `_nota_di_chi_ha_risposto` quando non sa chi ha risposto."""
+    assert nota_ripiego(motivo="scadenza", chi_ha_risposto="pinco") == ""
+
+
+def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
+    """La seconda meta' della stessa regola. Un motivo fuori tabella
+    produrrebbe, con un ripiego del tipo «se non so niente, comportati come
+    prima», una frase generica su un ripiego di cui non si sa il perche': si
+    tace, e il test che lega le due estremita' (`_piano_puo_rispondere` ->
+    `_MOTIVI_RIPIEGO`) sta in test_chat_subscription_path.py."""
+    assert nota_ripiego(motivo="boh", chi_ha_risposto="openrouter") == ""
+
+
+def test_la_nota_nomina_il_piano_con_il_nome_che_ha_in_tutto_il_prodotto():
+    """Un nome per provider, mai due (Task 5). La nota non se ne inventa uno
+    suo: se `NOMI` cambiasse, cambierebbe anche qui."""
+    testo = nota_ripiego(motivo="scadenza", chi_ha_risposto="openrouter")
+    assert testo.startswith("Il " + nome("subscription") + " ")
+    assert nome("openrouter") in testo

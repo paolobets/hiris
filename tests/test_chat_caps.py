@@ -52,6 +52,21 @@ def reset_stores():
     close_all_stores()
 
 
+@pytest.fixture(autouse=True)
+def il_piano_puo_rispondere(monkeypatch):
+    """Il token del piano, in tutti i test di questo file.
+
+    Dal Task 14 «ponte acceso senza token» non e' piu' uno stato in cui il
+    turno viene accodato e muore: e' un RIPIEGO, il turno scende alla catena ed
+    esce 200. Un'app di prova col ponte acceso e senza token non descrive piu'
+    il ponte -- descrive il ripiego -- e ogni test di questo file che parla di
+    202/409 sarebbe diventato un test su un'altra cosa, verde per la ragione
+    sbagliata. Il token si mette qui, una volta: e' la condizione in cui il
+    ponte esiste davvero. I test che vogliono il ripiego lo tolgono a mano
+    (`monkeypatch.delenv`), e si leggono per quello che sono."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
+
+
 # fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
 # mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
 # un'`ImpostazioniChat` vera (nessuna selezione da simulare: e' l'unica
@@ -69,7 +84,7 @@ def _make_impostazioni(*, max_chat_turns=0):
 
 
 def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
-              chat_daily_cap=None, runner=None, max_chat_turns=0):
+              tetto_giornaliero=None, runner=None, max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
 
@@ -87,8 +102,12 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
     app["impostazioni_chat"] = impostazioni
     app["data_dir"] = data_dir
     app["ponte_attivo"] = ponte_attivo
-    if chat_daily_cap is not None:
-        app["chat_daily_cap"] = chat_daily_cap
+    # Task 14: il tetto giornaliero del ponte si legge dall'ARCHIVIO
+    # (`ponte.tetto_giornaliero`), dove l'utente lo cambia dalla pagina
+    # Modelli, e non piu' da `app["chat_daily_cap"]` -- una copia di
+    # `CHAT_DAILY_CAP` presa all'avvio, che nessun salvataggio aggiornava.
+    if tetto_giornaliero is not None:
+        app["models_config"] = {"ponte": {"tetto_giornaliero": tetto_giornaliero}}
 
     q = None
     if with_queue:
@@ -212,28 +231,43 @@ async def test_409_guard_clears_once_first_job_resolved(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_daily_cap_reached_returns_429(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=1)
+async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tmp_path):
+    """Il 429 ESCE, e con lui la sua stringa.
+
+    Fino alla 2.4.1 il tetto pieno finiva il turno con «Limite giornaliero di
+    messaggi chat raggiunto»: il messaggio era perso e la catena -- che poteva
+    rispondere benissimo -- non veniva consultata. E' uno dei due casi che
+    sono, alla lettera, «il piano non e' disponibile». Adesso il turno scende
+    al provider successivo, sincrono, 200.
+
+    Il prezzo si annuncia: la risposta porta una `nota` che dichiara il ripiego
+    (i test della nota stanno in test_chat_subscription_path.py). Senza quella
+    riga questo cambio sarebbe un prelievo silenzioso -- dal forfait al
+    consumo, senza che nessuno lo abbia chiesto."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=1)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
         job_id = (await first.json())["job_id"]
 
-        # Resolve the first job so the 409 in-flight guard doesn't mask the 429.
+        # Si risolve il primo job: altrimenti la guardia «una risposta per
+        # volta» risponderebbe 409 e il tetto non si vedrebbe.
         claimed = q.claim(now=time.time())
         q.submit(job_id, claimed["nonce"], {"reply": "ok"}, now=time.time())
 
         second = await client.post("/api/chat", json={"message": "seconda"})
-        assert second.status == 429
-        body = await second.json()
-        assert body == {"error": "Limite giornaliero di messaggi chat raggiunto."}
+        assert second.status == 200
+        assert (await second.json())["response"] == "sync reply"
+    runner.chat.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
-    # No chat_daily_cap set on the app -> handler must fall back to a sane
-    # default (50) rather than crashing or capping at 0/None.
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=None)
+    # Nessun `ponte.tetto_giornaliero` nell'archivio -> il lettore deve
+    # ricadere su un predefinito sensato (50), non su 0/None -- che
+    # ripiegherebbe sulla catena a ogni turno, cioe' spegnerebbe il ponte in
+    # silenzio.
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=None)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -244,7 +278,7 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
     """Con il ponte SPENTO, handle_chat deve usare il percorso sincrono
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, ponte_attivo=False, chat_daily_cap=0)
+        tmp_path, ponte_attivo=False, tetto_giornaliero=0)
     # Pre-seed a "pending" chat job on the queue -- fetta E4 Task 5:
     # has_pending_chat() is unconditional now (no id to key it by) -- if the
     # guard wrongly applied to the sync path this would still 409.
@@ -304,7 +338,7 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     runner.last_tool_calls = []
     runner.last_thinking_blocks = []
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, ponte_attivo=False, chat_daily_cap=0, runner=runner)
+        tmp_path, ponte_attivo=False, tetto_giornaliero=0, runner=runner)
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -319,7 +353,7 @@ async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
     existing Task 2 fallback to sync path; the new guards must not blow up
     without a queue to query."""
     app, q, runner, impostazioni, data_dir = _make_app(
-        tmp_path, ponte_attivo=True, with_queue=False, chat_daily_cap=0)
+        tmp_path, ponte_attivo=True, with_queue=False, tetto_giornaliero=0)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -329,13 +363,21 @@ async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
 
 @pytest.mark.asyncio
 async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
-    """Order matters for the user-facing message: an in-flight reply for THIS
-    conversation is the more specific/actionable signal, so it wins over the
-    daily cap even if the cap is also exhausted."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, chat_daily_cap=1)
+    """La guardia «una risposta per volta» viene PRIMA del tetto, e dal Task 14
+    la precedenza non e' piu' una questione di quale messaggio sia piu' utile.
+
+    Col tetto pieno il turno adesso RIPIEGA sulla catena, sincrono: se il tetto
+    fosse controllato per primo, questo turno partirebbe verso la catena mentre
+    il ponte ne ha ancora uno in volo -- e quello, quando arriva, si scrive in
+    cronologia da solo (`server._submit_chat_reply`). Due risposte in volo
+    sulla stessa conversazione, che e' esattamente cio' che questa guardia
+    esiste per impedire: la seconda arriverebbe in una cronologia che la prima
+    sta per riscrivere."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=1)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
-        # First job still pending (not resolved) AND cap (1) already consumed.
+        # Il primo job e' ancora pending E il tetto (1) e' gia' consumato.
         second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 409
+    runner.chat.assert_not_awaited()

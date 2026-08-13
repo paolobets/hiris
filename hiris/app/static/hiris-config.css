@@ -1622,6 +1622,14 @@
    non la rispettava. */
 .adesso-card .diagnosi-spreco { color: var(--warn-ink); }
 .adesso-card .diagnosi-guasto { color: var(--err-ink); }
+/* La terza gravita', nata col ripiego (Task 14): un FATTO che non e' ne' un
+   guasto ne' uno spreco -- «il piano prova per primo, e se non risponde entro
+   N minuti il turno passa al successivo». Prima quella riga era uno spreco
+   («la catena qui sotto non viene consultata»), e con il ripiego ha smesso di
+   esserlo: quei provider adesso servono. Colorarla d'ambra direbbe
+   «attenzione» dove non c'e' niente di storto. Stesso token della nota nella
+   chat (`.msg-nota`, hiris-chat.css), e per la stessa ragione. */
+.adesso-card .diagnosi-fatto { color: var(--text-3); }
 
 /* fetta E5 Task 11 ("il vocabolario che resta dice il vero"): qui viveva
    `.field-hint-block` (+ `.field-hint-block p`), orfanata dalla rimozione

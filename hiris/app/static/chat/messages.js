@@ -97,6 +97,37 @@
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
   }
 
+  /* La nota di una risposta: un fatto sulla risposta che si sta leggendo, non
+     una riga di registro. Dichiara che il turno ha RIPIEGATO -- il Piano
+     Claude Max non ha risposto, e ha risposto qualcun altro, con la sua natura
+     (a consumo / in casa). Il testo arriva GIA' SCRITTO dal server
+     (`decisione_modelli.nota_ripiego`): qui non si compone niente, per la
+     stessa ragione per cui la pagina Modelli non compone le sue frasi -- sono
+     affermazioni sul prodotto, e due posti che le fanno prima o poi ne fanno
+     due diverse.
+
+     Sta DENTRO la riga della bolla, e precisamente dentro `.msg-col`, subito
+     dopo la bolla: `.msg-row` e' un flex ORIZZONTALE (avatar | colonna), e un
+     figlio diretto finirebbe accanto alla bolla invece che sotto. Non e' un
+     `appendDebug`, che crea una riga propria per i chip degli strumenti: la
+     nota appartiene a QUELLA risposta e a nessun'altra.
+
+     textContent, mai innerHTML: il testo viene dal server. */
+  function appendNota(row, testo) {
+    if (!row || !testo) return;
+    var nota = document.createElement('div');
+    nota.className = 'msg-nota';
+    nota.textContent = testo;
+    var col = row.querySelector('.msg-col');
+    var bolla = col && col.querySelector('.bubble');
+    if (bolla && bolla.nextSibling) {
+      col.insertBefore(nota, bolla.nextSibling);
+    } else {
+      (col || row).appendChild(nota);
+    }
+    state.els.messages.scrollTop = state.els.messages.scrollHeight;
+  }
+
   function appendDebug(tools) {
     var row = document.createElement('div');
     row.className = 'debug-row';
@@ -346,6 +377,7 @@
   window.HirisChatMessages = {
     appendMsg: appendMsg,
     updateBubble: updateBubble,
+    appendNota: appendNota,
     appendDebug: appendDebug,
     showThinking: showThinking,
     attesaAlSicuroSulServer: attesaAlSicuroSulServer,

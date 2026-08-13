@@ -114,3 +114,133 @@ def test_has_pending_chat_false_for_expired_but_unswept_job(q):
     # Still 'pending' in the DB -- no sweep_expired call -- but `now` (200.0)
     # is already past deadline_ts (100.0).
     assert q.has_pending_chat(now=200.0) is False
+
+
+# ---------------------------------------------------------------------------
+# Il ripiego (fetta «la catena diventa l'unica verita'», Task 14): 'ripiego'
+# e' lo stato in cui un turno di chat scaduto viene preso in carico per essere
+# rifatto sulla catena. Non e' terminale, e `prune` non lo cancella.
+# ---------------------------------------------------------------------------
+
+
+def _scaduto(q, *, nato=0.0, scade=100.0, kind="chat"):
+    return q.enqueue(kind, {}, {"history": [{"role": "user", "content": "ciao"}]},
+                     scade, now=nato)
+
+
+def test_reclamare_uno_scaduto_lo_marca_ripiego_e_restituisce_il_contesto(q):
+    """Il contesto INTATTO e' l'unica cosa che rende possibile rifare il turno
+    senza ricomporlo da capo -- e ricomporlo da capo darebbe una risposta a una
+    domanda leggermente diversa. E' l'unico momento in cui si puo': appena il
+    job si chiude, il contesto viene azzerato."""
+    jid = _scaduto(q)
+    job = q.reclama_scaduto(jid, now=200.0)
+    assert job is not None
+    assert job["status"] == "ripiego"
+    assert job["context"]["history"] == [{"role": "user", "content": "ciao"}]
+    assert job["created_ts"] == 0.0 and job["deadline_ts"] == 100.0
+    assert q.get(jid)["status"] == "ripiego"
+
+
+def test_un_job_non_ancora_scaduto_non_si_reclama(q):
+    """La prova gemella: il ripiego non e' una scorciatoia che accorcia
+    l'attesa. Finche' la scadenza non e' passata, il piano ha la sua
+    occasione."""
+    jid = _scaduto(q, scade=100.0)
+    assert q.reclama_scaduto(jid, now=99.0) is None
+    assert q.get(jid)["status"] == "pending"
+
+
+def test_lo_stesso_job_si_reclama_una_volta_sola(q):
+    """La mutua esclusione: due poll concorrenti non possono ripiegare due
+    volte lo stesso turno."""
+    jid = _scaduto(q)
+    assert q.reclama_scaduto(jid, now=200.0) is not None
+    assert q.reclama_scaduto(jid, now=201.0) is None
+
+
+def test_un_job_gia_deciso_o_scaduto_non_si_reclama(q):
+    """Chi e' gia' terminale non torna in volo. Un `decided` reclamato
+    riscriverebbe una risposta gia' data; un `expired` -- lo sweep e' passato
+    prima -- ha gia' perso il contesto, e ripiegare su un contesto vuoto
+    manderebbe alla catena una domanda che nessuno ha fatto."""
+    deciso = _scaduto(q)
+    preso = q.claim(now=1.0)
+    q.submit(deciso, preso["nonce"], {"reply": "ok"}, now=2.0)
+    assert q.reclama_scaduto(deciso, now=200.0) is None
+
+    scaduto = _scaduto(q)
+    q.sweep_expired(now=200.0)
+    assert q.get(scaduto)["status"] == "expired"
+    assert q.reclama_scaduto(scaduto, now=201.0) is None
+
+
+def test_solo_i_turni_di_chat_si_ripiegano(q):
+    """La catena risponde alle domande delle persone. Un job di un altro tipo
+    non ha una conversazione dietro, e ripiegarlo manderebbe al modello un
+    contesto che non e' un turno."""
+    jid = _scaduto(q, kind="holistic")
+    assert q.reclama_scaduto(jid, now=200.0) is None
+
+
+def test_risolvere_un_ripiego_lo_chiude_e_azzera_il_contesto(q):
+    """Stessa disciplina di `submit` e `sweep_expired`: il contesto porta il
+    nucleo per intero -- aree, dispositivi, cio' che le persone hanno detto --
+    e non deve restare su disco fino alla potatura a 7 giorni."""
+    jid = _scaduto(q)
+    q.reclama_scaduto(jid, now=200.0)
+    assert q.risolvi_ripiego(jid, {"reply": "risposto io", "nota": "n"}, now=210.0) is True
+    job = q.get(jid)
+    assert job["status"] == "decided"
+    assert job["decision"] == {"reply": "risposto io", "nota": "n"}
+    assert job["context"] == {}
+
+
+def test_non_si_risolve_un_ripiego_che_non_e_stato_reclamato(q):
+    """Il reclamo E' la mutua esclusione: senza di lui non c'e' niente da
+    chiudere, e chiudere comunque significherebbe scrivere una risposta sopra
+    un turno che il piano sta ancora servendo."""
+    jid = _scaduto(q)
+    assert q.risolvi_ripiego(jid, {"reply": "x"}, now=210.0) is False
+    assert q.get(jid)["status"] == "pending"
+
+
+def test_un_ripiego_conta_come_risposta_in_volo(q):
+    """E senza il filtro sulla scadenza, che per lui sarebbe sempre passata: la
+    chiamata alla catena puo' durare decine di secondi, e un secondo turno
+    intanto metterebbe due risposte in volo sulla stessa conversazione."""
+    jid = _scaduto(q)
+    assert q.has_pending_chat(now=200.0) is False
+    q.reclama_scaduto(jid, now=200.0)
+    assert q.has_pending_chat(now=200.0) is True
+    assert q.has_pending_chat(now=10_000.0) is True
+    q.risolvi_ripiego(jid, {"reply": "x"}, now=210.0)
+    assert q.has_pending_chat(now=220.0) is False
+
+
+def test_un_ripiego_schiantato_diventa_failed_e_la_potatura_lo_prende(q):
+    """Un ripiego che non finisce mai (processo caduto a metà chiamata)
+    resterebbe in volo per sempre: 'ripiego' non e' fra gli stati che `prune`
+    cancella, e tiene bloccata la conversazione sul 409."""
+    jid = _scaduto(q)
+    q.reclama_scaduto(jid, now=200.0)
+    assert q.fallisci_ripieghi_bloccati(before_ts=199.0) == 0, (
+        "il confine e' il momento del RECLAMO: un ripiego appena cominciato "
+        "non e' uno schianto")
+    assert q.fallisci_ripieghi_bloccati(before_ts=200.0) == 1
+    job = q.get(jid)
+    assert job["status"] == "failed"
+    assert job["context"] == {}
+    assert q.prune(before_ts=1.0) == 1
+
+
+def test_lo_sweep_non_ruba_il_lavoro_al_poll(q):
+    """La convivenza fra i due: il ripiego vive nella rotta di poll (ogni
+    3,5 s) e lo sweep gira ogni 2 minuti. `sweep_expired` guarda solo
+    'pending'/'claimed', quindi un ripiego in corso non gli appartiene -- se
+    glielo rubasse, l'utente leggerebbe «la risposta non e' arrivata in tempo»
+    mentre la catena sta scrivendo la sua."""
+    jid = _scaduto(q)
+    q.reclama_scaduto(jid, now=200.0)
+    assert q.sweep_expired(now=10_000.0) == []
+    assert q.get(jid)["status"] == "ripiego"

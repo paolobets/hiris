@@ -1494,11 +1494,18 @@ async def _on_startup(app: web.Application) -> None:
         _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
 
-    # Slice 4b Task 3: separate daily cap for chat-via-abbonamento, checked by
-    # handle_chat's subscription branch (handlers_chat.py) against
-    # reasoning_queue.count_chat_today() -- independent of the Sentinel's own
-    # cap (SENTINEL_DAILY_CAP, uscita insieme a lei -- fetta E3 Task 7).
-    app["chat_daily_cap"] = int(os.environ.get("CHAT_DAILY_CAP", "50"))
+    # Qui viveva `app["chat_daily_cap"]`, copia di `CHAT_DAILY_CAP` presa
+    # all'avvio e unico lettore di quell'ambiente per il comportamento. E'
+    # CANCELLATA dal Task 14: il tetto giornaliero del ponte si legge adesso
+    # dall'archivio (`ponte.tetto_giornaliero`, `handlers_chat.
+    # _piano_puo_rispondere`), dove l'utente lo cambia e dove il Task 6 lo
+    # aveva gia' copiato senza dargli lettori. Erano due rappresentazioni dello
+    # stesso numero (invariante 1) e la copia in memoria era pure ferma
+    # all'avvio: chi salvava dalla pagina Modelli non cambiava il tetto che il
+    # turno subiva. Stessa strada del Task 10 per `ponte.scadenza_min` e
+    # `ollama.timeout_s`, e stesso residuo dichiarato: `CHAT_DAILY_CAP` resta
+    # letta -- solo dalla semina qui sopra, per copiare il valore com'era --
+    # finche' il Task 13 non toglie l'opzione dallo schema.
 
     # fetta E3 Task 5: esce il Brain auto-proponente. Il Task 4 aveva lasciato
     # orfani DI PROPOSITO `brain.coverage_review`, `brain.suggestions`,
@@ -1578,6 +1585,23 @@ async def _on_startup(app: web.Application) -> None:
                 logger.warning(
                     "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, fetta E3 Task 4), scartato",
                     job.get("job_id"), job.get("kind"))
+        # fetta «la catena diventa l'unica verita'», Task 14. Lo sweep NON ruba
+        # il lavoro al poll: `sweep_expired` guarda solo 'pending'/'claimed' e
+        # non tocca i job in 'ripiego' -- e' cio' che rende sicura la
+        # convivenza fra i due, visto che il ripiego vive nella rotta di poll
+        # (ogni 3,5 s) e non qui (ogni 2 minuti).
+        #
+        # Ma un job rimasto in 'ripiego' oltre il DOPPIO della scadenza e' un
+        # ripiego che si e' schiantato: il processo e' caduto mentre chiedeva
+        # alla catena, e nessuno chiudera' piu' quel job. Non puo' restare in
+        # volo per sempre -- `prune` cancella 'decided', 'expired' e 'failed',
+        # mai 'ripiego' -- e finche' resta li' tiene anche la conversazione
+        # bloccata sul 409 (`has_pending_chat` conta i ripieghi come in volo).
+        # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
+        # scadenza: il margine e' il tempo che la catena ha per rispondere.
+        reasoning_queue.fallisci_ripieghi_bloccati(
+            _time.time() - 2 * 60 * int(
+                (app.get("models_config") or {}).get("ponte", {}).get("scadenza_min", 5)))
         reasoning_queue.prune(_time.time() - 7 * 86400)
 
     scheduler.add_job(

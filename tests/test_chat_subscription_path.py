@@ -39,7 +39,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
-from hiris.app.chat_store import close_all_stores, load_history
+from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
 
@@ -49,6 +49,21 @@ def reset_stores():
     close_all_stores()
     yield
     close_all_stores()
+
+
+@pytest.fixture(autouse=True)
+def il_piano_puo_rispondere(monkeypatch):
+    """Il token del piano, in tutti i test di questo file.
+
+    Dal Task 14 «ponte acceso senza token» non e' piu' uno stato in cui il
+    turno viene accodato e muore: e' un RIPIEGO -- il turno scende alla catena
+    ed esce 200, sincrono. Un'app di prova col ponte acceso e senza token non
+    descrive piu' il ponte, descrive il ripiego: senza questo token ogni test
+    di questo file che parla di 202/job/context sarebbe diventato un test su
+    un'altra cosa. Il token e' la condizione in cui il ponte esiste davvero, e
+    si mette qui una volta sola; i test del ripiego se lo tolgono a mano
+    (`monkeypatch.delenv`), e cosi' si leggono per quello che sono."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
 
 
 # fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
@@ -876,3 +891,378 @@ async def test_senza_archivio_la_scadenza_resta_il_predefinito_di_sempre(tmp_pat
     dopo = time.time()
     attesa = q.get(job_id)["deadline_ts"]
     assert prima + 5 * 60 <= attesa <= dopo + 5 * 60
+
+
+# ---------------------------------------------------------------------------
+# fetta «la catena diventa l'unica verita'», Task 14: IL PONTE DIVENTA UN
+# ANELLO.
+#
+# Il proprietario aveva chiesto una cosa sola, con parole sue: «utilizza
+# abbonamento, ma se token finiti o per qualsiasi altro motivo non e'
+# accessibile, utilizza OpenRouter o altro». Non era un difetto
+# dell'interfaccia: quel comportamento non esisteva. Il ponte era un BIVIO a
+# monte del router, e chi lo prendeva non tornava indietro -- se il piano non
+# rispondeva, il turno moriva, e la catena non veniva consultata mai.
+#
+# Il ripiego si fa in DUE META' separate, e i test qui sotto seguono la stessa
+# divisione:
+#   - a monte, sincrono: il piano NON PUO' ricevere il turno (manca il token,
+#     oppure il tetto giornaliero e' pieno). Non si accoda niente, si scende
+#     alla catena nella stessa richiesta, 200.
+#   - a valle, alla scadenza: il turno era stato accodato e il piano non ha
+#     risposto in tempo. Il ripiego avviene nella ROTTA DI POLL, e la risposta
+#     arriva sullo STESSO job -- il browser non cambia niente.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_path, monkeypatch):
+    """Lo stato dell'invariante 5, visto dal lato della chat: il ponte e'
+    acceso, il worker non parte (`should_start_agent_worker` pretende il
+    token), e fino alla 2.4.1 il messaggio veniva accodato e scadeva dopo
+    cinque minuti. Adesso passa al provider successivo."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 200
+        assert (await resp.json())["response"] == "sync reply"
+    runner.chat.assert_awaited_once()
+    # E niente e' stato accodato: non si mette un messaggio in una coda che
+    # nessuno servira'.
+    assert q.count_chat_today() == 0
+
+
+@pytest.mark.asyncio
+async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tmp_path):
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 200
+    runner.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
+    """Due risposte in volo sulla stessa conversazione sarebbero peggio del
+    409: la seconda arriverebbe in una cronologia che la prima sta per
+    riscrivere. La guardia sta PRIMA di «il piano puo' rispondere?» apposta --
+    col tetto pieno il ripiego partirebbe verso la catena mentre il ponte ha
+    ancora un turno in volo che si scrivera' in cronologia da solo."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
+    q.enqueue("chat", {}, {}, time.time() + 300, now=time.time())
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 409
+    runner.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path, monkeypatch):
+    """Il test che lega i due file.
+
+    `_piano_puo_rispondere` restituisce una PAROLA, e quella parola dev'essere
+    una chiave di `decisione_modelli._MOTIVI_RIPIEGO`, o la nota non si scrive.
+    Non produrrebbe un errore: produrrebbe silenzio, cioe' un ripiego dal
+    forfait al consumo che non si annuncia -- esattamente cio' che la decisione
+    del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
+    facoltativa per costruzione."""
+    from hiris.app.api.handlers_chat import _piano_puo_rispondere
+    from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
+
+    app, q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    puo, motivo = _piano_puo_rispondere(app)
+    assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
+    puo, motivo = _piano_puo_rispondere(app)
+    assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
+
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 50}}
+    assert _piano_puo_rispondere(app) == (True, "")
+
+    # E la terza chiave e' quella del ripiego a valle, che non passa da
+    # `_piano_puo_rispondere`: la scrive `_ripiega_sulla_catena`.
+    assert "scadenza" in _MOTIVI_RIPIEGO
+
+
+# ── L'annuncio: il ripiego si dichiara, ogni volta ─────────────────────────
+
+
+def _con_registro(app, *, catena, chi_ha_risposto=None):
+    """Un registro degli esiti VERO, non una finta comoda.
+
+    Chi ha risposto si MISURA: si scrive un successo su un solo backend e si
+    lascia che l'helper lo trovi scorrendo la catena. Se il ripiego nominasse
+    `catena_modelli[0]` invece di chi ha davvero risposto, i test che mettono
+    un fallimento in testa lo direbbero."""
+    from hiris.app.esiti_provider import RegistroEsiti
+
+    registro = RegistroEsiti(orologio=lambda: 1000.0)
+    app["registro_esiti"] = registro
+    app["catena_modelli"] = list(catena)
+    if chi_ha_risposto:
+        registro.successo(chi_ha_risposto)
+    return registro
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_a_monte_si_annuncia_e_dice_chi_ha_risposto(tmp_path, monkeypatch):
+    """Decisione del proprietario, 13 agosto: il ripiego si annuncia OGNI
+    VOLTA, perche' un passaggio silenzioso dal forfait al consumo si scopre a
+    fine mese."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    _con_registro(app, catena=["claude", "openrouter"], chi_ha_risposto="openrouter")
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
+    assert body["nota"] == (
+        "Il Piano Claude Max non ha un token con cui rispondere: ha risposto "
+        "OpenRouter, a consumo.")
+    # La forma della risposta NON cambia: `nota` si aggiunge, non sostituisce.
+    assert body["response"] == "sync reply"
+    assert body["debug"] == {"tools_called": []}
+
+
+@pytest.mark.asyncio
+async def test_la_nota_nomina_CHI_HA_RISPOSTO_non_il_primo_della_catena(tmp_path, monkeypatch):
+    """La trappola di questo passo. Il router RIPIEGA: il primo della catena
+    puo' aver fallito e aver risposto il secondo. Una nota che nomina il
+    provider sbagliato afferma piu' di quanto il sistema sa -- e per giunta sui
+    soldi, che e' la meta' per cui la nota esiste."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    registro = _con_registro(app, catena=["claude", "openrouter"])
+    registro.fallimento("claude", famiglia="credenziale", codice=400,
+                        messaggio="credit balance too low", durata_s=0.3)
+    registro.successo("openrouter")
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
+    assert "OpenRouter" in body["nota"]
+    assert "Claude API" not in body["nota"]
+
+
+@pytest.mark.asyncio
+async def test_senza_sapere_chi_ha_risposto_la_nota_non_si_scrive(tmp_path, monkeypatch):
+    """Meglio nessuna nota che una che nomina il provider sbagliato: la nota
+    parla di soldi, e una nota falsa sui soldi e' peggio del silenzio."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app["registro_esiti"] = None
+    app["catena_modelli"] = []
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
+    assert "nota" not in body
+    assert body["response"] == "sync reply"
+
+
+@pytest.mark.asyncio
+async def test_un_turno_che_NON_ha_ripiegato_non_porta_nessuna_nota(tmp_path):
+    """La prova gemella: la nota non e' una riga che si scrive sempre. Col
+    ponte spento non c'e' stato nessun ripiego da annunciare, e il registro
+    porta un successo -- cioe' tutto quello che serve per scriverla per
+    sbaglio."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
+    _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
+    assert "nota" not in body
+
+
+# ── La seconda meta': il ripiego alla scadenza ─────────────────────────────
+#
+# La finta mente come mente la realta': il job si accoda con una scadenza GIA'
+# PASSATA (`ora - 1`) e una nascita nel passato (`now=ora - 300`), cioe'
+# esattamente cio' che il poll trova quando il piano non ha risposto. Nessuna
+# finta che restituisca subito l'esito comodo: il tempo e' passato davvero, e
+# il runner della catena e' quello vero della fixture.
+
+
+def _accoda_scaduto(q, *, ora=None, history=None, **contesto):
+    ora = time.time() if ora is None else ora
+    ctx = {"history": history if history is not None
+           else [{"role": "user", "content": "ciao"}]}
+    ctx.update(contesto)
+    return q.enqueue("chat", {}, ctx, ora - 1, now=ora - 300)
+
+
+@pytest.mark.asyncio
+async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sullo_stesso_job(tmp_path):
+    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    jid = _accoda_scaduto(q, system_prompt="p", contesto="c",
+                          restrict_to_home=False, response_mode="auto",
+                          model="sonnet")
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert body == {"status": "done", "reply": "sync reply"}
+    kwargs = runner.chat.await_args.kwargs
+    # La cronologia del job CONTIENE GIA' il turno dell'utente: passarla intera
+    # e ripetere il messaggio lo manderebbe due volte.
+    assert kwargs["user_message"] == "ciao"
+    assert kwargs["conversation_history"] == []
+    # "auto" e' l'UNICO valore che fa girare il ciclo di ripiego del router.
+    assert kwargs["model"] == "auto"
+    # Il contesto del job non porta `thinking_budget`: inventarne uno
+    # applicherebbe al ripiego un'impostazione che il ponte aveva dichiarato
+    # inapplicabile.
+    assert kwargs["thinking_budget"] == 0
+    assert kwargs["system_prompt"] == "p" and kwargs["context_str"] == "c"
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_non_duplica_il_turno_dell_utente(tmp_path):
+    """Il messaggio e' gia' in cronologia da prima dell'accodamento
+    (`_enqueue_chat_job` lo scrive PRIMA di accodare)."""
+    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    append_messages([{"role": "user", "content": "ciao"}], data_dir)
+    jid = _accoda_scaduto(q)
+    async with TestClient(TestServer(app)) as client:
+        await client.get("/api/chat/reply/" + jid)
+    assert [m["role"] for m in load_history(data_dir)] == ["user", "assistant"]
+
+
+@pytest.mark.asyncio
+async def test_due_poll_concorrenti_ripiegano_una_volta_sola(tmp_path):
+    """Il browser ne fa uno ogni 3,5 s, e due schede aperte sulla stessa
+    conversazione ne fanno due. Il reclamo e' atomico: il secondo trova lo
+    stato 'ripiego' e continua ad aspettare."""
+    import asyncio
+
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    jid = _accoda_scaduto(q)
+    async with TestClient(TestServer(app)) as client:
+        await asyncio.gather(client.get("/api/chat/reply/" + jid),
+                             client.get("/api/chat/reply/" + jid))
+    assert runner.chat.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_un_job_non_ancora_scaduto_continua_ad_aspettare_il_piano(tmp_path):
+    """La prova gemella: il ripiego non e' una scorciatoia che accorcia
+    l'attesa. Finche' la scadenza non e' passata, il piano ha la sua
+    occasione."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    ora = time.time()
+    jid = q.enqueue("chat", {}, {}, ora + 300, now=ora)
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert body == {"status": "pending"}
+    runner.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_senza_nessun_provider_in_catena_il_ripiego_lo_dice_invece_di_tacere(tmp_path):
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app["llm_router"] = None
+    app["claude_runner"] = None
+    jid = _accoda_scaduto(q)
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert body["status"] == "error"
+    assert "nessun altro provider in catena" in body["message"]
+    # E il job e' chiuso: lasciarlo in 'ripiego' farebbe ritentare ogni poll.
+    assert q.get(jid)["status"] == "decided"
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_a_valle_si_annuncia_e_la_nota_resta_sul_job(tmp_path):
+    """La nota vive nel JOB, non nella richiesta che per caso lo ha raccolto:
+    un poll successivo, o un ricaricamento della pagina, la ritrova
+    invariata. Esattamente come `tools_called`, e per lo stesso motivo."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    _con_registro(app, catena=["claude", "openrouter"], chi_ha_risposto="openrouter")
+    jid = _accoda_scaduto(q)
+    async with TestClient(TestServer(app)) as client:
+        primo = await (await client.get("/api/chat/reply/" + jid)).json()
+        secondo = await (await client.get("/api/chat/reply/" + jid)).json()
+    atteso = ("Il Piano Claude Max non ha risposto in tempo: ha risposto "
+              "OpenRouter, a consumo.")
+    assert primo == {"status": "done", "reply": "sync reply", "nota": atteso}
+    assert secondo["nota"] == atteso
+
+
+@pytest.mark.asyncio
+async def test_la_nota_non_finisce_in_cronologia(tmp_path):
+    """Una nota persistita diventa contesto che il modello rilegge al turno
+    dopo, e su cui ragiona. E' la stessa famiglia del difetto dichiarato su
+    «Errore temporaneo del servizio AI», che in cronologia ci finisce e non
+    dovrebbe."""
+    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
+    append_messages([{"role": "user", "content": "ciao"}], data_dir)
+    jid = _accoda_scaduto(q)
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert body["nota"]
+    for m in load_history(data_dir):
+        assert "Piano Claude Max" not in m["content"]
+
+
+@pytest.mark.asyncio
+async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
+    """Il registro, per il piano, era VUOTO PER COSTRUZIONE: il ponte non passa
+    dal router, quindi nessuno registrava mai un esito per `subscription` e la
+    sua riga nella pagina Modelli diceva per sempre «non l'hai ancora usato».
+    Questo e' l'unico punto del prodotto in cui si osserva qualcosa sul piano.
+
+    E la famiglia e' `scaduto`, non il ramo di scorta: quello direbbe «ha
+    rifiutato», che e' piu' largo del fatto -- il piano non ha rifiutato, non
+    ha risposto."""
+    from hiris.app.decisione_modelli import frase_esito
+
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    registro = _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
+    ora = time.time()
+    jid = _accoda_scaduto(q, ora=ora)
+    async with TestClient(TestServer(app)) as client:
+        await client.get("/api/chat/reply/" + jid)
+
+    esito = registro.esito("subscription")
+    assert esito["tipo"] == "rifiutato" and esito["famiglia"] == "scaduto"
+    assert esito["codice"] is None
+    # `durata_s` e' quanto il piano ha AVUTO, misurato sul job (nato 300 s
+    # prima della scadenza), non riletto dall'archivio -- che l'utente puo'
+    # aver cambiato mentre il turno era in volo.
+    assert 298 < esito["durata_s"] < 302, esito["durata_s"]
+    frase = frase_esito(esito, posizione=1, adesso=esito["quando"] + 120)
+    assert frase == "non ha risposto in tempo — l'ultima richiesta, 2 min fa"
+    assert "rifiutato" not in frase
+
+
+@pytest.mark.asyncio
+async def test_mentre_ripiega_la_conversazione_e_occupata(tmp_path):
+    """Un ripiego in corso e' un turno in corso: la chiamata al modello puo'
+    durare decine di secondi, e lasciar partire un secondo turno intanto
+    significherebbe due risposte in volo sulla stessa conversazione. Lo stato
+    'ripiego' conta come in volo SENZA il filtro sulla scadenza -- che per lui
+    sarebbe sempre passata."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    jid = _accoda_scaduto(q)
+    assert q.has_pending_chat() is False, "scaduto e non ancora reclamato: libera"
+    assert q.reclama_scaduto(jid, time.time()) is not None
+    assert q.has_pending_chat() is True
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "seconda"})
+        assert resp.status == 409
+    runner.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_un_ripiego_in_corso_si_aspetta_e_non_si_ritenta(tmp_path):
+    """Lo stato 'ripiego' non e' terminale e non e' un errore: si aspetta come
+    si aspettava il piano. Se il poll lo trattasse come `expired`, l'utente
+    leggerebbe «La risposta non e' arrivata in tempo» mentre la catena sta
+    ancora scrivendo la sua risposta."""
+    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    jid = _accoda_scaduto(q)
+    q.reclama_scaduto(jid, time.time())
+    async with TestClient(TestServer(app)) as client:
+        body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert body == {"status": "pending"}
+    runner.chat.assert_not_awaited()

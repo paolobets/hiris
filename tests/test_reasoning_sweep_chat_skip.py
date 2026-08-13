@@ -41,7 +41,8 @@ from hiris.app import server
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
-def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False):
+def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False,
+                               scadenza_min=None):
     src = inspect.getsource(server._on_startup)
     start = src.index("    async def _reasoning_sweep() -> None:")
     end_marker = "reasoning_queue.prune(_time.time() - 7 * 86400)"
@@ -65,6 +66,14 @@ def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False):
         # indietro in silenzio, questo namespace ha smesso di funzionare
         # rumorosamente.
         "_ponte_attivo": server._ponte_attivo,
+        # Task 14: la spazzata legge anche `app["models_config"]`, per sapere
+        # dopo quanto un ripiego preso in carico e mai finito e' uno schianto.
+        # Il confine e' il DOPPIO della scadenza, perche' il ripiego COMINCIA
+        # alla scadenza: il margine e' il tempo che la catena ha per
+        # rispondere. `app` e' un dizionario perche' e' cosi' che la spazzata
+        # lo usa (`app.get(...)`), non perche' sia comodo.
+        "app": ({} if scadenza_min is None
+                else {"models_config": {"ponte": {"scadenza_min": scadenza_min}}}),
     }
     exec(compile(func_src, "<_reasoning_sweep extracted from server.py>", "exec"), namespace)
     return namespace["_reasoning_sweep"]
@@ -159,4 +168,94 @@ async def test_sweep_no_op_when_bridge_and_subscription_both_off(tmp_path, monke
 
     # Early return before sweep_expired: the job is untouched (still 'pending').
     assert q.get("holistic-job")["status"] == "pending"
+    q.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 14: lo sweep non ruba il lavoro al poll, e raccoglie i ripieghi
+# schiantati.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_lo_sweep_non_tocca_un_ripiego_in_corso(tmp_path, monkeypatch):
+    """La convivenza fra sweep e poll. Il ripiego vive nella rotta di poll
+    (ogni 3,5 s), lo sweep gira ogni 2 minuti: se lo sweep marcasse 'expired'
+    un job in 'ripiego', l'utente leggerebbe «La risposta non e' arrivata in
+    tempo. Riprova.» mentre la catena sta scrivendo la sua risposta -- e quella
+    risposta, gia' pagata, finirebbe in un job che nessuno guarda piu'.
+
+    Non e' una guardia scritta apposta: la `WHERE status IN
+    ('pending','claimed')` di `sweep_expired` esclude 'ripiego' da sola. E'
+    proprio questa la ragione per cui e' sicura, ed e' per questo che si
+    verifica invece di assumerla."""
+    monkeypatch.setenv("BRIDGE_ENABLED", "1")
+
+    q = ReasoningQueue(str(tmp_path / "r.db"))
+    now = _time.time()
+    q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
+    assert q.reclama_scaduto("chat-job", now) is not None
+
+    sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
+    await sweep()
+
+    assert q.get("chat-job")["status"] == "ripiego"
+    q.close()
+
+
+@pytest.mark.asyncio
+async def test_lo_sweep_raccoglie_i_ripieghi_schiantati(tmp_path, monkeypatch):
+    """Un ripiego che non finisce mai -- processo caduto a meta' chiamata --
+    non puo' restare in volo per sempre: `prune` cancella 'decided', 'expired'
+    e 'failed', mai 'ripiego', e finche' resta li' tiene anche la
+    conversazione bloccata sul 409.
+
+    L'orologio non avanza da solo: si finge un ripiego reclamato molto tempo
+    fa (oltre il doppio della scadenza) invece di aspettare, che e' l'unico
+    modo di provare un confine."""
+    monkeypatch.setenv("BRIDGE_ENABLED", "1")
+
+    q = ReasoningQueue(str(tmp_path / "r.db"))
+    now = _time.time()
+    # Scadenza 5 minuti -> il confine e' 10 minuti fa. Questo ripiego e' stato
+    # reclamato 11 minuti fa: e' uno schianto.
+    q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="vecchio",
+              now=now - 16 * 60)
+    q.reclama_scaduto("vecchio", now - 11 * 60)
+    # E questo un minuto fa: sta ancora lavorando, e non si tocca.
+    q.enqueue("chat", {}, {"history": []}, now - 60, job_id="fresco", now=now - 6 * 60)
+    q.reclama_scaduto("fresco", now - 60)
+
+    sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
+    await sweep()
+
+    assert q.get("vecchio")["status"] == "failed"
+    assert q.get("vecchio")["context"] == {}
+    assert q.get("fresco")["status"] == "ripiego", (
+        "il confine e' il DOPPIO della scadenza: un ripiego cominciato un "
+        "minuto fa non e' uno schianto")
+    q.close()
+
+
+@pytest.mark.asyncio
+async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_path, monkeypatch):
+    """La prova gemella della precedente, sul NUMERO: il confine non e' un
+    dieci scritto a mano, e' il doppio di `ponte.scadenza_min` -- lo stesso
+    valore che `_enqueue_chat_job` usa per scrivere la scadenza. Con una
+    scadenza lunga il margine cresce con lei, altrimenti un ripiego legittimo
+    verrebbe ucciso mentre lavora."""
+    monkeypatch.setenv("BRIDGE_ENABLED", "1")
+
+    q = ReasoningQueue(str(tmp_path / "r.db"))
+    now = _time.time()
+    q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="j", now=now - 71 * 60)
+    q.reclama_scaduto("j", now - 11 * 60)
+
+    # Scadenza 60 minuti -> confine a 120 minuti fa: undici minuti non bastano.
+    await _load_real_reasoning_sweep(q, scadenza_min=60)()
+    assert q.get("j")["status"] == "ripiego"
+
+    # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano.
+    await _load_real_reasoning_sweep(q, scadenza_min=5)()
+    assert q.get("j")["status"] == "failed"
     q.close()

@@ -38,6 +38,19 @@ from hiris.app.agent import runner
 from hiris.app.claude_runner import resolve_model
 
 
+@pytest.fixture(autouse=True)
+def il_piano_puo_rispondere(monkeypatch):
+    """Il token del piano: senza, dal Task 14 il turno NON viene accodato.
+
+    «Ponte acceso senza token» ha smesso di essere uno stato in cui il
+    messaggio muore in coda: e' un RIPIEGO, e il turno scende alla catena nella
+    stessa richiesta. Un'app di prova col ponte acceso e senza token non
+    descrive piu' il ponte, quindi ogni test di questo file che parla del job
+    accodato sarebbe diventato un test su un'altra cosa."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
+
+
+
 # ---------------------------------------------------------------------------
 # [1]-[4]: modello_cli (+ resolve_model a monte)
 # ---------------------------------------------------------------------------

@@ -10,10 +10,11 @@ STRUTTURA con cui la pagina ha potuto essere vera riga per riga e falsa nel
 complesso.
 
 Qui si compone la DECISIONE. La pagina disegna ciò che le viene detto e non
-calcola niente. Il guadagno non è di stile: il giorno in cui il ponte imparerà
-a ripiegare, la pagina lo disegnerà senza che nessuno la modifichi -- e non
-esiste nessun momento in cui la pagina possa disegnare un ripiego che il
-backend non fa.
+calcola niente. Il guadagno non è di stile, ed è stato incassato: il giorno in
+cui il ponte ha imparato a ripiegare (Task 14) la pagina lo ha disegnato senza
+che nessuno la modificasse -- è cambiata una stringa qui dentro, e nessun test
+del frontend. E non esiste nessun momento in cui la pagina possa disegnare un
+ripiego che il backend non fa.
 
 LE PAROLE STANNO QUI, non nel frontend, perché sono affermazioni sul
 prodotto: vanno pinnate dove si pinnano le altre (stessa scelta di
@@ -204,6 +205,18 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # aggiunge niente: il fatto è che non esiste. Il conteggio serve dove
         # distingue l'incidente dallo stato, non dove lo stato è ovvio.
         return "il modello non esiste più%s, %s" % (fra_parentesi, eta)
+    if famiglia == "scaduto":
+        # Il Piano Claude Max, e per ora solo lui: e' l'unico anello che non
+        # risponde in linea -- il turno passa da una coda, e un worker altrove
+        # lo serve (o non lo serve). «Ha rifiutato» sarebbe piu' largo del
+        # fatto e manderebbe a cercare una credenziale che non c'entra: qui
+        # non c'e' nessun codice, nessuna risposta e nessun rifiuto, c'e' un
+        # silenzio con una data. Il CONTEGGIO c'e' perche' distingue
+        # l'incidente dallo stato, che e' la ragione per cui esiste in questo
+        # modulo: due scadenze di fila su un piano acceso vogliono dire che il
+        # worker non gira, e la pagina lo fa vedere senza dirlo.
+        return "non ha risposto in tempo — %s, %s" % (
+            _quante(esito["da_quante"]), eta)
     if famiglia == "irraggiungibile":
         # Nessun codice, perché non c'è stata nessuna risposta da cui prenderlo:
         # «non risponde all'indirizzo» è tutto ciò che si è potuto vedere.
@@ -224,6 +237,59 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
     return "ha rifiutato %s, %s" % (_quante(esito["da_quante"]), eta)
 
 
+# ── La nota del ripiego: una riga che dice cosa e' successo, non perche' ──
+#
+# Decisione del proprietario, 13 agosto: **il ripiego si annuncia OGNI VOLTA**,
+# e la ragione e' dei soldi -- un ripiego silenzioso dal forfait al consumo si
+# scopre a fine mese. Sta qui e non in `api/handlers_chat.py` perche' e'
+# un'affermazione sul prodotto, come tutte le altre di questo file: nella pagina
+# della chat sarebbe una seconda voce che parla del prodotto, libera di
+# divergere dalla prima.
+
+# I tre fatti che il turno puo' aver osservato, e non uno di piu'. Sono le
+# STESSE tre parole che `api/handlers_chat._piano_puo_rispondere` restituisce e
+# che `_ripiega_sulla_catena` passa: la corrispondenza e' pinnata da un test,
+# perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
+# -- produrrebbe silenzio, che e' peggio.
+_MOTIVI_RIPIEGO: dict[str, str] = {
+    "scadenza": "non ha risposto in tempo",
+    "manca il token": "non ha un token con cui rispondere",
+    "tetto giornaliero": "ha raggiunto il suo tetto di messaggi per oggi",
+}
+
+
+def nota_ripiego(*, motivo: str, chi_ha_risposto: str) -> str:
+    """La riga che dichiara un ripiego dal piano a forfait alla catena.
+
+    E' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa:
+    la stessa regola scritta in `azione/porta.py` per gli avvisi di `esegui`, e
+    per lo stesso motivo -- la' una frase che affermava piu' del misurato
+    («nessuno stato e' cambiato») produsse sulla casa vera una diagnosi
+    inventata («probabile problema di comunicazione col dispositivo») che mando'
+    il proprietario a cercare un guasto inesistente.
+
+    Quindi: si dice CHE cosa il piano non ha fatto e CHI ha risposto al suo
+    posto, con la sua natura. NON si dice perche' il piano non abbia risposto,
+    non si dice se sia normale, non si consiglia niente, e non si allarma --
+    non e' un avviso, e a schermo sta in tondo.
+
+    **Due silenzi, e sono la stessa regola.** Un motivo che non e' fra i tre, o
+    un provider di cui non si conosce la natura, non producono una frase
+    approssimativa: producono `""`, e la nota non si scrive. La natura e' la
+    meta' che riguarda i soldi -- e' la ragione per cui questa riga esiste -- e
+    una riga falsa sui soldi e' peggio del silenzio. Il chiamante ha gia' la
+    stessa regola per «chi ha risposto» (vedi `_nota_di_chi_ha_risposto`): qui
+    si ridice perche' questa funzione puo' essere chiamata da chiunque, e una
+    regola che vale solo se il chiamante se la ricorda non e' una regola.
+    """
+    fatto = _MOTIVI_RIPIEGO.get(motivo)
+    quale_natura = natura(chi_ha_risposto)
+    if not fatto or not quale_natura:
+        return ""
+    return "Il Piano Claude Max {}: ha risposto {}, {}.".format(
+        fatto, nome(chi_ha_risposto), quale_natura)
+
+
 def componi_adesso(
     *,
     catena: list[str],
@@ -238,46 +304,48 @@ def componi_adesso(
     stessa lista che `server.py` passa a `LLMRouter(model_chain=...)` e
     pubblica su `app["catena_modelli"]`, non una seconda derivazione.
 
-    `ponte_attivo` è `app["ponte_attivo"]`. Quando è vero il turno NON entra
-    in catena affatto: `api/handlers_chat.handle_chat` dirotta sulla coda
-    PRIMA della riga che prende il router, e non c'è ritorno. È per questo che
-    il ponte «scavalca» invece di «ripiegare», ed è per questo che la frase
-    cambia soggetto invece di cambiare ordine.
+    `ponte_attivo` è `app["ponte_attivo"]`. Quando è vero E c'è il token, il
+    turno parte dal piano: `api/handlers_chat.handle_chat` lo accoda invece di
+    prendere il router. Dal Task 14 quella strada ha un RITORNO -- se il piano
+    non risponde entro la scadenza, la rotta di poll rifà il turno sulla catena
+    -- quindi il piano è il primo anello e non più un bivio: la frase cambia
+    soggetto perché è lui a provare per primo, non perché la catena non esista.
 
-    `scadenza_ponte_min` è `BRIDGE_DEADLINE_MIN`, i minuti dopo i quali un
-    turno accodato sul ponte muore senza risposta. Lo passa il chiamante
-    perché questo modulo non legge `os.environ`: il numero è LO STESSO che
-    `api/handlers_chat._enqueue_chat_job` usa per scrivere la scadenza, non
-    un secondo default che può divergere da quello vero.
+    `scadenza_ponte_min` sono i minuti dopo i quali un turno accodato sul ponte
+    passa al successivo della catena. Lo passa il chiamante perché questo
+    modulo non legge `os.environ`: il numero è LO STESSO che
+    `api/handlers_chat._enqueue_chat_job` usa per scrivere la scadenza (dal
+    Task 10 dall'archivio, `ponte.scadenza_min`), non un secondo default che
+    può divergere da quello vero.
     """
     ponte_ha_token = bool(credenziali.get("subscription"))
     diagnosi: list[dict] = []
 
     ponte_muto = ponte_attivo and not ponte_ha_token
-    if ponte_attivo and not ponte_muto:
+    if ponte_attivo and ponte_ha_token:
         chi = "subscription"
         via = "ponte"
-    elif ponte_muto:
-        # Il quarto stato: «non può rispondere». Non è ipotetico -- è
-        # raggiungibile oggi e non lascia traccia. `server._ponte_attivo` è
-        # `BRIDGE_ENABLED or _sub_first_class`, ma il worker che risponde
-        # parte solo da `should_start_agent_worker()`, che pretende il token:
-        # il turno viene accodato e nessuno lo reclama.
-        chi = None
-        via = ""
     else:
+        # Anche quando il ponte è acceso SENZA token. Fino al Task 14 questo
+        # era il quarto stato -- «non può rispondere» -- perché il turno veniva
+        # accodato in una coda che nessuno serviva (`should_start_agent_worker`
+        # pretende il token) e scadeva. Adesso `handle_chat` non lo accoda
+        # affatto: se il piano non può rispondere, il turno scende alla catena
+        # nella stessa richiesta. Chi risponde è quindi il primo della catena,
+        # come col ponte spento -- e ciò che resta da dichiarare non è più un
+        # guasto, è un costo (vedi la diagnosi più sotto).
         chi = catena[0] if catena else None
         via = "catena" if chi else ""
 
     if chi is None:
         if ponte_muto:
-            frase = ("HIRIS non può rispondere: il ponte è acceso e manca il "
-                     "token del Piano Claude Max.")
+            frase = ("HIRIS non può rispondere: il ponte è acceso, manca il "
+                     "token del Piano Claude Max, e sotto di lui non c'è nessuno.")
             diagnosi.append({
                 "gravita": "guasto",
-                "testo": ("Il ponte è acceso ma manca il token: ogni messaggio "
-                          "viene accodato e scade dopo {} minuti senza "
-                          "risposta.".format(int(scadenza_ponte_min))),
+                "testo": ("Il ponte è acceso ma manca il token: nessun "
+                          "messaggio arriva al Piano Claude Max, e in catena "
+                          "non c'è nessun altro a cui passarlo."),
                 "azione": None,
             })
         else:
@@ -298,28 +366,61 @@ def componi_adesso(
     pezzi.append(natura(chi))
     frase = ", ".join(pezzi) + "."
 
-    if ponte_attivo:
-        # Qui il ponte ha il token (il caso senza è uscito sopra, con
-        # `chi = None`): il piano risponde davvero. La gravità dice quanto
-        # costa lo scavalco, ed è un fatto misurato sulla catena, non
-        # un'ipotesi: con dei provider sotto è SPRECO (li hai configurati e
-        # non li usa nessuno), senza niente sotto è GUASTO (il ponte è
-        # l'unica cosa che c'è: il giorno che non risponde, non risponde
-        # nessuno). Il Task 1 lasciò questa riga senza test; le due prove
-        # gemelle stanno in `tests/test_decisione_modelli.py`.
+    if ponte_attivo and ponte_ha_token:
+        # Il piano risponde davvero, ed è il PRIMO ANELLO -- non più un bivio.
+        # La gravità resta un fatto misurato sulla catena, non un'ipotesi, ma
+        # i due fatti sono cambiati insieme al comportamento: con dei provider
+        # sotto non c'è più nessuno spreco da dichiarare (prima «li hai
+        # configurati e non li usa nessuno», adesso li usa quando il piano non
+        # risponde: è la rete, e funziona), e ciò che resta da dire è quanto si
+        # aspetta prima che la rete entri in funzione -- un costo, non un
+        # guasto, quindi in tondo. Senza niente sotto è GUASTO, e la frase non
+        # promette un successivo che non c'è: il Task 1 lasciò questa riga
+        # senza test, le due prove gemelle stanno in
+        # `tests/test_decisione_modelli.py`.
+        if catena:
+            diagnosi.append({
+                "gravita": "fatto",
+                "testo": ("Il ponte è acceso: il Piano Claude Max prova per "
+                          "primo, e se non risponde entro {} minuti il turno "
+                          "passa al successivo della catena."
+                          .format(int(scadenza_ponte_min))),
+                "azione": None,
+            })
+        else:
+            diagnosi.append({
+                "gravita": "guasto",
+                "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
+                          "c'è nessun altro: se non risponde entro {} minuti, "
+                          "il turno non ha dove andare."
+                          .format(int(scadenza_ponte_min))),
+                "azione": None,
+            })
+    elif ponte_muto:
+        # Il ponte acceso senza token non è più un turno perso (invariante 5,
+        # chiuso al Task 3 come silenzio e chiuso qui come perdita): è un turno
+        # che passa alla catena. Resta però un fatto che costa, e si dice --
+        # per la stessa ragione per cui la chat lo annuncia a ogni risposta
+        # (`nota_ripiego`): un ripiego silenzioso dal forfait al consumo si
+        # scopre a fine mese.
         diagnosi.append({
-            "gravita": "guasto" if not catena else "spreco",
-            "testo": ("Il ponte è acceso: ogni messaggio passa dal Piano Claude "
-                      "Max, e la catena qui sotto non viene consultata."),
+            "gravita": "spreco",
+            "testo": ("Il ponte è acceso ma manca il token: nessun messaggio "
+                      "arriva al Piano Claude Max, e ogni turno passa alla "
+                      "catena — dal forfait al consumo."),
             "azione": None,
         })
     elif ponte_ha_token:
         # La riga che costa di più: un abbonamento pagato e non usato costa
         # soldi ogni mese, un provider che fallisce costa un secondo di
         # latenza a messaggio. L'azione consigliata è una sola e sta qui
-        # (progetto §9.3). `azione` resta None finché il piano non può
-        # entrare in catena: il Task 14 la popola, e prometterla prima
-        # sarebbe un bottone che non fa niente.
+        # (progetto §9.3). `azione` resta None, e il Task 14 NON la popola,
+        # benché il piano sia adesso un anello: ci si entra accendendo il
+        # ponte, e il ponte si accende da `BRIDGE_ENABLED`, cioè
+        # dall'ambiente. Finché `ponte.attivo` non viene letto dall'archivio
+        # (Task 13), un bottone qui scriverebbe una PUT che il server accetta
+        # con 200 e butta via -- la lezione del Task 8, che quei bottoni li
+        # aveva già trovati e tolti dalla riga del piano.
         diagnosi.append({
             "gravita": "spreco",
             "testo": "Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.",
@@ -344,13 +445,13 @@ def componi_topologia(
 ) -> tuple[list[dict], list[dict]]:
     """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.
 
-    Il piano compare in catena SOLO quando il ponte è acceso, e in posizione 1:
-    oggi il ponte non è un anello, è un bivio a monte del router
-    (`api/handlers_chat.handle_chat` dirotta prima di prendere il router e non
-    ha ritorno). Disegnarlo come un anello sarebbe promettere un ripiego che il
-    prodotto non fa -- esattamente il difetto che questa fetta chiude. Quando il
-    ripiego esisterà (Task 14), cambierà QUESTA funzione, e la pagina disegnerà
-    un anello senza che nessuno la modifichi.
+    Il piano compare in catena SOLO quando il ponte è acceso, e in posizione 1.
+    Dal Task 14 è un ANELLO e non più un bivio: se non risponde entro la
+    scadenza, la rotta di poll rifà il turno sulla catena. Il disegno non è
+    cambiato -- era già una riga in posizione 1 -- ma la frase che sta sotto sì
+    (vedi `connettore`), ed è cambiata QUI, nel backend: la pagina disegna
+    l'anello senza che nessuno la modifichi, che è la promessa che il progetto
+    §11.1 aveva messo per iscritto.
 
     `riordinabile` è False per il piano, sempre, anche dopo il Task 14. Il piano
     sta IN TESTA O FUORI (decisione del proprietario, 13 agosto): metterlo
@@ -374,15 +475,11 @@ def componi_topologia(
 
     `connettore` è LA FRASE CHE STA SOTTO LA RIGA, e dice l'unica cosa che
     serve per scegliere un ordine: quanto costa passare oltre. Sta qui, e non
-    nella pagina, perché è la SOLA affermazione della pagina Modelli che oggi
-    sarebbe falsa se fosse scritta bene per domani. Oggi il ponte non ripiega:
-    è un bivio a monte del router, e alla scadenza il messaggio va perso.
-    Disegnare fra il piano e la riga sotto un «se non risponde, si passa al
-    successivo» sarebbe promettere un ripiego che il prodotto non fa -- il
-    difetto 3, ricomparso come didascalia. Il giorno del ripiego (Task 14)
-    cambia questa stringa e la pagina dice la cosa nuova senza essere toccata:
-    è la promessa che il piano del Task 14 fa per iscritto («la prova che il
-    frontend non è stato toccato è che nessuno dei suoi test cambia»).
+    nella pagina, ed è la riga che ha dimostrato perché: fino al Task 14 diceva
+    «il ponte non ripiega, il messaggio va perso», perché era vero; il Task 14
+    ha cambiato la stringa e la pagina dice la cosa nuova senza essere toccata
+    (nessuno dei suoi test cambia). Scritta nel frontend sarebbe rimasta a
+    dire la regola di ieri, e a schermo la frase ci sarebbe stata lo stesso.
 
     Regola del connettore (progetto §5.1): mostra un NUMERO solo quando quel
     numero è una decisione di qualcuno. Il tempo del ponte e il timeout di
@@ -464,10 +561,12 @@ def componi_topologia(
     def nota(pid: str, in_catena: bool, ha_credenziale: bool) -> str:
         """La parola che spiega perché quella riga non ha i gesti delle altre.
 
-        Cambia con la regola, non con la pagina: il giorno in cui il ponte si
-        accende da qui (Task 13) e il piano diventa un anello (Task 14), qui
-        cambiano queste due stringhe -- e la pagina dice la cosa nuova senza
-        che nessuno la tocchi.
+        Cambia con la regola, non con la pagina. Il Task 14 ha fatto del piano
+        un anello e NON ha cambiato queste due stringhe: «in testa o fuori»
+        resta la decisione del proprietario anche adesso che ripiega, e ci si
+        entra ancora accendendo il ponte in Configurazione add-on. Cambieranno
+        il giorno in cui il ponte si accenderà da qui (Task 13) -- e la pagina
+        dirà la cosa nuova senza che nessuno la tocchi.
         """
         if ha_credenziale and senza_modello(pid):
             return ("L'indirizzo c'è, il modello no: finché manca non c'è "
@@ -485,20 +584,36 @@ def componi_topologia(
 
     def connettore(pid: str) -> str:
         if pid == "subscription":
-            # Oggi il ponte NON ripiega. Finché è così, la frase dice quello che
-            # succede davvero -- il messaggio va perso -- invece di promettere
-            # la riga sotto.
-            return ("il ponte non ripiega: se non risponde entro {} min il "
-                    "messaggio va perso".format(int(scadenza_ponte_min)))
+            # Il Task 14 ha cambiato QUESTA stringa, ed è il momento in cui il
+            # progetto §11.1 si incassa: la pagina disegna un anello invece di
+            # un vicolo cieco senza che nessuno tocchi il frontend. Diceva «il
+            # ponte non ripiega: se non risponde entro N min il messaggio va
+            # perso», e finché è stato vero è stato giusto dirlo.
+            return "se non risponde entro {} min".format(int(scadenza_ponte_min))
         if pid == "ollama":
             return "se non risponde entro {} s".format(int(timeout_ollama_s))
         return "se rifiuta, subito"
 
     def connettore_nota(pid: str) -> str:
+        """Il tetto utile che nessuno schema dichiara, e che il ripiego ha reso
+        più caro invece che meno.
+
+        Il ripiego vive nella ROTTA DI POLL (`handlers_chat._ripiega_sulla_
+        catena`): parte al primo poll che arriva dopo la scadenza. Ma
+        `static/chat/send.js` smette di interrogare a `CHAT_POLL_MAX_MS`
+        (5 minuti), quindi con una scadenza sopra i cinque non arriva NESSUN
+        poll dopo di lei: il turno non passa al successivo, e lo sweep si
+        limita a marcarlo scaduto. Prima di questo task la nota diceva «la
+        risposta la trovi ricaricando» -- vero allora (il worker del ponte
+        poteva ancora rispondere e `_submit_chat_reply` scriveva in
+        cronologia), falso adesso per il ripiego, che non avviene affatto.
+        Si dichiara, come il Task 6 ha dichiarato il tetto: è un fatto, non un
+        divieto, ed è composta con lo STESSO numero del connettore -- due
+        letture non potrebbero divergere."""
         if pid != "subscription" or int(scadenza_ponte_min) <= 5:
             return ""
-        return ("sopra i 5 minuti la chat smette di aspettare prima: la "
-                "risposta la trovi ricaricando")
+        return ("sopra i 5 minuti la chat smette di aspettare prima della "
+                "scadenza, e il turno non passa al successivo")
 
     def stato(pid: str, posizione: int | None, ha_credenziale: bool) -> str:
         """La riga di stato: l'ultimo esito osservato, e quanto è vecchio.

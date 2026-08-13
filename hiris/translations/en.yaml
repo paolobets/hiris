@@ -84,10 +84,10 @@ configuration:
       description: "Sends the chat to the plan's runner instead of the metered provider. There the chat knows and does as much as elsewhere."
     bridge_deadline_min:
       name: "How long to wait for a reply (minutes)"
-      description: "Past this time the message expires: an error in chat, no fallback to the metered provider. From 1 to 120, default 5."
+      description: "Past this time the turn moves to the next provider in the chain, and the reply says so. Above 5 minutes the chat stops waiting before the deadline and the fallback never starts. From 1 to 120, default 5."
     chat_daily_cap:
       name: "How many messages per day"
-      description: "Past this many messages a day over the bridge, the chat errors and does not send. Careful: 0 blocks them all, it does not mean unlimited. 0–1000."
+      description: "Past this many messages a day over the bridge, the turn moves to the metered provider instead of erroring, and the reply says so. Careful: 0 sends them all to the chain, it does not mean unlimited. 0–1000."
 
   # ── 4. Appearance and retention ───────────────────────────────────────────
   theme:

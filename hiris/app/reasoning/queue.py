@@ -22,9 +22,16 @@ CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, create
 """
 
 def _row(r) -> dict:
+    # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
+    # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
+    # QUANTO il piano ha avuto per rispondere, e quel numero e'
+    # `deadline_ts - created_ts` -- misurato, non il valore corrente
+    # dell'archivio, che l'utente puo' aver cambiato mentre il turno era in
+    # volo. Additivo: nessun lettore esistente pinna l'insieme delle chiavi.
     return {"job_id": r["job_id"], "kind": r["kind"], "status": r["status"],
             "nonce": r["nonce"], "wake": json.loads(r["wake_json"]),
-            "context": json.loads(r["context_json"]), "deadline_ts": r["deadline_ts"]}
+            "context": json.loads(r["context_json"]),
+            "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"]}
 
 class ReasoningQueue:
     def __init__(self, db_path: str) -> None:
@@ -126,6 +133,99 @@ class ReasoningQueue:
             self._conn.commit()
         return [_row(r) for r in rows]
 
+    # ── Il ripiego: da qui il ponte smette di essere un bivio ──────────────
+    #
+    # fetta «la catena diventa l'unica verita'», Task 14. Fino alla 2.4.1 un
+    # turno instradato sul ponte aveva una strada sola: o il piano rispondeva
+    # entro la scadenza, o `sweep_expired` lo marcava 'expired' e il messaggio
+    # era perso -- la catena non veniva consultata MAI, perche' il bivio sta
+    # a monte del router (`api/handlers_chat.handle_chat`) e non ha ritorno.
+    # I due metodi qui sotto sono cio' che manca per farne un anello: si
+    # prende in carico il turno scaduto (una volta sola, chiunque lo chieda),
+    # lo si rifa' sulla catena, e lo si chiude con la risposta arrivata da li'.
+    #
+    # Lo stato nuovo si chiama 'ripiego' e NON e' uno stato terminale: `prune`
+    # cancella 'decided', 'expired' e 'failed', mai lui. Un ripiego che si
+    # schianta a meta' (processo caduto durante la chiamata al modello) resta
+    # quindi in volo per sempre, ed e' `fallisci_ripieghi_bloccati` -- chiamata
+    # dallo sweep di `server.py` -- a raccoglierlo.
+
+    def reclama_scaduto(self, job_id: str, now: float) -> Optional[dict]:
+        """Prende in carico un job di chat scaduto, per ripiegarlo sulla catena.
+
+        Atomico: due poll concorrenti (il browser ne fa uno ogni 3,5 s, e due
+        schede aperte sulla stessa conversazione ne fanno due) non possono
+        ripiegare due volte lo stesso turno -- il secondo trova lo stato
+        'ripiego' e riceve None.
+
+        Restituisce la riga col CONTESTO INTATTO: e' l'unico momento in cui si
+        puo', perche' `sweep_expired` lo azzera quando marca 'expired'. Il
+        contesto porta la cronologia, il prompt e il nucleo: e' cio' che serve
+        per rifare il turno sulla catena senza ricomporlo da capo -- e
+        ricomporlo da capo darebbe una risposta a una domanda leggermente
+        diversa (il nucleo di ADESSO, non quello del momento in cui l'utente
+        ha scritto).
+
+        `claimed_ts` viene riscritto: il reclamo E' una presa in carico, ed e'
+        da quel momento che si conta per decidere se un ripiego si e'
+        schiantato (vedi `fallisci_ripieghi_bloccati`). Il `nonce` va a NULL
+        perche' non c'e' piu' nessun worker a cui appartenga questo job: il
+        reclamo ha gia' fatto il lavoro che il nonce faceva -- la mutua
+        esclusione -- e lasciarlo li' significherebbe che una `submit` in
+        ritardo del worker del ponte potrebbe ancora chiudere il job mentre il
+        ripiego e' in corso.
+        """
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
+                "AND status IN ('pending','claimed') AND deadline_ts <= ?",
+                (job_id, now)).fetchone()
+            if r is None:
+                return None
+            self._conn.execute(
+                "UPDATE reasoning_jobs SET status='ripiego', nonce=NULL, "
+                "claimed_ts=? WHERE job_id=?", (now, job_id))
+            self._conn.commit()
+        out = _row(r)
+        out["status"] = "ripiego"
+        out["nonce"] = None
+        return out
+
+    def risolvi_ripiego(self, job_id: str, decision: dict, now: float) -> bool:
+        """Chiude un job in 'ripiego' con la risposta arrivata dalla catena.
+
+        Stesso azzeramento di `submit`/`sweep_expired` (vedi il commento sopra
+        `submit`): il contesto porta il nucleo per intero e non deve restare su
+        disco fino alla potatura a 7 giorni. Non c'e' nonce da verificare -- il
+        reclamo e' gia' avvenuto, ed e' lui la mutua esclusione."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE reasoning_jobs SET status='decided', decided_ts=?, "
+                "decision_json=?, context_json='{}' WHERE job_id=? AND status='ripiego'",
+                (now, json.dumps(decision), job_id))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def fallisci_ripieghi_bloccati(self, before_ts: float) -> int:
+        """Chiude come 'failed' i ripieghi presi in carico e mai finiti.
+
+        Un job resta in 'ripiego' finche' `risolvi_ripiego` non lo chiude: se
+        il processo cade a meta' della chiamata al modello, nessuno lo chiude
+        piu'. E 'ripiego' non e' fra gli stati che `prune` cancella, quindi
+        quella riga -- col suo contesto, cioe' col nucleo -- resterebbe su
+        disco per sempre. Si azzera anche qui il contesto, per la stessa
+        ragione delle altre due chiusure.
+
+        `before_ts` e' un CONFINE, non una durata: lo calcola il chiamante
+        (`server._reasoning_sweep`) dalla scadenza configurata, cosi' questo
+        modulo non ha bisogno di conoscere ne' l'archivio ne' un orologio."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE reasoning_jobs SET status='failed', context_json='{}' "
+                "WHERE status='ripiego' AND claimed_ts <= ?", (before_ts,))
+            self._conn.commit()
+            return cur.rowcount
+
     def get(self, job_id: str) -> Optional[dict]:
         with self._lock:
             r = self._conn.execute("SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)).fetchone()
@@ -157,13 +257,24 @@ class ReasoningQueue:
         way to clear it. Takes an explicit `now`, like every other method on
         this class (enqueue/claim/submit/sweep_expired/count_chat_today),
         defaulting to time.time() only when the caller (production code)
-        doesn't pass one."""
+        doesn't pass one.
+
+        Task 14 (il ripiego): 'ripiego' conta come in volo, e SENZA il filtro
+        sulla scadenza -- che per lui sarebbe sempre passata, visto che ci si
+        entra solo dopo. Un turno che sta ripiegando e' un turno in corso: la
+        chiamata al modello sulla catena puo' durare decine di secondi, e
+        lasciar partire un secondo turno intanto significherebbe due risposte
+        in volo sulla stessa conversazione -- che e' esattamente cio' che
+        questa guardia esiste per impedire. Il rischio simmetrico (un ripiego
+        schiantato che tiene bloccata la conversazione per sempre) e' chiuso
+        da `fallisci_ripieghi_bloccati`, non da un filtro sul tempo qui."""
         ts = time.time() if now is None else now
         with self._lock:
             row = self._conn.execute(
                 "SELECT 1 FROM reasoning_jobs "
-                "WHERE kind='chat' AND status IN ('pending','claimed') "
-                "AND deadline_ts > ? LIMIT 1", (ts,)).fetchone()
+                "WHERE kind='chat' AND (status='ripiego' OR "
+                "(status IN ('pending','claimed') AND deadline_ts > ?)) LIMIT 1",
+                (ts,)).fetchone()
         return row is not None
 
     def count_chat_today(self, now: Optional[float] = None) -> int:

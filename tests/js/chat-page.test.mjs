@@ -198,6 +198,113 @@ test('via ponte (202): senza strumenti non compare nessuna riga vuota', async (t
 });
 
 // ---------------------------------------------------------------------------
+// Il ripiego si annuncia (fetta «la catena diventa l'unica verità», Task 14).
+// Quando il turno passa dal Piano Claude Max -- a forfait -- a un provider a
+// consumo, la risposta lo dice: una riga sotto la bolla, non un avviso
+// invadente. La ragione è dei soldi: un ripiego silenzioso dal forfait al
+// consumo si scopre a fine mese.
+//
+// La riga arriva GIÀ SCRITTA dal server (`decisione_modelli.nota_ripiego`):
+// qui non si compone niente, e infatti nessuno di questi test conosce una
+// parola del prodotto oltre a quella che il finto server ha appena mandato.
+// I test sono a COPPIE, come quelli degli strumenti qui sopra: senza il
+// secondo di ciascuna, «disegna sempre una riga» passerebbe il primo.
+// ---------------------------------------------------------------------------
+
+const NOTA = 'Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRouter, a consumo.';
+
+test('via ponte (202): quando il turno ripiega, la risposta lo dice sotto la bolla', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.', nota: NOTA });
+
+  await window.HirisChatSend.send('quante luci accese?');
+  await tick(3700);
+
+  const nota = document.querySelector('.msg-nota');
+  assert.ok(nota, 'la nota del ripiego deve comparire');
+  assert.match(nota.textContent, /Il Piano Claude Max non ha risposto in tempo/);
+  /* Dentro la riga della risposta, e dentro la sua colonna: `.msg-row` è un
+     flex ORIZZONTALE (avatar | colonna), quindi un figlio diretto finirebbe
+     ACCANTO alla bolla invece che sotto. jsdom non calcola il layout e non se
+     ne accorgerebbe mai: qui si pinna la parentela, che è ciò che il layout
+     dipende da. */
+  const riga = document.querySelector('.msg-row.assistant');
+  assert.ok(riga.contains(nota), 'la nota appartiene a QUELLA risposta');
+  assert.ok(riga.querySelector('.msg-col').contains(nota),
+    'dentro la colonna, sotto la bolla -- non accanto');
+  assert.equal(document.querySelectorAll('.debug-row').length, 0,
+    'la nota non è una riga di registro: non crea una riga propria');
+});
+
+test('via ponte (202): senza nota non compare nessuna riga vuota', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.' });
+
+  await window.HirisChatSend.send('quante luci accese?');
+  await tick(3700);
+
+  assert.equal(document.querySelector('.msg-nota'), null,
+    'nessun ripiego -> nessuna riga');
+});
+
+test('ramo diretto (200): il ripiego a monte si annuncia sotto la bolla', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = async () => ({
+    ok: true, status: 200,
+    json: async () => ({ response: 'Le luci accese sono due.', nota: NOTA }),
+  });
+
+  await window.HirisChatSend.send('quante luci accese?');
+
+  const nota = document.querySelector('.msg-nota');
+  assert.ok(nota, 'anche il ramo sincrono rende la nota: sono due righe gemelle');
+  assert.equal(nota.textContent, NOTA);
+});
+
+test('ramo diretto (200): senza nota non compare nessuna riga vuota', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = async () => ({
+    ok: true, status: 200, json: async () => ({ response: 'Le luci accese sono due.' }),
+  });
+
+  await window.HirisChatSend.send('quante luci accese?');
+
+  assert.equal(document.querySelector('.msg-nota'), null);
+});
+
+test('appendNota con una nota vuota non disegna niente', (t) => {
+  /* La prova per mutazione lo ha chiesto: togliere `!testo` dalla guardia non
+     faceva cadere niente, perché send.js chiama `appendNota` solo dentro un
+     `if (data.nota)`. Ma `appendNota` è esportata su `window.HirisChatMessages`
+     e la nota è un campo FACOLTATIVO: la stringa vuota è il valore che
+     `nota_ripiego` restituisce quando non può parlare (motivo sconosciuto,
+     natura sconosciuta), ed è precisamente il caso in cui non si deve vedere
+     niente. Una guardia che nessuno prova insegna a fidarsi delle guardie:
+     o si toglie, o si prova. */
+  const { window, document } = setupChat(t);
+  const riga = window.HirisChatMessages.appendMsg('assistant', 'Le luci accese sono due.');
+  window.HirisChatMessages.appendNota(riga, '');
+  assert.equal(document.querySelector('.msg-nota'), null);
+  window.HirisChatMessages.appendNota(riga, 'una nota vera');
+  assert.equal(document.querySelectorAll('.msg-nota').length, 1);
+});
+
+test('la nota non viene interpretata: è testo, non markup', async (t) => {
+  const { window, document } = setupChat(t);
+  window.fetch = async () => ({
+    ok: true, status: 200,
+    json: async () => ({ response: 'ok', nota: '<img src=x onerror=alert(1)>' }),
+  });
+
+  await window.HirisChatSend.send('ciao');
+
+  const nota = document.querySelector('.msg-nota');
+  assert.equal(nota.querySelector('img'), null,
+    'textContent, mai innerHTML: il testo viene dal server');
+  assert.equal(nota.textContent, '<img src=x onerror=alert(1)>');
+});
+
+// ---------------------------------------------------------------------------
 // Persistenza chat (bug live-verify #3): tornando alla chat da config (reload
 // pieno) la conversazione spariva perche' la history non veniva MAI
 // ricaricata al boot. restore() la ricarica.

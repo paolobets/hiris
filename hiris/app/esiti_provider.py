@@ -52,7 +52,15 @@ import time
 # l'indirizzo (irraggiungibile). Collassarle in «errore temporaneo del servizio
 # AI» è ciò che il codice faceva fino a questa fetta, ed è la ragione per cui
 # il proprietario non ha mai saputo del credito esaurito.
-FAMIGLIE = ("credenziale", "modello", "irraggiungibile", "altro")
+# `scaduto` e' la quinta, ed e' nata col ripiego (Task 14). Non e' un rifiuto:
+# il Piano Claude Max non risponde con un codice, non solleva un'eccezione e
+# non chiude una connessione -- semplicemente il turno accodato non viene
+# servito entro la scadenza. Chiamarlo «ha rifiutato» (il ramo di scorta)
+# sarebbe una parola piu' larga del fatto, cioe' il difetto che questa fetta
+# esiste per chiudere: il piano non ha rifiutato, non ha risposto. Chiede a chi
+# legge un'azione ancora diversa dalle altre tre -- guardare se il worker del
+# ponte sta girando -- ed e' per questo che e' separata.
+FAMIGLIE = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
 
 # La sola tabella di questo modulo, e sta qui e non in `frase_esito` perché è
 # una MISURA (che cosa ha risposto il server), non una parola. 402 è il codice

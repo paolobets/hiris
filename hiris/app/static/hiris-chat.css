@@ -285,6 +285,19 @@
        valida. Farla funzionare sarebbe stato rimettere in vita una riga che
        non serve a nessuno. */
     .msg-time { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); padding: 0 4px; }
+    /* La nota di un ripiego. In TONDO e in `--text-3`, mai in `--warn-ink`:
+       non e' un avviso, e' un fatto -- il Piano Claude Max non ha risposto e
+       ha risposto qualcun altro, con la sua natura. Colorarla d'ambra
+       direbbe «attenzione» dove il sistema non ha misurato nessun pericolo, ed
+       e' la stessa disciplina degli avvisi di `esegui` (`azione/porta.py`):
+       un fatto su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa.
+       Vive dentro `.msg-col`, sotto la bolla, e ne eredita la larghezza. */
+    .msg-nota {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-3);
+      padding: 0 4px;
+    }
 
     /* Welcome */
     #welcome {

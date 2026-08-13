@@ -44,6 +44,14 @@
           var data = await r.json();
           if (data.status === 'done') {
             window.HirisChatMessages.updateBubble(placeholderRow, data.reply || '');
+            /* Il ripiego si annuncia (decisione del proprietario, 13 agosto):
+               quando il turno passa dal piano a forfait a un provider a
+               consumo, la risposta lo dice. Il campo e' FACOLTATIVO e la
+               forma della risposta non cambia -- `status`/`reply` restano
+               identici -- quindi un client che lo ignori continua a
+               funzionare. Una riga per ramo, e le due righe sono gemelle:
+               quella del ramo diretto sta in fondo a send(). */
+            if (data.nota) window.HirisChatMessages.appendNota(placeholderRow, data.nota);
             /* Review totale della fetta E5: il ramo del ponte (202 -> job_id) e'
                l'UNICO che un tester con l'abbonamento percorre, ed era l'unico che
                NON mostrava gli strumenti usati. Il backend li manda anche qui
@@ -168,6 +176,10 @@
         return;
       }
       window.HirisChatMessages.updateBubble(attesa, data.response || data.error || 'Errore sconosciuto');
+      /* Vedi la gemella nel ramo del poll, sopra. Qui il ripiego e' quello a
+         monte: il piano non poteva ricevere il turno (niente token, o tetto
+         giornaliero pieno) e la catena ha risposto sincrona. */
+      if (data.nota) window.HirisChatMessages.appendNota(attesa, data.nota);
       if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
         window.HirisChatMessages.appendDebug(data.debug.tools_called);
       }

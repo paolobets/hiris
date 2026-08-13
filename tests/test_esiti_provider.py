@@ -140,11 +140,36 @@ def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
 
 def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
     """`FAMIGLIE` è l'elenco, e non è decorativo: `frase_esito` ha un ramo per
-    ognuna, e una quinta famiglia introdotta di soppiatto finirebbe nel ramo di
-    scorta senza che nessuno se ne accorga."""
-    assert set(FAMIGLIE) == {"credenziale", "modello", "irraggiungibile", "altro"}
+    ognuna, e una famiglia introdotta di soppiatto finirebbe nel ramo di
+    scorta senza che nessuno se ne accorga.
+
+    `scaduto` è la quinta, ed è arrivata col ripiego (Task 14): il Piano Claude
+    Max non risponde con un codice e non solleva niente -- il turno accodato
+    non viene servito entro la scadenza. Il ramo di scorta direbbe «ha
+    rifiutato», che è una parola più larga del fatto."""
+    assert set(FAMIGLIE) == {"credenziale", "modello", "irraggiungibile",
+                             "scaduto", "altro"}
     for codice in (400, 401, 402, 403, 404, 429, 500, None):
         assert famiglia_da_codice(codice) in FAMIGLIE
+    # `scaduto` non nasce da un codice HTTP: non c'è nessuna risposta da cui
+    # prenderlo. La scrive a mano l'unico punto che la osserva
+    # (`handlers_chat._ripiega_sulla_catena`), ed è per questo che questa riga
+    # sta qui e non nel ciclo qui sopra.
+    assert "scaduto" not in {famiglia_da_codice(c)
+                             for c in (400, 401, 402, 403, 404, 429, 500, None)}
+
+
+def test_una_scadenza_non_si_legge_come_un_rifiuto():
+    """La ragione per cui la quinta famiglia esiste, scritta come frase: chi
+    legge la riga del piano deve poter distinguere «non ha risposto» da «ha
+    rifiutato». Sono due azioni diverse per chi guarda -- guardare se il worker
+    del ponte gira, contro rifare la credenziale."""
+    esito = {"tipo": "rifiutato", "famiglia": "scaduto", "codice": None,
+             "messaggio": "nessuna risposta entro la scadenza del ponte",
+             "quando": 1000.0, "da_quante": 3, "durata_s": 300.0}
+    frase = frase_esito(esito, posizione=1, adesso=1000.0 + 600)
+    assert frase == "non ha risposto in tempo — le ultime 3 richieste, 10 min fa"
+    assert "rifiutato" not in frase
 
 
 def test_un_errore_di_connessione_e_irraggiungibile_non_altro():

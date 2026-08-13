@@ -12,6 +12,7 @@ from ..chat_store import (
 )
 from ..agent.runner import modello_cli
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError, resolve_model
+from ..decisione_modelli import nota_ripiego
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,79 @@ def _bridge_on(app) -> bool:
     return app.get("reasoning_queue") is not None
 
 
+def _piano_puo_rispondere(app) -> tuple[bool, str]:
+    """Il piano può servire un turno adesso? E, se no, con quali parole.
+
+    Le due condizioni sono le stesse che fino alla 2.4.1 facevano finire il
+    turno con un errore: il token assente (senza cui `server.
+    should_start_agent_worker` non fa partire il worker, e il messaggio veniva
+    accodato in una coda che nessuno serviva e scadeva dopo N minuti) e il
+    tetto giornaliero pieno (429, «Limite giornaliero di messaggi chat
+    raggiunto»). Sono, alla lettera, «il piano non è disponibile» -- la frase
+    che il proprietario ha chiesto -- e da questo task non finiscono più in un
+    errore: il turno scende alla catena.
+
+    La seconda parola NON porta il numero. È una chiave di
+    `decisione_modelli._MOTIVI_RIPIEGO`, non una frase per l'utente: la frase
+    la compone `nota_ripiego`, e un motivo che non è fra le tre chiavi non
+    produrrebbe un errore -- produrrebbe silenzio. Il numero vive nel log, che
+    è dove serve a chi indaga.
+
+    Il tetto si legge dall'ARCHIVIO (`ponte.tetto_giornaliero`), non da
+    `CHAT_DAILY_CAP`: fino a questo task erano DUE rappresentazioni dello
+    stesso numero -- l'ambiente, letto qui, e la copia d'archivio scritta dal
+    Task 6 che nessuno leggeva e che la pagina Modelli poteva riscrivere. È lo
+    stesso spostamento che il Task 10 ha fatto per `ponte.scadenza_min`, e per
+    la stessa ragione: quella che l'utente cambia dev'essere quella che il
+    turno subisce (invariante 1).
+    """
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        return False, "manca il token"
+    tetto = int((app.get("models_config") or {})
+                .get("ponte", {}).get("tetto_giornaliero", 50))
+    if app["reasoning_queue"].count_chat_today() >= tetto:
+        logger.warning(
+            "Tetto giornaliero del ponte raggiunto (%d messaggi): il turno "
+            "passa alla catena.", tetto)
+        return False, "tetto giornaliero"
+    return True, ""
+
+
+def _nota_di_chi_ha_risposto(request: web.Request, *, motivo: str) -> str:
+    """La riga che dichiara un ripiego, o "" se non c'è niente da dichiarare.
+
+    Decisione del proprietario, 13 agosto: **il ripiego si annuncia ogni
+    volta**. Quando il turno passa dal piano a forfait a un provider a consumo,
+    la risposta lo dice -- una riga, non un avviso invadente -- perché un
+    ripiego silenzioso dal forfait al consumo si scopre a fine mese.
+
+    **«Chi ha risposto» si MISURA, non si deduce.** La tentazione è leggere
+    `app["catena_modelli"][0]`, cioè «ha risposto il primo della catena»:
+    sarebbe falso proprio nel caso che conta, perché il router RIPIEGA, quindi
+    il primo può aver fallito e aver risposto il secondo. Si legge quindi il
+    registro degli esiti (Task 11), che il ciclo di ripiego del router aggiorna
+    per nome di backend subito dopo ogni chiamata -- riuscita o no -- e si
+    prende il primo della catena il cui ultimo esito è un successo.
+
+    **Va chiamata DOPO la chiamata al modello**, mai prima: prima misurerebbe
+    l'esito del turno PRECEDENTE.
+
+    Se non si può stabilire chi ha risposto -- registro assente (nessun router:
+    `app["claude_runner"]` da solo non registra niente), catena vuota, nessun
+    successo osservato -- si restituisce "" e la nota NON si scrive. Meglio
+    nessuna nota che una che nomina il provider sbagliato: questa riga parla di
+    soldi, e una riga falsa sui soldi è peggio del silenzio.
+    """
+    registro = request.app.get("registro_esiti")
+    if registro is None:
+        return ""
+    for nome_backend in (request.app.get("catena_modelli") or []):
+        esito = registro.esito(nome_backend)
+        if esito and esito["tipo"] == "risposto":
+            return nota_ripiego(motivo=motivo, chi_ha_risposto=nome_backend)
+    return ""
+
+
 async def _enqueue_chat_job(
     request: web.Request, impostazioni, message: str, data_dir: str,
 ) -> web.Response:
@@ -326,6 +400,135 @@ async def _enqueue_chat_job(
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
+async def _ripiega_sulla_catena(request: web.Request, job_id: str):
+    """Rifà sulla catena il turno che il piano non ha servito in tempo.
+
+    È qui e non nello sweep di `server.py` per una ragione misurata: lo sweep
+    gira ogni 2 minuti, e `static/chat/send.js` smette di interrogare dopo
+    `CHAT_POLL_MAX_MS` (5 minuti). Con la scadenza predefinita di 5 minuti, un
+    ripiego fatto dallo sweep arriverebbe fra il quinto e il settimo minuto --
+    cioè, quasi sempre, dopo che il browser ha smesso di guardare. Il poll passa
+    ogni 3,5 secondi: il ripiego parte subito, e non c'è nessun intervallo da
+    tenere accordato con una costante del frontend.
+
+    **Il prezzo, dichiarato:** una chiamata al modello finisce dentro una
+    richiesta HTTP nata per essere istantanea, e può durare decine di secondi.
+    Il browser ha già una richiesta in volo e non ne apre una seconda finché
+    quella non torna, quindi non si accavallano -- ma la rotta di poll smette di
+    essere sempre veloce, e chi legge i tempi di risposta del server deve
+    saperlo.
+
+    Restituisce `None` quando un altro poll ha già reclamato questo turno: si
+    continua ad aspettare lui invece di ripiegare due volte.
+    """
+    coda = request.app["reasoning_queue"]
+    adesso = time.time()
+    job = coda.reclama_scaduto(job_id, adesso)
+    if job is None:
+        return None
+
+    # Il registro degli esiti, per il piano, era VUOTO PER COSTRUZIONE: il
+    # ponte non passa dal router (`handle_chat` accoda prima di prenderlo),
+    # quindi nessuno registrava mai un esito per `subscription` e la sua riga
+    # nella pagina Modelli diceva per sempre «non l'hai ancora usato». Questo è
+    # l'unico punto del prodotto in cui si osserva qualcosa sul piano, ed è
+    # QUI che si registra -- prima della chiamata alla catena, perché è un
+    # fatto già avvenuto e non dipende da come andrà il ripiego.
+    #
+    # La famiglia è `scaduto` e non `altro`: il ramo di scorta di
+    # `frase_esito` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
+    # ha risposto. È la stessa parola più larga del fatto che questa fetta
+    # esiste per togliere.
+    registro = request.app.get("registro_esiti")
+    if registro is not None:
+        registro.fallimento(
+            "subscription", famiglia="scaduto", codice=None,
+            # Il messaggio è per chi legge un log, non per la pagina: la frase
+            # che l'utente vede la compone `decisione_modelli.frase_esito`.
+            messaggio="nessuna risposta entro la scadenza del ponte",
+            # Quanto il piano ha AVUTO, misurato sul job e non riletto
+            # dall'archivio: la scadenza può essere stata cambiata mentre il
+            # turno era in volo, e quel numero racconterebbe un'attesa che non
+            # c'è stata.
+            durata_s=float(job.get("deadline_ts", adesso))
+            - float(job.get("created_ts", adesso)))
+
+    runner = request.app.get("llm_router") or request.app.get("claude_runner")
+    contesto = job.get("context") or {}
+    data_dir = request.app.get("data_dir", "/data")
+    if runner is None:
+        # Nessuna nota: non c'è stato nessun ripiego da annunciare -- non ha
+        # risposto nessuno. La nota parla di CHI ha risposto al posto del piano.
+        # Il job si chiude comunque, altrimenti resterebbe in 'ripiego' fino
+        # allo sweep e ogni poll ritenterebbe.
+        coda.risolvi_ripiego(job_id, {"reply": ""}, time.time())
+        return web.json_response({
+            "status": "error",
+            "message": ("Il Piano Claude Max non ha risposto in tempo, e non c'è "
+                        "nessun altro provider in catena a cui chiedere."),
+        })
+
+    logger.warning(
+        "Il Piano Claude Max non ha risposto entro la scadenza: il turno %s "
+        "passa alla catena. Il costo cambia -- dal forfait al consumo.", job_id)
+
+    cronologia = contesto.get("history") or []
+    ultimo = cronologia[-1]["content"] if cronologia else ""
+    try:
+        risposta = await runner.chat(
+            user_message=ultimo,
+            system_prompt=contesto.get("system_prompt", ""),
+            context_str=contesto.get("contesto", ""),
+            # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
+            # da `test_job_context_history_includes_current_user_turn`):
+            # passarla intera come `conversation_history` E ripetere il
+            # messaggio come `user_message` lo manderebbe due volte.
+            conversation_history=cronologia[:-1],
+            # L'unico valore che fa girare il ciclo di ripiego del router: con
+            # un modello esplicito `_route()` sceglie una volta sola e non
+            # ripiega mai. Dal Task 4 è già l'unico che esiste, ma qui va
+            # SCRITTO, non ereditato.
+            model="auto",
+            max_tokens=CHAT_MAX_TOKENS,
+            agent_type="chat",
+            restrict_to_home=bool(contesto.get("restrict_to_home")),
+            response_mode=contesto.get("response_mode", "auto"),
+            # Il contesto del job NON porta `thinking_budget` (sei chiavi,
+            # pinnate da `test_context_del_job_porta_esattamente_queste_sei_
+            # chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+            # applicare al ripiego un'impostazione che il ponte aveva
+            # dichiarato inapplicabile, con un log, al momento
+            # dell'accodamento.
+            thinking_budget=0,
+            strumenti=STRUMENTI_CONOSCENZA,
+            dispatcher=costruisci_dispatcher_strumenti(request.app),
+        )
+    except RunnerBackendError as exc:
+        # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
+        # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
+        risposta = exc.friendly_message
+
+    # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
+    nota = _nota_di_chi_ha_risposto(request, motivo="scadenza")
+    # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
+    # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
+    # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
+    coda.risolvi_ripiego(job_id, {"reply": risposta, "nota": nota}, time.time())
+    if not _is_toxic_assistant(risposta):
+        # SOLO la risposta: il turno dell'utente è già in cronologia da prima
+        # dell'accodamento (`_enqueue_chat_job`), e riscriverlo lo
+        # duplicherebbe. E SOLO la risposta anche rispetto alla nota: una nota
+        # persistita diventa contesto che il modello rilegge al turno dopo e su
+        # cui ragiona -- è la stessa famiglia del difetto dichiarato su «Errore
+        # temporaneo del servizio AI», che in cronologia ci finisce e non
+        # dovrebbe.
+        append_messages([{"role": "assistant", "content": risposta}], data_dir)
+    payload = {"status": "done", "reply": risposta}
+    if nota:
+        payload["nota"] = nota
+    return web.json_response(payload)
+
+
 async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     """GET /api/chat/reply/{job_id} — the UI polls this after a 202 pending
     response from handle_chat. Reads the SAME queue row Task 1's submit
@@ -358,7 +561,26 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
             "status": "error",
             "message": "La risposta non è arrivata in tempo. Riprova.",
         })
+    if status in ("pending", "claimed") and job.get("deadline_ts", 0) <= time.time():
+        # Il piano non ha risposto in tempo. Fino alla 2.4.1 finiva qui, con
+        # «La risposta non è arrivata in tempo. Riprova.» -- il messaggio era
+        # perso e la catena non veniva consultata mai. Adesso il turno scende al
+        # provider successivo, e la risposta arriva in QUESTA stessa
+        # conversazione, su QUESTO stesso job: il browser non deve cambiare
+        # niente, perché la forma della risposta è quella che già aspetta.
+        risposta = await _ripiega_sulla_catena(request, job_id)
+        if risposta is not None:
+            return risposta
+        # `None` = un altro poll ha già reclamato: si continua ad aspettare lui,
+        # invece di ripiegare due volte.
+        return web.json_response({"status": "pending"})
     if not reply:
+        # Compreso lo stato 'ripiego': un ripiego in corso è un turno in corso,
+        # e si aspetta come si aspettava il piano. Quando finisce, il job è
+        # 'decided' con la sua `reply` e questo poll passa oltre; se non
+        # finisce mai (processo caduto a metà chiamata) lo raccoglie
+        # `fallisci_ripieghi_bloccati`, chiamata dallo sweep, che lo porta a
+        # 'failed' -- e 'failed' esce dal ramo di errore qui sopra.
         return web.json_response({"status": "pending"})
     payload = {"status": "done", "reply": reply}
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `tools_called`
@@ -373,6 +595,15 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     # allineato con lei.
     if "tools_called" in decision:
         payload["debug"] = {"tools_called": decision["tools_called"]}
+    # fetta «la catena diventa l'unica verità» (Task 14): un turno ripiegato
+    # porta anche la nota che lo dichiara. Sta nel `decision` del job -- ce
+    # l'ha scritta `risolvi_ripiego` -- quindi un poll che arriva DOPO il
+    # ripiego, o un ricaricamento della pagina, la ritrova invariata.
+    # Esattamente come `tools_called` qui accanto, e per lo stesso motivo: ciò
+    # che il turno ha prodotto vive nel job, non nella richiesta che per caso
+    # lo ha raccolto.
+    if decision.get("nota"):
+        payload["nota"] = decision["nota"]
     return web.json_response(payload)
 
 
@@ -416,6 +647,11 @@ async def handle_chat(request: web.Request) -> web.Response:
                 "limit": max_turns,
             })
 
+    # Il motivo del ripiego a monte, `None` quando non c'è stato: lo legge il
+    # fondo di questa funzione per comporre la nota, DOPO aver saputo chi ha
+    # davvero risposto.
+    _motivo_ripiego = None
+
     # Slice 4b (chat via abbonamento), Task 2: when subscription mode is on
     # AND the reasoning-queue bridge is wired, hand the turn to the async
     # queue instead of calling a local runner — subscription mode may have
@@ -423,27 +659,53 @@ async def handle_chat(request: web.Request) -> web.Response:
     # built the receiving end (kind="chat" submit -> chat_store); this is
     # the sending end. Checked BEFORE the runner-required guard below so
     # subscription mode works even without CLAUDE_API_KEY.
+    #
+    # fetta «la catena diventa l'unica verità», Task 14: questo `if` non è più
+    # un BIVIO. Fino alla 2.4.1 chi entrava qui non tornava indietro -- la riga
+    # che prende il router sta sotto, e la si saltava -- quindi «il piano non è
+    # disponibile» finiva in un errore invece che nel provider successivo. Il
+    # ramo `else` più sotto è il ritorno: si scende alla catena, che è la riga
+    # subito dopo questo blocco.
     if request.app.get("ponte_attivo") and _bridge_on(request.app):
         # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
         # above/below is unaffected when the flag is off. Checked before
         # anything is persisted/enqueued so a blocked turn leaves no trace.
         reasoning_queue = request.app["reasoning_queue"]
-        # In-flight guard first: it's the more specific, more actionable
-        # signal for the user (retry once the current answer lands), so it
-        # wins even if the daily cap is ALSO exhausted.
+        # La guardia «una risposta per volta» resta PRIMA, e adesso conta il
+        # doppio. NON ripiega: due risposte in volo sulla stessa conversazione
+        # sarebbero peggio del 409 -- la seconda arriverebbe in una cronologia
+        # che la prima sta per riscrivere. Sopra il piano che non può
+        # rispondere, perché il caso «tetto pieno E una risposta in volo» è
+        # raggiungibile (il turno numero N sta ancora aspettando quando arriva
+        # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
+        # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
+        # cronologia da solo (`server._submit_chat_reply`).
         if reasoning_queue.has_pending_chat():
             return web.json_response(
                 {"error": "C'è già una risposta in arrivo per questa conversazione."},
                 status=409,
             )
-        _cap = request.app.get("chat_daily_cap")
-        chat_daily_cap = int(_cap) if _cap is not None else 50
-        if reasoning_queue.count_chat_today() >= chat_daily_cap:
-            return web.json_response(
-                {"error": "Limite giornaliero di messaggi chat raggiunto."},
-                status=429,
-            )
-        return await _enqueue_chat_job(request, impostazioni, message, data_dir)
+        _puo, _motivo = _piano_puo_rispondere(request.app)
+        if not _puo:
+            # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
+            # gli manca il token (il worker non parte, `should_start_agent_
+            # worker`) oppure il tetto giornaliero è pieno. Non si accoda un
+            # messaggio in una coda che nessuno servirà, e non si risponde 429:
+            # si scende alla catena. È il ripiego col rapporto migliore fra
+            # costo e valore di tutta la fetta, e non tocca nessuna forma di
+            # risposta -- il turno esce 200, sincrono, come sempre. Il 429 e la
+            # sua stringa ESCONO: un utente che ieri leggeva «Limite
+            # giornaliero raggiunto» oggi riceve una risposta, a consumo, senza
+            # averlo chiesto -- ed è esattamente il caso per cui il ripiego si
+            # annuncia (la `nota` in fondo a questa funzione). Senza quella
+            # riga questo cambio sarebbe un prelievo silenzioso.
+            _motivo_ripiego = _motivo
+            logger.warning(
+                "Il piano non può rispondere a questo turno (%s): il turno "
+                "passa alla catena. Il costo cambia -- dal forfait al consumo.",
+                _motivo)
+        else:
+            return await _enqueue_chat_job(request, impostazioni, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -713,4 +975,16 @@ async def handle_chat(request: web.Request) -> web.Response:
     debug_payload: dict = {"tools_called": tools_called}
     if thinking_blocks:
         debug_payload["thinking_blocks"] = thinking_blocks
-    return web.json_response({"response": response, "debug": debug_payload})
+    payload = {"response": response, "debug": debug_payload}
+    # L'annuncio del ripiego a monte. Si compone QUI e non nel ramo che ha
+    # deciso di ripiegare, perché prima della chiamata qui sopra non si sa
+    # ancora CHI ha risposto -- il router ripiega a sua volta, e il primo della
+    # catena può aver fallito. `_motivo_ripiego` resta `None` quando il turno
+    # non ha ripiegato, e allora non si scrive niente. La forma della risposta
+    # NON cambia: `response` e `debug` restano identici e `nota` è facoltativa,
+    # quindi un client che la ignori continua a funzionare.
+    if _motivo_ripiego:
+        nota = _nota_di_chi_ha_risposto(request, motivo=_motivo_ripiego)
+        if nota:
+            payload["nota"] = nota
+    return web.json_response(payload)

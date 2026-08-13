@@ -627,17 +627,40 @@ async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
 @pytest.mark.asyncio
 async def test_ponte_acceso_senza_token_lo_dichiara_nel_payload(client, monkeypatch):
     """Invariante 5: lo stato «ponte acceso, nessun token» non deve poter
-    passare in silenzio. E la scadenza dichiarata è quella SALVATA -- lo
-    stesso `ponte.scadenza_min` che `_enqueue_chat_job` usa per far morire il
-    turno -- non un cinque scritto a mano nel testo."""
+    passare in silenzio.
+
+    Dal Task 14 non è più una perdita (il turno scende alla catena) ma resta un
+    fatto che costa, e su questa app di prova la catena è vuota: non risponde
+    nessuno, e si dice. La scadenza non compare più QUI -- non c'è nessuna
+    attesa da dichiarare quando il piano non riceve niente -- e il test gemello
+    sotto la pinna dove adesso vive."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     await client.put("/api/models/config", json={"ponte": {"scadenza_min": 7}})
     client.app["ponte_attivo"] = True
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] is None
-    assert any("scade dopo 7 minuti" in d["testo"]
+    assert any("manca il token" in d["testo"]
                for d in body["adesso"]["diagnosi"]), body["adesso"]["diagnosi"]
+
+
+@pytest.mark.asyncio
+async def test_la_scadenza_del_payload_e_quella_salvata_non_un_cinque_a_mano(client, monkeypatch):
+    """Lo stesso `ponte.scadenza_min` che `_enqueue_chat_job` usa per scrivere
+    la scadenza del turno, e che dal Task 14 è il tempo dopo il quale il turno
+    passa al successivo della catena. Attraversa tutto il payload da una
+    lettura sola: la frase in cima e il connettore sotto la riga del piano non
+    possono dire due minuti diversi."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
+    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 7}})
+    client.app["ponte_attivo"] = True
+    body = await (await client.get("/api/models/config")).json()
+    assert body["adesso"]["chi"] == "subscription"
+    assert any("entro 7 minuti" in d["testo"]
+               for d in body["adesso"]["diagnosi"]), body["adesso"]["diagnosi"]
+    piano = body["catena"][0]
+    assert piano["id"] == "subscription" and piano["posizione"] == 1
+    assert piano["connettore"] == "se non risponde entro 7 min"
 
 
 @pytest.mark.asyncio
