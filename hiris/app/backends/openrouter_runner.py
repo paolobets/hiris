@@ -22,6 +22,15 @@ from .openai_compat_runner import OpenAICompatRunner
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# Il modello che questo runner usa quando nessuno ne ha scelto uno: pagante ma
+# affidabile, e NON quello di `AUTO_MODEL_MAP` (che è la mappa di OpenAI e su
+# OpenRouter darebbe un nome inesistente). Era una stringa scritta dentro
+# `_resolve_model` e basta: la pagina Modelli, che deve dire quale modello
+# risponderebbe adesso, leggeva `AUTO_MODEL_MAP["chat"]` e scriveva `gpt-4o`
+# nella riga di OpenRouter -- un modello che quel runner non chiederebbe mai.
+# Una costante sola, letta dai due posti che devono dire la stessa cosa.
+AUTO_OPENROUTER = "anthropic/claude-sonnet-4-6"
+
 
 def _strip_openrouter_prefix(model: str) -> str:
     """Remove the HIRIS-specific 'openrouter:' or 'openrouter/' marker.
@@ -76,6 +85,6 @@ class OpenRouterRunner(OpenAICompatRunner):
             # sensible built-in default (Claude Sonnet via OpenRouter — paid
             # but reliable). Strip in both cases since the stored default may
             # carry the HIRIS 'openrouter:' tag (same format as the picker).
-            default = self._default_model or "anthropic/claude-sonnet-4-6"
+            default = self._default_model or AUTO_OPENROUTER
             return _strip_openrouter_prefix(default)
         return _strip_openrouter_prefix(model)

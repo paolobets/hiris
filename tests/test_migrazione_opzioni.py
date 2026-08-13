@@ -302,8 +302,12 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     marker = 'app["models_config"] = load_models_config(data_dir)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
+    # `_nome_modello_com_era` e non `local_model_name` dal Task 9: e' l'UNICO
+    # uso rimasto di `LOCAL_MODEL_NAME` in server.py, e il nome dice a cosa
+    # serve -- ricostruire la CREDENZIALE COM'ERA, dove il modello contava
+    # insieme all'indirizzo. Il modello che il runner usa arriva dall'archivio.
     firma = ("def _avvio(app, os, logger, data_dir, _credenziali, "
-             "local_model_url, local_model_name):\n")
+             "local_model_url, _nome_modello_com_era):\n")
     func_src = firma + textwrap.indent(corpo, "    ")
     # `env_bool` legge `os.environ` DENTRO env_util.py, quindi l'`os` finto
     # passato al blocco non la raggiunge: se si lasciasse quella vera, i cinque

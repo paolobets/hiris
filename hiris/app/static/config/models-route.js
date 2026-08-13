@@ -39,6 +39,14 @@
    L'unica eccezione, delimitata e dichiarata, è `ricomponiTopologia`: vedi il
    commento sopra la funzione.
 
+   Vale anche per il PANNELLO DEL MODELLO (Task 9), che è la parte più recente
+   e quella in cui sarebbe stato più facile ricominciare: la provenienza
+   dell'elenco, la spiegazione, da quando la scelta ha effetto e persino DOVE
+   va scritta (`dove`, un percorso dentro `state.cfg`) arrivano dal payload.
+   È il percorso, in particolare, a permettere a questo file di non sapere che
+   il modello di Ollama non vive in `provider_models` e che il piano non ha
+   niente da salvare.
+
    La parola «Attivo» non compare in questo file e non deve comparirci.
    Significava «interruttore acceso E credenziale presente» e si leggeva
    «funziona»: una chiave a credito esaurito era «Attivo».
@@ -101,14 +109,13 @@
     adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
     ponteAttivo: false,    // GET api/models/config -> ponte_attivo
     fineCatena: '',        // GET api/models/config -> fine_catena
-    /* GET api/models: l'elenco dei modelli disponibili per provider. Da questa
-       fetta non ha lettori in questo file -- il picker «Modello di default»
-       della vecchia sezione 01 è uscito -- e torna ad averne uno con il
-       pannello del modello (Task 9), che è la sua unica ragione di esistere.
-       Dichiarato qui perché una fetch il cui risultato nessuno legge è un costo
-       (quella rotta interroga davvero OpenAI/OpenRouter/Ollama), non una svista:
-       se il Task 9 non arrivasse, la fetch esce con questa riga. */
-    providers: [],
+    /* Il pannello aperto, o `null`. `{ id, dati, errore, filtro }`, dove
+       `dati` è la voce di GET api/models?provider=<id> -- letta QUANDO IL
+       PANNELLO SI APRE, non al caricamento della pagina: quella rotta
+       interroga davvero OpenAI/OpenRouter/Ollama con cinque secondi di
+       pazienza ciascuno, e fino al Task 8 la pagina la leggeva a ogni
+       caricamento per un risultato che nessuno guardava. */
+    pannello: null,
     cfg: {
       chain_order: [],
       provider_models: { claude: '', openai: '', openrouter: '' },
@@ -209,7 +216,22 @@
       dati.posizione == null ? '' : String(dati.posizione)));
     row.appendChild(el('span', 'dot ' + (dati.ha_credenziale ? 'on' : 'off')));
     row.appendChild(el('span', 'riga-nome', dati.nome));
-    row.appendChild(el('span', 'riga-modello', dati.modello || '—'));
+    /* Il modello sta NELLA RIGA, sempre visibile, e si clicca per cambiarlo.
+       Un bottone e non uno `<span>` con un listener: apre e chiude una cosa, e
+       chi naviga da tastiera deve poterci arrivare come ci arriva alle frecce.
+       `modello_alias` decide il carattere -- un identificatore ha l'aspetto di
+       un identificatore, un alias ha l'aspetto di una parola (progetto §6.2) --
+       e arriva dal payload, perché è un fatto sul prodotto e non una regola
+       che questa pagina possa conoscere. */
+    var modello = el('button',
+      'riga-modello' + (dati.modello_alias ? ' modello-alias' : ''),
+      dati.modello || '—');
+    modello.type = 'button';
+    modello.setAttribute('aria-expanded', 'false');
+    modello.setAttribute('aria-label',
+      'Modello di «' + dati.nome + '»: ' + (dati.modello || 'nessuno') + '. Cambia');
+    modello.addEventListener('click', function() { apriPannelloModello(dati.id); });
+    row.appendChild(modello);
     row.appendChild(el('span', 'riga-natura',
       dati.ha_credenziale ? dati.natura : (dati.manca || '')));
 
@@ -268,6 +290,333 @@
     b.setAttribute('aria-label', etichetta);
     b.addEventListener('click', azione);
     return b;
+  }
+
+  /* ── Il pannello del modello ───────────────────────────────────────────
+     Non è un catalogo: OpenRouter ne espone più di duecento, e una tenda con
+     duecento voci dentro una riga distruggerebbe la leggibilità che tutto il
+     resto costruisce. È un FILTRO, con la curatela che il prodotto ha già
+     (`_OPENROUTER_PRESETS`, undici voci scelte a mano) come stato d'apertura.
+
+     Il campo in cima è un filtro E un campo di testo: digitando si filtra la
+     lista vera, e ciò che si digita compare in fondo come voce sua, salvabile
+     -- il backend accetta qualunque stringa. Nessuna capacità persa, nessun
+     catalogo aperto per difetto.
+
+     Il pannello dell'abbonamento offre tre voci e non di più, e non è una
+     semplificazione: `agent/runner.modello_cli` riduce tutto a
+     opus/haiku/sonnet per sottostringa. Offrire `claude-opus-4-7` sul piano
+     sarebbe una precisione finta -- sul ponte due opus diversi producono lo
+     stesso identico comportamento.
+
+     E come ogni altra cosa in questo file, il pannello NON compone nessuna
+     frase: la provenienza dell'elenco, la spiegazione, da quando la scelta ha
+     effetto e persino DOVE va scritta arrivano dal payload. Il percorso
+     (`dove`) è ciò che permette a questo codice di non sapere che il modello
+     di Ollama non vive in `provider_models`: senza, servirebbe un
+     `if (id === '...')`, cioè una regola del prodotto scritta una seconda
+     volta in un altro linguaggio. */
+  function apriPannelloModello(idProvider) {
+    if (state.pannello && state.pannello.id === idProvider) {
+      chiudiPannello();
+      return;
+    }
+    chiudiPannello();
+    state.pannello = { id: idProvider, dati: null, errore: false, filtro: '' };
+    disegnaPannello();
+    caricaPannello(idProvider);
+  }
+
+  function chiudiPannello() {
+    var aperto = document.querySelector('.pannello-modello');
+    if (aperto && aperto.parentNode) aperto.parentNode.removeChild(aperto);
+    var bottoni = document.querySelectorAll('.riga-modello[aria-expanded="true"]');
+    for (var i = 0; i < bottoni.length; i++) {
+      bottoni[i].setAttribute('aria-expanded', 'false');
+    }
+    state.pannello = null;
+  }
+
+  /* La lettura è PIGRA, un provider alla volta, e parte quando il pannello si
+     apre. Prima l'elenco intero veniva letto al caricamento della pagina --
+     cioè si interrogavano davvero OpenAI, OpenRouter e Ollama, cinque secondi
+     di pazienza ciascuno -- per un risultato che dal Task 8 nessuno guardava.
+     E rende vera la parola: «letti adesso» detto su una lettura fatta quando
+     hai aperto la pagina sarebbe più largo del fatto. */
+  function caricaPannello(idProvider) {
+    fetch('api/models?provider=' + encodeURIComponent(idProvider))
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(body) {
+        if (!state.pannello || state.pannello.id !== idProvider) return;
+        var voci = (body || {}).providers || [];
+        var dati = null;
+        voci.forEach(function(v) { if (v && v.id === idProvider) dati = v; });
+        state.pannello.dati = dati;
+        state.pannello.errore = !dati;
+        disegnaPannello();
+      })
+      .catch(function(err) {
+        console.error('api/models fetch failed', err);
+        if (!state.pannello || state.pannello.id !== idProvider) return;
+        state.pannello.errore = true;
+        disegnaPannello();
+      });
+  }
+
+  /* Il pannello vive DENTRO la riga a cui appartiene: espanso, non
+     sovrapposto. Non è una scelta grafica -- una riga ha `role="listitem"`, e
+     un blocco appeso al corpo della sezione sarebbe un figlio di `role="list"`
+     che non è una voce di elenco. Dentro la riga, invece, è quello che è: un
+     dettaglio di quella riga. */
+  function disegnaPannello() {
+    var precedente = document.querySelector('.pannello-modello');
+    if (precedente && precedente.parentNode) {
+      precedente.parentNode.removeChild(precedente);
+    }
+    var p = state.pannello;
+    if (!p) return;
+    var riga = document.querySelector('.riga-provider[data-provider="' + p.id + '"]');
+    if (!riga) return;
+    var bottone = riga.querySelector('.riga-modello');
+    if (bottone) bottone.setAttribute('aria-expanded', 'true');
+
+    var box = el('div', 'pannello-modello');
+    box.setAttribute('role', 'group');
+    /* Chiudere con Esc: un pannello che si apre da un click e si chiude solo
+       da un altro click è una trappola per chi naviga da tastiera. */
+    box.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Escape' || ev.keyCode === 27) {
+        chiudiPannello();
+        if (bottone && bottone.focus) bottone.focus();
+      }
+    });
+
+    var testa = el('div', 'pannello-testa');
+    var titolo = el('h3', 'pannello-titolo',
+      'Modello di ' + ((p.dati && p.dati.nome) || riga.querySelector('.riga-nome').textContent));
+    testa.appendChild(titolo);
+    testa.appendChild(bottoneIcona('✕', 'pannello-chiudi', 'Chiudi',
+      function() { chiudiPannello(); }));
+    box.appendChild(testa);
+    box.setAttribute('aria-label', titolo.textContent);
+
+    if (p.errore) {
+      box.appendChild(el('p', 'proposals-error',
+        'Non riesco a leggere l’elenco dei modelli.'));
+      var ancora = el('button', 'btn btn-ghost btn-sm', 'Riprova');
+      ancora.type = 'button';
+      ancora.addEventListener('click', function() {
+        p.errore = false;
+        disegnaPannello();
+        caricaPannello(p.id);
+      });
+      box.appendChild(ancora);
+    } else if (!p.dati) {
+      box.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    } else {
+      corpoPannello(box, p);
+    }
+    riga.appendChild(box);
+    return box;
+  }
+
+  function corpoPannello(box, p) {
+    var dati = p.dati;
+    var scrivibile = !!(dati.dove && dati.dove.length);
+
+    /* Da dove viene l'elenco. La classe porta il FATTO (viva/riserva/fissa),
+       la frase le parole: la stessa divisione di `diagnosi[].gravita` e
+       `diagnosi[].testo` nel riquadro «Adesso». */
+    box.appendChild(el('p', 'pannello-provenienza fonte-' + (dati.fonte || ''),
+      dati.provenienza || ''));
+
+    if (scrivibile) {
+      var filtro = el('input', 'pannello-filtro');
+      filtro.type = 'text';
+      filtro.value = p.filtro;
+      filtro.setAttribute('placeholder', 'filtra, o incolla un identificatore…');
+      filtro.setAttribute('aria-label', 'Filtra l’elenco, o incolla un identificatore');
+      /* Si ridisegna SOLO l'elenco, non il pannello: rifare il campo a ogni
+         tasto gli toglierebbe il fuoco e il cursore da sotto le dita. */
+      filtro.addEventListener('input', function() {
+        p.filtro = filtro.value;
+        var vecchio = box.querySelector('.pannello-elenco');
+        if (!vecchio) return;
+        vecchio.parentNode.replaceChild(elencoPannello(dati, p, scrivibile), vecchio);
+      });
+      box.appendChild(filtro);
+    }
+
+    box.appendChild(elencoPannello(dati, p, scrivibile));
+
+    /* La casella vive SOTTO l'elenco che filtra, e la pagina non sa per chi:
+       le arrivano un'etichetta e un percorso dentro l'oggetto che già salva. */
+    if (dati.casella && dati.casella.dove) {
+      box.appendChild(casellaPannello(dati.casella));
+    }
+    if (dati.spiegazione) {
+      box.appendChild(el('p', 'pannello-spiegazione', dati.spiegazione));
+    }
+    /* Da quando la scelta ha effetto. Oggi lo STESSO valore si applica in due
+       modi -- subito sul ponte, al riavvio sull'API -- e la pagina lo dice
+       invece di sceglierne uno. Il giorno della scrittura a caldo il backend
+       manda una stringa vuota e questa riga sparisce da sé. */
+    if (dati.quando) {
+      box.appendChild(el('p', 'pannello-quando', dati.quando));
+    }
+    var stato = el('p', 'pannello-stato');
+    stato.setAttribute('aria-live', 'polite');
+    box.appendChild(stato);
+  }
+
+  function elencoPannello(dati, p, scrivibile) {
+    var elenco = el('div', 'pannello-elenco');
+    elenco.setAttribute('role', 'radiogroup');
+    vociVisibili(dati, p.filtro).forEach(function(v) {
+      elenco.appendChild(voceModello(dati, v, scrivibile));
+    });
+    if (!elenco.firstChild) elenco.appendChild(el('p', 'field-hint', 'Nessuno.'));
+    return elenco;
+  }
+
+  /* Il filtro agisce sull'elenco vero, e ciò che si digita resta salvabile
+     quando l'elenco non lo contiene: è la voce che compare al posto del
+     vuoto. Le due cose sono lo stesso campo perché sono la stessa intenzione
+     -- «voglio quello lì» -- e separarle costringerebbe a capire, prima di
+     scrivere, se quello che si cerca esiste.
+
+     La voce «scritto da te» compare SOLO quando non resta niente altro. Con
+     dei risultati a schermo offrirebbe di salvare il pezzo di parola che si
+     sta digitando (`gpt`), cioè un valore che il provider rifiuterebbe: un
+     controllo che non può funzionare, che è il difetto di questa fetta in
+     miniatura. Chi vuole un identificatore che l'elenco non ha lo incolla
+     intero, e allora l'elenco si svuota e la voce c'è. */
+  function vociVisibili(dati, filtro) {
+    var testo = (filtro || '').trim();
+    var basso = testo.toLowerCase();
+    if (!testo) return (dati.modelli || []).slice();
+    var voci = (dati.modelli || []).filter(function(v) {
+      return (v.valore || '').toLowerCase().indexOf(basso) !== -1;
+    });
+    return voci.length ? voci : [{ valore: testo, nota: 'scritto da te' }];
+  }
+
+  function voceModello(dati, v, scrivibile) {
+    var lab = el('label', 'pannello-voce' + (dati.alias ? ' voce-alias' : ''));
+    var radio = el('input');
+    radio.type = 'radio';
+    radio.name = 'modello-' + dati.id;
+    radio.value = v.valore;
+    radio.checked = (v.valore === dati.scelto);
+    /* Il pannello del piano MOSTRA e non scrive: il suo modello è un effetto
+       di quello di Claude API, e non esiste nessun posto in cui scriverlo. Un
+       controllo abilitato che non salva è la versione piccola del difetto che
+       questa fetta chiude -- spento, invece, è una lettura onesta, come la
+       freccia che non ha niente da scambiare. */
+    radio.disabled = !scrivibile;
+    if (scrivibile) {
+      radio.addEventListener('change', function() {
+        if (radio.checked) scegliModello(v.valore);
+      });
+    }
+    lab.appendChild(radio);
+    /* Il valore per primo, sempre: è ciò che si cerca leggendo. Quando è la
+       voce «auto» (valore vuoto) a parlare è la sua nota, che dice anche a
+       quale modello si risolve oggi. */
+    if (v.valore) lab.appendChild(el('span', 'voce-valore', v.valore));
+    if (v.valore && v.nota) lab.appendChild(document.createTextNode(' '));
+    if (v.nota) lab.appendChild(el('span', 'voce-nota', v.nota));
+    return lab;
+  }
+
+  function casellaPannello(casella) {
+    var lab = el('label', 'pannello-casella');
+    var box = el('input');
+    box.type = 'checkbox';
+    box.checked = !!leggiPercorso(casella.dove);
+    box.addEventListener('change', function() {
+      cambiaCasella(casella.dove, box.checked);
+    });
+    lab.appendChild(box);
+    lab.appendChild(el('span', null, casella.etichetta || ''));
+    return lab;
+  }
+
+  /* ── I due percorsi: leggere e scrivere dentro `state.cfg` ──────────────
+     `dove` è una lista di chiavi (`['provider_models','openrouter']`,
+     `['ollama','modello']`, `['nascondi_gratuiti']`). Applicarla alla cieca è
+     ciò che tiene questo file ignorante dei casi particolari. */
+  function leggiPercorso(dove) {
+    var nodo = state.cfg;
+    for (var i = 0; i < dove.length; i++) {
+      if (nodo == null) return undefined;
+      nodo = nodo[dove[i]];
+    }
+    return nodo;
+  }
+
+  function scriviPercorso(dove, valore) {
+    var nodo = state.cfg;
+    for (var i = 0; i < dove.length - 1; i++) {
+      if (nodo[dove[i]] == null || typeof nodo[dove[i]] !== 'object') nodo[dove[i]] = {};
+      nodo = nodo[dove[i]];
+    }
+    nodo[dove[dove.length - 1]] = valore;
+  }
+
+  /* Scegliere un modello e poi RILEGGERE. Le altre scritture di questa pagina
+     si ridisegnano da sole perché ciò che cambiano -- le posizioni -- è già
+     determinato dal gesto; qui no: il modello che una riga mostra è quello che
+     il runtime userebbe, e «auto» si risolve in un nome che solo il backend
+     conosce. Disegnarlo da qui vorrebbe dire calcolarlo. E la prima frase
+     della pagina NOMINA il modello: lasciarla ferma la farebbe mentire di
+     nuovo, in corpo 20. */
+  function scegliModello(valore) {
+    var p = state.pannello;
+    if (!p || !p.dati) return;
+    var dove = p.dati.dove || [];
+    if (!dove.length) return;
+    var precedente = leggiPercorso(dove);
+    scriviPercorso(dove, valore);
+    putModelsConfig().then(function(ok) {
+      if (ok) {
+        chiudiPannello();
+        loadModelsAndConfig();
+        return;
+      }
+      scriviPercorso(dove, precedente);
+      mostraErrorePannello(ERR_SALVATAGGIO);
+    });
+  }
+
+  /* La casella invece NON ricarica la pagina: cambia l'elenco che si sta
+     guardando, e il posto dove guardarlo è quello aperto adesso. */
+  function cambiaCasella(dove, valore) {
+    var p = state.pannello;
+    var precedente = leggiPercorso(dove);
+    scriviPercorso(dove, valore);
+    putModelsConfig().then(function(ok) {
+      if (!state.pannello || state.pannello !== p) return;
+      if (ok) {
+        state.pannello.dati = null;
+        disegnaPannello();
+        caricaPannello(state.pannello.id);
+        return;
+      }
+      scriviPercorso(dove, precedente);
+      disegnaPannello();
+      mostraErrorePannello(ERR_SALVATAGGIO);
+    });
+  }
+
+  function mostraErrorePannello(testo) {
+    var p = document.querySelector('.pannello-stato');
+    if (!p) return;
+    p.textContent = '';
+    p.textContent = testo;
   }
 
   /* ── Il connettore ─────────────────────────────────────────────────────
@@ -374,6 +723,10 @@
     pulisciErroreCatena();
     renderCatena();
     renderFuori();
+    /* Il pannello segue la sua riga invece di sparire con lei: un riordino
+       ridisegna le due sezioni, e un dettaglio che si chiude perche' hai
+       spostato la riga che stavi guardando e' una perdita senza ragione. */
+    disegnaPannello();
     putModelsConfig().then(function(ok) {
       if (ok) return;
       state.cfg.chain_order = precedente;
@@ -381,6 +734,7 @@
       ricomponiTopologia();
       renderCatena();
       renderFuori();
+      disegnaPannello();
       mostraErroreCatena(errText || ERR_SALVATAGGIO);
     });
   }
@@ -525,23 +879,21 @@
   }
 
   /* ── Caricamento dati ─────────────────────────────────────────────────
-     Le due fetch (models, models/config) partono in parallelo e sono trattate
-     come un'unica unità dati. */
+     UNA lettura sola. Fino al Task 8 ce n'erano due, in parallelo: questa e
+     `api/models`, che alimentava il picker «Modello di default» della vecchia
+     sezione 01. Il picker è uscito con quella sezione e la lettura era rimasta
+     -- una fetch il cui risultato nessuno legge, e non una qualunque: quella
+     rotta interroga davvero OpenAI, OpenRouter e Ollama, con cinque secondi di
+     pazienza ciascuno. Adesso si legge quando serve, un provider alla volta,
+     all'apertura del pannello (`caricaPannello`). */
   function loadModelsAndConfig() {
     var body = byId('catena-body');
     if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }
-    Promise.all([
-      fetch('api/models').then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }),
-      fetch('api/models/config').then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-    ]).then(function(results) {
-      state.providers = (results[0] || {}).providers || [];
-      var cfgRaw = results[1] || {};
+    fetch('api/models/config').then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(risposta) {
+      var cfgRaw = risposta || {};
       state.catena = Array.isArray(cfgRaw.catena) ? cfgRaw.catena : [];
       state.fuoriCatena = Array.isArray(cfgRaw.fuori_catena) ? cfgRaw.fuori_catena : [];
       state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
@@ -562,6 +914,7 @@
       renderAdesso();
       renderCatena();
       renderFuori();
+      disegnaPannello();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
       renderErrore();

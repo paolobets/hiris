@@ -88,7 +88,13 @@ def _blocco_catena_dallo_startup():
     marker = 'app["catena_modelli"] = list(_chain)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
-    func_src = "def _avvio(app, _credenziali, logger):\n" + textwrap.indent(corpo, "    ")
+    # Il parametro si chiama `_risponde` e non `_credenziali` dal Task 9: in
+    # catena ci sta chi puo' RISPONDERE, che per quattro provider su cinque
+    # coincide con la credenziale e per Ollama no (la credenziale e' il solo
+    # indirizzo, ma senza un modello scelto il runner non viene costruito e il
+    # router salterebbe quell'anello in silenzio). Il nome e' il contratto:
+    # questo blocco e' il sorgente VERO di `_on_startup`.
+    func_src = "def _avvio(app, _risponde, logger):\n" + textwrap.indent(corpo, "    ")
     namespace: dict = {"__package__": "hiris.app", "__name__": "hiris.app.server"}
     exec(compile(func_src, "<_on_startup catena>", "exec"), namespace)
     return namespace["_avvio"]
@@ -175,3 +181,75 @@ def test_l_avvio_non_scrive_niente_quando_non_c_e_niente_da_dichiarare():
     finally:
         reg.removeHandler(h)
     assert buf.getvalue() == ""
+
+
+# ---------------------------------------------------------------------------
+# Chi puo' RISPONDERE non e' chi ha una credenziale (Task 9)
+#
+# Il buco dichiarato dal Task 7: la credenziale di Ollama e' il SOLO indirizzo
+# -- l'indirizzo si custodisce, il modello si decide -- ma senza un modello
+# scelto `server.py` non costruisce il runner. Con la sola credenziale a
+# filtrare la catena, Ollama poteva finire in `app["catena_modelli"]` senza un
+# backend dietro: la pagina lo avrebbe disegnato come anello numerato, col suo
+# connettore, e `LLMRouter._ordered_backends` lo avrebbe saltato in silenzio.
+# Un anello a schermo che non risponde mai e' la bugia che questa fetta ritira.
+#
+# La derivazione vive dentro `_on_startup`, che ogni fixture azzera: si estrae
+# dal sorgente vero, stessa tecnica del blocco qui sopra.
+# ---------------------------------------------------------------------------
+
+
+def _blocco_risponde_dallo_startup():
+    import inspect
+    import textwrap
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    start = src.index('    _modello_ollama = (app["models_config"]')
+    marker = '"ollama": bool(local_model_url and _modello_ollama)}'
+    end = src.index(marker, start) + len(marker)
+    corpo = textwrap.dedent(src[start:end])
+    func_src = ("def _avvio(app, _credenziali, local_model_url):\n"
+                + textwrap.indent(corpo, "    ")
+                + "\n    return _risponde")
+    namespace: dict = {"__package__": "hiris.app", "__name__": "hiris.app.server"}
+    exec(compile(func_src, "<_on_startup risponde>", "exec"), namespace)
+    return namespace["_avvio"]
+
+
+def _archivio(modello_ollama):
+    return {"models_config": {"provider_models": {},
+                              "ollama": {"modello": modello_ollama}}}
+
+
+def test_ollama_con_l_indirizzo_e_senza_modello_non_puo_rispondere():
+    risponde = _blocco_risponde_dallo_startup()(
+        _archivio(""), {"claude": True, "ollama": True}, "http://ollama.local:11434")
+    assert risponde["ollama"] is False, (
+        "senza modello il runner non viene costruito: in catena sarebbe un "
+        "anello che il router salta"
+    )
+    assert risponde["claude"] is True, "gli altri quattro non cambiano"
+
+
+def test_ollama_col_modello_scelto_risponde():
+    risponde = _blocco_risponde_dallo_startup()(
+        _archivio("llama3.1:8b"), {"ollama": True}, "http://ollama.local:11434")
+    assert risponde["ollama"] is True
+
+
+def test_senza_indirizzo_non_risponde_nemmeno_con_un_modello_scelto():
+    """La credenziale resta necessaria: il modello non la sostituisce."""
+    risponde = _blocco_risponde_dallo_startup()(
+        _archivio("llama3.1:8b"), {"ollama": False}, "")
+    assert risponde["ollama"] is False
+
+
+def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(monkeypatch):
+    """`LOCAL_MODEL_NAME` non decide piu' niente qui: se decidesse ancora,
+    questa prova passerebbe con l'archivio vuoto."""
+    monkeypatch.setenv("LOCAL_MODEL_NAME", "llama3.1:8b")
+    risponde = _blocco_risponde_dallo_startup()(
+        _archivio(""), {"ollama": True}, "http://ollama.local:11434")
+    assert risponde["ollama"] is False

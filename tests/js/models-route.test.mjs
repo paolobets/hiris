@@ -31,21 +31,21 @@ const CONFIG = {
   nascondi_gratuiti: false,
   strategia_ultima: 'balanced',
   seminato: true,
-  embeddings: { provider: '', model: '' },
-  ollama_model: '',
   ponte_attivo: false,
   fine_catena: 'ultimo della catena: se non risponde, la chat dà errore',
   catena: [
     { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
+      modello_alias: false,
       natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
       connettore_nota: '', ha_credenziale: true, posizione: 1, riordinabile: true },
     { id: 'claude', nome: 'Claude API', modello: 'claude-opus-4-7',
+      modello_alias: false,
       natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
       connettore_nota: '', ha_credenziale: true, posizione: 2, riordinabile: true },
   ],
   fuori_catena: [
     { id: 'subscription', nome: 'Piano Claude Max', modello: 'opus',
-      natura: 'nel piano', manca: '',
+      modello_alias: true, natura: 'nel piano', manca: '',
       nota: 'Entra in catena quando il ponte è acceso, e il ponte si accende in Configurazione add-on.',
       ha_credenziale: true, posizione: null, riordinabile: false },
     { id: 'openai', nome: 'OpenAI', modello: 'gpt-4o', natura: 'a consumo',
@@ -70,7 +70,16 @@ const CONFIG = {
   },
 };
 
-const MODELLI = { providers: [] };
+/* LA FINTA E' SCOMODA anche qui: `api/models` non risponde mai per un provider
+   che il test non ha dichiarato, esattamente come il backend vero non risponde
+   per uno che non ha un elenco. Una finta che restituisse sempre qualcosa
+   nasconderebbe il caso in cui il pannello si apre e non ha niente da dire --
+   che e' il caso da cui dipende «nascondere e' crudele». */
+function pannelloFinto(url, pannelli) {
+  const id = decodeURIComponent(String(url).split('provider=')[1] || '');
+  const voce = (pannelli || {})[id];
+  return { providers: voce ? [voce] : [] };
+}
 
 function monta(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
@@ -78,7 +87,10 @@ function monta(opts = {}) {
   ctx.window.fetch = async (url, options) => {
     const u = String(url);
     chiamate.push({ url: u, opts: options || {} });
-    if (u === 'api/models') return jsonResponse(opts.modelli || MODELLI);
+    if (u.indexOf('api/models?') === 0) {
+      return opts.modelliRotto ? jsonResponse({ error: 'boom' }, 503)
+        : jsonResponse(pannelloFinto(u, opts.pannelli));
+    }
     if (u === 'api/models/config') {
       /* LA FINTA È SCOMODA DI PROPOSITO: dopo una PUT il server NON ricalcola
          la topologia, restituisce la stessa risposta di prima. Un frontend che
@@ -111,15 +123,16 @@ function adesso(document) {
 
 const CATENA = [
   { id: 'claude', nome: 'Claude API', modello: 'claude-opus-4-7',
-    natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+    modello_alias: false, natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
     connettore_nota: '', ha_credenziale: true, posizione: 1, riordinabile: true },
   { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
-    natura: 'a consumo', manca: '', nota: '', connettore: 'se rifiuta, subito',
+    modello_alias: false, natura: 'a consumo', manca: '', nota: '',
+    connettore: 'se rifiuta, subito',
     connettore_nota: '', ha_credenziale: true, posizione: 2, riordinabile: true },
 ];
 const PIANO_FUORI = {
   id: 'subscription', nome: 'Piano Claude Max', modello: 'opus',
-  natura: 'nel piano', manca: '',
+  modello_alias: true, natura: 'nel piano', manca: '',
   nota: 'Entra in catena quando il ponte è acceso, e il ponte si accende in Configurazione add-on.',
   connettore: '', connettore_nota: '',
   ha_credenziale: true, posizione: null, riordinabile: false,
@@ -136,7 +149,8 @@ const PIANO_DENTRO = Object.assign({}, PIANO_FUORI, {
 });
 const FUORI = [
   PIANO_FUORI,
-  { id: 'openai', nome: 'OpenAI', modello: 'gpt-4o', natura: 'a consumo',
+  { id: 'openai', nome: 'OpenAI', modello: 'gpt-4o', modello_alias: false,
+    natura: 'a consumo',
     manca: 'manca la chiave', nota: '', connettore: '', connettore_nota: '',
     ha_credenziale: false, posizione: null, riordinabile: true },
   { id: 'ollama', nome: 'Ollama (in casa)', modello: '', natura: 'in casa',
@@ -150,6 +164,17 @@ function righeCatena(document) {
 
 function righeFuori(document) {
   return Array.from(document.querySelectorAll('#fuori-card .riga-provider'));
+}
+
+/* I bottoni di una riga MENO quello del modello. Dal Task 9 il modello e' un
+   bottone -- si clicca e apre il pannello -- quindi «questa riga non offre
+   nessun gesto» non si scrive piu' come «non c'e' nessun bottone»: si scrive
+   nominando quello che c'e'. Restituisce le classi, cosi' un bottone nuovo si
+   vede nel messaggio d'errore invece di far leggere «1 !== 0». */
+function gestiDellaRiga(row) {
+  return Array.from(row.querySelectorAll('button'))
+    .filter((b) => !b.classList.contains('riga-modello'))
+    .map((b) => b.className);
 }
 
 test('la prima cosa della pagina è la frase, e viene dal backend', async () => {
@@ -359,7 +384,7 @@ test('una riga senza credenziale non sta in catena: sta fuori, e dice cosa manca
     ['Piano Claude Max', 'OpenAI', 'Ollama (in casa)']);
   const openai = fuori[1];
   assert.match(openai.textContent, /manca la chiave/);
-  assert.equal(openai.querySelector('button'), null,
+  assert.deepEqual(gestiDellaRiga(openai), [],
     'senza credenziale non si offre «Usa»: sarebbe un bottone che non può funzionare');
   assert.equal(openai.querySelector('a'), null,
     'e nemmeno un collegamento che non naviga da nessuna parte');
@@ -407,7 +432,7 @@ test('il piano NON offre «Usa», perché quella PUT il server la butta via', as
   await tick(20);
   const piano = righeFuori(document)[0];
   assert.equal(piano.querySelector('.riga-nome').textContent, 'Piano Claude Max');
-  assert.equal(piano.querySelector('button'), null);
+  assert.deepEqual(gestiDellaRiga(piano), []);
   assert.match(piano.textContent, /Entra in catena quando il ponte è acceso/);
 });
 
@@ -565,7 +590,7 @@ test('nemmeno «Usa» si inventa: fuori catena, non riordinabile, niente bottone
       ha_credenziale: true, manca: '', riordinabile: false })] } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(righeFuori(ctx.document)[0].querySelector('button'), null);
+  assert.deepEqual(gestiDellaRiga(righeFuori(ctx.document)[0]), []);
 });
 
 test('«Risparmio» rifà la catena, e ci mette solo chi ha una credenziale', async () => {
@@ -605,4 +630,366 @@ test('la pagina confessa che il riordino parte al riavvio, finché è vero', asy
   await tick(20);
   assert.match(document.getElementById('catena-card').textContent,
     /si applica al riavvio dell'add-on/);
+});
+
+/* ── Il pannello del modello (Task 9) ─────────────────────────────────────
+   La domanda del proprietario, quella che ha aperto tutta la fetta: «attivo
+   Claude Max, ma poi come faccio a dire di utilizzare Haiku piuttosto che
+   Sonnet o Opus? Stessa cosa per le API o OpenRouter: che modello scelgo fra
+   quelli disponibili?».
+
+   Il pannello NON compone nessuna frase e non sa niente dei casi particolari:
+   la provenienza dell'elenco, la spiegazione, da quando la scelta ha effetto e
+   DOVE va scritta arrivano dal payload. I test qui sotto guardano proprio
+   questo -- che una parola a schermo sia quella ricevuta, e che cambiando il
+   payload cambi lo schermo. */
+
+const PANNELLO_OR = {
+  id: 'openrouter', nome: 'OpenRouter', alias: false, fonte: 'viva',
+  provenienza: 'Letti da openrouter.ai adesso.',
+  spiegazione: 'Solo modelli che sanno usare gli strumenti.',
+  quando: 'Si applica al riavvio dell\'add-on: fino ad allora la chat usa quello di prima.',
+  dove: ['provider_models', 'openrouter'],
+  scelto: 'openrouter:anthropic/claude-sonnet-4-6',
+  casella: { etichetta: 'nascondi i gratuiti', dove: ['nascondi_gratuiti'] },
+  modelli: [
+    { valore: 'openrouter:openai/gpt-4.1', nota: '' },
+    { valore: 'openrouter:anthropic/claude-sonnet-4-6', nota: '' },
+    { valore: 'openrouter:google/gemma-3-27b-it:free', nota: 'gratuito' },
+  ],
+};
+
+const PANNELLO_PIANO = {
+  id: 'subscription', nome: 'Piano Claude Max', alias: true, fonte: 'fissa',
+  provenienza: 'Sono tutti quelli che esistono: il ponte parla con la CLI del piano.',
+  spiegazione: 'Sono alias, non nomi di modello: quale dei tre sia in uso '
+    + 'segue il modello di Claude API, e si sceglie lì.',
+  quando: '', dove: [], scelto: 'sonnet', casella: null,
+  modelli: [
+    { valore: 'haiku', nota: 'il più rapido' },
+    { valore: 'sonnet', nota: 'l\'equilibrato' },
+    { valore: 'opus', nota: 'il più capace' },
+  ],
+};
+
+const PANNELLO_OLLAMA = {
+  id: 'ollama', nome: 'Ollama (in casa)', alias: false, fonte: 'viva',
+  provenienza: 'Scaricati su http://192.168.1.42:11434 — letti adesso.',
+  spiegazione: '', quando: 'Si applica al riavvio dell\'add-on.',
+  dove: ['ollama', 'modello'], scelto: 'llama3.1:8b', casella: null,
+  modelli: [
+    { valore: 'llama3.1:8b', nota: '' },
+    { valore: 'qwen2.5:14b', nota: '' },
+  ],
+};
+
+function apriIlModello(ctx, riga) {
+  riga.querySelector('.riga-modello').dispatchEvent(new ctx.window.Event('click'));
+}
+
+function pannello(document) {
+  return document.querySelector('.pannello-modello');
+}
+
+test('l\'elenco dei modelli si legge SOLO quando il pannello si apre', async () => {
+  /* Quella rotta interroga davvero OpenAI, OpenRouter e Ollama, con cinque
+     secondi di pazienza ciascuno. Fino al Task 8 la pagina la leggeva a ogni
+     caricamento per un risultato che nessuno guardava, e «letti adesso» detto
+     su una lettura fatta all'apertura della pagina sarebbe più largo del
+     fatto. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(ctx.chiamate.filter((c) => c.url.indexOf('api/models?') === 0).length, 0,
+    'al caricamento non si interroga nessun provider');
+
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const letture = ctx.chiamate.filter((c) => c.url.indexOf('api/models?') === 0);
+  assert.deepEqual(letture.map((c) => c.url), ['api/models?provider=openrouter'],
+    'e si chiede UN provider, non tutti e cinque');
+});
+
+test('il modello è cliccabile e apre un pannello che dichiara da dove viene l\'elenco', async () => {
+  const riserva = Object.assign({}, PANNELLO_OR, { fonte: 'riserva',
+    provenienza: 'Elenco di riserva: non ho potuto leggere openrouter.ai '
+      + '(chiave rifiutata? rete?). Quello che vedi qui potrebbe non esistere più.' });
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: riserva } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const p = pannello(ctx.document);
+  assert.ok(p);
+  assert.match(p.textContent, /Elenco di riserva/);
+  assert.match(p.textContent, /potrebbe non esistere più/);
+  /* Il FATTO va nella classe, le parole nella frase: la stessa divisione di
+     `diagnosi[].gravita` e `diagnosi[].testo` nel riquadro «Adesso». */
+  assert.ok(p.querySelector('.pannello-provenienza').classList.contains('fonte-riserva'));
+});
+
+test('la provenienza è quella ricevuta, non una composta qui', async () => {
+  /* La prova che distingue «la pagina disegna» da «la pagina conosce i due
+     casi»: la frase è inventata, e deve comparire tale e quale. */
+  const strana = Object.assign({}, PANNELLO_OR,
+    { fonte: 'viva', provenienza: 'Frase che nessun codice di questa pagina saprebbe comporre.' });
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: strana } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  assert.equal(pannello(ctx.document).querySelector('.pannello-provenienza').textContent,
+    'Frase che nessun codice di questa pagina saprebbe comporre.');
+});
+
+test('il pannello del piano offre tre alias e nessun identificatore', async () => {
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
+    pannelli: { subscription: PANNELLO_PIANO } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[0]);
+  await tick(20);
+  const voci = Array.from(ctx.document.querySelectorAll('.pannello-modello label'))
+    .map((l) => l.textContent.trim().split(' ')[0]);
+  assert.deepEqual(voci, ['haiku', 'sonnet', 'opus']);
+  assert.match(pannello(ctx.document).textContent, /segue il modello di Claude API/);
+});
+
+test('il pannello del piano MOSTRA e non scrive: niente da salvare, niente da promettere', async () => {
+  /* `dove` è vuoto: il modello del piano è un effetto di quello di Claude API,
+     e non esiste nessun posto in cui scriverlo. Un controllo abilitato che non
+     salva sarebbe la lezione del Task 8 dimenticata -- i bottoni «Usa»/«✕» sul
+     piano tornavano 200 e venivano buttati via. Spento è una lettura onesta,
+     come la freccia che non ha niente da scambiare. */
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
+    pannelli: { subscription: PANNELLO_PIANO } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[0]);
+  await tick(20);
+  const radio = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'));
+  assert.equal(radio.length, 3);
+  assert.deepEqual(radio.map((r) => r.disabled), [true, true, true]);
+  assert.deepEqual(radio.map((r) => r.checked), [false, true, false],
+    'e dice comunque quale dei tre è in uso adesso');
+  assert.equal(ctx.document.querySelector('.pannello-filtro'), null,
+    'nessun campo di testo dove non c\'è niente da scrivere');
+  radio[2].checked = true;
+  radio[2].dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+  assert.equal(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length, 0,
+    'nemmeno forzando l\'evento: la scrittura non esiste, non è solo nascosta');
+});
+
+test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina rilegge', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const radio = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[0];
+  radio.checked = true;
+  radio.dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
+  const corpo = JSON.parse(put.opts.body);
+  assert.equal(corpo.provider_models.openrouter, 'openrouter:openai/gpt-4.1');
+  assert.deepEqual(Object.keys(corpo).sort(),
+    ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
+      'seminato', 'strategia_ultima'],
+    'sempre l\'oggetto intero, come ogni altra scrittura di questa pagina');
+  /* E poi si RILEGGE. Le altre scritture si ridisegnano da sole perché ciò che
+     cambiano -- le posizioni -- è già determinato dal gesto; qui no: il
+     modello che una riga mostra è quello che il runtime userebbe, «auto» si
+     risolve in un nome che solo il backend conosce, e la PRIMA FRASE della
+     pagina nomina il modello. Lasciarla ferma la farebbe mentire in corpo 20. */
+  const letture = ctx.chiamate.filter((c) => c.url === 'api/models/config'
+    && (c.opts || {}).method !== 'PUT');
+  assert.equal(letture.length, 2, 'una al mount, una dopo il salvataggio');
+  assert.equal(pannello(ctx.document), null, 'e il pannello si chiude');
+});
+
+test('la didascalia del pannello è quella del backend, e sparisce quando il backend tace', async () => {
+  /* Oggi lo STESSO valore si applica in due modi -- subito sul ponte, al
+     riavvio sull'API -- e la pagina lo dice invece di sceglierne uno
+     (invariante 4). NON è scritta qui: il giorno della scrittura a caldo
+     (Task 10) il backend manda una stringa vuota e questa riga sparisce senza
+     che nessuno tocchi il frontend. La coppia di prove è la promessa. */
+  const parlante = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  parlante.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(parlante, righeCatena(parlante.document)[1]);
+  await tick(20);
+  assert.match(pannello(parlante.document).textContent, /riavvio dell'add-on/);
+
+  const muto = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: Object.assign({}, PANNELLO_OR, { quando: '' }) } });
+  muto.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(muto, righeCatena(muto.document)[1]);
+  await tick(20);
+  assert.equal(pannello(muto.document).querySelector('.pannello-quando'), null,
+    'senza la frase la pagina non ne inventa una');
+});
+
+test('il pannello scrive DOVE gli viene detto, e non sa dove sia', async () => {
+  /* Il modello di Ollama non vive in `provider_models` (`_PROVIDER_MODEL_KEYS`
+     non lo contiene: quella chiave è un fantasma, scartata in lettura e in
+     scrittura). Senza il percorso nel payload, questa pagina avrebbe bisogno di
+     un `if (id === 'ollama')` -- cioè di una regola del prodotto scritta una
+     seconda volta, in un altro linguaggio, libera di divergere. */
+  const fuori = [PIANO_FUORI, FUORI[1],
+    Object.assign({}, FUORI[2], { ha_credenziale: true, manca: '',
+      modello: 'llama3.1:8b' })];
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: fuori },
+    pannelli: { ollama: PANNELLO_OLLAMA } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeFuori(ctx.document)[2]);
+  await tick(20);
+  const radio = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[1];
+  radio.checked = true;
+  radio.dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+  const corpo = JSON.parse(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop().opts.body);
+  assert.equal(corpo.ollama.modello, 'qwen2.5:14b');
+  assert.equal(corpo.provider_models.ollama, undefined,
+    'il fantasma resta un fantasma: non lo si fa rivivere per sbaglio');
+  assert.equal(corpo.ollama.timeout_s, 120, 'e il resto dell\'oggetto non si perde');
+});
+
+test('il campo in cima filtra la lista vera, e ciò che si digita resta salvabile', async () => {
+  /* Il problema dei duecento: il pannello non è un catalogo. Digitando si
+     filtra; e ciò che si digita compare in fondo come voce sua, perché il
+     backend accetta qualunque stringa e chiudere quella porta toglierebbe una
+     capacità in cambio di niente. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const campo = ctx.document.querySelector('.pannello-filtro');
+  assert.ok(campo, 'il campo c\'è dove si può scrivere');
+  campo.value = 'gpt';
+  campo.dispatchEvent(new ctx.window.Event('input'));
+  await tick(20);
+  let valori = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'))
+    .map((r) => r.value);
+  assert.deepEqual(valori, ['openrouter:openai/gpt-4.1'],
+    'la lista si stringe: le altre due non contengono «gpt»');
+
+  campo.value = 'openrouter:x-ai/grok-4';
+  campo.dispatchEvent(new ctx.window.Event('input'));
+  await tick(20);
+  valori = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'))
+    .map((r) => r.value);
+  assert.deepEqual(valori, ['openrouter:x-ai/grok-4'],
+    'un identificatore che la lista non contiene resta scegliibile');
+  const scelta = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[0];
+  scelta.checked = true;
+  scelta.dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+  const corpo = JSON.parse(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop().opts.body);
+  assert.equal(corpo.provider_models.openrouter, 'openrouter:x-ai/grok-4');
+});
+
+test('«nascondi i gratuiti» salva e RILEGGE l\'elenco, senza chiudere il pannello', async () => {
+  /* La casella agisce sulla lista che si sta guardando: il filtro è del
+     backend (il ripiego lo dichiara nella riga di provenienza), quindi
+     spuntarla senza rileggere lascerebbe a schermo l'elenco di prima. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  const casella = ctx.document.querySelector('.pannello-casella input');
+  assert.ok(casella);
+  assert.equal(casella.checked, false, 'lo stato viene da state.cfg, non dal nulla');
+  casella.checked = true;
+  casella.dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+  const corpo = JSON.parse(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop().opts.body);
+  assert.equal(corpo.nascondi_gratuiti, true);
+  assert.equal(ctx.chiamate.filter((c) => c.url.indexOf('api/models?') === 0).length, 2,
+    'l\'elenco si rilegge: il filtro lo applica il backend');
+  assert.ok(pannello(ctx.document), 'e il pannello resta aperto: stai guardando quello');
+});
+
+test('un pannello alla volta, e il secondo click su quello aperto lo chiude', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR, claude: Object.assign({}, PANNELLO_OR,
+      { id: 'claude', nome: 'Claude API', dove: ['provider_models', 'claude'] }) } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[0]);
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  assert.equal(ctx.document.querySelectorAll('.pannello-modello').length, 1);
+  assert.equal(righeCatena(ctx.document)[0].querySelector('.riga-modello')
+    .getAttribute('aria-expanded'), 'false');
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-modello')
+    .getAttribute('aria-expanded'), 'true');
+
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  assert.equal(pannello(ctx.document), null, 'il secondo click chiude');
+});
+
+test('un pannello che non si può leggere lo dice, e offre di riprovare', async () => {
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    modelliRotto: true });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  assert.match(pannello(ctx.document).textContent, /Non riesco a leggere/);
+  assert.ok(Array.from(pannello(ctx.document).querySelectorAll('button'))
+    .some((b) => b.textContent === 'Riprova'));
+});
+
+test('un alias si vede che è un alias, prima che qualcuno lo spieghi', async () => {
+  /* Progetto §6.2: un identificatore ha l'aspetto di un identificatore, un
+     alias ha l'aspetto di una parola. La differenza la porta il carattere, e
+     il carattere lo decide un campo del payload -- non un `if` su un id. */
+  const ctx = monta({ config: {
+    ponte_attivo: true,
+    catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })].concat(
+      CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
+    fuori_catena: [] } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.ok(righe[0].querySelector('.riga-modello').classList.contains('modello-alias'));
+  assert.ok(!righe[1].querySelector('.riga-modello').classList.contains('modello-alias'));
+});
+
+test('il pannello segue la sua riga quando la riga si sposta', async () => {
+  /* Un dettaglio che si chiude perché hai spostato la riga che stavi
+     guardando è una perdita senza ragione. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  righeCatena(ctx.document)[1].querySelector('.riga-su')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'OpenRouter');
+  assert.ok(righe[0].querySelector('.pannello-modello'),
+    'il pannello è dentro la riga che si è mossa');
+  assert.equal(ctx.document.querySelectorAll('.pannello-modello').length, 1);
 });

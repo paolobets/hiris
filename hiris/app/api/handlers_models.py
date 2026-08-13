@@ -7,9 +7,8 @@ import re
 import aiohttp
 from aiohttp import web
 
-from ..decisione_modelli import (FINE_CATENA, componi_adesso,
-                                 componi_topologia, nome)
-from ..env_util import env_bool
+from ..decisione_modelli import (FINE_CATENA, componi_adesso, componi_pannello,
+                                 componi_topologia)
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +266,7 @@ def _credenziali_dei_cinque(request: web.Request) -> dict[str, bool]:
             for pid in _CONFIG_PROVIDER_IDS}
 
 
-def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, str]:
+def _modelli_in_uso(provider_models: dict, modello_ollama: str) -> dict[str, str]:
     """Il modello che il runtime userebbe ADESSO, per provider.
 
     Non «il modello configurato»: quello che il runner risolverebbe con
@@ -294,6 +293,7 @@ def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, st
     """
     from ..agent.runner import modello_cli
     from ..backends.openai_compat_runner import AUTO_MODEL_MAP as _AUTO_COMPAT
+    from ..backends.openrouter_runner import AUTO_OPENROUTER
     from ..claude_runner import resolve_model
 
     claude = resolve_model("auto", "chat", provider_models.get("claude", ""))
@@ -301,8 +301,19 @@ def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, st
         "subscription": modello_cli(claude),
         "claude": claude,
         "openai": provider_models.get("openai", "") or _AUTO_COMPAT["chat"],
-        "openrouter": provider_models.get("openrouter", "") or _AUTO_COMPAT["chat"],
-        "ollama": request.app.get("local_model_name", ""),
+        # `OpenRouterRunner._resolve_model` NON usa `AUTO_MODEL_MAP` (è la
+        # mappa di OpenAI: su OpenRouter `gpt-4o` non è nemmeno un nome
+        # valido). Fino a questa fetta la riga di OpenRouter mostrava `gpt-4o`
+        # a chiunque non avesse scelto un modello -- un identificatore preciso,
+        # e falso.
+        "openrouter": provider_models.get("openrouter", "") or AUTO_OPENROUTER,
+        # Il modello di Ollama ha UNA SOLA CASA, `models_config["ollama"]
+        # ["modello"]`, e il chiamante la legge da lì. Fino a questa fetta
+        # veniva da `app["local_model_name"]`, cioè da `LOCAL_MODEL_NAME`:
+        # dopo il Task 6 quello slot era una COPIA dell'archivio, ferma al
+        # momento dell'avvio, e una copia che non si aggiorna a una PUT è la
+        # seconda rappresentazione da cui questa fetta esiste per liberarsi.
+        "ollama": modello_ollama,
     }
 
 
@@ -319,17 +330,24 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # deriva: non c'è più un preset corrente da dichiarare, e quindi non c'è più
     # niente da leggere. `LLM_STRATEGY` resta letta da `server.py` per costruire
     # il router (l'opzione esce con il Task 13); qui smette di essere pubblicata.
-    payload["embeddings"] = {
-        "provider": os.environ.get("MEMORY_EMBEDDING_PROVIDER", ""),
-        "model": os.environ.get("MEMORY_EMBEDDING_MODEL", ""),
-    }
-    payload["ollama_model"] = request.app.get("local_model_name", "")
+    #
+    # Task 9: escono anche gli ultimi due passeggeri senza lettori.
+    # `embeddings` (`MEMORY_EMBEDDING_PROVIDER`/`_MODEL`) alimentava la sezione
+    # «03 Embeddings», uscita col Task 8: la pagina dichiara che nessun testo
+    # viene vettorizzato e NON mostra più i due valori, quindi pubblicarli era
+    # una lettura che nessuno faceva. Le due variabili restano lette da
+    # `server.py`, dove decidono qualcosa.
+    # `ollama_model` era `app["local_model_name"]` accanto a
+    # `payload["ollama"]["modello"]`: la stessa cosa detta due volte, e la
+    # copia era pure ferma all'avvio. Era l'ultimo residuo dell'invariante 1 in
+    # questo handler, dichiarato dal Task 7 e assegnato al Task 9.
     payload["ponte_attivo"] = bool(request.app.get("ponte_attivo"))
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
     # due derivazioni degli stessi fatti nello stesso handler sarebbero la
     # miniatura del difetto che questa fetta chiude.
     _credenziali = _credenziali_dei_cinque(request)
-    _modelli = _modelli_in_uso(request, payload["provider_models"])
+    _modelli = _modelli_in_uso(payload["provider_models"],
+                               payload["ollama"]["modello"])
     # LA catena, una sola: quella che il router ha in mano adesso. Non si
     # riderivano i nomi da `payload["chain_order"]` (l'archivio) perché
     # l'archivio e il runtime possono differire fino al riavvio -- è la
@@ -390,19 +408,27 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, **clean})
 
 
-def _hide_free_models_enabled() -> bool:
-    """Return True if HIRIS_HIDE_FREE_MODELS is set to a truthy value.
-
-    Use case: an installer who has paid OpenRouter credit and wants the
-    dropdown to surface only paid (more reliable) models — useful when the
-    free :free models would otherwise tempt usage but their daily quota /
-    upstream rate-limits make them unsuitable for the user's workflow.
-    """
-    return env_bool("HIRIS_HIDE_FREE_MODELS")
+# `_hide_free_models_enabled()` è uscito con questa fetta. Leggeva
+# `HIRIS_HIDE_FREE_MODELS` dall'ambiente, cioè l'opzione dell'add-on, mentre il
+# valore vive nell'archivio dal Task 6 (`nascondi_gratuiti`, seminato proprio
+# da quella variabile): finché il lettore restava qui, la casella del pannello
+# avrebbe scritto nell'archivio e la lista avrebbe continuato a filtrare
+# sull'ambiente -- una casella che non fa niente, cioè il difetto di questa
+# fetta rimesso in un pannello nuovo. Adesso il valore arriva come argomento a
+# `_fetch_openrouter_models`, e `HIRIS_HIDE_FREE_MODELS` perde il suo unico
+# lettore di comportamento (resta letta da `migrazione_opzioni` per la semina,
+# e l'opzione esce da `config.yaml` col Task 13).
 
 # Recent Claude models (Anthropic doesn't expose a public list-models endpoint)
+#
+# Task 9: la voce "auto" è USCITA da questa lista. Non era un modello: era la
+# parola con cui il vecchio picker diceva «scegli tu», e salvarla come valore è
+# un difetto -- `resolve_model("auto", "chat", "auto")` restituisce "auto" e la
+# richiesta parte con `model="auto"` verso un provider che quel nome non lo
+# conosce. Nell'archivio «auto» è la STRINGA VUOTA, e il pannello la offre come
+# prima voce con la sua nota (`decisione_modelli.NOTA_AUTO`), che dice anche a
+# quale modello si risolve oggi.
 _CLAUDE_MODELS = [
-    "auto",
     "claude-haiku-4-5-20251001",
     "claude-sonnet-4-6",
     "claude-opus-4-7",
@@ -416,7 +442,20 @@ _OPENAI_KEEP = re.compile(r"^(gpt-4[o.1]|o[1-9](-mini|-preview)?)")
 _OPENAI_SKIP = re.compile(r"instruct|embed|vision|realtime|audio|transcribe|tts|whisper")
 
 
-async def _fetch_openai_models(api_key: str) -> list[str]:
+# ── Le tre letture, e la loro PROVENIENZA ─────────────────────────────────
+#
+# Ognuna restituisce `(modelli, fonte)`, dove `fonte` è "viva" (letta adesso
+# dal provider) o "riserva" (elenco scritto nel sorgente). Non è un dettaglio
+# di registrazione: cinque secondi di pazienza e, se falliscono, queste
+# funzioni restituivano una lista scritta a mano DUE ANNI FA con un
+# `logger.warning` e niente altro -- indistinguibile, a schermo, da una lista
+# vera. Peggio: un provider con la chiave sbagliata compare lo stesso
+# nell'elenco, perché la condizione è la PRESENZA della chiave, non la sua
+# validità. Da qui si poteva stare davanti a un elenco che sembra vero, per un
+# provider che non risponderebbe comunque. Il valore torna al chiamante e
+# arriva fino al pannello, che lo dice con le parole di
+# `decisione_modelli.provenienza`.
+async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
     try:
@@ -424,38 +463,50 @@ async def _fetch_openai_models(api_key: str) -> list[str]:
             async with session.get("https://api.openai.com/v1/models", headers=headers) as resp:
                 if resp.status != 200:
                     logger.warning("OpenAI models list returned %s", resp.status)
-                    return _OPENAI_FALLBACK
+                    return _OPENAI_FALLBACK, "riserva"
                 data = await resp.json()
         models = [
             m["id"] for m in data.get("data", [])
             if _OPENAI_KEEP.match(m["id"]) and not _OPENAI_SKIP.search(m["id"])
         ]
         models.sort()
-        return models if models else _OPENAI_FALLBACK
+        # Una risposta 200 che non contiene NESSUN modello utilizzabile non è
+        # una lettura riuscita: quello che si mostra viene dal sorgente, e si
+        # dichiara per quello che è.
+        return (models, "viva") if models else (_OPENAI_FALLBACK, "riserva")
     except Exception as exc:
         logger.warning("Could not fetch OpenAI models: %s", exc)
-        return _OPENAI_FALLBACK
+        return _OPENAI_FALLBACK, "riserva"
 
 
-async def _fetch_ollama_models(local_model_url: str, local_model_name: str) -> list[str]:
+async def _fetch_ollama_models(local_model_url: str,
+                               modello_scelto: str) -> tuple[list[str], str]:
+    """L'elenco di ciò che è SCARICATO su quella macchina, da `/api/tags`.
+
+    Il ripiego è il modello scelto e basta: non è un catalogo di riserva, è
+    «quello che so, e non ho potuto verificare che ci sia ancora». Quando
+    nemmeno quello c'è, la lista è vuota -- ed è la verità, non un guasto.
+    """
     from ..backends.ollama import _validate_ollama_url
+    riserva = [modello_scelto] if modello_scelto else []
     try:
         _validate_ollama_url(local_model_url)
     except ValueError as exc:
         logger.warning("Invalid local_model_url for Ollama listing: %s", exc)
-        return [local_model_name] if local_model_name else []
+        return riserva, "riserva"
     base = local_model_url.rstrip("/")
     timeout = aiohttp.ClientTimeout(total=5)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(f"{base}/api/tags") as resp:
                 if resp.status != 200:
-                    return [local_model_name] if local_model_name else []
+                    logger.warning("Ollama /api/tags returned %s", resp.status)
+                    return riserva, "riserva"
                 data = await resp.json()
-        return [m["name"] for m in data.get("models", [])]
+        return [m["name"] for m in data.get("models", [])], "viva"
     except Exception as exc:
         logger.warning("Could not fetch Ollama models: %s", exc)
-        return [local_model_name] if local_model_name else []
+        return riserva, "riserva"
 
 
 # Curated subset of popular OpenRouter models. The full catalog (200+) is
@@ -503,11 +554,21 @@ def _supports_tools(entry: dict) -> bool:
     return "tools" in params_set or "function_calling" in params_set
 
 
-async def _fetch_openrouter_models(api_key: str) -> list[str]:
+async def _fetch_openrouter_models(api_key: str,
+                                   nascondi_gratuiti: bool = False,
+                                   ) -> tuple[list[str], str]:
     """Fetch the full OpenRouter model list and filter to a usable, tool-capable subset.
 
     Falls back to _OPENROUTER_PRESETS (best-effort, may include tool-incapable
     models) only if the live capability check cannot be performed.
+
+    `nascondi_gratuiti` arriva dall'ARCHIVIO (`models_config["nascondi_gratuiti"]`),
+    non dall'ambiente: è la casella che sta sotto l'elenco che filtra, e deve
+    agire sulla lista che l'utente sta guardando nello stesso istante in cui la
+    spunta. Sul ramo di RISERVA non ha effetto -- i preset tornano non filtrati
+    -- ed è un difetto gemello che si DICHIARA invece di correggerlo: filtrarli
+    qui renderebbe la riserva una lista diversa da quella scritta nel sorgente,
+    cioè una terza cosa. Lo dice il pannello, nella riga di provenienza.
     """
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
@@ -516,7 +577,7 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
             async with session.get("https://openrouter.ai/api/v1/models", headers=headers) as resp:
                 if resp.status != 200:
                     logger.warning("OpenRouter models list returned %s", resp.status)
-                    return _OPENROUTER_PRESETS
+                    return _OPENROUTER_PRESETS, "riserva"
                 data = await resp.json()
 
         # Build live capability index. Tool support is required because every
@@ -536,9 +597,9 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
                 "OpenRouter returned no tool-capable models (capability "
                 "field missing?). Falling back to presets."
             )
-            return _OPENROUTER_PRESETS
+            return _OPENROUTER_PRESETS, "riserva"
 
-        hide_free = _hide_free_models_enabled()
+        hide_free = bool(nascondi_gratuiti)
 
         # Keep curated presets first (in order), filtered by capability.
         result = [
@@ -547,7 +608,7 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
             and not (hide_free and m.endswith(":free"))
         ]
         # Add any other ':free' tool-capable models not already in presets.
-        # Skip them entirely if HIRIS_HIDE_FREE_MODELS is set.
+        # Skip them entirely when the box is ticked.
         if not hide_free:
             for entry in data.get("data", []):
                 mid = entry.get("id", "")
@@ -555,10 +616,10 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
                     tagged = f"openrouter:{mid}"
                     if tagged not in result:
                         result.append(tagged)
-        return result if result else _OPENROUTER_PRESETS
+        return (result, "viva") if result else (_OPENROUTER_PRESETS, "riserva")
     except Exception as exc:
         logger.warning("Could not fetch OpenRouter models: %s", exc)
-        return _OPENROUTER_PRESETS
+        return _OPENROUTER_PRESETS, "riserva"
 
 
 # `is_openrouter_model_tool_capable` (uscita, fetta E4 Task 3 "un bot
@@ -571,81 +632,118 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
 # scope). Orfana per costruzione di questo task (non prevista dal brief,
 # trovata dal censimento), raccolta subito insieme ai suoi sei test in
 # tests/test_handlers_models_openrouter.py -- `_supports_tools`/
-# `_fetch_openrouter_models`/`_hide_free_models_enabled`/
-# `_OPENROUTER_PRESETS` restano vivi (alimentano GET /api/models, il
-# dropdown modelli, indipendente dal CRUD chatbot) e non sono toccati.
+# `_fetch_openrouter_models`/`_OPENROUTER_PRESETS` restano vivi (alimentano
+# GET /api/models, adesso il pannello del modello, indipendente dal CRUD
+# chatbot) e non sono toccati. (`_hide_free_models_enabled`, che era nominata
+# qui accanto, è uscita col Task 9: vedi il commento sopra `_CLAUDE_MODELS`.)
 
 
-# Maps the provider "id" used in the /api/models payload to the name used in
-# app["catena_modelli"]. Note: the payload id for Claude is "anthropic" but the
-# chain name is "claude" — they diverge, hence the explicit mapping instead of
-# a 1:1 lookup.
-_NOMI_IN_CATENA = {
-    "anthropic": "claude",
-    "openai": "openai",
-    "openrouter": "openrouter",
-    "ollama": "ollama",
-}
-
-
-def _enrich_provider(request: web.Request, entry: dict, has_credential: bool) -> dict:
-    """Attacca l'APPARTENENZA alla catena, mai il valore della credenziale.
-
-    fetta «la catena diventa l'unica verità»: leggeva `app["active_providers"]`
-    (interruttore AND credenziale) e pubblicava il campo `active`. Quella
-    derivazione è uscita, e con lei la parola: un provider è usato se e solo se
-    sta in catena, quindi il campo si chiama `in_catena` e legge la stessa
-    lista che il router riceve.
-    """
-    catena = list(request.app.get("catena_modelli") or [])
-    nome_catena = _NOMI_IN_CATENA.get(entry["id"], entry["id"])
-    entry["in_catena"] = nome_catena in catena
-    entry["has_credential"] = bool(has_credential)
-    return entry
+# `_enrich_provider` e `_NOMI_IN_CATENA` sono USCITI con il Task 9.
+# `_enrich_provider` attaccava a ogni voce `in_catena` + `has_credential`: era
+# la TERZA superficie che descriveva l'appartenenza alla catena, dopo che il
+# Task 7 aveva tolto `providers[].active` e il Task 8 l'intero `providers[]`
+# da `/api/models/config`. Il suo unico lettore era il picker della vecchia
+# sezione 01, uscito col Task 8; questa rotta serve adesso UN SOLO cliente --
+# il pannello del modello -- che l'appartenenza non la usa: la riga da cui il
+# pannello si apre sta già dentro `catena` o dentro `fuori_catena`, e sono
+# quelle due liste a dirlo. `_NOMI_IN_CATENA` esisteva solo per riconciliare
+# l'id storico "anthropic" di questa rotta col nome "claude" della catena: gli
+# id di questa rotta sono adesso i CINQUE del prodotto, gli stessi di ogni
+# altra superficie, e non c'è più niente da riconciliare.
 
 
 async def handle_list_models(request: web.Request) -> web.Response:
-    providers = []
+    """L'elenco dei modelli, per il pannello che li fa scegliere.
 
-    # Anthropic / Claude
-    claude_runner = request.app.get("claude_runner")
-    if claude_runner is not None:
-        providers.append(_enrich_provider(
-            request,
-            {"id": "anthropic", "label": nome("claude"), "models": _CLAUDE_MODELS},
-            has_credential=True,
-        ))
+    Non è più «lo stato dei provider»: quello lo dice `/api/models/config`, in
+    due liste. Qui c'è una cosa sola -- che cosa si può scegliere per un
+    provider, da dove viene l'elenco, e dove va scritta la scelta -- e si
+    chiede UN provider alla volta (`?provider=<id>`), quando il pannello si
+    apre. Prima l'intero elenco veniva letto al caricamento della pagina, che
+    significava interrogare davvero OpenAI, OpenRouter e Ollama, cinque secondi
+    di pazienza ciascuno, per un risultato che nessuno guardava (il picker era
+    uscito col Task 8). E «letti adesso» diventa vero: senza la lettura pigra
+    sarebbe «letti quando hai aperto la pagina», che è una parola più larga del
+    fatto.
 
-    # OpenAI
+    Senza `?provider=` risponde per tutti, come prima: è la forma che un
+    client diverso dalla pagina (il gateway, uno script) si aspetta, e una
+    rotta che cambia significato in silenzio è la cosa che questa fetta ritira.
+    """
+    voluto = request.query.get("provider", "")
+    archivio = load_models_config(request.app.get("data_dir") or "/data")
+    provider_models = archivio["provider_models"]
+    modello_ollama = archivio["ollama"]["modello"]
+    nascondi = bool(archivio["nascondi_gratuiti"])
+    # Gli stessi modelli che la riga mostra, dalla stessa funzione: il pannello
+    # e la riga da cui si apre non possono dire due cose diverse.
+    in_uso = _modelli_in_uso(provider_models, modello_ollama)
     openai_key = request.app.get("openai_api_key", "")
-    if openai_key:
-        models = await _fetch_openai_models(openai_key)
-        providers.append(_enrich_provider(
-            request,
-            {"id": "openai", "label": nome("openai"), "models": models},
-            has_credential=bool(openai_key),
-        ))
-
-    # OpenRouter (200+ models via single API key, includes free tier)
     openrouter_key = request.app.get("openrouter_api_key", "")
-    if openrouter_key:
-        models = await _fetch_openrouter_models(openrouter_key)
-        providers.append(_enrich_provider(
-            request,
-            {"id": "openrouter", "label": nome("openrouter"), "models": models},
-            has_credential=bool(openrouter_key),
-        ))
-
-    # Ollama / local
     local_url = request.app.get("local_model_url", "")
-    local_name = request.app.get("local_model_name", "")
-    if local_url:
-        models = await _fetch_ollama_models(local_url, local_name)
-        if models:
-            providers.append(_enrich_provider(
-                request,
-                {"id": "ollama", "label": nome("ollama"), "models": models},
-                has_credential=bool(local_url),
-            ))
+
+    async def leggi(pid: str) -> tuple[list[str], str, str, str]:
+        """`(valori, fonte, scelto, auto_risolto)` per un provider.
+
+        La fonte "assente" non è un errore: è «non c'è nessun elenco da
+        leggere, e il perché è la credenziale». Serve perché un pannello che si
+        apre deve SEMPRE dare una risposta -- nascondere è comodo per chi
+        capisce e crudele per chi non capisce perché una cosa è sparita -- e la
+        risposta la scrive `decisione_modelli`, non questa pagina.
+        """
+        if pid == "subscription":
+            # Tre alias, sempre gli stessi: non si leggono da nessuna parte
+            # perché non c'è niente da leggere. `modello_cli` ne produce
+            # esattamente tre. Senza il token il piano non risponde e non c'è
+            # niente da scegliere: la riga lo dice già, e il pannello lo ridice
+            # con la stessa parola invece di offrire tre voci inerti.
+            if not _config_has_credential(request, "subscription"):
+                return [], "assente", "", ""
+            return [], "fissa", in_uso["subscription"], ""
+        if pid == "claude":
+            # L'unico elenco che NON viene dal provider: Anthropic non espone
+            # un endpoint pubblico. Quindi c'è anche senza la chiave -- e conta,
+            # perché su un'installazione col solo Piano Claude Max questo è
+            # l'UNICO posto da cui si sceglie il modello del piano (il ponte usa
+            # `provider_models["claude"]`). Chiuderlo lì vorrebbe dire
+            # rispondere «da nessuna parte» alla prima domanda del proprietario.
+            return (list(_CLAUDE_MODELS), "riserva",
+                    provider_models.get("claude", ""), in_uso["claude"])
+        if pid == "openai":
+            if not openai_key:
+                return [], "assente", provider_models.get("openai", ""), ""
+            valori, fonte = await _fetch_openai_models(openai_key)
+            return valori, fonte, provider_models.get("openai", ""), in_uso["openai"]
+        if pid == "openrouter":
+            if not openrouter_key:
+                return [], "assente", provider_models.get("openrouter", ""), ""
+            valori, fonte = await _fetch_openrouter_models(
+                openrouter_key, nascondi_gratuiti=nascondi)
+            return (valori, fonte, provider_models.get("openrouter", ""),
+                    in_uso["openrouter"])
+        # Ollama. Nessuna voce «auto»: il runner locale usa SEMPRE il modello
+        # scelto (`fixed_model` vince su ogni altro ramo di `_resolve_model`),
+        # perché quell'istanza ne ha scaricato uno solo e chiedergliene un
+        # altro fallirebbe.
+        if not local_url:
+            return [], "assente", modello_ollama, ""
+        valori, fonte = await _fetch_ollama_models(local_url, modello_ollama)
+        return valori, fonte, modello_ollama, ""
+
+    providers: list[dict] = []
+    for pid in _CONFIG_PROVIDER_IDS:
+        if voluto and voluto != pid:
+            continue
+        valori, fonte, scelto, auto = await leggi(pid)
+        # LA REGOLA, in una riga: chi viene CHIESTO riceve sempre una risposta;
+        # senza una richiesta compaiono solo quelli per cui un elenco esiste.
+        # Un pannello che si apre su una riga e non dice niente sarebbe la
+        # forma piccola del difetto che questa fetta chiude.
+        if not voluto and fonte == "assente":
+            continue
+        providers.append(componi_pannello(
+            provider_id=pid, valori=valori, fonte=fonte, scelto=scelto,
+            auto_risolto=auto, indirizzo=local_url, nascondi_gratuiti=nascondi,
+        ))
 
     return web.json_response({"providers": providers})

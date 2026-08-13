@@ -1347,11 +1347,27 @@
 .riga-nome { font-size: var(--fs-13); font-weight: 500; color: var(--text); }
 .riga-modello {
   /* Un identificatore, non un nome proprio: la tipografia lo dice prima della
-     didascalia. */
+     didascalia -- e `.modello-alias` la toglie, perche' un alias ha l'aspetto
+     di una parola (progetto §6.2).
+     E' un BOTTONE (apre il pannello), quindi va spogliato di tutto cio' che un
+     bottone porta con se': fondo, bordo, allineamento al centro. Resta
+     bottone dove conta -- fuoco da tastiera, ruolo, area cliccabile -- e non
+     dove non conta, cioe' nell'aspetto: nella riga e' una colonna di testo,
+     come le altre tre. */
   font-family: var(--font-mono); font-size: var(--fs-12);
   color: var(--text-2);
   overflow-wrap: anywhere;
+  background: none; border: 0; padding: 0;
+  text-align: left;
+  cursor: pointer;
 }
+.riga-modello.modello-alias { font-family: inherit; font-size: var(--fs-13); }
+/* Il segno che si puo' aprire: sottolineatura tratteggiata, non un colore --
+   il colore non e' mai l'unico segnale, e qui non e' nemmeno un segnale, e'
+   una decorazione che qualcuno potrebbe non vedere. */
+.riga-modello { text-decoration: underline dotted var(--border-2); }
+.riga-modello:hover { color: var(--text); }
+.riga-modello[aria-expanded="true"] { color: var(--text); font-weight: 500; }
 .riga-natura { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; }
 .riga-azioni { display: flex; align-items: center; gap: var(--sp-2); }
 .riga-nota {
@@ -1433,11 +1449,112 @@
   line-height: var(--lh-snug);
 }
 
+/* Il pannello del modello: si apre DENTRO la riga, espanso, non sovrapposto.
+   Un riquadro flottante coprirebbe le righe accanto -- cioè la catena, che è
+   il contenuto della pagina -- e su un tablet in verticale coprirebbe anche
+   sé stesso. Espanso, invece, la riga cresce e tutto il resto scorre. */
+.pannello-modello {
+  grid-column: 1 / -1;
+  margin: var(--sp-3) 0 var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.pannello-testa {
+  display: flex; align-items: center; gap: var(--sp-3);
+}
+.pannello-titolo {
+  margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text);
+}
+.pannello-chiudi { margin-left: auto; }
+
+/* Da dove viene l'elenco. Il colore segue il FATTO, non il gusto: una lista
+   letta adesso è un'informazione neutra (--text-3), una di riserva è un
+   avviso -- quello che si sta guardando potrebbe non esistere più -- e usa il
+   token semantico del testo, `--warn-ink`, mai `--warn` (regola di
+   hiris-theme.css: gli `*-ink` sono per il testo, gli altri per pallini,
+   bordi e riempimenti). */
+.pannello-provenienza {
+  margin: 0;
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: var(--lh-snug);
+}
+.pannello-provenienza.fonte-riserva,
+.pannello-provenienza.fonte-assente { color: var(--warn-ink); }
+
+.pannello-filtro {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  font-size: var(--fs-13);
+}
+
+/* L'elenco: una colonna, mai una griglia. Gli identificatori sono lunghi e
+   disuguali, e incolonnarli a due li renderebbe impossibili da confrontare.
+   Un'altezza massima con lo scorrimento perché il pannello non spinga la
+   catena fuori dallo schermo: undici voci ci stanno, i gratuiti di OpenRouter
+   possono essere molti di più. */
+.pannello-elenco {
+  display: flex; flex-direction: column;
+  max-height: 15em; overflow-y: auto;
+}
+.pannello-voce {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+}
+.pannello-voce input[disabled] { cursor: default; }
+/* La tipografia È la spiegazione (progetto §6.2): un identificatore ha
+   l'aspetto di un identificatore, un alias l'aspetto di una parola. La stessa
+   regola della colonna del modello, applicata dentro il pannello. */
+.voce-valore {
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  color: var(--text); overflow-wrap: anywhere;
+}
+.voce-alias .voce-valore { font-family: inherit; font-size: var(--fs-13); }
+.voce-nota { font-size: var(--fs-12); color: var(--text-3); }
+
+/* La casella vive SOTTO l'elenco che filtra: si auto-documenta, e non serve
+   una descrizione per capire cosa fa una casella che sta sotto l'elenco che
+   modifica. */
+.pannello-casella {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-12); color: var(--text-2);
+  cursor: pointer;
+}
+.pannello-spiegazione {
+  margin: 0;
+  font-size: var(--fs-12); color: var(--text-2);
+  line-height: var(--lh-snug);
+}
+/* La confessione dell'invariante 4: lo stesso valore si applica in due modi.
+   Neutra -- non è un avviso, è un fatto -- e destinata a sparire da sé quando
+   il backend smetterà di mandarla (Task 10). */
+.pannello-quando {
+  margin: 0;
+  font-size: 11px; color: var(--text-3);
+  font-style: italic;
+  line-height: var(--lh-snug);
+}
+.pannello-stato {
+  margin: 0;
+  font-size: var(--fs-12); color: var(--err-ink);
+}
+.pannello-stato:empty { display: none; }
+
 @media (pointer: coarse) {
   .riga-provider .btn-icon-only {
     min-width: 44px; min-height: 44px;
     margin: -4px -4px;
   }
+  /* Il modello si clicca anche con un dito: il testo da solo e' alto una riga.
+     `min-height` invece di padding perche' la riga e' una griglia e un padding
+     sposterebbe la colonna rispetto alle altre tre. */
+  .riga-modello { min-height: 44px; display: flex; align-items: center; }
+  .pannello-voce { min-height: 44px; }
 }
 @media (max-width: 640px) {
   /* Due righe invece di sei colonne: nome e azioni sopra, modello e natura

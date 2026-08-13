@@ -194,3 +194,77 @@ def test_i_tre_preset_del_frontend_sono_quelli_del_router():
     for chiave, ordine in _STRATEGY_ORDER.items():
         atteso = "ordine: [" + ", ".join(f"'{p}'" for p in ordine) + "]"
         assert atteso in js, f"{chiave}: atteso {atteso} in models-route.js"
+
+
+def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso():
+    """Il gemello di `test_la_pagina_non_conosce_il_caso_del_piano`, sul pezzo
+    piu' nuovo. Il modello di Ollama NON vive in `provider_models`
+    (`_PROVIDER_MODEL_KEYS` non lo contiene: quella chiave e' un fantasma,
+    scartata in lettura E in scrittura) e il piano non ha nessun posto in cui
+    salvarlo. Scritte qui, quelle due regole vivrebbero una seconda volta in un
+    altro linguaggio, libere di divergere: il pannello riceve un PERCORSO e lo
+    applica alla cieca.
+
+    I QUATTRO id compaiono nel codice esattamente quattro volte ciascuno, e
+    sono le due liste che il prodotto tiene legate al backend da un test
+    (`ORDINE_FISSO`, una volta; i tre preset, tre volte). Un quinto sarebbe un
+    caso particolare riconosciuto per nome -- ed e' cosi' che il difetto di
+    questa fetta rientrerebbe."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    assert "dati.dove" in corpo
+    assert "scriviPercorso" in corpo and "leggiPercorso" in corpo
+    for pid in ("'claude'", "'openrouter'", "'openai'", "'ollama'"):
+        assert corpo.count(pid) == 4, (
+            f"{pid} compare {corpo.count(pid)} volte: le sole citazioni ammesse "
+            "sono ORDINE_FISSO (1) e i tre preset (3), entrambi pinnati contro "
+            "il backend"
+        )
+
+
+def test_le_parole_del_pannello_non_vivono_nella_pagina():
+    """Provenienza, spiegazione e «da quando ha effetto» sono affermazioni sul
+    prodotto e cambiano con lui: la provenienza dipende da un fatto misurato
+    adesso, e la didascalia di `quando` sparira' con la scrittura a caldo
+    (Task 10) senza che nessuno tocchi questo file. Scritte qui resterebbero a
+    dire quella di ieri, e a schermo la frase ci sarebbe lo stesso."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    for parola in ("Letti da", "Elenco di riserva", "riavvio dell'add-on",
+                   "Anthropic", "openrouter.ai", "api.openai.com",
+                   "nascondi i gratuiti", "il piu' rapido"):
+        assert parola not in corpo, (
+            f"«{parola}» e' una parola del prodotto: viene dal payload"
+        )
+    assert "dati.provenienza" in corpo
+    assert "dati.spiegazione" in corpo
+    assert "dati.quando" in corpo
+    assert "casella.etichetta" in corpo
+
+
+def test_la_pagina_legge_l_elenco_dei_modelli_solo_all_apertura_del_pannello():
+    """Quella rotta interroga davvero OpenAI, OpenRouter e Ollama con cinque
+    secondi di pazienza ciascuno. Fino al Task 8 la pagina la leggeva a ogni
+    caricamento per un risultato che nessuno guardava; adesso si legge un
+    provider alla volta, quando il pannello si apre -- ed e' anche cio' che
+    rende vera la parola «letti adesso»."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    assert "fetch('api/models')" not in corpo, (
+        "la lettura completa al caricamento e' uscita col pannello"
+    )
+    assert "'api/models?provider=' + encodeURIComponent(idProvider)" in corpo
+
+
+def test_il_modello_e_un_bottone_e_non_uno_span_con_un_listener():
+    """Si clicca: deve essere raggiungibile da tastiera come le frecce, e
+    annunciare che apre e chiude qualcosa. Uno `<span>` con un listener e' un
+    controllo invisibile a chi non usa il mouse."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    corpo = _codice_senza_commenti(js)
+    assert "var modello = el('button'," in corpo, (
+        "uno <span> con un listener supera ogni test JS -- jsdom esegue il "
+        "click lo stesso -- e non e' raggiungibile da tastiera: la differenza "
+        "si vede solo guardando il file"
+    )
+    assert "aria-expanded" in corpo

@@ -1031,7 +1031,12 @@ async def _on_startup(app: web.Application) -> None:
         except ValueError as exc:
             logger.error("Invalid LOCAL_MODEL_URL (%s) — disabling local model", exc)
             local_model_url = ""
-    local_model_name = os.environ.get("LOCAL_MODEL_NAME", "")
+    # L'UNICO uso rimasto di `LOCAL_MODEL_NAME` in questo file, e il nome lo
+    # dice: serve a ricostruire la CREDENZIALE COM'ERA per la migrazione della
+    # catena (sotto), dove la regola vecchia contava il modello insieme
+    # all'indirizzo. Il modello che il runner usa arriva dall'archivio -- una
+    # sola casa, `models_config["ollama"]["modello"]` (Task 9).
+    _nome_modello_com_era = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
@@ -1060,6 +1065,14 @@ async def _on_startup(app: web.Application) -> None:
         # dietro. La migrazione non ce lo porta (`_catena_com_era` riceve la
         # credenziale VECCHIA, vedi sotto): ci si arriva solo mettendocelo a
         # mano dalla pagina Modelli.
+        #
+        # Task 9: il buco è CHIUSO, e non rimettendo il modello dentro la
+        # credenziale (sarebbero di nuovo due concetti in un posto solo) ma
+        # separando i due fatti: la credenziale resta l'indirizzo, e chi può
+        # RISPONDERE si misura a parte (`_risponde`, più sotto) -- con quel
+        # fatto si filtra la catena effettiva e si costruisce il runner. La
+        # pagina mostra Ollama credenziato, fuori dalla catena, e dice che
+        # manca il modello.
         "ollama": bool(local_model_url),
     }
     app["credenziali_provider"] = _credenziali
@@ -1079,7 +1092,7 @@ async def _on_startup(app: web.Application) -> None:
             # farebbe entrare in catena, per migrazione, un Ollama che la
             # vecchia regola non ci aveva MAI messo -- cioe' la migrazione
             # inventerebbe invece di copiare.
-            {**_credenziali, "ollama": bool(local_model_url and local_model_name)},
+            {**_credenziali, "ollama": bool(local_model_url and _nome_modello_com_era)},
             {k: env_bool(v) for k, v in {
                 "subscription": "PROVIDER_SUBSCRIPTION", "claude": "PROVIDER_CLAUDE",
                 "openai": "PROVIDER_OPENAI", "openrouter": "PROVIDER_OPENROUTER",
@@ -1544,10 +1557,28 @@ async def _on_startup(app: web.Application) -> None:
     # nessuno genera piu'.
 
     # SP-2 T5C: per-provider DEFAULT model chosen by the user (used when an
-    # entity's model is "auto"); Ollama excluded — it uses local_model.model
-    # via fixed_model instead. Empty string ("") preserves today's behaviour
+    # entity's model is "auto"); Ollama escluso — usa sempre il suo modello,
+    # via `fixed_model`. Empty string ("") preserves today's behaviour
     # (fall back to AUTO_MODEL_MAP).
     _pm = app["models_config"].get("provider_models", {})
+    # Il modello di Ollama, dalla SUA UNICA CASA. Fino alla 2.4.1 veniva da
+    # `LOCAL_MODEL_NAME`, cioè da un'opzione dell'add-on: era il modello messo
+    # dove si custodiscono le credenziali invece che dove si prendono le
+    # decisioni, e `provider_models["ollama"]` restava un fantasma
+    # (`_PROVIDER_MODEL_KEYS` non lo contiene, `_clean_provider_models` lo
+    # scarta in lettura E in scrittura -- e resta così: NON è un doppione da
+    # far rivivere).
+    _modello_ollama = (app["models_config"].get("ollama") or {}).get("modello", "")
+    # Chi può davvero RISPONDERE. Non è una seconda rappresentazione della
+    # credenziale: sono due fatti diversi, e per quattro provider su cinque
+    # coincidono. Per Ollama no -- l'indirizzo è ciò che si custodisce, il
+    # modello è ciò che si decide -- e la differenza è esattamente il buco che
+    # il Task 7 aveva dichiarato: con la sola credenziale, Ollama poteva finire
+    # in `catena_modelli` senza un runner dietro, cioè comparire come anello
+    # numerato in una pagina che descrive il runtime mentre
+    # `LLMRouter._ordered_backends` lo saltava in silenzio.
+    _risponde = {**_credenziali,
+                 "ollama": bool(local_model_url and _modello_ollama)}
 
     claude_runner = None
     if api_key and _credenziali["claude"]:
@@ -1570,11 +1601,11 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     ollama_runner = None
-    if local_model_url and local_model_name and _credenziali["ollama"]:
+    if _risponde["ollama"]:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
-            fixed_model=local_model_name,
+            fixed_model=_modello_ollama,
             usage_path=f"{_usage_base}_ollama{_usage_ext}",
         )
         # Quick reachability check — warn but don't abort startup.
@@ -1588,13 +1619,13 @@ async def _on_startup(app: web.Application) -> None:
                     if _r.status == 200:
                         _tags = await _r.json()
                         _names = [m.get("name", "") for m in _tags.get("models", [])]
-                        if local_model_name in _names:
-                            logger.info("Ollama OK — modello '%s' pronto", local_model_name)
+                        if _modello_ollama in _names:
+                            logger.info("Ollama OK — modello '%s' pronto", _modello_ollama)
                         else:
                             logger.warning(
                                 "Ollama raggiungibile ma il modello '%s' non è nella lista %s — "
                                 "pull potrebbe essere necessario",
-                                local_model_name, _names,
+                                _modello_ollama, _names,
                             )
                     else:
                         logger.warning("Ollama /api/tags ha risposto con status %s", _r.status)
@@ -1617,7 +1648,13 @@ async def _on_startup(app: web.Application) -> None:
     app["openai_api_key"] = openai_api_key
     app["openrouter_api_key"] = openrouter_api_key
     app["local_model_url"] = local_model_url
-    app["local_model_name"] = local_model_name
+    # `app["local_model_name"]` e' USCITO col Task 9. Era una copia del modello
+    # di Ollama presa all'avvio: dopo il Task 6 la casa del valore e'
+    # l'archivio, e una copia in memoria che nessuna PUT aggiorna e' la
+    # seconda rappresentazione da cui questa fetta esiste per liberarsi -- i
+    # suoi due lettori (`handle_list_models`, `_modelli_in_uso`) avrebbero
+    # continuato a mostrare il modello di prima dopo un salvataggio. Leggono
+    # `models_config["ollama"]["modello"]`, come tutti.
 
     # ── La catena: l'appartenenza, e nient'altro ──────────────────────────
     # fetta «la catena diventa l'unica verita'»: qui c'erano l'ordine di
@@ -1634,13 +1671,20 @@ async def _on_startup(app: web.Application) -> None:
     # Task 1). Con una sola scrittura non c'e' piu' un secondo posto da tenere
     # allineato: il debito si chiude togliendo il doppione, non coprendolo.
     from .model_activation import provider_in_catena
-    _chain = provider_in_catena(app["models_config"].get("chain_order") or [], _credenziali)
+    # Il filtro e' `_risponde`, non `_credenziali` (Task 9): in catena ci puo'
+    # stare solo chi ha un backend costruito. Con la sola credenziale, un
+    # `chain_order` che nomina Ollama senza un modello scelto avrebbe messo in
+    # catena un anello che il router salta -- la pagina lo avrebbe disegnato
+    # numerato, col suo connettore, e nessun messaggio ci sarebbe mai passato.
+    # Un anello a schermo che non risponde mai e' esattamente la bugia che
+    # questa fetta ritira, e la differenza fra i due dizionari e' UNA riga.
+    _chain = provider_in_catena(app["models_config"].get("chain_order") or [], _risponde)
     # Nessuna perdita in silenzio: chi ha una credenziale e NON sta in catena
     # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
     # cambio di comportamento si dichiara nel registro, dove un operatore lo
     # cerca, invece di lasciarlo dedurre da un provider che non risponde mai.
     _fuori = [p for p in ("claude", "openrouter", "openai", "ollama")
-              if _credenziali.get(p) and p not in _chain]
+              if _risponde.get(p) and p not in _chain]
     if _fuori:
         logger.info(
             "Provider con credenziale FUORI dalla catena: %s. HIRIS non li "

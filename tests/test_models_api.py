@@ -39,13 +39,18 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "nascondi_gratuiti", "strategia_ultima", "seminato",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
-        # i due residui dichiarati: `ollama_model` esce col Task 9,
-        # `ponte_attivo` col Task 13/14 (non e' un doppione esatto di
-        # `ponte.attivo`: e' `BRIDGE_ENABLED or _sub_first_class`)
-        "ollama_model", "ponte_attivo",
-        # inerti e dichiarati tali dalla pagina, senza valori a schermo (§8)
-        "embeddings",
+        # l'ULTIMO residuo dichiarato: esce col Task 13/14, e non e' un
+        # doppione esatto di `ponte.attivo` (e' `BRIDGE_ENABLED or
+        # _sub_first_class`, quindi chi lo toglie toglie anche l'implicazione)
+        "ponte_attivo",
     }
+    # Task 9: `ollama_model` e `embeddings` sono usciti da qui. Il primo era
+    # `app["local_model_name"]` accanto a `payload["ollama"]["modello"]` -- la
+    # stessa cosa detta due volte, e la copia era pure ferma all'avvio. Il
+    # secondo alimentava la sezione «03 Embeddings», uscita col Task 8: due
+    # valori che nessuna riga di schermo mostra piu'.
+    assert "ollama_model" not in body
+    assert "embeddings" not in body
 
 
 @pytest.mark.asyncio
@@ -134,17 +139,20 @@ async def test_in_catena_segue_la_catena_del_runtime(client):
 
 @pytest.mark.asyncio
 async def test_il_payload_porta_la_topologia_gia_composta(client):
-    """Le due liste che la pagina disegnera'. Ogni voce ha esattamente UNDICI
+    """Le due liste che la pagina disegnera'. Ogni voce ha esattamente DODICI
     campi: se la pagina dovesse aggiungerne uno, lo starebbe calcolando --
     l'invariante 2, rotto.
 
-    Erano sette fino al Task 8. Le quattro voci nuove non sono calcoli, sono
-    PAROLE: quale credenziale manca (`manca`), perche' una riga non offre i
-    gesti che offrono le altre (`nota`), cosa succede se quella riga non
-    risponde (`connettore`) e il tetto dei cinque minuti quando c'e'
-    (`connettore_nota`). Il numero sale quando il backend smette di far dedurre
-    qualcosa alla pagina: e' l'invariante 2 che si stringe, non che si
-    allenta."""
+    Erano sette fino al Task 8, undici dopo. Le voci nuove non sono calcoli,
+    sono PAROLE o FATTI: quale credenziale manca (`manca`), perche' una riga
+    non offre i gesti che offrono le altre (`nota`), cosa succede se quella
+    riga non risponde (`connettore`), il tetto dei cinque minuti quando c'e'
+    (`connettore_nota`) e -- col Task 9 -- se il modello di quella riga e' un
+    ALIAS o un IDENTIFICATORE (`modello_alias`), che e' la differenza di natura
+    che la pagina rende col carattere (progetto §6.2) e che senza questo campo
+    dovrebbe dedurre da un `if (id === 'subscription')`. Il numero sale quando
+    il backend smette di far dedurre qualcosa alla pagina: e' l'invariante 2
+    che si stringe, non che si allenta."""
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["catena_modelli"] = ["openrouter"]
     client.app["ponte_attivo"] = False
@@ -155,9 +163,10 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     assert [r["id"] for r in body["fuori_catena"]] == [
         "claude", "subscription", "openai", "ollama"]
     for r in body["catena"] + body["fuori_catena"]:
-        assert set(r.keys()) == {"id", "nome", "modello", "natura", "manca",
-                                 "nota", "connettore", "connettore_nota",
-                                 "ha_credenziale", "posizione", "riordinabile"}
+        assert set(r.keys()) == {"id", "nome", "modello", "modello_alias",
+                                 "natura", "manca", "nota", "connettore",
+                                 "connettore_nota", "ha_credenziale",
+                                 "posizione", "riordinabile"}
     # E la frase che chiude la catena e' della CATENA, non dell'ultima riga:
     # quale sia l'ultima cambia con un gesto, e la pagina riordina da se'.
     assert body["fine_catena"] == (
@@ -193,19 +202,89 @@ async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(cli
 
 
 @pytest.mark.asyncio
-async def test_get_models_config_enriched_fields(client, monkeypatch):
-    monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", "openai")
-    monkeypatch.setenv("MEMORY_EMBEDDING_MODEL", "text-embedding-3-small")
-    client.app["local_model_name"] = "llama3.1:8b"
+async def test_il_modello_di_ollama_ha_una_casa_sola_e_la_riga_la_legge(client):
+    """Il soggetto storico di questo test era `body["ollama_model"]`, cioe'
+    `app["local_model_name"]`. Quello slot era una COPIA presa all'avvio: dopo
+    un salvataggio la riga avrebbe continuato a mostrare il modello di prima,
+    e il payload avrebbe portato due valori diversi per la stessa cosa. Il
+    comportamento che conta -- la riga di Ollama dice quale modello risponde --
+    si guarda dove la cosa vive adesso: l'archivio."""
+    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    await client.put("/api/models/config", json={
+        "chain_order": [], "ollama": {"modello": "llama3.1:8b", "timeout_s": 120}})
 
-    resp = await client.get("/api/models/config")
-    body = await resp.json()
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
+    assert righe["ollama"]["modello"] == "llama3.1:8b"
+    assert body["ollama"]["modello"] == "llama3.1:8b"
 
-    assert body["embeddings"] == {
-        "provider": "openai",
-        "model": "text-embedding-3-small",
-    }
-    assert body["ollama_model"] == "llama3.1:8b"
+    # E cambia dal salvataggio, non dal riavvio: era il punto in cui la copia
+    # in memoria si sarebbe vista.
+    await client.put("/api/models/config", json={
+        "chain_order": [], "ollama": {"modello": "qwen2.5:14b", "timeout_s": 120}})
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
+    assert righe["ollama"]["modello"] == "qwen2.5:14b"
+
+
+@pytest.mark.asyncio
+async def test_ollama_senza_modello_non_puo_entrare_in_catena_e_dice_perche(client):
+    """Il buco dichiarato dal Task 7, chiuso qui. La credenziale di Ollama e'
+    il SOLO indirizzo (l'indirizzo si custodisce, il modello si decide), ma per
+    rispondere servono tutti e due: con la sola credenziale, Ollama poteva
+    finire in catena senza un runner dietro -- un anello numerato in una pagina
+    che descrive il runtime, mentre `LLMRouter._ordered_backends` lo saltava in
+    silenzio. La riga resta credenziata (il pallino resta acceso: l'indirizzo
+    c'e' davvero) e a mancare e' il GESTO."""
+    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["fuori_catena"]}
+
+    assert righe["ollama"]["ha_credenziale"] is True
+    assert righe["ollama"]["manca"] == "", (
+        "la credenziale c'e': dire «manca l'indirizzo» sarebbe falso"
+    )
+    assert righe["ollama"]["riordinabile"] is False, (
+        "«Usa» qui scriverebbe una PUT accettata e buttata via dal runtime"
+    )
+    assert "il modello no" in righe["ollama"]["nota"]
+
+    # E col modello scelto il gesto torna: la nota sparisce, la riga si muove.
+    await client.put("/api/models/config", json={
+        "chain_order": [], "ollama": {"modello": "llama3.1:8b", "timeout_s": 120}})
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["fuori_catena"]}
+    assert righe["ollama"]["riordinabile"] is True
+    assert righe["ollama"]["nota"] == ""
+
+
+@pytest.mark.asyncio
+async def test_il_piano_porta_un_ALIAS_e_gli_altri_un_IDENTIFICATORE(client, monkeypatch):
+    """Progetto §6.2: sono cose di natura diversa, e la pagina lo dice col
+    carattere. Il campo esiste perche' la pagina NON debba saperlo: senza,
+    servirebbe un `if (id === 'subscription')` nel frontend, cioe' la regola
+    del prodotto scritta una seconda volta in un altro linguaggio."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
+    assert righe["subscription"]["modello_alias"] is True
+    for pid in ("claude", "openai", "openrouter", "ollama"):
+        assert righe[pid]["modello_alias"] is False, pid
+
+
+@pytest.mark.asyncio
+async def test_la_riga_di_openrouter_non_mostra_piu_un_modello_di_openai(client):
+    """`OpenRouterRunner._resolve_model` non usa `AUTO_MODEL_MAP` (e' la mappa
+    di OpenAI: su OpenRouter `gpt-4o` non e' nemmeno un nome valido). La riga
+    diceva `gpt-4o` a chiunque non avesse scelto un modello: un identificatore
+    preciso, e falso."""
+    from hiris.app.backends.openrouter_runner import AUTO_OPENROUTER
+
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    body = await (await client.get("/api/models/config")).json()
+    righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
+    assert righe["openrouter"]["modello"] == AUTO_OPENROUTER
+    assert righe["openrouter"]["modello"] != righe["openai"]["modello"]
 
 
 @pytest.mark.asyncio
@@ -328,26 +407,170 @@ async def test_list_models_never_leaks_secrets(client):
 
 
 @pytest.mark.asyncio
-async def test_list_models_dichiara_l_appartenenza_alla_catena(client):
-    resp = await client.get("/api/models")
-    body = await resp.json()
+async def test_list_models_non_dice_piu_l_appartenenza_alla_catena(client):
+    """Task 9: `in_catena` + `has_credential` erano la TERZA superficie che
+    descriveva l'appartenenza, dopo che il Task 7 aveva tolto
+    `providers[].active` e il Task 8 l'intero `providers[]` da
+    `/api/models/config`. L'unico lettore era il picker uscito col Task 8;
+    questa rotta serve adesso il pannello del modello, che l'appartenenza non
+    la usa -- la riga da cui si apre sta gia' dentro `catena` o dentro
+    `fuori_catena`, e sono quelle due liste a dirlo.
+
+    E gli id sono i CINQUE del prodotto: l'id storico "anthropic" (che
+    divergeva dal nome "claude" della catena, e costringeva a una mappa di
+    riconciliazione) e' uscito con lui."""
+    body = await (await client.get("/api/models")).json()
     providers = body["providers"]
-    assert providers, "expected at least the mocked claude provider"
+    assert providers
     for entry in providers:
-        assert "in_catena" in entry, (
-            "il campo si chiamava `active` (interruttore AND credenziale): "
-            "e' uscito con la derivazione che lo calcolava"
-        )
+        assert "in_catena" not in entry
         assert "active" not in entry
-        assert "has_credential" in entry
-        assert isinstance(entry["in_catena"], bool)
-        assert isinstance(entry["has_credential"], bool)
-    claude_entry = next(p for p in providers if p["id"] == "anthropic")
-    assert claude_entry["has_credential"] is True
-    assert claude_entry["in_catena"] is False, (
-        "nessuna catena cablata nella fixture: la credenziale da sola non "
-        "mette in catena"
+        assert "has_credential" not in entry
+        assert entry["id"] in _CONFIG_PROVIDER_IDS
+    assert "anthropic" not in {p["id"] for p in providers}
+
+
+@pytest.mark.asyncio
+async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(client):
+    """La pagina disegna e non calcola: le parole del pannello -- la
+    provenienza, la spiegazione, da quando ha effetto -- arrivano gia' scritte,
+    come la frase di «Adesso» e le parole delle righe."""
+    body = await (await client.get("/api/models?provider=claude")).json()
+    assert [p["id"] for p in body["providers"]] == ["claude"]
+    p = body["providers"][0]
+    assert set(p) == {"id", "nome", "alias", "fonte", "provenienza",
+                      "spiegazione", "quando", "dove", "scelto", "casella",
+                      "modelli"}
+    # Anthropic non pubblica un elenco: questa lista e' scritta a mano e
+    # invecchia. Chiamarla «viva» per farla sembrare migliore sarebbe una
+    # parola piu' larga del fatto.
+    assert p["fonte"] == "riserva"
+    assert "Anthropic non pubblica un elenco" in p["provenienza"]
+    assert p["dove"] == ["provider_models", "claude"]
+
+
+@pytest.mark.asyncio
+async def test_il_pannello_del_piano_offre_tre_alias_e_non_si_scrive(client, monkeypatch):
+    """`agent/runner.modello_cli` riduce QUALUNQUE modello risolto a
+    opus/haiku/sonnet: offrire `claude-opus-4-7` sul piano sarebbe una
+    precisione finta. E non c'e' niente da salvare -- il modello del piano e'
+    un effetto di quello di Claude API -- quindi `dove` e' vuoto: un pannello
+    che offrisse di scriverlo manderebbe una PUT che nessuno legge."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
+    body = await (await client.get("/api/models?provider=subscription")).json()
+    p = body["providers"][0]
+    assert [v["valore"] for v in p["modelli"]] == ["haiku", "sonnet", "opus"]
+    assert p["dove"] == []
+    assert p["alias"] is True
+    assert p["fonte"] == "fissa", (
+        "i tre alias non sono un ripiego: non descrivono il catalogo di "
+        "qualcun altro, sono l'insieme esatto che modello_cli sa produrre"
     )
+    assert "segue il modello di Claude API" in p["spiegazione"]
+    assert p["scelto"] == "sonnet", (
+        "senza un modello scelto per Claude API, resolve_model risolve su "
+        "sonnet e il ponte usa quell'alias"
+    )
+
+
+@pytest.mark.asyncio
+async def test_il_pannello_di_claude_apre_anche_senza_la_chiave(client, monkeypatch):
+    """L'eccezione che il progetto §6.4 non poteva vedere: la regola non e'
+    «senza credenziale niente pannello», e' «senza ELENCO niente pannello», e
+    l'elenco di Claude non viene dal provider. Su un'installazione col solo
+    Piano Claude Max questo e' l'UNICO posto da cui si sceglie il modello del
+    piano: chiuderlo li' significherebbe rispondere «da nessuna parte» alla
+    prima domanda del proprietario."""
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    client.app["claude_runner"] = None
+    body = await (await client.get("/api/models?provider=claude")).json()
+    assert [p["id"] for p in body["providers"]] == ["claude"]
+    # E non basta che la voce ci sia: deve portare l'ELENCO. Una voce presente
+    # ma dichiarata «assente», senza modelli, sarebbe la stessa porta chiusa
+    # con un cartello diverso.
+    p_claude = body["providers"][0]
+    assert p_claude["fonte"] == "riserva"
+    assert [v["valore"] for v in p_claude["modelli"] if v["valore"]] == [
+        "claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"]
+    assert p_claude["dove"] == ["provider_models", "claude"]
+
+
+@pytest.mark.asyncio
+async def test_la_voce_auto_e_la_stringa_vuota_e_dice_a_cosa_si_risolve(client):
+    """Salvare la parola "auto" e' un difetto: `resolve_model("auto", "chat",
+    "auto")` restituisce "auto" e la richiesta parte con `model="auto"`. La
+    voce c'e' -- e' una scelta legittima -- ma il suo valore e' "" e la sua
+    nota dice a quale modello si risolve oggi."""
+    body = await (await client.get("/api/models?provider=claude")).json()
+    prima = body["providers"][0]["modelli"][0]
+    assert prima["valore"] == ""
+    assert prima["nota"].startswith("scelto da HIRIS")
+    assert "claude-" in prima["nota"]
+    assert "auto" not in [v["valore"] for v in body["providers"][0]["modelli"]]
+
+
+@pytest.mark.asyncio
+async def test_senza_provider_risponde_per_tutti_quelli_che_hanno_un_elenco(client):
+    """La forma storica della rotta resta: un client diverso dalla pagina
+    esiste, e una rotta che cambia significato in silenzio e' la cosa che
+    questa fetta ritira."""
+    body = await (await client.get("/api/models")).json()
+    ids = [p["id"] for p in body["providers"]]
+    # La fixture cabla solo `claude_runner`: nessuna chiave OpenAI/OpenRouter,
+    # nessun indirizzo Ollama, nessun token del piano.
+    assert ids == ["claude"]
+
+
+@pytest.mark.asyncio
+async def test_il_pannello_di_ollama_scrive_nella_sua_casa_non_in_provider_models(client):
+    """`provider_models["ollama"]` e' un FANTASMA, non un doppione:
+    `_PROVIDER_MODEL_KEYS` non lo contiene e `_clean_provider_models` lo scarta
+    in lettura E in scrittura. Il percorso viaggia nel payload perche' la
+    pagina non debba conoscerlo: senza, servirebbe un `if (id === 'ollama')`
+    nel frontend."""
+    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    body = await (await client.get("/api/models?provider=ollama")).json()
+    p = body["providers"][0]
+    assert p["dove"] == ["ollama", "modello"]
+    assert p["casella"] is None
+    # E il fantasma resta un fantasma anche passando dalla PUT.
+    resp = await client.put("/api/models/config", json={
+        "chain_order": [], "provider_models": {"ollama": "llama3.1:8b"}})
+    assert "ollama" not in (await resp.json())["provider_models"]
+
+
+@pytest.mark.asyncio
+async def test_la_casella_dei_gratuiti_viaggia_come_percorso_solo_per_openrouter(client):
+    """La casella vive SULLA LISTA CHE FILTRA, e la pagina la disegna senza
+    sapere per chi: le arriva un'etichetta e un percorso dentro l'oggetto che
+    gia' salva."""
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    body = await (await client.get("/api/models?provider=openrouter")).json()
+    p = body["providers"][0]
+    assert p["casella"] == {"etichetta": "nascondi i gratuiti",
+                            "dove": ["nascondi_gratuiti"]}
+    assert p["dove"] == ["provider_models", "openrouter"]
+
+
+@pytest.mark.asyncio
+async def test_il_pannello_confessa_i_DUE_modi_in_cui_il_modello_di_claude_si_applica(client):
+    """Invariante 4, reso visibile invece che taciuto: lo stesso valore ha
+    effetto IMMEDIATO sul ponte (`_enqueue_chat_job` rilegge
+    `app["models_config"]` a ogni turno) e SOLO AL RIAVVIO sull'API (i runner
+    lo ricevono alla costruzione). La pagina non puo' risolverlo -- lo fa il
+    Task 10 -- ma puo' smettere di dichiarare una cosa sola su un valore che
+    se ne comporta due. Quel giorno questa stringa diventa "" e la pagina tace
+    senza essere toccata."""
+    body = await (await client.get("/api/models?provider=claude")).json()
+    quando = body["providers"][0]["quando"]
+    assert "dal prossimo messaggio" in quando
+    assert "dal riavvio dell'add-on" in quando
+
+    # Sul piano non c'e' niente da salvare, quindi non c'e' niente da
+    # confessare: una didascalia sopra un pannello che non scrive sarebbe una
+    # frase su un gesto che non esiste.
+    body = await (await client.get("/api/models?provider=subscription")).json()
+    assert body["providers"] == [] or body["providers"][0]["quando"] == ""
 
 
 @pytest.mark.asyncio
@@ -400,3 +623,42 @@ async def test_ponte_acceso_senza_token_lo_dichiara_nel_payload(client, monkeypa
     assert body["adesso"]["chi"] is None
     assert any("scade dopo 7 minuti" in d["testo"]
                for d in body["adesso"]["diagnosi"]), body["adesso"]["diagnosi"]
+
+
+@pytest.mark.asyncio
+async def test_un_pannello_chiesto_risponde_SEMPRE_anche_senza_credenziale(client):
+    """Nascondere e' comodo per chi capisce e crudele per chi non capisce
+    perche' una cosa e' sparita. Il modello e' cliccabile su ogni riga, quindi
+    ogni click deve produrre una risposta -- e la risposta la scrive il
+    backend, con la stessa parola della riga (`MANCANZE`), non la pagina."""
+    body = await (await client.get("/api/models?provider=openrouter")).json()
+    assert len(body["providers"]) == 1
+    p = body["providers"][0]
+    assert p["fonte"] == "assente"
+    assert p["modelli"] == [], (
+        "un elenco dichiarato inesistente e disegnato lo stesso sarebbe la "
+        "pagina che si contraddice in due righe"
+    )
+    assert p["provenienza"] == "Non c'e' nessun elenco da leggere: manca la chiave.".replace("c'e'", "c'è")
+    assert p["dove"] == ["provider_models", "openrouter"], (
+        "resta scrivibile: preparare un provider prima di usarlo e' un uso "
+        "legittimo, e il campo di testo del pannello e' l'unico modo di farlo"
+    )
+
+
+@pytest.mark.asyncio
+async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(client):
+    """La regola in una riga: chi viene CHIESTO riceve sempre una risposta,
+    senza una richiesta compaiono solo quelli per cui un elenco esiste. Senza
+    la seconda meta', la lettura completa mostrerebbe cinque pannelli vuoti."""
+    body = await (await client.get("/api/models")).json()
+    assert [p["id"] for p in body["providers"]] == ["claude"]
+    body = await (await client.get("/api/models?provider=subscription")).json()
+    assert [p["id"] for p in body["providers"]] == ["subscription"]
+    assert body["providers"][0]["fonte"] == "assente"
+    assert "manca il token" in body["providers"][0]["provenienza"]
+    assert body["providers"][0]["modelli"] == [], (
+        "i tre alias esistono sempre, ma disegnarli sotto una riga che dice "
+        "«non c'e' nessun elenco da leggere» sarebbe la pagina che si "
+        "contraddice in due righe"
+    )

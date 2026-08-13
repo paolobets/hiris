@@ -152,24 +152,60 @@ ENTITIES = [
     {"id": "person.paolo", "name": "Paolo"},
 ]
 
+# GET /api/models — dalla fetta «la catena e' l'unica verita'» (Task 9) questa
+# rotta serve UN solo cliente, il pannello del modello della pagina Modelli, e
+# risponde per un provider alla volta (?provider=<id>). La forma e' quella
+# composta da `decisione_modelli.componi_pannello`: se qui restasse quella
+# vecchia ({label, models:[{id,label}]}) lo smoke test mostrerebbe un pannello
+# vuoto e nessuna suite se ne accorgerebbe.
 MODELS = {
-    "providers": [
-        {"label": "Anthropic", "models": [
-            {"id": "claude-sonnet-4-7", "label": "Claude Sonnet 4.7"},
-            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5"},
-            {"id": "claude-opus-4-7", "label": "Claude Opus 4.7"},
-        ]},
-        {"label": "OpenAI", "models": [
-            {"id": "gpt-4o-mini", "label": "GPT-4o mini"},
-        ]},
-        {"label": "OpenRouter", "models": [
-            {"id": "openrouter:google/gemma-4-31b-it:free", "label": "Gemma 4 31B (free)"},
-            {"id": "openrouter:gemma2:e4b", "label": "Gemma 2 E4B"},
-        ]},
-        {"label": "Ollama (in casa)", "models": [
-            {"id": "gemma2:e4b", "label": "gemma2:e4b"},
-        ]},
-    ]
+    "claude": {
+        "id": "claude", "nome": "Claude API", "alias": False, "fonte": "riserva",
+        "provenienza": "Anthropic non pubblica un elenco: questi sono i modelli "
+                       "che HIRIS conosce. Quello che vedi qui potrebbe non "
+                       "esistere piu'.",
+        "spiegazione": "",
+        "quando": "Lo stesso valore, applicato in due modi: il Piano Claude Max "
+                  "lo usa dal prossimo messaggio, Claude API dal riavvio "
+                  "dell'add-on.",
+        "dove": ["provider_models", "claude"], "scelto": "", "casella": None,
+        "modelli": [
+            {"valore": "", "nota": "scelto da HIRIS: oggi claude-sonnet-4-6"},
+            {"valore": "claude-haiku-4-5-20251001", "nota": ""},
+            {"valore": "claude-sonnet-4-6", "nota": ""},
+            {"valore": "claude-opus-4-7", "nota": ""},
+        ],
+    },
+    "subscription": {
+        "id": "subscription", "nome": "Piano Claude Max", "alias": True,
+        "fonte": "fissa",
+        "provenienza": "Sono tutti quelli che esistono: il ponte parla con la "
+                       "CLI del piano, che di nomi ne conosce tre.",
+        "spiegazione": "Sono alias, non nomi di modello: seguono il modello "
+                       "corrente del piano invece di puntare a una versione "
+                       "fissa. Quale dei tre sia in uso segue il modello di "
+                       "Claude API, e si sceglie li'.",
+        "quando": "", "dove": [], "scelto": "sonnet", "casella": None,
+        "modelli": [
+            {"valore": "haiku", "nota": "il piu' rapido"},
+            {"valore": "sonnet", "nota": "l'equilibrato"},
+            {"valore": "opus", "nota": "il piu' capace"},
+        ],
+    },
+    "openrouter": {
+        "id": "openrouter", "nome": "OpenRouter", "alias": False, "fonte": "viva",
+        "provenienza": "Letti da openrouter.ai adesso.",
+        "spiegazione": "Solo modelli che sanno usare gli strumenti.",
+        "quando": "Si applica al riavvio dell'add-on: fino ad allora la chat "
+                  "usa quello di prima.",
+        "dove": ["provider_models", "openrouter"],
+        "scelto": "openrouter:anthropic/claude-sonnet-4-6",
+        "casella": {"etichetta": "nascondi i gratuiti", "dove": ["nascondi_gratuiti"]},
+        "modelli": [
+            {"valore": "openrouter:anthropic/claude-sonnet-4-6", "nota": ""},
+            {"valore": "openrouter:google/gemma-3-27b-it:free", "nota": "gratuito"},
+        ],
+    },
 }
 
 USAGE = {"total_requests": 294, "total_input_tokens": 496530, "total_output_tokens": 108120,
@@ -211,7 +247,11 @@ async def get_usage(req):
     return web.json_response(USAGE)
 
 async def get_models(req):
-    return web.json_response(MODELS)
+    voluto = req.rel_url.query.get("provider", "")
+    if voluto:
+        voce = MODELS.get(voluto)
+        return web.json_response({"providers": [voce] if voce else []})
+    return web.json_response({"providers": list(MODELS.values())})
 
 async def get_entities(req):
     q = (req.rel_url.query.get("q") or "").lower()

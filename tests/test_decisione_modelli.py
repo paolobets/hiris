@@ -206,7 +206,9 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 # riquadro «Adesso» lo applica alla frase.
 # ---------------------------------------------------------------------------
 
-from hiris.app.decisione_modelli import componi_topologia  # noqa: E402
+from hiris.app.decisione_modelli import (componi_pannello,  # noqa: E402
+                                         componi_topologia, e_alias,
+                                         provenienza)
 
 CRED = {"claude": True, "openrouter": True, "openai": False,
         "ollama": False, "subscription": True}
@@ -220,7 +222,8 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
     assert [r["id"] for r in catena] == ["claude", "openrouter"]
     assert [r["posizione"] for r in catena] == [1, 2]
     assert catena[0] == {"id": "claude", "nome": "Claude API",
-                         "modello": "claude-opus-4-7", "natura": "a consumo",
+                         "modello": "claude-opus-4-7", "modello_alias": False,
+                         "natura": "a consumo",
                          "manca": "", "nota": "",
                          "connettore": "se rifiuta, subito",
                          "connettore_nota": "",
@@ -432,3 +435,142 @@ def test_nessuna_riga_porta_la_parola_vietata():
     for r in catena + fuori:
         assert "attivo" not in " ".join(str(v) for v in r.values()).lower()
         assert "active" not in set(r.keys())
+
+
+# ---------------------------------------------------------------------------
+# Il pannello del modello (progetto §6). Le parole stanno qui perche' sono
+# affermazioni sul prodotto -- e due di loro sono destinate a cambiare: la
+# provenienza dipende da un fatto misurato adesso, e `quando` tacera' con la
+# scrittura a caldo (Task 10). Scritte nel frontend resterebbero a dire quella
+# di ieri, e a schermo la frase ci sarebbe lo stesso.
+# ---------------------------------------------------------------------------
+
+
+def test_una_lettura_riuscita_nomina_chi_ha_risposto():
+    assert provenienza("openrouter", "viva") == "Letti da openrouter.ai adesso."
+    assert provenienza("openai", "viva") == "Letti da api.openai.com adesso."
+
+
+def test_una_lettura_fallita_nomina_chi_NON_ha_risposto_e_dice_il_dubbio():
+    riga = provenienza("openrouter", "riserva")
+    assert "Elenco di riserva" in riga
+    assert "openrouter.ai" in riga
+    assert "potrebbe non esistere più" in riga
+
+
+def test_ollama_dice_su_QUALE_macchina_sono_scaricati():
+    """«in casa» e' una natura, e diventa concreta solo col nome della casa."""
+    assert provenienza("ollama", "viva", indirizzo="http://192.168.1.42:11434") == (
+        "Scaricati su http://192.168.1.42:11434 — letti adesso.")
+    riga = provenienza("ollama", "riserva", indirizzo="http://192.168.1.42:11434")
+    assert "192.168.1.42" in riga
+    assert "chiave rifiutata" not in riga, "Ollama non ha una chiave da rifiutare"
+
+
+def test_claude_dichiara_la_riserva_con_parole_proprie_e_mai_viva():
+    """Anthropic non espone un endpoint pubblico di elenco: questa lista e'
+    scritta a mano e invecchia come tutte le liste scritte a mano."""
+    riga = provenienza("claude", "riserva")
+    assert "Anthropic non pubblica un elenco" in riga
+    assert "potrebbe non esistere più" in riga
+
+
+def test_il_difetto_gemello_si_LEGGE_invece_di_essere_taciuto():
+    """Sul ramo di riserva i preset tornano NON filtrati: i gratuiti
+    ricompaiono anche con la casella spuntata. Non si corregge (filtrarli
+    renderebbe la riserva una lista diversa da quella del sorgente, cioe' una
+    terza cosa): si dichiara, dove l'utente sta guardando."""
+    muta = provenienza("openrouter", "riserva", avviso_gratuiti=False)
+    parlante = provenienza("openrouter", "riserva", avviso_gratuiti=True)
+    assert "nascondi i gratuiti" not in muta
+    assert "nascondi i gratuiti" in parlante
+    assert "non ha effetto" in parlante
+
+
+def test_il_pannello_di_openrouter_lo_dice_solo_quando_la_casella_e_spuntata():
+    """La composizione intera, non la funzione isolata: e' li' che il fatto e
+    la parola si incontrano."""
+    acceso = componi_pannello(provider_id="openrouter", valori=[], fonte="riserva",
+                              scelto="", nascondi_gratuiti=True)
+    spento = componi_pannello(provider_id="openrouter", valori=[], fonte="riserva",
+                              scelto="", nascondi_gratuiti=False)
+    viva = componi_pannello(provider_id="openrouter", valori=[], fonte="viva",
+                            scelto="", nascondi_gratuiti=True)
+    assert "non ha effetto" in acceso["provenienza"]
+    assert "non ha effetto" not in spento["provenienza"]
+    assert "non ha effetto" not in viva["provenienza"], (
+        "sulla lista VIVA la casella funziona: dirlo sarebbe falso"
+    )
+
+
+def test_i_gratuiti_si_riconoscono_nella_voce_e_non_nella_pagina():
+    p = componi_pannello(
+        provider_id="openrouter", fonte="viva", scelto="",
+        valori=["openrouter:openai/gpt-4.1",
+                "openrouter:google/gemma-3-27b-it:free"])
+    assert [v["nota"] for v in p["modelli"]] == ["", "gratuito"]
+
+
+def test_la_voce_auto_c_e_solo_dove_auto_esiste():
+    """Ollama usa SEMPRE il modello scelto (`fixed_model` vince su ogni altro
+    ramo di `_resolve_model`): una voce «scelto da HIRIS» li' prometterebbe una
+    scelta che il runner non fa."""
+    con = componi_pannello(provider_id="claude", valori=["claude-opus-4-7"],
+                           fonte="riserva", scelto="",
+                           auto_risolto="claude-sonnet-4-6")
+    assert con["modelli"][0] == {"valore": "",
+                                 "nota": "scelto da HIRIS: oggi claude-sonnet-4-6"}
+    senza = componi_pannello(provider_id="ollama", valori=["llama3.1:8b"],
+                             fonte="viva", scelto="llama3.1:8b")
+    assert [v["valore"] for v in senza["modelli"]] == ["llama3.1:8b"]
+
+
+def test_dove_si_scrive_e_un_percorso_e_il_piano_non_ne_ha_uno():
+    assert componi_pannello(provider_id="ollama", valori=[], fonte="viva",
+                            scelto="")["dove"] == ["ollama", "modello"]
+    assert componi_pannello(provider_id="openai", valori=[], fonte="viva",
+                            scelto="")["dove"] == ["provider_models", "openai"]
+    assert componi_pannello(provider_id="subscription", valori=[], fonte="fissa",
+                            scelto="opus")["dove"] == [], (
+        "il modello del piano e' un effetto di quello di Claude API: un "
+        "pannello che offrisse di scriverlo manderebbe una PUT che nessuno legge"
+    )
+
+
+def test_il_piano_e_l_unico_che_sceglie_un_ALIAS():
+    assert e_alias("subscription") is True
+    for pid in ("claude", "openai", "openrouter", "ollama"):
+        assert e_alias(pid) is False, pid
+
+
+def test_su_ollama_senza_modello_la_riga_dice_cosa_manca_e_non_offre_il_gesto():
+    """Il buco dichiarato dal Task 7. La credenziale c'e' (l'indirizzo), il
+    pallino resta acceso, e a mancare e' il modello: entrare in catena
+    produrrebbe un anello che il router salta in silenzio."""
+    cred = {**CRED, "ollama": True}
+    _, fuori = componi_topologia(chain_order=["claude"], credenziali=cred,
+                                 modelli={**MOD, "ollama": ""}, ponte_attivo=False)
+    riga = {r["id"]: r for r in fuori}["ollama"]
+    assert riga["ha_credenziale"] is True
+    assert riga["manca"] == ""
+    assert riga["riordinabile"] is False
+    assert "il modello no" in riga["nota"]
+
+    _, fuori = componi_topologia(chain_order=["claude"], credenziali=cred,
+                                 modelli={**MOD, "ollama": "llama3.1:8b"},
+                                 ponte_attivo=False)
+    riga = {r["id"]: r for r in fuori}["ollama"]
+    assert riga["riordinabile"] is True
+    assert riga["nota"] == ""
+
+
+def test_senza_indirizzo_la_riga_dice_QUELLO_e_non_il_modello():
+    """Un impedimento alla volta, e il piu' esterno per primo: «manca il
+    modello» sopra un Ollama che non ha nemmeno un indirizzo manderebbe a
+    risolvere la cosa sbagliata."""
+    _, fuori = componi_topologia(chain_order=[], credenziali=CRED,
+                                 modelli={**MOD, "ollama": ""}, ponte_attivo=False)
+    riga = {r["id"]: r for r in fuori}["ollama"]
+    assert riga["manca"] == "manca l'indirizzo"
+    assert riga["nota"] == ""
+    assert riga["riordinabile"] is True

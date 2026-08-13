@@ -301,6 +301,27 @@ def componi_topologia(
     if ponte_attivo:
         dentro = ["subscription"] + dentro
 
+    def senza_modello(pid: str) -> bool:
+        """Ollama con l'indirizzo e senza un modello scelto.
+
+        La credenziale di Ollama è il SOLO indirizzo (fetta «la catena è
+        l'unica verità», Task 7): l'indirizzo è ciò che si custodisce, il
+        modello è ciò che si decide. Ma per RISPONDERE servono tutti e due --
+        `server.py` non costruisce il runner senza un modello -- e fra i due
+        fatti si apriva un buco dichiarato dal Task 7: Ollama poteva stare in
+        catena senza un backend dietro, cioè comparire come anello numerato in
+        una pagina che descrive il runtime mentre `LLMRouter._ordered_backends`
+        lo saltava in silenzio. Un anello a schermo che nessuno consulta è
+        esattamente la bugia che questa fetta ritira.
+
+        Si chiude senza rimettere il modello dentro la credenziale (sarebbero
+        di nuovo due concetti in un posto solo): la riga resta credenziata, il
+        pallino resta acceso, e a mancare è un GESTO -- non si entra in catena
+        finché non c'è un modello. Le parole lo dicono, e `server.py` filtra la
+        catena effettiva con lo stesso fatto.
+        """
+        return pid == "ollama" and not modelli.get(pid, "")
+
     def nota(pid: str, in_catena: bool, ha_credenziale: bool) -> str:
         """La parola che spiega perché quella riga non ha i gesti delle altre.
 
@@ -309,6 +330,10 @@ def componi_topologia(
         cambiano queste due stringhe -- e la pagina dice la cosa nuova senza
         che nessuno la tocchi.
         """
+        if ha_credenziale and senza_modello(pid):
+            return ("L'indirizzo c'è, il modello no: finché manca non c'è "
+                    "niente a cui chiedere, e in catena non ci può stare. Si "
+                    "sceglie qui accanto.")
         if pid != "subscription":
             return ""
         if in_catena:
@@ -343,6 +368,14 @@ def componi_topologia(
             "id": pid,
             "nome": nome(pid),
             "modello": modelli.get(pid, ""),
+            # Alias o identificatore: la differenza di NATURA fra i due si
+            # legge prima di essere spiegata, e la porta il carattere
+            # (progetto §6.2). Sta nel payload e non nella pagina per la stessa
+            # ragione di tutto il resto: è un fatto sul prodotto -- il piano
+            # sceglie un alias che SEGUE il modello corrente, gli altri un nome
+            # che punta a una cosa fissa -- e un `if (id === 'subscription')`
+            # nel frontend sarebbe la regola scritta una seconda volta.
+            "modello_alias": e_alias(pid),
             "natura": natura(pid),
             "manca": "" if ha_credenziale else manca(pid),
             "nota": nota(pid, in_catena, ha_credenziale),
@@ -350,9 +383,245 @@ def componi_topologia(
             "connettore_nota": connettore_nota(pid) if in_catena else "",
             "ha_credenziale": ha_credenziale,
             "posizione": posizione,
-            "riordinabile": pid != "subscription",
+            # `riordinabile` governa TUTTI E QUATTRO i gesti che scrivono
+            # `chain_order` (frecce, ✕, «Usa»): dice «la presenza e la
+            # posizione di questa riga si decidono da chain_order». Per il
+            # piano è falso perché ci si entra dal ponte; per Ollama senza
+            # modello perché entrarci produrrebbe un anello che il router salta
+            # -- in tutti e due i casi la PUT sarebbe accettata e buttata via.
+            # Un impedimento alla volta, e il più esterno per primo: senza
+            # l'indirizzo la riga dice già «manca l'indirizzo» e non offre
+            # niente (la pagina non disegna «Usa» dove non c'è credenziale),
+            # quindi il modello mancante si dichiara solo quando è davvero
+            # LUI l'unica cosa che manca.
+            "riordinabile": (pid != "subscription"
+                             and not (ha_credenziale and senza_modello(pid))),
         }
 
     catena = [riga(pid, i + 1) for i, pid in enumerate(dentro)]
     fuori = [riga(pid, None) for pid in ORDINE_FISSO if pid not in dentro]
     return catena, fuori
+
+
+# ── Il pannello del modello (progetto §6) ──────────────────────────────────
+#
+# Le parole del pannello stanno QUI per la stessa ragione delle altre: sono
+# affermazioni sul prodotto. Due in particolare sarebbero già false domani se
+# fossero scritte nella pagina -- `quando` (che oggi confessa l'invariante 4 e
+# tacerà con la scrittura a caldo) e `provenienza` (che dipende da un fatto
+# misurato ADESSO: se la lettura è riuscita o no). Scritte nel frontend, il
+# giorno in cui la regola cambia resterebbero a dire quella di ieri, e a
+# schermo la frase ci sarebbe lo stesso: nessun test se ne accorgerebbe.
+
+# I TRE ALIAS DEL PIANO, e non uno di più. Non è una semplificazione
+# dell'interfaccia: `agent/runner.modello_cli` riduce QUALUNQUE modello risolto
+# a `opus`/`haiku`/`sonnet` per sottostringa, perché la CLI dell'abbonamento
+# non conosce altri nomi. Offrire `claude-opus-4-7` sul piano sarebbe una
+# precisione finta: sul ponte `claude-opus-4-7` e `claude-opus-4-1` producono
+# lo stesso identico comportamento (misurato, progetto §0.4).
+ALIAS_DEL_PIANO: tuple[tuple[str, str], ...] = (
+    ("haiku", "il più rapido"),
+    ("sonnet", "l'equilibrato"),
+    ("opus", "il più capace"),
+)
+
+# Gli ospiti che si interrogano davvero. Servono a `provenienza` per nominare
+# CHI non ha risposto: «non ho potuto leggere» senza il nome di chi non ha
+# risposto è meno di quanto il sistema sa.
+_OSPITI: dict[str, str] = {
+    "openai": "api.openai.com",
+    "openrouter": "openrouter.ai",
+}
+
+# DOVE si scrive la scelta, come percorso dentro l'oggetto che la pagina già
+# salva. È un dato e non una regola scritta nel frontend: senza, la pagina
+# avrebbe bisogno di un `if (id === 'ollama')` per sapere che il modello di
+# Ollama non vive in `provider_models` -- cioè di conoscere il caso
+# particolare, che è la forma esatta del difetto che questa fetta chiude.
+# La tupla VUOTA dice «qui non c'è niente da salvare», ed è il caso del piano:
+# il suo modello è un effetto di quello di Claude API (progetto §0.4), non un
+# secondo valore. Un pannello che offrisse di scriverlo manderebbe una PUT che
+# nessuno legge -- la lezione del Task 8, applicata prima di disegnare.
+_DOVE_SI_SCRIVE: dict[str, tuple[str, ...]] = {
+    "claude": ("provider_models", "claude"),
+    "openai": ("provider_models", "openai"),
+    "openrouter": ("provider_models", "openrouter"),
+    "ollama": ("ollama", "modello"),
+    "subscription": (),
+}
+
+# La voce «auto», che nell'archivio è la STRINGA VUOTA e non la parola "auto".
+# Salvare letteralmente "auto" è un difetto: `claude_runner.resolve_model`
+# tratta il default come valore, quindi `resolve_model("auto", "chat", "auto")`
+# restituisce "auto" e la richiesta parte con `model="auto"` verso un provider
+# che quel nome non lo conosce. Fino a questa fetta `_CLAUDE_MODELS` apriva con
+# "auto" e il picker uscito col Task 8 lo offriva come qualunque altro.
+NOTA_AUTO = "scelto da HIRIS: oggi {}"
+
+
+def e_alias(provider_id: str) -> bool:
+    """Il valore mostrato per questo provider è un ALIAS o un IDENTIFICATORE?
+
+    Un identificatore punta a una cosa fissa; un alias SEGUE il modello
+    corrente del piano -- lo decide Anthropic, e si muove sotto di te quando
+    aggiornano. Sono cose di natura diversa e la pagina lo dice col carattere,
+    non con una didascalia (progetto §6.2).
+    """
+    return provider_id == "subscription"
+
+
+def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
+                avviso_gratuiti: bool = False) -> str:
+    """Da dove viene l'elenco che il pannello sta mostrando.
+
+    È il quinto punto del progetto §6.3, quello che il codice ha imposto: le
+    tre `_fetch_*` hanno cinque secondi di pazienza e, se falliscono,
+    restituiscono una lista scritta a mano nel sorgente con un `logger.warning`
+    e niente altro. Senza questa riga si può stare davanti a un elenco che
+    sembra vero, che viene da una costante di due anni fa, per un provider che
+    non risponderebbe comunque -- e nessuna parte dello schermo lo dice.
+    """
+    if fonte == "assente":
+        # Non è un errore: è «non c'è niente da leggere, e il perché è la
+        # credenziale». Un pannello che si apre deve SEMPRE dare una risposta:
+        # nascondere è comodo per chi capisce e crudele per chi non capisce
+        # perché una cosa è sparita. La parola è la stessa della riga
+        # (`MANCANZE`), perché è lo stesso fatto detto nello stesso vocabolario.
+        return "Non c'è nessun elenco da leggere: {}.".format(manca(provider_id))
+    if fonte == "fissa":
+        # Il piano. Non è un ripiego e non si chiama così: i tre alias non
+        # possono invecchiare, perché non descrivono il catalogo di qualcun
+        # altro -- sono l'insieme esatto che `modello_cli` sa produrre.
+        return ("Sono tutti quelli che esistono: il ponte parla con la CLI del "
+                "piano, che di nomi ne conosce tre.")
+    if provider_id == "claude":
+        # Sempre riserva, e detto con parole proprie: Anthropic non espone un
+        # endpoint pubblico di elenco, quindi questa lista è scritta a mano e
+        # invecchia come tutte le liste scritte a mano. Chiamarla «viva» per
+        # farla sembrare migliore sarebbe una parola più larga del fatto.
+        return ("Anthropic non pubblica un elenco: questi sono i modelli che "
+                "HIRIS conosce. Quello che vedi qui potrebbe non esistere più.")
+    ospite = _OSPITI.get(provider_id) or indirizzo or nome(provider_id)
+    if fonte == "viva":
+        if provider_id == "ollama":
+            return "Scaricati su {} — letti adesso.".format(ospite)
+        return "Letti da {} adesso.".format(ospite)
+    causa = ("spento? indirizzo sbagliato?" if provider_id == "ollama"
+             else "chiave rifiutata? rete?")
+    riga = ("Elenco di riserva: non ho potuto leggere {} ({}). Quello che vedi "
+            "qui potrebbe non esistere più.".format(ospite, causa))
+    if avviso_gratuiti:
+        # Il difetto gemello, DICHIARATO invece che nascosto: quando la lettura
+        # fallisce il ripiego restituisce i preset non filtrati, quindi i
+        # gratuiti ricompaiono anche con la casella spuntata. Non si corregge
+        # qui -- filtrarli renderebbe la riserva una lista diversa da quella
+        # scritta nel sorgente, cioè una terza cosa -- si rende leggibile.
+        riga += (" E la casella «nascondi i gratuiti» qui non ha effetto: "
+                 "l'elenco di riserva li contiene comunque.")
+    return riga
+
+
+def quando(provider_id: str) -> str:
+    """Da quando ha effetto la scelta. È la confessione dell'invariante 4.
+
+    «Un valore si applica in un modo solo» è l'invariante, e il modello di
+    Claude API oggi lo viola: `api/handlers_chat._enqueue_chat_job` rilegge
+    `app["models_config"]` a OGNI turno (quindi il ponte lo usa subito), mentre
+    i tre runner ricevono il valore come argomento di costruzione (quindi
+    l'API lo usa solo dopo un riavvio). La pagina non può risolverlo -- lo fa
+    il Task 10, facendo LEGGERE il valore ai runner -- ma può smettere di
+    dichiarare una cosa sola su un valore che se ne comporta due. Quel giorno
+    queste due stringhe diventano "" e la pagina tace senza essere toccata.
+    """
+    if provider_id == "subscription":
+        return ""
+    if provider_id == "claude":
+        return ("Lo stesso valore, applicato in due modi: il {} lo usa dal "
+                "prossimo messaggio, {} dal riavvio dell'add-on."
+                .format(nome("subscription"), nome("claude")))
+    return ("Si applica al riavvio dell'add-on: fino ad allora la chat usa "
+            "quello di prima.")
+
+
+def spiegazione(provider_id: str) -> str:
+    """La riga che serve solo a chi si chiede perché il pannello è così povero.
+
+    Per il piano è la forma stessa del pannello a spiegare (progetto §10.1);
+    per OpenRouter è la ragione per cui l'elenco non è il catalogo.
+    """
+    if provider_id == "subscription":
+        return ("Sono alias, non nomi di modello: seguono il modello corrente "
+                "del piano invece di puntare a una versione fissa. Quale dei "
+                "tre sia in uso segue il modello di {}, e si sceglie lì."
+                .format(nome("claude")))
+    if provider_id == "openrouter":
+        return ("Solo modelli che sanno usare gli strumenti: HIRIS manda "
+                "sempre il catalogo delle azioni, e gli altri rifiuterebbero "
+                "ogni richiesta. Qui ci sono quelli scelti da noi: per uno che "
+                "non c'è, incollane l'identificatore nel campo qui sopra.")
+    if provider_id == "ollama":
+        return ("Sono i modelli scaricati su quella macchina: per averne un "
+                "altro si fa `ollama pull` di là, non da qui.")
+    return ""
+
+
+def componi_pannello(
+    *,
+    provider_id: str,
+    valori: list[str],
+    fonte: str,
+    scelto: str,
+    auto_risolto: str = "",
+    indirizzo: str = "",
+    nascondi_gratuiti: bool = False,
+) -> dict:
+    """Il pannello del modello, già composto: la pagina lo disegna e basta.
+
+    `valori` sono gli identificatori grezzi che la lettura ha restituito;
+    `fonte` è "viva" (letta adesso dal provider), "riserva" (elenco scritto nel
+    sorgente) o "fissa" (il piano: un elenco che non si legge da nessuna parte
+    perché non c'è niente da leggere). `scelto` è il valore in vigore adesso --
+    per il piano è l'alias che il ponte userebbe, che nessuno ha scritto lì:
+    discende dal modello di Claude API.
+
+    Nessuna delle parole qui dentro è calcolabile dalla pagina, e nessuna delle
+    strutture -- `dove`, `casella` -- è una regola travestita: sono percorsi
+    dentro l'oggetto che la pagina già salva, così la pagina non ha bisogno di
+    sapere che il modello di Ollama non vive in `provider_models`.
+    """
+    if fonte == "assente":
+        # Nessuna voce, mai: un elenco dichiarato inesistente e disegnato lo
+        # stesso sarebbe la pagina che si contraddice in due righe.
+        voci: list[dict] = []
+    elif e_alias(provider_id):
+        voci = [{"valore": v, "nota": n} for v, n in ALIAS_DEL_PIANO]
+    else:
+        voci = []
+        if auto_risolto:
+            voci.append({"valore": "", "nota": NOTA_AUTO.format(auto_risolto)})
+        for v in valori:
+            voci.append({"valore": v,
+                         "nota": "gratuito" if v.endswith(":free") else ""})
+    return {
+        "id": provider_id,
+        "nome": nome(provider_id),
+        "alias": e_alias(provider_id),
+        "fonte": fonte,
+        "provenienza": provenienza(
+            provider_id, fonte, indirizzo=indirizzo,
+            avviso_gratuiti=(provider_id == "openrouter"
+                             and fonte == "riserva" and bool(nascondi_gratuiti))),
+        "spiegazione": spiegazione(provider_id),
+        "quando": quando(provider_id),
+        "dove": list(_DOVE_SI_SCRIVE.get(provider_id, ())),
+        "scelto": scelto,
+        # La casella vive SULLA LISTA CHE FILTRA e non in una pagina di
+        # impostazioni: si auto-documenta, e non serve una descrizione per
+        # capire cosa fa una casella che sta sotto l'elenco che modifica
+        # (progetto §6.3). Viaggia come percorso, non come nome noto alla
+        # pagina, per la stessa ragione di `dove`.
+        "casella": ({"etichetta": "nascondi i gratuiti",
+                     "dove": ["nascondi_gratuiti"]}
+                    if provider_id == "openrouter" else None),
+        "modelli": voci,
+    }
