@@ -622,6 +622,29 @@ def test_la_seconda_leva_non_esiste_piu_da_nessuna_parte():
     assert not [r for r in codice if 'env_bool("CHAT_VIA_SUBSCRIPTION")' in r]
 
 
+def test_il_piano_implica_il_ponte_solo_se_lo_hai_acceso_TU():
+    """fetta «la catena diventa l'unica verita'»: `_sub_first_class` non viene
+    piu' da `derive_active_providers` (interruttore AND credenziale, con la
+    regola di compatibilita' che su un'installazione «tutti spenti» lo faceva
+    valere `credenziale AND BRIDGE_ENABLED`) ma dall'espressione scritta a
+    vista, `credenziale AND PROVIDER_SUBSCRIPTION`.
+
+    Il valore governa `app["ponte_attivo"]`, quindi togliere l'interruttore da
+    quell'espressione accenderebbe il ponte a chiunque abbia un token in
+    configurazione, senza averlo chiesto -- ed e' l'invariante 5 al contrario.
+    La riga vive dentro `_on_startup`, che nessuna fixture esegue: si legge dal
+    sorgente vero, come gia' fanno i due test qui sopra."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    riga = [r.strip() for r in src.splitlines() if r.strip().startswith("_sub_first_class =")]
+    assert len(riga) == 1, riga
+    assert 'env_bool("PROVIDER_SUBSCRIPTION")' in riga[0], riga[0]
+    assert '_credenziali["subscription"]' in riga[0], riga[0]
+
+
 def test_il_piano_claude_max_continua_a_implicare_il_ponte():
     """Il comportamento che la fusione NON doveva cambiare: chi sta nella
     configurazione consigliata (Piano Claude Max acceso col suo token) ha il

@@ -22,10 +22,12 @@ async def test_get_models_config_defaults(client):
 
 
 @pytest.mark.asyncio
-async def test_get_models_config_enriched_providers(client):
-    """SP-2 T7B: the config endpoint must list ALL five providers (incl.
-    subscription and any uncredentialed one), each with active/has_credential
-    booleans, so the #/models UI can render them honestly."""
+async def test_get_models_config_porta_i_cinque_provider_e_l_appartenenza(client):
+    """Il payload storico `providers[]` elenca tutti e cinque, ognuno con
+    l'APPARTENENZA alla catena e la credenziale. Il campo si chiamava `active`
+    (interruttore AND credenziale) e portava anche il `toggle` grezzo: erano la
+    seconda rappresentazione dello stato, quella che permetteva alla pagina di
+    mostrare spento un provider che stava lavorando."""
     resp = await client.get("/api/models/config")
     assert resp.status == 200
     body = await resp.json()
@@ -33,60 +35,100 @@ async def test_get_models_config_enriched_providers(client):
     providers = body["providers"]
     assert [p["id"] for p in providers] == list(_CONFIG_PROVIDER_IDS)
     for entry in providers:
-        assert set(entry.keys()) == {"id", "label", "active", "has_credential", "toggle"}
+        assert set(entry.keys()) == {"id", "label", "in_catena", "has_credential"}
         assert isinstance(entry["label"], str) and entry["label"]
-        assert isinstance(entry["active"], bool)
+        assert isinstance(entry["in_catena"], bool)
         assert isinstance(entry["has_credential"], bool)
-        assert isinstance(entry["toggle"], bool)
 
     # The test client fixture wires app["claude_runner"] to a mock — so the
     # "claude" provider must report a credential even without CLAUDE_API_KEY.
     claude_entry = next(p for p in providers if p["id"] == "claude")
     assert claude_entry["has_credential"] is True
 
-    # No app["active_providers"]/openai_api_key/etc. are wired in the test
-    # fixture (on_startup is cleared) — the other providers must report False
-    # rather than raising or defaulting to True.
+    # No openai_api_key/etc. are wired in the test fixture (on_startup is
+    # cleared) — the other providers must report False rather than raising or
+    # defaulting to True.
     for pid in ("subscription", "openai", "openrouter", "ollama"):
         entry = next(p for p in providers if p["id"] == pid)
         assert entry["has_credential"] is False
 
 
 @pytest.mark.asyncio
-async def test_get_models_config_missing_credential_state(client, monkeypatch):
-    """Critical fix (SP-2 T7-fix2): a provider whose addon toggle is ON but
-    with NO credential must report active=false (derive_active_providers
-    still requires the credential) while exposing toggle=true, so the UI can
-    tell "manca credenziale" apart from "Disattivato" instead of both
-    collapsing into the same active=false state."""
+async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client, monkeypatch):
+    """L'interruttore acceso non fa entrare in catena, e la credenziale nemmeno:
+    ci si entra solo stando in `chain_order`. E' il difetto che questa fetta
+    chiude, visto dal payload -- e con lui esce il campo `toggle`, che leggeva
+    l'interruttore grezzo."""
     monkeypatch.setenv("PROVIDER_OPENROUTER", "true")
-    # No openrouter_api_key set on the app -> has_credential must be False.
-    client.app.pop("openrouter_api_key", None)
-    client.app["active_providers"] = {
-        "subscription": False,
-        "claude": False,
-        "openai": False,
-        "openrouter": False,  # derive_active_providers: toggle AND credential -> False
-        "ollama": False,
-    }
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = []
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
     body = await resp.json()
-    dumped = json.dumps(body)
 
     providers_by_id = {p["id"]: p for p in body["providers"]}
-    openrouter_entry = providers_by_id["openrouter"]
-    assert openrouter_entry["toggle"] is True
-    assert openrouter_entry["has_credential"] is False
-    assert openrouter_entry["active"] is False
-
-    # "toggle" must exist (and be a plain bool) for all five providers, and
-    # no secret value should ever leak through the payload.
+    assert providers_by_id["openrouter"]["has_credential"] is True
+    assert providers_by_id["openrouter"]["in_catena"] is False
     for pid in _CONFIG_PROVIDER_IDS:
-        assert "toggle" in providers_by_id[pid]
-        assert isinstance(providers_by_id[pid]["toggle"], bool)
-    assert "sk-" not in dumped and "api_key" not in dumped
+        assert "toggle" not in providers_by_id[pid]
+        assert "active" not in providers_by_id[pid]
+
+
+@pytest.mark.asyncio
+async def test_in_catena_segue_la_catena_del_runtime(client):
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = ["openrouter"]
+
+    body = await (await client.get("/api/models/config")).json()
+    providers_by_id = {p["id"]: p for p in body["providers"]}
+    assert providers_by_id["openrouter"]["in_catena"] is True
+    assert providers_by_id["claude"]["in_catena"] is False
+
+
+@pytest.mark.asyncio
+async def test_il_payload_porta_la_topologia_gia_composta(client):
+    """Le due liste che la pagina disegnera'. Ogni voce ha esattamente sette
+    campi: se la pagina dovesse aggiungerne uno, lo starebbe calcolando --
+    l'invariante 2, rotto."""
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = ["openrouter"]
+    client.app["ponte_attivo"] = False
+
+    body = await (await client.get("/api/models/config")).json()
+    assert [r["id"] for r in body["catena"]] == ["openrouter"]
+    assert body["catena"][0]["posizione"] == 1
+    assert [r["id"] for r in body["fuori_catena"]] == [
+        "claude", "subscription", "openai", "ollama"]
+    for r in body["catena"] + body["fuori_catena"]:
+        assert set(r.keys()) == {"id", "nome", "modello", "natura",
+                                 "ha_credenziale", "posizione", "riordinabile"}
+
+
+@pytest.mark.asyncio
+async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
+    """Due rappresentazioni della stessa cosa nello STESSO payload sarebbero il
+    difetto in miniatura: la frase dice chi risponde, le due liste dicono in che
+    ordine, e devono venire dalla stessa misura."""
+    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app["catena_modelli"] = ["openrouter", "claude"]
+    client.app["ponte_attivo"] = False
+
+    body = await (await client.get("/api/models/config")).json()
+    assert body["adesso"]["chi"] == body["catena"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(client, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
+    client.app["catena_modelli"] = []
+    client.app["ponte_attivo"] = True
+
+    body = await (await client.get("/api/models/config")).json()
+    assert [r["id"] for r in body["catena"]] == ["subscription"]
+    assert body["catena"][0]["riordinabile"] is False
+    providers_by_id = {p["id"]: p for p in body["providers"]}
+    assert providers_by_id["subscription"]["in_catena"] is True
 
 
 @pytest.mark.asyncio
@@ -120,13 +162,7 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", fake_claude_key)
     client.app["openai_api_key"] = fake_openai_key
     client.app["openrouter_api_key"] = fake_openrouter_key
-    client.app["active_providers"] = {
-        "subscription": True,
-        "claude": True,
-        "openai": True,
-        "openrouter": True,
-        "ollama": False,
-    }
+    client.app["catena_modelli"] = ["claude", "openrouter", "openai"]
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -136,8 +172,31 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
     for secret in (fake_oauth_token, fake_claude_key, fake_openai_key, fake_openrouter_key):
         assert secret not in dumped
     assert "sk-" not in dumped
-    assert "api_key" not in dumped
-    assert "token" not in dumped.lower()
+
+    # La forma dell'attesa e' cambiata, il soggetto no. Fino alla 2.4.1 qui
+    # c'erano `"api_key" not in dumped` e `"token" not in dumped.lower()`:
+    # cercavano una sottostringa nell'INTERO payload, prosa compresa. Dalla
+    # fetta «la catena diventa l'unica verita'» il payload porta anche le
+    # diagnosi gia' scritte, e una di quelle dice «Il Piano Claude Max ha il
+    # token, lo paghi, ed e' fuori dalla catena» -- una frase per l'utente, non
+    # un segreto. Cercare la parola nel testo renderebbe questo test un veto
+    # sul vocabolario del prodotto invece che una prova sulle chiavi. Si guarda
+    # dove i segreti potrebbero davvero comparire: i NOMI DEI CAMPI, a ogni
+    # livello.
+    def _nomi_di_campo(nodo):
+        if isinstance(nodo, dict):
+            for k, v in nodo.items():
+                yield k
+                yield from _nomi_di_campo(v)
+        elif isinstance(nodo, list):
+            for v in nodo:
+                yield from _nomi_di_campo(v)
+
+    for campo in _nomi_di_campo(body):
+        basso = campo.lower()
+        assert "token" not in basso, campo
+        assert "key" not in basso, campo
+        assert "secret" not in basso, campo
 
     # Credentials ARE reflected as booleans, just never as values.
     providers_by_id = {p["id"]: p for p in body["providers"]}
@@ -181,18 +240,26 @@ async def test_list_models_never_leaks_secrets(client):
 
 
 @pytest.mark.asyncio
-async def test_list_models_reports_activation_state(client):
+async def test_list_models_dichiara_l_appartenenza_alla_catena(client):
     resp = await client.get("/api/models")
     body = await resp.json()
     providers = body["providers"]
     assert providers, "expected at least the mocked claude provider"
     for entry in providers:
-        assert "active" in entry
+        assert "in_catena" in entry, (
+            "il campo si chiamava `active` (interruttore AND credenziale): "
+            "e' uscito con la derivazione che lo calcolava"
+        )
+        assert "active" not in entry
         assert "has_credential" in entry
-        assert isinstance(entry["active"], bool)
+        assert isinstance(entry["in_catena"], bool)
         assert isinstance(entry["has_credential"], bool)
     claude_entry = next(p for p in providers if p["id"] == "anthropic")
     assert claude_entry["has_credential"] is True
+    assert claude_entry["in_catena"] is False, (
+        "nessuna catena cablata nella fixture: la credenziale da sola non "
+        "mette in catena"
+    )
 
 
 @pytest.mark.asyncio

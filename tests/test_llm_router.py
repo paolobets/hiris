@@ -327,26 +327,52 @@ def test_ordered_backends_empty_when_no_runners_registered():
     assert r_legacy._ordered_backends() == []
 
 
+# fetta «la catena diventa l'unica verita'»: `LLMRouter.simple_chat` e' uscito,
+# e con lui `test_simple_chat_senza_runner_non_finge_una_risposta_vuota` e
+# `test_simple_chat_con_runner_resta_trasparente`. Provavano un SECONDO
+# instradamento (`self._claude or self._openai or self._ollama` scritto a mano:
+# OpenRouter escluso, nessun ripiego, catena ignorata), non una proprieta' del
+# router che sopravviva al suo soggetto. Verificato che cadessero per
+# costruzione (`AttributeError: 'LLMRouter' object has no attribute
+# 'simple_chat'`) prima della cancellazione. Le implementazioni nei backend
+# restano e restano provate dai loro file (`tests/test_claude_runner.py`,
+# `tests/test_openai_compat_runner.py`): li' `simple_chat` e' la firma di un
+# backend, non una decisione di instradamento.
+
+
+def test_il_router_non_porta_una_seconda_regola_di_instradamento():
+    """Il metodo non deve poter rientrare: era l'unico punto del prodotto in cui
+    la scelta del provider NON passava dalla catena."""
+    assert not hasattr(LLMRouter, "simple_chat")
+
+
+def test_una_catena_esplicitamente_vuota_non_ripiega_sull_ordine_di_strategia():
+    """Il difetto che questa fetta chiude, visto da dentro il router. Con
+    `if model_chain:` una catena vuota ricadeva su `_STRATEGY_ORDER`, cioe' su
+    OGNI provider costruito: la pagina avrebbe detto «la catena e' vuota, HIRIS
+    non puo' rispondere» mentre la chat rispondeva. E' la regola `legacy`
+    appena tolta, rientrata da un'altra porta."""
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced", model_chain=[])
+    assert r._chat_policy == []
+    assert r._ordered_backends() == []
+
+
+def test_senza_catena_passata_il_ripiego_di_libreria_resta():
+    """`model_chain=None` e' il ramo di libreria: nessuno ha passato una
+    catena, quindi l'ordine di strategia e' l'unica cosa che c'e'. Distinguere
+    «catena vuota» da «nessuna catena» e' tutto cio' che il cambio fa."""
+    claude, ollama = _Dummy(), _Dummy()
+    r = LLMRouter(claude=claude, ollama=ollama, strategy="balanced")
+    assert r._ordered_backends() == [claude, ollama]
+
+
 @pytest.mark.asyncio
-async def test_simple_chat_senza_runner_non_finge_una_risposta_vuota():
-    """A3: senza alcun provider configurato `simple_chat` restituiva "", che il
-    chiamante non puo' distinguere da una risposta vuota del modello. Deve
-    dirlo, come gia' fa `chat` nello stesso file."""
-    router = LLMRouter()
-
-    res = await router.simple_chat([{"role": "user", "content": "ciao"}])
-
-    assert res, "una stringa vuota e' indistinguibile da una risposta del modello"
-    assert "provider" in res.lower()
-
-
-@pytest.mark.asyncio
-async def test_simple_chat_con_runner_resta_trasparente():
-    """Il caso opposto: se un runner c'e', la risposta passa cosi' com'e' --
-    anche quando e' vuota, perche' li' e' davvero il modello ad aver taciuto."""
-    runner = MagicMock()
-    runner.simple_chat = AsyncMock(return_value="")
-    router = LLMRouter(ollama=runner)
-
-    assert await router.simple_chat([{"role": "user", "content": "ciao"}]) == ""
-    runner.simple_chat.assert_awaited_once()
+async def test_niente_in_catena_non_e_una_risposta_che_invita_a_riprovare():
+    """«Tutti i provider AI non disponibili. Riprova tra poco» dice che il
+    guasto e' transitorio. Con la catena vuota non lo e': non c'e' niente da
+    aspettare, c'e' qualcosa da mettere in catena."""
+    r = LLMRouter(claude=_Dummy(), strategy="balanced", model_chain=[])
+    risposta = await r.chat(model="auto")
+    assert "catena" in risposta.lower()
+    assert "riprova" not in risposta.lower()

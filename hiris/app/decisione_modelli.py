@@ -175,3 +175,56 @@ def componi_adesso(
     return {"chi": chi, "nome": nome(chi), "modello": modello,
             "natura": natura(chi), "via": via, "frase": frase,
             "diagnosi": diagnosi}
+
+
+def componi_topologia(
+    *,
+    chain_order: list[str],
+    credenziali: dict[str, bool],
+    modelli: dict[str, str],
+    ponte_attivo: bool,
+) -> tuple[list[dict], list[dict]]:
+    """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.
+
+    Il piano compare in catena SOLO quando il ponte è acceso, e in posizione 1:
+    oggi il ponte non è un anello, è un bivio a monte del router
+    (`api/handlers_chat.handle_chat` dirotta prima di prendere il router e non
+    ha ritorno). Disegnarlo come un anello sarebbe promettere un ripiego che il
+    prodotto non fa -- esattamente il difetto che questa fetta chiude. Quando il
+    ripiego esisterà (Task 14), cambierà QUESTA funzione, e la pagina disegnerà
+    un anello senza che nessuno la modifichi.
+
+    `riordinabile` è False per il piano, sempre, anche dopo il Task 14. Il piano
+    sta IN TESTA O FUORI (decisione del proprietario, 13 agosto): metterlo
+    secondo richiederebbe che `handle_chat` accodi a metà turno e risponda 202
+    invece di 200 a seconda di dove la catena si rompe -- una fetta sua. Il
+    campo viaggia nel payload perché la pagina non debba SAPERLO: disegna le
+    frecce che le vengono dette, e non può offrirne di più.
+    """
+    from .model_activation import provider_in_catena
+
+    # Il piano NON è un membro di `chain_order`, né qui né dopo il Task 14: la
+    # sua presenza in testa discende da `ponte.attivo`, che è un'altra chiave
+    # dell'archivio. Sul disco lo garantisce già `_VALID_BACKENDS` (quattro
+    # nomi, il piano non c'è); qui si ridice, perché questa funzione riceve una
+    # lista e non il disco, e una lista può arrivare da chiunque -- il gateway
+    # MCP fa PUT su questa rotta.
+    dentro = [p for p in provider_in_catena(chain_order, credenziali)
+              if p != "subscription"]
+    if ponte_attivo:
+        dentro = ["subscription"] + dentro
+
+    def riga(pid: str, posizione: int | None) -> dict:
+        return {
+            "id": pid,
+            "nome": nome(pid),
+            "modello": modelli.get(pid, ""),
+            "natura": natura(pid),
+            "ha_credenziale": bool(credenziali.get(pid)),
+            "posizione": posizione,
+            "riordinabile": pid != "subscription",
+        }
+
+    catena = [riga(pid, i + 1) for i, pid in enumerate(dentro)]
+    fuori = [riga(pid, None) for pid in ORDINE_FISSO if pid not in dentro]
+    return catena, fuori

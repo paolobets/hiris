@@ -27,8 +27,16 @@ def test_models_route_has_three_sections():
     # dritte), non come prosa nei commenti che spiegano la rimozione (quelli
     # usano virgolette tipografiche): il file continua a *parlare* della
     # sezione uscita, ma non la *rende* più.
+    #
+    # fetta «la catena diventa l'unica verita'»: il titolo della sezione 01 era
+    # "Provider attivi", e la sua descrizione diceva «Per attivare o
+    # disattivare un provider vai su Impostazioni -> Add-on». Da questa fetta
+    # e' falso: l'add-on non attiva piu' niente, tiene le credenziali. Il
+    # soggetto (la sezione resa) e' cambiato, quindi l'attesa si adegua -- e la
+    # nuova forma impedisce che il titolo torni a promettere un interruttore.
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    assert "'Provider attivi'" in js
+    assert "'Provider e credenziali'" in js
+    assert "'Provider attivi'" not in js
     assert "'Catena automatica'" in js
     assert "'Assegnazione per entità'" not in js
     # Riserva C-2 della review «esce l'integrazione documentale»: il titolo
@@ -73,3 +81,33 @@ def test_la_pagina_riceve_la_frase_e_non_la_compone():
     # nessun altro posto: se l'incipit della frase ricompare nel frontend,
     # esistono due file che affermano cose sul prodotto (invariante 3).
     assert "Il prossimo messaggio va a" not in js
+
+
+def test_la_pagina_legge_l_appartenenza_e_non_piu_l_interruttore():
+    """fetta «la catena diventa l'unica verita'»: il payload non porta piu'
+    `active` (interruttore add-on AND credenziale) ne' `toggle` (l'interruttore
+    grezzo). Se il file continuasse a leggerli, leggerebbe `undefined` e
+    disegnerebbe TUTTO spento mentre la catena lavora -- cioe' esattamente il
+    difetto che questa fetta esiste per chiudere, con i campi al contrario.
+
+    Il test guarda il FILE e non il DOM perche' cio' che pinna e' il contratto
+    fra due processi (payload <-> pagina), che nessun test JS puo' rompere: la
+    finta del test JS porta i campi che le si danno."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    assert "cp.in_catena" in js
+    assert "p.in_catena" in js
+    assert "cp.active" not in js
+    assert "p.active" not in js
+    assert "cp.toggle" not in js
+
+
+def test_la_parola_attivo_non_e_piu_un_badge():
+    """Invariante 3. «Attivo» significa «interruttore acceso e credenziale
+    presente» e si legge «funziona»: una chiave a credito esaurito era
+    «Attivo». La parola non deve poter tornare da nessuna porta -- e questo
+    file era l'ultima che restava aperta."""
+    js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
+    assert "'Attivo'" not in js
+    assert "'Disattivato'" not in js
+    assert "'In catena'" in js
+    assert "'Fuori dalla catena'" in js

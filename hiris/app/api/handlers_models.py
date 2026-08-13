@@ -7,7 +7,7 @@ import re
 import aiohttp
 from aiohttp import web
 
-from ..decisione_modelli import componi_adesso, nome
+from ..decisione_modelli import componi_adesso, componi_topologia, nome
 from ..env_util import env_bool
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,12 @@ def _chiavi_archivio(raw: dict) -> dict:
         "ponte": _pulisci_ponte(raw.get("ponte")),
         "ollama": _pulisci_ollama(raw.get("ollama")),
         "nascondi_gratuiti": bool(raw.get("nascondi_gratuiti", False)),
-        "strategia_ultima": strategia if isinstance(strategia, str) else "",
+        # Debito F del Task 6, chiuso qui: il predefinito del campo e' quello
+        # dell'opzione da cui viene (`llm_strategy: "balanced"` in
+        # config.yaml). Valeva "", e la differenza faceva contare come
+        # «copiato» un valore che nessuno aveva scelto -- vedi
+        # `migrazione_opzioni._PREDEFINITI`.
+        "strategia_ultima": strategia if isinstance(strategia, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
     }
 
@@ -197,16 +202,19 @@ def save_models_config(data_dir: str, data: dict) -> dict:
 
 
 
-# SP-2 Task 7-fix2: each entry also carries "toggle" (raw addon toggle,
-# read straight from env — NOT the effective `active`) so the UI can render
-# the "toggle ON but credential MISSING" amber state instead of collapsing
-# it into "Disattivato".
-#
 # SP-2 Task 7B: fixed provider order for the enriched config payload.
-# Distinct from handle_list_models' "anthropic" id — here we use the same ids
-# as app["active_providers"] (subscription/claude/openai/openrouter/ollama) so
-# the UI can honestly show ALL five, including subscription and any
-# uncredentialed provider, without needing a separate id-mapping table.
+# Distinct from handle_list_models' "anthropic" id — here we use the five ids
+# del prodotto (subscription/claude/openai/openrouter/ollama) so the UI can
+# honestly show ALL five, including subscription and any uncredentialed
+# provider, without needing a separate id-mapping table.
+#
+# fetta «la catena diventa l'unica verità»: il campo "toggle" è uscito insieme
+# a `_TOGGLE_ENV_VARS` e `_config_raw_toggle`. Leggevano i cinque interruttori
+# `provider_*` dall'ambiente, e gli interruttori non decidono più niente: lo
+# stato di un provider è l'appartenenza alla catena più la credenziale, e sono
+# due fatti diversi che non collassano l'uno nell'altro. Il Task 13 toglierà le
+# opzioni da `config.yaml`; qui smettono di essere LETTE, che è la condizione
+# per poterle togliere.
 #
 # Task 5: la label non e' piu' letterale qui -- e' derivata da
 # decisione_modelli.NOMI (via nome()), l'unico posto dove i cinque nomi sono
@@ -217,28 +225,6 @@ _CONFIG_PROVIDERS = tuple(
     (pid, nome(pid))
     for pid in _CONFIG_PROVIDER_IDS
 )
-
-
-_TOGGLE_ENV_VARS = {
-    "subscription": "PROVIDER_SUBSCRIPTION",
-    "claude": "PROVIDER_CLAUDE",
-    "openai": "PROVIDER_OPENAI",
-    "openrouter": "PROVIDER_OPENROUTER",
-    "ollama": "PROVIDER_OLLAMA",
-}
-
-
-def _config_raw_toggle(provider_id: str) -> bool:
-    """Raw addon toggle value read directly from env — NOT the effective
-    `active` (toggle AND credential) computed by
-    model_activation.derive_active_providers(). Needed so the UI can detect
-    "toggle ON but credential MISSING" (design §3.2 amber "manca
-    credenziale"), a state that collapses into active=false and would
-    otherwise be indistinguishable from "toggle OFF"."""
-    env_var = _TOGGLE_ENV_VARS.get(provider_id)
-    if not env_var:
-        return False
-    return env_bool(env_var)
 
 
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
@@ -254,19 +240,32 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
     if provider_id == "openrouter":
         return bool(request.app.get("openrouter_api_key"))
     if provider_id == "ollama":
-        return bool(request.app.get("local_model_url") and request.app.get("local_model_name"))
+        # fetta «la catena diventa l'unica verità»: la credenziale di Ollama è
+        # il SOLO indirizzo, come in `server._credenziali`. Il nome del modello
+        # è una decisione, non una credenziale, e da questa fetta vive
+        # nell'archivio. Due definizioni della stessa credenziale, una qui e
+        # una nell'avvio, sarebbero la seconda rappresentazione in miniatura.
+        return bool(request.app.get("local_model_url"))
     return False
 
 
 def _build_config_providers(request: web.Request) -> list[dict]:
-    active_providers = request.app.get("active_providers", {}) or {}
+    """Il payload storico `providers[]`, tenuto in vita finché il Task 8 non
+    riscrive la pagina. `active` è stato rinominato `in_catena` perché è ciò
+    che significa adesso: non c'è più un interruttore da incrociare con una
+    credenziale, c'è l'appartenenza."""
+    catena = list(request.app.get("catena_modelli") or [])
+    ponte = bool(request.app.get("ponte_attivo"))
     return [
         {
             "id": pid,
             "label": label,
-            "active": bool(active_providers.get(pid)),
+            # Il piano non è un membro di `chain_order`: sta in testa alla
+            # catena quando il ponte è acceso, e fuori altrimenti. È la stessa
+            # regola di `componi_topologia`, e viene da lì il campo che la
+            # pagina disegnerà davvero (`catena`/`fuori_catena`).
+            "in_catena": ponte if pid == "subscription" else (pid in catena),
             "has_credential": _config_has_credential(request, pid),
-            "toggle": _config_raw_toggle(pid),
         }
         for pid, label in _CONFIG_PROVIDERS
     ]
@@ -322,10 +321,22 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     }
     payload["ollama_model"] = request.app.get("local_model_name", "")
     payload["ponte_attivo"] = bool(request.app.get("ponte_attivo"))
+    # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
+    # due derivazioni degli stessi fatti nello stesso handler sarebbero la
+    # miniatura del difetto che questa fetta chiude.
+    _credenziali = {p["id"]: p["has_credential"] for p in payload["providers"]}
+    _modelli = _modelli_in_uso(request, payload["provider_models"])
+    # LA catena, una sola: quella che il router ha in mano adesso. Non si
+    # riderivano i nomi da `payload["chain_order"]` (l'archivio) perché
+    # l'archivio e il runtime possono differire fino al riavvio -- è la
+    # scrittura a caldo, invariante 4, che il Task 10 chiude. Finché quel
+    # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
+    # modo solo: la frase e il disegno della catena leggono la stessa lista.
+    _catena = list(request.app.get("catena_modelli") or [])
     payload["adesso"] = componi_adesso(
-        catena=list(request.app.get("catena_modelli") or []),
-        credenziali={p["id"]: p["has_credential"] for p in payload["providers"]},
-        modelli=_modelli_in_uso(request, payload["provider_models"]),
+        catena=_catena,
+        credenziali=_credenziali,
+        modelli=_modelli,
         ponte_attivo=payload["ponte_attivo"],
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
         # turno per scrivere la scadenza (`now + BRIDGE_DEADLINE_MIN * 60`):
@@ -333,6 +344,15 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # default che possono divergere e far promettere alla pagina un'attesa
         # diversa da quella che il turno subisce davvero.
         scadenza_ponte_min=int(os.environ.get("BRIDGE_DEADLINE_MIN", "5") or 5),
+    )
+    # La topologia: chi è in catena, in che ordine, e chi ne sta fuori. La
+    # pagina RICEVE due liste già ordinate e non ne calcola nessuna --
+    # invariante 2 della spec.
+    payload["catena"], payload["fuori_catena"] = componi_topologia(
+        chain_order=_catena,
+        credenziali=_credenziali,
+        modelli=_modelli,
+        ponte_attivo=payload["ponte_attivo"],
     )
     return web.json_response(payload)
 
@@ -534,11 +554,11 @@ async def _fetch_openrouter_models(api_key: str) -> list[str]:
 # dropdown modelli, indipendente dal CRUD chatbot) e non sono toccati.
 
 
-# Maps the provider "id" used in the /api/models payload to the key used in
-# app["active_providers"] (populated by model_activation.derive_active_providers).
-# Note: the payload id for Claude is "anthropic" but the activation key is
-# "claude" — they diverge, hence the explicit mapping instead of a 1:1 lookup.
-_ACTIVE_PROVIDERS_KEY = {
+# Maps the provider "id" used in the /api/models payload to the name used in
+# app["catena_modelli"]. Note: the payload id for Claude is "anthropic" but the
+# chain name is "claude" — they diverge, hence the explicit mapping instead of
+# a 1:1 lookup.
+_NOMI_IN_CATENA = {
     "anthropic": "claude",
     "openai": "openai",
     "openrouter": "openrouter",
@@ -547,10 +567,17 @@ _ACTIVE_PROVIDERS_KEY = {
 
 
 def _enrich_provider(request: web.Request, entry: dict, has_credential: bool) -> dict:
-    """Attach activation state to a provider entry, never the credential value itself."""
-    active_providers = request.app.get("active_providers", {}) or {}
-    active_key = _ACTIVE_PROVIDERS_KEY.get(entry["id"], entry["id"])
-    entry["active"] = bool(active_providers.get(active_key))
+    """Attacca l'APPARTENENZA alla catena, mai il valore della credenziale.
+
+    fetta «la catena diventa l'unica verità»: leggeva `app["active_providers"]`
+    (interruttore AND credenziale) e pubblicava il campo `active`. Quella
+    derivazione è uscita, e con lei la parola: un provider è usato se e solo se
+    sta in catena, quindi il campo si chiama `in_catena` e legge la stessa
+    lista che il router riceve.
+    """
+    catena = list(request.app.get("catena_modelli") or [])
+    nome_catena = _NOMI_IN_CATENA.get(entry["id"], entry["id"])
+    entry["in_catena"] = nome_catena in catena
     entry["has_credential"] = bool(has_credential)
     return entry
 

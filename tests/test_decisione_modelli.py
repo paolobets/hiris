@@ -6,7 +6,7 @@ complesso.
 """
 import pytest
 
-from hiris.app.decisione_modelli import componi_adesso, natura, nome
+from hiris.app.decisione_modelli import ORDINE_FISSO, componi_adesso, natura, nome
 
 
 def test_il_primo_della_catena_e_quello_che_risponde():
@@ -197,3 +197,110 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
     assert d["chi"] == "subscription"
     assert len(d["diagnosi"]) == 1
     assert d["diagnosi"][0]["gravita"] == "guasto"
+
+
+# ---------------------------------------------------------------------------
+# `componi_topologia`: chi e' in catena, in che ordine, e chi ne sta fuori.
+# La pagina riceve DUE liste gia' ordinate e non ne calcola nessuna: e'
+# l'invariante 2 della spec, applicato alla forma della catena come il
+# riquadro «Adesso» lo applica alla frase.
+# ---------------------------------------------------------------------------
+
+from hiris.app.decisione_modelli import componi_topologia  # noqa: E402
+
+CRED = {"claude": True, "openrouter": True, "openai": False,
+        "ollama": False, "subscription": True}
+MOD = {"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6",
+       "openai": "gpt-4o", "ollama": "", "subscription": "opus"}
+
+
+def test_la_catena_porta_posizione_nome_modello_e_natura():
+    catena, _ = componi_topologia(chain_order=["claude", "openrouter"],
+                                  credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    assert [r["id"] for r in catena] == ["claude", "openrouter"]
+    assert [r["posizione"] for r in catena] == [1, 2]
+    assert catena[0] == {"id": "claude", "nome": "Claude API",
+                         "modello": "claude-opus-4-7", "natura": "a consumo",
+                         "ha_credenziale": True, "posizione": 1,
+                         "riordinabile": True}
+
+
+def test_fuori_catena_ci_sta_tutto_il_resto_in_ordine_fisso():
+    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                 modelli=MOD, ponte_attivo=False)
+    assert [r["id"] for r in fuori] == ["subscription", "openrouter", "openai", "ollama"]
+    assert all(r["posizione"] is None for r in fuori)
+    assert [r["ha_credenziale"] for r in fuori] == [True, True, False, False]
+
+
+def test_col_ponte_acceso_il_piano_e_il_primo_della_catena_e_non_e_piu_fuori():
+    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
+                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    assert catena[0]["id"] == "subscription"
+    assert catena[0]["posizione"] == 1
+    assert [r["posizione"] for r in catena] == [1, 2, 3]
+    assert "subscription" not in [r["id"] for r in fuori]
+
+
+def test_il_piano_non_e_riordinabile_e_gli_altri_quattro_si():
+    """Il piano può stare in testa o fuori, e basta. Non è una scelta grafica:
+    metterlo secondo richiederebbe che la forma della risposta HTTP cambi a
+    seconda di dove la catena si rompe. Il campo viaggia nel payload perché la
+    pagina non offra un riordino che il backend rifiuterebbe -- che è
+    esattamente il difetto che questa fetta esiste per chiudere."""
+    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
+                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    per_id = {r["id"]: r for r in catena + fuori}
+    assert per_id["subscription"]["riordinabile"] is False
+    for pid in ("claude", "openrouter", "openai", "ollama"):
+        assert per_id[pid]["riordinabile"] is True, pid
+
+
+def test_un_subscription_finito_in_chain_order_non_conta():
+    """`chain_order` porta solo i quattro backend del router. La presenza del
+    piano in testa discende da `ponte.attivo`, non dall'appartenenza: se
+    qualcuno scrivesse `subscription` nella catena, non deve succedere niente."""
+    catena, fuori = componi_topologia(chain_order=["subscription", "claude"],
+                                      credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    assert [r["id"] for r in catena] == ["claude"]
+    assert "subscription" in [r["id"] for r in fuori]
+
+
+def test_un_subscription_in_chain_order_non_si_sdoppia_col_ponte_acceso():
+    """Il caso gemello del precedente, ed e' quello che morde: col ponte acceso
+    il piano viene messo in testa, e se `chain_order` lo portasse ANCORA
+    comparirebbe due volte in catena -- due righe per lo stesso provider, cioe'
+    la seconda rappresentazione dello stato, in miniatura e a schermo."""
+    catena, fuori = componi_topologia(chain_order=["subscription", "claude"],
+                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    assert [r["id"] for r in catena] == ["subscription", "claude"]
+    assert [r["posizione"] for r in catena] == [1, 2]
+    assert "subscription" not in [r["id"] for r in fuori]
+
+
+def test_un_provider_in_chain_order_senza_credenziale_finisce_fuori_non_in_catena():
+    """È la stessa regola di `provider_in_catena`, vista dal lato della pagina:
+    non esiste una riga «in catena ma non può» -- sarebbe la seconda
+    rappresentazione dello stato che questa fetta toglie."""
+    catena, fuori = componi_topologia(chain_order=["ollama", "claude"],
+                                      credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    assert [r["id"] for r in catena] == ["claude"]
+    assert "ollama" in [r["id"] for r in fuori]
+
+
+def test_una_catena_vuota_lascia_tutti_e_cinque_fuori():
+    catena, fuori = componi_topologia(chain_order=[], credenziali=CRED,
+                                      modelli=MOD, ponte_attivo=False)
+    assert catena == []
+    assert [r["id"] for r in fuori] == list(ORDINE_FISSO)
+
+
+def test_nessuna_riga_porta_la_parola_vietata():
+    """Invariante 3: «Attivo» significa «interruttore acceso e credenziale
+    presente» e si legge «funziona». Non deve rientrare da nessuna porta --
+    nemmeno da un campo del payload."""
+    catena, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                      modelli=MOD, ponte_attivo=True)
+    for r in catena + fuori:
+        assert "attivo" not in " ".join(str(v) for v in r.values()).lower()
+        assert "active" not in set(r.keys())

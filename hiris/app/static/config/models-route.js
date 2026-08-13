@@ -3,7 +3,7 @@
    Sezione #/models — implementa il contratto UX di
    docs/design/2026-07-27-ux-models-section.md, ridotto a tre sezioni vive
    dal contratto originale di quattro:
-     01 Provider attivi (GET api/models/config -> providers[], badge stato +
+     01 Provider e credenziali (GET api/models/config -> providers[], badge +
         picker default per-provider da GET api/models)
      02 Catena automatica (GET/PUT api/models/config chain_order, riordino
         frecce, preset llm_strategy)
@@ -30,11 +30,18 @@
 
    Task 7B ha arricchito GET /api/models/config con:
      providers: [{id: subscription|claude|openai|openrouter|ollama, label,
-                  active, has_credential, toggle}]  (tutti e 5, ordine fisso;
-                  "toggle" aggiunto in Task 7-fix2: valore grezzo del toggle
-                  addon, letto da env, distinto da "active" che è già
-                  toggle AND credenziale — serve per lo stato "manca
-                  credenziale" quando active è false ma il toggle è acceso)
+                  in_catena, has_credential}]  (tutti e 5, ordine fisso)
+     -- fetta «la catena diventa l'unica verità»: il campo si chiamava
+     "active" (interruttore add-on AND credenziale) e viaggiava insieme a
+     "toggle" (il valore grezzo dell'interruttore). Erano DUE rappresentazioni
+     dello stato di un provider accanto all'appartenenza alla catena, ed è la
+     seconda rappresentazione che permetteva a questa pagina di mostrare
+     spento un provider che stava lavorando. Adesso ce n'è una: un provider è
+     usato se e solo se sta in catena. Questa pagina viene riscritta dal
+     Task 8 (che consumerà `catena`/`fuori_catena`, le due liste già ordinate
+     dal backend); qui si adegua ai nomi nuovi per non restare a leggere un
+     campo che non esiste più -- cioè per non ricominciare a mentire mentre
+     aspetta il suo turno.
      llm_strategy: string
      embeddings: {provider, model}
      ollama_model: nome del modello Ollama fisso configurato
@@ -191,16 +198,17 @@
     return null;
   }
 
-  /* Provider "usabili" = attivi + con credenziale (design §0.5/§4.1), fonte:
-     GET /api/models (che lista solo chi ha già una lista modelli disponibile).
-     "subscription" (key null) non entra mai qui: non fa parte di chain_order/
-     provider_models nel contratto backend attuale (_VALID_BACKENDS). */
+  /* Provider "usabili" = in catena + con credenziale (design §0.5/§4.1),
+     fonte: GET /api/models (che lista solo chi ha già una lista modelli
+     disponibile). "subscription" (key null) non entra mai qui: non fa parte di
+     chain_order/provider_models nel contratto backend attuale
+     (_VALID_BACKENDS). */
   function usableProviders() {
     var list = [];
     PROVIDER_ORDER.forEach(function(pd) {
       if (!pd.key) return;
       var p = findProvider(pd.id);
-      if (p && p.active && p.has_credential) list.push(p);
+      if (p && p.in_catena && p.has_credential) list.push(p);
     });
     return list;
   }
@@ -283,43 +291,52 @@
     return card;
   }
 
-  /* ── Sezione 1: Provider attivi ──────────────────────────────────────── */
+  /* ── Sezione 1: Provider e credenziali ───────────────────────────────── */
   function renderSection1() {
     var body = clearEl(byId('sec1-body'));
     if (!body) return;
 
-    var anyActive = false;
+    var anyInCatena = false;
     PROVIDER_ORDER.forEach(function(pd) {
       var cp = findConfigProvider(pd.configId);
-      var active = !!(cp && cp.active);
+      var inCatena = !!(cp && cp.in_catena);
       var hasCred = !!(cp && cp.has_credential);
-      var toggle = !!(cp && cp.toggle);
-      /* design §3.2: "active" (toggle AND credential, già calcolato lato
-         server) collassa "toggle ON ma credenziale mancante" in false, quindi
-         non basta per distinguere "Disattivato" da "⚠ manca credenziale" — da
-         qui l'uso del campo "toggle" grezzo (Task 7-fix2) solo per lo stato
-         intermedio quando active è false. */
-      var missingCred = !active && toggle && !hasCred;
-      if (active) anyActive = true;
+      /* fetta «la catena diventa l'unica verità»: i due fatti sono adesso
+         INDIPENDENTI e nessuno dei due collassa nell'altro -- l'appartenenza
+         alla catena e la presenza della credenziale. Prima erano "active"
+         (interruttore AND credenziale) più "toggle" grezzo per recuperare lo
+         stato che l'AND aveva schiacciato: la parola «Attivo» ne era la
+         conseguenza, e diceva «funziona» mentre misurava una configurazione.
+         Qui non c'è più niente da recuperare, quindi non c'è più una parola
+         che affermi più di ciò che il sistema sa. */
+      var missingCred = !hasCred;
+      if (inCatena) anyInCatena = true;
       var label = (cp && cp.label) || pd.configId;
 
       var row = el('div', 'provider-row');
       var head = el('div', 'provider-row-head');
-      var dotCls = active ? 'on' : (missingCred ? 'warn' : 'off');
+      var dotCls = inCatena ? 'on' : (missingCred ? 'warn' : 'off');
       head.appendChild(el('span', 'dot ' + dotCls));
       head.appendChild(el('span', 'provider-row-label', label));
-      var badgeCls = active ? 'badge-on' : (missingCred ? 'badge-warn' : 'badge-off');
-      var badgeTxt = active ? 'Attivo' : (missingCred ? '⚠ manca credenziale' : 'Disattivato');
+      var badgeCls = inCatena ? 'badge-on' : (missingCred ? 'badge-warn' : 'badge-off');
+      var badgeTxt = inCatena ? 'In catena' : (missingCred ? '⚠ manca credenziale' : 'Fuori dalla catena');
       head.appendChild(el('span', 'agent-badge ' + badgeCls, badgeTxt));
       row.appendChild(head);
 
       if (missingCred) {
-        row.appendChild(el('p', 'field-hint', 'Aggiungi la chiave in Configurazione add-on per attivarlo davvero.'));
-      } else if (active && hasCred && pd.configId === 'ollama') {
+        row.appendChild(el('p', 'field-hint', 'Aggiungi la chiave in Configurazione add-on: senza credenziale non può entrare in catena.'));
+      } else if (!inCatena) {
+        /* Lo stato che prima non esisteva: credenziale presente, fuori dalla
+           catena. Prima `reconcile_chain` lo accodava da solo alla catena, e
+           il provider entrava senza che nessuno ce l'avesse messo; adesso
+           resta fuori, ed è la pagina a doverlo dire invece di lasciarlo
+           dedurre da un pallino spento. */
+        row.appendChild(el('p', 'field-hint', 'Ha una credenziale ma non è in catena: HIRIS non lo consulta.'));
+      } else if (inCatena && hasCred && pd.configId === 'ollama') {
         var fixedModel = state.ollamaModel || '';
         row.appendChild(el('p', 'field-hint',
           fixedModel ? ('Modello: ' + fixedModel + ' (fisso, da config add-on)') : 'Non configurato'));
-      } else if (active && hasCred && pd.key) {
+      } else if (inCatena && hasCred && pd.key) {
         /* Picker "Modello di default" — SOLO per provider con una lista
            modelli (claude/openai/openrouter): opzioni da GET /api/models
            (id "anthropic"/"openai"/"openrouter"), non dal payload config
@@ -349,7 +366,7 @@
           });
           if (currentVal) {
             sel.value = currentVal;
-            ensureOrphanOption(sel, currentVal, ' (provider non attivo)');
+            ensureOrphanOption(sel, currentVal, ' (provider fuori dalla catena)');
           }
           field.appendChild(lbl);
           field.appendChild(sel);
@@ -381,16 +398,16 @@
       body.appendChild(row);
     });
 
-    if (!anyActive) {
+    if (!anyInCatena) {
       body.appendChild(el('p', 'banner-warn',
-        'Nessun provider attivo. HIRIS non può rispondere finché non ne attivi almeno uno nella configurazione dell\'add-on.'));
+        'Nessun provider in catena. HIRIS non può rispondere finché non ne metti almeno uno in catena.'));
     }
 
     var callout = el('div', 'info-callout');
     callout.appendChild(el('span', null, 'ℹ'));
     callout.appendChild(el('span', null,
-      'I toggle vivono nella configurazione dell\'add-on, non qui. Attivarne uno da lì non riattiva ' +
-      'automaticamente gli altri provider oggi spenti — vanno riattivati singolarmente se ti servono anche loro attivi in parallelo.'));
+      'Le credenziali vivono nella configurazione dell\'add-on; la catena si decide qui. ' +
+      'Aggiungere una chiave non mette il provider in catena: lo rende disponibile, e sta a te metterlo in catena.'));
     body.appendChild(callout);
   }
 
@@ -404,7 +421,7 @@
     body.appendChild(btn);
 
     var body2 = clearEl(byId('sec2-body'));
-    if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider attivi qui sopra.'));
+    if (body2) body2.appendChild(el('p', 'field-hint', 'Impossibile caricare la catena — vedi Provider e credenziali qui sopra.'));
     var body4 = clearEl(byId('sec4-body'));
     if (body4) body4.appendChild(el('p', 'field-hint', 'Non configurato — si imposta da memory.embedding_provider in Configurazione add-on.'));
   }
@@ -455,9 +472,26 @@
     var keys = usableKeys();
     var shown = buildDisplayChain(keys);
 
+    /* Una configurazione oggi INESPRIMIBILE da questa pagina, dichiarata
+       invece che taciuta: chi ha una credenziale e sta fuori dalla catena non
+       può essere messo in catena da qui -- il controllo che lo fa arriva con
+       il ridisegno di questa pagina. Fino ad allora la pagina lo dice, perché
+       il contrario (un provider configurato che non risponde mai, senza una
+       riga che spieghi perché) è la stessa opacità che questa pagina esiste
+       per togliere. */
+    var fuoriConCredenziale = (state.configProviders || []).filter(function(p) {
+      return p && p.has_credential && !p.in_catena && p.id !== 'subscription';
+    });
+    if (fuoriConCredenziale.length) {
+      body.appendChild(el('p', 'field-hint',
+        'Fuori dalla catena, con credenziale: ' +
+        fuoriConCredenziale.map(function(p) { return p.label; }).join(', ') +
+        '. Da qui la catena si riordina; per aggiungerne uno serve il prossimo aggiornamento della pagina.'));
+    }
+
     if (shown.length === 0) {
       body.appendChild(el('p', 'field-hint',
-        'Nessun provider attivo e con credenziale — attivane almeno uno in Parte 1 per definire una catena.'));
+        'Nessun provider in catena — mettine almeno uno in catena per definirne l\'ordine.'));
       return;
     }
 
@@ -494,6 +528,23 @@
   function moveChain(idx, dir) {
     var keys = usableKeys();
     var shown = buildDisplayChain(keys);
+
+    /* Una configurazione oggi INESPRIMIBILE da questa pagina, dichiarata
+       invece che taciuta: chi ha una credenziale e sta fuori dalla catena non
+       può essere messo in catena da qui -- il controllo che lo fa arriva con
+       il ridisegno di questa pagina. Fino ad allora la pagina lo dice, perché
+       il contrario (un provider configurato che non risponde mai, senza una
+       riga che spieghi perché) è la stessa opacità che questa pagina esiste
+       per togliere. */
+    var fuoriConCredenziale = (state.configProviders || []).filter(function(p) {
+      return p && p.has_credential && !p.in_catena && p.id !== 'subscription';
+    });
+    if (fuoriConCredenziale.length) {
+      body.appendChild(el('p', 'field-hint',
+        'Fuori dalla catena, con credenziale: ' +
+        fuoriConCredenziale.map(function(p) { return p.label; }).join(', ') +
+        '. Da qui la catena si riordina; per aggiungerne uno serve il prossimo aggiornamento della pagina.'));
+    }
     var j = idx + dir;
     if (j < 0 || j >= shown.length) return;
     var tmp = shown[idx]; shown[idx] = shown[j]; shown[j] = tmp;
@@ -609,10 +660,10 @@
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
-    outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider attivi e catena automatica di failover.'));
+    outlet.appendChild(el('p', 'page-subtitle', 'Chi usa cosa: provider, credenziali e catena automatica di failover.'));
 
-    outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider attivi',
-      'Riflesso della configurazione dell\'add-on. Per attivare o disattivare un provider vai su Impostazioni → Add-on → HIRIS → Configurazione.'));
+    outlet.appendChild(buildSectionShell('01', 'sec1', 'Provider e credenziali',
+      'Le credenziali vivono in Impostazioni → Add-on → HIRIS → Configurazione. Avere una credenziale non mette un provider in catena: HIRIS consulta soltanto chi sta in catena.'));
     outlet.appendChild(buildSectionShell('02', 'sec2', 'Catena automatica',
       'Ordine di failover quando un\'entità è in "auto". Riordina con le frecce.', 'list'));
 

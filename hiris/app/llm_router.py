@@ -88,9 +88,11 @@ class LLMRouter:
     A single ordered policy, chat_policy, selects the backend chain when
     model="auto". If not supplied (None/empty), it derives from
     _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
-    When the caller instead passes `model_chain` (the boot-time reconciled
-    chain built by model_activation.reconcile_chain — see server.py), that
-    list supersedes chat_policy.
+    When the caller instead passes `model_chain` (the chain the user ordered,
+    filtered to credentialed providers by model_activation.provider_in_catena
+    — see server.py), that list supersedes chat_policy, and it does so ALSO
+    when it is empty: an explicit empty chain means "nobody is in the chain",
+    not "fall back to the strategy order".
 
     fetta E4 Task 7 ("un bot solo"): la modalità "automatic" (usata dai bot
     proattivi/schedulati per instradare su una politica diversa da quella
@@ -128,8 +130,20 @@ class LLMRouter:
         # (fetta E4 Task 7: non esiste più una seconda policy da tenere
         # allineata -- automatic_policy è uscita con l'ultimo chiamante che
         # passava mode="automatic").
-        if model_chain:
-            self._chat_policy = _norm_policy(model_chain, self._strategy)
+        #
+        # fetta «la catena diventa l'unica verità»: una catena ESPLICITA vale
+        # per quello che dice, anche quando è vuota. Fino alla 2.4.1 il ramo
+        # era `if model_chain:` e una catena vuota ricadeva sull'ordine di
+        # strategia -- innocuo finché `reconcile_chain` non poteva restituire
+        # una lista vuota, letale adesso che può: la pagina avrebbe detto
+        # «la catena è vuota, HIRIS non può rispondere» mentre il router
+        # rispondeva usando OGNI provider con una credenziale. Sarebbe stata
+        # la regola `legacy` appena tolta, rientrata da dentro il router --
+        # cioè lo stesso difetto, per un'altra porta. `model_chain=None`
+        # (nessuna catena passata) resta il ramo di libreria e ripiega come
+        # prima.
+        if model_chain is not None:
+            self._chat_policy = [n for n in model_chain if n in _VALID_BACKEND_NAMES]
         else:
             self._chat_policy = _norm_policy(chat_policy, self._strategy)
 
@@ -167,8 +181,18 @@ class LLMRouter:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
         # auto: try backends in chat_policy order with fallback
+        ordinati = self._ordered_backends()
+        if not ordinati:
+            # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
+            # la catena e' vuota (nessuno ce l'ha messo) oppure i nomi che
+            # porta non hanno un backend costruito. «Riprova tra poco» sarebbe
+            # una parola piu' larga del fatto -- non passa da solo.
+            logger.warning("Nessun provider in catena: chat(model=auto) non ha a chi chiedere")
+            return ("Nessun provider utilizzabile in catena: HIRIS non ha a chi "
+                    "chiedere. Apri la pagina Modelli e mettine almeno uno in "
+                    "catena.")
         last_friendly: str | None = None
-        for runner in self._ordered_backends():
+        for runner in ordinati:
             try:
                 return await runner.chat(**kwargs)
             except RunnerBackendError as exc:
@@ -197,21 +221,16 @@ class LLMRouter:
     # Sentinella, uscita per intero al Task 7 di questa fetta -- senza di lei
     # nessun chiamante di produzione arrivava piu' fin qui.
 
-    async def simple_chat(self, messages: list[dict], system: str = "") -> str:
-        """Nessun provider configurato NON e' una risposta vuota del modello.
-
-        Prima si tornava "", che il chiamante non puo' distinguere da un
-        modello che ha davvero taciuto: il guasto veniva trattato come
-        risposta valida. Si risponde con lo stesso messaggio esplicito gia'
-        usato da `chat` in questo file. Quando un runner
-        c'e', la sua risposta passa cosi' com'e' -- anche vuota, perche' li' e'
-        davvero il modello ad aver taciuto.
-        """
-        runner = self._claude or self._openai or self._ollama
-        if runner is None:
-            logger.warning("simple_chat: nessun provider AI configurato")
-            return "Nessun provider AI configurato."
-        return await runner.simple_chat(messages, system=system)
+    # fetta «la catena diventa l'unica verita'»: `simple_chat` e' uscita.
+    # Sceglieva con `self._claude or self._openai or self._ollama` scritto a
+    # mano -- OpenRouter escluso, nessun ripiego, catena ignorata: una SECONDA
+    # regola di instradamento, che aspettava solo di contraddire la pagina.
+    # Nessun chiamante di produzione la raggiungeva (le sole altre occorrenze
+    # del nome sono le implementazioni nei backend, che restano: `base.py`,
+    # `ollama.py`, `claude_runner.py`, `openai_compat_runner.py` -- li' e' la
+    # firma di un backend, non una decisione di instradamento). Il censimento
+    # non l'aveva segnalata: il nome e' definito in cinque punti e lo strumento
+    # salta gli omonimi, limite che dichiara da se'.
 
     # ------------------------------------------------------------------
     # Usage (aggregated across all runners)

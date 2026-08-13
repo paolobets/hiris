@@ -95,15 +95,43 @@ def _ponte_attivo(interruttore: bool, piano_attivo: bool) -> bool:
 # sua unica ragione di esistere, l'opzione add-on `chat_policy`. La funzione
 # leggeva un CSV di nomi di backend e lo passava a `LLMRouter(chat_policy=...)`,
 # dove `__init__` lo scartava ogni volta: il ramo `else` che lo usa esiste solo
-# quando `model_chain` e' vuota, e `model_chain` non e' MAI vuota quando il
-# router viene costruito. La prova, riga per riga: il router nasce solo dentro
-# `if any([claude_runner, openai_runner, openrouter_runner, ollama_runner])`;
-# ognuno di quei runner nasce solo se `_active[provider]`; tutti e quattro i
-# nomi stanno in ogni `_STRATEGY_ORDER`; quindi `reconcile_chain` restituisce
-# almeno un elemento. Stessa conclusione, per altra strada, della revisione
-# tecnica del 3 agosto 2026 (I041/I078/I093). Il parametro `chat_policy` di
-# `LLMRouter` RESTA: e' il default di libreria quando nessuno passa una catena,
-# ed e' pinnato dai suoi test.
+# quando `model_chain` e' vuota. Fino alla 2.4.1 quel ramo era irraggiungibile
+# perche' `reconcile_chain` restituiva sempre almeno un nome; dalla fetta «la
+# catena diventa l'unica verita'» la catena PUO' essere vuota, ed e' uno stato
+# che significa qualcosa -- «HIRIS non ha a chi chiedere». Percio' `LLMRouter`
+# ha smesso di ripiegare sull'ordine di strategia quando la catena arriva
+# esplicita e vuota: ripiegare avrebbe rimesso in piedi, dentro al router, la
+# regola `legacy` appena tolta -- la pagina avrebbe detto «catena vuota» mentre
+# la chat rispondeva usando tutto cio' che aveva una credenziale. Il parametro
+# `chat_policy` di `LLMRouter` RESTA: e' il default di libreria quando nessuno
+# passa una catena (`model_chain=None`), ed e' pinnato dai suoi test.
+
+
+def _catena_com_era(strategia: str, credenziali: dict, interruttori: dict,
+                    ponte: bool) -> list[str]:
+    """La catena che HIRIS usava con la regola PRE-2.5: la si esegue una volta
+    sola, alla migrazione, per copiarne il risultato nell'archivio.
+
+    Vive QUI e non in `model_activation.py` perche' non e' piu' una regola del
+    prodotto: e' un pezzo di storia che serve a non perdere una configurazione.
+    Sparisce insieme alla versione B (Task 13), quando nessuna installazione
+    puo' piu' arrivare non seminata.
+
+    E' `derive_active_providers` + `reconcile_chain` senza il ramo dell'ordine
+    manuale: qui si arriva solo quando `chain_order` e' vuota, quindi il ramo
+    manuale non avrebbe niente da filtrare.
+    """
+    from .llm_router import _STRATEGY_ORDER
+    legacy = not any(interruttori.values())
+    attivi = {}
+    for p in ("subscription", "claude", "openai", "openrouter", "ollama"):
+        ha = bool(credenziali.get(p))
+        if legacy:
+            attivi[p] = (ha and ponte) if p == "subscription" else ha
+        else:
+            attivi[p] = interruttori.get(p, False) and ha
+    ordine = _STRATEGY_ORDER.get(strategia, _STRATEGY_ORDER["balanced"])
+    return [n for n in ordine if attivi.get(n)]
 
 
 def _find_ha_config_dir() -> str | None:
@@ -1008,29 +1036,61 @@ async def _on_startup(app: web.Application) -> None:
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
 
-    from .model_activation import derive_active_providers
-    _prov_cfg = {
-        "provider_subscription": env_bool("PROVIDER_SUBSCRIPTION"),
-        "provider_claude": env_bool("PROVIDER_CLAUDE"),
-        "provider_openai": env_bool("PROVIDER_OPENAI"),
-        "provider_openrouter": env_bool("PROVIDER_OPENROUTER"),
-        "provider_ollama": env_bool("PROVIDER_OLLAMA"),
-        # Terza cosa che `chat_via_subscription` faceva, e la meno ovvia: su un
-        # install pre-SP-2 (nessun `provider_*` acceso) e' questa chiave a
-        # decidere se l'abbonamento conta come provider ATTIVO. Fusa nella
-        # sola `ponte.attivo`, il senso resta: «ho acceso il ponte e ho il
-        # token, quindi il mio provider e' l'abbonamento».
-        "ponte_attivo": env_bool("BRIDGE_ENABLED"),
-    }
-    _prov_creds = {
+    # ── Le credenziali, e nient'altro ──────────────────────────────────
+    # fetta «la catena diventa l'unica verita'»: qui c'erano i cinque
+    # interruttori `provider_*` incrociati con le credenziali
+    # (`derive_active_providers`), cioe' la SECONDA rappresentazione dello
+    # stato di un provider. Adesso l'unica cosa che si misura qui e' se la
+    # credenziale c'e'; chi la USA lo dice `chain_order`.
+    _credenziali = {
         "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
         "claude": bool(api_key),
         "openai": bool(openai_api_key),
         "openrouter": bool(openrouter_api_key),
-        "ollama": bool(local_model_url and local_model_name),
+        # La credenziale di Ollama e' il SOLO indirizzo. Prima era
+        # `url and model`, cioe' il NOME DEL MODELLO faceva parte del test di
+        # credenziale -- ma l'indirizzo e' cio' che si custodisce e il modello
+        # e' cio' che si decide, e da questa fetta il modello vive
+        # nell'archivio (Task 9). Conseguenza dichiarata: un'installazione con
+        # URL presente e modello vuoto passa da «Ollama non credenziato» a
+        # «Ollama credenziato, senza modello scelto» -- e la pagina lo mostra
+        # invece di nasconderlo. Fino al Task 9 quello stato ha un BUCO
+        # dichiarato: il runner di Ollama nasce ancora solo con
+        # `url AND model`, quindi Ollama puo' stare in catena senza un backend
+        # dietro. La migrazione non ce lo porta (`_catena_com_era` riceve la
+        # credenziale VECCHIA, vedi sotto): ci si arriva solo mettendocelo a
+        # mano dalla pagina Modelli.
+        "ollama": bool(local_model_url),
     }
-    _active = derive_active_providers(_prov_cfg, _prov_creds)
-    app["active_providers"] = _active
+    app["credenziali_provider"] = _credenziali
+
+    # ── Migrazione della catena (versione A, seconda meta') ──────────────
+    # L'ULTIMO istante in cui la vecchia regola esiste: la catena che HIRIS
+    # stava usando viene copiata nell'archivio PRIMA che la derivazione dai
+    # cinque interruttori sparisca. Senza questa copia, l'installazione del
+    # proprietario -- cinque interruttori a false, credenziali presenti --
+    # passerebbe da «due provider lavorano» a «zero provider».
+    from .migrazione_opzioni import semina_catena
+    if not app["models_config"].get("chain_order"):
+        _catena_di_oggi = _catena_com_era(
+            os.environ.get("LLM_STRATEGY", "balanced"),
+            # Le credenziali COM'ERANO, non quelle di adesso: la credenziale di
+            # Ollama comprendeva il nome del modello. Passare quelle nuove
+            # farebbe entrare in catena, per migrazione, un Ollama che la
+            # vecchia regola non ci aveva MAI messo -- cioe' la migrazione
+            # inventerebbe invece di copiare.
+            {**_credenziali, "ollama": bool(local_model_url and local_model_name)},
+            {k: env_bool(v) for k, v in {
+                "subscription": "PROVIDER_SUBSCRIPTION", "claude": "PROVIDER_CLAUDE",
+                "openai": "PROVIDER_OPENAI", "openrouter": "PROVIDER_OPENROUTER",
+                "ollama": "PROVIDER_OLLAMA"}.items()},
+            env_bool("BRIDGE_ENABLED"),
+        )
+        _arch, _seminata = semina_catena(dict(app["models_config"]),
+                                         _catena_di_oggi, log=logger)
+        if _seminata:
+            save_models_config(data_dir, _arch)
+            app["models_config"] = load_models_config(data_dir)
 
     # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
     # bridge attivo -- senza, la chat resterebbe bloccata lasciando i job
@@ -1041,12 +1101,17 @@ async def _on_startup(app: web.Application) -> None:
     # `_holistic_reason`, e' uscito con lei), così ognuno di quei punti vede
     # l'abbonamento senza duplicare il parsing env. Vedi task-3-report.md per
     # il grep BRIDGE_ENABLED che aveva individuato i tre gate originari.
-    # SP-2 T3 review: usa lo stato di attivazione CREDENZIALE-CONSAPEVOLE
-    # (_active["subscription"] = toggle AND token presente, o derivato legacy),
+    # SP-2 T3 review: usa lo stato CREDENZIALE-CONSAPEVOLE, non il toggle
+    # grezzo (`_credenziali["subscription"]` = token presente),
     # non il toggle grezzo: così provider_subscription=true SENZA token non apre
     # i gate di enqueue mentre il worker (gated dal token) non parte — evitando
     # richieste chat accodate e mai servite. Simmetrico a should_start_agent_worker.
-    _sub_first_class = _active["subscription"]
+    # `PROVIDER_SUBSCRIPTION` e' l'ULTIMO dei cinque interruttori ancora
+    # letto, e resta finche' il Task 14 non porta il piano DENTRO la catena e
+    # il Task 13 non lo toglie dallo schema. Non e' una seconda
+    # rappresentazione della catena: il piano non e' un membro di
+    # `chain_order`, e la sua presenza in testa discende da qui.
+    _sub_first_class = _credenziali["subscription"] and env_bool("PROVIDER_SUBSCRIPTION")
 
     # Provider di embedding. Fetta "esce il documentale": `MEMORY_RAG_K`/
     # `memory.rag_k` escono da qui e dalle altre quattro sedi dell'opzione --
@@ -1485,7 +1550,7 @@ async def _on_startup(app: web.Application) -> None:
     _pm = app["models_config"].get("provider_models", {})
 
     claude_runner = None
-    if api_key and _active["claude"]:
+    if api_key and _credenziali["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             usage_path=usage_path,
@@ -1496,7 +1561,7 @@ async def _on_startup(app: web.Application) -> None:
     _usage_ext = _usage_ext or ".json"
 
     openai_runner = None
-    if openai_api_key and _active["openai"]:
+    if openai_api_key and _credenziali["openai"]:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
@@ -1505,7 +1570,7 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     ollama_runner = None
-    if local_model_url and local_model_name and _active["ollama"]:
+    if local_model_url and local_model_name and _credenziali["ollama"]:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
@@ -1540,7 +1605,7 @@ async def _on_startup(app: web.Application) -> None:
             )
 
     openrouter_runner = None
-    if openrouter_api_key and _active["openrouter"]:
+    if openrouter_api_key and _credenziali["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
@@ -1554,30 +1619,42 @@ async def _on_startup(app: web.Application) -> None:
     app["local_model_url"] = local_model_url
     app["local_model_name"] = local_model_name
 
-    if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
-        # SP-2: una catena unica = ordine di strategia (o override manuale futuro,
-        # Task 4) filtrato ai provider ATTIVI (Task 1). Sub non è un backend del
-        # router (gira via runner in-addon), quindi non entra qui.
-        from .llm_router import _STRATEGY_ORDER
-        from .model_activation import reconcile_chain
-        # override manuale (Task 4) — se presente in models_config, filtra ai
-        # provider attivi, poi (review finale SP-2) i provider attivi mancanti
-        # dall'override vengono APPENDED in ordine di strategia -- una
-        # chain_order parziale salvata quando meno provider erano attivi non
-        # deve MAI far sparire dalla catena un provider che diventa attivo dopo
-        # (provider escluso dal failover finché l'utente non riapre #/models e
-        # risalva). Se il risultato è comunque vuoto, fallback esplicito ai
-        # provider attivi in ordine di strategia (mai degradare silenziosamente).
-        _strategy_order = _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
-        _manual = app.get("models_config", {}).get("chain_order")
-        _chain = reconcile_chain(_strategy_order, _manual, app["active_providers"])
-        # La catena EFFETTIVA, pubblicata perché la pagina Modelli possa
-        # RICEVERE la decisione invece di ricostruirla. È lo stesso oggetto che
-        # entra nel router una riga più sotto: se un giorno divergessero,
-        # divergerebbero da se stessi -- che è il difetto che questa fetta
-        # chiude, reso impossibile invece che vietato.
-        app["catena_modelli"] = list(_chain)
+    # ── La catena: l'appartenenza, e nient'altro ──────────────────────────
+    # fetta «la catena diventa l'unica verita'»: qui c'erano l'ordine di
+    # strategia, l'override manuale e `reconcile_chain` che li fondeva
+    # accodando i provider attivi mancanti. Adesso c'e' una cosa sola --
+    # l'ordine scritto nell'archivio, filtrato a chi ha una credenziale. Chi
+    # diventa credenziato NON entra da solo: compare in «Fuori dalla catena»,
+    # a un gesto di distanza.
+    #
+    # La scrittura di `app["catena_modelli"]` e' UNA, fuori dal ramo dei
+    # runner: prima ce n'erano due -- `list(_chain)` qui e `[]` nell'else -- e
+    # la seconda non era coperta da nessun test perche' vive dentro
+    # `_on_startup`, che ogni fixture azzera (il debito E dichiarato al
+    # Task 1). Con una sola scrittura non c'e' piu' un secondo posto da tenere
+    # allineato: il debito si chiude togliendo il doppione, non coprendolo.
+    from .model_activation import provider_in_catena
+    _chain = provider_in_catena(app["models_config"].get("chain_order") or [], _credenziali)
+    # Nessuna perdita in silenzio: chi ha una credenziale e NON sta in catena
+    # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
+    # cambio di comportamento si dichiara nel registro, dove un operatore lo
+    # cerca, invece di lasciarlo dedurre da un provider che non risponde mai.
+    _fuori = [p for p in ("claude", "openrouter", "openai", "ollama")
+              if _credenziali.get(p) and p not in _chain]
+    if _fuori:
+        logger.info(
+            "Provider con credenziale FUORI dalla catena: %s. HIRIS non li "
+            "consulta: un provider e' usato se e solo se sta in catena, e in "
+            "catena ci si mette dalla pagina Modelli.", ", ".join(_fuori),
+        )
+    # La catena EFFETTIVA, pubblicata perche' la pagina Modelli possa RICEVERE
+    # la decisione invece di ricostruirla. E' lo stesso oggetto che entra nel
+    # router poche righe sotto: se un giorno divergessero, divergerebbero da se
+    # stessi -- che e' il difetto che questa fetta chiude, reso impossibile
+    # invece che vietato.
+    app["catena_modelli"] = list(_chain)
 
+    if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
         router = LLMRouter(
             claude=claude_runner,
             openai=openai_runner,
@@ -1591,7 +1668,6 @@ async def _on_startup(app: web.Application) -> None:
     else:
         app["claude_runner"] = None
         app["llm_router"] = None
-        app["catena_modelli"] = []
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the

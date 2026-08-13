@@ -27,11 +27,15 @@ const CONFIG = {
   chain_order: ['claude', 'openrouter'],
   provider_models: { claude: 'claude-opus-4-7', openai: '', openrouter: '' },
   providers: [
-    { id: 'subscription', label: 'Piano Claude Max', active: false, has_credential: true, toggle: false },
-    { id: 'claude', label: 'Claude API', active: true, has_credential: true, toggle: true },
-    { id: 'openai', label: 'OpenAI', active: false, has_credential: false, toggle: false },
-    { id: 'openrouter', label: 'OpenRouter', active: true, has_credential: true, toggle: true },
-    { id: 'ollama', label: 'Ollama (in casa)', active: false, has_credential: false, toggle: false },
+    /* fetta «la catena diventa l'unica verità»: `active` (interruttore add-on
+       AND credenziale) e `toggle` (l'interruttore grezzo) sono usciti dal
+       payload -- erano la seconda rappresentazione dello stato di un provider.
+       Resta l'appartenenza alla catena, `in_catena`, più la credenziale. */
+    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: true },
+    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
+    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: false },
+    { id: 'openrouter', label: 'OpenRouter', in_catena: true, has_credential: true },
+    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
   ],
   llm_strategy: 'balanced',
   embeddings: { provider: '', model: '' },
@@ -186,4 +190,90 @@ test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () =
   const card = adesso(document);
   assert.match(card.querySelector('.adesso-frase').textContent, /manca il token/);
   assert.equal(card.querySelectorAll('.diagnosi-guasto').length, 1);
+});
+
+/* ── fetta «la catena diventa l'unica verità» ────────────────────────────
+   La pagina viene riscritta dal Task 8; qui si pinna solo che abbia smesso di
+   leggere la SECONDA rappresentazione dello stato (`active` + `toggle`) e la
+   parola che ne derivava. */
+
+function badgeDi(document, etichetta) {
+  const righe = Array.from(document.querySelectorAll('.provider-row'));
+  const riga = righe.filter(function (r) {
+    const l = r.querySelector('.provider-row-label');
+    return l && l.textContent === etichetta;
+  })[0];
+  return riga ? riga.querySelector('.agent-badge').textContent : null;
+}
+
+test('lo stato di un provider è la sua appartenenza alla catena, non un interruttore', async () => {
+  const { window, document } = monta();
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(badgeDi(document, 'Claude API'), 'In catena');
+  assert.equal(badgeDi(document, 'Piano Claude Max'), 'Fuori dalla catena');
+  assert.equal(badgeDi(document, 'OpenAI'), '⚠ manca credenziale');
+});
+
+test('«Attivo» non compare più: diceva «funziona» misurando una configurazione', async () => {
+  /* Una chiave a credito esaurito era «Attivo». La parola non deve poter
+     rientrare da nessuna porta -- nemmeno da un badge che l'altra metà del
+     payload non alimenta più. */
+  const { window, document } = monta();
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const badge = Array.from(document.querySelectorAll('.agent-badge'))
+    .map(function (b) { return b.textContent; });
+  assert.ok(badge.length >= 5);
+  assert.ok(badge.indexOf('Attivo') === -1, badge.join(' | '));
+  assert.ok(badge.indexOf('Disattivato') === -1, badge.join(' | '));
+});
+
+test('un provider credenziato ma fuori catena non è «manca credenziale»', async () => {
+  /* I due fatti sono indipendenti: prima `active=false` li schiacciava
+     insieme, e serviva il `toggle` grezzo per rimetterli in fila. */
+  const { window, document } = monta({ config: { providers: [
+    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
+    { id: 'claude', label: 'Claude API', in_catena: false, has_credential: true },
+    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: false },
+    { id: 'openrouter', label: 'OpenRouter', in_catena: true, has_credential: true },
+    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
+  ] } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(badgeDi(document, 'Claude API'), 'Fuori dalla catena');
+});
+
+test('un provider con credenziale fuori dalla catena lo dice, invece di sembrare spento', async () => {
+  /* Prima `reconcile_chain` lo accodava da solo: entrava in catena senza che
+     nessuno ce l'avesse messo. Adesso resta fuori -- e ciò che si guadagna
+     (niente entra da solo) si paga con una riga che lo dichiara, altrimenti è
+     un provider configurato che non risponde mai senza spiegare perché. */
+  const { window, document } = monta({ config: { providers: [
+    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
+    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
+    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: true },
+    { id: 'openrouter', label: 'OpenRouter', in_catena: false, has_credential: false },
+    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
+  ] } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const testo = document.getElementById('sec1-body').textContent;
+  assert.match(testo, /Ha una credenziale ma non è in catena/);
+});
+
+test('la pagina dichiara ciò che da qui non si può ancora fare', async () => {
+  /* Una configurazione inesprimibile va detta, non taciuta: da questa pagina
+     la catena si RIORDINA, non si può ancora aggiungerci un provider. */
+  const { window, document } = monta({ config: { providers: [
+    { id: 'subscription', label: 'Piano Claude Max', in_catena: false, has_credential: false },
+    { id: 'claude', label: 'Claude API', in_catena: true, has_credential: true },
+    { id: 'openai', label: 'OpenAI', in_catena: false, has_credential: true },
+    { id: 'openrouter', label: 'OpenRouter', in_catena: false, has_credential: false },
+    { id: 'ollama', label: 'Ollama (in casa)', in_catena: false, has_credential: false },
+  ] } });
+  window.HirisModelsRoute.mount();
+  await tick(20);
+  const testo = document.getElementById('sec2-body').textContent;
+  assert.match(testo, /Fuori dalla catena, con credenziale: OpenAI/);
 });

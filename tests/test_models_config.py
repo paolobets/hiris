@@ -14,7 +14,11 @@ def test_defaults_when_absent(tmp_path):
         "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
         "ollama": {"modello": "", "timeout_s": 120},
         "nascondi_gratuiti": False,
-        "strategia_ultima": "",
+        # Debito F del Task 6, chiuso al Task 7: il predefinito del campo e'
+        # quello dell'opzione da cui viene (`llm_strategy: "balanced"`).
+        # Valeva "", e la differenza faceva contare come «copiato» un valore
+        # che nessuno aveva scelto -- ogni installazione, anche nuova.
+        "strategia_ultima": "balanced",
         "seminato": False,
     }
 
@@ -111,7 +115,7 @@ def test_le_nuove_chiavi_hanno_i_predefiniti_quando_il_file_non_esiste(tmp_path)
     assert cfg["ponte"] == {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50}
     assert cfg["ollama"] == {"modello": "", "timeout_s": 120}
     assert cfg["nascondi_gratuiti"] is False
-    assert cfg["strategia_ultima"] == ""
+    assert cfg["strategia_ultima"] == "balanced"
     assert cfg["seminato"] is False
 
 
@@ -156,3 +160,16 @@ def test_un_salvataggio_parziale_non_azzera_le_decisioni_gia_prese(tmp_path):
     cfg = load_models_config(str(tmp_path))
     assert cfg["chain_order"] == ["openrouter"]
     assert cfg["ponte"] == {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200}
+
+
+def test_il_piano_non_puo_essere_salvato_dentro_chain_order(tmp_path):
+    """`chain_order` porta i QUATTRO backend del router. Il piano non e' un suo
+    membro: sta in testa alla catena quando il ponte e' acceso, e lo dice
+    `ponte.attivo`. Se `subscription` potesse entrare qui, esisterebbero due
+    modi di metterlo in catena -- cioe' due rappresentazioni della stessa cosa,
+    che e' esattamente il difetto che questa fetta chiude."""
+    saved = save_models_config(str(tmp_path), {
+        "chain_order": ["subscription", "claude"],
+    })
+    assert saved["chain_order"] == ["claude"]
+    assert load_models_config(str(tmp_path))["chain_order"] == ["claude"]

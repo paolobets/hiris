@@ -1,83 +1,177 @@
-from hiris.app.model_activation import derive_active_providers, reconcile_chain
+"""L'appartenenza alla catena, e nient'altro.
+
+I test della vecchia derivazione (`derive_active_providers`, `reconcile_chain`)
+sono usciti col loro soggetto: provavano i cinque interruttori dell'add-on
+incrociati con le credenziali e la regola di compatibilita'
+`legacy = not any(toggles.values())`, cioe' la SECONDA rappresentazione dello
+stato di un provider -- quella per cui, sull'unica installazione esistente, due
+provider lavoravano mentre la pagina li mostrava spenti.
+
+La vecchia regola non e' scomparsa dal repo: vive in `server._catena_com_era`,
+eseguita una volta alla migrazione, ed e' provata li'
+(`tests/test_migrazione_opzioni.py`).
+"""
+from hiris.app.model_activation import provider_in_catena
 
 
-def _creds(**kw):
-    base = {"claude": False, "openai": False, "openrouter": False,
-            "ollama": False, "subscription": False}
-    base.update(kw)
-    return base
+def test_in_catena_ci_sta_chi_l_utente_ci_ha_messo_e_ha_una_credenziale():
+    assert provider_in_catena(
+        ["openrouter", "claude", "ollama"],
+        {"openrouter": True, "claude": True, "ollama": False},
+    ) == ["openrouter", "claude"]
 
 
-def test_legacy_install_derives_from_credentials():
-    # tutti i toggle al default false => migrazione: attivo = credenziale presente
-    cfg = {"provider_subscription": False, "provider_claude": False,
-           "provider_openai": False, "provider_openrouter": False,
-           "provider_ollama": False}
-    creds = _creds(claude=True, ollama=True)
-    active = derive_active_providers(cfg, creds)
-    assert active == {"subscription": False, "claude": True, "openai": False,
-                      "openrouter": False, "ollama": True}
+def test_l_ordine_e_quello_dell_utente_non_quello_di_una_strategia():
+    """`reconcile_chain` sapeva ricostruire un ordine da `_STRATEGY_ORDER`.
+    Qui non c'e' nessun ordine di riserva: l'unico ordine e' quello scritto
+    nell'archivio, altrimenti riordinare dalla pagina non vorrebbe dire
+    niente."""
+    assert provider_in_catena(
+        ["ollama", "openai", "claude"],
+        {"claude": True, "openai": True, "ollama": True},
+    ) == ["ollama", "openai", "claude"]
 
 
-def test_explicit_toggles_win_over_credentials():
-    # almeno un toggle esplicito => NON si migra; conta (toggle AND credenziale)
-    cfg = {"provider_subscription": False, "provider_claude": True,
-           "provider_openai": True, "provider_openrouter": False,
-           "provider_ollama": False}
-    creds = _creds(claude=True, openai=False, ollama=True)  # openai toggle ON ma senza key
-    active = derive_active_providers(cfg, creds)
-    assert active["claude"] is True          # toggle ON + key
-    assert active["openai"] is False         # toggle ON ma manca key => inattivo
-    assert active["ollama"] is False         # key c'è ma toggle OFF => escluso
+def test_un_provider_credenziato_e_fuori_catena_NON_entra_da_solo():
+    """La proprieta' buona di `reconcile_chain` (non nascondere un provider
+    diventato attivo dopo) cambia forma, non sparisce: chi diventa credenziato
+    compare in «Fuori dalla catena», visibile, a un gesto di distanza. Cio' che
+    si guadagna e' che NIENTE entra in catena senza che qualcuno ce l'abbia
+    messo -- l'altro difetto, quello che `reconcile_chain` creava mentre ne
+    risolveva uno."""
+    assert provider_in_catena(["claude"], {"claude": True, "openai": True}) == ["claude"]
 
 
-def test_legacy_subscription_flag_migrates():
-    cfg = {"provider_subscription": False, "provider_claude": False,
-           "provider_openai": False, "provider_openrouter": False,
-           "provider_ollama": False, "ponte_attivo": True}
-    creds = _creds(subscription=True)
-    active = derive_active_providers(cfg, creds)
-    assert active["subscription"] is True
+def test_una_catena_vuota_resta_vuota_e_non_si_riempie_di_nascosto():
+    """`legacy = not any(toggles.values())` accendeva OGNI provider con
+    credenziale quando erano spenti tutti. Catena vuota adesso significa una
+    cosa sola, «HIRIS non puo' rispondere», e la pagina lo dice."""
+    assert provider_in_catena([], {"claude": True, "openrouter": True}) == []
 
 
-_STRATEGY = ["claude", "openrouter", "openai", "ollama"]  # "balanced" order
+def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
+    assert provider_in_catena(
+        ["claude", "claude", "gemini"], {"claude": True}) == ["claude"]
 
 
-def test_reconcile_chain_appends_newly_active_provider_missing_from_manual():
-    # Fail-open regression (SP-2 final review): chain_order=["ollama"] was
-    # persisted when only Ollama was active; Claude becomes active later
-    # without the user re-saving #/models. The reconciled chain must
-    # include BOTH -- Ollama first (honors the saved order), Claude appended
-    # (never silently dropped from failover / from the egress classification).
-    active = {"ollama": True, "claude": True, "openai": False, "openrouter": False}
-    chain = reconcile_chain(_STRATEGY, ["ollama"], active)
-    assert chain == ["ollama", "claude"]
+def test_la_vecchia_derivazione_non_esiste_piu():
+    import hiris.app.model_activation as m
+    assert not hasattr(m, "derive_active_providers")
+    assert not hasattr(m, "reconcile_chain")
 
 
-def test_reconcile_chain_no_manual_uses_strategy_active_order():
-    active = {"claude": True, "openrouter": False, "openai": True, "ollama": True}
-    chain = reconcile_chain(_STRATEGY, None, active)
-    assert chain == ["claude", "openai", "ollama"]
-
-    # empty list treated same as absent
-    chain_empty = reconcile_chain(_STRATEGY, [], active)
-    assert chain_empty == ["claude", "openai", "ollama"]
-
-
-def test_reconcile_chain_manual_drops_inactive_provider():
-    # manual lists a provider that is no longer active -- it must be dropped,
-    # not just left in place.
-    active = {"claude": False, "openrouter": True, "openai": False, "ollama": True}
-    chain = reconcile_chain(_STRATEGY, ["claude", "ollama"], active)
-    # "claude" dropped (inactive); "ollama" kept from manual;
-    # "openrouter" appended afterwards (active, missing from manual).
-    assert chain == ["ollama", "openrouter"]
+# ---------------------------------------------------------------------------
+# Il CABLAGGIO: `app["catena_modelli"]` viene da `provider_in_catena` sulla
+# chain_order dell'archivio e sulle credenziali, e da nient'altro.
+#
+# Non e' provabile con la fixture dell'app (`app.on_startup.clear()` in
+# tests/test_api.py: `_on_startup` non gira mai), quindi si ESTRAE il blocco
+# dal sorgente vero e lo si esegue isolato -- stessa tecnica di
+# tests/test_avvio_websocket.py e tests/test_migrazione_opzioni.py.
+#
+# E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
+# `app["catena_modelli"]` aveva DUE scritture, `list(_chain)` dentro il ramo
+# dei runner e `[]` nel suo `else`, e la seconda non era coperta da niente.
+# Adesso ne ha una sola, fuori da entrambi i rami: non c'e' piu' un secondo
+# posto da tenere allineato.
+# ---------------------------------------------------------------------------
 
 
-def test_reconcile_chain_all_invalid_manual_falls_back_to_strategy_active():
-    active = {"claude": True, "openrouter": False, "openai": False, "ollama": False}
-    # manual only references inactive/unknown providers -> filters to [] ->
-    # fallback appends strategy-active providers (same as the empty-result
-    # guard for the pre-fix inline logic).
-    chain = reconcile_chain(_STRATEGY, ["openai", "openrouter"], active)
-    assert chain == ["claude"]
+def _blocco_catena_dallo_startup():
+    import inspect
+    import textwrap
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    start = src.index("    from .model_activation import provider_in_catena")
+    marker = 'app["catena_modelli"] = list(_chain)'
+    end = src.index(marker, start) + len(marker)
+    corpo = textwrap.dedent(src[start:end])
+    func_src = "def _avvio(app, _credenziali, logger):\n" + textwrap.indent(corpo, "    ")
+    namespace: dict = {"__package__": "hiris.app", "__name__": "hiris.app.server"}
+    exec(compile(func_src, "<_on_startup catena>", "exec"), namespace)
+    return namespace["_avvio"]
+
+
+def _registro():
+    import logging
+    return logging.getLogger("catena-avvio")
+
+
+def test_l_avvio_costruisce_la_catena_dall_archivio_e_dalle_credenziali():
+    avvio = _blocco_catena_dallo_startup()
+    app = {"models_config": {"chain_order": ["openrouter", "claude", "ollama"]}}
+    avvio(app, {"openrouter": True, "claude": True, "ollama": False}, _registro())
+    assert app["catena_modelli"] == ["openrouter", "claude"]
+
+
+def test_l_avvio_non_accoda_un_credenziato_che_nessuno_ha_messo_in_catena():
+    avvio = _blocco_catena_dallo_startup()
+    app = {"models_config": {"chain_order": ["claude"]}}
+    avvio(app, {"claude": True, "openrouter": True, "openai": True}, _registro())
+    assert app["catena_modelli"] == ["claude"]
+
+
+def test_l_avvio_lascia_vuota_una_catena_vuota():
+    """Il debito E, chiuso: l'unica scrittura di `app["catena_modelli"]` e'
+    questa, e vale anche quando non c'e' nessun runner. Prima ce n'era una
+    seconda, `[]` nel ramo `else`, che nessun test poteva raggiungere."""
+    avvio = _blocco_catena_dallo_startup()
+    app = {"models_config": {"chain_order": []}}
+    avvio(app, {"claude": True, "openrouter": True}, _registro())
+    assert app["catena_modelli"] == []
+
+
+def test_l_avvio_scrive_una_copia_non_la_lista_del_router():
+    """`app["catena_modelli"]` e' pubblicata alla pagina; `_chain` entra nel
+    router. Se fossero lo STESSO oggetto, una modifica dell'una toccherebbe
+    l'altro -- e la pagina e il router divergerebbero senza che nessuno abbia
+    scritto una seconda regola."""
+    avvio = _blocco_catena_dallo_startup()
+    app = {"models_config": {"chain_order": ["claude"]}}
+    avvio(app, {"claude": True}, _registro())
+    app["catena_modelli"].append("openrouter")
+    assert app["models_config"]["chain_order"] == ["claude"]
+
+
+def test_l_avvio_dichiara_nel_registro_chi_resta_fuori_dalla_catena():
+    """Nessuna perdita in silenzio. Prima `reconcile_chain` accodava da solo un
+    provider credenziato; adesso resta fuori, e il cambio di comportamento si
+    dichiara dove un operatore lo cerca -- altrimenti e' un provider
+    configurato che non risponde mai, senza una riga che spieghi perche'."""
+    import io
+    import logging
+
+    reg = logging.getLogger("catena-avvio-log")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    reg.addHandler(h)
+    reg.setLevel(logging.INFO)
+    try:
+        avvio = _blocco_catena_dallo_startup()
+        app = {"models_config": {"chain_order": ["claude"]}}
+        avvio(app, {"claude": True, "openrouter": True, "openai": False}, reg)
+    finally:
+        reg.removeHandler(h)
+    testo = buf.getvalue()
+    assert "openrouter" in testo
+    assert "claude" not in testo.split("FUORI dalla catena:")[1], \
+        "chi e' IN catena non deve comparire nell'elenco di chi ne sta fuori"
+
+
+def test_l_avvio_non_scrive_niente_quando_non_c_e_niente_da_dichiarare():
+    import io
+    import logging
+
+    reg = logging.getLogger("catena-avvio-log-2")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    reg.addHandler(h)
+    reg.setLevel(logging.INFO)
+    try:
+        avvio = _blocco_catena_dallo_startup()
+        avvio({"models_config": {"chain_order": ["claude"]}}, {"claude": True}, reg)
+    finally:
+        reg.removeHandler(h)
+    assert buf.getvalue() == ""

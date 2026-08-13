@@ -53,11 +53,18 @@ def _bool(valore, predefinito: bool) -> bool:
     return str(valore).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Il predefinito di ogni campo e' quello dell'OPZIONE da cui il campo viene:
+# se i due non coincidono, un'installazione mai toccata sembra averla toccata.
+# `strategia_ultima` valeva "" mentre `config.yaml` e `run.sh` dicono
+# "balanced", quindi OGNI installazione -- anche nuova -- logga «Copiati:
+# strategia_ultima» e il ramo «erano tutti ai predefiniti» e' morto in
+# produzione: e' il debito F dichiarato dal Task 6, e si chiude decidendo il
+# predefinito del campo. Il predefinito e' "balanced", come l'opzione.
 _PREDEFINITI = {
     "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
     "ollama": {"modello": "", "timeout_s": 120},
     "nascondi_gratuiti": False,
-    "strategia_ultima": "",
+    "strategia_ultima": "balanced",
 }
 
 
@@ -82,7 +89,10 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
             "timeout_s": _intero(ambiente.get("OLLAMA_REQUEST_TIMEOUT"), 120),
         },
         "nascondi_gratuiti": _bool(ambiente.get("HIRIS_HIDE_FREE_MODELS"), False),
-        "strategia_ultima": str(ambiente.get("LLM_STRATEGY") or ""),
+        # Lo stesso ripiego di `run.sh` (`bashio::config 'llm_strategy'
+        # 'balanced'`): un ambiente muto vale «balanced», non «niente». Senza,
+        # un ambiente muto verrebbe contato come valore copiato.
+        "strategia_ultima": str(ambiente.get("LLM_STRATEGY") or "balanced"),
     }
 
     copiate = [k for k, v in valori.items() if v != _PREDEFINITI[k]]
@@ -105,3 +115,37 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
             "adesso la fonte di queste decisioni."
         )
     return archivio, copiate
+
+
+def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[dict, bool]:
+    """Copia la catena EFFETTIVA di oggi nell'archivio, una volta sola.
+
+    `catena_di_oggi` va calcolata dal chiamante con la vecchia regola ancora
+    viva (`server._catena_com_era`, cioe' `reconcile_chain` sui provider
+    derivati dai cinque interruttori): e' l'ultimo istante in cui quella regola
+    esiste, ed e' l'unico modo di non far passare l'installazione del
+    proprietario -- cinque interruttori a false, credenziali presenti -- da
+    «due provider lavorano» a «zero provider». Qui si COPIA, non si ricalcola.
+
+    Non guarda `seminato`: quella e' la semina delle OPZIONI (versione A del
+    Task 6), che segna «ho gia' guardato config.yaml». La catena ha il proprio
+    segno, ed e' se stessa: una `chain_order` non vuota e' la prova che
+    qualcuno ha gia' deciso. Legarla a `seminato` significherebbe che un
+    archivio seminato dal Task 6 ma con la catena ancora vuota non verrebbe
+    MAI riempito -- ed e' esattamente l'archivio che questo rilascio trova.
+    """
+    if archivio.get("chain_order"):
+        return archivio, False
+    if not catena_di_oggi:
+        log.info(
+            "Migrazione della catena: non c'era nessun provider utilizzabile da "
+            "copiare. La catena resta vuota, e la pagina Modelli lo dichiara."
+        )
+        return archivio, False
+    archivio["chain_order"] = list(catena_di_oggi)
+    log.info(
+        "Migrazione della catena: la catena che HIRIS stava usando e' stata "
+        "copiata nell'archivio e da adesso si riordina dalla pagina Modelli. "
+        "Ordine copiato: %s.", " -> ".join(catena_di_oggi),
+    )
+    return archivio, True

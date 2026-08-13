@@ -1,78 +1,46 @@
-"""Derivazione dei provider AI attivi (SP-2).
+"""Chi e' in catena: l'appartenenza, e nient'altro.
 
-Un provider è ATTIVO solo se il suo toggle `provider_*` è true E la sua
-credenziale è presente. Migrazione retro-compat: se TUTTI i toggle sono al
-default false (install pre-SP-2), l'attivazione è derivata dalla presenza
-credenziale — così un install esistente continua a funzionare identico senza
-riscrivere config.yaml.
+Fino alla 2.4.1 questo modulo derivava i provider ATTIVI da cinque
+interruttori dell'add-on incrociati con le credenziali, e portava una regola di
+compatibilita' -- `legacy = not any(toggles.values())`: se erano spenti TUTTI,
+era attivo ogni provider con credenziale. Era lo stato dell'unica installazione
+esistente, e il risultato era che due provider lavoravano mentre la pagina li
+mostrava spenti. Peggio: accendendone UNO qualsiasi la compatibilita' cadeva e
+valevano solo quelli accesi, quindi accendere il piano avrebbe spento Claude
+API e OpenRouter senza toccarli.
+
+Con la catena come unica verita' l'ambiguita' non esiste. Non c'e' piu' uno
+stato «tutti spenti» che voglia dire sia «non ho ancora deciso» sia «non voglio
+nessuno»: catena vuota significa una cosa sola, «HIRIS non puo' rispondere», e
+la pagina lo dice invece di riaccendere di nascosto tutto cio' che ha una
+credenziale.
+
+Con `derive_active_providers` esce anche `reconcile_chain`, che accodava i
+provider attivi mancanti dall'ordine salvato. La proprieta' buona che
+proteggeva -- nessuno resta escluso dal ripiego senza saperlo -- non si perde:
+chi diventa credenziato compare in «Fuori dalla catena», visibile, a un gesto
+di distanza. Cio' che si guadagna e' che NIENTE entra in catena senza che
+qualcuno ce l'abbia messo.
+
+La regola pre-2.5 non e' sparita dal repo: vive in `server._catena_com_era`,
+eseguita UNA volta alla migrazione per copiare nell'archivio la catena che
+HIRIS stava gia' usando. Li' non e' piu' una regola del prodotto, e' un pezzo
+di storia -- e sparisce con la versione B della migrazione (Task 13).
 """
 from __future__ import annotations
 
-_PROVIDERS = ("subscription", "claude", "openai", "openrouter", "ollama")
 
+def provider_in_catena(chain_order: list[str], credenziali: dict[str, bool]) -> list[str]:
+    """L'ordine dell'utente, filtrato a chi ha una credenziale.
 
-def derive_active_providers(cfg: dict, creds: dict) -> dict[str, bool]:
-    toggles = {
-        "subscription": bool(cfg.get("provider_subscription", False)),
-        "claude": bool(cfg.get("provider_claude", False)),
-        "openai": bool(cfg.get("provider_openai", False)),
-        "openrouter": bool(cfg.get("provider_openrouter", False)),
-        "ollama": bool(cfg.get("provider_ollama", False)),
-    }
-    legacy = not any(toggles.values())
-    active: dict[str, bool] = {}
-    for p in _PROVIDERS:
-        has_cred = bool(creds.get(p, False))
-        if legacy:
-            # migrazione: attivo = credenziale presente (+ flag legacy abbonamento)
-            if p == "subscription":
-                active[p] = has_cred and bool(cfg.get("ponte_attivo", False))
-            else:
-                active[p] = has_cred
-        else:
-            active[p] = toggles[p] and has_cred
-    return active
-
-
-def reconcile_chain(
-    strategy_order: list[str],
-    manual: list[str] | None,
-    active_providers: dict,
-) -> list[str]:
-    """Build the effective boot-time model chain (SP-2 final review fix).
-
-    ``strategy_order`` is the provider order for the current strategy (e.g.
-    ``_STRATEGY_ORDER["balanced"]``); ``manual`` is the persisted
-    ``chain_order`` override (``None``/empty when the user never saved one);
-    ``active_providers`` maps provider name -> bool (Task 1 activation).
-
-    Behaviour:
-      - No manual override: the chain is simply the active providers in
-        strategy order.
-      - Manual override present: it is filtered to active providers
-        (inactive/unknown names dropped), THEN any active provider from
-        ``strategy_order`` that is missing from that filtered list is
-        APPENDED, in strategy order. This mirrors the frontend's
-        ``buildDisplayChain`` (models-route.js) and closes a fail-open seam:
-        a partial persisted ``chain_order`` (saved back when fewer providers
-        were active) must never silently drop a provider that becomes active
-        later — that provider's runner is built and reachable via explicit
-        model selection regardless, so leaving it out of the chain would only
-        make the chat fallback order look more restricted than it actually is.
-      - If the result is empty either way (e.g. all overrides invalid AND no
-        active strategy providers), it falls back to ``strategy_order``
-        filtered to active providers -- callers still get an explicit,
-        non-empty-when-possible chain rather than an empty one degrading to
-        undefined router behavior.
+    Nessun accodamento, nessun ripiego su un ordine di strategia, nessun
+    doppione. Una catena vuota resta vuota: e' uno stato leggibile, non un
+    guasto da coprire.
     """
-    strategy_active = [n for n in strategy_order if active_providers.get(n)]
-    if manual:
-        chain = [n for n in manual if active_providers.get(n)]
-        for n in strategy_active:
-            if n not in chain:
-                chain.append(n)
-    else:
-        chain = list(strategy_active)
-    if not chain:
-        chain = list(strategy_active)
-    return chain
+    dentro: list[str] = []
+    for nome_provider in chain_order or []:
+        if nome_provider in dentro:
+            continue
+        if credenziali.get(nome_provider):
+            dentro.append(nome_provider)
+    return dentro
