@@ -72,6 +72,7 @@ async def test_get_su_data_vuota_restituisce_i_default_nel_codice(client):
     assert body["thinking_budget"] == default.thinking_budget
     assert body["max_chat_turns"] == default.max_chat_turns
     assert body["restrict_to_home"] == default.restrict_to_home
+    assert body["giorni_conservazione"] == default.giorni_conservazione
 
 
 @pytest.mark.asyncio
@@ -107,6 +108,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
         "thinking_budget": 1024,
         "max_chat_turns": 5,
         "restrict_to_home": True,
+        "giorni_conservazione": 30,
     }
     resp = await client.put(ROTTA, json=nuove)
     assert resp.status == 200
@@ -122,6 +124,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     assert in_memoria.thinking_budget == 1024
     assert in_memoria.max_chat_turns == 5
     assert in_memoria.restrict_to_home is True
+    assert in_memoria.giorni_conservazione == 30
 
     # (b) persistenza: il file c'e' ed e' completo.
     assert _su_disco(client) == nuove
@@ -158,6 +161,17 @@ async def test_put_di_un_solo_campo_non_azzera_gli_altri(client):
     corrente = client.app["impostazioni_chat"]
     assert corrente.nome == "Secondo"
     assert corrente.max_chat_turns == 9, "un campo assente conserva il valore corrente"
+
+
+@pytest.mark.asyncio
+async def test_put_giorni_conservazione_a_zero_e_valido_non_un_rifiuto(client):
+    """Task 12: `0` e' un valore AMMESSO ("non cancella e non limita mai
+    niente"), non un errore -- a differenza di un numero negativo, che resta
+    nella tabella `CORPI_RIFIUTATI` sotto."""
+    resp = await client.put(ROTTA, json={"giorni_conservazione": 0})
+    assert resp.status == 200
+    assert client.app["impostazioni_chat"].giorni_conservazione == 0
+    assert (await resp.json())["giorni_conservazione"] == 0
 
 
 @pytest.mark.asyncio
@@ -221,6 +235,9 @@ CORPI_RIFIUTATI = [
     ("thinking_budget", {"thinking_budget": True}, "numero intero"),
     ("max_chat_turns", {"max_chat_turns": -5}, "negativo"),
     ("max_chat_turns", {"max_chat_turns": 3.5}, "numero intero"),
+    ("giorni_conservazione", {"giorni_conservazione": -1}, "negativo"),
+    ("giorni_conservazione", {"giorni_conservazione": "90"}, "numero intero"),
+    ("giorni_conservazione", {"giorni_conservazione": True}, "numero intero"),
     ("restrict_to_home", {"restrict_to_home": "si"}, "true o false"),
     ("restrict_to_home", {"restrict_to_home": 1}, "true o false"),
     ("response_mode", {"response_mode": "prolisso"}, "ammette solo"),
@@ -411,4 +428,5 @@ def test_model_non_e_piu_un_campo_ammesso():
     assert CAMPI == (
         "nome", "system_prompt", "response_mode",
         "thinking_budget", "max_chat_turns", "restrict_to_home",
+        "giorni_conservazione",
     )

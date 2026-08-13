@@ -11,6 +11,7 @@ from hiris.app.chat_store import (
     clear_history,
     close_all_stores,
     count_user_turns,
+    delete_old_messages,
     get_past_summaries,
     load_history,
 )
@@ -76,39 +77,112 @@ def test_clear_history_noop_when_empty(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 30-day retention filter
+# Retention filter
+#
+# fetta "Modelli" (2.0), Task 12: `HISTORY_RETENTION_DAYS` e' uscita dal
+# modulo (viveva qui sopra come globale letta all'import, con due lettori
+# fissati una volta sola). Questo test mutava quella globale a mano
+# (`cs.HISTORY_RETENTION_DAYS = 30`, con un `finally` che la riportava a 90 --
+# lo stesso trucco che la revisione tecnica della fetta E4 (T19) aveva gia'
+# notato come fragile per un test che gira in parallelo ad altri). Ora
+# `giorni` e' un parametro esplicito di `load_context`: nessuna globale da
+# mutare e da rimettere a posto.
 # ---------------------------------------------------------------------------
 
 def test_load_filters_messages_older_than_30_days(tmp_path):
-    import hiris.app.chat_store as cs
-    cs.HISTORY_RETENTION_DAYS = 30
-    try:
-        store = ChatStore(str(tmp_path / "chat_history.db"))
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime(_TS_FMT)
-        new_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
-        # Inject a session and old+new messages directly
-        session_id = "sess-old"
-        conn = store._conn
-        conn.execute(
-            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-            (session_id, old_ts, new_ts),
-        )
-        conn.execute(
-            "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
-            (session_id, "user", "old msg", old_ts),
-        )
-        conn.execute(
-            "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
-            (session_id, "assistant", "new msg", new_ts),
-        )
-        conn.commit()
-        result = store.load_context()
-        contents = [m["content"] for m in result]
-        assert "old msg" not in contents
-        assert "new msg" in contents
-        store.close()
-    finally:
-        cs.HISTORY_RETENTION_DAYS = 90
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime(_TS_FMT)
+    new_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    # Inject a session and old+new messages directly
+    session_id = "sess-old"
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+        (session_id, old_ts, new_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        (session_id, "user", "old msg", old_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        (session_id, "assistant", "new msg", new_ts),
+    )
+    conn.commit()
+    result = store.load_context(giorni=30)
+    contents = [m["content"] for m in result]
+    assert "old msg" not in contents
+    assert "new msg" in contents
+    store.close()
+
+
+def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_path):
+    """Il secondo lavoro dello stesso numero, che la vecchia descrizione
+    dell'opzione dichiarava e la nuova pagina (#/impostazioni) deve
+    continuare a dichiarare: `giorni` non e' una soglia di pulizia qui --
+    `load_context` non cancella niente, filtra solo cio' che RILEGGE. Con
+    `giorni=1` un messaggio di due giorni fa, ancora nella sessione attiva
+    (last_msg_at recente), non deve arrivare al modello -- ma resta sul
+    disco: e' la prova gemella di `test_zero_giorni_non_cancella_mai_niente`
+    sotto, sullo stesso dato."""
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=2)).strftime(_TS_FMT)
+    ora_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    session_id = "sess-mista"
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+        (session_id, vecchio_ts, ora_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        (session_id, "user", "messaggio di due giorni fa", vecchio_ts),
+    )
+    conn.commit()
+
+    riletto = store.load_context(giorni=1)
+    assert "messaggio di due giorni fa" not in [m["content"] for m in riletto]
+
+    # Non cancellato: e' ancora sul disco, la riga sopra e' un rifiuto di
+    # LETTURA, non una potatura.
+    riga = conn.execute(
+        "SELECT COUNT(*) FROM chat_messages WHERE content = ?",
+        ("messaggio di due giorni fa",),
+    ).fetchone()[0]
+    assert riga == 1
+    store.close()
+
+
+def test_zero_giorni_non_cancella_mai_niente(tmp_path):
+    """`0` disattiva ENTRAMBI i lavori (`if giorni > 0` nei due lettori: qui
+    e in `ChatStore.load_context`/`load_history` sopra) -- non «cancella
+    subito», il contrario di cio' che chiunque si aspetta da una
+    "conservazione" messa a zero."""
+    data_dir = str(tmp_path)
+    vecchissimo_ts = (datetime.now(timezone.utc) - timedelta(days=3650)).strftime(_TS_FMT)
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+        ("sess-antichissima", vecchissimo_ts, vecchissimo_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        ("sess-antichissima", "user", "un ricordo di dieci anni fa", vecchissimo_ts),
+    )
+    conn.commit()
+    store.close()
+    close_all_stores()
+
+    assert delete_old_messages(data_dir, 0) == 0
+
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    ancora_li = store._conn.execute(
+        "SELECT COUNT(*) FROM chat_messages WHERE content = ?",
+        ("un ricordo di dieci anni fa",),
+    ).fetchone()[0]
+    assert ancora_li == 1
+    store.close()
 
 
 # ---------------------------------------------------------------------------

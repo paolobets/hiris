@@ -96,8 +96,19 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
         out.append(msg)
     return out
 
-# 0 = unlimited; overridable at startup via configure()
-HISTORY_RETENTION_DAYS: int = int(os.environ.get("HISTORY_RETENTION_DAYS", "90"))
+# fetta "Modelli" (2.0), Task 12: la costante di modulo `HISTORY_RETENTION_DAYS`
+# e' uscita -- viveva qui, letta all'IMPORT da due lettori (questo modulo
+# stesso, in `ChatStore.load_context`, e `server.py::_run_retention`), e
+# scriverla a runtime (com'era pensato dal vecchio commento "overridable at
+# startup via configure()", che non esisteva davvero: nessun `configure()` e'
+# mai stato definito in questo file) non l'avrebbe mai fatta arrivare a un
+# lettore che la importa per valore all'avvio. La sorgente di verita' e' ora
+# `ImpostazioniChat.giorni_conservazione` (`impostazioni_chat.py`): entrambi i
+# lettori la ricevono come PARAMETRO a ogni chiamata, non piu' come un globale
+# fissato una volta. `load_context` sotto porta `giorni` con un default (90,
+# lo stesso valore che questa costante aveva) solo per i chiamanti di questo
+# repo che non hanno un'opinione sulla conservazione (i test che non la
+# esercitano); i due lettori di produzione lo passano sempre esplicitamente.
 SESSION_GAP_HOURS = 2
 PAST_SESSIONS_LIMIT = 3
 SUMMARY_MAX_CHARS = 200
@@ -284,15 +295,23 @@ class ChatStore:
             )
             self._conn.commit()
 
-    def load_context(self, max_turns: int = 30) -> list[dict]:
-        """Return last max_turns pairs from the active (non-stale) session."""
+    def load_context(self, max_turns: int = 30, *, giorni: int = 90) -> list[dict]:
+        """Return last max_turns pairs from the active (non-stale) session.
+
+        `giorni` is the second job of `ImpostazioniChat.giorni_conservazione`
+        (Task 12): it does NOT free disk space here, it makes HIRIS forget
+        sooner -- messages older than `giorni` days, even inside the still-open
+        active session, are not read back into the model's context. `0`
+        disables this (never filters), matching the nightly pruning's own `if
+        giorni > 0` in `delete_old_messages` below -- the two readers agree on
+        what `0` means."""
         with self._mu:
             sid = self._fresh_session_id()
             if not sid:
                 return []
-            if HISTORY_RETENTION_DAYS > 0:
+            if giorni > 0:
                 cutoff = (
-                    datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)
+                    datetime.now(timezone.utc) - timedelta(days=giorni)
                 ).strftime(_TS_FMT)
                 rows = self._conn.execute(
                     "SELECT role, content FROM chat_messages "
@@ -384,9 +403,14 @@ def _get_store(data_dir: str) -> ChatStore:
 # minus `chatbot_id` -- fetta E4 Task 5, "un bot solo": c'e' UNA cronologia)
 # ---------------------------------------------------------------------------
 
-def load_history(data_dir: str) -> list[dict]:
-    """Return [{role, content}] for the active session (Claude API format)."""
-    return _get_store(data_dir).load_context()
+def load_history(data_dir: str, *, giorni: int = 90) -> list[dict]:
+    """Return [{role, content}] for the active session (Claude API format).
+
+    `giorni` threads through to `ChatStore.load_context` -- see its docstring
+    for why this is NOT a housekeeping knob. Production callers pass
+    `impostazioni_chat.giorni_conservazione` explicitly; the default here only
+    covers this repo's callers that don't have an opinion on retention."""
+    return _get_store(data_dir).load_context(giorni=giorni)
 
 
 def append_messages(messages: list[dict], data_dir: str) -> None:

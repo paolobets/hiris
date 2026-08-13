@@ -31,6 +31,7 @@ const IMPOSTAZIONI = {
   thinking_budget: 2048,
   max_chat_turns: 4,
   restrict_to_home: true,
+  giorni_conservazione: 30,
   modi_risposta: ['auto', 'compact', 'minimal'],
   default_system_prompt: 'IL PROMPT PREDEFINITO NEL CODICE.',
 };
@@ -80,7 +81,7 @@ function bottone(document, testo) {
 // La pagina monta e mostra cio' che e' in vigore
 // ---------------------------------------------------------------------------
 
-test('mount: il GET popola tutti e sei i campi', async () => {
+test('mount: il GET popola tutti e sette i campi', async () => {
   const { window, document } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
@@ -90,6 +91,7 @@ test('mount: il GET popola tutti e sei i campi', async () => {
   assert.equal(controllo(document, 'Forma della risposta').value, 'compact');
   assert.equal(controllo(document, 'Budget di ragionamento (token)').value, '2048');
   assert.equal(controllo(document, 'Tetto di turni per sessione').value, '4');
+  assert.equal(controllo(document, 'Giorni di conservazione').value, '30');
   assert.equal(document.querySelector('input[type=checkbox]').checked, true);
 });
 
@@ -123,6 +125,7 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', 
 
   controllo(document, 'Nome').value = 'Casa';
   controllo(document, 'Tetto di turni per sessione').value = '9';
+  controllo(document, 'Giorni di conservazione').value = '7';
   bottone(document, 'Salva').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
@@ -133,12 +136,13 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', 
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
   assert.deepEqual(Object.keys(corpo).sort(), [
-    'max_chat_turns', 'nome', 'response_mode', 'restrict_to_home',
-    'system_prompt', 'thinking_budget',
+    'giorni_conservazione', 'max_chat_turns', 'nome', 'response_mode',
+    'restrict_to_home', 'system_prompt', 'thinking_budget',
   ]);
   assert.equal(corpo.nome, 'Casa');
   assert.equal(corpo.max_chat_turns, 9);
   assert.equal(corpo.restrict_to_home, true);
+  assert.equal(corpo.giorni_conservazione, 7);
 });
 
 test('un esito riuscito si vede, e la pagina si riallinea a cio\' che il server ha davvero salvato', async () => {
@@ -238,6 +242,7 @@ test('il modello non si sceglie più qui, e la pagina dice dove', async () => {
   assert.deepEqual(titoli, [
     'Nome', 'Prompt di sistema', 'Forma della risposta',
     'Budget di ragionamento (token)', 'Tetto di turni per sessione',
+    'Giorni di conservazione',
   ], 'nessun campo «Modello» nella pagina');
   assert.match(outlet.textContent, /si sceglie per provider, nella pagina Modelli/);
 });
@@ -267,4 +272,44 @@ test('la descrizione di thinking_budget dice DOVE vale, e non promette effetto o
   assert.match(testo, /modalità abbonamento/);
   assert.doesNotMatch(testo, /viene disattivato comunque e il log lo dice/,
     'la vecchia frase era vera su un percorso su tre: era una dichiarazione falsa al presente');
+});
+
+// ---------------------------------------------------------------------------
+// fetta "Modelli" (2.0), Task 12: `giorni_conservazione` arriva da
+// `history_retention_days` (l'opzione dell'add-on) e dichiara i DUE lavori
+// che faceva in silenzio -- prima nessuna descrizione, in nessun posto,
+// diceva che lo stesso numero limita anche quanto HIRIS rilegge la
+// conversazione in corso, ne' che 0 non cancella mai niente.
+// ---------------------------------------------------------------------------
+
+test('la descrizione dei giorni di conservazione dichiara ENTRAMBI i lavori, e cosa fa 0', async () => {
+  const { window, document } = montaConServer();
+  window.HirisImpostazioniRoute.mount();
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.match(testo, /cancella i messaggi più vecchi di questo numero di giorni/,
+    'il primo lavoro: la potatura notturna');
+  assert.match(testo, /limita quanto HIRIS rilegge della conversazione in corso/,
+    'il secondo lavoro, mai scritto da nessuna parte prima di questo task');
+  assert.match(testo, /abbassarlo gli fa dimenticare prima/,
+    'abbassare il numero non libera spazio, fa dimenticare');
+  assert.match(testo, /0 = non cancella mai niente/,
+    'il contrario di cio\' che ci si aspetta da una "conservazione" a zero: va detto, non dedotto');
+});
+
+test('salvare 0 giorni di conservazione manda davvero 0, non il valore corrente', async () => {
+  const { window, document, chiamate } = montaConServer();
+  window.HirisImpostazioniRoute.mount();
+  await tick(20);
+
+  controllo(document, 'Giorni di conservazione').value = '0';
+  bottone(document, 'Salva').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  const put = chiamate.find((c) => c.opts.method === 'PUT');
+  const corpo = JSON.parse(put.opts.body);
+  assert.equal(corpo.giorni_conservazione, 0,
+    '0 è un valore valido ("non cancella mai niente"), non deve ricadere sul valore corrente ' +
+    'con un controllo di verita\' (0 è falsy in JS) al posto di NaN');
 });

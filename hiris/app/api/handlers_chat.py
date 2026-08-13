@@ -233,7 +233,10 @@ async def _enqueue_chat_job(
 
     # Built AFTER the append above, so the current user turn is the last
     # entry — the external runner needs it to know what it's replying to.
-    history = load_history(data_dir)
+    # Task 12: stesso secondo lavoro di `giorni_conservazione` del ramo
+    # sincrono qui sotto (`handle_chat`) — il ponte non deve rileggere piu'
+    # conversazione di quanto l'utente abbia scelto.
+    history = load_history(data_dir, giorni=impostazioni.giorni_conservazione)
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(impostazioni)
 
@@ -464,8 +467,14 @@ async def handle_chat(request: web.Request) -> web.Response:
             status=503,
         )
 
-    # Load server-side history (client-sent history field is ignored)
-    history = load_history(data_dir)
+    # Load server-side history (client-sent history field is ignored).
+    # Task 12: `giorni_conservazione` fa qui il suo SECONDO lavoro -- non solo
+    # la potatura notturna, ma anche quanto di questa conversazione HIRIS
+    # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
+    # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
+    # all'avvio: un utente che lo abbassa in `#/impostazioni` lo vede avere
+    # effetto dal messaggio successivo, senza riavviare.
+    history = load_history(data_dir, giorni=impostazioni.giorni_conservazione)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)

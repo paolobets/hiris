@@ -15,7 +15,15 @@ from ..chat_store import load_history, clear_history
 
 async def handle_get_chat_history(request: web.Request) -> web.Response:
     data_dir = request.app["data_dir"]
-    messages = load_history(data_dir)
+    # Task 12: prima di questo task `load_history` leggeva sempre il globale
+    # `chat_store.HISTORY_RETENTION_DAYS` -- questa pagina era GIA' filtrata
+    # dallo stesso numero, per accidente di implementazione condivisa, non
+    # per scelta dichiarata qui. Passare `giorni_conservazione` esplicitamente
+    # mantiene lo stesso comportamento invece di farlo silenziosamente
+    # ricadere sul default (90) del parametro qualunque cosa l'utente abbia
+    # scelto in «Impostazioni chat».
+    giorni = request.app["impostazioni_chat"].giorni_conservazione
+    messages = load_history(data_dir, giorni=giorni)
     return web.json_response({"messages": messages})
 
 

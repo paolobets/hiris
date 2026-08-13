@@ -1,14 +1,15 @@
 """fetta E5 Task 2 ("il frontend"): le impostazioni della chat tornano ad
 avere una superficie.
 
-**Perche' questo file esiste.** I sei campi di `ImpostazioniChat`
+**Perche' questo file esiste.** I sette campi di `ImpostazioniChat`
 (`hiris/app/impostazioni_chat.py`) governano l'unica conversazione che HIRIS
 sa avere -- il prompt di sistema, la forma della risposta, il budget di
-ragionamento, il tetto di turni, la restrizione alla casa e il nome. Il
-modello NON e' fra loro: si sceglie per provider, nella pagina Modelli (fetta
-"la catena diventa l'unica verita'", Task 4 -- il campo `model` che stava qui
-scavalcava la catena e annullava il ripiego).
-Fino a questo task si cambiavano **solo scrivendo a mano
+ragionamento, il tetto di turni, la restrizione alla casa, il nome e (dalla
+fetta "Modelli" (2.0), Task 12) i giorni di conservazione. Il modello NON e'
+fra loro: si sceglie per provider, nella pagina Modelli (fetta "la catena
+diventa l'unica verita'", Task 4 -- il campo `model` che stava qui scavalcava
+la catena e annullava il ripiego).
+Fino alla fetta E5 Task 2 si cambiavano **solo scrivendo a mano
 `/data/impostazioni_chat.json`**: `ImpostazioniChat.salva()` non aveva nessun
 chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_impostazioni_chat.py`). Per chi installa l'add-on senza aprire una
@@ -17,7 +18,7 @@ shell dentro il container, quei campi erano di fatto costanti.
 **Il contratto e' nuovo, non la superficie di compatibilita' inglese che
 c'era.** Il payload usa i nomi italiani dei campi del dataclass (`nome`,
 `system_prompt`, `response_mode`, `thinking_budget`, `max_chat_turns`,
-`restrict_to_home`). `GET /api/chatbots`
+`restrict_to_home`, `giorni_conservazione`). `GET /api/chatbots`
 (`handlers_chatbots.py`) parlava inglese per la card Lovelace e la pagina
 chat: questo file non l'ha mai usata, ed e' uscita per intero al Task 10 di
 questa fetta, col resto dei suoi ultimi chiamanti in `static/`.
@@ -27,13 +28,29 @@ sbagliato o sconosciuto produce un **400 che dice quale campo e cosa non va**,
 mai un 500 e mai un salvataggio a meta': la validazione avviene per intero
 PRIMA di toccare il disco, e l'oggetto scritto e' sempre completo (i campi
 assenti conservano il valore corrente -- un client che manda meno campi non
-azzera gli altri). I due interi hanno come solo limite `>= 0` perche' i limiti
-veri stanno gia' a valle e dipendono dal modello:
+azzera gli altri). I tre interi hanno come solo limite `>= 0` perche' i limiti
+veri stanno gia' a valle e dipendono dal modello (o, per `giorni_conservazione`,
+non esistono affatto -- vedi sotto):
 `claude_runner._thinking_param` disattiva un `thinking_budget` sotto i 1024 o
 su un modello non capace e lo clampa contro `max_tokens`; `max_chat_turns` a 0
 significa "nessun tetto" (`handlers_chat.py`). Duplicare qui una soglia
 numerica che vale solo per un backend sarebbe una dichiarazione falsa al
 presente non appena il modello cambia.
+
+**`giorni_conservazione` (Task 12).** Arrivato da `history_retention_days`,
+l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
+una decisione sulla conversazione, come le altre sei. Fa DUE lavori: la
+potatura notturna (`server.py::_run_retention`) e quanto HIRIS rilegge della
+conversazione in corso (`chat_store.load_context`, chiamato da
+`handlers_chat.py` con questo stesso valore). `0` non attiva mai nessuno dei
+due -- non cancella e non limita niente, il contrario di cio' che ci si
+aspetterebbe da una "conservazione" a zero, e per questo la descrizione in
+pagina lo dice esplicitamente invece di lasciarlo dedurre. E' ancora la
+**versione A** della migrazione (Task 6): `history_retention_days` resta
+un'opzione valida dell'add-on (`config.yaml`/`run.sh`/traduzioni, non toccati
+da questo task) finche' il Task 13 non la toglie dallo schema --
+`ImpostazioniChat.carica()` la copia una volta sola quando l'archivio non ha
+ancora la chiave.
 
 **Il caso speciale del prompt di sistema.** E' il campo piu' delicato del
 prodotto: arriva verbatim nel prompt di ogni turno, sia sul percorso sincrono
@@ -69,7 +86,7 @@ from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
 
 logger = logging.getLogger(__name__)
 
-# I sei campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
+# I sette campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
 # delle chiavi ammesse nel corpo del PUT: tutto cio' che non e' qui dentro e'
 # un errore parlante, non un silenzio (una chiave scritta male -- `modello`
 # invece di `model` -- verrebbe altrimenti accettata e ignorata, e l'utente
@@ -81,6 +98,7 @@ CAMPI = (
     "thinking_budget",
     "max_chat_turns",
     "restrict_to_home",
+    "giorni_conservazione",
 )
 
 # I tre valori che il codice a valle distingue davvero: `prompts.py:315-317`,
@@ -229,6 +247,15 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     else:
         restrizione = corrente.restrict_to_home
 
+    # Stesso `_intero_non_negativo` dei due campi sopra: `0` e' un valore
+    # AMMESSO (Task 12 -- "non cancella e non limita mai niente"), non un
+    # errore. Nessun tetto superiore: `config.yaml` ne porta uno
+    # (`int(0,3650)`) solo perche' e' l'opzione dell'add-on -- qui, come per
+    # `thinking_budget`/`max_chat_turns`, il limite vero non esiste o non e'
+    # di competenza di questa validazione.
+    giorni_conservazione = _intero_non_negativo(
+        body, "giorni_conservazione", corrente.giorni_conservazione)
+
     return ImpostazioniChat(
         nome=nome,
         system_prompt=prompt,
@@ -236,11 +263,12 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
         thinking_budget=thinking,
         max_chat_turns=turni,
         restrict_to_home=restrizione,
+        giorni_conservazione=giorni_conservazione,
     )
 
 
 def _payload(impostazioni: ImpostazioniChat) -> dict:
-    """I sei campi, piu' due cose che la pagina non deve indovinare: i
+    """I sette campi, piu' due cose che la pagina non deve indovinare: i
     valori ammessi per `response_mode` e il prompt di default (per il
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
@@ -251,6 +279,7 @@ def _payload(impostazioni: ImpostazioniChat) -> dict:
         "thinking_budget": impostazioni.thinking_budget,
         "max_chat_turns": impostazioni.max_chat_turns,
         "restrict_to_home": impostazioni.restrict_to_home,
+        "giorni_conservazione": impostazioni.giorni_conservazione,
         "modi_risposta": list(MODI_RISPOSTA),
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     }

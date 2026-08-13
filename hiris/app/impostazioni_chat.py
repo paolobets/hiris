@@ -13,8 +13,10 @@ CRUD). Due dei sette letti erano gia' inerti in pratica -- `max_tokens`
 fetta E2 Task 5) -- e diventano costanti dirette in handlers_chat.py invece
 di campi qui.
 
-I campi di oggi sono SEI: `nome`, `system_prompt`, `response_mode`,
-`thinking_budget`, `max_chat_turns`, `restrict_to_home`. Il settimo, `model`,
+I campi di oggi sono SETTE: `nome`, `system_prompt`, `response_mode`,
+`thinking_budget`, `max_chat_turns`, `restrict_to_home`, `giorni_conservazione`
+(quest'ultimo arrivato con la fetta "Modelli" (2.0), Task 12 -- vedi il suo
+paragrafo qui sotto). Il settimo dei sei originali, `model`,
 e' uscito con la fetta "la catena diventa l'unica verita'" (Task 4): era uno
 SCAVALCO -- se valorizzato, `handlers_chat` lo passava a `LLMRouter.chat`,
 che con un modello diverso da "auto" chiama `_route()` una volta sola,
@@ -163,6 +165,66 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+# fetta "Modelli" (2.0), Task 12: `giorni_conservazione` si sposta qui da
+# `history_retention_days` (opzione dell'add-on). Non e' aspetto, non e' una
+# chiave, non e' rete -- e' una decisione sulla conversazione, come gli altri
+# sei campi di questa classe.
+#
+# Il numero fa DUE lavori, e nessuno dei due era mai stato scritto da nessuna
+# parte prima di questo task:
+#   1. la potatura notturna (`server.py::_run_retention`, cron alle 3) cancella
+#      dal disco i messaggi piu' vecchi di questo numero di giorni;
+#   2. lo STESSO numero limita quanto `chat_store.load_context()` rilegge
+#      della conversazione in corso -- abbassarlo non libera spazio, fa
+#      DIMENTICARE PRIMA. Un file/opzione mai toccato non lo diceva: la
+#      descrizione in `#/impostazioni` lo dichiara adesso.
+# E `0` non cancella e non limita MAI niente (`if giorni > 0` in entrambi i
+# lettori) -- il contrario di cio' che chiunque si aspetta da una
+# "conservazione" messa a zero, e per questo va detto esplicitamente, non
+# lasciato dedurre.
+#
+# **Versione A della migrazione, applicata a questo singolo campo** (la
+# sorella maggiore, su tutto `models_config.json`, e' `migrazione_opzioni.py`
+# del Task 6 -- questo campo non ci passa attraverso, perche' vive in un
+# archivio diverso, `impostazioni_chat.json`): se il file non porta ancora la
+# chiave, `carica()` la prende da `HISTORY_RETENTION_DAYS`, la variabile che
+# `run.sh` esporta dall'opzione `history_retention_days` di `config.yaml`.
+# Una volta sola per lettura del file (non un seed permanente: un file che GIA'
+# porta la chiave, anche a `0`, vince sempre sull'opzione -- vedi
+# `_giorni_da_ambiente` sotto), dichiarata nel log ESATTAMENTE quando il valore
+# copiato non e' quello che i default del codice avrebbero comunque prodotto
+# (stessa disciplina del blocco `if "model" in raw` qui sotto, e dello stesso
+# "non annuncia se non c'e' niente da annunciare" imparato al debito F della
+# migrazione di `models_config.json`, Task 6/7: un'installazione MAI toccata
+# non deve leggere un log a ogni riavvio).
+#
+# Il Task 13 (versione B) togliera' `history_retention_days` dallo schema
+# dell'add-on: da quel momento in poi questo ramo non trovera' piu' niente da
+# leggere (l'ambiente sara' muto) e il campo vivra' solo nell'archivio -- qui
+# NON si tocca ne' config.yaml ne' run.sh ne' le traduzioni, per lo stesso
+# motivo per cui il Task 6 non li ha toccati: il Supervisor scarta ogni chiave
+# fuori schema PRIMA che /data/options.json esista, quindi toglierli ora
+# farebbe perdere in silenzio il valore di chi lo ha gia' cambiato.
+def _giorni_da_ambiente(predefinito: int) -> int:
+    grezzo = os.environ.get("HISTORY_RETENTION_DAYS")
+    if grezzo is None:
+        return predefinito
+    try:
+        giorni = int(grezzo)
+    except (TypeError, ValueError):
+        return predefinito
+    if giorni != predefinito:
+        logger.info(
+            "impostazioni_chat.json non specifica 'giorni_conservazione': "
+            "arriva dall'opzione dell'add-on 'history_retention_days' (valore "
+            "%d). Da ora si cambia dalla pagina Impostazioni chat -- governa "
+            "sia la potatura notturna sia quanto HIRIS rilegge della "
+            "conversazione in corso.",
+            giorni,
+        )
+    return giorni
+
+
 @dataclass
 class ImpostazioniChat:
     """La configurazione dell'unica conversazione che HIRIS sa avere.
@@ -177,25 +239,33 @@ class ImpostazioniChat:
     thinking_budget: int = 0
     max_chat_turns: int = 0
     restrict_to_home: bool = False
+    giorni_conservazione: int = 90
 
     @classmethod
     def carica(cls, data_dir: str) -> "ImpostazioniChat":
         """Non solleva mai e non restituisce mai `None`: un file assente,
         illeggibile o corrotto produce i default di sopra (dichiarato nel
         log, non un pass muto) -- mai uno stato "impostazioni mancanti" che
-        il chiamante dovrebbe scoprire da solo."""
+        il chiamante dovrebbe scoprire da solo.
+
+        Task 12: file assente e file corrotto convergono sullo stesso `raw =
+        {}` invece di due `return cls()` separati (com'era prima) -- e' cio'
+        che permette a ENTRAMBI i casi di consultare `HISTORY_RETENTION_DAYS`
+        per `giorni_conservazione` (`_giorni_da_ambiente` sopra), invece di
+        far scomparire silenziosamente la versione A della migrazione ogni
+        volta che il file non e' leggibile."""
         path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
-        if not os.path.exists(path):
-            return cls()
-        try:
-            with open(path, encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception as exc:
-            logger.error(
-                "Impostazioni chat illeggibili in %s (%s): uso i default nel codice.",
-                path, exc,
-            )
-            return cls()
+        raw: dict = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    raw = json.load(f)
+            except Exception as exc:
+                logger.error(
+                    "Impostazioni chat illeggibili in %s (%s): uso i default nel codice.",
+                    path, exc,
+                )
+                raw = {}
         if "model" in raw:
             # Silenzio dichiarato (fetta "la catena diventa l'unica verita'"):
             # il modello della chat scavalcava l'intera pagina Modelli --
@@ -215,6 +285,22 @@ class ImpostazioniChat:
                 raw.get("model"),
             )
         default = cls()
+        # NOTA il contrasto deliberato con `thinking_budget`/`max_chat_turns`
+        # due righe sopra: quelli usano `raw.get(k, 0) or 0`, che trasforma
+        # ANCHE un valore presente ma falsy (0) nel ripiego -- corretto per
+        # loro perche' il ripiego E' 0. Per `giorni_conservazione` il ripiego
+        # (90) e' diverso dal valore-sentinella (0 = "non cancellare mai"):
+        # lo stesso pattern trasformerebbe silenziosamente uno 0 scelto
+        # dall'utente nel default. Qui si distingue "chiave assente" (versione
+        # A: consulta l'ambiente) da "chiave presente" (vince sempre, 0
+        # compreso) con un `in` esplicito, non con la verita' del valore.
+        if "giorni_conservazione" in raw:
+            valore = raw.get("giorni_conservazione")
+            giorni_conservazione = (
+                default.giorni_conservazione if valore is None else int(valore)
+            )
+        else:
+            giorni_conservazione = _giorni_da_ambiente(default.giorni_conservazione)
         return cls(
             nome=raw.get("nome", default.nome),
             system_prompt=raw.get("system_prompt") or default.system_prompt,
@@ -222,6 +308,7 @@ class ImpostazioniChat:
             thinking_budget=int(raw.get("thinking_budget", 0) or 0),
             max_chat_turns=int(raw.get("max_chat_turns", 0) or 0),
             restrict_to_home=bool(raw.get("restrict_to_home", default.restrict_to_home)),
+            giorni_conservazione=giorni_conservazione,
         )
 
     def salva(self, data_dir: str) -> None:
@@ -266,6 +353,7 @@ class ImpostazioniChat:
             "thinking_budget": self.thinking_budget,
             "max_chat_turns": self.max_chat_turns,
             "restrict_to_home": self.restrict_to_home,
+            "giorni_conservazione": self.giorni_conservazione,
         }
         os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
         with _save_lock:

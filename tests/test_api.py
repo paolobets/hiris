@@ -339,6 +339,51 @@ async def test_chat_persists_exchange_in_history(client):
 
 
 @pytest.mark.asyncio
+async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
+    """fetta "Modelli" (2.0), Task 12: il secondo lavoro di
+    `giorni_conservazione`, sull'app VERA (`create_app`, non un test isolato
+    di chat_store) -- abbassarlo non libera solo spazio su disco, fa
+    DIMENTICARE PRIMA. Un messaggio piu' vecchio della soglia scelta nelle
+    impostazioni non deve arrivare al runner, anche se e' ancora nella
+    sessione attiva (last_msg_at recente) e ancora sul disco."""
+    from datetime import datetime, timezone, timedelta
+    from hiris.app.chat_store import _get_store
+
+    data_dir = client.app["data_dir"]
+    client.app["impostazioni_chat"] = ImpostazioniChat(giorni_conservazione=5)
+    runner = client.app["claude_runner"]
+    runner.chat = AsyncMock(return_value="ok")
+
+    store = _get_store(data_dir)
+    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ora_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+        ("sess-mista", vecchio_ts, ora_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        ("sess-mista", "user", "messaggio di dieci giorni fa", vecchio_ts),
+    )
+    conn.commit()
+
+    await client.post("/api/chat", json={"message": "ciao adesso"})
+
+    call_kwargs = runner.chat.call_args.kwargs
+    contenuti = [m["content"] for m in call_kwargs["conversation_history"]]
+    assert "messaggio di dieci giorni fa" not in contenuti
+
+    # Non cancellato: il turno di sopra non deve aver toccato il disco per
+    # questo messaggio, solo la lettura che costruisce il contesto.
+    riga = conn.execute(
+        "SELECT COUNT(*) FROM chat_messages WHERE content = ?",
+        ("messaggio di dieci giorni fa",),
+    ).fetchone()[0]
+    assert riga == 1
+
+
+@pytest.mark.asyncio
 async def test_chat_does_not_persist_toxic_response(client):
     """Regression v0.9.9: synthetic-error responses (rate limit, leaked
     tool calls, etc.) must not be persisted to chat history — they would

@@ -1,9 +1,14 @@
 /* HIRIS · Config · Impostazioni chat (route #/impostazioni)
-   fetta E5 Task 2. I sei campi di `ImpostazioniChat`
+   fetta E5 Task 2. I sette campi di `ImpostazioniChat`
    (hiris/app/impostazioni_chat.py) governano l'unica conversazione che HIRIS
-   sa avere. Fino a questo task si cambiavano SOLO scrivendo a mano
+   sa avere. Fino a quel task si cambiavano SOLO scrivendo a mano
    /data/impostazioni_chat.json: questa pagina e le due rotte
    GET/PUT api/impostazioni-chat sono la loro prima interfaccia.
+
+   fetta "Modelli" (2.0), Task 12: settimo campo, `giorni_conservazione` --
+   arrivato da `history_retention_days` (l'opzione dell'add-on). Non e'
+   aspetto, non e' una chiave, non e' rete: e' una decisione sulla
+   conversazione, come le altre.
 
    Nessuna dipendenza da editor-kit.js / entity-picker.js / templates.js: tutti
    e tre escono al Task 6 di questa fetta, e una pagina nuova che ci si
@@ -154,6 +159,18 @@ window.HirisImpostazioniRoute = (function () {
       input('number', dati.max_chat_turns));
     turni.min = '0';
 
+    /* fetta "Modelli" (2.0), Task 12: arrivato da `history_retention_days`
+       (l'opzione dell'add-on) -- non e' aspetto, non e' una chiave, non e' rete:
+       e' una decisione sulla conversazione, come gli altri campi di questa
+       pagina. Il numero fa DUE lavori e la descrizione li dice entrambi: nessuno
+       dei due era mai stato scritto da nessuna parte prima di questo task. */
+    var conservazione = campo(body, 'Giorni di conservazione',
+      'Ogni notte cancella i messaggi più vecchi di questo numero di giorni. ' +
+      'Lo stesso numero limita quanto HIRIS rilegge della conversazione in ' +
+      'corso: abbassarlo gli fa dimenticare prima. 0 = non cancella mai niente.',
+      input('number', dati.giorni_conservazione));
+    conservazione.min = '0';
+
     var riga = el('label');
     riga.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 0 4px;cursor:pointer';
     var casa = el('input');
@@ -190,13 +207,15 @@ window.HirisImpostazioniRoute = (function () {
         nome: nome.value,
         system_prompt: prompt.value,
         response_mode: selModo.value,
-        /* I due interi passano da parseInt: un campo number svuotato produce
-           '' e Number('') sarebbe 0 -- cioe' "nessun tetto" -- senza che
-           l'utente lo abbia chiesto. Con NaN si manda il valore corrente,
-           che il PUT conserva. */
+        /* I tre interi passano da parseInt: un campo number svuotato produce
+           '' e Number('') sarebbe 0 -- per giorni_conservazione "non cancella
+           mai niente", non solo per i due tetti -- senza che l'utente lo
+           abbia chiesto. Con NaN si manda il valore corrente, che il PUT
+           conserva. */
         thinking_budget: numero(thinking.value, dati.thinking_budget),
         max_chat_turns: numero(turni.value, dati.max_chat_turns),
-        restrict_to_home: !!casa.checked
+        restrict_to_home: !!casa.checked,
+        giorni_conservazione: numero(conservazione.value, dati.giorni_conservazione)
       };
       salva.disabled = true;
       mostraEsito('Salvataggio…');
@@ -218,6 +237,7 @@ window.HirisImpostazioniRoute = (function () {
             thinking.value = String(dati.thinking_budget);
             turni.value = String(dati.max_chat_turns);
             casa.checked = !!dati.restrict_to_home;
+            conservazione.value = String(dati.giorni_conservazione);
             mostraEsito('Salvato. Vale dal prossimo messaggio.');
             return;
           }

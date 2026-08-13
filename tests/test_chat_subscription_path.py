@@ -257,6 +257,44 @@ async def test_job_context_history_includes_current_user_turn(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# fetta "Modelli" (2.0), Task 12: il secondo lavoro di `giorni_conservazione`
+# vale anche sul ramo del ponte (`_enqueue_chat_job`), non solo sul sincrono
+# (vedi tests/test_api.py per il gemello sul ramo sincrono) -- il ponte non
+# deve rileggere piu' conversazione di quanto l'utente abbia scelto.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_path):
+    from datetime import datetime, timezone, timedelta
+    from hiris.app.chat_store import _get_store
+
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    impostazioni.giorni_conservazione = 5
+
+    store = _get_store(data_dir)
+    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ora_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
+        ("sess-mista", vecchio_ts, ora_ts),
+    )
+    conn.execute(
+        "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
+        ("sess-mista", "user", "messaggio di dieci giorni fa", vecchio_ts),
+    )
+    conn.commit()
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "prima domanda"})
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    contenuti = [m["content"] for m in job["context"]["history"]]
+    assert "messaggio di dieci giorni fa" not in contenuti
+
+
+# ---------------------------------------------------------------------------
 # Poll route
 # ---------------------------------------------------------------------------
 

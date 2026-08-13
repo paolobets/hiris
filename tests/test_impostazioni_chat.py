@@ -246,3 +246,82 @@ def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_
     su_disco = _json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert "model" not in su_disco, su_disco
     assert su_disco["nome"] == "HIRIS"
+
+
+# ---------------------------------------------------------------------------
+# fetta "Modelli" (2.0), Task 12: `giorni_conservazione` si sposta qui da
+# `history_retention_days` (l'opzione dell'add-on). E' ancora la versione A
+# della migrazione (Task 6): se il file non porta la chiave, il valore arriva
+# dall'ambiente (`HISTORY_RETENTION_DAYS`, che `run.sh` esporta dall'opzione),
+# dichiarato nel log -- non un seed permanente: un file che GIA' porta la
+# chiave, 0 compreso, vince sempre.
+# ---------------------------------------------------------------------------
+
+def test_i_giorni_di_conservazione_vivono_nelle_impostazioni_della_chat():
+    assert ImpostazioniChat().giorni_conservazione == 90
+
+
+def test_al_primo_avvio_il_valore_arriva_dall_opzione_dell_addon(tmp_path, monkeypatch, caplog):
+    """Versione A applicata a questo valore: chi aveva 30 giorni non deve
+    ritrovarsi a 90 senza una riga che lo dica. "Primo avvio" = nessun file
+    ancora sul disco, non solo "chiave assente in un file esistente" --
+    `carica()` deve consultare l'ambiente in entrambi i casi."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+    with caplog.at_level("INFO"):
+        imp = ImpostazioniChat.carica(str(tmp_path))
+    assert imp.giorni_conservazione == 30
+    assert "30" in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_un_valore_gia_scelto_vince_sull_opzione(tmp_path, monkeypatch):
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+    (tmp_path / "impostazioni_chat.json").write_text(
+        '{"giorni_conservazione": 7}', encoding="utf-8")
+    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 7
+
+
+def test_uno_zero_gia_scelto_vince_sull_opzione_e_non_diventa_il_default(tmp_path, monkeypatch):
+    """La prova gemella, sul valore che il pattern `valore or predefinito`
+    (usato per gli altri interi di questo file) romperebbe in silenzio: uno
+    `0` esplicito nel file e' "non cancellare mai", non "chiave assente"."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+    (tmp_path / "impostazioni_chat.json").write_text(
+        '{"giorni_conservazione": 0}', encoding="utf-8")
+    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 0
+
+
+def test_un_ambiente_uguale_al_default_non_scrive_niente_nel_log(tmp_path, monkeypatch, caplog):
+    """La prova gemella di `test_un_file_senza_il_vecchio_modello_non_dice_
+    niente` sopra: un'installazione MAI toccata (opzione al suo stesso
+    predefinito, 90) non deve leggere una riga di log a ogni riavvio --
+    stessa disciplina del debito F della migrazione di `models_config.json`
+    (Task 6/7)."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "90")
+    with caplog.at_level("INFO"):
+        imp = ImpostazioniChat.carica(str(tmp_path))
+    assert imp.giorni_conservazione == 90
+    assert "giorni_conservazione" not in "\n".join(r.getMessage() for r in caplog.records)
+    assert "history_retention_days" not in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_un_ambiente_muto_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
+    """`HISTORY_RETENTION_DAYS` assente dall'ambiente (mai il caso reale
+    sotto `run.sh`, che esporta sempre un valore -- ma questo modulo non deve
+    fidarsi di chi lo chiama): nessun KeyError, nessun crash, il default nel
+    codice."""
+    monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
+    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 90
+
+
+def test_un_ambiente_non_numerico_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
+    """`bashio::config` su un campo vuoto/malformato torna una stringa che
+    `int()` non digerisce: stessa disciplina di `migrazione_opzioni._intero`
+    per gli altri sette valori che arrivano da `run.sh`."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "")
+    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 90
+
+
+def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
+    ImpostazioniChat(giorni_conservazione=45).salva(str(tmp_path))
+    su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
+    assert su_disco["giorni_conservazione"] == 45

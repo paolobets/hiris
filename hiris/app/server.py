@@ -1330,12 +1330,21 @@ async def _on_startup(app: web.Application) -> None:
     # longer expire, Task 6 "la memoria non evapora": handle_save_memory
     # stopped computing a valid_until, so purge_expired_chatbot had no more
     # work fed to it and was removed).
+    #
+    # Task 12: la fonte del numero di giorni non e' piu' il globale di modulo
+    # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
+    # `app["impostazioni_chat"].giorni_conservazione` -- letto AD OGNI GIRO
+    # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
+    # /api/impostazioni-chat riassegna quella chiave a caldo
+    # (`handlers_impostazioni.handle_save_impostazioni`), e la potatura di
+    # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
+    # con cui l'add-on e' partito.
     from .chat_store import delete_old_messages as _delete_old_messages
 
     def _run_retention() -> None:
-        from .chat_store import HISTORY_RETENTION_DAYS
-        if HISTORY_RETENTION_DAYS > 0:
-            n = _delete_old_messages(data_dir, HISTORY_RETENTION_DAYS)
+        giorni = app["impostazioni_chat"].giorni_conservazione
+        if giorni > 0:
+            n = _delete_old_messages(data_dir, giorni)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
 
