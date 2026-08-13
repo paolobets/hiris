@@ -1,194 +1,122 @@
 configuration:
-  claude_api_key:
-    name: "Chiave API Claude"
-    description: "Chiave API per Anthropic Claude. Obbligatoria se vuoi usare Claude come provider AI. Ottienila su console.anthropic.com. PRIVACY: i messaggi e i contesti inviati passano dai server Anthropic (USA) — vedi anthropic.com/privacy."
-  openai_api_key:
-    name: "Chiave API OpenAI"
-    description: "Chiave API per i modelli OpenAI (GPT-4o, o1, ecc.). Necessaria solo se OpenAI fa parte della tua strategia/politiche di routing. PRIVACY: i messaggi passano dai server OpenAI (USA) — vedi openai.com/policies."
-  openrouter_api_key:
-    name: "Chiave API OpenRouter"
-    description: "Chiave API per OpenRouter — un proxy unificato che da' accesso a 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek, ecc.) con un'unica chiave. Ottienila su openrouter.ai. Sono disponibili modelli gratuiti (suffisso ':free' es. 'meta-llama/llama-3.3-70b-instruct:free'). Per usarli, imposta nel campo modello di un agente il formato 'openrouter:provider/nome-modello'. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal provider del modello scelto — vedi openrouter.ai/privacy."
-  # Fix della review totale della fetta "il ponte riceve il nucleo" (parita' A,
-  # I-2/I-3), decisione del proprietario: "dirlo nella UI e procedere".
-  # Il difetto: `server.py` calcola `_chat_via_subscription_cfg` come
-  # `env_bool("CHAT_VIA_SUBSCRIPTION") OR _sub_first_class`, quindi attivare
-  # QUESTO toggle col token OAuth presente accende il ponte E la
-  # chat-via-abbonamento anche con l'opzione `chat_via_subscription` spenta.
-  # La descrizione che spiega cosa viaggia sul ponte stava solo su
-  # `chat_via_subscription`, cioe' sull'opzione che chi attiva il provider non
-  # tocca mai: la conseguenza si spiegava dove non veniva letta. Nessun cambio
-  # di comportamento -- solo il testo: l'utente sceglie sapendo.
-  # (Il rinvio e' al NOME `_chat_via_subscription_cfg`, non a un numero di
-  # riga: i numeri invecchiano al primo commit che sposta il blocco.)
-  provider_subscription:
-    name: "Attiva provider: Abbonamento (Claude Max)"
-    description: "Attiva l'abbonamento Claude (Claude Max, tramite il runner in-addon) come provider AI. Richiede il token OAuth (claude_code_oauth_token). ATTENZIONE — cosa comporta: attivarlo con il token OAuth presente INSTRADA LA CHAT SUL PONTE dell'abbonamento, cioè accende «Chat via abbonamento — attiva» anche se quell'opzione resta spenta. Su quel percorso, insieme al tuo messaggio, viaggiano la conoscenza della casa (il nucleo: aree, entità, cosa è notevole adesso, cosa la casa fa da sola) e i ricordi di ciò che le persone hanno detto, sessioni precedenti comprese — sotto le condizioni d'uso e di conservazione dell'abbonamento Claude Max, che sono diverse da quelle dell'API a consumo usata dall'altro percorso. Vedi «Chat via abbonamento — attiva» più sotto per che cosa la chat riceve su quel percorso. Un provider è usato solo se attivo qui E con la sua credenziale. NOTA: se lasci tutti i toggle provider_* disattivi su un install esistente, HIRIS continua a derivare i provider attivi dalle credenziali già presenti (retro-compatibile); appena attivi UN toggle qualsiasi, sono attivi solo i toggle che accendi, quindi riattiva ogni provider che vuoi mantenere."
+  # L'ordine di questo file segue `config.yaml`, cioe' l'ordine in cui i campi
+  # compaiono nel Supervisor. Il Supervisor non rende sezioni ne' separatori:
+  # il raggruppamento e' fatto dal PREFISSO dell'etichetta ("Provider · ",
+  # "Ponte · ", "Avanzate · ") e dalla vicinanza. Una parola sola, un
+  # significato solo: "Piano Claude Max" e' il modo di pagare, "Ponte" e' il
+  # meccanismo che ci porta la chat. Prima la parola «abbonamento» compariva
+  # in tre etichette diverse con tre significati diversi.
+  #
+  # Le descrizioni dicono COSA SUCCEDE se tocchi il campo, non cosa e': nel
+  # Supervisor sono l'unico aiuto che l'utente ha.
+
+  # ── 1. Provider AI ────────────────────────────────────────────────────────
   provider_claude:
-    name: "Attiva provider: API Claude"
-    description: "Attiva l'API Claude come provider AI (richiede claude_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
-  provider_openai:
-    name: "Attiva provider: API OpenAI"
-    description: "Attiva l'API OpenAI come provider AI (richiede openai_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
-  provider_openrouter:
-    name: "Attiva provider: OpenRouter"
-    description: "Attiva OpenRouter come provider AI (richiede openrouter_api_key). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
-  provider_ollama:
-    name: "Attiva provider: Ollama (locale)"
-    description: "Attiva il modello Ollama locale come provider AI (richiede local_model url + model). Un provider è usato solo se attivo qui E con la sua credenziale. Vedi la nota su provider_subscription sull'attivazione dei toggle su un install esistente."
-  hide_free_models:
-    name: "Nascondi modelli :free di OpenRouter"
-    description: "Se attivo, i modelli ':free' di OpenRouter non compaiono nel menu modelli della pagina Modelli (#/models) né in quello delle impostazioni della chat. Utile se hai acquistato credito OpenRouter e preferisci evitare la quota giornaliera bassa e i frequenti rate-limit upstream del tier gratuito."
-  llm_strategy:
-    name: "Strategia LLM"
-    description: "Come HIRIS seleziona i modelli quando ne sono disponibili più di uno. 'balanced' (default) parte da Claude, poi preferisce OpenRouter rispetto allo slot OpenAI dedicato, prima di ricadere su Ollama locale. 'cost_first' preferisce modelli più economici/locali per primi. 'quality_first' parte sempre da Claude, poi OpenAI, poi OpenRouter, poi Ollama."
-  chat_policy:
-    name: "Politica backend — chat"
-    description: "Ordine backend per la chat interattiva, es. claude,ollama — vuoto = usa la strategia."
-  local_model:
-    name: "Modello Locale (Ollama)"
-    description: "Impostazioni per un modello Ollama ospitato localmente. Lascia vuoto se non usi Ollama."
-    url:
-      name: "URL Ollama"
-      description: "URL base della tua istanza Ollama. Esempio: http://192.168.1.10:11434"
-    model:
-      name: "Nome Modello Ollama"
-      description: "Nome del modello Ollama da usare. Esempio: llama3, mistral, phi3."
-    request_timeout:
-      name: "Timeout richiesta Ollama (secondi)"
-      description: "Tempo massimo di attesa per una singola chiamata Ollama. Default 120s. Aumenta se hai hardware lento con modelli grandi (Pi 5 con gemma2:9b può richiedere 240–300s). Range: 10–1800."
-  # Fetta "esce il documentale": esce `rag_k` -- era il numero di risultati
-  # del richiamo per somiglianza sull'archivio di conoscenza, uscito con
-  # quella fetta. I due campi che restano sono DICHIARATI INERTI qui sotto:
-  # oggi nessuna parte di HIRIS calcola embedding, e dirlo all'utente e'
-  # l'unico modo di non ripetere l'errore della frase sui documenti sensibili.
-  memory:
-    name: "Embedding (oggi inattivi)"
-    description: "Provider e modello per la ricerca per somiglianza. OGGI NON HANNO EFFETTO: nessuna parte di HIRIS calcola embedding, da quando l'integrazione documentale e l'archivio di conoscenza sono usciti. I due campi restano perché la ricerca per somiglianza è una decisione rimandata, non annullata: quando verrà accesa, si configurerà da qui."
-    embedding_provider:
-      name: "Provider Embedding (inattivo)"
-      description: "Provider per gli embedding. Opzioni: 'openai' (richiede chiave API), 'ollama' (richiede server locale), 'model2vec' (completamente locale, nessun server). Oggi il valore viene letto e mostrato nella pagina Modelli, ma nessun testo viene mai vettorizzato."
-    embedding_model:
-      name: "Modello Embedding (inattivo)"
-      description: "Modello per generare gli embedding. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M o potion-base-32M (lascia vuoto per il default). Oggi non viene mai invocato."
-  # fetta E4, riparazione del ponte: la descrizione diceva «Lascia vuoto per
-  # generarlo automaticamente» ma nessuno generava niente -- con il campo vuoto
-  # (il default di config.yaml) ogni chiamata non-ingress prendeva 401 e il
-  # ponte della chat girava a vuoto per sempre. Ora la generazione esiste
-  # davvero (app/token_interno.py) e la descrizione racconta cio' che il codice
-  # fa: genera, conserva in /data, rilegge al riavvio.
-  internal_token:
-    name: "Token Interno"
-    description: "Token segreto che protegge le chiamate API interne di HIRIS, fra cui quelle del ponte della chat via abbonamento. Lascialo vuoto e HIRIS ne genera uno al primo avvio e lo conserva nei dati dell'add-on: resta lo stesso a ogni riavvio e non devi farci niente. Valorizzalo a mano solo se un altro componente (per esempio il gateway MCP) deve chiamare la API di HIRIS con un token che decidi tu: in quel caso vince il tuo, e HIRIS non genera ne' scrive nulla."
-  supervisor_ingress_cidr:
-    name: "CIDR ingress Supervisor fidata"
-    description: "Range IP sorgente trattati come vero ingress del Supervisor HA per il bypass X-Ingress-Path (CR-1). Tutto il resto richiede il token interno. Default 172.30.32.0/23; restringi (es. 172.30.32.2/32) se esponi la API a un tunnel."
-  log_level:
-    name: "Livello Log"
-    description: "Verbosità dei log dell'add-on. Usa 'debug' per la diagnostica, 'info' per il funzionamento normale, 'warning' o 'error' per output minimale."
-  theme:
-    name: "Tema"
-    description: "Tema colori per l'interfaccia web di HIRIS. 'auto' segue le preferenze del sistema."
-  history_retention_days:
-    name: "Conservazione Cronologia (giorni)"
-    description: "Quanti giorni conservare la cronologia delle conversazioni prima della cancellazione automatica. Predefinito: 90 giorni."
-  # fetta E4, giro di chiusura (voce 2): la descrizione diceva «Spento = la chat
-  # via abbonamento non si attiva». Falso: `_sub_first_class` (server.py:907,
-  # cioe' provider_subscription attivo CON token OAuth) e' OR-ato dentro
-  # `_bridge_enabled` (server.py:1332-1335), quindi con questa opzione a false
-  # il ponte si accende lo stesso. E' la stessa implicazione gia' dichiarata,
-  # tre righe piu' sotto, nella descrizione di chat_via_subscription e nel
-  # README (:225): non poteva restare smentita nello stesso pannello.
-  bridge_enabled:
-    name: "Ponte abbonamento — attiva"
-    description: "Instrada la chat via abbonamento (se attiva sotto) a un runner esterno su abbonamento invece che al provider locale/a consumo. NOTA: se attivi il provider «Abbonamento (Claude Max)» e il token OAuth è presente, il ponte si accende comunque, anche lasciando questa opzione spenta."
-  bridge_deadline_min:
-    name: "Ponte abbonamento — scadenza (minuti)"
-    description: "Minuti entro cui un messaggio di chat instradato al runner esterno deve ricevere risposta prima di scadere (l'utente vede un errore, nessun ripiego automatico). Predefinito: 5."
-  # fetta E4, fix della review totale (I2): la descrizione diceva «indipendente
-  # dal cap della Sentinella». La Sentinella e' uscita con la fetta E3 Task 7 e
-  # con lei SENTINEL_DAILY_CAP: il confronto era con un soggetto morto. Il
-  # comportamento vero e' quello di handlers_chat.py:220-226 (429 e messaggio
-  # non inviato) piu' l'assenza di ripiego dichiarata da bridge_deadline_min.
-  chat_daily_cap:
-    name: "Chat via abbonamento — cap messaggi/giorno"
-    description: "Numero massimo di messaggi di chat che HIRIS instrada in un giorno al runner esterno su abbonamento. Superato il limite la chat risponde con un errore e il messaggio non parte: non c'è ripiego automatico sul provider locale/a consumo. Conta solo i messaggi instradati sull'abbonamento. Predefinito: 50."
-  # fetta E4, fix della review totale (I2): la descrizione diceva «non solo la
-  # scansione olistica». La scansione olistica e' uscita fra la fetta E3 Task 4
-  # (il produttore dei job) e la E4 Task 8 (il ramo che li ragionava): l'unico
-  # job che il ponte puo' ricevere oggi e' kind="chat", quindi il «non solo»
-  # confrontava con il nulla.
-  #
-  # fetta "il ponte riceve il nucleo" (parita' A, Task 6): la parita' arrivo'
-  # a META' e questo testo fu riscritto per dirlo -- su questo percorso la chat
-  # riceve la conoscenza della casa (il nucleo, la stessa stringa del percorso
-  # sincrono, `handlers_chat.componi_contesto_chat`) ma non gli strumenti.
-  #
-  # fetta "il ponte riceve gli strumenti" (parita' B): l'altra meta' e'
-  # arrivata, e questo testo e' rimasto indietro di una fetta -- fino a oggi
-  # diceva "ma NON i suoi strumenti", cioe' NEGAVA una capacita' che il codice
-  # ha. E' lo stesso difetto che questo ramo passa il tempo a chiudere, girato
-  # al contrario: di solito il testo promette cio' che il codice non fa, qui
-  # negava cio' che il codice fa -- e chi lo leggeva non avrebbe mai provato a
-  # chiedere alla chat in abbonamento di cercare qualcosa.
-  #
-  # Il testo di adesso e' vero in TUTTI E DUE gli stati, perche' gli stati sono
-  # due e li decide una sonda, non una configurazione: `agent/runner.py::
-  # sonda_strumenti` interroga `POST /api/mcp` prima di partire, e da
-  # quell'unico booleano discendono insieme il prompt (`_GUIDA_CON_STRUMENTI`
-  # oppure `_GUIDA_SENZA_STRUMENTI`) e gli argomenti della CLI. Quando la sonda
-  # riesce il modello ha gli strumenti col prefisso `mcp__hiris__`;
-  # quando non riesce la risposta e' preceduta da `AVVISO_STRUMENTI_ASSENTI`,
-  # che e' la riga che l'utente legge. Promettere gli strumenti senza dire del
-  # secondo stato sarebbe il difetto di prima con il segno di nuovo invertito.
-  #
-  # L'implicazione dichiarata in coda e' quella del punto in cui `server.py`
-  # cabla la coda di ragionamento leggendo `_bridge_enabled`, OR-ato con
-  # `_sub_first_class` (calcolata subito dopo `derive_active_providers`):
-  # provider_subscription attivo CON token OAuth accende sia il ponte sia
-  # questa modalita', anche con l'opzione a false. (I rinvii sono ai NOMI e
-  # non ai numeri di riga: un numero invecchia al primo commit che sposta
-  # quel blocco, ed e' successo cinque volte in questa sola fetta.)
-  #
-  # fetta «comandare» (Task 7): la descrizione diceva «In nessuno dei due casi
-  # agisce sulla casa: non accende, non spegne, non tocca automazioni». Era
-  # vera fino al Task 5 e non lo e' piu': lo strumento `esegui` chiama servizi
-  # di Home Assistant, e su questo percorso arriva come tutti gli altri --
-  # `--allowedTools` deriva dal catalogo unico. Cio' che resta vero, e che il
-  # testo continua a dire, e' che l'azione non sopravvive al FALLIMENTO della
-  # sonda: senza strumenti il modello risponde e basta. Il testo nuovo dice
-  # anche la cosa che l'utente ha diritto di sapere prima di accendere
-  # l'opzione -- che non c'e' nessuna conferma da dare -- perche' questa e' la
-  # voce che lui legge nel Supervisor prima di decidere, e non c'e' un altro
-  # posto in cui glielo diciamo.
-  chat_via_subscription:
-    name: "Chat via abbonamento — attiva"
-    description: "Instrada le risposte della chat al runner esterno su abbonamento invece che al provider locale/a consumo, con il cap giornaliero e la scadenza qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalità — e, quando il runner riesce a ricollegarsi a HIRIS, anche i suoi strumenti: può cercare fra le entità e guardare lo stato ADESSO, non solo la fotografia scattata quando il messaggio è partito, può ricordare e richiamare, e può far succedere qualcosa in casa — accendere, spegnere, impostare — chiamando un servizio di Home Assistant. Ogni chiamata viene verificata contro la tua installazione prima di partire e lo stato viene riletto dopo, così quello che ti racconta è quello che è successo davvero. Non ti viene chiesta nessuna conferma: parte quando glielo chiedi in chat, e mai da sola. Se quel collegamento non riesce risponde lo stesso, con ciò che sa dal nucleo e dalla conversazione, e te lo dice in cima alla risposta invece di far finta di aver guardato — ma in quel caso non può nemmeno agire. Sotto la risposta trovi le targhette degli strumenti che ha usato davvero. Ha effetto solo se «Ponte abbonamento — attiva» qui sopra è anch'esso attivo. NOTA: se attivi il provider «Abbonamento (Claude Max)» ed è presente il token OAuth, questa modalità si accende lo stesso, anche lasciando questa opzione spenta. Predefinito: spento."
-  # fetta «fix pre-UAT»: `claude_code_oauth_token` era in config.yaml fra le
-  # `options` E nello `schema`, ma non aveva voce qui ne' in en.yaml -- nel
-  # Supervisor si presentava senza etichetta e senza descrizione, ed e' il
-  # campo che accende il percorso dell'UAT (abbonamento, nessuna chiave API).
-  # Il Task 11 aveva verificato la parita' it/en, che era vera: mancava in
-  # ENTRAMBE. La copertura si controlla contro config.yaml, non fra le due
-  # lingue.
+    name: "Provider · Claude API (a consumo)"
+    description: "Accende Claude come provider, pagato a consumo sulla chiave qui sotto. Servono tutte e due le cose: questo interruttore E la chiave. Finche' non accendi nessun provider, HIRIS resta com'era e li ricava dalle credenziali che trova; dal primo che accendi valgono solo quelli accesi, quindi riaccendi anche gli altri che usavi."
+  claude_api_key:
+    name: "Provider · Claude API — chiave"
+    description: "La chiave che paga le risposte di Claude; la ottieni su console.anthropic.com. Senza, l'interruttore qui sopra resta senza effetto. PRIVACY: i messaggi e il contesto della casa passano dai server Anthropic (USA) — anthropic.com/privacy."
+  provider_subscription:
+    name: "Provider · Piano Claude Max (a forfait)"
+    description: "Fa ragionare HIRIS con il tuo piano Claude Max invece che con l'API a consumo: le risposte non intaccano il credito. Serve anche il token qui sotto. ATTENZIONE, e' la conseguenza da sapere prima di accenderlo: con il token presente questo interruttore instrada la chat sul ponte DA SOLO — i due interruttori «Ponte · ...» piu' in basso si accendono comunque, anche lasciandoli spenti. Su quel percorso, insieme al tuo messaggio, viaggiano la conoscenza della casa e i ricordi di cio' che le persone hanno detto, sessioni precedenti comprese, sotto le condizioni d'uso e di conservazione del piano Claude Max, che sono diverse da quelle dell'API a consumo. Finche' non accendi nessun provider HIRIS li ricava dalle credenziali presenti; dal primo che accendi valgono solo quelli accesi."
   claude_code_oauth_token:
-    name: "Token OAuth Claude Code (abbonamento)"
-    description: "Token OAuth dell'abbonamento Claude (Claude Max) con cui HIRIS ragiona senza consumare credito dell'API a consumo. È il campo che accende il percorso abbonamento: valorizzalo E attiva «Attiva provider: Abbonamento (Claude Max)» qui sopra — con entrambi presenti, la chat viene instradata sull'abbonamento anche lasciando spente «Ponte abbonamento — attiva» e «Chat via abbonamento — attiva». Lo ottieni sulla macchina dove hai già Claude Code installato e autenticato, con il comando `claude setup-token`, e incolli qui la stringa che stampa. ATTENZIONE: su questo percorso i consumi NON si misurano — l'abbonamento non espone né i token né il costo della singola risposta, e la pagina Consumi lo dichiara invece di mostrare zeri — e valgono le condizioni d'uso e di conservazione dell'abbonamento Claude Max, diverse da quelle dell'API a consumo. Lascialo vuoto se usi solo chiavi API."
-  # Fetta "esce il documentale" (decisione del proprietario, 12 agosto 2026):
-  # esce l'intero blocco `mayan.*` -- url, token, tag_id, sensitivity,
-  # poll_minutes. La descrizione di `sensitivity` diceva che 'sensitive'
-  # "nasconde il contenuto all'AI cloud": era FALSA. Nessun percorso di HIRIS
-  # pseudonimizzava piu' niente, quindi non c'era nessun nascondimento da
-  # nessuna parte -- una promessa di protezione mai mantenuta, ritirata qui
-  # insieme all'opzione che la portava.
+    name: "Provider · Piano Claude Max — token"
+    description: "Il token che apre il tuo piano Claude Max. Lo ottieni sulla macchina dove hai gia' Claude Code installato e autenticato, con il comando `claude setup-token`, e incolli qui la stringa che stampa. Senza, l'interruttore qui sopra resta senza effetto e i messaggi mandati sul ponte scadono senza risposta. ATTENZIONE: su questo percorso i consumi NON si misurano — il piano non espone ne' i token ne' il costo della singola risposta, e la pagina Consumi lo dichiara invece di mostrare zeri. Lascialo vuoto se usi solo chiavi API."
+  provider_openrouter:
+    name: "Provider · OpenRouter"
+    description: "Accende OpenRouter: una chiave sola per 200+ modelli (Claude, GPT, Llama, Gemini, Mistral, Qwen, DeepSeek). Serve anche la chiave qui sotto. Come per gli altri: dal primo interruttore che accendi, valgono solo quelli accesi."
+  openrouter_api_key:
+    name: "Provider · OpenRouter — chiave"
+    description: "La chiave di openrouter.ai. Ci sono anche modelli gratuiti (suffisso ':free'): per usarne uno scrivi 'openrouter:fornitore/nome-modello' nel campo modello. PRIVACY: i messaggi passano da OpenRouter (USA) e poi dal fornitore del modello che scegli — openrouter.ai/privacy."
+  hide_free_models:
+    name: "OpenRouter — nascondi i modelli gratuiti (:free)"
+    description: "Toglie i modelli ':free' dagli elenchi della pagina Modelli e delle impostazioni della chat, cosi' non li scegli per sbaglio. Utile se hai credito OpenRouter e preferisci evitare la quota giornaliera bassa e i rate-limit del tier gratuito."
+  provider_openai:
+    name: "Provider · OpenAI"
+    description: "Accende i modelli OpenAI (GPT-4o, o1, ...) come provider. Serve anche la chiave qui sotto. Come per gli altri: dal primo interruttore che accendi, valgono solo quelli accesi."
+  openai_api_key:
+    name: "Provider · OpenAI — chiave"
+    description: "La chiave che paga le risposte OpenAI. Senza, l'interruttore qui sopra resta senza effetto. PRIVACY: i messaggi passano dai server OpenAI (USA) — openai.com/policies."
+  provider_ollama:
+    name: "Provider · Ollama (sul tuo hardware)"
+    description: "Accende un modello Ollama che gira in casa tua: niente cloud, niente costo per risposta. Servono anche l'indirizzo e il nome del modello qui sotto. Con questo come unico provider acceso, HIRIS lavora senza nessuna chiave cloud."
+  local_model:
+    name: "Ollama — dove sta e quale modello"
+    description: "Indirizzo e nome del modello Ollama. Se li lasci vuoti, l'interruttore «Provider · Ollama» qui sopra resta senza effetto."
+    url:
+      name: "Ollama — indirizzo"
+      description: "URL base della tua istanza Ollama, per esempio http://192.168.1.10:11434. All'avvio HIRIS prova a raggiungerla: se non ci riesce lo scrive nel registro e le richieste al modello locale falliranno."
+    model:
+      name: "Ollama — nome del modello"
+      description: "Il modello da usare, per esempio llama3, mistral, phi3. Dev'essere gia' scaricato su quell'istanza: se manca, all'avvio HIRIS lo segnala nel registro."
+    request_timeout:
+      name: "Ollama — quanto aspettare una risposta (secondi)"
+      description: "Passato questo tempo la singola chiamata a Ollama viene abbandonata e la chat mostra un errore. Alzalo se l'hardware e' lento e il modello grande (un Pi 5 con un modello da 9 miliardi di parametri puo' richiedere 240–300 s). Da 10 a 1800, predefinito 120."
+
+  # ── 2. Scelta fra i provider accesi ───────────────────────────────────────
+  # `chat_policy` e' uscita con la 2.3.0: era un ordine di backend in CSV che
+  # il router scartava sempre (`model_chain` lo sovrascrive). La prova sta in
+  # `config.yaml`, blocco 2.
+  llm_strategy:
+    name: "Ordine di ripiego fra i provider accesi"
+    description: "In che ordine HIRIS prova i provider quando ne hai piu' d'uno e il modello e' «auto»: se il primo fallisce passa al successivo. 'balanced' (predefinito) Claude → OpenRouter → OpenAI → Ollama; 'quality_first' Claude → OpenAI → OpenRouter → Ollama; 'cost_first' parte dal locale e dai piu' economici. Riguarda solo i provider accesi. Se nella pagina Modelli di HIRIS hai salvato un ordine tuo, quello vince, e i provider che non nominava vengono messi in coda nell'ordine scelto qui."
+
+  # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
+  # I due interruttori sono una decisione sola che indossa due leve: la chat
+  # passa dal ponte solo se sono accesi tutti e due, e il piano Claude Max
+  # attivo col token li accende entrambi da solo. Finche' restano due, le
+  # etichette lo dicono con «1 di 2» / «2 di 2» invece di lasciarlo scoprire.
+  bridge_enabled:
+    name: "Ponte · accendi la coda (1 di 2)"
+    description: "Primo dei due interruttori che portano la chat sul piano Claude Max. Da solo non cambia niente per te: accende la coda che porta i messaggi al runner e la spazzola di quelli scaduti, ma finche' non accendi anche «Ponte · mandaci la chat (2 di 2)» in quella coda non entra nessun messaggio. Servono TUTTI E DUE. Se hai acceso «Provider · Piano Claude Max» e il token c'e', questo risulta gia' acceso da solo: qui non devi toccare niente."
+  chat_via_subscription:
+    name: "Ponte · mandaci la chat (2 di 2)"
+    description: "Secondo dei due interruttori: manda le risposte della chat al runner del piano invece che al provider a consumo, con il tetto giornaliero e la scadenza qui sotto. Da solo non cambia niente: serve acceso anche «Ponte · accendi la coda (1 di 2)» qui sopra. Su questo percorso la chat riceve la conoscenza della casa — il nucleo, ricordi e sessioni precedenti compresi, le stesse cose che sa nell'altra modalita' — e, quando il runner riesce a ricollegarsi a HIRIS, anche i suoi strumenti: puo' cercare fra le entita' e guardare lo stato ADESSO, non solo la fotografia scattata quando il messaggio e' partito, puo' ricordare e richiamare, e puo' far succedere qualcosa in casa — accendere, spegnere, impostare — chiamando un servizio di Home Assistant. Ogni chiamata viene verificata contro la tua installazione prima di partire e lo stato viene riletto dopo, cosi' quello che ti racconta e' quello che e' successo davvero. Non ti viene chiesta nessuna conferma: parte quando glielo chiedi in chat, e mai da sola. Se quel collegamento non riesce risponde lo stesso, con cio' che sa dal nucleo e dalla conversazione, e te lo dice in cima alla risposta invece di far finta di aver guardato — ma in quel caso non puo' nemmeno agire. Sotto la risposta trovi le targhette degli strumenti che ha usato davvero. Se hai acceso «Provider · Piano Claude Max» e il token c'e', questo risulta gia' acceso da solo. Predefinito: spento."
+  bridge_deadline_min:
+    name: "Ponte · quanto aspettare una risposta (minuti)"
+    description: "Se il runner non risponde entro questo tempo il messaggio scade: la chat mostra un errore e il messaggio e' perso. Non c'e' nessun ripiego automatico sul provider a consumo. Da 1 a 120, predefinito 5."
+  chat_daily_cap:
+    name: "Ponte · quanti messaggi al giorno"
+    description: "Superato questo numero di messaggi mandati sul ponte in una giornata, la chat risponde con un errore e il messaggio non parte — di nuovo senza ripiego sul provider a consumo. Conta solo i messaggi passati dal ponte. Attenzione: 0 non vuol dire «illimitato», vuol dire che li blocca tutti. Da 0 a 1000, predefinito 50."
+
+  # ── 4. Aspetto e conservazione ────────────────────────────────────────────
+  theme:
+    name: "Aspetto — chiaro o scuro"
+    description: "Il tema con cui si apre l'interfaccia di HIRIS; 'auto' segue le preferenze del sistema. Vale finche' non usi l'interruttore chiaro/scuro dentro HIRIS: da quel momento, su quel browser, vince la scelta fatta li' e questo campo non ha piu' effetto."
+  history_retention_days:
+    name: "Per quanti giorni tenere le conversazioni"
+    description: "Ogni notte HIRIS cancella i messaggi di chat piu' vecchi di questi giorni. Attenzione, lo stesso numero fa due cose: oltre a cancellare, limita anche quanto HIRIS rilegge della conversazione in corso — abbassarlo non fa solo pulizia, gli fa anche dimenticare prima. 0 = non cancellare mai niente. Da 0 a 3650, predefinito 90."
+
+  # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────
+  # Restano in fondo, con le tecniche: sono dichiarati inerti per decisione del
+  # proprietario (la ricerca per somiglianza e' rimandata, non annullata), e
+  # dirlo e' l'unico modo di non ripetere l'errore della frase sui documenti
+  # sensibili — una promessa che il codice non manteneva.
+  memory:
+    name: "Embedding — oggi non hanno effetto"
+    description: "Provider e modello per la ricerca per somiglianza. OGGI NON FANNO NIENTE: da quando l'integrazione documentale e l'archivio di conoscenza sono usciti, nessuna parte di HIRIS calcola embedding. I due campi restano perche' la ricerca per somiglianza e' una decisione rimandata, non annullata: quando verra' accesa, si configurera' da qui."
+    embedding_provider:
+      name: "Embedding — provider (inattivo)"
+      description: "Quale servizio calcolerebbe gli embedding: 'openai' (serve la chiave API), 'ollama' (serve il server locale), 'model2vec' (tutto in casa, nessun server). Oggi il valore viene letto e mostrato nella pagina Modelli, e nient'altro: nessun testo viene mai vettorizzato."
+    embedding_model:
+      name: "Embedding — modello (inattivo)"
+      description: "Quale modello userebbe. openai: text-embedding-3-small. ollama: nomic-embed-text. model2vec: minishlab/potion-base-8M o potion-base-32M (vuoto = predefinito). Oggi non viene mai invocato."
+
+  # ── 6. Avanzate: registro, sicurezza, diagnostica ─────────────────────────
+  # In fondo e col prefisso "Avanzate · " perche' il Supervisor non sa marcare
+  # un campo come pericoloso: posizione e nome sono l'unico segnale che si puo'
+  # dare. `internal_token` e `supervisor_ingress_cidr` stavano fino alla 2.2.1
+  # accanto a «Tema», con lo stesso peso visivo di una preferenza di colore.
+  log_level:
+    name: "Avanzate · dettaglio del registro"
+    description: "Quanto scrive HIRIS nel registro dell'add-on. 'debug' per capire un problema (molto rumoroso), 'info' per l'uso normale, 'warning' o 'error' per tenerlo quasi muto. Se segnali un guasto: mettilo su 'debug', riproduci il problema, allega quello che vedi."
+  internal_token:
+    name: "Avanzate · token delle API interne"
+    description: "Protegge le chiamate a /api/* che non arrivano dall'ingress del Supervisor, fra cui quelle del ponte della chat. LASCIALO VUOTO: al primo avvio HIRIS ne genera uno, lo conserva nei dati dell'add-on e lo riusa a ogni riavvio — non devi farci niente. Scrivine uno tuo solo se un altro componente (per esempio il gateway MCP) deve chiamare la API di HIRIS con un token che decidi tu: in quel caso vince il tuo, e HIRIS non genera ne' scrive nulla."
+  supervisor_ingress_cidr:
+    name: "Avanzate · reti riconosciute come ingress"
+    description: "Solo le richieste che arrivano da questi intervalli IP vengono trattate come vero ingress del Supervisor ed entrano senza token; tutte le altre devono presentare il token interno qui sopra. Allargarlo apre la API di HIRIS a chiunque stia in quelle reti. Predefinito 172.30.32.0/23, la rete Docker del Supervisor; restringilo (per esempio 172.30.32.2/32) se esponi la API a un tunnel."
   debug_expose_port:
-    name: "🛠 Debug — warning esposizione porta (DEV ONLY, da solo NON apre la porta)"
-    description: >-
-      ⚠️ Questo interruttore DA SOLO NON apre la porta 8099 — logga solo un
-      warning ad ogni avvio addon come promemoria. Per esporre realmente la
-      porta sulla LAN devi ANCHE andare in Impostazioni → Componenti
-      aggiuntivi → HIRIS → Configurazione → Rete (sotto questa sezione,
-      richiede la Modalità avanzata di HA) e impostare '8099/tcp' = 8099,
-      poi Save + Restart. ATTIVA SOLO PER DEV/DIAGNOSTICA. Disattiva questo
-      interruttore e svuota il port mapping in Rete quando finito. Senza
-      HTTPS chiunque sulla LAN può chiamare /api/* (solo internal_token come
-      barriera). NON lasciare attivo in produzione.
+    name: "Avanzate · promemoria porta 8099 (solo diagnostica)"
+    description: "DA SOLO NON APRE NESSUNA PORTA: scrive soltanto un promemoria nel registro a ogni avvio dell'add-on. Ad aprire davvero la porta e' la sezione Rete piu' in basso in questa pagina (richiede la Modalita' avanzata di HA): imposta '8099/tcp' = 8099, poi Salva e Riavvia. Quando quella porta e' aperta, chiunque sia sulla tua rete locale puo' chiamare /api/* in chiaro, senza HTTPS, con il solo token interno come barriera. Accendilo solo mentre stai diagnosticando, e spegnilo — insieme alla porta in Rete — appena hai finito."

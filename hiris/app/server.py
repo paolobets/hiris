@@ -35,7 +35,6 @@ from .proxy.entity_cache import EntityCache
 from .backends.embeddings import build_embedding_provider
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
-from .llm_router import _VALID_BACKEND_NAMES as _VALID_POLICY_BACKENDS
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +76,19 @@ def _chat_subscription_active(cfg_on: bool, bridge_on: bool) -> bool:
     return cfg_on and bridge_on
 
 
-def _parse_policy_csv(value: str | None) -> list[str] | None:
-    """Parse a CSV of backend names (e.g. 'claude, ollama') into an ordered list.
-
-    Unknown backend names are dropped, order preserved. Returns None if the
-    input is None/empty or if filtering leaves nothing (so the router falls
-    back to its strategy-derived default order).
-    """
-    if not value:
-        return None
-    names = [name.strip() for name in value.split(",")]
-    filtered = [name for name in names if name in _VALID_POLICY_BACKENDS]
-    return filtered or None
+# fetta «la pagina di configurazione» (2.3.0): `_parse_policy_csv` esce con la
+# sua unica ragione di esistere, l'opzione add-on `chat_policy`. La funzione
+# leggeva un CSV di nomi di backend e lo passava a `LLMRouter(chat_policy=...)`,
+# dove `__init__` lo scartava ogni volta: il ramo `else` che lo usa esiste solo
+# quando `model_chain` e' vuota, e `model_chain` non e' MAI vuota quando il
+# router viene costruito. La prova, riga per riga: il router nasce solo dentro
+# `if any([claude_runner, openai_runner, openrouter_runner, ollama_runner])`;
+# ognuno di quei runner nasce solo se `_active[provider]`; tutti e quattro i
+# nomi stanno in ogni `_STRATEGY_ORDER`; quindi `reconcile_chain` restituisce
+# almeno un elemento. Stessa conclusione, per altra strada, della revisione
+# tecnica del 3 agosto 2026 (I041/I078/I093). Il parametro `chat_policy` di
+# `LLMRouter` RESTA: e' il default di libreria quando nessuno passa una catena,
+# ed e' pinnato dai suoi test.
 
 
 def _find_ha_config_dir() -> str | None:
@@ -960,7 +960,6 @@ async def _on_startup(app: web.Application) -> None:
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
     llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
-    chat_policy = _parse_policy_csv(os.environ.get("CHAT_POLICY", ""))
 
     from .model_activation import derive_active_providers
     _prov_cfg = {
@@ -1536,7 +1535,6 @@ async def _on_startup(app: web.Application) -> None:
             openrouter=openrouter_runner,
             ollama=ollama_runner,
             strategy=llm_strategy,
-            chat_policy=chat_policy,  # retro-compat del ramo chat (run.sh: chat_policy)
             model_chain=_chain,
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)

@@ -1,5 +1,96 @@
 # HIRIS — Changelog
 
+## [2.3.0] — La pagina di configurazione smette di essere un labirinto (2026-08-13)
+
+**Non cambia niente in quello che HIRIS fa. Cambia la pagina in cui glielo dici.**
+
+Chi apriva *Impostazioni → Componenti aggiuntivi → HIRIS → Configurazione* trovava
+ventiquattro campi nell'ordine in cui il progetto li aveva prodotti negli ultimi mesi,
+che non è l'ordine in cui una persona li usa. Adesso l'ordine è quello di chi apre
+quella pagina la prima volta e vuole **far funzionare la chat**.
+
+### Tre interruttori dicevano «abbonamento» e nessuno capiva quale fosse quale
+
+Erano questi:
+
+> «Attiva provider: Abbonamento (Claude Max)» · «Chat via abbonamento — attiva» ·
+> «Ponte abbonamento — attiva»
+
+Tre etichette, la stessa parola, tre cose diverse. Adesso le famiglie sono due e si
+chiamano con parole che non si sovrappongono:
+
+- **«Provider · Piano Claude Max»** — *come paghi*: il tuo piano invece dell'API a consumo.
+- **«Ponte · ...»** — *il meccanismo* che ci porta la chat.
+
+E soprattutto: i due interruttori del ponte adesso **dicono di essere due metà di una
+cosa sola**. Si chiamano «Ponte · accendi la coda **(1 di 2)**» e «Ponte · mandaci la
+chat **(2 di 2)**», stanno uno sotto l'altro, e ognuno dei due dichiara che da solo non
+cambia niente. Perché è la verità: la chat passa dal ponte solo se sono accesi tutti e
+due. Fino a ieri erano separati da due campi numerici e quella congiunzione non era
+scritta da nessuna parte — si poteva accenderne uno, salvare, e non capire perché non
+succedeva niente.
+
+**Nessun interruttore ha cambiato comportamento**: quello che avevi impostato continua a
+valere esattamente come prima. È cambiato solo come si chiamano e dove stanno.
+
+### Ogni provider ha la sua chiave subito sotto
+
+L'interruttore del piano Claude Max stava al quarto posto della pagina; il token che gli
+serve, al ventitreesimo — con diciannove campi in mezzo. Adesso ogni interruttore ha la
+sua credenziale **nella riga immediatamente successiva**: acceso Claude, la chiave è lì;
+acceso il piano, il token è lì; acceso Ollama, indirizzo e modello sono lì.
+
+L'ordine dei provider, poi, è lo stesso in cui HIRIS li prova quando uno fallisce: quello
+che leggi per primo è quello che tenta per primo.
+
+### Le cose che possono farti male stanno in fondo, e si vede
+
+`internal_token`, `supervisor_ingress_cidr` e il promemoria della porta 8099 stavano in
+mezzo alla pagina, con lo stesso peso visivo di «Tema». Adesso sono le ultime quattro
+voci e si chiamano tutte **«Avanzate · ...»** — perché quella pagina non sa colorare un
+campo di rosso, e la posizione più il nome sono l'unico avviso che si può dare.
+
+### Le descrizioni dicono cosa succede se tocchi il campo
+
+Erano scritte per dire *cos'è* un campo. Adesso dicono *cosa cambia* se lo tocchi, che è
+l'unica cosa che serve sapere lì. Tre esempi, tutti e tre cose vere che prima non erano
+scritte da nessuna parte:
+
+- **«Per quanti giorni tenere le conversazioni»** non fa solo pulizia: lo stesso numero
+  limita anche quanto HIRIS **rilegge della conversazione in corso**. Abbassarlo non è un
+  gesto di ordine, è fargli dimenticare prima. E `0` non cancella mai niente.
+- **«Ponte · quanti messaggi al giorno»**: `0` non vuol dire *illimitato*. Vuol dire che
+  li blocca tutti.
+- **«Aspetto — chiaro o scuro»** vale finché non usi l'interruttore chiaro/scuro **dentro**
+  HIRIS: da quel momento, su quel browser, vince quella scelta e il campo non ha più effetto.
+
+### Un avviso che mancava, e uno che taceva quando non doveva
+
+Se accendi il piano Claude Max o il ponte **senza incollare il token**, la chat viene
+mandata a un runner che non parte mai: i messaggi restano in coda e scadono dopo cinque
+minuti, e tu vedi solo errori di attesa senza nessun indizio. Adesso all'avvio HIRIS te lo
+scrive nel registro, per nome.
+
+Peggio: accendere «Chat via abbonamento» **faceva tacere** l'avviso «non hai nessun
+provider configurato» anche quando il token non c'era. Chi si trovava in quello stato
+restava senza chat *e* senza una riga che glielo dicesse. Adesso quell'avviso guarda la
+stessa condizione che guarda il codice: un interruttore acceso **e** il token presente.
+
+### Un campo che potevi compilare senza che succedesse mai niente
+
+**Esce `chat_policy`.** Serviva a scrivere a mano l'ordine dei modelli (`claude,ollama`) e
+**non aveva effetto da mesi**: la catena dei modelli, quella che imposti nella pagina
+*Modelli* di HIRIS, arriva sempre al router e sovrascrive questo campo ogni volta. Chi
+l'aveva compilato credendo di tenere le conversazioni su un modello locale non lo stava
+facendo. Non c'è niente da fare: se avevi un valore lì, sparisce insieme al campo, e il
+comportamento resta quello di prima — perché era già quello di prima. L'ordine dei
+provider si decide con «Ordine di ripiego fra i provider accesi» e nella pagina *Modelli*.
+
+Restano dove sono, dichiarati inutili come già erano, i due campi **Embedding**: oggi
+nessuna parte di HIRIS calcola embedding, e la ricerca per somiglianza è una decisione
+rimandata, non annullata. Sono stati spostati in fondo, con le voci tecniche, perché non
+servono a nessuno che stia configurando la chat.
+
 ## [2.2.1] — «Le ho spente» invece di «non è cambiato niente» (2026-08-13)
 
 **Correzione del primo difetto trovato usando davvero la 2.2.0 in una casa.**

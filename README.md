@@ -253,17 +253,24 @@ Every option below exists in [`hiris/config.yaml`](hiris/config.yaml); the full
 descriptions are in [`hiris/translations/en.yaml`](hiris/translations/en.yaml)
 and are what the add-on UI shows.
 
+The page is ordered for someone opening it for the first time to get the chat
+working: each provider switch sits **immediately above the credential it
+needs**, then the fallback order, then the bridge, then appearance and
+retention, and last the advanced fields that can open HIRIS's API on your LAN.
+`config.yaml`'s `options:` and `schema:` are kept in that same order — if you
+reorder one, reorder the other.
+
 ### To get answers
 
 | Option | Description |
 |---|---|
-| `provider_claude` · `provider_openai` · `provider_openrouter` · `provider_ollama` · `provider_subscription` | Enable a provider. A provider is used only if enabled **and** credentialed |
-| `claude_api_key` · `openai_api_key` · `openrouter_api_key` | Cloud API keys |
-| `claude_code_oauth_token` | OAuth token for the Claude subscription runner |
-| `local_model.url` · `local_model.model` · `local_model.request_timeout` | Ollama base URL, model name, per-call timeout (10–1800s) |
-| `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first` |
-| `chat_policy` | Explicit backend order for the chat, e.g. `claude,ollama` — empty means "use the strategy" |
-| `hide_free_models` | Hide OpenRouter `:free` models from the model list |
+| `provider_claude` + `claude_api_key` | Claude, paid per use. A provider is used only if enabled **and** credentialed |
+| `provider_subscription` + `claude_code_oauth_token` | Your Claude Max plan instead of the metered API. **With the token present, this pair routes the chat over the bridge on its own** — both bridge switches below turn on regardless |
+| `provider_openrouter` + `openrouter_api_key` | One key for 200+ models |
+| `hide_free_models` | Hide OpenRouter `:free` models from the model lists |
+| `provider_openai` + `openai_api_key` | The OpenAI models |
+| `provider_ollama` + `local_model.url` · `local_model.model` · `local_model.request_timeout` | Ollama base URL, model name, per-call timeout (10–1800s). With this as the only provider, HIRIS needs no cloud key |
+| `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
 
 > With `local_model.url` + `local_model.model` set and `provider_ollama`
 > enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the four
@@ -274,18 +281,27 @@ and are what the add-on UI shows.
 
 | Option | Description |
 |---|---|
-| `bridge_enabled` | Master switch for the external subscription runner — **unless** `provider_subscription` is on with a token, which forces it on |
-| `chat_via_subscription` | Route chat turns to it (see the limit above). Only effective when `bridge_enabled` is on — and likewise forced on by an active subscription provider |
-| `bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5) |
-| `chat_daily_cap` | Max chat turns routed per day (0–1000, default 50) |
+`bridge_enabled` and `chat_via_subscription` are **one decision with two
+levers**: the chat goes over the bridge only when both are on
+(`server.py::_chat_subscription_active` is an `AND`), and an active
+`provider_subscription` with a token turns both on by itself. Their labels say
+so — "Bridge · turn the queue on (1 of 2)" and "Bridge · send the chat over it
+(2 of 2)" — and they sit next to each other on the page.
+
+| Option | Description |
+|---|---|
+| `bridge_enabled` | 1 of 2 — the queue that carries messages to the runner, and the sweep of expired ones. Alone it changes nothing you can see |
+| `chat_via_subscription` | 2 of 2 — routes chat turns into that queue. Alone it changes nothing: `bridge_enabled` must be on too |
+| `bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
+| `chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
 
 ### General
 
 | Option | Description |
 |---|---|
-| `theme` | `light` · `dark` · `auto` |
+| `theme` | `light` · `dark` · `auto`. Only the theme HIRIS opens with: once you use the light/dark toggle inside HIRIS, that browser's choice wins |
 | `log_level` | `debug` · `info` · `warning` · `error` |
-| `history_retention_days` | Days of conversation history kept before automatic deletion (default 90) |
+| `history_retention_days` | Days of conversation history kept before automatic deletion (default 90, `0` = keep forever). The same number also caps how much of the ongoing conversation HIRIS reads back — lowering it makes it forget sooner, not just tidier |
 | `internal_token` | Shared secret required by `/api/*` when the call does not come from the Supervisor ingress |
 | `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
 | `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
@@ -297,7 +313,10 @@ and are what the add-on UI shows.
 | `memory.embedding_provider` · `memory.embedding_model` | Read at startup, shown on the Models page — but **nothing in HIRIS computes an embedding today.** Similarity search is a postponed decision, not a cancelled one; when it is turned on, it will be configured from here. |
 
 The `mayan.*` block and `memory.rag_k` were removed in 2.1.0 together with the
-document integration and the knowledge archive — see the CHANGELOG.
+document integration and the knowledge archive — see the CHANGELOG. `chat_policy`
+was removed in 2.3.0: the router always receives a non-empty `model_chain`, and
+`LLMRouter.__init__` discards `chat_policy` whenever it does, so the field could
+be filled in without anything ever happening.
 
 ---
 

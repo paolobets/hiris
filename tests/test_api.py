@@ -11,7 +11,11 @@ from hiris.app.chat_store import close_all_stores
 
 def _cfg_version() -> str:
     cfg = pathlib.Path(__file__).parent.parent / "hiris" / "config.yaml"
-    m = re.search(r'^version:\s*"([^"]+)"', cfg.read_text(), re.MULTILINE)
+    # config.yaml e' UTF-8 per specifica di Home Assistant: leggerlo con la
+    # codepage di sistema (il default di read_text) esplode su Windows appena
+    # il file contiene un carattere fuori da cp1252.
+    m = re.search(r'^version:\s*"([^"]+)"',
+                  cfg.read_text(encoding="utf-8"), re.MULTILINE)
     return m.group(1) if m else "unknown"
 
 
