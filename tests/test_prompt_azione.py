@@ -359,25 +359,35 @@ def test_la_guida_senza_strumenti_continua_a_dire_cio_che_in_quel_turno_manca():
 _CHIAVI_NOMINATE_DAL_PROMPT = ("prima", "dopo", "cambiato", "avviso")
 
 
-async def _chiavi_prodotte_dalla_porta() -> set:
+async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     """L'unione delle chiavi che `PortaAzione.esegui` restituisce davvero.
 
     Usa le stesse finte di `tests/test_azione_porta.py` (importate, non
     ricopiate: una seconda copia divergerebbe il giorno in cui la forma vera
-    di `EntityCache` cambia) e la porta VERA."""
+    di `EntityCache` cambia) e la porta VERA.
+
+    **La scadenza si accorcia anche qui.** Dalla 2.4.1 la porta aspetta
+    l'annuncio del cambiamento (`porta.ATTESA_STATO_S`, 2 secondi), e il giro
+    2 esiste proprio per il caso in cui quell'annuncio non arriva: senza
+    accorciarla, questa guardia sul prompt pagherebbe due secondi per contare
+    delle chiavi. Il valore vero e' pinnato da `tests/test_azione_porta.py`.
+    """
+    from hiris.app.azione import porta as porta_modulo
     from hiris.app.azione.porta import PortaAzione
     from hiris.app.azione.registro import RegistroServizi
     from tests.test_azione_porta import (
-        FintoClient, FintaCache, SALOTTO_ACCESO, SALOTTO_SPENTO, SPEGNI_IL_SALOTTO,
+        ANNUNCIA_IL_SALOTTO_SPENTO, FintaCache, FintoClient, SALOTTO_ACCESO,
+        SALOTTO_SPENTO, SPEGNI_IL_SALOTTO, _casa,
     )
 
+    monkeypatch.setattr(porta_modulo, "ATTESA_STATO_S", 0.05)
     chiavi = set()
 
     # giro 1: lo stato cambia davvero -> `prima`/`dopo`/`cambiato`, niente avviso
-    client = FintoClient()
+    client, cache = _casa(SALOTTO_ACCESO, annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
     registro = RegistroServizi()
     await registro.aggiorna(client)
-    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO, dopo=SALOTTO_SPENTO))
+    porta = PortaAzione(client, registro, cache)
     chiavi |= set(await porta.esegui(SPEGNI_IL_SALOTTO, origine="test"))
 
     # giro 2: la chiamata riesce e non cambia niente -> compare `avviso`
@@ -391,8 +401,8 @@ async def _chiavi_prodotte_dalla_porta() -> set:
 
 
 @pytest.mark.asyncio
-async def test_le_chiavi_che_il_prompt_promette_esistono_davvero_nell_esito():
-    prodotte = await _chiavi_prodotte_dalla_porta()
+async def test_le_chiavi_che_il_prompt_promette_esistono_davvero_nell_esito(monkeypatch):
+    prodotte = await _chiavi_prodotte_dalla_porta(monkeypatch)
     # la finta deve aver esercitato entrambi i rami, o la guardia sorveglierebbe
     # meno di quello che crede
     assert "avviso" in prodotte, (

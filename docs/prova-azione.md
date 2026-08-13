@@ -4,12 +4,14 @@
 sapere soltanto e comincia a fare. Si esegue in mezz'ora, su un impianto Home Assistant
 vero, e serve a decidere se questa versione è pubblicabile.*
 
-> **Aggiornato il 13 agosto 2026, con la prima casa vera in mano.** Le prove 2 e 9 sono
-> state fatte, ed **entrambe sono fallite** — nello stesso modo, per la stessa causa. Il
-> difetto è chiuso nella **2.2.1**; sotto, in ciascuna delle due prove, c'è cosa si è
-> visto e cosa si deve vedere adesso. **Questo foglio ha funzionato**: la riga di
-> fallimento della prova 2 descriveva il difetto con parole quasi identiche a quelle con
-> cui poi si è presentato, e nessuno dei 1207 test automatici lo vedeva.
+> **Aggiornato il 13 agosto 2026, dopo tre giri sulla casa vera.** Le prove **1** e **2**
+> hanno girato davvero, e la 9 con loro. La prova 1 è **passata**. La prova 2 è **fallita
+> due volte**, con lo stesso sintomo e due cause diverse — la seconda l'ha trovata solo
+> perché il foglio chiede di copiare una riga di log che nessuno guardava. Sotto, in
+> ciascuna prova, c'è cosa si è visto ogni volta e cosa si deve vedere adesso (**2.4.1**).
+> **Questo foglio ha funzionato**: la riga di fallimento della prova 2 descriveva il
+> difetto con parole quasi identiche a quelle con cui poi si è presentato, e nessuno dei
+> test automatici lo vedeva — perché la finta lo negava.
 
 ---
 
@@ -36,7 +38,7 @@ otto.
 
 ## Cosa serve, prima di cominciare
 
-1. **Un Home Assistant vero** con l'add-on HIRIS 2.2.0 installato e avviato, e la chat
+1. **Un Home Assistant vero** con l'add-on HIRIS **2.4.1 o successiva** installato e avviato, e la chat
    che risponde (una delle strade del §2 di `prova-la-2.0.md`).
 2. **Il log dell'add-on aperto**: Impostazioni → Add-on → HIRIS → scheda **Log**. È lì
    che si vede la verità, e le prove qui sotto citano le righe esatte da cercare. Il
@@ -105,6 +107,19 @@ quella frase in chat quella riga nel log non c'è, e non è un guasto.
 - **La risposta del `curl` non è una lista** (per esempio è un oggetto `{"light": {}}`).
   Stesso esito del primo caso, ma qui lo sai prima ancora di aprire HIRIS.
 
+### Esito reale, 13 agosto 2026 — **passata**
+
+La forma di `/api/services` è quella attesa, e la promessa «verificare, non insegnare»
+regge su una casa vera: il registro si è caricato, la verifica ha lasciato passare
+`light.turn_on` sulle due abat-jour di casa, e la chiamata è arrivata a Home Assistant —
+le luci si sono accese. È l'unica delle prove di questo foglio che poteva far cadere
+tutta la versione, ed è passata al primo colpo.
+
+**Cosa questo esito NON dice.** Che il comando venga *raccontato* bene: quello è il
+mestiere della prova 2, che infatti è fallita mentre questa passava. Le due cose sono
+separate apposta — «la chiamata parte ed è legittima» e «so dire cosa è successo» sono
+due promesse diverse, e questa versione ha scoperto che si possono rompere una alla volta.
+
 ---
 
 ## Prova 2 — Un comando che funziona
@@ -135,7 +150,7 @@ prima. Le targhette sotto la risposta lo mostrano — di solito un `cerca` segui
   è arrivato al modello. Salta alla prova 8, che è la stessa cosa vista sull'altro
   percorso.
 
-### Esito reale, 13 agosto 2026 — **fallita**, ed è il primo caso
+### Esito reale, primo giro (2.2.0) — **fallita**, ed è il primo caso
 
 Il proprietario ha chiesto di spegnere due abat-jour. **Si sono spente davvero.** HIRIS
 ha risposto:
@@ -157,28 +172,60 @@ riuscito veniva raccontato come «non è cambiato niente». Nessuno dei 1207 tes
 copriva perché la finta dello specchio si aggiornava da sola fra le due letture — l'unica
 cosa che la produzione non può fare.
 
-**Cosa deve succedere adesso (2.2.1).** La luce si spegne, HIRIS dice che l'ha spenta, e
-nel log:
+La correzione della **2.2.1** ha spostato la fonte del «dopo» sul valore di ritorno di
+`call_service`, e ha aggiunto al log il numero fra parentesi — *quanti stati Home Assistant
+ha dichiarato cambiati* — proprio per poter vedere se quella fonte porta qualcosa. Portava
+zero.
+
+### Esito reale, secondo giro (2.2.1) — **fallita di nuovo**, e questa volta si è capito perché
+
+Stesso sintomo: le abat-jour si accendono davvero, HIRIS racconta che non è cambiato
+niente. Ma con `log_level: debug` sono uscite le due righe che chiudono la questione:
 
 ```
-azione eseguita [origine=chat] light.turn_off su ['light.abat_jour_sinistra'] -- cambiati: ['light.abat_jour_sinistra'] (Home Assistant ne ha riportati 1)
+call_service: la risposta di Home Assistant e' list, 0 voci utilizzabili, chiavi della prima: None
+azione eseguita [origine=chat] light.turn_on su ['light.abat_jour_sinistra...', 'light.abat_jour_destra...'] -- cambiati: nessuno (Home Assistant ne ha riportati 0)
 ```
 
-Il numero fra parentesi è la novità e vale la pena guardarlo: è **quanti stati Home
-Assistant ha dichiarato cambiati** durante l'esecuzione del servizio — la fonte nuova.
-Se dicesse `0` su un comando che ha funzionato, il difetto sarebbe tornato da un'altra
-porta, e la cosa da segnalare sarebbe quella riga.
+**La riga di controllo che questo foglio chiedeva di copiare ha fatto il suo mestiere.** La
+*forma* della risposta è quella attesa — una lista — ma su questa casa è **vuota anche a
+comando riuscito**. La fonte che la 2.2.1 aveva eletto, su questo impianto, non porta
+niente; e il ripiego sullo specchio interno riportava al difetto di partenza, perché lo
+specchio è alimentato dagli eventi del websocket, che arrivano dopo.
+
+**Conclusione misurata: nell'istante in cui `call_service` ritorna non esiste nessuna fonte
+che sappia già com'è andata.** Né la risposta di Home Assistant né lo specchio. Resta una
+strada sola, ed è **aspettare l'annuncio del cambiamento** — un evento preciso, con una
+scadenza, e la scadenza dichiarata quando scade.
+
+**Cosa deve succedere adesso (2.4.1).** Le luci si accendono, HIRIS dice che le ha accese,
+e nel log:
+
+```
+azione eseguita [origine=chat] light.turn_on su ['light.abat_jour_sinistra...', 'light.abat_jour_destra...'] -- cambiati: ['light.abat_jour_sinistra...', 'light.abat_jour_destra...'] (annunciati 2, riportati dalla chiamata 0, attesi fino a 2s)
+```
+
+I tre numeri fra parentesi sono la cosa da guardare, e adesso raccontano tutta la storia:
+
+- **annunciati** — quante entità si sono fatte sentire sul websocket entro la scadenza. Su
+  un comando riuscito devono essere **tutte**. Se qui vedi `0` su un comando che ha
+  funzionato, il difetto è tornato e questa riga è la segnalazione.
+- **riportati dalla chiamata** — la fonte della 2.2.1. Su questa casa vale `0`: è previsto,
+  non è un guasto. Su un'altra casa può valere di più, e va benissimo.
+- **attesi fino a** — la scadenza in vigore. Non è quanto si è aspettato: è il limite oltre
+  il quale si smette.
 
 **Cerca anche, una volta sola per avvio dell'add-on, questa riga:**
 
 ```
-call_service: la risposta di Home Assistant e' list, 1 voci utilizzabili, chiavi della prima: ['attributes', 'context', 'entity_id', 'last_changed', 'last_updated', 'state'] -- prima misura di questa forma su questo impianto
+call_service: la risposta di Home Assistant e' list, 0 voci utilizzabili, chiavi della prima: None -- prima misura di questa forma su questo impianto
 ```
 
-**È la stessa disciplina della prova 1**, applicata alla seconda forma che nessuno aveva
-mai misurato. Se dicesse `dict` invece di `list`, o `0 voci utilizzabili` su un comando
-riuscito, **copiala e segnalala**: la forma vera è diversa da quella attesa e va riletta
-`_cambiati_da` in `hiris/app/proxy/ha_client.py`.
+**È la stessa disciplina della prova 1**, applicata alla forma che nessuno aveva mai
+misurato — ed è la riga che ha risolto questo difetto. Copiala comunque: se sulla tua casa
+dicesse `dict` invece di `list`, la forma è un'altra ancora e va riletta `_cambiati_da` in
+`hiris/app/proxy/ha_client.py`. `0 voci utilizzabili` invece **non è più un allarme**: è
+quello che questa casa fa, e dalla 2.4.1 HIRIS non ci si appoggia più da solo.
 
 ---
 
@@ -269,10 +316,19 @@ cambiamento di stato**.
 
 **Quell'avviso, qui, è corretto — ed è l'unico caso in cui lo è.** Nella 2.2.0 la stessa
 frase usciva anche su ogni comando riuscito (prova 2), e questo la rendeva impossibile da
-credere. Adesso il «dopo» viene da ciò che Home Assistant ha visto cambiare mentre il
-servizio girava: se non ha riportato niente, non era ancora cambiato niente. Non si
-aspetta apposta: un'attesa arbitraria trasformerebbe un fatto in un'ipotesi, e adesso non
-ce ne sarebbe nemmeno il pretesto.
+credere.
+
+**E adesso l'avviso dice anche di aver aspettato, e per quanto**: *«ho aspettato 2 secondi
+che Home Assistant annunciasse un cambiamento di stato»*. Dalla 2.4.1 HIRIS non guarda più
+nell'istante sbagliato — resta in ascolto dell'annuncio del cambiamento fino a due secondi,
+e smette nel momento in cui arriva. Una tapparella che ci mette venti secondi non ce la fa
+in due, ed è giusto così: la frase che ne esce non è un'ipotesi sul dispositivo, è il
+resoconto di ciò che si è guardato.
+
+**Non è una `sleep`, ed è la differenza che regge tutto**: non si dorme un tempo indovinato
+sperando che basti, si aspetta un **evento preciso** con una scadenza. Un comando normale
+costa i millisecondi che Home Assistant impiega ad annunciarlo; i due secondi interi li
+paga solo chi non riceve nessun annuncio, cioè esattamente il caso di questa prova.
 
 **Come si riconosce il fallimento.**
 
@@ -284,11 +340,19 @@ ce ne sarebbe nemmeno il pretesto.
 - HIRIS dice «non è successo niente» invece di «non è ancora cambiato niente»: la prima è
   falsa, la seconda è vera.
 
-E **una cosa da annotare** comunque, perché è a questo che serve la prova: **quanto è
-fastidiosa** quella frase in una casa vera. Se ogni tapparella e ogni valvola termostatica
-produce un avviso che sembra un errore, l'avviso è un difetto d'uso anche se dice il vero.
-È il materiale che decide se nella prossima versione valga la pena rileggere lo stato una
-seconda volta, in ritardo. Scrivilo, non lasciarlo alla memoria.
+E **due cose da annotare** comunque, perché è a questo che serve la prova.
+
+1. **Quanto è fastidiosa** quella frase in una casa vera. Se ogni tapparella e ogni valvola
+   termostatica produce un avviso che sembra un errore, l'avviso è un difetto d'uso anche
+   se dice il vero.
+2. **Se due secondi sono i secondi giusti.** È il numero da cui dipende tutto il resto
+   (`ATTESA_STATO_S` in `hiris/app/azione/porta.py`, col perché scritto accanto). Se su
+   una casa vera vedi comandi *riusciti* che finiscono lo stesso con l'avviso «ho aspettato
+   2 secondi», la scadenza è corta per quella casa e **quello è il dato che serve** per
+   allungarla con un numero osservato invece che stimato. Se invece i comandi che non
+   cambiano niente sembrano lenti, è corta la pazienza e va detto anche quello.
+
+Scrivili, non lasciarli alla memoria.
 
 ---
 
@@ -377,7 +441,9 @@ dominio e il servizio esatti:
   utile è quale attributo**, perché è quello il dato che serve per allungare l'elenco con
   dei nomi *osservati* invece che indovinati.
 - **HIRIS dichiara i due numeri ma sono sbagliati** (dice «da 19 a 21» e il termostato è
-  fermo a 19): la rilettura sta arrivando prima dell'evento di Home Assistant.
+  fermo a 19): la rilettura sta arrivando prima dell'annuncio di Home Assistant — cioè
+  l'attesa della 2.4.1 non è sul percorso, oppure la scadenza è troppo corta per questa
+  casa. Guarda i tre numeri nella riga di log: `annunciati 0` distingue i due casi.
 - **HIRIS risponde che non è cambiato niente e non è cambiato niente davvero**, perché il
   termostato era già a 21: non è un fallimento, è il caso giusto. Rifallo partendo da un
   valore diverso.
@@ -405,9 +471,13 @@ per **ragionare**, non solo per riferirli. La 2.2.1 non li impoverisce: ciò che
 Home Assistant passa per la stessa normalizzazione dello specchio, quindi `hvac_action` e
 `current_temperature` continuano a viaggiare accanto a `temperature`.
 
-**Cosa deve succedere adesso (2.2.1).** Il termostato va a 19.5, HIRIS dice «era a 17.5,
-adesso è a 19.5» **senza** avvisi, e il log porta `cambiati: ['climate.camera_t_camera_t']
-(Home Assistant ne ha riportati 1)`.
+**Cosa deve succedere adesso (2.4.1).** Il termostato va a 19.5, HIRIS dice «era a 17.5,
+adesso è a 19.5» **senza** avvisi, e il log porta
+`cambiati: ['climate.camera_t_camera_t'] (annunciati 1, riportati dalla chiamata 0, attesi
+fino a 2s)`.
+
+**Su questa casa `riportati dalla chiamata` sarà `0`**, e non è un fallimento: è la misura
+del secondo giro. Ciò che deve essere diverso da zero è **annunciati**.
 
 ---
 
@@ -488,10 +558,12 @@ fallita ...`).
 Per la prova 1 aggiungi l'output del `curl`: è l'unico pezzo di questo foglio che non
 possiamo ricostruire da soli.
 
-Per le prove 2, 6 e 9 aggiungi la riga **`call_service: la risposta di Home Assistant e'
-...`**, che compare una volta sola per avvio dell'add-on. È la forma vera della risposta
-alle chiamate di servizio, e ha lo stesso peso del `curl` della prova 1: da questa
-versione è la fonte da cui HIRIS decide se un comando ha funzionato.
+Per le prove 2, 6 e 9 aggiungi **i tre numeri fra parentesi** della riga `azione eseguita
+...` (`annunciati`, `riportati dalla chiamata`, `attesi fino a`) e la riga **`call_service:
+la risposta di Home Assistant e' ...`**, che compare una volta sola per avvio dell'add-on.
+Insieme dicono da quale delle fonti HIRIS ha saputo com'è andata, e hanno lo stesso peso
+del `curl` della prova 1: sono l'unico modo per accorgersi che una fonte si è prosciugata
+prima che sia un utente a raccontarcelo.
 
 E se la prova 1 fallisce, le altre non servono: **è quella che decide se questa versione
 sta in piedi.**

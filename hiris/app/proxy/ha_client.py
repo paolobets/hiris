@@ -109,10 +109,11 @@ def _truncate(text: str, cap: int) -> str:
 #
 # Home Assistant risponde a una chiamata di servizio con **gli stati che sono
 # cambiati durante l'esecuzione**, calcolati da lui mentre il servizio girava.
-# E' il dato che chiude il difetto misurato sulla prima casa vera (il
-# proprietario spegne due abat-jour, si spengono, e HIRIS risponde «nulla e'
-# cambiato ... probabile problema di comunicazione col dispositivo»): lo
-# specchio interno non poteva saperlo ancora, questa risposta si'.
+# Doveva essere il dato che chiudeva il difetto misurato sulla prima casa vera
+# (il proprietario spegne due abat-jour, si spengono, e HIRIS risponde «nulla
+# e' cambiato ... probabile problema di comunicazione col dispositivo»): lo
+# specchio interno non poteva saperlo ancora, questa risposta si'. **Su quella
+# casa non lo sapeva nemmeno lei**, ed e' scritto qui sotto.
 #
 # Era stata scartata di proposito, e l'argomento era serio -- «una seconda
 # forma non misurata della stessa risposta», della stessa specie dei due
@@ -134,6 +135,15 @@ def _truncate(text: str, cap: int) -> str:
 # accettare anche la mappa costa tre righe, ed e' il caso in cui il codice di
 # prima (`isinstance(cambiati, list) else []`) avrebbe buttato via in silenzio
 # proprio gli stati cambiati.
+#
+# **La misura e' arrivata, ed e' il motivo per cui questa riga di log
+# esisteva.** Sull'impianto del proprietario, con le luci che si accendevano
+# davvero: «la risposta di Home Assistant e' list, 0 voci utilizzabili, chiavi
+# della prima: None». La forma e' quella attesa -- una lista -- ma su quella
+# casa e' VUOTA anche a comando riuscito. Il lettore qui sotto e' corretto e
+# non cambia; cio' che e' cambiato e' chi ci si appoggia: `azione/porta.py`
+# non fonda piu' l'esito su questo ritorno da solo, e aspetta l'annuncio degli
+# eventi con una scadenza.
 _forma_cambiati_dichiarata = False
 
 
@@ -237,19 +247,26 @@ class HAClient:
         primitiva nuda.
 
         **Restituisce gli stati che Home Assistant dichiara cambiati durante
-        l'esecuzione del servizio.** Non e' un dettaglio: e' l'unica fonte del
-        prodotto misurata dalla parte giusta e nel momento giusto -- da HA,
-        mentre il servizio gira. Lo specchio interno delle entita'
-        (`EntityCache`) e' alimentato dagli eventi `state_changed` del
-        websocket, che arrivano su un'ALTRA connessione e in un altro Task:
-        rileggerlo subito dopo questa `await` legge quasi sempre lo stato di
-        PRIMA. La porta usa quindi questo ritorno come fonte del «dopo», e lo
-        specchio solo come ripiego (vedi `azione/porta.py::esegui`).
+        l'esecuzione del servizio**, misurati da lui mentre il servizio gira.
 
-        Puo' essere vuota anche quando il servizio e' andato a buon fine: non
-        tutti i servizi cambiano uno stato, e un dispositivo lento puo' non
-        aver ancora finito. Vuota significa «HA non ha riportato cambiamenti»,
-        mai «il dispositivo e' guasto».
+        **Su una casa vera e' risultata VUOTA anche a comando riuscito**, ed
+        e' la misura che ha smontato la correzione precedente: il log di
+        produzione dice «la risposta di Home Assistant e' list, 0 voci
+        utilizzabili» mentre le luci si accendevano davvero. Questo ritorno
+        resta utile -- dove c'e', e' la misura piu' economica, perche' non
+        costa nessuna attesa -- ma non e' una fonte su cui si possa fondare
+        l'esito da solo, e chi lo legge deve saperlo.
+
+        Cio' che nessuna delle due misure sincrone sa dire lo dicono gli
+        **eventi**: `add_state_listener` (sotto) e' il rubinetto da cui la
+        porta aspetta l'annuncio delle entita' che ha comandato, con una
+        scadenza (`azione/porta.py`). Lo specchio interno (`EntityCache`) e'
+        alimentato dagli stessi eventi, quindi rileggerlo nella riga dopo
+        questa `await` legge quasi sempre lo stato di PRIMA: non e' una fonte
+        del «dopo», e' l'ultimo valore noto.
+
+        Vuota significa «HA non ha riportato cambiamenti in questa risposta»,
+        mai «il dispositivo e' guasto» e nemmeno «non e' cambiato niente».
         """
         url = f"{self._base_url}/api/services/{dominio}/{servizio}"
         async with self._session.post(url, json=dati) as resp:
@@ -713,7 +730,31 @@ class HAClient:
         return registri, non_disponibili
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
+        """callback(dati_evento) a ogni `state_changed`: chi ascolta riceve
+        `{"entity_id", "old_state", "new_state"}` cosi' come Home Assistant lo
+        manda -- lo stesso rubinetto che alimenta lo specchio delle entita'.
+
+        Due tipi di ascoltatori, e la differenza conta per chi si aggiunge:
+        quelli PERMANENTI si registrano all'avvio e restano (lo specchio);
+        quelli EFFIMERI vivono una sola operazione e devono togliersi con
+        `remove_state_listener` (`azione/porta.py`, che aspetta l'annuncio
+        delle entita' che ha appena comandato). Un effimero che non si toglie
+        e' una perdita silenziosa: la lista cresce a ogni comando, e ogni
+        evento della casa la percorre tutta.
+        """
         self._state_listeners.append(callback)
+
+    def remove_state_listener(self, callback: Callable[[dict], None]) -> None:
+        """Toglie un ascoltatore aggiunto con `add_state_listener`.
+
+        Togliere qualcosa che non c'e' non e' un errore: chi si smonta lo fa
+        tipicamente in un `finally`, e li' l'unica cosa peggiore di un
+        ascoltatore rimasto e' un'eccezione che copre quella vera.
+        """
+        try:
+            self._state_listeners.remove(callback)
+        except ValueError:
+            pass
 
     def add_anagrafe_listener(self, callback: Callable[[str], None]) -> None:
         """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""

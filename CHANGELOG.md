@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [2.4.1] — Accende la luce, e adesso se ne accorge (2026-08-13)
+
+### Cosa si vedeva
+
+Chiedevi *«accendi le abat-jour»*. **Le abat-jour si accendevano davvero.** E HIRIS ti
+rispondeva che non era cambiato niente — a volte aggiungendo che c'era probabilmente un
+problema di comunicazione col dispositivo, e mandandoti a cercare un guasto che non
+esisteva.
+
+Era la terza volta che questo difetto si presentava, e le prime due correzioni non lo
+avevano chiuso: avevano solo spostato il punto in cui HIRIS guardava.
+
+### Cosa si vede adesso
+
+*«Le ho accese: erano spente, adesso sono accese.»*
+
+**Perché prima non ci riusciva.** Quando HIRIS manda un comando a Home Assistant, la
+risposta immediata non dice se è successo qualcosa. Home Assistant lo racconta un istante
+dopo, con un annuncio a parte. HIRIS guardava prima che l'annuncio arrivasse — sempre, non
+ogni tanto — e quello che vedeva era il mondo di un attimo prima: la luce ancora spenta.
+
+**Cosa fa adesso.** Aspetta l'annuncio. Non un tempo fisso sperando che basti: aspetta
+proprio l'annuncio delle entità che ha appena comandato, e smette nell'istante in cui
+arriva. Un comando normale non è diventato più lento di un battito di ciglia. Se l'annuncio
+non arriva entro **due secondi**, HIRIS smette di aspettare e **te lo dice**:
+
+> «Ho aspettato 2 secondi che Home Assistant annunciasse un cambiamento di stato, e in quel
+> tempo non ne ha riportato nessuno. Può voler dire che era già così, oppure che si sta
+> ancora muovendo.»
+
+Che è una frase diversa da «non è cambiato niente»: dice cosa HIRIS ha fatto e cosa ha
+visto, senza affermare niente sulla tua casa e senza inventare una diagnosi sul tuo
+dispositivo. **Quando adesso HIRIS dice «non è cambiato», ha davvero guardato.**
+
+### Chi ne beneficia di più
+
+Le tapparelle, le valvole termostatiche e tutto ciò che ci mette qualche istante a
+muoversi: prima erano indistinguibili da un guasto, adesso hanno una frase che le
+descrive per quello che sono.
+
 ## [2.4.0] — La pagina ha una sezione vera, e il ponte un interruttore solo (2026-08-13)
 
 **⚠️ Se aggiorni da una versione precedente, leggi il riquadro in fondo: le opzioni del

@@ -20,33 +20,86 @@ due volte -- un ingresso vuoto che produce una frase falsa detta con
 sicurezza -- e chiuderli e' compito di questa porta, che i due ingressi li
 conosce. Le due guardie sono sotto, ciascuna col suo messaggio onesto.
 
-**Da dove viene il «dopo», e perche' non e' piu' lo specchio.** Il primo
-difetto trovato dal vivo di questa fetta, alla prima prova sulla prima casa
-vera, e' stato questo: ogni comando RIUSCITO veniva raccontato come «nulla e'
-cambiato». Due misure, due domini, un solo sintomo -- due abat-jour spenti
-davvero (`state` da `on` a `off`) e un termostato portato davvero a 19.5
-(`attributes.temperature` da 17.5) -- entrambi riletti col valore di PRIMA.
+**Da dove viene il «dopo», e perche' adesso si aspetta.** Questo e' il TERZO
+tentativo sullo stesso difetto, e i primi due sono serviti a misurare cosa
+NON c'e'. Il sintomo, su due case vere: HIRIS accende le luci **davvero**, e
+poi racconta che non e' cambiato niente.
 
-La causa non era il confronto, che funzionava (vedi `_impronta`): era la
-FONTE. Lo specchio interno (`proxy/entity_cache.py`) e' alimentato dagli
-eventi `state_changed` del websocket, che arrivano su un'altra connessione e
-in un altro Task; rileggerlo nella riga subito dopo `await call_service`
-legge cio' che c'era prima. Non e' una gara che ogni tanto si perde: si perde
-quasi sempre, e l'invariante che questa fetta esiste per garantire -- dire
-cosa e' SUCCESSO, non cosa e' stato CHIESTO -- produceva l'esatto opposto.
+- **Primo tentativo: rileggere lo specchio** (`proxy/entity_cache.py`) nella
+  riga subito dopo `await call_service`. Lo specchio e' alimentato dagli
+  eventi `state_changed` del websocket, che arrivano su un'altra connessione
+  e in un altro Task: quella rilettura legge cio' che c'era PRIMA. Non e' una
+  gara che ogni tanto si perde -- si perde sempre.
+- **Secondo tentativo: la lista dei cambiati che `call_service` restituisce**,
+  cioe' gli stati che Home Assistant dichiara cambiati durante l'esecuzione
+  del servizio. Sembrava la fonte autorevole -- li misura lui, nel momento
+  giusto -- e su qualche impianto lo e'. Misurata sull'impianto vero: e' una
+  lista **VUOTA**. Il log di produzione lo dice parola per parola: «la
+  risposta di Home Assistant e' list, **0 voci utilizzabili**». E il ripiego
+  sullo specchio riportava al difetto di partenza.
 
-La fonte del «dopo» e' quindi **il ritorno di `call_service`**: gli stati che
-Home Assistant dichiara cambiati DURANTE l'esecuzione del servizio, misurati
-da lui, nel momento giusto. Lo specchio resta come ripiego per le entita' di
-cui HA non ha detto niente. E per cio' che nessuna delle due fonti sa dire,
-si dichiara di non saperlo -- come sempre in questo modulo.
+Conclusione misurata: **al ritorno di `call_service` non esiste nessuna fonte
+che sappia gia' com'e' andata.** Ne' la risposta di Home Assistant, ne' lo
+specchio. Resta una strada sola, ed e' aspettare che lo stato cambi davvero.
+
+**Aspettare un segnale con una scadenza non e' dormire sperando.** Il commento
+che stava qui vietava ogni attesa, e il divieto era giusto per la cosa che
+vietava: una `sleep` indovina un tempo e spera. Non guarda niente -- se il
+tempo indovinato e' corto racconta il falso con la stessa sicurezza di prima,
+se e' lungo lo fa pagare a OGNI comando -- e trasforma un fatto in
+un'ipotesi. Qui si aspetta un **evento preciso**: il `state_changed` delle
+sole entita' bersaglio. L'attesa finisce nell'istante in cui l'ultima di esse
+si e' fatta sentire, quindi un comando normale costa i millisecondi che Home
+Assistant ci mette ad annunciarlo e non `ATTESA_STATO_S`; la scadenza non e'
+un tempo di attesa, e' un limite. E quando scade, l'esito **dichiara** di aver
+aspettato e per quanto, invece di far passare il silenzio per una misura.
+Quando HIRIS dice «non e' cambiato», adesso ha davvero guardato.
+
+**L'ascolto si apre PRIMA della chiamata**, e non e' un dettaglio d'ordine:
+l'annuncio puo' arrivare mentre `call_service` e' ancora sospesa -- su una
+casa veloce arriva quasi sempre cosi' -- e un ascoltatore aperto dopo lo
+avrebbe perso, ricreando lo stesso difetto in una forma piu' rara e molto piu'
+difficile da vedere.
+
+Le tre fonti del «dopo», in ordine di merito: **cio' che si e' sentito
+annunciare** (misurato da Home Assistant DOPO il cambiamento, ed e' l'unico
+che si e' aspettato apposta); **cio' che la chiamata ha riportato** (misurato
+da lui durante l'esecuzione: vuoto su questo impianto, non su tutti); **lo
+specchio**, che resta per mostrare l'ultimo valore noto invece di un `None`.
+Per cio' che nessuna delle tre sa dire, si dichiara di non saperlo -- come
+sempre in questo modulo.
 """
+import asyncio
 import logging
 
 from ..proxy.entity_cache import _to_minimal, inventario_leggibile
 from .verifica import verifica
 
 logger = logging.getLogger(__name__)
+
+# Quanto al massimo si aspetta l'annuncio, e perche' proprio questo numero.
+#
+# Non e' il tempo che un comando costa: e' il tempo oltre il quale si smette
+# di aspettare e lo si dichiara. Un comando che funziona finisce appena
+# l'ultima entita' bersaglio si e' fatta sentire -- decine di millisecondi su
+# una casa locale -- e questo numero non lo tocca. Lo paga per intero solo chi
+# non riceve nessun annuncio, cioe' proprio il caso in cui l'esito deve poter
+# dire «ho aspettato, e non e' arrivato niente».
+#
+# **Due secondi** perche' il viaggio dell'annuncio e' breve e prevedibile -- il
+# websocket verso Home Assistant e' gia' aperto, e sulla stessa macchina o
+# sulla stessa LAN si misura in millisecondi -- mentre cio' che puo' tardare e'
+# il DISPOSITIVO: una lampadina Zigbee o Z-Wave conferma tipicamente in
+# 100-500 ms, e una mesh carica puo' arrivare vicino al secondo. Due secondi
+# coprono quel caso con margine e restano sotto la soglia oltre la quale una
+# chat sembra bloccata.
+#
+# Piu' corto ricomincerebbe a tagliare fuori proprio le case lente, cioe' a
+# raccontare «non e' cambiato niente» di un comando riuscito: e' il difetto
+# che questa attesa esiste per chiudere. Piu' lungo lo farebbe pagare a ogni
+# comando che davvero non cambia niente (la luce gia' spenta, il termostato
+# gia' a 21), che in una casa vera capita tutti i giorni.
+ATTESA_STATO_S = 2.0
 
 # I due messaggi delle guardie. Nessuno dei due dice «non posso»: il rifiuto
 # porta il motivo, e qui il motivo e' sempre lo stesso -- non ho guardato, e
@@ -58,6 +111,14 @@ _SPECCHIO_CIECO = ("non vedo lo stato di questa casa: l'inventario delle entita'
                    "non e' disponibile. Non posso dire se l'entita' esista, solo "
                    "che non ho potuto controllare. Riprova fra poco.")
 
+
+def _secondi(attesa: float) -> str:
+    """«2», non «2.0»; «0.05» resta «0.05». Il numero che l'avviso mostra
+    all'utente e' lo stesso che la porta ha davvero aspettato, e si formatta
+    in un posto solo perche' compare in piu' di una frase."""
+    return f"{attesa:g}"
+
+
 # I tre avvisi dell'esito, e sono tre perche' i casi sono tre. Prima ce
 # n'erano due, e quello che diceva «nessuno stato e' cambiato» ne copriva
 # tre affermando una cosa che HIRIS non poteva sapere: che in casa non fosse
@@ -66,18 +127,35 @@ _SPECCHIO_CIECO = ("non vedo lo stato di questa casa: l'inventario delle entita'
 # inventata, che ha mandato il proprietario a cercare un guasto inesistente
 # mentre le luci erano spente. Un avviso e' un FATTO su cio' che HIRIS ha
 # potuto vedere, mai un'ipotesi sulla causa.
-_NON_VISTO = ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "
-              "dopo: Home Assistant non ha riportato niente su queste entita' e "
-              "l'inventario interno non e' leggibile. Non so dire cosa sia cambiato")
-_NESSUN_CAMBIAMENTO = ("la chiamata e' andata a buon fine e Home Assistant non ha "
-                       "riportato nessun cambiamento di stato. E' un fatto su cio' "
-                       "che Home Assistant ha detto adesso, non una diagnosi del "
-                       "dispositivo: puo' voler dire che era gia' cosi', oppure che "
-                       "sta ancora muovendosi")
+#
+# Due dei tre nominano la scadenza, e sono funzioni per questo: da quando la
+# porta aspetta, il fatto non e' piu' «non ho visto niente» ma «ho guardato
+# per TOT e non e' arrivato niente». Un avviso che tacesse il «per quanto»
+# racconterebbe meno di cio' che la porta ha davvero fatto -- e la differenza
+# fra le due frasi e' tutto cio' che questa correzione ha aggiunto.
+def _non_visto(attesa: float) -> str:
+    return ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "
+            f"dopo: ho aspettato {_secondi(attesa)} secondi e Home Assistant non "
+            "ha annunciato niente su queste entita', la chiamata non ha riportato "
+            "niente e l'inventario interno non e' leggibile. Non so dire cosa sia "
+            "cambiato")
+
+
+def _nessun_cambiamento(attesa: float) -> str:
+    return ("la chiamata e' andata a buon fine, ho aspettato "
+            f"{_secondi(attesa)} secondi che Home Assistant annunciasse un "
+            "cambiamento di stato su queste entita', e in quel tempo Home "
+            "Assistant non ha riportato nessun cambiamento. E' un fatto su cio' "
+            "che Home Assistant ha detto entro quel tempo, non una diagnosi del "
+            "dispositivo: puo' voler dire che era gia' cosi', oppure che sta "
+            "ancora muovendosi")
+
+
 _CAMBIATO_NON_MOSTRABILE = ("Home Assistant ha riportato un cambiamento su queste "
-                            "entita', ma fra i valori che HIRIS confronta non ce n'e' "
-                            "nessuno diverso: il comando ha avuto effetto su qualcosa "
-                            "che non so mostrare")
+                            "entita' -- annunciandolo, o dichiarandolo nella "
+                            "chiamata -- ma fra i valori che HIRIS confronta non "
+                            "ce n'e' nessuno diverso: il comando ha avuto effetto "
+                            "su qualcosa che non so mostrare")
 
 
 def _impronta(voce) -> dict | None:
@@ -108,22 +186,23 @@ def _impronta(voce) -> dict | None:
     mostrare, l'esito lo dice con `_CAMBIATO_NON_MOSTRABILE` invece di
     lasciar credere che non sia successo niente.
 
-    **Vale per entrambe le fonti, ed e' il motivo per cui le due sono
+    **Vale per tutte e tre le fonti, ed e' il motivo per cui sono
     confrontabili.** L'impronta si costruisce sempre sulla voce MINIMALE di
     `entity_cache._to_minimal`: quella dello specchio lo e' gia'; quella che
-    arriva da `call_service` -- uno stato completo di Home Assistant -- ci
-    passa attraverso in `_impronte_riportate`. Senza quel passaggio i due
-    lati avrebbero insiemi di chiavi diversi e OGNI entita' risulterebbe
-    cambiata: cioe' inventare, col verso opposto al difetto di prima.
-    Passandoci, `prima` e `dopo` restano ricchi allo stesso modo -- per un
-    clima portano `hvac_action` e `current_temperature` accanto a
-    `temperature`, ed e' con quelli che il modello puo' dire non solo «da
-    17.5 a 19.5» ma anche «con 26.9 in stanza resta a riposo».
+    arriva da `call_service` e quella che arriva dall'annuncio del websocket
+    -- entrambe stati completi di Home Assistant -- ci passano attraverso in
+    `_impronta_da_stato_ha`. Senza quel passaggio i lati avrebbero insiemi di
+    chiavi diversi e OGNI entita' risulterebbe cambiata: cioe' inventare, col
+    verso opposto al difetto di prima. Passandoci, `prima` e `dopo` restano
+    ricchi allo stesso modo -- per un clima portano `hvac_action` e
+    `current_temperature` accanto a `temperature`, ed e' con quelli che il
+    modello puo' dire non solo «da 17.5 a 19.5» ma anche «con 26.9 in stanza
+    resta a riposo».
 
     `None` -- non `{}` -- quando dell'entita' non c'e' nessuna voce: e' la
     stessa distinzione «non ho guardato» / «ho guardato» del resto del
     modulo, ed e' cio' che il modello legge nel `dopo` di un'entita' che
-    nessuna delle due fonti ha saputo mostrare.
+    nessuna delle fonti ha saputo mostrare.
     """
     if not isinstance(voce, dict):
         return None
@@ -136,35 +215,122 @@ def _impronta(voce) -> dict | None:
     return impronta
 
 
+def _impronta_da_stato_ha(grezzo) -> dict | None:
+    """L'impronta di uno stato nella forma di Home Assistant (`entity_id`,
+    `state`, `attributes` interi), da qualunque delle due bocche da cui
+    arriva: il ritorno di `call_service` e l'annuncio del websocket.
+
+    Una sola funzione per due ingressi, e non e' un risparmio di righe: se le
+    due normalizzassero in modo anche solo leggermente diverso, un'entita'
+    vista dall'una e un'altra vista dall'altra non sarebbero piu'
+    confrontabili con lo stesso `prima`.
+
+    Difensiva come i suoi ingressi, che sono forme di Home Assistant che
+    nessuno ha scritto: cio' che non si sa leggere si SALTA -- l'entita'
+    ricadra' sulla fonte successiva, e al peggio sull'onesto «non so dire
+    cosa sia cambiato» -- invece di sollevare o di essere indovinato. `None`
+    significa sempre e solo «non l'ho potuto leggere».
+    """
+    if not isinstance(grezzo, dict) or not grezzo.get("entity_id"):
+        return None
+    try:
+        voce = _to_minimal(grezzo)
+    except Exception as errore:
+        logger.warning("stato di Home Assistant illeggibile (%s: %s)",
+                       type(errore).__name__, errore)
+        return None
+    return _impronta(voce)
+
+
 def _impronte_riportate(cambiati) -> dict[str, dict]:
     """Le impronte degli stati che Home Assistant dichiara cambiati.
 
     Ingresso: il ritorno di `HAClient.call_service`, cioe' una lista di stati
-    COMPLETI di Home Assistant (`entity_id`, `state`, `attributes`, ...) --
-    non le voci minimali dello specchio. `_to_minimal` e' quindi obbligatorio
-    e non decorativo: e' cio' che rende le due fonti confrontabili (vedi
-    `_impronta`).
+    COMPLETI di Home Assistant -- non le voci minimali dello specchio.
 
-    Difensiva come il suo ingresso: e' una forma di Home Assistant che nessuno
-    aveva mai misurato (`proxy/ha_client._cambiati_da` la dichiara nel log al
-    primo uso). Una voce che `_to_minimal` non sa digerire viene SALTATA, non
-    indovinata e non fatta esplodere: l'entita' che porta ricadra' sullo
-    specchio, e al peggio sull'onesto «non so dire cosa sia cambiato».
+    **Su questo impianto e' vuota**, e la misura sta nel log di produzione:
+    «0 voci utilizzabili». Resta perche' su altri impianti non lo e', ed e'
+    l'unica fonte che non costa nessuna attesa: un'entita' che compare qui
+    non si aspetta.
     """
     impronte: dict[str, dict] = {}
     for grezzo in cambiati or []:
-        if not isinstance(grezzo, dict) or not grezzo.get("entity_id"):
-            continue
-        try:
-            voce = _to_minimal(grezzo)
-        except Exception as errore:
-            logger.warning("stato riportato da call_service illeggibile (%s: %s)",
-                           type(errore).__name__, errore)
-            continue
-        impronta = _impronta(voce)
+        impronta = _impronta_da_stato_ha(grezzo)
         if impronta is not None:
             impronte[grezzo["entity_id"]] = impronta
     return impronte
+
+
+class _AscoltoStati:
+    """L'ascoltatore effimero delle sole entita' bersaglio: vive una
+    chiamata, e alla fine viene tolto.
+
+    Si aggancia a `HAClient.add_state_listener` -- lo stesso rubinetto che
+    alimenta lo specchio (`EntityCache.on_state_changed`) -- e non apre una
+    connessione propria: gli eventi arrivavano gia', il problema non e' mai
+    stato riceverli, era guardare PRIMA che arrivassero.
+
+    **Filtra sulle entita' bersaglio.** Una casa vera annuncia decine di
+    cambiamenti al minuto che non dicono niente sul comando appena dato:
+    contarli sarebbe la stessa invenzione di prima, col verso opposto.
+
+    L'impronta si costruisce qui, dal `new_state` dell'evento, e non
+    rileggendo lo specchio quando la sveglia suona: e' il valore che Home
+    Assistant ha ANNUNCIATO, non l'ultimo che lo specchio ha memorizzato, e
+    le due cose coincidono solo finche' nessuno le fa divergere.
+    """
+
+    def __init__(self, entita) -> None:
+        self.udite: dict[str, dict] = {}
+        self._bersagli = set(entita)
+        # Chi si sta ancora aspettando. Parte da tutti e si restringe in
+        # `attendi`: le entita' di cui `call_service` ha gia' detto qualcosa
+        # non si aspettano.
+        self._attese = set(entita)
+        self._sveglia = asyncio.Event()
+
+    def __call__(self, dati) -> None:
+        """Chiamata dal ciclo websocket, in modo sincrono e da un altro Task.
+
+        Non solleva mai: un ascoltatore che esplode verrebbe soltanto loggato
+        dal ciclo, e questa chiamata resterebbe appesa fino alla scadenza per
+        un motivo che non ha niente a che vedere con la casa.
+        """
+        try:
+            nuovo = (dati or {}).get("new_state")
+            eid = nuovo.get("entity_id") if isinstance(nuovo, dict) else None
+            if eid not in self._bersagli:
+                return
+            impronta = _impronta_da_stato_ha(nuovo)
+            if impronta is None:
+                return
+            self.udite[eid] = impronta
+            if self._attese and self._attese <= self.udite.keys():
+                self._sveglia.set()
+        except Exception as errore:  # pragma: no cover - difesa, non un ramo
+            logger.warning("annuncio di stato illeggibile (%s: %s)",
+                           type(errore).__name__, errore)
+
+    async def attendi(self, mancanti, scadenza: float) -> bool:
+        """Aspetta che `mancanti` si siano fatte sentire tutte, al massimo
+        `scadenza` secondi. `True` se sono arrivate tutte in tempo.
+
+        **Il controllo prima dell'attesa non e' un'ottimizzazione**: e' cio'
+        che rende sicuro il caso in cui l'annuncio e' arrivato PRIMA, mentre
+        `call_service` era ancora sospesa -- che su una casa veloce e' il
+        caso normale. Fra il ritorno della chiamata e questa riga non c'e'
+        nessun `await`, quindi nessun altro Task puo' infilarsi: o l'annuncio
+        e' gia' in `udite` e si esce subito, o non e' ancora arrivato e sara'
+        la sveglia a prenderlo.
+        """
+        self._attese = {e for e in mancanti if e in self._bersagli}
+        if not self._attese or self._attese <= self.udite.keys():
+            return True
+        try:
+            await asyncio.wait_for(self._sveglia.wait(), scadenza)
+        except (asyncio.TimeoutError, TimeoutError):
+            return False
+        return True
 
 
 class PortaAzione:
@@ -205,6 +371,41 @@ class PortaAzione:
                 stati[eid] = voce
         return stati
 
+    def _apri_ascolto(self, ascolto) -> bool:
+        """Aggancia l'ascoltatore effimero, o dichiara di non poterlo fare.
+
+        Servono ENTRAMBI i metodi: un client che sa aggiungere e non sa
+        togliere accumulerebbe un ascoltatore per ogni comando dato, per
+        tutta la vita del processo -- una perdita silenziosa, cioe' il modo
+        in cui una correzione diventa il difetto successivo.
+
+        Non e' un ramo di comodo: e' l'unico esito onesto se un giorno questa
+        porta venisse cablata su un client che non annuncia niente. Si
+        prosegue con le altre due fonti e si scrive nel log che l'esito varra'
+        meno, invece di rifiutare un comando legittimo.
+        """
+        aggiungi = getattr(self._ha, "add_state_listener", None)
+        togli = getattr(self._ha, "remove_state_listener", None)
+        if not callable(aggiungi) or not callable(togli):
+            logger.warning("questo client di Home Assistant non annuncia i "
+                           "cambiamenti di stato: l'esito potra' dire solo cio' "
+                           "che la chiamata ha riportato")
+            return False
+        try:
+            aggiungi(ascolto)
+        except Exception as errore:
+            logger.warning("ascolto degli annunci non aperto (%s: %s)",
+                           type(errore).__name__, errore)
+            return False
+        return True
+
+    def _chiudi_ascolto(self, ascolto) -> None:
+        try:
+            self._ha.remove_state_listener(ascolto)
+        except Exception as errore:
+            logger.warning("ascolto degli annunci non chiuso (%s: %s)",
+                           type(errore).__name__, errore)
+
     async def esegui(self, chiamata: dict, *, origine: str) -> dict:
         try:
             await self._registro.assicura_fresco(self._ha)
@@ -239,37 +440,58 @@ class PortaAzione:
 
         dati = dict(chiamata.get("dati") or {})
         dati["entity_id"] = list(verdetto.entita)
-        try:
-            # Il ritorno NON si butta: sono gli stati che Home Assistant ha
-            # visto cambiare mentre il servizio girava. Buttarlo e rileggere
-            # lo specchio e' esattamente il difetto misurato sulla prima casa
-            # vera (vedi il docstring del modulo).
-            riportati = await self._ha.call_service(
-                verdetto.dominio, verdetto.servizio, dati)
-        except Exception as errore:
-            logger.warning("azione fallita [origine=%s] %s.%s: %s",
-                           origine, verdetto.dominio, verdetto.servizio, errore)
-            return {"eseguito": False,
-                    "errore": f"Home Assistant ha rifiutato la chiamata: {errore}"}
 
-        # Le due fonti del «dopo», in ordine di merito.
+        # L'ascolto si apre PRIMA della chiamata (vedi il docstring del
+        # modulo): l'annuncio puo' arrivare mentre `call_service` e' ancora
+        # sospesa, e un ascoltatore aperto dopo lo perderebbe.
         #
-        # (1) Cio' che HA ha riportato: misurato da lui, durante l'esecuzione.
-        #     Nessuna gara da vincere -- e' il momento giusto per costruzione.
-        # (2) Lo specchio, per le sole entita' di cui HA non ha detto niente.
-        #     Non e' un doppione della (1) ne' un rattoppo alla gara: e' cio'
-        #     che resta quando HA non riporta nulla (un servizio che non
-        #     cambia stato, un dispositivo lento), e serve a distinguere «non
-        #     e' cambiato» da «non l'ho visto». Nessuna attesa, in nessuno dei
-        #     due casi: una `sleep` arbitraria trasformerebbe un fatto in
-        #     un'ipotesi, e adesso non ci sarebbe nemmeno il pretesto.
-        impronte_ha = _impronte_riportate(riportati)
+        # La scadenza si legge UNA volta e poi si porta dietro: le frasi
+        # dell'avviso e la riga di log devono nominare il numero che si e'
+        # davvero aspettato, non uno riletto dopo.
+        attesa = ATTESA_STATO_S
+        ascolto = _AscoltoStati(verdetto.entita)
+        in_ascolto = self._apri_ascolto(ascolto)
+        try:
+            try:
+                riportati = await self._ha.call_service(
+                    verdetto.dominio, verdetto.servizio, dati)
+            except Exception as errore:
+                logger.warning("azione fallita [origine=%s] %s.%s: %s",
+                               origine, verdetto.dominio, verdetto.servizio, errore)
+                return {"eseguito": False,
+                        "errore": f"Home Assistant ha rifiutato la chiamata: {errore}"}
+
+            # Un'entita' di cui la chiamata ha gia' detto qualcosa non si
+            # aspetta: quella misura e' presa durante l'esecuzione, cioe' nel
+            # momento giusto per costruzione. Si aspettano le altre --
+            # sull'impianto del proprietario, tutte.
+            impronte_ha = _impronte_riportate(riportati)
+            if in_ascolto:
+                await ascolto.attendi(
+                    [e for e in verdetto.entita if e not in impronte_ha], attesa)
+        finally:
+            if in_ascolto:
+                self._chiudi_ascolto(ascolto)
+
+        # Le tre fonti del «dopo», in ordine di merito.
+        #
+        # (1) L'annuncio che si e' sentito: misurato da Home Assistant DOPO
+        #     il cambiamento, ed e' l'unico che si e' aspettato apposta.
+        # (2) Cio' che la chiamata ha riportato: misurato da lui durante
+        #     l'esecuzione. Vuoto sull'impianto del proprietario, non su tutti.
+        # (3) Lo specchio, per le entita' di cui nessuna delle due ha detto
+        #     niente. Non e' un doppione: e' cio' che permette di mostrare
+        #     l'ultimo valore noto -- «non e' ancora cambiato» -- invece di un
+        #     `None`, che vuol dire «non l'ho visto». Si legge ADESSO, dopo
+        #     l'attesa, perche' nel frattempo puo' essersi mosso da solo.
         stati_dopo = self._stati()
 
         prima = {e: _impronta(stati_prima.get(e)) for e in verdetto.entita}
         dopo: dict[str, dict | None] = {}
         for e in verdetto.entita:
-            impronta = impronte_ha.get(e)
+            impronta = ascolto.udite.get(e)
+            if impronta is None:
+                impronta = impronte_ha.get(e)
             if impronta is None and stati_dopo is not None:
                 impronta = _impronta(stati_dopo.get(e))
             dopo[e] = impronta
@@ -281,6 +503,10 @@ class PortaAzione:
         non_viste = [e for e in verdetto.entita if dopo[e] is None]
         cambiato = [e for e in verdetto.entita
                     if dopo[e] is not None and prima.get(e) != dopo[e]]
+        # Le entita' di cui Home Assistant ha detto qualcosa, da una bocca o
+        # dall'altra: e' la differenza fra «non ha detto niente» e «ha detto
+        # che e' cambiato qualcosa che non so mostrare».
+        annunciate = [e for e in verdetto.entita if e in ascolto.udite]
         riportate_qui = [e for e in verdetto.entita if e in impronte_ha]
 
         esito = {"eseguito": True,
@@ -288,10 +514,10 @@ class PortaAzione:
                  "entita": list(verdetto.entita),
                  "prima": prima, "dopo": dopo, "cambiato": cambiato}
         if non_viste:
-            esito["avviso"] = _NON_VISTO
+            esito["avviso"] = _non_visto(attesa)
         elif cambiato:
             pass  # il caso normale: c'e' una differenza, e `prima`/`dopo` la mostrano
-        elif riportate_qui:
+        elif annunciate or riportate_qui:
             # HA dice che qualcosa e' cambiato e l'impronta non lo mostra:
             # tipicamente un attributo fuori da `_DOMAIN_ATTRS` (il colore di
             # una luce). Dire «nessun cambiamento» qui sarebbe falso.
@@ -300,13 +526,13 @@ class PortaAzione:
             # Non e' un errore -- molti servizi legittimi non cambiano stato,
             # e una tapparella puo' non aver ancora finito -- ma tacerlo
             # sarebbe dire cosa e' stato CHIESTO invece di cosa e' SUCCESSO.
-            # Cio' che si afferma e' solo cio' che si sa: che Home Assistant
-            # non ha riportato cambiamenti. Non che la casa non sia cambiata,
-            # e tanto meno perche'.
-            esito["avviso"] = _NESSUN_CAMBIAMENTO
+            # Cio' che si afferma e' solo cio' che si sa: che ENTRO LA
+            # SCADENZA Home Assistant non ha riportato cambiamenti. Non che
+            # la casa non sia cambiata, e tanto meno perche'.
+            esito["avviso"] = _nessun_cambiamento(attesa)
         logger.info("azione eseguita [origine=%s] %s su %s -- cambiati: %s "
-                    "(Home Assistant ne ha riportati %d)",
+                    "(annunciati %d, riportati dalla chiamata %d, attesi fino a %ss)",
                     origine, esito["servizio"], list(verdetto.entita),
                     cambiato or ("sconosciuto" if non_viste else "nessuno"),
-                    len(riportate_qui))
+                    len(annunciate), len(riportate_qui), _secondi(attesa))
         return esito
