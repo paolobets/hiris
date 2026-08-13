@@ -730,3 +730,37 @@ async def test_il_ponte_non_dice_niente_con_thinking_budget_a_zero(tmp_path, cap
         async with TestClient(TestServer(app)) as client:
             assert (await client.post("/api/chat", json={"message": "ciao"})).status == 202
     assert not [r for r in caplog.records if "thinking_budget" in r.getMessage()]
+
+
+# ---------------------------------------------------------------------------
+# fetta «la catena diventa l'unica verita'» (Task 4): lo scavalco del modello
+# esce da «Impostazioni chat». I DUE percorsi devono chiedere `auto`: uno solo
+# dei due sarebbe mezza impostazione che scavalca, cioe' peggio di prima.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_il_turno_sincrono_chiede_sempre_auto_e_quindi_sempre_la_catena(tmp_path):
+    """Fino alla 2.4.1 un modello fissato in «Impostazioni chat» sceglieva il
+    provider da solo (`LLMRouter._route`), saltava la catena e annullava il
+    ripiego -- e la pagina Modelli non lo nominava mai. Il campo è uscito: da
+    qui in poi il turno chiede sempre `auto`, cioè sempre la catena."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 200
+    assert runner.chat.await_args.kwargs["model"] == "auto"
+
+
+@pytest.mark.asyncio
+async def test_il_ponte_risolve_il_modello_dalla_pagina_modelli_non_dalle_impostazioni(tmp_path):
+    """La gemella sull'ALTRO percorso. `_enqueue_chat_job` compone il modello
+    della CLI da `resolve_model("auto", "chat", provider_models["claude"])`:
+    la sorgente è la pagina Modelli, per provider. Se un giorno tornasse a
+    leggere un campo delle impostazioni, questo test cadrebbe con `sonnet`."""
+    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True)
+    app["models_config"] = {"provider_models": {"claude": "claude-opus-4-7"}}
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        body = await resp.json()
+    assert q.get(body["job_id"])["context"]["model"] == "opus"

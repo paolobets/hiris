@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* fetta E5 Task 2: la pagina #/impostazioni (config/impostazioni-route.js).
-   E' la prima interfaccia che i sette campi di ImpostazioniChat abbiano mai
-   avuto: fino a questo task si cambiavano solo scrivendo a mano
+   E' la prima interfaccia che i campi di ImpostazioniChat abbiano mai avuto:
+   fino a quel task si cambiavano solo scrivendo a mano
    /data/impostazioni_chat.json. Qui si verifica cio' che un tester UAT fa
    davvero -- apre la pagina, vede i valori in vigore, ne cambia uno, salva, e
-   capisce se e' andata bene o male. */
+   capisce se e' andata bene o male.
+
+   fetta "la catena diventa l'unica verita'" (Task 4): i campi sono SEI. Il
+   selettore del modello e' uscito -- era uno scavalco della catena della
+   pagina Modelli -- e con lui la lettura di GET api/models, che questa pagina
+   non fa piu'. */
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
@@ -22,7 +27,6 @@ function jsonResponse(body, status) {
 const IMPOSTAZIONI = {
   nome: 'HIRIS',
   system_prompt: 'Il prompt salvato dall\'utente.',
-  model: 'claude-opus-4-7',
   response_mode: 'compact',
   thinking_budget: 2048,
   max_chat_turns: 4,
@@ -31,26 +35,22 @@ const IMPOSTAZIONI = {
   default_system_prompt: 'IL PROMPT PREDEFINITO NEL CODICE.',
 };
 
-const MODELLI = {
-  providers: [
-    { id: 'anthropic', label: 'Claude', models: ['auto', 'claude-haiku-4-5-20251001', 'claude-opus-4-7'] },
-    { id: 'openai', label: 'OpenAI', models: ['gpt-4o'] },
-  ],
-};
+/* Il finto server: risponde all'unica rotta che la pagina usa. Le opzioni
+   permettono a ogni test di rompere solo il pezzo che gli interessa.
 
-/* Il finto server: risponde alle due rotte che la pagina usa. Le opzioni
-   permettono a ogni test di rompere solo il pezzo che gli interessa. */
+   La finta e' SCOMODA proprio dove serve a questo task: `api/models` non e'
+   piu' prevista da nessun ramo, quindi se la pagina tornasse a chiederla si
+   prenderebbe la risposta delle impostazioni -- un oggetto senza `providers`
+   -- invece di una finta compiacente costruita apposta per accoglierla. Il
+   test «mount: la pagina non chiede piu' l'elenco dei modelli» lo pinna
+   direttamente sulle chiamate, cosi' il ritorno dello scavalco non puo'
+   passare in silenzio. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];
   ctx.window.fetch = async (url, options) => {
     const u = String(url);
     chiamate.push({ url: u, opts: options || {} });
-    if (u.indexOf('api/models') === 0) {
-      if (opts.modelliRotti) throw new Error('rete giu\'');
-      return jsonResponse(opts.modelli === undefined ? MODELLI : opts.modelli,
-        opts.modelliStatus);
-    }
     if ((options || {}).method === 'PUT') {
       if (opts.putRotto) throw new Error('rete giu\'');
       return jsonResponse(opts.putBody || Object.assign({ ok: true }, IMPOSTAZIONI),
@@ -62,10 +62,9 @@ function montaConServer(opts = {}) {
   return Object.assign(ctx, { chiamate });
 }
 
-/* I controlli si cercano per il titolo del loro campo, non per posizione: il
-   selettore del modello puo' essere una <select> o un <input type=text>
-   (fallback dichiarato), e cercare "la prima select" nasconderebbe proprio la
-   differenza che alcuni di questi test verificano. */
+/* I controlli si cercano per il titolo del loro campo, non per posizione:
+   cercarli per tipo o per indice li legherebbe all'ordine in cui `render` li
+   costruisce, che non e' cio' che questi test vogliono dire. */
 function controllo(document, titolo) {
   const titoli = Array.from(document.querySelectorAll('div'))
     .filter((d) => d.textContent === titolo && d.style.fontWeight === '500');
@@ -81,14 +80,13 @@ function bottone(document, testo) {
 // La pagina monta e mostra cio' che e' in vigore
 // ---------------------------------------------------------------------------
 
-test('mount: il GET popola tutti e sette i campi', async () => {
+test('mount: il GET popola tutti e sei i campi', async () => {
   const { window, document } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
 
   assert.equal(controllo(document, 'Nome').value, 'HIRIS');
   assert.equal(controllo(document, 'Prompt di sistema').value, 'Il prompt salvato dall\'utente.');
-  assert.equal(controllo(document, 'Modello').value, 'claude-opus-4-7');
   assert.equal(controllo(document, 'Forma della risposta').value, 'compact');
   assert.equal(controllo(document, 'Budget di ragionamento (token)').value, '2048');
   assert.equal(controllo(document, 'Tetto di turni per sessione').value, '4');
@@ -135,7 +133,7 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', 
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
   assert.deepEqual(Object.keys(corpo).sort(), [
-    'max_chat_turns', 'model', 'nome', 'response_mode', 'restrict_to_home',
+    'max_chat_turns', 'nome', 'response_mode', 'restrict_to_home',
     'system_prompt', 'thinking_budget',
   ]);
   assert.equal(corpo.nome, 'Casa');
@@ -213,48 +211,43 @@ test('«Ripristina il prompt predefinito» rimette il default che arriva dal ser
 });
 
 // ---------------------------------------------------------------------------
-// Il selettore del modello: tenda quando si puo', campo di testo quando no
+// fetta «la catena diventa l'unica verita'» (Task 4): il modello non si
+// sceglie piu' qui. Qui vivevano i tre test del selettore -- la tenda coi
+// modelli dei provider credenziati, il modello salvato che resta
+// selezionabile, il ripiego a campo di testo quando GET api/models non
+// risponde. Sono usciti col loro SOGGETTO, non perche' davano fastidio: non
+// c'e' piu' un selettore da provare, e nessuna delle tre situazioni e'
+// rappresentabile.
 // ---------------------------------------------------------------------------
 
-test('il modello e\' una tenda coi modelli dei provider credenziati', async () => {
+test('il modello non si sceglie più qui, e la pagina dice dove', async () => {
   const { window, document } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
-
-  const sel = controllo(document, 'Modello');
-  assert.equal(sel.tagName, 'SELECT');
-  const valori = Array.from(sel.options).map((o) => o.value);
-  assert.equal(valori[0], 'auto', 'auto per primo: e\' il default nel codice');
-  assert.ok(valori.includes('gpt-4o'), 'i modelli di ogni provider devono esserci');
-  assert.equal(valori.filter((v) => v === 'claude-opus-4-7').length, 1,
-    'nessun duplicato quando il modello corrente e\' gia\' offerto da un provider');
+  const outlet = document.getElementById('route-outlet');
+  /* Si cerca il TITOLO di un campo, con la stessa regola di `controllo()`, non
+     la parola «Modello» nel testo della pagina: quella parola vive anche nel
+     sottotitolo qui sotto («nella pagina Modelli») e nella descrizione del
+     budget di ragionamento, quindi un assert sul testo resterebbe verde
+     mentre il selettore torna. Il brief proponeva
+     /Forma della risposta[\s\S]*Modello\b/: non poteva fallire, perche' il
+     selettore stava PRIMA di «Forma della risposta», non dopo. */
+  const titoli = Array.from(outlet.querySelectorAll('div'))
+    .filter((d) => d.style.fontWeight === '500')
+    .map((d) => d.textContent);
+  assert.deepEqual(titoli, [
+    'Nome', 'Prompt di sistema', 'Forma della risposta',
+    'Budget di ragionamento (token)', 'Tetto di turni per sessione',
+  ], 'nessun campo «Modello» nella pagina');
+  assert.match(outlet.textContent, /si sceglie per provider, nella pagina Modelli/);
 });
 
-test('il modello gia\' salvato resta selezionabile anche se nessun provider lo offre piu\'', async () => {
-  const { window, document } = montaConServer({
-    impostazioni: Object.assign({}, IMPOSTAZIONI, { model: 'openrouter:vendor/modello' }),
-  });
+test('mount: la pagina non chiede più l\'elenco dei modelli', async () => {
+  const { window, chiamate } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
-
-  const sel = controllo(document, 'Modello');
-  assert.ok(Array.from(sel.options).map((o) => o.value).includes('openrouter:vendor/modello'),
-    'aprire la pagina e salvare non deve perdere in silenzio il modello configurato');
-  assert.equal(sel.value, 'openrouter:vendor/modello');
-});
-
-test('se l\'elenco dei modelli non arriva si ricade su un campo di testo, e lo si dice', async () => {
-  const { window, document } = montaConServer({ modelliRotti: true });
-  window.HirisImpostazioniRoute.mount();
-  await tick(20);
-
-  const campo = controllo(document, 'Modello');
-  assert.equal(campo.tagName, 'INPUT',
-    'una tenda con la sola voce "auto" non permetterebbe di scrivere il modello che si vuole');
-  assert.equal(campo.value, 'claude-opus-4-7');
-  assert.match(document.getElementById('route-outlet').textContent,
-    /Non è stato possibile leggere l'elenco dei modelli/,
-    'il degrado si dichiara, non si subisce in silenzio');
+  assert.deepEqual(chiamate.map((c) => c.url), ['api/impostazioni-chat'],
+    'questa pagina non ha piu\' nessuna ragione di conoscere i provider');
 });
 
 // ---------------------------------------------------------------------------

@@ -122,9 +122,16 @@ def test_la_pagina_manda_l_header_csrf_su_ogni_scrittura():
     assert len(re.findall(r"\bfetch\(", ROUTE)) == 1
 
 
-def test_la_pagina_nomina_le_due_rotte_che_usa():
+def test_la_pagina_nomina_l_unica_rotta_che_usa():
+    """fetta "la catena diventa l'unica verita'" (Task 4): erano due. La
+    seconda (`api/models`) alimentava il selettore del modello, che scavalcava
+    la catena della pagina Modelli ed e' uscito: questa pagina non ha piu'
+    nessuna ragione di conoscere i provider. `ROUTE` e' il sorgente SENZA
+    commenti a blocco, quindi la menzione di `api/models` nell'intestazione
+    del file -- che racconta perche' e' uscita -- non soddisfa questo
+    assert."""
     assert "api/impostazioni-chat" in ROUTE
-    assert "api/models" in ROUTE
+    assert "api/models" not in ROUTE
 
 
 def test_la_pagina_dice_quando_ha_effetto_il_salvataggio():

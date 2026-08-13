@@ -195,11 +195,18 @@ def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, st
     La riga di `subscription` è la parte scomoda, ed è VERA: il modello del
     ponte è un effetto collaterale del modello di Claude API.
     `api/handlers_chat._enqueue_chat_job` compone
-    `modello_cli(resolve_model(impostazioni.model, "chat",
-    provider_models["claude"]))`, quindi cambiare il modello di Claude API
-    cambia il modello che gira sul piano, e `claude-opus-4-7` /
-    `claude-opus-4-1` producono lo stesso identico `opus`. La pagina lo mostra
-    perché è così, non perché ci piaccia.
+    `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`,
+    quindi cambiare il modello di Claude API cambia il modello che gira sul
+    piano, e `claude-opus-4-7` / `claude-opus-4-1` producono lo stesso
+    identico `opus`. La pagina lo mostra perché è così, non perché ci piaccia.
+
+    Fino alla 2.4.1 quel primo argomento era `impostazioni.model`, e questa
+    funzione passava `"auto"`: il campo `modello` della decisione MENTIVA a
+    chiunque avesse fissato un modello in `#/impostazioni` -- e dal Task 2
+    mentiva in corpo 20, in cima alla pagina. Il campo è uscito con la fetta
+    «la catena diventa l'unica verità» (Task 4): ora le due composizioni sono
+    lo stesso identico calcolo, e questa riga non può più divergere dal
+    runtime perché non c'è più una seconda sorgente da cui divergere.
     """
     from ..agent.runner import modello_cli
     from ..backends.openai_compat_runner import AUTO_MODEL_MAP as _AUTO_COMPAT

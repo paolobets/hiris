@@ -275,10 +275,18 @@ async def test_config_endpoint_returns_theme(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_passes_model_to_runner(client):
+async def test_chat_chiede_sempre_auto_al_runner(client):
+    """Si chiamava `test_chat_passes_model_to_runner` e pinnava lo SCAVALCO:
+    un modello fissato in «Impostazioni chat» arrivava tale e quale al runner,
+    dove `LLMRouter.chat` lo mandava a `_route()` -- una scelta sola, nessuna
+    catena, nessun ripiego, e la pagina Modelli che non lo nominava mai.
+
+    fetta «la catena diventa l'unica verità» (Task 4): quel campo è uscito e
+    il turno chiede sempre `auto`. Il test non è stato cancellato perché dava
+    fastidio: il suo soggetto è cambiato di segno, e questo è l'unico posto
+    che lo verifica sull'app VERA (`create_app`), non su un'app di prova."""
     client.app["impostazioni_chat"] = ImpostazioniChat(
-        nome="Haiku", system_prompt="Chat test",
-        model="claude-haiku-4-5-20251001", restrict_to_home=False,
+        nome="Haiku", system_prompt="Chat test", restrict_to_home=False,
     )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="ok")
@@ -286,7 +294,7 @@ async def test_chat_passes_model_to_runner(client):
     await client.post("/api/chat", json={"message": "test"})
 
     call_kwargs = runner.chat.call_args.kwargs
-    assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
+    assert call_kwargs["model"] == "auto"
     # fetta E4 Task 4: `max_tokens` non e' piu' un campo delle impostazioni
     # (era gia' inerte in pratica -- vedi handlers_chat.py) -- la chat usa
     # sempre CHAT_MAX_TOKENS come tetto, non piu' un valore floorato.

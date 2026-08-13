@@ -15,7 +15,6 @@ def test_default_e_completo_senza_argomenti():
     imp = ImpostazioniChat()
     assert imp.nome == "HIRIS"
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
-    assert imp.model == "auto"
     assert imp.response_mode == "auto"
     assert imp.thinking_budget == 0
     assert imp.max_chat_turns == 0
@@ -34,7 +33,6 @@ def test_salva_poi_carica_ritorna_gli_stessi_valori(tmp_path):
     originale = ImpostazioniChat(
         nome="Casa",
         system_prompt="Sei utile e conciso.",
-        model="claude-haiku-4-5-20251001",
         response_mode="compact",
         thinking_budget=1024,
         max_chat_turns=5,
@@ -72,7 +70,6 @@ def test_carica_file_parziale_riempie_i_campi_mancanti_coi_default(tmp_path):
     imp = ImpostazioniChat.carica(str(tmp_path))
     assert imp.nome == "Solo il nome"
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
-    assert imp.model == "auto"
     assert imp.max_chat_turns == 0
 
 
@@ -202,3 +199,50 @@ def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
     assert modo & stat.S_IRUSR and modo & stat.S_IWUSR
     if os.name != "nt":
         assert modo & (stat.S_IRWXG | stat.S_IRWXO) == 0, oct(modo)
+
+
+# ---------------------------------------------------------------------------
+# fetta «la catena diventa l'unica verita'» (Task 4): il campo `model` esce.
+# Non c'e' piu' un modello scelto qui che scavalchi la catena della pagina
+# Modelli -- e un file scritto da una versione precedente non viene ne'
+# migrato ne' ignorato in silenzio: viene DICHIARATO.
+# ---------------------------------------------------------------------------
+
+def test_le_impostazioni_non_hanno_piu_un_modello():
+    assert not hasattr(ImpostazioniChat(), "model")
+
+
+def test_un_file_con_il_vecchio_modello_lo_dichiara_invece_di_ignorarlo(tmp_path, caplog):
+    (tmp_path / "impostazioni_chat.json").write_text(
+        '{"nome": "HIRIS", "model": "claude-opus-4-7"}', encoding="utf-8")
+    with caplog.at_level("INFO"):
+        imp = ImpostazioniChat.carica(str(tmp_path))
+    assert imp.nome == "HIRIS"
+    testo = "\n".join(r.getMessage() for r in caplog.records)
+    assert "claude-opus-4-7" in testo, testo
+
+
+def test_un_file_senza_il_vecchio_modello_non_dice_niente(tmp_path, caplog):
+    """La prova gemella: la dichiarazione non è una riga che si stampa sempre."""
+    (tmp_path / "impostazioni_chat.json").write_text('{"nome": "HIRIS"}', encoding="utf-8")
+    with caplog.at_level("INFO"):
+        ImpostazioniChat.carica(str(tmp_path))
+    assert "model" not in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_path):
+    """Il secondo pezzo del silenzio dichiarato, quello che il log promette.
+
+    A differenza di `brain_model` in `handlers_models.load_models_config` --
+    che sopravvive perché `save_models_config` fa lettura-modifica-scrittura
+    -- qui `salva()` riscrive il file da zero coi sei campi veri: la chiave
+    `model` sparisce al primo salvataggio dell'utente. Il log lo dice, e
+    questo test verifica che sia vero."""
+    import json as _json
+
+    (tmp_path / "impostazioni_chat.json").write_text(
+        '{"nome": "HIRIS", "model": "claude-opus-4-7"}', encoding="utf-8")
+    ImpostazioniChat.carica(str(tmp_path)).salva(str(tmp_path))
+    su_disco = _json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
+    assert "model" not in su_disco, su_disco
+    assert su_disco["nome"] == "HIRIS"

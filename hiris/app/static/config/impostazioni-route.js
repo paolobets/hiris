@@ -1,5 +1,5 @@
 /* HIRIS · Config · Impostazioni chat (route #/impostazioni)
-   fetta E5 Task 2. I sette campi di `ImpostazioniChat`
+   fetta E5 Task 2. I sei campi di `ImpostazioniChat`
    (hiris/app/impostazioni_chat.py) governano l'unica conversazione che HIRIS
    sa avere. Fino a questo task si cambiavano SOLO scrivendo a mano
    /data/impostazioni_chat.json: questa pagina e le due rotte
@@ -16,19 +16,18 @@
    Storicizzazione; agentbot-route.js, citato fino al Task 11, era uscito con
    la fetta E5 Task 6 insieme al workbench).
 
-   Il selettore del modello, scelta dichiarata: si legge GET api/models (rotta
-   viva, elenca i provider gia' credenziati coi loro modelli) e si costruisce
-   una <select>; se quella lettura fallisce o non porta nessun modello si
-   ricade su un CAMPO DI TESTO con hint, invece di mostrare una tenda vuota
-   che non permette di scrivere il valore che si vuole. Il modello gia' salvato
-   viene aggiunto alla tenda anche se il provider che lo offre non e' attivo in
-   questo momento: altrimenti aprire la pagina e salvare lo perderebbe in
-   silenzio. */
+   fetta "la catena diventa l'unica verita'" (Task 4): il selettore del
+   modello NON e' piu' qui, e con lui sono usciti il secondo `fetch`
+   (GET api/models) e il ripiego a campo di testo che quella lettura
+   alimentava. Il modello si sceglie per provider, nella pagina Modelli: era
+   uno SCAVALCO -- se valorizzato, `LLMRouter.chat` sceglieva il provider da
+   se' con `_route()`, saltava la catena e annullava il ripiego, e la pagina
+   Modelli non lo nominava mai. Il sottotitolo lo DICE, una volta: un campo
+   che sparisce senza dire dove e' andato e' una crudelta'. */
 window.HirisImpostazioniRoute = (function () {
   'use strict';
 
   var URL_IMPOSTAZIONI = 'api/impostazioni-chat';
-  var URL_MODELLI = 'api/models';
 
   /* Etichette italiane dei modi di risposta. Le CHIAVI ammesse arrivano dal
      server (payload `modi_risposta`), non sono scritte qui: se il backend ne
@@ -81,62 +80,7 @@ window.HirisImpostazioniRoute = (function () {
     return i;
   }
 
-  /* I modelli che la tenda deve offrire: 'auto' per primo (e' il default nel
-     codice), poi tutti quelli dei provider credenziati, poi -- se non c'e'
-     gia' -- quello attualmente salvato. Duplicati rimossi mantenendo
-     l'ordine. */
-  function elencoModelli(datiModelli, modelloCorrente) {
-    var fuori = [];
-    var visti = {};
-    function aggiungi(nome) {
-      if (!nome || visti[nome]) return;
-      visti[nome] = true;
-      fuori.push(nome);
-    }
-    aggiungi('auto');
-    var provider = (datiModelli && datiModelli.providers) || [];
-    for (var i = 0; i < provider.length; i++) {
-      var modelli = provider[i] && provider[i].models;
-      if (!modelli || !modelli.length) continue;
-      for (var j = 0; j < modelli.length; j++) aggiungi(modelli[j]);
-    }
-    aggiungi(modelloCorrente);
-    return fuori;
-  }
-
-  function selettoreModello(body, dati, datiModelli) {
-    var elenco = elencoModelli(datiModelli, dati.model);
-    /* Solo 'auto' (piu' eventualmente il valore corrente) significa che
-       GET api/models non ha portato niente: nessun provider credenziato, o la
-       lettura e' fallita. Una tenda con un'opzione sola non permetterebbe di
-       scrivere il modello che si vuole -- si ricade sul campo di testo, e lo
-       si DICE invece di lasciare l'utente davanti a una tenda inutile. */
-    var soloAuto = elenco.filter(function (m) { return m !== 'auto' && m !== dati.model; }).length === 0;
-    if (soloAuto) {
-      var testo = input('text', dati.model);
-      testo.placeholder = 'auto';
-      return campo(body, 'Modello',
-        'Non è stato possibile leggere l\'elenco dei modelli disponibili ' +
-        '(nessun provider con credenziale, oppure lettura fallita): scrivi qui ' +
-        'l\'identificatore, per esempio «auto», «claude-opus-4-7» o ' +
-        '«openrouter:vendor/modello». «auto» lascia scegliere alla catena ' +
-        'configurata in Modelli.',
-        testo);
-    }
-    var sel = el('select');
-    sel.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
-    elenco.forEach(function (m) {
-      var o = el('option', null, m === 'auto' ? 'auto — sceglie la catena configurata in Modelli' : m);
-      o.value = m;
-      if (m === dati.model) o.selected = true;
-      sel.appendChild(o);
-    });
-    return campo(body, 'Modello',
-      'Il modello con cui risponde la chat. «auto» lascia scegliere alla catena ' +
-      'configurata nella pagina Modelli.', sel);
-  }
-
-  function render(outlet, dati, datiModelli) {
+  function render(outlet, dati) {
     outlet.innerHTML = '';
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
     /* La dichiarazione che manca quasi ovunque in questo prodotto: cosa
@@ -145,7 +89,8 @@ window.HirisImpostazioniRoute = (function () {
        e' lo stesso oggetto che handlers_chat.py rilegge a ogni turno. */
     outlet.appendChild(el('p', 'page-subtitle',
       'La configurazione dell\'unica conversazione di HIRIS. Le modifiche valgono ' +
-      'dal messaggio successivo: non serve riavviare l\'add-on.'));
+      'dal messaggio successivo: non serve riavviare l\'add-on. ' +
+      'Il modello non si sceglie più qui: si sceglie per provider, nella pagina Modelli.'));
 
     var card = el('section', 'section-card');
     var body = el('div', 'sc-body');
@@ -173,8 +118,6 @@ window.HirisImpostazioniRoute = (function () {
       prompt.value = dati.default_system_prompt || '';
     });
     body.appendChild(ripristina);
-
-    var modello = selettoreModello(body, dati, datiModelli);
 
     var modi = (dati.modi_risposta && dati.modi_risposta.length)
       ? dati.modi_risposta : ['auto'];
@@ -246,7 +189,6 @@ window.HirisImpostazioniRoute = (function () {
       var corpo = {
         nome: nome.value,
         system_prompt: prompt.value,
-        model: modello.value,
         response_mode: selModo.value,
         /* I due interi passano da parseInt: un campo number svuotato produce
            '' e Number('') sarebbe 0 -- cioe' "nessun tetto" -- senza che
@@ -267,13 +209,11 @@ window.HirisImpostazioniRoute = (function () {
           salva.disabled = false;
           if (esito.ok) {
             /* I valori tornati dal server sono quelli davvero in vigore (il
-               prompt puo' essere tornato al default, il modello a 'auto'):
-               si aggiorna la vista con QUELLI, non con cio' che si era
-               digitato. */
+               prompt puo' essere tornato al default): si aggiorna la vista
+               con QUELLI, non con cio' che si era digitato. */
             dati = esito.corpo;
             nome.value = dati.nome || '';
             prompt.value = dati.system_prompt || '';
-            modello.value = dati.model || 'auto';
             selModo.value = dati.response_mode || 'auto';
             thinking.value = String(dati.thinking_budget);
             turni.value = String(dati.max_chat_turns);
@@ -315,19 +255,13 @@ window.HirisImpostazioniRoute = (function () {
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
     outlet.appendChild(el('p', 'page-subtitle', 'Caricamento…'));
 
-    /* Le impostazioni sono obbligatorie (senza, non c'e' niente da mostrare);
-       l'elenco dei modelli e' un di piu': se non arriva, la pagina nasce lo
-       stesso col campo di testo. Per questo il secondo `fetch` ha un catch
-       che restituisce null, e il primo no. */
-    var chiedeModelli = api(URL_MODELLI, { method: 'GET' })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function () { return null; });
-
+    /* Una lettura sola: le impostazioni. Il secondo `fetch` (GET api/models,
+       che alimentava il selettore del modello) e' uscito con lui alla fetta
+       "la catena diventa l'unica verita'" -- questa pagina non ha piu'
+       nessuna ragione di conoscere i provider. */
     api(URL_IMPOSTAZIONI, { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-      .then(function (dati) {
-        return chiedeModelli.then(function (modelli) { render(outlet, dati, modelli); });
-      })
+      .then(function (dati) { render(outlet, dati); })
       .catch(function () {
         errore(outlet, 'Non è stato possibile leggere le impostazioni della chat. ' +
           'Controlla il log dell\'add-on e ricarica la pagina.');

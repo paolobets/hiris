@@ -2,7 +2,7 @@
 della chat -- `GET/PUT /api/impostazioni-chat`.
 
 Il punto di questi test non e' la forma del JSON: e' che un tester UAT possa
-cambiare i sette campi senza scrivere a mano `/data/impostazioni_chat.json`, e
+cambiare i sei campi senza scrivere a mano `/data/impostazioni_chat.json`, e
 che quel cambiamento (a) sia visibile subito nella chat, senza riavvio, (b)
 sopravviva al riavvio, (c) non possa passare a meta' -- un corpo sbagliato
 lascia il file esattamente com'era, e dice quale campo non va.
@@ -14,7 +14,7 @@ import pytest_asyncio
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_impostazioni import (
-    CAMPI, MAX_CARATTERI_MODELLO, MAX_CARATTERI_PROMPT, MODI_RISPOSTA,
+    CAMPI, MAX_CARATTERI_PROMPT, MODI_RISPOSTA,
 )
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
@@ -68,7 +68,6 @@ async def test_get_su_data_vuota_restituisce_i_default_nel_codice(client):
     default = ImpostazioniChat()
     assert body["nome"] == default.nome
     assert body["system_prompt"] == DEFAULT_SYSTEM_PROMPT
-    assert body["model"] == default.model
     assert body["response_mode"] == default.response_mode
     assert body["thinking_budget"] == default.thinking_budget
     assert body["max_chat_turns"] == default.max_chat_turns
@@ -104,7 +103,6 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     nuove = {
         "nome": "Casa",
         "system_prompt": "Sei utile e conciso.",
-        "model": "claude-haiku-4-5-20251001",
         "response_mode": "compact",
         "thinking_budget": 1024,
         "max_chat_turns": 5,
@@ -120,7 +118,6 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     in_memoria = client.app["impostazioni_chat"]
     assert in_memoria.nome == "Casa"
     assert in_memoria.system_prompt == "Sei utile e conciso."
-    assert in_memoria.model == "claude-haiku-4-5-20251001"
     assert in_memoria.response_mode == "compact"
     assert in_memoria.thinking_budget == 1024
     assert in_memoria.max_chat_turns == 5
@@ -174,12 +171,13 @@ async def test_put_con_system_prompt_vuoto_ripristina_il_default(client):
     assert (await resp.json())["system_prompt"] == DEFAULT_SYSTEM_PROMPT
 
 
-@pytest.mark.asyncio
-async def test_put_con_model_vuoto_torna_ad_auto(client):
-    await client.put(ROTTA, json={"model": "claude-opus-4-7"})
-    resp = await client.put(ROTTA, json={"model": ""})
-    assert resp.status == 200
-    assert client.app["impostazioni_chat"].model == "auto"
+# fetta "la catena diventa l'unica verita'" (Task 4): qui viveva
+# `test_put_con_model_vuoto_torna_ad_auto`. Non e' stato spostato ne'
+# riscritto: il suo SOGGETTO non esiste piu'. `model` non e' piu' un campo
+# ammesso, quindi non c'e' un "vuoto" che possa tornare ad `auto` -- un PUT
+# che lo manda oggi e' un 400 parlante, ed e' quello che pinna
+# `test_un_put_che_prova_a_fissare_il_modello_viene_rifiutato_col_motivo`
+# in coda a questo file.
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +226,6 @@ CORPI_RIFIUTATI = [
     ("response_mode", {"response_mode": "prolisso"}, "ammette solo"),
     ("nome", {"nome": "   "}, "non può essere vuoto"),
     ("nome", {"nome": 42}, "deve essere testo"),
-    ("model", {"model": "claude opus"}, "spazi o caratteri di controllo"),
-    ("model", {"model": "x" * (MAX_CARATTERI_MODELLO + 1)}, "supera i"),
     ("system_prompt", {"system_prompt": "x" * (MAX_CARATTERI_PROMPT + 1)}, "supera i"),
     ("modello", {"modello": "claude-opus-4-7"}, "Campi non riconosciuti"),
 ]
@@ -339,7 +335,7 @@ _SURROGATO = chr(92) + "ud800"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("campo", ["system_prompt", "nome", "model"])
+@pytest.mark.parametrize("campo", ["system_prompt", "nome"])
 async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo):
     """Prima del fix round 1 questo era l'UNICO buco nella promessa «ogni
     corpo sbagliato produce un 400 che dice quale campo»: `valida()` verificava
@@ -374,3 +370,45 @@ async def test_il_surrogato_arriva_davvero_fino_a_valida(client):
     assert len(caricato["system_prompt"]) == 3
     with pytest.raises(UnicodeEncodeError):
         caricato["system_prompt"].encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# fetta «la catena diventa l'unica verita'» (Task 4): lo scavalco del modello
+# non puo' rientrare da questa porta.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_un_put_che_prova_a_fissare_il_modello_viene_rifiutato_col_motivo(client):
+    """`CAMPI` esiste perché una chiave sbagliata non venga
+    accettata-e-ignorata. Un client vecchio che manda ancora `model` deve
+    leggere un errore parlante, non un «Salvato» su una cosa che non succede."""
+    resp = await client.put(ROTTA, json={"model": "gpt-4o"})
+    assert resp.status == 400
+    body = await resp.json()
+    assert body["campo"] == "model"
+    assert "Campi non riconosciuti: model" in body["error"], body["error"]
+
+
+@pytest.mark.asyncio
+async def test_il_get_non_porta_piu_un_modello(client):
+    """Trovato da una prova per mutazione, non dal brief: rimettendo
+    `"model"` in `_payload()` l'intera suite restava verde. Il GET sarebbe
+    tornato a pubblicare un campo che nessuno legge e che nessun PUT accetta
+    -- cioè una seconda rappresentazione di una decisione che non esiste più,
+    esattamente ciò che l'invariante 1 della spec vieta. Si pinna l'INSIEME
+    ESATTO delle chiavi, non l'assenza di una: un campo aggiunto in silenzio è
+    lo stesso difetto della prossima volta."""
+    body = await (await client.get(ROTTA)).json()
+    assert set(body) == set(CAMPI) | {"modi_risposta", "default_system_prompt"}
+
+
+def test_model_non_e_piu_un_campo_ammesso():
+    """La gemella minuscola del test qui sopra, sul dato invece che sulla
+    rotta: se `model` tornasse in `CAMPI`, il PUT ricomincerebbe ad accettarlo
+    e il 400 di sopra diventerebbe un 200 — e nessuno dei due test lo direbbe
+    da solo se il valore non fosse pinnato qui."""
+    assert "model" not in CAMPI
+    assert CAMPI == (
+        "nome", "system_prompt", "response_mode",
+        "thinking_budget", "max_chat_turns", "restrict_to_home",
+    )

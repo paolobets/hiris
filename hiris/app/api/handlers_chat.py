@@ -267,11 +267,18 @@ async def _enqueue_chat_job(
         "response_mode": impostazioni.response_mode,
         # fetta "il ponte riceve il nucleo" (parita' A, Task 4): l'ultima
         # delle tre impostazioni mancanti. Il ramo sincrono (sotto,
-        # `handle_chat`) risolve `impostazioni.model` con la STESSA
-        # `resolve_model` e lo stesso `provider_models["claude"]` di
+        # `handle_chat`) chiede anche lui `"auto"` alla STESSA
+        # `resolve_model`, con lo stesso `provider_models["claude"]` di
         # default -- niente di nuovo, solo lo stesso calcolo fatto anche
         # QUI, perche' il runner del ponte gira altrove e non ha ne' l'app
-        # ne' `models_config`. La differenza col ramo sincrono e' che il
+        # ne' `models_config`. Il primo argomento era `impostazioni.model`
+        # fino alla fetta "la catena diventa l'unica verita'" (Task 4): quel
+        # campo e' uscito, e `"auto"` non e' un valore di comodo -- e'
+        # l'unico che lascia decidere alla pagina Modelli, per provider.
+        # `resolve_model` resta perche' e' lei a tradurre `"auto"` nel
+        # modello di Claude API configurato li' (o in `AUTO_MODEL_MAP`
+        # ["chat"] se non c'e'), ed e' lo stesso calcolo che
+        # `handlers_models._modelli_in_uso` mostra nella riga del piano. La differenza col ramo sincrono e' che il
         # ponte parla SOLO con la CLI dell'abbonamento Claude Max, mai con
         # l'API a consumo di nessun provider: `modello_cli` traduce il
         # modello risolto (che puo' essere di qualunque provider) in un
@@ -280,7 +287,7 @@ async def _enqueue_chat_job(
         # docstring in agent/runner.py -- silenzio dichiarato ② della
         # fetta).
         "model": modello_cli(resolve_model(
-            impostazioni.model, "chat",
+            "auto", "chat",
             (request.app.get("models_config") or {}).get("provider_models", {}).get("claude", ""),
         )),
     }
@@ -495,7 +502,14 @@ async def handle_chat(request: web.Request) -> web.Response:
     # trappola stessa non esiste piu'.
     dispatcher_strumenti = costruisci_dispatcher_strumenti(request.app)
 
-    agent_model = impostazioni.model
+    # fetta "la catena diventa l'unica verita'": qui c'era
+    # `agent_model = impostazioni.model`. Il campo e' uscito con la decisione
+    # del proprietario del 13 agosto: il modello si sceglie per provider, nella
+    # pagina Modelli, e la chat chiede SEMPRE `auto`. Non e' una costante di
+    # comodo: `auto` e' l'UNICO valore che fa passare il turno dal ciclo di
+    # ripiego di `LLMRouter.chat` invece che da `_route()`, che sceglie una
+    # volta sola e non ripiega mai.
+    agent_model = "auto"
     # Personas are always the chat entity (Slice 5 retired the non-chat
     # "agent" type and the `type` field itself) — no per-type branch needed
     # here. Kept as a literal only because runner.chat/chat_stream still take
@@ -623,11 +637,22 @@ async def handle_chat(request: web.Request) -> web.Response:
     except RunnerBackendError as exc:
         # Review C/#13: runners now raise instead of returning a friendly
         # string on API failure, so LLMRouter's auto-fallback loop actually
-        # engages. That loop only ever raises here when `agent_model` pins an
-        # explicit non-"auto" model (the auto path already turns this into a
-        # returned string once every backend is exhausted) — reproduce the
-        # exact same string-shaped degraded response so everything below
-        # (detokenize/toxicity/persistence/serialization) is unaffected.
+        # engages — reproduce the exact same string-shaped degraded response
+        # so everything below (toxicity/persistence/serialization) is
+        # unaffected.
+        #
+        # fetta "la catena diventa l'unica verita'" (Task 4): questo commento
+        # diceva «that loop only ever raises here when `agent_model` pins an
+        # explicit non-"auto" model». Non e' piu' vero, perche' `agent_model`
+        # e' SEMPRE "auto" (sopra): quel ramo di `LLMRouter.chat` non esiste
+        # piu' per nessun turno. Sul ramo "auto" il router cattura ogni
+        # eccezione di ogni backend e restituisce una stringa, quindi
+        # attraverso `app["llm_router"]` questo `except` non e' piu'
+        # raggiungibile. Resta perche' `runner` puo' anche essere
+        # `app["claude_runner"]` (handle_chat, la riga che sceglie il
+        # runner), cioe' un backend diretto che invece SOLLEVA: e' li' che
+        # questa rete serve ancora. Detto, non taciuto: un ramo che non si sa
+        # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
         response = exc.friendly_message
 
     # Fetta "esce il documentale": qui c'era la detokenizzazione della

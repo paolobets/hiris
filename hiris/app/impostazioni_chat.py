@@ -13,6 +13,17 @@ CRUD). Due dei sette letti erano gia' inerti in pratica -- `max_tokens`
 fetta E2 Task 5) -- e diventano costanti dirette in handlers_chat.py invece
 di campi qui.
 
+I campi di oggi sono SEI: `nome`, `system_prompt`, `response_mode`,
+`thinking_budget`, `max_chat_turns`, `restrict_to_home`. Il settimo, `model`,
+e' uscito con la fetta "la catena diventa l'unica verita'" (Task 4): era uno
+SCAVALCO -- se valorizzato, `handlers_chat` lo passava a `LLMRouter.chat`,
+che con un modello diverso da "auto" chiama `_route()` una volta sola,
+saltando la catena della pagina Modelli e annullando ogni ripiego. Il modello
+si sceglie per provider, in `models_config.json`, e la chat chiede sempre
+"auto". Un file scritto da una versione precedente che porta ancora quella
+chiave viene DICHIARATO nel log da `carica()`, non ignorato in silenzio (vedi
+li' il perche' non si migra).
+
 Il punto di questo modulo, non solo la sua forma: prima, se il chatbot
 seminato da `_seed_default_chatbot()` mancava (id sbagliato, file corrotto,
 mai girato l'avvio), `handlers_chat.py` degradava in silenzio a un
@@ -162,7 +173,6 @@ class ImpostazioniChat:
     a zero argomenti."""
     nome: str = "HIRIS"
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
-    model: str = "auto"
     response_mode: str = "auto"
     thinking_budget: int = 0
     max_chat_turns: int = 0
@@ -186,11 +196,28 @@ class ImpostazioniChat:
                 path, exc,
             )
             return cls()
+        if "model" in raw:
+            # Silenzio dichiarato (fetta "la catena diventa l'unica verita'"):
+            # il modello della chat scavalcava l'intera pagina Modelli --
+            # sceglieva il provider da se' (`LLMRouter._route`), saltava la
+            # catena e annullava il ripiego. Il campo e' uscito; il valore
+            # salvato non viene migrato (non c'e' dove metterlo: il modello si
+            # sceglie per provider, in `models_config.json`) ne' riscritto da
+            # `salva()`, quindi sparira' dal file al primo salvataggio. A
+            # differenza di `brain_model` in `load_models_config` -- che
+            # sopravvive perche' `save_models_config` fa
+            # lettura-modifica-scrittura -- qui NON si conserva: sarebbe
+            # conservare una scelta che il prodotto non sa piu' eseguire.
+            logger.info(
+                "impostazioni_chat.json contiene 'model' (%r) di una versione "
+                "precedente: non e' piu' letto -- la chat usa sempre la catena "
+                "della pagina Modelli. Sparira' dal file al primo salvataggio.",
+                raw.get("model"),
+            )
         default = cls()
         return cls(
             nome=raw.get("nome", default.nome),
             system_prompt=raw.get("system_prompt") or default.system_prompt,
-            model=raw.get("model", default.model),
             response_mode=raw.get("response_mode", default.response_mode),
             thinking_budget=int(raw.get("thinking_budget", 0) or 0),
             max_chat_turns=int(raw.get("max_chat_turns", 0) or 0),
@@ -235,7 +262,6 @@ class ImpostazioniChat:
         data = {
             "nome": self.nome,
             "system_prompt": self.system_prompt,
-            "model": self.model,
             "response_mode": self.response_mode,
             "thinking_budget": self.thinking_budget,
             "max_chat_turns": self.max_chat_turns,

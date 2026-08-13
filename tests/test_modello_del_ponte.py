@@ -18,6 +18,17 @@ mostrare la stessa composizione che fa `handlers_chat._enqueue_chat_job`).
 Il test [5] e' end-to-end: il job accodato dal ramo async porta il modello
 gia' risolto e tradotto, e `_chat_claude_args` lo mette in argv dopo
 `--model` esattamente come per il ramo sincrono.
+
+fetta "la catena diventa l'unica verita'" (Task 4): questo file diceva «il
+modello del ponte e' quello scelto per la chat». Non piu': il campo `model`
+di `ImpostazioniChat` e' uscito -- scavalcava la catena della pagina Modelli
+-- e `_enqueue_chat_job` chiede sempre `"auto"`. La sorgente e' quindi il
+modello di **Claude API** scelto nella pagina Modelli
+(`models_config["provider_models"]["claude"]`), che e' esattamente cio' che
+la riga «piano» di quella pagina dichiara (`handlers_models._modelli_in_uso`:
+il modello del ponte e' un effetto collaterale del modello di Claude API).
+I test [1]-[4] restano validi parola per parola: `resolve_model` e
+`modello_cli` non sono cambiate, e' cambiato chi passa il primo argomento.
 """
 import logging
 
@@ -93,12 +104,18 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         data_dir = str(tmp_path / "data")
         os.makedirs(data_dir, exist_ok=True)
 
-        # Un modello Anthropic esplicito (non "auto"): niente risoluzione via
-        # AUTO_MODEL_MAP, cosi' il test dimostra che il valore che ARRIVA da
-        # `ImpostazioniChat` e' quello che finisce, tradotto, in argv.
+        # fetta "la catena diventa l'unica verita'" (Task 4): il modello
+        # arrivava da `ImpostazioniChat(model=...)`, che scavalcava la catena
+        # della pagina Modelli. Quel campo e' uscito e la SORGENTE e' cambiata:
+        # ora e' `models_config["provider_models"]["claude"]`, cioe' il modello
+        # di Claude API scelto nella pagina Modelli. Il test dice la stessa
+        # cosa di prima -- il valore configurato e' quello che finisce,
+        # tradotto, in argv -- ma sul soggetto nuovo. Si usa un modello
+        # Anthropic esplicito (non un default): senza, `resolve_model`
+        # ricadrebbe su AUTO_MODEL_MAP["chat"] e il test non distinguerebbe
+        # "ha letto la configurazione" da "ha usato il default".
         impostazioni = ImpostazioniChat(
             nome="test-agent", system_prompt="Sei HIRIS.",
-            model="claude-opus-4-7",
         )
 
         app = web.Application()
@@ -107,9 +124,7 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         app["ponte_attivo"] = True
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
         app["reasoning_queue"] = q
-        # nessun app["models_config"]: come una install dove non e' mai
-        # stato salvato -- il codice deve degradare a provider_models
-        # vuoto, non sollevare.
+        app["models_config"] = {"provider_models": {"claude": "claude-opus-4-7"}}
         app.router.add_post("/api/chat", handle_chat)
 
         async with TestClient(TestServer(app)) as client:

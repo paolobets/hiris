@@ -165,13 +165,29 @@ e in fondo la sola cosa che non è una decisione.
   02  FUORI DALLA CATENA
       Chi potrebbe entrare (un gesto) e chi non puo' (manca la chiave).
 
-  03  QUANDO NON DECIDE LA CATENA
+  03  QUANDO NON DECIDE LA CATENA        <- CANCELLATO, vedi la nota qui sotto
       Il modello fissato nelle Impostazioni chat, se c'e'.
       Compare SOLO quando c'e'. (motivazione sotto)
 
       ----------------------------------------------------------------
       Embedding: nessun testo viene vettorizzato. [riga sola, in fondo]
 ```
+
+> **Il blocco 03 è cancellato — i blocchi sono QUATTRO.** Il §13 di questo
+> documento proponeva due strade per il modello della chat e raccomandava la
+> **(a)**: il selettore esce da `#/impostazioni`. Il proprietario ha scelto la
+> (a) il 13 agosto («la catena è l'unica verità»), e la fetta *modelli e
+> catena* l'ha eseguita al **Task 4**: il campo `ImpostazioniChat.model` non
+> esiste più, `handlers_chat` chiede sempre `"auto"`, e `PUT
+> /api/impostazioni-chat` rifiuta la chiave con un 400 parlante. Il blocco 03
+> esisteva **solo** per dichiarare che un modello fissato altrove scavalcava
+> la catena: senza quel campo non c'è più niente da dichiarare, e disegnarlo
+> significherebbe disegnare un avviso per uno stato irraggiungibile — cioè
+> l'esatto contrario del principio di questa pagina. **Chi implementa i
+> blocchi (Task 8-9) non lo disegna.** Tutto ciò che nel resto del documento è
+> scritto al presente sul campo della chat (§0 punto 2, §0 punto 4, §5.1, §13)
+> descrive il prodotto *prima* del Task 4 e va letto come diagnosi storica,
+> non come stato di oggi.
 
 **Perché quest'ordine.** Chi apre la pagina la prima volta ha una domanda sola e la pagina gliela
 risponde prima di chiedergli di capire qualcosa. La catena viene subito dopo perché è la

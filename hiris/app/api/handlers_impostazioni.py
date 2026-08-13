@@ -1,20 +1,23 @@
 """fetta E5 Task 2 ("il frontend"): le impostazioni della chat tornano ad
 avere una superficie.
 
-**Perche' questo file esiste.** I sette campi di `ImpostazioniChat`
+**Perche' questo file esiste.** I sei campi di `ImpostazioniChat`
 (`hiris/app/impostazioni_chat.py`) governano l'unica conversazione che HIRIS
-sa avere -- il prompt di sistema, il modello, la forma della risposta, il
-budget di ragionamento, il tetto di turni, la restrizione alla casa e il nome.
+sa avere -- il prompt di sistema, la forma della risposta, il budget di
+ragionamento, il tetto di turni, la restrizione alla casa e il nome. Il
+modello NON e' fra loro: si sceglie per provider, nella pagina Modelli (fetta
+"la catena diventa l'unica verita'", Task 4 -- il campo `model` che stava qui
+scavalcava la catena e annullava il ripiego).
 Fino a questo task si cambiavano **solo scrivendo a mano
 `/data/impostazioni_chat.json`**: `ImpostazioniChat.salva()` non aveva nessun
 chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_impostazioni_chat.py`). Per chi installa l'add-on senza aprire una
-shell dentro il container, quei sette campi erano di fatto costanti.
+shell dentro il container, quei campi erano di fatto costanti.
 
 **Il contratto e' nuovo, non la superficie di compatibilita' inglese che
 c'era.** Il payload usa i nomi italiani dei campi del dataclass (`nome`,
-`system_prompt`, `model`, `response_mode`, `thinking_budget`,
-`max_chat_turns`, `restrict_to_home`). `GET /api/chatbots`
+`system_prompt`, `response_mode`, `thinking_budget`, `max_chat_turns`,
+`restrict_to_home`). `GET /api/chatbots`
 (`handlers_chatbots.py`) parlava inglese per la card Lovelace e la pagina
 chat: questo file non l'ha mai usata, ed e' uscita per intero al Task 10 di
 questa fetta, col resto dei suoi ultimi chiamanti in `static/`.
@@ -66,7 +69,7 @@ from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
 
 logger = logging.getLogger(__name__)
 
-# I sette campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
+# I sei campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
 # delle chiavi ammesse nel corpo del PUT: tutto cio' che non e' qui dentro e'
 # un errore parlante, non un silenzio (una chiave scritta male -- `modello`
 # invece di `model` -- verrebbe altrimenti accettata e ignorata, e l'utente
@@ -74,7 +77,6 @@ logger = logging.getLogger(__name__)
 CAMPI = (
     "nome",
     "system_prompt",
-    "model",
     "response_mode",
     "thinking_budget",
     "max_chat_turns",
@@ -93,11 +95,6 @@ MODI_RISPOSTA = ("auto", "compact", "minimal")
 # di chat contro il limite di contesto del modello, in un punto in cui il
 # messaggio d'errore arriverebbe dal provider e non da noi.
 MAX_CARATTERI_PROMPT = 20000
-
-# Il nome del modello finisce in `llm_router` e poi nel corpo di una richiesta
-# HTTP: caratteri di controllo o spazi non ne fanno parte in nessuno dei
-# formati accettati ("auto", "claude-opus-4-7", "openrouter:vendor/modello").
-MAX_CARATTERI_MODELLO = 200
 
 
 class Rifiuto(Exception):
@@ -212,20 +209,6 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     if not prompt:
         prompt = DEFAULT_SYSTEM_PROMPT
 
-    modello = _testo(body, "model", corrente.model).strip() or "auto"
-    if len(modello) > MAX_CARATTERI_MODELLO:
-        raise Rifiuto(
-            "model",
-            f"«model» supera i {MAX_CARATTERI_MODELLO} caratteri (ne ha {len(modello)}).",
-        )
-    if any(ord(c) < 0x20 or ord(c) == 0x7F or c.isspace() for c in modello):
-        raise Rifiuto(
-            "model",
-            "«model» non può contenere spazi o caratteri di controllo: è un "
-            "identificatore come «auto», «claude-opus-4-7» oppure "
-            "«openrouter:vendor/modello».",
-        )
-
     modo = _testo(body, "response_mode", corrente.response_mode).strip()
     if modo not in MODI_RISPOSTA:
         raise Rifiuto(
@@ -249,7 +232,6 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     return ImpostazioniChat(
         nome=nome,
         system_prompt=prompt,
-        model=modello,
         response_mode=modo,
         thinking_budget=thinking,
         max_chat_turns=turni,
@@ -258,14 +240,13 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
 
 
 def _payload(impostazioni: ImpostazioniChat) -> dict:
-    """I sette campi, piu' due cose che la pagina non deve indovinare: i
+    """I sei campi, piu' due cose che la pagina non deve indovinare: i
     valori ammessi per `response_mode` e il prompt di default (per il
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
     return {
         "nome": impostazioni.nome,
         "system_prompt": impostazioni.system_prompt,
-        "model": impostazioni.model,
         "response_mode": impostazioni.response_mode,
         "thinking_budget": impostazioni.thinking_budget,
         "max_chat_turns": impostazioni.max_chat_turns,

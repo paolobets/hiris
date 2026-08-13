@@ -365,7 +365,7 @@ Opening the add-on shows the chat. A configuration panel is served at
 |---|---|
 | `#/` | **What HIRIS knows** — the home as it was read (floors, areas, devices, entities) and the exact nucleo the model sees in chat. Says «not read yet» where it has not read, instead of showing a zero |
 | `#/memoria` | The remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
-| `#/impostazioni` | The seven chat settings (system prompt, model, answer shape, reasoning, turn cap, home restriction, name) |
+| `#/impostazioni` | The six chat settings (system prompt, answer shape, reasoning, turn cap, home restriction, name). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
 | `#/models` | Active providers, the automatic chain and the default model per provider |
 | `#/usage` | Tokens and cost, or the reason why they cannot be measured |
 
