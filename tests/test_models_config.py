@@ -3,10 +3,19 @@ from hiris.app.api.handlers_models import load_models_config, save_models_config
 
 
 def test_defaults_when_absent(tmp_path):
+    """Task 6: le chiavi sono SETTE, e questo test le pinna per INSIEME ESATTO,
+    non per presenza. Cinque sono arrivate con la versione A della migrazione
+    (le decisioni che escono dalle opzioni dell'add-on): se una si perdesse per
+    strada, l'archivio smetterebbe di essere la fonte di verita' in silenzio."""
     cfg = load_models_config(str(tmp_path))
     assert cfg == {
         "chain_order": [],
         "provider_models": {"claude": "", "openai": "", "openrouter": ""},
+        "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
+        "ollama": {"modello": "", "timeout_s": 120},
+        "nascondi_gratuiti": False,
+        "strategia_ultima": "",
+        "seminato": False,
     }
 
 
@@ -87,3 +96,63 @@ def test_provider_models_roundtrip_and_sanitizes(tmp_path):
     assert saved["provider_models"]["openai"] == ""   # non-string -> ""
     assert "bogus" not in saved["provider_models"]     # unknown key dropped
     assert load_models_config(str(tmp_path))["provider_models"] == saved["provider_models"]
+
+
+# ---------------------------------------------------------------------------
+# fetta «la catena diventa l'unica verita'», Task 6 (versione A della
+# migrazione): le decisioni che oggi stanno nelle opzioni dell'add-on vengono a
+# vivere qui. Il lettore e lo scrittore le conoscono; i lettori di
+# comportamento no -- quelli si spostano ai Task 7 e 10.
+# ---------------------------------------------------------------------------
+
+
+def test_le_nuove_chiavi_hanno_i_predefiniti_quando_il_file_non_esiste(tmp_path):
+    cfg = load_models_config(str(tmp_path))
+    assert cfg["ponte"] == {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50}
+    assert cfg["ollama"] == {"modello": "", "timeout_s": 120}
+    assert cfg["nascondi_gratuiti"] is False
+    assert cfg["strategia_ultima"] == ""
+    assert cfg["seminato"] is False
+
+
+def test_i_valori_fuori_range_rientrano_invece_di_sollevare(tmp_path):
+    """Lo `schema:` di config.yaml li faceva rispettare (`int(1,120)`,
+    `int(0,1000)`, `int(10,1800)`). Da quando il valore arriva da una PUT
+    dobbiamo farlo noi -- e riportarlo dentro, come faceva il modulo, non
+    rifiutare il salvataggio intero."""
+    save_models_config(str(tmp_path), {
+        "ponte": {"attivo": True, "scadenza_min": 999, "tetto_giornaliero": -5},
+        "ollama": {"modello": "llama3", "timeout_s": 1},
+    })
+    cfg = load_models_config(str(tmp_path))
+    assert cfg["ponte"]["scadenza_min"] == 120
+    assert cfg["ponte"]["tetto_giornaliero"] == 0
+    assert cfg["ollama"]["timeout_s"] == 10
+    assert cfg["ollama"]["modello"] == "llama3"
+
+
+def test_un_salvataggio_non_cancella_le_chiavi_che_questa_versione_non_conosce(tmp_path):
+    """La lettura-modifica-scrittura che c'era gia', riverificata ora che le
+    chiavi scritte sono sette invece di due."""
+    import json
+    (tmp_path / "models_config.json").write_text(
+        json.dumps({"brain_model": "vecchio", "chain_order": ["claude"]}), encoding="utf-8")
+    save_models_config(str(tmp_path), {"chain_order": ["openrouter"]})
+    disco = json.loads((tmp_path / "models_config.json").read_text(encoding="utf-8"))
+    assert disco["brain_model"] == "vecchio"
+    assert disco["chain_order"] == ["openrouter"]
+
+
+def test_un_salvataggio_parziale_non_azzera_le_decisioni_gia_prese(tmp_path):
+    """Il contratto della PUT e' «sempre l'oggetto intero» (models-route.js), e
+    il frontend lo rispetta. Ma un salvataggio parziale non deve poter azzerare
+    il ponte: sarebbe una perdita di configurazione silenziosa, e un client
+    diverso dalla pagina esiste (il gateway MCP)."""
+    save_models_config(str(tmp_path), {
+        "chain_order": ["claude"],
+        "ponte": {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200},
+    })
+    save_models_config(str(tmp_path), {"chain_order": ["openrouter"]})
+    cfg = load_models_config(str(tmp_path))
+    assert cfg["chain_order"] == ["openrouter"]
+    assert cfg["ponte"] == {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200}

@@ -35,6 +35,78 @@ def _clean_provider_models(raw) -> dict:
     return out
 
 
+# Task 6 -- versione A della migrazione. Le decisioni che escono da config.yaml
+# e vengono a vivere qui (fetta «la catena diventa l'unica verita'»). Un
+# dizionario di predefiniti, non cinque costanti sparse: `load` e `save`
+# leggono la stessa struttura, e un campo aggiunto qui non puo' dimenticarsi in
+# uno dei due.
+_PREDEFINITI_ARCHIVIO = {
+    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
+    "ollama": {"modello": "", "timeout_s": 120},
+}
+
+# Le sole chiavi che questa versione possiede. Tutto il resto che sta sul disco
+# (a partire da 'brain_model') sopravvive intatto -- vedi la
+# lettura-modifica-scrittura in save_models_config.
+_CHIAVI_NOSTRE = (
+    "chain_order", "provider_models", "ponte", "ollama",
+    "nascondi_gratuiti", "strategia_ultima", "seminato",
+)
+
+
+def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
+    """Gli stessi estremi dello `schema:` di config.yaml (`int(1,120)`,
+    `int(0,1000)`, `int(10,1800)`). Il Supervisor li faceva rispettare per noi;
+    da quando il valore arriva da una PUT tocca a noi -- e si RIPORTA DENTRO,
+    come faceva il modulo, invece di rifiutare il salvataggio intero: un
+    numero fuori range non e' un corpo malformato.
+
+    Il massimo di `scadenza_min` resta 120 come nello schema, benche' il tetto
+    UTILE sia 5 minuti (`static/chat/send.js`, CHAT_POLL_MAX_MS): abbassarlo
+    qui farebbe rientrare a 5 il valore di chi ne aveva uno piu' alto, cioe' la
+    migrazione perderebbe proprio cio' che esiste per conservare. Il disallineo
+    fra i due numeri e' dichiarato, non risolto in questa fetta."""
+    try:
+        n = int(valore)
+    except (TypeError, ValueError):
+        return predefinito
+    return max(minimo, min(massimo, n))
+
+
+def _pulisci_ponte(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    d = _PREDEFINITI_ARCHIVIO["ponte"]
+    return {
+        "attivo": bool(raw.get("attivo", d["attivo"])),
+        "scadenza_min": _clamp_int(raw.get("scadenza_min"), d["scadenza_min"], 1, 120),
+        "tetto_giornaliero": _clamp_int(
+            raw.get("tetto_giornaliero"), d["tetto_giornaliero"], 0, 1000),
+    }
+
+
+def _pulisci_ollama(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    d = _PREDEFINITI_ARCHIVIO["ollama"]
+    modello = raw.get("modello", d["modello"])
+    return {
+        "modello": modello if isinstance(modello, str) else "",
+        "timeout_s": _clamp_int(raw.get("timeout_s"), d["timeout_s"], 10, 1800),
+    }
+
+
+def _chiavi_archivio(raw: dict) -> dict:
+    """Le cinque chiavi nuove, pulite. Usata da `load` e da `save`: un solo
+    posto in cui la forma e' definita."""
+    strategia = raw.get("strategia_ultima")
+    return {
+        "ponte": _pulisci_ponte(raw.get("ponte")),
+        "ollama": _pulisci_ollama(raw.get("ollama")),
+        "nascondi_gratuiti": bool(raw.get("nascondi_gratuiti", False)),
+        "strategia_ultima": strategia if isinstance(strategia, str) else "",
+        "seminato": bool(raw.get("seminato", False)),
+    }
+
+
 def _models_config_path(data_dir: str) -> str:
     return os.path.join(data_dir, "models_config.json")
 
@@ -71,19 +143,13 @@ def load_models_config(data_dir: str) -> dict:
     return {
         "chain_order": chain,
         "provider_models": _clean_provider_models(raw.get("provider_models")),
+        **_chiavi_archivio(raw),
     }
 
 
 def save_models_config(data_dir: str, data: dict) -> dict:
     if not isinstance(data, dict):
         data = {}
-    raw_chain = data.get("chain_order", [])
-    if not isinstance(raw_chain, list):
-        raw_chain = []
-    clean = {
-        "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
-        "provider_models": _clean_provider_models(data.get("provider_models")),
-    }
     path = _models_config_path(data_dir)
     tmp = path + ".tmp"
     # Lettura-modifica-scrittura (stesso fix di claude_runner._save_usage per
@@ -91,9 +157,9 @@ def save_models_config(data_dir: str, data: dict) -> dict:
     # cancellerebbe silenziosamente un 'brain_model' legacy dal disco -- il
     # contrario di quanto dichiara il log in load_models_config ("non piu'
     # letto ne' scritto", che un operatore legge come "e' ancora li'"). Solo
-    # le chiavi che questa versione possiede (chain_order, provider_models)
-    # vengono aggiornate; qualunque altra chiave gia' sul disco (incl.
-    # 'brain_model') resta intatta.
+    # le chiavi che questa versione possiede (_CHIAVI_NOSTRE) vengono
+    # aggiornate; qualunque altra chiave gia' sul disco (incl. 'brain_model')
+    # resta intatta.
     disk_data: dict = {}
     if os.path.exists(path):
         try:
@@ -103,6 +169,26 @@ def save_models_config(data_dir: str, data: dict) -> dict:
             disk_data = {}
     if not isinstance(disk_data, dict):
         disk_data = {}
+    # Task 6: la fusione parte dal CONTENUTO GIA' SU DISCO, non dai
+    # predefiniti -- ed e' la STESSA ragione del fix di claude_runner._save_usage
+    # per 'per_agent'. Da quando le chiavi scritte sono sette invece di due, un
+    # corpo parziale (`{"chain_order": [...]}`) ricostruito sui predefiniti
+    # azzererebbe ponte, Ollama e nascondi_gratuiti: una perdita di
+    # configurazione silenziosa, cioe' esattamente cio' che la versione A
+    # esiste per impedire. Il contratto della PUT e' «sempre l'oggetto intero»
+    # e la pagina lo rispetta, ma un client diverso esiste (il gateway MCP).
+    base = dict(disk_data)
+    base.update({k: v for k, v in data.items() if k in _CHIAVI_NOSTRE})
+    raw_chain = base.get("chain_order", [])
+    if not isinstance(raw_chain, list):
+        # Una chain_order non-lista (null, un numero) non e' un 500: si azzera,
+        # come faceva la guardia che stava qui prima della fusione.
+        raw_chain = []
+    clean = {
+        "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
+        "provider_models": _clean_provider_models(base.get("provider_models")),
+        **_chiavi_archivio(base),
+    }
     disk_data.update(clean)
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(disk_data, fh)

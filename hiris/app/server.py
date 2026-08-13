@@ -752,7 +752,31 @@ async def _on_startup(app: web.Application) -> None:
     # leggere chain_order. Portava anche brain_model, uscito alla fetta E5
     # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
     # con la E3 -- vedi handlers_models.py.
-    from .api.handlers_models import load_models_config
+    from .api.handlers_models import load_models_config, save_models_config
+    from .migrazione_opzioni import semina
+    # Task 6 -- versione A della migrazione. Il Supervisor scarta ogni chiave
+    # fuori schema PRIMA che /data/options.json esista: togliere un'opzione
+    # dallo schema, da sola, fa sparire IN SILENZIO il valore dell'utente, e
+    # nessun ripiego in run.sh puo' recuperarlo. Finche' le opzioni ci sono
+    # ancora, si copia il loro valore nell'archivio di HIRIS -- una volta sola,
+    # dichiarandolo nel log. Le sette variabili qui sotto sono quelle che
+    # run.sh esporta dalle opzioni di config.yaml (i nomi MAIUSCOLI non
+    # coincidono con i nomi delle opzioni: la catena si segue per intero).
+    _archivio, _copiate = semina(load_models_config(data_dir), {
+        "BRIDGE_ENABLED": os.environ.get("BRIDGE_ENABLED", ""),
+        "BRIDGE_DEADLINE_MIN": os.environ.get("BRIDGE_DEADLINE_MIN", ""),
+        "CHAT_DAILY_CAP": os.environ.get("CHAT_DAILY_CAP", ""),
+        "LOCAL_MODEL_NAME": os.environ.get("LOCAL_MODEL_NAME", ""),
+        "OLLAMA_REQUEST_TIMEOUT": os.environ.get("OLLAMA_REQUEST_TIMEOUT", ""),
+        "HIRIS_HIDE_FREE_MODELS": os.environ.get("HIRIS_HIDE_FREE_MODELS", ""),
+        "LLM_STRATEGY": os.environ.get("LLM_STRATEGY", ""),
+    }, log=logger)
+    # Si persiste SEMPRE, anche quando non c'era niente da copiare: cio' che
+    # deve arrivare al disco e' `seminato`. Se la semina restasse in memoria, il
+    # rilascio successivo (versione B, opzioni fuori dallo schema) troverebbe di
+    # nuovo un archivio non seminato E un ambiente muto -- cioe' esattamente la
+    # perdita di valori che la versione A esiste per evitare.
+    save_models_config(data_dir, _archivio)
     app["models_config"] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
