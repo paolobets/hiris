@@ -1547,6 +1547,12 @@ async def _on_startup(app: web.Application) -> None:
         _strategy_order = _STRATEGY_ORDER.get(llm_strategy, _STRATEGY_ORDER["balanced"])
         _manual = app.get("models_config", {}).get("chain_order")
         _chain = reconcile_chain(_strategy_order, _manual, app["active_providers"])
+        # La catena EFFETTIVA, pubblicata perché la pagina Modelli possa
+        # RICEVERE la decisione invece di ricostruirla. È lo stesso oggetto che
+        # entra nel router una riga più sotto: se un giorno divergessero,
+        # divergerebbero da se stessi -- che è il difetto che questa fetta
+        # chiude, reso impossibile invece che vietato.
+        app["catena_modelli"] = list(_chain)
 
         router = LLMRouter(
             claude=claude_runner,
@@ -1561,6 +1567,7 @@ async def _on_startup(app: web.Application) -> None:
     else:
         app["claude_runner"] = None
         app["llm_router"] = None
+        app["catena_modelli"] = []
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the

@@ -7,6 +7,7 @@ import re
 import aiohttp
 from aiohttp import web
 
+from ..decisione_modelli import componi_adesso
 from ..env_util import env_bool
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,38 @@ def _build_config_providers(request: web.Request) -> list[dict]:
     ]
 
 
+def _modelli_in_uso(request: web.Request, provider_models: dict) -> dict[str, str]:
+    """Il modello che il runtime userebbe ADESSO, per provider.
+
+    Non «il modello configurato»: quello che il runner risolverebbe con
+    `model="auto"`. Sono i due rami veri --
+    `claude_runner.resolve_model` (default per-provider, altrimenti
+    AUTO_MODEL_MAP["chat"]) e `OpenAICompatRunner._resolve_model` (idem, con
+    la sua mappa) -- letti qui invece di essere reinventati.
+
+    La riga di `subscription` è la parte scomoda, ed è VERA: il modello del
+    ponte è un effetto collaterale del modello di Claude API.
+    `api/handlers_chat._enqueue_chat_job` compone
+    `modello_cli(resolve_model(impostazioni.model, "chat",
+    provider_models["claude"]))`, quindi cambiare il modello di Claude API
+    cambia il modello che gira sul piano, e `claude-opus-4-7` /
+    `claude-opus-4-1` producono lo stesso identico `opus`. La pagina lo mostra
+    perché è così, non perché ci piaccia.
+    """
+    from ..agent.runner import modello_cli
+    from ..backends.openai_compat_runner import AUTO_MODEL_MAP as _AUTO_COMPAT
+    from ..claude_runner import resolve_model
+
+    claude = resolve_model("auto", "chat", provider_models.get("claude", ""))
+    return {
+        "subscription": modello_cli(claude),
+        "claude": claude,
+        "openai": provider_models.get("openai", "") or _AUTO_COMPAT["chat"],
+        "openrouter": provider_models.get("openrouter", "") or _AUTO_COMPAT["chat"],
+        "ollama": request.app.get("local_model_name", ""),
+    }
+
+
 async def handle_get_models_config(request: web.Request) -> web.Response:
     data_dir = request.app.get("data_dir") or "/data"
     payload = load_models_config(data_dir)
@@ -192,6 +225,13 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         "model": os.environ.get("MEMORY_EMBEDDING_MODEL", ""),
     }
     payload["ollama_model"] = request.app.get("local_model_name", "")
+    payload["ponte_attivo"] = bool(request.app.get("ponte_attivo"))
+    payload["adesso"] = componi_adesso(
+        catena=list(request.app.get("catena_modelli") or []),
+        credenziali={p["id"]: p["has_credential"] for p in payload["providers"]},
+        modelli=_modelli_in_uso(request, payload["provider_models"]),
+        ponte_attivo=payload["ponte_attivo"],
+    )
     return web.json_response(payload)
 
 

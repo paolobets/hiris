@@ -193,3 +193,39 @@ async def test_list_models_reports_activation_state(client):
         assert isinstance(entry["has_credential"], bool)
     claude_entry = next(p for p in providers if p["id"] == "anthropic")
     assert claude_entry["has_credential"] is True
+
+
+@pytest.mark.asyncio
+async def test_il_payload_porta_la_decisione_gia_presa(client):
+    """La pagina non deve poter ricostruire l'esito: lo riceve. È l'invariante
+    2 della spec, e questo è il campo che lo rende possibile."""
+    resp = await client.get("/api/models/config")
+    body = await resp.json()
+    assert "adesso" in body
+    assert set(body["adesso"]) == {
+        "chi", "nome", "modello", "natura", "via", "frase", "diagnosi"}
+    assert isinstance(body["adesso"]["frase"], str) and body["adesso"]["frase"]
+
+
+@pytest.mark.asyncio
+async def test_il_payload_dichiara_se_il_ponte_e_acceso(client):
+    """Senza questo campo lo stato «ponte acceso, nessun token» è INVISIBILE
+    alla pagina: `toggle` di subscription legge solo PROVIDER_SUBSCRIPTION e
+    non BRIDGE_ENABLED, e `active` collassa i due casi in false. Il progetto
+    §4.3 dava il campo per già presente: non lo era."""
+    resp = await client.get("/api/models/config")
+    body = await resp.json()
+    assert "ponte_attivo" in body
+    assert isinstance(body["ponte_attivo"], bool)
+
+
+@pytest.mark.asyncio
+async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
+    """Non «il primo di chain_order»: il primo di `app["catena_modelli"]`,
+    cioè la lista che il router prova davvero."""
+    client.app["catena_modelli"] = ["openrouter", "claude"]
+    client.app["ponte_attivo"] = False
+    resp = await client.get("/api/models/config")
+    body = await resp.json()
+    assert body["adesso"]["chi"] == "openrouter"
+    assert body["adesso"]["nome"] == "OpenRouter"
