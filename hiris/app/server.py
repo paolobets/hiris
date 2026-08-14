@@ -64,8 +64,8 @@ def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
     return task
 
 
-def _ponte_attivo(interruttore: bool, piano_attivo: bool) -> bool:
-    """Il ponte e' acceso se lo accendi, o se il Piano Claude Max lo implica.
+def _ponte_attivo(archivio: dict | None) -> bool:
+    """Il ponte e' acceso se, e solo se, `ponte.attivo` lo dice nell'archivio.
 
     Fino alla 2.3.1 questa funzione si chiamava `_chat_subscription_active` ed
     era un AND fra DUE opzioni dell'add-on (`chat_via_subscription` e
@@ -75,21 +75,79 @@ def _ponte_attivo(interruttore: bool, piano_attivo: bool) -> bool:
 
     Il proprietario ha fuso i due interruttori in uno solo (`ponte.attivo`,
     13 agosto 2026), e il fail-safe NON e' stato rimosso: e' diventato
-    STRUTTURALE. Questa unica espressione governa adesso sia la spazzata
-    (`_reasoning_sweep`) sia l'instradamento, quindi i due non possono piu'
-    essere in disaccordo — mentre prima potevano, ed erano governati da leve
-    diverse. L'invariante «non accodare mai in una coda che nessuno spazza»
-    oggi non regge su un `and` da non sbagliare, ma sul fatto che c'e' un
-    valore solo.
+    STRUTTURALE. C'e' UN valore, derivato UNA volta (`_ricalcola_catena`
+    scrive `app["ponte_attivo"]`) e letto da tutti -- la spazzata,
+    l'instradamento della chat, il gate del lavoratore del ponte, la pagina.
+    L'invariante «non accodare mai in una coda che nessuno spazza» non regge
+    piu' su un `and` da non sbagliare, e nemmeno su due chiamate alla stessa
+    funzione: regge sul fatto che non c'e' niente da combinare.
 
-    `piano_attivo` e' `_sub_first_class`, cioe' Piano Claude Max acceso CON il
-    suo token: continua a implicare il ponte, cosi' chi sta nella
-    configurazione consigliata non deve accendere niente.
+    VERSIONE B (3.0.0): erano DUE argomenti, `interruttore` (da `BRIDGE_ENABLED`,
+    cioe' dall'opzione `ponte.attivo`) e `piano_attivo` (`_sub_first_class`,
+    cioe' `provider_subscription` acceso col suo token), combinati con un `or`.
+    Il secondo era l'IMPLICAZIONE: il piano acceso accendeva il ponte da se'.
+    Esce insieme all'opzione che lo alimentava, e non e' una perdita di
+    comodita' senza contropartita -- era l'ultima seconda rappresentazione del
+    prodotto (invariante 1): `app["ponte_attivo"]` poteva valere True mentre
+    l'archivio, che e' cio' che la pagina Modelli mostra e scrive, diceva
+    False. Con l'implicazione viva il bottone «Mettilo primo» non sarebbe
+    costruibile: metterebbe a `true` un valore gia' scavalcato, e spegnere il
+    ponte sarebbe impossibile per chiunque abbia un token.
 
-    Rimettere qui un AND fra due valori farebbe cadere
-    `test_chat_subscription_path.py::test_il_ponte_e_un_interruttore_solo`.
+    Chi aggiorna col token presente e `ponte.attivo` false perde il ponte, e
+    NON in silenzio: `_avvisi_del_ponte` glielo dice all'avvio nel registro, la
+    pagina Modelli lo dice in cima («Il Piano Claude Max ha il token, lo paghi,
+    ed e' fuori dalla catena») e accanto a quella frase c'e' il bottone che lo
+    riaccende in un gesto.
+
+    Rimettere qui un secondo valore -- un `or` con una credenziale, un `and`
+    con un interruttore -- farebbe cadere
+    `test_chat_subscription_path.py::test_il_ponte_e_un_valore_solo`.
     """
-    return interruttore or piano_attivo
+    return bool(((archivio or {}).get("ponte") or {}).get("attivo", False))
+
+
+def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
+    """Le due frasi che `run.sh` non puo' piu' dire, e perche' sono ancora qui.
+
+    Fino alla 2.5.0 vivevano in `run.sh`: erano l'unico posto che parlava
+    PRIMA che HIRIS partisse, e leggevano `PROVIDER_SUBSCRIPTION`/
+    `BRIDGE_ENABLED`. Con la versione B quelle opzioni non esistono e il ponte
+    vive nell'archivio di HIRIS, che da uno script di avvio non si legge. Le
+    frasi non si cancellano -- descrivono i due stati che costano soldi senza
+    dirlo -- si spostano dove l'archivio c'e'.
+
+    Funzione PURA: restituisce le righe, non le scrive. E' cio' che permette di
+    provarle senza montare un'applicazione, ed e' anche la ragione per cui il
+    chiamante puo' decidere il livello.
+
+    I due stati:
+
+    - **ponte acceso, token assente**: nessun messaggio arriva al piano. Dal
+      Task 14 il turno non si perde piu' (scende alla catena nella stessa
+      richiesta), ma scende a un provider a consumo: un ripiego silenzioso dal
+      forfait al consumo si scopre a fine mese.
+    - **token presente, ponte spento**: e' lo stato in cui si ritrova chi
+      aggiorna alla 3.0.0 avendo il piano acceso via `provider_subscription`
+      SENZA aver mai acceso il ponte. Quell'opzione implicava il ponte; la
+      versione B toglie l'implicazione (vedi `_ponte_attivo`), e la copia
+      d'archivio della 2.5.0 aveva copiato l'OPZIONE `ponte.attivo`, non lo
+      stato effettivo. Il ponte si spegne, e questa riga e' cio' che rende la
+      cosa rumorosa invece che silenziosa: senza, la chat tornerebbe a pagare
+      a consumo senza dirlo.
+    """
+    if ponte_attivo and not token_presente:
+        return ["Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
+                "vuoto: nessun messaggio arriva al Piano Claude Max, e ogni turno "
+                "passa alla catena -- dal forfait al consumo. Incolla il token, "
+                "oppure spegni il ponte dalla pagina Modelli di HIRIS."]
+    if token_presente and not ponte_attivo:
+        return ["Hai il token del Piano Claude Max, ma il ponte e' spento: le "
+                "risposte passano dalla catena, a consumo. Il ponte non si accende "
+                "piu' da un'opzione dell'add-on -- si accende nella pagina Modelli "
+                "di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il "
+                "token, lo paghi, ed e' fuori dalla catena»."]
+    return []
 
 
 # fetta «la pagina di configurazione» (2.3.0): `_parse_policy_csv` esce con la
@@ -469,10 +527,8 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     return True
 
 
-def should_start_agent_worker() -> bool:
-    """Gate worker del ponte in-addon: attivo quando il Piano Claude Max e'
-    acceso (`provider_subscription`) oppure il ponte lo e' (`ponte.attivo`,
-    che esporta BRIDGE_ENABLED), E un token OAuth e' presente.
+def should_start_agent_worker(ponte_attivo: bool) -> bool:
+    """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
 
     Fino alla 2.3.1 la seconda meta' della condizione leggeva
     CHAT_VIA_SUBSCRIPTION: era una delle tre cose che quell'opzione faceva, e
@@ -480,12 +536,18 @@ def should_start_agent_worker() -> bool:
     e quello della spazzata leggono finalmente lo STESSO valore — prima si
     poteva far partire il worker (via `chat_via_subscription`) lasciando
     spenta la spazzata (`bridge_enabled`), e il worker sondava una coda che
-    nessuno riempiva."""
-    sub_on = (
-        env_bool("PROVIDER_SUBSCRIPTION")
-        or env_bool("BRIDGE_ENABLED")
-    )
-    return sub_on and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    nessuno riempiva.
+
+    VERSIONE B (3.0.0): non legge piu' NIENTE dall'ambiente per il ponte.
+    `PROVIDER_SUBSCRIPTION` e `BRIDGE_ENABLED` erano le ultime due opzioni
+    dell'add-on lette qui, e il valore arriva adesso come argomento --
+    `app["ponte_attivo"]`, lo stesso che governa la spazzata e
+    l'instradamento. E' una funzione di modulo senza `app`: passarglielo e'
+    l'unico modo di tenerla una funzione pura e di renderla chiamabile ANCHE
+    a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
+    (`_ricalcola_catena`). Il token resta letto qui: e' una credenziale, e le
+    credenziali stanno ancora nelle opzioni dell'add-on."""
+    return ponte_attivo and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
 
 
 def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
@@ -665,6 +727,61 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
     return innesca
 
 
+def _governa_lavoratore_del_ponte(app) -> None:
+    """Fa partire, o fa smettere, il lavoratore che risponde sul piano.
+
+    Fino alla 2.5.0 questa decisione si prendeva UNA volta, alla fine
+    dell'avvio, perche' l'interruttore del ponte era un'opzione dell'add-on e
+    cambiarla voleva dire riavviare. Dalla versione B l'interruttore vive
+    nell'archivio e la pagina Modelli lo riscrive: la decisione deve poterne
+    seguire i cambiamenti, o accendere il ponte dalla pagina produrrebbe la
+    peggiore delle due meta' (la chat instradata sul piano, e nessuno a
+    rispondere: ogni turno aspetta la scadenza e poi ripiega sulla catena).
+
+    Le due direzioni sono simmetriche e sono entrambe necessarie:
+    - acceso e nessun lavoratore vivo -> si avvia;
+    - spento e un lavoratore vivo -> si ferma. Senza questo ramo, spegnere il
+      ponte lascerebbe un ciclo che interroga la coda ogni tre secondi per
+      sempre -- rumore nel registro, e un consumatore per una coda che nessuno
+      riempie.
+
+    Senza un event loop in corso non si fa niente e non e' un ripiego: un
+    compito asincrono non ha dove girare. Succede solo fuori dal server (i test
+    che chiamano `_ricalcola_catena` come funzione), e in quel caso l'assenza
+    del lavoratore e' il fatto vero, non una supposizione.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    voluto = should_start_agent_worker(bool(app.get("ponte_attivo")))
+    corrente = app.get("agent_worker_task")
+    vivo = corrente is not None and not corrente.done()
+
+    if voluto and not vivo:
+        from .agent import runner as _agent_runner
+
+        app["agent_worker_task"] = _spawn(
+            _agent_runner.run_loop(
+                "http://127.0.0.1:8099",
+                _agent_runner.build_headers,
+                os.environ.get("HIRIS_AGENT_MODE", "live"),
+                int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
+            ),
+            name="agent_worker",
+        )
+        logger.info(
+            "Lavoratore del ponte avviato: il ponte e' acceso e il token del "
+            "Piano Claude Max c'e'.")
+    elif not voluto and vivo:
+        corrente.cancel()
+        app["agent_worker_task"] = None
+        logger.info(
+            "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
+            "token del Piano Claude Max. La chat risponde dalla catena.")
+
+
 def _ricalcola_catena(app) -> None:
     """Rimette in vigore, a caldo, ciò che la pagina Modelli ha appena salvato.
 
@@ -676,9 +793,30 @@ def _ricalcola_catena(app) -> None:
     salvataggio sembrava perso. Era la stessa divergenza che questa fetta
     chiude, spostata di un livello, e fino al Task 10 c'era una riga in pagina
     che la confessava.
+
+    VERSIONE B (3.0.0): rimette in vigore anche il PONTE. `app["ponte_attivo"]`
+    era una copia presa all'avvio da `BRIDGE_ENABLED`, e finche' quel valore
+    veniva da un'opzione dell'add-on non poteva cambiare senza un riavvio.
+    Adesso viene dall'archivio, che la pagina Modelli riscrive: se restasse
+    fermo all'avvio, accendere il ponte dalla pagina tornerebbe 200 e non
+    farebbe niente fino al riavvio successivo -- esattamente il difetto che il
+    Task 10 ha chiuso per la catena. Qui e' l'UNICO posto che lo scrive.
     """
     from .model_activation import provider_in_catena
     cfg = app.get("models_config") or {}
+    # Un valore solo, derivato una volta, letto da tutti: la spazzata
+    # (`_reasoning_sweep`), l'instradamento (`handlers_chat.handle_chat`), la
+    # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
+    # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
+    app["ponte_attivo"] = _ponte_attivo(cfg)
+    # E il lavoratore del ponte SEGUE l'interruttore, invece di essere deciso
+    # una volta all'avvio. Sono i due lati dello stesso fatto: accendere il
+    # ponte senza far partire chi risponde vorrebbe dire accodare ogni turno in
+    # una coda che nessuno serve, e ogni messaggio scadrebbe prima di ripiegare
+    # sulla catena (Task 14) -- cioe' il bottone «Mettilo primo» sarebbe un
+    # bottone che risponde 200 e fa aspettare. Spegnerlo senza fermarlo
+    # lascerebbe un ciclo che interroga una coda vuota ogni tre secondi.
+    _governa_lavoratore_del_ponte(app)
     router = app.get("llm_router")
     mappa = router._backend_map() if router is not None else {}
     # Chi può rispondere ADESSO: la stessa regola dell'avvio (`_risponde`),
@@ -964,9 +1102,9 @@ async def _on_startup(app: web.Application) -> None:
             logger.warning(
                 "Migrazione (versione A): 'giorni_conservazione' (%d) NON e' "
                 "stato scritto su disco (%s). Il valore vale per questo avvio, "
-                "ma il rilascio che toglie 'history_retention_days' dalle "
-                "opzioni lo perderebbe: va salvato dalla pagina Impostazioni "
-                "chat prima di aggiornare.",
+                "ma al prossimo riavvio si perde: 'history_retention_days' non "
+                "e' piu' un'opzione dell'add-on, quindi non c'e' piu' niente da "
+                "cui rileggerlo. Salvalo dalla pagina Impostazioni chat.",
                 impostazioni_chat.giorni_conservazione, exc,
             )
 
@@ -1124,10 +1262,20 @@ async def _on_startup(app: web.Application) -> None:
     # catena (sotto), dove la regola vecchia contava il modello insieme
     # all'indirizzo. Il modello che il runner usa arriva dall'archivio -- una
     # sola casa, `models_config["ollama"]["modello"]` (Task 9).
+    #
+    # DA VERSIONE B (3.0.0) `run.sh` NON esporta piu' questa variabile, ne' le
+    # sei della semina, ne' i cinque `PROVIDER_*` letti dalla migrazione della
+    # catena piu' sotto: l'opzione non c'e' piu'. Le letture restano perche'
+    # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
+    # popolato dal vecchio `run.sh` deve poter migrare -- non puo' succedere
+    # via Supervisor, puo' succedere in sviluppo. Escono con la fetta
+    # successiva, insieme a `_catena_com_era` e a `migrazione_opzioni`, quando
+    # nessuna installazione potra' piu' arrivare non seminata (scadenza: la
+    # prima fetta dopo il 14 agosto 2026). Fino ad allora il censimento le
+    # elenca fra le «variabili lette e mai esportate da run.sh», ed e' corretto.
     _nome_modello_com_era = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    llm_strategy = os.environ.get("LLM_STRATEGY", "balanced")
 
     # ── Le credenziali, e nient'altro ──────────────────────────────────
     # fetta «la catena diventa l'unica verita'»: qui c'erano i cinque
@@ -1197,26 +1345,21 @@ async def _on_startup(app: web.Application) -> None:
             save_models_config(data_dir, _arch, segni=True)
             app["models_config"] = load_models_config(data_dir)
 
-    # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
-    # bridge attivo -- senza, la chat resterebbe bloccata lasciando i job
-    # 'chat' in coda senza nessuno che li spazzi/reclami/pruni. Calcolato qui,
-    # PRIMA di ogni gate più sotto che legge BRIDGE_ENABLED dall'env
-    # (_reasoning_sweep e il cablaggio di `app["ponte_attivo"]` poco più in
-    # basso -- fetta E3 Task 4: il terzo gate, l'enqueue di
-    # `_holistic_reason`, e' uscito con lei), così ognuno di quei punti vede
-    # l'abbonamento senza duplicare il parsing env. Vedi task-3-report.md per
-    # il grep BRIDGE_ENABLED che aveva individuato i tre gate originari.
-    # SP-2 T3 review: usa lo stato CREDENZIALE-CONSAPEVOLE, non il toggle
-    # grezzo (`_credenziali["subscription"]` = token presente),
-    # non il toggle grezzo: così provider_subscription=true SENZA token non apre
-    # i gate di enqueue mentre il worker (gated dal token) non parte — evitando
-    # richieste chat accodate e mai servite. Simmetrico a should_start_agent_worker.
-    # `PROVIDER_SUBSCRIPTION` e' l'ULTIMO dei cinque interruttori ancora
-    # letto, e resta finche' il Task 14 non porta il piano DENTRO la catena e
-    # il Task 13 non lo toglie dallo schema. Non e' una seconda
-    # rappresentazione della catena: il piano non e' un membro di
-    # `chain_order`, e la sua presenza in testa discende da qui.
-    _sub_first_class = _credenziali["subscription"] and env_bool("PROVIDER_SUBSCRIPTION")
+    # Qui viveva `_sub_first_class`, cioe' `_credenziali["subscription"] and
+    # env_bool("PROVIDER_SUBSCRIPTION")`: il Piano Claude Max acceso col suo
+    # token IMPLICAVA il ponte, e l'implicazione entrava in tutti e due i gate
+    # (la spazzata e l'instradamento). E' USCITA con la versione B, insieme
+    # all'opzione che la alimentava -- l'ultimo dei cinque interruttori ancora
+    # letto, e l'ultima seconda rappresentazione del prodotto: con lei viva,
+    # `app["ponte_attivo"]` poteva dire True mentre `ponte.attivo`, cioe' cio'
+    # che la pagina Modelli mostra e scrive, diceva False. Il ponte adesso e'
+    # un valore solo (`_ponte_attivo`, che legge l'archivio), e si accende
+    # dalla pagina -- dove c'e' anche il bottone che lo fa in un gesto.
+    #
+    # Le due frasi che `run.sh` diceva su questo stato si sono spostate qui
+    # sotto (`_avvisi_del_ponte`): da uno script di avvio l'archivio non si
+    # legge, e restare in silenzio avrebbe reso muta proprio la transizione che
+    # questa versione produce.
 
     # Provider di embedding. Fetta "esce il documentale": `MEMORY_RAG_K`/
     # `memory.rag_k` escono da qui e dalle altre quattro sedi dell'opzione --
@@ -1620,10 +1763,16 @@ async def _on_startup(app: web.Application) -> None:
     # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
     # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
     async def _reasoning_sweep() -> None:
-        # Stesso combinatore dell'instradamento, piu' in basso: e' cosi' che il
-        # fail-safe «mai accodare in una coda che nessuno spazza» regge adesso
-        # che l'AND fra due opzioni non c'e' piu'.
-        if not _ponte_attivo(env_bool("BRIDGE_ENABLED"), _sub_first_class):
+        # Lo STESSO VALORE dell'instradamento, non la stessa espressione: fino
+        # alla 2.5.0 i due gate chiamavano `_ponte_attivo` ciascuno per conto
+        # suo sugli stessi due ingressi, e il fail-safe «mai accodare in una
+        # coda che nessuno spazza» reggeva sul fatto che le due chiamate
+        # restassero identiche. Adesso il valore e' derivato UNA volta
+        # (`_ricalcola_catena`) e qui si LEGGE: due letture dello stesso slot
+        # non possono divergere nemmeno per distrazione. Ed e' anche cio' che
+        # rende la spazzata sensibile al ponte spento dalla pagina, senza un
+        # riavvio.
+        if not app.get("ponte_attivo"):
             return
         for job in reasoning_queue.sweep_expired(_time.time()):
             if job.get("kind") != "chat":
@@ -1653,27 +1802,28 @@ async def _on_startup(app: web.Application) -> None:
         _reasoning_sweep, trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
-    # Il punto di cablaggio: da qui `handle_chat` sa se instradare il turno
-    # sul ponte. `handlers_chat._bridge_on` verifica soltanto che
-    # `app["reasoning_queue"]` sia agganciata -- e in produzione lo e' sempre,
-    # perche' la coda si crea incondizionatamente poche righe piu' su -- quindi
-    # da sola non dice che qualcuno reclami o spazzi quei job. E' questo valore
-    # a dirlo. Tenere il gate QUI, invece di insegnare BRIDGE_ENABLED a
-    # `_bridge_on`, lascia ai test di handlers_chat.py la possibilita' di
-    # agganciare o sganciare la coda senza toccare le variabili d'ambiente.
+    # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
+    # sul ponte -- NON e' piu' qui: e' `_ricalcola_catena`, l'unica riga del
+    # prodotto che scrive `app["ponte_attivo"]`, e viene chiamata sia all'avvio
+    # (`_rimetti_in_vigore`, piu' sotto) sia a ogni salvataggio della pagina
+    # Modelli. Doveva spostarsi: il valore viene adesso dall'archivio, che la
+    # pagina riscrive, e un cablaggio fatto una volta all'avvio avrebbe
+    # riprodotto per il ponte il difetto che il Task 10 ha chiuso per la
+    # catena -- salvataggio accettato con 200, effetto solo al riavvio.
     #
-    # SP-2 T3: `provider_subscription` first-class deve forzare il ponte
-    # ovunque BRIDGE_ENABLED sia letto, non solo qui. `_sub_first_class`
-    # (calcolata una volta, subito dopo `_active`) entra in tutti e due i punti
-    # rimasti: l'uscita anticipata di `_reasoning_sweep` e questo cablaggio.
+    # `handlers_chat._bridge_on` verifica soltanto che `app["reasoning_queue"]`
+    # sia agganciata -- e in produzione lo e' sempre, perche' la coda si crea
+    # incondizionatamente poche righe piu' su -- quindi da sola non dice che
+    # qualcuno reclami o spazzi quei job. E' `app["ponte_attivo"]` a dirlo:
+    # tenere il gate li', invece di insegnare l'archivio a `_bridge_on`, lascia
+    # ai test di handlers_chat.py la possibilita' di agganciare o sganciare la
+    # coda senza toccare la configurazione.
     #
     # Fusione dei due interruttori (2.4.0): qui c'erano DUE derivazioni --
     # `_bridge_enabled` e `_chat_via_subscription_cfg` -- combinate da un AND,
-    # ed era quello il fail-safe. Adesso il valore e' uno, calcolato dalla
-    # stessa funzione che governa la spazzata: i due gate leggono la medesima
-    # espressione e non possono divergere. Il fail-safe non e' sparito, ha
-    # cambiato natura -- da regola da non sbagliare a struttura.
-    app["ponte_attivo"] = _ponte_attivo(env_bool("BRIDGE_ENABLED"), _sub_first_class)
+    # ed era quello il fail-safe. Poi UNA espressione condivisa (2.5.0). Adesso
+    # e' UN VALORE condiviso: il fail-safe non e' sparito, ha finito di
+    # cambiare natura -- da regola da non sbagliare, a struttura.
 
     # fetta E3 Task 4: l'arrivo serale (watcher/arrival.py, ArrivalWatcher)
     # e' uscito -- riusava lo stesso adapter `_on_situation` della ronda,
@@ -1863,7 +2013,15 @@ async def _on_startup(app: web.Application) -> None:
             openai=openai_runner,
             openrouter=openrouter_runner,
             ollama=ollama_runner,
-            strategy=llm_strategy,
+            # `strategy=` NON si passa piu' (versione B): era
+            # `os.environ.get("LLM_STRATEGY")`, cioe' l'opzione dell'add-on, e
+            # `LLMRouter` la usa SOLO nel ramo `model_chain is None` -- che qui
+            # non si prende mai, perche' `model_chain=_chain` e' sempre
+            # esplicito. Era un valore letto e mai usato: toglierlo non cambia
+            # nessun comportamento, e lasciarlo avrebbe fatto sopravvivere
+            # l'ultima lettura di comportamento di un'opzione uscita. Il
+            # parametro resta in `LLMRouter` come default di libreria, dove i
+            # suoi test lo pinnano.
             model_chain=_chain,
             # Il ciclo di ripiego e' il SOLO posto in cui HIRIS vede come si
             # comporta un provider davvero, e fino a questa fetta lo buttava
@@ -1898,30 +2056,33 @@ async def _on_startup(app: web.Application) -> None:
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the
     # user's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN) instead of metered
-    # API spend. Off unless both the feature flag and the token are present
-    # (should_start_agent_worker). Il server MCP interno che la chat usava per
-    # i tool di CONTROLLO casa usci' con la Fetta E2 Task 3 e non e' tornato:
-    # quando l'azione e' rientrata (fetta «comandare») e' rientrata come UNO
-    # strumento nel catalogo unico, non come un secondo server. Questo worker
-    # non ragiona piu' in puro testo -- dalla fetta "il ponte riceve gli
-    # strumenti" (parita' B) riceve gli strumenti dalla rotta `POST /api/mcp`
-    # registrata piu' sotto, e il prompt lo dichiara al modello solo quando la
-    # sonda ha confermato che ci sono davvero (vedi agent/runner.py).
-    if should_start_agent_worker():
-        from .agent import runner as _agent_runner
-
-        app["agent_worker_task"] = _spawn(
-            _agent_runner.run_loop(
-                "http://127.0.0.1:8099",
-                _agent_runner.build_headers,
-                os.environ.get("HIRIS_AGENT_MODE", "live"),
-                int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
-            ),
-            name="agent_worker",
-        )
-        logger.info("Chat-via-abbonamento worker in-addon avviato")
-    else:
-        logger.info("Chat-via-abbonamento worker NON avviato (flag/token assenti)")
+    # API spend. Il server MCP interno che la chat usava per i tool di
+    # CONTROLLO casa usci' con la Fetta E2 Task 3 e non e' tornato: quando
+    # l'azione e' rientrata (fetta «comandare») e' rientrata come UNO strumento
+    # nel catalogo unico, non come un secondo server. Questo worker non ragiona
+    # piu' in puro testo -- dalla fetta "il ponte riceve gli strumenti"
+    # (parita' B) riceve gli strumenti dalla rotta `POST /api/mcp` registrata
+    # piu' sotto, e il prompt lo dichiara al modello solo quando la sonda ha
+    # confermato che ci sono davvero (vedi agent/runner.py).
+    #
+    # QUI c'era il `if should_start_agent_worker():` che lo avviava una volta
+    # sola. Vive adesso in `_governa_lavoratore_del_ponte`, che
+    # `_rimetti_in_vigore()` ha gia' chiamato poche righe sopra: l'avvio e il
+    # salvataggio dalla pagina Modelli passano dalla STESSA strada, che e' la
+    # disciplina del Task 10 (la catena) applicata al ponte. Se fosse rimasto
+    # qui, accendere il ponte dalla pagina instraderebbe la chat su una coda
+    # senza nessuno a servirla: ogni turno aspetterebbe la scadenza prima di
+    # ripiegare, e il bottone «Mettilo primo» sarebbe un bottone che risponde
+    # 200 e fa aspettare.
+    #
+    # Le due frasi sul ponte che `run.sh` non puo' piu' dire (da uno script di
+    # avvio l'archivio non si legge): ponte acceso senza token, e token senza
+    # ponte. Sono l'ultima cosa dell'avvio perche' sono le prime che un
+    # operatore cerca in coda al registro quando la chat costa piu' del
+    # previsto.
+    for _avviso in _avvisi_del_ponte(bool(app.get("ponte_attivo")),
+                                     _credenziali["subscription"]):
+        logger.warning(_avviso)
 
 
 async def _on_cleanup(app: web.Application) -> None:

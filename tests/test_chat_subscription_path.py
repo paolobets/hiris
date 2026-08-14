@@ -565,43 +565,77 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# LA FUSIONE DEI DUE INTERRUTTORI (2.4.0).
+# IL PONTE, DA DUE LEVE A UN VALORE SOLO (2.4.0 -> 3.0.0).
 #
 # Qui stavano sei test che pinnavano un AND: `_chat_subscription_active(cfg,
 # bridge)` doveva essere `and`, mai `or`, perche' era il fail-safe numero uno
 # del rilascio -- senza, si poteva instradare la chat in una coda che nessuno
 # spazzava. Il proprietario ha fuso `bridge_enabled` e `chat_via_subscription`
-# in un interruttore solo (`ponte.attivo`): l'AND non ha piu' due valori da
-# combinare, e quei sei test non hanno piu' un soggetto.
+# in un interruttore solo (`ponte.attivo`, 2.4.0): l'AND non ha piu' due valori
+# da combinare, e quei sei test non hanno piu' un soggetto.
 #
-# Il fail-safe pero' NON e' stato rimosso: e' diventato strutturale. La stessa
-# espressione (`server._ponte_attivo`) governa adesso la spazzata E
-# l'instradamento, quindi i due non possono divergere -- mentre prima erano
-# governati da opzioni diverse e potevano. Quello che segue pinna la nuova
-# forma dell'invariante, non la vecchia.
+# Poi ne sono stati scritti quattro sulla forma intermedia -- `_ponte_attivo`
+# come `or` fra l'interruttore e l'implicazione del piano -- e anche quelli
+# hanno finito il loro soggetto con la versione B (3.0.0): `provider_
+# subscription` e' uscita dallo schema, e con lei l'implicazione. Erano
+# «il Piano Claude Max da solo basta» e «il piano implica il ponte solo se lo
+# hai acceso TU», cioe' due affermazioni su un `or` che non c'e' piu'.
+#
+# Il fail-safe non e' stato rimosso in nessuno dei due passaggi: ha finito di
+# cambiare natura. Da regola da non sbagliare (un `and` scritto a mano in due
+# punti), a espressione condivisa (la stessa funzione chiamata due volte), a
+# VALORE condiviso: `_ricalcola_catena` scrive `app["ponte_attivo"]`, e la
+# spazzata e l'instradamento lo LEGGONO. Due letture dello stesso slot non
+# possono divergere nemmeno per distrazione.
+#
+# Quello che segue pinna la forma di oggi, e soprattutto cio' che oggi NON deve
+# poter tornare.
 # ---------------------------------------------------------------------------
 
 from hiris.app.server import _ponte_attivo
 
 
-@pytest.mark.parametrize("interruttore,piano,atteso", [
-    (True, False, True),    # l'interruttore da solo basta -- era False con l'AND
-    (False, True, True),    # il Piano Claude Max da solo basta -- era False con l'AND
-    (True, True, True),
-    (False, False, False),  # nessuno dei due: il ponte resta spento
+@pytest.mark.parametrize("archivio,atteso", [
+    ({"ponte": {"attivo": True}}, True),
+    ({"ponte": {"attivo": False}}, False),
+    # Un archivio senza il blocco, o senza la chiave, o vuoto, o assente: il
+    # ponte e' SPENTO. Non e' un dettaglio di robustezza -- e' la direzione in
+    # cui l'ignoranza deve cadere. Se cadesse dall'altra parte, un archivio
+    # illeggibile instraderebbe la chat su una coda che nessuno serve.
+    ({"ponte": {}}, False),
+    ({}, False),
+    (None, False),
 ])
-def test_il_ponte_e_un_interruttore_solo(interruttore, piano, atteso):
-    """Prova per mutazione della fusione.
+def test_il_ponte_e_un_valore_solo(archivio, atteso):
+    """Prova per mutazione della forma finale.
 
-    Le prime due righe sono quelle che cadono se qualcuno rimette l'AND: con
-    `and` darebbero entrambe False. Sono qui apposta, e il commento accanto
-    dice cosa valevano prima, cosi' chi legge il fallimento capisce subito che
-    ha riportato indietro la coppia di leve invece di aver rotto altro.
-
-    L'ultima riga e' l'invariante che sopravvive alla fusione: senza ne'
-    interruttore ne' piano, il ponte NON si accende.
+    C'e' UN ingresso: l'archivio. Chiunque ne aggiunga un secondo -- un `or`
+    con una credenziale (l'implicazione appena tolta), un `and` con un
+    interruttore (la coppia di leve del 2023) -- deve far cadere qualcosa, e
+    questo e' il posto.
     """
-    assert _ponte_attivo(interruttore, piano) is atteso
+    assert _ponte_attivo(archivio) is atteso
+
+
+def test_il_token_da_solo_non_accende_il_ponte(monkeypatch):
+    """L'IMPLICAZIONE E' USCITA (versione B), ed e' il fatto piu' facile da
+    rimettere per gentilezza.
+
+    Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
+    ponte da se' (`_sub_first_class`): chi stava nella configurazione
+    consigliata non doveva accendere niente. Costava pero' l'ultima seconda
+    rappresentazione del prodotto -- `app["ponte_attivo"]` poteva valere True
+    mentre `ponte.attivo`, cioe' cio' che la pagina Modelli mostra e scrive,
+    diceva False -- e rendeva IMPOSSIBILE spegnere il ponte a chiunque avesse
+    un token, oltre a rendere inutile il bottone che lo accende.
+
+    Il token c'e', l'archivio dice di no: il ponte e' spento. Chi lo aveva
+    acceso attraverso il piano se lo sente dire all'avvio
+    (`_avvisi_del_ponte`) e lo rivede in cima alla pagina Modelli, col gesto
+    accanto.
+    """
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+    assert _ponte_attivo({"ponte": {"attivo": False}}) is False
 
 
 def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
@@ -609,48 +643,57 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
 
     Prima l'invariante «non accodare mai in una coda che nessuno spazza» era
     una regola da non sbagliare: due opzioni distinte, combinate a mano nel
-    punto giusto. Adesso e' una struttura: `_reasoning_sweep` e il cablaggio di
-    `app["ponte_attivo"]` chiamano la STESSA funzione sullo STESSO valore, e
-    non possono dire cose diverse. Se qualcuno riscrivesse uno dei due gate a
-    mano, l'invariante tornerebbe a dipendere dall'attenzione: questo test lo
-    impedisce.
+    punto giusto. Poi due chiamate alla stessa funzione. Adesso e' una
+    struttura: `_ricalcola_catena` e' l'UNICO posto che deriva il valore, e
+    `_reasoning_sweep` lo legge invece di ricalcolarlo. Se qualcuno riscrivesse
+    uno dei due a mano, l'invariante tornerebbe a dipendere dall'attenzione:
+    questo test lo impedisce, e guarda tutti e tre i lati.
     """
     import inspect
+
     from hiris.app import server
 
-    src = inspect.getsource(server._on_startup)
-
-    riga_cablaggio = next(
-        r for r in src.splitlines() if 'app["ponte_attivo"] =' in r)
-    assert "_ponte_attivo(" in riga_cablaggio, (
+    ricalcola = inspect.getsource(server._ricalcola_catena)
+    riga_cablaggio = [r for r in ricalcola.splitlines()
+                      if 'app["ponte_attivo"] =' in r]
+    assert len(riga_cablaggio) == 1, riga_cablaggio
+    assert "_ponte_attivo(" in riga_cablaggio[0], (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
         "booleana e' stata riscritta a mano nel punto di assegnazione"
     )
 
+    src = inspect.getsource(server._on_startup)
+    assert 'app["ponte_attivo"] =' not in src, (
+        "il ponte e' tornato a essere cablato UNA volta all'avvio: da li' non "
+        "puo' seguire un salvataggio della pagina Modelli, e accendere il "
+        "ponte tornerebbe a essere una PUT che risponde 200 e non fa niente "
+        "fino al riavvio"
+    )
+
     sweep_pos = src.index("async def _reasoning_sweep()")
-    corpo_sweep = src[sweep_pos:sweep_pos + 500]
-    assert "_ponte_attivo(" in corpo_sweep, (
-        "la spazzata non passa piu' dal combinatore condiviso: puo' tornare a "
-        "essere in disaccordo con l'instradamento, ed e' esattamente il buco "
-        "che l'AND di prima serviva a chiudere"
+    corpo_sweep = src[sweep_pos:sweep_pos + 900]
+    assert 'app.get("ponte_attivo")' in corpo_sweep, (
+        "la spazzata non legge piu' il valore condiviso: puo' tornare a essere "
+        "in disaccordo con l'instradamento, ed e' esattamente il buco che l'AND "
+        "di prima serviva a chiudere"
+    )
+    assert "_ponte_attivo(" not in corpo_sweep, (
+        "la spazzata RIDERIVA il valore invece di leggerlo: due derivazioni "
+        "possono divergere, una lettura sola no"
     )
 
 
-def test_il_gate_legge_la_variabile_col_convenzionale_env_bool():
-    """La convenzione dei booleani non cambia con la fusione: '1'/'true'/'yes'/
-    'on' via `env_util.env_bool`, come ogni altro interruttore del modulo."""
-    import inspect
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    assert 'env_bool("BRIDGE_ENABLED")' in src
-
-
-def test_la_seconda_leva_non_esiste_piu_da_nessuna_parte():
-    """L'opzione fusa non deve rientrare dalla porta di servizio.
+def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
+    """Le due leve del 2023, e la terza del 2026, non devono rientrare dalla
+    porta di servizio.
 
     Un'opzione vive in cinque posti: bastava che ne resuscitasse uno perche'
-    tornasse a esserci una seconda leva da tenere allineata a mano.
+    tornasse a esserci una leva da tenere allineata a mano. Con la versione B
+    non ne resta nessuna -- `ponte:` per intero e `provider_subscription` sono
+    usciti -- e `server.py` non legge piu' nessuna delle due variabili
+    d'ambiente per DECIDERE. `BRIDGE_ENABLED` resta nominata in una riga viva
+    sola, quella della migrazione (`_catena_com_era`), che copia la catena
+    com'era e non decide niente: si guarda quindi il gate, non il nome.
     """
     import pathlib as _pl
 
@@ -658,52 +701,89 @@ def test_la_seconda_leva_non_esiste_piu_da_nessuna_parte():
 
     base = _pl.Path(__file__).resolve().parents[1] / "hiris"
     cfg = yaml.safe_load((base / "config.yaml").read_text(encoding="utf-8"))
-    assert "chat_via_subscription" not in cfg["options"]["ponte"]
-    assert "chat_via_subscription" not in cfg["schema"]["ponte"]
+    for chiave in ("ponte", "provider_subscription", "chat_via_subscription"):
+        assert chiave not in cfg["options"], chiave
+        assert chiave not in cfg["schema"], chiave
 
     vive = [r for r in (base / "run.sh").read_text(encoding="utf-8").splitlines()
             if not r.lstrip().startswith("#")]
-    assert not [r for r in vive if "CHAT_VIA_SUBSCRIPTION" in r]
+    for variabile in ("CHAT_VIA_SUBSCRIPTION", "BRIDGE_ENABLED",
+                      "PROVIDER_SUBSCRIPTION"):
+        assert not [r for r in vive if variabile in r], variabile
 
     for lingua in ("it", "en"):
-        testo = (base / "translations" / f"{lingua}.yaml").read_text(encoding="utf-8")
-        tradotte = yaml.safe_load(testo)["configuration"]
-        assert "chat_via_subscription" not in tradotte["ponte"]
+        tradotte = yaml.safe_load(
+            (base / "translations" / f"{lingua}.yaml").read_text(encoding="utf-8")
+        )["configuration"]
+        assert "ponte" not in tradotte
+        assert "provider_subscription" not in tradotte
 
     app_py = (base / "app" / "server.py").read_text(encoding="utf-8").splitlines()
     codice = [r for r in app_py if not r.lstrip().startswith("#")]
     assert not [r for r in codice if 'env_bool("CHAT_VIA_SUBSCRIPTION")' in r]
+    assert not [r for r in codice if 'env_bool("PROVIDER_SUBSCRIPTION")' in r], (
+        "l'ultimo dei cinque interruttori e' tornato a decidere qualcosa"
+    )
+    # L'IMPLICAZIONE, non il suo nome: la docstring di `_ponte_attivo` racconta
+    # apposta che cosa era `_sub_first_class` e perche' e' uscita, e una
+    # docstring non e' un commento `#` -- il filtro qui sopra non la toglie. Si
+    # guarda quindi la scrittura che la farebbe rientrare (l'assegnazione), non
+    # la citazione che la spiega. Stesso criterio di
+    # `test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti`.
+    assert not [r for r in codice if r.strip().startswith("_sub_first_class =")], (
+        "l'implicazione «il piano acceso accende il ponte» e' rientrata"
+    )
 
 
-def test_il_piano_implica_il_ponte_solo_se_lo_hai_acceso_TU():
-    """fetta «la catena diventa l'unica verita'»: `_sub_first_class` non viene
-    piu' da `derive_active_providers` (interruttore AND credenziale, con la
-    regola di compatibilita' che su un'installazione «tutti spenti» lo faceva
-    valere `credenziale AND BRIDGE_ENABLED`) ma dall'espressione scritta a
-    vista, `credenziale AND PROVIDER_SUBSCRIPTION`.
+# ---------------------------------------------------------------------------
+# I due avvisi d'avvio sul ponte. Vivevano in `run.sh` e leggevano
+# PROVIDER_SUBSCRIPTION/BRIDGE_ENABLED; con la versione B quelle opzioni non
+# esistono e il ponte vive nell'archivio, che da uno script di avvio non si
+# legge. Non si cancellano -- descrivono i due stati che costano soldi senza
+# dirlo -- si spostano dove l'archivio c'e'.
+# ---------------------------------------------------------------------------
 
-    Il valore governa `app["ponte_attivo"]`, quindi togliere l'interruttore da
-    quell'espressione accenderebbe il ponte a chiunque abbia un token in
-    configurazione, senza averlo chiesto -- ed e' l'invariante 5 al contrario.
-    La riga vive dentro `_on_startup`, che nessuna fixture esegue: si legge dal
-    sorgente vero, come gia' fanno i due test qui sopra."""
-    import inspect
-
-    from hiris.app import server
-
-    src = inspect.getsource(server._on_startup)
-    riga = [r.strip() for r in src.splitlines() if r.strip().startswith("_sub_first_class =")]
-    assert len(riga) == 1, riga
-    assert 'env_bool("PROVIDER_SUBSCRIPTION")' in riga[0], riga[0]
-    assert '_credenziali["subscription"]' in riga[0], riga[0]
+from hiris.app.server import _avvisi_del_ponte
 
 
-def test_il_piano_claude_max_continua_a_implicare_il_ponte():
-    """Il comportamento che la fusione NON doveva cambiare: chi sta nella
-    configurazione consigliata (Piano Claude Max acceso col suo token) ha il
-    ponte acceso senza toccare niente. E' la ragione per cui questa fusione
-    costava poco, quindi merita un test suo."""
-    assert _ponte_attivo(False, True) is True
+def test_il_ponte_acceso_senza_token_si_sente_dire_all_avvio():
+    """Invariante 5, nel registro. Dal Task 14 il turno non si perde piu' (scende
+    alla catena), ma scende a un provider a consumo: un ripiego silenzioso dal
+    forfait al consumo si scopre a fine mese."""
+    righe = _avvisi_del_ponte(True, False)
+    assert len(righe) == 1, righe
+    assert "dal forfait al consumo" in righe[0], righe[0]
+    # Il campo si nomina col nome VERO, come il 503 di primo avvio: mandare a
+    # cercare un'etichetta che non esiste e' il difetto che il Task 15 ha chiuso.
+    assert "«Provider · Piano Claude Max — token»" in righe[0], righe[0]
+
+
+def test_il_token_senza_ponte_si_sente_dire_all_avvio_DOVE_si_accende():
+    """Lo stato in cui si ritrova chi aggiorna alla 3.0.0 avendo il piano acceso
+    via `provider_subscription` senza aver mai acceso il ponte: l'implicazione
+    e' uscita, e la copia d'archivio della 2.5.0 aveva copiato l'OPZIONE
+    `ponte.attivo`, non lo stato effettivo. Il ponte si spegne.
+
+    E' l'unica perdita di comportamento di questa versione, e questa riga e'
+    cio' che la rende rumorosa invece che silenziosa. Deve dire anche DOVE si
+    ripara: mandare a cercare l'opzione nell'add-on sarebbe mandare a cercare
+    un campo che non esiste piu'."""
+    righe = _avvisi_del_ponte(False, True)
+    assert len(righe) == 1, righe
+    assert "pagina Modelli" in righe[0], righe[0]
+    assert "a consumo" in righe[0], righe[0]
+    assert "Configurazione add-on" not in righe[0], (
+        "l'avviso manda ancora a cercare un'opzione dell'add-on che non c'e' piu'"
+    )
+
+
+@pytest.mark.parametrize("ponte,token", [(True, True), (False, False)])
+def test_gli_stati_sani_non_dicono_niente(ponte, token):
+    """Il gemello obbligatorio: un avviso che compare sempre e' rumore, e il
+    rumore e' cio' che ha fatto scorrere via l'avvio dal registro consegnato col
+    cancello di questa fetta. Ponte acceso col token e ponte spento senza token
+    sono due stati COERENTI: non c'e' niente da dire."""
+    assert _avvisi_del_ponte(ponte, token) == []
 
 
 # ---------------------------------------------------------------------------

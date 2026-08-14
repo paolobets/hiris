@@ -371,7 +371,16 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # `payload["ollama"]["modello"]`: la stessa cosa detta due volte, e la
     # copia era pure ferma all'avvio. Era l'ultimo residuo dell'invariante 1 in
     # questo handler, dichiarato dal Task 7 e assegnato al Task 9.
-    payload["ponte_attivo"] = bool(request.app.get("ponte_attivo"))
+    #
+    # Versione B (3.0.0): esce anche `ponte_attivo`, l'ULTIMO residuo
+    # dell'invariante 1 di tutto il payload. Era `app["ponte_attivo"]`, cioe'
+    # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
+    # `payload["ponte"]["attivo"]`: non un doppione esatto -- il valore vero
+    # poteva essere `true` con l'archivio a `false`, e la pagina riceveva due
+    # risposte alla stessa domanda. Tolta l'implicazione in `server.py`, il
+    # secondo valore e' il primo: qui ne resta uno, `ponte["attivo"]`, e la
+    # pagina lo legge di li'.
+    _ponte_acceso = payload["ponte"]["attivo"]
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
     # due derivazioni degli stessi fatti nello stesso handler sarebbero la
     # miniatura del difetto che questa fetta chiude.
@@ -404,7 +413,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         catena=_catena,
         credenziali=_credenziali,
         modelli=_modelli,
-        ponte_attivo=payload["ponte_attivo"],
+        ponte_attivo=_ponte_acceso,
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
         # turno per scrivere la scadenza (`now + ponte.scadenza_min * 60`), e
         # lo STESSO numero che va ai connettori qui sotto: la frase in cima e
@@ -418,7 +427,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         chain_order=_catena,
         credenziali=_credenziali,
         modelli=_modelli,
-        ponte_attivo=payload["ponte_attivo"],
+        ponte_attivo=_ponte_acceso,
         # Che cosa è successo DAVVERO, per provider (Task 11). Non una sonda:
         # `RegistroEsiti` è alimentato dal ciclo di ripiego del router, cioè
         # dal traffico vero. Sondare cinque provider a ogni apertura della

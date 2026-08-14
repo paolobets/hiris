@@ -1,5 +1,104 @@
 # HIRIS — Changelog
 
+## [3.0.0] — La pagina di configurazione custodisce, e non decide più (2026-08-14)
+
+**⚠️ Aggiorna solo dopo aver avviato almeno una volta la 2.5.0.** Questa versione toglie
+**quattordici opzioni** dalla configurazione dell'add-on. La 2.5.0 ne ha copiato i valori
+dentro HIRIS al suo primo avvio: se la salti, quei valori non ci sono, e HIRIS riparte dai
+suoi predefiniti. Non è una raccomandazione — è l'unico modo che c'è di non perderli, e
+Home Assistant scarta le opzioni che non esistono più **prima** che HIRIS possa leggerle.
+
+### Cosa cambia, in una riga
+
+Fino a ieri la pagina «Configurazione» dell'add-on faceva due lavori: **custodiva** le
+credenziali e **prendeva decisioni** — quali provider usare, in che ordine, se accendere il
+ponte, quale modello di Ollama, quanti giorni tenere le conversazioni. Da oggi ne fa uno
+solo. Le decisioni si prendono dove se ne vede l'effetto: nella **pagina Modelli** dentro
+HIRIS, e in **«Impostazioni chat»**.
+
+Il motivo non è l'ordine: è che una decisione presa in un posto e mostrata in un altro
+**può divergere**, e ogni volta che è divergita la pagina ha detto una cosa mentre il
+prodotto ne faceva un'altra. Cinque interruttori dicevano quali provider erano «attivi»
+mentre a decidere era la catena; il ponte risultava acceso mentre l'archivio diceva di no.
+Ora c'è un valore solo per ogni cosa, e sta dove si guarda.
+
+### Le quattordici opzioni che escono, e dove si decide adesso
+
+| Non c'è più | Si decide |
+|---|---|
+| «Provider · Claude API», «· OpenRouter», «· OpenAI», «· Ollama», «· Piano Claude Max» (i cinque interruttori) | **pagina Modelli**: un provider è usato se e solo se sta in catena |
+| «Ordine di ripiego fra i provider accesi» | **pagina Modelli**: le frecce, e i tre preset «Rifai la catena» |
+| «OpenRouter — nascondi i modelli gratuiti» | **pagina Modelli**: la casella nel pannello del modello di OpenRouter |
+| «Ponte — accendi il ponte» | **pagina Modelli**: il bottone **«Mettilo primo»** in cima (vedi sotto) |
+| «Ponte — quanto aspettare una risposta» e «— quanti messaggi al giorno» | l'archivio di HIRIS (`/data/models_config.json`) — **vedi l'avvertenza qui sotto** |
+| «Ollama — nome del modello» | **pagina Modelli**: si clicca il modello nella riga di Ollama |
+| «Ollama — quanto aspettare una risposta» | l'archivio di HIRIS — **vedi l'avvertenza qui sotto** |
+| «Per quanti giorni tenere le conversazioni» | **Impostazioni chat**, dentro HIRIS |
+| «Avanzate · promemoria porta 8099» | **niente: esce dal prodotto** — non apriva niente, scriveva sette righe di promemoria nel registro. Ad aprire la porta è la sezione **Rete** di Home Assistant, e adesso è la sua descrizione a dire cosa comporta |
+
+**Cosa resta in «Configurazione»:** le quattro credenziali (chiave Claude API, token del
+Piano Claude Max, chiave OpenRouter, chiave OpenAI), l'**indirizzo** di Ollama, il tema, i
+due campi degli embedding (che continuano a non fare niente, e lo dicono), e le tre voci
+avanzate — registro, token delle API interne, reti riconosciute come ingress.
+
+### ⚠️ Tre numeri che, per adesso, non si cambiano da nessuna parte
+
+`ponte.scadenza_min` (quanto si aspetta il Piano Claude Max), `ponte.tetto_giornaliero`
+(quanti messaggi al giorno) e `ollama.timeout_s` (quanto si aspetta Ollama) **funzionano** e
+valgono il numero che avevi. Ma la pagina Modelli non ha ancora il campo per cambiarli, e
+l'opzione dell'add-on non c'è più: da questa versione si toccano solo con una PUT su
+`/api/models/config`. **È un debito dichiarato**, era già scritto nella 2.5.0, ed è la prima
+cosa della fetta successiva.
+
+### ⚠️ Se usavi il Piano Claude Max senza aver acceso il ponte
+
+Fino alla 2.5.0 l'interruttore «Provider · Piano Claude Max» **accendeva il ponte da sé**
+quando c'era il token. Quell'implicazione esce con l'interruttore, ed è l'unica perdita di
+comportamento di questa versione: se avevi il piano acceso ma «Accendi il ponte» spento,
+**dopo l'aggiornamento la chat passa dalla catena, a consumo.**
+
+Non succede in silenzio. All'avvio, nel registro dell'add-on:
+
+> Hai il token del Piano Claude Max, ma il ponte è spento: le risposte passano dalla catena,
+> a consumo. Il ponte non si accende più da un'opzione dell'add-on — si accende nella pagina
+> Modelli di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il token, lo
+> paghi, ed è fuori dalla catena».
+
+E in cima alla pagina Modelli, con il bottone accanto. **Un click, e il piano torna primo.**
+
+### «Mettilo primo»: il gesto che mancava
+
+Il caso che ha fatto nascere questa fetta — piano pagato, fermo, e la chat che spende a
+consumo — la pagina Modelli lo **leggeva** già per intero dalla 2.5.0, e lo **correggeva a
+metà**: diceva «Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena» e poi
+mandava in «Configurazione» ad accendere un interruttore. Il bottone non si poteva
+costruire, perché il ponte veniva dall'ambiente e un salvataggio sarebbe stato accettato e
+buttato via al riavvio successivo.
+
+Adesso il ponte vive nell'archivio, e il bottone c'è: **«Mettilo primo»** accanto a quella
+riga, e **«Togli il piano dalla catena»** quando il ponte è acceso. Nessuno dei due chiede
+un riavvio — comprese le due cose che prima lo chiedevano davvero: il turno successivo
+prende la strada nuova, e **il lavoratore che risponde sul piano parte e si ferma da solo**.
+
+Chi teneva il ponte acceso e non lo usava ci guadagna anche in silenzio nel registro: prima
+quel lavoratore interrogava la coda ogni tre secondi finché l'add-on non veniva riavviato,
+e in due ore scriveva venticinquemila righe.
+
+### Il messaggio di primo avvio dice adesso anche il secondo gesto
+
+Il 503 «Nessun provider AI configurato» mandava a incollare una credenziale e basta. Da
+quando un provider è usato **se e solo se sta in catena**, incollare la chiave non basta
+più: il messaggio adesso dice anche dove metterlo in catena, e nomina i campi con i nomi
+che hanno davvero.
+
+### Per chi aggiorna: cosa NON devi fare
+
+Non devi ricompilare niente, non devi riscrivere nessuna configurazione, e **non devi
+rimettere a mano i valori che avevi**: sono già dentro HIRIS dal primo avvio della 2.5.0.
+La pagina «Configurazione» sarà più corta, e i campi spariti non sono stati persi — sono
+altrove, e ogni riga di questa nota dice dove.
+
+
 ## [2.5.0] — La pagina Modelli smette di mentire, e il piano non è più un vicolo cieco (2026-08-14)
 
 **⚠️ Due cose cambiano quanto spendi, e vanno lette prima di aggiornare.** Il modello

@@ -132,10 +132,14 @@ def test_config_yaml_no_direct_port():
     """SEC-001 — ensure addon non espone porte di default.
 
     v0.10.11: rilassato — `ports:` può essere declared ma TUTTI i valori
-    devono essere `null` (port mappable solo se l'utente attiva esplicitamente
-    debug_expose_port + imposta host port nella sezione Network di HA UI).
-    Questo permette il toggle "Debug expose port" senza esporre nulla di
-    default. Valori non-null = auto-binding = REJECT.
+    devono essere `null` (port mappable solo se l'utente imposta la host port
+    nella sezione Network di HA UI). Questo permette la diagnostica senza
+    esporre nulla di default. Valori non-null = auto-binding = REJECT.
+
+    Versione B (3.0.0): l'opzione `debug_expose_port` che questo commento
+    citava e' USCITA -- non apriva niente, stampava sette righe di promemoria
+    nel registro. Il meccanismo che questo test sorveglia e' sempre stato
+    `ports:`, e non e' cambiato.
     """
     import yaml
     import os

@@ -467,6 +467,30 @@ aggiornamento della copia, al primo avvio l'ambiente sarebbe già muto e HIRIS c
 **Finché non ci sono tutte e quattro, la versione successiva non si comincia.** Non è una
 formalità: è già costata una lezione su questo ramo.
 
+### Come si è chiuso, il 14 agosto 2026
+
+**Aperto con due condizioni verificate e due prese per parola del proprietario**, ed è
+scritto qui perché un cancello che si apre senza dire come si è aperto non è un cancello.
+
+- La 1 è verificata: la 2.5.0 è pubblicata e installata.
+- La 3 e la 4 sono confermate **dal proprietario**, che ha aperto `GET
+  /api/models/config` e le impostazioni della chat e ha visto le chiavi. Non lette
+  direttamente da chi ha scritto la 3.0.0.
+- **La 2 non è verificata.** Il log consegnato copre due ore e **non contiene l'avvio**:
+  25.858 righe del lavoratore del ponte, che interrogava la coda ogni tre secondi a
+  livello `debug`, avevano spinto fuori il boot.
+
+**Perché si è proceduto lo stesso.** Il rischio che il cancello previene è che la copia
+prenda **i predefiniti** perché l'ambiente è già muto. Ma la 3.0.0 non era mai stata
+pubblicata, quindi al momento della copia `run.sh` esportava ancora tutte le opzioni: la
+copia **non poteva** aver preso predefiniti. Il cancello resta giusto come regola; la
+condizione che rendeva pericoloso saltarlo non esisteva.
+
+**E una conseguenza operativa che vale oltre questo cancello:** quelle 25.858 righe di
+`debug` sono la ragione per cui una precondizione non si è potuta verificare. Dalla 3.0.0
+il lavoratore del ponte **si ferma** quando il ponte si spegne (prima girava finché
+l'add-on non veniva riavviato): il rumore c'è solo quando il ponte serve davvero.
+
 ---
 
 ## Come si riferisce l'esito

@@ -96,48 +96,72 @@ def test_il_token_dell_abbonamento_e_descritto_in_entrambe_le_lingue():
         )
 
 
-# Le opzioni che dalla fetta «la catena diventa l'unica verita'» NON governano
-# piu' niente dopo il primo avvio: il loro valore e' stato copiato una volta
-# sola nell'archivio di HIRIS (versione A della migrazione), e da li' in poi il
-# lettore e' l'archivio. Restano nello schema per un rilascio ancora, perche'
-# toglierle subito farebbe perdere il valore -- il Supervisor scarta le chiavi
-# fuori schema PRIMA che /data/options.json esista.
+# **G2 della revisione finale, e la sua chiusura definitiva.**
 #
-# `provider_subscription` non e' nella lista: e' l'unico dei cinque
-# interruttori che morde ancora (accende il ponte, insieme a `ponte.attivo`).
-# Nemmeno `ponte.attivo`, `local_model.url` e le chiavi: sono credenziali e
-# interruttori vivi.
-_OPZIONI_INERTI = [
-    "provider_claude", "provider_openrouter", "provider_openai", "provider_ollama",
-    "hide_free_models", "llm_strategy", "history_retention_days",
-    ("local_model", "model"), ("local_model", "request_timeout"),
-    ("ponte", "bridge_deadline_min"), ("ponte", "chat_daily_cap"),
-]
-
+# Le dodici opzioni che dalla fetta «la catena diventa l'unica verita'» non
+# governavano piu' niente dopo il primo avvio portavano tutte, nella loro
+# descrizione, il prefisso «NON HA PIU' EFFETTO»: erano rimaste nello schema un
+# rilascio in piu' perche' toglierle subito avrebbe fatto perdere il valore --
+# il Supervisor scarta le chiavi fuori schema PRIMA che /data/options.json
+# esista -- e un campo che non fa niente e non lo dice e' il difetto 1 della
+# specifica, sopravvissuto nel posto dove la fetta non era passata.
+#
+# Con la versione B (3.0.0) sono uscite TUTTE. La lista di parametri sarebbe
+# vuota, e un `parametrize` vuoto non e' un test che passa: e' un test che non
+# viene mai eseguito. Il test si e' quindi ROVESCIATO -- da «queste dodici lo
+# dichiarano» a «nessuna lo dichiara piu', perche' non ce n'e' piu' nessuna» --
+# ed e' un pin piu' forte del precedente: sorveglia anche le opzioni future.
+# Il giorno in cui una descrizione tornasse a dire «NON HA PIU' EFFETTO»,
+# sarebbe rientrata una decisione in una pagina che deve solo custodire, e
+# saremmo daccapo.
 _AVVISO = {"it": "NON HA PIU' EFFETTO", "en": "NO LONGER HAS ANY EFFECT"}
 
 
-@pytest.mark.parametrize("lingua", ["it", "en"])
-@pytest.mark.parametrize("percorso", _OPZIONI_INERTI,
-                         ids=lambda p: p if isinstance(p, str) else ".".join(p))
-def test_le_opzioni_che_non_mordono_piu_lo_dicono_dove_si_toccano(lingua, percorso):
-    """**G2 della revisione finale.** Il CHANGELOG lo diceva; la pagina in cui
-    l'utente AGISCE diceva ancora il contrario -- e due di queste descrizioni
-    erano state RISCRITTE nella stessa fetta, quindi si leggevano come fresche
-    e autorevoli mentre promettevano intervalli e predefiniti come se
-    mordessero. Quattro insegnavano letteralmente la regola di compatibilita'
-    appena tolta: «Dal primo provider che accendi valgono solo quelli accesi:
-    riaccendi gli altri che usavi».
+def _tutte_le_descrizioni(albero, prefisso=""):
+    trovate = []
+    for chiave, voce in albero.items():
+        if chiave in ("name", "description") or not isinstance(voce, dict):
+            continue
+        if isinstance(voce.get("description"), str):
+            trovate.append((prefisso + chiave, voce["description"]))
+        trovate.extend(_tutte_le_descrizioni(voce, prefisso + chiave + "."))
+    return trovate
 
-    Un CHANGELOG lo legge chi aggiorna di proposito; la descrizione la legge
-    chi sta per cambiare il numero. Un interruttore che non fa niente e non lo
-    dice e' il difetto 1 della specifica, sopravvissuto nel posto dove la fetta
-    non era passata."""
-    voce = _traduzioni(lingua)
-    for pezzo in (percorso if isinstance(percorso, tuple) else (percorso,)):
-        voce = voce[pezzo]
-    assert _AVVISO[lingua] in voce["description"], (
-        f"{lingua}.yaml: la descrizione di questa opzione non dichiara che non "
-        f"ha piu' effetto, ed e' il posto dove l'utente la tocca. Trovato: "
-        f"{voce['description']!r}"
+
+@pytest.mark.parametrize("lingua", ["it", "en"])
+def test_nessuna_opzione_rimasta_dichiara_di_non_avere_piu_effetto(lingua):
+    """Cio' che resta in questa pagina MORDE.
+
+    Le quattro credenziali, l'indirizzo di Ollama, il tema e le tre voci
+    avanzate hanno tutte un effetto vero, e nessuna ha bisogno di scusarsi. Se
+    questa formula ricompare, e' ricomparsa un'opzione che l'utente puo'
+    cambiare senza che succeda niente -- e stavolta senza la scusa della
+    migrazione, che e' finita."""
+    colpevoli = [nome for nome, descrizione in _tutte_le_descrizioni(_traduzioni(lingua))
+                 if _AVVISO[lingua] in descrizione]
+    assert not colpevoli, (
+        f"{lingua}.yaml: queste opzioni dichiarano di non avere piu' effetto, "
+        f"ma sono ancora nello schema: {colpevoli}. Una decisione e' rientrata "
+        "in una pagina che deve solo custodire, oppure un'opzione e' rimasta "
+        "indietro rispetto al codice che la leggeva"
+    )
+
+
+@pytest.mark.parametrize("lingua", ["it", "en"])
+def test_i_due_campi_inerti_rimasti_dichiarano_di_esserlo(lingua):
+    """L'eccezione, e perche' e' un'eccezione e non una dimenticanza.
+
+    I due campi `memory.*` non hanno nessun lettore che faccia qualcosa
+    (nessun percorso di HIRIS chiama piu' `embed()`) e sono rimasti
+    deliberatamente: toglierli avrebbe fatto perdere il valore salvato in
+    cambio di niente, che e' il peggior rapporto costo/beneficio possibile per
+    un campo che non fa nulla. Ma un campo inerte va DETTO, e lo dicono con le
+    parole del loro caso -- «oggi non fanno niente» -- non con la formula della
+    migrazione, che prometterebbe che la decisione si prende da un'altra parte:
+    non si prende da nessuna parte."""
+    atteso = "non fanno niente" if lingua == "it" else "do nothing today"
+    voce = _traduzioni(lingua)["memory"]
+    assert atteso in voce["description"].lower(), (
+        f"{lingua}.yaml: il blocco degli embedding non dichiara piu' di essere "
+        f"inerte. Trovato: {voce['description']!r}"
     )

@@ -24,11 +24,18 @@ use). Rather than hand-maintaining a mirror copy that could silently drift
 from the shipped code, this test extracts the REAL function source via
 ``inspect.getsource`` and executes it against a test double for its one
 remaining free variable of interest (``reasoning_queue``) -- everything else
-it references (``_time``, ``logger``, ``env_bool``, ``_sub_first_class``) is
-either a plain importable symbol in server.py or a simple closure value
-supplied directly, not per-instance state, so binding them is exact, not a
-guess. (Dalla 2.4.0 fra questi c'e' anche ``_ponte_attivo``, il combinatore
-che la spazzata condivide con l'instradamento della chat.)
+it references (``_time``, ``logger``, ``app``) is either a plain importable
+symbol in server.py or a simple closure value supplied directly, not
+per-instance state, so binding them is exact, not a guess.
+
+Dalla 2.4.0 la spazzata passava dal combinatore condiviso con l'instradamento
+(``_ponte_attivo``), e il namespace glielo forniva insieme a ``env_bool`` e
+``_sub_first_class``. Dalla VERSIONE B (3.0.0) non deriva piu' niente: LEGGE
+``app["ponte_attivo"]``, che ``_ricalcola_catena`` ha gia' scritto -- una
+lettura sola invece di due derivazioni. I tre simboli sono usciti dal
+namespace, e uscirne e' la difesa: rimettere una derivazione dentro la
+spazzata farebbe fallire l'exec con un NameError, invece di lasciarla passare
+su un valore di comodo.
 """
 import inspect
 import logging
@@ -41,7 +48,7 @@ from hiris.app import server
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
-def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False,
+def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
                                scadenza_min=None):
     src = inspect.getsource(server._on_startup)
     start = src.index("    async def _reasoning_sweep() -> None:")
@@ -49,31 +56,27 @@ def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False,
     end = src.index(end_marker, start) + len(end_marker)
     func_src = textwrap.dedent(src[start:end])
 
+    # VERSIONE B (3.0.0): il namespace ha perso TRE simboli -- `env_bool`,
+    # `_sub_first_class` e `_ponte_attivo` -- e ne ha guadagnato una chiave.
+    # La spazzata non deriva piu' niente: LEGGE `app["ponte_attivo"]`, che
+    # `_ricalcola_catena` ha gia' scritto. Toglierli invece di lasciarli per
+    # sicurezza e' deliberato ed e' la virtu' di questo file: se qualcuno
+    # rimettesse una derivazione dentro la spazzata, l'exec fallirebbe con un
+    # NameError rumoroso invece di passare su un valore di comodo.
     namespace = {
         "_time": _time,
         "logger": logging.getLogger("test_reasoning_sweep_chat_skip"),
         "reasoning_queue": reasoning_queue,
-        "_sub_first_class": sub_first_class,
-        # SP-2 tech-debt: _reasoning_sweep reads BRIDGE_ENABLED via the
-        # shared env_util.env_bool helper (module-level import in server.py);
-        # the extracted-source exec namespace must provide it too.
-        "env_bool": server.env_bool,
-        # Fusione dei due interruttori (2.4.0): la spazzata non combina piu' a
-        # mano BRIDGE_ENABLED e _sub_first_class, ma passa dal combinatore
-        # condiviso con l'instradamento. E' il simbolo nuovo che il namespace
-        # deve fornire -- ed e' anche la ragione per cui questo file estrae il
-        # sorgente vero invece di specchiarlo: un mirror sarebbe rimasto
-        # indietro in silenzio, questo namespace ha smesso di funzionare
-        # rumorosamente.
-        "_ponte_attivo": server._ponte_attivo,
         # Task 14: la spazzata legge anche `app["models_config"]`, per sapere
         # dopo quanto un ripiego preso in carico e mai finito e' uno schianto.
         # Il confine e' il DOPPIO della scadenza, perche' il ripiego COMINCIA
         # alla scadenza: il margine e' il tempo che la catena ha per
         # rispondere. `app` e' un dizionario perche' e' cosi' che la spazzata
         # lo usa (`app.get(...)`), non perche' sia comodo.
-        "app": ({} if scadenza_min is None
-                else {"models_config": {"ponte": {"scadenza_min": scadenza_min}}}),
+        "app": ({"ponte_attivo": ponte_attivo} if scadenza_min is None else {
+            "ponte_attivo": ponte_attivo,
+            "models_config": {"ponte": {"scadenza_min": scadenza_min}},
+        }),
     }
     exec(compile(func_src, "<_reasoning_sweep extracted from server.py>", "exec"), namespace)
     return namespace["_reasoning_sweep"]
@@ -81,8 +84,6 @@ def _load_real_reasoning_sweep(reasoning_queue, *, sub_first_class=False,
 
 @pytest.mark.asyncio
 async def test_expired_chat_job_left_expired_without_warning(tmp_path, monkeypatch, caplog):
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue(
@@ -107,8 +108,6 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
     anymore, `_holistic_reason` is gone) is no longer reasoned locally: it
     is declared via an explicit warning and left to expire, never silently
     dropped."""
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue(
@@ -133,8 +132,6 @@ async def test_mixed_sweep_only_non_chat_kind_logged(tmp_path, monkeypatch, capl
     """Both kinds expire in the same sweep pass: only the non-chat one is
     logged as orphaned; the chat one is simply left in 'expired' state
     (surfaced to the user via the poll route, Fix 2), silently."""
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("chat", {}, {"chatbot_id": "a1", "history": [], "system_prompt": ""},
@@ -156,14 +153,12 @@ async def test_mixed_sweep_only_non_chat_kind_logged(tmp_path, monkeypatch, capl
 
 @pytest.mark.asyncio
 async def test_sweep_no_op_when_bridge_and_subscription_both_off(tmp_path, monkeypatch):
-    monkeypatch.delenv("BRIDGE_ENABLED", raising=False)
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info"},
               {"snapshot": {}}, now - 10, job_id="holistic-job", now=now - 100)
 
-    sweep = _load_real_reasoning_sweep(q, sub_first_class=False)
+    sweep = _load_real_reasoning_sweep(q, ponte_attivo=False)
     await sweep()
 
     # Early return before sweep_expired: the job is untouched (still 'pending').
@@ -189,8 +184,6 @@ async def test_lo_sweep_non_tocca_un_ripiego_in_corso(tmp_path, monkeypatch):
     ('pending','claimed')` di `sweep_expired` esclude 'ripiego' da sola. E'
     proprio questa la ragione per cui e' sicura, ed e' per questo che si
     verifica invece di assumerla."""
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
@@ -213,8 +206,6 @@ async def test_lo_sweep_raccoglie_i_ripieghi_schiantati(tmp_path, monkeypatch):
     L'orologio non avanza da solo: si finge un ripiego reclamato molto tempo
     fa (oltre il doppio della scadenza) invece di aspettare, che e' l'unico
     modo di provare un confine."""
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     # Scadenza 5 minuti -> il confine e' 10 minuti fa. Questo ripiego e' stato
@@ -244,8 +235,6 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
     valore che `_enqueue_chat_job` usa per scrivere la scadenza. Con una
     scadenza lunga il margine cresce con lei, altrimenti un ripiego legittimo
     verrebbe ucciso mentre lavora."""
-    monkeypatch.setenv("BRIDGE_ENABLED", "1")
-
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="j", now=now - 71 * 60)

@@ -336,27 +336,33 @@ def test_gli_alias_del_piano_sono_esattamente_quelli_che_la_cli_sa_produrre():
 
 def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
     """Il 503 «Nessun provider AI configurato» e' la PRIMA cosa che legge chi
-    installa HIRIS e apre la chat, e cita quattro campi della pagina di
-    configurazione fra virgolette basse. Fino alla 2.4.1 li citava con i nomi di
-    una versione precedente -- «Attiva provider: Abbonamento (Claude Max)» e le
-    altre tre -- cioe' mandava a cercare quattro campi che nella pagina non
-    esistevano piu': debito dichiarato dal Task 5 di questa fetta e mai chiuso.
+    installa HIRIS e apre la chat, e cita fra virgolette basse i campi della
+    pagina di configurazione. Fino alla 2.4.1 li citava con i nomi di una
+    versione precedente -- «Attiva provider: Abbonamento (Claude Max)» e altri
+    tre -- cioe' mandava a cercare campi che nella pagina non esistevano piu':
+    debito dichiarato dal Task 5 di questa fetta e chiuso dal Task 15.
 
     Il difetto qui e' della stessa famiglia di quello che l'intera fetta chiude:
     una frase vera quando fu scritta, rimasta a schermo dopo che il fatto era
     cambiato. E si ripeterebbe da solo, perche' rinominare un'etichetta in
-    `translations/` non tocca questo file e nessun test le legava."""
+    `translations/` non tocca quel file e nessun test le legava.
+
+    **Versione B (3.0.0): il pin ha fatto il suo mestiere.** Due dei quattro
+    campi citati -- i due interruttori -- sono usciti dallo schema, e questo
+    test e' caduto. Restano le DUE credenziali, che e' cio' che si custodisce
+    li'. Il numero non e' piu' fissato a quattro ma pinnato all'insieme esatto:
+    contare non diceva quali, e quattro era esattamente il numero che il difetto
+    del 2.4.1 aveva."""
     import yaml
 
     testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
-    blocco = re.search(r'"Nessun provider AI configurato.*?riavvia l\'add-on\."',
-                       testo, flags=re.S)
+    blocco = re.search(
+        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.S)
     assert blocco, "il messaggio di primo avvio non si trova piu': testo cambiato"
     # Le stringhe adiacenti del sorgente Python si concatenano: qui si toglie
     # solo cio' che le separa, per leggere la frase come la legge l'utente.
     frase = re.sub(r'"\s*\n\s*"', "", blocco.group(0))
     citate = re.findall(r"«([^»]+)»", frase)
-    assert len(citate) == 4, f"attesi quattro campi citati, trovati {citate}"
 
     voci = yaml.safe_load(
         (BASE / "translations" / "it.yaml").read_text(encoding="utf-8"))
@@ -370,11 +376,52 @@ def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
                 raccogli(voce)
 
     raccogli(voci["configuration"])
-    fantasma = [c for c in citate if c not in nomi]
+    # I due CAMPI dell'add-on citati, per nome esatto. Le altre due citazioni
+    # («Mettilo primo», «Usa») sono i due GESTI della pagina Modelli, che non
+    # sono campi di configurazione e non stanno in `translations/`: si
+    # verificano dove vivono, nel test qui sotto.
+    campi = [c for c in citate if c.startswith("Provider · ")]
+    assert set(campi) == {"Provider · Piano Claude Max — token",
+                          "Provider · Claude API — chiave"}, campi
+    fantasma = [c for c in campi if c not in nomi]
     assert not fantasma, (
         f"il messaggio di primo avvio manda a cercare campi che non esistono: "
         f"{fantasma}. I nomi veri stanno in translations/it.yaml"
     )
+
+
+def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
+    """Incollare la chiave non basta piu', e il messaggio deve dirlo.
+
+    Dalla fetta «la catena diventa l'unica verita'» un provider risponde se e
+    solo se sta in catena, e nella catena non ci entra da solo: `reconcile_chain`
+    lo accodava, e non lo fa piu'. Un messaggio che si fermasse alla credenziale
+    lascerebbe chi ha appena installato HIRIS davanti a una chat ancora muta
+    dopo aver fatto esattamente quello che gli era stato detto -- un difetto
+    peggiore del precedente, perche' ogni parola sarebbe vera.
+
+    I due gesti citati sono quelli che la pagina disegna DAVVERO: «Mettilo
+    primo» arriva da `AZIONE_METTI_IL_PIANO_IN_TESTA`, «Usa» e' l'etichetta del
+    bottone che mette una riga in catena."""
+    from hiris.app.decisione_modelli import AZIONE_METTI_IL_PIANO_IN_TESTA
+
+    testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
+    blocco = re.search(
+        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.S)
+    frase = re.sub(r'"\s*\n\s*"', "", blocco.group(0))
+    citate = re.findall(r"«([^»]+)»", frase)
+    assert AZIONE_METTI_IL_PIANO_IN_TESTA["etichetta"] in citate, (
+        "il messaggio nomina un gesto che la pagina non offre con quel nome"
+    )
+    js = (BASE / "app" / "static" / "config" / "models-route.js").read_text(
+        encoding="utf-8")
+    for gesto in citate:
+        if gesto.startswith("Provider · ") or gesto == AZIONE_METTI_IL_PIANO_IN_TESTA["etichetta"]:
+            continue
+        assert "'" + gesto + "'" in js, (
+            f"il messaggio manda a cercare il gesto «{gesto}», che la pagina "
+            "Modelli non disegna"
+        )
 
 
 @pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])

@@ -197,8 +197,9 @@ def _bridge_on(app) -> bool:
     """Whether the reasoning-queue bridge is wired into this app.
 
     server.py's ``_on_startup`` always creates ``app["reasoning_queue"]``
-    unconditionally — ``BRIDGE_ENABLED`` (l'opzione ``ponte.attivo``) only
-    gates whether server.py's sweep (``_reasoning_sweep``) actually
+    unconditionally — ``ponte.attivo`` (nell'archivio di HIRIS, dalla
+    versione B: era l'opzione dell'add-on che esportava ``BRIDGE_ENABLED``)
+    only gates whether server.py's sweep (``_reasoning_sweep``) actually
     claims/prunes that queue and whether ``app["ponte_attivo"]`` comes out
     true (fetta E3 Task 4 removed the third reader, the holistic path's own
     enqueue via ``_holistic_reason`` — that path is gone entirely now), it
@@ -715,26 +716,37 @@ async def handle_chat(request: web.Request) -> web.Response:
         # un'opzione dell'add-on (l'opzione si chiama `claude_api_key`) e che
         # chi usa il piano a forfait non deve compilare affatto.
         #
-        # Le quattro etichette fra «» sono i nomi VERI dei campi in
+        # Le etichette fra «» sono i nomi VERI dei campi in
         # `translations/it.yaml`, e devono restarlo: fino alla 2.4.1 erano
         # quelli di una versione precedente («Attiva provider: Abbonamento
-        # (Claude Max)» e le altre tre), cioe' questo messaggio mandava chi
-        # aveva appena installato HIRIS a cercare quattro campi che nella sua
-        # pagina non esistevano. Debito dichiarato dal Task 5 di questa fetta e
-        # chiuso qui, con il pin che impedisce alla deriva di ripetersi:
+        # (Claude Max)» e altre tre), cioe' questo messaggio mandava chi aveva
+        # appena installato HIRIS a cercare campi che nella sua pagina non
+        # esistevano. Debito dichiarato dal Task 5 di questa fetta e chiuso dal
+        # Task 15, con il pin che impedisce alla deriva di ripetersi:
         # `tests/test_invarianti_modelli.py::test_il_messaggio_di_primo_avvio_
         # nomina_campi_che_esistono_davvero`, che confronta ogni «...» con i
         # `name` delle traduzioni. Chi cambia un'etichetta cambia anche questo
         # messaggio, o il test cade.
+        #
+        # VERSIONE B (3.0.0): erano QUATTRO, e due sono uscite dallo schema --
+        # «Provider · Piano Claude Max (a forfait)» e «Provider · Claude API
+        # (a consumo)», cioe' i due interruttori. Il pin ha fatto il suo
+        # mestiere e ha fatto cadere il test. Restano le due credenziali, che
+        # e' cio' che si custodisce li'; e il messaggio dice adesso anche il
+        # SECONDO gesto, che prima non c'era: incollare la chiave non basta
+        # piu' a far rispondere la chat, perche' un provider e' usato se e solo
+        # se sta in catena. Dirne uno solo lascerebbe l'utente davanti a una
+        # chat ancora muta dopo aver fatto tutto quello che gli era stato detto.
         return web.json_response(
             {"error": (
                 "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
                 "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
-                "e scegli una strada: col piano a forfait, attiva «Provider · Piano "
-                "Claude Max (a forfait)» e incolla il token in «Provider · Piano "
-                "Claude Max — token»; con l'API a consumo, attiva «Provider · "
-                "Claude API (a consumo)» e incolla la chiave in «Provider · Claude "
-                "API — chiave». Poi riavvia l'add-on."
+                "e incolla una credenziale: col piano a forfait il token in "
+                "«Provider · Piano Claude Max — token», con l'API a consumo la "
+                "chiave in «Provider · Claude API — chiave». Poi, dentro HIRIS, "
+                "apri la pagina Modelli: col piano usa «Mettilo primo» nel riquadro "
+                "in cima, con l'API a consumo usa «Usa» sulla riga di Claude API. "
+                "Un provider risponde se e solo se sta in catena."
             )},
             status=503,
         )

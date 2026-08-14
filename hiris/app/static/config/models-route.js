@@ -119,7 +119,12 @@
     catena: [],            // GET api/models/config -> catena[]
     fuoriCatena: [],       // GET api/models/config -> fuori_catena[]
     adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
-    ponteAttivo: false,    // GET api/models/config -> ponte_attivo
+    /* GET api/models/config -> ponte.attivo. Fino alla 2.5.0 arrivava in un
+       campo suo, `ponte_attivo`, che era `BRIDGE_ENABLED or _sub_first_class`
+       e poteva dire `true` mentre `ponte.attivo` diceva `false`: due risposte
+       alla stessa domanda nello stesso payload. Il campo è uscito con la
+       versione B, e questo valore viene da dove vive. */
+    ponteAttivo: false,
     fineCatena: '',        // GET api/models/config -> fine_catena
     /* Il pannello aperto, o `null`. `{ id, dati, errore, filtro }`, dove
        `dati` è la voce di GET api/models?provider=<id> -- letta QUANDO IL
@@ -207,10 +212,48 @@
       diagnosi.forEach(function(d) {
         if (!d || !d.testo) return;
         var li = el('li', 'diagnosi-' + (d.gravita || 'guasto'), d.testo);
+        /* Il gesto accanto alla riga che lo motiva. La pagina non sa che cosa
+           sta accendendo: riceve un'etichetta, un PERCORSO nell'archivio e un
+           valore, e li applica -- la stessa disciplina del pannello del
+           modello (`dati.dove`, Task 9). Senza `dove` non si disegna niente:
+           un bottone senza bersaglio sarebbe un bottone che non fa niente. */
+        if (d.azione && Array.isArray(d.azione.dove) && d.azione.dove.length) {
+          li.appendChild(bottoneAzione(d.azione));
+        }
         ul.appendChild(li);
       });
       if (ul.firstChild) card.appendChild(ul);
     }
+  }
+
+  function bottoneAzione(azione) {
+    var b = el('button', 'btn btn-sm diagnosi-azione', azione.etichetta || '');
+    b.type = 'button';
+    b.addEventListener('click', function() { applicaAzione(azione); });
+    return b;
+  }
+
+  /* Applica il gesto, e poi RILEGGE. Come `scegliModello` e per la stessa
+     ragione: ciò che cambia non è una posizione già determinata dal gesto (le
+     frecce si ridisegnano da sé), è CHI RISPONDE -- la frase in cima, la
+     presenza del piano in testa, il connettore. Ricomporlo qui vorrebbe dire
+     calcolarlo, cioè rimettere la topologia nella pagina. In caso di
+     fallimento si rimette il valore di prima: la pagina non deve restare a
+     mostrare una scelta che il disco non ha accettato. */
+  function applicaAzione(azione) {
+    if (!state.caricato) return;
+    var dove = azione.dove;
+    var precedente = leggiPercorso(dove);
+    scriviPercorso(dove, azione.valore);
+    pulisciErroreCatena();
+    putModelsConfig().then(function(ok) {
+      if (!ok) {
+        scriviPercorso(dove, precedente);
+        mostraErroreCatena(ERR_SALVATAGGIO);
+        return;
+      }
+      loadModelsAndConfig();
+    });
   }
 
   function creaGuscioAdesso() {
@@ -958,7 +1001,7 @@
       state.catena = Array.isArray(cfgRaw.catena) ? cfgRaw.catena : [];
       state.fuoriCatena = Array.isArray(cfgRaw.fuori_catena) ? cfgRaw.fuori_catena : [];
       state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
-      state.ponteAttivo = !!cfgRaw.ponte_attivo;
+      state.ponteAttivo = !!(cfgRaw.ponte && cfgRaw.ponte.attivo);
       state.fineCatena = typeof cfgRaw.fine_catena === 'string' ? cfgRaw.fine_catena : '';
       state.cfg = {
         chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],

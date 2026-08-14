@@ -86,6 +86,36 @@ ORDINE_FISSO: tuple[str, ...] = (
     "claude", "subscription", "openrouter", "openai", "ollama",
 )
 
+# ── I due gesti sul ponte, e perché sono un PERCORSO e non un tipo ──────────
+# Dalla versione B (3.0.0) `ponte.attivo` vive nell'archivio di HIRIS e non fra
+# le opzioni dell'add-on: e' la meta' della condizione che mancava al Task 14,
+# che per questo aveva lasciato `azione` a `None` su tutte le diagnosi (una PUT
+# su un valore letto dall'ambiente sarebbe tornata 200 e sarebbe stata buttata
+# via al riavvio -- la lezione del Task 8, che quei bottoni li aveva gia'
+# trovati e tolti dalla riga del piano).
+#
+# `dove` e' il PERCORSO nell'archivio, non un nome di comando, per la stessa
+# ragione per cui `componi_pannello` manda un percorso invece del nome di una
+# chiave (Task 9): cosi' la pagina non sa che cosa sta accendendo. Applica un
+# valore a una posizione e rilegge -- nessun `tipo` da riconoscere, nessun
+# `if (id === 'subscription')`, nessuna parola del prodotto scritta in
+# JavaScript. L'etichetta viaggia col gesto perche' e' un'affermazione sul
+# prodotto, e le affermazioni sul prodotto stanno qui.
+#
+# Sono DUE e non uno: togliere `ponte.attivo` dalle opzioni dell'add-on toglie
+# anche l'unico modo che c'era di SPEGNERE il ponte. Un interruttore che si
+# accende e non si spegne e' peggio di nessun interruttore.
+AZIONE_METTI_IL_PIANO_IN_TESTA = {
+    "etichetta": "Mettilo primo",
+    "dove": ["ponte", "attivo"],
+    "valore": True,
+}
+AZIONE_TOGLI_IL_PIANO = {
+    "etichetta": "Togli il piano dalla catena",
+    "dove": ["ponte", "attivo"],
+    "valore": False,
+}
+
 
 def nome(provider_id: str) -> str:
     return NOMI.get(provider_id, provider_id)
@@ -385,7 +415,13 @@ def componi_adesso(
                           "primo, e se non risponde entro {} minuti il turno "
                           "passa al successivo della catena."
                           .format(int(scadenza_ponte_min))),
-                "azione": None,
+                # Il gesto INVERSO di «Mettilo primo», e l'unico che resta per
+                # spegnere il ponte da quando `ponte.attivo` non e' piu'
+                # un'opzione dell'add-on (versione B). Sta su una riga che non
+                # denuncia niente -- il ponte acceso con dei provider sotto e'
+                # uno stato sano -- perche' il gesto va dove sta il fatto che
+                # si vuole cambiare, non dove c'e' un guasto.
+                "azione": dict(AZIONE_TOGLI_IL_PIANO),
             })
         else:
             diagnosi.append({
@@ -414,17 +450,22 @@ def componi_adesso(
         # La riga che costa di più: un abbonamento pagato e non usato costa
         # soldi ogni mese, un provider che fallisce costa un secondo di
         # latenza a messaggio. L'azione consigliata è una sola e sta qui
-        # (progetto §9.3). `azione` resta None, e il Task 14 NON la popola,
-        # benché il piano sia adesso un anello: ci si entra accendendo il
-        # ponte, e il ponte si accende da `BRIDGE_ENABLED`, cioè
-        # dall'ambiente. Finché `ponte.attivo` non viene letto dall'archivio
-        # (Task 13), un bottone qui scriverebbe una PUT che il server accetta
-        # con 200 e butta via -- la lezione del Task 8, che quei bottoni li
-        # aveva già trovati e tolti dalla riga del piano.
+        # (progetto §9.3) -- ed è ADESSO un gesto, non più una riga che
+        # descrive un guasto che si ripara altrove.
+        #
+        # Il Task 14 aveva lasciato `azione` a `None` e aveva ragione: metà
+        # della condizione mancava. `ponte.attivo` veniva da `BRIDGE_ENABLED`,
+        # cioè dall'ambiente, e una PUT su un valore letto dall'ambiente torna
+        # 200 e viene buttata via al riavvio successivo -- il bottone che
+        # sembra funzionare e non funziona, che questa fetta ha già evitato due
+        # volte. Con la versione B (3.0.0) `ponte.attivo` vive nell'archivio,
+        # la PUT lo scrive, `_ricalcola_catena` lo rimette in vigore a caldo
+        # (compreso il lavoratore che risponde sul piano) e la rilettura mostra
+        # il piano in testa. La metà che mancava è arrivata.
         diagnosi.append({
             "gravita": "spreco",
             "testo": "Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.",
-            "azione": None,
+            "azione": dict(AZIONE_METTI_IL_PIANO_IN_TESTA),
         })
 
     return {"chi": chi, "nome": nome(chi), "modello": modello,
@@ -563,10 +604,17 @@ def componi_topologia(
 
         Cambia con la regola, non con la pagina. Il Task 14 ha fatto del piano
         un anello e NON ha cambiato queste due stringhe: «in testa o fuori»
-        resta la decisione del proprietario anche adesso che ripiega, e ci si
-        entra ancora accendendo il ponte in Configurazione add-on. Cambieranno
-        il giorno in cui il ponte si accenderà da qui (Task 13) -- e la pagina
-        dirà la cosa nuova senza che nessuno la tocchi.
+        resta la decisione del proprietario anche adesso che ripiega, e allora
+        ci si entrava ancora accendendo il ponte in Configurazione add-on.
+
+        VERSIONE B (3.0.0): il giorno previsto è arrivato, e le due stringhe
+        cambiano perché il fatto è cambiato -- non perché la pagina sia stata
+        ridisegnata. `ponte.attivo` non è più un'opzione dell'add-on: mandare
+        ancora l'utente lì sarebbe mandarlo a cercare un campo che non esiste,
+        cioè lo stesso difetto del messaggio di primo avvio che il Task 15 ha
+        chiuso. Il gesto sta nel riquadro in cima, dove la diagnosi lo porta
+        (`AZIONE_METTI_IL_PIANO_IN_TESTA` / `AZIONE_TOGLI_IL_PIANO`), e la
+        parola qui rimanda LÌ e non a una pagina esterna.
         """
         if ha_credenziale and senza_modello(pid):
             return ("L'indirizzo c'è, il modello no: finché manca non c'è "
@@ -575,11 +623,11 @@ def componi_topologia(
         if pid != "subscription":
             return ""
         if in_catena:
-            return ("In testa o fuori: ci sta perché il ponte è acceso, e il "
-                    "ponte si spegne in Configurazione add-on.")
+            return ("In testa o fuori: ci sta perché il ponte è acceso, e si "
+                    "toglie dal riquadro in cima.")
         if ha_credenziale:
             return ("Entra in catena quando il ponte è acceso, e il ponte si "
-                    "accende in Configurazione add-on.")
+                    "accende dal riquadro in cima.")
         return ""
 
     def connettore(pid: str) -> str:

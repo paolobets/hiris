@@ -198,13 +198,23 @@ DEFAULT_SYSTEM_PROMPT = (
 # migrazione di `models_config.json`, Task 6/7: un'installazione MAI toccata
 # non deve leggere un log a ogni riavvio).
 #
-# Il Task 13 (versione B) togliera' `history_retention_days` dallo schema
-# dell'add-on: da quel momento in poi questo ramo non trovera' piu' niente da
-# leggere (l'ambiente sara' muto) e il campo vivra' solo nell'archivio -- qui
-# NON si tocca ne' config.yaml ne' run.sh ne' le traduzioni, per lo stesso
-# motivo per cui il Task 6 non li ha toccati: il Supervisor scarta ogni chiave
-# fuori schema PRIMA che /data/options.json esista, quindi toglierli ora
-# farebbe perdere in silenzio il valore di chi lo ha gia' cambiato.
+# **FATTO, versione B (3.0.0, 14 agosto 2026)**: `history_retention_days` e'
+# uscita dallo schema dell'add-on, e `run.sh` non esporta piu'
+# `HISTORY_RETENTION_DAYS`. Su un'installazione aggiornata dal Supervisor
+# questo ramo non trova piu' niente da leggere -- e non deve trovarlo: il
+# valore e' gia' sul disco, perche' l'avvio della 2.5.0 lo ha SCRITTO
+# (`server._on_startup`, `il_file_non_porta_i_giorni`), non solo letto.
+#
+# La lettura resta, ed e' la stessa eccezione dichiarata per
+# `migrazione_opzioni.semina` e `server._catena_com_era`: serve a
+# un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
+# popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
+# fuori schema vengono scartate prima che /data/options.json esista); in
+# sviluppo si'. Esce con la fetta successiva, insieme alle altre due, quando
+# nessuna installazione potra' piu' arrivare non seminata.
+#
+# Il censimento la elenchera' fra le «variabili lette e mai esportate da
+# run.sh»: e' corretto, ed e' dichiarato nel rapporto del Task 13.
 def _giorni_da_ambiente(predefinito: int) -> int:
     grezzo = os.environ.get("HISTORY_RETENTION_DAYS")
     if grezzo is None:
@@ -232,9 +242,9 @@ def il_file_non_porta_i_giorni(data_dir: str) -> bool:
     Esiste perche' `carica()` LEGGE attraverso l'ambiente ma non SCRIVE, e
     `salva()` ha un solo chiamante di produzione: la PUT della pagina
     «Impostazioni chat». Un utente che quella pagina non la apre mai non
-    produce mai la chiave sul disco -- e il rilascio successivo (versione B,
-    `history_retention_days` fuori dallo schema) trova un ambiente muto e fa
-    valere il default del codice, 90. Chi aveva messo 30 se lo ritrova a 90
+    produce mai la chiave sul disco -- e la versione B (3.0.0, che
+    `history_retention_days` l'ha tolta dallo schema) troverebbe un ambiente
+    muto e farebbe valere il default del codice, 90. Chi aveva messo 30 se lo ritrova a 90
     senza una riga che lo dica; chi aveva messo **0** -- «non cancellare mai»
     -- se lo ritrova a 90 e la potatura notturna delle 3 gli cancella le
     conversazioni piu' vecchie di novanta giorni. Per questo campo, la versione

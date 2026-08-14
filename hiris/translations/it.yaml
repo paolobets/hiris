@@ -9,107 +9,58 @@ configuration:
   # dell'abbonamento sta in `docs/prova-la-2.0.md`.
   #
   # I NOMI portano il raggruppamento dove non c'e' una sezione vera: il
-  # Supervisor rende a schermo solo i dizionari annidati (`ponte:`,
-  # `local_model:`, `memory:`), e per tutto il resto restano i prefissi
-  # «Provider · » e «Avanzate · ». Dentro una sezione il prefisso NON si ripete:
-  # lo porta gia' l'intestazione.
+  # Supervisor rende a schermo solo i dizionari annidati (`local_model:`,
+  # `memory:`), e per tutto il resto restano i prefissi «Provider · » e
+  # «Avanzate · ». Dentro una sezione il prefisso NON si ripete: lo porta gia'
+  # l'intestazione.
+  #
+  # VERSIONE B (3.0.0): quattordici voci sono uscite da questo file insieme
+  # alle loro opzioni. Nessuna descrizione qui dentro dice piu' «NON HA PIU'
+  # EFFETTO»: quell'avviso serviva a dodici campi che erano rimasti a schermo
+  # un rilascio in piu' per non far perdere il valore, e sono usciti tutti. Se
+  # quella formula ricompare, e' rientrata una decisione in una pagina che deve
+  # solo custodire -- e c'e' un test che lo impedisce.
   #
   # Parita' it/en pinnata da `tests/test_traduzioni_coprono_le_opzioni.py`, che
   # pinna anche «non si misurano» in `claude_code_oauth_token`.
 
-  # ── 1. Provider AI ────────────────────────────────────────────────────────
-  provider_claude:
-    name: "Provider · Claude API (a consumo)"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: chi risponde si decide nella pagina Modelli di HIRIS, e un provider e' usato se e solo se sta in catena. La chiave qui sotto serve ancora."
+  # ── 1. Le credenziali dei provider ────────────────────────────────────────
   claude_api_key:
     name: "Provider · Claude API — chiave"
     description: "Paga le risposte di Claude; la prendi su console.anthropic.com. PRIVACY: messaggi e contesto della casa passano da Anthropic (USA)."
-  provider_subscription:
-    name: "Provider · Piano Claude Max (a forfait)"
-    description: "Ragiona sul tuo piano Claude Max invece che a consumo. Col token qui sotto accende da se' il ponte: la chat ci passa, con la casa e i ricordi."
   claude_code_oauth_token:
     name: "Provider · Piano Claude Max — token"
-    description: "Apre il piano; lo generi con `claude setup-token`. ATTENZIONE: qui i consumi non si misurano, e valgono le condizioni del piano Claude Max."
-  provider_openrouter:
-    name: "Provider · OpenRouter"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: OpenRouter si mette in catena dalla pagina Modelli di HIRIS. La chiave qui sotto serve ancora -- una sola, per 200+ modelli."
+    description: "Apre il piano; lo generi con `claude setup-token`. ATTENZIONE: qui i consumi non si misurano. Da solo non basta: il piano si accende nella pagina Modelli di HIRIS."
   openrouter_api_key:
     name: "Provider · OpenRouter — chiave"
     description: "La chiave di openrouter.ai; ci sono anche modelli ':free'. PRIVACY: i messaggi passano da OpenRouter (USA) e dal fornitore del modello."
-  hide_free_models:
-    name: "OpenRouter — nascondi i modelli gratuiti (:free)"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: la casella vive nel pannello del modello di OpenRouter, nella pagina Modelli di HIRIS. Toglie i ':free' dagli elenchi."
-  provider_openai:
-    name: "Provider · OpenAI"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: OpenAI si mette in catena dalla pagina Modelli di HIRIS. La chiave qui sotto serve ancora."
   openai_api_key:
     name: "Provider · OpenAI — chiave"
     description: "Paga le risposte OpenAI. PRIVACY: i messaggi passano dai server OpenAI (USA)."
-  provider_ollama:
-    name: "Provider · Ollama (sul tuo hardware)"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: Ollama si mette in catena dalla pagina Modelli di HIRIS. L'indirizzo qui sotto serve ancora; il modello si sceglie di la'."
   local_model:
-    name: "Ollama — dove sta e quale modello"
-    description: "Dove trovare Ollama. L'indirizzo si custodisce qui; il modello e l'attesa si decidono nella pagina Modelli di HIRIS."
+    name: "Ollama — dove sta"
+    description: "Dove trovare Ollama. L'indirizzo si custodisce qui; il modello e l'attesa si scelgono nella pagina Modelli di HIRIS."
     url:
       name: "Ollama — indirizzo"
       description: "Indirizzo della tua istanza, es. http://192.168.1.10:11434. Se all'avvio HIRIS non la raggiunge, lo scrive nel registro."
-    model:
-      name: "Ollama — nome del modello"
-      description: "NON HA PIU' EFFETTO dopo il primo avvio: il modello si sceglie nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
-    request_timeout:
-      name: "Ollama — quanto aspettare una risposta (secondi)"
-      description: "NON HA PIU' EFFETTO dopo il primo avvio: l'attesa si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
 
-  # ── 2. Scelta fra i provider accesi ───────────────────────────────────────
-  llm_strategy:
-    name: "Ordine di ripiego fra i provider accesi"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: l'ordine e' la catena, e si riordina nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
-
-  # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
-  # Annidate sotto `ponte:` nella 2.4.0: e' l'unico raggruppamento che il
-  # Supervisor rende a schermo. Con l'intestazione della sezione a portarlo, il
-  # prefisso «Ponte · » esce dai nomi dei figli -- ripeterlo dentro un blocco
-  # che gia' si chiama «Ponte» era esattamente la ridondanza che questo lavoro
-  # toglie. I nomi restano comunque autosufficienti se letti da soli.
-  #
-  # UN INTERRUTTORE SOLO (13 agosto 2026). Erano due, «(1 di 2)» e «(2 di 2)»:
-  # quei marcatori erano la cura per una malattia -- due leve che dovevano
-  # essere accese insieme -- e se ne vanno con lei. Adesso il nome dice cosa
-  # l'interruttore FA, che e' quello che un nome deve dire.
-  ponte:
-    name: "Ponte — la chat sul piano Claude Max"
-    description: "Serve solo se usi il piano Claude Max. Se il piano e' acceso col suo token, il ponte si accende da se' e qui non devi toccare niente."
-    attivo:
-      name: "Accendi il ponte"
-      description: "Manda la chat al runner del piano invece che al provider a consumo. Li' la chat sa e fa quanto nell'altra modalita'."
-    bridge_deadline_min:
-      name: "Quanto aspettare una risposta (minuti)"
-      description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui. Passato quel tempo il turno passa al provider successivo."
-    chat_daily_cap:
-      name: "Quanti messaggi al giorno"
-      description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui. Oltre quei messaggi al giorno il turno passa al provider a consumo."
-
-  # ── 4. Aspetto e conservazione ────────────────────────────────────────────
+  # ── 2. Aspetto ────────────────────────────────────────────────────────────
   theme:
     name: "Aspetto — chiaro o scuro"
     description: "Il tema con cui si apre HIRIS; 'auto' segue il sistema. Se poi usi l'interruttore chiaro/scuro dentro HIRIS, su quel browser vince quello."
-  history_retention_days:
-    name: "Per quanti giorni tenere le conversazioni"
-    description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia in Impostazioni chat, dentro HIRIS. Cancella i messaggi vecchi ogni notte e limita quanto HIRIS rilegge; 0 = mai."
 
-  # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────
+  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
   memory:
     name: "Embedding — oggi non hanno effetto"
     description: "Provider e modello per la ricerca per somiglianza. Oggi non fanno niente: nessuna parte di HIRIS calcola embedding."
     embedding_provider:
       name: "Embedding — provider (inattivo)"
-      description: "Quale servizio li calcolerebbe: openai, ollama, model2vec. Oggi il valore viene solo letto e mostrato nella pagina Modelli."
+      description: "Quale servizio li calcolerebbe: openai, ollama, model2vec. Oggi il valore viene letto all'avvio e non produce nessun effetto."
     embedding_model:
       name: "Embedding — modello (inattivo)"
       description: "Quale modello userebbe: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Oggi non viene mai invocato."
 
-  # ── 6. Avanzate: registro, sicurezza, diagnostica ─────────────────────────
+  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level:
     name: "Avanzate · dettaglio del registro"
     description: "Quanto scrive HIRIS nel registro. Per segnalare un guasto: metti 'debug', riproduci il problema, allega quello che vedi."
@@ -119,6 +70,3 @@ configuration:
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
     description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Predefinito: la rete del Supervisor."
-  debug_expose_port:
-    name: "Avanzate · promemoria porta 8099 (solo diagnostica)"
-    description: "DA SOLO NON APRE NIENTE: scrive un promemoria nel registro. Ad aprire la porta e' la sezione Rete qui sotto — e allora la LAN vede /api/*."

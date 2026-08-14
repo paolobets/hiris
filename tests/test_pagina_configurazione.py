@@ -16,6 +16,16 @@ Un ordine non lascia traccia in nessun test finche' qualcuno non lo scrive: la
 prossima opzione aggiunta in coda al file, senza pensarci, rimette la pagina
 com'era. Ognuno degli assert qui sotto e' un rilievo di quel riordino, messo
 dove non puo' tornare indietro in silenzio.
+
+**VERSIONE B (3.0.0).** Quattordici opzioni sono uscite, e con loro il soggetto
+di quattro test di questo file: i cinque interruttori `provider_*` (e quindi la
+coppia interruttore-credenziale), le tre voci del blocco `ponte:` (e quindi
+l'interruttore unico del ponte e le sue etichette). Non sono stati cancellati e
+basta -- questo file esiste perche' l'ordine della pagina non resti senza
+traccia -- sono stati **riscritti sul contenuto vero della pagina dopo la
+fetta**: quattro credenziali, l'indirizzo di Ollama, il tema, gli embedding
+inerti, il blocco avanzate. E ne sono nati due che dicono la cosa nuova: cio'
+che e' USCITO da tutti e cinque i posti, e cio' che RESTA.
 """
 from pathlib import Path
 
@@ -24,27 +34,40 @@ import yaml
 
 BASE = Path(__file__).resolve().parents[1] / "hiris"
 
-# Ogni interruttore e la credenziale senza cui non fa niente. Il Supervisor non
-# sa disabilitare un campo finche' un altro non e' valorizzato: l'unica cosa
-# che possiamo fare per chi accende un provider e' che trovi SUBITO DOPO il
-# posto dove incollare la chiave.
-INTERRUTTORE_E_CREDENZIALE = [
-    ("provider_claude", "claude_api_key"),
-    ("provider_subscription", "claude_code_oauth_token"),
-    ("provider_openrouter", "openrouter_api_key"),
-    ("provider_openai", "openai_api_key"),
-    ("provider_ollama", "local_model"),
+# Le quattro credenziali, nell'ordine in cui la pagina le presenta -- che e'
+# l'ordine di ripiego di `balanced`, lo stesso che la pagina Modelli propone
+# col preset omonimo. Fino alla 2.5.0 ognuna aveva sopra il suo interruttore
+# `provider_*`, e il test di questo file pinnava proprio quell'adiacenza (un
+# interruttore separato dalla sua credenziale da uno a diciannove campi era il
+# difetto della 2.3.0). Gli interruttori sono usciti: non c'e' piu' niente da
+# tenere adiacente, e cio' che resta da pinnare e' che le credenziali stiano
+# TUTTE INSIEME e in quest'ordine, invece di essere sparse fra il tema e il
+# registro come lo erano prima della 2.3.0.
+CREDENZIALI_IN_ORDINE = [
+    "claude_api_key",
+    "claude_code_oauth_token",
+    "openrouter_api_key",
+    "openai_api_key",
+    "local_model",
 ]
 
 # Toccarle senza sapere cosa si fa apre la API di HIRIS sulla rete locale.
 # Il Supervisor non sa marcare un campo come pericoloso: stare in fondo, e il
 # prefisso «Avanzate · » nell'etichetta, sono l'unico segnale disponibile.
+# Erano quattro: `debug_expose_port` e' uscita con la versione B -- da sola non
+# apriva niente, scriveva sette righe di promemoria nel registro.
 IN_FONDO_PERCHE_PERICOLOSE = [
     "log_level",
     "internal_token",
     "supervisor_ingress_cidr",
-    "debug_expose_port",
 ]
+
+# I due gruppi annidati rimasti. Il dizionario annidato e' l'unico
+# raggruppamento che il Supervisor rende a schermo, e l'intestazione porta il
+# contesto: dentro, i nomi dei figli non lo ripetono. Era il test sulla sezione
+# «Ponte», uscita per intero; l'invariante non era del ponte, era della
+# nidificazione, e vale ancora dove la nidificazione c'e'.
+SEZIONI_ANNIDATE = ["local_model", "memory"]
 
 
 def _config() -> dict:
@@ -73,14 +96,19 @@ def test_options_e_schema_sono_nello_stesso_ordine():
             )
 
 
-@pytest.mark.parametrize("interruttore,credenziale", INTERRUTTORE_E_CREDENZIALE)
-def test_ogni_provider_ha_la_sua_credenziale_subito_sotto(interruttore, credenziale):
+def test_le_credenziali_aprono_la_pagina_e_stanno_tutte_insieme():
+    """Cio' che resta da custodire viene prima di tutto il resto.
+
+    Prima della 2.3.0 le credenziali erano sparse: chi installava HIRIS doveva
+    scorrere l'intera pagina per trovare dove incollare una chiave. La 2.3.0 le
+    ha messe accanto ai loro interruttori; la versione B ha tolto gli
+    interruttori, e quello che resta -- l'unica cosa che questa pagina fa
+    ancora -- deve stare in cima e in blocco.
+    """
     ordine = list(_config()["options"])
-    i, c = ordine.index(interruttore), ordine.index(credenziale)
-    assert c == i + 1, (
-        f"'{credenziale}' non e' piu' subito sotto '{interruttore}' "
-        f"(posizioni {i} e {c}): chi accende il provider non trova dove "
-        "mettere la credenziale, ed e' il difetto che la 2.3.0 ha chiuso"
+    assert ordine[:len(CREDENZIALI_IN_ORDINE)] == CREDENZIALI_IN_ORDINE, (
+        "le credenziali non aprono piu' la pagina, o non sono piu' contigue: "
+        f"{ordine}"
     )
 
 
@@ -106,38 +134,40 @@ def test_le_opzioni_pericolose_lo_dicono_nell_etichetta(lingua):
         )
 
 
-def test_il_ponte_ha_un_interruttore_solo():
-    """La fine di una storia lunga tre versioni.
+def test_il_ponte_non_e_piu_un_interruttore_di_questa_pagina():
+    """La fine di una storia lunga quattro versioni.
 
     Erano due leve che dovevano essere accese insieme (`bridge_enabled` e
     `chat_via_subscription`, `_chat_subscription_active` = AND). La 2.2.1 le
     aveva rese adiacenti, la 2.3.x le aveva chiamate «(1 di 2)» e «(2 di 2)»;
-    la 2.4.0 le fonde, perche' non erano due decisioni. Questo test e' l'unico
-    posto che impedisce alla seconda leva di ricomparire dalla porta di
-    servizio: una nuova opzione booleana dentro `ponte:` sarebbe di nuovo un
-    interruttore da tenere allineato a mano.
+    la 2.4.0 le fonde in `ponte.attivo`, perche' non erano due decisioni; e la
+    3.0.0 porta via anche quella, perche' non era una decisione da prendere
+    QUI: si prende dove si vede l'effetto, cioe' nella pagina Modelli, dove il
+    piano compare in testa alla catena o ne sta fuori.
+
+    Il test che stava qui pinnava «un interruttore solo dentro `ponte:`», ed
+    era la rete contro una seconda leva rientrata dalla porta di servizio. La
+    rete adesso e' piu' larga e piu' semplice: dentro questa pagina non c'e'
+    NESSUN interruttore. Un booleano qui sarebbe per forza una decisione, e le
+    decisioni non stanno piu' qui.
     """
-    ponte = _config()["options"]["ponte"]
-    interruttori = [k for k, v in ponte.items() if isinstance(v, bool)]
-    assert interruttori == ["attivo"], (
-        f"il ponte deve avere un interruttore solo, e chiamarsi «attivo»: {interruttori}"
+    cfg = _config()
+    assert "ponte" not in cfg["options"] and "ponte" not in cfg["schema"]
+
+    booleani = []
+
+    def cerca(albero, prefisso=""):
+        for chiave, valore in albero.items():
+            if isinstance(valore, dict):
+                cerca(valore, prefisso + chiave + ".")
+            elif isinstance(valore, bool):
+                booleani.append(prefisso + chiave)
+
+    cerca(cfg["options"])
+    assert booleani == [], (
+        f"un interruttore e' tornato nella pagina dell'add-on: {booleani}. "
+        "Questa pagina custodisce credenziali, non prende decisioni"
     )
-    assert "bridge_enabled" not in ponte and "chat_via_subscription" not in ponte
-
-
-@pytest.mark.parametrize("lingua", ["it", "en"])
-def test_l_etichetta_del_ponte_non_dice_piu_di_essere_una_meta(lingua):
-    """«(1 di 2)» e «(2 di 2)» erano la cura per una malattia -- due leve da
-    accendere insieme -- e se ne vanno con lei. Un nome deve dire cosa fa
-    l'interruttore, non che e' un pezzo di qualcos'altro."""
-    ponte = _traduzioni(lingua)["ponte"]
-    nome = ponte["attivo"]["name"]
-    assert nome.strip()
-    for meta in ("(1 di 2)", "(2 di 2)", "(1 of 2)", "(2 of 2)"):
-        assert meta not in nome, (
-            f"{lingua}.yaml: «{meta}» e' tornata in «{nome}», ma il ponte "
-            "e' un interruttore solo: quel marcatore descriveva una coppia"
-        )
 
 
 @pytest.mark.parametrize("lingua", ["it", "en"])
@@ -198,6 +228,84 @@ def test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti():
     )
 
 
+def test_le_decisioni_sono_uscite_da_tutti_e_cinque_i_posti():
+    """Un'opzione vive in cinque posti; toglierla da meno di cinque lascia un
+    residuo. Queste quattordici sono uscite perche' la decisione che
+    rappresentavano si prende adesso nella pagina Modelli (o, per due di loro,
+    non si prende piu' affatto)."""
+    cfg = _config()
+    uscite = [
+        "provider_claude", "provider_subscription", "provider_openrouter",
+        "provider_openai", "provider_ollama", "llm_strategy", "hide_free_models",
+        "history_retention_days", "debug_expose_port",
+    ]
+    for nome_opzione in uscite:
+        assert nome_opzione not in cfg["options"], nome_opzione
+        assert nome_opzione not in cfg["schema"], nome_opzione
+        for lingua in ("it", "en"):
+            assert nome_opzione not in _traduzioni(lingua), (nome_opzione, lingua)
+    # Le cinque ANNIDATE: il blocco `ponte:` per intero (tre voci), e le due
+    # voci di `local_model:` che erano decisioni. Vanno guardate dentro il loro
+    # gruppo, perche' come nomi di primo livello non ci sono mai state -- e un
+    # test che le cercasse in cima passerebbe senza guardare niente.
+    assert "ponte" not in cfg["options"] and "ponte" not in cfg["schema"]
+    for lingua in ("it", "en"):
+        assert "ponte" not in _traduzioni(lingua), lingua
+    assert set(cfg["options"]["local_model"]) == {"url"}
+    assert set(cfg["schema"]["local_model"]) == {"url"}
+    for lingua in ("it", "en"):
+        voci = _traduzioni(lingua)["local_model"]
+        assert "model" not in voci and "request_timeout" not in voci, lingua
+
+    # Il quinto posto, per le quattordici: `run.sh`. Le righe VIVE soltanto --
+    # il commento in cima al file elenca apposta le variabili uscite, e
+    # citarle non e' esportarle.
+    run_sh_vivo = [r for r in (BASE / "run.sh").read_text(encoding="utf-8").splitlines()
+                   if not r.lstrip().startswith("#")]
+    for variabile in ("PROVIDER_CLAUDE", "PROVIDER_SUBSCRIPTION",
+                      "PROVIDER_OPENROUTER", "PROVIDER_OPENAI", "PROVIDER_OLLAMA",
+                      "LLM_STRATEGY", "HIRIS_HIDE_FREE_MODELS", "BRIDGE_ENABLED",
+                      "BRIDGE_DEADLINE_MIN", "CHAT_DAILY_CAP", "LOCAL_MODEL_NAME",
+                      "OLLAMA_REQUEST_TIMEOUT", "HISTORY_RETENTION_DAYS",
+                      "HIRIS_DEBUG_EXPOSE_PORT"):
+        assert not [r for r in run_sh_vivo if variabile in r], variabile
+
+
+def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
+    """Spec §4: le credenziali dove si custodiscono, le decisioni dove si
+    prendono. Questo test e' l'elenco di cio' che RESTA, e si rompe se qualcuno
+    ci rimette una decisione."""
+    cfg = _config()
+    assert set(cfg["options"]) == {
+        "claude_api_key", "claude_code_oauth_token", "openrouter_api_key",
+        "openai_api_key", "local_model", "theme", "memory",
+        "log_level", "internal_token", "supervisor_ingress_cidr",
+    }
+
+
+def test_il_promemoria_della_porta_e_uscito_ma_il_meccanismo_no():
+    """`debug_expose_port` non apriva niente: stampava sette righe di warning
+    che spiegavano come aprire la porta a mano nella sezione Rete di Home
+    Assistant. Un promemoria travestito da comando, con zero lettori nel
+    codice.
+
+    Cio' che apre davvero la porta -- `ports:` e la sua descrizione -- RESTA, e
+    la descrizione ha dovuto assorbire l'avvertimento che il promemoria
+    portava: senza, togliere l'opzione avrebbe tolto anche l'unico posto in cui
+    il rischio era scritto."""
+    cfg = _config()
+    assert "8099/tcp" in cfg["ports"]
+    descrizione = cfg["ports_description"]["8099/tcp"]
+    assert "debug_expose_port" not in descrizione, (
+        "la descrizione della porta manda ancora a cercare un'opzione che non "
+        "esiste piu': e' lo stesso difetto del messaggio di primo avvio"
+    )
+    assert "LAN" in descrizione, (
+        "la descrizione non dice piu' cosa comporta aprire la porta, e adesso "
+        "e' l'unico posto che puo' dirlo"
+    )
+
+
 def test_run_sh_esporta_ogni_opzione_dell_addon():
     """Il quinto posto, quello che si dimentica: la catena e' `config.yaml` →
     `run.sh` → variabile d'ambiente maiuscola → lettore Python. Un'opzione
@@ -228,21 +336,31 @@ def test_run_sh_esporta_ogni_opzione_dell_addon():
     )
 
 
-@pytest.mark.parametrize("lingua,prefisso", [("it", "Ponte"), ("en", "Bridge")])
-def test_dentro_la_sezione_ponte_le_etichette_non_ripetono_l_intestazione(lingua, prefisso):
+@pytest.mark.parametrize("sezione", SEZIONI_ANNIDATE)
+@pytest.mark.parametrize("lingua", ["it", "en"])
+def test_dentro_una_sezione_le_etichette_non_ripetono_l_intestazione(lingua, sezione):
     """Il prefisso e l'intestazione fanno lo stesso lavoro: insieme lo fanno due
     volte. Fuori da una sezione il prefisso e' l'unico raggruppamento che il
-    Supervisor mostra e quindi serve; dentro, lo porta gia' l'intestazione."""
-    ponte = _traduzioni(lingua)["ponte"]
-    assert prefisso.lower() in ponte["name"].lower(), (
-        "l'intestazione della sezione non nomina piu' il ponte: se sparisce da "
-        "li', i nomi dei figli restano senza contesto"
-    )
+    Supervisor mostra e quindi serve; dentro, lo porta gia' l'intestazione.
+
+    Era scritto sulla sezione «Ponte», uscita per intero con la versione B.
+    L'invariante non era del ponte: e' della nidificazione, ed e' su tutte e
+    due le sezioni annidate rimaste che va guardato -- la prossima che nasce lo
+    trovera' gia' scritto."""
+    voce = _traduzioni(lingua)[sezione]
+    intestazione = voce["name"]
+    assert intestazione.strip(), f"la sezione '{sezione}' non ha un'intestazione"
+    # La prima parola dell'intestazione, che e' quella che i figli non devono
+    # ripetere («Ollama — dove sta» -> «Ollama», «Embedding — ...» ->
+    # «Embedding»). Presa dal file invece che scritta qui: rinominare la
+    # sezione non deve far passare il test per la ragione sbagliata.
+    prima = intestazione.split()[0].lower().rstrip(":—-")
     ripetitivi = [
-        chiave for chiave, voce in ponte.items()
-        if isinstance(voce, dict) and voce["name"].strip().lower().startswith(prefisso.lower() + " ·")
+        chiave for chiave, figlio in voce.items()
+        if isinstance(figlio, dict)
+        and figlio["name"].strip().lower().startswith(prima + " ·")
     ]
     assert not ripetitivi, (
-        f"{lingua}.yaml: dentro la sezione «{ponte['name']}» queste voci "
+        f"{lingua}.yaml: dentro la sezione «{intestazione}» queste voci "
         f"ripetono il prefisso che l'intestazione porta gia': {ripetitivi}"
     )

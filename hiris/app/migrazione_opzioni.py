@@ -17,17 +17,29 @@ avvenuta -- e va segnato ANCHE quando non c'era niente da copiare, altrimenti
 un'installazione nuova ricomincerebbe a cercare opzioni che dopo la versione B
 non esistono piu'.
 
-Le sette variabili d'ambiente lette qui sono quelle che `run.sh` esporta dalle
-opzioni di `config.yaml` (`ponte.attivo`, `ponte.bridge_deadline_min`,
+Le sette variabili d'ambiente lette qui erano quelle che `run.sh` esportava
+dalle opzioni di `config.yaml` (`ponte.attivo`, `ponte.bridge_deadline_min`,
 `ponte.chat_daily_cap`, `local_model.model`, `local_model.request_timeout`,
 `hide_free_models`, `llm_strategy`): i nomi MAIUSCOLI non coincidono con i nomi
 delle opzioni, quindi la catena si segue per intero -- config.yaml -> run.sh ->
 qui -- o si copia la cosa sbagliata.
 
-Questo modulo NON sposta nessun lettore di comportamento: `BRIDGE_ENABLED`,
-`CHAT_DAILY_CAP`, `LOCAL_MODEL_NAME`, `OLLAMA_REQUEST_TIMEOUT` e
-`HIRIS_HIDE_FREE_MODELS` continuano a governare come oggi (Task 7 e 10 spostano
-i lettori). Qui si sposta soltanto la fonte di verita'.
+**VERSIONE B (3.0.0, 14 agosto 2026): quelle sette opzioni sono USCITE**, e con
+loro i sette `export` di `run.sh`. Nessuno di quei valori governa piu' niente
+dall'ambiente: il ponte, i due tempi, il tetto, il modello di Ollama, il
+filtro dei gratuiti e il preset vivono nell'archivio, e chi li legge lo legge
+di li'.
+
+Questo modulo resta, e resta l'unico posto che legge ancora quelle variabili.
+Non e' un ripiego «se non so niente comportati come prima»: e' la migrazione, e
+serve a un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
+popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
+fuori schema vengono scartate PRIMA che /data/options.json esista, quindi
+l'ambiente e' muto e la semina scrive i predefiniti su un archivio che pero' e'
+gia' `seminato`, e quindi esce subito); in sviluppo si'. **Esce con la fetta
+successiva**, insieme a `server._catena_com_era` e a
+`impostazioni_chat._giorni_da_ambiente`, quando nessuna installazione potra'
+piu' arrivare non seminata.
 
 Funzione PURA: `ambiente` e' un dizionario gia' letto, non `os.environ`.
 """

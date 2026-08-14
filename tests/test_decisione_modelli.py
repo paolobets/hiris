@@ -61,6 +61,72 @@ def test_il_piano_pagato_e_fuori_dalla_catena_e_uno_spreco_dichiarato():
     )
 
 
+def test_lo_spreco_del_piano_porta_il_gesto_che_lo_ripara():
+    """**Il bottone che il Task 14 non poteva costruire.**
+
+    Il Task 14 lascio' `azione` a `None` su tutte le diagnosi, e aveva ragione:
+    `ponte.attivo` veniva da `BRIDGE_ENABLED`, cioe' dall'ambiente, e una PUT su
+    un valore letto dall'ambiente torna 200 e viene buttata via al riavvio --
+    un bottone che sembra funzionare e non funziona, la trappola che questa
+    fetta aveva gia' evitato due volte. Con la versione B `ponte.attivo` vive
+    nell'archivio e la meta' che mancava e' arrivata.
+
+    Il gesto e' un'ETICHETTA + un PERCORSO + un VALORE, non un tipo di comando:
+    la pagina applica un valore a una posizione dell'archivio e rilegge, senza
+    sapere che cosa sta accendendo. E' la stessa disciplina di `dove` nel
+    pannello del modello (Task 9), ed e' cio' che tiene la topologia fuori dal
+    frontend (invariante 2)."""
+    d = componi_adesso(
+        catena=["claude"],
+        credenziali={"claude": True, "subscription": True},
+        modelli={"claude": "claude-opus-4-7"},
+        ponte_attivo=False,
+    )
+    spreco = [x for x in d["diagnosi"] if x["gravita"] == "spreco"][0]
+    assert spreco["azione"] == {
+        "etichetta": "Mettilo primo",
+        "dove": ["ponte", "attivo"],
+        "valore": True,
+    }
+
+
+def test_col_ponte_acceso_il_gesto_e_quello_INVERSO():
+    """L'altra direzione, e non e' simmetria di cortesia: togliendo
+    `ponte.attivo` dalle opzioni dell'add-on si e' tolto l'UNICO modo che
+    c'era di spegnere il ponte. Un interruttore che si accende e non si spegne
+    e' peggio di nessun interruttore.
+
+    Sta su una riga che non denuncia niente (`fatto`): il ponte acceso con dei
+    provider sotto e' uno stato sano, e il gesto va dove sta il fatto che si
+    vuole cambiare, non dove c'e' un guasto."""
+    d = componi_adesso(
+        catena=["claude"],
+        credenziali={"claude": True, "subscription": True},
+        modelli={"claude": "claude-opus-4-7"},
+        ponte_attivo=True,
+    )
+    fatto = [x for x in d["diagnosi"] if x["gravita"] == "fatto"][0]
+    assert fatto["azione"] == {
+        "etichetta": "Togli il piano dalla catena",
+        "dove": ["ponte", "attivo"],
+        "valore": False,
+    }
+
+
+def test_col_ponte_acceso_e_nessuno_sotto_non_si_offre_nessun_gesto():
+    """Il terzo caso, che NON e' il secondo con un'altra parola: col ponte
+    acceso e la catena vuota, spegnere il ponte lascerebbe HIRIS senza nessuno
+    a cui chiedere. Offrire li' il gesto sarebbe consigliare di peggiorare, e
+    un'azione che compare sempre e' un'azione che non significa niente."""
+    d = componi_adesso(
+        catena=[],
+        credenziali={"subscription": True},
+        modelli={},
+        ponte_attivo=True,
+    )
+    assert [x["azione"] for x in d["diagnosi"]] == [None]
+
+
 def test_senza_token_del_piano_non_si_dichiara_nessuno_spreco():
     """La prova gemella della precedente: la diagnosi è un'affermazione su una
     cosa MISURATA (il token c'è), non un consiglio che si dà sempre."""
@@ -473,6 +539,30 @@ def test_il_piano_dice_perche_non_si_sposta_e_perche_non_si_mette_in_catena():
     assert "ponte" in piano["nota"], (
         "col token in mano e fuori dalla catena, la riga deve dire COME ci "
         "entra: e' il caso del proprietario, che paga e non usa"
+    )
+
+
+@pytest.mark.parametrize("ponte", [True, False])
+def test_la_riga_del_piano_manda_DOVE_il_gesto_esiste_davvero(ponte):
+    """Il giorno previsto e' arrivato, e la stringa e' cambiata col fatto.
+
+    Fino alla 2.5.0 le due note del piano dicevano «il ponte si accende (o si
+    spegne) in Configurazione add-on», ed era vero: `ponte.attivo` era
+    un'opzione dell'add-on. Con la versione B non lo e' piu', e una nota che
+    mandasse ancora li' manderebbe a cercare un campo che non esiste --
+    esattamente il difetto del messaggio di primo avvio che il Task 15 ha
+    chiuso, in un altro posto.
+
+    Il commento sopra `nota()` prometteva che sarebbe cambiata «senza che la
+    pagina venga toccata»: questo test e' la prova che la promessa e' stata
+    mantenuta, e la rete che impedisce alla stringa vecchia di tornare."""
+    catena, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
+                                      modelli=MOD, ponte_attivo=ponte)
+    piano = {r["id"]: r for r in catena + fuori}["subscription"]
+    assert "Configurazione add-on" not in piano["nota"], piano["nota"]
+    assert "riquadro in cima" in piano["nota"], (
+        "la nota non dice piu' dove sta il gesto: l'utente resta con una riga "
+        "che spiega la regola e nessun modo di applicarla"
     )
 
 

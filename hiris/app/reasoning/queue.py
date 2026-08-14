@@ -252,7 +252,7 @@ class ReasoningQueue:
         simplification): a job whose deadline_ts is already in the past is
         excluded even if its status is still 'pending'/'claimed' -- e.g.
         because the ponte-push sweep (server.py's _reasoning_sweep, gated on
-        BRIDGE_ENABLED) never ran or is off. Without this, an
+        app["ponte_attivo"]) never ran or is off. Without this, an
         expired-but-unswept job would 409 the conversation forever with no
         way to clear it. Takes an explicit `now`, like every other method on
         this class (enqueue/claim/submit/sweep_expired/count_chat_today),

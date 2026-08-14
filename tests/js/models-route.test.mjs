@@ -31,7 +31,6 @@ const CONFIG = {
   nascondi_gratuiti: false,
   strategia_ultima: 'balanced',
   seminato: true,
-  ponte_attivo: false,
   fine_catena: 'ultimo della catena: se non risponde, la chat dà errore',
   catena: [
     { id: 'openrouter', nome: 'OpenRouter', modello: 'anthropic/claude-sonnet-4-6',
@@ -345,7 +344,7 @@ test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () =
      solo, qui scriverebbe «Il prossimo messaggio va a .» -- disegna invece
      `adesso.frase`, e la gravita' «guasto» diventa la classe che la CSS
      colora di --err-ink invece che di --warn-ink. */
-  const { window, document } = monta({ config: { ponte_attivo: true, adesso: {
+  const { window, document } = monta({ config: { ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, adesso: {
     chi: null, nome: '', modello: '', natura: '', via: '',
     frase: 'HIRIS non può rispondere: il ponte è acceso e manca il token del Piano Claude Max.',
     diagnosi: [{ gravita: 'guasto',
@@ -357,6 +356,112 @@ test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () =
   const card = adesso(document);
   assert.match(card.querySelector('.adesso-frase').textContent, /manca il token/);
   assert.equal(card.querySelectorAll('.diagnosi-guasto').length, 1);
+});
+
+/* ── Il gesto dentro la diagnosi ──────────────────────────────────────────
+   Il bottone che il Task 14 non poteva costruire: `ponte.attivo` veniva
+   dall'ambiente, e una PUT su un valore letto dall'ambiente torna 200 e viene
+   buttata via al riavvio. Con la versione B vive nell'archivio, e il gesto
+   arriva dal backend come ETICHETTA + PERCORSO + VALORE: la pagina non sa che
+   cosa sta accendendo, applica un valore a una posizione e rilegge. */
+
+function diagnosiConGesto(valore) {
+  return { config: { adesso: {
+    chi: 'claude', nome: 'Claude API', modello: 'claude-opus-4-7',
+    natura: 'a consumo', via: 'catena',
+    frase: 'Il prossimo messaggio va a Claude API, con claude-opus-4-7, a consumo.',
+    diagnosi: [{
+      gravita: 'spreco',
+      testo: 'Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.',
+      azione: { etichetta: 'Mettilo primo', dove: ['ponte', 'attivo'], valore: valore },
+    }],
+  } } };
+}
+
+test('la diagnosi che porta un gesto lo disegna, con le parole del backend', async () => {
+  const ctx = monta(diagnosiConGesto(true));
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const bottone = adesso(ctx.document).querySelector('.diagnosi-azione');
+  assert.ok(bottone, 'la diagnosi porta un\'azione e la pagina non la disegna');
+  assert.equal(bottone.textContent, 'Mettilo primo');
+  assert.ok(bottone.closest('.diagnosi-spreco'),
+    'il gesto sta DENTRO la voce che lo motiva: staccato, non si sa perché cliccarlo');
+});
+
+test('una diagnosi senza gesto non disegna nessun bottone', async () => {
+  /* Il gemello obbligatorio. Un bottone che compare sempre sarebbe verde allo
+     stesso modo del test qui sopra, e offrirebbe un gesto anche dove non c'è
+     niente da fare. */
+  const ctx = monta();
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  assert.equal(adesso(ctx.document).querySelectorAll('.diagnosi-azione').length, 0);
+});
+
+test('il gesto scrive il PERCORSO che ha ricevuto, e poi rilegge', async () => {
+  /* La pagina non ricompone la topologia da sé: ciò che cambia non è una
+     posizione già determinata dal gesto (le frecce), è CHI RISPONDE -- la
+     frase in cima, la presenza del piano in testa, il connettore. Ricomporlo
+     qui vorrebbe dire calcolarlo, cioè rimettere la topologia nel frontend. */
+  const ctx = monta(diagnosiConGesto(true));
+  const letture = () => ctx.chiamate.filter(
+    (c) => c.url === 'api/models/config' && (c.opts || {}).method !== 'PUT').length;
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const prima = letture();
+
+  adesso(ctx.document).querySelector('.diagnosi-azione')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
+  assert.equal(put.length, 1);
+  assert.equal(JSON.parse(put[0].opts.body).ponte.attivo, true);
+  assert.equal(letture(), prima + 1,
+    'dopo il gesto la pagina deve RILEGGERE: chi risponde adesso, il piano in '
+    + 'testa e il connettore li decide il backend, e ricomporli qui vorrebbe '
+    + 'dire calcolarli');
+});
+
+test('il gesto sa portare anche il valore falso, senza saperlo', async () => {
+  /* L'altra direzione passa dallo STESSO codice: se la pagina conoscesse il
+     caso «accendi», spegnere richiederebbe un secondo ramo -- e sarebbe una
+     regola del prodotto scritta in JavaScript. */
+  const ctx = monta(diagnosiConGesto(false));
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  adesso(ctx.document).querySelector('.diagnosi-azione')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
+  assert.equal(JSON.parse(put[0].opts.body).ponte.attivo, false);
+});
+
+test('un gesto che il disco rifiuta non resta a schermo come se fosse passato', async () => {
+  /* Il valore va RIMESSO com'era, e non basta guardarlo nella PUT fallita:
+     `state.cfg` viaggia INTERO a ogni scrittura successiva. Se il gesto
+     rifiutato restasse dentro, il primo preset cliccato dopo lo porterebbe sul
+     disco di straforo -- accendendo il ponte senza che nessuno lo abbia
+     chiesto e senza che nessuna riga a schermo lo dica. Si guarda quindi il
+     corpo della SCRITTURA SUCCESSIVA, che è dove il difetto arriverebbe. */
+  const ctx = monta(Object.assign({ putRotto: true }, diagnosiConGesto(true)));
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  adesso(ctx.document).querySelector('.diagnosi-azione')
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  assert.match(ctx.document.getElementById('catena-stato').textContent,
+    /Salvataggio non riuscito/);
+
+  ctx.document.querySelectorAll('.sc-actions button')[0]
+    .dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
+  assert.equal(put.length, 2);
+  assert.equal(JSON.parse(put[1].opts.body).ponte.attivo, false,
+    'il valore rifiutato dal disco è rimasto in `state.cfg` e la scrittura '
+    + 'successiva se lo porta dietro');
 });
 
 /* ── 01 LA CATENA e 02 FUORI DALLA CATENA ────────────────────────────────── */
@@ -393,7 +498,7 @@ test('il connettore del piano dichiara i minuti, e non promette un ripiego che n
      il prodotto non fa -- il difetto 3, ricomparso come didascalia. */
   const catena = [PIANO_DENTRO, Object.assign({}, CATENA[0], { posizione: 2 })];
   const { window, document } = monta({ config: {
-    ponte_attivo: true, catena: catena, fuori_catena: [] } });
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   window.HirisModelsRoute.mount();
   await tick(20);
   const conn = document.querySelectorAll('#catena-card .connettore')[0];
@@ -409,7 +514,7 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
      frase è il numero. */
   const catena = [PIANO_DENTRO, Object.assign({}, CATENA[0], { posizione: 2 })];
   const sopra = monta({ config: {
-    ponte_attivo: true, catena: catena, fuori_catena: [] } });
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   sopra.window.HirisModelsRoute.mount();
   await tick(20);
   const nota = sopra.document.querySelector('#catena-card .connettore-nota');
@@ -422,7 +527,7 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
   const senza = [Object.assign({}, PIANO_DENTRO, { connettore_nota: '' }),
     Object.assign({}, CATENA[0], { posizione: 2 })];
   const sotto = monta({ config: {
-    ponte_attivo: true, catena: senza, fuori_catena: [] } });
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: senza, fuori_catena: [] } });
   sotto.window.HirisModelsRoute.mount();
   await tick(20);
   assert.equal(sotto.document.querySelector('#catena-card .connettore-nota'), null,
@@ -539,7 +644,7 @@ test('la freccia che non ha niente da scambiare è spenta, non finta', async () 
 
 test('col ponte acceso la catena resta visibile e riordinabile, e si dice scavalcata', async () => {
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [PIANO_DENTRO].concat(
       CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
     fuori_catena: FUORI.slice(1) } });
@@ -563,7 +668,7 @@ test('un gesto col ponte acceso non fa sparire il piano dalla catena', async () 
      scompare perché hai spostato un'altra. Le righe che non si governano da
      `chain_order` restano dove il backend le ha messe. */
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [PIANO_DENTRO].concat(
       CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
     fuori_catena: FUORI.slice(1) } });
@@ -608,7 +713,7 @@ test('la riga del piano non porta frecce né «(x)», e dice perché', async () 
      e `chain_order` non lo contiene nemmeno. È il difetto che questa fetta
      esiste per chiudere, ricomparso nell'interfaccia. */
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [PIANO_DENTRO].concat(
       CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
     fuori_catena: FUORI.slice(1) } });
@@ -810,7 +915,7 @@ test('la provenienza è quella ricevuta, non una composta qui', async () => {
 
 test('il pannello del piano offre tre alias e nessun identificatore', async () => {
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
     pannelli: { subscription: PANNELLO_PIANO } });
   ctx.window.HirisModelsRoute.mount();
@@ -830,7 +935,7 @@ test('il pannello del piano MOSTRA e non scrive: niente da salvare, niente da pr
      piano tornavano 200 e venivano buttati via. Spento è una lettura onesta,
      come la freccia che non ha niente da scambiare. */
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
     pannelli: { subscription: PANNELLO_PIANO } });
   ctx.window.HirisModelsRoute.mount();
@@ -1031,7 +1136,7 @@ test('un alias si vede che è un alias, prima che qualcuno lo spieghi', async ()
      alias ha l'aspetto di una parola. La differenza la porta il carattere, e
      il carattere lo decide un campo del payload -- non un `if` su un id. */
   const ctx = monta({ config: {
-    ponte_attivo: true,
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
     catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })].concat(
       CATENA.map((r, i) => Object.assign({}, r, { posizione: i + 2 }))),
     fuori_catena: [] } });

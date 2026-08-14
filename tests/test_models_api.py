@@ -44,11 +44,16 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "seminato", "catena_seminata",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
-        # l'ULTIMO residuo dichiarato: esce col Task 13/14, e non e' un
-        # doppione esatto di `ponte.attivo` (e' `BRIDGE_ENABLED or
-        # _sub_first_class`, quindi chi lo toglie toglie anche l'implicazione)
-        "ponte_attivo",
     }
+    # `ponte_attivo` E' USCITO con la versione B, ed era l'ULTIMO residuo
+    # dell'invariante 1 di tutto il payload: `app["ponte_attivo"]`, cioe'
+    # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
+    # `ponte["attivo"]`. Non era un doppione esatto -- poteva dire `true` con
+    # l'archivio a `false` -- e quindi la pagina riceveva due risposte alla
+    # stessa domanda. Tolta l'implicazione in `server.py`, il secondo valore
+    # e' il primo, e ne resta uno.
+    assert "ponte_attivo" not in body
+    assert isinstance(body["ponte"]["attivo"], bool)
     # Task 9: `ollama_model` e `embeddings` sono usciti da qui. Il primo era
     # `app["local_model_name"]` accanto a `payload["ollama"]["modello"]` -- la
     # stessa cosa detta due volte, e la copia era pure ferma all'avvio. Il
@@ -165,7 +170,6 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     che si stringe, non che si allenta."""
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["catena_modelli"] = ["openrouter"]
-    client.app["ponte_attivo"] = False
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -194,7 +198,6 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
     ordine, e devono venire dalla stessa misura."""
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["catena_modelli"] = ["openrouter", "claude"]
-    client.app["ponte_attivo"] = False
 
     body = await (await client.get("/api/models/config")).json()
     assert body["adesso"]["chi"] == body["catena"][0]["id"]
@@ -202,9 +205,16 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
 
 @pytest.mark.asyncio
 async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(client, monkeypatch):
+    """Il ponte si accende SCRIVENDO L'ARCHIVIO, non un valore in memoria.
+
+    Fino alla 2.5.0 questo test faceva `client.app["ponte_attivo"] = True`, e
+    andava bene perche' il payload pubblicava quel valore. Dalla versione B il
+    ponte ha una casa sola (`ponte.attivo`), e una prova che accendesse il
+    ponte in un posto che il prodotto non ha piu' proverebbe uno stato
+    irraggiungibile."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
     client.app["catena_modelli"] = []
-    client.app["ponte_attivo"] = True
+    await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["subscription"]
@@ -311,9 +321,9 @@ async def test_il_connettore_dichiara_il_tempo_CHE_IL_TURNO_SUBISCE(client, monk
     rimettesse la lettura d'ambiente, questo test lo direbbe subito."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
-    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 9}})
+    await client.put("/api/models/config",
+                     json={"ponte": {"attivo": True, "scadenza_min": 9}})
     client.app["catena_modelli"] = []
-    client.app["ponte_attivo"] = True
 
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"][0]["id"] == "subscription"
@@ -328,7 +338,6 @@ async def test_una_catena_vuota_non_ha_una_fine(client):
     niente da chiudere, e una riga «se non risponde, la chat da' errore» sotto
     una catena vuota parlerebbe di un anello che non esiste."""
     client.app["catena_modelli"] = []
-    client.app["ponte_attivo"] = False
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"] == []
     assert body["fine_catena"] == ""
@@ -606,15 +615,78 @@ async def test_il_payload_porta_la_decisione_gia_presa(client):
 
 
 @pytest.mark.asyncio
-async def test_il_payload_dichiara_se_il_ponte_e_acceso(client):
-    """Senza questo campo lo stato «ponte acceso, nessun token» è INVISIBILE
-    alla pagina: `toggle` di subscription legge solo PROVIDER_SUBSCRIPTION e
-    non BRIDGE_ENABLED, e `active` collassa i due casi in false. Il progetto
-    §4.3 dava il campo per già presente: non lo era."""
+async def test_il_payload_dichiara_se_il_ponte_e_acceso_UNA_volta_sola(client):
+    """Senza saperlo, lo stato «ponte acceso, nessun token» è INVISIBILE alla
+    pagina: fino al Task 7 `toggle` di subscription leggeva solo
+    PROVIDER_SUBSCRIPTION e non BRIDGE_ENABLED, e `active` collassava i due
+    casi in false. Il progetto §4.3 dava il campo per già presente: non lo era,
+    e il Task 7 lo aveva aggiunto come `ponte_attivo`.
+
+    **Versione B**: il campo dedicato è uscito, ma il fatto no -- viaggia in
+    `ponte.attivo`, che è dove vive. Quello che si pinna qui è che il payload
+    lo dica UNA volta: due campi che rispondono alla stessa domanda sono
+    l'invariante 1 violato, e questo payload ne ha già portati quattro (
+    `providers[]`, `llm_strategy`, `ollama_model`, `ponte_attivo`) in quattro
+    task diversi."""
     resp = await client.get("/api/models/config")
     body = await resp.json()
-    assert "ponte_attivo" in body
-    assert isinstance(body["ponte_attivo"], bool)
+    assert isinstance(body["ponte"]["attivo"], bool)
+    chiavi_che_parlano_del_ponte = [
+        k for k in body if "ponte" in k.lower() and k != "ponte"]
+    assert chiavi_che_parlano_del_ponte == [], (
+        f"il payload dice il ponte in piu' di un posto: {chiavi_che_parlano_del_ponte}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_accendere_il_ponte_dalla_pagina_mette_il_piano_in_testa(client, monkeypatch):
+    """**Il gesto che il Task 14 non poteva costruire**, dalla rotta.
+
+    Il Task 14 aveva rinunciato al bottone «Mettilo primo» perché metà della
+    condizione mancava: `ponte.attivo` veniva da `BRIDGE_ENABLED`, cioè
+    dall'ambiente, e una PUT su un valore letto dall'ambiente torna 200 e viene
+    buttata via al riavvio -- il bottone che sembra funzionare e non funziona.
+
+    Questo è il giro intero, come lo fa la pagina: si legge (il piano è fuori,
+    e la diagnosi porta il gesto), si scrive il percorso che il gesto dichiara,
+    si rilegge. Se `ponte.attivo` tornasse a venire dall'ambiente, la seconda
+    lettura mostrerebbe il piano ancora fuori."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
+    client.app["catena_modelli"] = ["claude"]
+
+    prima = await (await client.get("/api/models/config")).json()
+    assert "subscription" in {r["id"] for r in prima["fuori_catena"]}
+    gesti = [d["azione"] for d in prima["adesso"]["diagnosi"] if d["azione"]]
+    assert len(gesti) == 1, prima["adesso"]["diagnosi"]
+    gesto = gesti[0]
+    assert gesto["dove"] == ["ponte", "attivo"] and gesto["valore"] is True
+
+    # La pagina applica il percorso a `state.cfg` e rimanda l'oggetto intero.
+    corpo = dict(prima["ponte"])
+    corpo[gesto["dove"][1]] = gesto["valore"]
+    assert (await client.put("/api/models/config", json={"ponte": corpo})).status == 200
+
+    dopo = await (await client.get("/api/models/config")).json()
+    assert dopo["catena"][0]["id"] == "subscription"
+    assert dopo["catena"][0]["posizione"] == 1
+    assert dopo["adesso"]["chi"] == "subscription"
+
+
+@pytest.mark.asyncio
+async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
+    """L'altra direzione, e non è simmetria di cortesia: togliendo
+    `ponte.attivo` dalle opzioni dell'add-on si è tolto l'UNICO modo che c'era
+    di spegnere il ponte. Un interruttore che si accende e non si spegne è
+    peggio di nessun interruttore."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
+    client.app["catena_modelli"] = ["claude"]
+    await client.put("/api/models/config", json={"ponte": {"attivo": True}})
+
+    body = await (await client.get("/api/models/config")).json()
+    gesti = [d["azione"] for d in body["adesso"]["diagnosi"] if d["azione"]]
+    assert len(gesti) == 1, body["adesso"]["diagnosi"]
+    assert gesti[0]["dove"] == ["ponte", "attivo"]
+    assert gesti[0]["valore"] is False
 
 
 @pytest.mark.asyncio
@@ -622,7 +694,6 @@ async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
     """Non «il primo di chain_order»: il primo di `app["catena_modelli"]`,
     cioè la lista che il router prova davvero."""
     client.app["catena_modelli"] = ["openrouter", "claude"]
-    client.app["ponte_attivo"] = False
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] == "openrouter"
@@ -640,8 +711,8 @@ async def test_ponte_acceso_senza_token_lo_dichiara_nel_payload(client, monkeypa
     attesa da dichiarare quando il piano non riceve niente -- e il test gemello
     sotto la pinna dove adesso vive."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 7}})
-    client.app["ponte_attivo"] = True
+    await client.put("/api/models/config",
+                     json={"ponte": {"attivo": True, "scadenza_min": 7}})
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] is None
@@ -657,8 +728,8 @@ async def test_la_scadenza_del_payload_e_quella_salvata_non_un_cinque_a_mano(cli
     lettura sola: la frase in cima e il connettore sotto la riga del piano non
     possono dire due minuti diversi."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
-    await client.put("/api/models/config", json={"ponte": {"scadenza_min": 7}})
-    client.app["ponte_attivo"] = True
+    await client.put("/api/models/config",
+                     json={"ponte": {"attivo": True, "scadenza_min": 7}})
     body = await (await client.get("/api/models/config")).json()
     assert body["adesso"]["chi"] == "subscription"
     assert any("entro 7 minuti" in d["testo"]
@@ -797,7 +868,6 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
         "chain_order": ["ollama"],
         "ollama": {"modello": "llama3.1:8b", "timeout_s": 300}})
     client.app["catena_modelli"] = ["ollama"]
-    client.app["ponte_attivo"] = False
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["ollama"]
@@ -834,7 +904,6 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     riceve le due frasi gia' fatte."""
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["catena_modelli"] = ["claude", "openrouter"]
-    client.app["ponte_attivo"] = False
     registro = client.app["registro_esiti"]
     for _ in range(40):
         registro.fallimento("claude", famiglia="credenziale", codice=400,
@@ -856,7 +925,6 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     lo dice invece di regalare un successo che nessuno ha misurato. E' anche
     la prova che il registro non nasce popolato."""
     client.app["catena_modelli"] = ["claude"]
-    client.app["ponte_attivo"] = False
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
@@ -875,7 +943,6 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
     import hiris.app.api.handlers_models as modulo
 
     client.app["catena_modelli"] = ["claude"]
-    client.app["ponte_attivo"] = False
     orologio = [5_000.0]
     # Il registro dell'app usa `time.time` vero: gli si scrive dentro un esito
     # con una data esplicita, cosi' l'unica variabile del test e' l'orologio
@@ -918,7 +985,6 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
 
     client.app["openrouter_api_key"] = "sk-or-presente"
     client.app["catena_modelli"] = ["claude", "openrouter"]
-    client.app["ponte_attivo"] = False
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"]}
     assert righe["claude"]["stato_testo"].startswith("il modello non esiste più (404), ")

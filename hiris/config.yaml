@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "2.5.0"
+version: "3.0.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -28,195 +28,125 @@ map:
 hassio_api: true
 homeassistant_api: true
 # v0.10.11: porta 8099 esponibile via HA UI per debug remoto (sviluppo,
-# diagnostica). Default `null` = NON esposta. User imposta host port nella
-# sezione Network di HA UI per attivare il binding host→container.
-# Inoltre l'opzione debug_expose_port deve essere attivata per logging
-# warning + ricordare il rischio di esposizione su LAN senza HTTPS.
+# diagnostica). Default `null` = NON esposta. L'utente imposta la host port
+# nella sezione Network di HA UI per attivare il binding host→container.
+#
+# Versione B (3.0.0): l'opzione `debug_expose_port` e' USCITA. Non apriva
+# niente -- il suo unico effetto era stampare sette righe nel registro che
+# spiegavano come aprire la porta a mano, cioe' un promemoria travestito da
+# comando, con zero lettori nel codice. Il meccanismo vero e' questo blocco
+# `ports:`, che resta: la porta si apre e si chiude di qui.
 ports:
   "8099/tcp": null
 ports_description:
   "8099/tcp": >-
-    HIRIS API (DEBUG) — imposta a 8099 e abilita debug_expose_port nelle
-    opzioni SOLO durante sessioni dev/diagnostica. Lascia vuoto in produzione.
+    HIRIS API (DEBUG) — imposta a 8099 SOLO durante sessioni dev/diagnostica:
+    da quel momento chiunque sulla LAN puo' chiamare /api/* in HTTP, protetto
+    solo da «Avanzate · token delle API interne». Lascia vuoto in produzione.
 
 # ===========================================================================
-# L'ORDINE DI QUESTO FILE E' LA PAGINA CHE L'UTENTE VEDE.
+# QUESTA PAGINA CUSTODISCE, NON DECIDE (versione B, 3.0.0).
 #
-# Il Supervisor non sa rendere separatori ne' campi condizionali, e i commenti
-# `# ── N.` di questo file li vede solo chi apre il file. L'unica sezione che
-# rende a schermo e' il dizionario annidato (`ponte:`, `local_model:`,
-# `memory:`) -- che pero' fa parte del NOME dell'opzione: annidare una voce
-# piatta ne cambia la chiave, e il Supervisor NON migra i valori (vedi la prova
-# sul blocco 3). Percio' si annida solo dove perdere il valore costa poco, e
-# tutto il resto si raggruppa per VICINANZA e per PREFISSO dell'etichetta
-# ("Provider · ", "Avanzate · ").
+# Quattordici opzioni sono uscite da qui con questa versione -- i cinque
+# interruttori `provider_*`, `llm_strategy`, `hide_free_models`, le tre del
+# blocco `ponte:`, `local_model.model` e `local_model.request_timeout` -- piu'
+# `history_retention_days` e `debug_expose_port`. Non sono state cancellate:
+# le decisioni che rappresentavano si prendono adesso dove si vedono, cioe'
+# nella pagina Modelli di HIRIS e in «Impostazioni chat». Il valore che
+# l'utente aveva e' stato copiato nell'archivio di HIRIS dalla versione
+# precedente (la 2.5.0, «versione A» della migrazione), che per questo NON si
+# poteva saltare: il Supervisor scarta ogni chiave fuori schema PRIMA di
+# scrivere /data/options.json (`supervisor/apps/options.py::
+# AddonOptions.__call__`), quindi nessun ripiego in run.sh puo' recuperare il
+# valore di un'opzione appena tolta.
+#
+# Cio' che resta qui e' cio' che si CUSTODISCE: le quattro credenziali,
+# l'indirizzo di Ollama, e le tre voci avanzate che governano il perimetro
+# d'accesso. Piu' `theme` e i due campi `memory.*`, dichiarati inerti: sono
+# rimasti deliberatamente, perche' toglierli avrebbe fatto perdere il valore
+# salvato in cambio di niente.
+#
+# L'ORDINE DI QUESTO FILE E' LA PAGINA CHE L'UTENTE VEDE. Il Supervisor non sa
+# rendere separatori ne' campi condizionali, e i commenti `# ── N.` di questo
+# file li vede solo chi apre il file. L'unica sezione che rende a schermo e' il
+# dizionario annidato (`local_model:`, `memory:`) -- che pero' fa parte del
+# NOME dell'opzione: annidare una voce piatta ne cambia la chiave, e il
+# Supervisor NON migra i valori. Percio' si annida solo dove perdere il valore
+# costa poco, e tutto il resto si raggruppa per VICINANZA e per PREFISSO
+# dell'etichetta ("Provider · ", "Avanzate · ").
 #
 # `options:` e `schema:` sono tenuti nello STESSO ordine, per due ragioni: il
 # Supervisor costruisce il modulo dallo `schema:` (itera le chiavi nell'ordine
 # del file), e chi legge questo file deve poter confrontare i due blocchi riga
 # per riga. Se li riordini, riordinali insieme.
-#
-# L'ordine e' quello di CHI ARRIVA QUI LA PRIMA VOLTA e vuole far funzionare
-# la chat:
-#   1. il provider AI, ogni interruttore accanto alla sua credenziale
-#   2. l'ordine di ripiego, quando i provider sono piu' d'uno
-#   3. il ponte, se la chat deve passare dal piano Claude Max
-#   4. aspetto e conservazione delle conversazioni
-#   5. embedding, oggi inerti
-#   6. avanzate: registro, sicurezza, diagnostica -- in fondo perche' toccarle
-#      senza sapere cosa si fa apre la API di HIRIS sulla LAN
 # ===========================================================================
 
 options:
-  # ── 1. Provider AI ────────────────────────────────────────────────────────
-  # Ogni interruttore `provider_*` sta ATTACCATO alla credenziale che gli
-  # serve: prima ne era separato da uno a diciannove campi, e chi accendeva il
-  # provider non trovava dove mettere la chiave. Un provider e' usato solo se
-  # attivo E con credenziale.
+  # ── 1. Le credenziali dei provider ────────────────────────────────────────
+  # Qui c'erano anche i cinque interruttori `provider_*`, uno sopra ogni
+  # credenziale. Sono usciti con la versione B: un provider e' usato se e solo
+  # se sta in CATENA, e la catena si compone nella pagina Modelli di HIRIS.
+  # Un interruttore qui sarebbe una seconda rappresentazione dello stesso
+  # fatto -- ed e' la seconda rappresentazione che permetteva alla pagina di
+  # mentire.
   #
-  # RETRO-COMPATIBILITA', per esteso (`model_activation.derive_active_providers`):
-  # finche' TUTTI e cinque gli interruttori sono false -- il caso di chi aggiorna
-  # da prima di SP-2 -- l'attivazione e' derivata dalla sola presenza della
-  # credenziale, cosi' un install esistente continua a funzionare identico senza
-  # riscrivere niente. Appena UNO qualsiasi viene acceso, la derivazione si
-  # spegne e valgono solo gli interruttori accesi: chi ne accende uno senza
-  # riaccendere gli altri si ritrova i provider che usava spenti. Nel modulo
-  # questa regola sta in una clausola sola, sulla PRIMA voce della pagina
-  # (`provider_claude`), perche' ripeterla su cinque campi costava 5x lo spazio
-  # per un'informazione che si legge una volta. Per intero sta qui e in
-  # `docs/prova-la-2.0.md`.
-  # L'ordine dei provider e' quello in cui HIRIS ripiega con la strategia
-  # `balanced`: cosi' l'ordine di lettura e l'ordine di tentativo coincidono.
-  provider_claude: false
+  # L'ordine e' quello in cui HIRIS ripiegava con la strategia `balanced`, che
+  # resta l'ordine in cui la pagina Modelli propone il preset omonimo.
   claude_api_key: ""
-  # Il piano Claude Max, per esteso. Acceso CON il token presente,
-  # `_sub_first_class` (server.py) e' OR-ato sia in `_bridge_enabled` sia in
-  # `_chat_via_subscription_cfg`: la chat passa dal ponte anche lasciando spenti
-  # i due interruttori «Ponte · ...». Su quel percorso, insieme al messaggio,
-  # viaggiano la conoscenza della casa (il nucleo: aree, entita', cosa e'
-  # notevole adesso, cosa la casa fa da sola) e i ricordi di cio' che le persone
-  # hanno detto, sessioni precedenti comprese -- sotto le condizioni d'uso e di
-  # conservazione del piano Claude Max, DIVERSE da quelle dell'API a consumo.
-  # E i consumi non si misurano: il piano non espone ne' i token ne' il costo
-  # della singola risposta (la pagina Consumi lo dichiara invece di mostrare
-  # zeri). Nel modulo restano le due frasi che cambiano una decisione; il resto
-  # e' qui e in `docs/prova-la-2.0.md`, «Strada A».
-  provider_subscription: false
+  # Il token del piano Claude Max, per esteso. Sul percorso del piano,
+  # insieme al messaggio, viaggiano la conoscenza della casa (il nucleo: aree,
+  # entita', cosa e' notevole adesso, cosa la casa fa da sola) e i ricordi di
+  # cio' che le persone hanno detto, sessioni precedenti comprese -- sotto le
+  # condizioni d'uso e di conservazione del piano Claude Max, DIVERSE da
+  # quelle dell'API a consumo. E i consumi non si misurano: il piano non
+  # espone ne' i token ne' il costo della singola risposta (la pagina Consumi
+  # lo dichiara invece di mostrare zeri).
+  #
+  # Il token da solo NON accende piu' il ponte (versione B). Fino alla 2.5.0
+  # `provider_subscription` acceso col token lo implicava, e quell'implicazione
+  # era l'ultima seconda-rappresentazione rimasta: il ponte risultava acceso
+  # mentre `ponte.attivo` diceva di no, e la pagina Modelli leggeva un valore
+  # che l'archivio non conteneva. Adesso il ponte ha un valore solo,
+  # `ponte.attivo` nell'archivio di HIRIS, e si accende dalla pagina Modelli --
+  # dove c'e' anche il bottone che ce lo mette in un gesto. Chi aggiorna con il
+  # token presente e il ponte spento se lo sente dire all'avvio, nel registro
+  # dell'add-on, e lo legge in cima alla pagina Modelli.
   claude_code_oauth_token: ""
-  provider_openrouter: false
   openrouter_api_key: ""
-  hide_free_models: false
-  provider_openai: false
   openai_api_key: ""
-  provider_ollama: false
+  # `local_model.model` e `local_model.request_timeout` sono uscite con la
+  # versione B: il modello e l'attesa di Ollama si decidono nella riga di
+  # Ollama, nella pagina Modelli. Qui resta l'INDIRIZZO, che e' cio' che si
+  # custodisce. Il blocco annidato resta annidato: togliere la nidificazione
+  # cambierebbe la chiave di `url` e ne farebbe perdere il valore.
   local_model:
     url: ""
-    model: ""
-    request_timeout: 120
 
-  # ── 2. Scelta fra i provider accesi ───────────────────────────────────────
-  # `chat_policy` e' USCITA con questa versione. Era un ordine di backend in
-  # CSV, e non aveva effetto da mesi: il router riceve sempre `model_chain`
-  # (`server.py`, `reconcile_chain`) e `LLMRouter.__init__` scarta
-  # `chat_policy` ogni volta che `model_chain` e' non vuota. Prova: il router
-  # e' costruito solo `if any([claude_runner, openai_runner,
-  # openrouter_runner, ollama_runner])`; ognuno di quei runner esiste solo se
-  # il provider e' ATTIVO; tutti e quattro i nomi sono in ogni
-  # `_STRATEGY_ORDER`; quindi `reconcile_chain` restituisce sempre almeno un
-  # elemento. Il ramo `else` che leggeva l'opzione era irraggiungibile in
-  # produzione. Stessa conclusione della revisione tecnica del 3 agosto 2026
-  # (I041/I078/I093, `docs/design/2026-08-03-revisione-tecnica.md`).
-  # I tre ordini per esteso (`llm_router._STRATEGY_ORDER`), che nel modulo non
-  # entrano: balanced = claude, openrouter, openai, ollama; quality_first =
-  # claude, openai, openrouter, ollama; cost_first = ollama, openrouter, openai,
-  # claude. L'ordine salvato nella pagina Modelli (`chain_order`) vince, e i
-  # provider attivi che non nominava vengono aggiunti in coda nell'ordine della
-  # strategia (`reconcile_chain`) -- mai lasciati fuori dal ripiego.
-  llm_strategy: "balanced"
-
-  # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
-  # UN INTERRUTTORE SOLO (decisione del proprietario, 13 agosto 2026).
-  # Fino alla 2.3.1 erano DUE -- `bridge_enabled` e `chat_via_subscription` --
-  # e la chat passava dal ponte solo se erano accesi tutti e due
-  # (`_chat_subscription_active` = cfg AND bridge). Non erano due decisioni: era
-  # una decisione con due leve, e nessuno stato in cui una sola fosse accesa
-  # produceva qualcosa di utile. L'AND sparisce, e con lui i nomi «(1 di 2)» /
-  # «(2 di 2)», che erano la cura per una malattia che qui si toglie.
-  #
-  # Il fail-safe che l'AND proteggeva -- non accodare mai un messaggio in una
-  # coda che nessuno spazza -- NON e' stato rimosso: e' diventato STRUTTURALE.
-  # La stessa espressione (`server.py::_ponte_attivo`) governa adesso sia la
-  # spazzata (`_reasoning_sweep`) sia l'instradamento, quindi i due non possono
-  # piu' essere in disaccordo. Prima potevano: con `chat_via_subscription`
-  # acceso e `bridge_enabled` spento il worker partiva e sondava una coda che
-  # nessuno riempiva.
-  #
-  # Il piano Claude Max attivo CON token continua ad accendere il ponte da solo
-  # (`_sub_first_class` e' OR-ato nell'unico gate rimasto): chi sta nella
-  # configurazione consigliata non si accorge di niente, ed e' la ragione per
-  # cui questa fusione costa poco.
-  # «Li' la chat sa e fa quanto nell'altra modalita'» e' la forma corta di:
-  # riceve il nucleo, i ricordi e le sessioni precedenti (parita' A) e -- QUANDO
-  # la sonda `agent/runner.py::sonda_strumenti` riesce a ricollegarsi a
-  # `POST /api/mcp` -- anche gli strumenti, `esegui` compreso (parita' B); ogni
-  # chiamata e' verificata contro l'installazione prima di partire e lo stato
-  # riletto dopo; nessuna conferma viene chiesta e niente parte da solo. Quando
-  # la sonda FALLISCE la risposta e' preceduta da `AVVISO_STRUMENTI_ASSENTI` e
-  # in quel turno il modello risponde e basta. Sono due stati decisi da una
-  # sonda, non da una configurazione: non e' roba che si sceglie da questo
-  # modulo, ed e' per questo che ne esce. Il racconto per chi prova sta in
-  # `docs/prova-la-2.0.md` §8; cosa il prodotto fa e non fa sta nel campo
-  # `description:` in cima a questo file, che il Supervisor mostra sopra le
-  # opzioni.
-  #
-  # PERCHE' QUESTE QUATTRO SONO ANNIDATE, E LE ALTRE NO (2.4.0).
-  # Il dizionario annidato e' l'UNICO raggruppamento che il Supervisor rende a
-  # schermo: i commenti `# ── N.` di questo file li vede solo chi apre il file.
-  # Ma annidare cambia il NOME dell'opzione, e il Supervisor NON migra i valori:
-  # `supervisor/apps/options.py::AddonOptions.__call__` scarta con un warning
-  # ogni chiave che non e' nello schema (righe 78-92, e di nuovo alla 261 per i
-  # dizionari annidati). Verificato sul sorgente, non supposto -- e la
-  # conseguenza e' che NON esiste ripiego possibile in run.sh: la vecchia chiave
-  # piatta non arriva nemmeno a /data/options.json.
-  # Quindi si annida solo dove la perdita costa poco. Qui costa poco perche' la
-  # configurazione dominante (Piano Claude Max acceso + token, entrambi PIATTI e
-  # quindi conservati) forza il ponte da se' via `_sub_first_class`: per quegli
-  # utenti l'azzeramento di queste quattro non cambia NIENTE. Chi perde qualcosa
-  # e' solo chi usava i due interruttori senza `provider_subscription`, e per lui
-  # run.sh adesso stampa un avviso esplicito all'avvio (token presente, ponte
-  # spento) -- che trasforma un guasto silenzioso in uno rumoroso.
-  ponte:
-    attivo: false
-    bridge_deadline_min: 5
-    chat_daily_cap: 50
-
-  # ── 4. Aspetto e conservazione ────────────────────────────────────────────
+  # ── 2. Aspetto ────────────────────────────────────────────────────────────
   # `theme` e' solo il tema d'apertura: `static/config/api.js::applyTheme` legge
   # `localStorage['hiris-theme']` PRIMA di `api/config`, quindi appena l'utente
   # tocca l'interruttore chiaro/scuro dentro HIRIS questa opzione non ha piu'
   # effetto su quel browser.
+  #
+  # Qui viveva anche `history_retention_days`, uscita con la versione B: i
+  # giorni di conservazione delle conversazioni si cambiano in «Impostazioni
+  # chat», dentro HIRIS, dove si vede anche il secondo lavoro che quel numero
+  # fa (quanto HIRIS rilegge della conversazione in corso).
   theme: "auto"
-  # Due lavori con un numero solo, ed e' la ragione per cui la descrizione lo
-  # dice invece di limitarsi a «giorni di conservazione»: oltre alla potatura
-  # notturna (`server.py::_run_retention`, cron alle 3) la stessa costante
-  # limita `chat_store.load_context()`, cioe' quanto HIRIS rilegge della
-  # conversazione in corso. `0` disattiva entrambi (`if HISTORY_RETENTION_DAYS
-  # > 0` in tutti e due i lettori): non cancella mai niente.
-  history_retention_days: 90
 
-  # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────
+  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
   # Fetta "esce il documentale": esce `rag_k` (era il k del richiamo per
   # somiglianza sull'archivio di conoscenza, uscito con la fetta). I due campi
-  # che restano sono letti e mostrati nella pagina Modelli, ma DICHIARATI
-  # INERTI: nessun percorso di HIRIS chiama piu' `embed()`. Restano perche'
-  # "se e quando accendere i vettori" e' una decisione rimandata dal
-  # contratto, non annullata. Spostati qui in fondo, con le tecniche: non
-  # servono a nessuno che stia configurando la chat.
+  # che restano sono letti da `server.py` per costruire il provider, ma
+  # DICHIARATI INERTI: nessun percorso di HIRIS chiama piu' `embed()`. Restano
+  # perche' "se e quando accendere i vettori" e' una decisione rimandata dal
+  # contratto, non annullata -- e perche' toglierli costerebbe la perdita del
+  # valore salvato in cambio di niente.
   memory:
     embedding_provider: ""
     embedding_model: ""
 
-  # ── 6. Avanzate: registro, sicurezza, diagnostica ─────────────────────────
+  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
   # In fondo e con il prefisso "Avanzate · " nell'etichetta perche' il
   # Supervisor non sa marcare un campo come pericoloso: la posizione e il nome
   # sono l'unico segnale disponibile.
@@ -225,9 +155,7 @@ options:
   # un allargamento silenzioso del perimetro d'accesso; e `internal_token`
   # azzerato viene rigenerato, il che rompe senza dirlo chi ha integrato il
   # gateway MCP con un token deciso da lui. Una sezione a schermo non vale una
-  # regressione di sicurezza che nessuno vede accadere. Prima `internal_token` e
-  # `supervisor_ingress_cidr` stavano fra gli embedding e "Tema", con lo
-  # stesso peso visivo di una preferenza di colore.
+  # regressione di sicurezza che nessuno vede accadere.
   log_level: "info"
   # Vuoto e' il default VOLUTO: all'avvio HIRIS genera il token e lo conserva
   # in /data (app/token_interno.py), cosi' sopravvive ai riavvii. Valorizzarlo
@@ -239,11 +167,6 @@ options:
   # il resto richiede internal_token. Default = rete Docker standard del
   # Supervisor. Restringi (es. 172.30.32.2/32) se esponi la API a un tunnel.
   supervisor_ingress_cidr: "172.30.32.0/23"
-  # v0.10.11: toggle che logga warning quando il port mapping host (Network)
-  # è abilitato. Esponendo HIRIS direttamente sulla LAN, qualsiasi client
-  # locale può raggiungere /api/* (protetto solo da internal_token se settato).
-  # USA SOLO PER DEV/DIAGNOSTICA. Disattiva quando finito.
-  debug_expose_port: false
 
   # ── Opzioni uscite, e perche' ─────────────────────────────────────────────
   # fetta E3 Task 7: escono `sentinel_daily_cap`/`sentinel_cooldown_min` --
@@ -263,46 +186,38 @@ options:
   # nessun lettore di produzione a valle. `sensitivity` prometteva inoltre di
   # "nascondere il contenuto all'AI cloud" e non lo faceva: la
   # pseudonimizzazione era inerte da mesi.
-  # fetta "la pagina di configurazione" (13 agosto 2026): esce `chat_policy`,
-  # per la prova riportata nel blocco 2 qui sopra.
+  # fetta "la pagina di configurazione" (13 agosto 2026): esce `chat_policy`.
+  # Era un ordine di backend in CSV che il router scartava a ogni costruzione
+  # (`model_chain` lo sovrascrive sempre): un campo che l'utente poteva
+  # compilare senza che succedesse mai niente.
+  # fetta «la catena diventa l'unica verita'», versione B (3.0.0): escono le
+  # QUATTORDICI righe di cui sopra -- `provider_claude`,
+  # `provider_subscription`, `provider_openrouter`, `provider_openai`,
+  # `provider_ollama`, `llm_strategy`, `hide_free_models`, `ponte.attivo`,
+  # `ponte.bridge_deadline_min`, `ponte.chat_daily_cap`, `local_model.model`,
+  # `local_model.request_timeout`, `history_retention_days` e
+  # `debug_expose_port`. Le prime dodici sono DECISIONI, e si prendono dove si
+  # vedono; `history_retention_days` sta in «Impostazioni chat»; e
+  # `debug_expose_port` non decideva niente affatto.
 
 schema:
-  # ── 1. Provider AI ────────────────────────────────────────────────────────
-  provider_claude: bool?
+  # ── 1. Le credenziali dei provider ────────────────────────────────────────
   claude_api_key: password
-  provider_subscription: bool?
   claude_code_oauth_token: password
-  provider_openrouter: bool?
   openrouter_api_key: password
-  hide_free_models: bool?
-  provider_openai: bool?
   openai_api_key: password
-  provider_ollama: bool?
   local_model:
     url: str
-    model: str
-    request_timeout: int(10,1800)?
 
-  # ── 2. Scelta fra i provider accesi ───────────────────────────────────────
-  llm_strategy: "list(balanced|cost_first|quality_first)"
-
-  # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
-  ponte:
-    attivo: bool?
-    bridge_deadline_min: int(1,120)
-    chat_daily_cap: int(0,1000)?
-
-  # ── 4. Aspetto e conservazione ────────────────────────────────────────────
+  # ── 2. Aspetto ────────────────────────────────────────────────────────────
   theme: "list(light|dark|auto)"
-  history_retention_days: int(0,3650)
 
-  # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────
+  # ── 3. Embedding (oggi inattivi) ──────────────────────────────────────────
   memory:
     embedding_provider: str
     embedding_model: str
 
-  # ── 6. Avanzate: registro, sicurezza, diagnostica ─────────────────────────
+  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level: "list(debug|info|warning|error)"
   internal_token: password
   supervisor_ingress_cidr: "str?"
-  debug_expose_port: bool

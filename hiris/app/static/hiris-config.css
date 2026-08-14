@@ -1631,6 +1631,19 @@
    chat (`.msg-nota`, hiris-chat.css), e per la stessa ragione. */
 .adesso-card .diagnosi-fatto { color: var(--text-3); }
 
+/* Il gesto accanto alla riga che lo motiva (versione B, 3.0.0). Non e' un
+   pulsante di sezione e non sta in un'intestazione: sta DENTRO la voce di
+   diagnosi, sulla riga successiva, perche' cio' che spiega perche' cliccarlo
+   e' il testo che ha appena sopra. `display: block` + `margin-top` invece di
+   un `inline`: l'etichetta arriva dal backend e puo' essere lunga, e in linea
+   dopo una frase di due righe finirebbe orfana in fondo. Il colore lo eredita
+   dalla gravita' della voce (`--warn-ink` su uno spreco, `--text-3` su un
+   fatto), che e' cio' che tiene il gesto attaccato al suo motivo. */
+.adesso-card .diagnosi-azione {
+  display: block;
+  margin-top: var(--sp-2);
+}
+
 /* fetta E5 Task 11 ("il vocabolario che resta dice il vero"): qui viveva
    `.field-hint-block` (+ `.field-hint-block p`), orfanata dalla rimozione
    di editor-kit.js al Task 6 (era il wrapper del blocco hint sotto un

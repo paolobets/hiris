@@ -45,12 +45,12 @@ conversazione in corso (`chat_store.load_context`, chiamato da
 `handlers_chat.py` con questo stesso valore). `0` non attiva mai nessuno dei
 due -- non cancella e non limita niente, il contrario di cio' che ci si
 aspetterebbe da una "conservazione" a zero, e per questo la descrizione in
-pagina lo dice esplicitamente invece di lasciarlo dedurre. E' ancora la
-**versione A** della migrazione (Task 6): `history_retention_days` resta
-un'opzione valida dell'add-on (`config.yaml`/`run.sh`/traduzioni, non toccati
-da questo task) finche' il Task 13 non la toglie dallo schema --
-`ImpostazioniChat.carica()` la copia una volta sola quando l'archivio non ha
-ancora la chiave.
+pagina lo dice esplicitamente invece di lasciarlo dedurre. Dalla **versione
+B** (3.0.0) `history_retention_days` NON e' piu' un'opzione dell'add-on: il
+valore vive solo qui, e ci e' arrivato con la versione A -- `carica()` lo
+copiava dall'ambiente quando l'archivio non aveva ancora la chiave, e l'avvio
+lo SCRIVEVA su disco (`il_file_non_porta_i_giorni`), che e' la meta' senza cui
+la copia non sarebbe sopravvissuta a questa versione.
 
 **Il caso speciale del prompt di sistema.** E' il campo piu' delicato del
 prodotto: arriva verbatim nel prompt di ogni turno, sia sul percorso sincrono
