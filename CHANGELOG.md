@@ -1,5 +1,48 @@
 # HIRIS — Changelog
 
+## [3.1.0] — Ciò che non si sa di poter chiedere (2026-08-14)
+
+**Dopo l'aggiornamento, svuota una volta i dati del sito.** È l'ultima volta che serve: da
+questa versione l'interfaccia si accorge da sola di essere più vecchia del server e te lo
+dice. Non può farlo retroattivamente, perché una pagina vecchia carica anche il codice
+vecchio, che il controllo non ce l'ha.
+
+### Cosa cambia, in una riga
+
+HIRIS non trovava cose che Home Assistant ti mostra per nome. Su questa casa **83 entità**
+hanno il nome vuoto nel registro — sia `name` sia `original_name` — e HIRIS costruiva lo
+spazio di ricerca solo su quelli: nessun nome, nessun termine, **entità inesistente**. Le
+abat-jour sono costate quattro ricerche a vuoto prima di essere trovate per un'altra strada.
+
+Da oggi il ripiego è il **`friendly_name`**, cioè la parola che Home Assistant mostra a
+schermo e che una persona userebbe parlando — **marcato come dedotto**, mai spacciato per un
+nome scelto da te.
+
+### Le cose che prima non si potevano sapere
+
+| Prima | Adesso |
+|---|---|
+| `cerca` non trovava le entità senza nome nel registro | le trova, e dichiara che il nome è **dedotto** |
+| «non c'è niente con quel nome» e «non ho potuto guardare» erano la stessa lista vuota | sono due risposte diverse, e la seconda dice **perché** |
+| i risultati erano identificatori opachi: cercando «luci» tornava `sensor.lights` e niente diceva che è un **contatore** | ogni candidato porta il **nome** e il **dominio** |
+| `guarda` rispondeva `nome: null` anche quando il nome c'era, a schermo | lo dichiara, su entità, aree e dispositivi |
+| un registro che non rispondeva stampava **il nome del comando** — che sapevamo già | dice il motivo di Home Assistant, e distingue *rifiutato*, *forma inattesa* e *mai partito* |
+| il registro delle integrazioni non rispondeva mai | **chiedevamo un comando che in Home Assistant non esiste**: corretto |
+| una riga di mappa diceva «4 valve» senza dire se erano quattro cose o un irrigatore solo | lo annota, quando il raggruppamento *è* l'informazione |
+
+### E due cose che si sentono
+
+**La ricerca è trenta volte più veloce.** L'indice dei nomi veniva ricostruito da zero — e
+buttato — a **ogni** chiamata: sulla scala di questa casa, **300 ms** per ricerca, di cui il
+95% speso a ricompilare le stesse espressioni. Ora si riusa finché la casa non cambia:
+**9,9 ms**. Nel caso delle abat-jour, quattro ricerche in un turno, è oltre un secondo
+risparmiato.
+
+**L'interfaccia dice quando è vecchia.** Se la pagina che stai guardando viene da una
+versione diversa da quella in esecuzione, si ricarica **una volta sola** e, se il
+disallineamento resta, te lo scrive invece di lasciarti davanti a funzionalità che
+sembrano mancare.
+
 ## [3.0.0] — La pagina di configurazione custodisce, e non decide più (2026-08-14)
 
 **⚠️ Aggiorna solo dopo aver avviato almeno una volta la 2.5.0.** Questa versione toglie
