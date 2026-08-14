@@ -306,6 +306,73 @@ def test_lo_specchio_restituisce_stato_e_nomi_in_una_lettura(archivio_casa, memo
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
 
 
+@pytest.mark.asyncio
+async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio_casa, memoria):
+    """Le abat-jour, dal vivo: quattro giri di `cerca` diventano uno."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    esito = await d.dispatch("cerca", {"testo": "accendi l'abat-jour"})
+    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+    assert riferimenti == ["light.abat_jour_1"]
+    assert "non_ho_potuto_guardare" not in esito
+
+
+@pytest.mark.asyncio
+async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
+        archivio_casa, memoria):
+    archivio_casa.sostituisci({"aree": [], "entita": []}, ["entita"])
+    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+        "cerca", {"testo": "il bagno"})
+    assert esito["trovati"] == []
+    assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
+
+
+@pytest.mark.asyncio
+async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senza_nome(
+        archivio_casa, memoria):
+    """Mutazione uccisa: dichiarare lo specchio illeggibile SEMPRE. Su una
+    casa in cui tutti hanno un nome, non c'e' niente da dichiarare."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
+
+    class _NonPronta:
+        loaded = False
+        def all_states(self): return []
+
+    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+        "cerca", {"testo": "abat-jour"})
+    assert any("specchio" in m for m in esito["non_ho_potuto_guardare"])
+
+
+@pytest.mark.asyncio
+async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archivio_casa, memoria):
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.c", "name": "Luce cucina"}]}, [])
+
+    class _NonPronta:
+        loaded = False
+        def all_states(self): return []
+
+    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+        "cerca", {"testo": "luce cucina"})
+    assert "non_ho_potuto_guardare" not in esito
+
+
+@pytest.mark.asyncio
+async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(archivio_casa, memoria):
+    """Mutazione uccisa: contare fra le «senza nome» anche le entita'
+    disabilitate. Una disabilitata senza nome non e' cercabile per scelta
+    dell'utente, non per un limite di HIRIS -- non deve produrre una scusa."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.c", "name": "Luce cucina"},
+        {"entity_id": "light.disabilitata", "name": None, "original_name": None,
+         "disabled_by": "user"}]}, [])
+    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+        "cerca", {"testo": "luce cucina"})
+    assert "non_ho_potuto_guardare" not in esito
+
+
 def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, memoria):
     """Fix E1-(3), esteso ai nomi: meta' dei nomi e' peggio di nessuno,
     perche' le entita' mancanti sembrerebbero non esistere."""

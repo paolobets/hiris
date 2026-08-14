@@ -79,10 +79,13 @@ CERCA_TOOL_DEF = {
         "un alias che collide col nome vero di un'altra area) la lista ne ha "
         "piu' di uno e il risultato e' marcato `ambiguo` -- in quel caso scegli "
         "tu, guardando il resto della conversazione, o chiedi all'utente: non "
-        "prendere semplicemente il primo della lista. Se il testo non nomina "
-        "niente che la casa conosca, `trovati` e' una lista vuota: non e' un "
-        "errore, significa solo che nessun nome o alias dichiarato in Home "
-        "Assistant corrisponde a quel testo."
+        "prendere semplicemente il primo della lista. "
+        "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
+        "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
+        "**Ma una lista vuota non basta a concludere che la cosa non esista**: se la "
+        "risposta porta anche `non_ho_potuto_guardare`, quella lista dice che non si e' "
+        "potuto guardare dappertutto, e il motivo e' scritto li' dentro -- non "
+        "riprovare la stessa ricerca, leggi il motivo."
     ),
     "input_schema": {
         "type": "object",
@@ -427,8 +430,43 @@ class DispatcherStrumenti:
         testo = argomenti.get("testo")
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
-        indice = costruisci_indice(self._casa.leggi())
-        return {"trovati": _cerca_candidati(indice, testo)}
+        casa = self._casa.leggi()
+        _, nomi_vivi, specchio_letto = self._specchio()
+        indice = costruisci_indice(casa, nomi_vivi)
+        risposta: dict = {"trovati": _cerca_candidati(indice, testo)}
+        cecita = self._cecita(casa, specchio_letto)
+        if cecita:
+            risposta["non_ho_potuto_guardare"] = cecita
+        return risposta
+
+    def _cecita(self, casa: dict, specchio_letto: bool) -> list[str]:
+        """Perche' `trovati` potrebbe essere vuoto SENZA che la cosa manchi.
+
+        Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
+        ho potuto guardare» oggi hanno la stessa faccia -- una lista vuota --
+        e la seconda e' cio' che ha bruciato quattro giri di `cerca` sulle
+        abat-jour. Da qui hanno due facce diverse.
+
+        Solo fatti, e solo quando ci sono: la chiave non compare quando non
+        c'e' niente da dichiarare. Un elenco vuoto che dice "nessun problema"
+        e' esattamente la forma che questa funzione esiste per togliere."""
+        motivi: list[str] = []
+        caduti = sorted(set(self._casa.non_disponibili())
+                        & set(CHIAVE_ARCHIVIO_PER_TIPO.values()))
+        if caduti:
+            motivi.append(
+                f"registri non letti all'ultima ricostruzione dell'anagrafe: "
+                f"{', '.join(caduti)}. Cio' che sta li' dentro non e' cercabile adesso, "
+                "e potrebbe esistere lo stesso.")
+        senza_nome = sum(1 for e in casa.get("entita") or []
+                         if not (e.get("nome") or "").strip() and not e.get("disabilitata"))
+        if senza_nome and not (specchio_letto and inventario_leggibile(self._cache)):
+            motivi.append(
+                f"{senza_nome} entita' non hanno un nome nel registro di Home Assistant e "
+                "lo specchio dello stato non e' leggibile: il ripiego sul nome che Home "
+                "Assistant mostra non e' disponibile, quindi quelle entita' non sono "
+                "cercabili per nome in questo momento.")
+        return motivi
 
     # -- guarda ----------------------------------------------------------
 
