@@ -114,3 +114,48 @@ test('boot della chat: build locale diverso dal remoto -- chat/main.js reale lo 
     'chat/main.js deve passare d.build da GET api/health a HirisBuildCheck.verifica() -- ' +
     'se questa riga manca o passa un valore sbagliato, il modulo isolato (testato a parte) non si accorge di nulla');
 });
+
+/* C1 (review finale): un guscio index.html nato PRIMA del Task B8 non contiene
+   <script src="static/build-check.js">, ma il server serve comunque il
+   chat/main.js ATTUALE (la query ?v=... e' ignorata). window.HirisBuildCheck
+   e' quindi undefined -- lo stesso guscio vecchio che B8 dovrebbe aiutare.
+   Se checkHealth() chiama HirisBuildCheck.verifica() senza guardia, la
+   TypeError sale nel .then, il .catch la raccoglie e il pallino dice
+   "offline" -- con api/health che ha risposto 200. Qui si carica DAVVERO
+   chat/main.js (eval indiretto, non un frammento riscritto a mano) con
+   TUTTI i moduli del guscio TRANNE build-check.js: e' il caso mai pensato
+   dal banco esistente, dove build-check.js e' in MODULI in ogni test. */
+test('boot della chat: guscio precedente a B8 (senza build-check.js) -- il pallino resta connesso, non offline', async (t) => {
+  const MODULI_GUSCIO_VECCHIO = MODULI.filter((m) => m !== 'build-check.js');
+  const ctx = loadScripts(MODULI_GUSCIO_VECCHIO, { html: fixtureHtml('stampX') });
+  ctx.window.matchMedia = () => ({
+    matches: false, media: '', addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {},
+  });
+  ctx.window.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: 'stamp-nuovo' });
+    return jsonResponse({});
+  };
+
+  const veroSet = globalThis.setInterval;
+  globalThis.setInterval = () => 0;
+  try {
+    assert.equal(typeof ctx.window.HirisBuildCheck, 'undefined',
+      'precondizione del test: il guscio vecchio non carica build-check.js');
+    (0, eval)(readFileSync(MAIN, 'utf8'));
+    await tick(0);
+    await tick(0);
+  } finally {
+    globalThis.setInterval = veroSet;
+  }
+  t.after(() => {
+    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.dom.window.close();
+  });
+
+  const connDot = ctx.document.getElementById('conn-dot');
+  assert.equal(connDot.textContent, 'connesso',
+    'HirisBuildCheck assente non deve mai far leggere "offline" -- e\' il limite gia\' dichiarato di B8, non un guasto da propagare');
+  assert.equal(connDot.classList.contains('offline'), false);
+});

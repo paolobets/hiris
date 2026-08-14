@@ -23,15 +23,24 @@
       /* Mostra anche il build stamp: cambia a ogni modifica del frontend, cosi'
          verifichi CHE COSA gira davvero (cache vs container non ricostruito). */
       if (el && d.version) el.textContent = 'v' + d.version + (d.build ? ' · ' + d.build : '');
-      /* Task B8: confronta il build DICHIARATO dal guscio (la <meta> che
-         server._inject_version ha scritto in questa pagina) col build che il
-         server dice di eseguire ORA. Nessuna seconda fetch: e' lo stesso
-         d.build che la riga sopra mostra, solo con un lettore in piu'. */
-      window.HirisBuildCheck.verifica(d.build);
       if (state.els.connDot) {
         state.els.connDot.classList.remove('offline');
         state.els.connDot.textContent = 'connesso';
       }
+      /* Task B8: confronta il build DICHIARATO dal guscio (la <meta> che
+         server._inject_version ha scritto in questa pagina) col build che il
+         server dice di eseguire ORA. Nessuna seconda fetch: e' lo stesso
+         d.build che la riga sopra mostra, solo con un lettore in piu'.
+         Rilievo C1 (review finale): un guscio nato prima di B8 non carica
+         build-check.js, quindi window.HirisBuildCheck e' undefined -- ed e'
+         esattamente la popolazione per cui B8 esiste. Il controllo del build
+         non fa MAI parte della catena che decide "connesso/offline": e'
+         chiamato dopo aver gia' scritto "connesso", dentro un try suo, cosi'
+         un guscio vecchio (o una verifica che solleva) perde solo il
+         controllo del build, mai lo stato di connessione. */
+      try {
+        if (window.HirisBuildCheck) window.HirisBuildCheck.verifica(d.build);
+      } catch (e) { /* limite gia' dichiarato di B8: un guscio vecchio non ha il controllo */ }
     }).catch(function() {
       if (state.els.connDot) {
         state.els.connDot.classList.add('offline');
