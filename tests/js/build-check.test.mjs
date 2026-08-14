@@ -124,10 +124,26 @@ test('la striscia non duplica se verifica() la richiama con la guardia gia\' sca
 // che verrebbe istintivo (favorire il ricaricamento quando non si sa).
 // ---------------------------------------------------------------------------
 
-function avviaConStorageRotto(buildMeta, modo) {
+function avviaConStorageRotto(t, buildMeta, modo) {
   const ctx = loadScripts(['build-check.js'], { html: fixtureHtml(buildMeta) });
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
+
+  // m3 (review finale): i tre modi qui sotto avvelenano `globalThis.sessionStorage`
+  // (`Object.defineProperty` con un getter che solleva, o una riassegnazione a un
+  // oggetto finto) -- MAI attraverso `windowProxy`, quindi `mirroredKeys` di
+  // `loadScripts` non lo traccia e il `dispose()`/cleanup automatico fra un test e
+  // l'altro non lo tocca. Senza ripristino esplicito, solo una `loadScripts()`
+  // SUCCESSIVA lo ripara (`define()` lo riscrive sempre) -- oggi innocuo perche'
+  // questi sono gli ultimi test del file e `node --test` isola ogni file in un
+  // processo, ma un test aggiunto in fondo erediterebbe lo storage rotto e
+  // sembrerebbe un fallimento transitorio invece del difetto vero che e'.
+  const sessionStorageVero = ctx.window.sessionStorage;
+  t.after(() => {
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true, writable: true, value: sessionStorageVero,
+    });
+  });
 
   if (modo === 'setItem-solleva') {
     // getItem funziona (sempre null, nessuna guardia scritta finora);
@@ -163,8 +179,8 @@ function avviaConStorageRotto(buildMeta, modo) {
 }
 
 for (const modo of ['setItem-solleva', 'accesso-solleva', 'scrittura-fantasma']) {
-  test(`Web Storage rotto (${modo}): zero ricaricamenti, striscia mostrata subito -- non si puo' provare che la guardia regga`, () => {
-    const { document, reloadCalls } = avviaConStorageRotto('vecchio111', modo);
+  test(`Web Storage rotto (${modo}): zero ricaricamenti, striscia mostrata subito -- non si puo' provare che la guardia regga`, (t) => {
+    const { document, reloadCalls } = avviaConStorageRotto(t, 'vecchio111', modo);
 
     // Nessuna guardia scritta con successo verificabile: MAI ricaricare,
     // quante volte si chiami verifica() -- e' esattamente lo scenario del
@@ -187,3 +203,18 @@ for (const modo of ['setItem-solleva', 'accesso-solleva', 'scrittura-fantasma'])
     );
   });
 }
+
+/* m3 (review finale): prova che il ripristino nel t.after() di
+   `avviaConStorageRotto` funziona davvero. Deve girare DOPO il loop qui
+   sopra: prima del fix, 'accesso-solleva' lasciava su `globalThis` un
+   getter di `sessionStorage` che solleva, mai rimesso a posto -- salvato
+   solo dal fatto che quei test erano gli ultimi del file e da node --test
+   che isola ogni file in un processo separato. Un test aggiunto dopo (come
+   questo) avrebbe ereditato lo storage rotto. */
+test('dopo ogni modo di Web Storage rotto, sessionStorage torna sano per il test successivo', () => {
+  assert.doesNotThrow(() => {
+    globalThis.sessionStorage.setItem('sonda-m3', 'ok');
+    assert.equal(globalThis.sessionStorage.getItem('sonda-m3'), 'ok');
+    globalThis.sessionStorage.removeItem('sonda-m3');
+  }, 'sessionStorage deve essere di nuovo leggibile e scrivibile normalmente');
+});
