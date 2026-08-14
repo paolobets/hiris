@@ -48,20 +48,49 @@ from .anagrafe import gerarchia
 _TIPI_COMPORTAMENTO = {"automazione", "script"}
 
 
+def _dominio_entita(riferimento) -> str:
+    """Il dominio di un entity_id -- lo dichiara Home Assistant nell'id
+    stesso, non un elenco nostro (stessa lettura di `nucleo._dominio`)."""
+    testo = str(riferimento)
+    return testo.split(".", 1)[0] if "." in testo else ""
+
+
 def cerca(indice, testo: str) -> list[dict]:
     """Trova `testo` per nome o alias, con l'ambiguita' dichiarata.
 
-    E' `Indice.trova()` senza aggiunte: quel metodo GIA' restituisce, per
-    ogni frammento riconosciuto, `candidati` (sempre una lista) e `ambiguo`
-    (vero quando sono piu' di uno). Scegliere UN candidato qui -- il primo,
-    il piu' probabile -- rifarebbe esattamente il difetto che e' gia'
-    costato un fix: due «Bagno» su piani diversi, o un alias che collide
-    col nome vero di un'altra area, che vincevano in silenzio in base
-    all'ordine di raccolta. Chi chiama vede l'ambiguita' dichiarata e la
-    passa al modello (che ha la casa in contesto) o all'utente (che
-    corregge dalla pagina) -- questa funzione non sceglie per loro.
-    """
-    return indice.trova(testo)
+    E' `Indice.trova()` PIU' cio' che serve a non sbagliare cosa si e'
+    trovato. Scegliere UN candidato qui -- il primo, il piu' probabile --
+    rifarebbe il difetto che e' gia' costato un fix: due «Bagno» su piani
+    diversi vincevano in silenzio in base all'ordine di raccolta. Questa
+    funzione non sceglie: **rende scegliere possibile**.
+
+    Ogni candidato porta:
+
+    - `nome`, con cui la casa lo conosce. Senza, il modello ha una lista di
+      identificatori e nessun modo di riconoscerli;
+    - `dominio` (solo per le entita'): `sensor`, `light`, ... E' il rimedio
+      alla cecita' al dominio -- `cerca("luci")` restituisce `sensor.lights`,
+      un CONTATORE di luci, e nel risultato non c'era niente che lo dicesse.
+      Non si filtra (il modello e' quello che sa se un contatore gli serve),
+      si dichiara;
+    - `nome_dedotto`, vero quando il nome non e' dichiarato nel registro ma
+      ricavato dal `friendly_name` dello specchio dello stato (vedi
+      `memoria/riconoscitore.costruisci_indice`). Un nome dedotto e' un fatto
+      diverso da un nome scelto dall'utente e non va spacciato per tale.
+
+    `verifica()` e' un accesso a dizionario, non una ricerca: farlo per
+    candidato costa quanto leggere la lista."""
+    risultati = indice.trova(testo)
+    for voce in risultati:
+        for candidato in voce["candidati"]:
+            oggetto = indice.verifica(candidato["tipo"], candidato["riferimento"]) or {}
+            dedotto = (oggetto.get("nome_dedotto") or "").strip()
+            candidato["nome"] = (oggetto.get("nome") or "").strip() or dedotto
+            if dedotto:
+                candidato["nome_dedotto"] = True
+            if candidato["tipo"] == "entita":
+                candidato["dominio"] = _dominio_entita(candidato["riferimento"])
+    return risultati
 
 
 def _ricordi_ancorati(ricordi: list[dict], tipo: str, riferimento) -> list[dict]:

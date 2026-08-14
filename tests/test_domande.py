@@ -245,3 +245,62 @@ def test_l_entita_orfana_finisce_nella_pseudo_area_giusta():
     # affermata «senza area»: e' proprio la bugia che il fix toglie
     senza_area = guarda(casa, _COMPORTAMENTO, _RICORDI, _STATO, "area", "__senza_area__")
     assert [e["id"] for e in senza_area["entita"]] == ["light.forno"]
+
+
+# --- Task B4: i candidati di `cerca` portano nome e dominio -------------
+
+
+def test_i_candidati_portano_il_dominio_cosi_un_contatore_non_sembra_una_luce():
+    """`cerca("luci")` restituiva `sensor.lights` e niente lo diceva."""
+    casa = {"aree": [], "dispositivi": [],
+            "entita": [{"id": "sensor.lights", "nome": "Luci", "alias": []},
+                       {"id": "light.salotto", "nome": "Luce salotto", "alias": []}]}
+    voci = cerca(costruisci_indice(casa), "quante luci")
+    domini = {c["riferimento"]: c["dominio"] for v in voci for c in v["candidati"]}
+    assert domini == {"sensor.lights": "sensor"}
+
+
+def test_i_candidati_portano_il_nome():
+    casa = {"aree": [{"id": "b1", "nome": "Bagno", "alias": []},
+                     {"id": "b2", "nome": "Bagno", "alias": []}],
+            "dispositivi": [], "entita": []}
+    voci = cerca(costruisci_indice(casa), "in bagno")
+    assert [c["nome"] for c in voci[0]["candidati"]] == ["Bagno", "Bagno"]
+    assert voci[0]["ambiguo"] is True
+
+
+def test_un_nome_dedotto_si_dichiara_dedotto():
+    casa = {"aree": [], "dispositivi": [],
+            "entita": [{"id": "light.a", "nome": None, "alias": []}]}
+    voci = cerca(costruisci_indice(casa, {"light.a": "Abat-jour"}), "abat-jour")
+    candidato = voci[0]["candidati"][0]
+    assert candidato["nome"] == "Abat-jour" and candidato["nome_dedotto"] is True
+
+
+def test_un_nome_dichiarato_non_si_dichiara_dedotto():
+    """Mutazione uccisa: mettere `nome_dedotto` su tutti."""
+    casa = {"aree": [{"id": "c", "nome": "Cucina", "alias": []}],
+            "dispositivi": [], "entita": []}
+    candidato = cerca(costruisci_indice(casa), "cucina")[0]["candidati"][0]
+    assert "nome_dedotto" not in candidato and "dominio" not in candidato
+
+
+def test_il_nome_dichiarato_vince_sul_dedotto_quando_ci_sono_entrambi():
+    """Mutazione uccisa: invertire la precedenza (preferire il nome dedotto
+    al dichiarato). `costruisci_indice` non produce mai i due insieme -- il
+    ripiego scatta solo quando il nome in registro manca (B1) -- quindi
+    nessuna delle case sopra puo' esercitare questo ramo passando per
+    l'indice vero. La precedenza si prova qui direttamente sull'oggetto che
+    `verifica()` restituisce, con un indice finto che li mette entrambi: e'
+    la garanzia che `cerca()` non deleghi la propria correttezza a
+    un'invariante di un modulo diverso."""
+    class _IndiceFinto:
+        def trova(self, testo):
+            return [{"nome_visto": testo, "ambiguo": False,
+                     "candidati": [{"tipo": "entita", "riferimento": "light.a"}]}]
+
+        def verifica(self, tipo, riferimento):
+            return {"nome": "Abat-jour", "nome_dedotto": "Luce salotto"}
+
+    candidato = cerca(_IndiceFinto(), "abat-jour")[0]["candidati"][0]
+    assert candidato["nome"] == "Abat-jour"
