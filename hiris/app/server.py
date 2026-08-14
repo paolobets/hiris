@@ -2154,6 +2154,23 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
     # conditional request (304 when unchanged) before the cached copy is reused.
     if request.path.startswith("/static/"):
         response.headers.setdefault("Cache-Control", "no-cache")
+        # Task B8 punto 5: se il client chiede un asset con un ?v=<impronta>
+        # che non corrisponde all'impronta ATTUALE di quel file, il server sa
+        # in quel momento che quel client ha un guscio vecchio -- e' cosi'
+        # che il difetto misurato (bottone del guscio HTML mancante mentre i
+        # testi del backend erano gia' aggiornati) sarebbe stato diagnosticato
+        # subito invece che scoperto un giorno dopo. Non cambia cosa viene
+        # servito: il file resta quello, si aggiunge solo la riga di log.
+        richiesta = request.query.get("v")
+        if richiesta:
+            rel_path = request.path.lstrip("/")  # "static/chat/main.js"
+            attuale = _asset_fingerprint(rel_path, "")
+            if attuale and richiesta != attuale:
+                logger.warning(
+                    "Asset richiesto con impronta stantia: %s (chiesta=%s, attuale=%s) "
+                    "-- il client ha un guscio HTML vecchio",
+                    rel_path, richiesta, attuale,
+                )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     # X-Frame-Options omesso: HA Ingress carica l'UI in un iframe
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -2420,18 +2437,34 @@ def _compute_build_stamp(static_dir: str) -> str:
     return h.hexdigest()[:12]
 
 
-def _inject_version(html: str, version: str) -> str:
+def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
     """Append a per-file content fingerprint (?v=HASH) to local static asset
     URLs so browsers bust cache whenever a file's content actually changes.
 
     Replaces the previous single global ?v=VERSION scheme, which only busted
     caches on a release version bump and left stale JS/CSS in place during any
-    edit that didn't change config.yaml's version field."""
+    edit that didn't change config.yaml's version field.
+
+    Task B8: se `build_stamp` e' dato, dichiara anche da quale build il guscio
+    e' nato -- una `<meta name="hiris-build" content="...">` in `<head>`, col
+    valore che l'app ha gia' (`app["build_stamp"]`, calcolato una sola volta in
+    create_app()): questa funzione non lo ricalcola. E' la meta' che mancava
+    perche' `static/chat/main.js` (e ora anche il boot della configurazione)
+    potessero confrontare "da quale build sono nato" con "quale build gira
+    davvero" (GET api/health) invece di limitarsi a mostrarli affiancati senza
+    che nessuno li leggesse."""
     def _repl(m: "re.Match[str]") -> str:
         attr, path = m.group(1), m.group(2)
         return f'{attr}="{path}?v={_asset_fingerprint(path, version)}"'
 
-    return _ASSET_REF_RE.sub(_repl, html)
+    html = _ASSET_REF_RE.sub(_repl, html)
+    if build_stamp:
+        html = html.replace(
+            "</head>",
+            f'  <meta name="hiris-build" content="{build_stamp}">\n</head>',
+            1,
+        )
+    return html
 
 
 async def _serve_index(request: web.Request) -> web.Response:
@@ -2439,7 +2472,7 @@ async def _serve_index(request: web.Request) -> web.Response:
     if not html:
         return web.Response(text="UI not yet available", status=503)
     return web.Response(
-        text=_inject_version(html, read_version()),
+        text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
         content_type="text/html",
         headers=_NO_CACHE,
     )
@@ -2450,7 +2483,7 @@ async def _serve_config(request: web.Request) -> web.Response:
     if not html:
         return web.Response(text="UI not yet available", status=503)
     return web.Response(
-        text=_inject_version(html, read_version()),
+        text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
         content_type="text/html",
         headers=_NO_CACHE,
     )

@@ -102,6 +102,9 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   define('navigator', rawWindow.navigator);
   define('Event', rawWindow.Event);
   define('localStorage', rawWindow.localStorage);
+  // Task B8: build-check.js usa `sessionStorage` bare (stesso pattern di
+  // `localStorage` sopra) per la guardia anti-anello dei ricaricamenti.
+  define('sessionStorage', rawWindow.sessionStorage);
   // `HTMLElement` non è un global di Node — esiste solo su `window` in jsdom —
   // e va bridged sul globalThis dell'host esattamente come document/navigator/
   // Event sopra, per gli script che lo usano bare come farebbero nel browser.

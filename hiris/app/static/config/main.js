@@ -147,8 +147,26 @@
     }
   });
 
+  /* Task B8: la pagina Modelli mostrava i testi nuovi (dal backend) senza il
+     bottone nuovo (nel JavaScript) -- il guscio HTML era rimasto vecchio
+     sotto un service worker che serve file per nome, non per contenuto.
+     Confronta la <meta name="hiris-build"> di QUESTO guscio (scritta da
+     server._inject_version) col build che il server dice di eseguire ORA
+     (GET api/health). Nessun'altra pagina della SPA di configurazione lo
+     rifa': una sola verifica all'avvio basta, e' il guscio che invecchia,
+     non la route dentro di esso. */
+  function checkBuild() {
+    return fetch('api/health').then(function(r) {
+      if (!r.ok) throw new Error('api/health: ' + r.status);
+      return r.json();
+    }).then(function(d) {
+      window.HirisBuildCheck.verifica(d.build);
+    }).catch(function() { /* nessun health, nessuna verifica possibile: silenzio */ });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     mountChrome();
+    checkBuild();
     window.addEventListener('hashchange', updateNavActive);
     HirisState.subscribe('route', updateNavActive);
     HirisRouter.start();

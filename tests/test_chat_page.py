@@ -34,7 +34,15 @@ def test_index_html_has_no_inline_script_block():
     # render, shared shape with config.html) has no logic worth extracting.
     # Everything else must be <script src="static/chat/...">.
     scripts = html.count("<script")
-    literal_src_scripts = html.count('<script src="static/chat/') + html.count('<script src="static/config/')
+    literal_src_scripts = (
+        html.count('<script src="static/chat/')
+        + html.count('<script src="static/config/')
+        # Task B8: build-check.js e' condiviso dalle DUE pagine (chat e
+        # configurazione), quindi vive alla radice di static/ e non sotto
+        # chat/ o config/ -- ma e' comunque un src= letterale, fingerprintato
+        # dalla stessa _ASSET_REF_RE di ogni altro asset qui sopra.
+        + html.count('<script src="static/build-check.js')
+    )
     theme_bootstrap = html.count("localStorage.getItem('hiris-theme')")
     assert theme_bootstrap == 1, "il bootstrap tema inline deve restare (evita il flash pre-render)"
     # Every <script> tag besides the theme-bootstrap one must be a literal
