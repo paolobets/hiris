@@ -72,12 +72,20 @@ def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
     "non disponibile" (vedi il ramo `else` del dispatch loop in
     claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello che
     tiene la chat viva.
+
+    Task B7 -- `cache_indice=app.get("cache_indice_strumenti")`: l'oggetto di
+    vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
+    nuovo per turno. Il dispatcher stesso nasce a ogni turno (e' il motivo per
+    cui questa funzione esiste), ma la cache dell'indice che gli si passa
+    dentro no -- e' cosi' che il riuso vale FRA i turni, non solo dentro uno
+    (vedi `memoria/cache_indice.py` per la chiave e il perche').
     """
     return DispatcherStrumenti(
         app.get("archivio_casa"),
         app.get("archivio_memoria"),
         cache=app.get("entity_cache"),
         porta=app.get("porta_azione"),
+        cache_indice=app.get("cache_indice_strumenti"),
     )
 
 

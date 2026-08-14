@@ -453,3 +453,153 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
         assert "errore" in esito
         assert "NoneType" not in esito["errore"]
         assert "caricat" in esito["errore"]      # dice COSA manca
+
+
+# -- Task B7: l'indice si riusa invece di essere ricostruito e buttato -----
+#
+# `_cerca` e `_ricorda` sono i due punti che costruiscono un `Indice`
+# (verificato con `awk` sul brief prima di scrivere -- riga 440 e 565).
+# Ogni test qui sotto dichiara quale mutazione lo fa cadere: il difetto
+# numero uno di questa campagna e' un test che non puo' fallire.
+
+from hiris.app.memoria.cache_indice import CacheIndice
+import hiris.app.casa.strumenti as _modulo_strumenti
+import hiris.app.memoria.cache_indice as _cache_indice_modulo
+
+
+def _conta_costruzioni(monkeypatch):
+    """Spia su `costruisci_indice`, in ENTRAMBI i posti in cui e' importato
+    per nome (`strumenti.py`, per il ramo senza cache, e
+    `memoria/cache_indice.py`, per il ramo con cache -- un monkeypatch su un
+    solo modulo non vedrebbe le chiamate che passano dall'altro): conta le
+    costruzioni vere, non i risultati di `cerca` -- la mutazione 'non usare
+    mai la cache anche quando c'e'' lascia i risultati identici e solo un
+    conteggio la scopre (brief B7, penultimo punto)."""
+    chiamate = []
+    originale = _modulo_strumenti.costruisci_indice
+
+    def spia(casa, nomi=None):
+        chiamate.append(1)
+        return originale(casa, nomi)
+
+    monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
+    monkeypatch.setattr(_cache_indice_modulo, "costruisci_indice", spia)
+    return chiamate
+
+
+@pytest.mark.asyncio
+async def test_due_cerca_di_fila_a_stato_invariato_costruiscono_un_solo_indice(
+        archivio_casa, memoria, monkeypatch):
+    chiamate = _conta_costruzioni(monkeypatch)
+    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=CacheIndice())
+    await d.dispatch("cerca", {"testo": "cucina"})
+    await d.dispatch("cerca", {"testo": "sala"})
+    assert len(chiamate) == 1
+
+
+@pytest.mark.asyncio
+async def test_senza_cache_indice_il_comportamento_resta_quello_di_oggi(
+        archivio_casa, memoria, monkeypatch):
+    """Default `None`: mutazione 'usare sempre la cache anche quando il
+    chiamante non la passa' rovinerebbe questo test -- due `cerca` devono
+    ricostruire due volte, come prima del Task B7."""
+    chiamate = _conta_costruzioni(monkeypatch)
+    d = DispatcherStrumenti(archivio_casa, memoria)  # cache_indice non passata
+    await d.dispatch("cerca", {"testo": "cucina"})
+    await d.dispatch("cerca", {"testo": "sala"})
+    assert len(chiamate) == 2
+
+
+@pytest.mark.asyncio
+async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache(
+        archivio_casa, memoria):
+    """Il rischio peggiore del task: una cache con la chiave sbagliata
+    servirebbe un indice VECCHIO, facendo sparire un'entita' che esiste
+    davvero. Qui la si aggiunge dopo la prima `cerca` e si pretende che la
+    seconda la trovi."""
+    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=CacheIndice())
+    prima = await d.dispatch("cerca", {"testo": "frullatore"})
+    assert prima["trovati"] == []
+
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
+    # `sostituisci()` marca `aggiornata_il` col secondo corrente: forzare un
+    # valore diverso da quello di prima garantisce che il test non dipenda
+    # dal caso di due chiamate nello stesso secondo di orologio.
+    archivio_casa._conn.execute(
+        "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'aggiornata_il'")
+    archivio_casa._conn.commit()
+
+    dopo = await d.dispatch("cerca", {"testo": "frullatore"})
+    riferimenti = [c["riferimento"] for v in dopo["trovati"] for c in v["candidati"]]
+    assert riferimenti == ["light.frullatore"]
+
+
+@pytest.mark.asyncio
+async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_cache(
+        archivio_casa, memoria):
+    """Stessa anagrafe, stesso `aggiornata_il`: solo il friendly_name dello
+    specchio dello stato cambia. Una chiave che non catturasse i nomi vivi
+    servirebbe un indice senza quell'entita' per sempre."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
+
+    class _CacheMutevole:
+        loaded = True
+        def __init__(self, nome):
+            self.nome = nome
+        def all_states(self):
+            return [{"id": "light.abat_jour_1", "state": "off", "name": self.nome}]
+
+    cache_stato = _CacheMutevole("")  # nessun nome ancora
+    cache_indice = CacheIndice()
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache_stato, cache_indice=cache_indice)
+    prima = await d.dispatch("cerca", {"testo": "abat-jour"})
+    assert prima["trovati"] == []
+
+    cache_stato.nome = "Abat-jour"  # ora HA ha un nome vivo per l'entita'
+    dopo = await d.dispatch("cerca", {"testo": "abat-jour"})
+    riferimenti = [c["riferimento"] for v in dopo["trovati"] for c in v["candidati"]]
+    assert riferimenti == ["light.abat_jour_1"]
+
+
+@pytest.mark.asyncio
+async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
+        archivio_casa, memoria, monkeypatch):
+    """`_cerca` passa i nomi di ripiego, `_ricorda` no: alternarli a stato
+    invariato deve costruire ESATTAMENTE due indici (uno per spazio), mai
+    quattro (rimbalzo) e mai uno solo condiviso (servirebbe contenuti
+    sbagliati all'uno o all'altro)."""
+    chiamate = _conta_costruzioni(monkeypatch)
+    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=CacheIndice())
+    await d.dispatch("cerca", {"testo": "cucina"})
+    await d.dispatch("ricorda", {"testo": "una frase qualsiasi"})
+    await d.dispatch("cerca", {"testo": "sala"})
+    await d.dispatch("ricorda", {"testo": "un'altra frase"})
+    assert len(chiamate) == 2
+
+
+@pytest.mark.asyncio
+async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta_vuota(
+        tmp_path, memoria, monkeypatch):
+    """`_ricorda` su un'anagrafe MAI letta usa `{}`; su un'anagrafe letta ma
+    vuota usa la casa vera (vuota lo stesso, ma DAVVERO letta:
+    `aggiornata_il()` passa da `None` a un valore). Una chiave che non
+    distinguesse i due rami servirebbe -- o riuserebbe -- l'indice sbagliato:
+    qui si conta, non si guarda solo il risultato (entrambi darebbero
+    `problemi` non vuoti comunque, un test sul risultato non basterebbe)."""
+    chiamate = _conta_costruzioni(monkeypatch)
+    # Nessun `sostituisci()` ancora: `aggiornata_il()` e' `None` davvero.
+    vuoto = ArchivioCasa(str(tmp_path / "vuota.db"))
+    d = DispatcherStrumenti(vuoto, memoria, cache_indice=CacheIndice())
+    await d.dispatch("ricorda", {"testo": "prima, anagrafe non letta"})
+    assert len(chiamate) == 1
+
+    vuoto.sostituisci({"aree": [], "entita": []}, [])  # ora aggiornata_il() e' un valore vero
+    await d.dispatch("ricorda", {"testo": "dopo, anagrafe letta (vuota)"})
+    assert len(chiamate) == 2  # non riusato: il ramo e' cambiato davvero
+
+    await d.dispatch("ricorda", {"testo": "ancora dopo, stesso stato"})
+    assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
+
+    vuoto.chiudi()

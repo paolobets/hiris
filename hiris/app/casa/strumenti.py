@@ -55,6 +55,7 @@ from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
+from ..memoria.cache_indice import CacheIndice
 from ..memoria.interpretazione import valida
 from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
@@ -342,7 +343,7 @@ class DispatcherStrumenti:
     """
 
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
-                 cache=None, porta=None) -> None:
+                 cache=None, porta=None, cache_indice: CacheIndice | None = None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -359,6 +360,15 @@ class DispatcherStrumenti:
         # (contratto della classe), e senza porta `esegui` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
         self._porta = porta
+        # Task B7: la cache dell'Indice (`memoria/cache_indice.py`), di vita
+        # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
+        # vedi `handlers_chat.py::costruisci_dispatcher_strumenti`) ma vive
+        # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
+        # dipendenza. Default `None`: nessuna cache, `_cerca`/`_ricorda`
+        # ricostruiscono l'indice ogni volta come facevano prima di questo
+        # task -- ogni chiamante esistente (i test, e ogni altro punto del
+        # prodotto che non la passa esplicitamente) non cambia comportamento.
+        self._cache_indice = cache_indice
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
@@ -437,7 +447,16 @@ class DispatcherStrumenti:
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
         casa = self._casa.leggi()
         _, nomi_vivi, specchio_letto = self._specchio()
-        indice = costruisci_indice(casa, nomi_vivi)
+        # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
+        # (`aggiornata_il()`) e i nomi vivi di ripiego non cambiano -- vedi
+        # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
+        # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_ricorda` no,
+        # e sulla stessa casa i due indici hanno contenuti diversi.
+        if self._cache_indice is not None:
+            indice = self._cache_indice.ottieni(
+                "cerca", casa, self._casa.aggiornata_il(), nomi_vivi)
+        else:
+            indice = costruisci_indice(casa, nomi_vivi)
         risposta: dict = {"trovati": _cerca_candidati(indice, testo)}
         cecita = self._cecita(casa, specchio_letto)
         if cecita:
@@ -561,8 +580,21 @@ class DispatcherStrumenti:
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«ricorda» richiede un «testo» non vuoto."}
 
-        anagrafe_letta = self._casa.aggiornata_il() is not None
-        indice = costruisci_indice(self._casa.leggi() if anagrafe_letta else {})
+        # Letto UNA volta sola (non due) e riusato sia per la decisione sia
+        # per la chiave della cache sotto: nessun await fra le due letture in
+        # questa funzione sincrona, quindi non possono mai disallinearsi.
+        aggiornata_il = self._casa.aggiornata_il()
+        anagrafe_letta = aggiornata_il is not None
+        casa_per_indice = self._casa.leggi() if anagrafe_letta else {}
+        # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
+        # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
+        # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
+        # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
+        # della casa piena non si confondono mai (memoria/cache_indice.py).
+        if self._cache_indice is not None:
+            indice = self._cache_indice.ottieni("ricorda", casa_per_indice, aggiornata_il)
+        else:
+            indice = costruisci_indice(casa_per_indice)
         if not anagrafe_letta:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa

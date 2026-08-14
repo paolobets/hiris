@@ -33,6 +33,7 @@ from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
 from .token_interno import prepara_token_interno
 from .proxy.entity_cache import EntityCache
+from .memoria.cache_indice import CacheIndice
 from .backends.embeddings import build_embedding_provider
 from .api.middleware_internal_auth import internal_auth_middleware
 from .api.middleware_csrf import csrf_middleware
@@ -956,6 +957,17 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("Area registry load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
+
+    # Task B7: la cache dell'Indice (`memoria/cache_indice.py`), di vita
+    # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
+    # `DispatcherStrumenti` che la riceve (`costruisci_dispatcher_strumenti`
+    # in `api/handlers_chat.py`). Prima di questo task `_cerca`/`_ricorda`
+    # ricostruivano un `Indice` da zero A OGNI chiamata e lo buttavano
+    # subito: si ripagava ogni volta la lettura dell'anagrafe E la
+    # compilazione di un'espressione regolare per termine (misurato: la
+    # compilazione domina il costo, non la lettura -- vedi il rapporto del
+    # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
+    app["cache_indice_strumenti"] = CacheIndice()
 
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
     # (`azione/porta.py`). Sta QUI, e non accanto a `registro_servizi` piu'
