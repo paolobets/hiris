@@ -64,6 +64,43 @@
     window.location.reload();
   }
 
+  /* Review indipendente, rilievo Critico: sessionStorage.setItem() puo'
+     sollevare mentre getItem() no (quota, policy); l'ACCESSO all'oggetto
+     sessionStorage stesso puo' sollevare (Safari in navigazione privata,
+     iframe sandboxed senza allow-storage-access-by-user-activation -- e
+     HIRIS gira DENTRO un iframe di Home Assistant); e la scrittura puo'
+     "riuscire" (nessun throw) ma rileggersi come null o diversa. Un
+     try/catch attorno al solo setItem() vede il primo caso e non gli altri
+     due: prima di questo fix, in uno qualunque dei tre, giaTentato restava
+     false per sempre e la guardia non veniva MAI letta come "gia' scattata"
+     -- ogni chiamata a verifica() ricaricava di nuovo, senza limite. Anello
+     riprodotto dal revisore: 5 chiamate, 5 ricaricamenti, striscia mai
+     mostrata.
+
+     L'invariante che sostituisce quella logica: NON RICARICARE MAI, se non
+     si puo' provare di non averlo gia' fatto. La prova e' scrivere la
+     guardia e rileggerla SUBITO, nello stesso turno: se la rilettura non
+     torna esattamente cio' che si e' appena scritto (throw in un punto
+     qualunque, o un valore diverso/nullo), il ricaricamento NON e'
+     verificabile come sicuro -- si salta, e si mostra la striscia
+     direttamente. La striscia da sola e' comunque utile: dice il fatto e
+     cosa fare. Un anello infinito non dice niente.
+
+     (Una variabile in memoria a livello di modulo NON basterebbe da sola:
+     sopravvive dentro un caricamento di pagina, non attraverso un vero
+     ricaricamento -- che e' esattamente cio' da cui ci si deve proteggere.
+     Per questo la prova e' sempre la persistenza REALE in sessionStorage,
+     mai un flag JS.) */
+  function guardiaVerificata(locale) {
+    try {
+      if (sessionStorage.getItem(GUARD_KEY) === locale) return 'gia-tentato';
+      sessionStorage.setItem(GUARD_KEY, locale);
+      return sessionStorage.getItem(GUARD_KEY) === locale ? 'scritta' : 'non-verificabile';
+    } catch (e) {
+      return 'non-verificabile';
+    }
+  }
+
   /* Confronta il build dichiarato dal guscio (la <meta>, immutabile per
      tutta la vita di QUESTA pagina caricata) col build che il server
      restituisce ORA (GET api/health, la verita' vivente).
@@ -72,24 +109,21 @@
        cosi' un disallineamento futuro (un'altra build) puo' di nuovo tentare
        un ricaricamento invece di trovare la guardia gia' scattata per un
        valore che non e' piu' quello in gioco.
-     - Diversi, prima volta per QUESTO guscio: un ricaricamento, uno solo --
-       la guardia (sessionStorage, sopravvive al reload, muore col tab) si
-       marca con l'esatto build locale che ha tentato.
-     - Diversi, guardia gia' marcata per QUESTO build locale: il ricaricamento
-       non ha risolto niente (il service worker ha riservito lo stesso guscio
-       vecchio) -- niente secondo tentativo, si dichiara con la striscia. Un
-       anello di ricaricamenti sarebbe un guasto peggiore di quello che questo
-       meccanismo chiude. */
+     - Diversi, guardia scritta e verificata per la prima volta per QUESTO
+       guscio: un ricaricamento, uno solo.
+     - Diversi, guardia gia' marcata per QUESTO build locale (il
+       ricaricamento non ha risolto niente: il service worker ha riservito
+       lo stesso guscio vecchio) -- O la guardia non e' verificabile (Web
+       Storage rotto o bloccato): in ENTRAMBI i casi, niente ricaricamento,
+       si dichiara con la striscia. Un anello di ricaricamenti sarebbe un
+       guasto peggiore di quello che questo meccanismo chiude. */
   function verifica(remoto) {
     var locale = letturaLocale();
     if (!locale || !remoto || locale === remoto) {
       try { sessionStorage.removeItem(GUARD_KEY); } catch (e) {}
       return;
     }
-    var giaTentato = false;
-    try { giaTentato = sessionStorage.getItem(GUARD_KEY) === locale; } catch (e) {}
-    if (!giaTentato) {
-      try { sessionStorage.setItem(GUARD_KEY, locale); } catch (e) {}
+    if (guardiaVerificata(locale) === 'scritta') {
       window.HirisBuildCheck._internal_reload();
       return;
     }

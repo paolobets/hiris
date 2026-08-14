@@ -102,3 +102,88 @@ test('la striscia non duplica se verifica() la richiama con la guardia gia\' sca
   const strisce = document.querySelectorAll('#hiris-build-mismatch');
   assert.equal(strisce.length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Review indipendente, rilievo Critico: la guardia deve REGGERE quando il
+// Web Storage e' rotto, non degradare verso "nessuna guardia" (che vuol dire
+// ricaricare a ogni chiamata, senza limite -- l'anello che il task doveva
+// chiudere). L'invariante: non ricaricare mai se non si puo' provare di non
+// averlo gia' fatto. Se la guardia non e' verificabile, si salta il
+// ricaricamento e si mostra la striscia direttamente -- la striscia da sola
+// e' comunque utile, un anello infinito non dice niente.
+//
+// I tre modi in cui la realta' rompe sessionStorage, tutti riprodotti:
+//   1) setItem solleva mentre getItem funziona (quota superata, o policy);
+//   2) l'accesso a `sessionStorage` STESSO solleva (Safari in navigazione
+//      privata piu' vecchia, iframe con sandbox senza allow-storage-access-
+//      by-user-activation -- e HIRIS gira DENTRO un iframe di Home Assistant);
+//   3) la scrittura "sembra" riuscire (nessun throw) ma la rilettura torna
+//      null o un valore diverso -- il piu' insidioso, perche' un try/catch
+//      da solo non lo vede.
+// In ognuno: zero ricaricamenti, striscia mostrata. E' l'inverso di quello
+// che verrebbe istintivo (favorire il ricaricamento quando non si sa).
+// ---------------------------------------------------------------------------
+
+function avviaConStorageRotto(buildMeta, modo) {
+  const ctx = loadScripts(['build-check.js'], { html: fixtureHtml(buildMeta) });
+  const reloadCalls = [];
+  ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
+
+  if (modo === 'setItem-solleva') {
+    // getItem funziona (sempre null, nessuna guardia scritta finora);
+    // setItem solleva -- comportamento documentato di Safari privato.
+    const vero = ctx.window.sessionStorage;
+    globalThis.sessionStorage = {
+      getItem: vero.getItem.bind(vero),
+      setItem() { throw new Error('QuotaExceededError (simulato)'); },
+      removeItem: vero.removeItem.bind(vero),
+      clear: vero.clear.bind(vero),
+    };
+  } else if (modo === 'accesso-solleva') {
+    // L'identificatore `sessionStorage` stesso solleva alla lettura --
+    // NESSUN metodo e' mai raggiungibile, nemmeno getItem.
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get() { throw new Error('Web Storage bloccato (simulato, es. iframe sandboxed)'); },
+    });
+  } else if (modo === 'scrittura-fantasma') {
+    // Ne' getItem ne' setItem sollevano MAI -- ma quello che si rilegge non
+    // e' MAI quello che si e' appena scritto (torna sempre null).
+    globalThis.sessionStorage = {
+      getItem() { return null; },
+      setItem() { /* "riesce" in silenzio, non persiste davvero */ },
+      removeItem() {},
+      clear() {},
+    };
+  } else {
+    throw new Error('modo sconosciuto: ' + modo);
+  }
+
+  return { ...ctx, reloadCalls };
+}
+
+for (const modo of ['setItem-solleva', 'accesso-solleva', 'scrittura-fantasma']) {
+  test(`Web Storage rotto (${modo}): zero ricaricamenti, striscia mostrata subito -- non si puo' provare che la guardia regga`, () => {
+    const { document, reloadCalls } = avviaConStorageRotto('vecchio111', modo);
+
+    // Nessuna guardia scritta con successo verificabile: MAI ricaricare,
+    // quante volte si chiami verifica() -- e' esattamente lo scenario del
+    // rilievo Critico (5 chiamate, 5 ricaricamenti, prima del fix).
+    globalThis.HirisBuildCheck.verifica('nuovo222');
+    globalThis.HirisBuildCheck.verifica('nuovo222');
+    globalThis.HirisBuildCheck.verifica('nuovo222');
+
+    assert.equal(reloadCalls.length, 0,
+      'con lo storage rotto non si deve MAI ricaricare, nemmeno una volta: ' +
+      'non si puo\' dimostrare che il tentativo precedente sia stato registrato');
+
+    const striscia = document.getElementById('hiris-build-mismatch');
+    assert.notEqual(striscia, null,
+      'la striscia deve comparire SUBITO, al primo disallineamento, quando la guardia non e\' verificabile');
+    assert.equal(
+      striscia.textContent,
+      'questa interfaccia viene da un build diverso da quello in esecuzione ' +
+      '(vecchio111 invece di nuovo222): svuota i dati del sito di Home Assistant'
+    );
+  });
+}
