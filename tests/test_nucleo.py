@@ -1,5 +1,6 @@
 import pytest
 
+from hiris.app.casa import nucleo
 from hiris.app.casa.nucleo import componi
 
 _CASA = {
@@ -499,3 +500,105 @@ def test_taglio_non_lascia_intestazioni_di_piano_orfane():
             if e_intestazione:
                 assert i + 1 < len(righe) and righe[i + 1].startswith("  "), (
                     f"intestazione di piano orfana con tetto={tetto_prova}: {riga!r}")
+
+
+# --- l'annotazione di dispositivo (A1) ------------------------------------
+#
+# Le finte qui sotto devono MENTIRE COME MENTE LA REALTA': una casa con
+# un'entita' per dispositivo non prova niente sul raggruppamento, che e'
+# esattamente cio' che queste righe difendono.
+
+
+def _e(entity_id, dispositivo_id=None):
+    return {"id": entity_id, "dispositivo_id": dispositivo_id, "nome": entity_id}
+
+
+def test_quattro_valvole_di_un_solo_dispositivo_si_annotano_col_nome():
+    """Il caso del 14 agosto. Senza questa annotazione il modello, per
+    raggruppare, dovrebbe indovinare di cercare un dispositivo di cui non
+    conosce il nome."""
+    entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
+    assert nucleo._annotazione_dispositivo(
+        entita, "valve", 4, {"dev1": "Irrigazione giardino"}) == " (Irrigazione giardino)"
+
+
+def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
+    """Il 75% delle righe: una presa, una lampadina, un contatto portano
+    un'entita' per dominio -- una cosa, un conteggio, niente da aggiungere.
+
+    E' l'UNICO caso che il confronto `>= quante` decide da solo: con piu'
+    dispositivi decide gia' `_MAX_NOMI_DISPOSITIVO_IN_RIGA`, quindi la
+    mutazione "togliere `>= quante`" sopravvive a tutti gli altri test e
+    muore solo qui -- e da qui si vedrebbe subito, perche' e' la riga piu'
+    frequente della casa. La presa porta anche un `sensor`: il filtro sul
+    dominio deve escluderlo."""
+    entita = [_e("light.presa", "dev1"), _e("sensor.presa_w", "dev1")]
+    assert nucleo._annotazione_dispositivo(entita, "light", 1, {"dev1": "Presa cucina"}) == ""
+
+
+def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
+    """La regola si spegne da sola: quando sono quattro cose separate il
+    conteggio e' tutto cio' che serve. Mutazione uccisa: `_portatori` che
+    smettesse di distinguere gli id (per esempio tenendo solo il primo)
+    annoterebbe qui col nome di una valvola sola, spacciando quattro cose
+    per una."""
+    entita = [_e(f"valve.v{i}", f"dev{i}") for i in range(4)]
+    nomi = {f"dev{i}": f"Valvola {i}" for i in range(4)}
+    assert nucleo._annotazione_dispositivo(entita, "valve", 4, nomi) == ""
+
+
+def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
+    """Sopra `_MAX_NOMI_DISPOSITIVO_IN_RIGA` non si citano nomi. E' la riga
+    che tiene il budget: senza, 61 righe come questa citerebbero 344 nomi."""
+    entita = [_e(f"sensor.s{i}", f"dev{i % 3}") for i in range(12)]
+    nomi = {f"dev{i}": f"Presa {i}" for i in range(3)}
+    assert nucleo._annotazione_dispositivo(entita, "sensor", 12, nomi) == ""
+
+
+def test_un_dispositivo_e_un_entita_libera_non_producono_un_annotazione_parziale():
+    """Tre entita', un dispositivo che ne porta due e una senza: il nome
+    coprirebbe solo una parte del conteggio. Mutazione uccisa: togliere
+    `senza or` dalla condizione."""
+    entita = [_e("sensor.a", "dev1"), _e("sensor.b", "dev1"), _e("sensor.c")]
+    assert nucleo._annotazione_dispositivo(entita, "sensor", 3, {"dev1": "Presa"}) == ""
+
+
+def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
+    """`name_by_user or name` sono entrambi nullable in casa/archivio.py. Un
+    id tecnico si marca come dedotto, mai spacciato per nome dichiarato --
+    ed e' comunque la chiave con cui `guarda("dispositivo", ...)` lo trova.
+
+    Tre casi che arrivano tutti dallo stesso registro: nome vuoto, dispositivo
+    assente dalla tabella dei nomi, e nome fatto di soli spazi (un nome che
+    non nomina -- mutazione uccisa: togliere `.strip()`, che stamperebbe
+    " (   )")."""
+    entita = [_e(f"valve.v{i}", "dev9") for i in range(3)]
+    assert nucleo._annotazione_dispositivo(entita, "valve", 3, {"dev9": ""}) == " (id: dev9)"
+    assert nucleo._annotazione_dispositivo(entita, "valve", 3, {}) == " (id: dev9)"
+    assert nucleo._annotazione_dispositivo(entita, "valve", 3, {"dev9": "   "}) == " (id: dev9)"
+
+
+def test_col_registro_dispositivi_caduto_non_si_annota_niente():
+    """`None` non e' `{}`: "non ho potuto guardare" non e' "nessun
+    dispositivo". Mutazione uccisa: usare `nomi_dispositivo or {}` invece del
+    controllo esplicito, che stamperebbe "(id: ...)" su tutta la casa."""
+    entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
+    assert nucleo._annotazione_dispositivo(entita, "valve", 4, None) == ""
+
+
+def test_i_portatori_contano_le_entita_senza_dispositivo_una_a_testa():
+    entita = [_e("sensor.a", "dev1"), _e("sensor.b", "dev1"),
+              _e("sensor.c"), _e("light.x", "dev2")]
+    assert nucleo._portatori(entita, "sensor") == (["dev1"], 1)
+    assert nucleo._portatori(entita, "light") == (["dev2"], 0)
+
+
+def test_i_portatori_conservano_l_ordine_dell_anagrafe():
+    """Una lista, non un `set`: l'ordine dev'essere quello dell'anagrafe, o
+    due letture della stessa casa producono due nuclei diversi. Gli id sono
+    scelti perche' l'ordine di arrivo non sia ne' alfabetico ne' il suo
+    contrario, cosi' anche un `sorted()` messo li' "per stabilita'" cade."""
+    arrivo = ["dev_mu", "dev_alfa", "dev_zeta", "dev_beta", "dev_omega"]
+    entita = [_e(f"sensor.s{i}", d) for i, d in enumerate(arrivo)]
+    entita.append(_e("sensor.s99", "dev_mu"))  # ritorno del primo: non si ripete
+    assert nucleo._portatori(entita, "sensor") == (arrivo, 0)

@@ -130,6 +130,97 @@ _RISERVA_SEZIONE_LACUNE = 400
 _RISERVA_MINIMA_RIGHE_CASA = 3
 
 
+# Quanti nomi di dispositivo una riga di conteggio puo' citare prima di
+# smettere di CONTARE e cominciare a ELENCARE. **Uno**, e il numero e'
+# misurato, non scelto per gusto.
+#
+# La regola della specifica ("annota quando le entita' contate appartengono a
+# MENO dispositivi di quante sono") si spegne davvero da sola sul 75% delle
+# righe: una presa, una lampadina, un contatto portano un'entita' per dominio
+# e non producono niente. Sul restante 25% pero' NON e' limitata: su una casa
+# della forma di quella del proprietario (20 aree, 240 dispositivi, ~1.300
+# entita') sono 61 righe annotabili che citerebbero 344 nomi, cioe' 5.294
+# caratteri su un tetto di 6.000 -- e quel nucleo tronca gia' oggi. Misurato:
+# citando tutti i nomi sopravvivono 7 aree su 20 invece di 17. Citarne uno
+# solo costa 174 caratteri e ne fa sopravvivere 16.
+#
+# Uno e' anche l'unico caso in cui il nome E' l'informazione: "4 valve" che
+# sono quattro cose separate non ha bisogno di nessuna annotazione, "4 valve"
+# che sono un irrigatore solo ha bisogno di sapersi chiamare. Sopra l'uno il
+# nucleo torna a fare quello che dichiara di fare nel docstring del modulo:
+# conta, non elenca.
+_MAX_NOMI_DISPOSITIVO_IN_RIGA = 1
+
+
+def _portatori(entita_area: list[dict], dominio: str) -> tuple[list[str], int]:
+    """Chi PORTA le entita' di `dominio` in quest'area: gli id dei dispositivi
+    distinti, e quante entita' non ne hanno nessuno.
+
+    Le entita' senza dispositivo contano **una a testa**, non zero: sono cose
+    separate quanto un dispositivo per una: contarle come zero portatori
+    farebbe scattare l'annotazione su una riga che non mente affatto (dieci
+    helper `input_boolean` in cucina sono davvero dieci cose).
+
+    Gli id si accumulano in una lista e non in un `set` per la stessa ragione
+    per cui `_conta_per_dominio` ordina: l'ordine dev'essere quello
+    dell'anagrafe, non quello dell'hash, o due letture della stessa casa
+    producono due nuclei diversi."""
+    dispositivi: list[str] = []
+    senza = 0
+    for entita in entita_area:
+        if _dominio(entita["id"]) != dominio:
+            continue
+        dispositivo_id = entita.get("dispositivo_id")
+        if not dispositivo_id:
+            senza += 1
+        elif dispositivo_id not in dispositivi:
+            dispositivi.append(dispositivo_id)
+    return dispositivi, senza
+
+
+def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
+                             nomi_dispositivo: dict[str, str] | None) -> str:
+    """Il pezzo fra parentesi da attaccare a «4 valve» -- o "" quando la riga
+    non mente per omissione.
+
+    «Esterno: 4 valve» e' vero e distrugge una cosa: non dice se sono quattro
+    dispositivi o uno. Quando sono quattro il conteggio e' tutto cio' che
+    serve; quando sono un irrigatore solo, la riga ha cancellato l'unica
+    informazione che contava -- e il modello, per raggrupparle, dovrebbe
+    INDOVINARE di cercare un dispositivo di cui non conosce il nome.
+
+    `nomi_dispositivo` a `None` significa «non ho potuto guardare», non
+    «nessun dispositivo»: col registro "dispositivi" caduto la tabella e'
+    VUOTA (casa/archivio.py::sostituisci cancella tutto e reinserisce cio'
+    che e' arrivato), quindi un dizionario vuoto renderebbe ogni
+    `dispositivo_id` un riferimento al nulla e l'annotazione stamperebbe
+    "(id: ...)" su tutta la casa. La lacuna e' gia' dichiarata in "cio' che
+    HIRIS ignora": qui non si aggiunge un secondo silenzio."""
+    if nomi_dispositivo is None:
+        return ""
+    dispositivi, senza = _portatori(entita_area, dominio)
+    if len(dispositivi) + senza >= quante:
+        # Tante cose quante entita': il conteggio dice gia' tutto.
+        return ""
+    if senza or len(dispositivi) > _MAX_NOMI_DISPOSITIVO_IN_RIGA:
+        # Piu' di un portatore: si conta, non si elenca (vedi la costante).
+        # `senza` non nullo con un solo dispositivo e' lo stesso caso visto da
+        # un'altra parte -- il nome coprirebbe solo una parte delle entita'
+        # contate, e un'annotazione parziale afferma piu' di quel che sa.
+        return ""
+    id_dispositivo = dispositivi[0]
+    nome = (nomi_dispositivo.get(id_dispositivo) or "").strip()
+    if nome:
+        return f" ({nome})"
+    # Un dispositivo senza nome esiste davvero: `casa/archivio.py` scrive
+    # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
+    # MARCATO come id -- la stessa convenzione di `_nome_area_visualizzato`
+    # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui
+    # `guarda("dispositivo", ...)` lo ritrova, e perche' un id tecnico non va
+    # mai spacciato per un nome dichiarato dall'utente.
+    return f" (id: {id_dispositivo})"
+
+
 def _dominio(entity_id: str) -> str:
     return entity_id.split(".", 1)[0] if "." in entity_id else entity_id
 
