@@ -27,16 +27,30 @@ acceso e la credenziale c'è», e si leggeva «funziona». Una chiave a credito 
 
 ### Cosa si vede adesso
 
-**Una frase, in cima alla pagina**, prima di ogni altra cosa:
+**Una frase, in cima alla pagina**, prima di ogni altra cosa — e sotto, la catena. Sul
+caso concreto di oggi (chiave Claude API a credito zero in testa, piano pagato e fermo,
+OpenRouter a consumo) è questa, parola per parola:
 
-> **Il prossimo messaggio va a OpenRouter, con anthropic/claude-sonnet-4-6, a consumo.**
+> **Il prossimo messaggio va a Claude API, con claude-sonnet-4-6, a consumo.**
 >
-> Claude API ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa.
 > Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.
+>
+> **01 LA CATENA**
+> 1. Claude API · claude-sonnet-4-6 · a consumo — *ha rifiutato le ultime 40 richieste —
+>    credito esaurito (400), 3 min fa*
+> 2. OpenRouter · anthropic/claude-sonnet-4-6 · a consumo — *ha risposto 2 min fa*
 
-Sotto, **una catena**: chi risponde per primo, chi dopo, con che modello, a che costo, e
-che cosa ha fatto davvero l'ultima volta che gli è stato chiesto qualcosa. Si riordina con
-le frecce, si toglie con una ✕, si aggiunge con «Usa».
+**Attenzione a cosa dice davvero la frase in cima: chi viene PROVATO per primo, non chi
+risponde.** Nel caso qui sopra a rispondere è OpenRouter — Claude API rifiuta e il turno
+scende — ma la frase nomina Claude API, perché è lui il primo anello. Che stia rifiutando
+lo dice la sua riga di stato, tre righe sotto, ed è misurato: la frase in cima non guarda
+ancora gli esiti osservati. **È un debito dichiarato**, non un caso limite: la riga più
+prominente del prodotto risponde a «chi viene provato per primo» e il suo titolo dice «chi
+risponde». Si chiude passando gli esiti a chi compone la frase, ed è una fetta sua.
+
+La catena dice chi risponde per primo, chi dopo, con che modello, a che costo, e che cosa
+ha fatto davvero l'ultima volta che gli è stato chiesto qualcosa. Si riordina con le
+frecce, si toglie con una ✕, si aggiunge con «Usa».
 
 **La parola «Attivo» è uscita dal prodotto.** Al suo posto ci sono cose misurate: «in
 catena» o «fuori dalla catena» (che è una posizione, non un'opinione), e la riga di stato,
@@ -85,12 +99,20 @@ compare più. Quel turno adesso riceve una risposta, e la riceve **a pagamento**
   erano la seconda rappresentazione dello stato, ed è quella che permetteva alla pagina di
   mentire. Restano a schermo per un rilascio ancora (vedi «Cosa devi rifare a mano»).
   **L'eccezione è `provider_subscription`**, che continua ad accendere il ponte: per il
-  piano, l'interruttore che conta è ancora quello — insieme a `ponte.attivo`, e **basta
-  uno dei due**.
+  piano, l'interruttore che conta è ancora quello, insieme a `ponte.attivo`. **I due non
+  sono intercambiabili**: `ponte.attivo` accende il ponte da solo, `provider_subscription`
+  **solo se il token del piano c'è già**. Se stai accendendo il piano, incolla prima il
+  token: altrimenti quell'interruttore non fa niente e non lo dice nessuno.
 - **La lista dei modelli si legge quando serve.** Il pannello di un provider interroga
   quel provider **in quel momento**, dice se ci è riuscito e da dove arriva la lista.
   Prima la pagina interrogava tre provider a ogni apertura, per un elenco che quasi
   nessuno apriva.
+- **Se avevi già riordinato la catena a mano**, quell'ordine si tiene **così com'è**: la
+  migrazione non lo tocca. Ma la vecchia regola vi accodava da sé i provider credenziati
+  che non ci avevi messo, e quell'accodamento **non c'è più** — se ti aspetti di trovarci
+  qualcuno che non avevi scritto tu, adesso sta in «02 Fuori dalla catena», e ci si
+  rimette con «Usa». (Il registro dell'add-on lo elenca: «Provider con credenziale FUORI
+  dalla catena».)
 - **Ollama con l'indirizzo ma senza modello** adesso si vede: sta in catena, ma la pagina
   dice che gli manca il modello e non lo fa riordinare finché non gliene dai uno. Prima
   poteva stare in catena senza niente dietro.
@@ -117,6 +139,11 @@ schema — e **escono nella versione successiva**. Sono **quattro** dei cinque i
 dei provider (`provider_subscription` no: accende ancora il ponte), la strategia,
 «nascondi i modelli gratuiti», il modello di Ollama, i giorni di conservazione, e i tre
 numeri qui sotto.
+
+**Ognuna di quelle opzioni adesso lo dichiara nella propria descrizione**, in italiano e in
+inglese: la riga comincia con «NON HA PIÙ EFFETTO dopo il primo avvio» e dice dove si
+decide adesso. Un changelog lo legge chi aggiorna di proposito; la descrizione la legge chi
+sta per cambiare il numero, ed è lì che serviva.
 
 **Tre numeri restano fermi dove li trovi, e questa versione non ti dà dove cambiarli:**
 

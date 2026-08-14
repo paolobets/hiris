@@ -36,7 +36,12 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
     assert set(body) == {
         # l'archivio (load_models_config)
         "chain_order", "provider_models", "ponte", "ollama",
-        "nascondi_gratuiti", "strategia_ultima", "seminato",
+        "nascondi_gratuiti", "strategia_ultima",
+        # I due SEGNI di migrazione. Si leggono (il GET descrive l'archivio
+        # per intero), ma non si SCRIVONO da qui: `_SEGNI_MIGRAZIONE` li tiene
+        # fuori da cio' che una PUT puo' toccare -- vedi
+        # `test_una_put_non_puo_riscrivere_i_segni_della_migrazione`.
+        "seminato", "catena_seminata",
         # cio' che la pagina disegna
         "adesso", "catena", "fuori_catena", "fine_catena",
         # l'ULTIMO residuo dichiarato: esce col Task 13/14, e non e' un

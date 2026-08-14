@@ -225,6 +225,31 @@ def _giorni_da_ambiente(predefinito: int) -> int:
     return giorni
 
 
+def il_file_non_porta_i_giorni(data_dir: str) -> bool:
+    """`True` se `impostazioni_chat.json` non ha (ancora) la chiave
+    `giorni_conservazione`, file assente o illeggibile compresi.
+
+    Esiste perche' `carica()` LEGGE attraverso l'ambiente ma non SCRIVE, e
+    `salva()` ha un solo chiamante di produzione: la PUT della pagina
+    «Impostazioni chat». Un utente che quella pagina non la apre mai non
+    produce mai la chiave sul disco -- e il rilascio successivo (versione B,
+    `history_retention_days` fuori dallo schema) trova un ambiente muto e fa
+    valere il default del codice, 90. Chi aveva messo 30 se lo ritrova a 90
+    senza una riga che lo dica; chi aveva messo **0** -- «non cancellare mai»
+    -- se lo ritrova a 90 e la potatura notturna delle 3 gli cancella le
+    conversazioni piu' vecchie di novanta giorni. Per questo campo, la versione
+    A senza una scrittura all'avvio non migra NIENTE: legge e basta.
+
+    Il chiamante e' `server._on_startup`, subito dopo `carica()`."""
+    path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        return True
+    return not isinstance(raw, dict) or "giorni_conservazione" not in raw
+
+
 @dataclass
 class ImpostazioniChat:
     """La configurazione dell'unica conversazione che HIRIS sa avere.

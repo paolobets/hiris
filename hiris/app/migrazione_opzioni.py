@@ -127,21 +127,40 @@ def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[di
     proprietario -- cinque interruttori a false, credenziali presenti -- da
     «due provider lavorano» a «zero provider». Qui si COPIA, non si ricalcola.
 
-    Non guarda `seminato`: quella e' la semina delle OPZIONI (versione A del
-    Task 6), che segna «ho gia' guardato config.yaml». La catena ha il proprio
-    segno, ed e' se stessa: una `chain_order` non vuota e' la prova che
-    qualcuno ha gia' deciso. Legarla a `seminato` significherebbe che un
-    archivio seminato dal Task 6 ma con la catena ancora vuota non verrebbe
-    MAI riempito -- ed e' esattamente l'archivio che questo rilascio trova.
+    Ha un SEGNO PROPRIO, `catena_seminata`, distinto da `seminato` (che e' la
+    semina delle OPZIONI, versione A del Task 6): sono due migrazioni diverse e
+    un archivio puo' trovarsi a meta'. La versione precedente di questa
+    funzione non aveva nessun segno e si regolava su «`chain_order` e' vuota»,
+    che e' il difetto: una `chain_order` vuota NON e' piu' «non ho ancora
+    deciso». Da questa fetta e' una decisione, e la pagina Modelli la rende
+    esprimibile in due click (la ✕ su ogni riga). Chi svuotava la catena di
+    proposito -- il proprietario che toglie la chiave a credito zero e
+    OpenRouter per restare sul piano che ha gia' pagato -- se la ritrovava
+    ripopolata al riavvio successivo da `_catena_com_era`, cioe' dalla regola
+    `legacy` (`not any(interruttori)`) che questa fetta ha tolto dal prodotto:
+    con i cinque interruttori a false rientrava in catena OGNI provider con una
+    credenziale, e la spesa a consumo ripartiva. Era la QUARTA porta di quella
+    regola, e l'unica fuori dal router.
+
+    Il segno si scrive SEMPRE, anche quando non c'era niente da copiare e anche
+    quando la catena era gia' decisa: e' cio' che rende la migrazione un evento
+    che accade una volta e non una condizione che si rivaluta a ogni avvio. Per
+    questo il secondo valore di ritorno significa «c'e' qualcosa da
+    persistere», non «ho copiato una catena».
     """
-    if archivio.get("chain_order"):
+    if archivio.get("catena_seminata"):
         return archivio, False
+    archivio["catena_seminata"] = True
+    if archivio.get("chain_order"):
+        # Una catena gia' decisa (l'ordine manuale di un'installazione
+        # pre-2.5.0) non si tocca: si segna e basta.
+        return archivio, True
     if not catena_di_oggi:
         log.info(
             "Migrazione della catena: non c'era nessun provider utilizzabile da "
             "copiare. La catena resta vuota, e la pagina Modelli lo dichiara."
         )
-        return archivio, False
+        return archivio, True
     archivio["chain_order"] = list(catena_di_oggi)
     log.info(
         "Migrazione della catena: la catena che HIRIS stava usando e' stata "

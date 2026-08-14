@@ -104,6 +104,18 @@
      Tutto viene dal payload di GET api/models/config e niente si deriva:
      `catena` e `fuoriCatena` sono le due liste già ordinate. */
   var state = {
+    /* Falso finché il PRIMO `GET api/models/config` non è tornato, e l'unica
+       cosa che lo mette a vero è il suo `.then()`. Nessuna scrittura parte
+       prima: `state.cfg`, qui sotto, è una FORMA -- una catena vuota, nessun
+       modello, il ponte ai predefiniti -- non uno stato letto dal prodotto, e
+       mandarla al server con una PUT vorrebbe dire scrivere quei predefiniti
+       sopra la configurazione vera. I tre preset «Rifai la catena» stanno
+       nell'intestazione della sezione, cioè restano a schermo anche quando
+       `renderErrore` sostituisce il corpo: dopo un GET fallito erano, insieme
+       a «Riprova», l'unica cosa cliccabile della pagina, e un click mandava
+       una PUT che azzerava l'archivio. Nascono `disabled` (mount) e si
+       abilitano di là. */
+    caricato: false,
     catena: [],            // GET api/models/config -> catena[]
     fuoriCatena: [],       // GET api/models/config -> fuori_catena[]
     adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
@@ -122,10 +134,21 @@
       ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
       ollama: { modello: '', timeout_s: 120 },
       nascondi_gratuiti: false,
-      strategia_ultima: '',
-      seminato: false
+      strategia_ultima: ''
+      /* `seminato` NON sta qui ed è deliberato: è il segno che la migrazione
+         (versione A) è avvenuta, non una decisione dell'utente. Un client HTTP
+         non deve poterlo riscrivere -- rimandarlo a `false` farebbe RIGIRARE la
+         semina al riavvio successivo, e dopo la versione B, con l'ambiente
+         muto, ricopierebbe i predefiniti: la perdita silenziosa che le due
+         versioni della migrazione esistono per evitare. Il backend lo tiene
+         fuori da `_CHIAVI_NOSTRE` (`api/handlers_models.py`), quindi anche una
+         PUT che lo portasse non lo toccherebbe; qui non viaggia proprio. */
     }
   };
+
+  /* I tre bottoni «Rifai la catena», per poterli abilitare quando il primo GET
+     torna. Vivono fuori da `state` perché sono nodi del DOM, non dati. */
+  var bottoniPreset = [];
 
   /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2), serializzato ──
      Due controlli che scrivono quasi in contemporanea potrebbero far arrivare
@@ -609,6 +632,7 @@
      della pagina NOMINA il modello: lasciarla ferma la farebbe mentire di
      nuovo, in corpo 20. */
   function scegliModello(valore) {
+    if (!state.caricato) return;
     var p = state.pannello;
     if (!p || !p.dati) return;
     var dove = p.dati.dove || [];
@@ -629,6 +653,7 @@
   /* La casella invece NON ricarica la pagina: cambia l'elenco che si sta
      guardando, e il posto dove guardarlo è quello aperto adesso. */
   function cambiaCasella(dove, valore) {
+    if (!state.caricato) return;
     var p = state.pannello;
     var precedente = leggiPercorso(dove);
     scriviPercorso(dove, valore);
@@ -750,6 +775,8 @@
      ESATTAMENTE allo stato precedente -- posizioni comprese, perché
      `ricomponiTopologia` le ricalcola dall'ordine. */
   function scriviCatena(nuovoOrdine, errText) {
+    /* Niente si scrive prima di aver letto: vedi `state.caricato`. */
+    if (!state.caricato) return;
     var precedente = state.cfg.chain_order.slice();
     var strategiaPrecedente = state.cfg.strategia_ultima;
     state.cfg.chain_order = nuovoOrdine;
@@ -941,9 +968,12 @@
                              cfgRaw.ponte || {}),
         ollama: Object.assign({ modello: '', timeout_s: 120 }, cfgRaw.ollama || {}),
         nascondi_gratuiti: !!cfgRaw.nascondi_gratuiti,
-        strategia_ultima: cfgRaw.strategia_ultima || '',
-        seminato: !!cfgRaw.seminato
+        strategia_ultima: cfgRaw.strategia_ultima || ''
       };
+      /* L'UNICO posto che apre le scritture, ed è il ramo del GET riuscito:
+         da qui in poi `state.cfg` è ciò che il prodotto ha davvero. */
+      state.caricato = true;
+      bottoniPreset.forEach(function(b) { b.disabled = false; });
       pulisciErroreCatena();
       renderAdesso();
       renderCatena();
@@ -976,6 +1006,10 @@
   }
 
   function mount() {
+    /* Il modulo è un singleton e la route si rimonta: senza questo azzeramento
+       un secondo montaggio partirebbe «già caricato» con lo `state.cfg` della
+       visita precedente. */
+    state.caricato = false;
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
@@ -989,10 +1023,17 @@
        la verità è di nuovo una sola. */
     var azioni = el('div', 'sc-actions');
     azioni.appendChild(el('span', 'sc-actions-label', 'Rifai la catena:'));
+    bottoniPreset = [];
     Object.keys(PRESET).forEach(function(chiave) {
       var b = el('button', 'btn btn-ghost btn-sm', PRESET[chiave].nome);
       b.type = 'button';
+      /* Spenti finché il primo GET non è tornato: un preset è un gesto che
+         RIFÀ la catena, e rifarla su uno stato mai letto vuol dire cancellarla.
+         `state.caricato` rifiuta comunque la scrittura -- questo lo dice a
+         schermo, che è la metà che l'utente vede. */
+      b.disabled = true;
       b.addEventListener('click', function() { rifaiCatena(chiave); });
+      bottoniPreset.push(b);
       azioni.appendChild(b);
     });
     catenaCard.querySelector('.sc-header').appendChild(azioni);

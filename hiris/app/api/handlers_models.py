@@ -46,13 +46,30 @@ _PREDEFINITI_ARCHIVIO = {
     "ollama": {"modello": "", "timeout_s": 120},
 }
 
-# Le sole chiavi che questa versione possiede. Tutto il resto che sta sul disco
-# (a partire da 'brain_model') sopravvive intatto -- vedi la
-# lettura-modifica-scrittura in save_models_config.
+# Le sole chiavi che un CLIENT puo' scrivere: le sei decisioni della pagina
+# Modelli. Tutto il resto che sta sul disco (a partire da 'brain_model')
+# sopravvive intatto -- vedi la lettura-modifica-scrittura in
+# save_models_config.
 _CHIAVI_NOSTRE = (
     "chain_order", "provider_models", "ponte", "ollama",
-    "nascondi_gratuiti", "strategia_ultima", "seminato",
+    "nascondi_gratuiti", "strategia_ultima",
 )
+
+# I SEGNI DELLA MIGRAZIONE, che non sono decisioni e non viaggiano in una PUT.
+# `seminato` dice che le opzioni dell'add-on sono gia' state copiate;
+# `catena_seminata` che la catena e' gia' stata copiata dalla vecchia regola.
+# Stavano in `_CHIAVI_NOSTRE` e ne sono usciti: un client che rimandasse
+# `seminato: false` -- la pagina lo faceva, con lo `state.cfg` di default, dopo
+# un GET fallito; un gateway MCP con uno snapshot stale lo farebbe ancora --
+# farebbe RIGIRARE la semina al riavvio successivo, e dopo la versione B, con
+# l'ambiente muto, ricopierebbe i predefiniti sopra le decisioni dell'utente.
+# Cioe' la perdita silenziosa che le due versioni della migrazione esistono per
+# evitare, innescata da un click.
+#
+# Il valore sopravvive comunque a ogni PUT: `_chiavi_archivio` lo ricava da
+# `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con
+# `segni=True`.
+_SEGNI_MIGRAZIONE = ("seminato", "catena_seminata")
 
 
 def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
@@ -110,6 +127,13 @@ def _chiavi_archivio(raw: dict) -> dict:
         # `migrazione_opzioni._PREDEFINITI`.
         "strategia_ultima": strategia if isinstance(strategia, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
+        # Il segno della semina della CATENA, distinto da `seminato` (che e'
+        # quello delle OPZIONI). Prima non esisteva e la semina della catena si
+        # regolava su «chain_order e' vuota»: ma una catena vuota, da questa
+        # fetta, e' una DECISIONE esprimibile in due click, e al riavvio veniva
+        # ripopolata dalla regola `legacy` -- cioe' la regola di compatibilita'
+        # tolta dal prodotto rientrava dalla porta della migrazione.
+        "catena_seminata": bool(raw.get("catena_seminata", False)),
     }
 
 
@@ -153,7 +177,11 @@ def load_models_config(data_dir: str) -> dict:
     }
 
 
-def save_models_config(data_dir: str, data: dict) -> dict:
+def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dict:
+    """`segni=True` e' riservato all'avvio (`server._on_startup`): e' l'unico
+    momento in cui `seminato`/`catena_seminata` si scrivono. Ogni altro
+    chiamante -- la PUT, e quindi la pagina e il gateway MCP -- li lascia dove
+    sono: vedi `_SEGNI_MIGRAZIONE`."""
     if not isinstance(data, dict):
         data = {}
     path = _models_config_path(data_dir)
@@ -183,8 +211,9 @@ def save_models_config(data_dir: str, data: dict) -> dict:
     # configurazione silenziosa, cioe' esattamente cio' che la versione A
     # esiste per impedire. Il contratto della PUT e' «sempre l'oggetto intero»
     # e la pagina lo rispetta, ma un client diverso esiste (il gateway MCP).
+    scrivibili = _CHIAVI_NOSTRE + (_SEGNI_MIGRAZIONE if segni else ())
     base = dict(disk_data)
-    base.update({k: v for k, v in data.items() if k in _CHIAVI_NOSTRE})
+    base.update({k: v for k, v in data.items() if k in scrivibili})
     raw_chain = base.get("chain_order", [])
     if not isinstance(raw_chain, list):
         # Una chain_order non-lista (null, un numero) non e' un 500: si azzera,

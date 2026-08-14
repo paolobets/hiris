@@ -20,7 +20,7 @@ configuration:
   # ── 1. Provider AI ────────────────────────────────────────────────────────
   provider_claude:
     name: "Provider · Claude API (a consumo)"
-    description: "Accende Claude, pagato a consumo. Serve anche la chiave qui sotto. Dal primo provider che accendi valgono solo quelli accesi: riaccendi gli altri che usavi."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: chi risponde si decide nella pagina Modelli di HIRIS, e un provider e' usato se e solo se sta in catena. La chiave qui sotto serve ancora."
   claude_api_key:
     name: "Provider · Claude API — chiave"
     description: "Paga le risposte di Claude; la prendi su console.anthropic.com. PRIVACY: messaggi e contesto della casa passano da Anthropic (USA)."
@@ -32,39 +32,39 @@ configuration:
     description: "Apre il piano; lo generi con `claude setup-token`. ATTENZIONE: qui i consumi non si misurano, e valgono le condizioni del piano Claude Max."
   provider_openrouter:
     name: "Provider · OpenRouter"
-    description: "Accende OpenRouter: una chiave sola per 200+ modelli. Serve anche la chiave qui sotto."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: OpenRouter si mette in catena dalla pagina Modelli di HIRIS. La chiave qui sotto serve ancora -- una sola, per 200+ modelli."
   openrouter_api_key:
     name: "Provider · OpenRouter — chiave"
     description: "La chiave di openrouter.ai; ci sono anche modelli ':free'. PRIVACY: i messaggi passano da OpenRouter (USA) e dal fornitore del modello."
   hide_free_models:
     name: "OpenRouter — nascondi i modelli gratuiti (:free)"
-    description: "Toglie i modelli ':free' dagli elenchi, cosi' non li scegli per sbaglio: hanno quota giornaliera bassa e rate-limit frequenti."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: la casella vive nel pannello del modello di OpenRouter, nella pagina Modelli di HIRIS. Toglie i ':free' dagli elenchi."
   provider_openai:
     name: "Provider · OpenAI"
-    description: "Accende i modelli OpenAI (GPT-4o, o1...). Serve anche la chiave qui sotto."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: OpenAI si mette in catena dalla pagina Modelli di HIRIS. La chiave qui sotto serve ancora."
   openai_api_key:
     name: "Provider · OpenAI — chiave"
     description: "Paga le risposte OpenAI. PRIVACY: i messaggi passano dai server OpenAI (USA)."
   provider_ollama:
     name: "Provider · Ollama (sul tuo hardware)"
-    description: "Accende un modello che gira in casa tua: niente cloud, niente costo a risposta. Servono anche indirizzo e modello qui sotto."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: Ollama si mette in catena dalla pagina Modelli di HIRIS. L'indirizzo qui sotto serve ancora; il modello si sceglie di la'."
   local_model:
     name: "Ollama — dove sta e quale modello"
-    description: "Dove trovare Ollama e quale modello usare. Lasciati vuoti, l'interruttore qui sopra non ha effetto."
+    description: "Dove trovare Ollama. L'indirizzo si custodisce qui; il modello e l'attesa si decidono nella pagina Modelli di HIRIS."
     url:
       name: "Ollama — indirizzo"
       description: "Indirizzo della tua istanza, es. http://192.168.1.10:11434. Se all'avvio HIRIS non la raggiunge, lo scrive nel registro."
     model:
       name: "Ollama — nome del modello"
-      description: "Il modello da usare, es. llama3. Dev'essere gia' scaricato li': se manca, all'avvio HIRIS lo segnala nel registro."
+      description: "NON HA PIU' EFFETTO dopo il primo avvio: il modello si sceglie nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
     request_timeout:
       name: "Ollama — quanto aspettare una risposta (secondi)"
-      description: "Passato questo tempo la chiamata viene abbandonata e la chat mostra un errore. Alzalo su hardware lento. 10–1800, predefinito 120."
+      description: "NON HA PIU' EFFETTO dopo il primo avvio: l'attesa si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
 
   # ── 2. Scelta fra i provider accesi ───────────────────────────────────────
   llm_strategy:
     name: "Ordine di ripiego fra i provider accesi"
-    description: "In che ordine prova i provider accesi quando il modello e' «auto»: 'balanced' parte da Claude, 'cost_first' dal locale. La pagina Modelli vince."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: l'ordine e' la catena, e si riordina nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui."
 
   # ── 3. Ponte: la chat sul piano Claude Max ────────────────────────────────
   # Annidate sotto `ponte:` nella 2.4.0: e' l'unico raggruppamento che il
@@ -85,10 +85,10 @@ configuration:
       description: "Manda la chat al runner del piano invece che al provider a consumo. Li' la chat sa e fa quanto nell'altra modalita'."
     bridge_deadline_min:
       name: "Quanto aspettare una risposta (minuti)"
-      description: "Passato questo tempo il turno passa al provider successivo della catena, e la risposta lo dichiara. Sopra i 5 minuti la chat smette di aspettare prima della scadenza e il ripiego non parte. 1–120, predefinito 5."
+      description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui. Passato quel tempo il turno passa al provider successivo."
     chat_daily_cap:
       name: "Quanti messaggi al giorno"
-      description: "Oltre questi messaggi al giorno sul ponte, il turno passa al provider a consumo invece di dare errore, e la risposta lo dichiara. Attenzione: 0 li manda tutti alla catena, non vuol dire «illimitato». 0–1000."
+      description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia nella pagina Modelli di HIRIS, che ha gia' copiato il valore scritto qui. Oltre quei messaggi al giorno il turno passa al provider a consumo."
 
   # ── 4. Aspetto e conservazione ────────────────────────────────────────────
   theme:
@@ -96,7 +96,7 @@ configuration:
     description: "Il tema con cui si apre HIRIS; 'auto' segue il sistema. Se poi usi l'interruttore chiaro/scuro dentro HIRIS, su quel browser vince quello."
   history_retention_days:
     name: "Per quanti giorni tenere le conversazioni"
-    description: "Ogni notte cancella i messaggi vecchi. Lo stesso numero limita anche quanto HIRIS rilegge della conversazione: abbassarlo gli fa dimenticare prima. 0 = mai."
+    description: "NON HA PIU' EFFETTO dopo il primo avvio: si cambia in Impostazioni chat, dentro HIRIS. Cancella i messaggi vecchi ogni notte e limita quanto HIRIS rilegge; 0 = mai."
 
   # ── 5. Embedding (oggi inattivi) ──────────────────────────────────────────
   memory:

@@ -71,30 +71,45 @@ questa singola lettura.
 L'impianto ha, in questo momento: una **chiave Claude API a credito zero**, un **Piano
 Claude Max pagato e fermo**, un **OpenRouter a consumo** che sta rispondendo a tutto.
 
-**Cosa fare.** Apri la pagina Modelli. Non scorrere. Guarda solo la parte alta.
+**Cosa fare.** Apri la pagina Modelli. Guarda la parte alta: il riquadro in cima **e le
+prime due righe della sezione 01**. Non serve altro, e non serve aprire niente.
 
 **Cosa si deve vedere.** In cima, prima di ogni sezione, un riquadro con **una frase in
-corpo grande** e sotto una o due righe di diagnosi. Nella sostanza:
+corpo grande** e sotto una o due righe di diagnosi; subito sotto, la catena. Nella sostanza:
 
-> **Il prossimo messaggio va a OpenRouter, con `anthropic/claude-sonnet-4-6`, a consumo.**
+> **Il prossimo messaggio va a Claude API, con `claude-sonnet-4-6`, a consumo.**
 >
-> Claude API ha rifiutato le ultime N richieste — credito esaurito (400), M min fa.
 > Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.
+>
+> **01 LA CATENA**
+> 1. Claude API · `claude-sonnet-4-6` · a consumo — *ha rifiutato le ultime N richieste —
+>    credito esaurito (400), M min fa*
+> 2. OpenRouter · `anthropic/claude-sonnet-4-6` · a consumo — *ha risposto M min fa*
 
-**Cosa si deve poter dire in trenta secondi**, senza scorrere e senza aprire niente:
+⚠️ **La frase in cima nomina Claude API, non OpenRouter, ed è corretta così**: dice chi
+viene **provato per primo**, non chi finisce per rispondere. Chi risponde davvero è
+OpenRouter, perché Claude rifiuta e il turno scende — e a dirlo è la **riga di stato di
+Claude API**, dentro la catena. È un debito dichiarato di questa fetta (la frase in cima
+non guarda ancora gli esiti osservati), **non un difetto da segnare qui**: si chiude
+passando gli esiti a chi compone la frase, in una fetta sua.
 
-- chi risponde al prossimo messaggio;
-- che quello che risponde **costa**;
+**Cosa si deve poter dire in trenta secondi**, senza scorrere oltre la seconda riga della
+catena e senza aprire niente:
+
+- chi viene provato per primo, e che **sta rifiutando** — con da quante richieste e da
+  quanto;
+- che chi risponde **costa**;
 - che c'è qualcosa di già pagato che non viene usato.
 
 **Cosa si deve poter fare in pochi gesti**: accendere il ponte (oggi dalla configurazione
-dell'add-on, con `ponte.attivo` **oppure** `provider_subscription` — vedi Prova 10) e
-togliere dalla catena la chiave scarica, con la ✕ sulla sua riga.
+dell'add-on: `ponte.attivo` **da solo basta**; `provider_subscription` **solo se il token
+del piano è già incollato** — vedi Prova 10 e m1) e togliere dalla catena la chiave
+scarica, con la ✕ sulla sua riga.
 
-**Che cosa la fa fallire.** Se per capire il caso serve leggere tre sezioni e metterle
-insieme da soli, **la fetta ha fallito**, anche se ogni riga è corretta. È esattamente il
-difetto che è venuta a chiudere, ed è l'unica prova che non ha una condizione meccanica: si
-decide guardandola.
+**Che cosa la fa fallire.** Se per capire il caso serve leggere **tre sezioni** e metterle
+insieme da soli, **la fetta ha fallito**, anche se ogni riga è corretta. Il riquadro più le
+due righe della catena sono **una** lettura, e sono ciò che questa prova misura; una terza
+sezione no. È l'unica prova che non ha una condizione meccanica: si decide guardandola.
 
 ---
 
@@ -107,7 +122,7 @@ quelle opzioni, non è più recuperabile.
 
 **Cosa fare.** Subito dopo l'aggiornamento, prima di aprire la pagina Modelli, apri il log.
 
-**Cosa si deve vedere — due righe, e vanno copiate a mano nel rapporto:**
+**Cosa si deve vedere — tre righe, e vanno copiate a mano nel rapporto:**
 
 ```
 Migrazione (versione A): i valori delle opzioni dell'add-on sono stati copiati
@@ -116,6 +131,10 @@ Copiati: … . Valori: ponte=…, ollama=…, nascondi_gratuiti=…, strategia=�
 
 Migrazione della catena: la catena che HIRIS stava usando e' stata copiata
 nell'archivio e da adesso si riordina dalla pagina Modelli. Ordine copiato: … .
+
+Migrazione (versione A): 'giorni_conservazione' (…) e' stato scritto in
+impostazioni_chat.json -- da adesso si cambia dalla pagina Impostazioni chat, e
+l'opzione dell'add-on 'history_retention_days' non serve piu'.
 ```
 
 **Cosa verificare, valore per valore:**
@@ -126,8 +145,11 @@ nell'archivio e da adesso si riordina dalla pagina Modelli. Ordine copiato: … 
 | `ollama=…` | `modello` = `local_model.model`; `timeout_s` = `local_model.request_timeout` |
 | `Ordine copiato` | sull'impianto del proprietario deve essere **`claude -> openrouter`** — cioè la catena che HIRIS *stava già usando*, non una catena ricalcolata |
 
-Poi apri `/data/models_config.json` e verifica che contenga `"seminato": true` e la
-`chain_order` giusta.
+| terza riga | il numero fra parentesi = `history_retention_days` com'era, **`0` compreso** |
+
+Poi apri `/data/models_config.json` e verifica che contenga `"seminato": true`,
+`"catena_seminata": true` e la `chain_order` giusta; e `/data/impostazioni_chat.json`, che
+deve contenere `"giorni_conservazione"` **col valore vero**.
 
 **Che cosa la fa fallire.** Una `chain_order` **vuota** dopo la migrazione (l'impianto
 passerebbe da «due provider lavorano» a «zero provider»). Una `chain_order` che contiene
@@ -135,9 +157,16 @@ un provider che non era in uso: la migrazione doveva **copiare**, non **inventar
 valore che non corrisponde all'opzione: da quel momento la pagina Modelli comanda su un
 numero diverso da quello che hai scelto tu.
 
-**Riavvia una seconda volta.** Le due righe **non devono ricomparire**: `seminato` esiste
-per questo. Se ricompaiono, la copia si rifà a ogni avvio e sovrascriverà per sempre ogni
-decisione presa dalla pagina.
+**Riavvia una seconda volta.** Le **tre** righe **non devono ricomparire**: i due segni
+`seminato`/`catena_seminata` e la chiave sul disco esistono per questo. Se ricompaiono, la
+copia si rifà a ogni avvio e sovrascriverà per sempre ogni decisione presa dalla pagina.
+
+**Poi svuota la catena e riavvia una terza volta.** Nella pagina Modelli togli **tutte** le
+righe con la ✕, finché la sezione 01 non è vuota; riavvia l'add-on; riapri la pagina. **La
+catena deve restare vuota**, e la riga «Migrazione della catena» **non deve ricomparire**.
+Se invece i provider tornano in catena da soli, la regola di compatibilità è rientrata
+dalla porta della migrazione — e sull'impianto del proprietario significa che **la spesa a
+consumo riparte da sola dopo ogni riavvio**. (Rimetti poi la catena che vuoi, con «Usa».)
 
 ---
 
@@ -395,7 +424,7 @@ scritta anche nel CHANGELOG.
 
 ---
 
-## ⛔ Il cancello: le tre precondizioni della versione successiva
+## ⛔ Il cancello: le quattro precondizioni della versione successiva
 
 **Questa non è una prova, è una condizione di rilascio.** La versione successiva toglie
 quattordici opzioni dalla configurazione dell'add-on. Home Assistant scarta le chiavi fuori
@@ -403,16 +432,39 @@ schema **prima** che `/data/options.json` esista: se la rimozione arrivasse nell
 aggiornamento della copia, al primo avvio l'ambiente sarebbe già muto e HIRIS copierebbe
 **i predefiniti** — cioè esattamente la perdita silenziosa che la copia esiste per evitare.
 
-**Le tre condizioni. Si leggono dal vivo, non si assumono.**
+**Le quattro condizioni. Si leggono dal vivo, non si assumono.**
 
 1. La **2.5.0** è **pubblicata** e **installata** sull'impianto del proprietario, e ha
    girato almeno un avvio completo.
 2. Il log dell'add-on porta **le due righe della semina** — `Migrazione (versione A): …` e
    `Migrazione della catena: …` — **coi valori veri**, verificati uno per uno contro le
    opzioni (Prova 2).
-3. `/data/models_config.json` contiene `"seminato": true` **e** la `chain_order` giusta.
+3. `/data/models_config.json` contiene `"seminato": true`, `"catena_seminata": true`
+   **e** la `chain_order` giusta.
+4. `/data/impostazioni_chat.json` **esiste** e contiene `"giorni_conservazione"`, **col
+   valore vero** — quello che avevi in `history_retention_days`, non il predefinito 90.
 
-**Finché non ci sono tutte e tre, la versione successiva non si comincia.** Non è una
+   *Perché è una condizione a sé e non un dettaglio della 3.* Questo campo vive in un
+   **archivio diverso**, e le prime tre precondizioni guardano solo `models_config.json`:
+   passerebbero tutte e tre con `impostazioni_chat.json` che quella chiave non l'ha mai
+   vista. E la conseguenza non è un default sbagliato: chi aveva messo **`0`** («non
+   cancellare mai») si ritroverebbe **90**, e la potatura notturna delle 3 comincerebbe a
+   cancellare le conversazioni più vecchie di novanta giorni. Perdita di dato
+   irreversibile.
+
+   Nel log dell'add-on, al primo avvio, c'è la riga che lo dichiara:
+
+   ```
+   Migrazione (versione A): 'giorni_conservazione' (…) e' stato scritto in
+   impostazioni_chat.json -- da adesso si cambia dalla pagina Impostazioni chat, e
+   l'opzione dell'add-on 'history_retention_days' non serve piu'.
+   ```
+
+   Se al suo posto compare la riga che comincia con «**NON e' stato scritto su disco**», il
+   cancello **resta chiuso**: si apre «Impostazioni chat» dentro HIRIS, si salva a mano, e
+   si ricontrolla il file.
+
+**Finché non ci sono tutte e quattro, la versione successiva non si comincia.** Non è una
 formalità: è già costata una lezione su questo ramo.
 
 ---

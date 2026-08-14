@@ -325,3 +325,109 @@ def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
     ImpostazioniChat(giorni_conservazione=45).salva(str(tmp_path))
     su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert su_disco["giorni_conservazione"] == 45
+
+
+# ---------------------------------------------------------------------------
+# **C2 della revisione finale: la versione A, per questo campo, non migrava.**
+#
+# `carica()` LEGGE attraverso `HISTORY_RETENTION_DAYS` quando la chiave manca,
+# ma non SCRIVE, e `salva()` ha un solo chiamante di produzione: la PUT di
+# «Impostazioni chat». Chi quella pagina non la apre mai non produce mai la
+# chiave sul disco -- e il rilascio successivo (versione B, l'opzione fuori
+# dallo schema) trova l'ambiente muto e fa valere il default del codice, 90.
+# Chi aveva messo 30 se lo ritrova a 90 senza una riga che lo dica; chi aveva
+# messo **0** («non cancellare mai») se lo ritrova a 90, e la potatura delle 3
+# (`server._run_retention`) gli cancella le conversazioni piu' vecchie di
+# novanta giorni. Perdita di dato irreversibile, e proprio la classe di perdita
+# che la scelta di NON accorpare A e B esiste per impedire.
+#
+# Il cancello di rilascio non se ne accorgeva: le sue precondizioni guardavano
+# solo `/data/models_config.json`. Adesso ne ha una quarta
+# (`docs/prova-modelli-e-catena.md`).
+#
+# Si pinna il CABLAGGIO, non solo la funzione: la chiusura vive in
+# `_on_startup`, quindi si estrae il blocco dal sorgente vero e lo si esegue
+# isolato -- stessa tecnica (e stessa ragione: ogni fixture fa
+# `app.on_startup.clear()`) di `tests/test_avvio_websocket.py` e
+# `tests/test_migrazione_opzioni.py`.
+# ---------------------------------------------------------------------------
+def _blocco_giorni_dallo_startup():
+    import inspect
+    import textwrap
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    start = src.index("    impostazioni_chat = ImpostazioniChat.carica(data_dir)")
+    end = src.index('    _chatbots_json_path = os.path.join(', start)
+    corpo = textwrap.dedent(src[start:end])
+    firma = ("def _avvio(app, data_dir, logger, ImpostazioniChat, "
+             "il_file_non_porta_i_giorni):\n")
+    namespace: dict = {}
+    exec(compile(firma + textwrap.indent(corpo, "    "),
+                 "<_on_startup giorni_conservazione>", "exec"), namespace)
+    return namespace["_avvio"]
+
+
+def _avvia(tmp_path):
+    import logging
+
+    from hiris.app.impostazioni_chat import il_file_non_porta_i_giorni
+
+    app: dict = {}
+    _blocco_giorni_dallo_startup()(
+        app, str(tmp_path), logging.getLogger("t"),
+        ImpostazioniChat, il_file_non_porta_i_giorni,
+    )
+    return app["impostazioni_chat"]
+
+
+def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path, monkeypatch):
+    """Rimettere il difetto -- togliere da `_on_startup` la chiamata a
+    `salva()` -- fa cadere questo test."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+    assert _avvia(tmp_path).giorni_conservazione == 30
+    su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
+    assert su_disco["giorni_conservazione"] == 30, (
+        "il valore che l'utente aveva nell'opzione dell'add-on non e' arrivato "
+        "sul disco: la versione B lo perde e la potatura notturna cambia "
+        "comportamento da sola"
+    )
+
+
+def test_lo_zero_sopravvive_alla_versione_b(tmp_path, monkeypatch):
+    """Il caso che costa un dato: `0` significa «non cancellare mai», e il
+    default del codice e' 90. Se la versione A non scrive, dopo la versione B
+    la potatura delle 3 comincia a cancellare tutto cio' che ha piu' di
+    novanta giorni -- senza che nessuno l'abbia chiesto e senza una riga che lo
+    dica."""
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "0")
+    assert _avvia(tmp_path).giorni_conservazione == 0
+
+    # Versione B: l'opzione esce dallo schema, `run.sh` non esporta piu'
+    # niente, l'ambiente e' muto.
+    monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
+    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 0, (
+        "dopo la versione B «non cancellare mai» e' diventato «cancella dopo "
+        "90 giorni»: e' una perdita di dato, non un default"
+    )
+
+
+def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, monkeypatch, caplog):
+    """Contorno di C2, ed e' il debito F di un altro archivio: finche' la
+    chiave non arriva sul disco, la riga di migrazione ricompare a OGNI
+    riavvio. Dal primo avvio in poi il file la porta, quindi
+    `_giorni_da_ambiente` non viene nemmeno consultata."""
+    import logging
+
+    monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
+    _avvia(tmp_path)
+    # Fra i due avvii l'utente cambia il valore dalla pagina: il secondo avvio
+    # non deve riportarlo a quello dell'opzione.
+    ImpostazioniChat(giorni_conservazione=7).salva(str(tmp_path))
+    with caplog.at_level(logging.INFO):
+        assert _avvia(tmp_path).giorni_conservazione == 7
+    assert "giorni_conservazione" not in caplog.text, (
+        "la migrazione ha parlato di nuovo al secondo avvio: non era piu' il "
+        "suo momento"
+    )

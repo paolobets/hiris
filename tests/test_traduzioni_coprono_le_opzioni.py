@@ -94,3 +94,50 @@ def test_il_token_dell_abbonamento_e_descritto_in_entrambe_le_lingue():
             f"{lingua}.yaml deve dichiarare che sul percorso abbonamento i "
             "consumi non si misurano: e' la conseguenza principale del campo"
         )
+
+
+# Le opzioni che dalla fetta «la catena diventa l'unica verita'» NON governano
+# piu' niente dopo il primo avvio: il loro valore e' stato copiato una volta
+# sola nell'archivio di HIRIS (versione A della migrazione), e da li' in poi il
+# lettore e' l'archivio. Restano nello schema per un rilascio ancora, perche'
+# toglierle subito farebbe perdere il valore -- il Supervisor scarta le chiavi
+# fuori schema PRIMA che /data/options.json esista.
+#
+# `provider_subscription` non e' nella lista: e' l'unico dei cinque
+# interruttori che morde ancora (accende il ponte, insieme a `ponte.attivo`).
+# Nemmeno `ponte.attivo`, `local_model.url` e le chiavi: sono credenziali e
+# interruttori vivi.
+_OPZIONI_INERTI = [
+    "provider_claude", "provider_openrouter", "provider_openai", "provider_ollama",
+    "hide_free_models", "llm_strategy", "history_retention_days",
+    ("local_model", "model"), ("local_model", "request_timeout"),
+    ("ponte", "bridge_deadline_min"), ("ponte", "chat_daily_cap"),
+]
+
+_AVVISO = {"it": "NON HA PIU' EFFETTO", "en": "NO LONGER HAS ANY EFFECT"}
+
+
+@pytest.mark.parametrize("lingua", ["it", "en"])
+@pytest.mark.parametrize("percorso", _OPZIONI_INERTI,
+                         ids=lambda p: p if isinstance(p, str) else ".".join(p))
+def test_le_opzioni_che_non_mordono_piu_lo_dicono_dove_si_toccano(lingua, percorso):
+    """**G2 della revisione finale.** Il CHANGELOG lo diceva; la pagina in cui
+    l'utente AGISCE diceva ancora il contrario -- e due di queste descrizioni
+    erano state RISCRITTE nella stessa fetta, quindi si leggevano come fresche
+    e autorevoli mentre promettevano intervalli e predefiniti come se
+    mordessero. Quattro insegnavano letteralmente la regola di compatibilita'
+    appena tolta: «Dal primo provider che accendi valgono solo quelli accesi:
+    riaccendi gli altri che usavi».
+
+    Un CHANGELOG lo legge chi aggiorna di proposito; la descrizione la legge
+    chi sta per cambiare il numero. Un interruttore che non fa niente e non lo
+    dice e' il difetto 1 della specifica, sopravvissuto nel posto dove la fetta
+    non era passata."""
+    voce = _traduzioni(lingua)
+    for pezzo in (percorso if isinstance(percorso, tuple) else (percorso,)):
+        voce = voce[pezzo]
+    assert _AVVISO[lingua] in voce["description"], (
+        f"{lingua}.yaml: la descrizione di questa opzione non dichiara che non "
+        f"ha piu' effetto, ed e' il posto dove l'utente la tocca. Trovato: "
+        f"{voce['description']!r}"
+    )

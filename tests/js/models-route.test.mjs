@@ -262,6 +262,60 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
     /Errore caricamento provider/);
 });
 
+/* ── C1 della revisione finale: dopo un GET fallito non si scrive ───────────
+   I tre preset «Rifai la catena» stanno nell'INTESTAZIONE della sezione 01, e
+   `renderErrore` ridisegna solo `#catena-body` e `#fuori-body`: dopo un GET
+   fallito restavano a schermo, e insieme a «Riprova» erano l'unica cosa
+   cliccabile della pagina. `rifaiCatena` non aveva nessuna guardia sul
+   caricamento: con `state.catena` e `state.fuoriCatena` vuote, `credenziati`
+   e' `{}`, l'ordine filtrato e' `[]`, e `scriviCatena([])` mandava una PUT con
+   lo `state.cfg` DI DEFAULT DEL MODULO -- catena vuota, nessun modello per
+   provider, ponte e Ollama ai predefiniti, e `seminato: false`.
+
+   Il backend applicava tutto (erano tutte in `_CHIAVI_NOSTRE`). Da quel
+   momento la chat rispondeva «Nessun provider utilizzabile in catena», e al
+   riavvio successivo la semina rigirava. Un click. */
+
+test('dopo un GET fallito i preset non possono scrivere', async () => {
+  const ctx = monta({ configRotta: true });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+
+  const preset = Array.from(ctx.document.querySelectorAll('.sc-actions button'));
+  assert.equal(preset.length, 3,
+    'i tre preset restano a schermo: stanno nell\'intestazione della sezione, '
+    + 'e renderErrore ridisegna solo il corpo');
+  assert.ok(preset.every((b) => b.disabled),
+    'e sono spenti, perché un preset RIFÀ la catena e rifarla su uno stato mai '
+    + 'letto vuol dire cancellarla');
+
+  /* La guardia non è solo l'attributo: `state.caricato` rifiuta la scrittura
+     anche a chi il bottone lo attiva da fuori (un `disabled = false` da
+     console, un click sintetico). L'attributo è la metà che si vede. */
+  preset.forEach((b) => { b.disabled = false; });
+  preset[0].dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
+  assert.equal(put.length, 0,
+    'un click su un preset dopo un GET fallito ha mandato una PUT: quel corpo '
+    + 'è lo `state.cfg` di default del modulo, e azzera l\'intero archivio');
+});
+
+test('dopo un GET riuscito i preset tornano vivi', async () => {
+  /* Il gemello obbligatorio: una guardia che non si riapre mai è un bottone
+     rotto, e sarebbe verde allo stesso modo. */
+  const ctx = monta();
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const preset = Array.from(ctx.document.querySelectorAll('.sc-actions button'));
+  assert.equal(preset.length, 3);
+  assert.ok(preset.every((b) => !b.disabled));
+  preset[0].dispatchEvent(new ctx.window.Event('click'));
+  await tick(20);
+  assert.equal(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length, 1);
+});
+
 test('la risposta sta SOPRA le ragioni: il riquadro precede la prima sezione', async () => {
   /* Non e' un dettaglio estetico: e' il titolo del task. Una pagina che
      disegnasse la stessa frase IN FONDO sarebbe letteralmente conforme a
@@ -410,9 +464,11 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
   assert.deepEqual(corpo.chain_order, ['claude', 'openrouter', 'openai']);
   assert.deepEqual(Object.keys(corpo).sort(),
     ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
-      'seminato', 'strategia_ultima'],
-    'sempre l\'oggetto intero: una PUT parziale su un corpo di sette chiavi '
-    + 'perderebbe le altre sei');
+      'strategia_ultima'],
+    'sempre l\'oggetto intero: una PUT parziale su un corpo di sei chiavi '
+    + 'perderebbe le altre cinque. `seminato` NON è una di esse: è il segno '
+    + 'della migrazione (versione A), non una decisione, e un client HTTP non '
+    + 'deve poterlo riscrivere');
   assert.equal(righeCatena(ctx.document).length, 3, 'la riga si sposta subito');
   assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-pos').textContent, '3');
 });
@@ -811,8 +867,9 @@ test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina ri
   assert.equal(corpo.provider_models.openrouter, 'openrouter:openai/gpt-4.1');
   assert.deepEqual(Object.keys(corpo).sort(),
     ['chain_order', 'nascondi_gratuiti', 'ollama', 'ponte', 'provider_models',
-      'seminato', 'strategia_ultima'],
-    'sempre l\'oggetto intero, come ogni altra scrittura di questa pagina');
+      'strategia_ultima'],
+    'sempre l\'oggetto intero, come ogni altra scrittura di questa pagina '
+    + '-- e senza `seminato`, che è un segno di migrazione e non una decisione');
   /* E poi si RILEGGE. Le altre scritture si ridisegnano da sole perché ciò che
      cambiano -- le posizioni -- è già determinato dal gesto; qui no: il
      modello che una riga mostra è quello che il runtime userebbe, «auto» si

@@ -200,22 +200,62 @@ def test_il_testo_semantico_usa_i_token_ink():
                 f"{regola[:80]}")
 
 
-# `riga-usa` non ha una regola sua e non deve averla: e' un aggancio per i test
-# su un bottone gia' vestito da `btn btn-ghost btn-sm`. E' l'unica eccezione
-# ammessa, ed e' scritta qui perche' si veda -- una lista di eccezioni che
-# cresce e' il segno che questo test ha smesso di misurare qualcosa.
-_CLASSI_SENZA_REGOLA_PER_SCELTA = {"riga-usa"}
+# I nomi che la pagina scrive e che NON hanno (ne' devono avere) una regola
+# propria. Sono di due specie sole, e la lista e' corta apposta: una lista di
+# eccezioni che cresce e' il segno che questo test ha smesso di misurare
+# qualcosa.
+#
+#   * gli ID dei quattro contenitori (`byId`), che sono agganci di struttura --
+#     il loro aspetto viene dalla classe che portano (`sc-body`,
+#     `section-card`), non dal loro nome;
+#   * i quattro agganci sui bottoni gia' vestiti da `btn btn-ghost btn-sm`, che
+#     esistono per i test e per `querySelector`, non per il foglio.
+_CLASSI_SENZA_REGOLA_PER_SCELTA = {
+    "catena-body", "catena-card", "fuori-body", "route-outlet",
+    "riga-usa", "riga-su", "riga-giu", "riga-esci",
+}
 
 
 def _classi_disegnate_dalla_pagina() -> set[str]:
+    """Ogni nome che somiglia a una classe, dalle righe vive -- non solo il
+    secondo argomento LETTERALE di `el(`.
+
+    **G3 della revisione finale.** La versione precedente leggeva solo
+    `el(...tag..., ...classi...)`, e in questa pagina le classi che contano non si
+    scrivono cosi': sono composte con un ternario
+    (`'riga-provider' + (dentro ? '' : ' riga-fuori')`) o passate come
+    variabile a un wrapper (`connettore('connettore-nota', …)`). Erano
+    invisibili al test che prometteva di coprirle: cancellando cinque regole
+    dal foglio -- `.riga-muta`, `.stato-rifiutato`, `.modello-alias`,
+    `.voce-alias`, `.riga-fuori`, cioe' la traduzione grafica del ritiro della
+    parola «Attivo» e la tipografia alias-contro-identificatore -- restavano
+    trentaquattro test verdi. Non era un test che non poteva fallire in
+    assoluto: era un test che non poteva fallire proprio dove il suo nome
+    prometteva che sarebbe fallito, che per la dottrina di questa fetta e' lo
+    stesso errore.
+
+    Il criterio adesso e' la FORMA del nome invece della posizione: si prende
+    ogni letterale a singolo apice fatto di soli nomi in kebab-case, e da
+    quello si tengono i pezzi che contengono un trattino. Il trattino e' cio'
+    che distingue un nome di classe di questa pagina da un tag (`div`), da un
+    ruolo (`list`, `listitem`), da un id di provider (`claude`) e da un valore
+    (`polite`, `balanced`). Restano fuori, per costruzione dichiarata, i nomi
+    di classe SENZA trattino passati come variabile -- oggi uno solo,
+    `connettore`, la cui gemella `connettore-nota` e' invece coperta."""
     js = _righe_vive_js(MODELS_JS)
     classi: set[str] = set()
-    for gruppo in re.findall(r"el\(\s*'[a-z0-9]+'\s*,\s*'([^']*)'", js):
-        classi.update(gruppo.split())
+    for letterale in re.findall(r"'([^']*)'", js):
+        pezzi = letterale.split()
+        if pezzi and all(re.fullmatch(r"[a-z][a-z0-9-]*", p) for p in pezzi):
+            classi.update(p for p in pezzi if "-" in p)
     classi.update(re.findall(r"classList\.add\('([^']+)'\)", js))
     # I prefissi composti a runtime (`'diagnosi-' + gravita`) non sono classi:
     # il loro suffisso arriva dal backend e questo test non puo' conoscerlo.
-    return {c for c in classi if not c.endswith("-")}
+    # E i nomi di attributo (`aria-live`, `data-provider`) hanno la forma di una
+    # classe e non lo sono: e' l'unica famiglia che il criterio non separa da
+    # sola, e si toglie con una regola, non con un elenco.
+    return {c for c in classi
+            if not c.endswith("-") and not c.startswith(("aria-", "data-"))}
 
 
 def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
@@ -227,7 +267,17 @@ def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
 
     E' il primo test di questo repo che apre un `.css`. Fino al Task 14 il
     registro lo ha dichiarato quattro volte come debito aperto."""
-    css = "\n".join(f.read_text(encoding="utf-8") for f in _fogli_della_pagina_config())
+    # I COMMENTI si tolgono. I fogli di questo ramo CITANO i nomi delle classi
+    # per spiegare le regole (`.modello-alias` compare in un commento di
+    # `hiris-config.css`), e una citazione non veste niente: cercare nel testo
+    # grezzo faceva passare per «vestita» una classe la cui unica traccia era
+    # la spiegazione di una regola cancellata. E' la gemella esatta di
+    # `_righe_vive_js`, per il foglio invece che per il sorgente.
+    css = re.sub(
+        r"/\*.*?\*/", "",
+        "\n".join(f.read_text(encoding="utf-8") for f in _fogli_della_pagina_config()),
+        flags=re.S,
+    )
     orfane = sorted(
         c for c in _classi_disegnate_dalla_pagina()
         if c not in _CLASSI_SENZA_REGOLA_PER_SCELTA

@@ -112,7 +112,9 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
 
     archivio, _ = semina(load_models_config(str(tmp_path)),
                          {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
-    save_models_config(str(tmp_path), archivio)
+    # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE e solo l'avvio lo
+    # scrive -- vedi `test_una_put_non_puo_riscrivere_il_segno_della_semina`.
+    save_models_config(str(tmp_path), archivio, segni=True)
     disco = json.loads((tmp_path / "models_config.json").read_text(encoding="utf-8"))
     assert disco["seminato"] is True
     assert disco["ponte"]["scadenza_min"] == 20
@@ -224,11 +226,15 @@ def test_la_catena_si_semina_con_quella_di_oggi_non_con_l_ordine_di_strategia():
 
 
 def test_una_catena_gia_scelta_non_si_tocca():
+    """L'ordine manuale di un'installazione pre-2.5.0 sopravvive. Il segno si
+    scrive lo stesso -- ed e' per questo che il secondo valore di ritorno
+    significa «c'e' qualcosa da persistere», non «ho copiato una catena»."""
     a = _vuoto()
     a["chain_order"] = ["ollama"]
-    fuori, seminata = semina_catena(a, ["claude", "openrouter"], log=logging.getLogger("t"))
+    fuori, da_salvare = semina_catena(a, ["claude", "openrouter"], log=logging.getLogger("t"))
     assert fuori["chain_order"] == ["ollama"]
-    assert seminata is False
+    assert fuori["catena_seminata"] is True
+    assert da_salvare is True
 
 
 def test_seminare_una_catena_vuota_con_niente_da_copiare_non_mente_nel_log():
@@ -238,11 +244,14 @@ def test_seminare_una_catena_vuota_con_niente_da_copiare_non_mente_nel_log():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        _, seminata = semina_catena(_vuoto(), [], log=reg)
+        fuori, da_salvare = semina_catena(_vuoto(), [], log=reg)
     finally:
         reg.removeHandler(h)
-    assert seminata is False
     assert "copiata" not in buf.getvalue()
+    # Niente da copiare, ma la migrazione E' avvenuta: il segno si scrive e si
+    # persiste, altrimenti il prossimo avvio ricalcolerebbe `_catena_com_era`.
+    assert fuori["catena_seminata"] is True
+    assert da_salvare is True
 
 
 def test_la_semina_della_catena_si_dichiara_nel_log_con_l_ordine_vero():
@@ -263,14 +272,67 @@ def test_la_semina_della_catena_si_dichiara_nel_log_con_l_ordine_vero():
 
 
 def test_la_catena_non_si_semina_guardando_seminato():
-    """`seminato` e' il segno della semina delle OPZIONI (Task 6). L'archivio
-    che questo rilascio trova sull'impianto del proprietario e' seminato E ha
-    la catena vuota: legare le due cose lascerebbe quella catena vuota per
-    sempre, cioe' zero provider."""
+    """`seminato` e' il segno della semina delle OPZIONI (Task 6), e non e' il
+    segno di questa: sono due migrazioni diverse e un archivio puo' trovarsi a
+    meta'. L'archivio che questo rilascio trova sull'impianto del proprietario
+    e' seminato E ha la catena vuota: legare le due cose lascerebbe quella
+    catena vuota per sempre, cioe' zero provider.
+
+    La versione precedente di questo test si fermava qui, e nella sua premessa
+    c'era il buco: dedurre da «`seminato` non e' il segno giusto» che il segno
+    fosse la FORMA della catena. Il segno vero e' `catena_seminata`, e a
+    difenderlo c'e' il test qui sotto."""
     a = _vuoto()
     a["seminato"] = True
-    _, seminata = semina_catena(a, ["claude"], log=logging.getLogger("t"))
-    assert seminata is True
+    fuori, da_salvare = semina_catena(a, ["claude"], log=logging.getLogger("t"))
+    assert fuori["chain_order"] == ["claude"]
+    assert da_salvare is True
+
+
+def test_una_catena_svuotata_di_proposito_non_si_ripopola_al_riavvio():
+    """**C3 della revisione finale, e la QUARTA porta della regola `legacy`.**
+
+    Fino a questa chiusura la semina della catena guardava solo se
+    `chain_order` fosse vuota. Ma una `chain_order` vuota non e' piu' «non ho
+    ancora deciso»: da questa fetta e' una DECISIONE, e la pagina Modelli la
+    rende esprimibile in due click (la ✕ su ogni riga, `riordinabile` vero per
+    tutte). Il proprietario legge in cima alla pagina che sta pagando due
+    volte, toglie la chiave a credito zero e OpenRouter per restare sul piano
+    che ha gia' pagato -- poi l'add-on si riavvia, e `_catena_com_era` (cioe'
+    `legacy = not any(interruttori)`, la regola che questa fetta ha tolto dal
+    prodotto) glieli rimette tutti e due in catena: la spesa a consumo
+    riparte, e a dirlo c'e' una riga di log che afferma il falso («la catena
+    che HIRIS stava usando»: HIRIS stava usando una catena vuota).
+
+    Rimettere il difetto -- la guardia su `chain_order` al posto di quella su
+    `catena_seminata` -- fa cadere questo test."""
+    reg = logging.getLogger("catena-svuotata")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    reg.addHandler(h)
+    reg.setLevel(logging.INFO)
+    try:
+        # Primo avvio: la catena si semina dalla vecchia regola.
+        a, _ = semina_catena(_vuoto(), ["claude", "openrouter"], log=reg)
+        assert a["chain_order"] == ["claude", "openrouter"]
+        # Il gesto dell'utente: via tutti e due.
+        a["chain_order"] = []
+        buf.truncate(0)
+        buf.seek(0)
+        # Riavvio, con la stessa vecchia regola che direbbe ancora le stesse
+        # due cose.
+        b, da_salvare = semina_catena(a, ["claude", "openrouter"], log=reg)
+    finally:
+        reg.removeHandler(h)
+    assert b["chain_order"] == [], (
+        "una catena svuotata di proposito e' stata ripopolata al riavvio: la "
+        "regola di compatibilita' e' rientrata dalla porta della migrazione"
+    )
+    assert da_salvare is False
+    assert buf.getvalue() == "", (
+        "la migrazione della catena ha parlato di nuovo: non era piu' il suo "
+        "momento"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -441,3 +503,38 @@ def test_una_catena_gia_scelta_sopravvive_all_avvio(tmp_path):
     app = _avvia_la_semina_della_catena(
         tmp_path, {"LLM_STRATEGY": "balanced"}, CREDENZIALI_DEL_PROPRIETARIO)
     assert app["models_config"]["chain_order"] == ["ollama"]
+
+
+def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato(tmp_path):
+    """**C3 cablato nell'avvio vero**, col disco vero in mezzo: il test di
+    `semina_catena` da solo sopravviverebbe a un `server.py` che si dimentica
+    di guardare il segno, ed e' esattamente la guardia che questa chiusura
+    sposta.
+
+    Il caso e' quello del proprietario, riprodotto dalla revisione finale:
+    cinque interruttori a false, chiave Claude presente ma a credito zero,
+    OpenRouter presente. Primo avvio: la vecchia regola copia
+    `claude -> openrouter`. Poi lui li toglie tutti e due dalla pagina per
+    restare sul piano che ha gia' pagato. Riavvio -- e prima di questa
+    chiusura se li ritrovava in catena, con la spesa a consumo che ripartiva.
+
+    Rimettere il difetto (`if not app["models_config"].get("chain_order")` al
+    posto di `catena_seminata`) fa cadere questo test."""
+    from hiris.app.api.handlers_models import save_models_config
+
+    ambiente = {"LLM_STRATEGY": "balanced"}
+    primo = _avvia_la_semina_della_catena(
+        tmp_path, ambiente, CREDENZIALI_DEL_PROPRIETARIO)
+    assert primo["models_config"]["chain_order"] == ["claude", "openrouter"]
+
+    # Il gesto dell'utente: la ✕ su tutte e due le righe. E' una PUT, quindi
+    # `segni` resta falso -- come dalla pagina.
+    save_models_config(str(tmp_path), {"chain_order": []})
+
+    secondo = _avvia_la_semina_della_catena(
+        tmp_path, ambiente, CREDENZIALI_DEL_PROPRIETARIO)
+    assert secondo["models_config"]["chain_order"] == [], (
+        "al riavvio la catena svuotata di proposito si e' ripopolata dai "
+        "cinque interruttori: la regola `legacy` e' rientrata dalla quarta "
+        "porta, e la spesa a consumo riparte da sola"
+    )

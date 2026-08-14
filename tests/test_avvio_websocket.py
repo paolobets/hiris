@@ -63,7 +63,8 @@ def _load_avvio_websocket():
     body = textwrap.dedent(src[start:end])
     func_src = (
         "async def _check(ha_client, data_dir, app, ImpostazioniChat, "
-        "AsyncIOScheduler, os, logger):\n" + textwrap.indent(body, "    ")
+        "AsyncIOScheduler, os, logger, il_file_non_porta_i_giorni):\n"
+        + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup avvio websocket>", "exec"), namespace)
@@ -87,11 +88,22 @@ class _SchedulerFinto:
 class _ImpostazioniChatFinte:
     """`carica()` non deve toccare il disco per davvero in questo test
     isolato -- solo dimostrare che viene chiamata dopo il websocket, mai
-    prima."""
+    prima.
+
+    `salva()` e `giorni_conservazione` esistono perche' dalla chiusura C2 il
+    blocco estratto PERSISTE `giorni_conservazione` quando il file non lo
+    porta ancora (versione A della migrazione applicata a quel campo). Qui non
+    tocca il disco e non compare nell'ordine: cio' che questo test misura e'
+    solo che il websocket parta per primo."""
+
+    giorni_conservazione = 90
 
     @classmethod
     def carica(cls, data_dir):
         return cls()
+
+    def salva(self, data_dir):
+        return None
 
 
 @pytest.mark.asyncio
@@ -117,6 +129,7 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
         AsyncIOScheduler=_fabbrica_scheduler,
         os=os_module,
         logger=logging.getLogger("test_avvio_websocket"),
+        il_file_non_porta_i_giorni=lambda data_dir: True,
     )
 
     ha_client.start_websocket.assert_awaited_once()

@@ -19,7 +19,7 @@ configuration:
   # ── 1. AI providers ───────────────────────────────────────────────────────
   provider_claude:
     name: "Provider · Claude API (metered)"
-    description: "Turns Claude on, paid per use. It also needs the key below. From the first provider you turn on, only those count: turn the others you used back on."
+    description: "NO LONGER HAS ANY EFFECT after the first start: who answers is decided on the Models page inside HIRIS, and a provider is used if and only if it is in the chain. The key below is still needed."
   claude_api_key:
     name: "Provider · Claude API — key"
     description: "Pays for Claude's replies; get it at console.anthropic.com. PRIVACY: your messages and your home's context go through Anthropic (USA)."
@@ -31,39 +31,39 @@ configuration:
     description: "Opens the plan; generate it with `claude setup-token`. WARNING: usage here is not measured, and the Claude Max plan's terms apply."
   provider_openrouter:
     name: "Provider · OpenRouter"
-    description: "Turns OpenRouter on: one key for 200+ models. It also needs the key below."
+    description: "NO LONGER HAS ANY EFFECT after the first start: OpenRouter is put in the chain from the Models page inside HIRIS. The key below is still needed -- one key for 200+ models."
   openrouter_api_key:
     name: "Provider · OpenRouter — key"
     description: "Your openrouter.ai key; ':free' models are available too. PRIVACY: messages go through OpenRouter (USA) and the model's own vendor."
   hide_free_models:
     name: "OpenRouter — hide the free (:free) models"
-    description: "Removes ':free' models from the lists so you do not pick one by mistake: they have a low daily quota and frequent rate limits."
+    description: "NO LONGER HAS ANY EFFECT after the first start: the checkbox lives in OpenRouter's model panel, on the Models page inside HIRIS. It removes ':free' models from the lists."
   provider_openai:
     name: "Provider · OpenAI"
-    description: "Turns the OpenAI models (GPT-4o, o1...) on. It also needs the key below."
+    description: "NO LONGER HAS ANY EFFECT after the first start: OpenAI is put in the chain from the Models page inside HIRIS. The key below is still needed."
   openai_api_key:
     name: "Provider · OpenAI — key"
     description: "Pays for OpenAI replies. PRIVACY: your messages go through OpenAI's servers (USA)."
   provider_ollama:
     name: "Provider · Ollama (on your own hardware)"
-    description: "Turns on a model running in your own house: no cloud, no per-reply cost. It also needs the address and model below."
+    description: "NO LONGER HAS ANY EFFECT after the first start: Ollama is put in the chain from the Models page inside HIRIS. The address below is still needed; the model is picked over there."
   local_model:
     name: "Ollama — where it is and which model"
-    description: "Where to find Ollama and which model to use. Left empty, the switch above has no effect."
+    description: "Where to find Ollama. The address is kept here; the model and the wait are decided on the Models page inside HIRIS."
     url:
       name: "Ollama — address"
       description: "Your instance's address, e.g. http://192.168.1.10:11434. If HIRIS cannot reach it at startup, it says so in the log."
     model:
       name: "Ollama — model name"
-      description: "The model to use, e.g. llama3. It must already be pulled there: if it is missing, HIRIS flags it in the log at startup."
+      description: "NO LONGER HAS ANY EFFECT after the first start: the model is picked on the Models page inside HIRIS, which has already copied the value written here."
     request_timeout:
       name: "Ollama — how long to wait for a reply (seconds)"
-      description: "Past this time the call is abandoned and the chat shows an error. Raise it on slow hardware. 10–1800, default 120."
+      description: "NO LONGER HAS ANY EFFECT after the first start: the wait is changed on the Models page inside HIRIS, which has already copied the value written here."
 
   # ── 2. Choosing between the providers you turned on ───────────────────────
   llm_strategy:
     name: "Fallback order between the providers you turned on"
-    description: "The order it tries the providers you turned on when the model is \"auto\": 'balanced' starts at Claude, 'cost_first' local. The Models page wins."
+    description: "NO LONGER HAS ANY EFFECT after the first start: the order IS the chain, and it is reordered on the Models page inside HIRIS, which has already copied the value written here."
 
   # ── 3. Bridge: the chat on the Claude Max plan ────────────────────────────
   # Nested under `ponte:` in 2.4.0: it is the only grouping the Supervisor
@@ -84,10 +84,10 @@ configuration:
       description: "Sends the chat to the plan's runner instead of the metered provider. There the chat knows and does as much as elsewhere."
     bridge_deadline_min:
       name: "How long to wait for a reply (minutes)"
-      description: "Past this time the turn moves to the next provider in the chain, and the reply says so. Above 5 minutes the chat stops waiting before the deadline and the fallback never starts. From 1 to 120, default 5."
+      description: "NO LONGER HAS ANY EFFECT after the first start: it is changed on the Models page inside HIRIS, which has already copied the value written here. Past that time the turn moves to the next provider."
     chat_daily_cap:
       name: "How many messages per day"
-      description: "Past this many messages a day over the bridge, the turn moves to the metered provider instead of erroring, and the reply says so. Careful: 0 sends them all to the chain, it does not mean unlimited. 0–1000."
+      description: "NO LONGER HAS ANY EFFECT after the first start: it is changed on the Models page inside HIRIS, which has already copied the value written here. Past that many messages a day the turn moves to the metered provider."
 
   # ── 4. Appearance and retention ───────────────────────────────────────────
   theme:
@@ -95,7 +95,7 @@ configuration:
     description: "The theme HIRIS opens with; 'auto' follows the system. If you then use the light/dark toggle inside HIRIS, that wins in that browser."
   history_retention_days:
     name: "How many days to keep conversations"
-    description: "Every night it deletes older messages. The same number also limits how much of the conversation HIRIS reads back: lowering it makes it forget sooner. 0 = never."
+    description: "NO LONGER HAS ANY EFFECT after the first start: it is changed in Chat settings, inside HIRIS. It deletes old messages every night and limits how much HIRIS reads back; 0 = never."
 
   # ── 5. Embeddings (inactive today) ────────────────────────────────────────
   memory:

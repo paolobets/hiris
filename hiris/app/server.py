@@ -20,7 +20,7 @@ from .api.handlers_models import (
 from .api.handlers_impostazioni import (
     handle_get_impostazioni, handle_save_impostazioni,
 )
-from .impostazioni_chat import ImpostazioniChat
+from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
 from .version import read_version
 from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
@@ -852,7 +852,10 @@ async def _on_startup(app: web.Application) -> None:
     # rilascio successivo (versione B, opzioni fuori dallo schema) troverebbe di
     # nuovo un archivio non seminato E un ambiente muto -- cioe' esattamente la
     # perdita di valori che la versione A esiste per evitare.
-    save_models_config(data_dir, _archivio)
+    # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
+    # l'avvio e' l'unico posto che lo scrive -- una PUT non lo tocca piu'
+    # (`handlers_models._SEGNI_MIGRAZIONE`).
+    save_models_config(data_dir, _archivio, segni=True)
     app["models_config"] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
@@ -929,6 +932,43 @@ async def _on_startup(app: web.Application) -> None:
     # valorizzati sopra).
     impostazioni_chat = ImpostazioniChat.carica(data_dir)
     app["impostazioni_chat"] = impostazioni_chat
+
+    # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
+    # CHE MANCAVA. `carica()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
+    # quando la chiave non c'e', ma non lo SCRIVE, e `salva()` ha un solo
+    # chiamante di produzione (la PUT di «Impostazioni chat»). Chi quella pagina
+    # non la apre mai non produce mai la chiave: al rilascio successivo, con
+    # l'opzione fuori dallo schema e l'ambiente muto, il valore diventa il
+    # default del codice (90) -- e per chi aveva scelto `0` («non cancellare
+    # mai») la potatura delle 3 comincia a cancellare. Qui il valore appena
+    # letto arriva al disco, una volta sola: dal secondo avvio il file porta la
+    # chiave e questo ramo non fa piu' niente (e con lui tace anche la riga di
+    # log della migrazione, che prima ricompariva a ogni riavvio).
+    #
+    # Un disco che non collabora non deve impedire il boot: si dichiara e si
+    # prosegue, come per l'anagrafe e il comportamento qui sopra. Il valore in
+    # memoria e' comunque quello giusto; a mancare sarebbe solo la persistenza,
+    # e il cancello del rilascio la verifica esplicitamente
+    # (docs/prova-modelli-e-catena.md, quarta precondizione).
+    if il_file_non_porta_i_giorni(data_dir):
+        try:
+            impostazioni_chat.salva(data_dir)
+            logger.info(
+                "Migrazione (versione A): 'giorni_conservazione' (%d) e' stato "
+                "scritto in impostazioni_chat.json -- da adesso si cambia dalla "
+                "pagina Impostazioni chat, e l'opzione dell'add-on "
+                "'history_retention_days' non serve piu'.",
+                impostazioni_chat.giorni_conservazione,
+            )
+        except OSError as exc:
+            logger.warning(
+                "Migrazione (versione A): 'giorni_conservazione' (%d) NON e' "
+                "stato scritto su disco (%s). Il valore vale per questo avvio, "
+                "ma il rilascio che toglie 'history_retention_days' dalle "
+                "opzioni lo perderebbe: va salvato dalla pagina Impostazioni "
+                "chat prima di aggiornare.",
+                impostazioni_chat.giorni_conservazione, exc,
+            )
 
     # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
     # (tests/test_startup_legacy_db_silence.py): un chatbots.json (o il suo
@@ -1130,8 +1170,13 @@ async def _on_startup(app: web.Application) -> None:
     # cinque interruttori sparisca. Senza questa copia, l'installazione del
     # proprietario -- cinque interruttori a false, credenziali presenti --
     # passerebbe da «due provider lavorano» a «zero provider».
+    # La guardia e' il SEGNO, non la forma della catena: una `chain_order`
+    # vuota, da questa fetta, e' una decisione esprimibile in due click, e
+    # regolarsi su di lei faceva ripopolare al riavvio una catena svuotata di
+    # proposito -- con `_catena_com_era`, cioe' con la regola `legacy` che
+    # questa fetta ha tolto dal prodotto. Vedi `semina_catena`.
     from .migrazione_opzioni import semina_catena
-    if not app["models_config"].get("chain_order"):
+    if not app["models_config"].get("catena_seminata"):
         _catena_di_oggi = _catena_com_era(
             os.environ.get("LLM_STRATEGY", "balanced"),
             # Le credenziali COM'ERANO, non quelle di adesso: la credenziale di
@@ -1146,10 +1191,10 @@ async def _on_startup(app: web.Application) -> None:
                 "ollama": "PROVIDER_OLLAMA"}.items()},
             env_bool("BRIDGE_ENABLED"),
         )
-        _arch, _seminata = semina_catena(dict(app["models_config"]),
-                                         _catena_di_oggi, log=logger)
-        if _seminata:
-            save_models_config(data_dir, _arch)
+        _arch, _da_salvare = semina_catena(dict(app["models_config"]),
+                                           _catena_di_oggi, log=logger)
+        if _da_salvare:
+            save_models_config(data_dir, _arch, segni=True)
             app["models_config"] = load_models_config(data_dir)
 
     # SP-2 T3: l'abbonamento first-class (provider_subscription) implica il
