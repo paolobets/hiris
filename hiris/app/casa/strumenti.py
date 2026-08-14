@@ -580,21 +580,30 @@ class DispatcherStrumenti:
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«ricorda» richiede un «testo» non vuoto."}
 
-        # Letto UNA volta sola (non due) e riusato sia per la decisione sia
-        # per la chiave della cache sotto: nessun await fra le due letture in
-        # questa funzione sincrona, quindi non possono mai disallinearsi.
+        # `aggiornata_il` decide sia "anagrafe letta?" sia la chiave della
+        # cache sotto: letto una volta sola, nessun await fra le due letture
+        # in questa funzione sincrona, quindi non possono mai disallinearsi.
         aggiornata_il = self._casa.aggiornata_il()
         anagrafe_letta = aggiornata_il is not None
-        casa_per_indice = self._casa.leggi() if anagrafe_letta else {}
+
+        def _casa_per_indice() -> dict:
+            # PIGRA apposta (fix review indipendente, Task B7): la chiave
+            # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
+            # su un hit questa funzione non viene mai chiamata, e la lettura
+            # SQL vera (+ json.loads per riga di `ArchivioCasa.leggi()`) non
+            # si paga. A differenza di `_cerca`, dove `casa` serve comunque a
+            # `_cecita()` piu' sotto e non c'e' niente da rimandare.
+            return self._casa.leggi() if anagrafe_letta else {}
+
         # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
         # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
         # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
         # della casa piena non si confondono mai (memoria/cache_indice.py).
         if self._cache_indice is not None:
-            indice = self._cache_indice.ottieni("ricorda", casa_per_indice, aggiornata_il)
+            indice = self._cache_indice.ottieni_pigro("ricorda", _casa_per_indice, aggiornata_il)
         else:
-            indice = costruisci_indice(casa_per_indice)
+            indice = costruisci_indice(_casa_per_indice())
         if not anagrafe_letta:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa

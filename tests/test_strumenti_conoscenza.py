@@ -603,3 +603,30 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
 
     vuoto.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(archivio_casa, memoria, monkeypatch):
+    """Rilievo Importante della review indipendente: `_ricorda` chiamava
+    SEMPRE `ArchivioCasa.leggi()` prima di sapere se la cache avrebbe dato un
+    colpo a segno -- su un hit quella lettura (SQL vero + json.loads per
+    riga) veniva fatta e buttata. La chiave (aggiornata_il + impronta dei
+    nomi) si calcola SENZA leggere l'anagrafe: su un hit, `leggi()` non deve
+    essere chiamata affatto. Un test che guarda solo il risultato di
+    `ricorda` passerebbe identico con la lettura ancora dentro -- serve
+    contare le chiamate vere, come per le costruzioni dell'indice."""
+    chiamate_leggi = []
+    originale = archivio_casa.leggi
+
+    def spia():
+        chiamate_leggi.append(1)
+        return originale()
+
+    monkeypatch.setattr(archivio_casa, "leggi", spia)
+    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=CacheIndice())
+
+    await d.dispatch("ricorda", {"testo": "prima chiamata, miss: deve leggere"})
+    assert len(chiamate_leggi) == 1
+
+    await d.dispatch("ricorda", {"testo": "seconda chiamata, stato invariato: hit, NON deve leggere"})
+    assert len(chiamate_leggi) == 1  # invariato: la seconda non ha letto di nuovo

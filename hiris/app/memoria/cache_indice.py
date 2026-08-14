@@ -117,11 +117,34 @@ class CacheIndice:
 
         `costruisci_indice()` non e' chiamata affatto quando la voce e'
         ancora valida: e' li' che sta il guadagno, non in un accesso al
-        dizionario piu' veloce di un altro."""
+        dizionario piu' veloce di un altro.
+
+        Vuole `casa` gia' letta: usalo quando il chiamante ha comunque
+        bisogno del valore anche fuori dall'indice (`_cerca`, per
+        `_cecita()`) -- li' non c'e' niente da rimandare. Se invece la
+        lettura serve SOLO a costruire l'indice, vedi `ottieni_pigro()`."""
+        return self.ottieni_pigro(spazio, lambda: casa, aggiornata_il, nomi_di_ripiego)
+
+    def ottieni_pigro(self, spazio: str, costruisci_casa,
+                      aggiornata_il: str | None,
+                      nomi_di_ripiego: dict[str, str] | None = None) -> Indice:
+        """Come `ottieni()`, ma la casa si legge SOLO su un miss.
+
+        Fix della review indipendente del Task B7: `_ricorda` non ha bisogno
+        di `ArchivioCasa.leggi()` per decidere se il colpo va a segno -- la
+        chiave (`aggiornata_il` + impronta dei nomi) si calcola senza. Prima
+        di questo fix `_ricorda` chiamava `leggi()` PRIMA di sapere se la
+        cache avrebbe dato un colpo a segno: su un hit, una lettura SQL vera
+        (piu' un `json.loads` per riga) veniva fatta e buttata -- uno dei DUE
+        costi che il brief del task nominava esplicitamente (lettura
+        dell'archivio E compilazione), di cui questo spazio ne eliminava solo
+        uno. `costruisci_casa` (un callable a zero argomenti, non un valore
+        gia' letto) si invoca solo quando la voce salvata non e' piu' valida:
+        su un hit non viene MAI chiamato, e la lettura non si paga."""
         chiave = (aggiornata_il, _impronta_nomi(nomi_di_ripiego))
         voce = self._voci.get(spazio)
         if voce is not None and voce[0] == chiave:
             return voce[1]
-        indice = costruisci_indice(casa, nomi_di_ripiego)
+        indice = costruisci_indice(costruisci_casa(), nomi_di_ripiego)
         self._voci[spazio] = (chiave, indice)
         return indice
