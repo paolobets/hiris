@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { loadScripts, tick } from './helpers/dom.mjs';
+import { join } from 'node:path';
+import { loadScripts, tick, staticSnapshotDir } from './helpers/dom.mjs';
 
 /* Task B8: build-check.test.mjs prova il modulo condiviso ISOLATO, chiamando
    `verifica()` a mano. Non basta -- il difetto n.1 ripetuto in questa
@@ -12,11 +11,14 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    chat-usage-non-misurata.test.mjs: eval indiretto del file vero, non un
    frammento riscritto a mano) e si prova che il SUO `checkHealth()` passa
    davvero `d.build` a `HirisBuildCheck.verifica()` -- non solo che, chiamata
-   a mano, la funzione si comporti bene. */
+   a mano, la funzione si comporti bene.
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const STATIC = join(ROOT, 'hiris', 'app', 'static');
-const MAIN = join(STATIC, 'chat', 'main.js');
+   m5 (review finale): `MAIN` legge dall'ISTANTANEA di `staticSnapshotDir()`
+   (copiata una sola volta per processo), non dall'albero `static/` vivo --
+   stessa ragione per cui `loadScripts()` (usata sotto per gli altri moduli)
+   e' passata alla stessa istantanea: una scrittura concorrente sui sorgenti
+   veri durante la corsa non deve poter colorare questo test. */
+const MAIN = join(staticSnapshotDir(), 'chat', 'main.js');
 
 const MODULI = [
   'config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',

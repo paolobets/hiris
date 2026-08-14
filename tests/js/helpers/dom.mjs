@@ -1,10 +1,41 @@
 import { JSDOM } from 'jsdom';
-import { readFileSync } from 'node:fs';
+import { readFileSync, cpSync, mkdtempSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const STATIC = join(ROOT, 'hiris', 'app', 'static');
+
+/* m5 (review finale): `loadScripts()` (e i due file di cablaggio di B8, che
+ * leggono `chat/main.js` a parte) facevano `readFileSync` dei sorgenti di
+ * PRODUZIONE dal filesystem, al momento della corsa, senza istantanea --
+ * qualunque scrittura concorrente in `static/` (un editor aperto, un altro
+ * agente, un `git checkout`) durante l'esecuzione della suite colora quella
+ * corsa e non la successiva. `staticSnapshotDir()` copia l'intero albero UNA
+ * SOLA volta per processo (`node --test` isola ogni file di test in un
+ * processo separato, quindi la copia e' per-file, non condivisa fra file) in
+ * una cartella temporanea, e ogni lettura successiva in questo processo passa
+ * da li' -- congelata all'istante in cui il PRIMO test del file ha chiamato
+ * `loadScripts()`, indipendente da qualunque scrittura sull'albero vero che
+ * segua. */
+// Funzione pura, esportata a parte cosi' la sua proprieta' di isolamento
+// (una scrittura sulla SORGENTE dopo la copia non tocca la copia) e'
+// verificabile da un test dedicato senza toccare l'albero vero del repo.
+export function copiaIstantanea(sorgente) {
+  const dest = mkdtempSync(join(tmpdir(), 'hiris-static-snapshot-'));
+  cpSync(sorgente, dest, { recursive: true });
+  return dest;
+}
+
+let _snapshotDir = null;
+
+export function staticSnapshotDir() {
+  if (_snapshotDir === null) {
+    _snapshotDir = copiaIstantanea(STATIC);
+  }
+  return _snapshotDir;
+}
 
 // Indirect eval: forces evaluation against the *global* scope of whatever
 // realm is calling it, instead of the caller's local lexical scope (the
@@ -130,7 +161,7 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   });
 
   for (const p of paths) {
-    const code = readFileSync(join(STATIC, p), 'utf8');
+    const code = readFileSync(join(staticSnapshotDir(), p), 'utf8');
     globalEval(code);
   }
 
