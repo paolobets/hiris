@@ -438,6 +438,35 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
 
 
 @pytest.mark.asyncio
+async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(archivio_casa, memoria):
+    """I3 (review finale), invariante 4: `_cecita` (Task B3) dichiarava solo
+    la cecita' TOTALE (registri caduti, o specchio illeggibile). Qui lo
+    specchio E' leggibile -- restituisce un friendly_name per un'ALTRA
+    entita' -- ma non sa come si chiama proprio questa: senza dichiararlo,
+    'trovati': [] e' indistinguibile da 'nessuna cosa con quel nome', il
+    difetto che ha gia' bruciato quattro giri di `cerca` sulle abat-jour."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
+
+    class _SpecchioSenzaQuestaVoce:
+        loaded = True
+        def all_states(self):
+            # "light.senza" non compare: lo specchio e' leggibile ma non sa
+            # come Home Assistant chiama proprio questa entita'.
+            return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
+
+    esito = await DispatcherStrumenti(archivio_casa, memoria,
+                                      cache=_SpecchioSenzaQuestaVoce()).dispatch(
+        "cerca", {"testo": "abat-jour"})
+    assert esito["trovati"] == []
+    assert "non_ho_potuto_guardare" in esito
+    assert any("1" in m and "non e' leggibile" not in m for m in esito["non_ho_potuto_guardare"]), (
+        "il motivo deve dire QUANTE entita' e PERCHE', distinto dal caso "
+        "'specchio illeggibile' -- qui lo specchio si legge benissimo, "
+        "solo non porta un nome per QUESTA entita'")
+
+
+@pytest.mark.asyncio
 async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(archivio_casa, memoria):
     """Mutazione uccisa: contare fra le «senza nome» anche le entita'
     disabilitate. Una disabilitata senza nome non e' cercabile per scelta

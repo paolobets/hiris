@@ -466,12 +466,13 @@ class DispatcherStrumenti:
         else:
             indice = costruisci_indice(casa, nomi_vivi)
         risposta: dict = {"trovati": _cerca_candidati(indice, testo)}
-        cecita = self._cecita(casa, specchio_letto)
+        cecita = self._cecita(casa, specchio_letto, nomi_vivi)
         if cecita:
             risposta["non_ho_potuto_guardare"] = cecita
         return risposta
 
-    def _cecita(self, casa: dict, specchio_letto: bool) -> list[str]:
+    def _cecita(self, casa: dict, specchio_letto: bool,
+                nomi_vivi: dict[str, str] | None = None) -> list[str]:
         """Perche' `trovati` potrebbe essere vuoto SENZA che la cosa manchi.
 
         Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
@@ -490,14 +491,33 @@ class DispatcherStrumenti:
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
                 f"{', '.join(caduti)}. Cio' che sta li' dentro non e' cercabile adesso, "
                 "e potrebbe esistere lo stesso.")
-        senza_nome = sum(1 for e in casa.get("entita") or []
-                         if not (e.get("nome") or "").strip() and not e.get("disabilitata"))
-        if senza_nome and not (specchio_letto and inventario_leggibile(self._cache)):
+        senza_nome = [e for e in casa.get("entita") or []
+                     if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
+        specchio_ok = specchio_letto and inventario_leggibile(self._cache)
+        if senza_nome and not specchio_ok:
             motivi.append(
-                f"{senza_nome} entita' non hanno un nome nel registro di Home Assistant e "
+                f"{len(senza_nome)} entita' non hanno un nome nel registro di Home Assistant e "
                 "lo specchio dello stato non e' leggibile: il ripiego sul nome che Home "
                 "Assistant mostra non e' disponibile, quindi quelle entita' non sono "
                 "cercabili per nome in questo momento.")
+        elif senza_nome and specchio_ok:
+            # I3 (review finale), invariante 4 sul caso PARZIALE: lo specchio
+            # e' leggibile (altrimenti il ramo sopra avrebbe gia' parlato),
+            # ma per QUESTE entita' non porta un friendly_name -- il registro
+            # taciuto e lo specchio senza voce sono lo stesso "non cercabile
+            # per nome", solo con la seconda meta' della causa diversa. Il
+            # registro della campagna l'aveva annotato ("376 senza stato
+            # vivo, da dichiarare") ma nessuna fetta l'aveva scritto: senza
+            # questo ramo, quelle entita' restano "trovati": [] nudo,
+            # indistinguibile da "non esistono".
+            senza_nome_vivo = [e for e in senza_nome
+                               if not ((nomi_vivi or {}).get(e["id"]) or "").strip()]
+            if senza_nome_vivo:
+                motivi.append(
+                    f"{len(senza_nome_vivo)} entita' non hanno un nome ne' nel registro di "
+                    "Home Assistant ne' nello specchio dello stato (lo specchio si legge, ma "
+                    "non porta un nome per queste): non sono cercabili per nome in questo "
+                    "momento.")
         return motivi
 
     # -- guarda ----------------------------------------------------------
