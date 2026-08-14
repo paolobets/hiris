@@ -208,6 +208,17 @@ def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
         # un'altra parte -- il nome coprirebbe solo una parte delle entita'
         # contate, e un'annotazione parziale afferma piu' di quel che sa.
         return ""
+    if not dispositivi:
+        # Irraggiungibile da `_righe_casa`, che conta e raggruppa sulla STESSA
+        # lista con lo STESSO `_dominio`: con zero portatori e zero entita'
+        # senza dispositivo, `quante` e' zero e il confronto `>= quante` ha gia'
+        # deciso. La guardia c'e' lo stesso perche' qui sbagliarsi non costa un
+        # conteggio storto: questo testo entra nel prompt di OGNI messaggio,
+        # quindi un `IndexError` non degrada il nucleo -- SPEGNE LA CHAT. Un
+        # chiamante futuro che passasse un `quante` preso da un'altra parte (un
+        # totale d'area, un conteggio precalcolato) qui trova una riga senza
+        # annotazione invece di una casa senza assistente.
+        return ""
     id_dispositivo = dispositivi[0]
     nome = (nomi_dispositivo.get(id_dispositivo) or "").strip()
     if nome:
@@ -270,14 +281,29 @@ def _nome_area_visualizzato(area: dict) -> str:
     return area["nome"]
 
 
-def _righe_casa(piani: list[dict]) -> list[str]:
+def _righe_casa(piani: list[dict],
+                nomi_dispositivo: dict[str, str] | None) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
     -- vedi il docstring del modulo sul perche'.
 
     Prende l'albero gia' costruito da `gerarchia()` (con `non_disponibili`
     applicato dal chiamante, `componi()`) invece di ricostruirselo: cosi'
     "La casa" e "Notevole adesso" -- che condividono lo stesso albero --
-    non possono mai raccontare due storie diverse sulla stessa area."""
+    non possono mai raccontare due storie diverse sulla stessa area.
+
+    `nomi_dispositivo` (id -> nome, `None` quando il registro dei
+    dispositivi non ha risposto) serve alle ANNOTAZIONI: un conteggio che
+    raggruppa entita' di un dispositivo solo non dice se sono quattro cose
+    o una, e questo e' il posto in cui lo dice -- vedi
+    `_annotazione_dispositivo`. Non e' "mettere i dispositivi nel nucleo":
+    240 righe sfonderebbero il budget e violerebbero "conta, non elenca".
+    E' annotare i conteggi che mentono per omissione.
+
+    Senza valore predefinito, e non per pedanteria: l'unico chiamante e'
+    `componi()`, quindi un default non terrebbe compatibile nessuno --
+    lascerebbe solo un modo di chiamare questa funzione che produce una
+    mappa muta senza che nessuno l'abbia deciso. In un modulo che esiste per
+    non degradare in silenzio, chi chiama dichiara se i nomi ce li ha."""
     if not piani:
         return ["Nessun piano registrato."]
     righe = []
@@ -290,7 +316,9 @@ def _righe_casa(piani: list[dict]) -> list[str]:
             conteggio = _conta_per_dominio(area["entita"])
             if conteggio:
                 dettaglio = ", ".join(
-                    f"{n} {_nome_dominio(dom, n)}" for dom, n in conteggio.items())
+                    f"{n} {_nome_dominio(dom, n)}"
+                    + _annotazione_dispositivo(area["entita"], dom, n, nomi_dispositivo)
+                    for dom, n in conteggio.items())
             else:
                 dettaglio = "nessuna entita'"
             righe.append(f"  - {_nome_area_visualizzato(area)}: {dettaglio}")
@@ -598,13 +626,31 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         nomi = ", ".join(sorted(file_non_letti_comportamento))
         avvisi.append(f"file di comportamento non letti: {nomi}.")
 
+    # `componi()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
+    # sono gia' in `casa["dispositivi"]`, la stessa struttura che il chiamante
+    # ha letto con `ArchivioCasa.leggi()` (handlers_casa.costruisci_nucleo) e
+    # che questa funzione riceve da sempre -- fino a oggi ne buttava via un
+    # campo. Nessun archivio aperto, nessuna rete.
+    #
+    # `None` e non `{}` col registro caduto: la tabella "dispositivi" caduta e'
+    # VUOTA, non piccola (`archivio.sostituisci` cancella tutto e reinserisce
+    # cio' che e' arrivato), quindi `{}` renderebbe ogni `dispositivo_id` un
+    # riferimento al nulla e l'annotazione stamperebbe "(id: ...)" su tutta la
+    # casa. La lacuna e' gia' dichiarata negli avvisi e in "cio' che HIRIS
+    # ignora": qui si tace, non si inventa. Vedi `_annotazione_dispositivo`.
+    if "dispositivi" in non_disponibili:
+        nomi_dispositivo: dict[str, str] | None = None
+    else:
+        nomi_dispositivo = {d["id"]: (d.get("nome") or "")
+                            for d in casa.get("dispositivi") or [] if d.get("id")}
+
     # Un solo albero (`gerarchia()`, con `non_disponibili` applicato),
     # condiviso da "La casa" e da "Notevole adesso": prima di questo fix
     # `_righe_notevole` se ne ricalcolava uno proprio a mano, che poteva
     # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
     # lette" (CRITICAL ①).
     piani = gerarchia(casa, non_disponibili)
-    righe_casa = _righe_casa(piani)
+    righe_casa = _righe_casa(piani, nomi_dispositivo)
 
     inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile, non_disponibili)
     if inaffidabile:

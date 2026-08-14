@@ -602,3 +602,153 @@ def test_i_portatori_conservano_l_ordine_dell_anagrafe():
     entita = [_e(f"sensor.s{i}", d) for i, d in enumerate(arrivo)]
     entita.append(_e("sensor.s99", "dev_mu"))  # ritorno del primo: non si ripete
     assert nucleo._portatori(entita, "sensor") == (arrivo, 0)
+
+
+# --- l'annotazione collegata al nucleo (A2) --------------------------------
+
+
+def _casa_irrigazione():
+    """L'impianto vero in miniatura, e ogni pezzo e' li' per una ragione.
+
+    In «Esterno» un irrigatore SOLO che porta quattro valvole -- la riga che
+    ha fatto nascere questa fetta -- accanto a una tenda che ne porta due:
+    due gruppi annotabili nella stessa riga, cosi' un'annotazione calcolata
+    una volta per AREA invece che per gruppo, o attaccata al gruppo
+    sbagliato, non puo' passare. Nella stessa area un pluviometro con
+    un'entita' sola: e' il 75% delle righe della casa vera, quelle che
+    devono restare mute -- e passare a `_annotazione_dispositivo` il totale
+    dell'area invece del conteggio del dominio le annoterebbe tutte, che e'
+    esattamente lo sfondamento di budget che questa fetta evita. In «Orto»
+    due rubinetti separati, che sono davvero due cose: li' la regola deve
+    spegnersi da sola.
+
+    La finta deve MENTIRE COME MENTE LA REALTA': una casa con un'entita' per
+    dispositivo non proverebbe niente sul raggruppamento, e un'area sola non
+    proverebbe che la regola si spegne quando i portatori sono piu' d'uno.
+
+    `dispositivi` resta POPOLATA anche quando il test dichiara il registro
+    caduto: e' proprio cio' che rende falsificabile la riga di `componi()`
+    che guarda `non_disponibili`. Costruire i nomi dalla lista -- che in
+    produzione sarebbe vuota, e che qui non lo e' -- stamperebbe subito
+    «Irrigazione giardino» dove non deve comparire.
+
+    NB: il nome di un dispositivo non e' riusato per nient'altro nella finta
+    (le entita' si chiamano «Valvola N»), o le asserzioni «not in testo»
+    smetterebbero di poter cadere.
+    """
+    entita = [{"id": f"valve.irr{i}", "nome": f"Valvola {i}", "area_id": "esterno",
+               "dispositivo_id": "dev_irr"} for i in range(4)]
+    entita += [{"id": f"cover.tenda{i}", "nome": f"Telo {i}", "area_id": "esterno",
+                "dispositivo_id": "dev_tenda"} for i in range(2)]
+    entita += [{"id": "sensor.pioggia", "nome": "Pioggia", "area_id": "esterno",
+                "dispositivo_id": "dev_pioggia"}]
+    entita += [{"id": f"valve.sep{i}", "nome": f"Valvola orto {i}", "area_id": "orto",
+                "dispositivo_id": f"dev_sep{i}"} for i in range(2)]
+    return {
+        "piani": [{"id": "pt", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "esterno", "nome": "Esterno", "piano_id": "pt",
+                  "alias": [], "etichette": []},
+                 {"id": "orto", "nome": "Orto", "piano_id": "pt",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [
+            {"id": "dev_irr", "nome": "Irrigazione giardino", "area_id": "esterno"},
+            {"id": "dev_tenda", "nome": "Tenda esterna", "area_id": "esterno"},
+            {"id": "dev_pioggia", "nome": "Pluviometro", "area_id": "esterno"},
+        ] + [{"id": f"dev_sep{i}", "nome": f"Rubinetto {i}", "area_id": "orto"}
+             for i in range(2)],
+        "entita": entita,
+    }
+
+
+def _riga_area(testo: str, nome_area: str) -> str:
+    return next(r for r in testo.splitlines() if r.startswith(f"  - {nome_area}:"))
+
+
+def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
+    """Il caso del 14 agosto, visto da dove conta: il testo che il modello ha
+    davvero davanti. «Esterno: 4 valve» e' vero e non dice se sono quattro
+    dispositivi o uno.
+
+    Si asserisce la RIGA INTERA, non due `in` separati: "valve" non e' in
+    `_NOMI_DOMINIO`, quindi `_nome_dominio` restituisce il dominio nudo e la
+    riga dice esattamente questo. Cosi' cadono anche la mutazione che attacca
+    l'annotazione al gruppo sbagliato (le tende), quella che la calcola una
+    volta per riga invece che per gruppo, e quella che passa il totale
+    dell'area al posto del conteggio del dominio -- che annoterebbe il
+    pluviometro, cioe' proprio le righe che non mentono per omissione."""
+    testo, _ = componi(_casa_irrigazione(), [], [], {})
+    assert _riga_area(testo, "Esterno") == (
+        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, "
+        "4 valve (Irrigazione giardino)")
+    assert "Pluviometro" not in testo
+
+
+def test_il_nucleo_non_elenca_i_rubinetti_separati():
+    """Due valvole di due dispositivi sono davvero due cose: il conteggio
+    dice gia' tutto e nessun rubinetto viene nominato. E' la meta' della
+    regola che tiene il budget -- senza, 61 righe come questa citerebbero
+    344 nomi sul nucleo del proprietario."""
+    testo, _ = componi(_casa_irrigazione(), [], [], {})
+    assert _riga_area(testo, "Orto") == "  - Orto: 2 valve"
+    assert "Rubinetto" not in testo
+
+
+def test_col_registro_dispositivi_caduto_il_nucleo_non_annota_e_lo_dichiara():
+    """Una casa che non ha potuto leggere i dispositivi lo DICHIARA, non fa
+    finta che i dispositivi non ci siano. Tre mutazioni uccise:
+
+    - costruire i nomi da `casa["dispositivi"]` senza guardare quali registri
+      sono caduti (la finta la tiene popolata apposta): annoterebbe
+      «Irrigazione giardino» su dati che non risultano piu' letti;
+    - passare `{}` invece di `None`: la tabella caduta e' VUOTA, non piccola,
+      quindi ogni `dispositivo_id` diventerebbe un riferimento al nulla e la
+      riga stamperebbe «(id: dev_irr)» -- un secondo silenzio, camuffato da
+      informazione;
+    - togliere i nomi dei registri dall'avviso (`test_registri_non_letti...`
+      pinna la frase generica, non QUALE registro manca)."""
+    testo, riepilogo = componi(_casa_irrigazione(), [], [], {},
+                               non_disponibili=("dispositivi",))
+    assert _riga_area(testo, "Esterno") == "  - Esterno: 2 tapparelle, 1 sensore, 4 valve"
+    assert "Irrigazione giardino" not in testo
+    assert "(id: dev_irr)" not in testo
+    assert any("dispositivi" in a for a in riepilogo["avvisi"])
+
+
+def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():
+    """Nel nucleo un'eccezione non degrada: questo testo entra nel prompt di
+    OGNI messaggio, quindi un `IndexError` qui SPEGNE LA CHAT.
+
+    `_righe_casa` passa un `quante` coerente per costruzione (stessa lista,
+    stesso `_dominio`), quindi questa chiamata non e' raggiungibile da
+    `componi()` -- ed e' proprio per questo che la guardia va pinnata a mano:
+    nessun test di composizione puo' farla cadere. Mutazione uccisa:
+    togliere `if not dispositivi` -> `IndexError: list index out of range`."""
+    assert nucleo._annotazione_dispositivo([], "valve", 4, {"dev1": "Irrigazione"}) == ""
+    assert nucleo._annotazione_dispositivo(
+        [_e("light.a", "dev1")], "valve", 4, {"dev1": "Irrigazione"}) == ""
+
+
+def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
+    """Righe che l'archivio produce DAVVERO: in SQLite `id TEXT PRIMARY KEY`
+    ammette NULL, e `nome` e' `name_by_user or name` -- entrambi nullable
+    (casa/archivio.py). La tabella dei nomi che `componi()` costruisce e' la
+    giunzione NUOVA di questa fetta e va pinnata da fuori: le prove di A1
+    ricevono il dizionario gia' fatto e non possono vedere come nasce.
+
+    Mutazioni uccise: scambiare chiave e valore, o mettere `d["id"]` anche
+    come valore (copia-incolla) -- il dispositivo col nome buono perderebbe
+    il nome. Il dispositivo col nome nullo resta visibile, marcato come id:
+    e' la chiave con cui `guarda("dispositivo", ...)` lo ritrova, e mai un
+    id spacciato per nome dichiarato dall'utente.
+
+    NB: la riga senza id NON prova la guardia `if d.get("id")` -- con la
+    chiave presente e a `None` la guardia e' un mutante equivalente (nessun
+    `dispositivo_id` falsy arriva mai a `_portatori`). Sta qui perche' e' la
+    forma che l'archivio puo' produrre, non perche' uccida qualcosa."""
+    casa = _casa_irrigazione()
+    casa["dispositivi"] = [{"id": None, "nome": "Riga senza id"},
+                           {"id": "dev_irr", "nome": None},
+                           {"id": "dev_tenda", "nome": "Tenda esterna"}]
+    testo, _ = componi(casa, [], [], {})
+    assert _riga_area(testo, "Esterno") == \
+        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, 4 valve (id: dev_irr)"
