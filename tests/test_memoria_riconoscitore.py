@@ -209,3 +209,196 @@ def test_le_espressioni_si_compilano_una_volta_sola():
     seconda = indice._termini()
 
     assert [id(pattern) for _, pattern in prima] == [id(pattern) for _, pattern in seconda]
+
+
+# -- il nome di ripiego: sull'impianto vero e' la strada normale ------------
+#
+# La finta deve mentire come mente la realta'. Sull'impianto misurato il 14
+# agosto il `nome` del REGISTRO e' nullo quasi ovunque (le quattro valvole
+# dell'irrigazione, le abat-jour) mentre il `friendly_name` dello specchio
+# dello stato vivo c'e' su tutte e 849 le entita' vive. Una finta con i nomi
+# del registro popolati proverebbe il caso che su quella casa NON ESISTE:
+# ogni test qui sotto parte da un'entita' col nome vuoto o None.
+
+
+def _casa_senza_nomi() -> dict:
+    """Le abat-jour: registro con `name` e `original_name` entrambi vuoti --
+    la forma esatta che casa/archivio.py:133 produce su questa casa."""
+    return {
+        "aree": [{"id": "salotto", "nome": "Salotto", "alias": []}],
+        "dispositivi": [],
+        "entita": [
+            {"id": "light.abat_jour_1", "nome": None, "alias": [],
+             "area_id": "salotto", "piattaforma": "shelly"},
+            {"id": "light.abat_jour_2", "nome": "", "alias": [],
+             "area_id": "salotto", "piattaforma": "shelly"},
+        ],
+        "piani": [], "etichette": [], "categorie": [], "integrazioni": [],
+    }
+
+
+def test_senza_ripiego_un_entita_senza_nome_non_esiste_nello_spazio_in_cui_si_cerca():
+    """Il difetto, pinnato -- e con esso le due scorciatoie che lo
+    "risolverebbero" mentendo: l'id usato come nome, tale e quale o
+    ingentilito. Un id tecnico non e' un nome che qualcuno ha pronunciato.
+    L'entita' pero' NON sparisce: il cancello continua a vederla."""
+    indice = costruisci_indice(_casa_senza_nomi())
+
+    # solo l'area, mai le due luci
+    assert indice.trova("accendi le abat-jour del salotto") == indice.trova("in salotto")
+    assert indice.trova("light.abat_jour_1") == []
+    assert indice.trova("abat jour 1") == []
+    assert indice.verifica("entita", "light.abat_jour_1") is not None
+    assert "nome_dedotto" not in indice.verifica("entita", "light.abat_jour_1")
+
+
+def test_col_friendly_name_l_entita_senza_nome_si_trova():
+    """Il guadagno: e' cio' che sarebbe costato quattro giri di `cerca`."""
+    indice = costruisci_indice(_casa_senza_nomi(),
+                               {"light.abat_jour_1": "Abat-jour"})
+
+    trovati = indice.trova("accendi l'abat-jour")
+    assert [c["riferimento"] for v in trovati for c in v["candidati"]] == ["light.abat_jour_1"]
+
+
+def test_il_nome_dedotto_e_marcato_e_non_sovrascrive_quello_del_registro():
+    """Un nome dedotto non si spaccia per dichiarato: chi confronta i nomi
+    che l'utente ha scritto davvero non deve inciampare in uno che non ha
+    mai scritto."""
+    indice = costruisci_indice(_casa_senza_nomi(),
+                               {"light.abat_jour_1": "Abat-jour"})
+
+    voce = indice.verifica("entita", "light.abat_jour_1")
+    assert voce["nome_dedotto"] == "Abat-jour"
+    assert not (voce.get("nome") or "")
+
+
+def test_il_nome_dedotto_e_marcato_anche_sulle_voci_di_tutti():
+    """`tutti("entita")` e' l'altra porta pubblica sull'anagrafe
+    (memoria/interpretazione.py la usa per dedurre l'unita' di un'area): il
+    marchio deve esserci anche di la', o "dedotto" si vede da una porta e
+    non dall'altra. Il resto della riga del registro sopravvive al marchio:
+    la copia e' una copia, non una sostituzione."""
+    indice = costruisci_indice(_casa_senza_nomi(),
+                               {"light.abat_jour_1": "Abat-jour"})
+
+    per_id = {v["id"]: v for v in indice.tutti("entita")}
+    assert per_id["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
+    assert per_id["light.abat_jour_1"]["area_id"] == "salotto"
+    assert per_id["light.abat_jour_1"]["piattaforma"] == "shelly"
+    assert "nome_dedotto" not in per_id["light.abat_jour_2"]
+
+
+def test_il_marchio_non_tocca_la_casa_del_chiamante():
+    """`voce` e' il dizionario che `ArchivioCasa.leggi()` ha appena
+    costruito per il chiamante: marcarlo in place accoppierebbe l'indice al
+    ciclo di vita di una struttura che non gli appartiene -- e il chiamante
+    si ritroverebbe un nome dedotto in una casa che credeva del registro."""
+    casa = _casa_senza_nomi()
+    costruisci_indice(casa, {"light.abat_jour_1": "Abat-jour"})
+
+    assert "nome_dedotto" not in casa["entita"][0]
+
+
+def test_il_ripiego_non_tocca_chi_un_nome_ce_l_ha():
+    """Mutazione uccisa: applicare il ripiego sempre invece che solo sul
+    vuoto. Il nome scelto dall'utente vince, e' la regola di
+    casa/archivio.py:130-133."""
+    casa = {"aree": [], "dispositivi": [],
+            "entita": [{"id": "light.x", "nome": "Piantana", "alias": []}]}
+    indice = costruisci_indice(casa, {"light.x": "Lampada da terra"})
+
+    assert indice.trova("lampada da terra") == []
+    assert indice.trova("la piantana")
+    assert "nome_dedotto" not in indice.verifica("entita", "light.x")
+
+
+def test_il_ripiego_non_si_applica_ad_aree_e_dispositivi():
+    """Lo specchio dello stato non ha friendly_name per aree e dispositivi:
+    un ripiego li' sarebbe di nuovo un id travestito da nome."""
+    casa = {"aree": [{"id": "salotto", "nome": "", "alias": []}],
+            "dispositivi": [{"id": "dev1", "nome": None, "alias": []}], "entita": []}
+    indice = costruisci_indice(casa, {"salotto": "Salotto", "dev1": "Irrigazione"})
+
+    assert indice.trova("salotto") == [] and indice.trova("irrigazione") == []
+    assert "nome_dedotto" not in indice.verifica("area", "salotto")
+    assert "nome_dedotto" not in indice.verifica("dispositivo", "dev1")
+
+
+def test_un_ripiego_a_soli_spazi_non_crea_ne_termine_ne_marchio():
+    """Un `friendly_name` fatto di spazi non e' un nome: non deve produrre
+    un termine vuoto ne' una voce che si dichiara "dedotta" senza nulla da
+    mostrare."""
+    indice = costruisci_indice(_casa_senza_nomi(), {"light.abat_jour_1": "   "})
+
+    assert indice.trova("accendi l'abat-jour   del salotto") == indice.trova("in salotto")
+    assert "nome_dedotto" not in indice.verifica("entita", "light.abat_jour_1")
+
+
+def test_un_nome_del_registro_fatto_di_soli_spazi_non_batte_il_ripiego():
+    """Un nome che una volta normalizzato non e' nulla non e' un nome: se
+    battesse il ripiego, la voce si dichiarerebbe "dedotta" e resterebbe
+    comunque introvabile -- marchiata e muta."""
+    casa = {"aree": [], "dispositivi": [],
+            "entita": [{"id": "light.x", "nome": "   ", "alias": []}]}
+    indice = costruisci_indice(casa, {"light.x": "Abat-jour"})
+
+    assert _riferimenti(indice.trova("l'abat-jour")[0]) == {"light.x"}
+    assert indice.verifica("entita", "light.x")["nome_dedotto"] == "Abat-jour"
+
+
+def test_gli_alias_restano_indicizzati_anche_quando_il_nome_e_dedotto():
+    """Gli alias sono sinonimi DICHIARATI: il ripiego si aggiunge al nome
+    mancante, non prende il posto di cio' che l'utente ha scritto."""
+    casa = {"aree": [], "dispositivi": [],
+            "entita": [{"id": "light.x", "nome": None, "alias": ["piantana"]}]}
+    indice = costruisci_indice(casa, {"light.x": "Abat-jour"})
+
+    assert _riferimenti(indice.trova("la piantana")[0]) == {"light.x"}
+    assert _riferimenti(indice.trova("l'abat-jour")[0]) == {"light.x"}
+
+
+def test_un_nome_dedotto_che_collide_con_un_nome_dichiarato_e_ambiguo():
+    """Il dedotto entra nello stesso spazio dei nomi dichiarati, quindi puo'
+    collidere con loro -- e su questa casa succedera' spesso, perche' il
+    dedotto e' la norma. L'indice non sceglie: dichiara l'ambiguita' come
+    farebbe per due aree omonime."""
+    casa = {"aree": [{"id": "cucina", "nome": "Cucina", "alias": []}],
+            "dispositivi": [],
+            "entita": [{"id": "valve.giardino_cucina", "nome": None, "alias": []}]}
+    indice = costruisci_indice(casa, {"valve.giardino_cucina": "Cucina"})
+
+    trovate = indice.trova("in cucina")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is True
+    assert _riferimenti(trovate[0]) == {"cucina", "valve.giardino_cucina"}
+
+
+def test_le_entita_senza_stato_vivo_restano_senza_nome_e_non_spariscono():
+    """Misurato: 849 entita' vive contro 1.225 nel registro. Per le 376
+    restanti non esiste un `friendly_name` da nessuna parte, e il ripiego
+    non le copre. Restano fuori da `trova()` -- come oggi -- ma non
+    spariscono e non si inventa loro un nome: dichiarato, non nascosto."""
+    indice = costruisci_indice(_casa_senza_nomi(),
+                               {"light.abat_jour_1": "Abat-jour"})
+
+    assert _riferimenti(indice.trova("l'abat-jour")[0]) == {"light.abat_jour_1"}
+    senza_stato_vivo = indice.verifica("entita", "light.abat_jour_2")
+    assert senza_stato_vivo is not None
+    assert not (senza_stato_vivo.get("nome") or "")
+    assert "nome_dedotto" not in senza_stato_vivo
+
+
+def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
+    """I quattro chiamanti esistenti (handlers_memoria.py:118 e :184,
+    casa/strumenti.py:430 e :512) non passano niente: la firma nuova non
+    deve cambiargli nulla sotto i piedi -- e non deve marcare come dedotto
+    cio' che il registro dichiara."""
+    casa = {"aree": [{"id": "cucina", "nome": "Cucina", "alias": ["sala da pranzo"]}],
+            "dispositivi": [], "entita": [{"id": "light.c", "nome": "Luce", "alias": []}]}
+
+    for indice in (costruisci_indice(casa), costruisci_indice(casa, None)):
+        trovate = indice.trova("in cucina accendi la luce")
+        assert [_riferimenti(t) for t in trovate] == [{"cucina"}, {"light.c"}]
+        assert [t["nome_visto"] for t in trovate] == ["cucina", "luce"]
+        assert "nome_dedotto" not in indice.verifica("entita", "light.c")

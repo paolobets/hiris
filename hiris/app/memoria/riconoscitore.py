@@ -225,7 +225,8 @@ class Indice:
         return list(self._per_tipo.get(tipo, {}).values())
 
 
-def costruisci_indice(casa: dict) -> Indice:
+def costruisci_indice(casa: dict,
+                      nomi_di_ripiego: dict[str, str] | None = None) -> Indice:
     """Costruisce l'indice di una casa: nome e alias di aree, entita' e
     dispositivi, normalizzati e pronti per trova()/verifica().
 
@@ -233,9 +234,54 @@ def costruisci_indice(casa: dict) -> Indice:
     omonime, un alias che e' il nome vero di un'altra voce): il termine
     resta uno solo, ma raccoglie TUTTI i candidati che lo condividono,
     cosi' trova() puo' dichiarare l'ambiguita' invece di sceglierne uno in
-    silenzio in base all'ordine di raccolta."""
+    silenzio in base all'ordine di raccolta.
+
+    `nomi_di_ripiego` (entity_id -> `friendly_name`) NON e' un rimedio per i
+    casi rari in cui il nome manca: sull'impianto del proprietario, misurato
+    il 14 agosto, e' la STRADA NORMALE. `casa/archivio.py:133` prende il nome
+    dell'entita' da `name or original_name` del REGISTRO, e li' il nome e'
+    nullo QUASI OVUNQUE (le quattro valvole dell'irrigazione, le abat-jour);
+    nello specchio dello stato vivo il `friendly_name` c'e' invece su TUTTE
+    e 849 le entita' vive -- zero vuote -- e sono i nomi buoni:
+    `valve.giardino_ingresso` -> «Giardino ingresso»,
+    `light.abat_jour_sinistra_abat_jour_sinistra` -> «Abat-jour sinistra».
+
+    HIRIS leggeva i nomi dal posto sbagliato, e senza ripiego l'indice di
+    ricerca e' quasi vuoto di nomi. Un'entita' senza nome non e' "non
+    trovata": e' INESISTENTE nello spazio in cui si cerca -- nessun nome,
+    nessun termine, invisibile. E' lo stesso criterio del nucleo: il modello
+    perde la possibilita' di sapere che quella cosa esiste, e sono i quattro
+    giri di `cerca` bruciati sulle abat-jour.
+
+    Il ripiego e' il `friendly_name`, non l'`entity_id`: e' cio' che Home
+    Assistant mostra all'utente ed e' la parola che una persona userebbe
+    parlando. Lo specchio dello stato lo conserva gia'
+    (`proxy/entity_cache._to_minimal`, chiave "name"). Un id tecnico non
+    entra qui, ne' tale e quale ne' ingentilito: sarebbe un nome che nessuno
+    ha mai pronunciato. E i nomi veri portano in dote un raggruppamento che
+    nessun meccanismo deve costruire: quattro «Giardino ...» dicono da soli
+    che sono un impianto solo.
+
+    Un nome dedotto **non si spaccia per dichiarato**: la voce guadagna
+    `nome_dedotto` e `nome` resta com'era nel registro (vuoto o None: non si
+    riscrive). Chi legge puo' dirlo, e chi confronta i nomi DICHIARATI
+    dall'utente non inciampa in uno che l'utente non ha mai scritto. Vale il
+    doppio proprio perche' qui il dedotto e' la norma, non l'eccezione.
+
+    **Cio' che il ripiego non copre, e che non si nasconde:** lo specchio
+    dello stato conosce solo le entita' con uno stato vivo -- 849 contro le
+    1.225 del registro. Per le altre 376 non esiste un `friendly_name` da
+    nessuna parte: restano senza nome e quindi fuori da `trova()`,
+    esattamente come oggi. Non spariscono (`verifica()` e `tutti()`
+    continuano a vederle) e non si inventa loro un nome dall'id.
+
+    Il ripiego vale solo per le entita': lo specchio dello stato non ha
+    `friendly_name` per aree e dispositivi, e un ripiego li' sarebbe di
+    nuovo un id travestito da nome.
+    """
     termini: dict[str, list[tuple[str, str]]] = {}
     per_tipo: dict[str, dict[str, dict]] = {}
+    ripiego = nomi_di_ripiego or {}
 
     for chiave_archivio, tipo in _ARCHIVI:
         registro = per_tipo.setdefault(tipo, {})
@@ -243,10 +289,21 @@ def costruisci_indice(casa: dict) -> Indice:
             riferimento = voce.get("id")
             if riferimento is None:
                 continue
-            registro[riferimento] = voce
 
             nome = voce.get("nome") or ""
-            for termine_originale in [nome, *(voce.get("alias") or [])]:
+            dedotto = ""
+            if not nome.strip() and tipo == "entita":
+                dedotto = (ripiego.get(riferimento) or "").strip()
+            if dedotto:
+                # Copia, non mutazione in place: `voce` e' il dizionario che
+                # `ArchivioCasa.leggi()` ha appena costruito per il
+                # chiamante, e marcarlo li' accoppierebbe l'indice al ciclo
+                # di vita di una struttura che non gli appartiene.
+                voce = dict(voce)
+                voce["nome_dedotto"] = dedotto
+            registro[riferimento] = voce
+
+            for termine_originale in [dedotto or nome, *(voce.get("alias") or [])]:
                 termine_normalizzato = _normalizza(termine_originale)
                 if not termine_normalizzato:
                     continue
