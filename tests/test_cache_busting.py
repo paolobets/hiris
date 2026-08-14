@@ -10,6 +10,7 @@ that file's cache automatically.
 """
 import logging
 import os
+import shutil
 
 import pytest
 import pytest_asyncio
@@ -170,15 +171,47 @@ async def test_both_shells_declare_the_running_build_stamp(client):
     assert needle in html_config, "manca la <meta> nel guscio della configurazione (/config)"
 
 
+@pytest.fixture
+def static_snapshot(tmp_path, monkeypatch):
+    """Congela `hiris/app/static/` per la durata del test (m5, review
+    finale). `_asset_fingerprint` viene chiamato DUE VOLTE attorno a una
+    richiesta -- una volta dal test per sapere l'impronta "corretta", una
+    volta dal middleware durante la chiamata -- e prima di questo fix
+    entrambe leggevano l'albero VIVO: una scrittura concorrente in
+    `static/` fra le due letture (un editor aperto, un altro agente, un
+    `git checkout`) fa divergere i due valori e colora la corsa. Puntare
+    `_STATIC_DIR` a una copia presa UNA volta all'inizio del test rende le
+    due letture deterministe, indipendenti da cosa succede all'albero vero
+    nel frattempo."""
+    sorgente = os.path.join(os.path.dirname(server.__file__), "static")
+    copia = tmp_path / "static_snapshot"
+    shutil.copytree(sorgente, copia)
+    monkeypatch.setattr(server, "_STATIC_DIR", str(copia))
+    server._ASSET_FP_CACHE.clear()
+    yield str(copia)
+    server._ASSET_FP_CACHE.clear()
+
+
+def _solo_i_nostri(records, logger_name="hiris.app.server"):
+    """I record WARNING di `logger_name`, non di qualunque cosa propaghi
+    alla radice (m4, review finale). `caplog.records` raccoglie i record di
+    OGNI logger che arrivi li' -- `caplog.at_level(level, logger=...)`
+    regola il LIVELLO di quel logger, non filtra la raccolta: un warning
+    estraneo emesso durante la chiamata (qualunque dipendenza) farebbe
+    cadere un conteggio non filtrato per nome, anche quando il nostro
+    logger non ha detto niente."""
+    return [r for r in records if r.name == logger_name and r.levelno == logging.WARNING]
+
+
 @pytest.mark.asyncio
-async def test_stale_asset_fingerprint_is_logged_as_warning(client, caplog):
+async def test_stale_asset_fingerprint_is_logged_as_warning(client, static_snapshot, caplog):
     """Punto 5 del brief: un asset richiesto con ?v=<impronta sbagliata> deve
     produrre UNA riga di log warning col nome file, l'impronta chiesta e
     quella attuale -- e continuare a servire il file (non cambia risposta)."""
     with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
         resp = await client.get("/static/chat/main.js?v=impronta-inventata-e-sbagliata")
     assert resp.status == 200  # si continua a servire il file
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    warnings = _solo_i_nostri(caplog.records)
     assert len(warnings) == 1, f"attesa esattamente una riga di warning, trovate {len(warnings)}"
     msg = warnings[0].getMessage()
     assert "chat/main.js" in msg
@@ -186,15 +219,82 @@ async def test_stale_asset_fingerprint_is_logged_as_warning(client, caplog):
 
 
 @pytest.mark.asyncio
-async def test_asset_fingerprint_matching_current_is_not_logged(client, caplog):
+async def test_asset_fingerprint_matching_current_is_not_logged(client, static_snapshot, caplog):
     """Mutazione da uccidere: loggare SEMPRE, anche quando l'impronta chiesta
     e' quella giusta -- rumore che nasconderebbe il segnale."""
-    static_dir = os.path.join(os.path.dirname(server.__file__), "static")
     correct = server._asset_fingerprint("static/chat/main.js", "fallback")
     assert correct != "fallback"
 
     with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
         resp = await client.get(f"/static/chat/main.js?v={correct}")
     assert resp.status == 200
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    warnings = _solo_i_nostri(caplog.records)
     assert warnings == [], f"non doveva loggare nulla con l'impronta corretta, trovato: {warnings}"
+
+
+def test_asset_fingerprint_letture_ripetute_restano_coerenti_con_una_scrittura_concorrente(
+        tmp_path, monkeypatch):
+    """m5 (review finale): prova il MECCANISMO su cui si appoggia
+    `static_snapshot` -- MAI sul repo vero, su un albero finto in
+    `tmp_path` che sta al posto di `static/` VIVO. Con `_STATIC_DIR`
+    puntato a un'istantanea congelata, due letture di `_asset_fingerprint`
+    per lo stesso file restano identiche anche se la sorgente VIVA cambia
+    fra le due -- esattamente le due letture che nella suite vera fa una
+    volta il test (l'impronta "corretta") e una volta il middleware
+    (durante la richiesta)."""
+    vivo = tmp_path / "vivo"
+    vivo.mkdir()
+    (vivo / "main.js").write_text("console.log('v1')")
+
+    istantanea = tmp_path / "istantanea"
+    shutil.copytree(vivo, istantanea)
+    monkeypatch.setattr(server, "_STATIC_DIR", str(istantanea))
+    server._ASSET_FP_CACHE.clear()
+
+    prima = server._asset_fingerprint("static/main.js", "fallback")
+    assert prima != "fallback"
+
+    # La scrittura concorrente: qualcosa cambia l'albero VIVO -- ma
+    # _STATIC_DIR punta all'istantanea, non al vivo. mtime spostato avanti
+    # esplicitamente (stesso accorgimento di
+    # test_fingerprint_changes_when_content_changes qui sopra): la cache di
+    # _asset_fingerprint e' chiave per mtime, e senza uno scarto certo la
+    # scrittura potrebbe capitare nella stessa risoluzione del clock e
+    # mascherare da sola la divergenza che questo test vuole provare.
+    vivo_file = vivo / "main.js"
+    vivo_file.write_text("console.log('v2 -- scrittura concorrente')")
+    st = vivo_file.stat()
+    os.utime(vivo_file, (st.st_mtime + 5, st.st_mtime + 5))
+
+    dopo = server._asset_fingerprint("static/main.js", "fallback")
+    assert prima == dopo, (
+        "con _STATIC_DIR su un'istantanea congelata, una scrittura sull'albero vivo "
+        "non deve mai far divergere due letture della stessa impronta")
+
+
+@pytest.mark.asyncio
+async def test_asset_fingerprint_matching_current_ignora_warning_di_altri_logger(client, caplog):
+    """m4 (review finale): `caplog.records` raccoglie i record di QUALUNQUE
+    logger propagato alla radice -- non solo `hiris.app.server` -- perche'
+    `at_level(..., logger="hiris.app.server")` regola il LIVELLO di quel
+    logger, non filtra la RACCOLTA. Un warning emesso da tutt'altro (qui una
+    libreria finta, ma vale per qualunque dipendenza) durante la chiamata
+    farebbe cadere un conteggio non filtrato per nome, anche se il NOSTRO
+    logger non ha detto niente."""
+    correct = server._asset_fingerprint("static/chat/main.js", "fallback")
+    assert correct != "fallback"
+    estraneo = logging.getLogger("una.libreria.estranea.a.hiris")
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        estraneo.warning("rumore che non riguarda l'impronta di nessun asset")
+        resp = await client.get(f"/static/chat/main.js?v={correct}")
+    assert resp.status == 200
+
+    # Precondizione: il warning estraneo E' finito in caplog.records --
+    # altrimenti questo test non proverebbe niente sulla fragilita'.
+    assert any(r.name == "una.libreria.estranea.a.hiris" for r in caplog.records)
+
+    warnings = _solo_i_nostri(caplog.records)
+    assert warnings == [], (
+        f"il warning di 'una.libreria.estranea.a.hiris' non deve contare per il "
+        f"logger hiris.app.server, trovato: {warnings}")
