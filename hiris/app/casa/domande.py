@@ -177,7 +177,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
 
 
 def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
-                   non_disponibili: tuple[str, ...] = ()) -> dict:
+                   non_disponibili: tuple[str, ...] = (),
+                   nomi_di_ripiego: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
         dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento}
@@ -190,7 +191,7 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         if "entita" in non_disponibili:
             dettaglio["non_disponibile"] = True
         return dettaglio
-    return {
+    dettaglio = {
         "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
         "classe": entita.get("classe"), "unita": entita.get("unita"),
         # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
@@ -201,6 +202,16 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "stato": stato.get(entita["id"]),
         "ricordi": _ricordi_ancorati(ricordi, "entita", riferimento),
     }
+    if not (entita.get("nome") or "").strip():
+        # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
+        # questa casa `name` e `original_name` sono entrambi vuoti per
+        # un'intera famiglia di entita', e un `nome: null` qui e' un'entita'
+        # che l'utente chiama per nome e HIRIS non sa nominare. Marcato, mai
+        # scritto sopra `nome`: dichiarato e dedotto restano due fatti.
+        dedotto = ((nomi_di_ripiego or {}).get(entita["id"]) or "").strip()
+        if dedotto:
+            dettaglio["nome_dedotto"] = dedotto
+    return dettaglio
 
 
 def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
@@ -289,7 +300,8 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
            tipo: str, riferimento,
            non_disponibili: tuple[str, ...] = (),
-           file_non_letti: dict[str, str] | None = None) -> dict:
+           file_non_letti: dict[str, str] | None = None,
+           nomi_di_ripiego: dict[str, str] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -311,6 +323,12 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     presente solo quando `esiste` e' `False` E il registro/file pertinente
     non ha risposto.
 
+    `nomi_di_ripiego` (entity_id -> friendly_name dallo specchio dello
+    stato, stessa forma usata da `costruisci_indice` e da `cerca()`) conta
+    solo per `tipo == "entita"` e solo quando il registro non ha un nome:
+    se c'e' esce come `nome_dedotto`, mai scritto sopra `nome` -- dichiarato
+    e dedotto restano due fatti diversi.
+
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
@@ -318,7 +336,8 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili)
     if tipo == "entita":
-        return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili)
+        return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
+                              nomi_di_ripiego)
     if tipo == "dispositivo":
         return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili)
     if tipo in _TIPI_COMPORTAMENTO:

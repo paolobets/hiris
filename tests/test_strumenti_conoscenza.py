@@ -319,6 +319,26 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
 
 
 @pytest.mark.asyncio
+async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatcher(
+        archivio_casa, memoria):
+    """Il test che prova la FETTA, non solo la funzione pura: i tre test di
+    `test_domande.py` chiamano `guarda()` direttamente e le passano
+    `nomi_di_ripiego` a mano, quindi restano verdi anche se `_guarda` smette
+    di inoltrare i nomi vivi dell'archivio -- esattamente il difetto che
+    questo task esiste per chiudere. Solo passando da `dispatch()` con una
+    cache che porta un `friendly_name` si prova che il collegamento c'e'
+    davvero (mutazione che uccide: togliere `nomi_di_ripiego=nomi_vivi`
+    dalla chiamata a `_guarda_dettaglio` in `strumenti._guarda`)."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    esito = await d.dispatch("guarda", {"tipo": "entita", "riferimento": "light.abat_jour_1"})
+    assert esito["esiste"] is True
+    assert esito["nome"] is None
+    assert esito["nome_dedotto"] == "Abat-jour"
+
+
+@pytest.mark.asyncio
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):
     archivio_casa.sostituisci({"aree": [], "entita": []}, ["entita"])

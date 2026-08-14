@@ -502,10 +502,11 @@ class DispatcherStrumenti:
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato, _, letto = self._specchio()
+        stato, nomi_vivi, letto = self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
-                                      file_non_letti=file_non_letti)
+                                      file_non_letti=file_non_letti,
+                                      nomi_di_ripiego=nomi_vivi)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon

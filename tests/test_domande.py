@@ -98,6 +98,31 @@ def test_guarda_un_entita_che_non_esiste_lo_dice():
     assert "classe" not in dettaglio
 
 
+def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto():
+    """Stessa porta di `cerca` (B3/B4), qui su `guarda`: un'entita' senza
+    nome nel registro non deve uscire con `nome: null` secco quando lo
+    specchio dello stato sa come Home Assistant la chiama."""
+    casa = {"entita": [{"id": "light.a", "nome": None, "classe": None, "unita": None}]}
+    d = guarda(casa, [], [], {"light.a": "off"}, "entita", "light.a",
+               nomi_di_ripiego={"light.a": "Abat-jour"})
+    assert d["nome"] is None and d["nome_dedotto"] == "Abat-jour"
+
+
+def test_guarda_non_deduce_un_nome_che_c_e_gia():
+    """Dichiarato e dedotto sono due fatti diversi: un nome che l'utente ha
+    scelto non si sostituisce mai con uno dedotto, anche se il ripiego lo
+    porta."""
+    casa = {"entita": [{"id": "light.a", "nome": "Piantana", "classe": None, "unita": None}]}
+    d = guarda(casa, [], [], {}, "entita", "light.a",
+               nomi_di_ripiego={"light.a": "Lampada da terra"})
+    assert d["nome"] == "Piantana" and "nome_dedotto" not in d
+
+
+def test_guarda_senza_ripiego_si_comporta_come_prima():
+    casa = {"entita": [{"id": "light.a", "nome": None, "classe": None, "unita": None}]}
+    assert "nome_dedotto" not in guarda(casa, [], [], {}, "entita", "light.a")
+
+
 def test_guarda_un_ricordo_da_la_sua_interpretazione():
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 1)
     assert dettaglio["esiste"] is True
