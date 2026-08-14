@@ -286,6 +286,48 @@ async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, m
     assert esito["stato_non_letto"] is True
 
 
+class _CacheConNomi:
+    """Una cache finta che mente come mente la realta': entita' con
+    friendly_name, entita' senza, e la chiave "id" (non "entity_id")."""
+    loaded = True
+
+    def all_states(self):
+        return [{"id": "light.abat_jour_1", "state": "off", "name": "Abat-jour"},
+                {"id": "light.x", "state": "on", "name": ""},
+                {"id": "sensor.y", "state": "21"},          # senza chiave "name"
+                "non un dizionario"]
+
+
+def test_lo_specchio_restituisce_stato_e_nomi_in_una_lettura(archivio_casa, memoria):
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    stato, nomi, letto = d._specchio()
+    assert letto is True
+    assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
+    assert nomi == {"light.abat_jour_1": "Abat-jour"}
+
+
+def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, memoria):
+    """Fix E1-(3), esteso ai nomi: meta' dei nomi e' peggio di nessuno,
+    perche' le entita' mancanti sembrerebbero non esistere."""
+    class _Rotta:
+        """Cade A META' LETTURA, non prima: una finta che solleva senza aver
+        prodotto niente lascia `stato` e `nomi` vuoti comunque, e quindi non
+        sa distinguere «restituisco ({}, {}, False)» da «restituisco quello
+        che ho raccolto finora». Il difetto che questo test esiste per
+        impedire e' proprio il secondo, e una finta che non sa produrlo non
+        prova niente."""
+        loaded = True
+        def all_states(self):
+            yield {"id": "light.a", "state": "on", "name": "Luce A"}
+            raise RuntimeError("boom")
+    stato, nomi, letto = DispatcherStrumenti(archivio_casa, memoria, cache=_Rotta())._specchio()
+    assert (stato, nomi, letto) == ({}, {}, False)
+
+
+def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
+    assert DispatcherStrumenti(archivio_casa, memoria, cache=None)._specchio() == ({}, {}, True)
+
+
 @pytest.mark.asyncio
 async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
     """Fix E1-②: «richiama» con un `tipo` che non e' area/entita/dispositivo

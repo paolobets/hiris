@@ -459,7 +459,7 @@ class DispatcherStrumenti:
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato, letto = self._stato_vivo()
+        stato, _, letto = self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
                                       file_non_letti=file_non_letti)
@@ -474,32 +474,41 @@ class DispatcherStrumenti:
             dettaglio["stato_non_letto"] = True
         return dettaglio
 
-    def _stato_vivo(self) -> tuple[dict[str, str], bool]:
-        """Lo stato vivo, e se la lettura e' andata a buon fine.
+    def _specchio(self) -> tuple[dict[str, str], dict[str, str], bool]:
+        """Lo specchio vivo in UNA lettura: `(stato, nomi, letto)`.
 
-        Fix E1-③: prima un guasto durante `all_states()` (non solo l'assenza
-        della cache) restituiva `{}` indistinguibile da "nessuna entita' ha
-        stato" -- e con la cache che si dichiara comunque `loaded`,
-        `inventario_leggibile()` in `_guarda` restava vero, quindi
-        `stato_non_letto` non scattava mai: ogni `stato: None` sul risultato
-        sembrava "l'entita' non ha stato" invece di "non ho potuto
-        guardare" -- proprio l'ambiguita' che quel flag esiste per
-        impedire. Restituire anche `letto` lascia a `_guarda` la stessa
-        decisione che gia' prende per `inventario_leggibile`, ma basata su
-        cio' che e' successo DAVVERO in questa lettura, non solo su cosa la
-        cache dichiara di se stessa.
-        """
+        Sostituisce `_stato_vivo`, non gli si affianca: `cerca` ha bisogno dei
+        `friendly_name` e `guarda` dello stato, e due metodi che chiamano
+        `all_states()` a turno sarebbero due letture della stessa cosa in
+        istanti diversi -- la stessa classe di divergenza che il nucleo chiude
+        condividendo un solo albero.
+
+        `nomi` e' entity_id -> `friendly_name`, saltando i vuoti: la chiave
+        "name" di `entity_cache._to_minimal` e' `friendly_name or ""`, e una
+        stringa vuota non e' un nome, e' l'assenza di un nome.
+
+        `letto` conserva esattamente la semantica del fix E1-(3): False solo
+        quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
+        resta `True` -- non e' successo niente di male, e a dire che
+        l'inventario non e' guardabile ci pensa `inventario_leggibile`."""
         stato: dict[str, str] = {}
+        nomi: dict[str, str] = {}
         if self._cache is None or not hasattr(self._cache, "all_states"):
-            return stato, True
+            return stato, nomi, True
         try:
             for e in self._cache.all_states():
-                entity_id = e.get("id") if isinstance(e, dict) else None
-                if entity_id:
-                    stato[entity_id] = e.get("state")
+                if not isinstance(e, dict):
+                    continue
+                entity_id = e.get("id")
+                if not entity_id:
+                    continue
+                stato[entity_id] = e.get("state")
+                nome = e.get("name")
+                if isinstance(nome, str) and nome.strip():
+                    nomi[entity_id] = nome.strip()
         except Exception:
-            return {}, False
-        return stato, True
+            return {}, {}, False
+        return stato, nomi, True
 
     # -- ricorda -----------------------------------------------------------
 
