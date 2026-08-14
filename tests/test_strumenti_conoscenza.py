@@ -339,6 +339,51 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
 
 
 @pytest.mark.asyncio
+async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_dispatcher(
+        archivio_casa, memoria):
+    """I1 (review finale): il test che prova la FETTA per il ramo area, non
+    solo la funzione pura -- stessa lezione di B5. I due test di
+    `test_domande.py` chiamano `guarda()` direttamente e passano
+    `nomi_di_ripiego` a mano: restano verdi anche se `_guarda` smette di
+    inoltrarlo a `_guarda_dettaglio`, o se `guarda()` smette di inoltrarlo a
+    `_guarda_area`. Solo passando da `dispatch()` con una cache vera si prova
+    il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
+    ramo, lasciando intatto quello di `_guarda_entita`)."""
+    archivio_casa.sostituisci({
+        "aree": [{"area_id": "giardino", "name": "Giardino"}],
+        "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
+                    "name": None, "original_name": None}],
+    }, [])
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "giardino"})
+    assert esito["esiste"] is True
+    entita = {e["id"]: e for e in esito["entita"]}
+    assert entita["light.abat_jour_1"]["nome"] is None
+    assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
+
+
+@pytest.mark.asyncio
+async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_dal_dispatcher(
+        archivio_casa, memoria):
+    """Stesso rilievo I1, sul ramo `_guarda_dispositivo` -- il percorso che
+    la specifica mette come metro della fetta (§7, la domanda
+    dell'irrigazione: 'guarda' su un dispositivo trovato). Mutazione che
+    uccide: togliere l'inoltro su QUESTO ramo, lasciando intatti gli altri
+    due."""
+    archivio_casa.sostituisci({
+        "dispositivi": [{"id": "dev_irr", "name": "Irrigazione"}],
+        "entita": [{"entity_id": "light.abat_jour_1", "device_id": "dev_irr",
+                    "name": None, "original_name": None}],
+    }, [])
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    esito = await d.dispatch("guarda", {"tipo": "dispositivo", "riferimento": "dev_irr"})
+    assert esito["esiste"] is True
+    entita = {e["id"]: e for e in esito["entita"]}
+    assert entita["light.abat_jour_1"]["nome"] is None
+    assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
+
+
+@pytest.mark.asyncio
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):
     archivio_casa.sostituisci({"aree": [], "entita": []}, ["entita"])

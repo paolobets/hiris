@@ -130,8 +130,25 @@ def _trova_area(piani: list[dict], riferimento) -> dict | None:
     return None
 
 
+def _con_nome_dedotto(dettaglio_entita: dict, entita_id, nomi_di_ripiego: dict[str, str] | None) -> dict:
+    """Aggiunge `nome_dedotto` a `dettaglio_entita` con la stessa disciplina
+    di B5: solo quando `nome` e' vuoto nel registro, e mai scritto sopra
+    `nome` -- dichiarato e dedotto restano due fatti diversi.
+
+    Condivisa fra i TRE rami di `guarda` che elencano entita' (I1, review
+    finale): prima di questo fix solo `_guarda_entita` la applicava, e
+    `_guarda_area`/`_guarda_dispositivo` mostravano `nome: null` secco anche
+    quando lo specchio dello stato sapeva come Home Assistant le chiama."""
+    if not (dettaglio_entita.get("nome") or "").strip():
+        dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
+        if dedotto:
+            dettaglio_entita["nome_dedotto"] = dedotto
+    return dettaglio_entita
+
+
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
-                 non_disponibili: tuple[str, ...] = ()) -> dict:
+                 non_disponibili: tuple[str, ...] = (),
+                 nomi_di_ripiego: dict[str, str] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -151,8 +168,10 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
             dettaglio["non_disponibile"] = True
         return dettaglio
     entita = [
-        {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-         "stato": stato.get(e["id"]), "disabilitata": False}
+        _con_nome_dedotto(
+            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+             "stato": stato.get(e["id"]), "disabilitata": False},
+            e["id"], nomi_di_ripiego)
         for e in area["entita"]
     ] + [
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
@@ -160,8 +179,10 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # e `_guarda_entita` lo fanno gia', `_guarda_area` no. `gerarchia()`
         # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
         # anagrafe.py).
-        {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-         "stato": stato.get(e["id"]), "disabilitata": True}
+        _con_nome_dedotto(
+            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+             "stato": stato.get(e["id"]), "disabilitata": True},
+            e["id"], nomi_di_ripiego)
         for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
@@ -202,20 +223,17 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "stato": stato.get(entita["id"]),
         "ricordi": _ricordi_ancorati(ricordi, "entita", riferimento),
     }
-    if not (entita.get("nome") or "").strip():
-        # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
-        # questa casa `name` e `original_name` sono entrambi vuoti per
-        # un'intera famiglia di entita', e un `nome: null` qui e' un'entita'
-        # che l'utente chiama per nome e HIRIS non sa nominare. Marcato, mai
-        # scritto sopra `nome`: dichiarato e dedotto restano due fatti.
-        dedotto = ((nomi_di_ripiego or {}).get(entita["id"]) or "").strip()
-        if dedotto:
-            dettaglio["nome_dedotto"] = dedotto
-    return dettaglio
+    # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
+    # questa casa `name` e `original_name` sono entrambi vuoti per un'intera
+    # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
+    # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
+    # `nome`: dichiarato e dedotto restano due fatti (`_con_nome_dedotto`).
+    return _con_nome_dedotto(dettaglio, entita["id"], nomi_di_ripiego)
 
 
 def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
-                        non_disponibili: tuple[str, ...] = ()) -> dict:
+                        non_disponibili: tuple[str, ...] = (),
+                        nomi_di_ripiego: dict[str, str] | None = None) -> dict:
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
@@ -230,8 +248,10 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
     # avrebbero la stessa forma di uno che funziona.
     entita_del_dispositivo = [
-        {"id": e["id"], "nome": e.get("nome"),
-         "disabilitata": bool(e.get("disabilitata"))}
+        _con_nome_dedotto(
+            {"id": e["id"], "nome": e.get("nome"),
+             "disabilitata": bool(e.get("disabilitata"))},
+            e["id"], nomi_di_ripiego)
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     dettaglio = {
@@ -325,21 +345,25 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
 
     `nomi_di_ripiego` (entity_id -> friendly_name dallo specchio dello
     stato, stessa forma usata da `costruisci_indice` e da `cerca()`) conta
-    solo per `tipo == "entita"` e solo quando il registro non ha un nome:
-    se c'e' esce come `nome_dedotto`, mai scritto sopra `nome` -- dichiarato
-    e dedotto restano due fatti diversi.
+    per OGNI ramo che elenca entita' -- `entita` da sola, ma anche le
+    entita' di un'`area` e di un `dispositivo` (I1, review finale: la stessa
+    entita' e' la stessa cosa da tutte le porte) -- e solo quando il
+    registro non ha un nome: se c'e' esce come `nome_dedotto`, mai scritto
+    sopra `nome` -- dichiarato e dedotto restano due fatti diversi.
 
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
     """
     if tipo == "area":
-        return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili)
+        return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
+                            nomi_di_ripiego)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
                               nomi_di_ripiego)
     if tipo == "dispositivo":
-        return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili)
+        return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili,
+                                   nomi_di_ripiego)
     if tipo in _TIPI_COMPORTAMENTO:
         return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":

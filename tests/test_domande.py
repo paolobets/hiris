@@ -123,6 +123,47 @@ def test_guarda_senza_ripiego_si_comporta_come_prima():
     assert "nome_dedotto" not in guarda(casa, [], [], {}, "entita", "light.a")
 
 
+# --- I1 (review finale): la stessa disciplina anche per area e dispositivo -
+
+
+def _casa_area_dispositivo():
+    return {
+        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "giardino", "nome": "Giardino", "piano_id": "terra",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [{"id": "dev_irr", "nome": "Irrigazione", "disabilitato": False}],
+        "entita": [
+            {"id": "switch.irr_1", "nome": None, "classe": None, "unita": None,
+             "area_id": "giardino", "dispositivo_id": None, "disabilitata": False},
+            {"id": "switch.irr_2", "nome": None, "classe": None, "unita": None,
+             "area_id": None, "dispositivo_id": "dev_irr", "disabilitata": False},
+        ],
+    }
+
+
+def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita():
+    """Stessa disciplina di `_guarda_entita` (B5), qui su `_guarda_area`:
+    prima di questo fix `nomi_di_ripiego` non arrivava affatto a questo
+    ramo -- l'entita' usciva con `nome: null` secco anche quando lo
+    specchio dello stato sapeva come Home Assistant la chiama."""
+    dettaglio = guarda(_casa_area_dispositivo(), [], [], {}, "area", "giardino",
+                       nomi_di_ripiego={"switch.irr_1": "Valvola prato"})
+    entita = {e["id"]: e for e in dettaglio["entita"]}
+    assert entita["switch.irr_1"]["nome"] is None
+    assert entita["switch.irr_1"]["nome_dedotto"] == "Valvola prato"
+
+
+def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita():
+    """Stesso rilievo I1, sul ramo `_guarda_dispositivo`: e' il percorso che
+    la specifica mette come metro della fetta -- la domanda dell'irrigazione
+    passa da qui."""
+    dettaglio = guarda(_casa_area_dispositivo(), [], [], {}, "dispositivo", "dev_irr",
+                       nomi_di_ripiego={"switch.irr_2": "Valvola giardino"})
+    entita = {e["id"]: e for e in dettaglio["entita"]}
+    assert entita["switch.irr_2"]["nome"] is None
+    assert entita["switch.irr_2"]["nome_dedotto"] == "Valvola giardino"
+
+
 def test_guarda_un_ricordo_da_la_sua_interpretazione():
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 1)
     assert dettaglio["esiste"] is True
