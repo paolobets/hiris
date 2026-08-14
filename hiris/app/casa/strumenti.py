@@ -84,8 +84,10 @@ CERCA_TOOL_DEF = {
         "Ogni candidato porta il `nome` con cui la casa lo conosce e, per le entita', "
         "il `dominio` (`light`, `sensor`, `switch`, ...): **guarda il dominio prima di "
         "concludere**, perche' «luci» puo' corrispondere a un `sensor` che CONTA le luci "
-        "invece che a una luce. `nome_dedotto` vero significa che quel nome non l'ha "
-        "scritto l'utente: viene da cio' che Home Assistant mostra a schermo. "
+        "invece che a una luce. Se compare anche `nome_dedotto` (una STRINGA, mai un "
+        "booleano -- la stessa forma in `guarda`), il nome che vedi in `nome` non l'ha "
+        "scelto chi vive in questa casa: viene dedotto da cio' che Home Assistant mostra "
+        "a schermo, e i due campi portano lo stesso testo. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
         "**Ma una lista vuota non basta a concludere che la cosa non esista**: se la "
@@ -126,7 +128,13 @@ GUARDA_TOOL_DEF = {
         "per un fatto sulla casa invece che per 'non trovato'. Anche quando "
         "esiste, un dettaglio puo' mancare (`corpo: null` per un'automazione "
         "scritta a mano di cui non abbiamo letto il file): e' un limite di "
-        "HIRIS dichiarato in `origine`, non un fatto sulla casa."
+        "HIRIS dichiarato in `origine`, non un fatto sulla casa. Un'entita' -- "
+        "da sola, o dentro le liste di un'area o di un dispositivo -- puo' "
+        "avere `nome: null` e portare invece `nome_dedotto` (una STRINGA, mai "
+        "un booleano -- la stessa forma in `cerca`): quel testo E' il nome, "
+        "solo non scelto da chi vive in questa casa ma letto da cio' che Home "
+        "Assistant mostra a schermo. Non concludere «senza nome» quando "
+        "`nome_dedotto` c'e'."
     ),
     "input_schema": {
         "type": "object",

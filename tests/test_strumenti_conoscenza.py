@@ -383,6 +383,19 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
     assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
 
 
+def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono():
+    """I2 (review finale): prima di questo fix `CERCA_TOOL_DEF` descriveva
+    `nome_dedotto` come un flag booleano e `GUARDA_TOOL_DEF` non lo nominava
+    affatto -- un modello che avesse imparato la forma da `cerca` avrebbe
+    letto male il campo di `guarda` (`nome: null` + una chiave non
+    descritta), concludendo «senza nome» mentre il nome c'era. Una forma
+    sola, dichiarata in entrambe le definizioni."""
+    from hiris.app.casa.strumenti import CERCA_TOOL_DEF, GUARDA_TOOL_DEF
+    for tool_def in (CERCA_TOOL_DEF, GUARDA_TOOL_DEF):
+        assert "nome_dedotto" in tool_def["description"], (
+            f"«{tool_def['name']}» restituisce nome_dedotto ma non lo dichiara")
+
+
 @pytest.mark.asyncio
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):

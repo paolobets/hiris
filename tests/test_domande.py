@@ -336,11 +336,16 @@ def test_i_candidati_portano_il_nome():
 
 
 def test_un_nome_dedotto_si_dichiara_dedotto():
+    """I2 (review finale): `nome_dedotto` e' una forma sola in tutto il
+    modulo -- la stringa col nome dedotto, mai un booleano. Prima di questo
+    fix `cerca()` scriveva `True` mentre `guarda()` scriveva la stringa: due
+    tipi diversi per lo stesso fatto, e un modello che avesse imparato la
+    forma da `cerca` avrebbe letto male quella di `guarda` (e viceversa)."""
     casa = {"aree": [], "dispositivi": [],
             "entita": [{"id": "light.a", "nome": None, "alias": []}]}
     voci = cerca(costruisci_indice(casa, {"light.a": "Abat-jour"}), "abat-jour")
     candidato = voci[0]["candidati"][0]
-    assert candidato["nome"] == "Abat-jour" and candidato["nome_dedotto"] is True
+    assert candidato["nome"] == "Abat-jour" and candidato["nome_dedotto"] == "Abat-jour"
 
 
 def test_un_nome_dichiarato_non_si_dichiara_dedotto():

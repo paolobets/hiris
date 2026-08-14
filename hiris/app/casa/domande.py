@@ -73,10 +73,12 @@ def cerca(indice, testo: str) -> list[dict]:
       un CONTATORE di luci, e nel risultato non c'era niente che lo dicesse.
       Non si filtra (il modello e' quello che sa se un contatore gli serve),
       si dichiara;
-    - `nome_dedotto`, vero quando il nome non e' dichiarato nel registro ma
-      ricavato dal `friendly_name` dello specchio dello stato (vedi
-      `memoria/riconoscitore.costruisci_indice`). Un nome dedotto e' un fatto
-      diverso da un nome scelto dall'utente e non va spacciato per tale.
+    - `nome_dedotto`, presente (col nome dedotto, come STRINGA -- mai un
+      booleano: I2, review finale) quando il nome non e' dichiarato nel
+      registro ma ricavato dal `friendly_name` dello specchio dello stato
+      (vedi `memoria/riconoscitore.costruisci_indice`). Un nome dedotto e'
+      un fatto diverso da un nome scelto dall'utente e non va spacciato per
+      tale -- stessa forma di `nome_dedotto` in `guarda()`/`_guarda_entita`.
 
     `verifica()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
@@ -87,7 +89,14 @@ def cerca(indice, testo: str) -> list[dict]:
             dedotto = (oggetto.get("nome_dedotto") or "").strip()
             candidato["nome"] = (oggetto.get("nome") or "").strip() or dedotto
             if dedotto:
-                candidato["nome_dedotto"] = True
+                # I2 (review finale): `nome_dedotto` e' UNA forma sola in
+                # tutto il modulo -- la stringa col nome dedotto, la stessa
+                # che porta `guarda()`/`_guarda_entita`. Prima di questo fix
+                # qui usciva un booleano (`True`) mentre `guarda()` usciva la
+                # stringa: due tipi diversi per lo stesso fatto, con un
+                # modello che poteva imparare la forma sbagliata dall'uno e
+                # leggere male l'altro.
+                candidato["nome_dedotto"] = dedotto
             if candidato["tipo"] == "entita":
                 candidato["dominio"] = _dominio_entita(candidato["riferimento"])
     return risultati
