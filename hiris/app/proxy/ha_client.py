@@ -567,9 +567,11 @@ class HAClient:
     # `get_updates` sono usciti. Erano gia' ORFANI DICHIARATI dal Task 11
     # (l'HealthMonitor/SupervisorClient che li leggeva e' uscito per intero):
     # verificato di nuovo qui, zero chiamanti in tutto il repo.
-    # `leggi_registri` (sopra) non li richiama: chiede
-    # "config/config_entries/get_entries" direttamente nel suo batch WS, non
-    # passando da `get_config_entries`.
+    # `leggi_registri` (sopra) non li richiama: chiede il comando delle
+    # integrazioni direttamente nel suo batch WS, non passando da
+    # `get_config_entries`. Il nome del comando era sbagliato fino al Task
+    # B6 ("config/config_entries/get_entries", che non esiste in HA): vedi
+    # `_REGISTRI` per quello vero, "config_entries/get".
 
     # fetta E2 Task 8 ("escono i trentaquattro"): `get_calendars`/
     # `get_calendar_events_range` sono uscite -- orfane a cascata dalla
@@ -688,7 +690,7 @@ class HAClient:
         ("dispositivi",  "config/device_registry/list",       None),
         ("entita",       "config/entity_registry/list",       None),
         ("etichette",    "config/label_registry/list",        None),
-        ("integrazioni", "config/config_entries/get_entries", None),
+        ("integrazioni", "config_entries/get",               None),
     ] + [
         ("categorie", "config/category_registry/list", {"scope": ambito})
         for ambito in _AMBITI_CATEGORIA
@@ -720,7 +722,28 @@ class HAClient:
             if not isinstance(risultato, list):
                 ambito = extra.get("scope") if extra else None
                 nome = f"{chiave}:{ambito}" if chiave == "categorie" and ambito else chiave
-                logger.debug("registro %s non disponibile (%s)", nome, tipo)
+                # Tre guasti diversi, tre diciture: `msg` porta il messaggio
+                # WS intero ({success, result, error} -- vedi il docstring di
+                # `_ws_batch`), e prima d'ora si guardava solo `result`,
+                # buttando via il motivo che HA aveva gia' scritto in `error`.
+                errore = msg.get("error") if msg else None
+                if errore:
+                    # HA e' arrivato e ha rifiutato il comando: il motivo e'
+                    # suo, non il nome del comando che gia' sapevamo.
+                    motivo = errore.get("message") or errore.get("code") or errore
+                    logger.debug("registro %s rifiutato da Home Assistant: %s (%s)",
+                                 nome, motivo, tipo)
+                elif msg is not None:
+                    # HA e' arrivato, non ha rifiutato nulla, ma `result` non
+                    # e' la lista attesa: guasto diverso dal rifiuto.
+                    logger.debug("registro %s risposta in forma inattesa (%s): %r",
+                                 nome, tipo, risultato)
+                else:
+                    # Il comando non ha mai avuto risposta -- la connessione
+                    # non si e' aperta o la risposta non e' arrivata: nessun
+                    # `error` da mostrare perche' HA non ha mai parlato.
+                    logger.debug("registro %s non disponibile: nessuna risposta dal comando (%s)",
+                                 nome, tipo)
                 non_disponibili.append(nome)
                 risultato = []
             if chiave == "categorie" and extra:
