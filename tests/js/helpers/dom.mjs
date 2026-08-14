@@ -1,11 +1,16 @@
 import { JSDOM } from 'jsdom';
-import { readFileSync, cpSync, mkdtempSync } from 'node:fs';
+import { readFileSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const STATIC = join(ROOT, 'hiris', 'app', 'static');
+// Esportato per il test di cablaggio di m8 (ri-review): il solo modo per
+// provare che `staticSnapshotDir()` restituisca DAVVERO una copia isolata
+// (mkdtempSync), non l'albero static/ vivo stesso, e' avere entrambi i
+// percorsi da confrontare da fuori.
+export const STATIC_VIVO = STATIC;
 
 /* m5 (review finale): `loadScripts()` (e i due file di cablaggio di B8, che
  * leggono `chat/main.js` a parte) facevano `readFileSync` dei sorgenti di
@@ -19,14 +24,31 @@ const STATIC = join(ROOT, 'hiris', 'app', 'static');
  * da li' -- congelata all'istante in cui il PRIMO test del file ha chiamato
  * `loadScripts()`, indipendente da qualunque scrittura sull'albero vero che
  * segua. */
+// m1 (ri-review): ogni copia (sia il singleton di staticSnapshotDir() sia le
+// copie ad-hoc dei test, es. static-snapshot.test.mjs) e' una cartella vera
+// in %TEMP%/tmpdir() e nessuno la rimuoveva -- misurato: ~68 cartelle
+// `hiris-static-snapshot-*` accumulate dopo poche corse, ~6 MB a corsa.
+// Ogni chiamata la registra qui; l'exit handler sotto le rimuove tutte alla
+// fine del processo (node --test isola i FILE in processi separati, quindi
+// e' il punto giusto: non prima, o una loadScripts() successiva nello
+// stesso file perderebbe la copia da sotto i piedi).
+const _cartelleDaRimuovere = [];
+
 // Funzione pura, esportata a parte cosi' la sua proprieta' di isolamento
 // (una scrittura sulla SORGENTE dopo la copia non tocca la copia) e'
 // verificabile da un test dedicato senza toccare l'albero vero del repo.
 export function copiaIstantanea(sorgente) {
   const dest = mkdtempSync(join(tmpdir(), 'hiris-static-snapshot-'));
   cpSync(sorgente, dest, { recursive: true });
+  _cartelleDaRimuovere.push(dest);
   return dest;
 }
+
+process.on('exit', () => {
+  for (const dir of _cartelleDaRimuovere) {
+    try { rmSync(dir, { recursive: true, force: true }); } catch (e) { /* pulizia a fine processo, best-effort */ }
+  }
+});
 
 let _snapshotDir = null;
 

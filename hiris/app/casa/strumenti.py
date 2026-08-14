@@ -90,10 +90,15 @@ CERCA_TOOL_DEF = {
         "a schermo, e i due campi portano lo stesso testo. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
-        "**Ma una lista vuota non basta a concludere che la cosa non esista**: se la "
-        "risposta porta anche `non_ho_potuto_guardare`, quella lista dice che non si e' "
-        "potuto guardare dappertutto, e il motivo e' scritto li' dentro -- non "
-        "riprovare la stessa ricerca, leggi il motivo."
+        "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
+        "quando e' vuota per un motivo diverso, la risposta porta anche "
+        "`non_ho_potuto_guardare` (MAI insieme a candidati gia' trovati) con la lista "
+        "dei motivi. Ognuno e' o un guasto DI ADESSO (un registro non letto, lo "
+        "specchio dello stato giu': ha senso riprovare piu' tardi) o un limite STABILE "
+        "di alcune entita' di questa casa (nessun nome ne' nel registro ne' nello stato "
+        "vivo: riprovare la stessa ricerca non cambia nulla, serve rinominarle in Home "
+        "Assistant) -- il testo del motivo dice quale dei due e'. In nessuno dei due "
+        "casi concludere che la cosa non esiste."
     ),
     "input_schema": {
         "type": "object",
@@ -465,14 +470,26 @@ class DispatcherStrumenti:
                 "cerca", casa, self._casa.aggiornata_il(), nomi_vivi)
         else:
             indice = costruisci_indice(casa, nomi_vivi)
-        risposta: dict = {"trovati": _cerca_candidati(indice, testo)}
-        cecita = self._cecita(casa, specchio_letto, nomi_vivi)
+        trovati = _cerca_candidati(indice, testo)
+        risposta: dict = {"trovati": trovati}
+        # N2 (ri-review): il ramo strutturale di `_cecita` (I3, sotto) si
+        # accende su OGNI casa sana che abbia entita' senza nome ne' nel
+        # registro ne' nello specchio -- sull'impianto vero, un fatto
+        # STABILE (376 entita'), non un guasto di QUESTA ricerca. La chiave
+        # esiste per spiegare un `trovati` vuoto che potrebbe nascondere
+        # qualcosa (vedi il docstring di `_cecita`): non ha niente da
+        # spiegare quando la ricerca ha gia' trovato cio' che cercava, e
+        # dichiararla comunque la rende permanente -- un'assenza dichiarata
+        # SEMPRE smette di essere un segnale (la stessa invariante 4 che
+        # questo ramo esiste per rispettare, rivoltata contro se stessa).
+        cecita = self._cecita(casa, specchio_letto, nomi_vivi, trovati_vuoti=not trovati)
         if cecita:
             risposta["non_ho_potuto_guardare"] = cecita
         return risposta
 
     def _cecita(self, casa: dict, specchio_letto: bool,
-                nomi_vivi: dict[str, str] | None = None) -> list[str]:
+                nomi_vivi: dict[str, str] | None = None, *,
+                trovati_vuoti: bool = True) -> list[str]:
         """Perche' `trovati` potrebbe essere vuoto SENZA che la cosa manchi.
 
         Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
@@ -482,7 +499,16 @@ class DispatcherStrumenti:
 
         Solo fatti, e solo quando ci sono: la chiave non compare quando non
         c'e' niente da dichiarare. Un elenco vuoto che dice "nessun problema"
-        e' esattamente la forma che questa funzione esiste per togliere."""
+        e' esattamente la forma che questa funzione esiste per togliere.
+
+        `trovati_vuoti` (N2, ri-review): il ramo strutturale piu' sotto
+        (entita' senza nome ne' nel registro ne' nello specchio) descrive un
+        fatto STABILE della casa -- sull'impianto vero non si risolve mai da
+        solo, quindi senza questo cancello si accenderebbe a ogni singola
+        `cerca`, comprese quelle riuscite: un'assenza dichiarata SEMPRE
+        smette di essere un segnale (la stessa invariante 4 qui sopra,
+        rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
+        spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
         motivi: list[str] = []
         caduti = sorted(set(self._casa.non_disponibili())
                         & set(CHIAVE_ARCHIVIO_PER_TIPO.values()))
@@ -512,12 +538,17 @@ class DispatcherStrumenti:
             # indistinguibile da "non esistono".
             senza_nome_vivo = [e for e in senza_nome
                                if not ((nomi_vivi or {}).get(e["id"]) or "").strip()]
-            if senza_nome_vivo:
+            # trovati_vuoti: vedi il docstring -- questo fatto e' stabile
+            # (non si risolve riprovando la ricerca), quindi si dichiara
+            # solo quando serve a spiegare un `trovati` vuoto, mai a fianco
+            # di candidati gia' trovati.
+            if senza_nome_vivo and trovati_vuoti:
                 motivi.append(
-                    f"{len(senza_nome_vivo)} entita' non hanno un nome ne' nel registro di "
-                    "Home Assistant ne' nello specchio dello stato (lo specchio si legge, ma "
-                    "non porta un nome per queste): non sono cercabili per nome in questo "
-                    "momento.")
+                    f"{len(senza_nome_vivo)} entita' di questa casa non hanno un nome ne' nel "
+                    "registro di Home Assistant ne' nello specchio dello stato (lo specchio si "
+                    "legge, ma non porta un nome per queste): e' un limite stabile di quelle "
+                    "entita', non un guasto di questa ricerca -- ripetere la stessa ricerca non "
+                    "cambia nulla, serve rinominarle in Home Assistant.")
         return motivi
 
     # -- guarda ----------------------------------------------------------

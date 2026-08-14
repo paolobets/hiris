@@ -37,7 +37,16 @@
          non fa MAI parte della catena che decide "connesso/offline": e'
          chiamato dopo aver gia' scritto "connesso", dentro un try suo, cosi'
          un guscio vecchio (o una verifica che solleva) perde solo il
-         controllo del build, mai lo stato di connessione. */
+         controllo del build, mai lo stato di connessione.
+         N1 (ri-review): il pezzo che TIENE e' il `try`, non la guardia --
+         pinnato da chat-build-check-wiring.test.mjs (verifica() che
+         solleva). La guardia `if (window.HirisBuildCheck)` e' leggibilita' e
+         dichiara l'intenzione, ma il `try` intercetta comunque il TypeError
+         di `undefined.verifica`: toglierla non cambia il comportamento,
+         nessuna mutazione puo' farla cadere da sola (misurato). Una pulizia
+         futura puo' togliere la guardia; NON deve mai toccare il `try`, o
+         riapre il percorso Critico del pallino "offline" muto con
+         api/health a 200. */
       try {
         if (window.HirisBuildCheck) window.HirisBuildCheck.verifica(d.build);
       } catch (e) { /* limite gia' dichiarato di B8: un guscio vecchio non ha il controllo */ }

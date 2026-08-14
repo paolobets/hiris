@@ -192,6 +192,19 @@ def static_snapshot(tmp_path, monkeypatch):
     server._ASSET_FP_CACHE.clear()
 
 
+def test_static_snapshot_ripunta_STATIC_DIR_alla_copia_non_al_vivo(static_snapshot):
+    """m8 (ri-review): la fixture `static_snapshot` prova solo di saper
+    copiare (`shutil.copytree`), mai che qualcuno la usi -- resa inerte
+    (nessun `monkeypatch` di `server._STATIC_DIR`) lasciava 14/14 verdi.
+    Qui si pinza il cablaggio dal lato che conta: `server._STATIC_DIR`
+    (letto da `_asset_fingerprint` e dal middleware che serve /static/*)
+    deve puntare ESATTAMENTE alla copia che la fixture restituisce, mai
+    all'albero static/ vivo."""
+    vivo = os.path.join(os.path.dirname(server.__file__), "static")
+    assert server._STATIC_DIR == static_snapshot
+    assert server._STATIC_DIR != vivo
+
+
 def _solo_i_nostri(records, logger_name="hiris.app.server"):
     """I record WARNING di `logger_name`, non di qualunque cosa propaghi
     alla radice (m4, review finale). `caplog.records` raccoglie i record di

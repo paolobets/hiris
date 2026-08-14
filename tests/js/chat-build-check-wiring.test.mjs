@@ -127,6 +127,62 @@ test('boot della chat: build locale diverso dal remoto -- chat/main.js reale lo 
    chat/main.js (eval indiretto, non un frammento riscritto a mano) con
    TUTTI i moduli del guscio TRANNE build-check.js: e' il caso mai pensato
    dal banco esistente, dove build-check.js e' in MODULI in ogni test. */
+/* N1 (ri-review): il `try` attorno a HirisBuildCheck.verifica() NON e'
+   ridondante con la guardia `if (window.HirisBuildCheck)` -- copre il caso
+   che la guardia NON copre, cioe' `verifica()` che ESISTE e SOLLEVA dentro.
+   Non e' teorico: `verifica()` chiama `_internal_reload()` ->
+   `window.location.reload()`, che in un iframe sandboxed (HIRIS gira sempre
+   dentro un iframe di Home Assistant) puo' sollevare SecurityError. Senza
+   il `try`, quell'eccezione risalirebbe fuori dal `.then()` di
+   checkHealth(): il `.catch()` della catena la prenderebbe per un
+   fallimento di rete e scriverebbe "offline" -- con `api/health` che ha
+   appena risposto 200 e "connesso" gia' scritto un attimo prima. Qui si
+   prova ESATTAMENTE quel percorso: il modulo c'e' (guardia vera), la
+   chiamata solleva -- il pallino deve restare "connesso". Mutazione che
+   uccide: togliere il `try` (lasciando la guardia) -- vedi il rapporto
+   ri-review per la controprova che la guardia, da sola, NON e' pinnabile
+   allo stesso modo: con questo `try` presente, un TypeError da
+   `window.HirisBuildCheck` assente e' comunque ingoiato, quindi nessuna
+   asserzione sul pallino puo' distinguere "guardia tolta" da "guardia
+   presente" -- e' l'aritmetica dichiarata dalla ri-review, non un test
+   nuovo che la nasconde. */
+test('boot della chat: HirisBuildCheck presente ma verifica() solleva dentro -- il pallino resta connesso (N1, ri-review)', async (t) => {
+  const ctx = loadScripts(MODULI, { html: fixtureHtml('stampX') });
+  ctx.window.matchMedia = () => ({
+    matches: false, media: '', addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {},
+  });
+  ctx.window.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: 'stamp-nuovo' });
+    return jsonResponse({});
+  };
+  ctx.window.HirisBuildCheck.verifica = () => {
+    throw new Error('SecurityError simulato -- window.location.reload() in un iframe sandboxed');
+  };
+
+  const veroSet = globalThis.setInterval;
+  globalThis.setInterval = () => 0;
+  try {
+    assert.equal(typeof ctx.window.HirisBuildCheck, 'object',
+      'precondizione del test: HirisBuildCheck E\' caricato (a differenza del test del guscio vecchio sotto)');
+    (0, eval)(readFileSync(MAIN, 'utf8'));
+    await tick(0);
+    await tick(0);
+  } finally {
+    globalThis.setInterval = veroSet;
+  }
+  t.after(() => {
+    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.dom.window.close();
+  });
+
+  const connDot = ctx.document.getElementById('conn-dot');
+  assert.equal(connDot.textContent, 'connesso',
+    'verifica() che solleva non deve mai far leggere "offline" -- e\' il caso che il `try` esiste per coprire');
+  assert.equal(connDot.classList.contains('offline'), false);
+});
+
 test('boot della chat: guscio precedente a B8 (senza build-check.js) -- il pallino resta connesso, non offline', async (t) => {
   const MODULI_GUSCIO_VECCHIO = MODULI.filter((m) => m !== 'build-check.js');
   const ctx = loadScripts(MODULI_GUSCIO_VECCHIO, { html: fixtureHtml('stampX') });

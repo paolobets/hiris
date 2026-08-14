@@ -460,10 +460,50 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(ar
         "cerca", {"testo": "abat-jour"})
     assert esito["trovati"] == []
     assert "non_ho_potuto_guardare" in esito
-    assert any("1" in m and "non e' leggibile" not in m for m in esito["non_ho_potuto_guardare"]), (
-        "il motivo deve dire QUANTE entita' e PERCHE', distinto dal caso "
-        "'specchio illeggibile' -- qui lo specchio si legge benissimo, "
-        "solo non porta un nome per QUESTA entita'")
+    # m3 (ri-review): `"1" in m` passava anche con "10 entita'", "11", "312"
+    # -- il conteggio, meta' di cio' che il motivo deve dire, non era
+    # asserito davvero. Qui il prefisso esatto pinza sia il numero sia la
+    # frase, distinta da quella del caso "specchio illeggibile".
+    assert any(m.startswith("1 entita' di questa casa") for m in esito["non_ho_potuto_guardare"]), (
+        "il motivo deve dire QUANTE entita' (esattamente 1, non un altro numero che "
+        "contenga la cifra '1') e PERCHE', distinto dal caso 'specchio illeggibile' -- "
+        "qui lo specchio si legge benissimo, solo non porta un nome per QUESTA entita'")
+
+
+@pytest.mark.asyncio
+async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(archivio_casa, memoria):
+    """N2 (ri-review): dopo I3, il ramo `senza_nome_vivo` di `_cecita` si
+    accende su OGNI `cerca`, comprese quelle riuscite -- perche' sull'impianto
+    vero esistono SEMPRE entita' senza nome ne' nel registro ne' nello
+    specchio (un fatto stabile della casa, non un guasto di questa ricerca:
+    il ledger ne conta 376). `non_ho_potuto_guardare` esiste per spiegare un
+    `trovati` vuoto che potrebbe nascondere qualcosa (vedi il docstring di
+    `_cecita`): non ha niente da spiegare quando la ricerca ha gia' trovato
+    quello che cercava. Senza il fix, un modello riceve questa riserva a
+    OGNI turno, comprese le risposte giuste -- l'invariante 4 applicata bene
+    ma rivoltata contro se stessa (esitazione sistematica)."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.c", "name": "Luce cucina"},
+        {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
+
+    class _SpecchioSenzaLaSecondaVoce:
+        loaded = True
+        def all_states(self):
+            # "light.senza" non compare: lo specchio e' leggibile ma non sa
+            # come Home Assistant chiama proprio questa entita' -- lo stesso
+            # fatto stabile misurato sull'impianto vero.
+            return [{"id": "light.c", "state": "on", "name": "Luce cucina"}]
+
+    esito = await DispatcherStrumenti(archivio_casa, memoria,
+                                      cache=_SpecchioSenzaLaSecondaVoce()).dispatch(
+        "cerca", {"testo": "luce cucina"})
+    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+    assert riferimenti == ["light.c"]
+    assert "non_ho_potuto_guardare" not in esito, (
+        "la ricerca ha trovato cio' che cercava: non_ho_potuto_guardare non deve "
+        "comparire solo perche' ALTRE entita' della casa sono strutturalmente "
+        "senza nome -- altrimenti la chiave si accende a ogni cerca riuscita e "
+        "smette di essere un segnale")
 
 
 @pytest.mark.asyncio
