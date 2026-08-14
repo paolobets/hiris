@@ -37,9 +37,13 @@ popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
 fuori schema vengono scartate PRIMA che /data/options.json esista, quindi
 l'ambiente e' muto e la semina scrive i predefiniti su un archivio che pero' e'
 gia' `seminato`, e quindi esce subito); in sviluppo si'. **Esce con la fetta
-successiva**, insieme a `server._catena_com_era` e a
-`impostazioni_chat._giorni_da_ambiente`, quando nessuna installazione potra'
-piu' arrivare non seminata.
+successiva**, insieme a `impostazioni_chat._giorni_da_ambiente`, quando nessuna
+installazione potra' piu' arrivare non seminata.
+
+`server._catena_com_era` era elencata qui accanto, e **non esce con loro**: con
+gli interruttori tolti non copia piu' niente da nessuna parte, COMPONE la
+catena di ogni installazione nuova, e cancellarla e basta la farebbe nascere
+con la catena vuota e la chat muta. Va decisa -- vedi la sua docstring.
 
 Funzione PURA: `ambiente` e' un dizionario gia' letto, non `os.environ`.
 """
@@ -78,6 +82,25 @@ _PREDEFINITI = {
     "nascondi_gratuiti": False,
     "strategia_ultima": "balanced",
 }
+
+# Le sette variabili che `run.sh` esportava e che dalla versione B non esporta
+# piu'. Servono a distinguere due casi che il log confondeva in una riga sola:
+# «c'erano dei valori, e valevano il predefinito» e «non c'era NIENTE da
+# leggere». Dalla 3.0.0 il secondo e' la condizione normale -- via Supervisor
+# e' l'UNICA possibile -- e dire «erano tutti ai predefiniti» quando non si e'
+# letto niente afferma piu' di cio' che il sistema sa. Su un archivio
+# illeggibile quella riga era, insieme a quella della catena, l'unica cosa che
+# l'utente leggeva mentre dodici sue decisioni sparivano.
+_VARIABILI = ("BRIDGE_ENABLED", "BRIDGE_DEADLINE_MIN", "CHAT_DAILY_CAP",
+              "LOCAL_MODEL_NAME", "OLLAMA_REQUEST_TIMEOUT",
+              "HIRIS_HIDE_FREE_MODELS", "LLM_STRATEGY")
+
+
+def ambiente_muto(ambiente: dict) -> bool:
+    """Nessuna delle sette variabili porta un valore. `""` conta come muto:
+    e' cio' che `bashio::config` restituisce per un campo vuoto, ed e' anche
+    cio' che resta quando l'opzione non esiste piu'."""
+    return not any(str(ambiente.get(n) or "").strip() for n in _VARIABILI)
 
 
 def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
@@ -119,6 +142,20 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
             "nascondi_gratuiti=%r, strategia=%r.",
             ", ".join(sorted(copiate)), valori["ponte"], valori["ollama"],
             valori["nascondi_gratuiti"], valori["strategia_ultima"],
+        )
+    elif ambiente_muto(ambiente):
+        # Il caso normale dalla 3.0.0: le opzioni non esistono piu', quindi non
+        # c'era NIENTE da leggere. Non si dice «erano tutti ai predefiniti»:
+        # sarebbe un'affermazione sui valori dell'utente, e nessun valore
+        # dell'utente e' stato letto. Se ci si arriva con un archivio che
+        # ESISTEVA ma non si e' potuto leggere, la riga che lo dice l'ha gia'
+        # scritta `_leggi_archivio_grezzo` (logger.error), e questa non la
+        # contraddice piu'.
+        log.info(
+            "Migrazione (versione A): non c'era nessuna opzione dell'add-on da "
+            "copiare -- sono uscite dallo schema con la 3.0.0. L'archivio di "
+            "HIRIS e' la sola fonte di queste decisioni, e i campi che non "
+            "aveva partono dai suoi predefiniti."
         )
     else:
         log.info(
@@ -169,14 +206,20 @@ def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[di
         return archivio, True
     if not catena_di_oggi:
         log.info(
-            "Migrazione della catena: non c'era nessun provider utilizzabile da "
-            "copiare. La catena resta vuota, e la pagina Modelli lo dichiara."
+            "Catena iniziale: nessuna credenziale utilizzabile, quindi la "
+            "catena nasce vuota. La pagina Modelli lo dichiara e dice il gesto."
         )
         return archivio, True
     archivio["chain_order"] = list(catena_di_oggi)
+    # NON «la catena che HIRIS stava usando»: qui ci arriva anche
+    # un'installazione nata ieri, che non stava usando niente e la cui catena
+    # e' stata COMPOSTA adesso dalle credenziali presenti. Dichiarare una
+    # storia che non c'e' stata e' l'invariante 3 violato in un punto che, da
+    # questa versione, si esegue a OGNI installazione nuova. Si dice quindi
+    # solo cio' che si sa: da dove viene l'ordine, e dove si cambia.
     log.info(
-        "Migrazione della catena: la catena che HIRIS stava usando e' stata "
-        "copiata nell'archivio e da adesso si riordina dalla pagina Modelli. "
-        "Ordine copiato: %s.", " -> ".join(catena_di_oggi),
+        "Catena iniziale scritta nell'archivio: composta con i provider di cui "
+        "c'e' una credenziale, nell'ordine del preset. Da adesso si riordina "
+        "dalla pagina Modelli. Ordine: %s.", " -> ".join(catena_di_oggi),
     )
     return archivio, True

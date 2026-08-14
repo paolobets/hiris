@@ -777,6 +777,45 @@ def test_il_token_senza_ponte_si_sente_dire_all_avvio_DOVE_si_accende():
     )
 
 
+def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti():
+    """**C3 della revisione del commit 3.0.0: il nodo era pinnato, l'arco no.**
+
+    I tre test qui sopra provano `_avvisi_del_ponte` come funzione pura -- le
+    stringhe che restituisce. Nessuno provava che qualcuno le stampasse:
+    sostituire il ciclo di `_on_startup` con `pass` lasciava la suite intera
+    verde (1612 passed), e con lui spariva il PRIMO dei tre segnali della
+    perdita del ponte -- l'unico che arriva a chi non apre la pagina Modelli di
+    sua iniziativa. Gli altri due (la frase in cima alla pagina e il bottone)
+    l'utente li incontra solo se va a cercarli: la chat, dopo l'aggiornamento,
+    risponde normalmente e la differenza si vede sulla fattura.
+
+    Si guarda il sorgente, come `test_lo_stesso_gate_governa_la_spazzata_e_l_
+    instradamento`: `_on_startup` non e' eseguibile nei test (ogni fixture fa
+    `app.on_startup.clear()`), quindi un test di comportamento qui proverebbe
+    un avvio che nessuno esegue.
+    """
+    import inspect
+
+    from hiris.app import server
+
+    # Solo le righe VIVE: un commento che spiega perche' l'avviso sta in fondo
+    # all'avvio cita il nome, e citarlo non e' stamparlo.
+    righe = [r for r in inspect.getsource(server._on_startup).splitlines()
+             if not r.lstrip().startswith("#")]
+    chiamata = [r for r in righe if "_avvisi_del_ponte(" in r]
+    assert chiamata, (
+        "nessuno chiama piu' `_avvisi_del_ponte` all'avvio: la funzione resta "
+        "corretta e provata, e non la esegue nessuno -- chi aggiorna con il "
+        "token e il ponte spento non riceve piu' nessun segnale che non sia "
+        "andato a cercarsi"
+    )
+    assert [r for r in righe if "logger.warning(_avviso)" in r], (
+        "gli avvisi si compongono e non finiscono piu' nel registro, o non ci "
+        "finiscono piu' come warning: col livello `info` predefinito un "
+        "`logger.debug` non si vedrebbe"
+    )
+
+
 @pytest.mark.parametrize("ponte,token", [(True, True), (False, False)])
 def test_gli_stati_sani_non_dicono_niente(ponte, token):
     """Il gemello obbligatorio: un avviso che compare sempre e' rumore, e il

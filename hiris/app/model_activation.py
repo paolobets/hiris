@@ -22,10 +22,15 @@ chi diventa credenziato compare in «Fuori dalla catena», visibile, a un gesto
 di distanza. Cio' che si guadagna e' che NIENTE entra in catena senza che
 qualcuno ce l'abbia messo.
 
-La regola pre-2.5 non e' sparita dal repo: vive in `server._catena_com_era`,
-eseguita UNA volta alla migrazione per copiare nell'archivio la catena che
-HIRIS stava gia' usando. Li' non e' piu' una regola del prodotto, e' un pezzo
-di storia -- e sparisce con la versione B della migrazione (Task 13).
+Della regola pre-2.5 resta nel repo la sola META' di compatibilita' («ogni
+provider con una credenziale entra in catena»), in `server._catena_com_era`:
+serviva a copiare nell'archivio la catena che HIRIS stava gia' usando. L'altra
+meta' -- quella che leggeva i cinque interruttori -- e' uscita con la versione
+B, che li ha tolti dallo schema: senza produttore, era codice irraggiungibile.
+
+Quello che resta NON sparisce con la versione B, contrariamente a quanto questa
+riga diceva: e' cio' che compone la catena di ogni installazione NUOVA, e senza
+non ne nascerebbe nessuna. Va deciso, non ereditato -- vedi la sua docstring.
 """
 from __future__ import annotations
 

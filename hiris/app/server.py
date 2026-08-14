@@ -166,29 +166,40 @@ def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
 # passa una catena (`model_chain=None`), ed e' pinnato dai suoi test.
 
 
-def _catena_com_era(strategia: str, credenziali: dict, interruttori: dict,
-                    ponte: bool) -> list[str]:
-    """La catena che HIRIS usava con la regola PRE-2.5: la si esegue una volta
-    sola, alla migrazione, per copiarne il risultato nell'archivio.
+def _catena_com_era(strategia: str, credenziali: dict, ponte: bool) -> list[str]:
+    """La catena con cui nasce un archivio che non ha ancora la sua: **ogni
+    provider di cui c'e' una credenziale**, nell'ordine del preset.
 
-    Vive QUI e non in `model_activation.py` perche' non e' piu' una regola del
-    prodotto: e' un pezzo di storia che serve a non perdere una configurazione.
-    Sparisce insieme alla versione B (Task 13), quando nessuna installazione
-    puo' piu' arrivare non seminata.
+    Si chiama ancora «com'era» perche' e' cio' che la regola pre-2.5 produceva
+    sull'installazione del proprietario, ed e' per quello che esiste: copiare
+    la catena invece di far passare quell'impianto da «due provider lavorano» a
+    «zero provider». Ma non e' piu' una copia della vecchia regola per intero.
 
-    E' `derive_active_providers` + `reconcile_chain` senza il ramo dell'ordine
-    manuale: qui si arriva solo quando `chain_order` e' vuota, quindi il ramo
-    manuale non avrebbe niente da filtrare.
+    **Aveva un secondo ramo, ed e' uscito con la versione B.** La vecchia
+    regola era in due tempi: `legacy = not any(interruttori)` -- nessuno dei
+    cinque `provider_*` acceso, e allora contava la sola credenziale -- oppure,
+    con almeno un interruttore acceso, contavano solo gli accesi. I cinque
+    interruttori sono usciti dallo schema e `run.sh` non esporta piu' nessuno
+    dei cinque `PROVIDER_*`: via Supervisor `legacy` era strutturalmente sempre
+    vero e il secondo ramo era codice irraggiungibile. Tenerlo qui voleva dire
+    tenere a schermo una regola che non puo' piu' girare -- e i test che la
+    esercitavano difendevano uno stato che nessun utente puo' produrre.
+
+    Resta quindi la sola regola di compatibilita', scritta per quello che e'.
+    **E va DECISA, non ereditata** (G3 della revisione): non e' piu' una
+    migrazione che si esaurisce, si esegue su ogni installazione nuova finche'
+    qualcuno non decide che catena deve trovare chi installa HIRIS oggi. La
+    fetta successiva non puo' limitarsi a cancellarla: senza, un'installazione
+    nuova nasce con la catena vuota e la chat muta.
+
+    Il piano non e' un membro della catena: entra solo se il ponte e' acceso, e
+    quello lo dice `ponte.attivo`, non l'appartenenza.
     """
     from .llm_router import _STRATEGY_ORDER
-    legacy = not any(interruttori.values())
     attivi = {}
     for p in ("subscription", "claude", "openai", "openrouter", "ollama"):
         ha = bool(credenziali.get(p))
-        if legacy:
-            attivi[p] = (ha and ponte) if p == "subscription" else ha
-        else:
-            attivi[p] = interruttori.get(p, False) and ha
+        attivi[p] = (ha and ponte) if p == "subscription" else ha
     ordine = _STRATEGY_ORDER.get(strategia, _STRATEGY_ORDER["balanced"])
     return [n for n in ordine if attivi.get(n)]
 
@@ -1312,31 +1323,32 @@ async def _on_startup(app: web.Application) -> None:
         "ollama": bool(local_model_url),
     }
 
-    # ── Migrazione della catena (versione A, seconda meta') ──────────────
-    # L'ULTIMO istante in cui la vecchia regola esiste: la catena che HIRIS
-    # stava usando viene copiata nell'archivio PRIMA che la derivazione dai
-    # cinque interruttori sparisca. Senza questa copia, l'installazione del
+    # ── La catena iniziale di un archivio che non ce l'ha ────────────────
+    # Nata come seconda meta' della migrazione: la catena che HIRIS stava
+    # usando copiata nell'archivio PRIMA che la derivazione dai cinque
+    # interruttori sparisse. Senza quella copia, l'installazione del
     # proprietario -- cinque interruttori a false, credenziali presenti --
-    # passerebbe da «due provider lavorano» a «zero provider».
+    # sarebbe passata da «due provider lavorano» a «zero provider».
+    # Con la versione B i cinque interruttori NON esistono piu' e `run.sh` non
+    # esporta piu' i cinque `PROVIDER_*`: qui non si copia piu' niente da
+    # nessuna parte, si COMPONE una catena dalle credenziali presenti. E' la
+    # sola regola di compatibilita' rimasta, e a differenza delle altre letture
+    # di migrazione non si esaurisce: gira su ogni installazione nuova. Va
+    # DECISA dalla fetta successiva, non ereditata (G3) -- e cancellarla e
+    # basta farebbe nascere ogni installazione nuova con la catena vuota.
     # La guardia e' il SEGNO, non la forma della catena: una `chain_order`
     # vuota, da questa fetta, e' una decisione esprimibile in due click, e
     # regolarsi su di lei faceva ripopolare al riavvio una catena svuotata di
-    # proposito -- con `_catena_com_era`, cioe' con la regola `legacy` che
-    # questa fetta ha tolto dal prodotto. Vedi `semina_catena`.
+    # proposito. Vedi `semina_catena`.
     from .migrazione_opzioni import semina_catena
     if not app["models_config"].get("catena_seminata"):
         _catena_di_oggi = _catena_com_era(
             os.environ.get("LLM_STRATEGY", "balanced"),
             # Le credenziali COM'ERANO, non quelle di adesso: la credenziale di
             # Ollama comprendeva il nome del modello. Passare quelle nuove
-            # farebbe entrare in catena, per migrazione, un Ollama che la
-            # vecchia regola non ci aveva MAI messo -- cioe' la migrazione
-            # inventerebbe invece di copiare.
+            # farebbe entrare in catena un Ollama che la vecchia regola non ci
+            # aveva MAI messo -- cioe' si inventerebbe invece di copiare.
             {**_credenziali, "ollama": bool(local_model_url and _nome_modello_com_era)},
-            {k: env_bool(v) for k, v in {
-                "subscription": "PROVIDER_SUBSCRIPTION", "claude": "PROVIDER_CLAUDE",
-                "openai": "PROVIDER_OPENAI", "openrouter": "PROVIDER_OPENROUTER",
-                "ollama": "PROVIDER_OLLAMA"}.items()},
             env_bool("BRIDGE_ENABLED"),
         )
         _arch, _da_salvare = semina_catena(dict(app["models_config"]),

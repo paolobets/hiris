@@ -94,6 +94,53 @@ def test_un_ambiente_vuoto_lascia_i_predefiniti_e_semina_lo_stesso():
     assert fuori["strategia_ultima"] == "balanced"
 
 
+def test_un_ambiente_muto_non_afferma_che_i_valori_erano_ai_predefiniti():
+    """**C2 della revisione del commit 3.0.0.** «Erano tutti ai predefiniti» e'
+    un'affermazione sui valori dell'utente, e con l'ambiente muto nessun valore
+    dell'utente e' stato letto. Dalla versione B e' la condizione NORMALE (via
+    Supervisor l'unica possibile), non l'eccezione.
+
+    E la stessa riga compariva nel caso peggiore: archivio troncato, `seminato`
+    tornato a falso, dodici decisioni riscritte dai predefiniti -- e questa
+    riga, insieme a quella della catena, era l'unica cosa che l'utente
+    leggeva."""
+    reg = logging.getLogger("muto")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    reg.addHandler(h)
+    reg.setLevel(logging.INFO)
+    try:
+        semina(_vuoto(), {}, log=reg)
+    finally:
+        reg.removeHandler(h)
+    testo = buf.getvalue()
+    assert "erano tutti ai predefiniti" not in testo, (
+        "afferma di aver guardato dei valori che non ha potuto leggere"
+    )
+    assert "nessuna opzione dell'add-on da copiare" in testo, (
+        "e il silenzio totale non va bene neanche lui: chi legge il registro "
+        "deve sapere PERCHE' non e' stato copiato niente"
+    )
+
+
+def test_un_ambiente_popolato_ai_predefiniti_lo_dice_ancora():
+    """Il ramo gemello, che resta vero e quindi resta: qui le variabili ci
+    sono davvero e valgono il predefinito. La distinzione fra i due casi e'
+    tutto il punto della chiusura."""
+    reg = logging.getLogger("ai-predefiniti")
+    buf = io.StringIO()
+    h = logging.StreamHandler(buf)
+    reg.addHandler(h)
+    reg.setLevel(logging.INFO)
+    try:
+        _, copiate = semina(_vuoto(), {"BRIDGE_ENABLED": "false",
+                                       "CHAT_DAILY_CAP": "50"}, log=reg)
+    finally:
+        reg.removeHandler(h)
+    assert copiate == []
+    assert "erano tutti ai predefiniti" in buf.getvalue()
+
+
 def test_un_valore_non_numerico_non_fa_saltare_l_avvio():
     """`run.sh` esporta stringhe, e `bashio::config` su un campo vuoto torna "".
     Un ValueError qui fermerebbe l'add-on all'avvio per un'opzione che l'utente
@@ -266,8 +313,18 @@ def test_la_semina_della_catena_si_dichiara_nel_log_con_l_ordine_vero():
         reg.removeHandler(h)
     testo = buf.getvalue()
     assert "openrouter -> claude" in testo, (
-        "una catena copiata senza essere nominata non e' dichiarata: "
-        "l'operatore non puo' verificare che sia quella che stava usando"
+        "una catena scritta senza essere nominata non e' dichiarata: "
+        "l'operatore non puo' verificare che sia quella giusta"
+    )
+    # **C2 della revisione del commit 3.0.0, porta 1.** Qui ci arriva anche
+    # un'installazione nata ieri, che non stava usando NIENTE e la cui catena
+    # e' stata composta adesso dalle credenziali presenti. Da questa versione
+    # quel ramo si esegue a OGNI installazione nuova, per sempre: raccontare
+    # una storia che non c'e' stata e' l'invariante 3 («nessuna parola che
+    # affermi piu' di cio' che il sistema sa») violato dove si esegue di piu'.
+    assert "stava usando" not in testo, (
+        "il log afferma che HIRIS stava usando questa catena: su "
+        "un'installazione nuova non e' vero, e quel ramo e' il caso normale"
     )
 
 
@@ -372,12 +429,14 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
              "local_model_url, _nome_modello_com_era):\n")
     func_src = firma + textwrap.indent(corpo, "    ")
     # `env_bool` legge `os.environ` DENTRO env_util.py, quindi l'`os` finto
-    # passato al blocco non la raggiunge: se si lasciasse quella vera, i cinque
-    # interruttori arriverebbero dall'ambiente del processo di test e il caso
-    # «un interruttore acceso» non sarebbe esprimibile. Si sostituisce con una
-    # che legge lo STESSO dizionario finto e con le STESSE regole di verita'
-    # (`_TRUTHY` di env_util, non un `== "true"` scritto qui: una finta piu'
-    # permissiva o piu' severa della realta' proverebbe un'altra cosa).
+    # passato al blocco non la raggiunge: se si lasciasse quella vera,
+    # `BRIDGE_ENABLED` -- l'unica variabile che questo blocco legge ancora,
+    # dopo l'uscita dei cinque `PROVIDER_*` col ramo morto -- arriverebbe
+    # dall'ambiente del processo di test, e il ponte non sarebbe esprimibile
+    # dal caso. Si sostituisce con una che legge lo STESSO dizionario finto e
+    # con le STESSE regole di verita' (`_TRUTHY` di env_util, non un `==
+    # "true"` scritto qui: una finta piu' permissiva o piu' severa della
+    # realta' proverebbe un'altra cosa).
     from hiris.app.env_util import _TRUTHY
 
     def _env_bool_finta(nome, default=False):
@@ -456,16 +515,16 @@ def test_la_strategia_scelta_decide_l_ordine_copiato(tmp_path):
     assert app["models_config"]["chain_order"] == ["openrouter", "claude"]
 
 
-def test_con_gli_interruttori_accesi_vale_quello_che_dicono_loro(tmp_path):
-    """L'altro ramo della vecchia regola: acceso almeno un interruttore, la
-    compatibilita' cadeva e contavano solo gli accesi. Chi era in quello stato
-    deve ritrovare la SUA catena, non quella di chi non aveva toccato niente."""
-    app = _avvia_la_semina_della_catena(
-        tmp_path,
-        {"LLM_STRATEGY": "balanced", "PROVIDER_OPENROUTER": "true"},
-        CREDENZIALI_DEL_PROPRIETARIO,
-    )
-    assert app["models_config"]["chain_order"] == ["openrouter"]
+# Qui viveva `test_con_gli_interruttori_accesi_vale_quello_che_dicono_loro`:
+# provava il SECONDO ramo della vecchia regola (`legacy = not
+# any(interruttori)` falso, e allora contavano solo gli interruttori accesi).
+# E' uscito con quel ramo (G4 della revisione): i cinque `provider_*` non sono
+# piu' nello schema e `run.sh` non esporta piu' nessuno dei cinque
+# `PROVIDER_*`, quindi via Supervisor gli interruttori erano strutturalmente
+# tutti falsi e quel ramo era irraggiungibile. Non era un test che non poteva
+# fallire -- falliva benissimo -- era un test che difendeva un comportamento
+# che nessun utente puo' piu' produrre, e che teneva in vita una firma con un
+# parametro morto.
 
 
 def test_il_piano_non_entra_mai_in_chain_order(tmp_path):
@@ -534,7 +593,7 @@ def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato
     secondo = _avvia_la_semina_della_catena(
         tmp_path, ambiente, CREDENZIALI_DEL_PROPRIETARIO)
     assert secondo["models_config"]["chain_order"] == [], (
-        "al riavvio la catena svuotata di proposito si e' ripopolata dai "
-        "cinque interruttori: la regola `legacy` e' rientrata dalla quarta "
-        "porta, e la spesa a consumo riparte da sola"
+        "al riavvio la catena svuotata di proposito si e' ripopolata da "
+        "`_catena_com_era`: la regola di compatibilita' e' rientrata dalla "
+        "quarta porta, e la spesa a consumo riparte da sola"
     )

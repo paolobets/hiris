@@ -228,3 +228,97 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     # E le sei decisioni, quelle si', sono passate: il filtro toglie i segni,
     # non la scrittura.
     assert cfg["chain_order"] == []
+
+
+# ---------------------------------------------------------------------------
+# C2 della revisione del commit 3.0.0: **la quinta porta della regola
+# «legacy»**, ed e' questa versione a renderla irreversibile.
+#
+# `load_models_config` inghiottiva OGNI eccezione di lettura in `raw = {}`
+# senza una riga di log. Con un file troncato -- una scrittura interrotta su
+# una scheda SD -- l'avvio ripartiva dai predefiniti, ricomponeva la catena con
+# la regola di compatibilita', e `save_models_config` (che parte dal disco)
+# sovrascriveva il file. Dodici decisioni dell'utente sparivano, e le due sole
+# righe che parlavano affermavano ENTRAMBE il falso: «erano tutti ai
+# predefiniti» e «la catena che HIRIS stava usando e' stata copiata».
+#
+# Fino alla 2.5.0 era in buona parte recuperabile: l'ambiente era popolato e la
+# semina ricopiava i valori dalle opzioni. Da questa versione le quattordici
+# opzioni sono uscite dallo schema e l'archivio e' l'UNICA copia esistente.
+# ---------------------------------------------------------------------------
+
+_ARCHIVIO_DELL_UTENTE = (
+    '{"chain_order": ["ollama"], "ponte": {"attivo": true, "scadenza_min": 30,'
+    ' "tetto_giornaliero": 500}, "ollama": {"modello": "gemma3:27b", "timeo'
+)   # troncato a meta', come lo lascia una scrittura interrotta
+
+
+def test_un_archivio_illeggibile_lo_dice_invece_di_azzerarsi_in_silenzio(tmp_path, caplog):
+    (tmp_path / "models_config.json").write_text(_ARCHIVIO_DELL_UTENTE,
+                                                 encoding="utf-8")
+    with caplog.at_level("ERROR"):
+        cfg = load_models_config(str(tmp_path))
+
+    assert cfg["chain_order"] == []          # i predefiniti, come prima
+    errori = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert any("non si e' potuto leggere" in m for m in errori), (
+        "dodici decisioni dell'utente sono sparite e nessuna riga dice che il "
+        "file non si e' potuto leggere: le uniche due che parlano sono quelle "
+        "della semina, e affermano il contrario"
+    )
+
+
+def test_un_archivio_illeggibile_si_mette_da_parte_invece_di_essere_sovrascritto(tmp_path):
+    """Un byte di disco contro dodici decisioni. Senza il rinomino, il primo
+    salvataggio -- che dall'avvio arriva da solo, con la semina -- porta via i
+    byte per sempre, e da questa versione non c'e' piu' niente da cui
+    rileggerli."""
+    (tmp_path / "models_config.json").write_text(_ARCHIVIO_DELL_UTENTE,
+                                                 encoding="utf-8")
+    load_models_config(str(tmp_path))
+
+    guasto = tmp_path / "models_config.json.corrotto"
+    assert guasto.exists(), (
+        "il file illeggibile e' rimasto al suo posto, e il prossimo "
+        "salvataggio ci scrive sopra"
+    )
+    assert guasto.read_text(encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
+    assert not (tmp_path / "models_config.json").exists()
+
+    # E il salvataggio che segue non tocca la copia messa da parte.
+    save_models_config(str(tmp_path), {"chain_order": ["claude"]})
+    assert guasto.read_text(encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
+
+
+def test_il_corrotto_piu_vecchio_non_si_sovrascrive(tmp_path):
+    """Il secondo guasto ci scriverebbe sopra l'archivio dei predefiniti gia'
+    riscritto, cioe' niente: la copia che vale e' la PRIMA."""
+    (tmp_path / "models_config.json.corrotto").write_text(
+        _ARCHIVIO_DELL_UTENTE, encoding="utf-8")
+    (tmp_path / "models_config.json").write_text("{rotto di nuovo",
+                                                 encoding="utf-8")
+    load_models_config(str(tmp_path))
+    assert (tmp_path / "models_config.json.corrotto").read_text(
+        encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
+
+
+def test_un_archivio_assente_resta_silenzioso(tmp_path, caplog):
+    """Il gemello obbligatorio: al primo avvio il file non c'e', ed e' normale.
+    Un errore che compare sempre e' rumore, e il rumore e' cio' che ha fatto
+    scorrere via un avvio dal registro consegnato col cancello di questa
+    fetta."""
+    with caplog.at_level("ERROR"):
+        load_models_config(str(tmp_path))
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+    assert not (tmp_path / "models_config.json.corrotto").exists()
+
+
+def test_un_archivio_che_non_e_un_oggetto_conta_come_illeggibile(tmp_path, caplog):
+    """JSON valido, ma non un dizionario: si azzerava nello stesso silenzio,
+    una riga piu' sotto."""
+    (tmp_path / "models_config.json").write_text('["claude"]', encoding="utf-8")
+    with caplog.at_level("ERROR"):
+        load_models_config(str(tmp_path))
+    assert any("invece di un oggetto JSON" in r.getMessage()
+               for r in caplog.records if r.levelname == "ERROR")
+    assert (tmp_path / "models_config.json.corrotto").exists()

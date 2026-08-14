@@ -39,7 +39,7 @@ configuration:
     name: "Ollama — where it is"
     description: "Where to find Ollama. The address is kept here; the model and the wait are picked on the Models page inside HIRIS."
     url:
-      name: "Ollama — address"
+      name: "Address"
       description: "Your instance's address, e.g. http://192.168.1.10:11434. If HIRIS cannot reach it at startup, it says so in the log."
 
   # ── 2. Appearance ─────────────────────────────────────────────────────────
@@ -52,10 +52,10 @@ configuration:
     name: "Embeddings — no effect today"
     description: "Provider and model for similarity search. They do nothing today: no part of HIRIS computes embeddings."
     embedding_provider:
-      name: "Embeddings — provider (inactive)"
+      name: "Provider (inactive)"
       description: "Which service would compute them: openai, ollama, model2vec. Today the value is read at startup and has no effect at all."
     embedding_model:
-      name: "Embeddings — model (inactive)"
+      name: "Model (inactive)"
       description: "Which model it would use: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Today it is never invoked."
 
   # ── 4. Advanced: log, security ────────────────────────────────────────────

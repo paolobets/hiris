@@ -7,9 +7,12 @@ incrociati con le credenziali e la regola di compatibilita'
 stato di un provider -- quella per cui, sull'unica installazione esistente, due
 provider lavoravano mentre la pagina li mostrava spenti.
 
-La vecchia regola non e' scomparsa dal repo: vive in `server._catena_com_era`,
-eseguita una volta alla migrazione, ed e' provata li'
-(`tests/test_migrazione_opzioni.py`).
+Della vecchia regola resta nel repo la sola META' di compatibilita', in
+`server._catena_com_era`, ed e' provata li'
+(`tests/test_migrazione_opzioni.py`). Il ramo che leggeva gli interruttori e'
+uscito con loro: senza nessuno che esporti i cinque `PROVIDER_*`, era
+irraggiungibile, e il test che lo esercitava difendeva uno stato che nessun
+utente puo' produrre.
 """
 from hiris.app.model_activation import provider_in_catena
 

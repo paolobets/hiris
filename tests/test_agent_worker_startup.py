@@ -127,6 +127,62 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
     assert finto.fermato is False
 
 
+# ---------------------------------------------------------------------------
+# C3 della revisione del commit 3.0.0: **il NODO era pinnato, l'ARCO no.**
+# I tre test qui sopra chiamano `_governa_lavoratore_del_ponte` DIRETTAMENTE.
+# Nessuno provava che `_ricalcola_catena` la chiamasse, e sostituire quella
+# riga con `pass` lasciava la suite intera verde (1612 passed). E' esattamente
+# la quarta condizione senza cui «Mettilo primo» torna a essere un bottone che
+# risponde 200 e fa aspettare cinque minuti: il valore arriva al disco, il
+# runtime lo segue, ma nessuno risponde sulla coda.
+#
+# Si prova col COMPORTAMENTO e non col sorgente: `_ricalcola_catena` sull'app
+# vera, e il lavoratore c'e' o non c'e'.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(monkeypatch):
+    """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
+    `_ricalcola_catena`. Se questa si limitasse a cablare `app["ponte_attivo"]`
+    senza governare il lavoratore, ogni turno andrebbe in una coda senza
+    consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+    monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
+    from hiris.app import server
+
+    app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []}}
+    server._ricalcola_catena(app)
+
+    assert app["ponte_attivo"] is True
+    compito = app.get("agent_worker_task")
+    assert compito is not None, (
+        "il salvataggio ha acceso il ponte e non ha fatto partire chi "
+        "risponde: il bottone «Mettilo primo» risponde 200 e fa aspettare"
+    )
+    compito.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await compito
+
+
+@pytest.mark.asyncio
+async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(monkeypatch):
+    """Il ramo inverso dello stesso arco: «Togli il piano dalla catena» deve
+    fermare il ciclo, o resterebbe a interrogare una coda vuota ogni tre
+    secondi finche' l'add-on non viene riavviato -- venticinquemila righe in
+    due ore, che e' cio' che ha fatto scorrere via un avvio dal registro."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+    from hiris.app import server
+
+    finto = _CompitoFinto()
+    app = {"models_config": {"ponte": {"attivo": False}, "chain_order": []},
+           "agent_worker_task": finto}
+    server._ricalcola_catena(app)
+
+    assert app["ponte_attivo"] is False
+    assert finto.fermato is True
+    assert app["agent_worker_task"] is None
+
+
 def test_senza_un_loop_non_si_avvia_niente_e_non_si_solleva_niente(monkeypatch):
     """`_ricalcola_catena` e' una funzione di modulo e i test la chiamano fuori
     da un server (`test_model_activation.py`). Un compito asincrono non ha dove

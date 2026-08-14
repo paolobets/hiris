@@ -141,16 +141,83 @@ def _models_config_path(data_dir: str) -> str:
     return os.path.join(data_dir, "models_config.json")
 
 
-def load_models_config(data_dir: str) -> dict:
+def _metti_da_parte_l_archivio_illeggibile(path: str) -> None:
+    """Rinomina in `.corrotto` invece di lasciarlo sovrascrivere.
+
+    `save_models_config` fa lettura-modifica-scrittura partendo dal disco: se
+    il disco non si legge riparte da `{}` e al primo salvataggio -- che
+    dall'avvio arriva da solo, con la semina -- i byte di prima sono persi per
+    sempre. Un byte di disco contro dodici decisioni.
+
+    Il piu' VECCHIO `.corrotto` non si sovrascrive: e' quello scritto quando il
+    file era ancora quello dell'utente. Un secondo guasto salverebbe sopra di
+    lui l'archivio dei predefiniti gia' riscritto, cioe' niente.
+    """
+    guasto = path + ".corrotto"
     try:
-        with open(_models_config_path(data_dir), encoding="utf-8") as fh:
-            raw = json.load(fh)
+        if os.path.exists(guasto):
+            logger.error(
+                "%s esiste gia' e non viene sovrascritto: contiene la copia "
+                "piu' vecchia, cioe' l'unica che puo' ancora avere i tuoi "
+                "valori. Il file illeggibile di adesso resta dov'e'.", guasto)
+            return
+        os.replace(path, guasto)
+        logger.error(
+            "Il file illeggibile e' stato messo da parte in %s invece di essere "
+            "sovrascritto: da li' si possono ancora recuperare a mano i valori "
+            "che conteneva.", guasto)
+    except OSError as errore:
+        logger.error(
+            "Non si e' potuto mettere da parte %s (%s): il prossimo salvataggio "
+            "lo sovrascrivera'.", path, errore)
+
+
+def _leggi_archivio_grezzo(path: str) -> dict:
+    """Legge `models_config.json`, e quando NON si legge lo dice e lo mette da parte.
+
+    Questa lettura falliva in `{}` senza una riga di log. Da questa versione
+    l'archivio e' l'UNICA copia esistente di dodici decisioni dell'utente (le
+    quattordici opzioni sono uscite dallo schema dell'add-on): un file troncato
+    -- una scrittura interrotta su una scheda SD -- faceva ripartire l'avvio
+    dai predefiniti, ricomporre la catena con la regola di compatibilita', e
+    riscrivere sopra. Le due sole righe che parlavano erano quelle della
+    semina, e affermavano entrambe il contrario («erano tutti ai predefiniti»,
+    «la catena e' stata copiata»).
+
+    Stessa disciplina di `brain_model` qui sotto -- «il silenzio si dichiara»
+    -- su una posta incomparabilmente piu' alta. `FileNotFoundError` resta
+    silenzioso: e' il primo avvio, ed e' normale.
+
+    Unico lettore del file: `load_models_config` e `save_models_config` passano
+    di qui, o la regola varrebbe in un posto solo -- e il posto scoperto
+    sarebbe proprio quello che riscrive.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            grezzo = json.load(fh)
     except FileNotFoundError:
-        raw = {}
-    except Exception:
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+        return {}
+    except Exception as errore:
+        logger.error(
+            "%s non si e' potuto leggere (%s: %s). HIRIS riparte dai predefiniti: "
+            "catena, ponte, Ollama, filtro dei gratuiti e preset che avevi "
+            "scelto NON sono stati letti. Da questa versione questo file e' "
+            "l'unica copia di quelle decisioni.",
+            path, type(errore).__name__, errore)
+        _metti_da_parte_l_archivio_illeggibile(path)
+        return {}
+    if not isinstance(grezzo, dict):
+        logger.error(
+            "%s contiene %s invece di un oggetto JSON. HIRIS riparte dai "
+            "predefiniti: le decisioni che conteneva NON sono state lette.",
+            path, type(grezzo).__name__)
+        _metti_da_parte_l_archivio_illeggibile(path)
+        return {}
+    return grezzo
+
+
+def load_models_config(data_dir: str) -> dict:
+    raw = _leggi_archivio_grezzo(_models_config_path(data_dir))
     raw_chain = raw.get("chain_order", [])
     if not isinstance(raw_chain, list):
         raw_chain = []
@@ -194,15 +261,10 @@ def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dic
     # le chiavi che questa versione possiede (_CHIAVI_NOSTRE) vengono
     # aggiornate; qualunque altra chiave gia' sul disco (incl. 'brain_model')
     # resta intatta.
-    disk_data: dict = {}
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as fh:
-                disk_data = json.load(fh)
-        except Exception:
-            disk_data = {}
-    if not isinstance(disk_data, dict):
-        disk_data = {}
+    # Stessa lettura di `load_models_config`, e quindi stessa regola quando il
+    # file non si legge: lo dice e lo mette da parte. Qui vale ancora di piu',
+    # perche' e' la riga DOPO che sovrascrive.
+    disk_data = _leggi_archivio_grezzo(path)
     # Task 6: la fusione parte dal CONTENUTO GIA' SU DISCO, non dai
     # predefiniti -- ed e' la STESSA ragione del fix di claude_runner._save_usage
     # per 'per_agent'. Da quando le chiavi scritte sono sette invece di due, un

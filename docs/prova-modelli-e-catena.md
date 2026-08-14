@@ -137,6 +137,14 @@ impostazioni_chat.json -- da adesso si cambia dalla pagina Impostazioni chat, e
 l'opzione dell'add-on 'history_retention_days' non serve piu'.
 ```
 
+> **Sono le righe della 2.5.0**, ed è contro la 2.5.0 che questa prova si esegue. **Dalla
+> 3.0.0 le prime due sono riscritte**, perché dicevano più di ciò che il sistema sa: la
+> prima affermava «erano tutti ai predefiniti» anche quando non c'era *niente da leggere*
+> (dalla 3.0.0 le opzioni non esistono più, ed è la condizione normale), la seconda
+> affermava «la catena che HIRIS stava usando» anche su un'installazione nata ieri, che non
+> stava usando niente. Dalla 3.0.0 si leggono `Migrazione (versione A): non c'era nessuna
+> opzione dell'add-on da copiare …` e `Catena iniziale scritta nell'archivio: … Ordine: …`.
+
 **Cosa verificare, valore per valore:**
 
 | Da guardare | Deve valere |
@@ -163,7 +171,8 @@ copia si rifà a ogni avvio e sovrascriverà per sempre ogni decisione presa dal
 
 **Poi svuota la catena e riavvia una terza volta.** Nella pagina Modelli togli **tutte** le
 righe con la ✕, finché la sezione 01 non è vuota; riavvia l'add-on; riapri la pagina. **La
-catena deve restare vuota**, e la riga «Migrazione della catena» **non deve ricomparire**.
+catena deve restare vuota**, e la riga della catena — «Migrazione della catena» sulla 2.5.0,
+«Catena iniziale» dalla 3.0.0 — **non deve ricomparire**.
 Se invece i provider tornano in catena da soli, la regola di compatibilità è rientrata
 dalla porta della migrazione — e sull'impianto del proprietario significa che **la spesa a
 consumo riparte da sola dopo ogni riavvio**. (Rimetti poi la catena che vuoi, con «Usa».)
@@ -424,7 +433,7 @@ scritta anche nel CHANGELOG.
 
 ---
 
-## ⛔ Il cancello: le quattro precondizioni della versione successiva
+## ⛔ Il cancello: le cinque precondizioni della versione successiva
 
 **Questa non è una prova, è una condizione di rilascio.** La versione successiva toglie
 quattordici opzioni dalla configurazione dell'add-on. Home Assistant scarta le chiavi fuori
@@ -432,7 +441,7 @@ schema **prima** che `/data/options.json` esista: se la rimozione arrivasse nell
 aggiornamento della copia, al primo avvio l'ambiente sarebbe già muto e HIRIS copierebbe
 **i predefiniti** — cioè esattamente la perdita silenziosa che la copia esiste per evitare.
 
-**Le quattro condizioni. Si leggono dal vivo, non si assumono.**
+**Le cinque condizioni. Si leggono dal vivo, non si assumono.**
 
 1. La **2.5.0** è **pubblicata** e **installata** sull'impianto del proprietario, e ha
    girato almeno un avvio completo.
@@ -464,7 +473,30 @@ aggiornamento della copia, al primo avvio l'ambiente sarebbe già muto e HIRIS c
    cancello **resta chiuso**: si apre «Impostazioni chat» dentro HIRIS, si salva a mano, e
    si ricontrolla il file.
 
-**Finché non ci sono tutte e quattro, la versione successiva non si comincia.** Non è una
+5. `/data/models_config.json` contiene **`"ponte": {"attivo": …}` col valore che stai
+   usando davvero** — cioè `true` se oggi la chat passa dal Piano Claude Max.
+
+   *Perché è una condizione a sé e non un dettaglio della 3.* Le prime tre nominano
+   `seminato`, `catena_seminata` e `chain_order`, e **non nominano il campo la cui perdita è
+   l'intera avvertenza della versione successiva**. E non è un dettaglio del formato: la
+   copia della 2.5.0 avviene **una volta sola, al suo primo avvio**, mentre nella 2.5.0
+   `app["ponte_attivo"]` si legge ancora **dall'ambiente**. Sono due orologi diversi. Delle
+   quattordici opzioni, **due sole restavano vive dopo quel primo avvio** — `ponte.attivo` e
+   `provider_subscription` — e sono precisamente le due il cui valore d'archivio può essere
+   **più vecchio di quello che l'impianto sta usando**: chi ha acceso il ponte *dopo* quel
+   primo avvio lo ha acceso nella 2.5.0 e non nell'archivio.
+
+   Le altre dodici non hanno questo problema: nella 2.5.0 erano già lette dall'archivio, e
+   una copia definitiva è quello che sono.
+
+   Si legge da `GET /api/models/config`, che quel campo lo pubblica
+   (`ponte: {attivo, scadenza_min, tetto_giornaliero}`) — lo stesso endpoint della 3. Se
+   dice `false` mentre oggi la chat passa dal piano, il cancello **non resta chiuso**: la
+   versione successiva si può pubblicare lo stesso, perché la riparazione è un click nella
+   pagina Modelli e la versione stessa la dichiara in tre posti. Ma va **saputo prima**, non
+   scoperto dalla fattura.
+
+**Finché non ci sono tutte e cinque, la versione successiva non si comincia.** Non è una
 formalità: è già costata una lezione su questo ramo.
 
 ### Come si è chiuso, il 14 agosto 2026
@@ -472,10 +504,23 @@ formalità: è già costata una lezione su questo ramo.
 **Aperto con due condizioni verificate e due prese per parola del proprietario**, ed è
 scritto qui perché un cancello che si apre senza dire come si è aperto non è un cancello.
 
-- La 1 è verificata: la 2.5.0 è pubblicata e installata.
+- La 1 è verificata: la 2.5.0 è pubblicata e installata, **e contiene `c055310`** — cioè le
+  tre chiusure critiche della revisione precedente, committate con lo stesso numero di
+  versione. È la conferma che mancava alla revisione della 3.0.0, e con lei cade il rischio
+  peggiore che il cancello copriva: `giorni_conservazione` **è stato scritto**, quindi chi
+  aveva `0` non si ritrova `90` e la potatura notturna non comincia a cancellare.
 - La 3 e la 4 sono confermate **dal proprietario**, che ha aperto `GET
   /api/models/config` e le impostazioni della chat e ha visto le chiavi. Non lette
   direttamente da chi ha scritto la 3.0.0.
+- **La 5 è verificata, ed è passata:** `GET /api/models/config` sull'impianto del
+  proprietario dice **`ponte.attivo` = `true`**. Il ponte era già acceso *prima* del primo
+  avvio della 2.5.0, quindi la copia lo ha preso giusto. Su questo impianto la perdita del
+  ponte **non avviene**, e non c'è nessun click da fare dopo l'aggiornamento.
+
+  La precondizione è stata scritta **dopo** che la 3.0.0 era già stata composta, dalla
+  revisione che l'ha esaminata: le prime quattro non nominavano il campo la cui perdita è
+  l'intera avvertenza di quella versione. Resta qui perché il difetto è reale per chiunque
+  abbia acceso il ponte dopo quel primo avvio, anche se il proprietario non è in quel caso.
 - **La 2 non è verificata.** Il log consegnato copre due ore e **non contiene l'avvio**:
   25.858 righe del lavoratore del ponte, che interrogava la coda ogni tre secondi a
   livello `debug`, avevano spinto fuori il boot.

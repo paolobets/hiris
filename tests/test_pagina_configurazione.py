@@ -355,10 +355,26 @@ def test_dentro_una_sezione_le_etichette_non_ripetono_l_intestazione(lingua, sez
     # «Embedding»). Presa dal file invece che scritta qui: rinominare la
     # sezione non deve far passare il test per la ragione sbagliata.
     prima = intestazione.split()[0].lower().rstrip(":—-")
+    # **G2 della revisione del commit 3.0.0: il dodicesimo
+    # test-che-non-puo-fallire.** Qui c'era `startswith(prima + " ·")`. Ma il
+    # `·` e' riservato alle opzioni di PRIMO livello («Provider · », «Avanzate
+    # · ») -- lo dichiara il commento in cima a `it.yaml` -- e dentro le
+    # sezioni si usa `—`. Il test era verde su tutte e quattro le
+    # parametrizzazioni mentre in quattro casi su quattro la ripetizione che
+    # vieta era presente («Ollama — indirizzo» sotto «Ollama — dove sta»,
+    # «Embedding — provider (inattivo)» sotto «Embedding — oggi non hanno
+    # effetto»): verde su dati che violano la sua stessa tesi.
+    #
+    # Il separatore NON si vincola: la ripetizione e' della prima parola, e
+    # legare il test a un separatore e' esattamente cio' che lo ha reso cieco.
+    # I quattro figli sono stati rinominati con la chiusura («Indirizzo»,
+    # «Provider (inattivo)», «Modello (inattivo)») invece di dichiarare voluta
+    # la ripetizione: dentro una sezione il raggruppamento lo porta gia'
+    # l'intestazione, ed e' la regola che questo test esiste per difendere.
     ripetitivi = [
         chiave for chiave, figlio in voce.items()
         if isinstance(figlio, dict)
-        and figlio["name"].strip().lower().startswith(prima + " ·")
+        and figlio["name"].strip().lower().startswith(prima)
     ]
     assert not ripetitivi, (
         f"{lingua}.yaml: dentro la sezione «{intestazione}» queste voci "

@@ -50,12 +50,35 @@ l'opzione dell'add-on non c'è più: da questa versione si toccano solo con una 
 `/api/models/config`. **È un debito dichiarato**, era già scritto nella 2.5.0, ed è la prima
 cosa della fetta successiva.
 
-### ⚠️ Se usavi il Piano Claude Max senza aver acceso il ponte
+### ⚠️ Il ponte è l'unico valore da controllare dopo l'aggiornamento
 
-Fino alla 2.5.0 l'interruttore «Provider · Piano Claude Max» **accendeva il ponte da sé**
-quando c'era il token. Quell'implicazione esce con l'interruttore, ed è l'unica perdita di
-comportamento di questa versione: se avevi il piano acceso ma «Accendi il ponte» spento,
-**dopo l'aggiornamento la chat passa dalla catena, a consumo.**
+**Se dopo l'aggiornamento il ponte risulta spento mentre il token del Piano Claude Max c'è,
+la chat passa dalla catena, a consumo.** È l'unica perdita di comportamento di questa
+versione, e si ripara con un click. Ci si arriva in due modi, e vale la pena conoscerli
+tutti e due perché il secondo è più largo del primo.
+
+**Il primo: l'implicazione che esce.** Fino alla 2.5.0 l'interruttore «Provider · Piano
+Claude Max» **accendeva il ponte da sé** quando c'era il token. Quell'implicazione esce
+insieme all'interruttore: da oggi il ponte ha un valore solo, e chi aveva il piano acceso
+ma «Accendi il ponte» spento non ha più niente che glielo accenda.
+
+**Il secondo: la finestra della copia.** La 2.5.0 ha copiato dentro HIRIS il valore che
+l'opzione aveva **al suo primo avvio**, e una volta sola — ripetere la copia a ogni riavvio
+avrebbe fatto vincere per sempre l'opzione dell'add-on sulla scelta fatta nella pagina
+Modelli. Delle quattordici opzioni, **due sole restavano vive dopo quel primo avvio**:
+«Accendi il ponte» e «Provider · Piano Claude Max». Le altre dodici erano già lette
+dall'archivio, e per loro la copia è definitiva.
+
+Quindi: **se hai acceso il ponte DOPO il primo avvio della 2.5.0** — dalla casella «Accendi
+il ponte» o dall'interruttore «Provider · Piano Claude Max» — quell'accensione ha funzionato
+nella 2.5.0 e **non è mai arrivata nell'archivio**. La 3.0.0 legge l'archivio, e lo trova
+spento. Chi invece aveva già il ponte acceso prima di quel primo avvio ha il valore giusto
+dentro HIRIS, e non deve fare niente.
+
+**Come si controlla, in dieci secondi:** si apre la pagina **Modelli** dentro HIRIS. Se il
+piano è al suo posto, in cima non compare nessuna riga sul Piano Claude Max. Se invece c'è
+scritto «Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena», accanto c'è il
+bottone che lo rimette primo.
 
 Non succede in silenzio. All'avvio, nel registro dell'add-on:
 
@@ -93,10 +116,15 @@ che hanno davvero.
 
 ### Per chi aggiorna: cosa NON devi fare
 
-Non devi ricompilare niente, non devi riscrivere nessuna configurazione, e **non devi
-rimettere a mano i valori che avevi**: sono già dentro HIRIS dal primo avvio della 2.5.0.
-La pagina «Configurazione» sarà più corta, e i campi spariti non sono stati persi — sono
-altrove, e ogni riga di questa nota dice dove.
+Non devi ricompilare niente e non devi riscrivere nessuna configurazione. **Dodici dei
+quattordici valori che avevi sono già dentro HIRIS dal primo avvio della 2.5.0**, e non
+vanno rimessi a mano: la pagina «Configurazione» sarà più corta, e i campi spariti non sono
+stati persi — sono altrove, e ogni riga di questa nota dice dove.
+
+**L'unica cosa da guardare è il ponte**, per la ragione spiegata più su: è l'unico dei
+quattordici la cui copia poteva essere più vecchia di quello che stavi usando davvero. Si
+apre la pagina Modelli, e se in cima c'è la riga sul Piano Claude Max si preme il bottone
+accanto. Se quella riga non c'è, non c'è niente da fare.
 
 
 ## [2.5.0] — La pagina Modelli smette di mentire, e il piano non è più un vicolo cieco (2026-08-14)

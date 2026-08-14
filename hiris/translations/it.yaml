@@ -41,7 +41,7 @@ configuration:
     name: "Ollama — dove sta"
     description: "Dove trovare Ollama. L'indirizzo si custodisce qui; il modello e l'attesa si scelgono nella pagina Modelli di HIRIS."
     url:
-      name: "Ollama — indirizzo"
+      name: "Indirizzo"
       description: "Indirizzo della tua istanza, es. http://192.168.1.10:11434. Se all'avvio HIRIS non la raggiunge, lo scrive nel registro."
 
   # ── 2. Aspetto ────────────────────────────────────────────────────────────
@@ -54,10 +54,10 @@ configuration:
     name: "Embedding — oggi non hanno effetto"
     description: "Provider e modello per la ricerca per somiglianza. Oggi non fanno niente: nessuna parte di HIRIS calcola embedding."
     embedding_provider:
-      name: "Embedding — provider (inattivo)"
+      name: "Provider (inattivo)"
       description: "Quale servizio li calcolerebbe: openai, ollama, model2vec. Oggi il valore viene letto all'avvio e non produce nessun effetto."
     embedding_model:
-      name: "Embedding — modello (inattivo)"
+      name: "Modello (inattivo)"
       description: "Quale modello userebbe: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Oggi non viene mai invocato."
 
   # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
