@@ -507,6 +507,46 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
 
 
 @pytest.mark.asyncio
+async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ricerca_riuscita(
+        archivio_casa, memoria):
+    """Prova per mutazione del cancello N2 (`trovati_vuoti`): quel cancello
+    protegge SOLO il ramo strutturale di `_cecita` (entita' senza nome ne'
+    nel registro ne' nello specchio -- un limite stabile della casa). Gli
+    altri due rami, registri caduti e specchio illeggibile, sono impedimenti
+    che capitano ADESSO: devono dichiararsi anche quando `cerca` ha gia'
+    trovato quello che cercava, altrimenti un registro caduto o uno specchio
+    giu' smetterebbero in silenzio di dichiararsi a ogni ricerca riuscita.
+
+    Se un domani il cancello si allargasse a questi due rami -- la modifica
+    piu' naturale da fare guardando quel codice -- le prime due asserzioni
+    cadrebbero mentre 'light.c' continuerebbe a essere trovato: qui sta la
+    rete che il test B3/N2 non aveva ancora steso."""
+    archivio_casa.sostituisci({"entita": [
+        {"entity_id": "light.c", "name": "Luce cucina"},
+        {"entity_id": "light.senza", "name": None, "original_name": None}]},
+        ["dispositivi"])  # registro "dispositivi" caduto; "entita"/"aree" letti bene
+
+    class _NonPronta:
+        loaded = False
+        def all_states(self): return []
+
+    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+        "cerca", {"testo": "luce cucina"})
+
+    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+    assert riferimenti == ["light.c"], "premessa del test: la ricerca deve riuscire"
+
+    motivi = esito["non_ho_potuto_guardare"]
+    assert any("dispositivi" in m for m in motivi), (
+        "un registro caduto (qui 'dispositivi') deve dichiararsi anche a ricerca riuscita")
+    assert any("specchio" in m for m in motivi), (
+        "lo specchio illeggibile deve dichiararsi anche a ricerca riuscita")
+    assert not any(m.startswith("1 entita' di questa casa") for m in motivi), (
+        "il ramo strutturale (senza nome ne' nel registro ne' nello specchio) deve "
+        "restare dietro al cancello: non deve comparire a fianco di un candidato trovato")
+
+
+@pytest.mark.asyncio
 async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(archivio_casa, memoria):
     """Mutazione uccisa: contare fra le «senza nome» anche le entita'
     disabilitate. Una disabilitata senza nome non e' cercabile per scelta
