@@ -10,8 +10,14 @@ from ..chat_store import (
     load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
 )
-from ..agent.runner import modello_cli
-from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError, resolve_model
+# `modello_cli` e `resolve_model` sono usciti da qui con la fetta «il modello
+# del piano»: servivano a comporre il modello del ponte da
+# `provider_models["claude"]`, e adesso quel modello e' un campo che si legge.
+# `modello_cli` ha un solo chiamante rimasto -- il validatore del campo, in
+# `handlers_models._pulisci_modello_del_piano` -- e questo import in meno
+# scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
+# che obbligava `agent/runner._nome_server_mcp` a un import differito.
+from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..decisione_modelli import nota_ripiego
 from .handlers_casa import costruisci_nucleo
 
@@ -359,31 +365,30 @@ async def _enqueue_chat_job(
         # fosse la configurazione dell'utente.
         "restrict_to_home": impostazioni.restrict_to_home,
         "response_mode": impostazioni.response_mode,
-        # fetta "il ponte riceve il nucleo" (parita' A, Task 4): l'ultima
-        # delle tre impostazioni mancanti. Il ramo sincrono (sotto,
-        # `handle_chat`) chiede anche lui `"auto"` alla STESSA
-        # `resolve_model`, con lo stesso `provider_models["claude"]` di
-        # default -- niente di nuovo, solo lo stesso calcolo fatto anche
-        # QUI, perche' il runner del ponte gira altrove e non ha ne' l'app
-        # ne' `models_config`. Il primo argomento era `impostazioni.model`
-        # fino alla fetta "la catena diventa l'unica verita'" (Task 4): quel
-        # campo e' uscito, e `"auto"` non e' un valore di comodo -- e'
-        # l'unico che lascia decidere alla pagina Modelli, per provider.
-        # `resolve_model` resta perche' e' lei a tradurre `"auto"` nel
-        # modello di Claude API configurato li' (o in `AUTO_MODEL_MAP`
-        # ["chat"] se non c'e'), ed e' lo stesso calcolo che
-        # `handlers_models._modelli_in_uso` mostra nella riga del piano. La differenza col ramo sincrono e' che il
-        # ponte parla SOLO con la CLI dell'abbonamento Claude Max, mai con
-        # l'API a consumo di nessun provider: `modello_cli` traduce il
-        # modello risolto (che puo' essere di qualunque provider) in un
-        # alias della CLI, dichiarando nel log un modello non-Anthropic
-        # invece di lasciarlo fallire muto ad ogni turno (vedi il suo
-        # docstring in agent/runner.py -- silenzio dichiarato ② della
-        # fetta).
-        "model": modello_cli(resolve_model(
-            "auto", "chat",
-            (request.app.get("models_config") or {}).get("provider_models", {}).get("claude", ""),
-        )),
+        # Il modello del piano e' un CAMPO, letto dall'archivio a ogni turno
+        # come la scadenza qui sopra e il tetto piu' su: e' il TERZO valore che
+        # questo punto legge da `models_config["ponte"]`.
+        #
+        # Fino alla 3.1.0 qui si componeva
+        # `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`,
+        # e lo stesso identico calcolo viveva anche in
+        # `handlers_models._modelli_in_uso`: due implementazioni della stessa
+        # regola, libere di divergere. Peggio della duplicazione era cio' che
+        # diceva -- il modello del piano era un effetto collaterale del modello
+        # di CLAUDE API, cioe' di un altro provider, con l'incentivo opposto:
+        # a consumo si sceglie il modello frugale, nel piano il modello non
+        # costa di piu'. Il proprietario si ritrovava il piano che aveva pagato
+        # a girare con `haiku`.
+        #
+        # La traduzione ai tre alias non e' sparita, e' salita all'INGRESSO del
+        # campo (`handlers_models._pulisci_modello_del_piano`): cio' che si
+        # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
+        # Il predefinito `"sonnet"` e' quello di `_PREDEFINITI_ARCHIVIO` e vale
+        # solo per un'app senza archivio (i test): sull'impianto la semina
+        # (`migrazione_opzioni.semina_modello_del_piano`) ha gia' scritto il
+        # campo prima che un turno possa arrivare qui.
+        "model": ((request.app.get("models_config") or {})
+                  .get("ponte", {}).get("modello", "sonnet")),
     }
     # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta sei
     # chiavi e `thinking_budget` NON e' fra loro -- il ponte parla con la CLI

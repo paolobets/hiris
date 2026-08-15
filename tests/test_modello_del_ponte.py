@@ -1,34 +1,23 @@
-"""fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello del
-ponte e' quello scelto per la chat, non piu' `HIRIS_AGENT_CHAT_MODEL` --
-quella env non era mai esportata da `run.sh` (censimento -> "Variabili
-d'ambiente lette e mai esportate", voce su `agent/runner.py`, dove
-`_reason_chat` la leggeva: oggi la voce non c'e' piu' perche' non c'e' piu'
-la lettura): in produzione era SEMPRE "sonnet", qualunque cosa l'utente
-scegliesse per la chat.
+"""Il modello che gira sul ponte, e DA DOVE VIENE.
 
-`agent.runner.modello_cli(modello_risolto)` traduce il modello GIA' RISOLTO
-(via `claude_runner.resolve_model`, che puo' restituire un modello di
-QUALUNQUE provider configurato in `provider_models`) in un alias della CLI
-`claude` -- l'unica cosa con cui il ponte parla. Un modello non-Anthropic
-ricade su "sonnet" con un log esplicito (silenzio dichiarato (2) della
-fetta): mai un rc!=0 muto ad ogni turno.
+Fino alla 3.1.0 veniva composto a ogni turno da `provider_models["claude"]`:
+`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`, in
+`handlers_chat._enqueue_chat_job` e -- identico -- in
+`handlers_models._modelli_in_uso`. Due implementazioni dello stesso calcolo, e
+un campo solo per due economie opposte: a consumo si sceglie il modello
+frugale, nel piano il modello non costa di piu'. L'impianto del proprietario,
+misurato il 15 agosto 2026, girava sul piano con `haiku`.
 
-I test [1]-[4] coprono `modello_cli` (piu' `resolve_model` a monte, per
-mostrare la stessa composizione che fa `handlers_chat._enqueue_chat_job`).
-Il test [5] e' end-to-end: il job accodato dal ramo async porta il modello
-gia' risolto e tradotto, e `_chat_claude_args` lo mette in argv dopo
-`--model` esattamente come per il ramo sincrono.
+Dalla fetta «il modello del piano» il ponte LEGGE `ponte.modello`, un campo
+suo. Questo file inchioda l'INDIPENDENZA -- che e' la cosa che il proprietario
+non poteva esprimere.
 
-fetta "la catena diventa l'unica verita'" (Task 4): questo file diceva «il
-modello del ponte e' quello scelto per la chat». Non piu': il campo `model`
-di `ImpostazioniChat` e' uscito -- scavalcava la catena della pagina Modelli
--- e `_enqueue_chat_job` chiede sempre `"auto"`. La sorgente e' quindi il
-modello di **Claude API** scelto nella pagina Modelli
-(`models_config["provider_models"]["claude"]`), che e' esattamente cio' che
-la riga «piano» di quella pagina dichiara (`handlers_models._modelli_in_uso`:
-il modello del ponte e' un effetto collaterale del modello di Claude API).
-I test [1]-[4] restano validi parola per parola: `resolve_model` e
-`modello_cli` non sono cambiate, e' cambiato chi passa il primo argomento.
+I test [1]-[4] su `modello_cli` restano validi parola per parola: la funzione
+non e' sparita, ha cambiato mestiere. Da traduttore chiamato a ogni turno e'
+diventata il VALIDATORE del campo (`handlers_models._pulisci_modello_del_piano`),
+e il suo silenzio dichiarato -- il `log.warning` su un modello non-Anthropic --
+serve adesso a chi scrive a mano `/data/models_config.json`. Il campo, la sua
+pulizia e la sua semina vivono in `tests/test_modello_del_piano.py`.
 """
 import logging
 
@@ -117,16 +106,10 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         data_dir = str(tmp_path / "data")
         os.makedirs(data_dir, exist_ok=True)
 
-        # fetta "la catena diventa l'unica verita'" (Task 4): il modello
-        # arrivava da `ImpostazioniChat(model=...)`, che scavalcava la catena
-        # della pagina Modelli. Quel campo e' uscito e la SORGENTE e' cambiata:
-        # ora e' `models_config["provider_models"]["claude"]`, cioe' il modello
-        # di Claude API scelto nella pagina Modelli. Il test dice la stessa
-        # cosa di prima -- il valore configurato e' quello che finisce,
-        # tradotto, in argv -- ma sul soggetto nuovo. Si usa un modello
-        # Anthropic esplicito (non un default): senza, `resolve_model`
-        # ricadrebbe su AUTO_MODEL_MAP["chat"] e il test non distinguerebbe
-        # "ha letto la configurazione" da "ha usato il default".
+        # La SORGENTE e' cambiata due volte. Prima `ImpostazioniChat(model=)`,
+        # che scavalcava la catena; poi `provider_models["claude"]`, cioe' il
+        # modello di un ALTRO provider; adesso `ponte.modello`, che e' del
+        # piano e di nessun altro.
         impostazioni = ImpostazioniChat(
             nome="test-agent", system_prompt="Sei HIRIS.",
         )
@@ -137,7 +120,15 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         app["ponte_attivo"] = True
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
         app["reasoning_queue"] = q
-        app["models_config"] = {"provider_models": {"claude": "claude-opus-4-7"}}
+        # LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su
+        # haiku. Con la regola vecchia il job porterebbe `haiku`; con quella
+        # nuova porta `opus`. Metterli uguali renderebbe questo test incapace
+        # di distinguere le due implementazioni -- cioe' incapace di fallire,
+        # che e' il difetto n.1 di questo prodotto.
+        app["models_config"] = {
+            "provider_models": {"claude": "claude-haiku-4-5-20251001"},
+            "ponte": {"modello": "opus"},
+        }
         app.router.add_post("/api/chat", handle_chat)
 
         async with TestClient(TestServer(app)) as client:
@@ -152,3 +143,38 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         assert argv[argv.index("--model") + 1] == "opus"
     finally:
         close_all_stores()
+
+
+# ---------------------------------------------------------------------------
+# [6]-[8]: l'indipendenza, in tutte e due le direzioni
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("alias", ["haiku", "sonnet", "opus"])
+def test_il_piano_mostra_il_campo_e_non_una_composizione(alias):
+    """Claude API su haiku, il piano su `alias`: la riga del piano dice
+    `alias`. Con la regola vecchia direbbe sempre `haiku`."""
+    from hiris.app.api import handlers_models
+    modelli = handlers_models._modelli_in_uso(
+        {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""},
+        "", alias)
+    assert modelli["subscription"] == alias
+
+
+def test_cambiare_il_modello_di_claude_api_non_tocca_il_piano():
+    """L'affermazione centrale della fetta, provata per differenza: due letture
+    che differiscono SOLO nel modello di Claude API danno lo stesso piano."""
+    from hiris.app.api import handlers_models
+    prima = {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""}
+    dopo = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
+    assert handlers_models._modelli_in_uso(prima, "", "sonnet")["subscription"] == "sonnet"
+    assert handlers_models._modelli_in_uso(dopo, "", "sonnet")["subscription"] == "sonnet"
+
+
+def test_e_cambiare_il_piano_non_tocca_claude_api():
+    """L'altra meta': due valori indipendenti, non uno rinominato. Senza questo
+    test, un'implementazione che facesse scrivere al piano il campo di Claude
+    API passerebbe tutto il resto del file."""
+    from hiris.app.api import handlers_models
+    pm = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
+    assert handlers_models._modelli_in_uso(pm, "", "haiku")["claude"] == "claude-opus-4-7"
+    assert handlers_models._modelli_in_uso(pm, "", "opus")["claude"] == "claude-opus-4-7"

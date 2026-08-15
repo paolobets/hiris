@@ -398,7 +398,8 @@ def _credenziali_dei_cinque(request: web.Request) -> dict[str, bool]:
             for pid in _CONFIG_PROVIDER_IDS}
 
 
-def _modelli_in_uso(provider_models: dict, modello_ollama: str) -> dict[str, str]:
+def _modelli_in_uso(provider_models: dict, modello_ollama: str,
+                    modello_piano: str) -> dict[str, str]:
     """Il modello che il runtime userebbe ADESSO, per provider.
 
     Non «il modello configurato»: quello che il runner risolverebbe con
@@ -407,30 +408,29 @@ def _modelli_in_uso(provider_models: dict, modello_ollama: str) -> dict[str, str
     AUTO_MODEL_MAP["chat"]) e `OpenAICompatRunner._resolve_model` (idem, con
     la sua mappa) -- letti qui invece di essere reinventati.
 
-    La riga di `subscription` è la parte scomoda, ed è VERA: il modello del
-    ponte è un effetto collaterale del modello di Claude API.
-    `api/handlers_chat._enqueue_chat_job` compone
-    `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`,
-    quindi cambiare il modello di Claude API cambia il modello che gira sul
-    piano, e `claude-opus-4-7` / `claude-opus-4-1` producono lo stesso
-    identico `opus`. La pagina lo mostra perché è così, non perché ci piaccia.
+    La riga di `subscription` era la parte scomoda, ed è la cosa che la fetta
+    «il modello del piano» ha tolto. Diceva: *il modello del ponte è un effetto
+    collaterale del modello di Claude API*, e la pagina lo mostrava «perché è
+    così, non perché ci piaccia». Era vero, ed era il difetto -- un campo solo
+    per due economie opposte: su Claude API si paga a token e `haiku` è la
+    scelta frugale, sul piano il modello non costa di più. Il proprietario si
+    ritrovava il piano che aveva pagato a girare col modello scelto per non
+    spendere sull'API.
 
-    Fino alla 2.4.1 quel primo argomento era `impostazioni.model`, e questa
-    funzione passava `"auto"`: il campo `modello` della decisione MENTIVA a
-    chiunque avesse fissato un modello in `#/impostazioni` -- e dal Task 2
-    mentiva in corpo 20, in cima alla pagina. Il campo è uscito con la fetta
-    «la catena diventa l'unica verità» (Task 4): ora le due composizioni sono
-    lo stesso identico calcolo, e questa riga non può più divergere dal
-    runtime perché non c'è più una seconda sorgente da cui divergere.
+    Adesso è un campo, `ponte.modello`, e questa funzione lo LEGGE. Lo stesso
+    campo che il turno legge (`handlers_chat._enqueue_chat_job`), non lo stesso
+    calcolo fatto due volte in due file: da due implementazioni della stessa
+    regola a un valore letto da due posti. Il chiamante lo passa, come già fa
+    per il modello di Ollama e per la stessa ragione -- ha una casa sola, e
+    questa funzione non va a cercarsela.
     """
-    from ..agent.runner import modello_cli
     from ..backends.openai_compat_runner import AUTO_MODEL_MAP as _AUTO_COMPAT
     from ..backends.openrouter_runner import AUTO_OPENROUTER
     from ..claude_runner import resolve_model
 
     claude = resolve_model("auto", "chat", provider_models.get("claude", ""))
     return {
-        "subscription": modello_cli(claude),
+        "subscription": modello_piano,
         "claude": claude,
         "openai": provider_models.get("openai", "") or _AUTO_COMPAT["chat"],
         # `OpenRouterRunner._resolve_model` NON usa `AUTO_MODEL_MAP` (è la
@@ -488,7 +488,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # miniatura del difetto che questa fetta chiude.
     _credenziali = _credenziali_dei_cinque(request)
     _modelli = _modelli_in_uso(payload["provider_models"],
-                               payload["ollama"]["modello"])
+                               payload["ollama"]["modello"],
+                               payload["ponte"]["modello"])
     # LA catena, una sola: quella che il router ha in mano adesso. Non si
     # riderivano i nomi da `payload["chain_order"]` (l'archivio) perché
     # l'archivio e il runtime possono differire fino al riavvio -- è la
@@ -852,7 +853,8 @@ async def handle_list_models(request: web.Request) -> web.Response:
     nascondi = bool(archivio["nascondi_gratuiti"])
     # Gli stessi modelli che la riga mostra, dalla stessa funzione: il pannello
     # e la riga da cui si apre non possono dire due cose diverse.
-    in_uso = _modelli_in_uso(provider_models, modello_ollama)
+    in_uso = _modelli_in_uso(provider_models, modello_ollama,
+                             archivio["ponte"]["modello"])
     openai_key = request.app.get("openai_api_key", "")
     openrouter_key = request.app.get("openrouter_api_key", "")
     local_url = request.app.get("local_model_url", "")
@@ -877,11 +879,12 @@ async def handle_list_models(request: web.Request) -> web.Response:
             return [], "fissa", in_uso["subscription"], ""
         if pid == "claude":
             # L'unico elenco che NON viene dal provider: Anthropic non espone
-            # un endpoint pubblico. Quindi c'è anche senza la chiave -- e conta,
-            # perché su un'installazione col solo Piano Claude Max questo è
-            # l'UNICO posto da cui si sceglie il modello del piano (il ponte usa
-            # `provider_models["claude"]`). Chiuderlo lì vorrebbe dire
-            # rispondere «da nessuna parte» alla prima domanda del proprietario.
+            # un endpoint pubblico. Quindi c'è anche senza la chiave.
+            # (La ragione che qui giustificava l'eccezione -- «su
+            # un'installazione col solo Piano Claude Max questo è l'UNICO posto
+            # da cui si sceglie il modello del piano» -- è FALSA dalla fetta
+            # «il modello del piano»: il piano ha un campo suo. L'eccezione
+            # esce col task successivo, insieme alla frase su Anthropic.)
             return (list(_CLAUDE_MODELS), "riserva",
                     provider_models.get("claude", ""), in_uso["claude"])
         if pid == "openai":

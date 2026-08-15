@@ -947,13 +947,22 @@ async def test_il_turno_sincrono_chiede_sempre_auto_e_quindi_sempre_la_catena(tm
 
 
 @pytest.mark.asyncio
-async def test_il_ponte_risolve_il_modello_dalla_pagina_modelli_non_dalle_impostazioni(tmp_path):
-    """La gemella sull'ALTRO percorso. `_enqueue_chat_job` compone il modello
-    della CLI da `resolve_model("auto", "chat", provider_models["claude"])`:
-    la sorgente è la pagina Modelli, per provider. Se un giorno tornasse a
-    leggere un campo delle impostazioni, questo test cadrebbe con `sonnet`."""
+async def test_il_ponte_prende_il_modello_dal_campo_del_piano_e_non_da_claude_api(tmp_path):
+    """La gemella sull'ALTRO percorso, e la sorgente e' cambiata.
+
+    Fino alla 3.1.0 `_enqueue_chat_job` componeva il modello della CLI da
+    `resolve_model("auto", "chat", provider_models["claude"])` -- cioe' dal
+    modello di CLAUDE API, un altro provider, con l'incentivo opposto. Dalla
+    fetta «il modello del piano» legge `ponte.modello`, che e' del piano.
+
+    LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su haiku.
+    Con la regola vecchia il job porterebbe `haiku`. Metterli uguali renderebbe
+    questo test incapace di distinguere le due implementazioni."""
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True)
-    app["models_config"] = {"provider_models": {"claude": "claude-opus-4-7"}}
+    app["models_config"] = {
+        "provider_models": {"claude": "claude-haiku-4-5-20251001"},
+        "ponte": {"modello": "opus"},
+    }
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
