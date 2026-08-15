@@ -1,0 +1,8 @@
+# Gli hook sono script POSIX: devono restare a LF anche su Windows.
+#
+# Con `core.autocrlf=true` (il predefinito di Git for Windows) un checkout
+# convertirebbe `#!/bin/sh` in `#!/bin/sh\r`, e su Linux la shell risponde
+# `bad interpreter: /bin/sh^M`. Il cancello del rilascio smetterebbe di
+# esistere -- e non con un errore leggibile, ma con un hook che non parte.
+.githooks/** text eol=lf
+*.sh text eol=lf

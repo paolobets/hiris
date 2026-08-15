@@ -270,3 +270,31 @@ def test_con_cli_il_dockerfile_si_tocca_eccome(tmp_path, monkeypatch):
     nuova = vc.aggiorna_cli(vc.leggi_i_file(), {"cli": {"versione": "2.1.233"}})
     assert nuova == "2.1.233"
     assert "claude-code@2.1.233" in (dentro / "Dockerfile").read_text(encoding="utf-8")
+
+
+# ── L'hook e' uno script POSIX, e deve restare tale ────────────────────────
+
+def test_l_hook_non_ha_ritorni_a_capo_di_windows():
+    """`core.autocrlf=true` e' il predefinito di Git for Windows: senza la riga
+    in `.gitattributes`, un checkout trasformerebbe `#!/bin/sh` in
+    `#!/bin/sh\r` e su Linux la shell risponderebbe
+    `bad interpreter: /bin/sh^M`.
+
+    Il cancello smetterebbe di esistere -- e non con un errore leggibile, ma
+    con un hook che non parte. E' il difetto piu' silenzioso possibile per uno
+    strumento che esiste per non essere silenzioso."""
+    hook = Path(__file__).parent.parent / ".githooks" / "pre-push"
+    grezzo = hook.read_bytes()
+    assert b"\r\n" not in grezzo, (
+        "l'hook ha ritorni a capo di Windows: su Linux non parte")
+    assert grezzo.startswith(b"#!/bin/sh\n")
+
+
+def test_gitattributes_inchioda_la_fine_riga_degli_hook():
+    """Il test qui sopra guarda il file COM'E' ADESSO; questo guarda la regola
+    che lo tiene cosi' al prossimo checkout. Senza, il primo `git clone` su una
+    macchina Windows rimetterebbe i CRLF e nessuna prova se ne accorgerebbe
+    finche' qualcuno non prova a rilasciare da Linux."""
+    attributi = (Path(__file__).parent.parent / ".gitattributes").read_text(
+        encoding="utf-8")
+    assert ".githooks/** text eol=lf" in attributi
