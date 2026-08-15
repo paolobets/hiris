@@ -42,7 +42,17 @@ def _clean_provider_models(raw) -> dict:
 # leggono la stessa struttura, e un campo aggiunto qui non puo' dimenticarsi in
 # uno dei due.
 _PREDEFINITI_ARCHIVIO = {
-    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
+    # `modello`: il modello del piano, che dalla fetta «il modello del piano»
+    # e' un valore SUO e non piu' un effetto di `provider_models["claude"]`.
+    # Il predefinito e' `"sonnet"` e NON la stringa vuota: vuoto
+    # significherebbe «non so», e «non so» e' la forma con cui la regola «se
+    # non so niente allora comportati come prima» e' gia' rientrata quattro
+    # volte in questo prodotto, da quattro porte diverse. Il campo nasce con un
+    # valore, e la semina (`migrazione_opzioni.semina_modello_del_piano`) lo
+    # sostituisce una volta sola con quello che l'installazione stava gia'
+    # usando.
+    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50,
+              "modello": "sonnet"},
     "ollama": {"modello": "", "timeout_s": 120},
 }
 
@@ -91,6 +101,29 @@ def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
     return max(minimo, min(massimo, n))
 
 
+def _pulisci_modello_del_piano(valore, predefinito: str) -> str:
+    """Uno dei tre alias, sempre. Si RIPORTA DENTRO come i due `_clamp_int`
+    accanto: un valore fuori dall'insieme non e' un corpo malformato.
+
+    Il riduttore e' `agent.runner.modello_cli`, che qui trova il suo UNICO
+    chiamante rimasto. Fino alla fetta «il modello del piano» ne aveva due --
+    il turno del ponte (`handlers_chat._enqueue_chat_job`) e la riga della
+    pagina (`_modelli_in_uso`) -- che erano lo stesso calcolo fatto in due
+    file, cioe' due implementazioni della stessa regola libere di divergere.
+    Adesso traduce una volta sola, all'INGRESSO del campo: cio' che sta
+    nell'archivio e' gia' un alias, e chi legge non ha niente da tradurre.
+
+    L'import e' DIFFERITO per la ragione misurata in `agent/runner.py:122-131`:
+    `api/handlers_chat.py` importa da quel modulo e `api/handlers_mcp.py`
+    importa `handlers_chat`; un import in cima chiude il cerchio e rompe
+    l'avvio con `ImportError ... partially initialized module`.
+    """
+    from ..agent.runner import modello_cli
+    if not isinstance(valore, str) or not valore.strip():
+        return predefinito
+    return modello_cli(valore)
+
+
 def _pulisci_ponte(raw) -> dict:
     raw = raw if isinstance(raw, dict) else {}
     d = _PREDEFINITI_ARCHIVIO["ponte"]
@@ -99,6 +132,7 @@ def _pulisci_ponte(raw) -> dict:
         "scadenza_min": _clamp_int(raw.get("scadenza_min"), d["scadenza_min"], 1, 120),
         "tetto_giornaliero": _clamp_int(
             raw.get("tetto_giornaliero"), d["tetto_giornaliero"], 0, 1000),
+        "modello": _pulisci_modello_del_piano(raw.get("modello"), d["modello"]),
     }
 
 

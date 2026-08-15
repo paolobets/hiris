@@ -334,6 +334,26 @@ def test_gli_alias_del_piano_sono_esattamente_quelli_che_la_cli_sa_produrre():
     )
 
 
+def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
+    """Dalla fetta «il modello del piano» c'e' una terza superficie: il campo
+    `ponte.modello`, che `_pulisci_ponte` valida.
+
+    Le tre devono essere lo stesso insieme. Se il pannello offrisse una voce
+    che il salvataggio riduce a un'altra, avremmo un controllo che non fa
+    quello che dice -- la stessa cosa che il test qui sopra difende, un piano
+    piu' sotto: li' era il pannello contro la CLI, qui il pannello contro il
+    posto in cui la scelta si ferma."""
+    from hiris.app.api import handlers_models
+    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+
+    offerti = [v for v, _ in ALIAS_DEL_PIANO]
+    for alias in offerti:
+        assert handlers_models._pulisci_ponte({"modello": alias})["modello"] == alias, (
+            f"il pannello offre {alias!r} e il salvataggio non lo tiene"
+        )
+    assert sorted(offerti) == ["haiku", "opus", "sonnet"]
+
+
 def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
     """Il 503 «Nessun provider AI configurato» e' la PRIMA cosa che legge chi
     installa HIRIS e apre la chat, e cita fra virgolette basse i campi della
