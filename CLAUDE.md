@@ -241,6 +241,28 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 
 ---
 
+## Il cancello del rilascio
+
+`.githooks/pre-push` ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
+guardato i componenti: la **CLI del ponte** (pin esatto, quindi le patch non arrivano da sole), le
+**azioni CI**, un **major nuovo sopra un tetto** di `requirements.txt` (che congelerebbe una
+dipendenza in silenzio) e i **pacchetti installati sotto i pavimenti dichiarati**.
+
+**Va attivato una volta per clone:**
+```bash
+git config core.hooksPath .githooks
+```
+Non lo fa nessuno script da sé: un repo che si riconfigura il git al primo comando è una sorpresa.
+
+Per guardare senza pushare: `python scripts/verifica_componenti.py`
+Per aggiornare le azioni CI: `… --aggiorna` (la CLI del ponte richiede anche `--cli`).
+Per rilasciare comunque: `HIRIS_COMPONENTI_OK=1 git push …` — il valore accettato è **esattamente
+`1`**.
+
+Nasce da un fatto: la disciplina del pin era già scritta nel `Dockerfile` e non è stata eseguita
+in **nessuna** delle release 3.0.0, 3.1.0 e 3.2.0. Una disciplina scritta non è una disciplina
+eseguita. Spec: `docs/design/2026-08-15-verifica-dei-componenti.md`.
+
 ## Procedura di rilascio
 
 Da seguire **in ordine** quando l'utente chiede un rilascio.

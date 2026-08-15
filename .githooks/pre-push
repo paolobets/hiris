@@ -1,0 +1,42 @@
+#!/bin/sh
+# HIRIS — il cancello del rilascio.
+#
+# Si sveglia SOLO se il push contiene un cambio del campo `version` di
+# hiris/config.yaml: riconosce il rilascio dal CONTENUTO, non dalle intenzioni,
+# non da un flag e non dal nome del ramo. Sui push ordinari dorme -- e deve
+# dormire davvero: un cancello che blocca sempre e' un cancello che verra'
+# disattivato, e allora non protegge piu' niente.
+#
+# NON FA DOMANDE. Durante pre-push git usa lo stdin per passare i ref, e i push
+# di questo progetto partono anche da una sessione senza terminale: un prompt
+# resterebbe appeso per sempre. Si ferma, stampa, e dice come si risponde.
+#
+# NON legge HIRIS_COMPONENTI_OK: la regola di sblocco vive in un posto solo
+# (`risposta_accettata`, in Python). Scriverla anche qui sarebbe la stessa
+# regola in due linguaggi, libera di divergere. Qui si decide UNA cosa sola:
+# se questo push e' un rilascio.
+#
+# Attivazione (una volta per clone):  git config core.hooksPath .githooks
+#
+# Spec: docs/design/2026-08-15-verifica-dei-componenti.md
+
+VUOTO=0000000000000000000000000000000000000000
+
+while read -r _locale sha_locale _remoto sha_remoto; do
+    # Cancellazione di un ramo: niente da verificare.
+    [ "$sha_locale" = "$VUOTO" ] && continue
+
+    if [ "$sha_remoto" = "$VUOTO" ]; then
+        # Ramo nuovo sul remoto: si guarda il solo commit in punta invece di
+        # tutta la storia, che conterrebbe ogni bump mai fatto.
+        intervallo="$sha_locale~1..$sha_locale"
+    else
+        intervallo="$sha_remoto..$sha_locale"
+    fi
+
+    if git diff "$intervallo" -- hiris/config.yaml 2>/dev/null | grep -q '^[+-]version:'; then
+        python scripts/verifica_componenti.py || exit 1
+    fi
+done
+
+exit 0
