@@ -3,18 +3,23 @@ from hiris.app.api.handlers_models import load_models_config, save_models_config
 
 
 def test_defaults_when_absent(tmp_path):
-    """Task 6: le chiavi sono OTTO, e questo test le pinna per INSIEME ESATTO,
+    """Task 6: le chiavi sono NOVE, e questo test le pinna per INSIEME ESATTO,
     non per presenza. Cinque sono arrivate con la versione A della migrazione
     (le decisioni che escono dalle opzioni dell'add-on): se una si perdesse per
     strada, l'archivio smetterebbe di essere la fonte di verita' in silenzio.
-    Due -- `seminato` e `catena_seminata` -- non sono decisioni ma SEGNI di
-    migrazione: stanno nell'archivio, si leggono sempre, e li scrive solo
-    l'avvio (`_SEGNI_MIGRAZIONE`)."""
+    Tre -- `seminato`, `catena_seminata` e `piano_seminato` -- non sono
+    decisioni ma SEGNI di migrazione: stanno nell'archivio, si leggono sempre,
+    e li scrive solo l'avvio (`_SEGNI_MIGRAZIONE`).
+
+    `ponte.modello` e' arrivato con la fetta «il modello del piano»: il modello
+    del Piano Claude Max, che fino alla 3.1.0 era un effetto collaterale di
+    `provider_models["claude"]` e non aveva una casa sua."""
     cfg = load_models_config(str(tmp_path))
     assert cfg == {
         "chain_order": [],
         "provider_models": {"claude": "", "openai": "", "openrouter": ""},
-        "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
+        "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50,
+                  "modello": "sonnet"},
         "ollama": {"modello": "", "timeout_s": 120},
         "nascondi_gratuiti": False,
         # Debito F del Task 6, chiuso al Task 7: il predefinito del campo e'
@@ -24,6 +29,7 @@ def test_defaults_when_absent(tmp_path):
         "strategia_ultima": "balanced",
         "seminato": False,
         "catena_seminata": False,
+        "piano_seminato": False,
     }
 
 
@@ -116,11 +122,13 @@ def test_provider_models_roundtrip_and_sanitizes(tmp_path):
 
 def test_le_nuove_chiavi_hanno_i_predefiniti_quando_il_file_non_esiste(tmp_path):
     cfg = load_models_config(str(tmp_path))
-    assert cfg["ponte"] == {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50}
+    assert cfg["ponte"] == {"attivo": False, "scadenza_min": 5,
+                            "tetto_giornaliero": 50, "modello": "sonnet"}
     assert cfg["ollama"] == {"modello": "", "timeout_s": 120}
     assert cfg["nascondi_gratuiti"] is False
     assert cfg["strategia_ultima"] == "balanced"
     assert cfg["seminato"] is False
+    assert cfg["piano_seminato"] is False
 
 
 def test_i_valori_fuori_range_rientrano_invece_di_sollevare(tmp_path):
@@ -158,12 +166,14 @@ def test_un_salvataggio_parziale_non_azzera_le_decisioni_gia_prese(tmp_path):
     diverso dalla pagina esiste (il gateway MCP)."""
     save_models_config(str(tmp_path), {
         "chain_order": ["claude"],
-        "ponte": {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200},
+        "ponte": {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200,
+                  "modello": "opus"},
     })
     save_models_config(str(tmp_path), {"chain_order": ["openrouter"]})
     cfg = load_models_config(str(tmp_path))
     assert cfg["chain_order"] == ["openrouter"]
-    assert cfg["ponte"] == {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200}
+    assert cfg["ponte"] == {"attivo": True, "scadenza_min": 20,
+                            "tetto_giornaliero": 200, "modello": "opus"}
 
 
 def test_il_piano_non_puo_essere_salvato_dentro_chain_order(tmp_path):
@@ -182,8 +192,8 @@ def test_il_piano_non_puo_essere_salvato_dentro_chain_order(tmp_path):
 def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     """**C1 della revisione finale, meta' backend.**
 
-    `seminato` e `catena_seminata` non sono decisioni: sono i segni che le due
-    migrazioni (versione A) sono avvenute. Stavano in `_CHIAVI_NOSTRE`, cioe'
+    `seminato`, `catena_seminata` e `piano_seminato` non sono decisioni: sono i
+    segni che le tre migrazioni sono avvenute. Stavano in `_CHIAVI_NOSTRE`, cioe'
     una PUT poteva riscriverli -- e la pagina lo faceva davvero: dopo un GET
     fallito i tre bottoni «Rifai la catena» restavano a schermo e mandavano lo
     `state.cfg` DI DEFAULT DEL MODULO, `seminato: false` compreso.
@@ -195,11 +205,17 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     versioni della migrazione serve a evitare, innescata da un click. Lo stesso
     vale per un gateway MCP che rimandasse uno snapshot stale.
 
-    Rimettere i due nomi in `_CHIAVI_NOSTRE` fa cadere questo test."""
+    Il terzo segno e' arrivato con la fetta «il modello del piano», e la sua
+    conseguenza e' la piu' visibile delle tre: la semina RICOPRE
+    `ponte.modello` col valore derivato da Claude API, cioe' cancella la scelta
+    che l'utente ha appena fatto sulla riga del piano.
+
+    Rimettere i tre nomi in `_CHIAVI_NOSTRE` fa cadere questo test."""
     save_models_config(str(tmp_path), {"chain_order": ["claude"]}, segni=True)
     save_models_config(
         str(tmp_path),
-        {"seminato": True, "catena_seminata": True, "chain_order": ["claude"]},
+        {"seminato": True, "catena_seminata": True, "piano_seminato": True,
+         "chain_order": ["claude"]},
         segni=True,
     )
     assert load_models_config(str(tmp_path))["seminato"] is True
@@ -209,12 +225,14 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     save_models_config(str(tmp_path), {
         "chain_order": [],
         "provider_models": {"claude": "", "openai": "", "openrouter": ""},
-        "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
+        "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50,
+                  "modello": "sonnet"},
         "ollama": {"modello": "", "timeout_s": 120},
         "nascondi_gratuiti": False,
         "strategia_ultima": "balanced",
         "seminato": False,
         "catena_seminata": False,
+        "piano_seminato": False,
     })
     cfg = load_models_config(str(tmp_path))
     assert cfg["seminato"] is True, (
@@ -224,6 +242,11 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     assert cfg["catena_seminata"] is True, (
         "una PUT ha riportato `catena_seminata` a false: al riavvio la catena "
         "si ripopola dalla regola `legacy`"
+    )
+    assert cfg["piano_seminato"] is True, (
+        "una PUT ha riportato `piano_seminato` a false: al riavvio la semina "
+        "del modello del piano rigira e ricopre la scelta dell'utente col "
+        "valore derivato da Claude API"
     )
     # E le sei decisioni, quelle si', sono passate: il filtro toglie i segni,
     # non la scrittura.

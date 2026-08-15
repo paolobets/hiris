@@ -79,7 +79,7 @@ _CHIAVI_NOSTRE = (
 # Il valore sopravvive comunque a ogni PUT: `_chiavi_archivio` lo ricava da
 # `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con
 # `segni=True`.
-_SEGNI_MIGRAZIONE = ("seminato", "catena_seminata")
+_SEGNI_MIGRAZIONE = ("seminato", "catena_seminata", "piano_seminato")
 
 
 def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
@@ -168,6 +168,12 @@ def _chiavi_archivio(raw: dict) -> dict:
         # ripopolata dalla regola `legacy` -- cioe' la regola di compatibilita'
         # tolta dal prodotto rientrava dalla porta della migrazione.
         "catena_seminata": bool(raw.get("catena_seminata", False)),
+        # Il segno della semina del MODELLO DEL PIANO, distinto dagli altri due:
+        # e' la TERZA migrazione, e un archivio puo' trovarsi a due terzi. Come
+        # gli altri vive fuori da `_CHIAVI_NOSTRE`: un client che lo rimandasse
+        # a `false` farebbe rigirare la semina al riavvio successivo, e la
+        # semina ricopre `ponte.modello` -- cioe' la scelta dell'utente.
+        "piano_seminato": bool(raw.get("piano_seminato", False)),
     }
 
 

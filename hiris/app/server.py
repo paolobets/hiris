@@ -1369,6 +1369,31 @@ async def _on_startup(app: web.Application) -> None:
             save_models_config(data_dir, _arch, segni=True)
             app["models_config"] = load_models_config(data_dir)
 
+    # La TERZA semina: il modello del Piano Claude Max. Fino alla 3.1.0 era un
+    # effetto collaterale di `provider_models["claude"]` -- un campo solo per
+    # due economie opposte, e l'impianto del proprietario girava sul piano col
+    # modello scelto per non spendere sull'API. Da questa fetta e' un valore
+    # suo, e qui si esegue un'ULTIMA volta la derivazione che se ne va, perche'
+    # il giorno dell'aggiornamento niente cambi sotto l'utente.
+    #
+    # Salvataggio proprio e non fuso con quello della catena: fondere le due
+    # semine in una scrittura sola le renderebbe una migrazione sola che puo'
+    # trovarsi a meta', che e' esattamente cio' che i segni distinti esistono
+    # per evitare.
+    from .migrazione_opzioni import semina_modello_del_piano
+    if not app["models_config"].get("piano_seminato"):
+        from .agent.runner import modello_cli
+        from .claude_runner import resolve_model
+        _alias_di_oggi = modello_cli(resolve_model(
+            "auto", "chat",
+            app["models_config"].get("provider_models", {}).get("claude", ""),
+        ))
+        _arch_p, _da_salvare_p = semina_modello_del_piano(
+            dict(app["models_config"]), _alias_di_oggi, log=logger)
+        if _da_salvare_p:
+            save_models_config(data_dir, _arch_p, segni=True)
+            app["models_config"] = load_models_config(data_dir)
+
     # Qui viveva `_sub_first_class`, cioe' `_credenziali["subscription"] and
     # env_bool("PROVIDER_SUBSCRIPTION")`: il Piano Claude Max acceso col suo
     # token IMPLICAVA il ponte, e l'implicazione entrava in tutti e due i gate

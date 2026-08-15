@@ -223,3 +223,50 @@ def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[di
         "dalla pagina Modelli. Ordine: %s.", " -> ".join(catena_di_oggi),
     )
     return archivio, True
+
+
+def semina_modello_del_piano(archivio: dict, alias_di_oggi: str,
+                             *, log) -> tuple[dict, bool]:
+    """Copia nel campo nuovo l'alias che il piano sta usando ADESSO, una volta.
+
+    `alias_di_oggi` lo calcola il chiamante con la derivazione ancora viva
+    (`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`):
+    e' la regola che la fetta «il modello del piano» ritira, e la si esegue
+    un'ultima volta per non far cambiare comportamento all'installazione il
+    giorno dell'aggiornamento. Qui si COPIA, non si ricalcola.
+
+    Segno PROPRIO, `piano_seminato`, distinto da `seminato` (le opzioni) e da
+    `catena_seminata` (la catena): sono tre migrazioni diverse e un archivio
+    puo' trovarsi a due terzi.
+
+    LA GUARDIA E' IL SEGNO, NON LA FORMA DEL VALORE. Regolarsi su «il campo
+    vale ancora il predefinito» ricoprirebbe al riavvio successivo la scelta di
+    chi ha scelto proprio `sonnet` -- lo stesso difetto che `semina_catena`
+    documenta per la catena vuota, dove regolarsi sulla forma faceva ripopolare
+    una catena svuotata di proposito.
+
+    A differenza di `semina_catena` questa NON legge una regola in via di
+    sparizione: `provider_models["claude"]` resta vivo, e' il modello di Claude
+    API. E' il segno, e solo il segno, a rendere la semina irripetibile.
+
+    Il secondo valore di ritorno significa «c'e' qualcosa da persistere», non
+    «ho copiato un modello»: il segno si scrive SEMPRE, anche quando il valore
+    coincideva col predefinito.
+    """
+    if archivio.get("piano_seminato"):
+        return archivio, False
+    archivio["piano_seminato"] = True
+    ponte = dict(archivio.get("ponte") or {})
+    precedente = ponte.get("modello")
+    ponte["modello"] = alias_di_oggi
+    archivio["ponte"] = ponte
+    log.info(
+        "Il Piano Claude Max ha adesso un modello suo: %s, cioe' quello che "
+        "stava gia' usando (era un effetto del modello di Claude API). Da "
+        "adesso si sceglie dalla riga del piano nella pagina Modelli, e "
+        "cambiare il modello di Claude API non lo tocca piu'.%s",
+        alias_di_oggi,
+        "" if precedente in (None, alias_di_oggi)
+        else " Il predefinito %r e' stato sostituito." % precedente,
+    )
+    return archivio, True
