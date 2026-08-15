@@ -761,10 +761,11 @@ ALIAS_DEL_PIANO: tuple[tuple[str, str], ...] = (
 # risposto è meno di quanto il sistema sa.
 _OSPITI: dict[str, str] = {
     # Claude API è entrata qui con la fetta «il modello del piano». Prima aveva
-    # un ramo tutto suo in `provenienza`, con la frase «Anthropic non pubblica
-    # un elenco»: falso, `GET /v1/models` esiste. Cancellato il ramo, il
-    # percorso generico produce già le due frasi giuste -- serviva solo il nome
-    # dell'ospite. Un caso particolare in meno, non uno in più.
+    # un ramo tutto suo in `provenienza`, con una frase che dichiarava
+    # inesistente la rotta di elenco di Anthropic: falso, `GET /v1/models`
+    # esiste. Cancellato il ramo, il percorso generico produce già le due frasi
+    # giuste -- serviva solo il nome dell'ospite. Un caso particolare in meno,
+    # non uno in più.
     "claude": "api.anthropic.com",
     "openai": "api.openai.com",
     "openrouter": "openrouter.ai",
@@ -879,10 +880,11 @@ def spiegazione(provider_id: str) -> str:
     per OpenRouter è la ragione per cui l'elenco non è il catalogo.
     """
     if provider_id == "subscription":
-        # Qui c'era «Quale dei tre sia in uso segue il modello di Claude API, e
-        # si sceglie lì»: vera fino alla 3.1.0, e falsa dal momento esatto in
-        # cui il piano ha avuto un campo suo. Mandare a Claude API adesso
-        # vorrebbe dire mandare a cambiare il valore sbagliato.
+        # Qui c'era una frase che mandava l'utente a scegliere sulla riga di
+        # Claude API, perché quale dei tre alias fosse in uso discendeva da lì:
+        # vera fino alla 3.1.0, e falsa dal momento esatto in cui il piano ha
+        # avuto un campo suo. Mandare là adesso vorrebbe dire mandare a
+        # cambiare il valore sbagliato.
         return ("Sono alias, non nomi di modello: seguono il modello corrente "
                 "del piano invece di puntare a una versione fissa. Qui la "
                 "scelta non cambia quanto spendi — è compresa nel piano.")

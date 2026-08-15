@@ -659,8 +659,8 @@ async def _fetch_claude_models(api_key: str) -> tuple[list[str], str]:
     """L'elenco dei modelli di Anthropic, letto adesso.
 
     Fino alla fetta «il modello del piano» questa lettura non esisteva, e il
-    codice ne dichiarava la ragione: «Anthropic non espone un endpoint
-    pubblico». **E' FALSO**, verificato sulla documentazione ufficiale il
+    codice ne dichiarava la ragione: che Anthropic non avrebbe nessuna rotta
+    pubblica di elenco. **E' FALSO**, verificato sulla documentazione ufficiale il
     15/08/2026: `GET /v1/models` c'è, paginato (`limit` 1-1000, predefinito
     20), ordinato dai più recenti, e ogni voce porta `id`, `display_name`,
     `created_at` e `capabilities`. `_CLAUDE_MODELS` resta come RISERVA -- tre
@@ -924,9 +924,10 @@ async def handle_list_models(request: web.Request) -> web.Response:
         if pid == "claude":
             # Uguale a OpenAI e a OpenRouter dalla fetta «il modello del
             # piano». Qui il ramo era diverso in DUE modi, e tutti e due sono
-            # usciti: l'elenco non si leggeva mai («Anthropic non espone un
-            # endpoint pubblico» -- falso, `GET /v1/models` esiste) e c'era
-            # anche SENZA chiave. La seconda eccezione aveva una ragione
+            # usciti: l'elenco non si leggeva mai (il codice dichiarava
+            # inesistente la rotta di elenco di Anthropic -- falso,
+            # `GET /v1/models` esiste) e c'era anche SENZA chiave. La seconda
+            # eccezione aveva una ragione
             # scritta -- su un'installazione col solo Piano Claude Max questo
             # era l'unico posto da cui si sceglieva il modello del piano -- e
             # quella ragione è morta col campo `ponte.modello`.

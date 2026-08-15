@@ -134,11 +134,25 @@ async def test_senza_chiave_claude_api_non_ha_nessun_elenco_da_leggere(client):
 
 
 def test_la_frase_falsa_su_anthropic_non_si_dice_piu_da_nessuna_parte():
-    """Non deve poter rientrare per riscrittura distratta. E' una affermazione
-    su un fornitore, e questa fetta esiste anche perche' era sbagliata."""
+    """Non deve poter rientrare per riscrittura distratta. E' un'affermazione
+    su un fornitore, e questa fetta esiste anche perche' era sbagliata.
+
+    Il confronto NORMALIZZA gli spazi. Senza, la trappola si evade andando a
+    capo: la prima stesura di questa fetta aveva la frase spezzata su due righe
+    dentro un commento e il test restava verde -- una trappola che si apre da
+    sola quando qualcuno riformatta e' peggio di nessuna trappola. Vale anche
+    per i commenti: chi vuole raccontare la storia la PARAFRASA, e cosi' il
+    grep resta assoluto.
+    """
     import pathlib
+    import re
     radice = pathlib.Path(handlers_models.__file__).parent.parent
+    vietate = ("anthropic non pubblica un elenco",
+               "non espone un endpoint pubblico")
     for sorgente in radice.rglob("*.py"):
-        testo = sorgente.read_text(encoding="utf-8")
-        assert "Anthropic non pubblica un elenco" not in testo, sorgente
-        assert "non espone un endpoint pubblico" not in testo, sorgente
+        testo = re.sub(r"\s+", " ", sorgente.read_text(encoding="utf-8")).lower()
+        # I commenti spezzano le frasi con «# » a inizio riga: si toglie anche
+        # quello, altrimenti la normalizzazione degli spazi non basta.
+        testo = testo.replace("# ", "")
+        for frase in vietate:
+            assert frase not in testo, "{}: {!r}".format(sorgente, frase)
