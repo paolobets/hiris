@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [3.3.0] — Il cancello del rilascio (2026-08-15)
+
+**Questa versione non cambia niente di quello che vedi.** Cambia il modo in cui le versioni
+successive verranno pubblicate — e un paio di cose dentro l'immagine.
+
+### Il fatto da cui nasce
+
+`hiris/Dockerfile` porta scritta, per esteso, la disciplina del pin della CLI del ponte: *«le
+patch non arrivano più da sole […] la riga va guardata a ogni giro di rilascio»*. Non è stata
+guardata né nella 3.0.0, né nella 3.1.0, né nella 3.2.0.
+
+**Una disciplina scritta non è una disciplina eseguita.** Una nota si legge solo se qualcuno va a
+cercarla, e al momento del rilascio nessuno ci va.
+
+### Cosa c'è adesso
+
+`.githooks/pre-push` si sveglia **solo** quando il push contiene un cambio di versione — riconosce
+il rilascio dal contenuto, non dalle intenzioni — e ferma il push finché non hai guardato: la CLI
+del ponte, le azioni della CI, un major nuovo sopra un tetto delle dipendenze, e i pacchetti
+installati sotto i pavimenti dichiarati.
+
+Non fa domande: si ferma, stampa il quadro, e la risposta è un atto —
+`HIRIS_COMPONENTI_OK=1 git push`. Un componente allineato non compare mai: un elenco che dice
+sempre qualcosa è un elenco che si smette di leggere.
+
+Si attiva una volta per clone: `git config core.hooksPath .githooks`.
+
+### Cosa ha trovato il primo giorno
+
+Cinque cose, di cui **due che nessuno sapeva**:
+
+| | |
+|---|---|
+| `openai` **3.1.0** esisteva, e il tetto `<3.0.0` la escludeva | tetto alzato a `<4.0.0`, suite verde con la 3.1.0 installata |
+| l'ambiente di sviluppo girava **sotto** i pavimenti dichiarati (`anthropic` 0.40 contro `>=0.87`) | allineato: la suite locale provava qualcosa di diverso da CI e dall'immagine |
+| tre azioni della CI indietro di un major | portate a `v7`; l'avviso «Node.js 20 è deprecato» non compare più |
+| la CLI del ponte ferma cinque patch indietro | portata a **2.1.233** |
+
+### Dentro l'immagine
+
+- **CLI del ponte `2.1.228` → `2.1.233`.** Cinque patch, stessa minor. Il numero non può vedere
+  l'unica cosa che conta — se la CLI nuova smettesse di esporre gli strumenti della casa, HIRIS non
+  si romperebbe: **risponderebbe senza saperli usare**. Si verifica nel log, riga «init del ponte».
+- **`openai` fino alla 4** invece che fino alla 3: la linea 3 era esclusa in silenzio.
+
+Suite: **1767 Python · 175 JavaScript**. Censimento: 0 opzioni non lette.
+
 ## [3.2.0] — Il modello del piano (2026-08-15)
 
 **Il Piano Claude Max sceglie il suo modello.** Prima non poteva, e la ragione era scritta
