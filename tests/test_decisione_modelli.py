@@ -324,7 +324,7 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 # ---------------------------------------------------------------------------
 
 from hiris.app.decisione_modelli import (componi_pannello,  # noqa: E402
-                                         e_alias, provenienza)
+                                         e_alias, provenienza, spiegazione)
 from hiris.app.decisione_modelli import \
     componi_topologia as _componi_topologia  # noqa: E402
 
@@ -716,16 +716,46 @@ def test_la_voce_auto_c_e_solo_dove_auto_esiste():
     assert [v["valore"] for v in senza["modelli"]] == ["llama3.1:8b"]
 
 
-def test_dove_si_scrive_e_un_percorso_e_il_piano_non_ne_ha_uno():
+def test_dove_si_scrive_e_un_percorso_e_ANCHE_il_piano_ne_ha_uno():
+    """Qui si asseriva che il piano avesse `dove == []`, con la ragione scritta
+    accanto: «il suo modello e' un effetto di quello di Claude API, un pannello
+    che offrisse di scriverlo manderebbe una PUT che nessuno legge». Era vera,
+    ed era il difetto -- un campo solo per due economie opposte, e il piano del
+    proprietario girava con `haiku`.
+
+    Questa e' la riga che accende i tre radio: con `dove` vuoto il frontend
+    calcola `scrivibile = false` e li disabilita."""
     assert componi_pannello(provider_id="ollama", valori=[], fonte="viva",
                             scelto="")["dove"] == ["ollama", "modello"]
     assert componi_pannello(provider_id="openai", valori=[], fonte="viva",
                             scelto="")["dove"] == ["provider_models", "openai"]
     assert componi_pannello(provider_id="subscription", valori=[], fonte="fissa",
-                            scelto="opus")["dove"] == [], (
-        "il modello del piano e' un effetto di quello di Claude API: un "
-        "pannello che offrisse di scriverlo manderebbe una PUT che nessuno legge"
-    )
+                            scelto="opus")["dove"] == ["ponte", "modello"]
+
+
+def test_solo_il_piano_dichiara_l_elenco_completo():
+    """`elenco_completo` e `alias` rispondono a due domande diverse e oggi
+    coincidono: `alias` dice di che NATURA e' il valore (e decide il carattere
+    della riga), `elenco_completo` dice se c'e' altro da cercare fuori
+    dall'elenco -- cioe' se il pannello deve offrire un campo dove incollare un
+    identificatore. Possono divergere il giorno in cui un provider avesse un
+    insieme chiuso di identificatori veri: per questo sono due campi."""
+    piano = componi_pannello(provider_id="subscription", valori=[],
+                             fonte="fissa", scelto="opus")
+    assert piano["elenco_completo"] is True
+    for pid in ("claude", "openai", "openrouter", "ollama"):
+        voce = componi_pannello(provider_id=pid, valori=["x"], fonte="viva",
+                                scelto="x")
+        assert voce["elenco_completo"] is False, pid
+
+
+def test_la_spiegazione_del_piano_non_manda_piu_a_claude_api():
+    """Diventerebbe falsa nel momento esatto in cui la fetta funziona: il
+    modello del piano non segue piu' quello di Claude API, e mandare li'
+    sarebbe mandare a cambiare il valore sbagliato."""
+    testo = spiegazione("subscription")
+    assert "Claude API" not in testo
+    assert testo, "e non diventa vuota: la forma del pannello va spiegata comunque"
 
 
 def test_il_piano_e_l_unico_che_sceglie_un_ALIAS():

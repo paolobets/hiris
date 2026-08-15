@@ -769,16 +769,25 @@ _OSPITI: dict[str, str] = {
 # avrebbe bisogno di un `if (id === 'ollama')` per sapere che il modello di
 # Ollama non vive in `provider_models` -- cioè di conoscere il caso
 # particolare, che è la forma esatta del difetto che questa fetta chiude.
-# La tupla VUOTA dice «qui non c'è niente da salvare», ed è il caso del piano:
-# il suo modello è un effetto di quello di Claude API (progetto §0.4), non un
-# secondo valore. Un pannello che offrisse di scriverlo manderebbe una PUT che
-# nessuno legge -- la lezione del Task 8, applicata prima di disegnare.
+# Qui il piano aveva la tupla VUOTA -- «niente da salvare» -- con la ragione
+# scritta accanto: il suo modello era un effetto di quello di Claude API
+# (progetto §0.4), non un secondo valore, e un pannello che offrisse di
+# scriverlo avrebbe mandato una PUT che nessuno legge.
+#
+# Era vera, ed era IL DIFETTO. Un campo solo serviva due economie opposte: su
+# Claude API si paga a token e `haiku` è la scelta frugale, sul piano il
+# modello non costa di più e `opus` è la ragione per cui il piano esiste.
+# L'impianto del proprietario girava sul piano con `haiku`. Dalla fetta «il
+# modello del piano» il piano ha un campo suo, `ponte.modello`, e questa riga
+# è tutto ciò che serve al frontend per accendere i tre radio: `dove` non
+# vuoto → `scrivibile` vero. Nessuna riga di JavaScript ha dovuto imparare
+# niente -- è ciò per cui `dove` è un percorso e non un nome.
 _DOVE_SI_SCRIVE: dict[str, tuple[str, ...]] = {
     "claude": ("provider_models", "claude"),
     "openai": ("provider_models", "openai"),
     "openrouter": ("provider_models", "openrouter"),
     "ollama": ("ollama", "modello"),
-    "subscription": (),
+    "subscription": ("ponte", "modello"),
 }
 
 # La voce «auto», che nell'archivio è la STRINGA VUOTA e non la parola "auto".
@@ -859,10 +868,13 @@ def spiegazione(provider_id: str) -> str:
     per OpenRouter è la ragione per cui l'elenco non è il catalogo.
     """
     if provider_id == "subscription":
+        # Qui c'era «Quale dei tre sia in uso segue il modello di Claude API, e
+        # si sceglie lì»: vera fino alla 3.1.0, e falsa dal momento esatto in
+        # cui il piano ha avuto un campo suo. Mandare a Claude API adesso
+        # vorrebbe dire mandare a cambiare il valore sbagliato.
         return ("Sono alias, non nomi di modello: seguono il modello corrente "
-                "del piano invece di puntare a una versione fissa. Quale dei "
-                "tre sia in uso segue il modello di {}, e si sceglie lì."
-                .format(nome("claude")))
+                "del piano invece di puntare a una versione fissa. Qui la "
+                "scelta non cambia quanto spendi — è compresa nel piano.")
     if provider_id == "openrouter":
         return ("Solo modelli che sanno usare gli strumenti: HIRIS manda "
                 "sempre il catalogo delle azioni, e gli altri rifiuterebbero "
@@ -915,6 +927,25 @@ def componi_pannello(
         "id": provider_id,
         "nome": nome(provider_id),
         "alias": e_alias(provider_id),
+        # L'insieme è CHIUSO? Non è la stessa domanda di `alias`, benché oggi
+        # le due risposte coincidano: `alias` dice di che NATURA è il valore (e
+        # decide il carattere della riga), `elenco_completo` dice se c'è altro
+        # da cercare fuori dall'elenco -- cioè se il pannello deve offrire un
+        # campo dove incollare un identificatore. Il piano ne ha tre e non
+        # esiste un quarto; ogni altro provider ha un catalogo di cui l'elenco
+        # è un pezzo.
+        #
+        # Serve perché accendendo `dove` per il piano si accenderebbe anche il
+        # campo di testo libero (nel pannello filtro e campo sono la stessa
+        # cosa): si potrebbe incollare `gpt-4o`, salvarlo, e vederselo ridurre
+        # a `sonnet` da `_pulisci_ponte` con un log che nessuno legge. Un
+        # controllo abilitato che non fa quello che dice -- la cosa che i tre
+        # radio spenti dichiaravano di voler evitare, rientrata dalla porta
+        # opposta.
+        #
+        # Due campi e non uno perché il giorno in cui un provider avesse un
+        # insieme chiuso di identificatori veri le due risposte divergono.
+        "elenco_completo": e_alias(provider_id),
         "fonte": fonte,
         "provenienza": provenienza(
             provider_id, fonte, indirizzo=indirizzo,

@@ -465,9 +465,9 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
     body = await (await client.get("/api/models?provider=claude")).json()
     assert [p["id"] for p in body["providers"]] == ["claude"]
     p = body["providers"][0]
-    assert set(p) == {"id", "nome", "alias", "fonte", "provenienza",
-                      "spiegazione", "quando", "dove", "scelto", "casella",
-                      "modelli"}
+    assert set(p) == {"id", "nome", "alias", "elenco_completo", "fonte",
+                      "provenienza", "spiegazione", "quando", "dove", "scelto",
+                      "casella", "modelli"}
     # Anthropic non pubblica un elenco: questa lista e' scritta a mano e
     # invecchia. Chiamarla «viva» per farla sembrare migliore sarebbe una
     # parola piu' larga del fatto.
@@ -477,26 +477,34 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
 
 
 @pytest.mark.asyncio
-async def test_il_pannello_del_piano_offre_tre_alias_e_non_si_scrive(client, monkeypatch):
+async def test_il_pannello_del_piano_offre_tre_alias_E_SI_SCRIVE(client, monkeypatch):
     """`agent/runner.modello_cli` riduce QUALUNQUE modello risolto a
     opus/haiku/sonnet: offrire `claude-opus-4-7` sul piano sarebbe una
-    precisione finta. E non c'e' niente da salvare -- il modello del piano e'
-    un effetto di quello di Claude API -- quindi `dove` e' vuoto: un pannello
-    che offrisse di scriverlo manderebbe una PUT che nessuno legge."""
+    precisione finta.
+
+    Qui si asseriva anche `dove == []`, con la ragione scritta accanto: «il
+    modello del piano e' un effetto di quello di Claude API, un pannello che
+    offrisse di scriverlo manderebbe una PUT che nessuno legge». Era vera, ed
+    era il difetto. Dalla fetta «il modello del piano» c'e' un campo suo, e
+    `elenco_completo` tiene fuori il campo di testo libero: i tre alias si
+    scelgono, ma non c'e' un quarto valore da incollare."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
     body = await (await client.get("/api/models?provider=subscription")).json()
     p = body["providers"][0]
     assert [v["valore"] for v in p["modelli"]] == ["haiku", "sonnet", "opus"]
-    assert p["dove"] == []
+    assert p["dove"] == ["ponte", "modello"]
     assert p["alias"] is True
+    assert p["elenco_completo"] is True
     assert p["fonte"] == "fissa", (
         "i tre alias non sono un ripiego: non descrivono il catalogo di "
         "qualcun altro, sono l'insieme esatto che modello_cli sa produrre"
     )
-    assert "segue il modello di Claude API" in p["spiegazione"]
+    assert "Claude API" not in p["spiegazione"], (
+        "la spiegazione mandava a scegliere il modello sulla riga di Claude "
+        "API: da questa fetta sarebbe mandare a cambiare il valore sbagliato"
+    )
     assert p["scelto"] == "sonnet", (
-        "senza un modello scelto per Claude API, resolve_model risolve su "
-        "sonnet e il ponte usa quell'alias"
+        "il predefinito del campo su un archivio appena nato"
     )
 
 

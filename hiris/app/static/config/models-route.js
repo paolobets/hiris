@@ -136,7 +136,7 @@
     cfg: {
       chain_order: [],
       provider_models: { claude: '', openai: '', openrouter: '' },
-      ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+      ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50, modello: 'sonnet' },
       ollama: { modello: '', timeout_s: 120 },
       nascondi_gratuiti: false,
       strategia_ultima: ''
@@ -530,7 +530,18 @@
     box.appendChild(el('p', 'pannello-provenienza fonte-' + (dati.fonte || ''),
       dati.provenienza || ''));
 
-    if (scrivibile) {
+    /* Il campo si disegna solo dove c'è qualcosa da cercare FUORI dall'elenco.
+       `elenco_completo` viene dal backend e questa pagina non sa per chi è
+       vero: un `if (id === 'subscription')` qui sarebbe una regola del prodotto
+       scritta una seconda volta in un altro linguaggio, cioè il difetto che
+       questa pagina esiste per non avere.
+
+       Senza questa guardia, il giorno in cui il piano ha guadagnato un campo
+       suo il suo pannello avrebbe offerto di incollare `gpt-4o`, e il
+       salvataggio lo avrebbe ridotto a `sonnet` senza dirlo: un controllo
+       abilitato che non fa quello che dice — la stessa cosa che i tre radio
+       spenti dichiaravano di voler evitare, rientrata dalla porta opposta. */
+    if (scrivibile && !dati.elenco_completo) {
       var filtro = el('input', 'pannello-filtro');
       filtro.type = 'text';
       filtro.value = p.filtro;
@@ -1007,7 +1018,8 @@
         chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
         provider_models: Object.assign({ claude: '', openai: '', openrouter: '' },
                                        cfgRaw.provider_models || {}),
-        ponte: Object.assign({ attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+        ponte: Object.assign({ attivo: false, scadenza_min: 5, tetto_giornaliero: 50,
+                               modello: 'sonnet' },
                              cfgRaw.ponte || {}),
         ollama: Object.assign({ modello: '', timeout_s: 120 }, cfgRaw.ollama || {}),
         nascondi_gratuiti: !!cfgRaw.nascondi_gratuiti,

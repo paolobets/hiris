@@ -26,7 +26,7 @@ function jsonResponse(body, status) {
 const CONFIG = {
   chain_order: ['claude', 'openrouter'],
   provider_models: { claude: 'claude-opus-4-7', openai: '', openrouter: '' },
-  ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50 },
+  ponte: { attivo: false, scadenza_min: 5, tetto_giornaliero: 50, modello: 'sonnet' },
   ollama: { modello: '', timeout_s: 120 },
   nascondi_gratuiti: false,
   strategia_ultima: 'balanced',
@@ -813,7 +813,8 @@ test('la pagina non ha più niente da confessare sull\'ordine', async () => {
    payload cambi lo schermo. */
 
 const PANNELLO_OR = {
-  id: 'openrouter', nome: 'OpenRouter', alias: false, fonte: 'viva',
+  id: 'openrouter', nome: 'OpenRouter', alias: false, elenco_completo: false,
+  fonte: 'viva',
   provenienza: 'Letti da openrouter.ai adesso.',
   spiegazione: 'Solo modelli che sanno usare gli strumenti.',
   quando: 'Una frase qualsiasi del backend.',
@@ -828,11 +829,15 @@ const PANNELLO_OR = {
 };
 
 const PANNELLO_PIANO = {
-  id: 'subscription', nome: 'Piano Claude Max', alias: true, fonte: 'fissa',
+  id: 'subscription', nome: 'Piano Claude Max', alias: true,
+  /* `elenco_completo` e `alias` coincidono qui, e sono due domande diverse:
+     la prima dice che non c'è un quarto valore da cercare altrove, la
+     seconda che il valore è un alias e non un identificatore. */
+  elenco_completo: true, fonte: 'fissa',
   provenienza: 'Sono tutti quelli che esistono: il ponte parla con la CLI del piano.',
-  spiegazione: 'Sono alias, non nomi di modello: quale dei tre sia in uso '
-    + 'segue il modello di Claude API, e si sceglie lì.',
-  quando: '', dove: [], scelto: 'sonnet', casella: null,
+  spiegazione: 'Sono alias, non nomi di modello: qui la scelta non cambia '
+    + 'quanto spendi, è compresa nel piano.',
+  quando: '', dove: ['ponte', 'modello'], scelto: 'sonnet', casella: null,
   modelli: [
     { valore: 'haiku', nota: 'il più rapido' },
     { valore: 'sonnet', nota: 'l\'equilibrato' },
@@ -841,7 +846,8 @@ const PANNELLO_PIANO = {
 };
 
 const PANNELLO_OLLAMA = {
-  id: 'ollama', nome: 'Ollama (in casa)', alias: false, fonte: 'viva',
+  id: 'ollama', nome: 'Ollama (in casa)', alias: false, elenco_completo: false,
+  fonte: 'viva',
   provenienza: 'Scaricati su http://192.168.1.42:11434 — letti adesso.',
   spiegazione: '', quando: '',
   dove: ['ollama', 'modello'], scelto: 'llama3.1:8b', casella: null,
@@ -915,7 +921,7 @@ test('la provenienza è quella ricevuta, non una composta qui', async () => {
 
 test('il pannello del piano offre tre alias e nessun identificatore', async () => {
   const ctx = monta({ config: {
-    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50, modello: 'sonnet' },
     catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
     pannelli: { subscription: PANNELLO_PIANO } });
   ctx.window.HirisModelsRoute.mount();
@@ -925,17 +931,18 @@ test('il pannello del piano offre tre alias e nessun identificatore', async () =
   const voci = Array.from(ctx.document.querySelectorAll('.pannello-modello label'))
     .map((l) => l.textContent.trim().split(' ')[0]);
   assert.deepEqual(voci, ['haiku', 'sonnet', 'opus']);
-  assert.match(pannello(ctx.document).textContent, /segue il modello di Claude API/);
+  assert.match(pannello(ctx.document).textContent, /compresa nel piano/);
 });
 
-test('il pannello del piano MOSTRA e non scrive: niente da salvare, niente da promettere', async () => {
-  /* `dove` è vuoto: il modello del piano è un effetto di quello di Claude API,
-     e non esiste nessun posto in cui scriverlo. Un controllo abilitato che non
-     salva sarebbe la lezione del Task 8 dimenticata -- i bottoni «Usa»/«✕» sul
-     piano tornavano 200 e venivano buttati via. Spento è una lettura onesta,
-     come la freccia che non ha niente da scambiare. */
+test('il pannello del piano SCRIVE, e scrive dove gli viene detto', async () => {
+  /* Fino alla 3.1.0 questo test asseriva il CONTRARIO -- «il pannello del piano
+     MOSTRA e non scrive» -- e la ragione scritta accanto era vera: `dove` era
+     vuoto perché il modello del piano era un effetto di quello di Claude API, e
+     un controllo abilitato che non salva sarebbe stato peggio di uno spento.
+     Era vera, ed era il difetto: un campo solo per due economie opposte, e il
+     piano del proprietario girava con haiku. */
   const ctx = monta({ config: {
-    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 },
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 150, modello: 'haiku' },
     catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
     pannelli: { subscription: PANNELLO_PIANO } });
   ctx.window.HirisModelsRoute.mount();
@@ -944,16 +951,47 @@ test('il pannello del piano MOSTRA e non scrive: niente da salvare, niente da pr
   await tick(20);
   const radio = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'));
   assert.equal(radio.length, 3);
-  assert.deepEqual(radio.map((r) => r.disabled), [true, true, true]);
-  assert.deepEqual(radio.map((r) => r.checked), [false, true, false],
-    'e dice comunque quale dei tre è in uso adesso');
-  assert.equal(ctx.document.querySelector('.pannello-filtro'), null,
-    'nessun campo di testo dove non c\'è niente da scrivere');
+  assert.deepEqual(radio.map((r) => r.disabled), [false, false, false],
+    'i tre alias si scelgono: il campo esiste');
   radio[2].checked = true;
   radio[2].dispatchEvent(new ctx.window.Event('change'));
   await tick(20);
-  assert.equal(ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length, 0,
-    'nemmeno forzando l\'evento: la scrittura non esiste, non è solo nascosta');
+  const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
+  assert.equal(put.length, 1);
+  assert.equal(JSON.parse(put[0].opts.body).ponte.modello, 'opus',
+    'e finisce nel percorso che il backend ha mandato, non in uno noto alla pagina');
+});
+
+test('dove l\'elenco è completo non c\'è niente da incollare', async () => {
+  /* Accendendo `dove` si accende anche il campo di testo libero: nel pannello
+     filtro e campo sono la stessa cosa. Sul piano vorrebbe dire incollare
+     `gpt-4o`, salvarlo, e vederselo ridurre a `sonnet` dal validatore con un
+     log che nessuno legge -- un controllo abilitato che non fa quello che dice,
+     cioè la cosa che i tre radio spenti dichiaravano di voler evitare,
+     rientrata dalla porta opposta. */
+  const ctx = monta({ config: {
+    ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 150, modello: 'haiku' },
+    catena: [Object.assign({}, PIANO_DENTRO, { posizione: 1 })], fuori_catena: [] },
+    pannelli: { subscription: PANNELLO_PIANO } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[0]);
+  await tick(20);
+  assert.equal(ctx.document.querySelector('.pannello-filtro'), null,
+    'nessun campo dove non c\'è niente da cercare altrove');
+});
+
+test('dove l\'elenco è un pezzo di catalogo il campo c\'è', async () => {
+  /* La polarità opposta, nello stesso file: senza questo test una guardia che
+     togliesse il filtro a TUTTI lascerebbe la suite verde. */
+  const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI },
+    pannelli: { openrouter: PANNELLO_OR } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  apriIlModello(ctx, righeCatena(ctx.document)[1]);
+  await tick(20);
+  assert.ok(ctx.document.querySelector('.pannello-filtro'),
+    'duecento modelli senza un filtro sarebbero illeggibili');
 });
 
 test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina rilegge', async () => {
