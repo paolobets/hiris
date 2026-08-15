@@ -1,5 +1,54 @@
 # HIRIS — Changelog
 
+## [3.2.0] — Il modello del piano (2026-08-15)
+
+**Il Piano Claude Max sceglie il suo modello.** Prima non poteva, e la ragione era scritta
+nel codice: il modello del piano non era un valore suo, era un *effetto* del modello di
+Claude API. I tre alias nel pannello erano spenti apposta — un controllo che non salva è
+peggio di un controllo assente.
+
+### Cosa cambia, in una riga
+
+**Un campo solo serviva due economie opposte.** Su Claude API si paga a token, e `haiku` è la
+scelta frugale; sul piano il modello **non costa di più**, e `opus` è la ragione per cui il
+piano esiste. Su questa casa il risultato si vedeva: il piano già pagato rispondeva con
+`haiku`, perché quel valore era stato scelto per l'altro provider.
+
+Da questa versione `ponte.modello` è un campo suo. Cambiare il modello di Claude API non
+tocca più il piano, e viceversa.
+
+**Il giorno dell'aggiornamento non cambia niente sotto di te:** all'avvio HIRIS scrive nel
+campo nuovo, **una volta sola**, l'alias che il piano stava già usando. Poi vai nella pagina
+Modelli e scegli.
+
+### E l'elenco di Claude API si legge davvero
+
+La pagina diceva che Anthropic non pubblica un elenco di modelli, e quei tre nomi erano
+scritti a mano nel sorgente. **È falso:** `GET /v1/models` esiste. Adesso si legge dal vero,
+e la lista scritta a mano resta solo come riserva — dichiarata per quello che è.
+
+| Prima | Adesso |
+|---|---|
+| i tre alias del piano erano spenti, e la spiegazione mandava sulla riga di Claude API | si scelgono lì, e la scelta non cambia quanto spendi |
+| cambiare il modello di Claude API cambiava anche quello del piano, senza dirlo | sono due valori indipendenti |
+| l'elenco di Claude API erano tre nomi scritti a mano, presentati come tutto ciò che esiste | letti da `api.anthropic.com`, con la provenienza dichiarata |
+| lo stesso modello veniva ricalcolato in due file, con la stessa regola scritta due volte | un campo, letto |
+
+### Cosa si perde, ed è dichiarato
+
+**Senza una chiave API di Claude non si sfogliano più i suoi modelli.** Erano voci inerti —
+senza chiave quel provider non entra nella catena — e da questa versione non servono più al
+piano, che ha il suo campo. Ma era una capacità che c'era.
+
+### Sotto il cofano
+
+`modello_cli` ha cambiato mestiere: da traduttore chiamato a ogni turno, in due file diversi,
+a **validatore del campo, in un posto solo**. Il segno di migrazione `piano_seminato` sta
+fuori da ciò che una PUT può riscrivere: la semina deve accadere una volta, non rivalutarsi a
+ogni avvio.
+
+Suite: **1737 Python · 175 JavaScript**. Censimento: 39 reperti, **0 opzioni non lette**.
+
 ## [3.1.0] — Ciò che non si sa di poter chiedere (2026-08-14)
 
 **Dopo l'aggiornamento, svuota una volta i dati del sito.** È l'ultima volta che serve: da
