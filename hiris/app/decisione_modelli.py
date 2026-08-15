@@ -760,6 +760,12 @@ ALIAS_DEL_PIANO: tuple[tuple[str, str], ...] = (
 # CHI non ha risposto: «non ho potuto leggere» senza il nome di chi non ha
 # risposto è meno di quanto il sistema sa.
 _OSPITI: dict[str, str] = {
+    # Claude API è entrata qui con la fetta «il modello del piano». Prima aveva
+    # un ramo tutto suo in `provenienza`, con la frase «Anthropic non pubblica
+    # un elenco»: falso, `GET /v1/models` esiste. Cancellato il ramo, il
+    # percorso generico produce già le due frasi giuste -- serviva solo il nome
+    # dell'ospite. Un caso particolare in meno, non uno in più.
+    "claude": "api.anthropic.com",
     "openai": "api.openai.com",
     "openrouter": "openrouter.ai",
 }
@@ -834,13 +840,18 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
         # altro -- sono l'insieme esatto che `modello_cli` sa produrre.
         return ("Sono tutti quelli che esistono: il ponte parla con la CLI del "
                 "piano, che di nomi ne conosce tre.")
-    if provider_id == "claude":
-        # Sempre riserva, e detto con parole proprie: Anthropic non espone un
-        # endpoint pubblico di elenco, quindi questa lista è scritta a mano e
-        # invecchia come tutte le liste scritte a mano. Chiamarla «viva» per
-        # farla sembrare migliore sarebbe una parola più larga del fatto.
-        return ("Anthropic non pubblica un elenco: questi sono i modelli che "
-                "HIRIS conosce. Quello che vedi qui potrebbe non esistere più.")
+    # Qui viveva un ramo `if provider_id == "claude"` con una frase propria,
+    # che diceva all'utente che Anthropic non pubblicherebbe nessun elenco e
+    # che quella lista era tutto ciò che HIRIS conosce. È FALSO:
+    # `GET /v1/models` esiste (verificato sulla documentazione ufficiale il
+    # 15/08/2026). Il ramo è uscito con la fetta «il modello del piano», e
+    # Claude API cade nel percorso generico come gli altri due provider che si
+    # interrogano davvero.
+    #
+    # La frase esatta è vietata da `tests/test_elenco_anthropic.py` in TUTTO il
+    # sorgente, commenti compresi: un grep assoluto è una trappola più forte di
+    # uno che deve distinguere una citazione da un'affermazione -- per questo
+    # qui è parafrasata.
     ospite = _OSPITI.get(provider_id) or indirizzo or nome(provider_id)
     if fonte == "viva":
         if provider_id == "ollama":

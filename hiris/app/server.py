@@ -2003,6 +2003,11 @@ async def _on_startup(app: web.Application) -> None:
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
     # Store config for /api/models endpoint
+    # La chiave di Claude API era una locale di questa funzione e non arrivava
+    # mai nell'app: `_config_has_credential("claude")` la cercava in ambiente,
+    # e nessuno la usava per altro. Dalla fetta «il modello del piano» serve
+    # anche a `_fetch_claude_models`, e sta dove stanno le altre due.
+    app["claude_api_key"] = api_key
     app["openai_api_key"] = openai_api_key
     app["openrouter_api_key"] = openrouter_api_key
     app["local_model_url"] = local_model_url

@@ -655,6 +655,49 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
         return _OPENAI_FALLBACK, "riserva"
 
 
+async def _fetch_claude_models(api_key: str) -> tuple[list[str], str]:
+    """L'elenco dei modelli di Anthropic, letto adesso.
+
+    Fino alla fetta «il modello del piano» questa lettura non esisteva, e il
+    codice ne dichiarava la ragione: «Anthropic non espone un endpoint
+    pubblico». **E' FALSO**, verificato sulla documentazione ufficiale il
+    15/08/2026: `GET /v1/models` c'è, paginato (`limit` 1-1000, predefinito
+    20), ordinato dai più recenti, e ogni voce porta `id`, `display_name`,
+    `created_at` e `capabilities`. `_CLAUDE_MODELS` resta come RISERVA -- tre
+    nomi scritti a mano che invecchiano -- e da adesso si dichiara per quello
+    che è invece di presentarsi come tutto ciò che esiste.
+
+    Vuole una CHIAVE API: col token del piano non risponde. Per questo il
+    chiamante non prova nemmeno, quando la chiave non c'è.
+
+    `limit=100` su una pagina sola: il catalogo reale non ci arriva vicino, e
+    seguire `has_more` sarebbe codice che non si può provare col vero.
+    """
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+    timeout = aiohttp.ClientTimeout(total=5)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                    "https://api.anthropic.com/v1/models?limit=100",
+                    headers=headers) as resp:
+                if resp.status != 200:
+                    logger.warning("Anthropic models list returned %s", resp.status)
+                    return _CLAUDE_MODELS, "riserva"
+                data = await resp.json()
+        # NESSUNA CURATELA e nessun riordino: a differenza di OpenAI qui non
+        # c'è rumore da filtrare (niente embedding, niente audio, niente
+        # legacy-instruct), e l'ordine È un'informazione -- i più recenti per
+        # primi, come li manda l'API. Riordinare nasconderebbe qual è il
+        # modello nuovo.
+        modelli = [m["id"] for m in data.get("data", []) if m.get("id")]
+        # Una risposta 200 che non contiene nessun modello non è una lettura
+        # riuscita: la stessa regola già scritta in `_fetch_openai_models`.
+        return (modelli, "viva") if modelli else (_CLAUDE_MODELS, "riserva")
+    except Exception as exc:
+        logger.warning("Could not fetch Anthropic models: %s", exc)
+        return _CLAUDE_MODELS, "riserva"
+
+
 async def _fetch_ollama_models(local_model_url: str,
                                modello_scelto: str) -> tuple[list[str], str]:
     """L'elenco di ciò che è SCARICATO su quella macchina, da `/api/tags`.
@@ -855,6 +898,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
     # e la riga da cui si apre non possono dire due cose diverse.
     in_uso = _modelli_in_uso(provider_models, modello_ollama,
                              archivio["ponte"]["modello"])
+    claude_key = request.app.get("claude_api_key", "")
     openai_key = request.app.get("openai_api_key", "")
     openrouter_key = request.app.get("openrouter_api_key", "")
     local_url = request.app.get("local_model_url", "")
@@ -878,15 +922,22 @@ async def handle_list_models(request: web.Request) -> web.Response:
                 return [], "assente", "", ""
             return [], "fissa", in_uso["subscription"], ""
         if pid == "claude":
-            # L'unico elenco che NON viene dal provider: Anthropic non espone
-            # un endpoint pubblico. Quindi c'è anche senza la chiave.
-            # (La ragione che qui giustificava l'eccezione -- «su
-            # un'installazione col solo Piano Claude Max questo è l'UNICO posto
-            # da cui si sceglie il modello del piano» -- è FALSA dalla fetta
-            # «il modello del piano»: il piano ha un campo suo. L'eccezione
-            # esce col task successivo, insieme alla frase su Anthropic.)
-            return (list(_CLAUDE_MODELS), "riserva",
-                    provider_models.get("claude", ""), in_uso["claude"])
+            # Uguale a OpenAI e a OpenRouter dalla fetta «il modello del
+            # piano». Qui il ramo era diverso in DUE modi, e tutti e due sono
+            # usciti: l'elenco non si leggeva mai («Anthropic non espone un
+            # endpoint pubblico» -- falso, `GET /v1/models` esiste) e c'era
+            # anche SENZA chiave. La seconda eccezione aveva una ragione
+            # scritta -- su un'installazione col solo Piano Claude Max questo
+            # era l'unico posto da cui si sceglieva il modello del piano -- e
+            # quella ragione è morta col campo `ponte.modello`.
+            #
+            # PERDITA DICHIARATA: senza chiave non si sfogliano più i modelli
+            # di Claude API. Erano voci inerti (senza chiave quel provider non
+            # entra in catena), ma è una capacità che c'era.
+            if not claude_key:
+                return [], "assente", provider_models.get("claude", ""), ""
+            valori, fonte = await _fetch_claude_models(claude_key)
+            return valori, fonte, provider_models.get("claude", ""), in_uso["claude"]
         if pid == "openai":
             if not openai_key:
                 return [], "assente", provider_models.get("openai", ""), ""

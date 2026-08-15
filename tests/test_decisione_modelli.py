@@ -658,12 +658,19 @@ def test_ollama_dice_su_QUALE_macchina_sono_scaricati():
     assert "chiave rifiutata" not in riga, "Ollama non ha una chiave da rifiutare"
 
 
-def test_claude_dichiara_la_riserva_con_parole_proprie_e_mai_viva():
-    """Anthropic non espone un endpoint pubblico di elenco: questa lista e'
-    scritta a mano e invecchia come tutte le liste scritte a mano."""
+def test_claude_api_nomina_l_ospite_come_gli_altri_due():
+    """Qui si asseriva che la provenienza di Claude API avesse parole PROPRIE,
+    e quelle parole dicevano all'utente che Anthropic non pubblicherebbe nessun
+    elenco. E' falso -- `GET /v1/models` esiste, verificato sulla
+    documentazione ufficiale il 15/08/2026 -- e il ramo che le componeva e'
+    uscito con la fetta «il modello del piano».
+
+    Il percorso generico produce gia' le due frasi giuste: serviva solo una
+    riga in `_OSPITI`. Un caso particolare cancellato, non uno aggiunto."""
     riga = provenienza("claude", "riserva")
-    assert "Anthropic non pubblica un elenco" in riga
+    assert "api.anthropic.com" in riga
     assert "potrebbe non esistere più" in riga
+    assert provenienza("claude", "viva") == "Letti da api.anthropic.com adesso."
 
 
 def test_il_difetto_gemello_si_LEGGE_invece_di_essere_taciuto():

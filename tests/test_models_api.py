@@ -1,6 +1,9 @@
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from hiris.app.api import handlers_models
 
 # Reuse the aiohttp test-app fixture/factory from test_api.py (creates the real
 # app via create_app(), mocks HA + claude_runner, sets app["data_dir"] to a
@@ -8,6 +11,28 @@ import pytest
 from tests.test_api import client  # noqa: F401
 
 _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
+
+
+@pytest.fixture
+def claude_con_elenco(client):  # noqa: F811
+    """Claude API con una chiave, e la lettura MOCKATA.
+
+    Dalla fetta «il modello del piano» Claude API si comporta come gli altri
+    due provider che si interrogano: senza chiave e' «assente» e sparisce
+    dall'elenco; con la chiave, `/api/models` chiama DAVVERO api.anthropic.com.
+
+    I test che usano questa fixture parlano della FORMA della rotta -- quali id
+    compaiono, che aspetto ha la voce «auto», che cosa NON c'e' piu' nel
+    payload -- non della lettura, che vive tutta in
+    `tests/test_elenco_anthropic.py`. La chiave serve solo perche' senza di lei
+    Claude non comparirebbe affatto; il mock serve perche' una suite che esce
+    sulla rete e' una suite che fallisce per ragioni sue.
+    """
+    client.app["claude_api_key"] = "sk-test"
+    with patch.object(handlers_models, "_fetch_claude_models",
+                      AsyncMock(return_value=(handlers_models._CLAUDE_MODELS,
+                                              "riserva"))):
+        yield client
 
 
 @pytest.mark.asyncio
@@ -434,7 +459,7 @@ async def test_list_models_never_leaks_secrets(client):
 
 
 @pytest.mark.asyncio
-async def test_list_models_non_dice_piu_l_appartenenza_alla_catena(client):
+async def test_list_models_non_dice_piu_l_appartenenza_alla_catena(claude_con_elenco):
     """Task 9: `in_catena` + `has_credential` erano la TERZA superficie che
     descriveva l'appartenenza, dopo che il Task 7 aveva tolto
     `providers[].active` e il Task 8 l'intero `providers[]` da
@@ -446,7 +471,7 @@ async def test_list_models_non_dice_piu_l_appartenenza_alla_catena(client):
     E gli id sono i CINQUE del prodotto: l'id storico "anthropic" (che
     divergeva dal nome "claude" della catena, e costringeva a una mappa di
     riconciliazione) e' uscito con lui."""
-    body = await (await client.get("/api/models")).json()
+    body = await (await claude_con_elenco.get("/api/models")).json()
     providers = body["providers"]
     assert providers
     for entry in providers:
@@ -468,11 +493,15 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
     assert set(p) == {"id", "nome", "alias", "elenco_completo", "fonte",
                       "provenienza", "spiegazione", "quando", "dove", "scelto",
                       "casella", "modelli"}
-    # Anthropic non pubblica un elenco: questa lista e' scritta a mano e
-    # invecchia. Chiamarla «viva» per farla sembrare migliore sarebbe una
-    # parola piu' larga del fatto.
-    assert p["fonte"] == "riserva"
-    assert "Anthropic non pubblica un elenco" in p["provenienza"]
+    # La fixture `client` non porta una chiave di Claude API, quindi non c'e'
+    # nessun elenco da leggere e il pannello lo DICE. Qui si asseriva `fonte ==
+    # "riserva"` con una frase che dichiarava inesistente l'endpoint di elenco
+    # di Anthropic: falso, `GET /v1/models` c'e'. Dalla fetta «il modello del
+    # piano» Claude API si comporta come OpenAI e OpenRouter -- senza chiave,
+    # «assente»; con la chiave, lettura viva e riserva dichiarata se fallisce
+    # (`tests/test_elenco_anthropic.py`).
+    assert p["fonte"] == "assente"
+    assert "manca la chiave" in p["provenienza"]
     assert p["dove"] == ["provider_models", "claude"]
 
 
@@ -509,34 +538,46 @@ async def test_il_pannello_del_piano_offre_tre_alias_E_SI_SCRIVE(client, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_il_pannello_di_claude_apre_anche_senza_la_chiave(client, monkeypatch):
-    """L'eccezione che il progetto §6.4 non poteva vedere: la regola non e'
-    «senza credenziale niente pannello», e' «senza ELENCO niente pannello», e
-    l'elenco di Claude non viene dal provider. Su un'installazione col solo
-    Piano Claude Max questo e' l'UNICO posto da cui si sceglie il modello del
-    piano: chiuderlo li' significherebbe rispondere «da nessuna parte» alla
-    prima domanda del proprietario."""
+async def test_il_pannello_di_claude_senza_chiave_DICE_che_non_c_e_niente_da_leggere(
+        client, monkeypatch):
+    """L'eccezione che qui si difendeva E' MORTA, e va detto perche'.
+
+    Diceva: la regola non e' «senza credenziale niente pannello» ma «senza
+    ELENCO niente pannello», e l'elenco di Claude non veniva dal provider --
+    quindi c'era anche senza chiave. La ragione per cui contava era scritta:
+    su un'installazione col solo Piano Claude Max quello era l'UNICO posto da
+    cui si sceglieva il modello del piano.
+
+    Dalla fetta «il modello del piano» tutte e due le meta' sono cadute:
+    l'elenco VIENE dal provider (`GET /v1/models` esiste, la frase contraria
+    era falsa) e il piano ha un campo suo, quindi nessuno deve piu' passare di
+    qui per sceglierlo. Claude API si comporta come OpenAI e OpenRouter.
+
+    E' una PERDITA -- senza chiave non si sfogliano piu' quei modelli -- ma di
+    voci inerti: senza chiave quel provider non entra in catena. La perdita e'
+    scritta nella spec §6.3, non nascosta."""
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
     client.app["claude_runner"] = None
+    client.app["claude_api_key"] = ""
     body = await (await client.get("/api/models?provider=claude")).json()
+    # La voce c'e' comunque: chi viene CHIESTO riceve sempre una risposta --
+    # nascondere e' comodo per chi capisce e crudele per chi non capisce
+    # perche' una cosa e' sparita. Quello che cambia e' cosa dice.
     assert [p["id"] for p in body["providers"]] == ["claude"]
-    # E non basta che la voce ci sia: deve portare l'ELENCO. Una voce presente
-    # ma dichiarata «assente», senza modelli, sarebbe la stessa porta chiusa
-    # con un cartello diverso.
     p_claude = body["providers"][0]
-    assert p_claude["fonte"] == "riserva"
-    assert [v["valore"] for v in p_claude["modelli"] if v["valore"]] == [
-        "claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"]
+    assert p_claude["fonte"] == "assente"
+    assert p_claude["modelli"] == []
+    assert "manca la chiave" in p_claude["provenienza"]
     assert p_claude["dove"] == ["provider_models", "claude"]
 
 
 @pytest.mark.asyncio
-async def test_la_voce_auto_e_la_stringa_vuota_e_dice_a_cosa_si_risolve(client):
+async def test_la_voce_auto_e_la_stringa_vuota_e_dice_a_cosa_si_risolve(claude_con_elenco):
     """Salvare la parola "auto" e' un difetto: `resolve_model("auto", "chat",
     "auto")` restituisce "auto" e la richiesta parte con `model="auto"`. La
     voce c'e' -- e' una scelta legittima -- ma il suo valore e' "" e la sua
     nota dice a quale modello si risolve oggi."""
-    body = await (await client.get("/api/models?provider=claude")).json()
+    body = await (await claude_con_elenco.get("/api/models?provider=claude")).json()
     prima = body["providers"][0]["modelli"][0]
     assert prima["valore"] == ""
     assert prima["nota"].startswith("scelto da HIRIS")
@@ -545,11 +586,11 @@ async def test_la_voce_auto_e_la_stringa_vuota_e_dice_a_cosa_si_risolve(client):
 
 
 @pytest.mark.asyncio
-async def test_senza_provider_risponde_per_tutti_quelli_che_hanno_un_elenco(client):
+async def test_senza_provider_risponde_per_tutti_quelli_che_hanno_un_elenco(claude_con_elenco):
     """La forma storica della rotta resta: un client diverso dalla pagina
     esiste, e una rotta che cambia significato in silenzio e' la cosa che
     questa fetta ritira."""
-    body = await (await client.get("/api/models")).json()
+    body = await (await claude_con_elenco.get("/api/models")).json()
     ids = [p["id"] for p in body["providers"]]
     # La fixture cabla solo `claude_runner`: nessuna chiave OpenAI/OpenRouter,
     # nessun indirizzo Ollama, nessun token del piano.
@@ -769,13 +810,13 @@ async def test_un_pannello_chiesto_risponde_SEMPRE_anche_senza_credenziale(clien
 
 
 @pytest.mark.asyncio
-async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(client):
+async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(claude_con_elenco):
     """La regola in una riga: chi viene CHIESTO riceve sempre una risposta,
     senza una richiesta compaiono solo quelli per cui un elenco esiste. Senza
     la seconda meta', la lettura completa mostrerebbe cinque pannelli vuoti."""
-    body = await (await client.get("/api/models")).json()
+    body = await (await claude_con_elenco.get("/api/models")).json()
     assert [p["id"] for p in body["providers"]] == ["claude"]
-    body = await (await client.get("/api/models?provider=subscription")).json()
+    body = await (await claude_con_elenco.get("/api/models?provider=subscription")).json()
     assert [p["id"] for p in body["providers"]] == ["subscription"]
     assert body["providers"][0]["fonte"] == "assente"
     assert "manca il token" in body["providers"][0]["provenienza"]
