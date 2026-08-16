@@ -228,3 +228,46 @@ def test_la_soglia_resta_viva_quando_serve_davvero():
     sezione = _sezione_notevole(_con(entita, stato))
     assert "Luce 0" not in sezione
     assert "raggruppat" in sezione.lower()
+
+
+# ── Le nascoste: fuori dalle gestioni, DENTRO la conoscenza ────────────────
+
+def _sezione_lacune(testo: str) -> str:
+    return testo.split("## Cio' che HIRIS ignora")[1]
+
+
+def test_le_nascoste_si_contano_nel_nucleo_anche_se_non_si_annunciano():
+    """«Non la annuncio» e «non so che esiste» sono due cose diverse, e la
+    seconda sarebbe una perdita.
+
+    Il digesto rispetta la scelta dell'utente e tace. Ma alla domanda «quante
+    entita' nascoste ci sono?» HIRIS deve saper rispondere -- e senza il numero
+    nel nucleo servirebbe una chiamata a `guarda` per ognuna delle sedici aree,
+    cioe' lo stesso difetto che questa fetta chiude."""
+    entita, stato = [], {}
+    for i in range(3):
+        entita.append(_voce(f"light.nascosta_{i}", f"Luce nascosta {i}", nascosta=1))
+        stato[f"light.nascosta_{i}"] = "on"
+    testo = _con(entita, stato)
+
+    assert "Luce nascosta 0" not in _sezione_notevole(testo), (
+        "il digesto rispetta la scelta dell'utente")
+    lacune = _sezione_lacune(testo)
+    assert "3 entita' nascoste" in lacune, (
+        "ma il numero c'e', altrimenti la domanda «quante ce ne sono?» "
+        "costerebbe sedici chiamate")
+
+
+def test_senza_nascoste_non_si_dice_niente():
+    """Un avviso che compare sempre non e' un avviso -- lezione gia' pagata in
+    questo prodotto."""
+    assert "nascost" not in _sezione_lacune(
+        componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+
+
+def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
+    """Un'entita' disabilitata e' gia' fuori da tutto: contarla anche fra le
+    nascoste direbbe un numero che non corrisponde a niente di cercabile."""
+    testo = _con([_voce("light.spenta", "Luce disabilitata",
+                        nascosta=1, disabilitata=1)], {"light.spenta": "on"})
+    assert "nascost" not in _sezione_lacune(testo)

@@ -743,6 +743,29 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             f"lettura: {', '.join(sorted(non_disponibili))}. "
             "Cio' che manca qui sotto potrebbe esistere lo stesso.")
 
+    # Le NASCOSTE: fuori dalle gestioni, dentro la conoscenza.
+    #
+    # Dalla fetta «il vocabolario delle tipologie» un'entita' nascosta in Home
+    # Assistant non entra piu' in «Notevole adesso»: e' una scelta esplicita
+    # dell'utente e il digesto la rispetta. Ma «non la annuncio» e «non so che
+    # esiste» sono due cose diverse, e la seconda sarebbe una perdita: alla
+    # domanda «quante entita' nascoste ci sono?» HIRIS deve saper rispondere.
+    #
+    # Qui, e non altrove, perche' questa sezione esiste per dire cio' che HIRIS
+    # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
+    # senza chiamare uno strumento per ognuna delle sedici aree. `guarda` le
+    # riporta gia' (filtra `disabilitata`, mai `nascosta`): la conoscenza c'era,
+    # mancava il numero.
+    nascoste = [e for e in casa.get("entita", [])
+                if e.get("nascosta") and not e.get("disabilitata")]
+    if nascoste:
+        n = len(nascoste)
+        voce = _plurale(n, "entita' nascosta", "entita' nascoste")
+        avvisi.append(
+            f"{n} {voce} in Home Assistant: non entrano in «Notevole adesso» "
+            "perche' l'utente le ha nascoste, ma esistono e `guarda` le "
+            "riporta se gliele chiedi.")
+
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
     # nucleo applica a trecento entita' (vedi il docstring del modulo),
     # applicata qui al modulo stesso. Con cento script `solo_stato` (il
