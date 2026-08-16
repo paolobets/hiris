@@ -1,0 +1,183 @@
+"""Il vocabolario delle tipologie: cosa una cosa E', e cosa significano i suoi
+valori.
+
+`_STATI_NOTEVOLI` era un insieme di stringhe di stato CIECO alla tipologia: se
+lo stato era in quel set, l'entita' era notevole. Sull'impianto vero produceva
+**300 elementi su 845** -- 119 `unavailable`, 49 telefoni `home`, 18 automazioni
+abilitate, 99 interruttori (di cui **90 dichiarati `config`/`diagnostic` da Home
+Assistant**) -- e sopra i 15 elementi il dettaglio individuale sparisce.
+
+Risultato misurato: HIRIS sapeva CHE due luci erano accese e non QUALI, ha speso
+i dieci giri di strumento a cercarle stanza per stanza, e alla domanda «quali
+luci sono accese» ha risposto «nessuna».
+
+`_traduci_stato` prendeva GIA' la classe e la usava per porte e finestre
+(`_CLASSI_APERTURA`: 5 classi sulle 28 che HA documenta). Il vocabolario era
+nato e si era fermato li'. Queste prove lo finiscono.
+
+**Vocabolario, non filtro.** Un filtro toglie e perde una capacita': escludere
+`device_tracker` dal digesto vorrebbe dire non saper piu' rispondere a «chi e'
+in casa?». Il vocabolario dice cosa una cosa e', e lascia decidere a chi legge.
+
+Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
+"""
+from hiris.app.casa import nucleo
+from hiris.app.casa.nucleo import componi
+
+# Le finte vivono gia' in `test_nucleo.py`: si riusano invece di riscriverle.
+# Due finte che fingono la stessa casa sono la seconda rappresentazione in
+# miniatura, e divergono come tutte le seconde rappresentazioni.
+from tests.test_nucleo import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
+
+
+def _sezione_notevole(testo: str) -> str:
+    return testo.split("## Notevole adesso")[1].split("## ")[0]
+
+
+def _con(entita, stato_extra):
+    casa = dict(_CASA, entita=_CASA["entita"] + entita)
+    return componi(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
+
+
+def _voce(eid, nome, **extra):
+    base = {"id": eid, "nome": nome, "area_id": "sala", "dispositivo_id": None,
+            "classe": None, "unita": None, "disabilitata": 0}
+    base.update(extra)
+    return base
+
+
+# ── Cosa significano i valori: la classe decide ────────────────────────────
+
+def test_un_allagamento_si_legge_bagnato_e_non_acceso():
+    """`moisture` acceso significa BAGNATO -- lo dichiara Home Assistant
+    (developers.home-assistant.io/docs/core/entity/binary-sensor/), non lo
+    indoviniamo noi. Scritto «acceso», un allagamento e' indistinguibile da una
+    lampadina."""
+    sezione = _sezione_notevole(_con(
+        [_voce("binary_sensor.perdita", "Perdita bagno", classe="moisture")],
+        {"binary_sensor.perdita": "on"}))
+    assert "Perdita bagno" in sezione
+    assert "bagnato" in sezione
+    assert "Perdita bagno (acceso)" not in sezione
+
+
+def test_un_movimento_NON_entra_nel_digesto():
+    """La prova gemella della precedente, sullo STESSO dominio: senza,
+    «filtrare per dominio» le lascerebbe passare o cadere entrambe. Un
+    movimento e' vero per trenta secondi -- non e' cio' che la casa STA
+    facendo, e' cio' che e' successo un attimo fa."""
+    sezione = _sezione_notevole(_con(
+        [_voce("binary_sensor.corridoio", "Movimento corridoio", classe="motion")],
+        {"binary_sensor.corridoio": "on"}))
+    assert "Movimento corridoio" not in sezione
+
+
+def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
+    """`_CLASSI_APERTURA` non esiste piu': le sue cinque voci sono cinque righe
+    della mappa dei significati. La prova che l'estensione ha ASSORBITO il caso
+    particolare invece di affiancarlo -- che e' la differenza fra finire un
+    vocabolario e aggiungergliene accanto un secondo."""
+    assert not hasattr(nucleo, "_CLASSI_APERTURA"), (
+        "la tabella vecchia deve sparire, non restare accanto alla nuova")
+    sezione = _sezione_notevole(componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+    assert "Porta" in sezione and "aperto" in sezione
+
+
+# ── Cio' che Home Assistant dichiara non primario ──────────────────────────
+
+def test_un_entita_diagnostic_non_entra_qualunque_sia_il_suo_stato():
+    """Il caso da 179 unita' su 300. Home Assistant DICHIARA che queste non
+    sono primarie, e la sua documentazione dice che sono normalmente nascoste
+    dalle viste principali. HIRIS legge gia' il campo (`casa/archivio.py:135`)
+    e il digesto lo ignorava."""
+    sezione = _sezione_notevole(_con(
+        [_voce("switch.led_stato", "LED di stato", categoria="diagnostic")],
+        {"switch.led_stato": "on"}))
+    assert "LED di stato" not in sezione
+
+
+def test_un_entita_config_non_entra():
+    sezione = _sezione_notevole(_con(
+        [_voce("switch.ripeti", "Ripeti segnale", categoria="config")],
+        {"switch.ripeti": "on"}))
+    assert "Ripeti segnale" not in sezione
+
+
+def test_un_entita_nascosta_dall_utente_non_entra():
+    """E' una scelta esplicita dentro Home Assistant: rimetterla davanti da
+    un'altra porta sarebbe disfarla."""
+    sezione = _sezione_notevole(_con(
+        [_voce("switch.roba", "Roba nascosta", nascosta=1)],
+        {"switch.roba": "on"}))
+    assert "Roba nascosta" not in sezione
+
+
+# ── Condizioni travestite da eventi ────────────────────────────────────────
+
+def test_un_automazione_abilitata_non_e_una_cosa_accesa():
+    """Caso da 18 unita' sull'impianto vero. `on` su un'automazione significa
+    ABILITATA: e' il riposo, non un'eccezione rispetto al riposo."""
+    sezione = _sezione_notevole(_con(
+        [_voce("automation.sveglia_2", "Sveglia infrasettimanale")],
+        {"automation.sveglia_2": "on"}))
+    assert "Sveglia infrasettimanale" not in sezione
+
+
+def test_un_telefono_in_casa_non_e_un_evento_MA_guarda_lo_riporta():
+    """LA DIFFERENZA FRA VOCABOLARIO E FILTRO, in una prova sola.
+
+    Un `device_tracker` a casa e' una CONDIZIONE: il digesto tace. Ma non e'
+    escluso dal prodotto -- se lo chiedi, `guarda` te lo dice, altrimenti HIRIS
+    non saprebbe piu' rispondere a «chi e' in casa?». Senza la seconda meta' di
+    questa prova avremmo costruito un filtro invece di un vocabolario, e la
+    suite sarebbe restata verde."""
+    from hiris.app.casa.domande import guarda
+    voce = _voce("device_tracker.paolo", "Telefono di Paolo")
+    sezione = _sezione_notevole(_con([voce], {"device_tracker.paolo": "home"}))
+    assert "Telefono di Paolo" not in sezione
+
+    casa = dict(_CASA, entita=_CASA["entita"] + [voce])
+    dettaglio = guarda(casa, _COMPORTAMENTO, _RICORDI,
+                       dict(_STATO, **{"device_tracker.paolo": "home"}),
+                       "area", "sala")
+    assert any(e["id"] == "device_tracker.paolo" for e in dettaglio["entita"]), (
+        "il digesto tace, ma chi CHIEDE deve vedere: e' la differenza fra "
+        "scegliere cosa dire e nascondere")
+
+
+# ── La salute non e' l'adesso ──────────────────────────────────────────────
+
+def test_le_irraggiungibili_diventano_UNA_riga_di_conteggio():
+    """Erano 119 sull'impianto vero e occupavano 76 righe del digesto. Non sono
+    «cosa sta facendo la casa»: sono SALUTE, ed e' una fetta sua. Togliere il
+    fatto sarebbe una perdita; ripeterlo settantasei volte e' il rumore."""
+    entita, stato = [], {}
+    for i in range(12):
+        entita.append(_voce(f"sensor.giu_{i}", f"Sensore {i}"))
+        stato[f"sensor.giu_{i}"] = "unavailable"
+    sezione = _sezione_notevole(_con(entita, stato))
+    assert "12 entità non rispondono" in sezione
+    assert "Sensore 0" not in sezione, (
+        "una riga di conteggio, non una riga per entita'")
+
+
+# ── La soglia: smette di scattare, non sparisce ────────────────────────────
+
+def test_sotto_la_soglia_le_luci_si_chiamano_per_nome():
+    """Il metro della fetta, in piccolo: tolto il rumore il digesto scende
+    sotto i 15, il dettaglio individuale torna, e HIRIS puo' dire QUALE luce
+    senza chiamare nessuno strumento."""
+    sezione = _sezione_notevole(componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+    assert "Faretti" in sezione
+
+
+def test_la_soglia_resta_viva_quando_serve_davvero():
+    """Non si tara e non si toglie una guardia corretta: con trenta luci accese
+    raggruppare e' giusto. Le si toglie il motivo per cui scattava SEMPRE."""
+    entita, stato = [], {}
+    for i in range(30):
+        entita.append(_voce(f"light.festa_{i}", f"Luce {i}"))
+        stato[f"light.festa_{i}"] = "on"
+    sezione = _sezione_notevole(_con(entita, stato))
+    assert "Luce 0" not in sezione
+    assert "raggruppat" in sezione.lower()

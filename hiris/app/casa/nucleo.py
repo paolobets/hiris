@@ -86,9 +86,42 @@ _NOMI_DOMINIO = {
 # riposo, sono il riposo. (Il letterale "alarm" che stava qui non era MAI
 # stato uno stato reale di Home Assistant: era voce morta che affermava di
 # coprire un caso che non copriva.)
-_STATI_NOTEVOLI = {
-    "on", "open", "unlocked", "home", "playing", "triggered",
-    "detected", "problem", "unavailable", "cleaning",
+# Gli stati ATTIVI dei domini in cui l'attivo e' un'eccezione (vedi
+# `_DOMINI_EVENTO`). Non basta piu' un insieme di stringhe: `on` su una luce e
+# `on` su un'automazione sono due fatti diversi, e fino alla fetta «il
+# vocabolario delle tipologie» erano la stessa riga.
+_STATI_ATTIVI = {"on", "open", "unlocked", "playing", "cleaning"}
+
+# I domini in cui l'attivo e' un'ECCEZIONE rispetto al riposo -- cioe' in cui
+# «acceso» significa che qualcuno o qualcosa lo ha acceso.
+#
+# Chi NON c'e', e perche' (misurato sull'impianto del proprietario, 845 entita'):
+#   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
+#     ed erano riposo travestito da eccezione.
+#   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
+#     il riposo). Erano 49. Non sono esclusi dal prodotto: `guarda` e `cerca` li
+#     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
+#     filtro, ed e' pinnata in tests/test_vocabolario_tipologie.py.
+#   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
+#   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
+#     dei 72 `button` di questa casa sono `unknown` per costruzione.
+_DOMINI_EVENTO = {
+    "light", "switch", "cover", "lock", "fan",
+    "media_player", "valve", "remote", "siren", "vacuum",
+}
+
+# Per `binary_sensor` il dominio non basta: e' la CLASSE a dire se `on` e' un
+# allagamento o il corridoio attraversato trenta secondi fa. Qui stanno gli
+# allarmi e le aperture; restano fuori i transitori (`motion`, `occupancy`,
+# `presence`, `sound`, `vibration`, `light`, `running`, `moving`, `power`,
+# `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
+# `battery_charging`), che si vanno a chiedere e non si annunciano.
+_CLASSI_EVENTO = {
+    # allarmi
+    "moisture", "smoke", "gas", "co", "safety", "tamper", "problem",
+    "heat", "cold",
+    # aperture
+    "door", "window", "garage_door", "opening",
 }
 
 # Oltre questa quantita' di elementi notevoli, elencarli uno per uno
@@ -105,11 +138,53 @@ _TRADUZIONE_STATO = {
     "problem": "in problema", "triggered": "in allarme",
 }
 
+# COSA SIGNIFICANO I VALORI, per classe.
+#
 # "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
-# affermerebbe un'alimentazione che l'oggetto non ha. Per queste classi
-# (dichiarate da Home Assistant, non indovinate dal nome) si traduce come
-# apertura -- vedi `_traduci_stato`.
-_CLASSI_APERTURA = {"door", "window", "garage_door", "opening", "damper"}
+# affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
+# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sulle ventotto che
+# Home Assistant documenta: per questo un allagamento si leggeva «1 sensore
+# binario (acceso)», indistinguibile da una lampadina.
+#
+# I significati NON sono inventati: sono quelli dichiarati in
+# developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il
+# 16/08/2026. Dove HA dice «on means wet», qui c'e' «bagnato».
+_SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
+    # allarmi
+    "moisture": ("bagnato", "asciutto"),
+    "smoke": ("fumo rilevato", "nessun fumo"),
+    "gas": ("gas rilevato", "nessun gas"),
+    "co": ("monossido rilevato", "nessun monossido"),
+    "safety": ("non sicuro", "sicuro"),
+    "tamper": ("manomissione rilevata", "nessuna manomissione"),
+    "problem": ("problema rilevato", "nessun problema"),
+    "heat": ("caldo", "normale"),
+    "cold": ("freddo", "normale"),
+    # aperture (erano `_CLASSI_APERTURA`: assorbite qui, non affiancate)
+    "door": ("aperto", "chiuso"),
+    "window": ("aperto", "chiuso"),
+    "garage_door": ("aperto", "chiuso"),
+    "opening": ("aperto", "chiuso"),
+    "damper": ("aperto", "chiuso"),
+    "lock": ("sbloccato", "bloccato"),
+    # presenza e movimento
+    "motion": ("movimento rilevato", "nessun movimento"),
+    "occupancy": ("occupato", "libero"),
+    "presence": ("in casa", "fuori"),
+    "moving": ("in movimento", "fermo"),
+    "vibration": ("vibrazione rilevata", "nessuna vibrazione"),
+    # alimentazione e collegamento
+    "plug": ("collegato", "scollegato"),
+    "power": ("alimentato", "non alimentato"),
+    "connectivity": ("connesso", "disconnesso"),
+    "battery": ("carica bassa", "carica normale"),
+    "battery_charging": ("in carica", "non in carica"),
+    "running": ("in funzione", "fermo"),
+    # altro
+    "light": ("luce rilevata", "nessuna luce"),
+    "sound": ("suono rilevato", "nessun suono"),
+    "update": ("aggiornamento disponibile", "aggiornato"),
+}
 
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
 # l'avviso di taglio anche quando il taglio e' avvenuto, quindi si sottrae
@@ -249,13 +324,40 @@ def _plurale(n: int, singolare: str, plurale: str) -> str:
 
 
 def _traduci_stato(valore, classe: str | None = None) -> str:
+    """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
+    `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
+    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant."""
     v = str(valore).lower()
-    if classe in _CLASSI_APERTURA:
+    significato = _SIGNIFICATO_CLASSE.get(classe or "")
+    if significato:
         if v == "on":
-            return "aperto"
+            return significato[0]
         if v == "off":
-            return "chiuso"
+            return significato[1]
     return _TRADUZIONE_STATO.get(v, str(valore))
+
+
+def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
+    """Sta SUCCEDENDO qualcosa? -- non «e' cosi'», non «vale tanto».
+
+    E' la domanda che il digesto deve porsi, ed e' diversa da «vale la pena
+    saperlo»: una condizione stabile (un telefono a casa) e una misura (19,5 °C)
+    si sanno benissimo, si vanno a chiedere, e non si annunciano.
+
+    Fino alla fetta «il vocabolario delle tipologie» questa funzione non
+    esisteva e al suo posto c'era un `in _STATI_NOTEVOLI` cieco al tipo: 300
+    elementi su 845, e il dettaglio individuale perso sotto il raggruppamento.
+    """
+    v = str(valore).lower()
+    if dominio == "alarm_control_panel":
+        # Solo "triggered": armato e disarmato sono la routine quotidiana, non
+        # un'eccezione. Regola gia' presente prima di questa fetta, conservata.
+        return v == "triggered"
+    if dominio == "binary_sensor":
+        return v == "on" and classe in _CLASSI_EVENTO
+    if dominio in _DOMINI_EVENTO:
+        return v in _STATI_ATTIVI
+    return False
 
 
 def _conta_per_dominio(entita: list[dict]) -> dict[str, int]:
@@ -444,14 +546,34 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
         ], [1], False)
     area_per_entita = _area_di_ogni_entita(piani)
     voci = []
+    irraggiungibili = 0
     for e in casa.get("entita", []):
         if e.get("disabilitata"):
+            continue
+        # I DUE CAMPI CHE HOME ASSISTANT DICHIARA, e che questo digesto
+        # ignorava. Sull'impianto del proprietario tolgono 179 elementi su 300:
+        # 113 `config` + 66 `diagnostic`, piu' 10 nascoste a mano. La doc di HA
+        # dice che «diagnostic and config entities are typically hidden from
+        # primary UI displays»: qui vale lo stesso, perche' un digesto e' una
+        # vista principale -- e' cio' che HIRIS dice senza che tu abbia chiesto.
+        #
+        # NON valgono per `guarda`/`cerca`: li' hai chiesto tu, e filtrare una
+        # risposta esplicita sarebbe nascondere.
+        if e.get("categoria"):          # "config" o "diagnostic"
+            continue
+        if e.get("nascosta"):
             continue
         entity_id = e["id"]
         if entity_id not in stato:
             continue
         valore = stato[entity_id]
-        if str(valore).lower() not in _STATI_NOTEVOLI:
+        # Le irraggiungibili non sono «cosa sta facendo la casa»: sono SALUTE,
+        # ed erano 119 -- 76 righe di digesto. Il fatto resta (una riga di
+        # conteggio, sotto), il dettaglio e' della fetta «salute di HA».
+        if str(valore).lower() == "unavailable":
+            irraggiungibili += 1
+            continue
+        if not _e_un_evento(_dominio(entity_id), e.get("classe"), valore):
             continue
         voci.append({
             "area_nome": area_per_entita.get(entity_id),
@@ -459,16 +581,29 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
             "stato_leggibile": _traduci_stato(valore, e.get("classe")),
             "nome": e.get("nome") or entity_id,
         })
+    # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle
+    # due cose e' estetica: `componi()` taglia dal fondo, quindi in coda
+    # sarebbe la prima a cadere; e `_intestazione_notevoli_raggruppati` conta
+    # la somma dei pesi, quindi con peso 1 direbbe «N+1 elementi notevoli»
+    # includendo una riga che non e' un elemento ma un riassunto.
+    riga_giu = ([f"- {irraggiungibili} entità non rispondono."]
+                if irraggiungibili else [])
+    peso_giu = [0] if irraggiungibili else []
+
     if not voci:
-        return (["Niente di notevole al momento."], [1], False)
+        # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
+        # due frasi diverse e si dicono tutte e due.
+        return (riga_giu + ["Niente di notevole al momento."],
+                peso_giu + [1], False)
     if len(voci) > _SOGLIA_NOTEVOLE_INDIVIDUALE:
         gruppi = _raggruppa_notevoli(voci)
-        return ([riga for _, riga in gruppi], [peso for peso, _ in gruppi], True)
+        return (riga_giu + [riga for _, riga in gruppi],
+                peso_giu + [peso for peso, _ in gruppi], True)
     righe = []
     for v in voci:
         prefisso = f"{v['area_nome']}: " if v["area_nome"] else ""
         righe.append(f"- {prefisso}{v['nome']} ({v['stato_leggibile']})")
-    return (righe, [1] * len(righe), False)
+    return (riga_giu + righe, peso_giu + [1] * len(righe), False)
 
 
 def _righe_comportamento(comportamento: list[dict]) -> list[str]:
