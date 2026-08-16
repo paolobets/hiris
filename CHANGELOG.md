@@ -1,5 +1,60 @@
 # HIRIS — Changelog
 
+## [3.4.0] — Il vocabolario delle tipologie (2026-08-16)
+
+**HIRIS smette di chiamare «acceso» un allagamento.**
+
+### Il fatto da cui nasce
+
+Alla domanda *«lo stato della casa in generale, luci accese, temperature»* HIRIS aveva risposto
+elencando nove stanze su sedici, dichiarando di aver **esaurito il limite di chiamate** e
+concludendo che nessuna luce era accesa.
+
+La risposta era onesta e incompleta. Ma la cosa importante è **perché**: l'informazione era già
+nel suo prompt, e non riusciva a leggerla.
+
+### Cosa non funzionava
+
+La sezione «Notevole adesso» decideva cosa fosse notevole guardando **solo lo stato**, mai il tipo
+di cosa. Su questa casa: **300 elementi su 845**. Dentro c'erano 119 entità guaste, 47 telefoni
+«a casa», 18 automazioni *abilitate* e 99 interruttori — di cui **90 che Home Assistant stesso
+dichiara essere di configurazione o diagnostica**.
+
+Con 300 elementi il dettaglio individuale sparisce e resta il raggruppamento. HIRIS sapeva **che**
+due luci erano accese, non **quali** — e andava a cercarle stanza per stanza finché finivano i giri.
+
+### Cosa cambia
+
+HIRIS impara **cosa significano i valori**, con i significati che Home Assistant dichiara:
+
+| prima | adesso |
+|---|---|
+| «1 sensore binario (acceso)» | «**bagnato**» — è una perdita d'acqua |
+| «1 sensore binario (acceso)» | *(tace)* — è un movimento in corridoio, vero per trenta secondi |
+| 18 automazioni fra le «cose accese» | *(tacciono)* — `on` significa abilitata |
+| 76 righe di entità guaste | **una riga**: «77 entità non rispondono» |
+
+**Sull'impianto di prova: da 300 elementi a 12, e i nomi tornano.** «Lavanderia: lavatrice accesa»,
+«Cucina: forno acceso» — HIRIS lo ha nel prompt di ogni messaggio, senza andare a guardare.
+
+### Le cose nascoste
+
+Un'entità che hai nascosto in Home Assistant **non entra più** in «Notevole adesso»: è una tua
+scelta e HIRIS la rispetta.
+
+**Ma continua a saperle.** Il nucleo dichiara quante sono, e se le chiedi te le mostra: *«non la
+annuncio»* e *«non so che esiste»* sono due cose diverse.
+
+### Una correzione che vale da sola
+
+Il rilevatore di **monossido di carbonio** non entrava fra le cose notevoli: la sua classe era
+scritta col nome sbagliato — `co` invece di `carbon_monoxide` — perché la documentazione elenca i
+nomi interni e non i valori. **È l'unica delle 28 classi in cui i due differiscono**, ed era
+proprio quella dell'unico gas che uccide. Trovata da una revisione indipendente, corretta, e ora
+coperta da una prova su **tutte** le classi di allarme.
+
+Suite: **1788 Python · 175 JavaScript**.
+
 ## [3.3.0] — Il cancello del rilascio (2026-08-15)
 
 **Questa versione non cambia niente di quello che vedi.** Cambia il modo in cui le versioni
