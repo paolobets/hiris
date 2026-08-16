@@ -118,7 +118,7 @@ _DOMINI_EVENTO = {
 # `battery_charging`), che si vanno a chiedere e non si annunciano.
 _CLASSI_EVENTO = {
     # allarmi
-    "moisture", "smoke", "gas", "co", "safety", "tamper", "problem",
+    "moisture", "smoke", "gas", "carbon_monoxide", "safety", "tamper", "problem",
     "heat", "cold",
     # aperture
     "door", "window", "garage_door", "opening",
@@ -154,7 +154,13 @@ _SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
     "moisture": ("bagnato", "asciutto"),
     "smoke": ("fumo rilevato", "nessun fumo"),
     "gas": ("gas rilevato", "nessun gas"),
-    "co": ("monossido rilevato", "nessun monossido"),
+    # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
+    # delle 28 classi in cui la stringa non e' il nome della costante in
+    # minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
+    # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
+    # un allarme monossido non entra nel digesto e non viene tradotto: la
+    # classe piu' critica dell'elenco, muta.
+    "carbon_monoxide": ("monossido rilevato", "nessun monossido"),
     "safety": ("non sicuro", "sicuro"),
     "tamper": ("manomissione rilevata", "nessuna manomissione"),
     "problem": ("problema rilevato", "nessun problema"),

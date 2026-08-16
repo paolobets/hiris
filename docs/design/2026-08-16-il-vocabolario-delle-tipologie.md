@@ -96,7 +96,7 @@ quelli documentati su `developers.home-assistant.io/docs/core/entity/binary-sens
 | classe | `on` | `off` |
 |---|---|---|
 | `moisture` | bagnato | asciutto |
-| `smoke` / `gas` / `co` | fumo / gas / monossido rilevato | nessuno |
+| `smoke` / `gas` / `carbon_monoxide` | fumo / gas / monossido rilevato | nessuno |
 | `safety` | non sicuro | sicuro |
 | `tamper` | manomissione rilevata | nessuna manomissione |
 | `problem` | problema rilevato | nessun problema |
@@ -127,9 +127,16 @@ condizione stabile né una misura.
 - i domini in cui l'attivo è un'eccezione rispetto al riposo: `light`, `switch`, `cover`, `lock`,
   `fan`, `media_player`, `valve`, `remote`, `siren`, `vacuum` — attivi;
 - `alarm_control_panel` **solo** `triggered` (regola già presente e corretta, si conserva);
-- `binary_sensor` **solo** per le classi di **allarme** (`moisture`, `smoke`, `gas`, `co`, `safety`,
-  `tamper`, `problem`, `heat`, `cold`) e di **apertura** (`door`, `window`, `garage_door`,
-  `opening`).
+- `binary_sensor` **solo** per le classi di **allarme** (`moisture`, `smoke`, `gas`,
+  `carbon_monoxide`, `safety`, `tamper`, `problem`, `heat`, `cold`) e di **apertura** (`door`,
+  `window`, `garage_door`, `opening`).
+
+> **La trappola del monossido.** La documentazione elenca le classi coi **nomi delle costanti
+> Python**, e ventisette su ventotto coincidono col valore-stringa in minuscolo. Una no:
+> `BinarySensorDeviceClass.CO = "carbon_monoxide"`. Scritto `co`, **un allarme monossido non entra
+> nel digesto e non viene tradotto** — la classe più critica dell'elenco, muta. Verificato sulla
+> sorgente (`homeassistant/components/binary_sensor/__init__.py`), non sulla pagina di
+> documentazione che non riporta i valori.
 
 **Non sono eventi, e restano fuori dal digesto** — ma *non* dal prodotto: `guarda` e `cerca` li
 riportano quando li chiedi.

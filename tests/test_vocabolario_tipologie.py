@@ -21,6 +21,8 @@ in casa?». Il vocabolario dice cosa una cosa e', e lascia decidere a chi legge.
 
 Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
 """
+import pytest
+
 from hiris.app.casa import nucleo
 from hiris.app.casa.nucleo import componi
 
@@ -59,6 +61,51 @@ def test_un_allagamento_si_legge_bagnato_e_non_acceso():
     assert "Perdita bagno" in sezione
     assert "bagnato" in sezione
     assert "Perdita bagno (acceso)" not in sezione
+
+
+# I nomi-stringa VERI, dalla sorgente di Home Assistant
+# (homeassistant/components/binary_sensor/__init__.py), non dalla pagina di
+# documentazione -- che elenca i NOMI DELLE COSTANTI e non i valori.
+# Ventisette su ventotto coincidono col nome in minuscolo. Una no:
+# `BinarySensorDeviceClass.CO = "carbon_monoxide"`.
+_ALLARMI = [
+    ("moisture", "bagnato"),
+    ("smoke", "fumo rilevato"),
+    ("gas", "gas rilevato"),
+    ("carbon_monoxide", "monossido rilevato"),
+    ("safety", "non sicuro"),
+    ("tamper", "manomissione rilevata"),
+]
+
+
+@pytest.mark.parametrize("classe,parola", _ALLARMI)
+def test_ogni_classe_di_allarme_entra_nel_digesto_e_si_legge_in_parole(classe, parola):
+    """TUTTE le classi d'allarme, non una campione.
+
+    Trovato da una review indipendente su questa stessa fetta: `co` era scritto
+    col nome della costante invece che col valore, quindi `carbon_monoxide` non
+    combaciava con niente -- un allarme monossido non entrava nel digesto e non
+    veniva tradotto. **La classe piu' critica dell'elenco, muta, e la suite
+    verde.** Una prova su una sola classe campione non lo avrebbe visto: le
+    altre ventisette funzionavano.
+    """
+    sezione = _sezione_notevole(_con(
+        [_voce(f"binary_sensor.allarme_{classe}", f"Allarme {classe}", classe=classe)],
+        {f"binary_sensor.allarme_{classe}": "on"}))
+    assert f"Allarme {classe}" in sezione, (
+        f"la classe {classe!r} non entra nel digesto: probabilmente non "
+        f"combacia con nessuna voce di _CLASSI_EVENTO")
+    assert parola in sezione, (
+        f"la classe {classe!r} entra ma non si traduce: manca da "
+        f"_SIGNIFICATO_CLASSE, e si legge «acceso»")
+
+
+def test_ogni_classe_di_evento_ha_anche_un_significato():
+    """Le due tabelle non possono divergere: una classe che entra nel digesto e
+    non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
+    il difetto che questa fetta chiude, su una riga sola."""
+    senza = sorted(nucleo._CLASSI_EVENTO - set(nucleo._SIGNIFICATO_CLASSE))
+    assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
 
 def test_un_movimento_NON_entra_nel_digesto():
