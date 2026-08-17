@@ -435,19 +435,32 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
     ricordo = next((r for r in ricordi if r.get("id") == riferimento), None)
     if ricordo is None:
         return {"esiste": False, "tipo": "ricordo", "riferimento": riferimento}
-    return {
+    # La forma e' PIATTA, la stessa di `richiama` e dei `ricordi` che ogni
+    # altro ramo di `guarda` gia' restituisce (`_ricordi_ancorati`).
+    #
+    # Prima l'interpretazione era annidata sotto una chiave `interpretazione`
+    # e `detto_il` non usciva affatto: lo stesso ricordo aveva due forme a
+    # seconda della porta. Il modello ne imparava una dentro
+    # `guarda("area", ...)`, poi chiedeva il dettaglio con
+    # `guarda("ricordo", id)` e leggeva `r["forza"]` -> assente, e riferiva
+    # «di questo ricordo non so la forza» su un ricordo che ce l'ha. E alla
+    # domanda «quando te l'ho detto?» la risposta dipendeva da quale strumento
+    # il modello avesse scelto.
+    #
+    # Le caselle restano distinte dal TESTO -- che e' la verita' e non si
+    # riscrive -- ma la distinzione la fanno i nomi dei campi, non un livello
+    # di annidamento in piu' che esiste da una porta sola.
+    dettaglio = {
         "esiste": True, "tipo": "ricordo", "id": ricordo["id"], "testo": ricordo["testo"],
         "detto_da": ricordo.get("detto_da"),
-        # Le quattro caselle dell'interpretazione (memoria/interpretazione.py),
-        # tenute distinte dal testo -- che resta la verita', non riscritta.
-        "interpretazione": {
-            "forza": ricordo.get("forza"), "grandezza": ricordo.get("grandezza"),
-            "minimo": ricordo.get("minimo"), "massimo": ricordo.get("massimo"),
-            "unita": ricordo.get("unita"),
-            "ancore": ricordo.get("ancore") or [],
-            "condizioni": ricordo.get("condizioni") or [],
-        },
+        "detto_il": ricordo.get("detto_il"),
+        "forza": ricordo.get("forza"), "grandezza": ricordo.get("grandezza"),
+        "minimo": ricordo.get("minimo"), "massimo": ricordo.get("massimo"),
+        "unita": ricordo.get("unita"),
+        "ancore": ricordo.get("ancore") or [],
+        "condizioni": ricordo.get("condizioni") or [],
     }
+    return dettaglio
 
 
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,

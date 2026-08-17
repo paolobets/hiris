@@ -164,17 +164,29 @@ def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita():
     assert entita["switch.irr_2"]["nome_dedotto"] == "Valvola giardino"
 
 
-def test_guarda_un_ricordo_da_la_sua_interpretazione():
+def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
+    """Piatta, come da `richiama` e come dai `ricordi` che ogni altro ramo di
+    `guarda` restituisce gia'.
+
+    Prima l'interpretazione era annidata sotto `interpretazione` e `detto_il`
+    non usciva: lo stesso ricordo aveva DUE FORME a seconda della porta. Il
+    modello ne imparava una dentro `guarda("area", ...)`, poi leggeva
+    `r["forza"]` sul dettaglio -> assente, e riferiva «di questo ricordo non
+    so la forza» su un ricordo che ce l'ha."""
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 1)
     assert dettaglio["esiste"] is True
     assert dettaglio["testo"] == _RICORDI[0]["testo"]
-    assert dettaglio["interpretazione"]["forza"] == "preferenza"
+    assert dettaglio["forza"] == "preferenza"
+    assert "interpretazione" not in dettaglio, "il livello annidato non deve tornare"
+    # `detto_il` c'era in `richiama` e spariva qui: alla domanda «quando te
+    # l'ho detto?» la risposta dipendeva da quale strumento il modello sceglie.
+    assert "detto_il" in dettaglio
 
 
 def test_guarda_un_ricordo_che_non_esiste_lo_dice():
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 999)
     assert dettaglio["esiste"] is False
-    assert "interpretazione" not in dettaglio
+    assert "forza" not in dettaglio
 
 
 def test_guarda_un_tipo_sconosciuto_non_solleva_e_lo_dice():
