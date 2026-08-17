@@ -24,9 +24,21 @@ logger = logging.getLogger(__name__)
 _AUTOMAZIONI = "automations.yaml"
 _SCRIPT = "scripts.yaml"
 
-# entity_id canonico (dominio.oggetto) — stessa forma usata da ha_client per
-# validare gli entity_id in ingresso. Qui serve a riconoscere, dentro una
-# configurazione di plancia, quali stringhe SONO un entity_id.
+# entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
+# configurazione di plancia, quali stringhe sono un entity_id.
+#
+# NON e' «la stessa forma usata da ha_client» e non va tenuta allineata a
+# quella: e' la stessa espressione oggi e per caso, ma le due hanno esigenze
+# CONTRAPPOSTE. Quella di `proxy/ha_client` e' una GUARDIA -- rifiuta un
+# entity_id ostile prima di comporlo in un URL -- e vuole essere il piu'
+# STRETTA possibile. Questa vuole essere abbastanza LARGA da riconoscere
+# tutto, o le entita' di una plancia spariscono dall'archivio.
+#
+# Il commento di prima diceva «stessa forma usata da ha_client», e quella frase
+# era un invito: chi avesse allargato questa per far comparire una plancia
+# incompleta avrebbe potuto «riallineare» anche l'altra, allentando la guardia
+# contro l'iniezione senza che nessun test lo dicesse. Allargare QUESTA e'
+# libero; allargare quella e' una decisione di sicurezza, e va presa sapendolo.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # Sentinella per distinguere «la chiave non c'e'» da «la chiave c'e' e vale

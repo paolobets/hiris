@@ -9,6 +9,7 @@ import aiohttp
 from aiohttp import web
 
 from ..decisione_modelli import (FINE_CATENA, componi_adesso, componi_pannello,
+                                 piano_ha_il_token,
                                  componi_topologia)
 
 logger = logging.getLogger(__name__)
@@ -357,7 +358,7 @@ _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollam
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
     """Boolean-only credential presence check — NEVER return the secret value."""
     if provider_id == "subscription":
-        return bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+        return piano_ha_il_token()
     if provider_id == "claude":
         if os.environ.get("CLAUDE_API_KEY", "").strip():
             return True

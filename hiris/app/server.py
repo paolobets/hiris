@@ -20,6 +20,7 @@ from .api.handlers_models import (
 from .api.handlers_impostazioni import (
     handle_get_impostazioni, handle_save_impostazioni,
 )
+from .decisione_modelli import piano_ha_il_token
 from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
 from .version import read_version
 from .proxy.ha_client import HAClient
@@ -557,7 +558,7 @@ def should_start_agent_worker(ponte_attivo: bool) -> bool:
     a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
     (`_ricalcola_catena`). Il token resta letto qui: e' una credenziale, e le
     credenziali stanno ancora nelle opzioni dell'add-on."""
-    return ponte_attivo and bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+    return ponte_attivo and piano_ha_il_token()
 
 
 def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
@@ -1313,7 +1314,7 @@ async def _on_startup(app: web.Application) -> None:
     # stato di un provider. Adesso l'unica cosa che si misura qui e' se la
     # credenziale c'e'; chi la USA lo dice `chain_order`.
     _credenziali = {
-        "subscription": bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()),
+        "subscription": piano_ha_il_token(),
         "claude": bool(api_key),
         "openai": bool(openai_api_key),
         "openrouter": bool(openrouter_api_key),

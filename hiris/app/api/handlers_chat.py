@@ -18,7 +18,7 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..decisione_modelli import nota_ripiego
+from ..decisione_modelli import nota_ripiego, piano_ha_il_token
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -250,7 +250,7 @@ def _piano_puo_rispondere(app) -> tuple[bool, str]:
     la stessa ragione: quella che l'utente cambia dev'essere quella che il
     turno subisce (invariante 1).
     """
-    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+    if not piano_ha_il_token():
         return False, "manca il token"
     tetto = int((app.get("models_config") or {})
                 .get("ponte", {}).get("tetto_giornaliero", 50))

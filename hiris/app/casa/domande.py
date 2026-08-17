@@ -204,6 +204,20 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     piattaforma = (voce.get("piattaforma") or "").strip()
     if piattaforma:
         dettaglio_entita["piattaforma"] = piattaforma
+    # NASCOSTA e CATEGORIA: fuori dalle gestioni, dentro la conoscenza.
+    #
+    # Il digesto conta le nascoste e scrive «esistono, e `guarda` le riporta se
+    # gliele chiedi» -- una promessa che `guarda` non poteva mantenere, perche'
+    # il campo non usciva da nessuna porta. Alla domanda «quali sono?» il
+    # modello o si contraddiceva o inventava.
+    #
+    # Solo quando sono vere: `nascosta: false` su ogni entita' di una casa da
+    # trecento sarebbe rumore in ogni risposta, e `categoria: null` pure.
+    if voce.get("nascosta"):
+        dettaglio_entita["nascosta"] = True
+    categoria = (voce.get("categoria") or "").strip()
+    if categoria:
+        dettaglio_entita["categoria"] = categoria
     return _con_etichette(dettaglio_entita, voce, nomi_etichette or {})
 
 
@@ -365,6 +379,13 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
         "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
+    # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
+    # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
+    # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
+    for chiave in ("produttore", "modello"):
+        valore = (dispositivo.get(chiave) or "").strip()
+        if valore:
+            dettaglio[chiave] = valore
     _con_etichette(dettaglio, dispositivo, nomi_etichette)
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda

@@ -280,3 +280,34 @@ def test_senza_stato_letto_non_si_traduce_il_nulla():
     d = guarda(casa_muta, [], [], {}, "entita", "light.x")
     assert d["stato"] is None
     assert "stato_leggibile" not in d
+
+
+# --- cio' che il registro dichiara e la proiezione lasciava indietro -------
+
+def test_guarda_dice_se_un_entita_e_nascosta():
+    """Il digesto conta le nascoste e promette «`guarda` le riporta se gliele
+    chiedi». Il campo non usciva da nessuna porta: alla domanda «quali?» il
+    modello o si contraddiceva o inventava."""
+    casa = {"entita": [
+        {"id": "sensor.a", "nome": "A", "nascosta": True, "categoria": "diagnostic"},
+        {"id": "sensor.b", "nome": "B"},
+    ]}
+    a = guarda(casa, [], [], {}, "entita", "sensor.a")
+    assert a["nascosta"] is True
+    assert a["categoria"] == "diagnostic"
+    b = guarda(casa, [], [], {}, "entita", "sensor.b")
+    assert "nascosta" not in b, "false su ogni entita' sarebbe rumore in ogni risposta"
+    assert "categoria" not in b
+
+
+def test_guarda_un_dispositivo_dice_marca_e_modello():
+    """«Di che marca e' la valvola del bagno? Devo ordinarne un'altra uguale.»
+    La risposta era in tabella, letta a ogni ricostruzione, e non usciva."""
+    casa = {"dispositivi": [
+        {"id": "d1", "nome": "Valvola bagno", "produttore": "Shelly", "modello": "TRV"},
+        {"id": "d2", "nome": "Ignoto"},
+    ], "entita": []}
+    d = guarda(casa, [], [], {}, "dispositivo", "d1")
+    assert d["produttore"] == "Shelly"
+    assert d["modello"] == "TRV"
+    assert "produttore" not in guarda(casa, [], [], {}, "dispositivo", "d2")

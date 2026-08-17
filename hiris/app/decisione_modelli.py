@@ -31,6 +31,43 @@ Chi le chiama porta i fatti già misurati.
 """
 from __future__ import annotations
 
+import os
+
+
+# LA MISURA DELLA CREDENZIALE DEL PIANO, in un posto solo.
+#
+# «Il piano ha un token?» era scritta quattro volte, in quattro moduli, e
+# governava quattro decisioni diverse: se il worker del ponte PARTE
+# (`server.should_start_agent_worker`), se il piano ENTRA nella catena
+# (`server._credenziali`), cosa la pagina Modelli DICHIARA
+# (`handlers_models._config_has_credential`), e se il turno si ACCODA
+# (`handlers_chat._piano_puo_rispondere`).
+#
+# Oggi erano identiche. Il giorno in cui il token seguisse la strada che hanno
+# gia' fatto `ponte.attivo`, `tetto_giornaliero` e `scadenza_min` -- da
+# `config.yaml` all'archivio -- si aggiornerebbe il file della pagina, perche'
+# e' il file della pagina. La pagina direbbe «Piano Claude Max, funziona, primo
+# della catena»; il worker non partirebbe, e la chat ripiegherebbe su Claude
+# API a consumo. L'utente pagherebbe a token credendo di essere sul forfait.
+#
+# E' esattamente il difetto per cui questo modulo esiste -- una pagina vera
+# riga per riga e falsa nel complesso -- chiuso a valle (la COMPOSIZIONE della
+# decisione) e mai a monte (la MISURA che la alimenta). Il commento a
+# `handlers_models._config_has_credential` diceva che due definizioni della
+# stessa credenziale «sarebbero la seconda rappresentazione in miniatura»:
+# c'erano entrambe, e il commento descriveva il difetto al presente credendo
+# di descriverne l'assenza.
+VARIABILE_TOKEN_DEL_PIANO = "CLAUDE_CODE_OAUTH_TOKEN"
+
+
+def piano_ha_il_token() -> bool:
+    """Vero se la credenziale dell'abbonamento Claude c'e'.
+
+    Solo la PRESENZA, mai il valore: chi chiama non deve poterlo stampare per
+    sbaglio in un log o in una risposta.
+    """
+    return bool(os.environ.get(VARIABILE_TOKEN_DEL_PIANO, "").strip())
+
 # Un nome per provider, mai due. Prima di questa fetta l'abbonamento ne aveva
 # tre -- «Abbonamento (Claude Max)» (models-route.js), «Abbonamento Claude
 # (subscription)» (handlers_models.py), «Piano Claude Max» (translations) --
@@ -252,8 +289,23 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # «non risponde all'indirizzo» è tutto ciò che si è potuto vedere.
         return "non risponde all'indirizzo — ultimo tentativo " + eta
     if famiglia == "credenziale":
-        causa = _CAUSA_CREDENZIALE.get(codice if isinstance(codice, int) else 0,
-                                       "la credenziale non è accettata")
+        # Nessuna causa PREDEFINITA: se il codice non è fra quelli di cui
+        # sappiamo il perché, si dice il numero e ci si ferma.
+        #
+        # Prima il ripiego era «la credenziale non è accettata», ed è una
+        # frase che manda l'utente a rigenerare una chiave. Basta che
+        # `esiti_provider._CREDENZIALE` guadagni un codice senza che questa
+        # tabella lo guadagni — un 429 di quota, per esempio — e HIRIS
+        # scriverebbe «la credenziale non è accettata (429)» su un rate limit,
+        # mandando a sostituire una chiave che funziona.
+        #
+        # È esattamente ciò che il ramo `altro` qui sotto dichiara di non
+        # voler fare: «inventare una causa qui sarebbe rifare l'errore da cui è
+        # nata la regola». Valeva per un ramo e non per l'altro.
+        causa = _CAUSA_CREDENZIALE.get(codice if isinstance(codice, int) else 0)
+        if causa is None:
+            return "ha rifiutato %s%s, %s" % (
+                _quante(esito["da_quante"]), fra_parentesi, eta)
         return "ha rifiutato %s — %s%s, %s" % (
             _quante(esito["da_quante"]), causa, fra_parentesi, eta)
     # `altro`: il ramo di ciò che NON si è saputo classificare. Riporta il

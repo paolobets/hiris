@@ -83,6 +83,7 @@ from dataclasses import dataclass, field
 import httpx
 from . import prompts
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..decisione_modelli import ALIAS_DEL_PIANO
 from ..chat_store import (PREFISSO_ERRORE_RUNNER, SENTINELLA_FLUSSO_INCOMPLETO,
                           SENTINELLA_MOCK, SENTINELLA_RUNNER_ASSENTE,
                           SENTINELLA_VUOTO)
@@ -555,12 +556,15 @@ def modello_cli(modello_risolto: str) -> str:
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
     nome = (modello_risolto or "").lower()
-    if "opus" in nome:
-        return "opus"
-    if "haiku" in nome:
-        return "haiku"
-    if "sonnet" in nome:
-        return "sonnet"
+    # I tre alias vengono da `decisione_modelli.ALIAS_DEL_PIANO`, che e' anche
+    # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
+    # in ordine diverso e senza nessun test che li legasse. Un quarto alias
+    # aggiunto la' sarebbe stato offerto all'utente, scelto, e poi ARCHIVIATO
+    # COME `sonnet` da questa funzione, con un warning che nessuno legge: il
+    # radio sarebbe tornato indietro da solo, senza spiegazione.
+    for alias, _descrizione in ALIAS_DEL_PIANO:
+        if alias in nome:
+            return alias
     log.warning(
         "modello configurato per la chat (%r) non e' un alias Claude "
         "riconosciuto (ne' opus, ne' haiku, ne' sonnet): il ponte parla "

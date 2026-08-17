@@ -15,7 +15,13 @@ import aiohttp
 # automazioni (vedi il commento piu' sotto, dove viveva `is_automation_config`).
 
 # entity_id canonico (dominio.oggetto). Serve a rifiutare un entity_id
-# ostile PRIMA di comporlo in un URL.
+# ostile PRIMA di comporlo in un URL: e' una GUARDIA, e va tenuta la piu'
+# STRETTA possibile.
+#
+# In `casa/comportamento.py` c'e' oggi la stessa espressione, ma per l'esigenza
+# opposta -- riconoscere gli entity_id dentro una plancia, il piu' LARGAMENTE
+# possibile. Non sono due copie da tenere allineate: allentare questa per
+# seguire quella e' una falla, non una pulizia.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle
@@ -790,7 +796,58 @@ class HAClient:
                 ambito = extra.get("scope")
                 risultato = [{**riga, "ambito": ambito} for riga in risultato]
             registri.setdefault(chiave, []).extend(risultato)
+
+        await self._aggiungi_campi_estesi(registri, non_disponibili)
         return registri, non_disponibili
+
+    async def _aggiungi_campi_estesi(self, registri: dict[str, list[dict]],
+                                     non_disponibili: list[str]) -> None:
+        """Gli ALIAS delle entita', che `config/entity_registry/list` non manda.
+
+        Quel comando risponde con `RegistryEntry.as_partial_dict`
+        (`helpers/entity_registry.py`), che NON contiene `aliases` -- ne'
+        `device_class`, ne' `capabilities`. Stanno solo in `extended_dict`,
+        servito da `config/entity_registry/get_entries`, che vuole l'elenco
+        degli `entity_ids` e risponde `{entity_id: extended_dict | None}`.
+
+        Conseguenza, finche' nessuno l'ha chiamato: la colonna `alias` delle
+        entita' era vuota su ogni casa, sempre. Gli alias sono le parole con
+        cui l'utente ha DICHIARATO come chiama le sue cose -- la spina dorsale
+        di `cerca` -- e reggevano solo per le aree, che invece li mandano
+        davvero nel proprio registro. Un utente che aveva scritto «lampada
+        della nonna» come alias non trovava niente cercandola.
+
+        La classe non si prende da qui: arriva gia' dallo specchio dello stato
+        (`casa.anagrafe.classe_effettiva`), che ce l'ha per ogni entita' e non
+        costa nessuna chiamata. Questo comando serve per cio' che lo specchio
+        NON ha.
+
+        Costa un comando in piu' per ricostruzione dell'anagrafe, non uno per
+        entita': `entity_ids` e' una lista sola.
+
+        Se fallisce, gli alias restano vuoti e lo si DICHIARA come qualunque
+        altro silenzio -- `entita:alias` in `non_disponibili`, con i due punti
+        come per `categorie:script`. La dicitura non e' `entita`: quello
+        significa «il registro delle entita' non ha risposto», e farebbe
+        credere alla casa di non avere entita' affatto.
+        """
+        entita = registri.get("entita") or []
+        ids = [e.get("entity_id") for e in entita if e.get("entity_id")]
+        if not ids:
+            return
+        try:
+            estese = await self._ws_request(
+                "config/entity_registry/get_entries", extra={"entity_ids": ids})
+        except Exception as e:
+            logger.debug("campi estesi delle entita' non letti: %s", e)
+            estese = None
+        if not isinstance(estese, dict):
+            non_disponibili.append("entita:alias")
+            return
+        for voce in entita:
+            estesa = estese.get(voce.get("entity_id"))
+            if isinstance(estesa, dict) and estesa.get("aliases"):
+                voce["aliases"] = estesa["aliases"]
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(dati_evento) a ogni `state_changed`: chi ascolta riceve

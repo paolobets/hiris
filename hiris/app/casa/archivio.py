@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS categorie (
     id TEXT PRIMARY KEY, nome TEXT NOT NULL, ambito TEXT
 );
 CREATE TABLE IF NOT EXISTS integrazioni (
-    dominio TEXT NOT NULL, titolo TEXT, stato TEXT
+    dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
@@ -74,10 +74,32 @@ def _lista(valore) -> str:
     return json.dumps(valore if isinstance(valore, list) else [], ensure_ascii=False)
 
 
+def _migrazione_2_motivo_integrazione(conn) -> None:
+    """`integrazioni.motivo`: il perche' un'integrazione non e' partita.
+
+    Serve una migrazione e non basta il `CREATE TABLE IF NOT EXISTS`: quello
+    non tocca una tabella che esiste gia', quindi su un'installazione
+    aggiornata la colonna non comparirebbe e il primo `sostituisci` fallirebbe
+    -- cioe' la casa smetterebbe di ricostruirsi, in silenzio, dal momento
+    dell'aggiornamento.
+
+    Idempotente per costruzione: `init_schema` la chiama una volta sola, alla
+    transizione 1 -> 2. Il `try` copre il caso di un archivio gia' ritoccato a
+    mano, dove la colonna c'e' gia'.
+    """
+    try:
+        conn.execute("ALTER TABLE integrazioni ADD COLUMN motivo TEXT")
+    except Exception:
+        pass
+
+
+_MIGRAZIONI = {2: _migrazione_2_motivo_integrazione}
+
+
 class ArchivioCasa:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations=_MIGRAZIONI)
 
     def chiudi(self) -> None:
         self._conn.close()
@@ -167,8 +189,14 @@ class ArchivioCasa:
                            ca.get("ambito")))
 
             for i in registri.get("integrazioni", []):
-                c.execute("INSERT INTO integrazioni (dominio, titolo, stato) VALUES (?,?,?)",
-                          (i.get("domain", ""), i.get("title"), i.get("state")))
+                # `reason` -- il MOTIVO per cui un'integrazione non e' partita
+                # -- arrivava dentro la stessa risposta e si buttava. E' la
+                # risposta a «perche' la telecamera del giardino non risponde?»,
+                # che HIRIS poteva solo non sapere.
+                c.execute("INSERT INTO integrazioni (dominio, titolo, stato, motivo) "
+                          "VALUES (?,?,?,?)",
+                          (i.get("domain", ""), i.get("title"), i.get("state"),
+                           i.get("reason") or i.get("error_reason_translation_key")))
 
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))

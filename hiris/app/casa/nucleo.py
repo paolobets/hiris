@@ -697,6 +697,49 @@ def _righe_comportamento(comportamento: list[dict]) -> list[str]:
     return righe
 
 
+# Gli stati in cui un'integrazione di Home Assistant NON sta funzionando.
+# I valori sono quelli veri di `ConfigEntryState` (`homeassistant/config_entries.py`),
+# verificati: `loaded` e' l'unico stato sano, `setup_in_progress` e
+# `unload_in_progress` sono momentanei e non si annunciano.
+_STATI_INTEGRAZIONE_ROTTA = {
+    "setup_error", "setup_retry", "migration_error", "failed_unload", "not_loaded",
+}
+
+
+def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
+    """«Perche' la telecamera del giardino non risponde?»
+
+    Un'integrazione caduta e' la spiegazione piu' probabile di un gruppo di
+    entita' che non rispondono, e Home Assistant la diagnostica gia' da se':
+    manda lo stato E il motivo dentro la stessa risposta che l'anagrafe legge
+    a ogni ricostruzione. HIRIS salvava lo stato, buttava il motivo, e non
+    leggeva ne' l'uno ne' l'altro -- poteva solo contare le entita' non
+    disponibili e non sapere perche'.
+
+    Sta fra gli AVVISI e non in «Notevole adesso» perche' non e' un evento:
+    e' una condizione, e resta vera finche' qualcuno non la ripara. E' anche
+    la sezione giusta per un altro motivo: dichiara cio' che HIRIS NON puo'
+    raccontare della casa, ed e' esattamente il caso -- le entita' di
+    quell'integrazione non hanno uno stato leggibile.
+
+    Il motivo esce solo se c'e': HA lo riempie per `setup_error` e
+    `setup_retry`, non sempre per `not_loaded`. Inventarlo sarebbe peggio.
+    """
+    rotte = [i for i in integrazioni or []
+             if (i.get("stato") or "") in _STATI_INTEGRAZIONE_ROTTA]
+    if not rotte:
+        return None
+    voci = []
+    for i in sorted(rotte, key=lambda x: x.get("dominio") or ""):
+        nome = i.get("titolo") or i.get("dominio") or "senza nome"
+        motivo = (i.get("motivo") or "").strip()
+        voci.append(f"{nome} ({i.get('stato')}{': ' + motivo if motivo else ''})")
+    quante = "Un'integrazione" if len(voci) == 1 else f"{len(voci)} integrazioni"
+    verbo = "non sta funzionando" if len(voci) == 1 else "non stanno funzionando"
+    return (f"{quante} di Home Assistant {verbo}: {', '.join(voci)}. "
+            "Le entita' che dipendono da loro possono non rispondere.")
+
+
 def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
     al "conta, non elencare" (vedi docstring del modulo).
@@ -716,7 +759,13 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     righe = []
     for r in ricordi_ordinati:
         detto_da = r.get("detto_da") or "qualcuno"
-        righe.append(f"- \"{r['testo']}\" (detto da {detto_da})")
+        # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
+        # tagliato «si raggiunge con `guarda("ricordo", id)`» -- ma l'id non
+        # era stampato da nessuna porta, e `richiama` esige un'ancora che i
+        # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
+        # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
+        # colmarla.
+        righe.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {detto_da})")
     return righe
 
 
@@ -806,6 +855,10 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     "cosa il modello perde la possibilita' di sapere che esiste".
     """
     avvisi: list[str] = []
+
+    guasto = _avviso_integrazioni(casa.get("integrazioni") or [])
+    if guasto:
+        avvisi.append(guasto)
 
     if non_disponibili:
         avvisi.append(
