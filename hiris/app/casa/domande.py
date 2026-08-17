@@ -39,7 +39,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
-from .anagrafe import gerarchia
+from .anagrafe import gerarchia, unita_effettiva
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -166,10 +166,30 @@ def _con_nome_dedotto(dettaglio_entita: dict, entita_id,
         dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
         if dedotto:
             dettaglio_entita["nome_dedotto"] = dedotto
-    viva = ((unita_vive or {}).get(entita_id) or "").strip()
-    if viva:
-        dettaglio_entita["unita"] = viva
+    unita = unita_effettiva(dettaglio_entita.get("unita"),
+                            (unita_vive or {}).get(entita_id))
+    if unita:
+        dettaglio_entita["unita"] = unita
     return dettaglio_entita
+
+
+def _con_etichette(dettaglio: dict, voce: dict) -> dict:
+    """Le etichette che l'utente ha scritto a mano in Home Assistant.
+
+    Sono il significato piu' DICHIARATO che esista in quella casa -- «inverno»,
+    «da controllare», «piano di sotto» -- e HIRIS le leggeva, le salvava, le
+    metteva perfino nell'albero di `gerarchia()`, senza farle uscire da nessuna
+    porta. Un'etichetta che non porta a niente costringe l'utente a ripetere a
+    parole cio' che aveva gia' dichiarato una volta.
+
+    Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
+    sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
+    registro delle etichette caduto. Stessa disciplina di `unita`.
+    """
+    etichette = [e for e in (voce.get("etichette") or []) if str(e).strip()]
+    if etichette:
+        dettaglio["etichette"] = etichette
+    return dettaglio
 
 
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
@@ -219,6 +239,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "entita": entita,
         "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
     }
+    _con_etichette(dettaglio, area)
     if incompleto:
         dettaglio["elenco_incompleto"] = incompleto
     return dettaglio
@@ -261,6 +282,15 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_con_nome_dedotto`).
+    # L'integrazione che fornisce l'entita' (hue, zwave_js, template, mqtt).
+    # L'anagrafe la scriveva a ogni ricostruzione e nessuno la leggeva: «questa
+    # luce e' una Hue o un template?» e' una domanda che si fa davvero, per
+    # capire perche' una cosa non risponde o cosa le si puo' chiedere. Solo
+    # quando c'e', come `unita`.
+    piattaforma = (entita.get("piattaforma") or "").strip()
+    if piattaforma:
+        dettaglio["piattaforma"] = piattaforma
+    _con_etichette(dettaglio, entita)
     return _con_nome_dedotto(dettaglio, entita["id"], nomi_di_ripiego, unita_vive)
 
 
@@ -295,6 +325,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
         "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
+    _con_etichette(dettaglio, dispositivo)
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_guarda_area`.

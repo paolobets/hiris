@@ -37,6 +37,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..memoria.interpretazione import deduci_unita, valida
+from ..casa.anagrafe import specchio_vivo
 from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
 # Gli stessi campi scalari che ArchivioMemoria.correggi() accetta
@@ -67,6 +68,22 @@ def _anagrafe_letta(casa_archivio) -> bool:
     esiste per evitare.
     """
     return casa_archivio is not None and casa_archivio.aggiornata_il() is not None
+
+
+def _unita_vive(request) -> dict[str, str]:
+    """entity_id -> unita', dallo specchio dello stato -- `{}` se non c'e'.
+
+    La lettura vera sta in `casa.anagrafe.specchio_vivo`, la stessa che usa il
+    dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
+    una correzione di un ricordo non deve fallire per colpa dello specchio.
+    """
+    cache = request.app.get("entity_cache")
+    if cache is None or not hasattr(cache, "all_states"):
+        return {}
+    try:
+        return specchio_vivo(cache.all_states())[2]
+    except Exception:
+        return {}
 
 
 def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str]:
@@ -183,6 +200,11 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # stata letta.
     indice = costruisci_indice(casa_archivio.leggi()) if anagrafe_letta else costruisci_indice({})
     tipi_non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
+    # Le unita' vive, dalla stessa fonte che usa `ricorda` in chat. Senza,
+    # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
+    # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
+    # stesso fatto con due forme a seconda della porta.
+    unita_vive = _unita_vive(request)
 
     # Un intervallo e' una coppia, non due campi indipendenti: se la
     # richiesta tocca solo `minimo` o solo `massimo`, la coerenza (minimo
@@ -209,7 +231,8 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         "ancore": campi.get("ancore") or [],
         "condizioni": campi.get("condizioni") or [],
     }
-    pulita, problemi, correzioni = valida(interpretazione, indice, tipi_non_verificabili)
+    pulita, problemi, correzioni = valida(
+        interpretazione, indice, tipi_non_verificabili, unita_vive)
     if problemi:
         # Rifiutata con la ragione, non accettata a meta' (regola 2 di
         # ArchivioMemoria): nessuna delle correzioni si scrive, il ricordo
@@ -254,7 +277,8 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         ancore_per_deduzione = pulita["ancore"] if "ancore" in campi else esistente["ancore"]
         grandezza_per_deduzione = pulita["grandezza"] if "grandezza" in campi \
             else esistente["grandezza"]
-        aggiornamenti["unita"] = deduci_unita(ancore_per_deduzione, grandezza_per_deduzione, indice)
+        aggiornamenti["unita"] = deduci_unita(
+            ancore_per_deduzione, grandezza_per_deduzione, indice, unita_vive)
     if "ancore" in campi:
         aggiornamenti["ancore"] = pulita["ancore"]
     if "condizioni" in campi:

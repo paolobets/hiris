@@ -157,6 +157,70 @@ def e_pseudo_area(area_id: str) -> bool:
     return area_id in _ID_PSEUDO_AREA
 
 
+def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Lo specchio dello stato in tre dizionari: `(stato, nomi, unita)`.
+
+    `righe` e' cio' che `entity_cache.all_states()` restituisce: dizionari
+    nella forma di `_to_minimal` -- chiave `id` (non `entity_id`), piu' `state`,
+    `name` (il `friendly_name`) e `unit`.
+
+    Una passata sola per tre dizionari, e in un posto solo per tutti i
+    chiamanti. Prima lo specchio si leggeva in `casa/strumenti.py` e basta: chi
+    stava altrove (la correzione di un ricordo dalla pagina, per esempio) o
+    rileggeva la cache per conto suo, o faceva a meno di cio' che ci sta
+    dentro. Nel secondo caso la stessa domanda dava due risposte diverse a
+    seconda della porta -- l'unita' dedotta in chat e non dedotta dalla pagina.
+
+    Nomi e unita' vuoti si saltano: una stringa vuota non e' un nome e non e'
+    un'unita', e' l'assenza dell'una e dell'altra.
+    """
+    stato: dict[str, str] = {}
+    nomi: dict[str, str] = {}
+    unita: dict[str, str] = {}
+    for e in righe:
+        if not isinstance(e, dict):
+            continue
+        entity_id = e.get("id")
+        if not entity_id:
+            continue
+        stato[entity_id] = e.get("state")
+        nome = e.get("name")
+        if isinstance(nome, str) and nome.strip():
+            nomi[entity_id] = nome.strip()
+        misura = e.get("unit")
+        if isinstance(misura, str) and misura.strip():
+            unita[entity_id] = misura.strip()
+    return stato, nomi, unita
+
+
+def unita_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
+    """L'unita' vera di un'entita': la VIVA vince su quella del registro.
+
+    Home Assistant converte le unita' **solo alla prima aggiunta del sensore**:
+    il registro puo' quindi portare quella vecchia mentre lo specchio dello
+    stato porta quella che HA sta usando adesso. Sul campo il registro non ne
+    porta quasi mai una -- e' un campo che HA riempie solo se l'utente l'ha
+    forzata a mano (misurato: NULL su 842 entita' su 842) -- ma dove c'e', non
+    e' quella che conta.
+
+    Esiste come funzione, e non come due righe scritte dove servono, perche'
+    questa decisione la prendono DUE posti diversi: cosa mostrare
+    (`domande._con_nome_dedotto`) e cosa dedurre
+    (`memoria.interpretazione.deduci_unita`). Scritta due volte sarebbe la
+    stessa forma di difetto che ha reso la pagina Modelli vera riga per riga e
+    falsa nel complesso: due copie di una regola che nessuno tiene allineate.
+
+    Una stringa vuota o di soli spazi non e' un'unita': e' l'assenza di
+    un'unita', esattamente come `None`. E se non c'e' ne' l'una ne' l'altra,
+    resta `None`: **non si inventa** -- vedi `sistema_di_riferimento`, che
+    descrive la casa e non le sue entita'.
+    """
+    for candidata in (viva, dichiarata):
+        if isinstance(candidata, str) and candidata.strip():
+            return candidata.strip()
+    return None
+
+
 def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()) -> list[dict]:
     """La casa in forma di albero: piani → aree → entita'.
 

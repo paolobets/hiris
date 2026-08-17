@@ -50,6 +50,7 @@ import inspect
 import logging
 from typing import Any
 
+from .anagrafe import specchio_vivo
 from .archivio import ArchivioCasa
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
@@ -622,25 +623,13 @@ class DispatcherStrumenti:
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
         l'inventario non e' guardabile ci pensa `inventario_leggibile`."""
-        stato: dict[str, str] = {}
-        nomi: dict[str, str] = {}
-        unita: dict[str, str] = {}
         if self._cache is None or not hasattr(self._cache, "all_states"):
-            return stato, nomi, unita, True
+            return {}, {}, {}, True
         try:
-            for e in self._cache.all_states():
-                if not isinstance(e, dict):
-                    continue
-                entity_id = e.get("id")
-                if not entity_id:
-                    continue
-                stato[entity_id] = e.get("state")
-                nome = e.get("name")
-                if isinstance(nome, str) and nome.strip():
-                    nomi[entity_id] = nome.strip()
-                misura = e.get("unit")
-                if isinstance(misura, str) and misura.strip():
-                    unita[entity_id] = misura.strip()
+            # La lettura vera e' in `anagrafe.specchio_vivo`, condivisa con chi
+            # legge lo specchio da fuori dal dispatcher: qui restano solo la
+            # difesa sulla cache assente e la semantica di `letto`.
+            stato, nomi, unita = specchio_vivo(self._cache.all_states())
         except Exception:
             return {}, {}, {}, False
         return stato, nomi, unita, True
@@ -704,7 +693,12 @@ class DispatcherStrumenti:
         # qui si sta salvando per la prima volta cio' che qualcuno ha detto
         # -- e "preso nota, ma senza salvare niente" e' esattamente il
         # difetto da cui e' nato questo modulo (vedi il docstring in cima).
-        pulita, problemi, correzioni = valida(interpretazione, indice, tipi_non_verificabili)
+        # Le unita' VIVE: il registro di Home Assistant non le manda (le riempie
+        # solo se l'utente le ha forzate a mano), quindi senza questo la
+        # deduzione dell'unita' di un ricordo non e' mai scattata.
+        _stato, _nomi, unita_vive, _letto = self._specchio()
+        pulita, problemi, correzioni = valida(
+            interpretazione, indice, tipi_non_verificabili, unita_vive)
 
         id_ricordo = self._memoria.ricorda(
             testo, detto_da=argomenti.get("detto_da"),

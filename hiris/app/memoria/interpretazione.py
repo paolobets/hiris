@@ -43,6 +43,8 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
+from ..casa.anagrafe import unita_effettiva
+
 # Le quattro... anzi tre caselle con un vocabolario chiuso: "a chi si
 # riferisce" e "che forza ha" restano qui elencate per intero; "cosa
 # chiede" non ha voce perche' il suo vocabolario e' quello di Home
@@ -57,7 +59,8 @@ VOCABOLARIO: dict[str, frozenset[str]] = {
 
 
 def valida(interpretazione: dict, indice,
-           tipi_non_verificabili: frozenset[str] = frozenset()
+           tipi_non_verificabili: frozenset[str] = frozenset(),
+           unita_vive: dict[str, str] | None = None
            ) -> tuple[dict, list[str], list[str]]:
     """Ripulisce un'interpretazione proposta dal modello, contro il
     vocabolario chiuso e l'anagrafe di `indice`.
@@ -100,7 +103,7 @@ def valida(interpretazione: dict, indice,
     ancore = _valida_ancore(interpretazione.get("ancore") or [], indice,
                              tipi_non_verificabili, problemi)
     condizioni = _valida_condizioni(interpretazione.get("condizioni") or [], problemi)
-    unita = deduci_unita(ancore, grandezza, indice)
+    unita = deduci_unita(ancore, grandezza, indice, unita_vive)
 
     pulita = {
         "forza": forza,
@@ -221,7 +224,8 @@ def _valida_condizioni(condizioni, problemi: list[str]) -> list[dict]:
     return pulite
 
 
-def deduci_unita(ancore: list[dict], grandezza, indice) -> str | None:
+def deduci_unita(ancore: list[dict], grandezza, indice,
+                 unita_vive: dict[str, str] | None = None) -> str | None:
     """L'unita' non si chiede al modello, si deduce da cio' che l'anagrafe
     gia' sa:
 
@@ -239,15 +243,20 @@ def deduci_unita(ancore: list[dict], grandezza, indice) -> str | None:
 
     Se non si trova nulla, resta `None`: **non si inventa**.
     """
+    vive = unita_vive or {}
     for ancora in ancore:
         if ancora["tipo"] == "entita":
             entita = indice.verifica("entita", ancora["riferimento"])
-            if entita and entita.get("unita") is not None:
-                return entita["unita"]
+            if entita:
+                unita = unita_effettiva(entita.get("unita"), vive.get(entita.get("id")))
+                if unita is not None:
+                    return unita
         elif ancora["tipo"] == "area" and grandezza is not None:
             area_id = ancora["riferimento"]
             for entita in indice.tutti("entita"):
-                if entita.get("area_id") == area_id and entita.get("classe") == grandezza \
-                        and entita.get("unita") is not None:
-                    return entita["unita"]
+                if entita.get("area_id") != area_id or entita.get("classe") != grandezza:
+                    continue
+                unita = unita_effettiva(entita.get("unita"), vive.get(entita.get("id")))
+                if unita is not None:
+                    return unita
     return None

@@ -303,7 +303,14 @@ def costruisci_indice(casa: dict,
                 voce["nome_dedotto"] = dedotto
             registro[riferimento] = voce
 
-            for termine_originale in [dedotto or nome, *(voce.get("alias") or [])]:
+            # Nome, alias E ETICHETTE. Le etichette sono parole che l'utente
+            # ha scritto lui in Home Assistant («inverno», «da controllare»):
+            # se non portano a niente, HIRIS gli chiede di ripetere a parole
+            # cio' che aveva gia' dichiarato una volta. Non diventano il NOME
+            # di niente -- entrano solo qui, fra i termini che `trova()`
+            # riconosce, e il nome resta quello che era.
+            for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
+                                      *(voce.get("etichette") or [])]:
                 termine_normalizzato = _normalizza(termine_originale)
                 if not termine_normalizzato:
                     continue
