@@ -39,7 +39,8 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
-from .anagrafe import gerarchia, unita_effettiva
+from .anagrafe import (classe_effettiva, etichette_con_nome, gerarchia,
+                       nomi_delle_etichette, traduci_stato, unita_effettiva)
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -139,11 +140,24 @@ def _trova_area(piani: list[dict], riferimento) -> dict | None:
     return None
 
 
-def _con_nome_dedotto(dettaglio_entita: dict, entita_id,
-                      nomi_di_ripiego: dict[str, str] | None,
-                      unita_vive: dict[str, str] | None = None) -> dict:
-    """Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
-    registro no: il nome dedotto e l'unita' di misura.
+def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
+                        nomi_di_ripiego: dict[str, str] | None,
+                        unita_vive: dict[str, str] | None = None,
+                        nomi_etichette: dict[str, str] | None = None,
+                        classi_vive: dict[str, str] | None = None) -> dict:
+    """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
+
+    Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
+    registro no (il nome dedotto e l'unita' di misura) e con cio' che il
+    registro sa e la proiezione lascerebbe indietro (la piattaforma e le
+    etichette).
+
+    Prende la VOCE del registro, non il solo `entita_id`: e' il cambiamento
+    che rende questa porta capace di portare anche i campi dichiarati. Con il
+    solo id, chi aggiungeva un campo nuovo era costretto a scriverlo nel
+    proprio ramo -- ed e' esattamente quello che era appena successo con
+    `piattaforma` ed `etichette`, uscite da una porta su tre: lo stesso
+    difetto (I1) per cui questa funzione era nata.
 
     `nome_dedotto` con la disciplina di B5: solo quando `nome` e' vuoto nel
     registro, e mai scritto sopra `nome` -- dichiarato e dedotto restano due
@@ -162,18 +176,44 @@ def _con_nome_dedotto(dettaglio_entita: dict, entita_id,
     finale): prima di quel fix solo `_guarda_entita` applicava il nome dedotto,
     e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
     stessa porta unica, per non ripetere quella storia."""
+    entita_id = voce.get("id")
     if not (dettaglio_entita.get("nome") or "").strip():
         dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
         if dedotto:
             dettaglio_entita["nome_dedotto"] = dedotto
-    unita = unita_effettiva(dettaglio_entita.get("unita"),
-                            (unita_vive or {}).get(entita_id))
+    unita = unita_effettiva(voce.get("unita"), (unita_vive or {}).get(entita_id))
     if unita:
         dettaglio_entita["unita"] = unita
-    return dettaglio_entita
+    # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
+    # manda affatto (`anagrafe.classe_effettiva`). Prima questa riga usciva
+    # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
+    # dei significati.
+    classe = classe_effettiva(voce.get("classe"), (classi_vive or {}).get(entita_id))
+    if classe:
+        dettaglio_entita["classe"] = classe
+    # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
+    # `stato` e' il fatto, `stato_leggibile` e' l'interpretazione, e non si
+    # sovrascrivono (stessa disciplina di `nome`/`nome_dedotto`).
+    #
+    # Senza, `guarda` rispondeva `on` e basta: un allagamento aveva la forma di
+    # una lampadina accesa. Il digesto lo traduceva gia', ma `guarda` e' la
+    # porta che il modello usa quando la domanda e' PRECISA, o quando il
+    # digesto ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel
+    # digesto non entra affatto. La tabella e' la stessa
+    # (`anagrafe._SIGNIFICATO_CLASSE`): due tabelle sarebbero due significati.
+    valore = dettaglio_entita.get("stato")
+    if valore is not None:
+        dettaglio_entita["stato_leggibile"] = traduci_stato(
+            valore, dettaglio_entita.get("classe"))
+    # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
+    # una cosa non risponde e cosa le si puo' chiedere.
+    piattaforma = (voce.get("piattaforma") or "").strip()
+    if piattaforma:
+        dettaglio_entita["piattaforma"] = piattaforma
+    return _con_etichette(dettaglio_entita, voce, nomi_etichette or {})
 
 
-def _con_etichette(dettaglio: dict, voce: dict) -> dict:
+def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) -> dict:
     """Le etichette che l'utente ha scritto a mano in Home Assistant.
 
     Sono il significato piu' DICHIARATO che esista in quella casa -- «inverno»,
@@ -182,11 +222,14 @@ def _con_etichette(dettaglio: dict, voce: dict) -> dict:
     porta. Un'etichetta che non porta a niente costringe l'utente a ripetere a
     parole cio' che aveva gia' dichiarato una volta.
 
+    Escono col NOME, non col `label_id`: l'unione la fa
+    `anagrafe.nomi_delle_etichette`, la stessa che usa l'indice di `cerca`.
+
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle etichette caduto. Stessa disciplina di `unita`.
     """
-    etichette = [e for e in (voce.get("etichette") or []) if str(e).strip()]
+    etichette = etichette_con_nome(voce, nomi_etichette)
     if etichette:
         dettaglio["etichette"] = etichette
     return dettaglio
@@ -195,7 +238,8 @@ def _con_etichette(dettaglio: dict, voce: dict) -> dict:
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
                  nomi_di_ripiego: dict[str, str] | None = None,
-                 unita_vive: dict[str, str] | None = None) -> dict:
+                 unita_vive: dict[str, str] | None = None,
+                 classi_vive: dict[str, str] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -203,6 +247,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # cucina con cinque luci ne mostra quattro, con `esiste: True` e nessun
     # avviso: la stessa forma di una cucina davvero piu' piccola.
     piani = gerarchia(casa, tuple(non_disponibili))
+    nomi_etichette = nomi_delle_etichette(casa)
     area = _trova_area(piani, riferimento)
     if area is None:
         dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento}
@@ -215,10 +260,10 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
             dettaglio["non_disponibile"] = True
         return dettaglio
     entita = [
-        _con_nome_dedotto(
+        _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": False},
-            e["id"], nomi_di_ripiego, unita_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
         for e in area["entita"]
     ] + [
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
@@ -226,10 +271,10 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # e `_guarda_entita` lo fanno gia', `_guarda_area` no. `gerarchia()`
         # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
         # anagrafe.py).
-        _con_nome_dedotto(
+        _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": True},
-            e["id"], nomi_di_ripiego, unita_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
         for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
@@ -239,7 +284,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "entita": entita,
         "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
     }
-    _con_etichette(dettaglio, area)
+    _con_etichette(dettaglio, area, nomi_etichette)
     if incompleto:
         dettaglio["elenco_incompleto"] = incompleto
     return dettaglio
@@ -248,7 +293,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
 def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                    non_disponibili: tuple[str, ...] = (),
                    nomi_di_ripiego: dict[str, str] | None = None,
-                   unita_vive: dict[str, str] | None = None) -> dict:
+                   unita_vive: dict[str, str] | None = None,
+                 classi_vive: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
         dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento}
@@ -263,9 +309,10 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         return dettaglio
     dettaglio = {
         "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
-        # `unita` NON viene da qui: il registro di HA non la manda (verificato
-        # sul sorgente, e misurato NULL su 842 entita' su 842). La aggiunge
-        # `_con_nome_dedotto` dallo specchio vivo, che ce l'ha davvero -- e solo
+        # `unita` NON viene da qui: `config/entity_registry/list` risponde con
+        # `as_partial_dict`, che non contiene ne' l'unita' ne' la classe ne'
+        # gli alias (verificato sul sorgente di HA). La aggiunge
+        # `_arricchisci_entita` dallo specchio vivo, che ce l'ha davvero -- e solo
         # quando c'e'. Prima questa riga prometteva un campo che era sempre
         # `null`: una promessa che non ha mai mantenuto niente.
         "classe": entita.get("classe"),
@@ -281,23 +328,17 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # questa casa `name` e `original_name` sono entrambi vuoti per un'intera
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
-    # `nome`: dichiarato e dedotto restano due fatti (`_con_nome_dedotto`).
-    # L'integrazione che fornisce l'entita' (hue, zwave_js, template, mqtt).
-    # L'anagrafe la scriveva a ogni ricostruzione e nessuno la leggeva: «questa
-    # luce e' una Hue o un template?» e' una domanda che si fa davvero, per
-    # capire perche' una cosa non risponde o cosa le si puo' chiedere. Solo
-    # quando c'e', come `unita`.
-    piattaforma = (entita.get("piattaforma") or "").strip()
-    if piattaforma:
-        dettaglio["piattaforma"] = piattaforma
-    _con_etichette(dettaglio, entita)
-    return _con_nome_dedotto(dettaglio, entita["id"], nomi_di_ripiego, unita_vive)
+    # `nome`: dichiarato e dedotto restano due fatti (`_arricchisci_entita`).
+    return _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
+                               nomi_delle_etichette(casa), classi_vive)
 
 
-def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
+def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                         non_disponibili: tuple[str, ...] = (),
                         nomi_di_ripiego: dict[str, str] | None = None,
-                        unita_vive: dict[str, str] | None = None) -> dict:
+                        unita_vive: dict[str, str] | None = None,
+                 classi_vive: dict[str, str] | None = None) -> dict:
+    nomi_etichette = nomi_delle_etichette(casa)
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
@@ -312,10 +353,15 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
     # avrebbero la stessa forma di uno che funziona.
     entita_del_dispositivo = [
-        _con_nome_dedotto(
-            {"id": e["id"], "nome": e.get("nome"),
+        _arricchisci_entita(
+            # `classe` e `stato` come dall'area: la stessa entita' e' la stessa
+            # cosa da tutte le porte. Senza lo stato, questa porta usciva con
+            # `unita: "C"` e nessun valore -- un'unita' di misura di un numero
+            # che non c'e', e il modello o dice "non lo so" o lo inventa.
+            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+             "stato": stato.get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
-            e["id"], nomi_di_ripiego, unita_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     dettaglio = {
@@ -325,7 +371,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
         "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
-    _con_etichette(dettaglio, dispositivo)
+    _con_etichette(dettaglio, dispositivo, nomi_etichette)
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_guarda_area`.
@@ -387,7 +433,8 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
            non_disponibili: tuple[str, ...] = (),
            file_non_letti: dict[str, str] | None = None,
            nomi_di_ripiego: dict[str, str] | None = None,
-           unita_vive: dict[str, str] | None = None) -> dict:
+           unita_vive: dict[str, str] | None = None,
+           classi_vive: dict[str, str] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -423,13 +470,13 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     """
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
-                            nomi_di_ripiego, unita_vive)
+                            nomi_di_ripiego, unita_vive, classi_vive)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
-                              nomi_di_ripiego, unita_vive)
+                              nomi_di_ripiego, unita_vive, classi_vive)
     if tipo == "dispositivo":
-        return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili,
-                                   nomi_di_ripiego, unita_vive)
+        return _guarda_dispositivo(casa, ricordi, stato, riferimento, non_disponibili,
+                                   nomi_di_ripiego, unita_vive, classi_vive)
     if tipo in _TIPI_COMPORTAMENTO:
         return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":

@@ -298,13 +298,13 @@ class _CacheConNomi:
                 "non un dizionario"]
 
 
-def test_lo_specchio_restituisce_stato_nomi_e_unita_in_una_lettura(archivio_casa, memoria):
+def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archivio_casa, memoria):
     """Tre fatti, UNA lettura. Due letture di `all_states()` in istanti diversi
     sarebbero la stessa classe di divergenza che il nucleo chiude condividendo
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, unita, letto = d._specchio()
+    stato, nomi, unita, classi, letto = d._specchio()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
@@ -581,17 +581,17 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
         def all_states(self):
             yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
             raise RuntimeError("boom")
-    stato, nomi, unita, letto = DispatcherStrumenti(
+    stato, nomi, unita, classi, letto = DispatcherStrumenti(
         archivio_casa, memoria, cache=_Rotta())._specchio()
     # Anche le UNITA' raccolte a meta' si buttano: mezzo dizionario di unita'
     # farebbe apparire senza unita' proprio le entita' che la lettura non ha
     # raggiunto -- lo stesso difetto dei nomi, sul campo nuovo.
-    assert (stato, nomi, unita, letto) == ({}, {}, {}, False)
+    assert (stato, nomi, unita, classi, letto) == ({}, {}, {}, {}, False)
 
 
 def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
     assert DispatcherStrumenti(
-        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, True)
+        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, True)
 
 
 @pytest.mark.asyncio

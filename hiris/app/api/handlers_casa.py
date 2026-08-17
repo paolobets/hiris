@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import gerarchia
+from ..casa.anagrafe import gerarchia, specchio_vivo
 from ..casa.nucleo import componi
 from ..proxy.entity_cache import inventario_leggibile
 
@@ -176,14 +176,25 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     else:
         ricordi = []
 
-    # `stato` nella forma che `componi()` vuole: entity_id -> valore grezzo.
-    # `entity_cache.all_states()` usa la chiave "id", non "entity_id".
+    # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
+    # `casa.anagrafe.specchio_vivo` e' la stessa che usano `guarda`, `cerca` e
+    # la correzione dei ricordi. Prima questa porta -- che alimenta SIA
+    # `GET /api/nucleo` SIA il contesto della chat, cioe' la piu' importante --
+    # se lo rileggeva da sola: una normalizzazione imparata li' non sarebbe mai
+    # arrivata qui, e il modello avrebbe letto nel digesto stati che non
+    # coincidono con quelli che ottiene chiamando `guarda`.
+    #
+    # `classi_vive` e' la ragione per cui questo cablaggio conta davvero: il
+    # registro delle entita' non manda `device_class`, quindi senza queste
+    # nessun allagamento e nessun allarme monossido entra in «Notevole adesso»
+    # (vedi `anagrafe.classe_effettiva`).
     stato: dict[str, str] = {}
+    classi_vive: dict[str, str] = {}
     if cache is not None:
-        for e in cache.all_states():
-            entity_id = e.get("id") if isinstance(e, dict) else None
-            if entity_id:
-                stato[entity_id] = e.get("state")
+        try:
+            stato, _nomi, _unita, classi_vive = specchio_vivo(cache.all_states())
+        except Exception:
+            stato, classi_vive = {}, {}
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
@@ -199,6 +210,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         problemi_comportamento=problemi_comportamento,
         file_non_letti_comportamento=file_non_letti_comportamento,
         sistema_di_riferimento=sistema_di_riferimento,
+        classi_vive=classi_vive,
     )
 
 

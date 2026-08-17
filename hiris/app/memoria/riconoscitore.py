@@ -30,6 +30,8 @@ ricerca approssimata che ne dipendesse degraderebbe in silenzio.
 """
 from __future__ import annotations
 
+from ..casa.anagrafe import etichette_con_nome, nomi_delle_etichette
+
 import re
 import unicodedata
 
@@ -282,6 +284,7 @@ def costruisci_indice(casa: dict,
     termini: dict[str, list[tuple[str, str]]] = {}
     per_tipo: dict[str, dict[str, dict]] = {}
     ripiego = nomi_di_ripiego or {}
+    nomi_etichette = nomi_delle_etichette(casa)
 
     for chiave_archivio, tipo in _ARCHIVI:
         registro = per_tipo.setdefault(tipo, {})
@@ -309,8 +312,17 @@ def costruisci_indice(casa: dict,
             # cio' che aveva gia' dichiarato una volta. Non diventano il NOME
             # di niente -- entrano solo qui, fra i termini che `trova()`
             # riconosce, e il nome resta quello che era.
+            #
+            # Col NOME, non col `label_id`: nei registri Home Assistant mette
+            # gli slug (`da_controllare`), e indicizzare quelli avrebbe fatto
+            # funzionare la ricerca SOLO per le etichette di una parola sola
+            # senza maiuscole. Nessuno cerca «da_controllare»: si cerca «da
+            # controllare». L'unione la fa `casa.anagrafe.etichette_con_nome`,
+            # la stessa che usa `guarda` -- scritta due volte sarebbe una
+            # ricerca che trova per un nome e una risposta che ne mostra un
+            # altro.
             for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
-                                      *(voce.get("etichette") or [])]:
+                                      *etichette_con_nome(voce, nomi_etichette)]:
                 termine_normalizzato = _normalizza(termine_originale)
                 if not termine_normalizzato:
                     continue

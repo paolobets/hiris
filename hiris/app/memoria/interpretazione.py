@@ -43,7 +43,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
-from ..casa.anagrafe import unita_effettiva
+from ..casa.anagrafe import area_effettiva, unita_effettiva
 
 # Le quattro... anzi tre caselle con un vocabolario chiuso: "a chi si
 # riferisce" e "che forza ha" restano qui elencate per intero; "cosa
@@ -253,8 +253,17 @@ def deduci_unita(ancore: list[dict], grandezza, indice,
                     return unita
         elif ancora["tipo"] == "area" and grandezza is not None:
             area_id = ancora["riferimento"]
+            # L'area EREDITATA dal dispositivo conta quanto quella propria --
+            # anzi, di piu': in una casa vera e' il caso normale. La regola sta
+            # in `casa.anagrafe.area_effettiva`, la stessa che usa `gerarchia()`
+            # per costruire l'albero: qui prima si confrontava il solo
+            # `area_id` proprio, e su una casa vera non si trovava mai niente.
+            area_del_dispositivo = {d["id"]: d.get("area_id")
+                                    for d in indice.tutti("dispositivo") if d.get("id")}
             for entita in indice.tutti("entita"):
-                if entita.get("area_id") != area_id or entita.get("classe") != grandezza:
+                if entita.get("classe") != grandezza:
+                    continue
+                if area_effettiva(entita, area_del_dispositivo) != area_id:
                     continue
                 unita = unita_effettiva(entita.get("unita"), vive.get(entita.get("id")))
                 if unita is not None:

@@ -43,7 +43,8 @@ cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
-from .anagrafe import e_pseudo_area, gerarchia
+from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, classe_effettiva,
+                       e_pseudo_area, gerarchia, traduci_stato)
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -193,67 +194,6 @@ _CLASSI_EVENTO = {
 # vedi `_raggruppa_notevoli`.
 _SOGLIA_NOTEVOLE_INDIVIDUALE = 15
 
-_TRADUZIONE_STATO = {
-    "on": "acceso", "off": "spento", "open": "aperta", "closed": "chiusa",
-    "home": "in casa", "not_home": "fuori casa", "unlocked": "sbloccata",
-    "locked": "bloccata", "playing": "in riproduzione", "paused": "in pausa",
-    "unavailable": "non disponibile", "detected": "rilevato",
-    "problem": "in problema", "triggered": "in allarme",
-}
-
-# COSA SIGNIFICANO I VALORI, per classe.
-#
-# "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
-# affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
-# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sulle ventotto che
-# Home Assistant documenta: per questo un allagamento si leggeva «1 sensore
-# binario (acceso)», indistinguibile da una lampadina.
-#
-# I significati NON sono inventati: sono quelli dichiarati in
-# developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il
-# 16/08/2026. Dove HA dice «on means wet», qui c'e' «bagnato».
-_SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
-    # allarmi
-    "moisture": ("bagnato", "asciutto"),
-    "smoke": ("fumo rilevato", "nessun fumo"),
-    "gas": ("gas rilevato", "nessun gas"),
-    # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
-    # delle 28 classi in cui la stringa non e' il nome della costante in
-    # minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
-    # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
-    # un allarme monossido non entra nel digesto e non viene tradotto: la
-    # classe piu' critica dell'elenco, muta.
-    "carbon_monoxide": ("monossido rilevato", "nessun monossido"),
-    "safety": ("non sicuro", "sicuro"),
-    "tamper": ("manomissione rilevata", "nessuna manomissione"),
-    "problem": ("problema rilevato", "nessun problema"),
-    "heat": ("caldo", "normale"),
-    "cold": ("freddo", "normale"),
-    # aperture (erano `_CLASSI_APERTURA`: assorbite qui, non affiancate)
-    "door": ("aperto", "chiuso"),
-    "window": ("aperto", "chiuso"),
-    "garage_door": ("aperto", "chiuso"),
-    "opening": ("aperto", "chiuso"),
-    "damper": ("aperto", "chiuso"),
-    "lock": ("sbloccato", "bloccato"),
-    # presenza e movimento
-    "motion": ("movimento rilevato", "nessun movimento"),
-    "occupancy": ("occupato", "libero"),
-    "presence": ("in casa", "fuori"),
-    "moving": ("in movimento", "fermo"),
-    "vibration": ("vibrazione rilevata", "nessuna vibrazione"),
-    # alimentazione e collegamento
-    "plug": ("collegato", "scollegato"),
-    "power": ("alimentato", "non alimentato"),
-    "connectivity": ("connesso", "disconnesso"),
-    "battery": ("carica bassa", "carica normale"),
-    "battery_charging": ("in carica", "non in carica"),
-    "running": ("in funzione", "fermo"),
-    # altro
-    "light": ("luce rilevata", "nessuna luce"),
-    "sound": ("suono rilevato", "nessun suono"),
-    "update": ("aggiornamento disponibile", "aggiornato"),
-}
 
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
 # l'avviso di taglio anche quando il taglio e' avvenuto, quindi si sottrae
@@ -392,18 +332,6 @@ def _plurale(n: int, singolare: str, plurale: str) -> str:
     return singolare if n == 1 else plurale
 
 
-def _traduci_stato(valore, classe: str | None = None) -> str:
-    """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
-    `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
-    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant."""
-    v = str(valore).lower()
-    significato = _SIGNIFICATO_CLASSE.get(classe or "")
-    if significato:
-        if v == "on":
-            return significato[0]
-        if v == "off":
-            return significato[1]
-    return _TRADUZIONE_STATO.get(v, str(valore))
 
 
 def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
@@ -658,7 +586,9 @@ def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool,
 
 
 def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
-                    stato_inaffidabile: bool) -> tuple[list[str], list[int], bool]:
+                    stato_inaffidabile: bool,
+                    classi_vive: dict[str, str] | None = None
+                    ) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
     cercare -- e l'albero gia' costruito da `gerarchia()` per l'area, non
@@ -680,6 +610,13 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
             "'niente di notevole'."
         ], [1], False)
     area_per_entita = _area_di_ogni_entita(piani)
+    # La classe viene dallo SPECCHIO: il registro delle entita' non la manda
+    # (`anagrafe.classe_effettiva`). Finche' si e' letta solo dal registro,
+    # `_e_un_evento` ha sempre ricevuto `None` per ogni sensore binario --
+    # quindi nessun allagamento, nessun fumo, nessun monossido e' MAI entrato
+    # in questa sezione, e le 28 voci di `_SIGNIFICATO_CLASSE` non sono mai
+    # state raggiunte.
+    vive = classi_vive or {}
     voci = []
     irraggiungibili = 0
     for e in casa.get("entita", []):
@@ -708,12 +645,12 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
         if str(valore).lower() == "unavailable":
             irraggiungibili += 1
             continue
-        if not _e_un_evento(_dominio(entity_id), e.get("classe"), valore):
+        if not _e_un_evento(_dominio(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore):
             continue
         voci.append({
             "area_nome": area_per_entita.get(entity_id),
             "dominio": _dominio(entity_id),
-            "stato_leggibile": _traduci_stato(valore, e.get("classe")),
+            "stato_leggibile": traduci_stato(valore, classe_effettiva(e.get("classe"), vive.get(entity_id))),
             "nome": e.get("nome") or entity_id,
         })
     # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle
@@ -819,7 +756,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             stato_affidabile: bool = True,
             problemi_comportamento: tuple[str, ...] = (),
             file_non_letti_comportamento: dict[str, str] | None = None,
-            sistema_di_riferimento: dict | None = None) -> tuple[str, dict]:
+            sistema_di_riferimento: dict | None = None,
+            classi_vive: dict[str, str] | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -958,7 +896,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
     righe_notevole, pesi_notevole, notevole_raggruppato = _righe_notevole(
-        casa, stato, piani, inaffidabile)
+        casa, stato, piani, inaffidabile, classi_vive)
     righe_comportamento = _righe_comportamento(comportamento)
     righe_ricordi = _righe_ricordi(ricordi)
 

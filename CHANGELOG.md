@@ -68,6 +68,39 @@ nessuno leggeva — e che per giunta sbagliava: fondeva due stanze omonime su pi
 diversi e non vedeva le entità che prendono la stanza dal proprio dispositivo. La
 mappa giusta la costruisce già l'anagrafe. Via quella, e via il lavoro.
 
+### Un allagamento non è più «un sensore acceso»
+
+Il difetto più grave trovato dalla revisione, e stava lì da sempre.
+
+Il comando con cui HIRIS legge le entità da Home Assistant **non manda la
+classe del sensore**. Non «a volte»: mai. HIRIS credeva di saperla, e la usava
+per decidere cosa annunciare — così *nessun* sensore binario è mai entrato in
+«Notevole adesso». Un allagamento, un principio d'incendio, il monossido di
+carbonio: HIRIS li leggeva e non li diceva. E se glielo chiedevi, un sensore di
+perdita d'acqua bagnato rispondeva «acceso» — che per una persona significa
+«funziona».
+
+La classe c'era già, in memoria, negli stessi dati che HIRIS scarica a ogni
+avvio. Adesso la legge da lì, senza nessuna chiamata in più.
+
+### Le etichette col loro nome
+
+Home Assistant nei registri mette gli identificatori delle etichette, non i
+nomi: «Da controllare» viaggia come `da_controllare`. HIRIS mostrava quello — una
+parola che non hai mai scritto, e che non cambierebbe nemmeno rinominando
+l'etichetta. E la ricerca funzionava solo per le etichette di una parola sola.
+
+### Le stesse cose da tutte le porte
+
+Chiedere di un'area, di un dispositivo o di una singola entità dava risposte
+diverse sulla stessa entità: da una porta lo stato, da un'altra l'unità di
+misura senza il valore, dall'altra ancora l'integrazione. Adesso passano tutte
+per lo stesso punto.
+
+E l'unità di un ricordo ancorato a una stanza ora si deduce anche quando il
+sensore prende la stanza dal proprio dispositivo — che è il caso normale, non
+l'eccezione: prima «in cucina non sotto i 20» si archiviava come «da 20» nudo.
+
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 
 Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con

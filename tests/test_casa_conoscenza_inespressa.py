@@ -13,10 +13,11 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 - `etichette`: la tassonomia che l'utente ha scritto a mano in Home Assistant
   -- il significato piu' dichiarato che esista in quella casa. Letta, salvata,
   messa perfino nell'albero da `gerarchia()`, e mai in una risposta.
-- l'unita' delle entita' in `deduci_unita`: la legge dal REGISTRO, dove Home
-  Assistant la lascia vuota se l'utente non l'ha forzata a mano (misurato:
-  NULL su 842 entita' su 842). La funzione non ha quindi mai dedotto niente
-  in produzione, e non aveva modo di dirlo.
+- l'unita' delle entita' in `deduci_unita`: la legge dal REGISTRO, che non la
+  manda -- `config/entity_registry/list` risponde con `as_partial_dict`, dove
+  ne' l'unita' ne' la classe ne' gli alias compaiono (verificato sul sorgente
+  di HA). La funzione non ha quindi mai dedotto niente in produzione, e non
+  aveva modo di dirlo.
 """
 import pytest
 
@@ -27,15 +28,29 @@ from hiris.app.memoria.interpretazione import deduci_unita
 from hiris.app.memoria.riconoscitore import costruisci_indice
 
 _REGISTRI = {
+    # `labels` porta i label_id (slug), MAI i nomi: e' cosi' che Home Assistant
+    # li manda (`labels: set[str]` su ogni voce dei registri, verificato in
+    # `helpers/entity_registry.py`). I nomi stanno nel registro a parte.
     "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["piano_terra"]}],
     "dispositivi": [{"id": "d1", "name": "Frigo", "area_id": "cucina",
                      "labels": ["elettrodomestici"]}],
     "entita": [
+        # Area NULLA e dispositivo in cucina: il caso normale in una casa
+        # vera, non l'eccezione. Con `area_id` esplicito le prove sarebbero
+        # passate anche col difetto dentro.
         {"entity_id": "sensor.frigo_temp", "name": "Temperatura frigo",
-         "device_id": "d1", "area_id": "cucina", "platform": "zwave_js",
-         "device_class": "temperature", "labels": ["inverno", "consumi"]},
+         "device_id": "d1", "area_id": None, "platform": "zwave_js",
+         "device_class": "temperature", "labels": ["da_controllare", "consumi"]},
         {"entity_id": "light.faretto", "name": "Faretto", "area_id": "cucina",
          "platform": "hue"},
+    ],
+    # Il registro delle etichette: id -> nome. Senza, "da_controllare" resta
+    # una stringa che l'utente non ha mai scritto.
+    "etichette": [
+        {"label_id": "da_controllare", "name": "Da controllare"},
+        {"label_id": "consumi", "name": "Consumi"},
+        {"label_id": "piano_terra", "name": "Piano terra"},
+        {"label_id": "elettrodomestici", "name": "Elettrodomestici"},
     ],
 }
 
@@ -68,19 +83,26 @@ def test_senza_piattaforma_la_chiave_non_compare(casa):
 
 # --- le etichette: la tassonomia scritta a mano dall'utente ---------------
 
-def test_guarda_un_entita_dice_le_sue_etichette(casa):
+def test_guarda_un_entita_dice_le_sue_etichette_COL_NOME(casa):
+    """Col NOME, non col label_id.
+
+    Home Assistant mette nei registri gli slug (`da_controllare`) e tiene i
+    nomi in un registro a parte, che l'anagrafe salva gia' nella tabella
+    `etichette`. Senza l'unione, HIRIS riferisce all'utente una stringa che
+    l'utente non ha mai scritto -- e che non cambia mai piu': rinominare
+    l'etichetta in Home Assistant non tocca il suo id."""
     d = guarda(casa, [], [], {}, "entita", "sensor.frigo_temp")
-    assert d["etichette"] == ["inverno", "consumi"]
+    assert d["etichette"] == ["Da controllare", "Consumi"]
 
 
 def test_guarda_un_area_dice_le_sue_etichette(casa):
     d = guarda(casa, [], [], {}, "area", "cucina")
-    assert d["etichette"] == ["piano_terra"]
+    assert d["etichette"] == ["Piano terra"]
 
 
 def test_guarda_un_dispositivo_dice_le_sue_etichette(casa):
     d = guarda(casa, [], [], {}, "dispositivo", "d1")
-    assert d["etichette"] == ["elettrodomestici"]
+    assert d["etichette"] == ["Elettrodomestici"]
 
 
 def test_senza_etichette_la_chiave_non_compare(casa):
@@ -92,9 +114,14 @@ def test_senza_etichette_la_chiave_non_compare(casa):
 
 def test_si_cerca_per_etichetta(casa):
     """L'etichetta e' una parola che l'utente ha scritto lui: se non porta a
-    niente, HIRIS chiede all'utente di ripetere cio' che ha gia' dichiarato."""
+    niente, HIRIS chiede all'utente di ripetere cio' che ha gia' dichiarato.
+
+    Si cerca «da controllare» -- il NOME, con lo spazio -- non «da_controllare»:
+    lo slug e' una parola che l'utente non pronuncera' mai, e indicizzare
+    quello significa che la ricerca funziona solo per le etichette di una
+    parola sola senza maiuscole."""
     indice = costruisci_indice(casa)
-    trovati = indice.trova("inverno")
+    trovati = indice.trova("da controllare")
     candidati = [c for t in trovati for c in t["candidati"]]
     assert {"tipo": "entita", "riferimento": "sensor.frigo_temp"} in candidati
 
@@ -114,13 +141,33 @@ def test_la_regola_dell_unita_sta_in_un_posto_solo():
 
 
 def test_deduci_unita_usa_la_fonte_viva(casa):
-    """Il difetto vero: il registro di Home Assistant NON manda l'unita' (la
-    manda solo se l'utente l'ha forzata a mano), quindi questa deduzione non
-    e' mai scattata in produzione -- e taceva invece di dirlo."""
+    """Il difetto vero: il registro di Home Assistant NON manda l'unita' --
+    `config/entity_registry/list` risponde con `as_partial_dict`, che non la
+    contiene. Questa deduzione non e' quindi mai scattata in produzione, e
+    taceva invece di dirlo."""
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "entita", "riferimento": "sensor.frigo_temp"}]
     assert deduci_unita(ancore, "temperature", indice) is None, (
         "senza fonte viva non c'e' niente da dedurre: e' il caso di oggi")
+    assert deduci_unita(ancore, "temperature", indice,
+                        {"sensor.frigo_temp": "C"}) == "C"
+
+
+def test_deduci_unita_da_un_area_vede_l_area_EREDITATA_dal_dispositivo(casa):
+    """Il caso NORMALE, non l'eccezione.
+
+    Moltissime entita' non hanno un'area propria: la portano dal loro
+    dispositivo. `anagrafe.gerarchia()` lo dichiara e lo risolve; la deduzione
+    dell'unita' confrontava invece il solo `area_id` PROPRIO, quindi su una
+    casa vera non trovava niente e archiviava il ricordo senza unita' -- «in
+    cucina non sotto i 20» diventava «da 20» nudo, per sempre, da tutte le
+    porte.
+
+    `sensor.frigo_temp` in questa casa e' esattamente cosi': area nulla,
+    dispositivo `d1` in cucina.
+    """
+    indice = costruisci_indice(casa)
+    ancore = [{"tipo": "area", "riferimento": "cucina"}]
     assert deduci_unita(ancore, "temperature", indice,
                         {"sensor.frigo_temp": "C"}) == "C"
 
@@ -183,3 +230,53 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     salvato = next(r for r in memoria.richiama() if r["id"] == id_ricordo)
     assert salvato["unita"] == "C", (
         "la pagina deve dedurre l'unita' dalla stessa fonte viva della chat")
+
+
+# --- lo stato in parole, dalle DUE porte ----------------------------------
+
+def test_guarda_dice_cosa_significa_lo_stato_non_solo_il_valore():
+    """Un allagamento non deve avere la forma di una lampadina accesa.
+
+    Il digesto traduceva gia' («bagnato»), `guarda` no: rispondeva `stato:
+    "on"` e basta. Ma `guarda` e' la porta che il modello usa quando la
+    domanda e' PRECISA -- «c'e' una perdita in bagno?» -- e quando il digesto
+    ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel digesto non
+    entra affatto. Il modello leggeva «acceso» e riferiva «il sensore perdita
+    e' acceso», che per una persona significa «funziona», non «c'e' acqua».
+
+    Il valore grezzo RESTA: `stato` e' il fatto, `stato_leggibile` e'
+    l'interpretazione. Stessa disciplina di `nome`/`nome_dedotto` -- dichiarato
+    e interpretato non si sovrascrivono a vicenda.
+    """
+    casa_perdita = {"entita": [
+        {"id": "binary_sensor.perdita_lavatrice", "nome": "Perdita lavatrice",
+         "classe": "moisture", "area_id": "bagno"},
+    ], "aree": [{"id": "bagno", "nome": "Bagno"}]}
+    stato = {"binary_sensor.perdita_lavatrice": "on"}
+
+    d = guarda(casa_perdita, [], [], stato, "entita", "binary_sensor.perdita_lavatrice")
+    assert d["stato"] == "on"
+    assert d["stato_leggibile"] == "bagnato"
+
+    # E dalla porta dell'area, che elenca: stessa entita', stessa forma.
+    a = guarda(casa_perdita, [], [], stato, "area", "bagno")
+    assert a["entita"][0]["stato_leggibile"] == "bagnato"
+
+
+def test_una_luce_accesa_resta_accesa():
+    """Il contrario della prova sopra, e serve quanto quella: senza, il rimedio
+    potrebbe tradurre tutto in «bagnato» e la prova di sopra passerebbe."""
+    casa_luce = {"entita": [
+        {"id": "light.cucina", "nome": "Cucina", "classe": None, "area_id": "c"},
+    ], "aree": [{"id": "c", "nome": "Cucina"}]}
+    d = guarda(casa_luce, [], [], {"light.cucina": "on"}, "entita", "light.cucina")
+    assert d["stato_leggibile"] == "acceso"
+
+
+def test_senza_stato_letto_non_si_traduce_il_nulla():
+    """`stato: None` significa «non ho guardato». Tradurlo in «spento» sarebbe
+    affermare un fatto sulla casa al posto di dichiarare un silenzio."""
+    casa_muta = {"entita": [{"id": "light.x", "nome": "X"}]}
+    d = guarda(casa_muta, [], [], {}, "entita", "light.x")
+    assert d["stato"] is None
+    assert "stato_leggibile" not in d

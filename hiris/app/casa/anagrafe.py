@@ -157,8 +157,9 @@ def e_pseudo_area(area_id: str) -> bool:
     return area_id in _ID_PSEUDO_AREA
 
 
-def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
-    """Lo specchio dello stato in tre dizionari: `(stato, nomi, unita)`.
+def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str],
+                                  dict[str, str], dict[str, str]]:
+    """Lo specchio dello stato in quattro dizionari: `(stato, nomi, unita, classi)`.
 
     `righe` e' cio' che `entity_cache.all_states()` restituisce: dizionari
     nella forma di `_to_minimal` -- chiave `id` (non `entity_id`), piu' `state`,
@@ -171,12 +172,18 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]
     dentro. Nel secondo caso la stessa domanda dava due risposte diverse a
     seconda della porta -- l'unita' dedotta in chat e non dedotta dalla pagina.
 
-    Nomi e unita' vuoti si saltano: una stringa vuota non e' un nome e non e'
-    un'unita', e' l'assenza dell'una e dell'altra.
+    Nomi, unita' e classi vuoti si saltano: una stringa vuota non e' un nome e
+    non e' un'unita', e' l'assenza dell'una e dell'altra.
+
+    `classi` (entity_id -> `device_class`) e' arrivata per ultima ed e' la piu'
+    importante: il registro delle entita' NON manda la classe (vedi
+    `classe_effettiva`), quindi finche' nessuno leggeva questa nessun sensore
+    binario ha mai avuto una classe in tutto il prodotto.
     """
     stato: dict[str, str] = {}
     nomi: dict[str, str] = {}
     unita: dict[str, str] = {}
+    classi: dict[str, str] = {}
     for e in righe:
         if not isinstance(e, dict):
             continue
@@ -190,7 +197,201 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]
         misura = e.get("unit")
         if isinstance(misura, str) and misura.strip():
             unita[entity_id] = misura.strip()
-    return stato, nomi, unita
+        classe = e.get("device_class")
+        if isinstance(classe, str) and classe.strip():
+            classi[entity_id] = classe.strip()
+    return stato, nomi, unita, classi
+
+
+def nomi_delle_etichette(casa: dict) -> dict[str, str]:
+    """label_id -> nome, dal registro delle etichette dell'anagrafe.
+
+    Home Assistant mette nei registri di aree, dispositivi ed entita' i soli
+    **label_id** (`labels: set[str]`, verificato in
+    `helpers/entity_registry.py`), e tiene i nomi in un registro a parte
+    (`helpers/label_registry.py`: `label_id` + `name`). L'anagrafe li salva
+    entrambi -- la tabella `etichette` -- ma finche' nessuno li unisce, un
+    `label_id` che esce da una porta e' un identificativo senza il suo nome:
+    ATOMICITA'.
+
+    Non e' una pignoleria di forma. Un `label_id` e' uno slug: «Da controllare»
+    diventa `da_controllare`, e chi lo riceve legge una stringa che l'utente
+    non ha mai scritto. Peggio: lo slug non cambia MAI piu' -- rinominare
+    l'etichetta in Home Assistant lascia l'id com'era, quindi HIRIS
+    continuerebbe a dire il vecchio nome per sempre.
+
+    Qui, e non in `domande.py`, perche' la stessa unione serve anche
+    all'indice di `cerca` (`memoria/riconoscitore.py`): scritta due volte
+    sarebbe una ricerca che trova per un nome e una risposta che ne mostra un
+    altro.
+    """
+    return {e["id"]: e.get("nome") or e["id"]
+            for e in casa.get("etichette") or [] if e.get("id")}
+
+
+def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
+    """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
+
+    Un id che il registro non conosce resta com'e' invece di sparire: e' un
+    riferimento penzolante (o un registro delle etichette non letto), e
+    «questa cosa ha un'etichetta che non so nominare» e' piu' vero di «questa
+    cosa non ha etichette». Stessa scelta di `gerarchia()` con le aree
+    sconosciute.
+    """
+    return [nomi.get(str(e), str(e)) for e in (voce.get("etichette") or [])
+            if str(e).strip()]
+
+
+# --- il vocabolario degli stati -------------------------------------------
+#
+# Sta QUI e non in `nucleo.py`, dov'era nato: il significato di uno stato e' un
+# fatto sulla casa, non una proprieta' del digesto. Finche' e' stato li' dentro,
+# il digesto traduceva «bagnato» e `guarda` -- l'altra porta, quella che il
+# modello usa quando la domanda e' precisa -- rispondeva «on». La stessa
+# perdita d'acqua aveva la forma di una lampadina accesa a seconda di chi la
+# chiedeva.
+
+_TRADUZIONE_STATO = {
+    "on": "acceso", "off": "spento", "open": "aperta", "closed": "chiusa",
+    "home": "in casa", "not_home": "fuori casa", "unlocked": "sbloccata",
+    "locked": "bloccata", "playing": "in riproduzione", "paused": "in pausa",
+    "unavailable": "non disponibile", "detected": "rilevato",
+    "problem": "in problema", "triggered": "in allarme",
+}
+
+# COSA SIGNIFICANO I VALORI, per classe.
+#
+# "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
+# affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
+# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sulle ventotto che
+# Home Assistant documenta: per questo un allagamento si leggeva «1 sensore
+# binario (acceso)», indistinguibile da una lampadina.
+#
+# I significati NON sono inventati: sono quelli dichiarati in
+# developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il
+# 16/08/2026. Dove HA dice «on means wet», qui c'e' «bagnato».
+_SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
+    # allarmi
+    "moisture": ("bagnato", "asciutto"),
+    "smoke": ("fumo rilevato", "nessun fumo"),
+    "gas": ("gas rilevato", "nessun gas"),
+    # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
+    # delle 28 classi in cui la stringa non e' il nome della costante in
+    # minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
+    # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
+    # un allarme monossido non entra nel digesto e non viene tradotto: la
+    # classe piu' critica dell'elenco, muta.
+    "carbon_monoxide": ("monossido rilevato", "nessun monossido"),
+    "safety": ("non sicuro", "sicuro"),
+    "tamper": ("manomissione rilevata", "nessuna manomissione"),
+    "problem": ("problema rilevato", "nessun problema"),
+    "heat": ("caldo", "normale"),
+    "cold": ("freddo", "normale"),
+    # aperture (erano `_CLASSI_APERTURA`: assorbite qui, non affiancate)
+    "door": ("aperto", "chiuso"),
+    "window": ("aperto", "chiuso"),
+    "garage_door": ("aperto", "chiuso"),
+    "opening": ("aperto", "chiuso"),
+    "damper": ("aperto", "chiuso"),
+    "lock": ("sbloccato", "bloccato"),
+    # presenza e movimento
+    "motion": ("movimento rilevato", "nessun movimento"),
+    "occupancy": ("occupato", "libero"),
+    "presence": ("in casa", "fuori"),
+    "moving": ("in movimento", "fermo"),
+    "vibration": ("vibrazione rilevata", "nessuna vibrazione"),
+    # alimentazione e collegamento
+    "plug": ("collegato", "scollegato"),
+    "power": ("alimentato", "non alimentato"),
+    "connectivity": ("connesso", "disconnesso"),
+    "battery": ("carica bassa", "carica normale"),
+    "battery_charging": ("in carica", "non in carica"),
+    "running": ("in funzione", "fermo"),
+    # altro
+    "light": ("luce rilevata", "nessuna luce"),
+    "sound": ("suono rilevato", "nessun suono"),
+    "update": ("aggiornamento disponibile", "aggiornato"),
+}
+
+
+def traduci_stato(valore, classe: str | None = None) -> str:
+    """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
+    `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
+    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant."""
+    v = str(valore).lower()
+    significato = _SIGNIFICATO_CLASSE.get(classe or "")
+    if significato:
+        if v == "on":
+            return significato[0]
+        if v == "off":
+            return significato[1]
+    return _TRADUZIONE_STATO.get(v, str(valore))
+
+
+def area_effettiva(entita: dict, area_del_dispositivo: dict[str, str | None]) -> str | None:
+    """L'area di un'entita': la PROPRIA se ce l'ha, altrimenti quella del suo
+    dispositivo.
+
+    E' una regola di Home Assistant, non una scelta di HIRIS, e sbagliarla fa
+    sparire meta' della casa: moltissime entita' non hanno un'area propria, e
+    la portano dal dispositivo -- e' il caso NORMALE, non l'eccezione.
+
+    Esiste come funzione per la stessa ragione di `unita_effettiva`: la
+    prendono due posti diversi. `gerarchia()` la usa per costruire l'albero, e
+    `memoria.interpretazione.deduci_unita` per capire quale entita' di
+    un'area puo' dare l'unita' a un ricordo. Scritta due volte lo era gia': il
+    secondo confrontava il solo `area_id` proprio, quindi su una casa vera non
+    trovava mai niente e archiviava «in cucina non sotto i 20» come «da 20»
+    nudo, senza scala, per sempre.
+
+    `area_del_dispositivo` e' `{id_dispositivo: area_id}` -- vuoto quando il
+    registro dei dispositivi non ha risposto. Chi deve DISTINGUERE "non ha
+    area" da "non ho potuto leggere i dispositivi" (l'albero lo fa, con la
+    pseudo-area «Dispositivi non letti») lo decide prima di chiamare qui:
+    questa funzione risponde alla domanda, non la qualifica.
+    """
+    return entita.get("area_id") or area_del_dispositivo.get(entita.get("dispositivo_id"))
+
+
+def classe_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
+    """La classe di un'entita' (`device_class`): la VIVA vince su quella del
+    registro -- e sul campo e' l'unica che esista.
+
+    IL PUNTO, misurato sul sorgente di Home Assistant: il comando con cui
+    HIRIS legge le entita', `config/entity_registry/list`, risponde con
+    `RegistryEntry.as_partial_dict` (`helpers/entity_registry.py:335`), che
+    **non contiene `device_class`**, ne' `original_device_class`, ne'
+    `aliases`. Quei campi stanno solo in `extended_dict` (`:369`), servito da
+    `config/entity_registry/get` e `.../get_entries`.
+
+    Quindi la colonna `classe` dell'anagrafe e' sempre NULL, su ogni casa, e
+    per tutto il tempo in cui e' stata l'unica fonte:
+
+    - `nucleo._e_un_evento("binary_sensor", None, "on")` era sempre falso:
+      NESSUN sensore binario e' mai entrato in «Notevole adesso». Un
+      allagamento, un principio d'incendio, il monossido: muti;
+    - le 28 voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, con
+      `carbon_monoxide` verificato una riga per volta -- erano irraggiungibili;
+    - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
+
+    E nessuna prova poteva accorgersene, perche' ogni finta scriveva
+    `device_class` dentro la riga del registro: un campo che Home Assistant li'
+    non mette. La finta non sapeva produrre il difetto.
+
+    Il rimedio non costa nessuna chiamata in piu': `device_class` e' gia' in
+    RAM in ogni voce dello specchio dello stato (`entity_cache._to_minimal`),
+    perche' HA lo scrive fra gli attributi di OGNI entita'. Ed e' anche la
+    fonte che Home Assistant stesso preferisce
+    (`helpers/entity.py::get_device_class`).
+
+    Il ripiego sul registro resta per il giorno in cui HIRIS chiamera'
+    `get_entries`: allora le due fonti coesisteranno, e questa funzione dira'
+    gia' quale vince.
+    """
+    for candidata in (viva, dichiarata):
+        if isinstance(candidata, str) and candidata.strip():
+            return candidata.strip()
+    return None
 
 
 def unita_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
@@ -299,7 +500,7 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             if not entita.get("disabilitata"):
                 dispositivi_non_letti.append(entita)
             continue
-        area_id = area_propria or area_del_dispositivo.get(dispositivo_id)
+        area_id = area_effettiva(entita, area_del_dispositivo)
         if entita.get("disabilitata"):
             per_area_disabilitate.setdefault(area_id, []).append(entita)
         else:

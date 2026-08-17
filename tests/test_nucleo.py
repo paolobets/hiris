@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from hiris.app.casa import nucleo
@@ -92,10 +94,29 @@ def test_il_taglio_non_e_mai_silenzioso():
 
 
 def test_una_casa_vuota_non_produce_un_nucleo_bugiardo():
+    """Su una casa vuota, "La casa" deve DIRE che e' vuota -- non inventare
+    stanze.
+
+    `assert testo.strip()` non bastava, e il nome della prova prometteva molto
+    di piu' di quello che la prova faceva: `_assembla()` scrive SEMPRE i titoli
+    di sezione ("## La casa", "## Notevole adesso", ...) anche a righe vuote,
+    quindi quel controllo non poteva fallire mai, qualunque cosa contenesse la
+    sezione. Con un `_righe_casa()` che restituiva "Piano terra: - Cucina
+    fantasma: 5 luci" la prova restava verde -- e con lei tutte e 41 le prove
+    del file.
+
+    Si asserisce dentro la SEZIONE, non nel testo intero: "Piano terra" in un
+    avviso o in un ricordo non e' una casa inventata, e cercarlo ovunque
+    renderebbe la prova rumorosa invece che severa.
+    """
     vuota = {chiave: [] for chiave in _CASA}
     testo, riepilogo = componi(vuota, [], [], {})
     assert riepilogo["troncato"] is False
-    assert testo.strip()                          # dice qualcosa, non e' vuoto
+    sezione_casa = testo.split("## La casa")[1].split("## ")[0]
+    assert "Nessun piano registrato." in sezione_casa
+    # Nessun conteggio: una casa vuota non ha niente da contare, e una cifra
+    # qui sarebbe una stanza che non esiste.
+    assert not re.search(r"\d+ ", sezione_casa), sezione_casa
 
 
 def test_le_entita_disabilitate_non_si_contano():
