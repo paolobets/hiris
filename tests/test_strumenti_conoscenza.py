@@ -298,12 +298,19 @@ class _CacheConNomi:
                 "non un dizionario"]
 
 
-def test_lo_specchio_restituisce_stato_e_nomi_in_una_lettura(archivio_casa, memoria):
+def test_lo_specchio_restituisce_stato_nomi_e_unita_in_una_lettura(archivio_casa, memoria):
+    """Tre fatti, UNA lettura. Due letture di `all_states()` in istanti diversi
+    sarebbero la stessa classe di divergenza che il nucleo chiude condividendo
+    un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
+    che in un metodo suo."""
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, letto = d._specchio()
+    stato, nomi, unita, letto = d._specchio()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
+    # `_CacheConNomi` non porta unita': l'assenza e' un dizionario vuoto, non
+    # una chiave con valore nullo.
+    assert unita == {}
 
 
 @pytest.mark.asyncio
@@ -572,14 +579,19 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
         prova niente."""
         loaded = True
         def all_states(self):
-            yield {"id": "light.a", "state": "on", "name": "Luce A"}
+            yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
             raise RuntimeError("boom")
-    stato, nomi, letto = DispatcherStrumenti(archivio_casa, memoria, cache=_Rotta())._specchio()
-    assert (stato, nomi, letto) == ({}, {}, False)
+    stato, nomi, unita, letto = DispatcherStrumenti(
+        archivio_casa, memoria, cache=_Rotta())._specchio()
+    # Anche le UNITA' raccolte a meta' si buttano: mezzo dizionario di unita'
+    # farebbe apparire senza unita' proprio le entita' che la lettura non ha
+    # raggiunto -- lo stesso difetto dei nomi, sul campo nuovo.
+    assert (stato, nomi, unita, letto) == ({}, {}, {}, False)
 
 
 def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
-    assert DispatcherStrumenti(archivio_casa, memoria, cache=None)._specchio() == ({}, {}, True)
+    assert DispatcherStrumenti(
+        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, True)
 
 
 @pytest.mark.asyncio
@@ -797,3 +809,43 @@ async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(archivio_casa, m
 
     await d.dispatch("ricorda", {"testo": "seconda chiamata, stato invariato: hit, NON deve leggere"})
     assert len(chiamate_leggi) == 1  # invariato: la seconda non ha letto di nuovo
+
+
+class _CacheConUnita:
+    """La forma vera di `entity_cache`: `_to_minimal` mette `unit` accanto a
+    `state` e `name` (`proxy/entity_cache.py`). La finta la porta perche' la
+    porta anche la cosa vera -- se la togliessi, questa prova misurerebbe una
+    casa che non esiste."""
+
+    def __init__(self, voci):
+        self._voci = voci
+
+    def all_states(self):
+        return list(self._voci)
+
+
+@pytest.mark.asyncio
+async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
+    """LA PROVA DI CABLAGGIO, e senza di lei tutto il resto e' una funzione che
+    nessuno alimenta.
+
+    `_to_minimal` conservava `unit` con cura e `_specchio()` estraeva solo
+    `state` e `name`: l'unita' non usciva mai dalla cache. Le prove su
+    `guarda()` passano un dizionario a mano e resterebbero verdi anche cosi' --
+    e' esattamente la forma «prova che non puo' fallire» gia' pagata su questo
+    ramo (il commento su `_CacheFinta` racconta la volta scorsa: «prima guarda
+    restituiva sempre stato: None perche' la cache non era cablata»).
+    """
+    cache = _CacheConUnita([
+        {"id": "sensor.cucina_t", "state": "21.5", "name": "Temperatura", "unit": "°C"},
+        {"id": "light.cucina_1", "state": "on", "name": "Faretti"},
+    ])
+    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache)
+    esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
+    per_id = {e["id"]: e for e in esito["entita"]}
+    assert per_id["sensor.cucina_t"]["stato"] == "21.5"
+    assert per_id["sensor.cucina_t"]["unita"] == "°C", (
+        "l'unita' non arriva dalla cache: `_specchio()` non la estrae, oppure "
+        "`_guarda` non la inoltra")
+    assert "unita" not in per_id["light.cucina_1"], (
+        "una lampada non ha unita': la chiave non deve comparire")

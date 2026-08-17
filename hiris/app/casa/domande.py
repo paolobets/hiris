@@ -139,25 +139,43 @@ def _trova_area(piani: list[dict], riferimento) -> dict | None:
     return None
 
 
-def _con_nome_dedotto(dettaglio_entita: dict, entita_id, nomi_di_ripiego: dict[str, str] | None) -> dict:
-    """Aggiunge `nome_dedotto` a `dettaglio_entita` con la stessa disciplina
-    di B5: solo quando `nome` e' vuoto nel registro, e mai scritto sopra
-    `nome` -- dichiarato e dedotto restano due fatti diversi.
+def _con_nome_dedotto(dettaglio_entita: dict, entita_id,
+                      nomi_di_ripiego: dict[str, str] | None,
+                      unita_vive: dict[str, str] | None = None) -> dict:
+    """Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
+    registro no: il nome dedotto e l'unita' di misura.
+
+    `nome_dedotto` con la disciplina di B5: solo quando `nome` e' vuoto nel
+    registro, e mai scritto sopra `nome` -- dichiarato e dedotto restano due
+    fatti diversi.
+
+    `unita` con la stessa disciplina, e per la stessa ragione: `_to_minimal`
+    la conserva (`proxy/entity_cache.py`) e nessuno la rileggeva, cosi' il
+    modello riceveva `72` senza sapere se fossero gradi Celsius o Fahrenheit.
+    L'unita' VIVA vince su quella del registro: Home Assistant converte le
+    unita' **solo alla prima aggiunta del sensore**, quindi il registro puo'
+    portare quella vecchia mentre lo specchio porta quella che HA sta usando
+    adesso. La chiave compare solo quando c'e' un'unita': una lampada non ne
+    ha, e `unita: null` su ogni luce sarebbe rumore in ogni risposta.
 
     Condivisa fra i TRE rami di `guarda` che elencano entita' (I1, review
-    finale): prima di questo fix solo `_guarda_entita` la applicava, e
-    `_guarda_area`/`_guarda_dispositivo` mostravano `nome: null` secco anche
-    quando lo specchio dello stato sapeva come Home Assistant le chiama."""
+    finale): prima di quel fix solo `_guarda_entita` applicava il nome dedotto,
+    e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
+    stessa porta unica, per non ripetere quella storia."""
     if not (dettaglio_entita.get("nome") or "").strip():
         dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
         if dedotto:
             dettaglio_entita["nome_dedotto"] = dedotto
+    viva = ((unita_vive or {}).get(entita_id) or "").strip()
+    if viva:
+        dettaglio_entita["unita"] = viva
     return dettaglio_entita
 
 
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
-                 nomi_di_ripiego: dict[str, str] | None = None) -> dict:
+                 nomi_di_ripiego: dict[str, str] | None = None,
+                 unita_vive: dict[str, str] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -180,7 +198,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         _con_nome_dedotto(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": False},
-            e["id"], nomi_di_ripiego)
+            e["id"], nomi_di_ripiego, unita_vive)
         for e in area["entita"]
     ] + [
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
@@ -191,7 +209,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         _con_nome_dedotto(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": True},
-            e["id"], nomi_di_ripiego)
+            e["id"], nomi_di_ripiego, unita_vive)
         for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
@@ -208,7 +226,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
 
 def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                    non_disponibili: tuple[str, ...] = (),
-                   nomi_di_ripiego: dict[str, str] | None = None) -> dict:
+                   nomi_di_ripiego: dict[str, str] | None = None,
+                   unita_vive: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
         dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento}
@@ -237,12 +256,13 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_con_nome_dedotto`).
-    return _con_nome_dedotto(dettaglio, entita["id"], nomi_di_ripiego)
+    return _con_nome_dedotto(dettaglio, entita["id"], nomi_di_ripiego, unita_vive)
 
 
 def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
                         non_disponibili: tuple[str, ...] = (),
-                        nomi_di_ripiego: dict[str, str] | None = None) -> dict:
+                        nomi_di_ripiego: dict[str, str] | None = None,
+                        unita_vive: dict[str, str] | None = None) -> dict:
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
@@ -260,7 +280,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], riferimento,
         _con_nome_dedotto(
             {"id": e["id"], "nome": e.get("nome"),
              "disabilitata": bool(e.get("disabilitata"))},
-            e["id"], nomi_di_ripiego)
+            e["id"], nomi_di_ripiego, unita_vive)
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     dettaglio = {
@@ -330,7 +350,8 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
            tipo: str, riferimento,
            non_disponibili: tuple[str, ...] = (),
            file_non_letti: dict[str, str] | None = None,
-           nomi_di_ripiego: dict[str, str] | None = None) -> dict:
+           nomi_di_ripiego: dict[str, str] | None = None,
+           unita_vive: dict[str, str] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -366,13 +387,13 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     """
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
-                            nomi_di_ripiego)
+                            nomi_di_ripiego, unita_vive)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
-                              nomi_di_ripiego)
+                              nomi_di_ripiego, unita_vive)
     if tipo == "dispositivo":
         return _guarda_dispositivo(casa, ricordi, riferimento, non_disponibili,
-                                   nomi_di_ripiego)
+                                   nomi_di_ripiego, unita_vive)
     if tipo in _TIPI_COMPORTAMENTO:
         return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":

@@ -459,7 +459,7 @@ class DispatcherStrumenti:
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
         casa = self._casa.leggi()
-        _, nomi_vivi, specchio_letto = self._specchio()
+        _, nomi_vivi, _unita_vive, specchio_letto = self._specchio()
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
         # (`aggiornata_il()`) e i nomi vivi di ripiego non cambiano -- vedi
         # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
@@ -580,11 +580,12 @@ class DispatcherStrumenti:
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato, nomi_vivi, letto = self._specchio()
+        stato, nomi_vivi, unita_vive, letto = self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
                                       file_non_letti=file_non_letti,
-                                      nomi_di_ripiego=nomi_vivi)
+                                      nomi_di_ripiego=nomi_vivi,
+                                      unita_vive=unita_vive)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -596,8 +597,8 @@ class DispatcherStrumenti:
             dettaglio["stato_non_letto"] = True
         return dettaglio
 
-    def _specchio(self) -> tuple[dict[str, str], dict[str, str], bool]:
-        """Lo specchio vivo in UNA lettura: `(stato, nomi, letto)`.
+    def _specchio(self) -> tuple[dict[str, str], dict[str, str], dict[str, str], bool]:
+        """Lo specchio vivo in UNA lettura: `(stato, nomi, unita, letto)`.
 
         Sostituisce `_stato_vivo`, non gli si affianca: `cerca` ha bisogno dei
         `friendly_name` e `guarda` dello stato, e due metodi che chiamano
@@ -609,14 +610,23 @@ class DispatcherStrumenti:
         "name" di `entity_cache._to_minimal` e' `friendly_name or ""`, e una
         stringa vuota non e' un nome, e' l'assenza di un nome.
 
+        `unita` e' entity_id -> `unit_of_measurement`, saltando i vuoti, e
+        arriva dalla STESSA lettura per la stessa ragione dei nomi: la
+        conserva `_to_minimal` (`proxy/entity_cache.py`) e prima di questa
+        fetta nessuno la rileggeva, cosi' il modello riceveva `72` senza sapere
+        se fossero gradi Celsius o Fahrenheit. Non basta il sistema di unita'
+        della casa: Home Assistant converte **solo alla prima aggiunta del
+        sensore**, quindi `unit_system` non descrive le entita' gia' presenti.
+
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
         l'inventario non e' guardabile ci pensa `inventario_leggibile`."""
         stato: dict[str, str] = {}
         nomi: dict[str, str] = {}
+        unita: dict[str, str] = {}
         if self._cache is None or not hasattr(self._cache, "all_states"):
-            return stato, nomi, True
+            return stato, nomi, unita, True
         try:
             for e in self._cache.all_states():
                 if not isinstance(e, dict):
@@ -628,9 +638,12 @@ class DispatcherStrumenti:
                 nome = e.get("name")
                 if isinstance(nome, str) and nome.strip():
                     nomi[entity_id] = nome.strip()
+                misura = e.get("unit")
+                if isinstance(misura, str) and misura.strip():
+                    unita[entity_id] = misura.strip()
         except Exception:
-            return {}, {}, False
-        return stato, nomi, True
+            return {}, {}, {}, False
+        return stato, nomi, unita, True
 
     # -- ricorda -----------------------------------------------------------
 

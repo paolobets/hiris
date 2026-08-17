@@ -375,3 +375,84 @@ def test_il_nome_dichiarato_vince_sul_dedotto_quando_ci_sono_entrambi():
 
     candidato = cerca(_IndiceFinto(), "abat-jour")[0]["candidati"][0]
     assert candidato["nome"] == "Abat-jour"
+
+
+# --- Le unita': stessa disciplina dei nomi, stessa ragione ------------------
+#
+# `_to_minimal` conserva `unit` con cura (`proxy/entity_cache.py:88`) e nessuno
+# la rilegge: `_specchio()` estrae solo `state` e `name`, e `_guarda_area`
+# restituisce `{id, nome, classe, stato, disabilitata}`. Risultato: HIRIS legge
+# `72` e non sa se sono gradi Celsius o Fahrenheit.
+#
+# Non basta il sistema di unita' della casa: Home Assistant converte **solo
+# alla prima aggiunta del sensore**, quindi `unit_system` non descrive le
+# entita' gia' presenti. Conta l'unita' PER ENTITA', ed e' quella che si
+# buttava via.
+
+
+def _casa_con_sensore():
+    return {
+        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "sala", "nome": "Sala", "piano_id": "terra",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [{"id": "dev_t", "nome": "Termometro", "disabilitato": False}],
+        "entita": [
+            {"id": "sensor.sala_t", "nome": "Temperatura sala", "classe": "temperature",
+             "unita": None, "area_id": "sala", "dispositivo_id": "dev_t",
+             "disabilitata": False},
+            {"id": "light.sala", "nome": "Lampada", "classe": None, "unita": None,
+             "area_id": "sala", "dispositivo_id": None, "disabilitata": False},
+        ],
+    }
+
+
+def test_guarda_un_area_porta_l_unita_delle_sue_entita():
+    """IL BUCO VERO: si chiede una stanza e si ricevono numeri nudi.
+    `_guarda_area` restituiva `{id, nome, classe, stato, disabilitata}` --
+    nessuna unita' -- ed e' la porta che il modello usa per «com'e' il
+    soggiorno?»."""
+    d = guarda(_casa_con_sensore(), [], [], {"sensor.sala_t": "27.0"},
+               "area", "sala", unita_vive={"sensor.sala_t": "°C"})
+    sensore = next(e for e in d["entita"] if e["id"] == "sensor.sala_t")
+    assert sensore["stato"] == "27.0"
+    assert sensore["unita"] == "°C", "27.0 di cosa?"
+
+
+def test_guarda_un_entita_preferisce_l_unita_VIVA_a_quella_del_registro():
+    """LA FINTA E' SCOMODA DI PROPOSITO: registro e specchio dicono due unita'
+    diverse. Il registro puo' essere vecchio -- Home Assistant converte solo
+    alla prima aggiunta -- e lo specchio e' cio' che HA sta mandando adesso.
+    Con due valori uguali questa prova non distinguerebbe le due sorgenti."""
+    casa = _casa_con_sensore()
+    casa["entita"][0]["unita"] = "°F"
+    d = guarda(casa, [], [], {"sensor.sala_t": "27.0"}, "entita", "sensor.sala_t",
+               unita_vive={"sensor.sala_t": "°C"})
+    assert d["unita"] == "°C"
+
+
+def test_guarda_un_dispositivo_porta_l_unita_delle_sue_entita():
+    """I1, applicato alle unita': la stessa entita' e' la stessa cosa da tutte
+    le porte. Senza questa prova, due porte su tre direbbero l'unita' e la
+    terza no -- che e' esattamente il difetto che I1 aveva gia' trovato sui
+    nomi."""
+    d = guarda(_casa_con_sensore(), [], [], {"sensor.sala_t": "27.0"},
+               "dispositivo", "dev_t", unita_vive={"sensor.sala_t": "°C"})
+    sensore = next(e for e in d["entita"] if e["id"] == "sensor.sala_t")
+    assert sensore["unita"] == "°C"
+
+
+def test_un_entita_senza_unita_non_guadagna_la_chiave():
+    """Una lampada non ha un'unita', e una chiave `unita: null` su ogni luce
+    della casa sarebbe rumore in ogni risposta. Stessa disciplina di
+    `nome_dedotto`: la chiave compare solo quando il fatto c'e'."""
+    d = guarda(_casa_con_sensore(), [], [], {"light.sala": "on"},
+               "area", "sala", unita_vive={"sensor.sala_t": "°C"})
+    lampada = next(e for e in d["entita"] if e["id"] == "light.sala")
+    assert "unita" not in lampada
+
+
+def test_senza_unita_vive_si_comporta_come_prima():
+    d = guarda(_casa_con_sensore(), [], [], {"sensor.sala_t": "27.0"},
+               "area", "sala")
+    sensore = next(e for e in d["entita"] if e["id"] == "sensor.sala_t")
+    assert "unita" not in sensore
