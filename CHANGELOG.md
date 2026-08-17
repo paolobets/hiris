@@ -101,6 +101,51 @@ E l'unità di un ricordo ancorato a una stanza ora si deduce anche quando il
 sensore prende la stanza dal proprio dispositivo — che è il caso normale, non
 l'eccezione: prima «in cucina non sotto i 20» si archiviava come «da 20» nudo.
 
+### Un allagamento adesso lo dice
+
+Il difetto più grave che questa revisione ha trovato, e c'era da sempre.
+
+Il comando con cui HIRIS legge le entità da Home Assistant non manda la classe
+del sensore — mai, non «a volte». HIRIS la usava per decidere cosa vale la pena
+dirti, così **nessun sensore binario è mai entrato in «Notevole adesso»**: un
+allagamento, un principio d'incendio, il monossido, una finestra rimasta aperta.
+Li leggeva e taceva. E se glielo chiedevi, un sensore di perdita bagnato
+rispondeva «acceso» — che per una persona significa «funziona».
+
+La classe era già in memoria, negli stessi dati che HIRIS scarica a ogni avvio.
+
+### Le tue parole tornano a funzionare
+
+Gli **alias** delle entità — «la lampada della nonna» — erano vuoti su ogni
+casa, per la stessa ragione. Cercarli non trovava niente. Adesso HIRIS li chiede
+con il comando giusto.
+
+Le **etichette** uscivano col loro identificatore interno (`da_controllare`)
+invece che col nome che hai scritto tu.
+
+### Perché una cosa non risponde
+
+Home Assistant sa già dirti che un'integrazione non è partita, e perché. HIRIS
+buttava il motivo: adesso lo conserva e lo dichiara. «Perché la telecamera del
+giardino non risponde?» ha una risposta.
+
+E ogni area di Home Assistant può dichiarare **quale sensore è la temperatura di
+quella stanza**: HIRIS lo ignorava e doveva indovinare fra tutti quelli presenti.
+
+### Un ricordo non si cancella più da solo
+
+Correggere un campo qualunque di un ricordo — «detto da» — poteva cancellarne la
+forza, in silenzio, se la pagina non riconosceva un valore. La memoria è l'unico
+archivio che non si ricostruisce da nessuna parte: quel dato non tornava.
+
+### Il resto
+
+Molte cose che HIRIS sapeva e non diceva: da quale integrazione viene un'entità,
+se è nascosta, marca e modello di un dispositivo, l'unità accanto a un valore
+dopo un comando, il nome che hai dato alla casa. E parecchie regole che
+esistevano in due o quattro copie destinate a divergere — fra cui quella che
+decide se stai usando l'abbonamento o stai pagando a consumo.
+
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 
 Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con
