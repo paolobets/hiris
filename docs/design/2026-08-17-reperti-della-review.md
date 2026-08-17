@@ -5,10 +5,10 @@
 > **47 rilievi grezzi → 40 distinti** (sette erano lo stesso difetto trovato da
 > due strade diverse).
 >
-> **32 chiusi**, **8 aperti** — aggiornato il 2026-08-17 dopo il giro di
-> correzioni. Ciò che resta aperto è, in tutto tranne un caso, **funzione
-> nuova**, non difetto: leggere il calendario, le liste, i guasti che HA ha già
-> diagnosticato. Non sono correzioni, sono fette.
+> **29 chiusi**, **11 aperti** — aggiornato il 2026-08-17 dopo il giro di
+> correzioni. Degli 11 aperti, **7 sono funzioni nuove** (leggere il calendario,
+> le liste, i guasti che HA ha già diagnosticato): non sono correzioni, sono
+> fette. Tre sono decisioni di prodotto, e una è una non-correzione dichiarata.
 
 ## Come sono classificati
 
@@ -36,7 +36,7 @@ Due assi, perché uno solo non basta a decidere l'ordine.
 
 ## A1 — sbaglia sempre, e non si vede
 
-### 1. ⬜ La classe delle entità non arriva mai — *chiuso*
+### 1. ✅ La classe delle entità non arriva mai — *chiuso*
 
 `config/entity_registry/list` risponde con `as_partial_dict`, che **non contiene
 `device_class`**. Verificato sul sorgente di HA.
@@ -49,20 +49,20 @@ monossido, finestra aperta: letti e mai detti. E le 28 voci di
 Nessuna prova poteva vederlo: ogni finta scriveva `device_class` dentro la riga
 del registro, cioè un campo che HA lì non mette.
 
-### 2. ⬜ Le etichette uscivano come slug — *chiuso*
+### 2. ✅ Le etichette uscivano come slug — *chiuso*
 
 `da_controllare` invece di «Da controllare»: una parola che l'utente non ha mai
 scritto, che non cambia nemmeno rinominando l'etichetta, e che rendeva la
 ricerca funzionante **solo** per le etichette di una parola sola senza maiuscole.
 
-### 3. ⬜ `guarda` rispondeva `on` senza dire cosa significa — *chiuso*
+### 3. ✅ `guarda` rispondeva `on` senza dire cosa significa — *chiuso*
 
 Il digesto traduceva «bagnato», `guarda` no. Ma `guarda` è la porta che il
 modello usa quando la domanda è **precisa** — «c'è una perdita in bagno?» — e
 quando il digesto ha tagliato. «Il sensore perdita è acceso» per una persona
 significa «funziona».
 
-### 4. ⬜ L'unità di un ricordo ancorato a una stanza — *chiuso*
+### 4. ✅ L'unità di un ricordo ancorato a una stanza — *chiuso*
 
 `deduci_unita` confrontava il solo `area_id` **proprio**, ma l'area ereditata
 dal dispositivo è il caso normale. «In cucina non sotto i 20» si archiviava come
@@ -131,15 +131,15 @@ la stringa vuota. Il commento dichiara la parentela e **non è vera**. Il campo
 
 ## B1 — tace sempre, su qualcosa che sa già
 
-### 13. ⬜ `piattaforma` ed `etichette` da una porta su tre — *chiuso*
+### 13. ✅ `piattaforma` ed `etichette` da una porta su tre — *chiuso*
 
-### 14. ⬜ `guarda("dispositivo")` senza stato — *chiuso*
+### 14. ✅ `guarda("dispositivo")` senza stato — *chiuso*
 
 Usciva con l'unità di misura e nessun valore.
 
-### 15. ⬜ Lo specchio riletto a mano da `costruisci_nucleo` — *chiuso*
+### 15. ✅ Lo specchio riletto a mano da `costruisci_nucleo` — *chiuso*
 
-### 16. ⬜ Una prova che non poteva fallire — *chiusa*
+### 16. ✅ Una prova che non poteva fallire — *chiusa*
 
 `test_una_casa_vuota_non_produce_un_nucleo_bugiardo` verificava solo che il
 testo non fosse vuoto — cosa che non può essere falsa, perché i titoli di
@@ -327,8 +327,8 @@ E l'altra, che riguarda gli strumenti:
 
 ## Cosa resta aperto, e perché
 
-Otto voci. **Sette sono funzioni nuove**, non difetti: HIRIS non sbaglia e non
-tace su qualcosa che sa — non sa ancora, e per saperlo serve una fetta.
+Undici voci. **Sette sono funzioni nuove**, non difetti: HIRIS non sbaglia e
+non tace su qualcosa che sa — non sa ancora, e per saperlo serve una fetta.
 
 | # | | |
 |---|---|---|
