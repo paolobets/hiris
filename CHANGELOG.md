@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [3.6.0] — HIRIS sa su che scala è disegnata la tua casa (2026-08-17)
+
+### Il fuso, la valuta, la lingua, le unità
+
+HIRIS leggeva la casa intera — piani, aree, dispositivi, automazioni — e non leggeva **la scala su
+cui è disegnata**. Un valore senza il suo sistema di riferimento non è un dato, è un numero: `72`
+non vuol dire niente finché non si sa se sono gradi Celsius o Fahrenheit, «si vedono alle 8» non
+vuol dire niente senza il fuso, «costa 40» non vuol dire niente senza la valuta.
+
+Adesso lo chiede a Home Assistant, che lo dichiara: fuso orario, unità di misura, valuta, lingua,
+paese, nome della casa e versione di Home Assistant — quest'ultima nessuno in HIRIS la sapeva. Il
+digesto lo dichiara in testa, prima di ogni numero che segue, e la pagina della casa lo espone
+dalla stessa fonte.
+
+Quando cambi il fuso o passi da metrico a imperiale, HIRIS se ne accorge subito: prima avrebbe
+continuato a ragionare col riferimento di quando era partito.
+
+**Le unità della casa non diventano l'unità di un sensore.** Home Assistant converte quando il
+sensore entra, non quando lo leggi: una casa metrica può contenere un termometro in Fahrenheit, e
+un indice senza unità non diventa «gradi» perché la casa è metrica. Scriverci sopra un'unità
+inventata sarebbe peggio che non scriverla — chi legge non avrebbe modo di accorgersene.
+
+Se Home Assistant non risponde, il riferimento di ieri **resta**: cancellarlo farebbe leggere ogni
+temperatura senza sapere in che scala.
+
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 
 Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con

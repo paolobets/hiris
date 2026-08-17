@@ -83,8 +83,22 @@ class ArchivioCasa:
         self._conn.close()
 
     def sostituisci(self, registri: dict[str, list[dict]],
-                    non_disponibili: list[str] | None = None) -> None:
+                    non_disponibili: list[str] | None = None,
+                    sistema_di_riferimento: dict | None = None) -> None:
         """Rimpiazza l'intera anagrafe. O passa tutta, o non passa niente.
+
+        `riferimento` e' il sistema di riferimento della casa (unita', fuso,
+        valuta, lingua, versione di HA) distillato da
+        `anagrafe.sistema_di_riferimento`. Sta qui e non in una tabella o in
+        un file suo perche' e' una proprieta' della CASA come le sue aree: un
+        secondo posto da tenere aggiornato sarebbe un secondo posto da cui
+        leggere una versione diversa della stessa verita'.
+
+        Vuoto o assente NON cancella quello di prima: e' la stessa dottrina
+        con cui `anagrafe.ricostruisci` non sostituisce la casa quando tutti i
+        registri sono caduti. Il fuso di ieri e' ancora il fuso giusto; un
+        riferimento cancellato farebbe leggere ogni temperatura senza sapere
+        in che scala.
 
         `non_disponibili` sono i registri che non hanno risposto: si conservano
         accanto ai dati perche' una casa senza piani e un registro dei piani
@@ -160,6 +174,10 @@ class ArchivioCasa:
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('non_disponibili', ?)", (_lista(list(non_disponibili or [])),))
+            if sistema_di_riferimento:
+                c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
+                          "VALUES ('sistema_di_riferimento', ?)",
+                          (json.dumps(sistema_di_riferimento, ensure_ascii=False),))
             c.commit()
         except Exception:
             c.rollback()
@@ -169,6 +187,25 @@ class ArchivioCasa:
         riga = self._conn.execute(
             "SELECT valore FROM meta WHERE chiave = 'aggiornata_il'").fetchone()
         return riga["valore"] if riga else None
+
+    def sistema_di_riferimento(self) -> dict:
+        """Il sistema di riferimento della casa: `{fuso, valuta, lingua,
+        paese, nome, versione_ha, unita}` -- `{}` se non e' mai stato letto.
+
+        `{}` e non `None`: chi legge deve poter fare `.get("fuso")` senza
+        sapere prima se la casa e' stata mai letta. Il "non lo so" non si
+        dichiara con un tipo diverso ma con la chiave che manca -- che e'
+        anche cio' che dice il nucleo, tacendo invece di inventare un fuso.
+        """
+        riga = self._conn.execute(
+            "SELECT valore FROM meta WHERE chiave = 'sistema_di_riferimento'").fetchone()
+        if not riga:
+            return {}
+        try:
+            valore = json.loads(riga["valore"])
+        except (TypeError, ValueError):
+            return {}
+        return valore if isinstance(valore, dict) else {}
 
     def non_disponibili(self) -> list[str]:
         """I registri che non avevano risposto all'ultima ricostruzione."""

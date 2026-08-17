@@ -25,6 +25,15 @@ _REGISTRI = {
 }
 
 
+# La config minima che Home Assistant restituisce a `get_config`: da questa
+# fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
+# della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che
+# non ha risposto -- e infatti `non_disponibili` lo direbbe. Che sia questo il
+# comportamento e' provato a parte, in tests/test_casa_riferimento.py.
+_CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
+           "unit_system": {"temperature": "C", "length": "km"}}
+
+
 @pytest.fixture
 def archivio(tmp_path):
     a = ArchivioCasa(str(tmp_path / "casa.db"))
@@ -36,6 +45,7 @@ def archivio(tmp_path):
 async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     esito = await ricostruisci(client, archivio)
     assert esito["conteggi"]["aree"] == 2
     assert esito["conteggi"]["entita"] == 4
@@ -49,6 +59,7 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     senza piani e il registro dei piani caduto danno la stessa lista vuota."""
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(dict(_REGISTRI, piani=[]), ["piani"]))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     esito = await ricostruisci(client, archivio)
     assert esito["non_disponibili"] == ["piani"]
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
@@ -60,11 +71,13 @@ async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     HA spento. La casa buona di ieri non deve sparire."""
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     await ricostruisci(client, archivio)
     prima = archivio.aggiornata_il()
 
     vuoti = {chiave: [] for chiave in _REGISTRI}
     client.leggi_registri = AsyncMock(return_value=(vuoti, list(_REGISTRI)))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     esito = await ricostruisci(client, archivio)
 
     assert archivio.leggi()["aree"]           # la casa di ieri e' ancora li'

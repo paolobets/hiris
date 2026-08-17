@@ -32,6 +32,9 @@ async def ricostruisci(client, archivio) -> dict:
     dichiarata stantia e' meglio di una vuota spacciata per fresca.
     """
     registri, non_disponibili = await client.leggi_registri()
+    sistema, sistema_letto = await _leggi_sistema(client)
+    if not sistema_letto:
+        non_disponibili = list(non_disponibili) + ["sistema_di_riferimento"]
     conteggi = {chiave: len(valore) for chiave, valore in registri.items()}
     # "categorie:script" fallisce per un solo ambito, non per l'intero
     # registro "categorie": si confronta il nome del registro (prima dei
@@ -42,12 +45,85 @@ async def ricostruisci(client, archivio) -> dict:
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
             "quella di prima, non sostituita da un vuoto", non_disponibili)
     else:
-        archivio.sostituisci(registri, non_disponibili)
+        archivio.sostituisci(registri, non_disponibili, sistema_di_riferimento=sistema)
         if non_disponibili:
             logger.warning("anagrafe ricostruita, ma questi registri non hanno risposto: %s",
                            non_disponibili)
         logger.info("anagrafe ricostruita: %s", conteggi)
     return {"conteggi": conteggi, "non_disponibili": non_disponibili}
+
+
+# I campi di `get_config` che HIRIS tiene, e sotto quale nome. La chiave a
+# sinistra e' quella di Home Assistant (`Config.as_dict()` in
+# `homeassistant/core_config.py`), quella a destra e' il nome italiano con cui
+# vive nell'archivio: l'anagrafe parla la lingua di HIRIS ovunque -- `nome`,
+# `alias`, `etichette` -- e un dizionario meta' inglese sarebbe l'unico posto
+# in cui non lo fa.
+_CAMPI_RIFERIMENTO = {
+    "time_zone": "fuso",
+    "currency": "valuta",
+    "language": "lingua",
+    "country": "paese",
+    "location_name": "nome",
+    "version": "versione_ha",
+    "unit_system": "unita",
+}
+
+
+def sistema_di_riferimento(config) -> dict:
+    """Il sistema di riferimento della casa, distillato dalla config di HA.
+
+    Un valore senza il suo sistema di riferimento non e' un dato, e' un
+    numero: "72" non significa niente finche' non si sa se sono gradi Celsius
+    o Fahrenheit, e "domani alle 8" non significa niente senza il fuso. Questo
+    e' il pezzo che mancava perche' cio' che HIRIS legge sia INTERPRETABILE da
+    solo (fondamenta: atomicita').
+
+    ATTENZIONE, e vale per chiunque tocchi questo codice: `unita` dice come
+    ragiona la CASA, non come si legge una singola entita'. Home Assistant
+    converte al momento in cui l'entita' entra, non alla lettura: una casa
+    metrica puo' contenere un sensore in Fahrenheit, e un sensore senza unita'
+    (un indice, un contatore) non e' "gradi" solo perche' la casa e' metrica.
+    Usare questo come ripiego per un'entita' senza unita' significa scrivere
+    un'unita' sotto un numero che non ce l'ha. C'e' una prova apposta che
+    fallisce se qualcuno lo fa (`test_casa_riferimento.py`).
+
+    Cosa NON entra, e perche':
+    - `components`: e' l'elenco delle integrazioni, che l'anagrafe ha gia'
+      nella propria tabella `integrazioni` (fondamenta: nessun doppione);
+    - `latitude`/`longitude`: non servono a nessuna domanda di oggi, e un dato
+      del genere non si tiene "per ogni evenienza";
+    - `state`: e' momentaneo. In un archivio che si rilegge di rado
+      mentirebbe poche ore dopo, ed e' peggio che non saperlo. Chi vuole
+      sapere se HA e' su lo chiede a HA, non a una fotografia di ieri.
+    """
+    if not isinstance(config, dict):
+        return {}
+    return {nostro: config[loro]
+            for loro, nostro in _CAMPI_RIFERIMENTO.items()
+            if config.get(loro)}
+
+
+async def _leggi_sistema(client) -> tuple[dict, bool]:
+    """`(sistema, letto)`. Separati perche' sono due domande diverse: un
+    riferimento vuoto perche' HA non ha risposto e uno vuoto perche' HA non
+    ha niente da dire producono lo stesso dizionario, e chi ci costruisce
+    sopra deve poterli distinguere -- lo stesso motivo per cui esiste
+    `non_disponibili`.
+
+    Un client vecchio senza `get_config` (o un finto di prova che non lo
+    dichiara) non deve far fallire l'intera ricostruzione dell'anagrafe: la
+    casa senza riferimento e' incompleta, la casa non ricostruita e' vuota.
+    """
+    lettore = getattr(client, "get_config", None)
+    if lettore is None:
+        return {}, False
+    try:
+        sistema = sistema_di_riferimento(await lettore())
+    except Exception as e:  # rete caduta, comando rifiutato, HA a meta' avvio
+        logger.warning("sistema di riferimento della casa non letto: %s", e)
+        return {}, False
+    return sistema, bool(sistema)
 
 
 # Id espliciti per le pseudo-aree e i piani-contenitore: mai None, cosi' un

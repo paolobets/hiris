@@ -29,6 +29,13 @@ EVENTI_ANAGRAFE = (
     "floor_registry_updated",
     "label_registry_updated",
     "category_registry_updated",
+    # Il sistema di riferimento della casa (unita', fuso, valuta, lingua) e'
+    # una proprieta' della casa quanto le sue aree: sta qui, non in una quarta
+    # famiglia di ascoltatori tutta per un evento solo. Chi cambia il fuso
+    # orario o passa da metrico a imperiale cambia il significato di OGNI
+    # valore che HIRIS legge -- senza questa riga HIRIS continuerebbe a
+    # ragionare col riferimento di quando e' partito.
+    "core_config_updated",
 )
 
 # I due eventi dei SERVIZI. Terza famiglia, separata dalle altre due per la
@@ -676,6 +683,26 @@ class HAClient:
                    "period": period},
         )
         return result if isinstance(result, dict) else {}
+
+    async def get_config(self) -> dict:
+        """Il sistema di riferimento della casa, da `get_config` di HA.
+
+        Restituisce il dizionario grezzo di Home Assistant ({} se la risposta
+        non e' un dizionario). A distillarlo e' `anagrafe.riferimento_dalla_config`:
+        qui si LEGGE soltanto, cosi' il client non ha un'opinione su cosa
+        della casa valga la pena tenere.
+
+        NON e' un registro e non passa da `leggi_registri`: quello lavora su
+        liste di righe (`isinstance(risultato, list)`), questo torna un
+        dizionario. Infilarcelo avrebbe voluto dire allargare la forma di
+        `leggi_registri` per un solo caso speciale -- CONSISTENZA: una
+        funzione che restituisce registri restituisce registri.
+
+        Il comando esiste in `websocket_api/commands.py` (`handle_get_config`)
+        e la forma della risposta e' `Config.as_dict()` in `core_config.py`.
+        """
+        risultato = await self._ws_request("get_config")
+        return risultato if isinstance(risultato, dict) else {}
 
     async def get_area_registry(self) -> list[dict]:
         return await self._ws_call("config/area_registry/list")

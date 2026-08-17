@@ -39,6 +39,10 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             # nome che dica di cosa parla prometterebbe una freschezza che
             # vale solo per una delle tre.
             "anagrafe_letta_il": None, "non_disponibili": None, "conteggi": {}, "piani": [],
+            # `None` e non `{}`: qui non e' "la casa non dichiara un sistema
+            # di riferimento", e' "non abbiamo letto niente". La stessa
+            # distinzione di `non_disponibili` qui sopra.
+            "sistema_di_riferimento": None,
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
@@ -63,6 +67,11 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # la stessa schermata.
         "non_disponibili": non_disponibili,
         "conteggi": {chiave: len(valore) for chiave, valore in casa.items()},
+        # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
+        # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'
+        # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
+        # sono due case diverse a seconda della porta da cui entri.
+        "sistema_di_riferimento": archivio.sistema_di_riferimento(),
         "piani": gerarchia(casa, non_disponibili),
         "comportamento": {
             "letto_il": archivio.comportamento_letto_il(),
@@ -139,6 +148,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         comportamento: list[dict] = []
         problemi_comportamento: tuple[str, ...] = ()
         file_non_letti_comportamento: dict[str, str] = {}
+        sistema_di_riferimento: dict = {}
     else:
         casa = archivio_casa.leggi()
         non_disponibili = tuple(archivio_casa.non_disponibili())
@@ -149,6 +159,9 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         # parametro per riceverli.
         problemi_comportamento = tuple(archivio_casa.problemi_comportamento())
         file_non_letti_comportamento = archivio_casa.file_non_letti()
+        # Unita', fuso, valuta, lingua: senza, il modello legge "72" senza
+        # sapere in che scala e "alle 8" senza sapere in che fuso.
+        sistema_di_riferimento = archivio_casa.sistema_di_riferimento()
 
     # CRITICAL ①: il default di `ArchivioMemoria.richiama()` e' `limite=20`.
     # Con `conta()` (scritto apposta per dichiarare questa differenza) si
@@ -185,6 +198,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         stato_affidabile=stato_affidabile,
         problemi_comportamento=problemi_comportamento,
         file_non_letti_comportamento=file_non_letti_comportamento,
+        sistema_di_riferimento=sistema_di_riferimento,
     )
 
 

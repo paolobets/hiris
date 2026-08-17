@@ -8,6 +8,16 @@ from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import programma_ricostruzione_anagrafe, programma_rilettura_comportamento
 
+
+# La config minima che Home Assistant restituisce a `get_config`: da questa
+# fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
+# della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che
+# non ha risposto -- e infatti `non_disponibili` lo direbbe. Che sia questo il
+# comportamento e' provato a parte, in tests/test_casa_riferimento.py.
+_CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
+           "unit_system": {"temperature": "C", "length": "km"}}
+
+
 _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
           "etichette": [], "categorie": [], "integrazioni": []}
 
@@ -23,6 +33,7 @@ def archivio(tmp_path):
 async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_VUOTI, []))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
@@ -34,6 +45,7 @@ async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
 async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_VUOTI, []))
+    client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
@@ -50,6 +62,7 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
 async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
+    client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)

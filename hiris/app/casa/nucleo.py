@@ -389,6 +389,72 @@ def _nome_area_visualizzato(area: dict) -> str:
     return area["nome"]
 
 
+# I nomi italiani delle otto misure del sistema di unita' di Home Assistant.
+# Le chiavi a sinistra sono quelle vere di `UnitSystem.as_dict()` (verificate
+# in `homeassistant/const.py`, non trascritte da una tabella di
+# documentazione: e' esattamente il modo in cui "co" sarebbe dovuto essere
+# "carbon_monoxide" e un allarme monossido sarebbe sparito in silenzio).
+_NOMI_MISURA = {
+    "temperature": "temperatura",
+    "length": "lunghezza",
+    "mass": "massa",
+    "pressure": "pressione",
+    "volume": "volume",
+    "wind_speed": "vento",
+    "accumulated_precipitation": "pioggia",
+    "area": "area",
+}
+
+
+def _righe_sistema(sistema: dict | None) -> list[str]:
+    """Il sistema di riferimento della casa, in una o due righe.
+
+    Va PRIMA di tutto il resto perche' e' cio' che rende leggibile tutto il
+    resto: un digesto pieno di numeri senza scala ne' fuso e' un digesto di
+    numeri, non di fatti.
+
+    Tace se non lo sa. Una riga che afferma un fuso a caso e' peggio del
+    silenzio: il modello che non legge un fuso chiede, quello che ne legge uno
+    sbagliato risponde sbagliato con sicurezza.
+
+    La frase finale fra parentesi non e' cortesia: e' la sola cosa che impedisce
+    a chi legge -- il modello -- di fare da solo l'errore che il codice non fa
+    piu', cioe' applicare l'unita' della casa a un'entita' che non ce l'ha.
+    Home Assistant converte all'INGRESSO dell'entita': una casa metrica puo'
+    contenere un sensore in Fahrenheit, e un indice senza unita' non diventa
+    "gradi" perche' la casa e' metrica.
+    """
+    if not sistema:
+        return []
+    righe = []
+    identita = []
+    if sistema.get("fuso"):
+        identita.append(f"fuso {sistema['fuso']}")
+    if sistema.get("lingua"):
+        identita.append(f"lingua {sistema['lingua']}")
+    if sistema.get("valuta"):
+        identita.append(f"valuta {sistema['valuta']}")
+    if sistema.get("paese"):
+        identita.append(f"paese {sistema['paese']}")
+    if sistema.get("versione_ha"):
+        identita.append(f"Home Assistant {sistema['versione_ha']}")
+    if identita:
+        righe.append("Riferimento: " + ", ".join(identita) + ".")
+
+    unita = sistema.get("unita") or {}
+    if isinstance(unita, dict):
+        # Ordine dichiarato da `_NOMI_MISURA`, non quello del dizionario che
+        # arriva da HA: due case identiche devono produrre lo stesso digesto.
+        misure = [f"{nome} {unita[chiave]}"
+                  for chiave, nome in _NOMI_MISURA.items() if unita.get(chiave)]
+        if misure:
+            righe.append(
+                "Unita' con cui ragiona la casa: " + ", ".join(misure)
+                + " (ogni entita' porta la propria: se manca, manca -- non e'"
+                  " questa).")
+    return righe
+
+
 def _righe_casa(piani: list[dict],
                 nomi_dispositivo: dict[str, str] | None) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
@@ -689,7 +755,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             non_disponibili: tuple[str, ...] = (),
             stato_affidabile: bool = True,
             problemi_comportamento: tuple[str, ...] = (),
-            file_non_letti_comportamento: dict[str, str] | None = None) -> tuple[str, dict]:
+            file_non_letti_comportamento: dict[str, str] | None = None,
+            sistema_di_riferimento: dict | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -814,7 +881,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
     # lette" (CRITICAL ①).
     piani = gerarchia(casa, non_disponibili)
-    righe_casa = _righe_casa(piani, nomi_dispositivo)
+    # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
+    # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
+    # intestazione da spendere per due righe. In testa perche' il taglio parte
+    # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
+    righe_sistema = _righe_sistema(sistema_di_riferimento)
+    righe_casa = righe_sistema + _righe_casa(piani, nomi_dispositivo)
 
     inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile, non_disponibili)
     if inaffidabile:
@@ -827,7 +899,14 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     righe_comportamento = _righe_comportamento(comportamento)
     righe_ricordi = _righe_ricordi(ricordi)
 
-    pesi_casa = [1] * len(righe_casa)
+    # Peso 0 al riferimento: l'intestazione somma i pesi per dire quante righe
+    # di conteggio ci sono, e il riferimento non e' un conteggio -- contarlo
+    # avrebbe fatto dire al nucleo un numero di aree piu' alto del vero.
+    pesi_casa = [0] * len(righe_sistema) + [1] * (len(righe_casa) - len(righe_sistema))
+    # La riserva che non si taglia mai vale i CONTEGGI: si alza di quanto
+    # occupa il riferimento, cosi' aggiungerlo non toglie in silenzio una riga
+    # di casa a chi legge (IMPORTANT (6)).
+    riserva_casa = _RISERVA_MINIMA_RIGHE_CASA + len(righe_sistema)
     pesi_comportamento = [1] * len(righe_comportamento)
     pesi_ricordi = [1] * len(righe_ricordi)
 
@@ -875,7 +954,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         ordine_taglio.append(("notevole", righe_notevole, pesi_notevole, 0))
     ordine_taglio += [
         ("comportamento", righe_comportamento, pesi_comportamento, 0),
-        ("casa", righe_casa, pesi_casa, _RISERVA_MINIMA_RIGHE_CASA),
+        ("casa", righe_casa, pesi_casa, riserva_casa),
         ("ricordi", righe_ricordi, pesi_ricordi, 0),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
@@ -961,7 +1040,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     pools_sicurezza = [
         ("ricordi", righe_ricordi, pesi_ricordi, 0),
         ("comportamento", righe_comportamento, pesi_comportamento, 0),
-        ("casa", righe_casa, pesi_casa, _RISERVA_MINIMA_RIGHE_CASA),
+        ("casa", righe_casa, pesi_casa, riserva_casa),
     ]
     if not inaffidabile:
         pools_sicurezza.append(("notevole", righe_notevole, pesi_notevole, 0))
