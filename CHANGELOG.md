@@ -1,5 +1,48 @@
 # HIRIS — Changelog
 
+## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
+
+Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con
+ciò che Home Assistant è davvero.
+
+### HIRIS sa in che unità misura la tua casa
+
+Prima leggeva `72` e non sapeva se fossero gradi Celsius o Fahrenheit. L'unità c'era — Home
+Assistant la manda, e HIRIS la conservava — ma **si fermava prima di arrivare al modello**: chiedere
+lo stato di una stanza restituiva numeri nudi.
+
+Non basta sapere che la casa è metrica: Home Assistant converte le unità **solo la prima volta che
+un sensore viene aggiunto**, quindi conta l'unità di ogni singola entità. È quella che adesso
+viaggia, da tutte le porte con cui HIRIS guarda le cose.
+
+### I nomi degli attrezzi non si scrivono più in chat
+
+Sotto le risposte comparivano delle targhette coi nomi degli strumenti usati — e cliccandole si
+aprivano i loro **argomenti**: per un ricordo, il testo del ricordo; per un comando, gli
+identificatori delle entità di casa.
+
+Non era un difetto: erano state aggiunte apposta l'11 agosto, perché su abbonamento non si vedeva
+se un ricordo fosse stato davvero salvato. **Quel bisogno resta valido**, quindi l'informazione non
+è stata tolta ma spostata: adesso finisce nei log dell'add-on a livello di dettaglio, e **solo i
+nomi, mai gli argomenti**.
+
+Stesso trattamento per un messaggio d'errore che finiva nei log a livello normale e poteva
+contenere pezzi della tua casa.
+
+### Un servizio appena installato funziona subito
+
+Installando un'integrazione nuova, per **cinque minuti** HIRIS rispondeva *«questo servizio non
+esiste in questa casa»* — una frase falsa detta con sicurezza, perché rileggeva l'elenco dei
+servizi solo a scadenza. Adesso lo rilegge quando Home Assistant annuncia che qualcosa è cambiato.
+
+### Pulizia
+
+Sei funzioni che nessuno chiamava più sono uscite. Due che *sembravano* morte sono rimaste, e la
+ragione è scritta accanto: una è un rimedio di sicurezza scollegato — va ricollegato, non
+cancellato — e l'altra fa un lavoro inutile ma da dentro codice vivo.
+
+Suite: **1792 Python · 175 JavaScript**.
+
 ## [3.4.0] — Il vocabolario delle tipologie (2026-08-16)
 
 **HIRIS smette di chiamare «acceso» un allagamento.**
