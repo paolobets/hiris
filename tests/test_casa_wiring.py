@@ -212,3 +212,113 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
 
     tipi_sottoscritti = {c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"}
     assert "lovelace_updated" in tipi_sottoscritti
+
+
+# --- I servizi si rinfrescano su EVENTO, non a scadenza --------------------
+#
+# `RegistroServizi` si ricarica solo se ha piu' di 300 secondi
+# (`azione/registro.py`). Conseguenza misurata da una review: per cinque minuti
+# dopo aver installato un'integrazione, HIRIS rifiuta i suoi servizi dicendo
+# «non esiste in questa casa» -- una frase FALSA detta con sicurezza, che e'
+# peggio di un «non lo so».
+#
+# Home Assistant emette `service_registered` e `service_removed` con `domain` e
+# `service` (verificato su home-assistant.io/docs/configuration/events/).
+
+
+@pytest.mark.asyncio
+async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
+    """Terza famiglia di eventi, accanto ad anagrafe e plance -- e separata per
+    la stessa ragione: innescano una rilettura diversa."""
+    ws = _FintoWSEventi([
+        ("service_registered", {"domain": "luce_nuova", "service": "accendi"}),
+        ("service_removed", {"domain": "vecchia", "service": "spegni"}),
+    ])
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = _FintaSessioneEventi(ws)
+
+    servizi_chiamate: list[str] = []
+    anagrafe_chiamate: list[str] = []
+    client.add_servizi_listener(lambda tipo: servizi_chiamate.append(tipo))
+    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+
+    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # "riconnessione" apre la lista per la stessa ragione dell'anagrafe: gli
+    # eventi emessi mentre la connessione era giu' non tornano piu', e un
+    # registro stantio direbbe «non esiste» di un servizio che esiste.
+    assert servizi_chiamate == [
+        "riconnessione", "service_registered", "service_removed"]
+    # E NON devono finire nell'anagrafe: un servizio nuovo non cambia la casa.
+    assert anagrafe_chiamate == ["riconnessione"]
+
+
+@pytest.mark.asyncio
+async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
+    """Il cuore della fetta. Senza `invalida()`, `assicura_fresco` guarda solo
+    l'eta' e torna subito: l'evento non servirebbe a niente."""
+    from hiris.app.azione.registro import RegistroServizi
+
+    class _Ha:
+        def __init__(self):
+            self.letture = 0
+
+        async def get_services(self):
+            self.letture += 1
+            return [{"domain": "light", "services": {"turn_on": {}}}]
+
+    ha = _Ha()
+    r = RegistroServizi()
+    await r.assicura_fresco(ha)
+    assert ha.letture == 1
+
+    # Senza invalidare: nessuna seconda lettura, l'eta' e' minima.
+    await r.assicura_fresco(ha)
+    assert ha.letture == 1
+
+    r.invalida()
+    await r.assicura_fresco(ha)
+    assert ha.letture == 2, (
+        "dopo un `service_registered` il registro deve rileggere, altrimenti "
+        "HIRIS continua a dire «non esiste in questa casa» per 5 minuti")
+
+
+def test_invalidare_non_svuota_cio_che_si_sapeva():
+    """`invalida()` dice «rileggi appena serve», non «dimentica». Se svuotasse,
+    fra l'evento e la rilettura HIRIS non potrebbe verificare NIENTE -- e un
+    registro assente e' peggio di uno vecchio (e' la ragione scritta in
+    `assicura_fresco`)."""
+    from hiris.app.azione.registro import RegistroServizi
+
+    r = RegistroServizi()
+    r._per_dominio = {"light": {"turn_on": {}}}
+    r._caricato_a = 1.0
+    r.invalida()
+    assert r.servizio("light", "turn_on") is not None
+    assert not r.vuoto()
+
+
+def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
+    """Senza questa prova, `invalida()` e la famiglia di eventi sarebbero un
+    meccanismo che nessuno collega -- e in produzione il registro continuerebbe
+    a rinfrescarsi solo a scadenza, con la suite tutta verde.
+
+    Si legge il blocco dal sorgente vero di `_on_startup`, come fa
+    `tests/test_avvio_websocket.py` e per la stessa ragione: provare la
+    funzione non dimostra che qualcuno la chiami."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert "add_servizi_listener" in src, (
+        "nessuno registra l'ascoltatore dei servizi: gli eventi arrivano e "
+        "non invalidano niente")
+    assert ".invalida()" in src, (
+        "l'ascoltatore c'e' ma non invalida: il registro resta vecchio")

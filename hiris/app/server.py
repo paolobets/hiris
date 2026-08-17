@@ -1065,6 +1065,18 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("prima lettura delle plance fallita: %s", exc)
     ha_client.add_plance_listener(programma_rilettura_plance(ha_client, archivio_casa))
 
+    # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
+    # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
+    # di un'integrazione appena installata dicendo «non esiste in questa casa»:
+    # una frase FALSA detta con sicurezza, che e' peggio di un «non lo so».
+    #
+    # Si INVALIDA e basta -- la rilettura la fa `assicura_fresco` al prossimo
+    # comando. Installare un'integrazione emette una raffica di eventi, e una
+    # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
+    # qualcuno chiede di agire.
+    _registro_servizi = app["registro_servizi"]
+    ha_client.add_servizi_listener(lambda _tipo: _registro_servizi.invalida())
+
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
     # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
     # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi

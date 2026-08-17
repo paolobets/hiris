@@ -31,6 +31,18 @@ EVENTI_ANAGRAFE = (
     "category_registry_updated",
 )
 
+# I due eventi dei SERVIZI. Terza famiglia, separata dalle altre due per la
+# stessa ragione per cui le plance sono separate dall'anagrafe: innescano una
+# rilettura diversa. Un servizio nuovo non cambia la casa, e un'entita' nuova
+# non cambia i servizi.
+#
+# Perche' esistono: `RegistroServizi` si ricaricava SOLO a scadenza (300s), e
+# per cinque minuti dopo l'installazione di un'integrazione HIRIS rifiutava i
+# suoi servizi dicendo «non esiste in questa casa» -- una frase falsa detta con
+# sicurezza. I nomi e i campi (`domain`, `service`) sono quelli dichiarati da
+# Home Assistant su home-assistant.io/docs/configuration/events/.
+EVENTI_SERVIZI = ("service_registered", "service_removed")
+
 # L'evento delle plance (Task 5): porta il PERCORSO di quella cambiata, ma
 # innesca comunque una rilettura completa (sono poche, e la replica si rifa'
 # invece di rattopparsi — vedi rileggi_plance). Deliberatamente FUORI da
@@ -192,6 +204,7 @@ class HAClient:
         self._state_listeners: list[Callable[[dict], None]] = []
         self._anagrafe_listeners: list[Callable[[str], None]] = []
         self._plance_listeners: list[Callable[[dict], None]] = []
+        self._servizi_listeners: list[Callable[[str], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -783,6 +796,14 @@ class HAClient:
         """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""
         self._anagrafe_listeners.append(callback)
 
+    def add_servizi_listener(self, callback: Callable[[str], None]) -> None:
+        """callback(tipo_evento) quando un servizio compare o sparisce, e a ogni
+        riconnessione. Chi ascolta INVALIDA il registro dei servizi: non lo
+        rilegge subito -- installare un'integrazione emette una raffica di
+        eventi, e una lettura per ognuno sarebbe una tempesta per un dato che
+        serve solo al prossimo comando."""
+        self._servizi_listeners.append(callback)
+
     def add_plance_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(dati_evento) a ogni cambio di una plancia (EVENTO_PLANCE).
         `dati_evento` porta il `url_path` di quella cambiata, ma chi ascolta
@@ -823,6 +844,10 @@ class HAClient:
                     # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
                     numero += 1
                     await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE})
+                    for tipo_evento in EVENTI_SERVIZI:
+                        numero += 1
+                        await ws.send_json({"id": numero, "type": "subscribe_events",
+                                            "event_type": tipo_evento})
 
                     # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo
                     # gli eventi di registro ricevuti mentre la connessione era su. Un
@@ -835,6 +860,15 @@ class HAClient:
                     # la prima sottoscrizione qui sopra. L'antirimbalzo di
                     # programma_ricostruzione_anagrafe assorbe le riconnessioni
                     # ravvicinate, quindi non costa una lettura extra ad ogni giro.
+                    # Stessa ragione del giro sull'anagrafe qui sotto: gli eventi
+                    # emessi mentre la connessione era giu' non tornano, e un
+                    # registro dei servizi stantio direbbe «non esiste in questa
+                    # casa» di un servizio che esiste.
+                    for cb in self._servizi_listeners:
+                        try:
+                            cb("riconnessione")
+                        except Exception as cb_exc:
+                            logger.exception("servizi_listener callback raised: %s", cb_exc)
                     for cb in self._anagrafe_listeners:
                         try:
                             cb("riconnessione")
@@ -871,6 +905,13 @@ class HAClient:
                                         cb(event.get("data", {}))
                                     except Exception as cb_exc:
                                         logger.exception("plance_listener callback raised: %s", cb_exc)
+                            if event_type in EVENTI_SERVIZI:
+                                for cb in self._servizi_listeners:
+                                    try:
+                                        cb(event_type)
+                                    except Exception as cb_exc:
+                                        logger.exception(
+                                            "servizi_listener callback raised: %s", cb_exc)
                             if event_type in EVENTI_ANAGRAFE:
                                 # La casa e' cambiata (create/update/move/remove, su
                                 # qualsiasi registro): l'anagrafe va rifatta. Nessun

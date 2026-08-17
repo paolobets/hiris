@@ -101,6 +101,13 @@ class RegistroServizi:
         self._per_dominio: dict[str, dict[str, dict]] = {}
         self._caricato_a: float | None = None
         self._eta_massima_s = eta_massima_s
+        # Il segno di «rileggi appena serve», messo da `invalida()`. E' un
+        # campo SUO e non un azzeramento di `_caricato_a`: quello significa
+        # «mai letto» (vedi `vuoto()`), e fingerlo farebbe SOLLEVARE
+        # `assicura_fresco` al primo rinfresco fallito invece di tenere il
+        # registro vecchio -- cioe' il contrario esatto di cio' che quel
+        # metodo dichiara di volere.
+        self._da_rileggere = False
 
     async def aggiorna(self, ha_client) -> None:
         """Rilegge `/api/services` e **sostituisce** cio' che sapevamo.
@@ -123,6 +130,7 @@ class RegistroServizi:
                               for n, d in servizi.items() if isinstance(n, str)}
         self._per_dominio = nuovo
         self._caricato_a = time.monotonic()
+        self._da_rileggere = False
         logger.info("registro servizi: %d domini, %d servizi",
                     len(nuovo), sum(len(s) for s in nuovo.values()))
         # Una risposta che c'era e da cui non si e' capito NIENTE e' l'unico
@@ -152,7 +160,7 @@ class RegistroServizi:
         deve poterli distinguere.
         """
         eta = self.eta_secondi()
-        if eta is not None and eta < self._eta_massima_s:
+        if eta is not None and eta < self._eta_massima_s and not self._da_rileggere:
             return
         try:
             await self.aggiorna(ha_client)
@@ -162,6 +170,21 @@ class RegistroServizi:
             logger.warning("registro servizi: rinfresco fallito (%s: %s), "
                            "tengo quello di %.0fs fa",
                            type(errore).__name__, errore, eta or 0.0)
+
+    def invalida(self) -> None:
+        """«Rileggi appena serve», non «dimentica».
+
+        Lo chiama chi ascolta `service_registered`/`service_removed`. Azzera
+        solo l'ETA', non il contenuto: fra l'evento e la rilettura HIRIS deve
+        poter ancora verificare qualcosa, e un registro assente e' peggio di
+        uno vecchio -- la stessa ragione scritta in `assicura_fresco`, applicata
+        al caso opposto.
+
+        E non rilegge da se': installare un'integrazione emette una raffica di
+        eventi, e una lettura per ognuno sarebbe una tempesta per un dato che
+        serve solo al prossimo comando.
+        """
+        self._da_rileggere = True
 
     def servizio(self, dominio: str, nome: str) -> dict | None:
         """Il dettaglio di un servizio, o `None` se qui non esiste.
