@@ -113,21 +113,34 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
     if archivio.get("seminato"):
         return archivio, []
 
+    # I predefiniti si LEGGONO da `_PREDEFINITI`, non si ridigitano qui: erano
+    # gli stessi numeri scritti due volte nello stesso file (una nel
+    # dizionario, una come argomento di `_intero`/`_bool`), piu' una terza
+    # volta in `api/handlers_models._PREDEFINITI_ARCHIVIO`. E' esattamente la
+    # struttura che ha prodotto il debito F -- `strategia_ultima` che valeva
+    # `""` in una copia e `"balanced"` nell'altra, e ogni installazione, anche
+    # nuova, che logga «Copiati: strategia_ultima» -- chiuso allora
+    # ALLINEANDO le copie invece di toglierne una.
+    _p = _PREDEFINITI
     valori = {
         "ponte": {
-            "attivo": _bool(ambiente.get("BRIDGE_ENABLED"), False),
-            "scadenza_min": _intero(ambiente.get("BRIDGE_DEADLINE_MIN"), 5),
-            "tetto_giornaliero": _intero(ambiente.get("CHAT_DAILY_CAP"), 50),
+            "attivo": _bool(ambiente.get("BRIDGE_ENABLED"), _p["ponte"]["attivo"]),
+            "scadenza_min": _intero(ambiente.get("BRIDGE_DEADLINE_MIN"),
+                                    _p["ponte"]["scadenza_min"]),
+            "tetto_giornaliero": _intero(ambiente.get("CHAT_DAILY_CAP"),
+                                         _p["ponte"]["tetto_giornaliero"]),
         },
         "ollama": {
-            "modello": str(ambiente.get("LOCAL_MODEL_NAME") or ""),
-            "timeout_s": _intero(ambiente.get("OLLAMA_REQUEST_TIMEOUT"), 120),
+            "modello": str(ambiente.get("LOCAL_MODEL_NAME") or _p["ollama"]["modello"]),
+            "timeout_s": _intero(ambiente.get("OLLAMA_REQUEST_TIMEOUT"),
+                                 _p["ollama"]["timeout_s"]),
         },
-        "nascondi_gratuiti": _bool(ambiente.get("HIRIS_HIDE_FREE_MODELS"), False),
+        "nascondi_gratuiti": _bool(ambiente.get("HIRIS_HIDE_FREE_MODELS"),
+                                   _p["nascondi_gratuiti"]),
         # Lo stesso ripiego di `run.sh` (`bashio::config 'llm_strategy'
         # 'balanced'`): un ambiente muto vale «balanced», non «niente». Senza,
         # un ambiente muto verrebbe contato come valore copiato.
-        "strategia_ultima": str(ambiente.get("LLM_STRATEGY") or "balanced"),
+        "strategia_ultima": str(ambiente.get("LLM_STRATEGY") or _p["strategia_ultima"]),
     }
 
     copiate = [k for k, v in valori.items() if v != _PREDEFINITI[k]]

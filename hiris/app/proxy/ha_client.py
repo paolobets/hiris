@@ -710,11 +710,15 @@ class HAClient:
         risultato = await self._ws_request("get_config")
         return risultato if isinstance(risultato, dict) else {}
 
-    async def get_area_registry(self) -> list[dict]:
-        return await self._ws_call("config/area_registry/list")
-
-    async def get_entity_registry(self) -> list[dict]:
-        return await self._ws_call("config/entity_registry/list")
+    # `get_area_registry` e `get_entity_registry` SONO usciti (review dei
+    # doppioni, 17/08). Emettevano gli stessi identici comandi WS che
+    # `leggi_registri` manda gia' in batch: una seconda porta per un fatto che
+    # ne ha gia' una, viva solo nei test -- e i test che le esercitavano davano
+    # l'impressione che la lettura dei registri fosse coperta da due lati,
+    # mentre il percorso vero (`_ws_batch` piu' la gestione di
+    # `non_disponibili`) ha una sola implementazione. Chi avesse aggiunto una
+    # normalizzazione in `leggi_registri` non l'avrebbe vista applicata dalle
+    # prove che passavano di qui.
 
     # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
     # ambito: chiederne uno solo farebbe sparire la tassonomia che l'utente ha

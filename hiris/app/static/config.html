@@ -10,13 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="static/hiris-theme.css">
   <script>
+    /* paint theme before first render to avoid flash */
     (function() {
       try {
-        var qp = new URL(window.location).searchParams.get('theme');
-        if (qp === 'light' || qp === 'dark') {
-          document.documentElement.setAttribute('data-theme', qp);
-          return;
-        }
         var saved = localStorage.getItem('hiris-theme');
         if (saved === 'light' || saved === 'dark') {
           document.documentElement.setAttribute('data-theme', saved);

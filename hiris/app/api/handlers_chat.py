@@ -18,6 +18,7 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 from ..decisione_modelli import nota_ripiego, piano_ha_il_token
 from .handlers_casa import costruisci_nucleo
 
@@ -252,8 +253,13 @@ def _piano_puo_rispondere(app) -> tuple[bool, str]:
     """
     if not piano_ha_il_token():
         return False, "manca il token"
+    # Il predefinito viene da `_PREDEFINITI_ARCHIVIO`, non ridigitato qui:
+    # erano gli stessi numeri in quattro punti, e un `50` rimasto indietro
+    # avrebbe fatto tagliare i turni a un tetto diverso da quello che la
+    # pagina mostra.
     tetto = int((app.get("models_config") or {})
-                .get("ponte", {}).get("tetto_giornaliero", 50))
+                .get("ponte", {}).get("tetto_giornaliero",
+                                      _PREDEFINITI_ARCHIVIO["ponte"]["tetto_giornaliero"]))
     if app["reasoning_queue"].count_chat_today() >= tetto:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d messaggi): il turno "
@@ -338,7 +344,8 @@ async def _enqueue_chat_job(
     # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
     # l'utente cambiava non era quella che il turno subiva.
     _scadenza_min = ((request.app.get("models_config") or {})
-                     .get("ponte", {}).get("scadenza_min", 5))
+                     .get("ponte", {}).get("scadenza_min",
+                                      _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
     deadline = now + int(_scadenza_min) * 60
     context = {
         "history": sanitized_history,

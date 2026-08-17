@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS piani (
 );
 CREATE TABLE IF NOT EXISTS aree (
     id TEXT PRIMARY KEY, nome TEXT NOT NULL, piano_id TEXT, icona TEXT,
-    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]'
+    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]',
+    entita_temperatura TEXT, entita_umidita TEXT
 );
 CREATE TABLE IF NOT EXISTS dispositivi (
     id TEXT PRIMARY KEY, nome TEXT, produttore TEXT, modello TEXT,
@@ -93,13 +94,31 @@ def _migrazione_2_motivo_integrazione(conn) -> None:
         pass
 
 
-_MIGRAZIONI = {2: _migrazione_2_motivo_integrazione}
+def _migrazione_3_entita_di_riferimento_dell_area(conn) -> None:
+    """`aree.entita_temperatura` / `aree.entita_umidita`.
+
+    Stessa ragione della migrazione 2: `CREATE TABLE IF NOT EXISTS` non tocca
+    una tabella che esiste gia', e senza queste colonne il primo `sostituisci`
+    dopo l'aggiornamento fallirebbe -- la casa smetterebbe di ricostruirsi, in
+    silenzio.
+    """
+    for colonna in ("entita_temperatura", "entita_umidita"):
+        try:
+            conn.execute(f"ALTER TABLE aree ADD COLUMN {colonna} TEXT")
+        except Exception:
+            pass
+
+
+_MIGRAZIONI = {
+    2: _migrazione_2_motivo_integrazione,
+    3: _migrazione_3_entita_di_riferimento_dell_area,
+}
 
 
 class ArchivioCasa:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=2, migrations=_MIGRAZIONI)
+        init_schema(self._conn, _SCHEMA, version=3, migrations=_MIGRAZIONI)
 
     def chiudi(self) -> None:
         self._conn.close()
@@ -144,10 +163,18 @@ class ArchivioCasa:
                            p.get("level"), p.get("icon")))
 
             for a in registri.get("aree", []):
-                c.execute("INSERT INTO aree (id, nome, piano_id, icona, alias, etichette) "
-                          "VALUES (?,?,?,?,?,?)",
+                # `temperature_entity_id`/`humidity_entity_id`: QUALE entita' e'
+                # LA temperatura di quella stanza, dichiarata dall'utente in
+                # Home Assistant. Arrivavano gia' dentro questa risposta e si
+                # buttavano, e senza di esse HIRIS deve INDOVINARE fra tutti i
+                # sensori dell'area quale intende chi chiede se fa caldo in
+                # soggiorno. E' il significato piu' dichiarato che esista, e
+                # costava zero chiamate.
+                c.execute("INSERT INTO aree (id, nome, piano_id, icona, alias, etichette, "
+                          " entita_temperatura, entita_umidita) VALUES (?,?,?,?,?,?,?,?)",
                           (a["area_id"], a.get("name") or a["area_id"], a.get("floor_id"),
-                           a.get("icon"), _lista(a.get("aliases")), _lista(a.get("labels"))))
+                           a.get("icon"), _lista(a.get("aliases")), _lista(a.get("labels")),
+                           a.get("temperature_entity_id"), a.get("humidity_entity_id")))
 
             for d in registri.get("dispositivi", []):
                 c.execute("INSERT INTO dispositivi "

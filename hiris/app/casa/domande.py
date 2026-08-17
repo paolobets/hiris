@@ -292,6 +292,13 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "entita": entita,
         "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
     }
+    # Le entita' di riferimento della stanza: solo quando l'utente le ha
+    # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
+    # indistinguibile da un registro delle aree caduto.
+    for chiave in ("entita_temperatura", "entita_umidita"):
+        valore = (area.get(chiave) or "").strip()
+        if valore:
+            dettaglio[chiave] = valore
     _con_etichette(dettaglio, area, nomi_etichette)
     if incompleto:
         dettaglio["elenco_incompleto"] = incompleto

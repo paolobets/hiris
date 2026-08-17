@@ -8,6 +8,7 @@ import time
 import aiohttp
 from aiohttp import web
 
+from ..migrazione_opzioni import _PREDEFINITI as _PREDEFINITI_SEMINA
 from ..decisione_modelli import (FINE_CATENA, componi_adesso, componi_pannello,
                                  piano_ha_il_token,
                                  componi_topologia)
@@ -52,9 +53,14 @@ _PREDEFINITI_ARCHIVIO = {
     # valore, e la semina (`migrazione_opzioni.semina_modello_del_piano`) lo
     # sostituisce una volta sola con quello che l'installazione stava gia'
     # usando.
-    "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50,
-              "modello": "sonnet"},
-    "ollama": {"modello": "", "timeout_s": 120},
+    # I numeri vengono da `migrazione_opzioni._PREDEFINITI`, non ridigitati:
+    # erano gli stessi valori in due moduli (piu' due volte dentro l'altro), ed
+    # e' la struttura che ha gia' prodotto il debito F. `modello` e' l'UNICO
+    # campo in piu' -- la semina lo tratta a parte
+    # (`semina_modello_del_piano`), quindi non sta nell'altro elenco: la
+    # differenza e' voluta, e adesso e' l'unica.
+    "ponte": {**_PREDEFINITI_SEMINA["ponte"], "modello": "sonnet"},
+    "ollama": dict(_PREDEFINITI_SEMINA["ollama"]),
 }
 
 # Le sole chiavi che un CLIENT puo' scrivere: le sei decisioni della pagina

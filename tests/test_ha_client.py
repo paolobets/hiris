@@ -75,55 +75,6 @@ def _make_ws_registry_mock(msg_type: str, result_data: list) -> tuple:
 
 
 @pytest.mark.asyncio
-async def test_get_area_registry_returns_list(client):
-    areas = [
-        {"area_id": "cucina", "name": "Cucina", "floor_id": None},
-        {"area_id": "soggiorno", "name": "Soggiorno", "floor_id": None},
-    ]
-    session, _ = _make_ws_registry_mock("config/area_registry/list", areas)
-    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
-        result = await client.get_area_registry()
-    assert len(result) == 2
-    assert result[0]["area_id"] == "cucina"
-
-
-@pytest.mark.asyncio
-async def test_get_area_registry_returns_empty_on_error(client):
-    session = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    session.ws_connect = MagicMock(side_effect=OSError("refused"))
-    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
-        result = await client.get_area_registry()
-    assert result == []
-
-
-@pytest.mark.asyncio
-async def test_get_entity_registry_returns_list(client):
-    entities = [
-        {"entity_id": "light.luce_cucina", "area_id": "cucina", "name": "Luce cucina"},
-        {"entity_id": "sensor.temp", "area_id": None, "name": "Temperatura"},
-    ]
-    session, _ = _make_ws_registry_mock("config/entity_registry/list", entities)
-    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
-        result = await client.get_entity_registry()
-    assert len(result) == 2
-    assert result[0]["entity_id"] == "light.luce_cucina"
-    assert result[0]["area_id"] == "cucina"
-
-
-@pytest.mark.asyncio
-async def test_get_entity_registry_returns_empty_on_error(client):
-    session = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    session.ws_connect = MagicMock(side_effect=OSError("refused"))
-    with patch("hiris.app.proxy.ha_client.aiohttp.ClientSession", return_value=session):
-        result = await client.get_entity_registry()
-    assert result == []
-
-
-@pytest.mark.asyncio
 async def test_get_error_log_parses_counts(client):
     mock_resp = AsyncMock()
     mock_resp.raise_for_status = MagicMock()

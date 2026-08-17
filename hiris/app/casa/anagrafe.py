@@ -538,6 +538,10 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             "nome": area["nome"],
             "alias": area.get("alias", []),
             "etichette": area.get("etichette", []),
+            # Quale entita' e' LA temperatura (e l'umidita') di questa stanza,
+            # dichiarata dall'utente in Home Assistant.
+            "entita_temperatura": area.get("entita_temperatura"),
+            "entita_umidita": area.get("entita_umidita"),
             "entita": per_area.get(area["id"], []),
             # Non nei conteggi (vedi il docstring), ma raggiungibili nel
             # dettaglio di un'area -- vedi `domande._guarda_area`.
