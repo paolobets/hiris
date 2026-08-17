@@ -22,6 +22,9 @@ import aiohttp
 # opposta -- riconoscere gli entity_id dentro una plancia, il piu' LARGAMENTE
 # possibile. Non sono due copie da tenere allineate: allentare questa per
 # seguire quella e' una falla, non una pulizia.
+# DOPPIONE DICHIARATO: due esigenze contrapposte, non due copie --
+#   una guardia contro l'iniezione (stretta) e un riconoscitore
+#   (largo). Allinearle sarebbe una falla, non una pulizia.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle

@@ -39,6 +39,9 @@ _SCRIPT = "scripts.yaml"
 # incompleta avrebbe potuto «riallineare» anche l'altra, allentando la guardia
 # contro l'iniezione senza che nessun test lo dicesse. Allargare QUESTA e'
 # libero; allargare quella e' una decisione di sicurezza, e va presa sapendolo.
+# DOPPIONE DICHIARATO: due esigenze contrapposte, non due copie --
+#   una guardia contro l'iniezione (stretta) e un riconoscitore
+#   (largo). Allinearle sarebbe una falla, non una pulizia.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # Sentinella per distinguere «la chiave non c'e'» da «la chiave c'e' e vale
