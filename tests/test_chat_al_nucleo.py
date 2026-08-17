@@ -30,6 +30,20 @@ consegna davvero al runner.
 """
 import json
 
+def _strumenti_loggati(caplog):
+    """I nomi degli strumenti dalla riga di log a livello debug che ha
+    sostituito le targhette in chat (`api/handlers_chat.py`).
+
+    Leggere QUI e non dal payload e' deliberato: e' la sola porta rimasta, e un
+    test che la usa e' anche la prova che esiste. Se qualcuno rimettesse i nomi
+    nella risposta, questi test resterebbero verdi -- ma il test JS
+    `chat-page.test.mjs` cadrebbe, ed e' li' che quella regola vive.
+    """
+    righe = [r.getMessage() for r in caplog.records
+             if r.levelname == "DEBUG" and "strumenti del turno" in r.getMessage()]
+    return " | ".join(righe)
+
+
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -475,8 +489,10 @@ async def test_conversazione_1_cosa_c_e_in_cucina_risponde_dal_nucleo(aiohttp_cl
     # strumento -- se ne avesse avuto bisogno, il nucleo non stava facendo
     # il suo lavoro.
     assert len(richieste) == 1
+    # `runner.last_tool_calls` E' la fonte: il payload non porta piu' i nomi
+    # degli strumenti (17/08/2026, vanno nei log a debug), e asserirli due volte
+    # era comunque la stessa osservazione fatta da due porte.
     assert runner.last_tool_calls == []
-    assert body["debug"]["tools_called"] == []
     assert body["response"] == "In cucina hai due luci e un sensore di temperatura."
 
     archivio_casa.chiudi()
@@ -492,8 +508,8 @@ async def test_conversazione_1_cosa_c_e_in_cucina_risponde_dal_nucleo(aiohttp_cl
 
 @pytest.mark.asyncio
 async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_corpo(
-    aiohttp_client, tmp_path,
-):
+    aiohttp_client, tmp_path, caplog):
+    caplog.set_level("DEBUG", logger="hiris.app.api.handlers_chat")
     archivio_casa = _semina_casa_con_comportamento(tmp_path)  # porta automation.sveglia
     # DispatcherStrumenti._guarda legge SEMPRE anche l'archivio della
     # memoria (per i ricordi ancorati alla cosa guardata): in produzione
@@ -524,11 +540,11 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     assert resp.status == 200
     body = await resp.json()
 
-    # Il tool chiamato e' esattamente quello giusto, coi giusti argomenti --
-    # riportato al client nel debug payload (handlers_chat.py::handle_chat).
-    assert body["debug"]["tools_called"] == [
-        {"tool": "guarda", "input": {"tipo": "automazione", "riferimento": "automation.sveglia"}}
-    ]
+    # Il tool chiamato e' esattamente quello giusto. Dal 17/08/2026 NON si
+    # legge piu' dal payload -- i nomi degli strumenti non si scrivono in chat --
+    # ma dal canale che li ha sostituiti: la riga di log a livello debug. Questa
+    # asserzione e' quindi anche la prova che quel canale esiste davvero.
+    assert "guarda" in _strumenti_loggati(caplog)
 
     # La prova vera: il SECONDO giro della stessa conversazione -- non
     # un'assunzione del test, la vera seconda chiamata a
@@ -560,8 +576,8 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
 
 @pytest.mark.asyncio
 async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria(
-    aiohttp_client, tmp_path,
-):
+    aiohttp_client, tmp_path, caplog):
+    caplog.set_level("DEBUG", logger="hiris.app.api.handlers_chat")
     archivio_casa = _semina_casa_con_comportamento(tmp_path)
     archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria_reale.db"))
     client, runner = await _build_chat_client_runner_reale(
@@ -582,9 +598,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     resp = await client.post("/api/chat", json={"message": frase})
     assert resp.status == 200
     body = await resp.json()
-    assert body["debug"]["tools_called"] == [
-        {"tool": "ricorda", "input": {"testo": frase, "forza": "preferenza"}}
-    ]
+    assert "ricorda" in _strumenti_loggati(caplog)
 
     # La prova vera: NON il testo della risposta (che qui il modello finto
     # controlla), ma una richiesta HTTP separata sull'archivio vero.
@@ -634,7 +648,8 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 
 @pytest.mark.asyncio
 async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_modello(
-        aiohttp_client, tmp_path):
+        aiohttp_client, tmp_path, caplog):
+    caplog.set_level("DEBUG", logger="hiris.app.api.handlers_chat")
     archivio_casa = _semina_casa_con_comportamento(tmp_path)
 
     class _PortaFinta:
@@ -709,11 +724,10 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
         "e' stato chiesto invece di cio' che e' successo")
     assert "light.cucina_1" in str(blocchi[0]["content"])
 
-    # e la targhetta dello strumento arriva all'interfaccia
-    assert body["debug"]["tools_called"] == [
-        {"tool": "esegui", "input": {"servizio": "light.turn_off",
-                                     "bersaglio": {"entita": ["light.cucina_1"]}}}
-    ]
+    # e l'azione resta TRACCIABILE: non piu' con una targhetta all'interfaccia
+    # (uscita il 17/08/2026) ma nella riga di log a livello debug che l'ha
+    # sostituita. Per un'AZIONE questa e' la tracciabilita' che conta.
+    assert "esegui" in _strumenti_loggati(caplog)
 
     archivio_casa.chiudi()
 

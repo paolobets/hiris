@@ -52,18 +52,16 @@
                funzionare. Una riga per ramo, e le due righe sono gemelle:
                quella del ramo diretto sta in fondo a send(). */
             if (data.nota) window.HirisChatMessages.appendNota(placeholderRow, data.nota);
-            /* Review totale della fetta E5: il ramo del ponte (202 -> job_id) e'
-               l'UNICO che un tester con l'abbonamento percorre, ed era l'unico che
-               NON mostrava gli strumenti usati. Il backend li manda anche qui
-               (`handlers_chat.py:352`, "il conteggio esposto dove l'utente lo vede
-               e' len() di questa lista lato client") -- ma nessuno li leggeva: la
-               cosa costruita perche' una scrittura di `ricorda` fosse OSSERVABILE
-               non era osservabile proprio sul percorso che la produce. Stessa
-               chiamata e stesse condizioni del ramo sincrono venti righe sotto, in
-               modo che i due percorsi non divergano una seconda volta. */
-            if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
-              window.HirisChatMessages.appendDebug(data.debug.tools_called);
-            }
+            /* Qui il ramo del ponte disegnava le targhette degli strumenti,
+               aggiunte l'11 agosto perche' l'osservabilita' di una scrittura di
+               `ricorda` mancava proprio sul percorso che la produce. Sono uscite
+               il 17 agosto: il proprietario non le vuole a schermo, e i nomi
+               degli strumenti (con i loro ARGOMENTI, che per `ricorda` sono il
+               testo del ricordo) non sono cose da scrivere in una conversazione.
+
+               L'osservabilita' non e' stata tolta ma SPOSTATA: il backend scrive
+               gli strumenti del turno nei log a livello debug
+               (`api/handlers_chat.py`). Il payload non li manda piu' affatto. */
             state.turnCount = (state.turnCount || 0) + 1;
             window.HirisChatAgents.updateTurnCounter();
             window.HirisChatAgents.checkTurnLimit();
@@ -180,9 +178,6 @@
          monte: il piano non poteva ricevere il turno (niente token, o tetto
          giornaliero pieno) e la catena ha risposto sincrona. */
       if (data.nota) window.HirisChatMessages.appendNota(attesa, data.nota);
-      if (data.debug && data.debug.tools_called && data.debug.tools_called.length > 0) {
-        window.HirisChatMessages.appendDebug(data.debug.tools_called);
-      }
       state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();

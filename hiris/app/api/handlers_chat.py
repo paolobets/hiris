@@ -607,8 +607,24 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     # "esposto dove l'utente lo vede" (progetto, Sec5.2) e' len() di questa
     # stessa lista lato client: non serve un secondo contatore qui da tenere
     # allineato con lei.
-    if "tools_called" in decision:
-        payload["debug"] = {"tools_called": decision["tools_called"]}
+    # Gli strumenti del turno vanno nei LOG a livello debug, non nella risposta.
+    #
+    # Fino al 17/08/2026 finivano in `payload["debug"]["tools_called"]` e il
+    # frontend ne disegnava una targhetta per ciascuno, col nome e -- al click --
+    # con gli ARGOMENTI: per `ricorda` il testo del ricordo, per `esegui`/`cerca`
+    # gli id delle entita' di casa. Erano nate per rendere OSSERVABILE una
+    # scrittura di `ricorda` fatta dal ponte (parita' B, I-7), e quella ragione
+    # resta buona: per questo l'osservabilita' non e' stata tolta ma spostata
+    # qui. Toglierla e basta avrebbe distrutto la capacita' per cui esisteva.
+    #
+    # Solo i NOMI, mai gli argomenti: un log e' un posto in cui i dati di casa
+    # restano scritti, e il nome dello strumento basta a sapere che cosa il
+    # turno ha fatto.
+    if decision.get("tools_called"):
+        logger.debug("strumenti del turno [job_id=%s]: %s", job_id,
+                     ", ".join(str(t.get("tool") or "?")
+                               for t in decision["tools_called"]
+                               if isinstance(t, dict)))
     # fetta «la catena diventa l'unica verità» (Task 14): un turno ripiegato
     # porta anche la nota che lo dichiara. Sta nel `decision` del job -- ce
     # l'ha scritta `risolvi_ripiego` -- quindi un poll che arriva DOPO il
@@ -1007,7 +1023,13 @@ async def handle_chat(request: web.Request) -> web.Response:
     ] if isinstance(raw, list) else []
     raw_thinking = getattr(runner, "last_thinking_blocks", None)
     thinking_blocks = list(raw_thinking) if isinstance(raw_thinking, list) else []
-    debug_payload: dict = {"tools_called": tools_called}
+    # Stessa scelta del ramo del ponte qui sopra: i nomi degli strumenti vanno
+    # nei log a debug, non nella risposta. `thinking_blocks` resta -- e' il
+    # ragionamento che l'utente ha chiesto di vedere, non un nome di funzione.
+    if tools_called:
+        logger.debug("strumenti del turno: %s",
+                     ", ".join(str(t.get("tool") or "?") for t in tools_called))
+    debug_payload: dict = {}
     if thinking_blocks:
         debug_payload["thinking_blocks"] = thinking_blocks
     payload = {"response": response, "debug": debug_payload}

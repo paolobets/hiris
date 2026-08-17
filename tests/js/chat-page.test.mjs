@@ -148,13 +148,21 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 });
 
 // ---------------------------------------------------------------------------
-// Review totale della fetta E5: sul ramo del ponte (202 -> job_id) gli strumenti
-// usati NON comparivano. Il backend li manda anche li' (handlers_chat.py:352) e
-// il ramo sincrono li rende da sempre: era l'osservabilita' promessa che mancava
-// PROPRIO sul percorso che la produce -- cioe' quello di un tester UAT con
-// l'abbonamento. I due test sotto sono una coppia: il primo pretende che
-// compaiano quando ci sono, il secondo che NON si inventi una riga vuota quando
-// non ci sono (senza il secondo, "mostra sempre una riga" passerebbe il primo).
+// I NOMI DEGLI STRUMENTI NON SI SCRIVONO IN CHAT (17 agosto 2026).
+//
+// Qui c'era la coppia opposta: pretendeva che le targhette comparissero. Erano
+// state aggiunte al ramo del ponte l'11 agosto perche' l'osservabilita' di una
+// scrittura di `ricorda` mancava proprio sul percorso che la produce.
+//
+// Il proprietario le ha viste e non le vuole a schermo. L'osservabilita' non si
+// perde: si SPOSTA nei log a livello debug, dove il backend adesso scrive gli
+// strumenti del turno -- vedi `handlers_chat.py`. Toglierle senza spostarla
+// avrebbe distrutto la capacita' per cui erano nate.
+//
+// I due test restano una coppia, rovesciata: il primo pretende che NON
+// compaiano nemmeno quando il payload le porterebbe, il secondo che la risposta
+// arrivi comunque intera -- senza il secondo, "non rendere niente" passerebbe
+// il primo.
 // ---------------------------------------------------------------------------
 
 function fetchPonte(replyPayload) {
@@ -170,7 +178,11 @@ function fetchPonte(replyPayload) {
   };
 }
 
-test('via ponte (202): gli strumenti usati compaiono anche sul ramo del polling', async (t) => {
+test('i nomi degli strumenti non compaiono in chat, nemmeno se il payload li porta', async (t) => {
+  /* LA FINTA E' SCOMODA DI PROPOSITO: manda `debug.tools_called` come faceva il
+     backend prima di questa fetta. Cosi' il test coglie sia la rimozione della
+     resa nel frontend sia un eventuale ritorno del payload dal backend: basta
+     che una delle due strade si riapra e questo cade. */
   const { window, document } = setupChat(t);
   window.fetch = fetchPonte({
     status: 'done',
@@ -178,23 +190,34 @@ test('via ponte (202): gli strumenti usati compaiono anche sul ramo del polling'
     debug: { tools_called: [{ tool: 'ricorda', input: { frase: 'la caldaia perde' } }] },
   });
 
-  await window.HirisChatSend.send('ricordati che la caldaia perde');
-  await tick(3700);
-
-  const chips = document.querySelectorAll('.debug-row .tool-chip .tc-name');
-  assert.equal(chips.length, 1, 'la riga degli strumenti deve comparire sul ramo del ponte');
-  assert.equal(chips[0].textContent, 'ricorda');
-});
-
-test('via ponte (202): senza strumenti non compare nessuna riga vuota', async (t) => {
-  const { window, document } = setupChat(t);
-  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.' });
-
-  await window.HirisChatSend.send('quante luci accese?');
+  /* Il messaggio dell'utente NON contiene la parola «ricorda»: altrimenti
+     l'ultima asserzione la troverebbe nella sua stessa bolla e cadrebbe per la
+     ragione sbagliata (ci sono cascato scrivendola). */
+  await window.HirisChatSend.send('annota che la caldaia perde');
   await tick(3700);
 
   assert.equal(document.querySelectorAll('.debug-row').length, 0,
-    'nessun strumento usato -> nessuna riga strumenti');
+    'nessuna riga di targhette');
+  assert.equal(document.querySelectorAll('.tool-chip').length, 0,
+    'nessuna targhetta');
+  assert.ok(!document.body.innerHTML.includes('ricorda'),
+    'il nome dello strumento non deve comparire da nessuna parte nella pagina');
+});
+
+test('e la risposta arriva comunque intera', async (t) => {
+  /* La meta' che impedisce di passare il test qui sopra non rendendo NIENTE. */
+  const { window, document } = setupChat(t);
+  window.fetch = fetchPonte({
+    status: 'done',
+    reply: 'Ho annotato.',
+    debug: { tools_called: [{ tool: 'ricorda', input: {} }] },
+  });
+
+  await window.HirisChatSend.send('ricordati che la caldaia perde');
+  await tick(3700);
+
+  assert.ok(document.body.textContent.includes('Ho annotato.'),
+    'la risposta del modello resta a schermo');
 });
 
 // ---------------------------------------------------------------------------

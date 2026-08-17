@@ -446,20 +446,21 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `debug.tools_called`
-# sul poll. Il giro completo -- accoda, il worker (qui simulato, come fa gia'
-# `test_poll_route_pending_then_done` sopra, con `q.submit`) risolve con una
-# `decision` che porta `tools_called`, e il poll la restituisce come
-# `debug.tools_called`, nella STESSA forma del ramo sincrono
-# (`handlers_chat.py`: `[{"tool": ..., "input": ...}, ...]`).
+# I NOMI DEGLI STRUMENTI NON STANNO NEL PAYLOAD (17/08/2026).
 #
-# Perche' conta piu' di una chiave in piu' nella risposta: da questa fetta
-# `ricorda` (che scrive in `memoria.db`) e' raggiungibile ANCHE dal ponte, e
-# con le sicurezze fuori dall'UAT (decisione del proprietario) questo e'
-# l'UNICA cosa che rende visibile una scrittura in memoria fatta dal ponte --
-# vedi il docstring in cima a `agent/runner.py`.
-# ---------------------------------------------------------------------------
-
+# Qui questa sezione pinnava il contrario: `debug.tools_called` era «la SOLA
+# cosa che rende osservabile una scrittura di `ricorda` fatta dal ponte», e il
+# frontend ne disegnava una targhetta. Il proprietario le ha viste e non le
+# vuole in chat -- coi nomi viaggiavano anche gli ARGOMENTI, che per `ricorda`
+# sono il testo del ricordo e per `esegui` gli id delle entita' di casa.
+#
+# L'osservabilita' non e' stata tolta: e' stata spostata nei log a livello
+# debug (`api/handlers_chat.py`), e `tests/test_chat_al_nucleo.py` la legge di
+# li'. Toglierla senza spostarla avrebbe distrutto la capacita' per cui era
+# nata -- rilievo I-7 della review di parita' B.
+#
+# I test qui sotto pinnano l'INSIEME ESATTO del payload, non l'assenza di una
+# chiave: «X non c'e'» lascia rientrare X sotto un altro nome.
 @pytest.mark.asyncio
 async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(tmp_path):
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
@@ -486,12 +487,19 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
         assert poll.status == 200
         body = await poll.json()
 
+    # DAL 17/08/2026 il payload NON porta piu' i nomi degli strumenti. Qui si
+    # asseriva il contrario, e la ragione era buona: erano l'unica cosa che
+    # rendeva osservabile una scrittura di `ricorda` fatta dal ponte. Quella
+    # osservabilita' non e' stata tolta, e' stata SPOSTATA nei log a livello
+    # debug -- vedi `tests/test_chat_al_nucleo.py`, che la legge di li'.
+    #
+    # L'insieme ESATTO, non «`debug` non c'e'»: un test scritto come «X non
+    # c'e'» lascia rientrare X sotto un altro nome (lezione gia' pagata su
+    # `test_models_api`). E gli ARGOMENTI erano la parte peggiore: per
+    # `ricorda` sono il testo del ricordo.
     assert body == {
         "status": "done",
         "reply": "Preso nota: la caldaia perde.",
-        "debug": {"tools_called": [
-            {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
-        ]},
     }
 
 
@@ -537,8 +545,11 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
         poll = await client.get(f"/api/chat/reply/{job_id}")
         body = await poll.json()
 
-    assert body == {"status": "done", "reply": "Sono le tre.",
-                    "debug": {"tools_called": []}}
+    # Idem: nessun `debug` nel payload. La lista VUOTA e la lista PIENA devono
+    # produrre la stessa forma, altrimenti la presenza o assenza della chiave
+    # racconterebbe da sola se il turno ha usato strumenti -- cioe' meta' del
+    # fatto che si e' deciso di non scrivere in chat.
+    assert body == {"status": "done", "reply": "Sono le tre."}
 
 
 # ---------------------------------------------------------------------------
@@ -1154,7 +1165,10 @@ async def test_il_ripiego_a_monte_si_annuncia_e_dice_chi_ha_risposto(tmp_path, m
         "OpenRouter, a consumo.")
     # La forma della risposta NON cambia: `nota` si aggiunge, non sostituisce.
     assert body["response"] == "sync reply"
-    assert body["debug"] == {"tools_called": []}
+    # `debug` resta nel payload del ramo sincrono ma NON porta piu' i nomi
+    # degli strumenti (17/08/2026): ci vive solo `thinking_blocks`, che e' il
+    # ragionamento che l'utente ha chiesto di vedere, non un nome di funzione.
+    assert body["debug"] == {}
 
 
 @pytest.mark.asyncio

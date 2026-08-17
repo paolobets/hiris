@@ -365,8 +365,14 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # uno di questo prodotto.
     if isinstance(risultato, dict) and "errore" in risultato:
         contenuto["isError"] = True
-        logger.info("MCP tools/call «%s» ha dichiarato un errore: %s",
-                    nome, risultato.get("errore"))
+        # A livello DEBUG, non `info`: il testo dell'errore lo compongono i
+        # gestori (`casa/strumenti.py`, `azione/porta.py`) e puo' contenere
+        # dati di casa -- id di entita', nomi di aree, frammenti di frase. Un
+        # log e' un posto in cui quelle cose restano scritte, e il livello
+        # predefinito dell'add-on non e' `debug`. Che la chiamata sia fallita
+        # lo dice comunque `isError` al modello, che e' chi deve saperlo.
+        logger.debug("MCP tools/call «%s» ha dichiarato un errore: %s",
+                     nome, risultato.get("errore"))
     return _risposta(id_richiesta, contenuto)
 
 

@@ -128,41 +128,18 @@
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
   }
 
-  function appendDebug(tools) {
-    var row = document.createElement('div');
-    row.className = 'debug-row';
-    /* Render tool calls as inline mono chips. Click to expand/collapse the args. */
-    var chips = tools.map(function(t) {
-      // Defensive: never let a malformed debug payload throw here -- an
-      // exception would be swallowed by sendMessage()'s catch and
-      // mislabeled as a connection error, AFTER the answer already rendered.
-      if (!t || typeof t !== 'object') return '';
-      var inp = JSON.stringify(t.input !== undefined && t.input !== null ? t.input : {});
-      return '<button class="tool-chip" data-args="' + esc(inp) + '" type="button">'
-           + '<svg viewBox="0 0 24 24" class="tc-ic" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
-           + '<span class="tc-name">' + esc(t.tool || '') + '</span>'
-           + '</button>';
-    }).filter(Boolean).join('');
-    row.innerHTML = '<div class="tool-chips">' + chips + '</div><div class="tool-args" style="display:none"></div>';
-    /* Toggle args panel on chip click */
-    row.querySelectorAll('.tool-chip').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var panel = row.querySelector('.tool-args');
-        var args = btn.getAttribute('data-args');
-        var name = btn.querySelector('.tc-name').textContent;
-        var open = panel.dataset.openName === name && panel.style.display !== 'none';
-        if (open) {
-          panel.style.display = 'none';
-          panel.dataset.openName = '';
-        } else {
-          panel.innerHTML = '<code><b>' + esc(name) + '</b>(' + esc(args) + ')</code>';
-          panel.style.display = '';
-          panel.dataset.openName = name;
-        }
-      });
-    });
-    state.els.messages.appendChild(row);
-  }
+  /* `appendDebug` E' USCITA (17 agosto 2026). Disegnava una targhetta per
+     ogni strumento chiamato, col nome e -- al click -- con gli ARGOMENTI, che
+     per `ricorda` sono il testo del ricordo e per `esegui`/`cerca` sono gli id
+     delle entita' di casa.
+
+     Era nata per rendere osservabile una scrittura di `ricorda`, e quella
+     ragione resta valida: l'osservabilita' non e' stata tolta, e' stata
+     SPOSTATA nei log a livello debug del backend (`api/handlers_chat.py`).
+     Toglierla senza spostarla avrebbe distrutto la capacita' per cui esisteva.
+
+     Con lei sono uscite `.debug-row`, `.tool-chips`, `.tool-chip`, `.tc-ic`,
+     `.tc-name` e `.tool-args` da `hiris-chat.css`: nessun altro le usa. */
 
   /* ── L'attesa ────────────────────────────────────────────────────
      C'era piu' di un indicatore, e quale vedessi dipendeva da come il server
@@ -378,7 +355,6 @@
     appendMsg: appendMsg,
     updateBubble: updateBubble,
     appendNota: appendNota,
-    appendDebug: appendDebug,
     showThinking: showThinking,
     attesaAlSicuroSulServer: attesaAlSicuroSulServer,
     fermaTutteLeAttese: fermaTutteLeAttese,

@@ -469,10 +469,16 @@ async def test_chat_debug_tools_called_returns_objects(client):
     resp = await client.post("/api/chat", json={"message": "consumi energia"})
     assert resp.status == 200
     data = await resp.json()
-    assert data["debug"]["tools_called"] == [
-        {"tool": "get_energy_history", "input": {"hours": 24}},
-        {"tool": "get_home_status", "input": {}},
-    ]
+    # Qui si asseriva che i nomi (e gli ARGOMENTI) degli strumenti tornassero
+    # al client. Dal 17/08/2026 non tornano piu': non si scrivono in chat, e il
+    # payload non li manda affatto. Il difetto storico che questo test copriva
+    # -- `t.get("name")` invece di `t.get("tool")`, che rendeva ogni voce
+    # `None` e faceva esplodere il frontend DOPO che la risposta era gia'
+    # comparsa -- non puo' piu' esistere: non c'e' piu' nessuna voce da
+    # comporre. Resta pinnato che `debug` non porti quella chiave, con
+    # l'insieme esatto.
+    assert "tools_called" not in data["debug"]
+    assert set(data["debug"]) <= {"thinking_blocks"}
 
 
 # test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3

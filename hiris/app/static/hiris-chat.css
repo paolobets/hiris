@@ -361,65 +361,10 @@
     }
 
     /* Tool calls */
-    .debug-row {
-      max-width: 740px; width: 100%;
-      margin: -10px auto 0;
-      padding: 0 32px 0 74px;
-    }
-    .debug-row details {
-      padding: 7px 11px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--r-sm);
-      font-family: var(--font-mono);
-      font-size: 11.5px;
-      color: var(--text-2);
-    }
-    .debug-summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-weight: 500; }
-    .debug-summary::-webkit-details-marker { display: none; }
-    .debug-summary::before { content: "▸"; color: var(--accent); transition: transform 0.16s; display: inline-block; }
-    .debug-row details[open] .debug-summary::before { transform: rotate(90deg); }
-    .debug-body { margin-top: 7px; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
-    .debug-tool b { color: var(--accent); font-weight: 600; }
-
-    /* Tool chips (v5 inline rendering — sostituisce <details>) */
-    .tool-chips {
-      display: flex; flex-wrap: wrap; gap: 6px;
-    }
-    .tool-chip {
-      display: inline-flex; align-items: center; gap: 7px;
-      padding: 5px 11px 5px 9px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text-2);
-      border-radius: 999px;
-      font-family: var(--font-mono);
-      font-size: 11.5px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 140ms ease;
-    }
-    .tool-chip:hover { border-color: var(--accent); color: var(--text); background: var(--accent-tint); }
-    .tool-chip .tc-ic {
-      width: 12px; height: 12px;
-      color: var(--accent);
-      stroke-width: 2;
-    }
-    .tool-chip .tc-name { letter-spacing: 0; }
-    .tool-args {
-      margin-top: 8px;
-      padding: 9px 12px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--r-sm);
-      font-family: var(--font-mono);
-      font-size: 11.5px;
-      color: var(--text-2);
-      word-break: break-word;
-      line-height: 1.5;
-    }
-    .tool-args code { background: transparent; padding: 0; }
-    .tool-args b { color: var(--accent); font-weight: 600; }
+    /* Le regole delle targhette degli strumenti (.debug-row, .tool-chips,
+       .tool-chip, .tc-ic, .tc-name, .tool-args) sono USCITE il 17/08/2026 con
+       `appendDebug`: i nomi degli strumenti non si scrivono piu' in chat, vanno
+       nei log a livello debug. Nessun altro le usava. */
 
     /* ─── L'attesa: un indicatore solo ───────────────────────────────────
        Qui vivevano TRE estetiche dell'attesa: `.typing-row`/`.typing-bubble`
@@ -622,7 +567,7 @@
       }
       #sidebar.open { transform: translateX(0); }
       #sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
-      .msg-row, #welcome, #input-inner, .debug-row { padding-left: 16px; padding-right: 16px; }
+      .msg-row, #welcome, #input-inner { padding-left: 16px; padding-right: 16px; }
       #input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
 
       /* Mobile header redesign: minimal & clear. The crowded items (logo,
