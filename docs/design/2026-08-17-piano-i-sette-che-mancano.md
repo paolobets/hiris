@@ -174,31 +174,34 @@ una riga.
 
 ---
 
-## Le tre decisioni che non sono mie
+## Le tre decisioni, prese
 
-Restano fuori dal piano perché sono scelte di prodotto, non di ingegneria.
+**24 · Le categorie — ENTRANO.** Sono una tassonomia che l'utente scrive a
+mano, come le etichette: vanno trattate come quelle. Escono da `guarda`,
+entrano nell'indice di `cerca`, e l'assegnazione per-entita' -- che arriva
+**gratis** dentro la risposta che HIRIS gia' riceve e oggi si butta -- si
+salva. Il registro delle categorie e' partizionato per ambito
+(`automation`, `script`, `scene`, `helpers`): quell'ambito fa parte del nome,
+o due categorie omonime in ambiti diversi diventano indistinguibili.
 
-**24 · Le categorie.** Quattro comandi WS a ogni ricostruzione, zero lettori. E
-l'assegnazione per-entità arriva **gratis** dentro la risposta che HIRIS già
-riceve, e non viene salvata. La domanda: le categorie sono una tassonomia che
-HIRIS *usa* — entrano in `guarda` e in `cerca` accanto alle etichette — o un
-dato che replica e basta? Se la seconda, vanno tolte, non tenute.
+**26 · L'albero in pagina — ENTRA.** Il payload piu' ricco che HIRIS produce
+usciva verso una pagina che ne leggeva solo i conteggi. Diventa anche il posto
+dove la fetta 4 mostrera' le divergenze fra la replica e la casa vera.
 
-**25 · Le plance.** Una connessione WS per plancia, e il modello non le vede
-mai. «Questa luce compare in qualche mia dashboard?» ha senso solo se HIRIS può
-anche *agire* su quella conoscenza. Servirebbe un tipo nuovo di `guarda`.
-
-**26 · L'albero di `/api/casa`.** Il payload più ricco che HIRIS produce esce
-verso una pagina che ne legge solo i conteggi. Con la fetta 4 diventa anche il
-posto naturale dove mostrare le divergenze: è l'unica delle tre che il piano
-tocca comunque.
-
----
+**25 · Le plance — PARCHEGGIATE, e non per costo.** Sono l'unica delle tre che
+non e' conoscenza da leggere: e' materiale su cui AGIRE. «Questa luce compare
+in qualche mia dashboard?» ha senso solo quando HIRIS sa anche **creare** e
+modificare una plancia -- e quella e' un'altra fetta, con un'altra spec e altre
+protezioni. Leggerle adesso vorrebbe dire aggiungere un tipo di `guarda` che
+risponde e non porta a niente: la fondamenta 4 al contrario, esattamente il
+difetto che questa review e' servita a chiudere. Restano dove sono, e tornano
+con «crea».
 
 ## L'ordine, in una riga
 
 **1 bersagli → 2 legami → 3 guasti → 4 verifica dell'albero**, e solo dopo
-scene, topologia, calendario, liste.
+scene, topologia, calendario, liste — piu' le categorie e l'albero in pagina,
+che non dipendono da nessuna delle quattro e possono correre a fianco.
 
 Le prime tre non sono tre funzioni: sono i tre modi in cui Home Assistant può
 smentire HIRIS. La quarta è dove quella smentita smette di essere un rischio e
