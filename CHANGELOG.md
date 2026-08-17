@@ -1,6 +1,6 @@
 # HIRIS — Changelog
 
-## [3.6.0] — HIRIS sa su che scala è disegnata la tua casa (2026-08-17)
+## [3.6.0] — HIRIS finisce di conoscere la tua casa (2026-08-17)
 
 ### Il fuso, la valuta, la lingua, le unità
 
@@ -24,6 +24,49 @@ inventata sarebbe peggio che non scriverla — chi legge non avrebbe modo di acc
 
 Se Home Assistant non risponde, il riferimento di ieri **resta**: cancellarlo farebbe leggere ogni
 temperatura senza sapere in che scala.
+
+### Sa da quale integrazione viene ogni cosa
+
+«Questa luce è una Hue o un template?» è una domanda che si fa davvero — per
+capire perché una cosa non risponde, o cosa le si può chiedere. HIRIS leggeva
+l'informazione a ogni ricostruzione e non la diceva a nessuno. Adesso la dice.
+
+### Le tue etichette servono a qualcosa
+
+Le etichette che scrivi in Home Assistant — «inverno», «da controllare», «piano di
+sotto» — sono il modo più diretto che hai di dire a HIRIS cosa conta per te.
+Venivano lette, salvate, e mai usate: dovevi ripetere a parole ciò che avevi già
+scritto una volta.
+
+Adesso compaiono quando chiedi di un'area, di un dispositivo o di un'entità, e
+puoi cercarci dentro: «le cose etichettate inverno» funziona.
+
+### L'unità dei ricordi si deduce davvero
+
+«Il frigo lo tengo fra 3 e 5» — fra 3 e 5 cosa? HIRIS provava a dedurlo
+dall'entità a cui il ricordo è agganciato, ma cercava l'unità in un posto dove
+Home Assistant la scrive solo se l'hai forzata a mano: su questa casa, mai. La
+deduzione non è quindi mai scattata, e taceva invece di dirlo.
+
+Adesso legge l'unità da dove c'è davvero. E la legge allo stesso modo dalla chat
+e dalla pagina dei ricordi: prima lo stesso ricordo, corretto dalla stessa
+persona, usciva diverso a seconda di dove lo correggevi.
+
+### Smette di parlare inglese quando non sa la parola
+
+Il digesto conta le cose per tipo. I tipi che non sapeva nominare li scriveva
+com'erano: «4 water_heater», «2 lawn_mower», «3 input_number». Ne conosceva 17.
+
+Adesso ne conosce 63 — tutte le tipologie che Home Assistant dichiara, più gli
+helper che crei tu — e sono proprio quelle meno ovvie, dove una parola inglese
+aiuta meno.
+
+### Due chiamate in meno a ogni avvio
+
+A ogni avvio e a ogni riconnessione HIRIS costruiva una mappa delle aree che
+nessuno leggeva — e che per giunta sbagliava: fondeva due stanze omonime su piani
+diversi e non vedeva le entità che prendono la stanza dal proprio dispositivo. La
+mappa giusta la costruisce già l'anagrafe. Via quella, e via il lavoro.
 
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 

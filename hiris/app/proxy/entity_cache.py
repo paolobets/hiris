@@ -100,7 +100,6 @@ class EntityCache:
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
         self._by_domain: dict[str, list[str]] = {}
-        self._area_map: dict[str, list[str]] | None = None  # None = not loaded yet
         # False finche' load() non ha completato almeno una volta. Serve a
         # distinguere "inventario non ancora pronto" da "casa senza entita'":
         # server.py logga e prosegue se il caricamento iniziale fallisce, e i
@@ -170,13 +169,20 @@ class EntityCache:
     # domanda «cosa merita di essere detto» vive adesso in `casa/nucleo.py`, per
     # TIPOLOGIA e non per dominio (fetta «il vocabolario delle tipologie»).
     #
-    # `load_area_registry`/`get_area_map` NON sono usciti, e la ragione va
-    # scritta perche' ci sono quasi cascato: il censimento segnala l'accessore
-    # (`get_area_map`, zero letture di produzione) ma il CARICATORE e' chiamato
-    # davvero, due volte (`server.py:536` e `:955`). E' lavoro morto fatto da
-    # codice vivo -- due chiamate WebSocket per una mappa che nessuno legge --
-    # e togliere l'uno senza l'altro rompe l'avvio. Va deciso insieme, non a
-    # meta'.
+    # `load_area_registry`/`get_area_map` SONO usciti, insieme -- ed e' il
+    # motivo per cui la nota di prima diceva "va deciso insieme, non a meta'":
+    # il censimento segnalava l'accessore (zero letture di produzione) ma il
+    # caricatore era chiamato davvero, due volte (avvio e riconnessione).
+    # Lavoro morto fatto da codice vivo: due chiamate WebSocket a ogni avvio
+    # per costruire una mappa che nessuno leggeva.
+    #
+    # E non era nemmeno una mappa giusta. Indicizzava per NOME dell'area --
+    # due "Bagno" su piani diversi si fondevano in uno -- e ignorava l'area
+    # EREDITATA dal dispositivo, che in una casa vera e' il caso normale, non
+    # l'eccezione. `casa/anagrafe.gerarchia()` risponde alla stessa domanda
+    # per id, con l'ereditarieta', e dichiarando quale registro non ha
+    # risposto. Due risposte alla stessa domanda, una delle quali sbagliata e
+    # letta da nessuno: NESSUN DOPPIONE.
 
     def get_all(self) -> list[dict]:
         return list(self._states.values())
@@ -193,27 +199,4 @@ class EntityCache:
         """Return all cached entity states as a list (read-only access for the entity inventory API)."""
         return list(self._states.values())
 
-    async def load_area_registry(self, ha_client) -> None:
-        """Load area→entity mapping from HA registries. Cached until next call."""
-        areas = await ha_client.get_area_registry()
-        entities = await ha_client.get_entity_registry()
-        area_lookup: dict[str, str] = {a["area_id"]: a["name"] for a in areas}
-        result: dict[str, list[str]] = {}
-        no_area: list[str] = []
-        for entry in entities:
-            eid = entry.get("entity_id", "")
-            if not eid:
-                continue
-            area_id = entry.get("area_id")
-            if area_id and area_id in area_lookup:
-                result.setdefault(area_lookup[area_id], []).append(eid)
-            else:
-                no_area.append(eid)
-        if no_area:
-            result["__no_area__"] = no_area
-        self._area_map = result
-
-    def get_area_map(self) -> dict[str, list[str]] | None:
-        """Return cached area→[entity_id] map. None if not yet loaded; {} if loaded but no areas."""
-        return self._area_map
 

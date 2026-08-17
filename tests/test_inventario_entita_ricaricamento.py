@@ -32,7 +32,6 @@ class _HA:
     def __init__(self, *, giu: bool = False) -> None:
         self.giu = giu
         self.chiamate_stati = 0
-        self.chiamate_aree = 0
 
     async def get_states(self, ids):
         self.chiamate_stati += 1
@@ -40,17 +39,6 @@ class _HA:
             raise RuntimeError("connessione rifiutata su http://supervisor/core")
         return [{"entity_id": "light.cucina", "state": "on",
                  "attributes": {"friendly_name": "Cucina"}}]
-
-    async def get_area_registry(self):
-        self.chiamate_aree += 1
-        if self.giu:
-            raise RuntimeError("connessione rifiutata")
-        return [{"area_id": "cucina", "name": "Cucina"}]
-
-    async def get_entity_registry(self):
-        if self.giu:
-            raise RuntimeError("connessione rifiutata")
-        return [{"entity_id": "light.cucina", "area_id": "cucina"}]
 
 
 @pytest.mark.asyncio
@@ -143,33 +131,6 @@ async def test_home_assistant_ancora_giu_non_solleva_e_lascia_riprovare():
 async def test_senza_cache_o_senza_client_non_solleva():
     assert await server.ricarica_inventario_entita(None, _HA()) is False
     assert await server.ricarica_inventario_entita(EntityCache(), None) is False
-
-
-@pytest.mark.asyncio
-async def test_ricarica_anche_il_registro_delle_aree():
-    """Lo stesso avvio senza Home Assistant ha fatto fallire anche le aree
-    (server.py le carica subito dopo, con lo stesso try/except)."""
-    cache = EntityCache()
-    ha = _HA()
-
-    await server.ricarica_inventario_entita(cache, ha)
-
-    assert cache.get_area_map() == {"Cucina": ["light.cucina"]}
-
-
-@pytest.mark.asyncio
-async def test_un_registro_aree_rotto_non_annulla_la_ricarica():
-    """Le due letture sono indipendenti: se le aree non arrivano, l'inventario
-    resta comunque caricato -- e' quello che sblocca i tre strumenti."""
-
-    class _HAsenzaAree(_HA):
-        async def get_area_registry(self):
-            raise RuntimeError("registro non disponibile")
-
-    cache = EntityCache()
-
-    assert await server.ricarica_inventario_entita(cache, _HAsenzaAree()) is True
-    assert cache.loaded is True
 
 
 def test_il_lavoro_periodico_e_registrato_come_gli_altri():

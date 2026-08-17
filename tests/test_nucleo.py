@@ -666,7 +666,7 @@ def _riga_area(testo: str, nome_area: str) -> str:
 
 def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
     """Il caso del 14 agosto, visto da dove conta: il testo che il modello ha
-    davvero davanti. «Esterno: 4 valve» e' vero e non dice se sono quattro
+    davvero davanti. «Esterno: 4 valvole» e' vero e non dice se sono quattro
     dispositivi o uno.
 
     Si asserisce la RIGA INTERA, non due `in` separati: "valve" non e' in
@@ -679,7 +679,7 @@ def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
     testo, _ = componi(_casa_irrigazione(), [], [], {})
     assert _riga_area(testo, "Esterno") == (
         "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, "
-        "4 valve (Irrigazione giardino)")
+        "4 valvole (Irrigazione giardino)")
     assert "Pluviometro" not in testo
 
 
@@ -689,7 +689,7 @@ def test_il_nucleo_non_elenca_i_rubinetti_separati():
     regola che tiene il budget -- senza, 61 righe come questa citerebbero
     344 nomi sul nucleo del proprietario."""
     testo, _ = componi(_casa_irrigazione(), [], [], {})
-    assert _riga_area(testo, "Orto") == "  - Orto: 2 valve"
+    assert _riga_area(testo, "Orto") == "  - Orto: 2 valvole"
     assert "Rubinetto" not in testo
 
 
@@ -708,7 +708,7 @@ def test_col_registro_dispositivi_caduto_il_nucleo_non_annota_e_lo_dichiara():
       pinna la frase generica, non QUALE registro manca)."""
     testo, riepilogo = componi(_casa_irrigazione(), [], [], {},
                                non_disponibili=("dispositivi",))
-    assert _riga_area(testo, "Esterno") == "  - Esterno: 2 tapparelle, 1 sensore, 4 valve"
+    assert _riga_area(testo, "Esterno") == "  - Esterno: 2 tapparelle, 1 sensore, 4 valvole"
     assert "Irrigazione giardino" not in testo
     assert "(id: dev_irr)" not in testo
     assert any("dispositivi" in a for a in riepilogo["avvisi"])
@@ -751,4 +751,4 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
                            {"id": "dev_tenda", "nome": "Tenda esterna"}]
     testo, _ = componi(casa, [], [], {})
     assert _riga_area(testo, "Esterno") == \
-        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, 4 valve (id: dev_irr)"
+        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, 4 valvole (id: dev_irr)"

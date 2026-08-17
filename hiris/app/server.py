@@ -529,13 +529,11 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
         "Inventario entita' ricaricato: %d entita' (la lettura iniziale era fallita)",
         len(cache.get_all()) if hasattr(cache, "get_all") else -1,
     )
-    # Stesso avvio, stesso guasto: se `load` era fallita per Home Assistant
-    # irraggiungibile, anche il registro delle aree lo era. Indipendente dal
-    # ritorno: cio' che sblocca gli strumenti e' l'inventario.
-    try:
-        await cache.load_area_registry(ha_client)
-    except Exception as exc:
-        logger.warning("Ricarica del registro aree non riuscita: %s", exc)
+    # Qui c'erano due chiamate WebSocket per ricostruire una mappa area->entita'
+    # che nessuno leggeva, e che sbagliava (per nome invece che per id, senza
+    # l'area ereditata dal dispositivo). Le aree le ricostruisce
+    # `casa.anagrafe.ricostruisci`, che le legge per id e dichiara i registri
+    # caduti.
     return True
 
 
@@ -951,10 +949,6 @@ async def _on_startup(app: web.Application) -> None:
         await entity_cache.load(ha_client)
     except Exception as exc:
         logger.warning("EntityCache load failed: %s", exc)
-    try:
-        await entity_cache.load_area_registry(ha_client)
-    except Exception as exc:
-        logger.warning("Area registry load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
 

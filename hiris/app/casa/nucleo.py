@@ -53,23 +53,86 @@ from .anagrafe import e_pseudo_area, gerarchia
 # col proprio nome invece di sparire, cosi' un tipo nuovo si legge diverso
 # ma non si perde.
 _NOMI_DOMINIO = {
-    "light": ("luce", "luci"),
-    "switch": ("interruttore", "interruttori"),
-    "sensor": ("sensore", "sensori"),
-    "binary_sensor": ("sensore binario", "sensori binari"),
-    "cover": ("tapparella", "tapparelle"),
-    "climate": ("termostato", "termostati"),
-    "lock": ("serratura", "serrature"),
-    "fan": ("ventola", "ventole"),
-    "media_player": ("lettore multimediale", "lettori multimediali"),
-    "camera": ("telecamera", "telecamere"),
-    "vacuum": ("aspirapolvere", "aspirapolvere"),
+    # --- le 45 piattaforme dichiarate da Home Assistant ---
+    # Copiate da `homeassistant/generated/entity_platforms.py` (l'elenco che HA
+    # genera da se'), non ricordate: ognuna e' stata verificata come componente
+    # vero del sorgente. Il singolare e il plurale sono DICHIARATI uno per uno
+    # perche' l'italiano non fa il plurale aggiungendo una lettera --
+    # "aspirapolvere" resta "aspirapolvere", "analisi" resta "analisi" -- e
+    # dedurlo produrrebbe "aspirapolveres".
+    "ai_task": ("compito IA", "compiti IA"),
+    "air_quality": ("qualita' dell'aria", "qualita' dell'aria"),
     "alarm_control_panel": ("pannello allarme", "pannelli allarme"),
+    "assist_satellite": ("satellite vocale", "satelliti vocali"),
+    "binary_sensor": ("sensore binario", "sensori binari"),
+    "button": ("pulsante", "pulsanti"),
+    "calendar": ("calendario", "calendari"),
+    "camera": ("telecamera", "telecamere"),
+    "climate": ("termostato", "termostati"),
+    "conversation": ("agente conversazionale", "agenti conversazionali"),
+    "cover": ("tapparella", "tapparelle"),
+    "date": ("data", "date"),
+    "datetime": ("data e ora", "date e ore"),
+    "device_tracker": ("localizzatore", "localizzatori"),
+    "event": ("evento", "eventi"),
+    "fan": ("ventola", "ventole"),
+    "geo_location": ("posizione geografica", "posizioni geografiche"),
+    "humidifier": ("umidificatore", "umidificatori"),
+    "image": ("immagine", "immagini"),
+    "image_processing": ("analisi immagine", "analisi immagini"),
+    "infrared": ("infrarossi", "infrarossi"),
+    "lawn_mower": ("tosaerba", "tosaerba"),
+    "light": ("luce", "luci"),
+    "lock": ("serratura", "serrature"),
+    "media_player": ("lettore multimediale", "lettori multimediali"),
+    "notify": ("notificatore", "notificatori"),
+    "number": ("numero", "numeri"),
+    "radio_frequency": ("radiofrequenza", "radiofrequenze"),
+    "remote": ("telecomando", "telecomandi"),
+    "scene": ("scena", "scene"),
+    "select": ("selettore", "selettori"),
+    "sensor": ("sensore", "sensori"),
+    "siren": ("sirena", "sirene"),
+    "stt": ("riconoscimento vocale", "riconoscimenti vocali"),
+    "switch": ("interruttore", "interruttori"),
+    "text": ("testo", "testi"),
+    "time": ("ora", "ore"),
+    "todo": ("lista di cose da fare", "liste di cose da fare"),
+    "tts": ("sintesi vocale", "sintesi vocali"),
+    "update": ("aggiornamento", "aggiornamenti"),
+    "vacuum": ("aspirapolvere", "aspirapolvere"),
+    "valve": ("valvola", "valvole"),
+    "wake_word": ("parola di attivazione", "parole di attivazione"),
+    "water_heater": ("scaldacqua", "scaldacqua"),
+    "weather": ("meteo", "meteo"),
+
+    # --- i domini che non sono piattaforme ---
+    # Gli helper che l'utente crea dall'interfaccia e le cose che Home
+    # Assistant crea da se'. Non stanno nell'elenco generato delle
+    # piattaforme, ma esistono come entita' in ogni casa vera -- lasciarli
+    # fuori avrebbe fatto stampare "3 input_number" a chiunque usi gli helper.
     "automation": ("automazione", "automazioni"),
     "script": ("script", "script"),
-    "scene": ("scena", "scene"),
     "person": ("persona", "persone"),
+    "zone": ("zona", "zone"),
+    "group": ("gruppo", "gruppi"),
+    "sun": ("sole", "sole"),
+    # "tag" NON e' "etichetta": in HIRIS quella parola significa gia' le label
+    # che l'utente scrive in Home Assistant (che ora escono da `guarda` e si
+    # cercano). Due significati per la stessa parola nella stessa risposta e'
+    # esattamente cio' che la consistenza vieta.
+    "tag": ("tag NFC", "tag NFC"),
+    "plant": ("pianta", "piante"),
+    "counter": ("contatore", "contatori"),
+    "timer": ("timer", "timer"),
+    "schedule": ("programmazione", "programmazioni"),
+    "persistent_notification": ("notifica", "notifiche"),
     "input_boolean": ("interruttore helper", "interruttori helper"),
+    "input_number": ("numero helper", "numeri helper"),
+    "input_select": ("selettore helper", "selettori helper"),
+    "input_text": ("testo helper", "testi helper"),
+    "input_datetime": ("data helper", "date helper"),
+    "input_button": ("pulsante helper", "pulsanti helper"),
 }
 
 # Stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
