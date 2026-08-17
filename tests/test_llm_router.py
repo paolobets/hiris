@@ -269,14 +269,11 @@ def test_openrouter_runner_init(tmp_path):
     assert runner._client.max_retries == 2
 
 
-def test_backend_is_cloud():
-    from hiris.app.llm_router import backend_is_cloud
-    assert backend_is_cloud("claude-sonnet-4-6") is True
-    assert backend_is_cloud("gpt-4o-mini") is True
-    assert backend_is_cloud("openrouter:meta/llama") is True
-    assert backend_is_cloud("llama3.1:8b") is False   # Ollama locale
-    # 'auto' è cloud-first nelle strategie default → trattato come cloud (prudente)
-    assert backend_is_cloud("auto") is True
+# `test_backend_is_cloud` e' uscito con la funzione che provava (censimento del
+# 17/08/2026): diceva se un modello uscisse verso il cloud, e serviva alle
+# STRATEGIE -- il preset che sceglieva l'ordine dei provider, uscito con la
+# fetta «la catena diventa l'unica verita'». Un test che difende una funzione
+# morta e' morto anche lui.
 
 
 class _Dummy:

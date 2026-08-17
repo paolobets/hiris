@@ -25,5 +25,15 @@ PRICING: dict[str, dict[str, float]] = {
 
 
 def get_price(model: str) -> dict[str, float]:
-    """Return the price entry for a model, falling back to _default."""
+    """Il prezzo di un modello, col ripiego sul predefinito.
+
+    Il censimento del 17/08/2026 la dava senza chiamanti, e la cancellazione
+    sarebbe stata l'istinto sbagliato: i due runner facevano ENTRAMBI
+    `PRICING.get(model, PRICING["_default"])` in linea, cioe' la stessa regola
+    scritta tre volte, e l'unica copia non usata era quella con un nome. Adesso
+    la chiamano, e il ripiego vive in un posto solo.
+
+    Morto e scollegato non sono la stessa cosa: il primo si toglie, il secondo
+    si collega.
+    """
     return PRICING.get(model, PRICING["_default"])

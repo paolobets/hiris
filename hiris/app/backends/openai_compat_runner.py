@@ -20,7 +20,7 @@ from ..claude_runner import (
     _PerCallList,
 )
 from ..esiti_provider import famiglia_errore
-from .pricing import PRICING as _PRICING
+from .pricing import get_price as _prezzo
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip
 # the backend for the cooldown instead of hammering a dead endpoint. The
@@ -409,7 +409,7 @@ class OpenAICompatRunner:
             return
         inp = getattr(usage, "prompt_tokens", 0) or 0
         out = getattr(usage, "completion_tokens", 0) or 0
-        prices = _PRICING.get(model, _PRICING["_default"])
+        prices = _prezzo(model)
         cost = (inp * prices["input"] + out * prices["output"]) / 1_000_000
         self.total_input_tokens += inp
         self.total_output_tokens += out

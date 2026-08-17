@@ -27,19 +27,12 @@ def _is_openrouter_model(model: str) -> bool:
     return model.startswith("openrouter:") or model.startswith("openrouter/")
 
 
-def backend_is_cloud(model: str) -> bool:
-    """True se il modello esce verso un provider cloud (claude/openai/openrouter).
-    Ollama (e modelli senza prefisso noto) sono locali. 'auto' è trattato come
-    cloud per prudenza (le strategie default partono dal cloud)."""
-    if model == "auto":
-        return True
-    if model.startswith("claude-"):
-        return True
-    if _is_openrouter_model(model):
-        return True
-    if _is_openai_model(model):
-        return True
-    return False
+# `backend_is_cloud` e' USCITO (censimento del 17/08/2026, zero chiamanti di
+# produzione). Diceva se un modello uscisse verso un provider cloud, e serviva
+# alle STRATEGIE -- il preset che sceglieva l'ordine dei provider. Quel concetto
+# e' uscito con la fetta «la catena diventa l'unica verita'»: l'ordine adesso e'
+# esplicito e si riordina dalla pagina Modelli. La funzione era rimasta a
+# rispondere a una domanda che nessuno fa piu'.
 
 
 _STRATEGY_ORDER = {

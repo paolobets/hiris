@@ -84,7 +84,10 @@ async def _get_entities_on_come_lo_strumento(cache):
     guasto = inventario_non_leggibile(cache)
     if guasto is not None:
         return guasto
-    return cache.get_on()
+    # `get_on()` e' uscita col censimento del 17/08/2026: si legge lo specchio
+    # direttamente. Il soggetto di questa finta non era l'accessore -- e' il
+    # controllo del guasto PRIMA della lettura, che resta identico.
+    return [e for e in cache.all_states() if e["state"] == "on"]
 
 
 @pytest.mark.asyncio

@@ -4,8 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-NOISE_DOMAINS = {"button", "update", "number", "select", "tag",
-                 "event", "ai_task", "todo", "conversation"}
+# `NOISE_DOMAINS` e' uscito con `get_all_useful`, il suo unico lettore.
 
 # Messaggi per chi legge l'inventario quando l'inventario non e' leggibile.
 # Un elenco vuoto direbbe "la casa e' vuota"; questi dicono "non ho potuto
@@ -156,26 +155,28 @@ class EntityCache:
     # Engine. Verificato di nuovo qui (grep sull'intero repo, zero
     # chiamanti): nessun successore.
 
-    def get_minimal(self, entity_ids: list[str]) -> list[dict]:
-        return [self._states[eid] for eid in entity_ids if eid in self._states]
-
-    def get_by_domain(self, domain: str) -> list[dict]:
-        ids = self._by_domain.get(domain, [])
-        return self.get_minimal(ids)
+    # `get_minimal` e `get_by_domain` sono USCITI (censimento del 17/08/2026,
+    # zero chiamanti di produzione: il secondo era l'unico lettore del primo).
+    # `_by_domain` resta: lo popola e lo legge `_index`.
 
     # fetta E3 Task 12 ("esce il ritratto"): `domain_counts` e' uscito --
     # ORFANO DICHIARATO dal Task 7 (viveva per la UI della gateway policy,
     # cancellata insieme al semaforo). Verificato di nuovo qui: zero
     # chiamanti nell'intero repo.
 
-    def get_on(self) -> list[dict]:
-        return [e for e in self._states.values() if e["state"] == "on"]
-
-    def get_all_useful(self) -> list[dict]:
-        return [
-            e for eid, e in self._states.items()
-            if _domain(eid) not in NOISE_DOMAINS
-        ]
+    # `get_on` e `get_all_useful` sono USCITI (stesso censimento). Il secondo
+    # era l'unico lettore di `NOISE_DOMAINS`, uscito con lui: quella lista
+    # decideva cosa fosse "rumore" per un consumatore che non esiste piu', e la
+    # domanda «cosa merita di essere detto» vive adesso in `casa/nucleo.py`, per
+    # TIPOLOGIA e non per dominio (fetta «il vocabolario delle tipologie»).
+    #
+    # `load_area_registry`/`get_area_map` NON sono usciti, e la ragione va
+    # scritta perche' ci sono quasi cascato: il censimento segnala l'accessore
+    # (`get_area_map`, zero letture di produzione) ma il CARICATORE e' chiamato
+    # davvero, due volte (`server.py:536` e `:955`). E' lavoro morto fatto da
+    # codice vivo -- due chiamate WebSocket per una mappa che nessuno legge --
+    # e togliere l'uno senza l'altro rompe l'avvio. Va deciso insieme, non a
+    # meta'.
 
     def get_all(self) -> list[dict]:
         return list(self._states.values())

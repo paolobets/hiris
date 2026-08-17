@@ -242,7 +242,12 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         return dettaglio
     dettaglio = {
         "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
-        "classe": entita.get("classe"), "unita": entita.get("unita"),
+        # `unita` NON viene da qui: il registro di HA non la manda (verificato
+        # sul sorgente, e misurato NULL su 842 entita' su 842). La aggiunge
+        # `_con_nome_dedotto` dallo specchio vivo, che ce l'ha davvero -- e solo
+        # quando c'e'. Prima questa riga prometteva un campo che era sempre
+        # `null`: una promessa che non ha mai mantenuto niente.
+        "classe": entita.get("classe"),
         # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
         # non funziona) ma sparisce dall'albero di `gerarchia()` -- questo
         # campo dice perche' `guarda` la trova comunque, senza far credere

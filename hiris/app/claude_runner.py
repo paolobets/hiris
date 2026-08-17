@@ -347,7 +347,7 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "agent": "claude-haiku-4-5-20251001",
 }
 
-from .backends.pricing import PRICING as _PRICING
+from .backends.pricing import get_price as _prezzo
 
 
 def resolve_model(model: str, agent_type: str, default_model: str = "") -> str:
@@ -901,7 +901,7 @@ class ClaudeRunner:
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             self.total_input_tokens += inp + cache_creation + cache_read
             self.total_output_tokens += out
-            prices = _PRICING.get(effective_model, _PRICING["_default"])
+            prices = _prezzo(effective_model)
             cost = (
                 inp * prices["input"]
                 + cache_creation * prices.get("cache_write", prices["input"] * 1.25)

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock
-from hiris.app.proxy.entity_cache import EntityCache, NOISE_DOMAINS
+from hiris.app.proxy.entity_cache import EntityCache
 
 
 @pytest.mark.asyncio
@@ -30,69 +30,16 @@ async def test_load_builds_minimal_state():
     cache = EntityCache()
     await cache.load(mock_ha)
 
-    assert cache.get_minimal(["light.soggiorno"]) == [
-        {"id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": "",
-         "domain": "light", "device_class": None}
-    ]
-    assert cache.get_minimal(["sensor.temp"]) == [
-        {"id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C",
-         "domain": "sensor", "device_class": None}
-    ]
-
-
-def test_get_minimal_skips_missing_ids():
-    cache = EntityCache()
-    cache._states = {"light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""}}
-    result = cache.get_minimal(["light.a", "light.missing"])
-    assert len(result) == 1
-    assert result[0]["id"] == "light.a"
-
-
-def test_get_on_returns_only_on_state():
-    cache = EntityCache()
-    cache._states = {
-        "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""},
-        "light.b": {"id": "light.b", "state": "off", "name": "B", "unit": ""},
-        "switch.c": {"id": "switch.c", "state": "on", "name": "C", "unit": ""},
-    }
-    result = cache.get_on()
-    assert len(result) == 2
-    assert all(e["state"] == "on" for e in result)
-    assert {e["id"] for e in result} == {"light.a", "switch.c"}
-
-
-def test_get_all_useful_excludes_noise_domains():
-    cache = EntityCache()
-    cache._states = {
-        "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""},
-        "button.b": {"id": "button.b", "state": "available", "name": "B", "unit": ""},
-        "update.c": {"id": "update.c", "state": "on", "name": "C", "unit": ""},
-        "select.d": {"id": "select.d", "state": "option1", "name": "D", "unit": ""},
-        "sensor.e": {"id": "sensor.e", "state": "21", "name": "E", "unit": "°C"},
-    }
-    result = cache.get_all_useful()
-    assert {e["id"] for e in result} == {"light.a", "sensor.e"}
-
-
-def test_noise_domains_constant():
-    assert NOISE_DOMAINS == {"button", "update", "number", "select", "tag",
-                             "event", "ai_task", "todo", "conversation"}
-
-
-def test_get_by_domain():
-    cache = EntityCache()
-    cache._states = {
-        "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""},
-        "light.b": {"id": "light.b", "state": "off", "name": "B", "unit": ""},
-        "switch.c": {"id": "switch.c", "state": "on", "name": "C", "unit": ""},
-    }
-    cache._by_domain = {"light": ["light.a", "light.b"], "switch": ["switch.c"]}
-
-    result = cache.get_by_domain("light")
-    assert len(result) == 2
-    assert all(e["id"].startswith("light.") for e in result)
-
-    assert cache.get_by_domain("nonexistent") == []
+    # Si legge lo specchio direttamente: `get_minimal` e' uscita col censimento
+    # del 17/08/2026 (zero chiamanti di produzione), ma il soggetto di questa
+    # prova non era lei -- e' la FORMA che `load()` produce, che resta.
+    per_id = {e["id"]: e for e in cache.all_states()}
+    assert per_id["light.soggiorno"] == {
+        "id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": "",
+        "domain": "light", "device_class": None}
+    assert per_id["sensor.temp"] == {
+        "id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C",
+        "domain": "sensor", "device_class": None}
 
 
 def test_on_state_changed_updates_existing_entity():
