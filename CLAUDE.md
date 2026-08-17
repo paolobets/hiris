@@ -46,6 +46,52 @@ Sono **criteri di ammissione**, non linee guida. Una funzione che ne viola una n
    dipende dall'altro. Corollario: **l'agente ha i propri sensi**.
 3. **Ogni agente ragiona** — se non ragiona non è un agente: è un'automazione, e nasce in HA.
 
+## Le quattro fondamenta — come sono fatti gli oggetti
+
+Le tre leggi qui sopra dicono **cosa entra** nel prodotto. Queste dicono **com'è fatto ciò che
+entra**: sono un asse diverso, e valgono per ogni dato, ogni struttura e ogni fetta — passata,
+presente e futura. Decise dal proprietario il 17 agosto 2026, come **fondamenta indiscusse**.
+
+Ogni review — di codice, di disegno, di spec — le verifica. Una violazione non è un'opinione di
+stile: è un difetto.
+
+**1. Atomicità — un oggetto porta tutto ciò che serve a interpretarlo da solo.**
+Un valore senza la sua unità e senza il suo significato non è un oggetto: è un frammento. Chi lo
+riceve deve poterlo leggere **senza andare a cercare altrove** cosa voglia dire.
+> *Pagata:* HIRIS leggeva `72` e non sapeva se fossero gradi Celsius o Fahrenheit. L'unità c'era —
+> letta in due punti diversi — e si fermava prima di arrivare a chi doveva leggerla.
+
+**2. Nessun doppione — ogni fatto ha una sola casa.**
+Gli oggetti si collegano **per identificatore**, mai copiando i dati. Se due posti sanno la stessa
+cosa, prima o poi uno dei due mente, e non si saprà quale.
+> *Pagata tre volte in un giorno:* la mappa area→entità costruita con due chiamate WebSocket mentre
+> `gerarchia()` la faceva già, e meglio · `PRICING.get(model, PRICING["_default"])` scritto in linea
+> in due runner con la funzione che lo fa ferma e inutilizzata · la regola di «notevole» in
+> `buildDisplayChain` e `reconcile_chain`, che è stata **il meccanismo** con cui la pagina Modelli
+> poteva essere vera riga per riga e falsa nel complesso.
+
+**3. Consistenza — la stessa cosa ha la stessa forma da tutte le porte.**
+Un'entità vista da `guarda`, da `cerca` o dal nucleo è la stessa entità, con gli stessi campi e gli
+stessi nomi. Un campo che compare da una porta e non dall'altra è un difetto anche quando nessuna
+delle due è sbagliata.
+> *Pagata:* `nome_dedotto` usciva solo da `_guarda_entita` e non da area e dispositivo (rilievo I1);
+> `nome_dedotto` era una **stringa** in un posto e un **booleano** in un altro (I2).
+
+**4. Autonomia funzionale — ogni oggetto ha la sua funzionalità, richiamabile dagli altri.**
+Se un dato c'è e nessuno può chiederlo, **non esiste**. Un oggetto deve saper vivere da solo, ed
+essere letto e interpretato in autonomia.
+> *Pagata:* le **etichette** sono lette dai registri, salvate in tabella e arrivano fino all'albero
+> delle aree — e non compaiono in nessuna risposta. La piattaforma di un'entità idem: zero lettori.
+
+### Come si verificano
+
+Davanti a un dato nuovo, o a una struttura che si tocca, si risponde a quattro domande:
+
+1. Chi lo riceve può interpretarlo **senza sapere altro**?
+2. Questo fatto **vive già** da qualche altra parte?
+3. Ha la **stessa forma** da tutte le porte da cui si può guardare?
+4. Esiste un modo per **chiederlo**?
+
 ## L'impianto
 
 **① Conoscenza** (fondazione, multi-fonte) → **② Brain** (legge tutto, impara e aggiorna la propria
