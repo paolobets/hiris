@@ -146,6 +146,31 @@ dopo un comando, il nome che hai dato alla casa. E parecchie regole che
 esistevano in due o quattro copie destinate a divergere — fra cui quella che
 decide se stai usando l'abbonamento o stai pagando a consumo.
 
+### «Spegni tutto in cucina» adesso spegne tutto
+
+Prima HIRIS doveva raccogliere gli identificatori uno per uno e passarli a mano.
+Se ne perdeva uno — e su una stanza con quindici cose ne perdeva uno — spegneva
+quattordici cose e **ti diceva di averle spente tutte**.
+
+Adesso la stanza, il piano, l'etichetta o il dispositivo li passa così come
+sono, e a risolverli è Home Assistant, che è l'unico a saperli tutti. L'esito
+dice cosa ha toccato davvero: se qualcosa è rimasto fuori, te lo dice e ti dice
+perché.
+
+### Le categorie di Home Assistant servono a qualcosa
+
+Come le etichette: HIRIS le leggeva con quattro chiamate a ogni ricostruzione e
+non le usava. Adesso compaiono quando chiedi di una cosa, e puoi cercarci
+dentro.
+
+### Una pagina per vedere la casa come la vede HIRIS
+
+Nuova pagina «Albero della casa»: piani, aree ed entità come HIRIS le ha capite.
+Serve a una cosa sola, ed è la ragione per cui esiste: **accorgerti quando ha
+capito male.** Le sei ragioni diverse per cui una cosa può restare fuori da una
+stanza — non ha area, ha un'area che non esiste, il registro non ha risposto —
+restano sei frasi distinte, non un unico «non si sa».
+
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 
 Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con

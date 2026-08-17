@@ -46,6 +46,8 @@ const ROUTE = [
   // fetta E5 Task 8: la home non e' piu' la "Dashboard" del prodotto vecchio,
   // e' «Cosa HIRIS sa» -- il segnaposto e la briciola sono cambiati con lei.
   ['#/', 'Cosa HIRIS sa'],
+  // Reperto 26: la faccia di `casa.piani` (gerarchia()).
+  ['#/albero', 'Albero della casa'],
   // fetta E5 Task 9: sostituisce il pannello Memoria della chat.
   ['#/memoria', 'Memoria'],
   ['#/usage', 'Consumi'],
@@ -72,8 +74,8 @@ function avvia() {
 test('main.js non dereferenzia nessun modulo di route al parse: senza NESSUNO di loro, tutte le route si registrano lo stesso', () => {
   const { window } = avvia();
 
-  for (const globale of ['HirisDashboard', 'HirisMemoriaRoute', 'HirisUsageRoute', 'HirisModelsRoute',
-                         'HirisImpostazioniRoute']) {
+  for (const globale of ['HirisDashboard', 'HirisAlberoRoute', 'HirisMemoriaRoute', 'HirisUsageRoute',
+                         'HirisModelsRoute', 'HirisImpostazioniRoute']) {
     assert.equal(typeof window[globale], 'undefined',
       `precondizione: ${globale} non deve essere caricato in questo test`);
   }

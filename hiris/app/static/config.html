@@ -65,6 +65,19 @@
       </span>
       <span class="nav-label">Cosa HIRIS sa</span>
     </a>
+    <!-- Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): GET
+         /api/casa manda gia' l'albero completo (`gerarchia()`: piani -> aree
+         -> entita', col comportamento, la piattaforma, la classe, l'unita',
+         le disabilitate, gli alias, le etichette), e prima usciva verso
+         nessuna pagina -- "Cosa HIRIS sa" ne leggeva solo i conteggi. Voce
+         separata e non un accordion dentro quella pagina: l'albero di una
+         casa vera e' lungo, e la home resta la vista d'insieme. -->
+    <a class="nav-item" href="#/albero" data-route="albero" title="Albero della casa" aria-label="Albero della casa">
+      <span class="nav-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 9L7 14M12 9l5 5M7 14v4M17 14v4M7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM17 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM12 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+      </span>
+      <span class="nav-label">Albero della casa</span>
+    </a>
     <!-- fetta E5 Task 9: sostituisce il pannello Memoria della chat, che
          interrogava la coda di approvazione di knowledge_store -- vuota per
          costruzione da mesi e, dalla fetta "esce il documentale", uscita del
@@ -142,6 +155,11 @@
   <script src="static/config/api.js"></script>
   <script src="static/build-check.js"></script>
   <script src="static/config/dashboard.js"></script>
+  <!-- Reperto 26: pagina #/albero, la faccia di `casa.piani` (gerarchia()).
+       Nessuna dipendenza (solo document e fetch, stesso pattern di
+       memoria-route.js/impostazioni-route.js), quindi la posizione
+       nell'ordine non vincola niente. -->
+  <script src="static/config/albero-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>
   <!-- fetta E5 Task 2: pagina #/impostazioni. Nessuna dipendenza (usa solo

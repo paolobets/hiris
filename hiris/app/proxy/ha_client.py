@@ -208,6 +208,21 @@ def _cambiati_da(risposta) -> list[dict]:
     return stati
 
 
+def _identificatori(grezzo) -> list[str]:
+    """Un insieme di identificatori di Home Assistant, letto come una lista.
+
+    Dall'altra parte del websocket quei campi sono `set` di Python
+    (`SelectedEntities` in homeassistant/helpers/target.py) e arrivano qui
+    serializzati come liste, in ordine ARBITRARIO: si ordinano, o la stessa
+    domanda fatta due volte darebbe due anteprime diverse senza che in casa
+    sia cambiato niente. Cio' che non e' una stringa si salta: non e' un
+    identificatore, e indovinare cosa sia costerebbe piu' di ignorarlo.
+    """
+    if not isinstance(grezzo, list):
+        return []
+    return sorted(v for v in grezzo if isinstance(v, str) and v)
+
+
 class HAClient:
     def __init__(self, base_url: str, token: str) -> None:
         self._base_url = base_url.rstrip("/")
@@ -302,6 +317,113 @@ class HAClient:
             resp.raise_for_status()
             risposta = await resp.json()
         return _cambiati_da(risposta)
+
+    # I cinque campi con cui Home Assistant accetta un bersaglio: sono le
+    # chiavi di `cv.TARGET_FIELDS` (homeassistant/helpers/config_validation.py),
+    # verificate alla fonte. Qui ci sono i VALORI delle costanti, non i loro
+    # nomi -- `ATTR_AREA_ID` vale "area_id", `ATTR_LABEL_ID` vale "label_id" --
+    # perche' in questo progetto la differenza fra il nome di una costante di
+    # Home Assistant e il suo valore e' gia' costata cara (`CO` vale
+    # "carbon_monoxide", non "co").
+    CAMPI_BERSAGLIO = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
+
+    async def estrai_dal_bersaglio(self, bersaglio: dict) -> dict:
+        """Cosa contiene un bersaglio -- e a dirlo e' HOME ASSISTANT, non HIRIS.
+
+        E' il comando `extract_from_target` (websocket_api/commands.py):
+        gli si passa un bersaglio nella forma di `cv.TARGET_FIELDS` (aree,
+        piani, etichette, dispositivi, entita') e risponde con le entita' che
+        quel bersaglio tocca davvero.
+
+        **Perche' non lo deduce l'anagrafe.** L'albero di `gerarchia()` e' una
+        replica che HIRIS costruisce dai registri: e' un'AFFERMAZIONE sulla
+        casa, e niente la verifica. Qui la domanda va all'originale. E' anche
+        la ragione per cui questa lettura non e' un doppione dell'anagrafe: e'
+        il secondo parere che permette di accorgersi quando la replica e'
+        vecchia -- vedi `docs/design/2026-08-17-piano-i-sette-che-mancano.md`.
+
+        **I due parametri non sono valori di comodo: replicano cio' che fa una
+        chiamata di servizio vera.** In `homeassistant/helpers/service.py`
+        l'estrazione delle entita' di un servizio e'
+        `async_extract_referenced_entity_ids(hass, target_selection, True)`,
+        cioe' `expand_group=True` e `primary_entities_only` al suo default
+        `True`, e le entita' su cui il servizio agisce sono l'unione di
+        `referenced` e `indirectly_referenced` -- esattamente cio' che il
+        comando restituisce in `referenced_entities`. Il comando WS ha invece
+        `expand_group` predefinito a `False`: lasciarglielo avrebbe prodotto
+        un'anteprima che NON coincide con cio' che si tocca, cioe' il difetto
+        di questa fetta in una forma nuova. Si passano quindi entrambi
+        espliciti.
+
+        **Le due meta' contano entrambe.** `referenced_*` dice cosa si
+        tocchera'; i `*_mancanti` dicono cosa il bersaglio nominava e non
+        esiste -- la differenza fra «l'area e' vuota» e «quell'area non c'e'»,
+        la stessa distinzione che l'anagrafe fa gia' ovunque.
+
+        Restituisce le due meta' con i nomi italiani del resto della casa::
+
+            {"entita": [...], "dispositivi": [...], "aree": [...],
+             "dispositivi_mancanti": [...], "aree_mancanti": [...],
+             "piani_mancanti": [...], "etichette_mancanti": [...]}
+
+        oppure `{"errore": "..."}` -- mai un elenco ridotto in silenzio: un
+        bersaglio che non si e' potuto risolvere non e' un bersaglio vuoto, e
+        chi chiama deve poterlo dichiarare invece di toccare «quasi tutto».
+        """
+        if not isinstance(bersaglio, dict):
+            return {"errore": "il bersaglio non e' un oggetto"}
+        pulito = {}
+        for campo in self.CAMPI_BERSAGLIO:
+            voci = bersaglio.get(campo)
+            if isinstance(voci, str):
+                voci = [voci]
+            if not isinstance(voci, list):
+                continue
+            voci = [v for v in voci if isinstance(v, str) and v.strip()]
+            if voci:
+                pulito[campo] = voci
+        if not pulito:
+            return {"errore": "il bersaglio non nomina niente che Home Assistant "
+                              "sappia risolvere"}
+
+        msg = await self._ws_command("extract_from_target",
+                                     {"target": pulito,
+                                      "expand_group": True,
+                                      "primary_entities_only": True})
+        # Tre modi di non aver saputo, tre frasi diverse: la connessione non
+        # c'e' stata, Home Assistant ha detto di no (e allora si riporta cosa
+        # ha detto: un `unknown_command` su una versione vecchia si legge
+        # qui), la risposta non era leggibile. Un solo «non lo so» li avrebbe
+        # confusi, e sono guasti con rimedi diversi.
+        if not msg:
+            return {"errore": "Home Assistant non ha risposto"}
+        if not msg.get("success"):
+            guasto = msg.get("error")
+            guasto = guasto if isinstance(guasto, dict) else {}
+            return {"errore": f"Home Assistant ha rifiutato «extract_from_target» "
+                              f"({guasto.get('code') or 'senza codice'}: "
+                              f"{guasto.get('message') or 'senza messaggio'})"}
+        risultato = msg.get("result")
+        if not isinstance(risultato, dict):
+            return {"errore": "la risposta di «extract_from_target» non e' un oggetto"}
+
+        # I dispositivi che non esistono arrivano ANCHE in
+        # `referenced_devices`: `_resolve_referenced_devices`
+        # (homeassistant/helpers/target.py) li aggiunge a entrambi gli
+        # insiemi. Tenerli qui vorrebbe dire dire «questo dispositivo si
+        # tocca» di un dispositivo che non c'e'; toglierli non nasconde
+        # niente, perche' restano interi in `dispositivi_mancanti`.
+        mancanti = _identificatori(risultato.get("missing_devices"))
+        return {
+            "entita": _identificatori(risultato.get("referenced_entities")),
+            "dispositivi": [d for d in _identificatori(risultato.get("referenced_devices"))
+                            if d not in set(mancanti)],
+            "aree": _identificatori(risultato.get("referenced_areas")),
+            "dispositivi_mancanti": mancanti,
+            "aree_mancanti": _identificatori(risultato.get("missing_areas")),
+            "piani_mancanti": _identificatori(risultato.get("missing_floors")),
+            "etichette_mancanti": _identificatori(risultato.get("missing_labels")),
+        }
 
     # fetta E3 Task 12: `get_automations`/`create_automation`/
     # `resolve_automation_id_by_alias`/`resolve_automation_id_by_entity_id`/

@@ -470,3 +470,45 @@ def test_l_eccezione_sta_dove_stanno_le_regole_dell_azione():
     assert "automation.turn_off" not in _GUIDA_SENZA_STRUMENTI, (
         "un percorso senza strumenti non deve ricevere una regola su come "
         "usarli: e' la meta' falsa che la fetta «parita'» ha tolto")
+
+
+def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
+    """Il residuo che avrebbe annullato l'intera fetta dei bersagli.
+
+    Lo strumento adesso accetta `aree`, `piani`, `etichette` e `dispositivi`,
+    e li fa risolvere a Home Assistant -- l'unico che li sa tutti. Ma i due
+    prompt continuavano a insegnare l'opposto: «se hai solo un nome, o
+    UN'AREA, chiama prima cerca e usa gli id che ti risponde». Un modello
+    obbediente avrebbe continuato a raccogliere gli id a mano anche avendo lo
+    strumento nuovo, e a spegnerne quattordici su quindici dichiarando di
+    averle spente tutte.
+
+    Si guardano le DUE GUIDE alla fonte, non il prompt composto. Un primo
+    tentativo asseriva sul testo del ponte -- che include ENTRAMBE -- e non
+    poteva fallire: le parole arrivavano comunque dall'altra guida, e la prova
+    restava verde con una delle due tornata indietro. E' il difetto n.1 del
+    progetto, comparso dentro la prova scritta per chiuderlo.
+    """
+    # DUE SORGENTI DIVERSE, e la distinzione e' il punto della prova.
+    # `_GUIDA_CON_STRUMENTI` (importata in cima) e' quella del PONTE;
+    # `BASE_SYSTEM_PROMPT` di `claude_runner` e' quella del SINCRONO, che porta
+    # la chat vera. Il secondo tentativo di questa prova le metteva entrambe
+    # sulla guida del ponte -- due chiavi, un testo solo -- e il percorso
+    # sincrono restava scoperto: mutando la sua guida la prova non se ne
+    # accorgeva.
+    guide = {
+        "sincrono": BASE_SYSTEM_PROMPT,
+        "ponte": _GUIDA_CON_STRUMENTI,
+    }
+    for percorso, testo in guide.items():
+        basso = testo.lower()
+        for parola in ("aree", "piani", "etichette", "dispositivi"):
+            assert parola in basso, (
+                f"la guida del percorso {percorso} non nomina il bersaglio "
+                f"«{parola}»: il modello non sapra' di poterlo usare")
+        assert "stanza" in basso, (
+            f"la guida del percorso {percorso} non dice cosa fare davanti a una STANZA")
+        assert "non raccogliere" in basso, (
+            f"la guida del percorso {percorso} non VIETA di raccogliere gli id a mano: "
+            "offrire lo strumento senza vietare la vecchia strada lascia scegliere al "
+            "modello, ed e' la strada vecchia quella che ha imparato")

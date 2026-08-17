@@ -30,7 +30,8 @@ ricerca approssimata che ne dipendesse degraderebbe in silenzio.
 """
 from __future__ import annotations
 
-from ..casa.anagrafe import etichette_con_nome, nomi_delle_etichette
+from ..casa.anagrafe import (categorie_con_nome, etichette_con_nome,
+                            nomi_delle_categorie, nomi_delle_etichette)
 
 import re
 import unicodedata
@@ -285,6 +286,7 @@ def costruisci_indice(casa: dict,
     per_tipo: dict[str, dict[str, dict]] = {}
     ripiego = nomi_di_ripiego or {}
     nomi_etichette = nomi_delle_etichette(casa)
+    nomi_categorie = nomi_delle_categorie(casa)
 
     for chiave_archivio, tipo in _ARCHIVI:
         registro = per_tipo.setdefault(tipo, {})
@@ -321,8 +323,16 @@ def costruisci_indice(casa: dict,
             # la stessa che usa `guarda` -- scritta due volte sarebbe una
             # ricerca che trova per un nome e una risposta che ne mostra un
             # altro.
+            # E le CATEGORIE, per la stessa ragione e con la stessa
+            # trappola: sono l'altra tassonomia che l'utente scrive a mano in
+            # Home Assistant («Luci esterne», «Vacanza»), e nei registri HA
+            # manda i soli `category_id`. Entrano col NOME -- l'unione la fa
+            # `casa.anagrafe.categorie_con_nome`, la stessa che usa `guarda`.
+            # Solo i nomi, non gli ambiti: `automation` e' un termine tecnico
+            # di Home Assistant, non una parola che qualcuno cerchera'.
             for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
-                                      *etichette_con_nome(voce, nomi_etichette)]:
+                                      *etichette_con_nome(voce, nomi_etichette),
+                                      *categorie_con_nome(voce, nomi_categorie).values()]:
                 termine_normalizzato = _normalizza(termine_originale)
                 if not termine_normalizzato:
                     continue

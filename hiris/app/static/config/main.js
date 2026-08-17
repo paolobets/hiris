@@ -72,6 +72,7 @@
       var route = item.getAttribute('data-route');
       var isActive =
         (route === 'conoscenza' && (hash === '#/' || hash === '')) ||
+        (route === 'albero' && hash.indexOf('#/albero') === 0) ||
         (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
@@ -102,6 +103,16 @@
     } else {
       document.getElementById('route-outlet').innerHTML =
         '<div class="page-title">Cosa HIRIS sa</div><p class="page-subtitle">Caricamento…</p>';
+    }
+  });
+  /* Reperto 26: la faccia di `casa.piani` -- vedi config/albero-route.js
+     per il perché. */
+  HirisRouter.register(/^#\/albero\/?$/, function() {
+    setCrumbHere('Albero della casa');
+    if (window.HirisAlberoRoute) {
+      HirisAlberoRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Albero della casa</div>';
     }
   });
   /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi

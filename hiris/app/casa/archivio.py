@@ -33,13 +33,24 @@ CREATE TABLE IF NOT EXISTS entita (
     id TEXT PRIMARY KEY, nome TEXT, area_id TEXT, dispositivo_id TEXT,
     piattaforma TEXT, categoria TEXT, classe TEXT, unita TEXT,
     disabilitata INTEGER NOT NULL DEFAULT 0, nascosta INTEGER NOT NULL DEFAULT 0,
-    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]'
+    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]',
+    categorie TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS etichette (
     id TEXT PRIMARY KEY, nome TEXT NOT NULL, colore TEXT, icona TEXT
 );
+-- L'identita' di una categoria e' la COPPIA (ambito, id), non l'id.
+-- Home Assistant tiene il registro come `dict[scope, dict[category_id, ...]]`
+-- (`helpers/category_registry.py`, verificato): l'unicita' che garantisce e'
+-- DENTRO l'ambito, e la stessa verifica vale per i nomi
+-- (`_async_ensure_name_is_available(scope, name)`) -- due categorie omonime in
+-- ambiti diversi sono esplicitamente ammesse. Un `id TEXT PRIMARY KEY`
+-- affermava un'unicita' globale che la fonte non promette, e siccome
+-- `sostituisci` e' tutto-o-niente il primo id ripetuto avrebbe fatto rotolare
+-- indietro la ricostruzione INTERA della casa, non solo la riga.
 CREATE TABLE IF NOT EXISTS categorie (
-    id TEXT PRIMARY KEY, nome TEXT NOT NULL, ambito TEXT
+    id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (ambito, id)
 );
 CREATE TABLE IF NOT EXISTS integrazioni (
     dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT
@@ -73,6 +84,27 @@ _CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
 
 def _lista(valore) -> str:
     return json.dumps(valore if isinstance(valore, list) else [], ensure_ascii=False)
+
+
+def _dizionario(valore) -> str:
+    """Come `_lista`, per i campi che Home Assistant manda come dizionario.
+
+    L'assegnazione delle categorie e' `{ambito: category_id}` -- non una lista
+    -- perche' un'entita' puo' stare in UNA categoria per ambito
+    (`RegistryEntry.categories: dict[str, str]`, verificato in
+    `helpers/entity_registry.py`). Appiattirla in una lista di id avrebbe
+    buttato via l'ambito, che fa parte dell'identita' della categoria: due
+    categorie omonime in ambiti diversi sono due cose diverse.
+
+    Chiavi e valori si costringono a stringa e le voci vuote cadono: cio' che
+    entra qui viene dalla rete, e una chiave non-stringa renderebbe la riga
+    illeggibile a `json.loads` dall'altro capo.
+    """
+    if not isinstance(valore, dict):
+        return "{}"
+    pulito = {str(k).strip(): str(v).strip() for k, v in valore.items()
+              if str(k).strip() and str(v).strip()}
+    return json.dumps(pulito, ensure_ascii=False)
 
 
 def _migrazione_2_motivo_integrazione(conn) -> None:
@@ -109,16 +141,62 @@ def _migrazione_3_entita_di_riferimento_dell_area(conn) -> None:
             pass
 
 
+def _migrazione_4_categorie_delle_entita(conn) -> None:
+    """`entita.categorie`: in quale categoria l'utente ha messo questa cosa.
+
+    Stessa ragione delle migrazioni 2 e 3: `CREATE TABLE IF NOT EXISTS` non
+    tocca una tabella che esiste gia', e senza questa colonna il primo
+    `sostituisci` dopo l'aggiornamento fallirebbe -- la casa smetterebbe di
+    ricostruirsi, in silenzio.
+
+    Il predefinito e' `'{}'` e non `'[]'`: e' un dizionario ambito -> id, non
+    una lista (vedi `_dizionario`). Una riga vecchia che non ha mai visto le
+    categorie dice cosi' «nessuna categoria», che e' vero.
+    """
+    try:
+        conn.execute("ALTER TABLE entita ADD COLUMN categorie TEXT NOT NULL DEFAULT '{}'")
+    except Exception:
+        pass
+
+
+def _migrazione_5_identita_della_categoria(conn) -> None:
+    """La chiave di `categorie` diventa la coppia (ambito, id).
+
+    Non si puo' cambiare una PRIMARY KEY con un `ALTER TABLE`: si ricostruisce
+    la tabella e ci si ricopia dentro cio' che c'era. `INSERT OR IGNORE`
+    perche' un archivio vecchio, se anche avesse due righe che collidono sulla
+    nuova chiave, non deve poter impedire l'aggiornamento: la tabella e' una
+    replica che il primo `sostituisci` riscrive per intero.
+
+    `ambito` diventa NOT NULL con predefinito vuoto: NULL non e' uguale a
+    NULL in SQLite, quindi lasciarlo nullabile dentro una chiave primaria
+    avrebbe rimesso in piedi il buco che la chiave serve a chiudere.
+    """
+    try:
+        conn.executescript(
+            "CREATE TABLE categorie_nuova ("
+            " id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',"
+            " PRIMARY KEY (ambito, id));"
+            "INSERT OR IGNORE INTO categorie_nuova (id, nome, ambito)"
+            " SELECT id, nome, COALESCE(ambito, '') FROM categorie;"
+            "DROP TABLE categorie;"
+            "ALTER TABLE categorie_nuova RENAME TO categorie;")
+    except Exception:
+        pass
+
+
 _MIGRAZIONI = {
     2: _migrazione_2_motivo_integrazione,
     3: _migrazione_3_entita_di_riferimento_dell_area,
+    4: _migrazione_4_categorie_delle_entita,
+    5: _migrazione_5_identita_della_categoria,
 }
 
 
 class ArchivioCasa:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=3, migrations=_MIGRAZIONI)
+        init_schema(self._conn, _SCHEMA, version=5, migrations=_MIGRAZIONI)
 
     def chiudi(self) -> None:
         self._conn.close()
@@ -185,10 +263,24 @@ class ArchivioCasa:
                            1 if d.get("disabled_by") else 0, _lista(d.get("labels"))))
 
             for e in registri.get("entita", []):
+                # `categories` -- IN QUALE CATEGORIA l'utente ha messo questa
+                # cosa -- arrivava gia' dentro questa stessa risposta
+                # (`RegistryEntry.as_partial_dict`, verificato sul sorgente di
+                # HA) e si buttava. E' la stessa tassonomia scritta a mano
+                # delle etichette, dall'altro capo: il registro delle
+                # categorie era letto con quattro comandi WS a ogni
+                # ricostruzione e l'assegnazione, che costa zero, no.
+                #
+                # ATTENZIONE alla vicinanza dei nomi: `categoria` (singolare)
+                # e' l'`entity_category` di Home Assistant -- `config` o
+                # `diagnostic`, deciso dall'INTEGRAZIONE -- e non c'entra
+                # niente con `categorie` (plurale), che e' la tassonomia
+                # dell'UTENTE. Due fatti diversi, due colonne diverse.
                 c.execute("INSERT INTO entita "
                           "(id, nome, area_id, dispositivo_id, piattaforma, categoria, "
-                          " classe, unita, disabilitata, nascosta, alias, etichette) "
-                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                          " classe, unita, disabilitata, nascosta, alias, etichette, "
+                          " categorie) "
+                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (e["entity_id"],
                            # Il nome scelto dall'utente vince su quello che
                            # l'integrazione ha proposto: e' il primo posto in cui
@@ -200,7 +292,8 @@ class ArchivioCasa:
                            e.get("unit_of_measurement"),
                            1 if e.get("disabled_by") else 0,
                            1 if e.get("hidden_by") else 0,
-                           _lista(e.get("aliases")), _lista(e.get("labels"))))
+                           _lista(e.get("aliases")), _lista(e.get("labels")),
+                           _dizionario(e.get("categories"))))
 
             for et in registri.get("etichette", []):
                 c.execute("INSERT INTO etichette (id, nome, colore, icona) VALUES (?,?,?,?)",
@@ -211,9 +304,12 @@ class ArchivioCasa:
                 # `ambito` lo mette leggi_registri: Home Assistant partiziona le
                 # categorie per ambito e non lo riporta nelle righe, quindi due
                 # categorie omonime in ambiti diversi sarebbero indistinguibili.
+                # `ambito` a stringa vuota e mai NULL: e' meta' della chiave
+                # primaria, e in SQLite NULL non e' uguale a NULL -- due righe
+                # con ambito nullo non sarebbero considerate doppie.
                 c.execute("INSERT INTO categorie (id, nome, ambito) VALUES (?,?,?)",
                           (ca["category_id"], ca.get("name") or ca["category_id"],
-                           ca.get("ambito")))
+                           ca.get("ambito") or ""))
 
             for i in registri.get("integrazioni", []):
                 # `reason` -- il MOTIVO per cui un'integrazione non e' partita
@@ -475,4 +571,14 @@ class ArchivioCasa:
                     riga[campo] = json.loads(riga[campo])
                 except (TypeError, ValueError):
                     riga[campo] = []
+        # `categorie` e' un DIZIONARIO ambito -> category_id, non una lista:
+        # ripiegare su `[]` come sopra darebbe a chi legge una forma che il
+        # campo non ha mai (`.items()` su una lista solleva), e il ripiego
+        # deve avere la stessa forma del valore buono.
+        if "categorie" in riga:
+            try:
+                sciolto = json.loads(riga["categorie"])
+            except (TypeError, ValueError):
+                sciolto = None
+            riga["categorie"] = sciolto if isinstance(sciolto, dict) else {}
         return riga

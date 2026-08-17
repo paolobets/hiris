@@ -212,8 +212,14 @@ _GUIDA_CON_STRUMENTI = (
     "nota o di aver acceso qualcosa se non hai chiamato lo strumento.\n"
     "Gli id delle entita' che passi a `mcp__hiris__esegui` sono quelli ESATTI "
     "di questa casa: non li inventi e non li ricavi dal nome. Se hai solo il "
-    "nome di una cosa, o di una stanza, chiama prima `mcp__hiris__cerca` e "
-    "usa gli id che ti risponde."
+    "NOME di una cosa chiama prima `mcp__hiris__cerca` e usa l'id che ti "
+    "risponde.\n"
+    "Se invece la richiesta riguarda una STANZA, un piano, un'etichetta o un "
+    "dispositivo, passali a `mcp__hiris__esegui` cosi' come sono (`aree`, "
+    "`piani`, `etichette`, `dispositivi`) e NON raccogliere gli id a mano: li "
+    "risolve Home Assistant, che e' l'unico a saperli tutti. Raccoglierli a "
+    "mano significa spegnerne quattordici su quindici e dire di averle spente "
+    "tutte."
 )
 
 # Le due frasi sul CONTESTO, complementari fra loro: una sola delle due entra

@@ -39,9 +39,9 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
-from .anagrafe import (classe_effettiva, dominio_di, etichette_con_nome,
-                       gerarchia, nomi_delle_etichette, traduci_stato,
-                       unita_effettiva)
+from .anagrafe import (categorie_con_nome, classe_effettiva, dominio_di,
+                       etichette_con_nome, gerarchia, nomi_delle_categorie,
+                       nomi_delle_etichette, traduci_stato, unita_effettiva)
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -138,13 +138,14 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
                         nomi_di_ripiego: dict[str, str] | None,
                         unita_vive: dict[str, str] | None = None,
                         nomi_etichette: dict[str, str] | None = None,
-                        classi_vive: dict[str, str] | None = None) -> dict:
+                        classi_vive: dict[str, str] | None = None,
+                        nomi_categorie: dict[tuple[str, str], str] | None = None) -> dict:
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
     registro no (il nome dedotto e l'unita' di misura) e con cio' che il
-    registro sa e la proiezione lascerebbe indietro (la piattaforma e le
-    etichette).
+    registro sa e la proiezione lascerebbe indietro (la piattaforma, le
+    etichette e le categorie).
 
     Prende la VOCE del registro, non il solo `entita_id`: e' il cambiamento
     che rende questa porta capace di portare anche i campi dichiarati. Con il
@@ -218,7 +219,42 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     categoria = (voce.get("categoria") or "").strip()
     if categoria:
         dettaglio_entita["categoria"] = categoria
+    _con_categorie(dettaglio_entita, voce, nomi_categorie or {})
     return _con_etichette(dettaglio_entita, voce, nomi_etichette or {})
+
+
+def _con_categorie(dettaglio: dict, voce: dict,
+                   nomi_categorie: dict[tuple[str, str], str]) -> dict:
+    """L'altra tassonomia scritta a mano dall'utente in Home Assistant.
+
+    Le categorie stanno alle etichette come una cartella sta a un post-it:
+    «Luci esterne», «Vacanza», «Da rifare». HIRIS leggeva il loro registro con
+    QUATTRO comandi WebSocket a ogni ricostruzione dell'anagrafe -- uno per
+    ambito -- e non le faceva uscire da nessuna porta; l'assegnazione
+    per-entita', che arriva GRATIS dentro la risposta del registro delle
+    entita' (`RegistryEntry.as_partial_dict`, verificato sul sorgente di HA),
+    non la salvava nemmeno. Costo pieno, resa zero.
+
+    Escono col NOME, non col `category_id`: l'unione la fa
+    `anagrafe.categorie_con_nome`, la stessa che usa l'indice di `cerca`.
+    Senza, HIRIS riferirebbe all'utente un identificativo che l'utente non ha
+    mai scritto -- ed e' la trappola gia' pagata una volta con le etichette.
+
+    La forma e' `{ambito: nome}` e non una lista di nomi: l'ambito
+    (`automation`, `script`, `scene`, `helpers`) fa parte dell'identita' della
+    categoria, e due omonime in ambiti diversi sono due cose diverse.
+
+    Da NON confondere con `categoria` (singolare), che e' l'`entity_category`
+    di Home Assistant -- `config` o `diagnostic`, decisa dall'integrazione.
+
+    Compare solo quando ce n'e' almeno una: `categorie: {}` su ogni cosa
+    sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
+    registro delle categorie caduto. Stessa disciplina di `etichette`.
+    """
+    categorie = categorie_con_nome(voce, nomi_categorie)
+    if categorie:
+        dettaglio["categorie"] = categorie
+    return dettaglio
 
 
 def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) -> dict:
@@ -256,6 +292,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # avviso: la stessa forma di una cucina davvero piu' piccola.
     piani = gerarchia(casa, tuple(non_disponibili))
     nomi_etichette = nomi_delle_etichette(casa)
+    nomi_categorie = nomi_delle_categorie(casa)
     area = _trova_area(piani, riferimento)
     if area is None:
         dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento}
@@ -271,7 +308,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": False},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
+            nomi_categorie)
         for e in area["entita"]
     ] + [
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
@@ -282,7 +320,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]), "disabilitata": True},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
+            nomi_categorie)
         for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
@@ -345,7 +384,8 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_arricchisci_entita`).
     return _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
-                               nomi_delle_etichette(casa), classi_vive)
+                               nomi_delle_etichette(casa), classi_vive,
+                               nomi_delle_categorie(casa))
 
 
 def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferimento,
@@ -354,6 +394,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
                         unita_vive: dict[str, str] | None = None,
                  classi_vive: dict[str, str] | None = None) -> dict:
     nomi_etichette = nomi_delle_etichette(casa)
+    nomi_categorie = nomi_delle_categorie(casa)
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
@@ -376,7 +417,8 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive)
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
+            nomi_categorie)
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     dettaglio = {

@@ -317,3 +317,80 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     assert any("problema" in a and "comportamento" in a for a in avvisi)
     assert any("scripts.yaml" in a for a in avvisi)
     archivio_casa.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
+    """L'albero porta i soli `label_id`: senza questa mappa chi disegna puo'
+    solo mostrare lo slug -- «da_controllare» invece di «Da controllare», una
+    parola che l'utente non ha mai scritto e che non cambierebbe nemmeno
+    rinominando l'etichetta in Home Assistant.
+
+    Esce la MAPPA, una volta, non il nome ripetuto su ogni entita' etichettata:
+    li' e' lo stesso fatto scritto mille volte.
+    """
+    casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    casa.sostituisci({
+        "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"]}],
+        "etichette": [{"label_id": "da_controllare", "name": "Da controllare"}],
+        "entita": [],
+    }, [])
+    app = web.Application()
+    app["archivio_casa"] = casa
+    app.router.add_get("/api/casa", handle_get_casa)
+    client = await aiohttp_client(app)
+
+    corpo = await (await client.get("/api/casa")).json()
+    assert corpo["etichette"]["da_controllare"] == "Da controllare"
+    # La mappa, non il nome ripetuto: sull'albero l'etichetta resta un id.
+    area = corpo["piani"][0]["aree"][0]
+    assert area["etichette"] == ["da_controllare"]
+
+
+@pytest.mark.asyncio
+async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, tmp_path):
+    """Stessa disciplina delle etichette, con una differenza che conta: le
+    categorie escono ANNIDATE PER AMBITO.
+
+    Il registro di Home Assistant e' partizionato (`automation`, `script`,
+    `scene`, `helpers`) e due categorie omonime in ambiti diversi sono cose
+    diverse -- e' la stessa ragione per cui la chiave dell'archivio e'
+    `(ambito, id)`. Appiattirle qui rimetterebbe in piedi l'ambiguita' che
+    quella chiave esiste per chiudere.
+
+    E la ragione per cui questa prova esiste: la fetta delle categorie aveva
+    cablato i nomi in `guarda` e nell'indice di `cerca`, e aveva saltato
+    questa porta -- la stessa categoria usciva col nome dallo strumento e con
+    l'id grezzo dalla pagina.
+    """
+    casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    casa.sostituisci({
+        "aree": [], "entita": [],
+        "categorie": [
+            {"category_id": "c1", "name": "Vacanza", "ambito": "automation"},
+            # Stesso id, ambito diverso, nome diverso: sono due cose.
+            {"category_id": "c1", "name": "Luci esterne", "ambito": "script"},
+        ],
+    }, [])
+    app = web.Application()
+    app["archivio_casa"] = casa
+    app.router.add_get("/api/casa", handle_get_casa)
+    client = await aiohttp_client(app)
+
+    corpo = await (await client.get("/api/casa")).json()
+    assert corpo["categorie"]["automation"]["c1"] == "Vacanza"
+    assert corpo["categorie"]["script"]["c1"] == "Luci esterne"
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
+    """`None` e non `{}`: qui non e' «la casa non ha etichette», e' «non
+    abbiamo letto niente». La stessa distinzione di `non_disponibili`."""
+    app = web.Application()
+    app["archivio_casa"] = None
+    app.router.add_get("/api/casa", handle_get_casa)
+    client = await aiohttp_client(app)
+
+    corpo = await (await client.get("/api/casa")).json()
+    assert corpo["etichette"] is None
+    assert corpo["categorie"] is None

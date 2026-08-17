@@ -12,6 +12,19 @@ le sicurezze -- i controlli si scrivono UNA volta e valgono per chiunque.
 Non solleva mai: ogni guasto diventa un dizionario con `errore`, perche' il
 suo chiamante e' uno strumento che parla a un modello.
 
+**I bersagli, e perche' il giro e' in due tempi.** «Spegni tutto in cucina»
+obbligava il modello a chiamare `cerca`, raccogliere gli id a mano e passarli
+tutti qui: se ne perdeva uno, HIRIS ne spegneva quattordici su quindici e
+dichiarava di aver spento tutto. Dalla fetta «i bersagli» un'area, un piano,
+un'etichetta o un dispositivo si passano come sono, e a dire cosa contengono
+e' HOME ASSISTANT (`extract_from_target`). `verifica()` e' pura e non puo'
+chiederglielo: la porta risolve e RICHIAMA la verifica con l'elenco in mano,
+cosi' la parte che dice di no resta una sola e la risoluzione non diventa un
+secondo posto in cui si decide. Se quella domanda non arriva a destinazione,
+il rifiuto lo dice -- `_BERSAGLIO_SENZA_CANALE` e `_bersaglio_non_risolto`
+sono la terza guardia di questo modulo, con la stessa regola delle prime due:
+un ingresso che non si e' potuto leggere non diventa mai un elenco piu' corto.
+
 **I due ingressi vuoti.** `verifica()` e' pura: non puo' distinguere «non
 c'e'» da «non l'ho letto». Con un registro vuoto rifiuterebbe tutto dicendo
 «Domini disponibili: .»; con lo specchio dello stato vuoto direbbe «l'entita'
@@ -111,6 +124,27 @@ _SPECCHIO_CIECO = ("non vedo lo stato di questa casa: l'inventario delle entita'
                    "non e' disponibile. Non posso dire se l'entita' esista, solo "
                    "che non ho potuto controllare. Riprova fra poco.")
 
+# La terza guardia, e ha la stessa forma delle due sopra: un ingresso che non
+# si e' potuto leggere non diventa mai un elenco piu' corto.
+#
+# **Chi lo dice non e' un dettaglio.** Un bersaglio per area, piano, etichetta
+# o dispositivo lo risolve HOME ASSISTANT (`extract_from_target`). Se quella
+# domanda non arriva a destinazione, HIRIS ha davanti due strade: indovinare
+# quali entita' ci siano dentro -- che vuol dire spegnerne quattordici su
+# quindici e dire di averle spente tutte, cioe' il difetto che questa fetta
+# chiude -- oppure dirlo. Si dice.
+_BERSAGLIO_SENZA_CANALE = ("questo collegamento con Home Assistant non sa risolvere "
+                           "un bersaglio per area, piano, etichetta o dispositivo. "
+                           "Passa gli id esatti in «bersaglio.entita»: non riduco "
+                           "un'area a un elenco che mi sono immaginato.")
+
+
+def _bersaglio_non_risolto(motivo: str) -> str:
+    return (f"non sono riuscito a chiedere a Home Assistant cosa contiene questo "
+            f"bersaglio ({motivo}). Non tiro a indovinare quali entita' ci siano "
+            f"dentro -- non ho toccato niente. Riprova fra poco, oppure passa gli "
+            f"id esatti in «bersaglio.entita».")
+
 
 def _secondi(attesa: float) -> str:
     """«2», non «2.0»; «0.05» resta «0.05». Il numero che l'avviso mostra
@@ -156,6 +190,39 @@ _CAMBIATO_NON_MOSTRABILE = ("Home Assistant ha riportato un cambiamento su quest
                             "chiamata -- ma fra i valori che HIRIS confronta non "
                             "ce n'e' nessuno diverso: il comando ha avuto effetto "
                             "su qualcosa che non so mostrare")
+
+
+def _anteprima(verdetto, risolto: dict) -> dict:
+    """Cosa il bersaglio conteneva, e cosa di quello si tocca.
+
+    C'e' solo quando il bersaglio e' stato risolto da Home Assistant: su un
+    bersaglio di sole entita' non ci sarebbe niente da raccontare che
+    `entita` non dica gia'.
+
+    **Le sette voci sono tutte fatti, e nessuna e' un doppione dell'altra.**
+    `chiesto` e' cio' che si e' domandato (nella forma di Home Assistant, che
+    e' la forma in cui la domanda e' partita davvero); `risolte` cio' che lui
+    ha risposto; `toccate` cio' su cui la chiamata parte. Fra la seconda e la
+    terza ci sono le due esclusioni, ed e' li' che vive la differenza fra
+    «ho spento tutto» e «ho spento le 9 luci delle 15 cose che ci sono in
+    cucina»: senza dichiararle, un elenco piu' corto passerebbe per l'elenco
+    intero. Aree e dispositivi chiudono il giro: dicono ATTRAVERSO cosa le
+    entita' sono state trovate, che e' la sola cosa che permette di
+    accorgersi che un'area conteneva un dispositivo che non ci si aspettava.
+
+    Le chiavi ci sono sempre, anche vuote: un campo che compare a volte
+    obbliga chi legge a distinguere «non e' successo» da «non me l'hanno
+    detto», e qui i due casi coincidono con la lista vuota.
+    """
+    return {
+        "chiesto": dict(verdetto.bersaglio),
+        "risolte": list(risolto.get("entita") or []),
+        "toccate": list(verdetto.entita),
+        "escluse_altro_dominio": list(verdetto.scartate),
+        "escluse_senza_stato": list(verdetto.sconosciute),
+        "aree": list(risolto.get("aree") or []),
+        "dispositivi": list(risolto.get("dispositivi") or []),
+    }
 
 
 def _impronta(voce) -> dict | None:
@@ -379,6 +446,37 @@ class PortaAzione:
                 stati[eid] = voce
         return stati
 
+    async def _risolvi(self, bersaglio: dict) -> dict:
+        """Cosa contiene questo bersaglio, chiesto a Home Assistant.
+
+        Restituisce cio' che ha risposto (`ha_client.estrai_dal_bersaglio`),
+        oppure `{"errore": "..."}` gia' scritto per il modello. Non ha una
+        terza uscita, ed e' il punto: non esiste un ramo in cui un bersaglio
+        non risolto diventi un elenco piu' corto.
+
+        Il `getattr` non e' prudenza generica: la porta si costruisce con
+        qualunque client (`PortaAzione.__init__` non ne dichiara il tipo), e
+        uno che non sappia risolvere i bersagli deve produrre un rifiuto
+        onesto invece di un `AttributeError` travestito da risposta.
+        """
+        estrai = getattr(self._ha, "estrai_dal_bersaglio", None)
+        if not callable(estrai):
+            logger.warning("questo client di Home Assistant non sa risolvere i "
+                           "bersagli: solo le entita' nominate sono eseguibili")
+            return {"errore": _BERSAGLIO_SENZA_CANALE}
+        try:
+            risposta = await estrai(bersaglio)
+        except Exception as errore:
+            logger.warning("bersaglio non risolto (%s: %s)",
+                           type(errore).__name__, errore)
+            return {"errore": _bersaglio_non_risolto(
+                f"{type(errore).__name__}: {errore}")}
+        if not isinstance(risposta, dict):
+            return {"errore": _bersaglio_non_risolto("risposta illeggibile")}
+        if risposta.get("errore"):
+            return {"errore": _bersaglio_non_risolto(str(risposta["errore"]))}
+        return risposta
+
     def _apri_ascolto(self, ascolto) -> bool:
         """Aggancia l'ascoltatore effimero, o dichiara di non poterlo fare.
 
@@ -442,9 +540,34 @@ class PortaAzione:
             return {"eseguito": False, "errore": _SPECCHIO_CIECO}
 
         verdetto = verifica(chiamata, self._registro, stati_prima)
+        # Il secondo tempo, e solo per i bersagli che lo chiedono: un
+        # bersaglio di sole entita' non costa nessun giro di rete. La verifica
+        # si rifa' INTERA con l'elenco in mano -- non si aggiunge un pezzo a
+        # un verdetto gia' preso -- cosi' la parte che dice di no resta una.
+        risolto = None
+        if verdetto.da_risolvere:
+            risolto = await self._risolvi(verdetto.bersaglio)
+            if risolto.get("errore"):
+                logger.warning("azione rifiutata [origine=%s]: bersaglio %s non "
+                               "risolto", origine, verdetto.bersaglio)
+                return {"eseguito": False, "errore": risolto["errore"]}
+            verdetto = verifica(chiamata, self._registro, stati_prima,
+                                risolto=risolto)
         if not verdetto.ok:
             logger.info("azione rifiutata [origine=%s]: %s", origine, verdetto.motivo)
             return {"eseguito": False, "errore": verdetto.motivo}
+
+        # L'anteprima: cosa si toccherebbe, calcolata e detta PRIMA di
+        # toccarlo. Nell'esito ci arriva in fondo, ma qui e' gia' un fatto --
+        # e nel log lo e' anche quando la chiamata poi fallisce, che e'
+        # l'unico momento in cui la si puo' confrontare con cio' che e'
+        # successo davvero.
+        anteprima = _anteprima(verdetto, risolto) if risolto is not None else None
+        if anteprima is not None:
+            logger.info("azione: bersaglio %s risolto in %d entita' da toccare "
+                        "(%d di altri domini, %d senza stato) [origine=%s]",
+                        verdetto.bersaglio, len(verdetto.entita),
+                        len(verdetto.scartate), len(verdetto.sconosciute), origine)
 
         dati = dict(chiamata.get("dati") or {})
         dati["entity_id"] = list(verdetto.entita)
@@ -521,6 +644,8 @@ class PortaAzione:
                  "servizio": f"{verdetto.dominio}.{verdetto.servizio}",
                  "entita": list(verdetto.entita),
                  "prima": prima, "dopo": dopo, "cambiato": cambiato}
+        if anteprima is not None:
+            esito["bersaglio"] = anteprima
         if non_viste:
             esito["avviso"] = _non_visto(attesa)
         elif cambiato:

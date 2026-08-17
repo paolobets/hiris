@@ -15,9 +15,28 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import gerarchia, specchio_vivo
+from ..casa.anagrafe import gerarchia, nomi_delle_categorie, specchio_vivo
 from ..casa.nucleo import componi
 from ..proxy.entity_cache import inventario_leggibile
+
+
+def _mappa_categorie(casa: dict) -> dict[str, dict[str, str]]:
+    """`{ambito: {category_id: nome}}` per chi disegna l'albero.
+
+    Esce la MAPPA e non il nome ripetuto su ogni entita' categorizzata: li'
+    sarebbe lo stesso fatto scritto mille volte. Stessa scelta delle
+    etichette, appena sopra.
+
+    La sorgente e' `anagrafe.nomi_delle_categorie`, la stessa che usano
+    `guarda` e l'indice di `cerca`: qui si cambia solo la FORMA (le chiavi a
+    coppia non attraversano JSON), mai il contenuto -- due mappe costruite
+    ognuna per conto proprio sarebbero due nomi diversi per la stessa
+    categoria a seconda della porta.
+    """
+    mappa: dict[str, dict[str, str]] = {}
+    for (ambito, categoria_id), nome in nomi_delle_categorie(casa).items():
+        mappa.setdefault(ambito, {})[categoria_id] = nome
+    return mappa
 
 
 async def handle_get_casa(request: web.Request) -> web.Response:
@@ -43,6 +62,9 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             # di riferimento", e' "non abbiamo letto niente". La stessa
             # distinzione di `non_disponibili` qui sopra.
             "sistema_di_riferimento": None,
+            # `None` e non `{}`: qui non e' "la casa non ha etichette", e'
+            # "non abbiamo letto niente".
+            "etichette": None, "categorie": None,
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
@@ -73,6 +95,36 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # sono due case diverse a seconda della porta da cui entri.
         "sistema_di_riferimento": archivio.sistema_di_riferimento(),
         "piani": gerarchia(casa, non_disponibili),
+        # I NOMI delle etichette, id -> nome.
+        #
+        # `gerarchia()` mette sulle aree e sulle entita' i soli `label_id` --
+        # e' cosi' che Home Assistant li manda -- e senza questa mappa chi
+        # legge il payload puo' solo mostrare lo slug: «da_controllare» invece
+        # di «Da controllare», una parola che l'utente non ha mai scritto e che
+        # non cambierebbe nemmeno rinominando l'etichetta.
+        #
+        # E' lo stesso difetto gia' chiuso su `guarda` (`anagrafe.etichette_con_nome`),
+        # che pero' risolve i nomi DENTRO la risposta perche' li' esce un
+        # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
+        # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
+        # mappa, una volta, e chi disegna la applica.
+        "etichette": {e["id"]: e.get("nome") or e["id"]
+                      for e in casa.get("etichette") or [] if e.get("id")},
+        # Le CATEGORIE, con la stessa forma e per la stessa ragione -- ma
+        # annidate per AMBITO, perche' il registro di Home Assistant e'
+        # partizionato (`automation`, `script`, `scene`, `helpers`) e due
+        # categorie omonime in ambiti diversi sono cose diverse. Appiattirle
+        # su un id solo qui rimetterebbe in piedi l'ambiguita' che la chiave
+        # `(ambito, id)` dell'archivio esiste per chiudere.
+        #
+        # Perche' anche qui, e non solo in `guarda`: la fetta delle categorie
+        # ha cablato `anagrafe.categorie_con_nome` in `domande.py` e
+        # nell'indice di `cerca`, e ha saltato QUESTA porta -- cosi' la stessa
+        # categoria usciva col nome dallo strumento e con l'id grezzo dalla
+        # pagina. E' il pattern che la review ha nominato («una fetta unifica
+        # una regola e salta una porta»), ricomparso dentro una fetta scritta
+        # apposta per non ripeterlo.
+        "categorie": _mappa_categorie(casa),
         "comportamento": {
             "letto_il": archivio.comportamento_letto_il(),
             "conteggi": conteggi_comportamento,

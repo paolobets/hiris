@@ -283,15 +283,25 @@ ESEGUI_TOOL_DEF = {
     "description": (
         "Chiama un servizio di Home Assistant per far succedere qualcosa nella "
         "casa: accendere, spegnere, impostare. Richiede `servizio` nella forma "
-        "«dominio.servizio» (per esempio «light.turn_off») e `bersaglio.entita`, "
-        "la lista degli id ESATTI delle entita' -- non nomi liberi: se hai solo "
-        "un nome o un'area, usa prima `cerca` per ottenere gli id. "
+        "«dominio.servizio» (per esempio «light.turn_off») e un `bersaglio`. "
+        "Il bersaglio si scrive in due modi, e il secondo e' quello giusto per "
+        "«tutto in cucina»: `entita` con gli id ESATTI, oppure `aree`, `piani`, "
+        "`etichette` o `dispositivi` con i loro id -- e in quel caso e' Home "
+        "Assistant a dire cosa contengono. NON risolvere un'area a mano con "
+        "`cerca` per poi elencarne le entita': se te ne sfugge una tocchi quasi "
+        "tutto e credi di aver toccato tutto. Puoi combinarli. "
         "`dati` porta i parametri del servizio, se ne servono. "
         "La chiamata viene VERIFICATA contro questa installazione prima di "
-        "partire: se il servizio non esiste, se l'entita' non esiste, o se un "
+        "partire: se il servizio non esiste, se l'entita' non esiste, se l'area "
+        "o l'etichetta che hai nominato non esistono, o se un "
         "parametro non appartiene a quel servizio, ricevi un errore che dice "
         "cosa esiste davvero -- usalo per correggerti invece di riprovare "
-        "uguale. Dopo l'esecuzione lo stato viene RILETTO: `prima`, `dopo` e "
+        "uguale. Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
+        "dice cosa conteneva (`risolte`), su cosa la chiamata e' partita "
+        "(`toccate`) e cosa e' rimasto fuori perche' di un altro dominio o "
+        "senza stato: se `toccate` e' piu' corto di `risolte`, dillo all'utente "
+        "invece di dichiarare che hai fatto tutto. "
+        "Dopo l'esecuzione lo stato viene RILETTO: `prima`, `dopo` e "
         "`cambiato` dicono cosa e' successo per davvero. Se `cambiato` e' vuoto "
         "arriva un `avviso`: la chiamata e' riuscita ma nulla e' cambiato, e "
         "va detto all'utente invece di dichiarare un successo."
@@ -305,14 +315,45 @@ ESEGUI_TOOL_DEF = {
             },
             "bersaglio": {
                 "type": "object",
+                "description": (
+                    "Cosa toccare. Almeno una fra `entita`, `aree`, `piani`, "
+                    "`etichette` e `dispositivi`; si possono combinare."
+                ),
                 "properties": {
                     "entita": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Gli id esatti delle entita' da toccare.",
                     },
+                    "aree": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Gli id delle aree: il servizio tocca cio' che Home "
+                            "Assistant dice esserci dentro, e a cui si applica."
+                        ),
+                    },
+                    "piani": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Gli id dei piani, con tutte le loro aree.",
+                    },
+                    "etichette": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Gli id delle etichette: tutto cio' che le porta, "
+                            "entita', dispositivi o aree."
+                        ),
+                    },
+                    "dispositivi": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Gli id dei dispositivi, con le loro entita'."
+                        ),
+                    },
                 },
-                "required": ["entita"],
             },
             "dati": {
                 "type": "object",

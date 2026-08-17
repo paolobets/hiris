@@ -242,6 +242,69 @@ def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
             if str(e).strip()]
 
 
+def nomi_delle_categorie(casa: dict) -> dict[tuple[str, str], str]:
+    """(ambito, category_id) -> nome, dal registro delle categorie.
+
+    Le categorie sono la SECONDA tassonomia scritta a mano dall'utente in Home
+    Assistant, accanto alle etichette: «Luci esterne», «Vacanza», «Da rifare».
+    E vale identica la trappola gia' pagata con le etichette: nei registri HA
+    manda gli **identificativi** (`categories: dict[str, str]` su ogni voce
+    delle entita', verificato in `helpers/entity_registry.py`), e i nomi
+    stanno in un registro a parte (`config/category_registry/list` risponde
+    con `category_id` + `name` + `icon`, verificato in
+    `components/config/category_registry.py`). Un id che esce senza il suo
+    nome e' un frammento: ATOMICITA'.
+
+    La chiave e' la COPPIA, non il solo id. Il registro delle categorie di
+    Home Assistant e' partizionato per ambito (`automation`, `script`,
+    `scene`, `helpers`: e' il parametro obbligatorio `scope` del comando) e le
+    righe che torna NON lo riportano -- lo aggiunge `ha_client.leggi_registri`
+    marcando ogni riga col proprio. Due categorie omonime in ambiti diversi
+    sono due cose diverse, e indicizzarle per il solo id lascerebbe che l'una
+    rispondesse per l'altra.
+
+    Qui, e non in `domande.py`, per la stessa ragione di
+    `nomi_delle_etichette`: la stessa unione serve all'indice di `cerca`
+    (`memoria/riconoscitore.py`), e scritta due volte sarebbe una ricerca che
+    trova per un nome e una risposta che ne mostra un altro.
+    """
+    nomi: dict[tuple[str, str], str] = {}
+    for c in casa.get("categorie") or []:
+        identificativo = str(c.get("id") or "").strip()
+        if not identificativo:
+            continue
+        ambito = str(c.get("ambito") or "").strip()
+        nomi[(ambito, identificativo)] = str(c.get("nome") or "").strip() or identificativo
+    return nomi
+
+
+def categorie_con_nome(voce: dict, nomi: dict[tuple[str, str], str]) -> dict[str, str]:
+    """Le categorie di una voce dell'anagrafe: `{ambito: nome}`.
+
+    Resta un dizionario e non diventa una lista di nomi -- come sono invece le
+    etichette -- perche' l'ambito e' parte del significato: «Luci esterne»
+    fra le automazioni e «Luci esterne» fra le scene sono due tassonomie
+    diverse, e chi riceve il solo nome non puo' piu' distinguerle.
+
+    Un id che il registro non conosce resta com'e' invece di sparire: e' un
+    riferimento penzolante (o un registro delle categorie non letto -- ne
+    esistono quattro, uno per ambito, e possono cadere separatamente), e
+    «questa cosa sta in una categoria che non so nominare» e' piu' vero di
+    «questa cosa non ha categoria». Stessa scelta di `etichette_con_nome`.
+    """
+    assegnate = voce.get("categorie")
+    if not isinstance(assegnate, dict):
+        return {}
+    fuori: dict[str, str] = {}
+    for ambito, identificativo in assegnate.items():
+        ambito = str(ambito).strip()
+        identificativo = str(identificativo).strip()
+        if not ambito or not identificativo:
+            continue
+        fuori[ambito] = nomi.get((ambito, identificativo), identificativo)
+    return fuori
+
+
 # --- il vocabolario degli stati -------------------------------------------
 #
 # Sta QUI e non in `nucleo.py`, dov'era nato: il significato di uno stato e' un
