@@ -90,3 +90,39 @@ def test_guarda_dice_la_classe_che_prometteva():
                "entita", "binary_sensor.perdita_lavatrice", classi_vive=classi)
     assert d["classe"] == "moisture"
     assert d["stato_leggibile"] == "bagnato"
+
+
+# --- gli altri campi che lo specchio buttava ------------------------------
+
+def test_lo_specchio_tiene_state_class():
+    """Misura di adesso o contatore che sale: e' cio' che dice a quali entita'
+    ha senso chiedere una statistica, senza doverlo domandare al recorder.
+    Arrivava a ogni avvio e la proiezione lo buttava."""
+    from hiris.app.proxy.entity_cache import _to_minimal
+    voce = _to_minimal({"entity_id": "sensor.consumo", "state": "12",
+                        "attributes": {"state_class": "total_increasing"}})
+    assert voce["state_class"] == "total_increasing"
+
+
+def test_lo_specchio_tiene_gli_attributi_del_meteo():
+    """`guarda` su un'entita' meteo rispondeva «sereno» e basta: temperatura,
+    umidita', vento e pressione sono attributi di stato, gia' dentro
+    `get_states`, e nessuna chiamata nuova serviva per averli."""
+    from hiris.app.proxy.entity_cache import _to_minimal
+    voce = _to_minimal({"entity_id": "weather.casa", "state": "sunny",
+                        "attributes": {"temperature": 24.1, "temperature_unit": "°C",
+                                       "humidity": 51, "wind_speed": 7.2}})
+    assert voce["attributes"]["temperature"] == 24.1
+    assert voce["attributes"]["temperature_unit"] == "°C"
+    assert voce["attributes"]["humidity"] == 51
+
+
+def test_l_impronta_di_esegui_porta_l_unita():
+    """«adesso e' a 21, in stanza ci sono 69.8» senza scala e' un numero, non
+    un fatto -- e il modello non puo' dedurla, perche' il nucleo gli vieta di
+    applicare l'unita' della casa a una singola entita'."""
+    from hiris.app.azione.porta import _impronta
+    impronta = _impronta(
+        {"id": "sensor.esterno", "state": "17.5", "unit": "°C"})
+    assert impronta["unit"] == "°C"
+    assert _impronta({"id": "x", "state": "on", "unit": ""}) == {"state": "on"}

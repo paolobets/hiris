@@ -83,6 +83,9 @@ from dataclasses import dataclass, field
 import httpx
 from . import prompts
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..chat_store import (PREFISSO_ERRORE_RUNNER, SENTINELLA_FLUSSO_INCOMPLETO,
+                          SENTINELLA_MOCK, SENTINELLA_RUNNER_ASSENTE,
+                          SENTINELLA_VUOTO)
 
 log = logging.getLogger("hiris.agent")
 
@@ -606,11 +609,16 @@ def _safe_subprocess_env() -> dict:
 # La funzione e' PURA: nessun subprocess, nessuna rete, nessun log. E' cio' che
 # la rende provabile senza la CLI (tests/test_flusso_stream_json.py).
 
-# Il sentinella del silenzio dichiarato (3) della fetta. Come gli altri tre del
-# ponte, e' anche in `chat_store._TOXIC_ASSISTANT_PREFIXES`: senza, finirebbe
-# in chat_history.db e tornerebbe al modello a ogni turno successivo -- difetto
-# gia' trovato dal vivo e riparato una volta su questo ramo.
-_SENTINELLA_FLUSSO_INCOMPLETO = "[flusso incompleto]"
+# Il sentinella del silenzio dichiarato (3) della fetta. Come gli altri quattro
+# del ponte, VIENE da `chat_store`: se finisse in chat_history.db tornerebbe al
+# modello a ogni turno successivo -- difetto gia' trovato dal vivo e riparato
+# una volta su questo ramo.
+#
+# Importato e non ridigitato: erano cinque stringhe scritte a mano di qua e di
+# la', e l'elenco e' gia' andato fuori sincrono una volta. Sta in `chat_store`
+# e non qui perche' quello e' una foglia -- lo puo' importare chiunque senza
+# rischiare un ciclo, il contrario no.
+_SENTINELLA_FLUSSO_INCOMPLETO = SENTINELLA_FLUSSO_INCOMPLETO
 
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 3), difesa (3) del
 # progetto: la riga rivolta ALL'UTENTE quando gli strumenti erano attesi e la
@@ -1008,7 +1016,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # Unico ritorno che non passa da `_reply` (fix round 2): siamo
         # PRIMA che il token sia in mano, e questa stringa e' una
         # costante che non ha mai visto ne' la CLI ne' la sua eco.
-        return {"reply": "[mock] risposta di prova"}
+        return {"reply": SENTINELLA_MOCK}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1256,7 +1264,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     invocazione = _invoca(strumenti)
     if invocazione is None:
-        return _reply("[runner non disponibile]")
+        return _reply(SENTINELLA_RUNNER_ASSENTE)
 
     # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
     # La sonda ha detto di si' DAL NOSTRO LATO; qui parla la CLI. Se le due si
@@ -1293,7 +1301,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             ritentato = True
             invocazione = _invoca(strumenti)
             if invocazione is None:
-                return _reply("[runner non disponibile]")
+                return _reply(SENTINELLA_RUNNER_ASSENTE)
 
     # Da qui in giu' si legge UNA invocazione: la prima se e' bastata, la
     # seconda se la prima e' stata buttata. I rami sono gli stessi.
@@ -1321,7 +1329,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # meglio il flusso grezzo che un silenzio.
             dettaglio = (stdout or stderr).strip()
         return _reply(
-            f"[errore runner rc={invocazione.rc}] {str(dettaglio)[:300]}".strip())
+            f"{PREFISSO_ERRORE_RUNNER}{invocazione.rc}] "
+            f"{str(dettaglio)[:300]}".strip())
 
     if not esito.risultato_presente:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
@@ -1356,7 +1365,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
     testo = esito.testo.strip()
     if not testo:
-        return _reply("[vuoto]")
+        return _reply(SENTINELLA_VUOTO)
     if degrado:
         # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
         # `[runner non disponibile]`, `[flusso incompleto]` e `[vuoto]` sono

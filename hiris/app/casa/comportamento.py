@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 from .lettura_yaml import carica_file
+from .anagrafe import dominio_di
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
     # replica vecchia e dichiarata stantia e' meglio di una fresca e falsa.
     domini_comportamento = {"automation", "script"}
     stato_ha_comportamento = any(
-        s.get("entity_id", "").split(".", 1)[0] in domini_comportamento for s in stati
+        dominio_di(s.get("entity_id", "")) in domini_comportamento for s in stati
     )
     file_hanno_voci = bool(automazioni) or bool(script)
     if not stato_ha_comportamento and file_hanno_voci:

@@ -36,10 +36,10 @@ async def test_load_builds_minimal_state():
     per_id = {e["id"]: e for e in cache.all_states()}
     assert per_id["light.soggiorno"] == {
         "id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": "",
-        "domain": "light", "device_class": None}
+        "domain": "light", "device_class": None, "state_class": None}
     assert per_id["sensor.temp"] == {
         "id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C",
-        "domain": "sensor", "device_class": None}
+        "domain": "sensor", "device_class": None, "state_class": None}
 
 
 def test_on_state_changed_updates_existing_entity():

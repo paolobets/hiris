@@ -147,6 +147,9 @@ def _nucleo(sistema):
 
 def test_il_nucleo_dichiara_il_riferimento():
     testo = _nucleo(sistema_di_riferimento(_CONFIG))
+    # Il nome proprio della casa: entrava nell'archivio, usciva da /api/casa e
+    # non arrivava al modello. E' il nome della cosa di cui parla tutto il resto.
+    assert "Casa" in testo
     assert "Europe/Rome" in testo
     assert "EUR" in testo
     assert "2026.8.1" in testo

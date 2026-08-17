@@ -130,8 +130,15 @@ async def test_list_entities_missing_name_field(aiohttp_client):
     body = await (await client.get("/api/entities")).json()
     entities = body["entities"]
     assert len(entities) == 1
-    # canonical shape: friendly_name falls back to the entity_id, not ""
-    assert entities[0]["friendly_name"] == "sensor.weird"
+    # `None`, MAI l'entity_id. Questa prova asseriva il contrario -- cioe'
+    # DOCUMENTAVA il difetto: un id tecnico spacciato per nome, e chi legge
+    # senza modo di sapere se «sensor.weird» fosse un nome vero o un ripiego.
+    # E' la disciplina opposta a quella che `costruisci_indice` dichiara e
+    # rispetta: «un id tecnico non entra qui, ne' tale e quale ne' ingentilito».
+    # L'`entity_id` e' nella stessa riga: chi vuole ripiegare lo fa sapendo
+    # cosa sta mostrando.
+    assert entities[0]["friendly_name"] is None
+    assert entities[0]["entity_id"] == "sensor.weird"
     assert entities[0]["domain"] == "sensor"
 
 

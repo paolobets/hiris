@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from ..casa.anagrafe import dominio_di
+
 logger = logging.getLogger(__name__)
 
 # `NOISE_DOMAINS` e' uscito con `get_all_useful`, il suo unico lettore.
@@ -60,8 +62,9 @@ def inventario_non_leggibile(cache) -> dict | None:
     return None
 
 
-def _domain(entity_id: str) -> str:
-    return entity_id.split(".")[0]
+# Una lettura sola per tutti, in `casa/anagrafe.dominio_di`: era scritta sei
+# volte, e due copie non erano d'accordo su un id senza punto.
+_domain = dominio_di
 
 
 _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
@@ -73,6 +76,16 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
     "fan": ("percentage", "preset_mode"),
     "water_heater": ("current_temperature", "temperature", "operation_mode"),
     "valve": ("current_position", "reports_position"),
+    # Il meteo mancava, e non serviva nessuna chiamata nuova: temperatura,
+    # umidita', vento e pressione sono ATTRIBUTI DI STATO dell'entita' meteo,
+    # gia' dentro `get_states`. Senza questa riga `guarda` su un'entita'
+    # `weather` rispondeva «sereno» e basta, buttando tutto il resto.
+    # I nomi sono quelli veri di `components/weather/const.py`, verificati:
+    # le unita' viaggiano in attributi propri (`temperature_unit`, ...) perche'
+    # il meteo non usa `unit_of_measurement`.
+    "weather": ("temperature", "temperature_unit", "humidity", "pressure",
+                "pressure_unit", "wind_speed", "wind_speed_unit", "wind_bearing",
+                "apparent_temperature", "cloud_coverage", "uv_index", "visibility"),
 }
 
 
@@ -87,6 +100,13 @@ def _to_minimal(raw: dict) -> dict:
         "unit": attrs.get("unit_of_measurement") or "",
         "domain": dom,
         "device_class": attrs.get("device_class"),
+        # `state_class` (`measurement`, `total`, `total_increasing`) dice se un
+        # numero e' una misura di adesso o un contatore che sale -- ed e' cio'
+        # che dice a quali entita' si puo' chiedere una statistica, SENZA
+        # doverlo domandare al recorder. Arrivava a ogni avvio dentro gli
+        # attributi di ogni sensore, e questa proiezione lo buttava.
+        # Il nome e' `sensor.const.ATTR_STATE_CLASS`, verificato.
+        "state_class": attrs.get("state_class"),
     }
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
     if domain_keys:

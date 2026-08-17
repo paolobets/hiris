@@ -44,7 +44,7 @@ cui il nucleo e' l'unica via di scoperta.
 from __future__ import annotations
 
 from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, classe_effettiva,
-                       e_pseudo_area, gerarchia, traduci_stato)
+                       dominio_di, e_pseudo_area, gerarchia, traduci_stato)
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -252,7 +252,7 @@ def _portatori(entita_area: list[dict], dominio: str) -> tuple[list[str], int]:
     dispositivi: list[str] = []
     senza = 0
     for entita in entita_area:
-        if _dominio(entita["id"]) != dominio:
+        if dominio_di(entita["id"]) != dominio:
             continue
         dispositivo_id = entita.get("dispositivo_id")
         if not dispositivo_id:
@@ -316,10 +316,6 @@ def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
     return f" (id: {id_dispositivo})"
 
 
-def _dominio(entity_id: str) -> str:
-    return entity_id.split(".", 1)[0] if "." in entity_id else entity_id
-
-
 def _nome_dominio(dominio: str, n: int) -> str:
     coppia = _NOMI_DOMINIO.get(dominio)
     if coppia is None:
@@ -357,10 +353,10 @@ def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
     return False
 
 
-def _conta_per_dominio(entita: list[dict]) -> dict[str, int]:
+def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
     conteggio: dict[str, int] = {}
     for e in entita:
-        dominio = _dominio(e["id"])
+        dominio = dominio_di(e["id"])
         conteggio[dominio] = conteggio.get(dominio, 0) + 1
     # Ordine alfabetico sul dominio: stabile, non dipende dall'ordine in cui
     # i registri sono stati letti o restituiti.
@@ -419,6 +415,12 @@ def _righe_sistema(sistema: dict | None) -> list[str]:
         return []
     righe = []
     identita = []
+    # Il nome che l'utente ha dato alla casa in Home Assistant. Entrava nel
+    # sistema di riferimento e non usciva da questa riga: la fetta A dichiarava
+    # «esce da due porte, con la stessa forma», e ne usciva da una e mezza.
+    # Per primo, perche' e' il nome della cosa di cui parla tutto il resto.
+    if sistema.get("nome"):
+        identita.append(f"casa «{sistema['nome']}»")
     if sistema.get("fuso"):
         identita.append(f"fuso {sistema['fuso']}")
     if sistema.get("lingua"):
@@ -478,7 +480,7 @@ def _righe_casa(piani: list[dict],
             righe.append("  - (nessuna area)")
             continue
         for area in piano["aree"]:
-            conteggio = _conta_per_dominio(area["entita"])
+            conteggio = _conta_perdominio_di(area["entita"])
             if conteggio:
                 dettaglio = ", ".join(
                     f"{n} {_nome_dominio(dom, n)}"
@@ -645,11 +647,11 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
         if str(valore).lower() == "unavailable":
             irraggiungibili += 1
             continue
-        if not _e_un_evento(_dominio(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore):
+        if not _e_un_evento(dominio_di(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore):
             continue
         voci.append({
             "area_nome": area_per_entita.get(entity_id),
-            "dominio": _dominio(entity_id),
+            "dominio": dominio_di(entity_id),
             "stato_leggibile": traduci_stato(valore, classe_effettiva(e.get("classe"), vive.get(entity_id))),
             "nome": e.get("nome") or entity_id,
         })

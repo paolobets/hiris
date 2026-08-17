@@ -30,6 +30,7 @@ futuro non lo scambi per una dimenticanza:
   ogni servizio della casa.
 """
 from dataclasses import dataclass, field
+from ..casa.anagrafe import dominio_di
 
 # I servizi di questo dominio si applicano a QUALUNQUE dominio di entita'
 # (`homeassistant.turn_off` spegne luci, prese, media player...). Senza
@@ -110,7 +111,7 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict]) -> Verdetto:
     for eid in entita:
         if not isinstance(eid, str) or eid not in stati:
             return _no(f"l'entita' «{eid}» non esiste in questa casa.")
-        if dominio not in _DOMINI_UNIVERSALI and eid.split(".")[0] != dominio:
+        if dominio not in _DOMINI_UNIVERSALI and dominio_di(eid) != dominio:
             return _no(f"«{grezzo}» non si applica a «{eid}», che e' del "
                        f"dominio «{eid.split('.')[0]}».")
 

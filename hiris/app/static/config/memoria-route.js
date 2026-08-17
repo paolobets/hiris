@@ -163,6 +163,24 @@ window.HirisMemoriaRoute = (function () {
       o.value = v[0];
       selForza.appendChild(o);
     });
+    // Una forza che questa pagina non conosce si AGGIUNGE, non si ignora.
+    //
+    // Senza, il difetto non era una tendina incompleta: era perdita di dati.
+    // `selForza.value = <valore assente>` ricade in silenzio su '', poi il
+    // confronto qui sotto vede '' !== 'obiettivo' e la PATCH manda
+    // `forza: null`. Chi correggeva «Detto da» si vedeva cancellare la forza
+    // del ricordo -- e la memoria e' l'unico archivio di HIRIS che non si
+    // ricostruisce da nessuna parte.
+    //
+    // Il vocabolario vero sta in `memoria/interpretazione.py::VOCABOLARIO`, ed
+    // e' legato a questo file da `tests/test_memoria_frontend_wiring.py`: quel
+    // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
+    // che protegge l'utente NEL FRATTEMPO.
+    if (r.forza && !FORZA_OPZIONI.some(function (v) { return v[0] === r.forza; })) {
+      var sconosciuta = el('option', null, FORZA_LABELS[r.forza] || r.forza);
+      sconosciuta.value = r.forza;
+      selForza.appendChild(sconosciuta);
+    }
     selForza.value = r.forza || '';
 
     var inpGrandezza = el('input'); inpGrandezza.type = 'text'; inpGrandezza.value = r.grandezza || '';

@@ -39,21 +39,15 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
-from .anagrafe import (classe_effettiva, etichette_con_nome, gerarchia,
-                       nomi_delle_etichette, traduci_stato, unita_effettiva)
+from .anagrafe import (classe_effettiva, dominio_di, etichette_con_nome,
+                       gerarchia, nomi_delle_etichette, traduci_stato,
+                       unita_effettiva)
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
 # (comportamento.py), non due archivi diversi: la distinzione e' nel campo
 # `tipo` della voce, non nella provenienza.
 _TIPI_COMPORTAMENTO = {"automazione", "script"}
-
-
-def _dominio_entita(riferimento) -> str:
-    """Il dominio di un entity_id -- lo dichiara Home Assistant nell'id
-    stesso, non un elenco nostro (stessa lettura di `nucleo._dominio`)."""
-    testo = str(riferimento)
-    return testo.split(".", 1)[0] if "." in testo else ""
 
 
 def cerca(indice, testo: str) -> list[dict]:
@@ -99,7 +93,7 @@ def cerca(indice, testo: str) -> list[dict]:
                 # leggere male l'altro.
                 candidato["nome_dedotto"] = dedotto
             if candidato["tipo"] == "entita":
-                candidato["dominio"] = _dominio_entita(candidato["riferimento"])
+                candidato["dominio"] = dominio_di(candidato["riferimento"])
     return risultati
 
 

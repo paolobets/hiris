@@ -70,20 +70,27 @@ def _anagrafe_letta(casa_archivio) -> bool:
     return casa_archivio is not None and casa_archivio.aggiornata_il() is not None
 
 
-def _unita_vive(request) -> dict[str, str]:
-    """entity_id -> unita', dallo specchio dello stato -- `{}` se non c'e'.
+def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict]:
+    """Lo specchio dello stato per questa pagina: `(stato, nomi, unita, classi)`.
 
     La lettura vera sta in `casa.anagrafe.specchio_vivo`, la stessa che usa il
     dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
-    una correzione di un ricordo non deve fallire per colpa dello specchio.
+    ne' la vista ne' la correzione di un ricordo devono fallire per colpa dello
+    specchio.
+
+    Restituisce la QUATERNA e non il solo pezzo che serviva prima: i nomi e le
+    unita' arrivano dalla stessa lettura, e chiamarla due volte per prenderne
+    un pezzo per volta avrebbe voluto dire leggere lo specchio in due istanti
+    diversi -- la stessa classe di divergenza che `specchio_vivo` esiste per
+    chiudere.
     """
     cache = request.app.get("entity_cache")
     if cache is None or not hasattr(cache, "all_states"):
-        return {}
+        return {}, {}, {}, {}
     try:
-        return specchio_vivo(cache.all_states())[2]
+        return specchio_vivo(cache.all_states())
     except Exception:
-        return {}
+        return {}, {}, {}, {}
 
 
 def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str]:
@@ -132,7 +139,15 @@ async def handle_get_memoria(request: web.Request) -> web.Response:
 
     casa_archivio = request.app.get("archivio_casa")
     anagrafe_letta = _anagrafe_letta(casa_archivio)
-    indice = costruisci_indice(casa_archivio.leggi()) if anagrafe_letta else None
+    # Coi NOMI DI RIPIEGO, come in chat. Senza, un ricordo ancorato a
+    # un'entita' che nel registro non ha nome usciva su questa pagina col suo
+    # entity_id crudo, mentre in chat HIRIS la chiama «Abat-jour sinistra»:
+    # due nomi per la stessa cosa, e l'utente senza modo di capire se il
+    # ricordo sia ancorato bene. Lo specchio si legge gia' quattro righe piu'
+    # in la' per le unita': mancava solo passarne i nomi.
+    stato_vivo = _specchio_della_pagina(request)
+    indice = (costruisci_indice(casa_archivio.leggi(), stato_vivo[1])
+              if anagrafe_letta else None)
     non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
 
     ricordi = archivio.richiama(limite=_LIMITE_RICORDI_MOSTRATI)
@@ -198,13 +213,15 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`tipi_non_verificabili`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    indice = costruisci_indice(casa_archivio.leggi()) if anagrafe_letta else costruisci_indice({})
+    stato_vivo = _specchio_della_pagina(request)
+    indice = (costruisci_indice(casa_archivio.leggi(), stato_vivo[1])
+              if anagrafe_letta else costruisci_indice({}))
     tipi_non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
     # Le unita' vive, dalla stessa fonte che usa `ricorda` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
     # stesso fatto con due forme a seconda della porta.
-    unita_vive = _unita_vive(request)
+    unita_vive = stato_vivo[2]
 
     # Un intervallo e' una coppia, non due campi indipendenti: se la
     # richiesta tocca solo `minimo` o solo `massimo`, la coerenza (minimo

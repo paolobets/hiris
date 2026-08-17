@@ -19,6 +19,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _PerCallList,
 )
+from ..chat_store import RE_NOME_STRUMENTO_TRAPELATO
 from ..esiti_provider import famiglia_errore
 from .pricing import get_price as _prezzo
 
@@ -133,7 +134,13 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
 #   get_ha_healthיׂ{"sections":["all"]}
 #   await_user_confirmationיׄ**Confermi di...**
 # Persisting this verbatim into chat history poisons later turns.
-_TOOL_LEAK_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
+# La stessa regola di `chat_store.RE_NOME_STRUMENTO_TRAPELATO`, IMPORTATA.
+#
+# Erano due regex identiche tranne che per uno spazio tollerato in testa: qui
+# si tollerava, la' no. La differenza contava sul disco -- `_purge_toxic_turns`
+# ripulisce le righe GIA' scritte, e una avvelenata con uno spazio iniziale non
+# veniva mai riconosciuta e tornava al modello a ogni turno, per sempre.
+_TOOL_LEAK_RE = RE_NOME_STRUMENTO_TRAPELATO
 
 TOOL_LEAK_USER_MSG = (
     "Il modello selezionato non gestisce correttamente i tool tramite questo "

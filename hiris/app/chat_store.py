@@ -47,7 +47,52 @@ logger = logging.getLogger(__name__)
 #    da sole al primo turno, senza migrazione. Prefissi e non uguaglianze
 #    esatte perche' `[errore runner rc=...]` porta in coda un dettaglio
 #    variabile (fino a 300 caratteri di stdout del CLI).
-_TOXIC_ASSISTANT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}[^\x00-\x7F\s]")
+# I TESTI CHE NON SONO RISPOSTE, in un posto solo.
+#
+# Stanno QUI e non in `agent/runner.py`, che pure li produce, per una ragione
+# di dipendenze: questo modulo e' una foglia (importa solo `.storage`), quindi
+# tutti possono importarlo e nessuno rischia un ciclo. Il contrario non e'
+# vero. Ed e' anche il modulo che sull'argomento ha gia' ragionato per esteso,
+# qui sopra.
+#
+# Le sentinelle erano cinque stringhe RICOPIATE a mano, compresa quella che nel
+# runner aveva gia' una costante. Il punto 3 qui sopra racconta che l'elenco e'
+# gia' andato fuori sincrono una volta (rilievo I-6) e chiama quell'evento «la
+# classe di difetto che questa fetta ha gia' pagato quattro volte»: la
+# struttura che l'aveva prodotto era intatta, e una sesta sentinella non
+# avrebbe fatto fallire nessun test. Adesso non c'e' un secondo elenco.
+#
+# Prefissi e non uguaglianze esatte: `[errore runner rc=...]` porta in coda un
+# dettaglio variabile, `[flusso incompleto]` una frase di spiegazione.
+PREFISSO_ERRORE_RUNNER = "[errore runner rc="
+SENTINELLA_RUNNER_ASSENTE = "[runner non disponibile]"
+SENTINELLA_VUOTO = "[vuoto]"
+SENTINELLA_MOCK = "[mock] risposta di prova"
+SENTINELLA_FLUSSO_INCOMPLETO = "[flusso incompleto]"
+SENTINELLE_DEL_PONTE = (
+    PREFISSO_ERRORE_RUNNER,
+    SENTINELLA_RUNNER_ASSENTE,
+    SENTINELLA_VUOTO,
+    SENTINELLA_MOCK,
+    SENTINELLA_FLUSSO_INCOMPLETO,
+)
+
+# Un nome di strumento trapelato nel testo (un identificatore seguito da un
+# carattere non ASCII: la firma del guasto misurato). Una regola sola, un solo
+# ancoraggio.
+#
+# Erano DUE regex identiche tranne che per uno spazio tollerato in testa --
+# quella del runner (`backends/openai_compat_runner._TOOL_LEAK_RE`) lo
+# tollerava, questa no. E la differenza contava proprio qui:
+# `_purge_toxic_turns` gira in lettura per ripulire le righe GIA' su disco,
+# quindi una riga avvelenata con uno spazio iniziale -- scritta da una versione
+# precedente del filtro, o arrivata dal ponte -- non veniva mai riconosciuta e
+# tornava al modello a ogni turno, per sempre.
+#
+# Vince la piu' TOLLERANTE: qui si riconosce, non si valida, e un
+# riconoscitore troppo stretto lascia passare il guasto che deve cogliere.
+RE_NOME_STRUMENTO_TRAPELATO = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
+_TOXIC_ASSISTANT_RE = RE_NOME_STRUMENTO_TRAPELATO
 _TOXIC_ASSISTANT_EXACT = frozenset({
     "Errore temporaneo del servizio AI. Riprova tra poco.",
     "Rate limit — riprova tra poco.",
@@ -56,19 +101,8 @@ _TOXIC_ASSISTANT_EXACT = frozenset({
 _TOXIC_ASSISTANT_PREFIXES = (
     "Crediti OpenRouter insufficienti",
     "Il modello selezionato non gestisce correttamente i tool",
-    # I sentinella del ponte (agent/runner.py) -- vedi il punto 3 sopra.
-    "[errore runner rc=",
-    "[runner non disponibile]",
-    "[vuoto]",
-    "[mock] risposta di prova",
-    # fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il quinto
-    # sentinella. `--output-format stream-json` puo' chiudersi senza l'evento
-    # finale `type=result` (flusso troncato, processo ucciso, formato della CLI
-    # cambiato): il ponte lo DICHIARA invece di restituire una risposta
-    # parziale che sembra normale, e il testo che produce non e' una risposta
-    # -- va filtrato qui come gli altri quattro, o tornerebbe al modello a ogni
-    # turno successivo.
-    "[flusso incompleto]",
+    # Le sentinelle del ponte: dall'elenco unico qui sopra, non ricopiate.
+    *SENTINELLE_DEL_PONTE,
 )
 
 

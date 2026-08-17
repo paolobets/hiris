@@ -2,6 +2,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..proxy.entity_cache import inventario_non_leggibile
+from ..casa.anagrafe import dominio_di
 
 
 def _csv(v: str | None):
@@ -23,7 +24,7 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
         eid = s.get("id") or s.get("entity_id")
         if not eid:
             continue
-        dom = s.get("domain") or eid.split(".", 1)[0]
+        dom = s.get("domain") or dominio_di(eid)
         dc = s.get("device_class")
         name = s.get("name") or ""
         if domains and dom not in domains:
@@ -34,10 +35,24 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
             continue
         out.append({
             "entity_id": eid,
-            "friendly_name": name or eid,
+            # `name or None`, MAI `name or eid`: un id tecnico non e' un nome,
+            # ne' tale e quale ne' ingentilito. E' la stessa disciplina che
+            # `memoria/riconoscitore.costruisci_indice` dichiara e rispetta --
+            # qui si faceva l'opposto, e chi legge non aveva modo di sapere se
+            # «sensor.abc» fosse un nome vero o un ripiego. L'`entity_id` e'
+            # nella stessa riga: chi vuole ripiegare lo fa sapendo cosa sta
+            # mostrando.
+            "friendly_name": name or None,
             "domain": dom,
             "device_class": dc,
             "state": s.get("state"),
+            # Senza, `state: "72"` non dice se sono gradi Celsius o Fahrenheit
+            # -- e chi consuma questa rotta non puo' ripiegare sull'unita'
+            # della casa (vedi `casa.anagrafe.sistema_di_riferimento`).
+            "unit": s.get("unit") or None,
+            # Misura di adesso o contatore che sale: e' cio' che dice se ha
+            # senso chiederne una statistica.
+            "state_class": s.get("state_class"),
         })
         if len(out) >= limit:
             break

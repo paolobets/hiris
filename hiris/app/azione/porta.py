@@ -207,6 +207,14 @@ def _impronta(voce) -> dict | None:
     if not isinstance(voce, dict):
         return None
     impronta = {"state": voce.get("state")}
+    # L'UNITA', che questa proiezione buttava: «adesso e' a 21, in stanza ci
+    # sono 69.8» senza scala e' un numero, non un fatto -- e il modello non
+    # puo' nemmeno dedurla, perche' il nucleo gli vieta esplicitamente di
+    # applicare l'unita' della casa a una singola entita'. Sta nella voce
+    # dello specchio (`entity_cache._to_minimal`) e costava solo il leggerla.
+    unita = voce.get("unit")
+    if isinstance(unita, str) and unita.strip():
+        impronta["unit"] = unita.strip()
     attributi = voce.get("attributes")
     if isinstance(attributi, dict):
         # `state` non si lascia sovrascrivere da un attributo omonimo: la
