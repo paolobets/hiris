@@ -1068,8 +1068,28 @@ class HAClient:
             return
         for voce in entita:
             estesa = estese.get(voce.get("entity_id"))
-            if isinstance(estesa, dict) and estesa.get("aliases"):
-                voce["aliases"] = estesa["aliases"]
+            if not isinstance(estesa, dict):
+                continue
+            # `None` DENTRO la lista non e' un alias, e' una sentinella.
+            #
+            # Home Assistant dichiara `_serialize_aliases(...) -> list[str | None]`
+            # e mappa `COMPUTED_NAME` su `None` (`helpers/entity_registry.py`):
+            # quel `null` significa «qui va il nome calcolato», che e' un dato
+            # che HIRIS ha gia' (`original_name`), non una parola che qualcuno
+            # ha scritto.
+            #
+            # Preso alla lettera ha riempito l'archivio: 1030 entita' su 1223
+            # con `alias: [null]`, e `cerca` e `ricorda` -- gli unici due che
+            # costruiscono l'indice -- morivano con
+            # «'NoneType' object has no attribute 'lower'» su ogni chiamata.
+            #
+            # E' la lezione del `carbon_monoxide` in un'altra forma: avevo
+            # verificato CHE `aliases` esistesse in `extended_dict`, non COSA
+            # possono contenere i suoi elementi. Il tipo lo diceva.
+            alias = [a for a in (estesa.get("aliases") or [])
+                     if isinstance(a, str) and a.strip()]
+            if alias:
+                voce["aliases"] = alias
 
     def add_state_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(dati_evento) a ogni `state_changed`: chi ascolta riceve

@@ -96,3 +96,53 @@ async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
         assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
     finally:
         a.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_il_None_di_home_assistant_non_e_un_alias():
+    """LA SENTINELLA, e il difetto vero trovato sull'impianto il 2026-08-18.
+
+    Home Assistant dichiara `_serialize_aliases(...) -> list[str | None]` e
+    mappa `COMPUTED_NAME` su `None` (`helpers/entity_registry.py`, verificato):
+    quel `null` significa «qui va il nome calcolato», che HIRIS ha gia'
+    (`original_name`). Non e' una parola che qualcuno ha scritto.
+
+    Preso alla lettera ha riempito l'archivio -- 1030 entita' su 1223 con
+    `alias: [null]` -- e ha ucciso `cerca` e `ricorda`, gli unici due che
+    costruiscono l'indice: «'NoneType' object has no attribute 'lower'» su
+    OGNI chiamata.
+
+    E' il `carbon_monoxide` in un'altra forma: avevo verificato CHE `aliases`
+    esistesse in `extended_dict`, non COSA possono contenere i suoi elementi.
+    Il tipo lo diceva.
+    """
+    finto = _Client(estese={"light.salotto": {
+        "aliases": [None, "lampada della nonna", "  ", 42]}})
+    registri, _ = await _client_vero(finto).leggi_registri()
+    assert registri["entita"][0]["aliases"] == ["lampada della nonna"]
+
+
+@pytest.mark.asyncio
+async def test_una_lista_di_sole_sentinelle_non_diventa_un_alias_vuoto():
+    """`[None]` deve sparire del tutto, non diventare `[]` salvato: la chiave
+    resta assente, come per un'entita' che alias non ne ha."""
+    finto = _Client(estese={"light.salotto": {"aliases": [None]}})
+    registri, _ = await _client_vero(finto).leggi_registri()
+    assert "aliases" not in registri["entita"][0]
+
+
+def test_l_indice_sopravvive_a_un_archivio_gia_avvelenato():
+    """Difesa in profondita', e serve davvero: la causa si chiude a monte, ma
+    un'installazione gia' avvelenata tiene `[null]` in archivio finche'
+    l'anagrafe non si ricostruisce. Un indice che muore sul dato vecchio
+    lascia `cerca` e `ricorda` rotti fino al riavvio successivo."""
+    from hiris.app.memoria.riconoscitore import costruisci_indice
+
+    casa = {"entita": [
+        {"id": "light.salotto", "nome": "Piantana", "alias": [None, "nonna"]},
+    ]}
+    indice = costruisci_indice(casa)
+    trovati = indice.trova("nonna")
+    candidati = [c for t in trovati for c in t["candidati"]]
+    assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
+    assert indice.trova("piantana"), "il nome vero deve restare cercabile"

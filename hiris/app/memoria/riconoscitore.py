@@ -333,6 +333,17 @@ def costruisci_indice(casa: dict,
             for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
                                       *etichette_con_nome(voce, nomi_etichette),
                                       *categorie_con_nome(voce, nomi_categorie).values()]:
+                # Un termine che non e' una stringa non e' un termine.
+                #
+                # Difesa in profondita', non ridondanza: la causa vera si
+                # chiude a monte (`ha_client._aggiungi_campi_estesi` filtra le
+                # sentinelle `None` degli alias), ma questo indice legge
+                # l'ARCHIVIO -- che su un'installazione gia' avvelenata
+                # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
+                # Un rilevatore che muore sul dato vecchio lascia `cerca` e
+                # `ricorda` rotti fino al riavvio successivo.
+                if not isinstance(termine_originale, str):
+                    continue
                 termine_normalizzato = _normalizza(termine_originale)
                 if not termine_normalizzato:
                     continue

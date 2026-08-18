@@ -1,5 +1,29 @@
 # HIRIS — Changelog
 
+## [3.7.3] — La ricerca torna a funzionare (2026-08-18)
+
+**Correzione urgente.** Dalla 3.7.0 `cerca` e `ricorda` fallivano a ogni
+chiamata su questa casa. Chiedere «cerca le luci del salotto» o far annotare
+un ricordo restituiva un errore, sempre.
+
+### Cosa era successo
+
+La 3.7.0 ha insegnato a HIRIS a leggere gli **alias** — i nomi alternativi che
+dai alle cose in Home Assistant. Ma Home Assistant, in quella lista, usa un
+valore speciale per dire «qui va il nome calcolato»: non è un nome, è un
+segnaposto.
+
+HIRIS lo ha preso per un nome. Su 1223 entità, 1030 hanno finito per avere un
+alias che non era un alias — e ogni volta che costruiva l'indice della
+ricerca, si fermava lì.
+
+### Due cure, non una
+
+Il segnaposto ora viene scartato quando si legge da Home Assistant. E l'indice
+della ricerca non muore più se lo trova comunque: un'installazione già
+avvelenata torna a cercare **subito**, senza aspettare che l'anagrafe si
+ricostruisca.
+
 ## [3.7.2] — «Come sta la casa» adesso risponde davvero (2026-08-18)
 
 Nasce da una risposta vera e sbagliata: alla domanda sullo stato della casa
