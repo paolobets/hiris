@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## [3.7.1] — Manutenzione dei componenti (2026-08-18)
+
+Nessun cambiamento di comportamento: HIRIS fa esattamente quello che faceva
+nella 3.7.0.
+
+### Le dipendenze dichiarano ciò che proviamo davvero
+
+Le versioni minime richieste dichiaravano di supportare versioni molto più
+vecchie di quelle su cui il prodotto viene effettivamente provato — in un caso
+trentacinque versioni indietro. Era una promessa che nessuno verificava.
+
+Adesso il minimo richiesto è la versione su cui la suite gira davvero. I limiti
+massimi restano dove sono: quelli sono una difesa contro un aggiornamento che
+romperebbe, e non hanno bisogno di essere provati per valere.
+
 ## [3.7.0] — HIRIS finisce di conoscere la tua casa, e impara a verificarla (2026-08-18)
 
 ### Il fuso, la valuta, la lingua, le unità
