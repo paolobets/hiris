@@ -265,12 +265,26 @@ _GUIDA_CON_STRUMENTI = (
 # all'accodamento, non contiene tutto, e non va spacciata per una lettura
 # fatta adesso (col ramo attivo una lettura fatta adesso esiste davvero: e'
 # il risultato dello strumento, non questo blocco).
+# Fix del 2026-08-18, da una risposta vera sbagliata. Alla domanda «stato
+# casa» il modello ha premesso «dallo snapshot che ho, non e' una lettura in
+# tempo reale», ha elencato la fotografia e si e' OFFERTO di guardare adesso.
+# Aveva gli strumenti: doveva guardare, non offrirsi.
+#
+# La riserva qui sotto resta giusta -- la fotografia e' presa all'accodamento
+# e non va spacciata per una lettura fatta adesso -- ma da sola insegnava
+# soltanto a DIFFIDARNE. Chi diffida di cio' che ha e non usa cio' che puo'
+# chiamare produce esattamente quella risposta: un disclaimer al posto di un
+# fatto. La riserva e' una ragione per ANDARE A GUARDARE, non per scusarsi.
 _CONTESTO_PRESENTE = (
     "Cio' che sai della casa -- e di cio' che le persone ti hanno detto, "
     "ricordi e sessioni precedenti compresi -- e' la fotografia qui sotto, "
     "presa quando e' arrivato questo messaggio: non contiene tutto. Usala per "
     "rispondere e dichiara apertamente quando cio' che serve non c'e', ma non "
-    "presentarla come una lettura fatta adesso."
+    "presentarla come una lettura fatta adesso.\n"
+    "Se la domanda riguarda lo STATO CORRENTE della casa -- com'e' adesso, "
+    "cosa e' acceso, come sta una stanza -- e hai gli strumenti, CHIAMALI e "
+    "rispondi con cio' che ti dicono. Non premettere che la tua e' una "
+    "fotografia per poi offrirti di guardare: guarda."
 )
 
 _CONTESTO_ASSENTE = (

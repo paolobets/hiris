@@ -512,3 +512,44 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
             f"la guida del percorso {percorso} non VIETA di raccogliere gli id a mano: "
             "offrire lo strumento senza vietare la vecchia strada lascia scegliere al "
             "modello, ed e' la strada vecchia quella che ha imparato")
+
+
+def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
+    """Il difetto del 2026-08-18, da una risposta vera.
+
+    Alla domanda «stato casa» il modello ha premesso «dallo snapshot che ho,
+    non e' una lettura in tempo reale», ha elencato la fotografia, e si e'
+    OFFERTO di guardare adesso. Aveva gli strumenti: doveva guardare.
+
+    La riserva sul nucleo resta giusta -- e' preso all'accodamento e non va
+    spacciato per una lettura fatta adesso -- ma da sola insegnava soltanto a
+    DIFFIDARNE. Chi diffida di cio' che ha e non usa cio' che puo' chiamare
+    produce esattamente quel disclaimer al posto di un fatto.
+
+    I DUE percorsi si guardano separatamente, come per i bersagli: il ponte
+    porta la riserva («fotografia») e il sincrono no, quindi la stessa lacuna
+    si presenta in due forme diverse e una prova sul solo testo composto non
+    saprebbe dire quale dei due e' tornato indietro.
+    """
+    from hiris.app.agent import prompts as _p
+
+    ponte = (_p._CONTESTO_PRESENTE + _p._GUIDA_CON_STRUMENTI).lower()
+    # Due asserzioni SEPARATE, non un `or`.
+    #
+    # La prima stesura diceva `"chiamali" in ponte or "guarda." in ponte`, e
+    # non poteva fallire: «guarda.» compare anche altrove nella guida, quindi
+    # la prova restava verde anche togliendo del tutto l'imperativo. Difetto
+    # n.1 del progetto, dentro la prova scritta per chiuderlo.
+    assert "chiamali" in ponte, (
+        "il prompt del ponte non dice di CHIAMARE gli strumenti davanti a una "
+        "domanda sullo stato corrente: la riserva sulla fotografia da sola "
+        "insegna a diffidare, non ad andare a guardare")
+    assert "non premettere" in ponte, (
+        "manca il divieto esplicito di premettere il disclaimer e poi offrirsi "
+        "di guardare: e' esattamente cio' che il modello ha fatto")
+    assert "stato corrente" in ponte
+
+    sincrono = BASE_SYSTEM_PROMPT.lower()
+    assert "usa sempre gli strumenti" in sincrono, (
+        "il percorso sincrono non impone piu' gli strumenti per i dati sulla "
+        "casa: e' l'unica riga che gli impedisce di rispondere col contesto")

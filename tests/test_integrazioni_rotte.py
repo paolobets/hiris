@@ -36,7 +36,10 @@ def test_un_integrazione_caduta_si_dichiara_col_motivo():
     ])
     assert "Reolink" in testo
     assert "timeout durante la connessione" in testo
-    assert any("Reolink" in a for a in riepilogo["avvisi"])
+    # Fra i GUASTI, non fra gli avvisi: sono un fatto sulla casa, non un
+    # limite di cio' che HIRIS sa.
+    assert any("Reolink" in g for g in riepilogo["guasti"])
+    assert "## Cosa non va in casa" in testo
 
 
 def test_un_integrazione_sana_non_si_annuncia():
@@ -86,3 +89,33 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
         assert a.leggi()["integrazioni"][0]["motivo"] == "credenziali rifiutate"
     finally:
         a.chiudi()
+
+
+def test_due_voci_con_lo_stesso_nome_non_si_ripetono():
+    """Sull'impianto vero uscivano nove voci per sei cose: «Fritz-esterno
+    (not_loaded), Fritz-studio (not_loaded), FRITZ!Repeater (not_loaded)» e
+    poi di nuovo tutte e tre. Home Assistant permette piu' voci di
+    configurazione con lo stesso titolo, e ripetere il nome non aggiunge un
+    fatto: consuma l'attenzione di chi legge e fa sembrare il guasto piu'
+    grande di quello che e'.
+
+    Ma quante sono si DICE. Due cose giu' con lo stesso nome sono due cose, e
+    tacerlo sarebbe l'errore opposto."""
+    testo, _ = _nucleo([
+        {"dominio": "fritz", "titolo": "Fritz-esterno", "stato": "not_loaded"},
+        {"dominio": "fritz", "titolo": "Fritz-esterno", "stato": "not_loaded"},
+        {"dominio": "lifx", "titolo": "Abat-jour", "stato": "not_loaded"},
+    ])
+    assert testo.count("Fritz-esterno") == 1, "il nome non deve ripetersi"
+    assert "Fritz-esterno x2" in testo, "ma quante sono deve dirlo"
+    assert "3 integrazioni" in testo, "il totale conta le voci vere, non le righe"
+
+
+def test_il_titolo_si_ripulisce_dagli_spazi():
+    """Sull'impianto vero c'e' un «Abat-jour » con lo spazio in coda, e usciva
+    cosi' nel testo che il modello legge."""
+    testo, _ = _nucleo([
+        {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
+         "motivo": "timeout"},
+    ])
+    assert "Abat-jour (setup_retry" in testo

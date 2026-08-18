@@ -1,5 +1,41 @@
 # HIRIS — Changelog
 
+## [3.7.2] — «Come sta la casa» adesso risponde davvero (2026-08-18)
+
+Nasce da una risposta vera e sbagliata: alla domanda sullo stato della casa
+HIRIS ha elencato le luci accese e ha detto che «circa 77 entità non
+rispondono» — **tacendo che nove integrazioni erano cadute**, col motivo
+scritto, due righe più sopra nel testo che stava leggendo. Ha riportato il
+sintomo e taciuto la causa.
+
+### Cosa non va in casa ha una sezione sua
+
+Le integrazioni cadute e i guasti diagnosticati stavano sotto «Ciò che HIRIS
+ignora». Un titolo così si legge come *«roba che non so, non da riferire»* — e
+infatti non veniva riferita. Ma nove integrazioni giù non sono ciò che HIRIS
+ignora: **sono lo stato della casa**, cioè esattamente la domanda.
+
+Adesso hanno una sezione propria, prima di quello che sta succedendo. L'ordine
+è: com'è fatta la casa → cosa è rotto → cosa sta succedendo.
+
+Se non c'è niente di rotto la sezione **non compare**: un titolo «cosa non va»
+che si presenta a ogni messaggio smette di essere letto, e il giorno del guasto
+vero non si distingue.
+
+### Se chiedi com'è adesso, HIRIS guarda
+
+Prima premetteva che la sua era una fotografia, elencava la fotografia, e si
+**offriva** di controllare in tempo reale. Aveva gli strumenti per farlo. La
+riserva era giusta ma insegnava solo a diffidare: adesso è una ragione per
+andare a guardare, non per scusarsi.
+
+### La stessa cosa non si ripete tre volte
+
+Home Assistant permette più voci di configurazione con lo stesso nome, e
+l'elenco diceva «Fritz-esterno, Fritz-studio, FRITZ!Repeater» e poi di nuovo
+tutti e tre: nove voci per sei cose. Adesso il nome compare una volta, con
+quante sono.
+
 ## [3.7.1] — Manutenzione dei componenti (2026-08-18)
 
 Nessun cambiamento di comportamento: HIRIS fa esattamente quello che faceva

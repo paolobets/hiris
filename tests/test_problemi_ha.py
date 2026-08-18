@@ -63,7 +63,7 @@ def test_un_guasto_diagnosticato_arriva_al_modello():
     assert "zwave_js" in testo
     assert "ozw_migration" in testo
     assert "critical" in testo
-    assert any("zwave_js" in a for a in riepilogo["avvisi"])
+    assert any("zwave_js" in g for g in riepilogo["guasti"])
 
 
 def test_un_guasto_di_lettura_non_e_una_casa_sana():
@@ -73,7 +73,7 @@ def test_un_guasto_di_lettura_non_e_una_casa_sana():
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
     assert "Home Assistant non ha risposto" in testo
     assert "non si e' potuto guardare" in testo
-    assert any("non si e' potuto guardare" in a for a in riepilogo["avvisi"])
+    assert any("non si e' potuto guardare" in g for g in riepilogo["guasti"])
 
 
 def test_il_registro_non_letto_non_e_il_registro_vuoto():
@@ -83,8 +83,11 @@ def test_il_registro_non_letto_non_e_il_registro_vuoto():
     non_chiesto, riepilogo_non_chiesto = _nucleo(None)
     non_letto, riepilogo_non_letto = _nucleo({"errore": "rifiutato"})
     assert non_chiesto != non_letto
-    assert riepilogo_non_chiesto["avvisi"] == []
-    assert any("rifiutato" in a for a in riepilogo_non_letto["avvisi"])
+    assert riepilogo_non_chiesto["guasti"] == []
+    # «Non ho potuto leggere i guasti» e' esso stesso un fatto sulla salute
+    # della casa, non un limite generico di cio' che HIRIS sa: sta fra i
+    # guasti, dove chi chiede «come sta la casa» lo trova.
+    assert any("rifiutato" in g for g in riepilogo_non_letto["guasti"])
 
 
 def test_una_severita_che_non_si_sa_giudicare_non_si_tace():
@@ -126,20 +129,51 @@ def test_un_registro_vuoto_non_produce_nessuna_riga():
     riga per dirlo. Stessa scelta di `_avviso_integrazioni` su una casa sana."""
     testo, riepilogo = _nucleo({"problemi": []})
     assert "Riparazioni" not in testo
-    assert riepilogo["avvisi"] == []
+    assert riepilogo["guasti"] == []
 
 
-def test_i_guasti_stanno_fra_le_lacune_non_in_notevole_adesso():
-    """Sono CONDIZIONI, non eventi: restano vere finche' qualcuno non le
-    ripara. In «Notevole adesso» annuncerebbero a ogni messaggio una cosa che
-    non e' successa adesso -- e sono anche, letteralmente, cio' che HIRIS non
-    puo' raccontare della casa."""
+def test_i_guasti_hanno_una_SEZIONE_PROPRIA_prima_di_notevole_adesso():
+    """Non fra le lacune, e non in «Notevole adesso».
+
+    Sono CONDIZIONI, non eventi: restano vere finche' qualcuno non le ripara,
+    e in «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
+    successa adesso.
+
+    Ma NEMMENO sotto «Cio' che HIRIS ignora», dov'erano fino al 2026-08-18: un
+    modello che legge quel titolo capisce «roba che non so, non da riferire».
+    Davanti a una casa vera con 77 entita' mute e nove integrazioni cadute --
+    col motivo scritto -- ha riportato il SINTOMO e taciuto la CAUSA. Non era
+    un errore suo: era il titolo a dire il falso. Nove integrazioni rotte non
+    sono cio' che HIRIS ignora, sono cio' che HIRIS SA e deve dire.
+
+    L'ordine di lettura e': com'e' fatta la casa -> cosa e' rotto -> cosa sta
+    succedendo.
+    """
     testo, _ = _nucleo({"problemi": [
         _p(domain="reolink", issue_id="autenticazione", severity="error"),
     ]})
-    prima, dopo = testo.split("## Cio' che HIRIS ignora")
-    assert "reolink" in dopo
-    assert "reolink" not in prima
+    assert "## Cosa non va in casa" in testo
+    prima_dei_guasti, dai_guasti = testo.split("## Cosa non va in casa")
+    assert "reolink" in dai_guasti
+    assert "reolink" not in prima_dei_guasti
+
+    # PRIMA di «Notevole adesso», DOPO «La casa».
+    assert testo.index("## La casa") < testo.index("## Cosa non va in casa")
+    assert testo.index("## Cosa non va in casa") < testo.index("## Notevole adesso")
+
+    # E NON fra le lacune: e' li' che si perdeva.
+    lacune = testo.split("## Cio' che HIRIS ignora")[1]
+    assert "reolink" not in lacune
+
+
+def test_una_casa_sana_non_ha_la_sezione_dei_guasti():
+    """Il contrario, e serve quanto l'altra: un'intestazione «Cosa non va in
+    casa» che compare sempre -- vuota o con dentro un «nessun problema» --
+    e' una domanda posta a ogni messaggio a cui la risposta e' sempre no.
+    Smette di essere letta, e il giorno del guasto vero non si distingue."""
+    testo, riepilogo = _nucleo({"problemi": []})
+    assert "## Cosa non va in casa" not in testo
+    assert riepilogo["guasti"] == []
 
 
 def test_il_tetto_conta_cio_che_non_elenca():

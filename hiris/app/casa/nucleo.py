@@ -214,6 +214,11 @@ _RISERVA_SEZIONE_LACUNE = 400
 # nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
 _RISERVA_MINIMA_RIGHE_CASA = 3
 
+# L'intestazione della sezione dei guasti. E' una domanda a cui l'utente vuole
+# una risposta, non una categoria di archivio: «cosa non va» si legge e si
+# riferisce, «cio' che HIRIS ignora» si salta.
+_TITOLO_GUASTI = "## Cosa non va in casa"
+
 
 # Quanti nomi di dispositivo una riga di conteggio puo' citare prima di
 # smettere di CONTARE e cominciare a ELENCARE. **Uno**, e il numero e'
@@ -730,13 +735,36 @@ def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
              if (i.get("stato") or "") in _STATI_INTEGRAZIONE_ROTTA]
     if not rotte:
         return None
-    voci = []
-    for i in sorted(rotte, key=lambda x: x.get("dominio") or ""):
-        nome = i.get("titolo") or i.get("dominio") or "senza nome"
+    # Una voce per NOME+STATO+MOTIVO, non una per config entry.
+    #
+    # Home Assistant permette piu' voci di configurazione con lo stesso titolo
+    # -- due repeater identici, la stessa integrazione aggiunta due volte -- e
+    # sull'impianto vero questo produceva «Fritz-esterno (not_loaded),
+    # Fritz-studio (not_loaded), FRITZ!Repeater (not_loaded), Fritz-esterno
+    # (not_loaded), Fritz-studio (not_loaded), FRITZ!Repeater (not_loaded)»:
+    # nove voci per sei cose. Ripetere lo stesso nome non aggiunge un fatto,
+    # consuma l'attenzione di chi legge e fa sembrare il guasto piu' grande di
+    # quello che e'.
+    #
+    # Quante volte compare lo si DICE («x2»), invece di far contare le
+    # ripetizioni a chi legge: due voci giu' con lo stesso nome sono due cose,
+    # e tacerlo sarebbe l'errore opposto.
+    #
+    # Il titolo si ripulisce dagli spazi: sull'impianto vero c'e' un
+    # «Abat-jour » con lo spazio in coda, e uscirebbe cosi' nel testo.
+    conteggio: dict[tuple, int] = {}
+    for i in sorted(rotte, key=lambda x: (x.get("dominio") or "", x.get("titolo") or "")):
+        nome = (i.get("titolo") or i.get("dominio") or "senza nome").strip() or "senza nome"
         motivo = (i.get("motivo") or "").strip()
-        voci.append(f"{nome} ({i.get('stato')}{': ' + motivo if motivo else ''})")
-    quante = "Un'integrazione" if len(voci) == 1 else f"{len(voci)} integrazioni"
-    verbo = "non sta funzionando" if len(voci) == 1 else "non stanno funzionando"
+        chiave = (nome, i.get("stato"), motivo)
+        conteggio[chiave] = conteggio.get(chiave, 0) + 1
+    voci = []
+    for (nome, stato, motivo), quante in conteggio.items():
+        ripetuta = f" x{quante}" if quante > 1 else ""
+        voci.append(f"{nome}{ripetuta} ({stato}{': ' + motivo if motivo else ''})")
+    totale = sum(conteggio.values())
+    quante = "Un'integrazione" if totale == 1 else f"{totale} integrazioni"
+    verbo = "non sta funzionando" if totale == 1 else "non stanno funzionando"
     return (f"{quante} di Home Assistant {verbo}: {', '.join(voci)}. "
             "Le entita' che dipendono da loro possono non rispondere.")
 
@@ -1196,17 +1224,38 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     """
     avvisi: list[str] = []
 
+    # DUE ELENCHI, non uno, e la differenza e' quella che ha fatto sbagliare
+    # una risposta vera il 2026-08-18.
+    #
+    # `guasti_casa` sono FATTI SULLA CASA: nove integrazioni giu' col loro
+    # motivo, i problemi che Home Assistant ha diagnosticato. Chi chiede «come
+    # sta la casa» sta chiedendo ESATTAMENTE questo.
+    #
+    # `avvisi` sono i LIMITI DI CIO' CHE SO: un registro che non ha risposto,
+    # un corpo di automazione mancante, il taglio del nucleo, le nascoste.
+    #
+    # Stavano insieme, sotto l'intestazione «Cio' che HIRIS ignora». E un
+    # modello che legge quel titolo capisce «roba che non so, non da riferire»:
+    # infatti, davanti a una casa con 77 entita' mute e nove integrazioni
+    # cadute -- col motivo scritto due righe piu' su -- ha riportato il
+    # SINTOMO e taciuto la CAUSA che aveva sotto gli occhi.
+    #
+    # Non e' stato un errore del modello: era il titolo a dire il falso. Nove
+    # integrazioni rotte non sono cio' che HIRIS ignora, sono cio' che HIRIS
+    # SA e deve dire.
+    guasti_casa: list[str] = []
+
     guasto = _avviso_integrazioni(casa.get("integrazioni") or [])
     if guasto:
-        avvisi.append(guasto)
+        guasti_casa.append(guasto)
 
     # Subito dopo le integrazioni rotte, e non altrove: sono la stessa specie
     # di fatto -- cio' che HA ha diagnosticato -- e chi legge deve trovarli
-    # accanto. Separarli con in mezzo i registri caduti o i corpi mancanti
-    # significherebbe far cercare due volte la stessa risposta.
+    # accanto. Separarli significherebbe far cercare due volte la stessa
+    # risposta.
     diagnosi = _avviso_problemi(problemi)
     if diagnosi:
-        avvisi.append(diagnosi)
+        guasti_casa.append(diagnosi)
 
     if non_disponibili:
         avvisi.append(
@@ -1421,8 +1470,15 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # avrebbero avuto, e la rete di sicurezza sotto sarebbe l'unica cosa a
     # farsi carico dello sforamento.
     lunghezza_lacune_note = len(_assembla([("## Cio' che HIRIS ignora", _righe_lacune(avvisi))]))
+    # La sezione dei guasti entra nel conto come le lacune: sta FUORI dal
+    # taglio -- non si accorcia mai, perche' e' la risposta alla domanda piu'
+    # comune che si faccia a questo prodotto -- quindi lo spazio che occupa va
+    # sottratto prima, o a farsi carico dello sforamento resterebbe solo la
+    # rete di sicurezza in fondo.
+    lunghezza_guasti = (len(_assembla([(_TITOLO_GUASTI, list(guasti_casa))]))
+                        if guasti_casa else 0)
     riserva_lacune = max(_RISERVA_SEZIONE_LACUNE, lunghezza_lacune_note + _RISERVA_SEZIONE_LACUNE)
-    budget = max(0, tetto - riserva_lacune)
+    budget = max(0, tetto - riserva_lacune - lunghezza_guasti)
 
     for nome_pool, righe_pool, pesi_pool, riserva in ordine_taglio:
         while len(righe_pool) > riserva and len(_assembla(ordine_stampa)) > budget:
@@ -1441,7 +1497,20 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         indice_avviso_taglio = len(avvisi) - 1
 
     sez_lacune = ("## Cio' che HIRIS ignora", _righe_lacune(avvisi))
-    testo = _assembla(ordine_stampa + [sez_lacune])
+
+    # DOVE va la sezione dei guasti: subito dopo «La casa» e PRIMA di «Notevole
+    # adesso». L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
+    # cosa sta succedendo. Metterla in fondo, accanto alle lacune, e' cio' che
+    # l'ha fatta ignorare; metterla in cima al posto della mappa toglierebbe a
+    # chi legge il riferimento per capire i nomi che ci trova dentro.
+    #
+    # Fuori dal pool di taglio, come le lacune: non si accorcia mai.
+    def _con_guasti(sezioni: list) -> list:
+        if not guasti_casa:
+            return sezioni
+        return [sezioni[0], (_TITOLO_GUASTI, list(guasti_casa))] + sezioni[1:]
+
+    testo = _assembla(_con_guasti(ordine_stampa) + [sez_lacune])
 
     # Rete di sicurezza: se anche cosi' il testo sfora, si continua a
     # tagliare -- ricordi prima (gia' l'ultima cosa nell'ordine di taglio),
@@ -1476,7 +1545,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         else:
             avvisi[indice_avviso_taglio] = messaggio
         sez_lacune = ("## Cio' che HIRIS ignora", _righe_lacune(avvisi))
-        testo = _assembla(ordine_stampa + [sez_lacune])
+        testo = _assembla(_con_guasti(ordine_stampa) + [sez_lacune])
 
     ricordi_esclusi = esclusi_per_pool.get("ricordi", 0)
 
@@ -1484,6 +1553,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         "caratteri": len(testo),
         "troncato": troncato,
         "ricordi_esclusi": ricordi_esclusi,
+        # Due chiavi come le due sezioni, e per la stessa ragione: `guasti`
+        # sono fatti sulla CASA, `avvisi` sono i limiti di cio' che HIRIS sa.
+        # Tenerli in un elenco solo qui rimetterebbe in piedi la confusione che
+        # nel testo e' appena stata sciolta -- e il riepilogo non puo'
+        # raccontare una forma diversa da quella che il testo ha.
+        "guasti": guasti_casa,
         "avvisi": avvisi,
     }
     return testo, riepilogo
