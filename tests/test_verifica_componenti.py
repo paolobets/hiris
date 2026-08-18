@@ -169,9 +169,26 @@ def test_legge_le_azioni_del_workflow_vero():
 
 
 def test_legge_tetti_e_pavimenti_da_requirements():
+    """Il pavimento si legge DAL FILE, non da una cifra incollata qui.
+
+    Questa prova pinnava `"0.87.0"`. Si rompeva quindi a ogni aggiornamento
+    legittimo di una dipendenza, e la si "riparava" cambiando il numero: una
+    manutenzione senza valore, che oltretutto non provava il LETTORE ma il
+    contenuto del file. Un pavimento alzato per una buona ragione non e' una
+    regressione.
+
+    Adesso il valore atteso si ricava da `requirements.txt`: la prova fallisce
+    se il lettore smette di leggere i pavimenti (che e' il difetto vero), non
+    se un pavimento si muove.
+    """
+    import re as _re
+    testo = (vc.RADICE / "hiris" / "requirements.txt").read_text(encoding="utf-8")
+    atteso = _re.search(r"^anthropic>=([\d.]+)", testo, _re.M)
+    assert atteso, "anthropic non ha piu' un pavimento in requirements.txt"
+
     letti = vc.leggi_i_file()
     assert letti["tetti"]["anthropic"]["major_escluso"] == 1
-    assert letti["pavimenti"]["anthropic"]["minimo"] == "0.87.0"
+    assert letti["pavimenti"]["anthropic"]["minimo"] == atteso.group(1)
     # `installato` puo' essere None (pacchetto assente): e' un fatto, non un
     # errore, e a valle si salta invece di inventare uno scarto.
     assert "installato" in letti["pavimenti"]["anthropic"]
