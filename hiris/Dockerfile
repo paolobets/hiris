@@ -31,7 +31,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      «init del ponte», campo `cli=`: e' li' che si verifica che il pin
 #      sia arrivato fino al container, invece di fidarsi di questo file
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.233 \
+    && npm install -g @anthropic-ai/claude-code@2.1.234 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 
