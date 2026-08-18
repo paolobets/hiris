@@ -248,6 +248,24 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         except Exception:
             stato, classi_vive = {}, {}
 
+    # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
+    #
+    # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app["problemi_ha"]`,
+    # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
+    # `server.rileggi_problemi_ha`, mai una tabella. La ragione e' scritta per
+    # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
+    # riferimento (vedi `casa/anagrafe.sistema_di_riferimento`): un problema e'
+    # momentaneo, l'utente lo ripara con un clic in Home Assistant, e un
+    # archivio che si rilegge di rado continuerebbe ad annunciarlo per ore dopo
+    # che non c'e' piu'. Un falso allarme ripetuto in ogni prompt e'
+    # esattamente il rumore che questa fetta esiste per non produrre.
+    #
+    # Si legge con `.get()` e si passa cosi' com'e': `None` (nessuno l'ha
+    # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
+    # `componi()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
+    # o in una lista vuota affermerebbe che la casa non ha guasti.
+    problemi = app.get("problemi_ha")
+
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
     # due sole non basta: un archivio letto ma una cache non ancora caricata
@@ -263,6 +281,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         file_non_letti_comportamento=file_non_letti_comportamento,
         sistema_di_riferimento=sistema_di_riferimento,
         classi_vive=classi_vive,
+        problemi=problemi,
     )
 
 

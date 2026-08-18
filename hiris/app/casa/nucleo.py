@@ -43,8 +43,9 @@ cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
-from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, classe_effettiva,
-                       dominio_di, e_pseudo_area, gerarchia, traduci_stato)
+from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
+                       classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
+                       traduci_stato)
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -740,6 +741,186 @@ def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
             "Le entita' che dipendono da loro possono non rispondere.")
 
 
+# LA SOGLIA dei problemi diagnosticati da Home Assistant, e il perche'.
+#
+# Molte case hanno stabilmente due o tre `repairs` aperti e innocui: uno YAML
+# deprecato, un'integrazione da riautenticare quando capitera'. Un nucleo che
+# li ripete a OGNI messaggio insegna a chi legge a saltare quella riga, e il
+# giorno del guasto vero non se ne accorge nessuno. Il filtro non e' un
+# risparmio di caratteri: e' cio' che tiene viva la riga.
+#
+# La soglia e' scritta al CONTRARIO -- non «cosa si dice» ma «cosa si tace» --
+# e non e' un vezzo: e' l'unica forma in cui il ramo `else` e' sicuro. Un
+# elenco di severita' da dire tacerebbe da solo tutto cio' che non conosce
+# (una severita' nuova di Home Assistant, o assente: `severity` e'
+# `IssueSeverity | None` in `helpers/issue_registry.py`, verificato alla
+# fonte), e un problema silenziato perche' non lo si e' saputo leggere e'
+# esattamente la bugia che questa fetta esiste per chiudere.
+#
+# Quindi tace SOLO il `warning`, e nemmeno sempre: un `warning` con
+# `breaks_in_ha_version` non e' un consiglio, e' una SCADENZA -- diventera' un
+# guasto da solo, e l'unico momento in cui saperlo serve e' prima. Tutto il
+# resto (`critical`, `error`, una severita' che non sappiamo giudicare) si
+# dice per nome.
+_SEVERITA_PROBLEMA_TACIUTE = ("warning",)
+
+# Quanti problemi si citano per nome prima di tornare a CONTARE -- la regola
+# del modulo (docstring in cima) applicata anche qui. Gli avvisi non passano
+# per il taglio di `componi()`: una casa con venti guasti gravi produrrebbe un
+# avviso di millecinquecento caratteri che niente puo' accorciare, dentro un
+# nucleo che ne ha seimila in tutto. Cinque bastano a far capire di che
+# famiglia sono; il numero degli altri resta dichiarato.
+_TETTO_PROBLEMI_ELENCATI = 5
+
+# Dove si vanno a leggere per esteso. Il registro NON porta il testo del
+# problema -- porta una `translation_key` che vive nello `strings.json`
+# dell'integrazione, e HIRIS non ce l'ha. Mandare l'utente dove il testo c'e'
+# e' l'unica cosa onesta da fare al posto di inventarlo.
+_DOVE_SI_RIPARANO = "Impostazioni -> Riparazioni di Home Assistant"
+
+
+def _voce_problema(p: dict) -> str:
+    """Un problema in una riga, coi soli campi che si sanno interpretare.
+
+    Il nome e' `dominio: chiave` ed e' lo STESSO ripiego che usa Home
+    Assistant quando non trova la traduzione (`ha-config-repairs.ts`:
+    `` `${issue.domain}: ${issue.translation_key || issue.issue_id}` ``,
+    verificato alla fonte). Copiarlo non e' pigrizia: e' cio' che fa
+    coincidere il nome che il modello legge con quello che l'utente vede
+    davanti a se' quando apre la pagina delle riparazioni.
+
+    Cosa NON entra, e perche':
+    - `translation_placeholders`: sono i buchi di una frase che non abbiamo.
+      Un valore senza la sua frase non e' un oggetto, e' un frammento
+      (fondamenta: atomicita') -- «integration: Reolink» senza sapere cosa la
+      frase dicesse di Reolink afferma meno di quanto sembri;
+    - `learn_more_url`: un indirizzo che il modello non puo' aprire. Chi puo'
+      aprirlo lo trova gia' nella pagina delle riparazioni;
+    - `created`: il registro dei problemi si rilegge ogni pochi minuti (vedi
+      `server.rileggi_problemi_ha`), e una data di apertura non cambia cosa
+      c'e' da fare.
+    """
+    nome = f"{p.get('domain') or 'senza dominio'}: " \
+           f"{p.get('translation_key') or p.get('issue_id') or 'senza chiave'}"
+    dettagli = [(p.get("severity") or "").strip().lower() or "severita' non dichiarata"]
+    scadenza = (p.get("breaks_in_ha_version") or "").strip()
+    if scadenza:
+        dettagli.append(f"si rompe in {scadenza}")
+    # `is_fixable` e' `bool | None`: `None` non e' `False`, e' «HA non lo dice».
+    # Si annota solo il si', perche' e' l'unico che cambia cosa puo' fare chi
+    # legge -- un clic invece di una modifica a mano.
+    if p.get("is_fixable"):
+        dettagli.append("Home Assistant sa ripararlo da solo")
+    return f"{nome} ({', '.join(dettagli)})"
+
+
+def _avviso_problemi(problemi: dict | None) -> str | None:
+    """Cio' che Home Assistant ha GIA' diagnosticato come rotto.
+
+    Gemello di `_avviso_integrazioni`, e sta nella stessa sezione per la
+    stessa ragione: quello dice PERCHE' un'integrazione non e' partita,
+    questo dice cosa HA ha diagnosticato in generale. Nessuno dei due e' un
+    evento -- sono condizioni, e restano vere finche' qualcuno non le ripara.
+    In «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
+    successa adesso.
+
+    `problemi` arriva gia' letto dal chiamante (`handlers_casa.costruisci_nucleo`,
+    da `app["problemi_ha"]`), esattamente come `stato` e
+    `sistema_di_riferimento`: `componi()` resta PURA.
+
+    I tre valori, e sono tre cose diverse:
+    - `None`: il chiamante non ha chiesto. Silenzio -- e' l'unico caso in cui
+      tacere non afferma niente;
+    - `{"errore": ...}`: non si e' potuto guardare. Si DICHIARA: un guasto di
+      lettura non e' una casa sana, e un elenco vuoto qui significherebbe
+      «non c'e' niente che non va»;
+    - `{"problemi": [...]}`: le righe come HA le manda, gia' senza le ignorate
+      dall'utente (`HAClient.problemi`).
+    """
+    if problemi is None:
+        return None
+
+    errore = (problemi.get("errore") or "").strip()
+    if errore:
+        return ("il registro dei problemi di Home Assistant non si e' potuto "
+                f"leggere ({errore}): qui non si sta dicendo che la casa e' "
+                "sana, si sta dicendo che non si e' potuto guardare.")
+
+    da_dire: list[dict] = []
+    taciuti = 0
+    for p in problemi.get("problemi") or []:
+        if not isinstance(p, dict):
+            continue
+        severita = (p.get("severity") or "").strip().lower()
+        scadenza = (p.get("breaks_in_ha_version") or "").strip()
+        if severita in _SEVERITA_PROBLEMA_TACIUTE and not scadenza:
+            taciuti += 1
+            continue
+        da_dire.append(p)
+
+    # L'ordine di gravita' NON si riscrive qui: `SEVERITA_PROBLEMA` e'
+    # gia' ordinata dalla piu' grave, ed e' la sua unica casa (fondamenta:
+    # nessun doppione). Serve perche' il tetto qui sotto taglia dalla coda:
+    # senza, cinque `warning` in scadenza potrebbero nascondere un `critical`.
+    # Chi ha una severita' che non conosciamo finisce in fondo -- si dice
+    # comunque, ma dopo cio' che sappiamo graduare. A parita', dominio e
+    # chiave: due letture identiche devono produrre lo stesso nucleo.
+    def _gravita(p: dict) -> tuple[int, str, str]:
+        severita = (p.get("severity") or "").strip().lower()
+        rango = (SEVERITA_PROBLEMA.index(severita)
+                 if severita in SEVERITA_PROBLEMA
+                 else len(SEVERITA_PROBLEMA))
+        return (rango, p.get("domain") or "", p.get("issue_id") or "")
+
+    da_dire.sort(key=_gravita)
+    non_elencati = max(0, len(da_dire) - _TETTO_PROBLEMI_ELENCATI)
+
+    # Il numero dei taciuti esce SEMPRE che ce ne siano, anche quando non c'e'
+    # nient'altro da dire. Un filtro silenzioso e' un altro modo di mentire, e
+    # il modulo dichiara gia' che la priorita' non e' «cosa e' recuperabile»
+    # ma «cosa il modello perde la possibilita' di SAPERE che esiste»: il
+    # numero glielo lascia, il testo si va a leggere dove il testo c'e'.
+    coda_taciuti = ""
+    if taciuti:
+        # La frase intera cambia al singolare, non solo la desinenza: «Altri 1
+        # problema ... non sono elencato» e' cio' che succede a concordare un
+        # pezzo per volta. Stessa disciplina di `_avviso_taglio`, che per la
+        # stessa ragione riceve le frasi gia' concordate.
+        coda_taciuti = (" Un altro problema di severita' minore non e' elencato"
+                        if taciuti == 1 else
+                        f" Altri {taciuti} problemi di severita' minore non sono elencati")
+        coda_taciuti += " (warning senza una versione di rottura dichiarata)."
+
+    if not da_dire:
+        if not taciuti:
+            # Il registro c'e' ed e' vuoto: non si dice niente, che e' la cosa
+            # giusta da dire. Stessa scelta di `_avviso_integrazioni` su una
+            # casa sana.
+            return None
+        # Anche qui la frase intera, non la desinenza (vedi `coda_taciuti`).
+        quanti_e_quali = ("1 problema aperto di severita' minore" if taciuti == 1
+                          else f"{taciuti} problemi aperti di severita' minore")
+        chiusura = ("non e' elencato qui, si legge" if taciuti == 1
+                    else "non sono elencati qui, si leggono")
+        return (f"Home Assistant ha {quanti_e_quali} (warning senza una "
+                f"versione di rottura dichiarata): {chiusura} in "
+                f"{_DOVE_SI_RIPARANO}.")
+
+    voci = "; ".join(_voce_problema(p) for p in da_dire[:_TETTO_PROBLEMI_ELENCATI])
+    quanti = len(da_dire)
+    voce = _plurale(quanti, "problema", "problemi")
+    coda_non_elencati = ""
+    if non_elencati:
+        coda_non_elencati = ("; e un altro problema della stessa lista, non elencato"
+                             if non_elencati == 1 else
+                             f"; e altri {non_elencati} problemi della stessa "
+                             "lista, non elencati")
+    return (f"Home Assistant ha gia' diagnosticato {quanti} {voce}: {voci}"
+            f"{coda_non_elencati}.{coda_taciuti} "
+            f"Si {_plurale(quanti, 'legge', 'leggono')} per esteso e si "
+            f"{_plurale(quanti, 'ripara', 'riparano')} in {_DOVE_SI_RIPARANO}.")
+
+
 def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
     al "conta, non elencare" (vedi docstring del modulo).
@@ -808,7 +989,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             problemi_comportamento: tuple[str, ...] = (),
             file_non_letti_comportamento: dict[str, str] | None = None,
             sistema_di_riferimento: dict | None = None,
-            classi_vive: dict[str, str] | None = None) -> tuple[str, dict]:
+            classi_vive: dict[str, str] | None = None,
+            problemi: dict | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -839,6 +1021,14 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     ha risposto (CRITICAL ②, tabella vuota dopo un `sostituisci` parziale) --
     vedi `_stato_inaffidabile`.
 
+    `problemi` sono i guasti che Home Assistant ha GIA' diagnosticato
+    (`repairs/list_issues`, letti da `HAClient.problemi()`), nella forma in cui
+    quella funzione li restituisce: `{"problemi": [...]}` o `{"errore": ...}`.
+    Arrivano come ARGOMENTO, come `stato` e `sistema_di_riferimento`, perche'
+    questa funzione non apre connessioni. `None` significa «il chiamante non ha
+    chiesto» e non «non c'e' niente che non va»: vedi `_avviso_problemi`, che
+    decide anche cosa dire e cosa tacere.
+
     `problemi_comportamento`/`file_non_letti_comportamento` sono le
     dichiarazioni che `comportamento.rileggi()` costruisce gia' e che
     `/api/casa` espone (`ArchivioCasa.problemi_comportamento()`/
@@ -859,6 +1049,14 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     guasto = _avviso_integrazioni(casa.get("integrazioni") or [])
     if guasto:
         avvisi.append(guasto)
+
+    # Subito dopo le integrazioni rotte, e non altrove: sono la stessa specie
+    # di fatto -- cio' che HA ha diagnosticato -- e chi legge deve trovarli
+    # accanto. Separarli con in mezzo i registri caduti o i corpi mancanti
+    # significherebbe far cercare due volte la stessa risposta.
+    diagnosi = _avviso_problemi(problemi)
+    if diagnosi:
+        avvisi.append(diagnosi)
 
     if non_disponibili:
         avvisi.append(

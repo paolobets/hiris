@@ -305,6 +305,19 @@ def categorie_con_nome(voce: dict, nomi: dict[tuple[str, str], str]) -> dict[str
     return fuori
 
 
+# Le tre severita' di un problema diagnosticato da Home Assistant, dalla piu'
+# grave. I valori sono quelli veri di `IssueSeverity`
+# (`helpers/issue_registry.py`), verificati.
+#
+# Stanno QUI e non in `proxy/ha_client.py`, dove sono nate: le legge anche il
+# nucleo per ordinare cio' che dice, e importare il client di rete dentro il
+# digesto per tre parole significava trascinare httpx dentro un modulo che si
+# dichiara PURO. Questa e' gia' la casa degli altri vocabolari di Home
+# Assistant (i significati delle classi, le traduzioni degli stati), ed e' una
+# foglia: la puo' importare chiunque.
+SEVERITA_PROBLEMA = ("critical", "error", "warning")
+
+
 # --- il vocabolario degli stati -------------------------------------------
 #
 # Sta QUI e non in `nucleo.py`, dov'era nato: il significato di uno stato e' un

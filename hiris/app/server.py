@@ -538,6 +538,62 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     return True
 
 
+async def rileggi_problemi_ha(app, ha_client) -> dict | None:
+    """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
+    `app["problemi_ha"]`. Ritorna cio' che ha scritto (`None` senza client).
+
+    DOVE VIVONO I PROBLEMI, e perche' qui e non in `casa/archivio.py`.
+
+    Un `repair` e' momentaneo. L'utente apre Home Assistant, clicca «ripara»,
+    e quel problema non esiste piu': un archivio SQLite riletto solo quando i
+    registri cambiano continuerebbe ad annunciarlo per ore -- e un falso
+    allarme ripetuto in ogni prompt e' precisamente il rumore che questa fetta
+    esiste per non produrre. E' lo stesso ragionamento, sullo stesso genere di
+    dato, per cui `state` non entra nel sistema di riferimento della casa
+    (`casa/anagrafe.sistema_di_riferimento`: «in un archivio che si rilegge di
+    rado mentirebbe poche ore dopo, ed e' peggio che non saperlo»).
+
+    C'e' anche una ragione meccanica, e da sola basterebbe: l'anagrafe si
+    ricostruisce sugli eventi dei REGISTRI (`EVENTI_ANAGRAFE`), e il registro
+    dei problemi non ne emette nessuno. Messo in archivio, nessun innesco lo
+    aggiornerebbe: sarebbe una tabella scritta all'avvio e vecchia da li' in
+    poi.
+
+    Quindi in RAM, accanto a `entity_cache` -- che e' l'altra fotografia
+    momentanea del prodotto -- e riletta da un lavoro periodico. Cinque
+    minuti: e' la cadenza della sentinella del comportamento, il costo e' un
+    solo comando WebSocket, e un guasto riparato sparisce dal nucleo entro il
+    giro successivo invece che al riavvio dell'add-on.
+
+    La strada migliore esisterebbe: Home Assistant emette
+    `repairs_issue_registry_updated`, e ascoltarlo renderebbe il numero esatto
+    invece che fresco di cinque minuti. Sottoscriverlo pero' vuol dire toccare
+    `proxy/ha_client.py` (le sottoscrizioni si aprono tutte li', in `_ws_loop`),
+    che questa fetta non possiede. Resta la prima cosa da fare quando quel file
+    si riapre; la lettura periodica non andra' buttata, e' il ripiego che copre
+    un HA che si riavvia e perde le sottoscrizioni.
+
+    Non solleva mai: `HAClient.problemi()` restituisce gia' `{"errore": ...}`
+    sui guasti, e quell'errore e' un'informazione da portare al modello, non
+    un'eccezione da propagare in uno schedulatore.
+    """
+    if ha_client is None:
+        return None
+    lettore = getattr(ha_client, "problemi", None)
+    if lettore is None:
+        # Un client vecchio o un finto di prova che non dichiara `problemi`:
+        # non si scrive niente, cosi' `app["problemi_ha"]` resta `None` e il
+        # nucleo tace invece di affermare che la casa e' sana.
+        return None
+    try:
+        esito = await lettore()
+    except Exception as exc:  # non previsto: `problemi()` cattura gia' da se'
+        logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
+        esito = {"errore": "Home Assistant non ha risposto"}
+    app["problemi_ha"] = esito
+    return esito
+
+
 def should_start_agent_worker(ponte_attivo: bool) -> bool:
     """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
 
@@ -952,6 +1008,19 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("EntityCache load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
+
+    # I guasti che Home Assistant ha gia' diagnosticato. Qui la PRIMA lettura,
+    # accanto all'inventario perche' e' la stessa specie di dato: una
+    # fotografia momentanea che vive in RAM e non in archivio (il perche' per
+    # esteso e' su `rileggi_problemi_ha`). Le riletture sono un lavoro dello
+    # schedulatore, piu' sotto.
+    #
+    # Prima di questa riga la chiave non esiste, e `componi()` lo legge come
+    # «non ho chiesto» -- non come «non c'e' niente di rotto». Se Home
+    # Assistant e' giu' proprio adesso, `problemi()` risponde `{"errore": ...}`
+    # e il nucleo lo dichiara: la finestra in cui HIRIS tace su questo e' larga
+    # quanto il boot.
+    await rileggi_problemi_ha(app, ha_client)
 
     # Task B7: la cache dell'Indice (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
@@ -1557,6 +1626,23 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
         misfire_grace_time=120,
+    )
+
+    # La rilettura dei problemi diagnosticati da Home Assistant. Cinque minuti,
+    # la stessa cadenza della sentinella del comportamento qui sotto e per una
+    # ragione simmetrica: un `repair` si apre e si chiude con una cadenza di
+    # ore, non di secondi, e il costo di un giro e' un solo comando WebSocket.
+    # Serve soprattutto al verso opposto -- un problema RIPARATO dall'utente
+    # deve sparire dal nucleo da solo, o HIRIS continuerebbe ad annunciare un
+    # guasto che non c'e' piu' fino al riavvio dell'add-on.
+    async def _rileggi_problemi() -> None:
+        await rileggi_problemi_ha(app, ha_client)
+
+    scheduler.add_job(
+        _rileggi_problemi,
+        trigger="interval", minutes=5,
+        id="hiris_problemi_ha", replace_existing=True,
+        misfire_grace_time=300,
     )
 
     # Task 4 SDD casa: la sentinella dell'mtime, registrata come lavoro

@@ -1,5 +1,7 @@
 import asyncio
 import logging
+
+from ..casa.anagrafe import SEVERITA_PROBLEMA
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -864,10 +866,11 @@ class HAClient:
         return {chiave: sorted(str(v) for v in valori)
                 for chiave, valori in risultato.items() if valori}
 
-    # Le tre severita' di `IssueSeverity` (`helpers/issue_registry.py`), coi
-    # valori veri. Ordinate dalla piu' grave: serve a chi deve decidere cosa
-    # dire e cosa tacere.
-    SEVERITA_PROBLEMA = ("critical", "error", "warning")
+    # Le tre severita' di un problema, da `casa.anagrafe` -- la foglia dove
+    # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
+    # tenerle qui avrebbe voluto dire far importare il client di rete al
+    # digesto, che si dichiara puro.
+    SEVERITA_PROBLEMA = SEVERITA_PROBLEMA
 
     async def problemi(self) -> dict:
         """I guasti che Home Assistant ha GIA' diagnosticato.

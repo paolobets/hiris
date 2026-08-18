@@ -1,6 +1,6 @@
-"""Le due domande: cercare per nome, guardare il dettaglio.
+"""Le tre domande: cercare per nome, guardare il dettaglio, chiedere i legami.
 
-Il nucleo (nucleo.py) dice DOVE sono le cose -- conta, non elenca. Le due
+Il nucleo (nucleo.py) dice DOVE sono le cose -- conta, non elenca. Le tre
 funzioni qui sotto danno il DETTAGLIO, quando il modello (o l'utente dalla
 pagina) lo chiede esplicitamente:
 
@@ -17,16 +17,25 @@ pagina) lo chiede esplicitamente:
   un'entita' col suo stato e la sua classe, un'automazione o uno script col
   loro corpo, un dispositivo con le sue entita', un ricordo con la sua
   interpretazione.
+- `legami(risposta, tipo, riferimento)` -- CHI tocca questa cosa, secondo
+  Home Assistant. Non e' un terzo modo di guardare la stessa cosa: `guarda`
+  porta il CORPO (cosa fa quell'automazione), `legami` porta i LEGAMI (quali
+  automazioni, script, scene o gruppi nominano questa entita'). Sono due
+  fatti diversi sullo stesso oggetto, e tenerli in due risposte e' cio' che
+  li tiene distinti -- la confusione fra «dichiarato» e «dedotto» questo
+  progetto la paga da sempre.
 
 Due, non trentaquattro: la mappa del prodotto ha condannato un catalogo di
 trentaquattro strumenti con tre copie divergenti (vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md). Un tipo nuovo di "cosa"
 si aggiunge come un altro `if` dentro `guarda`, non come un tool in piu'.
 
-Entrambe sono PURE: prendono dati gia' letti dal chiamante (l'indice, la
-casa, il comportamento, i ricordi, lo stato vivo) e non aprono archivi ne'
-chiamano la rete -- la stessa scelta che rende `componi()` del nucleo
-verificabile senza finti elaborati (nucleo.py).
+Tutte e tre sono PURE: prendono dati gia' letti dal chiamante (l'indice, la
+casa, il comportamento, i ricordi, lo stato vivo, la risposta che Home
+Assistant ha gia' dato) e non aprono archivi ne' chiamano la rete -- la
+stessa scelta che rende `componi()` del nucleo verificabile senza finti
+elaborati (nucleo.py). Vale anche per `legami`: la chiamata WebSocket la fa
+il chiamante (`casa/strumenti.py`), qui arriva solo cio' che ha risposto.
 
 **Un silenzio non dichiarato e' indistinguibile da un'assenza di
 problemi** (pagato sedici volte su questo ramo, sempre trovato da una
@@ -48,6 +57,47 @@ from .anagrafe import (categorie_con_nome, classe_effettiva, dominio_di,
 # (comportamento.py), non due archivi diversi: la distinzione e' nel campo
 # `tipo` della voce, non nella provenienza.
 _TIPI_COMPORTAMENTO = {"automazione", "script"}
+
+# I quattordici tipi che `search/related` sa collegare -- i VALORI di
+# `ItemType` (`homeassistant/components/search/__init__.py`, letti sul
+# sorgente, non a memoria) -- nel vocabolario di HIRIS.
+#
+# A sinistra il nome vero di Home Assistant, che e' quello che va dentro il
+# comando; a destra il nome italiano con cui quella cosa vive qui dentro.
+# Stessa disciplina di `anagrafe._CAMPI_RIFERIMENTO`: l'anagrafe parla la
+# lingua di HIRIS ovunque, e una risposta meta' inglese sarebbe l'unico posto
+# in cui non lo fa -- per giunta proprio quella da cui il modello ricava un
+# `riferimento` da passare a `guarda`, che i tipi li nomina in italiano.
+#
+# Si legge nei DUE versi (`TIPO_LEGAME_HA` piu' sotto e' la stessa tabella
+# rovesciata, non una seconda): il modello nomina «entita», Home Assistant
+# vuole «entity». Due elenchi da tenere allineati a mano sarebbero due
+# vocabolari, cioe' la forma di difetto che le fondamenta chiamano doppione.
+#
+# Cinque di questi nomi -- area, entita, dispositivo, automazione, script --
+# sono esattamente i tipi che `guarda` sa aprire; gli altri nove no, e
+# `guarda` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
+# di `guarda`): un id vero preso da qui non deve poter diventare
+# un'affermazione falsa sulla casa.
+NOME_LEGAME = {
+    "area": "area",
+    "automation": "automazione",
+    "automation_blueprint": "progetto_di_automazione",
+    "config_entry": "voce_di_configurazione",
+    "device": "dispositivo",
+    "entity": "entita",
+    "floor": "piano",
+    "group": "gruppo",
+    "integration": "integrazione",
+    "label": "etichetta",
+    "person": "persona",
+    "scene": "scena",
+    "script": "script",
+    "script_blueprint": "progetto_di_script",
+}
+
+# La stessa tabella dal verso del modello. Derivata, mai riscritta.
+TIPO_LEGAME_HA = {nostro: loro for loro, nostro in NOME_LEGAME.items()}
 
 
 def cerca(indice, testo: str) -> list[dict]:
@@ -522,6 +572,13 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     scambiare per un fatto sulla casa invece che per "non trovato" -- un
     silenzio non dichiarato e' indistinguibile da un'assenza di problemi.
 
+    E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
+    il riferimento non c'e' (le cinque funzioni qui sopra), oppure il TIPO
+    non e' fra quelli che HIRIS sa aprire -- e allora esce anche
+    `non_so_guardare: True`, perche' una scena o un gruppo che `legami()`
+    ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una
+    risposta sbagliata detta con sicurezza.
+
     `non_disponibili` (registri dell'anagrafe caduti: "aree", "dispositivi",
     "entita") e `file_non_letti` (i file di comportamento non letti, stessa
     forma di `ArchivioCasa.file_non_letti()`) vanno propagati a OGNI ramo,
@@ -563,4 +620,68 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     # modello ha nominato un tipo che non esiste, non un riferimento che
     # manca) -- e va dichiarato con la stessa onesta', non con un'eccezione
     # che gli spezza il turno.
-    return {"esiste": False, "tipo": tipo, "riferimento": riferimento}
+    #
+    # `non_so_guardare`: la causa e' un LIMITE DI HIRIS, non un fatto sulla
+    # casa, e da quando esistono i legami quella differenza costa. `legami`
+    # restituisce identificatori veri di cose vere -- una scena, un gruppo,
+    # una persona -- che `guarda` non sa aprire: senza questa chiave il
+    # modello chiedeva `guarda("scena", ...)`, leggeva `esiste: false` e
+    # riferiva all'utente «quella scena non esiste», che e' una risposta
+    # sbagliata detta con sicurezza su una cosa che Home Assistant gli aveva
+    # appena mostrato. Stessa disciplina di `non_disponibile`: «non l'ho
+    # trovato» e «non ho potuto guardare» sono due fatti diversi.
+    return {"esiste": False, "tipo": tipo, "riferimento": riferimento,
+            "non_so_guardare": True}
+
+
+def legami(risposta: dict, tipo: str, riferimento) -> dict:
+    """Chi tocca questa cosa, nella forma che il modello legge.
+
+    Prende la risposta GIA' ottenuta da `HAClient.legami()` -- questa
+    funzione e' pura come le altre due, la rete la fa il chiamante
+    (`casa/strumenti.py`) -- e fa tre cose sole: distingue il guasto dal
+    niente, traduce i tipi nel vocabolario di HIRIS, e ordina.
+
+    **Il guasto non e' un «niente».** `legami: {}` e' un'affermazione:
+    «questa cosa non la tocca nessuno e non sta da nessuna parte». Se Home
+    Assistant non ha risposto, quell'affermazione nessuno ha il diritto di
+    farla, e la risposta esce con `errore` -- una chiave diversa, non un
+    elenco piu' corto. E' lo stesso principio con cui `HAClient.legami`
+    rifiuta di restituire `{}` su un rifiuto, portato fino al modello: un
+    guasto dichiarato al client e appiattito qui sarebbe un guasto taciuto.
+
+    **La traduzione.** Le chiavi arrivano come le manda Home Assistant
+    (`entity`, `automation`, ...) ed escono come le nomina HIRIS (`entita`,
+    `automazione`): sono gli stessi nomi di `cerca` e di `guarda`, cosi' un
+    `riferimento` letto qui si passa di li' senza tradurlo a mano -- e senza
+    che il modello debba imparare due vocabolari per la stessa casa
+    (fondamenta: consistenza). Una chiave che Home Assistant aggiungesse
+    domani e che questa tabella non conosce passa COSI' COM'E': un nome non
+    tradotto e' un fastidio, una riga buttata sarebbe una perdita silenziosa.
+
+    **Cosa questa funzione NON fa: raggruppare.** Per un'entita' la risposta
+    di Home Assistant mescola chi la USA (automazioni, script, scene, gruppi,
+    persone) con dove STA (area, dispositivo, piano, integrazione) --
+    verificato sul sorgente, `_async_search_entity` fa entrambe le cose. La
+    tentazione e' dividerle in due gruppi, ma il significato delle stesse
+    chiavi cambia col tipo chiesto: per un'AREA le entita' elencate sono cio'
+    che l'area contiene, non dove l'area sta. Un raggruppamento fisso sarebbe
+    giusto per un tipo e falso per gli altri, quindi non si raggruppa: si
+    lascia la struttura di Home Assistant e si spiega al modello (nella
+    descrizione dello strumento) come leggerla.
+    """
+    if not isinstance(risposta, dict) or "errore" in risposta:
+        motivo = (risposta.get("errore") if isinstance(risposta, dict)
+                  else "risposta in forma inattesa")
+        return {"errore": (
+            f"non ho potuto sapere chi tocca «{riferimento}»: {motivo}. "
+            "Non e' un «non la tocca nessuno»: e' una domanda a cui Home "
+            "Assistant non ha risposto, e il legame potrebbe esserci.")}
+    tradotti = {NOME_LEGAME.get(chiave, chiave): list(valori)
+                for chiave, valori in risposta.items()}
+    # Ordinate per nome: Home Assistant manda un dizionario costruito da
+    # insiemi, e due letture identiche produrrebbero due risposte con le
+    # chiavi in ordine diverso. I VALORI li ordina gia' il client, e per la
+    # stessa ragione.
+    return {"tipo": tipo, "riferimento": riferimento,
+            "legami": {nome: tradotti[nome] for nome in sorted(tradotti)}}

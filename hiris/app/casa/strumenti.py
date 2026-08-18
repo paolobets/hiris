@@ -8,7 +8,7 @@ trentaquattro e il semaforo sono usciti per intero (fetta E2 Task 8 "escono
 i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
-Qui il modello ne riceve CINQUE. Quattro leggono e ricordano; il quinto,
+Qui il modello ne riceve SEI. Cinque leggono e ricordano; il sesto,
 `esegui`, fa succedere qualcosa in casa -- ed e' l'unico. Per un tratto della
 2.0 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
@@ -21,10 +21,40 @@ stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
     cerca    -- trova qualcosa per nome o alias, dichiarando le ambiguita'
     guarda   -- il dettaglio di una cosa: un'area, un'entita', un'automazione
                 col suo corpo, un ricordo
+    legami   -- chi tocca questa cosa, secondo Home Assistant
     ricorda  -- salva cio' che l'utente ha detto, con le ancore alla casa
     richiama -- i ricordi che riguardano una parte della casa
     esegui   -- chiama un servizio di Home Assistant, verificato prima e
                 riletto dopo: l'unico strumento che tocca la casa
+
+**Perche' `legami` e' uno strumento e non un campo di `guarda`.** E' la
+decisione di questa fetta, e ha quattro ragioni che tirano tutte dalla stessa
+parte.
+
+1. **I legami sono MOMENTANEI, e non vanno in archivio.** Sono la stessa
+   sostanza di `state`, tenuto fuori dal sistema di riferimento per iscritto
+   (`casa/anagrafe.sistema_di_riferimento`): «in un archivio che si rilegge
+   di rado mentirebbe poche ore dopo, ed e' peggio che non saperlo». Un'
+   automazione nuova cambia i legami di una luce nell'istante in cui viene
+   salvata. Quindi si CHIEDONO quando servono, e non si salvano da nessuna
+   parte: ne' in `casa.db`, ne' nell'anagrafe, ne' nel digesto del nucleo.
+2. **`guarda` e' pura e non fa I/O** (vedi il suo docstring in `domande.py`).
+   Per infilarci i legami bisognerebbe che `_guarda` facesse un giro
+   WebSocket PRIMA di ogni chiamata -- anche per `guarda("ricordo", 3)`, che
+   con Home Assistant non c'entra nulla. Un costo di rete pagato da ogni
+   domanda per servirne una.
+3. **Sono due domande, non due campi dello stesso fatto.** `guarda` porta il
+   CORPO (cosa fa quell'automazione, letto dai file); `legami` porta i
+   LEGAMI (chi nomina questa entita', calcolato da Home Assistant su tutto
+   cio' che ha caricato). Il piano della fetta lo dice in chiaro: confonderli
+   rifarebbe la confusione fra «dichiarato» e «dedotto» che questo progetto
+   paga da sempre. Due risposte separate sono cio' che li tiene distinti.
+4. **Il guasto avrebbe due padroni.** `guarda` promette `esiste`, letto dagli
+   archivi. Un legame non letto e' il guasto di un ALTRO canale: dentro
+   `guarda` diventerebbe una chiave d'errore accanto a un `esiste: true`, e
+   il modello non saprebbe a quale delle due domande si riferisce. Separati,
+   ciascuno dichiara il proprio -- e `legami` dichiara il suo con un
+   `errore`, mai con un elenco vuoto.
 
 `ricorda` e' il motivo per cui questo modulo esiste: l'utente aveva scritto
 in chat *"d'inverno il soggiorno ideale e' 19.5"*, e HIRIS aveva risposto
@@ -52,8 +82,10 @@ from typing import Any
 
 from .anagrafe import specchio_vivo
 from .archivio import ArchivioCasa
+from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
+from .domande import legami as _legami_leggibili
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
 from ..memoria.cache_indice import CacheIndice
@@ -140,7 +172,11 @@ GUARDA_TOOL_DEF = {
         "un booleano -- la stessa forma in `cerca`): quel testo E' il nome, "
         "solo non scelto da chi vive in questa casa ma letto da cio' che Home "
         "Assistant mostra a schermo. Non concludere «senza nome» quando "
-        "`nome_dedotto` c'e'."
+        "`nome_dedotto` c'e'. "
+        "Questo strumento porta il CORPO di una cosa -- cosa fa quell'automazione, "
+        "cosa contiene quell'area -- non i suoi legami: per sapere CHI tocca una "
+        "cosa (e quindi cosa smetterebbe di funzionare se la cancellassi) usa "
+        "`legami`, che e' una domanda diversa e una risposta diversa."
     ),
     "input_schema": {
         "type": "object",
@@ -156,6 +192,65 @@ GUARDA_TOOL_DEF = {
                     "area/entita'/dispositivo o di automazione/script cosi' "
                     "come lo conosce Home Assistant, oppure il numero di un "
                     "ricordo (visto in `guarda`/`richiama`)."
+                ),
+            },
+        },
+        "required": ["tipo", "riferimento"],
+    },
+}
+
+# I tipi che `legami` accetta, nel vocabolario di HIRIS. DERIVATI dalla
+# tabella di `domande.py` -- che e' anche quella con cui si traduce verso
+# Home Assistant -- invece di riscritti qui: un elenco a mano nella
+# descrizione e un altro nel gestore sarebbero due vocabolari, e il primo a
+# divergere sarebbe quello che legge il modello.
+_TIPI_LEGAME_NOSTRI = tuple(sorted(TIPO_LEGAME_HA))
+
+LEGAMI_TOOL_DEF = {
+    "name": "legami",
+    "description": (
+        "CHI tocca una cosa della casa, secondo Home Assistant: quali "
+        "automazioni, script, scene, gruppi o persone la nominano, e dove quella "
+        "cosa sta (area, dispositivo, piano, integrazione). Serve per due domande "
+        "che senza questo strumento non hanno risposta: «perche' si e' accesa la "
+        "luce del corridoio?» e -- prima di proporre di cancellare o cambiare "
+        "qualcosa -- «se tolgo questa, cosa smette di funzionare?». "
+        "Richiede `tipo` (uno fra: " + ", ".join(_TIPI_LEGAME_NOSTRI) + ") e "
+        "`riferimento`, l'identificatore ESATTO (usa `cerca` se hai solo un nome). "
+        "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
+        "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
+        "`guarda` legge due soli file: qui i legami sono completi, ma non c'e' il "
+        "CORPO. Le due cose non si sostituiscono: per sapere COSA FA "
+        "un'automazione che trovi qui, aprila con `guarda`. "
+        "**Come si legge la risposta.** `legami` e' un dizionario tipo -> "
+        "identificatori. Per un'entita' mescola chi la USA (automazione, script, "
+        "scena, gruppo, persona) con dove STA (area, dispositivo, piano, "
+        "integrazione, etichetta): se la domanda e' «cosa smette di funzionare», "
+        "guarda i primi -- un'area non smette di funzionare perche' le togli una "
+        "luce. Per un'area, invece, le entita' elencate sono cio' che l'area "
+        "CONTIENE. I tipi usano gli stessi nomi di `cerca` e `guarda`, quindi un "
+        "riferimento letto qui si passa a `guarda` cosi' com'e' -- ma `guarda` sa "
+        "aprire solo area, entita, dispositivo, automazione e script: sugli altri "
+        "risponde `non_so_guardare`, che significa «non lo so aprire», MAI «non "
+        "esiste». "
+        "Un `legami` vuoto significa che Home Assistant non conosce nessun legame "
+        "per questa cosa. Se invece non ha potuto rispondere ricevi `errore`, che "
+        "non e' la stessa cosa: NON concludere che non la tocca nessuno."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "tipo": {
+                "type": "string",
+                "description": "Che cosa e' la cosa di cui vuoi i legami: uno fra "
+                               + ", ".join(_TIPI_LEGAME_NOSTRI) + ".",
+            },
+            "riferimento": {
+                "type": "string",
+                "description": (
+                    "L'identificatore esatto della cosa, cosi' come lo conosce "
+                    "Home Assistant (l'entity_id, l'id dell'area, del "
+                    "dispositivo, dell'automazione...). Non un nome libero."
                 ),
             },
         },
@@ -369,8 +464,8 @@ ESEGUI_TOOL_DEF = {
 }
 
 STRUMENTI_CONOSCENZA: list[dict] = [
-    CERCA_TOOL_DEF, GUARDA_TOOL_DEF, RICORDA_TOOL_DEF, RICHIAMA_TOOL_DEF,
-    ESEGUI_TOOL_DEF,
+    CERCA_TOOL_DEF, GUARDA_TOOL_DEF, LEGAMI_TOOL_DEF, RICORDA_TOOL_DEF,
+    RICHIAMA_TOOL_DEF, ESEGUI_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -385,7 +480,7 @@ _NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
 class DispatcherStrumenti:
-    """Collega i cinque strumenti agli archivi e alla porta -- e non altro.
+    """Collega i sei strumenti agli archivi, alla porta e al canale HA -- e non altro.
 
     Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -398,7 +493,8 @@ class DispatcherStrumenti:
     """
 
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
-                 cache=None, porta=None, cache_indice: CacheIndice | None = None) -> None:
+                 cache=None, porta=None, cache_indice: CacheIndice | None = None,
+                 ha=None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -424,12 +520,44 @@ class DispatcherStrumenti:
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
         self._cache_indice = cache_indice
+        # Il canale verso Home Assistant, per `legami` e per cio' che dopo di
+        # esso chiedera' un fatto MOMENTANEO (i legami non si archiviano --
+        # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
+        # scrive resta la porta, e questo attributo non le fa concorrenza.
+        self._ha = ha
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
+        "legami": ("ha",),
         "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
         "esegui": ("porta",),
     }
+
+    def _canale_ha(self):
+        """Il canale vivo verso Home Assistant -- uno solo, mai un secondo.
+
+        `legami` chiede a Home Assistant un fatto che non esiste in nessun
+        archivio (chi tocca cosa, ADESSO), quindi gli serve il client. Aprirne
+        uno qui sarebbe un secondo canale verso la stessa casa: la fondamenta
+        «nessun doppione» vale anche per le connessioni, e due websocket che
+        si autenticano da soli sono due cose che possono divergere.
+
+        Il canale arriva da fuori (`ha=`), dall'unico costruttore del
+        dispatcher (`api/handlers_chat.py::costruisci_dispatcher_strumenti`),
+        ed e' lo stesso oggetto che riceve la porta dell'azione.
+
+        C'e' stato per poco un ripiego che leggeva `porta._ha` -- l'attributo
+        privato di un altro oggetto -- perche' quella fetta non poteva toccare
+        il costruttore. E' durato il tempo di aggiungere una riga la', ed e'
+        uscito: un modulo che conosce le parti private di un altro e' un
+        accoppiamento che nessun test dichiara, e si scopre il giorno in cui
+        l'altro cambia nome a un campo.
+
+        `None` quando il canale non c'e', e chi chiama lo DICHIARA: uno
+        strumento che tace perche' non ha la connessione e uno che tace perche'
+        non c'e' nessun legame direbbero la stessa cosa.
+        """
+        return self._ha
 
     def _archivio_mancante(self, nome: str) -> str | None:
         """Quale archivio serve a questo strumento e non c'e'."""
@@ -440,6 +568,12 @@ class DispatcherStrumenti:
                 return "l'archivio della memoria non e' ancora stato caricato"
             if quale == "porta" and self._porta is None:
                 return "il collegamento con Home Assistant non e' disponibile"
+            if quale == "ha" and self._canale_ha() is None:
+                # Distinto dal messaggio della porta apposta: li' manca
+                # l'oggetto che ESEGUE, qui il canale a cui CHIEDERE. Sono due
+                # assenze diverse, e un utente che legge la risposta del
+                # modello deve poter capire quale delle due sta guardando.
+                return "non c'e' un collegamento vivo con Home Assistant a cui chiederli"
         return None
 
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
@@ -467,15 +601,16 @@ class DispatcherStrumenti:
         gestore = {
             "cerca": self._cerca,
             "guarda": self._guarda,
+            "legami": self._legami,
             "ricorda": self._ricorda,
             "richiama": self._richiama,
             "esegui": self._esegui,
         }[nome]
         try:
-            # `_esegui` e' una coroutine (fa rete); gli altri quattro no. Si
-            # attende cio' che e' attendibile invece di rendere `async` anche
-            # i quattro sincroni: cambiare la loro firma avrebbe toccato
-            # cinque gestori per un bisogno di uno solo.
+            # `_esegui` e `_legami` sono coroutine (fanno rete); gli altri
+            # quattro no. Si attende cio' che e' attendibile invece di rendere
+            # `async` anche i quattro sincroni: cambiare la loro firma avrebbe
+            # toccato sei gestori per un bisogno di due.
             esito = gestore(argomenti)
             if inspect.isawaitable(esito):
                 esito = await esito
@@ -680,6 +815,38 @@ class DispatcherStrumenti:
         except Exception:
             return {}, {}, {}, {}, False
         return stato, nomi, unita, classi, True
+
+    # -- legami --------------------------------------------------------
+
+    async def _legami(self, argomenti: dict[str, Any]) -> dict:
+        """Chiede a Home Assistant chi tocca questa cosa, e non lo salva.
+
+        Non lo salva ed e' una scelta, non una dimenticanza: i legami sono
+        MOMENTANEI quanto lo stato -- un'automazione salvata un minuto fa li
+        cambia -- e una tabella riletta di rado mentirebbe poche ore dopo. E'
+        la stessa ragione per cui `state` sta fuori dal sistema di riferimento
+        (`casa/anagrafe.sistema_di_riferimento`). Quindi si chiede quando
+        serve, e la risposta vive il tempo di un turno.
+
+        Qui dentro c'e' solo il collegamento: la traduzione dei tipi e la
+        forma della risposta stanno in `domande.legami`, che e' pura e si
+        prova senza rete.
+        """
+        tipo = argomenti.get("tipo")
+        riferimento = argomenti.get("riferimento")
+        if not tipo or not riferimento:
+            return {"errore": "«legami» richiede «tipo» e «riferimento»."}
+        tipo_ha = TIPO_LEGAME_HA.get(tipo)
+        if tipo_ha is None:
+            # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
+            # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,
+            # che arriva al modello come «errore» generico e non gli insegna
+            # niente. Stessa scelta di `_richiama` con le ancore.
+            disponibili = ", ".join(_TIPI_LEGAME_NOSTRI)
+            return {"errore": f"«{tipo}» non e' un tipo di cui Home Assistant sappia "
+                              f"i legami ({disponibili})."}
+        risposta = await self._canale_ha().legami(tipo_ha, str(riferimento))
+        return _legami_leggibili(risposta, tipo, riferimento)
 
     # -- ricorda -----------------------------------------------------------
 

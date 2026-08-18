@@ -51,10 +51,10 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
-    I cinque strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
-    trentaquattro di ALL_TOOL_DEFS: quattro conoscono la casa e il quinto,
-    `esegui`, la comanda passando per la porta unica (vedi il docstring di quel
-    modulo). Il dispatcher si costruisce dagli
+    I sei strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
+    trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
+    `guarda`, `legami`, `ricorda`, `richiama`) e il sesto, `esegui`, la comanda
+    passando per la porta unica (vedi il docstring di quel modulo). Il dispatcher si costruisce dagli
     stessi oggetti dell'app che alimentano `costruisci_nucleo()`
     (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`
     -- lo stesso specchio dello stato vivo, non uno ricalcolato a mano -- ed e'
@@ -93,6 +93,16 @@ def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
         cache=app.get("entity_cache"),
         porta=app.get("porta_azione"),
         cache_indice=app.get("cache_indice_strumenti"),
+        # Il canale verso Home Assistant, per `legami`: quello strumento non
+        # legge l'archivio, chiede a HA chi tocca una cosa
+        # (`search/related`). Senza questa riga sarebbe uno strumento sempre
+        # «non disponibile» -- un dato che c'e' e che nessuno puo' chiedere,
+        # cioe' la fondamenta 4 al contrario.
+        #
+        # E' lo STESSO oggetto che usa la porta dell'azione, non un secondo
+        # canale: due connessioni verso HA sarebbero due stati di
+        # riconnessione da tenere allineati.
+        ha=app.get("ha_client"),
     )
 
 

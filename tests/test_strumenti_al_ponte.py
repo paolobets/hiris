@@ -157,10 +157,14 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     Il numero letterale e' un filo teso di proposito: non aggiunge nulla alla
     verifica dei nomi qui sotto, ma fa in modo che uno strumento che entra o
     esce dal catalogo passi da una decisione esplicita invece che di
-    soppiatto. fetta "comandare" Task 5: da 4 a 5, entra `esegui`."""
+    soppiatto. fetta "comandare" Task 5: da 4 a 5, entra `esegui`; fetta
+    «i legami» : da 5 a 6, entra `legami` -- che al ponte serve quanto alla
+    chat, perche' «se cancello questa entita' cosa smette di funzionare?» e'
+    una domanda da farsi PRIMA di proporre una modifica, ed e' il ponte a
+    proporne."""
     nomi = runner.nomi_mcp()
 
-    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 5
+    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 6
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

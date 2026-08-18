@@ -89,12 +89,18 @@ def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
     apposta, cosi' che aggiungerne o toglierne uno sia una decisione e non un
     effetto collaterale. Ovunque altro si DERIVANO da qui.
 
-    Da 34 a 4, e ora 5. Il quinto, `esegui`, e' l'unico che scrive in Home
+    Da 34 a 4, poi 5, e ora 6. `esegui` resta l'unico che scrive in Home
     Assistant -- e non lo fa da se': chiede alla porta unica
     (`azione/porta.py`), che verifica prima e rilegge dopo. E' la differenza
-    con i trentaquattro usciti, dove ciascuno attuava per conto proprio."""
+    con i trentaquattro usciti, dove ciascuno attuava per conto proprio.
+
+    Il sesto e' `legami`: chiede a Home Assistant CHI tocca una cosa. Non e'
+    un sesto modo di leggere gli archivi -- non ne legge nessuno -- ed e' il
+    motivo per cui e' uno strumento invece di un campo di `guarda`: i legami
+    sono momentanei, non si archiviano, e chiederli costa un giro di rete che
+    `guarda` non deve pagare (vedi il docstring di `casa/strumenti.py`)."""
     nomi = {s["name"] for s in STRUMENTI_CONOSCENZA}
-    assert nomi == {"cerca", "guarda", "ricorda", "richiama", "esegui"}
+    assert nomi == {"cerca", "guarda", "legami", "ricorda", "richiama", "esegui"}
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():

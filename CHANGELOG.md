@@ -171,6 +171,34 @@ capito male.** Le sei ragioni diverse per cui una cosa può restare fuori da una
 stanza — non ha area, ha un'area che non esiste, il registro non ha risposto —
 restano sei frasi distinte, non un unico «non si sa».
 
+### «Perché si è accesa la luce del corridoio?»
+
+HIRIS leggeva il comportamento della casa da due file — `automations.yaml` e
+`scripts.yaml` — e credeva di conoscerlo tutto. Non vedeva i pacchetti, gli
+`!include`, le cartelle, le scene né i gruppi: cioè tutto quello che una casa
+cresciuta usa davvero.
+
+Adesso può chiedere a Home Assistant **chi tocca una cosa**, e HA risponde
+guardando tutto ciò che ha caricato, ovunque sia scritto. Serve a due domande:
+perché è successo qualcosa, e — prima di cambiare — cosa smetterebbe di
+funzionare.
+
+### «C'è qualcosa che non va in casa?»
+
+Home Assistant tiene un registro dei problemi che ha già diagnosticato, con la
+gravità e con la versione in cui qualcosa si romperà. HIRIS non lo leggeva:
+sapeva solo contare le cose che non rispondono.
+
+Adesso lo legge, e sceglie cosa dirti. I problemi minori non finiscono in ogni
+risposta — ma **ti dice quanti ne ha taciuti**, così sai che esistono. Un
+avviso ripetuto ogni volta smette di essere letto, e il giorno del guasto vero
+non se ne accorge nessuno.
+
+Fa eccezione un avviso minore con una **scadenza**: quello non è un consiglio,
+diventerà un guasto da solo, e l'unico momento in cui saperlo serve è prima.
+
+Ciò che hai già ignorato in Home Assistant resta ignorato: l'hai già deciso tu.
+
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 
 Quattro cose, nate da una revisione che ha confrontato ciò che HIRIS sa di Home Assistant con
