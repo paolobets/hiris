@@ -5,10 +5,14 @@
 > **47 rilievi grezzi → 40 distinti** (sette erano lo stesso difetto trovato da
 > due strade diverse).
 >
-> **29 chiusi**, **11 aperti** — aggiornato il 2026-08-17 dopo il giro di
-> correzioni. Degli 11 aperti, **7 sono funzioni nuove** (leggere il calendario,
-> le liste, i guasti che HA ha già diagnosticato): non sono correzioni, sono
-> fette. Tre sono decisioni di prodotto, e una è una non-correzione dichiarata.
+> **34 chiusi**, **6 aperti** — aggiornato il 2026-08-18, dopo le due ondate di
+> fette.
+>
+> Dei 6 che restano, **quattro sono funzioni additive** (calendario, liste,
+> topologia dei dispositivi, corpo delle scene): allargano l'albero, non lo
+> rendono più solido, e per questo vengono dopo. Una è **parcheggiata con
+> intenzione** (le plance, che tornano con «crea») e una è una **non-correzione
+> dichiarata** (le icone).
 
 ## Come sono classificati
 
@@ -183,7 +187,7 @@ E HA manda anche `reason` e `error_reason_translation_key` — **il motivo per c
 un'integrazione non è partita** — che HIRIS non salva nemmeno. «Perché la
 telecamera del giardino non risponde?»
 
-### 24. ⬜ La tabella `categorie`: quattro comandi WS, zero lettori
+### 24. ✅ La tabella `categorie`: quattro comandi WS, zero lettori
 
 E l'assegnazione per-entità arriva **gratis** dentro la risposta che HIRIS già
 riceve, e non viene salvata.
@@ -192,7 +196,7 @@ riceve, e non viene salvata.
 
 «Questa luce compare in qualche mia dashboard?»
 
-### 26. ⬜ `/api/casa` espone tutto l'albero, nessuna pagina lo legge
+### 26. ✅ `/api/casa` espone tutto l'albero, nessuna pagina lo legge
 
 Il payload più ricco che HIRIS produce esce verso nessuno: la pagina legge solo
 i conteggi.
@@ -214,13 +218,13 @@ dall'utente. `config/area_registry/list` li manda **già**: costa zero chiamate.
 Oggi HIRIS deve indovinare fra tutti i sensori — senza nemmeno poterli filtrare
 per classe. «Fa caldo in soggiorno?»
 
-### 29. ⬜ `repairs/list_issues` — i guasti che HA ha già diagnosticato
+### 29. ✅ `repairs/list_issues` — i guasti che HA ha già diagnosticato
 
 Severità, in quale versione si rompe, se è riparabile. È dipendenza di
 `frontend`: c'è sempre. Oggi alla domanda «c'è qualcosa che non va in casa?»
 HIRIS sa solo contare le entità non disponibili.
 
-### 30. ⬜ `search/related` — chi tocca questa cosa
+### 30. ✅ `search/related` — chi tocca questa cosa
 
 Calcolato da HA su **tutte** le automazioni, ovunque siano scritte. HIRIS legge
 solo `automations.yaml` e `scripts.yaml`: non vede i pacchetti, gli `!include`,
@@ -238,7 +242,7 @@ risolta dallo specchio; questo chiude il resto.
 applicare `statistics_during_period` **senza chiedere al recorder**. Serve alla
 fetta della storia.
 
-### 33. ⬜ `extract_from_target` / `get_services_for_target` — verificati disponibili
+### 33. ✅ `extract_from_target` / `get_services_for_target` — verificati disponibili
 
 Accettano entità, dispositivo, area, piano, etichetta e rispondono con ciò che
 è referenziato **e ciò che manca**. Oggi `azione/verifica.py` rifiuta qualunque

@@ -28,7 +28,7 @@ percepito: prima ciò che rende l'albero verificabile, poi ciò che lo estende.
 
 ---
 
-## Fetta 1 — I bersagli: HIRIS smette di spegnere «quasi tutto»
+## Fetta 1 — I bersagli: HIRIS smette di spegnere «quasi tutto» ✅ FATTA
 
 > Reperto 33. È il più urgente, e non perché manchi una funzione.
 
@@ -61,7 +61,7 @@ silenzio.
 
 ---
 
-## Fetta 2 — `search/related`: chi tocca questa cosa
+## Fetta 2 — `search/related`: chi tocca questa cosa ✅ FATTA
 
 > Reperto 30.
 
@@ -89,7 +89,7 @@ oggetto, e vanno tenuti distinti — o si ricrea la confusione fra «dichiarato�
 
 ---
 
-## Fetta 3 — `repairs`: ciò che HA sa già essere rotto
+## Fetta 3 — `repairs`: ciò che HA sa già essere rotto ✅ FATTA
 
 > Reperto 29.
 
@@ -108,7 +108,7 @@ dichiarato quanti se ne sono taciuti — mai un filtro silenzioso.
 
 ---
 
-## Fetta 4 — L'albero verificabile
+## Fetta 4 — L'albero verificabile · IN CORSO
 
 > **Non è un reperto della review: è la fetta che le prime tre rendono
 > possibile.**
@@ -174,7 +174,7 @@ una riga.
 
 ---
 
-## Le tre decisioni, prese
+## Le tre decisioni, prese ✅ (categorie e albero FATTE)
 
 **24 · Le categorie — ENTRANO.** Sono una tassonomia che l'utente scrive a
 mano, come le etichette: vanno trattate come quelle. Escono da `guarda`,
