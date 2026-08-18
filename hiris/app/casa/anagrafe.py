@@ -679,3 +679,208 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
                       "aree": fuori_dalle_aree})
 
     return piani
+
+
+# --- il confronto: l'albero smette di essere un'affermazione ---------------
+#
+# `gerarchia()` qui sopra e' una REPLICA che HIRIS costruisce dai registri: e'
+# un'affermazione sulla casa, e fino a questa fetta niente la verificava. Se
+# un'area contiene cose che HIRIS non le attribuisce, o se HIRIS le attribuisce
+# cose che non ci sono, non c'era modo di accorgersene -- se non sbagliando una
+# risposta davanti all'utente.
+#
+# Il secondo parere e' di Home Assistant su se stesso: `extract_from_target`
+# (`HAClient.estrai_dal_bersaglio`) RISOLVE un'area invece di dedurla. Le
+# funzioni qui sotto sono la meta' pura di quel confronto: la rete la fa il
+# chiamante (`server.giro_di_confronto_albero`), qui arrivano solo le risposte
+# gia' lette -- la stessa disciplina di `componi()`, che riceve `stato` e
+# `problemi` come argomenti.
+
+# QUANTE aree per giro, e perche' non tutte.
+#
+# Un controllo che costa quanto la cosa che controlla non si esegue mai: una
+# casa vera ha 16-30 aree, e confrontarle tutte vorrebbe dire trenta comandi
+# WebSocket a giro contro gli otto che costa leggere l'intera anagrafe. Tre e'
+# il numero che tiene il costo del controllo sotto la meta' di quello della
+# ricostruzione, e che con la rotazione qui sotto copre comunque tutta la casa
+# in poche decine di minuti. Non e' un tetto di sicurezza: e' il CAMPIONE, e
+# chi lo legge deve saperlo -- per questo `confronta_con_home_assistant`
+# dichiara sempre `aree_totali`, e il nucleo non dice mai una divergenza senza
+# dire su quante aree l'ha cercata.
+AREE_PER_GIRO = 3
+
+
+def _indice_aree(piani: list[dict]) -> dict[str, dict]:
+    """`{area_id: area}` per le sole aree VERE dell'albero.
+
+    Le pseudo-aree (`e_pseudo_area`: «Senza area», «Aree non lette», «Area
+    sconosciuta», «Dispositivi non letti») restano fuori, e non e' un
+    dettaglio: non esistono in Home Assistant, quindi chiedergli cosa contiene
+    `__senza_area__` risponderebbe `aree_mancanti` -- una divergenza inventata
+    da noi, sull'unico contenitore che dichiara gia' di essere una nostra
+    costruzione. Confrontare vuol dire chiedere all'originale qualcosa che
+    l'originale conosce.
+    """
+    indice: dict[str, dict] = {}
+    for piano in piani or []:
+        for area in piano.get("aree") or []:
+            identificativo = area.get("id")
+            if not identificativo or e_pseudo_area(identificativo):
+                continue
+            indice[identificativo] = area
+    return indice
+
+
+def aree_dell_albero(piani: list[dict]) -> list[dict]:
+    """Le aree vere dell'albero -- `[{"id", "nome"}]` -- ordinate per id.
+
+    L'ordine e' per ID e non per nome: e' l'unica chiave che Home Assistant
+    garantisce stabile (rinominare un'area non cambia il suo `area_id`), e la
+    rotazione del campione (`scegli_campione`) ci si appoggia -- un ordine che
+    cambia quando l'utente rinomina una stanza farebbe saltare il turno a
+    un'area a caso.
+    """
+    return sorted(({"id": identificativo, "nome": area.get("nome") or identificativo}
+                   for identificativo, area in _indice_aree(piani).items()),
+                  key=lambda a: a["id"])
+
+
+def scegli_campione(aree: list[dict], quante: int = AREE_PER_GIRO,
+                    dopo: str | None = None) -> list[dict]:
+    """Le prossime `quante` aree da confrontare, a ROTAZIONE.
+
+    A rotazione e non a caso, per due ragioni che contano entrambe:
+
+    - **copertura garantita**. Un campione casuale rigirerebbe sulla stessa
+      area due volte e ne lascerebbe un'altra mai guardata per ore; la
+      rotazione garantisce che ogni area della casa venga confrontata entro un
+      giro completo (`len(aree) / quante` esecuzioni), che e' l'unica forma in
+      cui un campione parziale ha un limite dichiarabile;
+    - **riproducibilita'**. Il nucleo e' un testo che si legge e si confronta
+      fra due momenti: due esecuzioni identiche devono produrre lo stesso
+      nucleo. Un campione casuale lo farebbe cambiare senza che sia cambiato
+      niente nella casa, ed e' esattamente il rumore che rende una riga
+      illeggibile a forza di comparire ogni volta diversa.
+
+    `dopo` e' l'id dell'ULTIMA area del giro precedente, non un indice: un
+    indice dentro una lista che cambia -- un'area aggiunta, una cancellata --
+    salterebbe o ripeterebbe una posizione in silenzio, mentre «la prima dopo
+    questa» resta vera comunque. Finito il giro si ricomincia da capo.
+    """
+    if quante <= 0 or not aree:
+        return []
+    inizio = 0
+    if dopo:
+        for i, area in enumerate(aree):
+            if area["id"] > dopo:
+                inizio = i
+                break
+        else:
+            inizio = 0
+    quante = min(quante, len(aree))
+    doppio = list(aree) + list(aree)
+    return doppio[inizio:inizio + quante]
+
+
+def _fuori_dal_confronto(entita: dict | None) -> bool:
+    """Vero se questa entita' NON e' confrontabile fra i due alberi.
+
+    Tre differenze fra la nostra lista e quella di Home Assistant NON sono
+    divergenze: sono regole di HA, verificate alla fonte
+    (`homeassistant/helpers/target.py`, `helpers/entity_registry.py`), e
+    contarle come divergenze produrrebbe un avviso su ogni casa del mondo --
+    cioe' una riga che smette subito di essere letta.
+
+    - **nascoste**: `_include_entry` scarta ogni voce con `hidden_by` non
+      nullo. `gerarchia()` invece le tiene (il nucleo le conta a parte): sono
+      entita' vere, che l'utente ha solo tolto dalle proprie viste;
+    - **di servizio** (`entity_category`, cioe' `config`/`diagnostic`): lo
+      stesso `_include_entry` le scarta quando `primary_entities_only` e'
+      vero, ed e' vero -- `estrai_dal_bersaglio` lo passa esplicito, perche'
+      cosi' fa una chiamata di servizio reale. Nell'anagrafe e' la colonna
+      `categoria`, da non confondere con `categorie` (la tassonomia
+      dell'utente);
+    - **disabilitate**: HA le esclude quando l'entita' eredita l'area dal
+      dispositivo (`get_entries_for_device_id` ha
+      `include_disabled_entities=False` come predefinito) e le INCLUDE quando
+      l'area e' dell'entita' stessa (`get_entries_for_area_id` non filtra
+      niente). Due regole diverse per lo stesso stato: tenerle fuori da
+      entrambi i lati e' l'unico modo di non far dipendere l'esito da quale
+      delle due strade un'entita' ha preso per arrivare nell'area.
+
+    `None` -- un id che Home Assistant riporta e l'anagrafe non conosce affatto
+    -- NON e' fuori dal confronto: e' la divergenza piu' netta che esista, e
+    scartarla per prudenza sarebbe il difetto che questa fetta esiste per
+    chiudere.
+    """
+    if not isinstance(entita, dict):
+        return False
+    return bool(entita.get("nascosta")
+                or entita.get("disabilitata")
+                or str(entita.get("categoria") or "").strip())
+
+
+def _confronta_area(area: dict | None, identificativo: str, risposta,
+                    note: dict[str, dict]) -> dict:
+    """Il verdetto su UNA area: `{"area", "nome"}` piu' uno dei due esiti.
+
+    O `errore` (non si e' potuto guardare) o la coppia `mancanti`/`in_piu`
+    (si e' guardato). Mai entrambi, e mai nessuno dei due: un confronto non
+    letto non e' un confronto riuscito, e vale per la singola area
+    esattamente come per il giro intero.
+    """
+    voce = {"area": identificativo, "nome": (area or {}).get("nome") or identificativo}
+    if area is None:
+        # Il campione nasce dall'albero, quindi in produzione questo ramo
+        # scatta solo se l'anagrafe si e' ricostruita fra la domanda e la
+        # risposta. Non e' un combaciare: e' un confronto perso.
+        voce["errore"] = ("quest'area non e' piu' nell'albero: l'anagrafe si e' "
+                          "ricostruita mentre la si confrontava")
+        return voce
+    if not isinstance(risposta, dict):
+        voce["errore"] = "Home Assistant non ha risposto"
+        return voce
+    guasto = str(risposta.get("errore") or "").strip()
+    if guasto:
+        voce["errore"] = guasto
+        return voce
+
+    # L'area che HA dichiara MANCANTE e' il caso peggiore in forma pura: HIRIS
+    # ha una stanza intera che l'originale non ha piu'. Si dice a parte perche'
+    # «quell'area non c'e'» spiega in una parola cio' che altrimenti
+    # arriverebbe come un elenco di entita' che non si toccano -- la stessa
+    # distinzione fra «l'area e' vuota» e «quell'area non c'e'» che
+    # `estrai_dal_bersaglio` porta gia' nelle sue due meta'.
+    voce["assente_in_ha"] = identificativo in (risposta.get("aree_mancanti") or [])
+
+    nostre = {e.get("id") for e in area.get("entita") or []
+              if e.get("id") and not _fuori_dal_confronto(e)}
+    loro = {i for i in risposta.get("entita") or []
+            if i and not _fuori_dal_confronto(note.get(i))}
+    voce["mancanti"] = sorted(loro - nostre)
+    voce["in_piu"] = sorted(nostre - loro)
+    return voce
+
+
+def confronta_con_home_assistant(piani: list[dict], casa: dict,
+                                 risposte: dict[str, dict]) -> dict:
+    """Il giro di confronto, in forma pura: albero + risposte di HA -> esito.
+
+    `risposte` e' `{area_id: cio' che ha risposto estrai_dal_bersaglio}`, nello
+    stesso ordine in cui le aree sono state chieste. Restituisce::
+
+        {"aree_totali": 16, "guardate": [{...}, {...}, {...}]}
+
+    `aree_totali` esce SEMPRE, anche quando tutto combacia: un campione taciuto
+    fa sembrare completo un controllo parziale, ed e' l'unica riga da cui chi
+    legge puo' sapere che si sono guardate tre aree su sedici.
+
+    Nessuna data qui dentro: la mette il chiamante, come mette la rete. Una
+    funzione pura che leggesse l'orologio non sarebbe piu' confrontabile con se
+    stessa.
+    """
+    indice = _indice_aree(piani)
+    note = {e.get("id"): e for e in (casa.get("entita") or []) if e.get("id")}
+    guardate = [_confronta_area(indice.get(identificativo), identificativo, risposta, note)
+                for identificativo, risposta in (risposte or {}).items()]
+    return {"aree_totali": len(indice), "guardate": guardate}

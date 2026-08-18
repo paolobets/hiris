@@ -72,6 +72,10 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             # e restano vuoti. `problemi`/`file_non_letti` restano `None` per
             # lo stesso motivo di `senza_corpo`: un elenco vuoto affermerebbe
             # "nessun problema", e senza archivio non lo sappiamo.
+            # `None` per lo stesso motivo di tutti gli altri qui sopra: un
+            # esito vuoto affermerebbe «l'albero e' stato confrontato e
+            # combacia», e qui non si e' confrontato niente.
+            "confronto": None,
             "comportamento": {"letto_il": None, "conteggi": {}, "senza_corpo": None,
                               "problemi": None, "file_non_letti": None, "voci": []},
             "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
@@ -125,6 +129,25 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # una regola e salta una porta»), ricomparso dentro una fetta scritta
         # apposta per non ripeterlo.
         "categorie": _mappa_categorie(casa),
+        # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
+        # Assistant risponde su un campione di aree
+        # (`server.giro_di_confronto_albero`, verdetto in
+        # `anagrafe.confronta_con_home_assistant`).
+        #
+        # Esce ANCHE da qui, e non solo nel nucleo, per la stessa ragione del
+        # sistema di riferimento poco sopra: e' lo stesso fatto, e se il
+        # modello leggesse una divergenza che la pagina non mostra sarebbero
+        # due case diverse a seconda della porta. Ed e' proprio qui che serve
+        # di piu': questa risposta disegna l'albero, e una divergenza e'
+        # esattamente cio' che chi guarda l'albero deve poter vedere sul ramo
+        # che la porta.
+        #
+        # Esce grezzo (`aree_totali`, `guardate`, `letto_il`) e non gia' in
+        # parole: le frasi le costruisce `nucleo._avviso_confronto` per chi
+        # legge un testo, qui serve il dato per chi disegna. `None` quando
+        # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
+        # e non c'era niente da dire».
+        "confronto": request.app.get("confronto_albero"),
         "comportamento": {
             "letto_il": archivio.comportamento_letto_il(),
             "conteggi": conteggi_comportamento,
@@ -266,6 +289,21 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # o in una lista vuota affermerebbe che la casa non ha guasti.
     problemi = app.get("problemi_ha")
 
+    # L'esito dell'ultimo giro di verifica dell'albero (`server.giro_di_confronto_albero`).
+    #
+    # Vive dove vivono i problemi, in RAM e non in archivio, e per la stessa
+    # ragione: un confronto e' momentaneo due volte -- la casa cambia, e la
+    # replica si ricostruisce da sola al primo evento di registro. Una tabella
+    # riletta di rado continuerebbe ad annunciare per ore una divergenza gia'
+    # rientrata, che e' il falso allarme che questa fetta esiste per non
+    # produrre (stesso ragionamento di `casa/anagrafe.sistema_di_riferimento`
+    # su `state`).
+    #
+    # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
+    # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
+    # `componi()`, che sa distinguerlo da «guardato e combacia».
+    confronto = app.get("confronto_albero")
+
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
     # due sole non basta: un archivio letto ma una cache non ancora caricata
@@ -282,6 +320,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         sistema_di_riferimento=sistema_di_riferimento,
         classi_vive=classi_vive,
         problemi=problemi,
+        confronto=confronto,
     )
 
 

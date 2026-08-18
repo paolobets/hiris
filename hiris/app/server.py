@@ -1,6 +1,7 @@
 # hiris/app/server.py
 import asyncio
 import contextlib
+from datetime import datetime, timezone
 import hashlib
 import logging
 import os
@@ -27,7 +28,9 @@ from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
 from .azione.porta import PortaAzione
 from .casa.archivio import ArchivioCasa
-from .casa.anagrafe import ricostruisci
+from .casa.anagrafe import (AREE_PER_GIRO, aree_dell_albero,
+                           confronta_con_home_assistant, gerarchia,
+                           ricostruisci, scegli_campione)
 from .memoria.archivio import ArchivioMemoria
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
@@ -594,6 +597,105 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     return esito
 
 
+def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
+    """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
+    e scrive l'esito in `app["confronto_albero"]`.
+
+    **Cosa fa, in una riga.** `casa/anagrafe.gerarchia()` e' una replica che
+    HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
+    verificava. Qui la stessa domanda va all'originale --
+    `HAClient.estrai_dal_bersaglio({"area_id": [...]}) `, che e' Home Assistant
+    a risolvere -- e le due liste si mettono una accanto all'altra
+    (`anagrafe.confronta_con_home_assistant`, pura).
+
+    **OGNI QUANTO, e perche' non a ogni ricostruzione dell'anagrafe.** La
+    strada ovvia sarebbe agganciarsi alla ricostruzione. Sarebbe anche il
+    momento sbagliato: subito dopo una ricostruzione la replica e' fresca di
+    secondi, cioe' esattamente quando una divergenza e' meno probabile. Il
+    caso che questa verifica esiste per prendere e' l'opposto -- un evento di
+    registro perso, un Home Assistant riavviato senza che HIRIS se ne
+    accorgesse, una replica che INVECCHIA -- e per vederlo bisogna guardare
+    mentre la copia invecchia, non appena e' stata rifatta. Quindi un lavoro
+    periodico, indipendente dalla ricostruzione: quindici minuti (vedi la
+    registrazione nello schedulatore), che con `AREE_PER_GIRO` a rotazione
+    coprono una casa da sedici aree in poco piu' di un'ora.
+
+    **DOVE VIVE L'ESITO.** In RAM, in `app["confronto_albero"]`, accanto a
+    `app["problemi_ha"]` e per la stessa ragione, gia' scritta per esteso su
+    `rileggi_problemi_ha`: un confronto e' momentaneo -- la casa cambia e la
+    replica si rifa' da sola al primo evento di registro -- e un archivio
+    riletto di rado continuerebbe ad annunciare per ore una divergenza gia'
+    rientrata. E' lo stesso ragionamento per cui `state` non entra nel sistema
+    di riferimento della casa (`casa/anagrafe.sistema_di_riferimento`).
+
+    Si tiene SOLO l'ultimo giro, non un archivio di verdetti che si accumula:
+    cosi' ogni verdetto che il nucleo legge e' vecchio al massimo quanto la
+    cadenza, e nessuna area resta marchiata da una divergenza riparata mezz'ora
+    fa. Il prezzo -- si vedono tre aree per volta -- e' dichiarato dentro
+    l'esito stesso (`aree_totali`) e detto in ogni frase che il nucleo scrive.
+
+    **Non solleva mai**: `estrai_dal_bersaglio` risponde gia' `{"errore": ...}`
+    sui guasti, e un'area che non si e' potuta leggere e' un'informazione da
+    portare al modello -- non un'eccezione da propagare in uno schedulatore, e
+    soprattutto non un'area che combacia.
+
+    Lo stato della rotazione (`dopo`) vive in una chiusura e non in `app`: e'
+    un dettaglio di questo lavoro, non un fatto sulla casa, e nessun altro ha
+    motivo di leggerlo. Stessa forma di `sentinella_comportamento` e di
+    `programma_ricostruzione_anagrafe` qui sopra.
+    """
+    stato: dict[str, str | None] = {"dopo": None}
+
+    async def giro() -> dict | None:
+        if ha_client is None:
+            return None
+        lettore = getattr(ha_client, "estrai_dal_bersaglio", None)
+        if lettore is None:
+            # Un client vecchio o un finto di prova che non dichiara il
+            # comando: non si scrive niente, cosi' la chiave resta assente e
+            # il nucleo tace invece di affermare che l'albero e' verificato.
+            return None
+        archivio = app.get("archivio_casa")
+        if archivio is None:
+            return None
+
+        # Una lettura sola, e l'albero costruito una volta: il campione, le
+        # domande a HA e il verdetto guardano tutti la STESSA fotografia della
+        # replica. Ricostruirlo dopo le risposte vorrebbe dire confrontare un
+        # albero con le risposte a domande fatte su un altro.
+        casa = archivio.leggi()
+        piani = gerarchia(casa, tuple(archivio.non_disponibili()))
+        aree = aree_dell_albero(piani)
+        campione = scegli_campione(aree, quante, stato["dopo"])
+
+        risposte: dict[str, dict] = {}
+        for area in campione:
+            try:
+                risposte[area["id"]] = await lettore({"area_id": [area["id"]]})
+            except Exception as exc:  # non previsto: il client cattura gia'
+                logger.warning("confronto dell'area %s non riuscito: %s", area["id"], exc)
+                risposte[area["id"]] = {"errore": "Home Assistant non ha risposto"}
+        if campione:
+            stato["dopo"] = campione[-1]["id"]
+
+        esito = confronta_con_home_assistant(piani, casa, risposte)
+        # La data la mette il chiamante: `confronta_con_home_assistant` e'
+        # pura, e una funzione pura che leggesse l'orologio non sarebbe piu'
+        # confrontabile con se stessa. Serve a chi disegna l'albero
+        # (`/api/casa`) per dire quanto e' fresco il verdetto che sta
+        # mostrando.
+        esito["letto_il"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        app["confronto_albero"] = esito
+        divergenti = sum(1 for g in esito["guardate"] if g.get("mancanti") or g.get("in_piu")
+                         or g.get("assente_in_ha"))
+        if divergenti:
+            logger.warning("confronto dell'albero: %d aree su %d guardate divergono da "
+                           "Home Assistant", divergenti, len(esito["guardate"]))
+        return esito
+
+    return giro
+
+
 def should_start_agent_worker(ponte_attivo: bool) -> bool:
     """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
 
@@ -1095,6 +1197,25 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
     ha_client.add_anagrafe_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
+
+    # La verifica dell'albero: `gerarchia()` smette di essere un'affermazione
+    # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
+    # da quella che prende il campione; il primo giro parte adesso e i
+    # successivi li chiama lo schedulatore (piu' sotto, quindici minuti).
+    #
+    # Il primo giro all'avvio non serve a trovare divergenze -- la replica e'
+    # appena stata rifatta, e' il momento in cui e' piu' fresca (vedi
+    # `giro_di_confronto_albero`) -- ma a far vedere subito, dal vivo, che il
+    # cablaggio c'e' e cosa risponde questa casa. Se Home Assistant e' giu'
+    # adesso, l'esito lo dichiara area per area invece di tacere.
+    # Una variabile locale e non una chiave di `app`: la chiusura la legge solo
+    # lo schedulatore, qui sotto e dentro la stessa funzione. Metterla in `app`
+    # sarebbe un dato scritto e mai letto da nessun altro.
+    confronta_albero = giro_di_confronto_albero(app, ha_client)
+    try:
+        await confronta_albero()
+    except Exception as exc:
+        logger.warning("primo confronto dell'albero non riuscito: %s", exc)
 
     # Task 4 SDD casa: il comportamento (il corpo di automazioni e script)
     # segue lo stesso principio -- prima lettura all'avvio senza poter
@@ -1643,6 +1764,21 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=5,
         id="hiris_problemi_ha", replace_existing=True,
         misfire_grace_time=300,
+    )
+
+    # La verifica dell'albero contro Home Assistant. Quindici minuti, e la
+    # cadenza e' piu' larga di quella dei problemi qui sopra per due ragioni
+    # scritte per esteso su `giro_di_confronto_albero`: cio' che si cerca e'
+    # una replica che INVECCHIA (guardare piu' spesso non la fa invecchiare
+    # prima), e una divergenza non si ripara con un clic -- rientra da sola
+    # alla prossima ricostruzione dell'anagrafe. A coprire tutta la casa non e'
+    # la frequenza ma la rotazione del campione: tre aree a giro, in ordine di
+    # id, ricominciando da capo alla fine.
+    scheduler.add_job(
+        confronta_albero,
+        trigger="interval", minutes=15,
+        id="hiris_confronto_albero", replace_existing=True,
+        misfire_grace_time=900,
     )
 
     # Task 4 SDD casa: la sentinella dell'mtime, registrata come lavoro

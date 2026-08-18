@@ -1,6 +1,6 @@
 # HIRIS — Changelog
 
-## [3.6.0] — HIRIS finisce di conoscere la tua casa (2026-08-17)
+## [3.7.0] — HIRIS finisce di conoscere la tua casa, e impara a verificarla (2026-08-18)
 
 ### Il fuso, la valuta, la lingua, le unità
 
@@ -198,6 +198,31 @@ Fa eccezione un avviso minore con una **scadenza**: quello non è un consiglio,
 diventerà un guasto da solo, e l'unico momento in cui saperlo serve è prima.
 
 Ciò che hai già ignorato in Home Assistant resta ignorato: l'hai già deciso tu.
+
+### HIRIS controlla se la casa che racconta è la casa che c'è
+
+È la cosa nuova di questa versione, e non aggiunge conoscenza: aggiunge un
+**secondo parere**.
+
+HIRIS si costruisce una copia della tua casa leggendo i registri di Home
+Assistant — piani, stanze, dispositivi, cose. Finora quella copia era
+un'affermazione che nessuno controllava: se una stanza conteneva qualcosa che
+HIRIS non le attribuiva, non c'era modo di accorgersene *se non sbagliando una
+risposta davanti a te*.
+
+Adesso, ogni quarto d'ora, HIRIS prende alcune stanze e chiede a Home Assistant
+cosa ci sia dentro davvero. Se le due risposte combaciano **non dice niente** —
+un avviso che compare sempre smette di essere letto. Se non combaciano lo dice,
+e distingue i due casi, perché non sono la stessa cosa:
+
+- **HIRIS ne ha di meno** — la sua copia è più vecchia della casa;
+- **HIRIS ne ha di più** — la sua copia afferma qualcosa che Home Assistant non
+  conferma. È il caso peggiore: è così che nasce una risposta sbagliata detta
+  con sicurezza.
+
+E se non è riuscito a controllare, dice quello — non «combaciano». Ogni volta ti
+dice **quante stanze ha guardato** sul totale: un controllo parziale che si
+spaccia per completo sarebbe peggio di nessun controllo.
 
 ## [3.5.0] — Sapere in che unità, e smettere di dirti come si chiamano gli attrezzi (2026-08-17)
 

@@ -921,6 +921,147 @@ def _avviso_problemi(problemi: dict | None) -> str | None:
             f"{_plurale(quanti, 'ripara', 'riparano')} in {_DOVE_SI_RIPARANO}.")
 
 
+# Quanti `entity_id` si citano per area prima di tornare a CONTARE -- la
+# regola del modulo (docstring in cima) applicata anche qui, e per la stessa
+# ragione di `_TETTO_PROBLEMI_ELENCATI`: gli avvisi non passano per il taglio
+# di `componi()`, quindi un'area che diverge di quaranta entita' scriverebbe
+# una riga che niente puo' accorciare. Quattro bastano a far capire di che
+# famiglia sono (una piattaforma sola? un dispositivo solo?); il numero degli
+# altri resta dichiarato.
+_TETTO_ENTITA_CONFRONTO = 4
+
+
+def _entita_citate(identificativi: list[str]) -> str:
+    """Gli id di un'area, tagliati al tetto e col resto DICHIARATO. Mai un
+    elenco accorciato in silenzio: sarebbe la stessa bugia del filtro muto."""
+    citate = list(identificativi)[:_TETTO_ENTITA_CONFRONTO]
+    resto = len(identificativi) - len(citate)
+    testo = ", ".join(citate)
+    if resto == 1:
+        testo += ", e un'altra"
+    elif resto > 1:
+        testo += f", e altre {resto}"
+    return testo
+
+
+def _avviso_confronto(confronto: dict | None) -> str | None:
+    """L'albero raccontato da HIRIS contro la casa che Home Assistant risolve.
+
+    Fino a questa fetta `gerarchia()` era un'AFFERMAZIONE che niente
+    verificava. `HAClient.estrai_dal_bersaglio` chiede a Home Assistant cosa
+    contiene un'area davvero, e `anagrafe.confronta_con_home_assistant` mette
+    le due liste una accanto all'altra su un campione di aree.
+
+    `confronto` arriva gia' letto dal chiamante (`handlers_casa.costruisci_nucleo`,
+    da `app["confronto_albero"]`), esattamente come `stato`, `problemi` e
+    `sistema_di_riferimento`: `componi()` resta PURA.
+
+    **TRE ESITI, TRE DICITURE DIVERSE** -- la stessa disciplina con cui
+    `gerarchia()` distingue «Senza area» da «Area sconosciuta» da «Aree non
+    lette»:
+
+    - **combaciano**: non si dice NIENTE. E' la cosa giusta da dire, ed e'
+      anche il caso normale: un avviso che compare sempre smette di essere
+      letto, e allora il giorno che compare quello vero non lo legge piu'
+      nessuno. Il nucleo non afferma da nessuna parte che l'albero sia
+      verificato, quindi tacere qui non promette niente;
+    - **HIRIS ne ha di MENO**: Home Assistant riporta nell'area cose che
+      l'albero non le attribuisce. La replica e' piu' vecchia della casa, o un
+      registro e' caduto -- si dichiara, come si dichiara `non_disponibili`;
+    - **HIRIS ne ha di PIU'**: l'albero attribuisce all'area cose che
+      l'originale non conferma. E' il CASO PEGGIORE, e per questo si dice per
+      primo: e' quello che produce risposte sbagliate dette con sicurezza.
+
+    E un quarto stato che non e' un esito: **non letto**. Un confronto che non
+    si e' potuto fare non e' un confronto riuscito, e vale per la singola area
+    come per il giro intero -- `None` invece significa che il chiamante non ha
+    chiesto, ed e' l'unico caso in cui il silenzio non afferma niente.
+    """
+    if confronto is None:
+        return None
+
+    errore = str(confronto.get("errore") or "").strip()
+    if errore:
+        return ("il confronto fra l'albero della casa e Home Assistant non si e' "
+                f"potuto fare ({errore}): qui non si sta dicendo che l'albero "
+                "combacia, si sta dicendo che non si e' potuto controllare.")
+
+    guardate = [g for g in confronto.get("guardate") or [] if isinstance(g, dict)]
+    if not guardate:
+        # Nessuna area confrontata (una casa senza aree, o un giro che non e'
+        # ancora partito). Si tace, e tacere qui non afferma niente: l'albero
+        # non si dichiara verificato in nessun altro punto del nucleo.
+        return None
+
+    piu = [g for g in guardate if g.get("in_piu") or g.get("assente_in_ha")]
+    meno = [g for g in guardate if g.get("mancanti")]
+    non_lette = [g for g in guardate if g.get("errore")]
+    if not (piu or meno or non_lette):
+        # COMBACIANO. Vedi il docstring: e' il caso normale, e il silenzio e'
+        # la cosa giusta da dire.
+        return None
+
+    frasi: list[str] = []
+
+    if piu:
+        voci = []
+        for g in piu:
+            if g.get("assente_in_ha"):
+                # L'area intera non c'e' piu': si dice questo e non l'elenco
+                # delle sue entita', che sarebbe la stessa notizia detta a
+                # pezzi.
+                voci.append(f"{g.get('nome')} ({g.get('area')}) non esiste "
+                            "piu' in Home Assistant")
+            else:
+                voci.append(f"{g.get('nome')}: {_entita_citate(g.get('in_piu') or [])}")
+        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
+        frasi.append(
+            f"In {quante} l'albero di HIRIS afferma qualcosa che Home Assistant "
+            f"non conferma -- {'; '.join(voci)}. E' il caso peggiore dei due: "
+            "e' cosi' che nasce una risposta sbagliata detta con sicurezza, e "
+            "finche' l'anagrafe non si ricostruisce quelle attribuzioni non "
+            "reggono.")
+
+    if meno:
+        voci = [f"{g.get('nome')}: {_entita_citate(g.get('mancanti') or [])}"
+                for g in meno]
+        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
+        frasi.append(
+            f"In {quante} Home Assistant riporta entita' che l'albero di HIRIS "
+            f"non ci attribuisce -- {'; '.join(voci)}. La replica dell'anagrafe "
+            "e' piu' vecchia della casa, o un registro non ha risposto.")
+
+    if non_lette:
+        voci = [f"{g.get('nome')} ({g.get('errore')})" for g in non_lette]
+        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
+        frasi.append(
+            f"Su {quante} il confronto non si e' potuto fare -- {'; '.join(voci)}: "
+            "non si sta dicendo che quelle aree combaciano, si sta dicendo che "
+            "non si sono potute controllare.")
+
+    # Il CAMPIONE, sempre, e nello stesso avviso: un campione taciuto fa
+    # sembrare completo un controllo parziale -- «una divergenza in un'area»
+    # detto senza dire che le aree guardate erano tre su sedici lascia credere
+    # che le altre tredici siano state trovate a posto.
+    totali = confronto.get("aree_totali")
+    n = len(guardate)
+    verbo = _plurale(n, "Confrontata", "Confrontate")
+    quante = _plurale(n, "1 area", f"{n} aree")
+    if isinstance(totali, int) and 0 < totali <= n:
+        campione = f"{verbo} {quante}: tutte quelle della casa."
+    elif isinstance(totali, int) and totali > 0:
+        campione = (f"{verbo} {quante} sulle {totali} della casa; le altre non "
+                    "sono state guardate in questo giro.")
+    else:
+        campione = f"{verbo} {quante} della casa."
+    frasi.append(campione)
+
+    # Le frasi sono FRASI, ognuna con la maiuscola: dopo un punto una
+    # minuscola si legge come un errore di stampa, e un avviso che sembra rotto
+    # si legge male anche quando dice la cosa giusta.
+    return "Confronto con Home Assistant -- " + " ".join(frasi)
+
+
 def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
     al "conta, non elencare" (vedi docstring del modulo).
@@ -990,7 +1131,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             file_non_letti_comportamento: dict[str, str] | None = None,
             sistema_di_riferimento: dict | None = None,
             classi_vive: dict[str, str] | None = None,
-            problemi: dict | None = None) -> tuple[str, dict]:
+            problemi: dict | None = None,
+            confronto: dict | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1029,6 +1171,14 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     chiesto» e non «non c'e' niente che non va»: vedi `_avviso_problemi`, che
     decide anche cosa dire e cosa tacere.
 
+    `confronto` e' l'esito dell'ultimo giro di verifica dell'albero contro
+    Home Assistant (`anagrafe.confronta_con_home_assistant`, alimentato da
+    `server.giro_di_confronto_albero`). Arriva come ARGOMENTO per la stessa
+    ragione di `problemi`: questa funzione non apre connessioni, e chiedere a
+    HA cosa contiene un'area e' una chiamata di rete. `None` significa «il
+    chiamante non ha chiesto», e NON «l'albero combacia»: vedi
+    `_avviso_confronto`, che tiene separati i tre esiti e il non-letto.
+
     `problemi_comportamento`/`file_non_letti_comportamento` sono le
     dichiarazioni che `comportamento.rileggi()` costruisce gia' e che
     `/api/casa` espone (`ArchivioCasa.problemi_comportamento()`/
@@ -1063,6 +1213,17 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             "registri di Home Assistant che non hanno risposto all'ultima "
             f"lettura: {', '.join(sorted(non_disponibili))}. "
             "Cio' che manca qui sotto potrebbe esistere lo stesso.")
+
+    # Subito dopo i registri caduti, e prima di tutto il resto: sono la stessa
+    # specie di dichiarazione -- quanto ci si puo' fidare dell'albero che
+    # "La casa" racconta qui sotto. Un registro caduto dice che l'albero e'
+    # INCOMPLETO, il confronto dice che potrebbe essere SBAGLIATO, e chi legge
+    # deve trovare le due cose una accanto all'altra. Gli avvisi di HA
+    # (integrazioni, problemi) restano sopra perche' parlano della casa, non
+    # della nostra copia.
+    divergenza = _avviso_confronto(confronto)
+    if divergenza:
+        avvisi.append(divergenza)
 
     # Le NASCOSTE: fuori dalle gestioni, dentro la conoscenza.
     #
