@@ -815,6 +815,96 @@ class HAClient:
         )
         return result if isinstance(result, dict) else {}
 
+    # I tipi che `search/related` accetta, coi VALORI di `ItemType`
+    # (`components/search/__init__.py`), non coi nomi delle costanti.
+    TIPI_LEGAME = ("area", "automation", "automation_blueprint", "config_entry",
+                   "device", "entity", "floor", "group", "integration", "label",
+                   "person", "scene", "script", "script_blueprint")
+
+    async def legami(self, tipo: str, identificatore: str) -> dict:
+        """Chi tocca questa cosa, secondo Home Assistant.
+
+        `search/related` e' calcolato da HA su TUTTO cio' che ha caricato,
+        ovunque sia scritto. HIRIS legge invece `automations.yaml` e
+        `scripts.yaml`: non vede i pacchetti, gli `!include`, le cartelle, le
+        scene ne' i gruppi -- cioe' tutto cio' che una casa cresciuta usa
+        davvero. Crede di conoscere il comportamento della casa e ne conosce
+        la parte scritta in due file.
+
+        Non SOSTITUISCE quella lettura: i file portano il CORPO (cosa fa
+        l'automazione), questo porta i LEGAMI (chi tocca cosa). Sono due fatti
+        diversi sullo stesso oggetto, e confonderli rifarebbe la confusione
+        fra dichiarato e dedotto che questo progetto paga da sempre.
+
+        Restituisce `{tipo: [identificatori]}` -- HA manda insiemi, che
+        viaggiano in JSON come liste in ordine ARBITRARIO: si ordinano, o due
+        letture identiche producono due risposte diverse.
+
+        `{"errore": ...}` su guasto: un elenco vuoto significherebbe «questa
+        cosa non la tocca nessuno», che e' un'affermazione, non un silenzio.
+        Il componente `search` e' dipendenza di `frontend`, quindi c'e' in
+        ogni HA con interfaccia -- ma un rifiuto va comunque distinto da un
+        «niente».
+        """
+        if tipo not in self.TIPI_LEGAME:
+            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
+        try:
+            msg = await self._ws_batch(
+                [("search/related", {"item_type": tipo, "item_id": identificatore})])
+        except Exception as e:
+            logger.debug("legami di %s/%s non letti: %s", tipo, identificatore, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            errore = msg["error"]
+            return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
+        risultato = msg.get("result") if msg else None
+        if not isinstance(risultato, dict):
+            return {"errore": "risposta in forma inattesa"}
+        return {chiave: sorted(str(v) for v in valori)
+                for chiave, valori in risultato.items() if valori}
+
+    # Le tre severita' di `IssueSeverity` (`helpers/issue_registry.py`), coi
+    # valori veri. Ordinate dalla piu' grave: serve a chi deve decidere cosa
+    # dire e cosa tacere.
+    SEVERITA_PROBLEMA = ("critical", "error", "warning")
+
+    async def problemi(self) -> dict:
+        """I guasti che Home Assistant ha GIA' diagnosticato.
+
+        `repairs/list_issues`. Oggi, alla domanda «c'e' qualcosa che non va in
+        casa?», HIRIS sa solo contare le entita' non disponibili: HA tiene un
+        registro dei problemi con la severita', se sono riparabili, e in quale
+        versione qualcosa si rompera'.
+
+        Restituisce `{"problemi": [...]}` con le righe cosi' come HA le manda
+        (`domain`, `issue_id`, `severity`, `is_fixable`, `breaks_in_ha_version`,
+        `ignored`, `translation_key`, ...) -- la scelta di cosa dire e cosa
+        tacere NON e' del client: e' di chi compone. Qui si legge soltanto.
+
+        Si scartano solo le IGNORATE (`ignored`, cioe' `dismissed_version` non
+        nullo): l'utente ha gia' detto «non dirmelo», e ripeterglielo sarebbe
+        disobbedire a una scelta che ha espresso in Home Assistant. HA stesso
+        filtra gia' le non attive.
+
+        `{"errore": ...}` su guasto, per la stessa ragione dei legami: un
+        elenco vuoto significherebbe «non c'e' niente che non va».
+        """
+        try:
+            msg = await self._ws_batch([("repairs/list_issues", None)])
+        except Exception as e:
+            logger.debug("problemi diagnosticati da HA non letti: %s", e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            errore = msg["error"]
+            return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
+        risultato = msg.get("result") if msg else None
+        if not isinstance(risultato, dict) or not isinstance(risultato.get("issues"), list):
+            return {"errore": "risposta in forma inattesa"}
+        return {"problemi": [p for p in risultato["issues"]
+                             if isinstance(p, dict) and not p.get("ignored")]}
+
     async def get_config(self) -> dict:
         """Il sistema di riferimento della casa, da `get_config` di HA.
 
