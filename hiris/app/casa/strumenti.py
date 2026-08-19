@@ -8,9 +8,10 @@ trentaquattro e il semaforo sono usciti per intero (fetta E2 Task 8 "escono
 i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
-Qui il modello ne riceve SEI. Cinque leggono e ricordano; il sesto,
-`esegui`, fa succedere qualcosa in casa -- ed e' l'unico. Per un tratto della
-2.0 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
+Qui il modello ne riceveva SEI, e dalla fetta «lo schedulatore» (Task 6) ne
+riceve NOVE. Cinque leggono e ricordano; `esegui` fa succedere qualcosa in
+casa SUBITO -- ed e' l'unico che scrive nella casa. Per un tratto della 2.0
+questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
 si era fatta solida. La differenza fra i quattro e il quinto non e' di
@@ -26,6 +27,21 @@ stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
     richiama -- i ricordi che riguardano una parte della casa
     esegui   -- chiama un servizio di Home Assistant, verificato prima e
                 riletto dopo: l'unico strumento che tocca la casa
+
+Gli ultimi tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e
+fanno nascere, leggere e disdire una PROMESSA -- «alle 17 accendi lo
+studio», «fra un'ora dimmi se e' aumentata»: qualcosa da fare o da guardare
+piu' tardi, non adesso. La differenza con `esegui` non e' di importanza ma di
+QUANDO: `esegui` agisce ora, `prometti` mette da parte un'azione o una
+domanda per un istante futuro, e tutto cio' che si puo' verificare contro
+questa installazione (il servizio esiste, l'entita' esiste, il canale di
+notifica esiste) si verifica ALLA NASCITA, non al momento di mantenerla --
+vedi `DispatcherStrumenti._prometti`.
+
+    prometti -- mette da parte un `fai` (verificato subito) o un `chiedi`
+                (con l'istantanea di partenza) per un istante futuro
+    promesse -- cosa e' ancora in sospeso, o com'e' andata
+    disdici  -- annulla una promessa non ancora mantenuta
 
 **Perche' `legami` e' uno strumento e non un campo di `guarda`.** E' la
 decisione di questa fetta, e ha quattro ragioni che tirano tutte dalla stessa
@@ -463,9 +479,106 @@ ESEGUI_TOOL_DEF = {
     },
 }
 
+PROMETTI_TOOL_DEF = {
+    "name": "prometti",
+    "description": (
+        "Metti da parte qualcosa da fare, o da guardare, PIU' TARDI: «alle 17 "
+        "accendi lo studio», «fra un'ora verifica la temperatura e se e' "
+        "aumentata avvisami», «fra due ore dimmi se posso aprire le finestre». "
+        "Due specie. `fai`: un'azione, e vuole `chiamata` nella stessa forma di "
+        "«esegui» -- viene VERIFICATA adesso contro questa installazione, quindi "
+        "un servizio o un'entita' che non esistono te li dico subito, non fra due "
+        "ore. `chiedi`: a quell'ora guardi tu e rispondi, e vuole `domanda`; se la "
+        "richiesta e' un CONFRONTO («se e' aumentata») elenca in `da_confrontare` "
+        "le entita' da misurare ADESSO, o piu' tardi non avrai con cosa "
+        "confrontare. `quando` e' un istante ISO-8601 col fuso: risolvilo tu da "
+        "«fra un'ora» o «alle 17», e riporta in `quando_detto` le parole della "
+        "persona. Un istante gia' passato viene rifiutato. `recapito` e' il "
+        "servizio notify con cui venirla a cercare (usa «cerca» per trovarne uno "
+        "vero): senza, la risposta resta solo nella pagina delle promesse. "
+        "NON usare questo strumento per qualcosa che si ripete ogni giorno: "
+        "quella e' un'automazione di Home Assistant, dillo alla persona."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "specie": {"type": "string", "description": "«fai» oppure «chiedi»."},
+            "frase": {
+                "type": "string",
+                "description": "La frase della persona, cosi' come l'ha detta -- non riassunta.",
+            },
+            "quando": {
+                "type": "string",
+                "description": "L'istante in ISO-8601 col fuso, es. «2026-08-19T17:00:00+02:00».",
+            },
+            "quando_detto": {
+                "type": "string",
+                "description": "Come l'ha detto la persona: «fra un'ora», «alle 17».",
+            },
+            "chiamata": {
+                "type": "object",
+                "description": "Solo per «fai»: `servizio`, `bersaglio` e `dati`, come in «esegui».",
+            },
+            "domanda": {
+                "type": "string",
+                "description": "Solo per «chiedi»: cosa devi guardare e a cosa devi rispondere.",
+            },
+            "da_confrontare": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Solo per «chiedi»: gli id delle entita' il cui valore va "
+                    "misurato ADESSO, per poterlo confrontare piu' tardi."
+                ),
+            },
+            "recapito": {
+                "type": "string",
+                "description": "Il servizio notify con cui avvisare, es. «notify.mobile_app_x».",
+            },
+        },
+        "required": ["specie", "frase", "quando"],
+    },
+}
+
+PROMESSE_TOOL_DEF = {
+    "name": "promesse",
+    "description": (
+        "Cosa HIRIS ha promesso: cio' che e' ancora in sospeso e, se chiedi lo "
+        "storico, com'e' andata -- mantenuta, saltata (col ritardo misurato), "
+        "disdetta o fallita col motivo. Usalo quando la persona chiede «cosa hai "
+        "in programma?», «l'hai fatto?», o prima di disdire qualcosa, per avere "
+        "l'identificatore giusto invece di indovinarlo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "tutte": {
+                "type": "boolean",
+                "description": "Vero per vedere anche quelle gia' concluse. Ometti per le sole in sospeso.",
+            },
+        },
+    },
+}
+
+DISDICI_TOOL_DEF = {
+    "name": "disdici",
+    "description": (
+        "Annulla una promessa che non e' ancora stata mantenuta. Serve il suo "
+        "`id`: prendilo da «promesse», non inventarlo. Una promessa gia' "
+        "mantenuta, saltata o disdetta non si annulla -- te lo dico invece di "
+        "fingere di averlo fatto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"id": {"type": "string", "description": "L'identificatore della promessa."}},
+        "required": ["id"],
+    },
+}
+
 STRUMENTI_CONOSCENZA: list[dict] = [
     CERCA_TOOL_DEF, GUARDA_TOOL_DEF, LEGAMI_TOOL_DEF, RICORDA_TOOL_DEF,
     RICHIAMA_TOOL_DEF, ESEGUI_TOOL_DEF,
+    PROMETTI_TOOL_DEF, PROMESSE_TOOL_DEF, DISDICI_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -480,7 +593,7 @@ _NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
 class DispatcherStrumenti:
-    """Collega i sei strumenti agli archivi, alla porta e al canale HA -- e non altro.
+    """Collega i nove strumenti agli archivi, alla porta e al canale HA -- e non altro.
 
     Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -494,7 +607,7 @@ class DispatcherStrumenti:
 
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
                  cache=None, porta=None, cache_indice: CacheIndice | None = None,
-                 ha=None) -> None:
+                 ha=None, registro=None, promesse=None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -525,12 +638,31 @@ class DispatcherStrumenti:
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
         # scrive resta la porta, e questo attributo non le fa concorrenza.
         self._ha = ha
+        # Il registro dei servizi (`azione/registro.py::RegistroServizi`), la
+        # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
+        # stessa ragione di `_canale_ha`: due registri sarebbero due opinioni
+        # su cosa esiste, e potrebbero divergere. Serve a `prometti` per
+        # verificare un `fai` ADESSO (`_verifica_ora`) e un `recapito`
+        # (`_verifica_recapito`). `None` e' legittimo e NON passa da
+        # `_archivio_mancante`: senza registro non si puo' dire ne' si' ne'
+        # no, quindi quei due controlli si tacciono invece di rifiutare --
+        # esattamente come `legami` si tace senza canale HA, ma qui il
+        # silenzio lascia comunque nascere la promessa, perche' il tetto vero
+        # (l'installazione reale) la trovera' comunque all'esecuzione tramite
+        # la porta.
+        self._registro = registro
+        # L'archivio delle promesse (`schedulatore/archivio.py`). `None` e'
+        # legittimo come per la porta: i tre strumenti dichiarano un errore
+        # leggibile invece di sollevare.
+        self._promesse = promesse
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
         "legami": ("ha",),
         "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
         "esegui": ("porta",),
+        "prometti": ("promesse",), "promesse": ("promesse",),
+        "disdici": ("promesse",),
     }
 
     def _canale_ha(self):
@@ -574,6 +706,8 @@ class DispatcherStrumenti:
                 # assenze diverse, e un utente che legge la risposta del
                 # modello deve poter capire quale delle due sta guardando.
                 return "non c'e' un collegamento vivo con Home Assistant a cui chiederli"
+            if quale == "promesse" and self._promesse is None:
+                return "l'archivio delle promesse non e' ancora stato caricato"
         return None
 
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
@@ -605,6 +739,9 @@ class DispatcherStrumenti:
             "ricorda": self._ricorda,
             "richiama": self._richiama,
             "esegui": self._esegui,
+            "prometti": self._prometti,
+            "promesse": self._promesse_elenco,
+            "disdici": self._disdici,
         }[nome]
         try:
             # `_esegui` e `_legami` sono coroutine (fanno rete); gli altri
@@ -972,3 +1109,190 @@ class DispatcherStrumenti:
         metodo cresce, la logica sta migrando nel posto sbagliato.
         """
         return await self._porta.esegui(argomenti, origine="chat")
+
+    # -- le promesse -----------------------------------------------------
+
+    def _prometti(self, argomenti: dict[str, Any]) -> dict:
+        """Il modello propone, il codice restringe (spec §9.1).
+
+        Tutto si verifica ADESSO: la chiamata contro questa installazione, il
+        canale di notifica, il valore di partenza. Un rifiuto alle 17 sarebbe
+        arrivato quando non c'e' piu' nessuno a correggerlo. `quando_ts` e i
+        due tetti (30 giorni, 50 in sospeso) restano a `promessa.valida` /
+        `archivio.crea`: sono verifiche sulla FORMA della promessa, non su
+        questa installazione, e vivono gia' li'.
+        """
+        import time as _time
+
+        from ..azione.verifica import verifica
+
+        quando = _istante(argomenti.get("quando"))
+        if quando is None:
+            return {"errore": ("non ho capito quando: dammi un istante come "
+                               "«2026-08-19T17:00:00+02:00».")}
+
+        specie = argomenti.get("specie")
+        dati = {
+            "specie": specie,
+            "frase": argomenti.get("frase") or "",
+            "quando_ts": quando,
+            "quando_detto": argomenti.get("quando_detto"),
+            "fuso": self._fuso(),
+            "recapito": argomenti.get("recapito") or None,
+        }
+
+        if specie == "fai":
+            chiamata = argomenti.get("chiamata")
+            if not isinstance(chiamata, dict):
+                return {"errore": "una promessa «fai» ha bisogno di `chiamata`."}
+            rifiuto = self._verifica_ora(chiamata, verifica)
+            if rifiuto is not None:
+                return {"errore": rifiuto}
+            dati["chiamata"] = chiamata
+        else:
+            dati["domanda"] = argomenti.get("domanda")
+            dati["istantanea"] = self._istantanea(argomenti.get("da_confrontare") or [])
+
+        if dati["recapito"]:
+            rifiuto = self._verifica_recapito(dati["recapito"])
+            if rifiuto is not None:
+                return {"errore": rifiuto}
+
+        return self._promesse.crea(dati, adesso=_time.time())
+
+    def _promesse_elenco(self, argomenti: dict[str, Any]) -> dict:
+        """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse.
+
+        Il nome del metodo NON puo' essere `_promesse`: quell'attributo e'
+        gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
+        """
+        tutte = bool(argomenti.get("tutte"))
+        return {"promesse": self._promesse.elenca(solo_in_sospeso=not tutte)}
+
+    def _disdici(self, argomenti: dict[str, Any]) -> dict:
+        import time as _time
+
+        ident = argomenti.get("id")
+        if not isinstance(ident, str) or not ident.strip():
+            return {"errore": "«disdici» ha bisogno dell'`id` della promessa."}
+        return self._promesse.disdici(ident.strip(), adesso=_time.time())
+
+    def _verifica_ora(self, chiamata: dict, verifica) -> str | None:
+        """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.
+
+        Non si risolvono i bersagli per aree o etichette: quella risoluzione
+        chiede a Home Assistant e vive nella porta. Qui si verifica cio' che si
+        puo' verificare senza rete -- il servizio esiste, l'entita' nominata
+        esiste, i parametri appartengono a quel servizio -- che e' esattamente
+        cio' che sbaglia il modello.
+        """
+        if self._registro is None:
+            return None  # senza registro non si puo' dire ne' si' ne' no: si tace
+        stati = self._stati_grezzi()
+        if not stati:
+            return None
+        verdetto = verifica(chiamata, self._registro, stati)
+        if verdetto.da_risolvere:
+            return None  # bersaglio per area: lo risolvera' la porta, al momento
+        return None if verdetto.ok else verdetto.motivo
+
+    def _verifica_recapito(self, servizio: str) -> str | None:
+        if self._registro is None:
+            return None
+        if "." not in servizio:
+            return "«%s» non e' un servizio: serve «notify.qualcosa»." % servizio
+        dominio, nome = servizio.split(".", 1)
+        if self._registro.servizio(dominio, nome) is None:
+            return ("«%s» non esiste in questa casa: cerca un servizio notify "
+                    "vero prima di promettere di usarlo." % servizio)
+        return None
+
+    def _istantanea(self, entita: list) -> list[dict]:
+        """I valori di partenza, presi ADESSO, con la loro unita'.
+
+        Senza l'unita' e senza l'istante, «e' aumentata» non ha un termine di
+        paragone e il modello se lo inventerebbe. E' la fondamenta n.1: il `72`
+        che non si sa se sia Celsius o Fahrenheit.
+        """
+        import time as _time
+
+        stati = self._stati_grezzi() or {}
+        adesso = _time.time()
+        misure = []
+        for ident in entita:
+            stato = stati.get(ident)
+            if stato is None:
+                misure.append({"entita": ident, "valore": None, "unita": None,
+                               "misurato_ts": adesso,
+                               "nota": "non esisteva quando l'hai chiesto"})
+                continue
+            attributi = stato.get("attributes") or {}
+            misure.append({"entita": ident, "valore": stato.get("state"),
+                           "unita": attributi.get("unit_of_measurement"),
+                           "misurato_ts": adesso})
+        return misure
+
+    def _stati_grezzi(self) -> dict[str, dict] | None:
+        """Lo specchio dello stato vivo, GREZZO: entity_id -> `{state, attributes, ...}`.
+
+        `_specchio()` ritorna mappe GIA' DERIVATE (nomi, unita', classi) per
+        chi le vuole cosi'; qui serve invece la forma minima di
+        `EntityCache.all_states()`, la stessa che legge
+        `azione/porta.py::Porta._stati` per verificare una chiamata prima di
+        eseguirla. La guardia (`inventario_leggibile`) e' la STESSA di
+        `_specchio` e di `Porta._stati`: la regola «cache assente o mai
+        caricata non e' un inventario leggibile» si paga in un posto solo,
+        non in un terzo qui.
+
+        `None` quando non si e' potuto guardare (cache assente, non caricata,
+        o una lettura che solleva); non e' `{}`, che direbbe «guardato, casa
+        vuota».
+        """
+        if not inventario_leggibile(self._cache):
+            return None
+        try:
+            grezzo = self._cache.all_states()
+        except Exception as errore:
+            logger.warning("specchio grezzo illeggibile (%s: %s)",
+                           type(errore).__name__, errore)
+            return None
+        stati: dict[str, dict] = {}
+        for voce in grezzo or []:
+            eid = voce.get("id") if isinstance(voce, dict) else None
+            if eid:
+                stati[eid] = voce
+        return stati
+
+    def _fuso(self) -> str | None:
+        """Il fuso della casa, dalla stessa fonte del nucleo.
+
+        `ArchivioCasa.sistema_di_riferimento()` (`casa/archivio.py`) e' l'UNICO
+        accessore: rileggere `get_config` per conto proprio qui sarebbe un
+        secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
+        giorno in cui uno dei due cambia. Senza `archivio_casa` (i test che
+        costruiscono un dispatcher minimale) il fuso resta sconosciuto, e la
+        promessa nasce comunque -- `fuso` e' un campo dichiarativo della
+        promessa (spec §9.1), non un cancello che la blocca.
+        """
+        if self._casa is None:
+            return None
+        return self._casa.sistema_di_riferimento().get("fuso")
+
+
+def _istante(grezzo) -> float | None:
+    """Un ISO-8601 col fuso -> epoch. `None` se non si legge.
+
+    Un istante SENZA fuso viene rifiutato: «alle 17» di quale fuso? E' la
+    stessa regola dell'unita' di misura applicata al tempo.
+    """
+    from datetime import datetime
+
+    if not isinstance(grezzo, str) or not grezzo.strip():
+        return None
+    try:
+        momento = datetime.fromisoformat(grezzo.strip())
+    except ValueError:
+        return None
+    if momento.tzinfo is None:
+        return None
+    return momento.timestamp()

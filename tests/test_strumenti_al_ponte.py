@@ -161,10 +161,14 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     «i legami» : da 5 a 6, entra `legami` -- che al ponte serve quanto alla
     chat, perche' «se cancello questa entita' cosa smette di funzionare?» e'
     una domanda da farsi PRIMA di proporre una modifica, ed e' il ponte a
-    proporne."""
+    proporne. Fetta «lo schedulatore» Task 6: da 6 a 9, entrano `prometti`,
+    `promesse` e `disdici` -- le promesse che il modello puo' far nascere
+    parlando, non solo leggere (`schedulatore/turno.py` le tiene FUORI dal
+    proprio catalogo derivato, con un elenco di ammissione a parte: un turno
+    non si da' appuntamenti da solo)."""
     nomi = runner.nomi_mcp()
 
-    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 6
+    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 9
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

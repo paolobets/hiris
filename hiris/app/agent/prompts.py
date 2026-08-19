@@ -196,6 +196,14 @@ _GUIDA_SENZA_STRUMENTI = (
 # hai chiamato lo strumento» -- che acquista un terzo caso, «di aver acceso
 # qualcosa». E' la stessa regola di sempre, e da questa fetta ha una vittima
 # in piu' da proteggere.
+#
+# fetta «lo schedulatore» (Task 6). Da 6 a 9: entrano `prometti`,
+#   `promesse`, `disdici` -- lo stesso "li nomini, il modello li chiama coi
+#   nomi prefissati" di sopra, non un secondo giro di logica. `prometti` NON
+#   e' un secondo `esegui`: mette da parte un'azione o una domanda per un
+#   istante futuro, verificata SUBITO contro questa installazione -- il testo
+#   lo dice esplicitamente (ADESSO / PIU' TARDI) perche' il modello non lo
+#   confonda con l'unico strumento che scrive nella casa nel turno stesso.
 _GUIDA_CON_STRUMENTI = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
@@ -204,8 +212,14 @@ _GUIDA_CON_STRUMENTI = (
     "sapere chi tocca una cosa (quali automazioni, script, scene o gruppi la "
     "usano), `mcp__hiris__ricorda` e `mcp__hiris__richiama` per la memoria di "
     "cio' che le persone ti hanno detto, `mcp__hiris__esegui` per far "
-    "succedere qualcosa in casa. Quando il prompt qui sopra parla di `cerca`, "
-    "`guarda`, `legami`, `ricorda`, `richiama` o `esegui` parla di questi "
+    "succedere qualcosa in casa ADESSO, `mcp__hiris__prometti` per mettere "
+    "da parte un'azione o una domanda per PIU' TARDI (verificata subito "
+    "contro questa casa, non quando arriva il momento di mantenerla), "
+    "`mcp__hiris__promesse` per sapere cosa e' ancora in sospeso o com'e' "
+    "andata, `mcp__hiris__disdici` per annullare una promessa non ancora "
+    "mantenuta. Quando il prompt qui sopra parla di `cerca`, "
+    "`guarda`, `legami`, `ricorda`, `richiama`, `esegui`, `prometti`, "
+    "`promesse` o `disdici` parla di questi "
     "STESSI strumenti, non di altri: usa il nome prefissato per chiamarli.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
     "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
