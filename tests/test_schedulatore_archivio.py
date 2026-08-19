@@ -110,6 +110,18 @@ def test_disdire_una_promessa_in_attesa_riesce_e_una_conclusa_no(archivio):
     assert "disdetta" in secondo["errore"]
 
 
+def test_una_promessa_presa_non_si_disdice(archivio):
+    """La decisione di `disdici` vive nella query, non in una lettura fatta
+    prima: se un `prendi` fosse gia' passato, disdire non deve ne' riuscire
+    ne' toccare lo stato che l'orologio ha appena scritto."""
+    ident = archivio.crea(_fai(quando_ts=ADESSO + 10), adesso=ADESSO)["promessa"]["id"]
+    archivio.prendi(ident, adesso=ADESSO + 20)
+
+    esito = archivio.disdici(ident, adesso=ADESSO + 21)
+    assert "errore" in esito
+    assert archivio.leggi(ident)["stato"] == "in_corso"
+
+
 def test_il_tetto_delle_in_sospeso_rifiuta_nominandolo(archivio):
     for _ in range(TETTO_IN_SOSPESO):
         assert "errore" not in archivio.crea(_fai(), adesso=ADESSO)

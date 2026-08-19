@@ -120,14 +120,30 @@ class ArchivioPromesse:
             self._conn.commit()
 
     def disdici(self, promessa_id: str, *, adesso: float) -> dict:
+        """`in_attesa` -> `disdetta`, atomica sullo stesso modello di `prendi`.
+
+        Non si legge lo stato per DECIDERE: si scrive con una
+        `UPDATE ... WHERE stato='in_attesa'` e si guarda il `rowcount`. Se si
+        leggesse prima e si scrivesse dopo, l'orologio potrebbe infilare un
+        `prendi` (e l'azione vera) nella finestra fra le due mosse: l'azione
+        sarebbe avvenuta e l'archivio direbbe comunque «disdetta». La lettura
+        resta -- serve a dire ALL'UTENTE perche' non si e' disdetta -- ma
+        arriva dopo, per costruire il messaggio, mai per arbitrare.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE promesse SET stato='disdetta', "
+                "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
+                "WHERE id=? AND stato='in_attesa'", (adesso, promessa_id))
+            self._conn.commit()
+            riuscita = cur.rowcount == 1
+        if riuscita:
+            return {"promessa": self.leggi(promessa_id)}
         riga = self.leggi(promessa_id)
         if riga is None:
             return {"errore": "non ho nessuna promessa con quell'identificatore."}
-        if riga["stato"] != "in_attesa":
-            return {"errore": "quella promessa e' gia' %s: non si disdice, si legge."
-                              % riga["stato"]}
-        self.concludi(promessa_id, stato="disdetta", adesso=adesso)
-        return {"promessa": self.leggi(promessa_id)}
+        return {"errore": "quella promessa e' gia' %s: non si disdice, si legge."
+                          % riga["stato"]}
 
     def risana(self, *, adesso: float) -> int:
         """Le prese a meta' al riavvio: `fallita`, col motivo, e non ripartono.
@@ -152,25 +168,28 @@ class ArchivioPromesse:
     # -- leggere -------------------------------------------------------
 
     def leggi(self, promessa_id: str) -> dict | None:
-        riga = self._conn.execute(
-            "SELECT * FROM promesse WHERE id=?", (promessa_id,)).fetchone()
+        with self._lock:
+            riga = self._conn.execute(
+                "SELECT * FROM promesse WHERE id=?", (promessa_id,)).fetchone()
         return None if riga is None else serializza(riga)
 
     def elenca(self, *, solo_in_sospeso: bool = False, limite: int = 50) -> list[dict]:
-        if solo_in_sospeso:
-            righe = self._conn.execute(
-                "SELECT * FROM promesse WHERE stato IN ('in_attesa','in_corso') "
-                "ORDER BY quando_ts ASC LIMIT ?", (int(limite),)).fetchall()
-        else:
-            righe = self._conn.execute(
-                "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",
-                (int(limite),)).fetchall()
+        with self._lock:
+            if solo_in_sospeso:
+                righe = self._conn.execute(
+                    "SELECT * FROM promesse WHERE stato IN ('in_attesa','in_corso') "
+                    "ORDER BY quando_ts ASC LIMIT ?", (int(limite),)).fetchall()
+            else:
+                righe = self._conn.execute(
+                    "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",
+                    (int(limite),)).fetchall()
         return [serializza(r) for r in righe]
 
     def scadute(self, adesso: float) -> list[dict]:
-        righe = self._conn.execute(
-            "SELECT * FROM promesse WHERE stato='in_attesa' AND quando_ts<=? "
-            "ORDER BY quando_ts ASC", (adesso,)).fetchall()
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT * FROM promesse WHERE stato='in_attesa' AND quando_ts<=? "
+                "ORDER BY quando_ts ASC", (adesso,)).fetchall()
         return [serializza(r) for r in righe]
 
     # -- potare --------------------------------------------------------
