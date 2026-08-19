@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 
 SPECIE = ("fai", "chiedi")
-STATI = ("in_attesa", "in_corso", "mantenuta", "saltata", "disdetta", "fallita")
 STATI_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
