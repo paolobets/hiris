@@ -35,6 +35,29 @@ class TurnoFinto:
         return self._risposta
 
 
+class ArchivioConCorsaSuPrendi:
+    """Involucro attorno all'archivio vero, che sa produrre ESATTAMENTE la corsa che
+    "mai due volte" deve chiudere: `scadute()` si comporta come sempre (la
+    promessa e' ancora `in_attesa` quando l'orologio la legge), ma `prendi()`
+    risponde sempre `False` -- come se un altro giro fosse arrivato prima nella
+    finestra fra la lettura e la presa. Se l'orologio ignorasse il risultato di
+    `prendi()` (invece di fermarsi con un `continue`), questo involucro e' cio'
+    che lo fa vedere: la porta verrebbe chiamata comunque su una promessa che
+    non e' mai stata presa."""
+
+    def __init__(self, archivio):
+        self._archivio = archivio
+
+    def scadute(self, adesso):
+        return self._archivio.scadute(adesso)
+
+    def prendi(self, promessa_id, *, adesso):
+        return False  # qualcuno e' arrivato prima, sempre
+
+    def concludi(self, *args, **kwargs):
+        return self._archivio.concludi(*args, **kwargs)
+
+
 @pytest.fixture()
 def archivio(tmp_path):
     a = ArchivioPromesse(os.path.join(str(tmp_path), "promesse.db"))
@@ -82,12 +105,23 @@ async def test_oltre_la_tolleranza_non_si_esegue_mai_e_il_motivo_misura(archivio
 
 
 async def test_dentro_la_tolleranza_si_esegue(archivio):
-    """Il confine dall'altro lato: senza questo, «tolleranza» potrebbe essere zero."""
+    """Il confine dall'altro lato: senza questo, «tolleranza» potrebbe essere zero.
+
+    Include anche il confine esatto (ritardo == TOLLERANZA_S): la spec dice
+    "oltre" quella soglia, quindi a ritardo esattamente pari alla tolleranza la
+    promessa si mantiene ancora -- una mutazione `>` -> `>=` non sarebbe colta
+    senza questo caso.
+    """
     _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     await Orologio(archivio, esegui=porta, interpreta=TurnoFinto()).batti(
         ADESSO + 10 + TOLLERANZA_S - 1)
     assert len(porta.chiamate) == 1
+
+    _crea_fai(archivio, quando=ADESSO + 20)
+    await Orologio(archivio, esegui=porta, interpreta=TurnoFinto()).batti(
+        ADESSO + 20 + TOLLERANZA_S)
+    assert len(porta.chiamate) == 2
 
 
 async def test_due_battiti_ravvicinati_non_la_mantengono_due_volte(archivio):
@@ -97,6 +131,23 @@ async def test_due_battiti_ravvicinati_non_la_mantengono_due_volte(archivio):
     await orologio.batti(ADESSO + 11)
     await orologio.batti(ADESSO + 12)
     assert len(porta.chiamate) == 1
+
+
+async def test_una_presa_persa_non_esegue_e_non_conclude(archivio):
+    """Il cuore di "mai due volte": non basta che due batti() sequenziali non la
+    rieseguano (`scadute()` non la ripropone perche' e' gia' conclusa) -- serve
+    che l'orologio si fermi anche quando la promessa E' ancora `in_attesa` alla
+    lettura ma qualcun altro la prende un istante dopo. L'involucro sopra simula
+    esattamente questa finestra: se l'orologio ignorasse il risultato di
+    `prendi()`, la porta verrebbe chiamata comunque."""
+    ident = _crea_fai(archivio, quando=ADESSO + 10)
+    porta = PortaFinta()
+    involucro = ArchivioConCorsaSuPrendi(archivio)
+    await Orologio(involucro, esegui=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+
+    assert porta.chiamate == []
+    p = archivio.leggi(ident)
+    assert p["stato"] == "in_attesa"      # non presa, non eseguita, non conclusa
 
 
 async def test_una_porta_che_fallisce_lascia_la_promessa_fallita_col_motivo(archivio):
@@ -142,6 +193,25 @@ async def test_un_chiedi_con_recapito_notifica_e_registra_cio_che_ha_detto(archi
 
     p = archivio.leggi(ident)
     assert (p["stato"], p["avvisare"], p["testo"]) == ("mantenuta", True, "e' salita di 2 gradi")
+
+
+async def test_la_notifica_fallita_lascia_il_testo_e_dichiara_la_consegna_mancata(archivio):
+    """Un recapito VALIDO il cui invio fallisce: non e' il caso "nessun canale"
+    (quello e' gia' provato altrove) -- qui il canale c'e', ma la porta non ce
+    la fa. La promessa resta comunque mantenuta (l'ho guardata, ho una
+    risposta), il testo resta leggibile, e il motivo dichiara la consegna
+    mancata riportando l'errore vero della porta."""
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
+    porta = PortaFinta({"eseguito": False, "errore": "il servizio di notifica non risponde"})
+    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
+    await Orologio(archivio, esegui=porta, interpreta=turno).batti(ADESSO + 11)
+
+    assert len(porta.chiamate) == 1       # il tentativo c'e' stato
+    p = archivio.leggi(ident)
+    assert p["stato"] == "mantenuta"
+    assert p["testo"] == "e' salita di 2 gradi"
+    assert "non e' partita" in p["motivo"]
+    assert "non risponde" in p["motivo"]
 
 
 async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
