@@ -60,13 +60,18 @@ every action starts from a sentence you type»*. Differita, ma tua.
 
 ## 4. L'oggetto e i suoi confini
 
-`hiris/app/schedulatore/`, tre file:
+`hiris/app/schedulatore/`, quattro file:
 
 | File | Cosa tiene |
 |---|---|
-| `archivio.py` | SQLite (`/data/promesse.db`) — **l'unica casa** di «cosa e quando» |
 | `promessa.py` | la forma di una promessa: validazione, e **una sola** serializzazione |
+| `archivio.py` | SQLite (`/data/promesse.db`) — **l'unica casa** di «cosa e quando» |
 | `orologio.py` | il battito: chi è scaduto, chi si è perso, chi si sveglia |
+| `turno.py` | il turno di `chiedi`: il catalogo ristretto, `concludi`, il prompt |
+
+Il quarto file non c'era nella prima stesura di questa spec, e lo aggiunge il piano: il turno di
+`chiedi` non appartiene né alla forma, né all'archivio, né al battito, e infilarlo in uno dei tre
+avrebbe fatto un file che fa due cose.
 
 **Non importa né la chat, né il modello, né Home Assistant.** Al montaggio riceve da `server.py` due
 funzioni:
@@ -191,6 +196,9 @@ Questa fetta lo costruisce, **una volta sola, accanto alla porta**: `hiris/app/a
 
 - Ogni esecuzione che passa da `porta.esegui` scrive una riga: cosa, su cosa, esito, e l'**origine**
   (`chat` o `schedulatore`). È esattamente ciò per cui `origine` era stato messo nella porta.
+- **Cosa è un'esecuzione**, dichiarato: i tentativi che hanno **superato la verifica** — riusciti o
+  falliti. Un rifiuto della verifica non è un'esecuzione: è un errore del modello, già detto al
+  modello, e riempirebbe il registro di cose che non sono successe.
 - **Il nome non è `registro.py`**: in `azione/` quel nome è già il registro *dei servizi* (cosa Home
   Assistant sa fare). Due cose diverse non possono chiamarsi allo stesso modo in due file vicini.
 - **La promessa non ricopia l'esito.** Tiene ciò che è solo suo (`stato`, `motivo`, e per un `chiedi`
