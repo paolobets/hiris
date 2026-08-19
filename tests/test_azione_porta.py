@@ -1000,6 +1000,54 @@ async def test_un_client_che_non_annuncia_non_blocca_e_non_rifiuta():
     assert durata < porta_modulo.ATTESA_STATO_S
 
 
+# --- la cronaca --------------------------------------------------------------
+#
+# Task 3 dello schedulatore: la fetta «comandare» aveva promesso «il registro
+# di cio' che e' stato fatto» e non l'aveva costruito. `_porta_di_prova` e' il
+# costruttore condiviso di questi due test -- non se ne inventa un secondo
+# accanto a `_porta_pronta`, che serve alla famiglia 4 e porta gia' il suo
+# `client`/`cache` per test che li ispezionano.
+
+async def _porta_di_prova(*, cronaca=None) -> PortaAzione:
+    """Una porta pronta a eseguire `light.turn_on` su `light.studio`, con o
+    senza cronaca: la cronaca e' facoltativa, e questo costruttore la passa
+    solo se chi chiama la vuole."""
+    client, cache = _casa({"light.studio": "off"}, annuncia=[
+        {"entity_id": "light.studio", "state": "on", "attributes": {}}])
+    registro = await _registro_pronto(client)
+    return PortaAzione(client, registro, cache, cronaca=cronaca)
+
+
+@pytest.mark.asyncio
+async def test_la_porta_registra_in_cronaca_e_restituisce_l_identificatore(tmp_path):
+    """L'esito riuscito deve poter essere CHIESTO, non solo loggato (fondamenta n.4)."""
+    import os
+
+    from hiris.app.azione.cronaca import Cronaca
+
+    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    try:
+        porta = await _porta_di_prova(cronaca=cronaca)
+        esito = await porta.esegui(
+            {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.studio"]}},
+            origine="chat")
+        assert esito["eseguito"] is True
+        assert cronaca.leggi(esito["esecuzione_id"])["origine"] == "chat"
+    finally:
+        cronaca.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_cronaca_la_porta_si_comporta_come_prima():
+    """La cronaca e' facoltativa: nessun chiamante esistente cambia comportamento."""
+    porta = await _porta_di_prova(cronaca=None)
+    esito = await porta.esegui(
+        {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.studio"]}},
+        origine="chat")
+    assert esito["eseguito"] is True
+    assert "esecuzione_id" not in esito
+
+
 def test_la_scadenza_e_dichiarata_finita_e_una_sola():
     """La scadenza vera, quella che gira in casa d'altri.
 

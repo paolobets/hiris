@@ -84,6 +84,7 @@ sempre in questo modulo.
 """
 import asyncio
 import logging
+import time
 
 from ..proxy.entity_cache import _to_minimal, inventario_leggibile
 from .verifica import verifica
@@ -409,10 +410,14 @@ class _AscoltoStati:
 
 
 class PortaAzione:
-    def __init__(self, ha_client, registro, cache) -> None:
+    def __init__(self, ha_client, registro, cache, cronaca=None) -> None:
         self._ha = ha_client
         self._registro = registro
         self._cache = cache
+        # Il registro delle esecuzioni (`cronaca.py`). `None` e' legittimo e
+        # non cambia niente per chi non lo passa: la porta scriveva gia' la
+        # sua riga di log, e questa e' la stessa riga resa CHIEDIBILE.
+        self._cronaca = cronaca
 
     def _stati(self) -> dict[str, dict] | None:
         """Lo specchio dello stato vivo, o `None` se non l'ho potuto leggere.
@@ -512,6 +517,22 @@ class PortaAzione:
             logger.warning("ascolto degli annunci non chiuso (%s: %s)",
                            type(errore).__name__, errore)
 
+    def _annota(self, **fatti) -> str | None:
+        """La riga di cronaca, se la cronaca c'e'. Non solleva MAI.
+
+        Un registro che non si riesce a scrivere non deve poter trasformare
+        un'azione riuscita in un errore: cio' che e' successo alla casa e'
+        successo comunque, e tacerlo sarebbe peggio che non annotarlo.
+        """
+        if self._cronaca is None:
+            return None
+        try:
+            return self._cronaca.registra(adesso=time.time(), **fatti)
+        except Exception as errore:
+            logger.warning("cronaca non scritta (%s: %s)",
+                           type(errore).__name__, errore)
+            return None
+
     async def esegui(self, chiamata: dict, *, origine: str) -> dict:
         try:
             await self._registro.assicura_fresco(self._ha)
@@ -589,8 +610,15 @@ class PortaAzione:
             except Exception as errore:
                 logger.warning("azione fallita [origine=%s] %s.%s: %s",
                                origine, verdetto.dominio, verdetto.servizio, errore)
-                return {"eseguito": False,
-                        "errore": f"Home Assistant ha rifiutato la chiamata: {errore}"}
+                messaggio = f"Home Assistant ha rifiutato la chiamata: {errore}"
+                esecuzione_id = self._annota(
+                    origine=origine,
+                    servizio=f"{verdetto.dominio}.{verdetto.servizio}",
+                    entita=list(verdetto.entita), eseguito=False, errore=messaggio)
+                esito = {"eseguito": False, "errore": messaggio}
+                if esecuzione_id is not None:
+                    esito["esecuzione_id"] = esecuzione_id
+                return esito
 
             # Un'entita' di cui la chiamata ha gia' detto qualcosa non si
             # aspetta: quella misura e' presa durante l'esecuzione, cioe' nel
@@ -668,4 +696,9 @@ class PortaAzione:
                     origine, esito["servizio"], list(verdetto.entita),
                     cambiato or ("sconosciuto" if non_viste else "nessuno"),
                     len(annunciate), len(riportate_qui), _secondi(attesa))
+        esecuzione_id = self._annota(
+            origine=origine, servizio=esito["servizio"], entita=list(verdetto.entita),
+            eseguito=True, cambiato=cambiato, avviso=esito.get("avviso"))
+        if esecuzione_id is not None:
+            esito["esecuzione_id"] = esecuzione_id
         return esito
