@@ -31,8 +31,14 @@ TOLLERANZA_S = 120
 # deve poter riempire il disco.
 ORIZZONTE_S = 30 * 86400
 TETTO_IN_SOSPESO = 50
-# Quanto si conserva una promessa conclusa (spec §8.1). Un registro che cresce
-# per sempre su una scheda SD e' un guasto rimandato.
+# Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
+# per sempre su una scheda SD e' un guasto rimandato. E' una politica di
+# QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
+# esecuzioni (`azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S`, nello strato
+# sotto): oggi vale lo stesso numero, 90 giorni, ma sono due fatti distinti --
+# per quanto si conserva una PROMESSA conclusa, per quanto si conserva
+# un'ESECUZIONE -- che possono divergere in futuro senza che l'uno debba
+# inseguire l'altro.
 CONSERVAZIONE_S = 90 * 86400
 
 _CHIAVI = (

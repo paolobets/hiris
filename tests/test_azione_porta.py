@@ -1048,6 +1048,32 @@ async def test_senza_cronaca_la_porta_si_comporta_come_prima():
     assert "esecuzione_id" not in esito
 
 
+@pytest.mark.asyncio
+async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
+    """L'invariante che la spec di `cronaca.py` dichiara con piu' enfasi: si
+    registrano i tentativi che hanno SUPERATO la verifica, riusciti o
+    falliti. Un rifiuto della verifica non e' un'esecuzione -- e' un errore
+    del modello, gia' detto al modello -- e non deve mai riempire il
+    registro di cose che non sono successe."""
+    import os
+
+    from hiris.app.azione.cronaca import Cronaca
+
+    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    try:
+        porta = await _porta_di_prova(cronaca=cronaca)
+        esito = await porta.esegui(
+            {"servizio": "light.esplodi", "bersaglio": {"entita": ["light.studio"]}},
+            origine="chat")
+        assert esito["eseguito"] is False
+        assert "esecuzione_id" not in esito
+        assert cronaca.elenca() == [], (
+            "un rifiuto della verifica ha scritto una riga in cronaca: sta "
+            "registrando cose che non sono successe")
+    finally:
+        cronaca.close()
+
+
 def test_la_scadenza_e_dichiarata_finita_e_una_sola():
     """La scadenza vera, quella che gira in casa d'altri.
 

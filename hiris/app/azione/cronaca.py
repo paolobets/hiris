@@ -27,10 +27,18 @@ import threading
 
 from ..storage import connect, init_schema
 
-# Novanta giorni, la stessa conservazione delle promesse concluse: sono due
-# facce dello stesso registro, e due soglie diverse sarebbero due politiche da
-# tenere allineate a mano.
-CONSERVAZIONE_S = 90 * 86400
+# Quanto si conserva un'esecuzione (riuscita o fallita) in questo registro.
+# E' una politica di QUESTO modulo, non presa in prestito da altrove: la
+# cronaca vive ACCANTO alla porta (vedi il docstring del file) e deve reggersi
+# da sola, come la porta stessa -- oggi `azione/` non importa nulla da
+# `schedulatore/`, e farlo per un solo numero invertirebbe gli strati per
+# risparmiare una riga. Vale 90 giorni come la conservazione delle promesse
+# concluse (`schedulatore/promessa.py::CONSERVAZIONE_S`): sono due fatti
+# distinti -- per quanto si conserva una PROMESSA conclusa, per quanto si
+# conserva un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
+# Si possono cambiare separatamente, in futuro, senza che l'altro se ne
+# accorga.
+CONSERVAZIONE_ESECUZIONI_S = 90 * 86400
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS esecuzioni (
@@ -79,7 +87,7 @@ class Cronaca:
         with self._lock:
             self._conn.execute(
                 "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (adesso - CONSERVAZIONE_S,))
+                (adesso - CONSERVAZIONE_ESECUZIONI_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso) VALUES(?,?,?,?,?,?,?,?,?)",
