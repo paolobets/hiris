@@ -107,9 +107,11 @@ anagrafe è già pinnata.
 3. **R5** — i rifiuti di `guarda` (3 punti) e `ricorda` (ancora scartata) adottano
    il pattern di `esegui`: cosa non esiste + come trovarlo. `ricorda` continua a
    salvare (il testo è la verità) ma il campo `problemi` insegna.
-4. **R1** — l'id accanto al nome nell'albero: **aree** (`Soggiorno (soggiorno)`),
-   **piani**, **automazioni/script** (pattern `[#id]` dei ricordi). Poche decine di
-   token su una casa vera.
+4. **R1** — l'id accanto al nome nell'albero: **aree**, **piani**,
+   **automazioni/script**, con UNA forma sola — `Nome (id: X)`, la convenzione che le
+   pseudo-aree usavano gia'. I ricordi restano `[#id]`: id numerici interni di HIRIS,
+   non slug di Home Assistant (deciso in implementazione, T4). Costo misurato:
+   +1104 caratteri su un nucleo da 20 aree/40 automazioni.
 5. **R3+R8** — nel prompt (`BASE_REGOLE_STRUMENTI` e `_GUIDA_CON_STRUMENTI`):
    «più nomi → UNA chiamata `cerca`» e «più letture indipendenti → chiamale in
    parallelo nella stessa risposta». Tetto a 50.
