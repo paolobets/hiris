@@ -18,6 +18,7 @@ from ..claude_runner import (
     RunnerBackendError,
     _current_tool_calls,
     _PerCallList,
+    _MAX_ITERATIONS_NOTICE,
 )
 from ..chat_store import RE_NOME_STRUMENTO_TRAPELATO
 from ..esiti_provider import famiglia_errore
@@ -878,7 +879,15 @@ class OpenAICompatRunner:
                     return TOOL_LEAK_USER_MSG
                 return raw_content
 
-        return "Max tool iterations reached."
+        # fetta "i riferimenti" (R4, Task 6): l'esaurimento non e' piu' muto
+        # -- vedi il commento gemello in claude_runner.chat(). `self.
+        # last_tool_calls` e' gia' in mano, riusato qui, non un secondo
+        # tracciamento; solo i NOMI degli strumenti, mai gli argomenti.
+        logger.warning(
+            "chat(): esaurite %d iterazioni senza risposta finale -- strumenti chiamati: %s",
+            max_iter, [c["tool"] for c in self.last_tool_calls],
+        )
+        return _MAX_ITERATIONS_NOTICE
 
     async def chat_stream(
         self,
@@ -1151,6 +1160,29 @@ class OpenAICompatRunner:
                         "tool_call_id": tc_data["id"],
                         "content": json.dumps(result),
                     })
+            else:
+                # fetta "i riferimenti" (R4, Task 6): il `for...else` di
+                # Python scatta SOLO se il ciclo si esaurisce senza mai
+                # incontrare il `break` di qui sopra (quello che segna una
+                # risposta testuale finale, `if not tc_fragments`) -- cioe'
+                # esattamente quando il modello ha chiesto uno strumento in
+                # OGNI iterazione fino al tetto, senza mai concludere. Prima
+                # il generatore cadeva dritto sul "done" finale qui sotto
+                # senza dire nulla: un done muto. Riusa la STESSA forma con
+                # cui questo generatore segnala gia' gli altri errori (vedi
+                # il ramo circuito aperto piu' sopra e l'`except` qui sotto)
+                # invece di inventarne una nuova, e si ferma li' -- senza il
+                # "done" finale, come gli altri rami d'errore. `self.
+                # last_tool_calls` e' gia' in mano, riusato qui, non un
+                # secondo tracciamento; solo i NOMI degli strumenti, mai gli
+                # argomenti.
+                logger.warning(
+                    "chat_stream(): esaurite %d iterazioni senza risposta finale -- "
+                    "strumenti chiamati: %s",
+                    max_iter, [c["tool"] for c in self.last_tool_calls],
+                )
+                yield f'data: {json.dumps({"type": "error", "message": _MAX_ITERATIONS_NOTICE})}\n\n'
+                return
 
         except Exception as exc:
             logger.error("chat_stream error: %s", exc)

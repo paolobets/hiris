@@ -6,6 +6,7 @@ This crashed startup with `TypeError: Timeout.__init__() got an unexpected
 keyword argument 'total'` whenever an OpenAI key or Ollama URL was configured.
 """
 import json
+import logging
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -694,6 +695,65 @@ async def test_chat_length_finish_returns_truncation_notice(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# fetta "i riferimenti" (R4, Task 6): l'esaurimento delle iterazioni-
+# strumenti (il modello chiede SEMPRE un tool, mai finish_reason='stop') era
+# muto e in inglese -- "Max tool iterations reached.", zero log. Gemello del
+# difetto chiuso in test_claude_runner.py per ClaudeRunner.chat(); stessa
+# costante `_MAX_ITERATIONS_NOTICE`, importata da claude_runner.py (gerarchia
+# gia' in un verso solo: questo modulo importa GIA' da li').
+# ---------------------------------------------------------------------------
+
+def _risposta_tool_call(nome: str, argomenti: str, tc_id: str):
+    tc = MagicMock()
+    tc.id = tc_id
+    tc.function.name = nome
+    tc.function.arguments = argomenti
+    choice = MagicMock(finish_reason="tool_calls")
+    choice.message.content = None
+    choice.message.tool_calls = [tc]
+    resp = MagicMock(choices=[choice])
+    resp.usage.prompt_tokens = 5
+    resp.usage.completion_tokens = 2
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, caplog, monkeypatch):
+    """Deve poter fallire (mutazioni eseguite a mano, task-6-report.md):
+    (a) ripristinare `return "Max tool iterations reached."` fa cadere il
+        primo assert; (b) togliere il `logger.warning` fa cadere il secondo.
+    """
+    from hiris.app.claude_runner import _MAX_ITERATIONS_NOTICE
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.MAX_TOOL_ITERATIONS", 3)
+
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1", api_key="sk-test",
+        usage_path=str(tmp_path / "u.json"),
+    )
+    runner._client.chat.completions.create = AsyncMock(side_effect=[
+        _risposta_tool_call("guarda", '{"area": "cucina"}', "tc-1"),
+        _risposta_tool_call("guarda", '{"area": "salotto"}', "tc-2"),
+        _risposta_tool_call("cerca", '{"testo": "termostato"}', "tc-3"),
+    ])
+    finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
+
+    with caplog.at_level(logging.WARNING):
+        result = await runner.chat(
+            user_message="guarda ogni stanza", model="gpt-4o", dispatcher=finto_dispatcher,
+        )
+
+    assert result == _MAX_ITERATIONS_NOTICE
+    assert "Max tool iterations reached." not in result
+    assert runner._client.chat.completions.create.call_count == 3
+
+    warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+        f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
+    )
+    assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)
+
+
+# ---------------------------------------------------------------------------
 # review M3/#1: chat_stream() never checked finish_reason=='length', so a
 # truncated streaming response reached the client with NO warning, while the
 # non-streaming chat() above DOES surface _TRUNCATION_NOTICE.
@@ -778,6 +838,88 @@ async def test_chat_stream_normal_stop_has_no_truncation_notice(tmp_path):
     )]
     full_output = "\n".join(lines)
     assert _TRUNCATION_NOTICE not in full_output
+
+
+# ---------------------------------------------------------------------------
+# fetta "i riferimenti" (R4, Task 6): il ramo streaming era il peggiore dei
+# due -- il generatore usciva senza evento d'errore ne' testo, un "done"
+# muto (nessun `break` nel `for` quando il modello chiede SEMPRE un tool: il
+# `for _ in range(max_iter)` si esaurisce e cade dritto sull'ultimo `yield`
+# "done", l'unico della funzione). Ora un `for...else` sul loop -- fires solo
+# quando il loop non ha mai incontrato il `break` che segna una risposta
+# testuale finale -- emette l'evento nella STESSA forma con cui questo
+# generatore segnala gia' gli altri errori (circuito aperto, rate limit,
+# errore API: `{"type": "error", "message": ...}` seguito da un `return` che
+# chiude lo stream senza il "done" finale), invece di inventarne una nuova.
+# ---------------------------------------------------------------------------
+
+def _stream_tc_delta(index, *, id_=None, name=None, arguments=None):
+    d = MagicMock()
+    d.index = index
+    d.id = id_
+    d.function = MagicMock()
+    d.function.name = name
+    d.function.arguments = arguments
+    return d
+
+
+def _stream_chunk_tool(tc_deltas, finish_reason=None):
+    delta = MagicMock()
+    delta.content = None
+    delta.tool_calls = tc_deltas
+    choice = MagicMock()
+    choice.delta = delta
+    choice.finish_reason = finish_reason
+    chunk = MagicMock()
+    chunk.choices = [choice]
+    return chunk
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(tmp_path, caplog, monkeypatch):
+    """Deve poter fallire (mutazioni eseguite a mano, task-6-report.md): (c)
+    togliendo il `for...else` (tornando al solo `yield` "done" finale di
+    prima) lo stream torna muto e il primo assert cade."""
+    monkeypatch.setattr("hiris.app.backends.openai_compat_runner.MAX_TOOL_ITERATIONS", 3)
+
+    runner = OpenAICompatRunner(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        usage_path=str(tmp_path / "u.json"),
+    )
+
+    def _stream_sempre_tool(nome, argomenti, tc_id):
+        tc = _stream_tc_delta(0, id_=tc_id, name=nome, arguments=argomenti)
+        return _FakeStream([_stream_chunk_tool([tc], finish_reason="tool_calls")])
+
+    runner._client.chat.completions.create = AsyncMock(side_effect=[
+        _stream_sempre_tool("guarda", '{"area": "cucina"}', "tc-1"),
+        _stream_sempre_tool("guarda", '{"area": "salotto"}', "tc-2"),
+        _stream_sempre_tool("cerca", '{"testo": "termostato"}', "tc-3"),
+    ])
+    finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
+
+    with caplog.at_level(logging.WARNING):
+        lines = [line async for line in runner.chat_stream(
+            user_message="guarda ogni stanza", model="gpt-4o", dispatcher=finto_dispatcher,
+        )]
+
+    assert runner._client.chat.completions.create.call_count == 3
+
+    events = [json.loads(line[len("data: "):]) for line in lines if line.startswith("data: ")]
+    error_events = [e for e in events if e.get("type") == "error"]
+    assert len(error_events) == 1, f"atteso un solo evento 'error', trovati: {events}"
+    from hiris.app.claude_runner import _MAX_ITERATIONS_NOTICE
+    assert error_events[0]["message"] == _MAX_ITERATIONS_NOTICE
+    # mai il "done" muto: lo stream si ferma sull'evento che spiega -- non
+    # aggiunge un "done" senza spiegazione dopo.
+    assert not any(e.get("type") == "done" for e in events)
+
+    warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+        f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
+    )
+    assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)
 
 
 # ---------------------------------------------------------------------------

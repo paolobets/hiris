@@ -60,6 +60,7 @@ see task-6-report.md for the full account, including the grep evidence for
 every kwarg.
 """
 import asyncio
+import logging
 import pytest
 import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -568,6 +569,58 @@ async def test_chat_processes_all_tool_use_blocks_of_one_response_in_one_iterati
     assert runner.last_tool_calls == [
         {"tool": "guarda", "input": {"area": f"stanza-{i}"}} for i in range(N)
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(runner, caplog, monkeypatch):
+    """R4 (fetta "i riferimenti", Task 6): quando il modello chiede SEMPRE
+    uno strumento e non arriva mai a `end_turn`, il turno esaurisce
+    `MAX_TOOL_ITERATIONS` -- prima rispondeva con la stringa inglese
+    hardcoded "Max tool iterations reached.", zero log. Ora deve rispondere
+    col messaggio italiano `_MAX_ITERATIONS_NOTICE` e registrare un
+    `logger.warning` col conto delle iterazioni e i NOMI degli strumenti
+    chiamati (mai gli argomenti, che possono portare dati personali --
+    "cucina"/"salotto" qui sopra sono nomi di stanza, non verificati che
+    NON compaiano nel log).
+
+    Deve poter fallire (mutazioni eseguite a mano, task-6-report.md):
+    (a) ripristinare `return "Max tool iterations reached."` fa cadere il
+        primo assert; (b) togliere il `logger.warning` fa cadere il secondo.
+    """
+    from hiris.app.claude_runner import _MAX_ITERATIONS_NOTICE
+    monkeypatch.setattr("hiris.app.claude_runner.MAX_TOOL_ITERATIONS", 3)
+
+    def _usage():
+        return MagicMock(input_tokens=1, output_tokens=1,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+
+    def _tool_msg(name, area):
+        block = MagicMock(type="tool_use", id=f"tu-{name}-{area}", input={"area": area})
+        block.name = name
+        return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
+
+    runner._client.messages.create = AsyncMock(side_effect=[
+        _tool_msg("guarda", "cucina"),
+        _tool_msg("guarda", "salotto"),
+        _tool_msg("cerca", "termostato"),
+    ])
+    finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
+
+    with caplog.at_level(logging.WARNING):
+        result = await runner.chat("guarda ogni stanza", dispatcher=finto_dispatcher)
+
+    assert result == _MAX_ITERATIONS_NOTICE
+    assert "Max tool iterations reached." not in result
+    assert runner._client.messages.create.call_count == 3
+
+    warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+        f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
+    )
+    # gli argomenti (nomi di stanza) non devono comparire nel log -- solo i
+    # nomi degli strumenti, come chiesto dal brief (possono portare dati
+    # personali).
+    assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)
 
 
 @pytest.mark.asyncio

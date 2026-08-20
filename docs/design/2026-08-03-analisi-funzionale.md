@@ -181,9 +181,13 @@ file di consumo su disco (`claude_runner.py:776-797`); se il modello ha finito, 
 testo e si esce (`claude_runner.py:799-801`); se ha chiesto uno strumento, la chiamata passa al
 dispatcher con il perimetro del Chatbot e il risultato torna indietro come dato JSON
 (`claude_runner.py:803-828`). I risultati vecchi vengono troncati a 300 caratteri per non gonfiare
-il contesto (`claude_runner.py:98-121`). Se le dieci iterazioni finiscono senza conclusione, la
+il contesto (`claude_runner.py:98-121`). Se le iterazioni finiscono senza conclusione, la
 risposta all'utente e' la stringa "Max tool iterations reached." (`claude_runner.py:837`), che
-viene anche salvata nello storico.
+viene anche salvata nello storico. **Chiuso 2026-08-20** (fetta "i riferimenti", R4, Task 6): il
+messaggio e' ora italiano (`_MAX_ITERATIONS_NOTICE`, una casa sola condivisa dai due runner),
+l'esaurimento lascia un `logger.warning` col conto delle iterazioni e i nomi degli strumenti
+chiamati, e il percorso in streaming di `openai_compat_runner.py` non esce piu' muto: emette
+l'evento `error` invece del "done" senza spiegazione.
 
 Le chiamate al fornitore hanno tre ritentativi con attese di 5, 15 e 45 secondi in caso di
 sovraccarico o limite di richieste (`claude_runner.py:999-1010`).

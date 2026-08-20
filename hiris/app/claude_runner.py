@@ -471,6 +471,27 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
     return f"{prefix}\n\n{_TRUNCATION_NOTICE}" if prefix else _TRUNCATION_NOTICE
 
 
+# fetta "i riferimenti" (R4, Task 6): il gemello di _TRUNCATION_NOTICE qui
+# sopra. Prima dell'esaurimento delle iterazioni-strumenti rispondeva la
+# stringa inglese hardcoded "Max tool iterations reached." -- identica byte
+# per byte nel ramo tool_use di chat() qui sotto e in
+# backends/openai_compat_runner.py -- senza nessun log. Una casa sola, non
+# due costanti con parentela dichiarata (il pattern usato quando due strati
+# NON possono importare l'uno dall'altro senza invertire la gerarchia, come
+# azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
+# schedulatore/promessa.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
+# verso solo -- backends/openai_compat_runner.py importa GIA' da questo
+# modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_
+# PROMPT), mai il contrario -- quindi definirla due volte sarebbe il
+# doppione che CLAUDE.md:70-72 vieta, non una necessita' strutturale.
+_MAX_ITERATIONS_NOTICE = (
+    "⚠️ Il turno si è fermato perché ha esaurito i passi disponibili con gli "
+    "strumenti. Quello che ho già verificato o eseguito resta valido — prova "
+    "a dividere la richiesta in parti più piccole (una stanza, un controllo "
+    "alla volta) e a ripetere quella rimasta in sospeso."
+)
+
+
 RESTRICT_PROMPT = (
     "Sei HIRIS, assistente per la smart home. "
     "Rispondi SOLO a domande relative alla casa, domotica, energia, clima, sicurezza. "
@@ -997,7 +1018,16 @@ class ClaudeRunner:
                 text_blocks = [b.text for b in response.content if b.type == "text"]
                 return "\n".join(text_blocks) if text_blocks else f"Stopped: {response.stop_reason}"
 
-        return "Max tool iterations reached."
+        # fetta "i riferimenti" (R4, Task 6): l'esaurimento non e' piu' muto.
+        # `self.last_tool_calls` e' gia' in mano (popolato ad ogni giro poco
+        # sopra) -- riusato qui, non un secondo tracciamento. Solo i NOMI
+        # degli strumenti, mai `input`: puo' portare dati personali (nomi di
+        # stanza, valori impostati, ...).
+        logger.warning(
+            "chat(): esaurite %d iterazioni senza risposta finale -- strumenti chiamati: %s",
+            MAX_TOOL_ITERATIONS, [c["tool"] for c in self.last_tool_calls],
+        )
+        return _MAX_ITERATIONS_NOTICE
 
     async def chat_stream(
         self,
