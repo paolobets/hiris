@@ -369,17 +369,52 @@ def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
     return {dominio: conteggio[dominio] for dominio in sorted(conteggio)}
 
 
+def _nome_con_id(nome: str, id_: str | None) -> str:
+    """Nome con l'id accanto tra parentesi, quando l'id dice qualcosa che il
+    nome da solo non dice (R1, fetta "i riferimenti", incidente 2026-08-20).
+
+    E' la regola unica dietro OGNI riferimento della casa nel nucleo: le
+    pseudo-aree la applicavano gia' da sole (IMPORTANT ⑦, sotto), qui si
+    generalizza invece di riscriverla per ogni chiamante. Tace in due casi:
+    id assente (un dispositivo o un'area con `id` NULL nell'archivio -- non
+    dovrebbe capitare per un'area vera, ma l'anagrafe non lo vieta) e id
+    identico al nome (caso limite, non impossibile): in entrambi una
+    parentesi in piu' sarebbe rumore, non informazione."""
+    if not id_ or id_ == nome:
+        return nome
+    return f"{nome} (id: {id_})"
+
+
 def _nome_area_visualizzato(area: dict) -> str:
-    """Il nome di un'area, con l'id accanto se e' una pseudo-area (IMPORTANT
-    ⑦): "Senza area", "Aree non lette" & co. non esistono nell'anagrafe
-    grezza di Home Assistant, quindi ne' `cerca()` ne' `guarda('area',
-    nome)` le trovano per nome -- solo per id (`guarda('area',
-    '__senza_area__')`). Mostrare solo il nome e' un vicolo cieco: le
-    entita' che piu' meritano attenzione (orfane, non lette) finirebbero
-    contate nel nucleo e irraggiungibili nel dettaglio."""
+    """Il nome di un'area per il PREFISSO di "Notevole adesso"
+    (`_area_di_ogni_entita`): l'id accanto solo se e' una pseudo-area
+    (IMPORTANT ⑦): "Senza area", "Aree non lette" & co. non esistono
+    nell'anagrafe grezza di Home Assistant, quindi ne' `cerca()` ne'
+    `guarda('area', nome)` le trovano per nome -- solo per id
+    (`guarda('area', '__senza_area__')`). Mostrare solo il nome e' un vicolo
+    cieco: le entita' che piu' meritano attenzione (orfane, non lette)
+    finirebbero contate nel nucleo e irraggiungibili nel dettaglio.
+
+    Le aree REALI non mostrano qui il proprio id (decisione del proprietario,
+    spec "i riferimenti"): a differenza delle pseudo-aree sono comunque
+    risolvibili per nome da `cerca`/`guarda`, e ripeterlo a ogni entita'
+    notevole costerebbe piu' di quel che rende. Per l'albero di "La casa",
+    che puo' permetterselo (una riga per area, non una per entita'), vedi
+    `_nome_area_per_albero`."""
     if e_pseudo_area(area["id"]):
-        return f"{area['nome']} (id: {area['id']})"
+        return _nome_con_id(area["nome"], area["id"])
     return area["nome"]
+
+
+def _nome_area_per_albero(area: dict) -> str:
+    """Il nome di un'area per l'albero di "La casa" (`_righe_casa`): l'id
+    accanto SEMPRE che differisca dal nome, reale o pseudo che sia -- e' il
+    reperto R1 dell'incidente 2026-08-20: l'albero mostrava solo nomi,
+    `guarda`/`esegui` pretendono l'id esatto e vietano di indovinarlo dal
+    nome mostrato. A differenza di `_nome_area_visualizzato`, che alimenta
+    anche il prefisso di "Notevole adesso" (dove l'id resta fuori, vedi
+    li'), qui il costo e' una riga per area."""
+    return _nome_con_id(area["nome"], area["id"])
 
 
 # I nomi italiani delle otto misure del sistema di unita' di Home Assistant.
@@ -481,7 +516,7 @@ def _righe_casa(piani: list[dict],
         return ["Nessun piano registrato."]
     righe = []
     for piano in piani:
-        righe.append(f"{piano['nome']}:")
+        righe.append(f"{_nome_con_id(piano['nome'], piano['id'])}:")
         if not piano["aree"]:
             righe.append("  - (nessuna area)")
             continue
@@ -494,7 +529,7 @@ def _righe_casa(piani: list[dict],
                     for dom, n in conteggio.items())
             else:
                 dettaglio = "nessuna entita'"
-            righe.append(f"  - {_nome_area_visualizzato(area)}: {dettaglio}")
+            righe.append(f"  - {_nome_area_per_albero(area)}: {dettaglio}")
     return righe
 
 
@@ -687,16 +722,20 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
 
 
 def _righe_comportamento(comportamento: list[dict]) -> list[str]:
-    """I NOMI di cio' che la casa fa gia' da sola. Il corpo si va a
-    chiedere -- per trecento automazioni non ci sta, e qui serve solo
+    """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
+    stessa regola di `_nome_con_id`: fetta "i riferimenti", incidente
+    2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
+    esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
+    si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
     if not comportamento:
         return ["Nessuna automazione o script registrati."]
     righe = []
     for v in comportamento:
-        nome = v.get("nome") or v.get("id") or "(senza nome)"
+        id_ = v.get("id")
+        nome = v.get("nome") or id_ or "(senza nome)"
         tipo = v.get("tipo", "?")
-        riga = f"- {nome} ({tipo})"
+        riga = f"- {_nome_con_id(nome, id_)} ({tipo})"
         if v.get("corpo") is None:
             riga += " -- corpo non disponibile, solo il nome"
         righe.append(riga)

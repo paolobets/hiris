@@ -190,6 +190,67 @@ def test_notevole_usa_lo_stesso_albero_della_casa():
     assert "Area sconosciuta (id: __area_sconosciuta__): Penzolante" in testo
 
 
+# --- R1 "i riferimenti": l'albero porta gli id ------------------------------
+#
+# Il difetto vero, l'incidente del 2026-08-20: l'albero della casa mostra i
+# nomi, gli strumenti (`guarda`, `esegui`, ...) pretendono l'id esatto e
+# vietano di indovinarlo dal nome. Qui si prova che l'id compare accanto al
+# nome in "La casa" (aree, piani, comportamento) -- e che "Notevole adesso"
+# NON lo eredita (decisione del proprietario: 15 id a ogni turno costano piu'
+# di quel che rendono, il batch di `cerca` li copre).
+
+
+def test_un_area_reale_mostra_l_id_accanto_al_nome_nell_albero():
+    """"Cucina" (nome) e "cucina" (id) sono quasi sempre due stringhe diverse
+    -- Home Assistant genera l'id come slug del nome. Prima di questa fetta
+    l'albero taceva l'id: uno strumento che lo pretende esatto non aveva da
+    dove prenderlo se non indovinando dal nome mostrato, ed e' esattamente il
+    meccanismo che ha ucciso il turno da otto stanze."""
+    testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_casa = testo.split("## Notevole adesso")[0]
+    assert "Cucina (id: cucina):" in sezione_casa
+
+
+def test_un_area_il_cui_id_coincide_col_nome_non_ripete_l_id():
+    """Caso limite ma non vietato dall'anagrafe: se un giorno un'area avesse
+    l'id identico al nome, ripeterlo sarebbe rumore puro -- la stessa regola
+    che le pseudo-aree seguono gia'."""
+    casa = dict(_CASA,
+                aree=[{"id": "Cucina", "nome": "Cucina", "piano_id": "terra",
+                       "alias": [], "etichette": []}],
+                entita=[dict(_CASA["entita"][0], area_id="Cucina")])
+    testo, _ = componi(casa, [], [], {})
+    sezione_casa = testo.split("## Notevole adesso")[0]
+    assert "Cucina (id: Cucina)" not in sezione_casa
+    assert "  - Cucina:" in sezione_casa
+
+
+def test_un_piano_mostra_l_id_accanto_al_nome_nell_albero():
+    testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_casa = testo.split("## Notevole adesso")[0]
+    assert "Piano terra (id: terra):" in sezione_casa
+
+
+def test_un_automazione_e_uno_script_mostrano_l_id_accanto_al_nome():
+    testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_comportamento = testo.split("## Cio' che la casa fa gia' da sola")[-1].split(
+        "## Cio' che le persone")[0]
+    assert "Sveglia (id: automation.sveglia) (automazione)" in sezione_comportamento
+    assert "Buonanotte (id: script.buonanotte) (script)" in sezione_comportamento
+
+
+def test_notevole_adesso_non_eredita_l_id_delle_aree_reali():
+    """Decisione del proprietario (spec "i riferimenti", 2026-08-20): l'id
+    nell'albero e' un beneficio misurato sull'incidente da otto stanze; nel
+    prefisso di ogni entita' notevole sarebbe un costo ripetuto ad ogni turno
+    senza il bisogno corrispondente -- a differenza delle pseudo-aree, `cerca`
+    e `guarda` risolvono un'area reale per nome."""
+    testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_notevole = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
+    assert "(id: cucina)" not in sezione_notevole
+    assert "Cucina:" in sezione_notevole   # il prefisso resta, senza id
+
+
 def test_stato_vuoto_non_e_niente_di_notevole():
     """CRITICAL ②: stato={} con la casa piena (HIRIS non ha ancora letto lo
     stato) non deve produrre "Niente di notevole al momento." -- non ho
@@ -494,7 +555,9 @@ def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi()
     sezione_casa = testo.split("## Notevole adesso")[0]
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
     assert len(righe_area) >= 1, "la mappa non deve mai sparire per intero, se c'e' una casa"
-    assert "Piano terra:" in sezione_casa
+    # R1: il piano ora porta anche l'id (differisce dal nome: "terra" vs
+    # "Piano terra"), stessa forma delle aree nell'albero.
+    assert "Piano terra (id: terra):" in sezione_casa
 
 
 def test_taglio_non_lascia_intestazioni_di_piano_orfane():
@@ -682,7 +745,13 @@ def _casa_irrigazione():
 
 
 def _riga_area(testo: str, nome_area: str) -> str:
-    return next(r for r in testo.splitlines() if r.startswith(f"  - {nome_area}:"))
+    """La riga di "La casa" per un'area, per nome. R1 aggiunge l'id fra
+    parentesi quando differisce dal nome (`  - Esterno (id: esterno): ...`),
+    quindi il confronto non e' piu' un prefisso letterale fisso: accetta la
+    parentesi opzionale invece di spezzare ogni chiamante che conosceva solo
+    il nome."""
+    pattern = re.compile(rf"^  - {re.escape(nome_area)}(?: \(id: [^)]+\))?:")
+    return next(r for r in testo.splitlines() if pattern.match(r))
 
 
 def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
@@ -699,7 +768,7 @@ def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
     pluviometro, cioe' proprio le righe che non mentono per omissione."""
     testo, _ = componi(_casa_irrigazione(), [], [], {})
     assert _riga_area(testo, "Esterno") == (
-        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, "
+        "  - Esterno (id: esterno): 2 tapparelle (Tenda esterna), 1 sensore, "
         "4 valvole (Irrigazione giardino)")
     assert "Pluviometro" not in testo
 
@@ -710,7 +779,7 @@ def test_il_nucleo_non_elenca_i_rubinetti_separati():
     regola che tiene il budget -- senza, 61 righe come questa citerebbero
     344 nomi sul nucleo del proprietario."""
     testo, _ = componi(_casa_irrigazione(), [], [], {})
-    assert _riga_area(testo, "Orto") == "  - Orto: 2 valvole"
+    assert _riga_area(testo, "Orto") == "  - Orto (id: orto): 2 valvole"
     assert "Rubinetto" not in testo
 
 
@@ -729,7 +798,8 @@ def test_col_registro_dispositivi_caduto_il_nucleo_non_annota_e_lo_dichiara():
       pinna la frase generica, non QUALE registro manca)."""
     testo, riepilogo = componi(_casa_irrigazione(), [], [], {},
                                non_disponibili=("dispositivi",))
-    assert _riga_area(testo, "Esterno") == "  - Esterno: 2 tapparelle, 1 sensore, 4 valvole"
+    assert _riga_area(testo, "Esterno") == \
+        "  - Esterno (id: esterno): 2 tapparelle, 1 sensore, 4 valvole"
     assert "Irrigazione giardino" not in testo
     assert "(id: dev_irr)" not in testo
     assert any("dispositivi" in a for a in riepilogo["avvisi"])
@@ -772,4 +842,4 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
                            {"id": "dev_tenda", "nome": "Tenda esterna"}]
     testo, _ = componi(casa, [], [], {})
     assert _riga_area(testo, "Esterno") == \
-        "  - Esterno: 2 tapparelle (Tenda esterna), 1 sensore, 4 valvole (id: dev_irr)"
+        "  - Esterno (id: esterno): 2 tapparelle (Tenda esterna), 1 sensore, 4 valvole (id: dev_irr)"
