@@ -106,9 +106,15 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "agent": "gpt-4o-mini",
 }
 
-MAX_TOOL_ITERATIONS = int(os.environ.get("MAX_TOOL_ITERATIONS", "10"))
-# Ollama tende a fare più iterazioni a vuoto; limite ridotto per contenere la latenza.
-_OLLAMA_MAX_TOOL_ITERATIONS = int(os.environ.get("OLLAMA_MAX_TOOL_ITERATIONS", "5"))
+# fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
+# claude_runner.MAX_TOOL_ITERATIONS -- 10 round-trip morivano garantiti
+# contro 8 stanze da guardare una a una, senza margine per il giro finale
+# della risposta. Sale a 50.
+MAX_TOOL_ITERATIONS = int(os.environ.get("MAX_TOOL_ITERATIONS", "50"))
+# Ollama tende a fare più iterazioni a vuoto; limite ridotto per contenere la
+# latenza. La proporzione resta quella di sempre -- meta' del tetto sincrono
+# (10 -> 5, ora 50 -> 25) -- non un nuovo giudizio su Ollama.
+_OLLAMA_MAX_TOOL_ITERATIONS = int(os.environ.get("OLLAMA_MAX_TOOL_ITERATIONS", "25"))
 
 
 def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:

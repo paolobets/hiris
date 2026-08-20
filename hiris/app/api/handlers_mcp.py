@@ -101,11 +101,16 @@ METODI = ("initialize", "tools/list", "tools/call")
 # chiama mai questa rotta -- ma il tetto e' scritto per continuare a valere
 # anche il giorno in cui smettesse di essere cosi', vedi `runner.config_mcp`).
 #
-# **Il valore.** Il ramo sincrono ha gia' il suo tetto ai giri di strumento,
-# `MAX_TOOL_ITERATIONS = 10` (`hiris/app/claude_runner.py:211`), e non dipende
-# dalla risposta a Q2: vale identico sul ponte, per la stessa ragione per cui
-# vale sul sincrono, e usare lo stesso numero e' parita' invece di un secondo
-# valore da giustificare da zero.
+# **Il valore.** Il ramo sincrono ha il suo tetto ai giri di strumento,
+# `MAX_TOOL_ITERATIONS` (`hiris/app/claude_runner.py`) -- alla nascita di
+# questo commento era 10 e i due tetti erano lo stesso numero per parita'.
+# Fetta "i riferimenti" (Task 5, R3): il tetto sincrono e' salito a 50 (8
+# stanze da guardare una a una servivano 10 round-trip minimi contro un
+# tetto di 10 -- morte garantita a esecuzione perfetta). Questo qui, il tetto
+# del PONTE, resta 10 per una ragione SUA e successiva, non piu' per parita':
+# la fetta "come sta la casa" (2026-08-15) ha deciso esplicitamente di non
+# alzarlo -- "non si alza un freno: si toglie il motivo per cui mordeva". I
+# due numeri divergono apposta, non per un aggiornamento dimenticato.
 #
 # **Costante di modulo, non un'opzione dell'add-on** (regole della fetta): un
 # opzione vive in cinque posti (config.yaml options+schema, run.sh, le due

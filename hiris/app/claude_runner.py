@@ -261,6 +261,15 @@ BASE_REGOLE_STRUMENTI = (
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
     "- `esegui` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
     " se hai solo un NOME chiama prima cerca e usa l'id che ti risponde.\n"
+    "- Gli id fra parentesi che vedi nell'albero della casa — `Nome (id: X)` — sono già gli"
+    " identificatori esatti: se un'area, un piano o un'automazione li porta con sé nel"
+    " contesto, usali direttamente e non chiamare cerca per qualcosa che hai già.\n"
+    "- Se devi risolvere più nomi nella stessa richiesta, chiama cerca UNA sola volta con"
+    " tutto il testo: risolve più frammenti in una frase sola, non serve una chiamata per"
+    " nome.\n"
+    "- Se devi fare più letture indipendenti — più guarda, più legami — chiamale IN"
+    " PARALLELO nella stessa risposta: il ciclo conta un giro per risposta, non per"
+    " chiamata.\n"
     "- Se la richiesta riguarda una STANZA, un piano, un'etichetta o un dispositivo,"
     " passali a `esegui` cosi' come sono -- `aree`, `piani`, `etichette`,"
     " `dispositivi` -- e NON raccogliere gli id a mano con cerca: li risolve Home"
@@ -345,7 +354,17 @@ MAX_TOKENS = 4096
 # rimasto solo come default di firma. Il tetto (16000) non e' mai cambiato in
 # nessuno dei due giri: cambia la ragione dichiarata, che ora e' vera.
 CHAT_MAX_TOKENS = 16000
-MAX_TOOL_ITERATIONS = 10
+# fetta "i riferimenti" (R3): misurato che 8 stanze da guardare una a una
+# servono 10 round-trip minimi contro un tetto di 10 -- morte garantita anche
+# a esecuzione perfetta, perche' l'ultimo giro serve al modello per scrivere
+# la risposta e non ne resta nessuno per il lavoro. Il ciclo qui sotto GIA'
+# processa piu' blocchi tool_use della stessa risposta in una sola iterazione
+# (vedi il for interno su response.content in chat()); il tetto contava i
+# round-trip, non le chiamate. Decisione del proprietario: il parallelismo si
+# insegna nel prompt (BASE_REGOLE_STRUMENTI) E il tetto sale, da 10 a 50 --
+# piu' raro restare senza margine, il messaggio di esaurimento resta
+# necessario (R4) ma non e' piu' la prima difesa.
+MAX_TOOL_ITERATIONS = 50
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 45]
 

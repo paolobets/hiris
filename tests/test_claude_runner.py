@@ -517,6 +517,60 @@ async def test_chat_populates_last_tool_calls_single_call(runner):
 
 
 @pytest.mark.asyncio
+async def test_chat_processes_all_tool_use_blocks_of_one_response_in_one_iteration(runner):
+    """fetta "i riferimenti" (R3+R8, Task 5): il ciclo di `chat()` processa
+    OGNI blocco `tool_use` della stessa risposta prima di richiamare l'API
+    di nuovo -- N chiamate parallele nella stessa risposta del modello
+    costano UNA sola iterazione del `for _ in range(MAX_TOOL_ITERATIONS)`,
+    non N. E' il fatto misurato che rende vero l'insegnamento aggiunto al
+    prompt ("chiamale IN PARALLELO nella stessa risposta"): se non fosse
+    vero, insegnarlo peggiorerebbe le cose.
+
+    Deve poter fallire: un runner che processasse solo il PRIMO blocco della
+    risposta (`for block in response.content[:1]` al posto di
+    `response.content`) renderebbe rosso sia `call_count == 2` (servirebbero
+    altre iterazioni per gli N-1 blocchi rimasti) sia `len(chiamate_dispatch)
+    == N` -- mutazione eseguita a mano e riportata in task-5-report.md.
+    """
+
+    def _usage():
+        return MagicMock(input_tokens=1, output_tokens=1,
+                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
+
+    N = 5
+    blocks = []
+    for i in range(N):
+        block = MagicMock(type="tool_use", id=f"tu-{i}", input={"area": f"stanza-{i}"})
+        block.name = "guarda"
+        blocks.append(block)
+    multi_tool_msg = MagicMock(stop_reason="tool_use", content=blocks, usage=_usage())
+    text_block = MagicMock(type="text", text="fatto")
+    end_msg = MagicMock(stop_reason="end_turn", content=[text_block], usage=_usage())
+
+    runner._client.messages.create = AsyncMock(side_effect=[multi_tool_msg, end_msg])
+
+    chiamate_dispatch = []
+
+    async def fake_dispatch(nome, argomenti):
+        chiamate_dispatch.append((nome, argomenti))
+        return {"ok": True}
+
+    finto_dispatcher = MagicMock(dispatch=AsyncMock(side_effect=fake_dispatch))
+
+    text = await runner.chat("guarda cinque stanze", dispatcher=finto_dispatcher)
+
+    assert text == "fatto"
+    # Due chiamate API in tutto -- il giro coi tool (UNA iterazione, N
+    # blocchi) + il giro finale che scrive la risposta -- non N+1: e' la
+    # prova diretta che N blocchi paralleli consumano una sola iterazione.
+    assert runner._client.messages.create.call_count == 2
+    assert len(chiamate_dispatch) == N
+    assert runner.last_tool_calls == [
+        {"tool": "guarda", "input": {"area": f"stanza-{i}"}} for i in range(N)
+    ]
+
+
+@pytest.mark.asyncio
 async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
     """Two overlapping chat() calls on the SAME runner instance must not
     leak or wipe each other's tool_calls (review A/#3 concurrency fix).

@@ -66,8 +66,10 @@ manda anche `X-HIRIS-Turno` dentro la `--mcp-config` (`config_mcp`), un
 `secrets.token_urlsafe` mintato UNA volta per turno (non per invocazione
 della CLI), a prescindere da quante invocazioni il turno finira' per avere
 (Task 4). E' il gancio con cui `api/handlers_mcp.py` tiene
-il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI = 10`, parita'
-col ramo sincrono): il freno che sostituisce un `--max-turns` che la CLI non
+il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI = 10`, deciso e
+tenuto fermo da "come sta la casa", 2026-08-15 -- non piu' parita' col ramo
+sincrono, che dalla fetta "i riferimenti" e' salito a 50): il freno che
+sostituisce un `--max-turns` che la CLI non
 ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
 che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
 
