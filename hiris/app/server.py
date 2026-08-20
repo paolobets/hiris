@@ -2700,9 +2700,16 @@ def create_app() -> web.Application:
     # (`schedulatore/promessa.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
-    from .api.handlers_promesse import handle_delete_promessa, handle_get_promesse
+    from .api.handlers_promesse import (
+        handle_delete_promessa, handle_get_esecuzione, handle_get_promesse,
+    )
     app.router.add_get("/api/promesse", handle_get_promesse)
     app.router.add_delete("/api/promesse/{id}", handle_delete_promessa)
+    # La cronaca si chiede A PARTE, per identificatore (review finale,
+    # rilievo ①): la promessa porta solo `esecuzione_id`, mai i fatti
+    # dell'esecuzione ricopiati. Rotta di lettura -- niente csrf_middleware
+    # da rispettare, stessa esenzione di GET /api/promesse.
+    app.router.add_get("/api/esecuzioni/{id}", handle_get_esecuzione)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.

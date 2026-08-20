@@ -37,7 +37,26 @@
 
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati
    server (stessa disciplina di memoria-route.js/models-route.js) -- la
-   frase e il testo di una promessa sono stati scritti in chat. */
+   frase e il testo di una promessa sono stati scritti in chat.
+
+   «Cosa e' cambiato» (review finale, rilievo ①): un `fai` mantenuto porta
+   un `esecuzione_id`, e la riga si collega alla cronaca PER IDENTIFICATORE
+   (`GET /api/esecuzioni/{id}`, spec §8) -- non ne ricopia mai i fatti dentro
+   `serializza()`. Caricata A RICHIESTA quando l'utente apre quella riga, non
+   all'apertura della pagina: con N righe nello storico sarebbe una richiesta
+   per riga. E' l'unico posto di questa pagina in cui un dettaglio sta dietro
+   un click (la guida di disegno §8.2 lo vieta per `motivo`/`istantanea`, che
+   pero' arrivano gia' dentro il payload della promessa senza costo aggiuntivo
+   -- qui il costo e' una richiesta di rete per riga, e quello va evitato
+   all'apertura). Il bottone e' un `<button>` semplice: raggiungibile da
+   tastiera e con il focus visibile del browser di serie, stessa disciplina
+   del bottone «Disdici» qui sotto -- nessun sistema nuovo. Un 404 (riga
+   potata dopo 90 giorni, `azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S`) si
+   dichiara onestamente dentro il pannello; un guasto di rete passa dalla
+   riga di stato di pagina (`setStatus`), come ogni altro guasto di rete qui.
+   L'`avviso` della porta (`azione/porta.py`) non si appiattisce MAI in
+   «niente e' cambiato»: e' un fatto dichiarato su cio' che HIRIS ha potuto
+   vedere, e si mostra verbatim. */
 window.HirisPromesseRoute = (function () {
   'use strict';
 
@@ -140,6 +159,124 @@ window.HirisPromesseRoute = (function () {
     }).join(' · ');
   }
 
+  function formattaElencoEntita(elenco) {
+    return (elenco && elenco.length) ? elenco.join(', ') : null;
+  }
+
+  /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
+     legge la riga di `GET /api/esecuzioni/{id}` cosi' com'e', senza
+     ricostruire un'altra forma -- la cronaca gia' porta `servizio`,
+     `entita`, `cambiato`, `avviso`, `errore` (`azione/cronaca.py::_riga`).
+
+     Il caso «cambiato è vuoto» (guida generale del progetto, non della
+     pagina: il rilievo la richiama esplicitamente) NON diventa mai «niente
+     è cambiato» in silenzio: l'`avviso` della porta e' un fatto dichiarato
+     su cio' che HIRIS ha potuto vedere (non ho guardato in tempo / ho
+     guardato e non e' arrivato niente entro la scadenza / e' cambiato
+     qualcosa che non so mostrare), e si mostra SEMPRE quando c'e', verbatim
+     e senza riformularlo -- riformularlo rischierebbe di appiattire
+     esattamente la distinzione per cui quel campo esiste. */
+  function rendiDettaglioEsecuzione(pannello, esecuzione) {
+    clearEl(pannello);
+    if (esecuzione.errore) {
+      var errore = el('p', null, esecuzione.errore);
+      errore.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
+      pannello.appendChild(errore);
+    }
+    var cambiate = formattaElencoEntita(esecuzione.cambiato);
+    if (cambiate) {
+      var riga1 = el('p', null, 'Cambiate: ' + cambiate);
+      riga1.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin:4px 0 0';
+      pannello.appendChild(riga1);
+    }
+    if (esecuzione.avviso) {
+      var avviso = el('p', null, esecuzione.avviso);
+      avviso.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
+      pannello.appendChild(avviso);
+    } else if (!cambiate && !esecuzione.errore) {
+      // Difensivo: nella porta attuale (`azione/porta.py`) un `cambiato`
+      // vuoto porta SEMPRE un `avviso` -- questo ramo non dovrebbe mai
+      // rendersi oggi, ma se un domani smettesse di esserlo, tacere
+      // sarebbe di nuovo il difetto che questo rilievo chiude.
+      pannello.appendChild(el('p', 'field-hint', 'Nessuna nota su cosa sia cambiato.'));
+    }
+    var toccate = formattaElencoEntita(esecuzione.entita);
+    if (toccate) pannello.appendChild(el('div', 'field-hint', 'Toccate: ' + toccate));
+  }
+
+  /* Il bottone «Cosa è cambiato» di una riga storico `fai` mantenuta
+     (review finale, rilievo ①). Condizione esatta -- non "ogni riga con
+     esecuzione_id": la spec (§8) mostra questo caso per un `fai`, ed e' il
+     solo in cui la sfumatura vale la richiesta in piu' -- una `chiedi`
+     mantenuta mostra gia' la sua risposta (§6), e per un `fai` `fallita` il
+     `motivo` che l'utente vede e' gia' `esito.errore` (`orologio.py::
+     _mantieni_fai`): la stessa frase, non un secondo dettaglio da aprire. */
+  function aggiungiDettaglioEsecuzione(riga, p) {
+    if (!(p.specie === 'fai' && p.stato === 'mantenuta' && p.esecuzione_id)) return;
+
+    var gruppo = el('div', 'field-group');
+    gruppo.style.marginTop = '8px';
+    var testoChiuso = 'Cosa è cambiato';
+    var testoAperto = 'Nascondi il dettaglio';
+    var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
+    btn.type = 'button';
+    btn.setAttribute('aria-expanded', 'false');
+    var pannello = el('div');
+    pannello.style.marginTop = '6px';
+    pannello.hidden = true;
+    var idPannello = 'esec-' + p.id;
+    pannello.id = idPannello;
+    btn.setAttribute('aria-controls', idPannello);
+    var caricato = false;
+
+    btn.addEventListener('click', function () {
+      var aperto = btn.getAttribute('aria-expanded') === 'true';
+      if (aperto) {
+        pannello.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        btn.textContent = testoChiuso;
+        return;
+      }
+      if (caricato) {
+        pannello.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        btn.textContent = testoAperto;
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Verifica…';
+      fetch('api/esecuzioni/' + encodeURIComponent(p.esecuzione_id)).then(function (res) {
+        if (res.status === 404) {
+          clearEl(pannello);
+          pannello.appendChild(el('p', 'field-hint', 'Non ne ho più il dettaglio.'));
+          caricato = true;
+          return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json().then(function (corpo) {
+          rendiDettaglioEsecuzione(pannello, corpo.esecuzione);
+          caricato = true;
+        });
+      }).then(function () {
+        btn.disabled = false;
+        pannello.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        btn.textContent = testoAperto;
+      }, function () {
+        // Guasto di rete: stessa riga di stato di pagina di ogni altro
+        // guasto qui (§7 della guida), non un pannello mezzo scritto. Il
+        // bottone torna chiuso cosi' un nuovo click riprova da capo.
+        btn.disabled = false;
+        btn.textContent = testoChiuso;
+        setStatus('HIRIS non ha risposto. Riprova più tardi.');
+      });
+    });
+
+    gruppo.appendChild(btn);
+    gruppo.appendChild(pannello);
+    riga.appendChild(gruppo);
+  }
+
   /* ── Una riga «in sospeso» (guida §2, §5) ────────────────────────────── */
   function costruisciRigaSospeso(p, ricarica) {
     var riga = el('div');
@@ -226,6 +363,8 @@ window.HirisPromesseRoute = (function () {
       if (basatoSu) gruppo.appendChild(el('div', 'field-hint', 'Basato su: ' + basatoSu));
       riga.appendChild(gruppo);
     }
+
+    aggiungiDettaglioEsecuzione(riga, p);
 
     return riga;
   }

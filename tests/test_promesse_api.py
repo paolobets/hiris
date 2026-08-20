@@ -22,6 +22,7 @@ import os
 import pytest
 import pytest_asyncio
 
+from hiris.app.azione.cronaca import Cronaca
 from hiris.app.chat_store import close_all_stores
 from hiris.app.schedulatore.archivio import ArchivioPromesse
 from hiris.app.server import create_app
@@ -43,11 +44,17 @@ def reset_chat_stores():
 async def client(aiohttp_client, tmp_path):
     app = create_app()
     app["promesse"] = ArchivioPromesse(os.path.join(str(tmp_path), "promesse.db"))
+    # La cronaca (`GET /api/esecuzioni/{id}`, rilievo ① della review finale):
+    # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
+    # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
+    # sola in `create_app` -> `_avvia` (server.py).
+    app["cronaca"] = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
     app["promesse"].close()
+    app["cronaca"].close()
 
 
 @pytest.mark.asyncio
@@ -149,3 +156,70 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     # La lista non deve essere vuota: un confronto fra due liste vuote
     # passerebbe a vuoto e non proverebbe niente sulla forma.
     assert da_http
+
+
+# ---------------------------------------------------------------------------
+# GET /api/esecuzioni/{id} -- review finale, rilievo ①: la cronaca si chiede
+# a parte, per identificatore. Non ricostruisce niente di suo: quel che esce
+# e' esattamente cio' che `Cronaca.leggi` gia' serializza.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
+    cronaca = client.app["cronaca"]
+    ident = cronaca.registra(
+        origine="schedulatore", servizio="light.turn_on", entita=["light.studio"],
+        eseguito=True, cambiato=["light.studio"], adesso=1_755_600_000.0)
+
+    risposta = await client.get("/api/esecuzioni/%s" % ident)
+    assert risposta.status == 200
+    corpo = await risposta.json()
+    # Nessun dizionario nuovo: la forma e' esattamente quella di
+    # `cronaca.leggi(ident)`, non una sua ricostruzione da parte della rotta
+    # (mutazione: se la rotta smettesse di usare `Cronaca.leggi` e
+    # ricostruisse a mano un sottoinsieme dei campi, questo confronto lo
+    # vedrebbe subito).
+    assert corpo["esecuzione"] == cronaca.leggi(ident)
+    assert corpo["esecuzione"]["servizio"] == "light.turn_on"
+    assert corpo["esecuzione"]["cambiato"] == ["light.studio"]
+
+
+@pytest.mark.asyncio
+async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
+    risposta = await client.get("/api/esecuzioni/mai-esistita")
+    assert risposta.status == 404
+    corpo = await risposta.json()
+    assert corpo["errore"] == "non ho nessuna esecuzione con quell'identificatore."
+
+
+@pytest.mark.asyncio
+async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
+    # App a parte, SENZA "cronaca": mutare `client.app` di un'app gia'
+    # avviata e' deprecato in aiohttp (e l'ha confermato un tentativo
+    # precedente di questo stesso test, con un `del client.app["cronaca"]`
+    # dopo il montaggio). Qui la chiave manca fin dall'inizio.
+    #
+    # Mutazione: se la rotta leggesse `request.app["cronaca"]` con
+    # l'indicizzazione diretta invece di `.get(...)`, questa riga
+    # solleverebbe un KeyError invece del 503 onesto -- il test lo
+    # vedrebbe come un 500.
+    app = create_app()
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+    c = await aiohttp_client(app)
+    risposta = await c.get("/api/esecuzioni/qualsiasi")
+    assert risposta.status == 503
+    assert "errore" in await risposta.json()
+
+
+@pytest.mark.asyncio
+async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto):
+    """E' una rotta di lettura (metodo "safe"): niente csrf_middleware da
+    passare, stessa esenzione di `GET /api/promesse`. Mutazione: se la rotta
+    finisse dietro un controllo CSRF (o venisse registrata come POST/GET
+    ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
+    cronaca = client.app["cronaca"]
+    ident = cronaca.registra(origine="chat", servizio="a.b", entita=[],
+                             eseguito=True, adesso=1.0)
+    risposta = await client.get("/api/esecuzioni/%s" % ident)
+    assert risposta.status == 200

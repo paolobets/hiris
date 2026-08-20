@@ -55,16 +55,35 @@ const PROMESSE = [
   },
 ];
 
+/* Una riga di cronaca (`Cronaca.leggi`, azione/cronaca.py::_riga), per i
+   test del pannello «Cosa è cambiato». */
+function esecuzione(campi) {
+  return Object.assign({
+    id: 'e9', quando_ts: 1755400100, origine: 'schedulatore',
+    servizio: 'light.turn_on', entita: ['light.studio'], eseguito: true,
+    cambiato: ['light.studio'], errore: null, avviso: null,
+  }, campi || {});
+}
+
 /* Il finto server: risponde a GET/DELETE api/promesse*, stesso pattern di
    montaConServer() in memoria-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];
   let getCount = 0;
+  let esecuzioneCount = 0;
   ctx.window.fetch = async (url, options) => {
     const u = String(url);
     const method = (options || {}).method || 'GET';
     chiamate.push({ url: u, method, opts: options || {} });
+    if (method === 'GET' && u.indexOf('api/esecuzioni/') === 0) {
+      esecuzioneCount += 1;
+      if (opts.esecuzioneRotta) throw new Error('rete giu\'');
+      if (opts.esecuzione404) {
+        return jsonResponse({ errore: 'non ho nessuna esecuzione con quell\'identificatore.' }, 404);
+      }
+      return jsonResponse(opts.esecuzione !== undefined ? opts.esecuzione : { esecuzione: esecuzione() });
+    }
     if (method === 'GET') {
       getCount += 1;
       if (opts.getRotto) throw new Error('rete giu\'');
@@ -333,4 +352,149 @@ test('il 503 "archivio non disponibile" (con promesse:[] nel corpo) non si legge
   assert.match(testo, /Non è stato possibile leggere le promesse/);
   assert.doesNotMatch(testo, /nessuna promessa/i,
     'un guasto non deve sembrare "non hai promesse"');
+});
+
+// ---------------------------------------------------------------------------
+// «Cosa è cambiato» (review finale, rilievo ①): un `fai` mantenuto si
+// collega alla cronaca per `esecuzione_id`, caricata A RICHIESTA quando
+// l'utente apre la riga -- mai all'apertura della pagina.
+// ---------------------------------------------------------------------------
+
+const FAI_MANTENUTA = {
+  id: 'p7', specie: 'fai', frase: 'alle 17 accendi lo studio', quando_ts: 1755400000,
+  quando_detto: 'alle 17', fuso: 'Europe/Rome', chiamata: { servizio: 'light.turn_on' },
+  domanda: null, istantanea: null, recapito: null, stato: 'mantenuta', motivo: null,
+  esecuzione_id: 'e9', testo: null, avvisare: null,
+  nata_ts: 1755390000, risvegliata_ts: 1755400010, origine: null,
+};
+
+function contaGetEsecuzioni(chiamate) {
+  return chiamate.filter((c) => c.method === 'GET' && c.url.indexOf('api/esecuzioni/') === 0).length;
+}
+
+test('il bottone "Cosa è cambiato" compare SOLO su un fai mantenuta con esecuzione_id', async () => {
+  const { document } = await monta({
+    get: {
+      promesse: [
+        FAI_MANTENUTA,
+        PROMESSE[1], // chiedi, saltata: mai un fai mantenuta
+        PROMESSE[2], // chiedi, mantenuta CON esecuzione_id: ha gia' la sua risposta (§6)
+        { ...FAI_MANTENUTA, id: 'p8', stato: 'fallita', motivo: 'rifiutato' }, // fai FALLITA: niente bottone
+      ],
+    },
+  });
+  const bottoni = Array.from(document.querySelectorAll('button'))
+    .filter((b) => b.textContent === 'Cosa è cambiato');
+  assert.equal(bottoni.length, 1, 'solo p7 (fai, mantenuta, esecuzione_id) deve avere il bottone');
+});
+
+test('non si chiede la cronaca finche\' l\'utente non apre la riga (niente richiesta per riga all\'apertura pagina)', async () => {
+  const { chiamate } = await monta({ get: { promesse: [FAI_MANTENUTA] } });
+  assert.equal(contaGetEsecuzioni(chiamate), 0,
+    'il caricamento della pagina non deve gia\' aver chiesto la cronaca');
+});
+
+test('un click sul bottone chiede la cronaca e mostra cosa è cambiato', async () => {
+  const { window, document, chiamate } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzione: { esecuzione: esecuzione({ cambiato: ['light.studio'] }) },
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.equal(contaGetEsecuzioni(chiamate), 1);
+  assert.match(document.body.textContent, /Cambiate: light\.studio/);
+  assert.equal(btn.getAttribute('aria-expanded'), 'true');
+  assert.equal(btn.textContent, 'Nascondi il dettaglio');
+});
+
+test('riaprire la riga non richiede una seconda GET: il dettaglio resta in cache', async () => {
+  const { window, document, chiamate } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzione: { esecuzione: esecuzione() },
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true })); // apre
+  await tick(20);
+  btn.dispatchEvent(new window.Event('click', { bubbles: true })); // chiude
+  await tick(20);
+  assert.equal(btn.getAttribute('aria-expanded'), 'false');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true })); // riapre
+  await tick(20);
+  assert.equal(contaGetEsecuzioni(chiamate), 1, 'una sola richiesta per riga, non una per apertura');
+  assert.equal(btn.getAttribute('aria-expanded'), 'true');
+});
+
+test('un "cambiato" vuoto NON diventa "niente è cambiato": si vede l\'avviso della porta, verbatim', async () => {
+  const { window, document } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzione: {
+      esecuzione: esecuzione({
+        cambiato: [],
+        avviso: 'la chiamata è andata a buon fine, ho aspettato 2 secondi che Home ' +
+          'Assistant annunciasse un cambiamento di stato su queste entità, e in ' +
+          'quel tempo Home Assistant non ha riportato nessun cambiamento.',
+      }),
+    },
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  const testo = document.body.textContent;
+  assert.match(testo, /ho aspettato 2 secondi/, 'l\'avviso della porta deve comparire verbatim');
+  assert.doesNotMatch(testo, /^niente è cambiato/i);
+  assert.doesNotMatch(testo, /Cambiate:/, 'cambiato è vuoto: non deve comparire un elenco vuoto di "Cambiate"');
+});
+
+test('un\'esecuzione fallita mostra l\'errore, non un pannello silenzioso', async () => {
+  const { window, document } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzione: {
+      esecuzione: esecuzione({
+        eseguito: false, cambiato: null, avviso: null,
+        errore: 'Home Assistant ha rifiutato la chiamata: 500',
+      }),
+    },
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /Home Assistant ha rifiutato la chiamata: 500/);
+});
+
+test('un 404 sulla cronaca (riga potata, o mai esistita) si dichiara onestamente', async () => {
+  const { window, document } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzione404: true,
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /Non ne ho più il dettaglio/);
+  // Un 404 e' un fatto stabile (la riga non torna): non deve fingere un
+  // guasto -- niente riga di stato "non ha risposto".
+  assert.doesNotMatch(document.body.textContent, /non ha risposto/);
+});
+
+test('un guasto di rete sulla cronaca passa dalla riga di stato di pagina, e il bottone si può ' +
+  'ricliccare per riprovare', async () => {
+  const { window, document, chiamate } = await monta({
+    get: { promesse: [FAI_MANTENUTA] },
+    esecuzioneRotta: true,
+  });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /HIRIS non ha risposto/);
+  assert.equal(btn.disabled, false, 'il bottone deve tornare cliccabile dopo il guasto');
+  assert.equal(btn.getAttribute('aria-expanded'), 'false',
+    'torna chiuso: un nuovo click deve poter riprovare, non solo richiudere un pannello vuoto');
+  assert.equal(contaGetEsecuzioni(chiamate), 1);
+});
+
+test('il bottone è raggiungibile da tastiera: un <button> vero, non un div con onclick', async () => {
+  const { document } = await monta({ get: { promesse: [FAI_MANTENUTA] } });
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
+  assert.equal(btn.tagName, 'BUTTON', 'un <button> e\' nativamente raggiungibile da tastiera e ha un focus visibile');
+  assert.equal(btn.type, 'button');
 });
