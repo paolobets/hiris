@@ -2693,6 +2693,17 @@ def create_app() -> web.Application:
     app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
     app.router.add_delete("/api/memoria/{id}", handle_delete_memoria)
 
+    # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
+    # legge di qui, e disdice di qui. Le stesse due operazioni che il
+    # modello ha come strumenti (`promesse`/`disdici` in
+    # `casa/strumenti.py`), sulla stessa serializzazione
+    # (`schedulatore/promessa.py::serializza`, dentro l'archivio): due porte,
+    # una forma sola. Passa dallo stesso `csrf_middleware` di
+    # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
+    from .api.handlers_promesse import handle_delete_promessa, handle_get_promesse
+    app.router.add_get("/api/promesse", handle_get_promesse)
+    app.router.add_delete("/api/promesse/{id}", handle_delete_promessa)
+
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
     # Nata senza faccia, come /api/casa e /api/memoria: dalla fetta E5
