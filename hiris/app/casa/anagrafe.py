@@ -395,9 +395,10 @@ _TRADUZIONE_STATO = {
 #
 # "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
 # affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
-# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sulle ventotto che
-# Home Assistant documenta: per questo un allagamento si leggeva «1 sensore
-# binario (acceso)», indistinguibile da una lampadina.
+# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sul totale che
+# Home Assistant documenta (le stesse di `_SIGNIFICATO_CLASSE`, qui sotto):
+# per questo un allagamento si leggeva «1 sensore binario (acceso)»,
+# indistinguibile da una lampadina.
 #
 # I significati NON sono inventati: sono quelli dichiarati in
 # developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il

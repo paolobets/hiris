@@ -12,7 +12,7 @@ i dieci giri di strumento a cercarle stanza per stanza, e alla domanda «quali
 luci sono accese» ha risposto «nessuna».
 
 `_traduci_stato` prendeva GIA' la classe e la usava per porte e finestre
-(`_CLASSI_APERTURA`: 5 classi sulle 28 che HA documenta). Il vocabolario era
+(`_CLASSI_APERTURA`: 5 classi sul totale che HA documenta). Il vocabolario era
 nato e si era fermato li'. Queste prove lo finiscono.
 
 **Vocabolario, non filtro.** Un filtro toglie e perde una capacita': escludere
@@ -66,7 +66,7 @@ def test_un_allagamento_si_legge_bagnato_e_non_acceso():
 # I nomi-stringa VERI, dalla sorgente di Home Assistant
 # (homeassistant/components/binary_sensor/__init__.py), non dalla pagina di
 # documentazione -- che elenca i NOMI DELLE COSTANTI e non i valori.
-# Ventisette su ventotto coincidono col nome in minuscolo. Una no:
+# Tutte tranne una coincidono col nome in minuscolo. L'eccezione:
 # `BinarySensorDeviceClass.CO = "carbon_monoxide"`.
 _ALLARMI = [
     ("moisture", "bagnato"),
