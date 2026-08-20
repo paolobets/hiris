@@ -218,13 +218,14 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (14 file) handlers_* — la superficie HTTP
+    ├── api/        (15 file) handlers_* — la superficie HTTP
     ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
-    ├── azione/     (4)       porta.py — l'UNICO punto che esegue — verifica.py, registro.py
+    ├── azione/     (5)       porta.py — l'UNICO punto che esegue — verifica.py, registro.py, cronaca.py
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
     ├── memoria/    (4)       archivio, interpretazione, riconoscitore
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
+    ├── schedulatore/ (5)     promessa, archivio, orologio, turno — le promesse dell'utente
     ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
@@ -254,8 +255,8 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 1.207 test + 1 skip (2.0 @ riserve della fetta «comandare» chiuse)
-npm test                     # 92 test frontend: node --test + jsdom
+python -m pytest -q          # 2.111 test + 1 skip (2.0 @ fetta «lo Schedulatore» chiusa)
+npm test                     # 217 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
