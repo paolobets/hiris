@@ -1,7 +1,7 @@
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import CERCA_TOOL_DEF, STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.memoria.archivio import ArchivioMemoria
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
@@ -240,6 +240,75 @@ async def test_cerca_senza_testo_non_esplode(dispatcher):
 async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
     esito = await dispatcher.dispatch("cerca", {"testo": "xyzzy qwerty"})
     assert esito["trovati"] == []
+
+
+# --- R2 (T7): `cerca` impara piani, automazioni e script -------------------
+
+
+@pytest.mark.asyncio
+async def test_cerca_trova_un_piano_per_nome(dispatcher):
+    """Requisito 1 del brief: i piani entrano nell'indice con la stessa
+    forma degli altri candidati (`_CASA` porta `{"id": "terra", "nome":
+    "Piano terra", ...}`, vedi tests/test_nucleo.py)."""
+    esito = await dispatcher.dispatch("cerca", {"testo": "il piano terra"})
+    candidati = [c for t in esito["trovati"] for c in t["candidati"] if c["tipo"] == "piano"]
+    # `domande.cerca()` arricchisce ogni candidato col `nome` (non solo
+    # `Indice.trova()`, che ne resta scarico -- vedi test_memoria_riconoscitore.py).
+    assert candidati == [{"tipo": "piano", "riferimento": "terra", "nome": "Piano terra"}]
+
+
+@pytest.mark.asyncio
+async def test_cerca_poi_guarda_un_automazione_end_to_end(dispatcher):
+    """Requisito 2 del brief, alla superficie del dispatcher: `guarda` deve
+    accettare DAVVERO cio' che `cerca` restituisce, non solo un id che il
+    modello sapeva gia'."""
+    trovato = await dispatcher.dispatch("cerca", {"testo": "sveglia"})
+    candidato = next(c for t in trovato["trovati"] for c in t["candidati"]
+                     if c["tipo"] == "automazione")
+    assert candidato["riferimento"] == "automation.sveglia"
+
+    esito = await dispatcher.dispatch(
+        "guarda", {"tipo": candidato["tipo"], "riferimento": candidato["riferimento"]})
+    assert esito["esiste"] is True
+    assert esito["corpo"] == {"trigger": []}
+
+
+@pytest.mark.asyncio
+async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_casa, memoria):
+    """Requisito 3 del brief: un'automazione rinominata deve invalidare
+    l'indice come fa un'area rinominata. La cache dell'indice si tiene
+    dietro `aggiornata_il()` (l'anagrafe) SOLO -- se non imparasse anche
+    `comportamento_letto_il()`, questo test servirebbe per sempre l'indice
+    di prima, con l'automazione ancora sotto il nome vecchio."""
+    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=CacheIndice())
+    prima = await d.dispatch("cerca", {"testo": "sveglia"})
+    assert any(c["riferimento"] == "automation.sveglia"
+              for t in prima["trovati"] for c in t["candidati"])
+
+    archivio_casa.sostituisci_comportamento([
+        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Risveglio mattutino",
+         "corpo": {"trigger": []}, "origine": "file"},
+    ])
+    # Stesso accorgimento di test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita:
+    # `sostituisci_comportamento` marca la data col secondo corrente, e due
+    # chiamate nello stesso secondo di orologio darebbero la stessa stringa.
+    archivio_casa._conn.execute(
+        "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'comportamento_letto_il'")
+    archivio_casa._conn.commit()
+
+    dopo = await d.dispatch("cerca", {"testo": "sveglia"})
+    assert dopo["trovati"] == [], "il nome vecchio non deve piu' risultare trovabile"
+    dopo_nuovo = await d.dispatch("cerca", {"testo": "risveglio mattutino"})
+    assert any(c["riferimento"] == "automation.sveglia"
+              for t in dopo_nuovo["trovati"] for c in t["candidati"])
+
+
+def test_cerca_tool_def_dichiara_i_tipi_nuovi():
+    """Requisito 4 del brief: la descrizione di `CERCA_TOOL_DEF` deve dire
+    cio' che lo strumento ora sa fare, non solo cio' che sapeva prima."""
+    for parola in ("piano", "automazione", "script"):
+        assert parola in CERCA_TOOL_DEF["description"], \
+            f"CERCA_TOOL_DEF non dichiara «{parola}»"
 
 
 class _CacheFinta:
@@ -621,6 +690,22 @@ async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
 
 
 @pytest.mark.asyncio
+async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
+    """T7 (R2), regressione da non fare: `_ARCHIVI` (memoria/riconoscitore.py)
+    ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
+    `ricorda` possa mai scrivere (`memoria/interpretazione.VOCABOLARIO`) --
+    la memoria continua a conoscere solo area/entita'/dispositivo. Se
+    `_TIPI_ANCORA` (casa/strumenti.py) fosse rimasto derivato da
+    `CHIAVE_ARCHIVIO_PER_TIPO` invece che da `VOCABOLARIO["ancore"]`,
+    "piano" sarebbe scivolato dentro in silenzio, e `richiama` avrebbe
+    smesso di insegnare l'errore -- restituendo `{"ricordi": []}`, lo
+    stesso "non ti ho detto niente" bugiardo che il fix E1-② (sopra) ha
+    gia' chiuso una volta."""
+    esito = await dispatcher.dispatch("richiama", {"riferimento": "terra", "tipo": "piano"})
+    assert "errore" in esito
+
+
+@pytest.mark.asyncio
 async def test_richiama_con_tipo_accentato_lo_dice(dispatcher):
     """«entità» con l'accento -- plausibilissimo per un modello italiano che
     non lo sta copiando da uno schema -- non e' lo stesso testo del
@@ -671,9 +756,9 @@ def _conta_costruzioni(monkeypatch):
     chiamate = []
     originale = _modulo_strumenti.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa, nomi=None, comportamento=None):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa, nomi, comportamento)
 
     monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
     monkeypatch.setattr(_cache_indice_modulo, "costruisci_indice", spia)

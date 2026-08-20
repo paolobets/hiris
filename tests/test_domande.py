@@ -314,33 +314,80 @@ def test_guarda_un_automazione_non_trovata_senza_file_non_letti_non_si_inventa_i
                        "automazione", "automation.non_esiste")
     assert dettaglio["esiste"] is False
     assert "non_disponibile" not in dettaglio
+    # T7 (R2): da questa fetta `cerca` indicizza le automazioni per nome,
+    # quindi "automation.non_esiste" potrebbe essere un NOME scambiato per
+    # un id -- lo stesso caso di area/entita'/dispositivo, e insegna la
+    # stessa correzione.
+    assert "suggerimento" in dettaglio
 
 
-def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_nei_tre_tipi():
+def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi():
     """R5: il rifiuto nudo (`{"esiste": False}`) e' indistinguibile da "non
     esiste davvero" -- e' il meccanismo diretto dell'incidente che ha
     generato questa fetta (un nome al posto di un id, il modello ritenta
-    uguale finche' il turno muore). I tre rami che possono confondere un
-    nome con un id -- area, entita', dispositivo -- devono insegnare la
-    stessa correzione, con la STESSA chiave e la STESSA forma di frase
-    (fondamenta 3): un modello che ha appena sbagliato con un nome in un
-    ramo non deve indovinare la differenza per gli altri due.
+    uguale finche' il turno muore). I rami che possono confondere un nome
+    con un id -- area, entita', dispositivo, e da T7 (R2) anche automazione
+    e script -- devono insegnare la stessa correzione, con la STESSA chiave
+    e la STESSA forma di frase (fondamenta 3): un modello che ha appena
+    sbagliato con un nome in un ramo non deve indovinare la differenza per
+    gli altri.
 
-    Il confronto e' fra i tre rami stessi (non tre asserzioni indipendenti):
-    stesso `riferimento` per tutti, quindi lo stesso suggerimento deve
-    uscire IDENTICO dai tre -- se un ramo perde il campo o cambia la frase,
-    l'insieme delle forme smette di avere un solo elemento."""
+    Automazione e script si aggiungono qui perche' `cerca` ora li
+    indicizza per nome (test_memoria_riconoscitore.py): fino a T7 restavano
+    fuori apposta (decisione del Task 3), perche' suggerire "cerca" quando
+    `cerca` non li trovava comunque sarebbe stato un invito a una strada
+    cieca -- vedi il docstring di `_dettaglio_non_trovato`.
+
+    Il confronto e' fra i rami stessi (non asserzioni indipendenti): stesso
+    `riferimento` per tutti, quindi lo stesso suggerimento deve uscire
+    IDENTICO -- se un ramo perde il campo o cambia la frase, l'insieme delle
+    forme smette di avere un solo elemento."""
     esiti = {
         "area": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "Soggiorno"),
         "entita": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "Soggiorno"),
         "dispositivo": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "dispositivo", "Soggiorno"),
+        "automazione": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "automazione", "Soggiorno"),
+        "script": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "script", "Soggiorno"),
     }
     for tipo, dettaglio in esiti.items():
         assert dettaglio["esiste"] is False
         assert "suggerimento" in dettaglio, f"manca il suggerimento nel ramo «{tipo}»"
         assert "cerca" in dettaglio["suggerimento"]
     forme = {dettaglio["suggerimento"] for dettaglio in esiti.values()}
-    assert len(forme) == 1, f"i tre rami non usano la stessa forma: {forme}"
+    assert len(forme) == 1, f"i rami non usano la stessa forma: {forme}"
+
+
+# --- R2 (T7): `cerca` impara piani, automazioni e script -------------------
+
+
+def test_cerca_poi_guarda_un_automazione_end_to_end():
+    """Requisito 2 del brief: `guarda` deve accettare DAVVERO i riferimenti
+    che `cerca` ora produce -- non solo un id che il modello sapeva gia'.
+    Qui si parte da un nome, si passa da `cerca`, e si chiude il giro con
+    `guarda` sul candidato restituito."""
+    indice = costruisci_indice(_CASA, comportamento=_COMPORTAMENTO)
+    trovati = cerca(indice, "spegni la sveglia")
+    candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "automazione")
+    assert candidato["riferimento"] == "automation.sveglia"
+
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       candidato["tipo"], candidato["riferimento"])
+    assert dettaglio["esiste"] is True
+    assert dettaglio["corpo"] == {"trigger": []}
+
+
+def test_guarda_non_sa_aprire_un_piano():
+    """Requisito 2 del brief, il caso negativo che va scritto e non lasciato
+    implicito: `cerca` ora risolve un piano per nome, ma `guarda` non ha (e
+    non deve avere) un tipo "piano" -- un piano si ESEGUE
+    (`esegui(piani=...)`, promesso da `claude_runner.py`), non si apre in
+    dettaglio come un'area. `guarda` lo dichiara con la stessa onesta' con
+    cui dichiara ogni altro tipo che non sa aprire (`non_so_guardare`),
+    invece di un `esiste: False` indistinguibile da "questo piano non
+    esiste"."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "piano", "terra")
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_so_guardare"] is True
 
 
 def test_guarda_un_area_marca_le_entita_disabilitate_invece_di_nasconderle():

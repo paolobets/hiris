@@ -40,7 +40,32 @@ import unicodedata
 # forma dei termini che il modello vede quando la casa gli e' data in
 # contesto, cosi' l'ancora che nomina "area" o "entita" e' gia' la chiave
 # con cui si cerca qui.
-_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"))
+#
+# "piani" (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md): stesso
+# trattamento di aree/entita/dispositivi, perche' e' la stessa cosa che
+# loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, casa/archivio.py),
+# gia' dentro la `casa` che ogni chiamante legge, che puo' mancare
+# all'appello di una ricostruzione esattamente come gli altri tre
+# (`ArchivioCasa.non_disponibili()`). Prima di questo task nessuna
+# sequenza di chiamate produceva mai un id di piano: `esegui(piani=...)`
+# lo pretende (`claude_runner.py`), e non esisteva modo di procurarselo.
+#
+# Automazioni e script NON entrano qui, apposta: vengono da
+# `ArchivioCasa.comportamento()`, una fonte diversa (file YAML riletti a
+# una cadenza propria, non un registro di Home Assistant) con un proprio
+# segnale di incompletezza (`file_non_letti()`, non `non_disponibili()`)
+# e un proprio campo `tipo` PER VOCE -- una lista sola contiene sia le
+# automazioni sia gli script, a differenza di `_ARCHIVI` dove ogni chiave
+# e' UN tipo solo. Mescolarli qui avrebbe fatto sembrare "automazione" un
+# registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
+# che non fa mai -- e avrebbe allargato `CHIAVE_ARCHIVIO_PER_TIPO` (e con
+# lei `_TIPI_ANCORA` in casa/strumenti.py) a tipi che la memoria non puo'
+# mai scrivere come ancora (`memoria/interpretazione.VOCABOLARIO`),
+# creando esattamente il secondo vocabolario che R9 denuncia altrove.
+# `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
+# dei candidati, fonte e ciclo di vita diversi.
+_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"),
+           ("piani", "piano"))
 
 # Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
@@ -228,10 +253,33 @@ class Indice:
         return list(self._per_tipo.get(tipo, {}).values())
 
 
+def _registra(termini: dict[str, list[tuple[str, str]]], termine_originale,
+              candidato: tuple[str, str]) -> None:
+    """Aggiunge `candidato` (tipo, riferimento) al termine che
+    `termine_originale` normalizza a -- il cuore di `costruisci_indice()`,
+    estratto perche' anagrafe e comportamento (sotto) lo condividono: due
+    copie della stessa regola di dedup/ambiguita' sarebbero due posti in
+    cui la stessa correzione si dimentica di un posto.
+
+    Un termine che non e' una stringa non e' un termine (vedi il commento
+    dentro il ciclo principale, sugli alias `[null]` di un'anagrafe gia'
+    avvelenata) -- difesa in profondita', non ridondanza."""
+    if not isinstance(termine_originale, str):
+        return
+    termine_normalizzato = _normalizza(termine_originale)
+    if not termine_normalizzato:
+        return
+    candidati = termini.setdefault(termine_normalizzato, [])
+    if candidato not in candidati:
+        candidati.append(candidato)
+
+
 def costruisci_indice(casa: dict,
-                      nomi_di_ripiego: dict[str, str] | None = None) -> Indice:
-    """Costruisce l'indice di una casa: nome e alias di aree, entita' e
-    dispositivi, normalizzati e pronti per trova()/verifica().
+                      nomi_di_ripiego: dict[str, str] | None = None,
+                      comportamento: list[dict] | None = None) -> Indice:
+    """Costruisce l'indice di una casa: nome e alias di aree, entita',
+    dispositivi e piani, PIU' automazioni e script (`comportamento`, T7),
+    normalizzati e pronti per trova()/verifica().
 
     Due voci diverse possono normalizzarsi allo stesso termine (due aree
     omonime, un alias che e' il nome vero di un'altra voce): il termine
@@ -281,6 +329,19 @@ def costruisci_indice(casa: dict,
     Il ripiego vale solo per le entita': lo specchio dello stato non ha
     `friendly_name` per aree e dispositivi, e un ripiego li' sarebbe di
     nuovo un id travestito da nome.
+
+    `comportamento` (T7, R2): le voci di `ArchivioCasa.comportamento()` --
+    automazioni e script, col loro `tipo` ("automazione" o "script") gia'
+    dentro ogni voce, non nella chiave del dizionario `casa` come per
+    `_ARCHIVI` sopra. Indicizzate con la STESSA disciplina (nome, alias,
+    etichette, categorie; ambiguita' dichiarata, mai scelta), ma FUORI dal
+    ciclo su `_ARCHIVI`: sono lette da una fonte diversa, con un ciclo di
+    vita diverso (file YAML riletti a una cadenza propria, non un registro
+    di Home Assistant) -- vedi il commento su `_ARCHIVI` per la ragione per
+    cui non condividono la stessa tupla. Nessun ripiego sul nome qui: le
+    voci di comportamento arrivano gia' con un nome (`friendly_name` dello
+    stato o l'`alias` dello YAML -- vedi `casa/comportamento.py`), mai nullo
+    per costruzione.
     """
     termini: dict[str, list[tuple[str, str]]] = {}
     per_tipo: dict[str, dict[str, dict]] = {}
@@ -330,26 +391,37 @@ def costruisci_indice(casa: dict,
             # `casa.anagrafe.categorie_con_nome`, la stessa che usa `guarda`.
             # Solo i nomi, non gli ambiti: `automation` e' un termine tecnico
             # di Home Assistant, non una parola che qualcuno cerchera'.
+            # Un termine che non e' una stringa non e' un termine.
+            #
+            # Difesa in profondita', non ridondanza: la causa vera si
+            # chiude a monte (`ha_client._aggiungi_campi_estesi` filtra le
+            # sentinelle `None` degli alias), ma questo indice legge
+            # l'ARCHIVIO -- che su un'installazione gia' avvelenata
+            # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
+            # Un rilevatore che muore sul dato vecchio lascia `cerca` e
+            # `ricorda` rotti fino al riavvio successivo. Vedi `_registra`.
             for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
                                       *etichette_con_nome(voce, nomi_etichette),
                                       *categorie_con_nome(voce, nomi_categorie).values()]:
-                # Un termine che non e' una stringa non e' un termine.
-                #
-                # Difesa in profondita', non ridondanza: la causa vera si
-                # chiude a monte (`ha_client._aggiungi_campi_estesi` filtra le
-                # sentinelle `None` degli alias), ma questo indice legge
-                # l'ARCHIVIO -- che su un'installazione gia' avvelenata
-                # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
-                # Un rilevatore che muore sul dato vecchio lascia `cerca` e
-                # `ricorda` rotti fino al riavvio successivo.
-                if not isinstance(termine_originale, str):
-                    continue
-                termine_normalizzato = _normalizza(termine_originale)
-                if not termine_normalizzato:
-                    continue
-                candidato = (tipo, riferimento)
-                candidati = termini.setdefault(termine_normalizzato, [])
-                if candidato not in candidati:
-                    candidati.append(candidato)
+                _registra(termini, termine_originale, (tipo, riferimento))
+
+    # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
+    # vedi il commento su `_ARCHIVI` e il docstring qui sopra. `tipo` viene
+    # dalla VOCE stessa, non da `_ARCHIVI`: una lista sola porta entrambi i
+    # tipi, distinti campo per campo (`casa/comportamento.py`). Una voce col
+    # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
+    # una voce di comportamento valida: si scarta invece di indicizzarla
+    # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.
+    for voce in comportamento or []:
+        tipo_voce = voce.get("tipo")
+        riferimento = voce.get("id")
+        if tipo_voce not in ("automazione", "script") or riferimento is None:
+            continue
+        registro = per_tipo.setdefault(tipo_voce, {})
+        registro[riferimento] = voce
+        for termine_originale in [voce.get("nome") or "", *(voce.get("alias") or []),
+                                  *etichette_con_nome(voce, nomi_etichette),
+                                  *categorie_con_nome(voce, nomi_categorie).values()]:
+            _registra(termini, termine_originale, (tipo_voce, riferimento))
 
     return Indice(termini, per_tipo)

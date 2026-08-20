@@ -105,14 +105,28 @@ from .domande import legami as _legami_leggibili
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
 from ..memoria.cache_indice import CacheIndice
-from ..memoria.interpretazione import valida
+from ..memoria.interpretazione import VOCABOLARIO, valida
 from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
-# I tre tipi di ancora che la memoria conosce (memoria/interpretazione.py,
-# VOCABOLARIO["ancore"]), nello stesso ordine di CHIAVE_ARCHIVIO_PER_TIPO:
-# e' l'ordine in cui `richiama` cerca quando il modello non specifica un
-# `tipo` -- vedi `_richiama`.
-_TIPI_ANCORA = tuple(CHIAVE_ARCHIVIO_PER_TIPO)
+# I tipi di ancora che la memoria conosce, DERIVATI da
+# `memoria/interpretazione.VOCABOLARIO["ancore"]` -- la fonte vera, non
+# `CHIAVE_ARCHIVIO_PER_TIPO`. Ordinati (come fa gia' `interpretazione.py`
+# per il proprio messaggio d'errore) perche' un frozenset non promette un
+# ordine stabile fra due letture, ed e' l'ordine in cui `richiama` cerca
+# quando il modello non specifica un `tipo` -- vedi `_richiama`.
+#
+# T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
+# (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
+# derivare da `CHIAVE_ARCHIVIO_PER_TIPO` sembrava innocuo. Da quando
+# `_ARCHIVI` include anche "piano" -- un registro dell'anagrafe vero, ma
+# NON un tipo di ancora che `ricorda` possa mai scrivere -- le due cose
+# sono tornate a essere quello che sono sempre state: due vocabolari
+# diversi con scopi diversi. Se fossero rimaste legate, `richiama`
+# avrebbe accettato silenziosamente `tipo="piano"` (nessun errore, solo
+# una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
+# puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
+# stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
+_TIPI_ANCORA = tuple(sorted(VOCABOLARIO["ancore"]))
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +134,11 @@ logger = logging.getLogger(__name__)
 CERCA_TOOL_DEF = {
     "name": "cerca",
     "description": (
-        "Trova nella casa un'area, un'entita' o un dispositivo a partire da un "
-        "nome o alias scritto in linguaggio naturale (es. «il bagno», «la "
-        "lavatrice», «il termostato del salotto»). Per ogni frammento di testo "
-        "riconosciuto restituisce la lista COMPLETA dei candidati che quel nome "
+        "Trova nella casa un'area, un'entita', un dispositivo, un piano, "
+        "un'automazione o uno script a partire da un nome o alias scritto in "
+        "linguaggio naturale (es. «il bagno», «la lavatrice», «il termostato del "
+        "salotto», «il piano di sotto», «la sveglia del mattino»). Per ogni "
+        "frammento di testo riconosciuto restituisce la lista COMPLETA dei candidati che quel nome "
         "puo' significare: se una sola voce lo usa la lista ha un elemento; se "
         "piu' voci si chiamano allo stesso modo (due «Bagno» su piani diversi, "
         "un alias che collide col nome vero di un'altra area) la lista ne ha "
@@ -137,6 +152,10 @@ CERCA_TOOL_DEF = {
         "booleano -- la stessa forma in `guarda`), il nome che vedi in `nome` non l'ha "
         "scelto chi vive in questa casa: viene dedotto da cio' che Home Assistant mostra "
         "a schermo, e i due campi portano lo stesso testo. "
+        "Un candidato di tipo `piano` NON si passa a `guarda`, che non sa aprire un "
+        "piano da solo: serve a `esegui(piani=...)`, per agire su tutte le aree di "
+        "quel piano insieme. `automazione` e `script` invece si passano a `guarda` "
+        "esattamente come `area`/`entita`/`dispositivo`. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
         "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
@@ -155,9 +174,9 @@ CERCA_TOOL_DEF = {
             "testo": {
                 "type": "string",
                 "description": (
-                    "Il testo in cui cercare nomi di aree, entita' o dispositivi, "
-                    "cosi' come l'ha scritto l'utente (es. 'quanto fa caldo in "
-                    "soggiorno?')."
+                    "Il testo in cui cercare nomi di aree, entita', dispositivi, piani, "
+                    "automazioni o script, cosi' come l'ha scritto l'utente (es. "
+                    "'quanto fa caldo in soggiorno?')."
                 ),
             },
         },
@@ -775,17 +794,27 @@ class DispatcherStrumenti:
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
         casa = self._casa.leggi()
+        # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
+        # `guarda` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
+        # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
+        # il loro id, e `guarda("automazione", ...)` restava irraggiungibile
+        # per chi partiva da un nome. Letto eagerly come `casa`: `_cerca`
+        # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
+        # passa affatto -- il comportamento non e' un tipo di ancora).
+        comportamento = self._casa.comportamento()
         _, nomi_vivi, _unita, _classi, specchio_letto = self._specchio()
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
-        # (`aggiornata_il()`) e i nomi vivi di ripiego non cambiano -- vedi
+        # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
+        # T7) e i nomi vivi di ripiego non cambiano -- vedi
         # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
         # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_ricorda` no,
         # e sulla stessa casa i due indici hanno contenuti diversi.
         if self._cache_indice is not None:
             indice = self._cache_indice.ottieni(
-                "cerca", casa, self._casa.aggiornata_il(), nomi_vivi)
+                "cerca", casa, self._casa.aggiornata_il(), nomi_vivi,
+                comportamento, self._casa.comportamento_letto_il())
         else:
-            indice = costruisci_indice(casa, nomi_vivi)
+            indice = costruisci_indice(casa, nomi_vivi, comportamento)
         trovati = _cerca_candidati(indice, testo)
         risposta: dict = {"trovati": trovati}
         # N2 (ri-review): il ramo strutturale di `_cecita` (I3, sotto) si

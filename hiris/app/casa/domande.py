@@ -353,8 +353,9 @@ def _suggerimento_cerca(riferimento) -> str:
 
 
 def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dict:
-    """Il dict `esiste: False` comune ai tre rami che possono confondere un
-    NOME con un id -- area, entita', dispositivo.
+    """Il dict `esiste: False` comune ai rami che possono confondere un
+    NOME con un id -- area, entita', dispositivo, e da T7 (R2) anche
+    automazione/script (`_guarda_comportamento`, sotto).
 
     "non trovato" ha due cause DIVERSE (CRITICAL ③, gia' pagato piu' volte
     su questo file): il riferimento non c'e' davvero, oppure il registro
@@ -370,8 +371,18 @@ def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dic
       (review indipendente Task 3, confermata: suggerire quando la causa
       e' un guasto e' un rischio, non un aiuto).
 
-    Un punto solo per questa scelta: i tre rami non portano tre copie
+    Un punto solo per questa scelta: i rami non portano una copia ciascuno
     della stessa condizione, e chi la cambia la cambia qui una volta sola.
+
+    T7 (R2): fino a questa fetta `_guarda_comportamento` costruiva il suo
+    `esiste: False` a mano, SENZA `suggerimento` -- una scelta deliberata
+    del Task 3 (review indipendente, confermata), perche' allora `cerca`
+    non indicizzava automazioni/script: suggerire "chiama cerca" sarebbe
+    stato un invito a una strada cieca. Da quando `cerca` li indicizza
+    (`memoria/riconoscitore.py::costruisci_indice`), quella ragione non
+    vale piu', e il confine si sposta: `_guarda_comportamento` chiama
+    questa funzione come gli altri tre rami, invece di duplicarne la
+    logica con un `file_non_letti` scambiato per `registro_caduto`.
     """
     dettaglio = {"esiste": False, "tipo": tipo, "riferimento": riferimento}
     if registro_caduto:
@@ -545,7 +556,6 @@ def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
     voce = next(
         (v for v in comportamento if v.get("id") == riferimento and v.get("tipo") == tipo), None)
     if voce is None:
-        dettaglio = {"esiste": False, "tipo": tipo, "riferimento": riferimento}
         # CRITICAL ③, quinto ramo: se un file di comportamento non si e'
         # letto (`automations.yaml`/`scripts.yaml`, o uno incluso in un
         # pacchetto), "non trovato" non e' "non esiste" -- potrebbe essere
@@ -555,9 +565,14 @@ def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
         # qualsiasi non si e' letto, l'incertezza si dichiara comunque,
         # invece di tacerla come prima -- la firma non aveva nemmeno un
         # punto d'ingresso per riceverlo.
-        if file_non_letti:
-            dettaglio["non_disponibile"] = True
-        return dettaglio
+        #
+        # T7 (R2): `_dettaglio_non_trovato`, non piu' un dict a mano --
+        # `file_non_letti` gioca lo stesso ruolo di `registro_caduto` per
+        # area/entita'/dispositivo (un guasto di lettura, non l'assenza
+        # della cosa), e ora che `cerca` indicizza automazioni e script un
+        # NOME al posto dell'id e' un errore possibile anche qui: merita lo
+        # stesso `suggerimento` degli altri tre rami, con la stessa frase.
+        return _dettaglio_non_trovato(tipo, riferimento, bool(file_non_letti))
     return {
         "esiste": True, "tipo": tipo, "id": voce["id"], "nome": voce.get("nome"),
         # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo
@@ -617,13 +632,22 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     scambiare per un fatto sulla casa invece che per "non trovato" -- un
     silenzio non dichiarato e' indistinguibile da un'assenza di problemi.
 
-    R5: sui tre rami che possono confondere un NOME con un id -- area,
-    entita', dispositivo -- `esiste: False` porta anche `suggerimento`
-    (`_suggerimento_cerca`): invita a chiamare `cerca` col riferimento
-    ricevuto. STESSA chiave, STESSA frase nei tre rami (fondamenta 3) --
-    non su `_guarda_comportamento` ne' su `_guarda_ricordo`, che non hanno
-    questa ambiguita' (un id di automazione/script/ricordo non si scrive
-    mai al posto di un nome).
+    R5: sui rami che possono confondere un NOME con un id -- area, entita',
+    dispositivo, e da T7 (R2) anche automazione e script -- `esiste: False`
+    porta anche `suggerimento` (`_suggerimento_cerca`): invita a chiamare
+    `cerca` col riferimento ricevuto. STESSA chiave, STESSA frase su tutti
+    questi rami (fondamenta 3) -- non su `_guarda_ricordo`, il solo tipo il
+    cui id (numerico, interno a HIRIS, mai uno slug di Home Assistant) non
+    si scrive mai al posto di un nome.
+
+    Fino a T7 automazione e script restavano fuori apposta (decisione del
+    Task 3, review indipendente): `cerca` non li indicizzava ancora, e
+    suggerirlo sarebbe stato un invito a una strada che non portava da
+    nessuna parte. Da quando `cerca` li indicizza
+    (`memoria/riconoscitore.py::costruisci_indice`), quella ragione e'
+    caduta, e il confine si e' spostato con lei: vedi il docstring di
+    `_dettaglio_non_trovato`, che ora e' anche la porta di
+    `_guarda_comportamento`.
 
     MA non quando `non_disponibile` e' vero (`_dettaglio_non_trovato`): se
     il registro e' caduto, `cerca` legge la STESSA anagrafe incompleta --

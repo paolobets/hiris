@@ -29,9 +29,9 @@ def test_due_richieste_identiche_costruiscono_un_solo_indice(monkeypatch):
 
     originale = modulo.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa, nomi=None, comportamento=None):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa, nomi, comportamento)
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
@@ -51,9 +51,9 @@ def test_cambia_aggiornata_il_ricostruisce(monkeypatch):
     from hiris.app.memoria import cache_indice as modulo
     originale = modulo.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa, nomi=None, comportamento=None):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa, nomi, comportamento)
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
@@ -103,6 +103,51 @@ def test_non_e_eterna_cambia_e_si_accorge():
     assert i2.verifica("entita", "light.c") is not None
 
 
+# -- il comportamento cambia -> ricostruito (T7, R2) ------------------------
+# Mutazione (dal brief del task): "togliere `comportamento_letto_il` dalla
+# chiave". Stesso `aggiornata_il` (l'anagrafe non e' cambiata), stessa
+# `casa`: solo il comportamento -- e la sua data di rilettura -- cambiano.
+# Un'automazione rinominata deve invalidare l'indice come fa un'area
+# rinominata, non restare invisibile finche' l'anagrafe non cambia anche lei
+# (potrebbe non succedere mai nello stesso turno).
+
+def test_cambia_comportamento_letto_il_ricostruisce(monkeypatch):
+    chiamate = []
+    from hiris.app.memoria import cache_indice as modulo
+    originale = modulo.costruisci_indice
+
+    def spia(casa, nomi=None, comportamento=None):
+        chiamate.append(1)
+        return originale(casa, nomi, comportamento)
+
+    monkeypatch.setattr(modulo, "costruisci_indice", spia)
+
+    cache = CacheIndice()
+    casa = _casa()
+    comportamento_v1 = [{"id": "automation.x", "tipo": "automazione", "nome": "Vecchio nome"}]
+    comportamento_v2 = [{"id": "automation.x", "tipo": "automazione", "nome": "Nuovo nome"}]
+    i1 = cache.ottieni("cerca", casa, "t1", {}, comportamento_v1, "c1")
+    i2 = cache.ottieni("cerca", casa, "t1", {}, comportamento_v2, "c2")
+    assert len(chiamate) == 2
+    assert i1 is not i2
+    # il contenuto e' davvero quello nuovo, non solo un oggetto diverso
+    assert i1.trova("vecchio nome") != []
+    assert i2.trova("vecchio nome") == []
+    assert i2.trova("nuovo nome") != []
+
+
+def test_stesso_comportamento_letto_il_riusa_lindice():
+    """Il rovescio: se NE' l'anagrafe NE' il comportamento sono cambiati, si
+    riusa -- il guadagno della cache non deve sparire perche' ora la chiave
+    ha un componente in piu'."""
+    cache = CacheIndice()
+    casa = _casa()
+    comportamento = [{"id": "automation.x", "tipo": "automazione", "nome": "Sveglia"}]
+    i1 = cache.ottieni("cerca", casa, "t1", {}, comportamento, "c1")
+    i2 = cache.ottieni("cerca", casa, "t1", {}, comportamento, "c1")
+    assert i1 is i2
+
+
 # -- il ramo "anagrafe non letta" non si confonde con quello pieno ---------
 # Mutazione: "condividere lo stesso indice fra il ramo anagrafe letta e non
 # letta". `aggiornata_il=None` (non letta) e un valore vero non devono MAI
@@ -144,9 +189,9 @@ def test_alternare_cerca_e_ricorda_non_fa_rimbalzare_la_cache(monkeypatch):
     from hiris.app.memoria import cache_indice as modulo
     originale = modulo.costruisci_indice
 
-    def spia(casa, nomi=None):
+    def spia(casa, nomi=None, comportamento=None):
         chiamate.append(1)
-        return originale(casa, nomi)
+        return originale(casa, nomi, comportamento)
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 

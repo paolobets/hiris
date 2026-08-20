@@ -44,6 +44,18 @@ Chi chiama `ottieni()` porta tre cose:
   dizionari diversi possono avere lo stesso numero di voci, e una chiave che
   non li distingue servirebbe un indice vecchio: il difetto esatto per cui
   questo task esiste. Usa un'impronta del CONTENUTO (`_impronta_nomi`).
+- `comportamento_letto_il` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
+  la data dell'ultima rilettura di automazioni/script
+  (`ArchivioCasa.comportamento_letto_il()`), o `None` quando non e' mai stata
+  letta. Da quando `costruisci_indice()` indicizza anche il comportamento
+  (parametro `comportamento`), la chiave non puo' piu' bastarsi con
+  `aggiornata_il`: quella data e' dell'ANAGRAFE (aree, entita', dispositivi,
+  piani) e cambia con una cadenza diversa dal comportamento (giorni contro
+  mesi, `ArchivioCasa.sostituisci_comportamento`, docstring). Senza questa
+  voce, un'automazione rinominata in Home Assistant non invaliderebbe MAI la
+  cache -- lo stesso indice vecchio, con l'automazione ancora sotto il nome
+  di ieri, servirebbe finche' l'anagrafe (non il comportamento) non cambia
+  anche lei: potrebbe non succedere mai in un turno.
 
 ## La forma della cache: una voce per spazio, non una sola casella
 
@@ -111,7 +123,9 @@ class CacheIndice:
 
     def ottieni(self, spazio: str, casa: dict,
                aggiornata_il: str | None,
-               nomi_di_ripiego: dict[str, str] | None = None) -> Indice:
+               nomi_di_ripiego: dict[str, str] | None = None,
+               comportamento: list[dict] | None = None,
+               comportamento_letto_il: str | None = None) -> Indice:
         """L'`Indice` per questo `spazio`, ricostruito solo se la chiave e'
         cambiata rispetto all'ultima voce salvata per questo stesso spazio.
 
@@ -122,12 +136,20 @@ class CacheIndice:
         Vuole `casa` gia' letta: usalo quando il chiamante ha comunque
         bisogno del valore anche fuori dall'indice (`_cerca`, per
         `_cecita()`) -- li' non c'e' niente da rimandare. Se invece la
-        lettura serve SOLO a costruire l'indice, vedi `ottieni_pigro()`."""
-        return self.ottieni_pigro(spazio, lambda: casa, aggiornata_il, nomi_di_ripiego)
+        lettura serve SOLO a costruire l'indice, vedi `ottieni_pigro()`.
+
+        `comportamento`/`comportamento_letto_il` (T7, R2): automazioni e
+        script da indicizzare, e la data della loro ultima lettura -- vedi
+        "## La chiave" sopra per perche' la seconda non e' opzionale quando
+        si passa la prima."""
+        return self.ottieni_pigro(spazio, lambda: casa, aggiornata_il, nomi_di_ripiego,
+                                  comportamento, comportamento_letto_il)
 
     def ottieni_pigro(self, spazio: str, costruisci_casa,
                       aggiornata_il: str | None,
-                      nomi_di_ripiego: dict[str, str] | None = None) -> Indice:
+                      nomi_di_ripiego: dict[str, str] | None = None,
+                      comportamento: list[dict] | None = None,
+                      comportamento_letto_il: str | None = None) -> Indice:
         """Come `ottieni()`, ma la casa si legge SOLO su un miss.
 
         Fix della review indipendente del Task B7: `_ricorda` non ha bisogno
@@ -140,11 +162,19 @@ class CacheIndice:
         dell'archivio E compilazione), di cui questo spazio ne eliminava solo
         uno. `costruisci_casa` (un callable a zero argomenti, non un valore
         gia' letto) si invoca solo quando la voce salvata non e' piu' valida:
-        su un hit non viene MAI chiamato, e la lettura non si paga."""
-        chiave = (aggiornata_il, _impronta_nomi(nomi_di_ripiego))
+        su un hit non viene MAI chiamato, e la lettura non si paga.
+
+        `comportamento` NON e' pigro come `costruisci_casa`: e' un valore gia'
+        letto, passato dal chiamante (`_cerca`, che lo legge comunque per
+        indicizzarlo). Solo `_ricorda` non lo passa affatto (`None`, il
+        comportamento non e' un tipo di ancora -- vedi
+        `memoria/interpretazione.VOCABOLARIO`), e su quello spazio la sua
+        assenza dalla chiave non cambia nulla: non essendo mai indicizzato,
+        non puo' mai andare stantio."""
+        chiave = (aggiornata_il, comportamento_letto_il, _impronta_nomi(nomi_di_ripiego))
         voce = self._voci.get(spazio)
         if voce is not None and voce[0] == chiave:
             return voce[1]
-        indice = costruisci_indice(costruisci_casa(), nomi_di_ripiego)
+        indice = costruisci_indice(costruisci_casa(), nomi_di_ripiego, comportamento)
         self._voci[spazio] = (chiave, indice)
         return indice

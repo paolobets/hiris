@@ -389,6 +389,106 @@ def test_le_entita_senza_stato_vivo_restano_senza_nome_e_non_spariscono():
     assert "nome_dedotto" not in senza_stato_vivo
 
 
+# -- R2 (T7): piani, automazioni e script -----------------------------------
+#
+# Prima di questo task nessuna sequenza di chiamate produceva mai un id di
+# piano, automazione o script: `_ARCHIVI` non li conosceva. Vedi
+# docs/design/2026-08-20-i-riferimenti.md.
+
+
+def test_trova_un_piano_per_nome():
+    casa = dict(_CASA, piani=[{"id": "terra", "nome": "Piano terra", "livello": 0}])
+    trovate = costruisci_indice(casa).trova("accendi tutto al piano terra")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is False
+    assert trovate[0]["candidati"] == [{"tipo": "piano", "riferimento": "terra"}]
+
+
+def test_verifica_un_piano():
+    casa = dict(_CASA, piani=[{"id": "terra", "nome": "Piano terra", "livello": 0}])
+    trovato = costruisci_indice(casa).verifica("piano", "terra")
+    assert trovato["nome"] == "Piano terra"
+
+
+def test_due_piani_omonimi_sono_ambigui():
+    """Stessa regola delle due «Bagno»: l'ambiguita' si dichiara, non si
+    sceglie in silenzio in base all'ordine di raccolta."""
+    casa = dict(_CASA, piani=[{"id": "p1", "nome": "Mansarda", "livello": 2},
+                              {"id": "p2", "nome": "Mansarda", "livello": 2}])
+    trovate = costruisci_indice(casa).trova("in mansarda")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is True
+    assert _riferimenti(trovate[0]) == {"p1", "p2"}
+
+
+def test_senza_comportamento_nessuna_automazione_si_indicizza():
+    """Il parametro e' opzionale (default `None`): i chiamanti che ancora
+    non lo passano (`_ricorda`, le pagine di `handlers_memoria.py`) non
+    devono vedere comparire nulla sotto "automazione"/"script"."""
+    indice = costruisci_indice(_CASA)
+    assert indice.trova("sveglia") == []
+    assert indice.verifica("automazione", "automation.sveglia") is None
+
+
+def test_trova_un_automazione_per_nome():
+    comportamento = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+                      "corpo": {"trigger": []}, "origine": "file"}]
+    trovate = costruisci_indice(_CASA, comportamento=comportamento).trova("spegni la sveglia")
+    assert len(trovate) == 1
+    assert trovate[0]["candidati"] == [{"tipo": "automazione", "riferimento": "automation.sveglia"}]
+
+
+def test_trova_uno_script_per_nome():
+    comportamento = [{"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte",
+                      "corpo": None, "origine": "solo_stato"}]
+    trovate = costruisci_indice(_CASA, comportamento=comportamento).trova("lancia buonanotte")
+    assert len(trovate) == 1
+    assert _riferimenti(trovate[0]) == {"script.buonanotte"}
+    assert trovate[0]["candidati"][0]["tipo"] == "script"
+
+
+def test_verifica_un_automazione_e_uno_script():
+    comportamento = [
+        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia", "corpo": {}},
+        {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
+    ]
+    indice = costruisci_indice(_CASA, comportamento=comportamento)
+    assert indice.verifica("automazione", "automation.sveglia")["nome"] == "Sveglia"
+    assert indice.verifica("script", "script.buonanotte")["nome"] == "Buonanotte"
+    # Spazi di nomi diversi: un id di script non deve passare per un'automazione.
+    assert indice.verifica("automazione", "script.buonanotte") is None
+
+
+def test_automazione_e_script_con_lo_stesso_nome_sono_ambigui():
+    comportamento = [
+        {"id": "automation.buonanotte", "tipo": "automazione", "nome": "Buonanotte", "corpo": {}},
+        {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
+    ]
+    trovate = costruisci_indice(_CASA, comportamento=comportamento).trova("buonanotte")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is True
+    assert _riferimenti(trovate[0]) == {"automation.buonanotte", "script.buonanotte"}
+
+
+def test_una_voce_di_comportamento_con_tipo_ignoto_non_si_indicizza():
+    """Una voce col `tipo` che non e' ne' "automazione" ne' "script" (o
+    senza id) non e' una voce di comportamento valida: si scarta invece di
+    inventare un terzo tipo che ne' `guarda` ne' `verifica()` conoscono."""
+    comportamento = [{"id": "scene.arrivo", "tipo": "scena", "nome": "Arrivo"},
+                     {"id": None, "tipo": "automazione", "nome": "Senza id"}]
+    indice = costruisci_indice(_CASA, comportamento=comportamento)
+    assert indice.trova("arrivo") == []
+    assert indice.trova("senza id") == []
+
+
+def test_gli_alias_e_le_etichette_valgono_anche_per_il_comportamento():
+    """Stessa disciplina degli altri tre archivi: non solo il nome."""
+    comportamento = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+                      "alias": ["buongiorno"]}]
+    trovate = costruisci_indice(_CASA, comportamento=comportamento).trova("attiva buongiorno")
+    assert _riferimenti(trovate[0]) == {"automation.sveglia"}
+
+
 def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
     """I quattro chiamanti esistenti (handlers_memoria.py:118 e :184,
     casa/strumenti.py:430 e :512) non passano niente: la firma nuova non
