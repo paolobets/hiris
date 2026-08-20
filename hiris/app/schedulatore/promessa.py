@@ -44,7 +44,7 @@ CONSERVAZIONE_S = 90 * 86400
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
     "domanda", "istantanea", "recapito", "stato", "motivo", "esecuzione_id",
-    "testo", "avvisare", "nata_ts", "risvegliata_ts", "origine",
+    "testo", "avvisare", "nata_ts", "risvegliata_ts",
 )
 
 
@@ -120,7 +120,6 @@ def serializza(riga) -> dict:
         "avvisare": None if riga["avvisare"] is None else bool(riga["avvisare"]),
         "nata_ts": riga["nata_ts"],
         "risvegliata_ts": riga["risvegliata_ts"],
-        "origine": _carica(riga["origine_json"]),
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

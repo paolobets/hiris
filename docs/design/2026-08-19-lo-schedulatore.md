@@ -110,9 +110,8 @@ generata non esiste più.
 | `esecuzione_id` | il collegamento alla riga di cronaca (§8), quando un'esecuzione c'è stata |
 | `testo` · `avvisare` | *(solo `chiedi`)* il testo concluso dal turno, e se c'era qualcosa da dire — gli stessi due nomi che porta `concludi` (§6.2) |
 | `nata_ts` · `risvegliata_ts` | quando è nata, quando l'orologio l'ha vista |
-| `origine` | traccia della nascita: `chat` + id di sessione, **riferimento che può restare orfano** |
 
-Tre note che sono le fondamenta applicate, non decorazione.
+Due note che sono le fondamenta applicate, non decorazione.
 
 **`istantanea` è il caso 2 reso atomico.** «È aumentata» rispetto a **21,4 °C misurati alle 16:03**,
 scritto dentro la promessa. Senza quel campo la promessa è il `72` senza unità: un numero che chi lo
@@ -122,9 +121,6 @@ riceve non può interpretare.
 letto da `get_config`. Qui si registra **quale fuso è stato usato in quel momento** per risolvere
 «alle 17»: è una misura fatta a un istante, non la copia di un fatto vivo. Se domani la casa cambia
 fuso, `quando_ts` resta ciò che è stato promesso, e la promessa continua a spiegarsi da sola.
-
-**`origine` è una traccia, non una casa.** Cancellare una conversazione non deve poter cancellare una
-promessa né renderla illeggibile: per questo `frase` sta qui, verbatim, e non è un puntatore.
 
 ## 6. Le due specie
 

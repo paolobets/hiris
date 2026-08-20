@@ -1,6 +1,4 @@
 """La forma di una promessa: cosa può nascere, e come si legge da tutte le porte."""
-import pytest
-
 from hiris.app.schedulatore.promessa import (
     CONSERVAZIONE_S, ORIZZONTE_S, TETTO_IN_SOSPESO, TOLLERANZA_S,
     motivo_ritardo, serializza, valida,
@@ -84,7 +82,7 @@ def test_serializza_ha_sempre_le_stesse_chiavi_per_entrambe_le_specie():
         "chiamata_json": '{"servizio": "light.turn_on"}', "domanda": None,
         "istantanea_json": None, "recapito": None, "stato": "in_attesa",
         "motivo": None, "esecuzione_id": None, "testo": None, "avvisare": None,
-        "nata_ts": 0.5, "risvegliata_ts": None, "origine_json": '{"tipo": "chat"}',
+        "nata_ts": 0.5, "risvegliata_ts": None,
     }
     riga_chiedi = dict(riga_fai, id="p2", specie="chiedi", chiamata_json=None,
                        domanda="fa caldo?", istantanea_json='[{"entita": "sensor.t"}]')
@@ -98,7 +96,7 @@ def test_serializza_decodifica_il_json_e_non_lo_lascia_stringa():
         "chiamata_json": '{"servizio": "light.turn_on"}', "domanda": None,
         "istantanea_json": None, "recapito": None, "stato": "in_attesa",
         "motivo": None, "esecuzione_id": None, "testo": None, "avvisare": None,
-        "nata_ts": 0.5, "risvegliata_ts": None, "origine_json": None,
+        "nata_ts": 0.5, "risvegliata_ts": None,
     }
     fuori = serializza(riga)
     assert fuori["chiamata"] == {"servizio": "light.turn_on"}

@@ -26,7 +26,6 @@ def _fai(**extra):
         "quando_detto": "alle 17",
         "fuso": "Europe/Rome",
         "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.studio"]}},
-        "origine": {"tipo": "chat", "sessione": "s1"},
     }
     dati.update(extra)
     return dati
@@ -147,3 +146,34 @@ def test_le_concluse_vecchie_si_potano_alla_scrittura_le_in_sospeso_mai(archivio
     assert archivio.leggi(vecchia) is None      # potata: piu' vecchia della conservazione
     assert archivio.leggi(in_sospeso) is not None  # mai potata: e' ancora una promessa
     assert archivio.leggi(recente) is not None  # conclusa ma giovane: non ancora il suo turno
+
+
+def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
+    """Fix review finale, rilievo minore. La spec §8.1 dice novanta giorni
+    "per le promesse concluse": l'orologio della potatura deve partire da
+    QUANDO si e' conclusa (`risvegliata_ts`), non da quando e' nata
+    (`nata_ts`). Il test sopra non lo vedeva: crea e conclude quasi nello
+    stesso istante, quindi `nata_ts` e `risvegliata_ts` sono troppo vicini
+    per distinguere i due criteri.
+
+    Qui una promessa nata 91 giorni fa (oltre la conservazione, se si
+    guardasse la nascita) ma CONCLUSA ieri (dentro la conservazione, come
+    dev'essere per una conclusione recente) non deve sparire.
+
+    Mutazione che deve farlo fallire: rimettere `nata_ts` al posto di
+    `risvegliata_ts` nella query di `_pota`.
+    """
+    nata = ADESSO - 91 * 86400
+    conclusa = ADESSO - 86400  # ieri
+    ident = archivio.crea(_fai(quando_ts=nata + 3600), adesso=nata)["promessa"]["id"]
+    archivio.prendi(ident, adesso=conclusa)
+    archivio.concludi(ident, stato="mantenuta", adesso=conclusa)
+
+    # una scrittura successiva e' cio' che innesca la potatura (spec §8.1)
+    archivio.crea(_fai(quando_ts=ADESSO + 3600), adesso=ADESSO)
+
+    assert archivio.leggi(ident) is not None, (
+        "nata 91 giorni fa ma CONCLUSA ieri: l'eta' della potatura deve "
+        "partire dalla conclusione (risvegliata_ts), non dalla nascita "
+        "(nata_ts) -- altrimenti una promessa legittimamente mantenuta ieri "
+        "sparirebbe oggi solo perche' e' nata tardi")

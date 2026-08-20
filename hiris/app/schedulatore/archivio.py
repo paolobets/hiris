@@ -41,8 +41,7 @@ CREATE TABLE IF NOT EXISTS promesse (
     testo TEXT,
     avvisare INTEGER,
     nata_ts REAL NOT NULL,
-    risvegliata_ts REAL,
-    origine_json TEXT
+    risvegliata_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
@@ -82,13 +81,13 @@ class ArchivioPromesse:
             ident = secrets.token_urlsafe(9)
             self._conn.execute(
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
-                "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts,"
-                "origine_json) VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?,?)",
+                "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?)",
                 (ident, dati["specie"], dati["frase"].strip(), float(dati["quando_ts"]),
                  dati.get("quando_detto"), dati.get("fuso"),
                  _json(dati.get("chiamata")), dati.get("domanda"),
                  _json(dati.get("istantanea")), dati.get("recapito"),
-                 adesso, _json(dati.get("origine"))))
+                 adesso))
             self._conn.commit()
         return {"promessa": self.leggi(ident)}
 
@@ -202,8 +201,20 @@ class ArchivioPromesse:
         Le promesse in sospeso non si potano mai, qualunque eta' abbiano: il
         tetto dei 30 giorni le tiene gia' entro un limite.
 
+        **L'eta' si misura da `risvegliata_ts`, non da `nata_ts`** (fix
+        review finale, rilievo minore). La spec §8.1 dice novanta giorni
+        «per le promesse CONCLUSE»: l'orologio della potatura deve partire
+        da quando una promessa si e' conclusa, non da quando e' nata. Una
+        promessa nata 91 giorni fa e mantenuta ieri (legittimo -- l'orizzonte
+        di nascita e' 30 giorni, non di conclusione) doveva restare per
+        novanta giorni dalla conclusione, e con `nata_ts` spariva domani.
+        `risvegliata_ts` e' sempre popolato per uno stato concluso: sia
+        `concludi()` sia `disdici()` lo scrivono con
+        `COALESCE(risvegliata_ts, adesso)`, quindi non serve un ripiego su
+        `nata_ts` per le righe che non sono mai passate da `prendi()`.
+
         Chiamata con il lock gia' preso.
         """
         self._conn.execute(
-            "DELETE FROM promesse WHERE stato IN (%s) AND nata_ts < ?" % _CONCLUSI,
-            (adesso - CONSERVAZIONE_S,))
+            "DELETE FROM promesse WHERE stato IN (%s) AND risvegliata_ts < ?"
+            % _CONCLUSI, (adesso - CONSERVAZIONE_S,))
