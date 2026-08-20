@@ -204,7 +204,7 @@ _DOMINI_EVENTO = {
 # `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
 # `battery_charging`), che si vanno a chiedere e non si annunciano.
 #
-# Sottoinsieme DICHIARATO delle 28 classi di
+# Sottoinsieme DICHIARATO delle classi di
 # developers.home-assistant.io/docs/core/entity/binary-sensor/ -- la STESSA
 # fonte di `_SIGNIFICATO_CLASSE` in anagrafe.py (verificata il 16/08/2026):
 # ogni classe qui elencata deve comparire anche li', altrimenti si leggerebbe
@@ -679,7 +679,7 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
     # (`anagrafe.classe_effettiva`). Finche' si e' letta solo dal registro,
     # `_e_un_evento` ha sempre ricevuto `None` per ogni sensore binario --
     # quindi nessun allagamento, nessun fumo, nessun monossido e' MAI entrato
-    # in questa sezione, e le 28 voci di `_SIGNIFICATO_CLASSE` non sono mai
+    # in questa sezione, e le voci di `_SIGNIFICATO_CLASSE` non sono mai
     # state raggiunte.
     vive = classi_vive or {}
     voci = []

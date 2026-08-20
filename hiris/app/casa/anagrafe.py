@@ -408,8 +408,8 @@ _SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
     "smoke": ("fumo rilevato", "nessun fumo"),
     "gas": ("gas rilevato", "nessun gas"),
     # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
-    # delle 28 classi in cui la stringa non e' il nome della costante in
-    # minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
+    # classe di `_SIGNIFICATO_CLASSE` in cui la stringa non e' il nome della
+    # costante in minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
     # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
     # un allarme monossido non entra nel digesto e non viene tradotto: la
     # classe piu' critica dell'elenco, muta.
@@ -525,7 +525,7 @@ def classe_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
     - `nucleo._e_un_evento("binary_sensor", None, "on")` era sempre falso:
       NESSUN sensore binario e' mai entrato in «Notevole adesso». Un
       allagamento, un principio d'incendio, il monossido: muti;
-    - le 28 voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, con
+    - le voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, con
       `carbon_monoxide` verificato una riga per volta -- erano irraggiungibili;
     - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
 

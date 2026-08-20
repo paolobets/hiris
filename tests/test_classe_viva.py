@@ -14,7 +14,7 @@ da li' a cascata:
 - `_e_un_evento("binary_sensor", None, "on")` e' sempre falso: NESSUN sensore
   binario e' mai entrato in «Notevole adesso». Allagamento, fumo, monossido,
   finestra aperta: muti;
-- le 28 voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, `carbon_monoxide`
+- le voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, `carbon_monoxide`
   compreso e corretto una riga per volta -- erano codice irraggiungibile;
 - `guarda` prometteva «l'entita' col suo stato e la sua CLASSE» e rispondeva
   `classe: null` su ogni entita' della casa.
