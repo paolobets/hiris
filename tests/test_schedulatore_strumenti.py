@@ -99,7 +99,17 @@ async def test_disdici_annulla_e_una_gia_disdetta_lo_dichiara(promesse):
 
 @pytest.mark.asyncio
 async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
-    """Il cuore della fetta: il rifiuto arriva ora, non alle 17."""
+    """Il cuore della fetta: il rifiuto arriva ora, non alle 17.
+
+    Fix review Task 6, Rilievo 1: prima asseriva solo `"errore" in esito`, e
+    passava anche se `verifica()` fosse ESPLOSA (il doppio del registro non
+    aveva `servizi_di`, che `azione/verifica.py` chiama proprio nel ramo «il
+    servizio non esiste» -- vedi `_RegistroFinto` sotto) invece di rifiutare
+    col motivo vero. Ora si asserisce il CONTENUTO del messaggio: deve nominare
+    il servizio inventato e i servizi che esistono davvero, che e' possibile
+    solo se `verifica()` e' arrivata fino in fondo al ramo giusto senza
+    sollevare.
+    """
     d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
@@ -107,7 +117,49 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
         "chiamata": {"servizio": "light.inventato",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
+    assert "light.inventato" in esito["errore"]
+    assert "turn_on" in esito["errore"]  # il servizio vero, che il rifiuto elenca
     assert promesse.elenca() == []
+
+
+@pytest.mark.asyncio
+async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(promesse):
+    """Rilievo 2 della review, deciso dal proprietario: senza registro un
+    `fai` si RIFIUTA, non nasce in silenzio.
+
+    Prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
+    produzione: se questo strumento tacesse (come faceva prima di questo
+    fix), OGGI ogni `fai` nascerebbe senza che il suo servizio sia mai stato
+    verificato -- e `PROMETTI_TOOL_DEF` dichiara al modello, senza
+    condizioni, «viene VERIFICATA adesso». Stessa guardia di
+    `azione/porta.py::_REGISTRO_MUTO`, spostata al momento della promessa.
+    """
+    d = _dispatcher(promesse)  # nessun registro, nessuna cache
+    esito = await d.dispatch("prometti", {
+        "specie": "fai", "frase": "alle 17 accendi lo studio",
+        "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
+    assert "errore" in esito
+    assert promesse.elenca() == []
+
+
+@pytest.mark.asyncio
+async def test_un_chiedi_nasce_anche_senza_registro(promesse):
+    """Il gemello del test sopra: un `chiedi` non passa da `_verifica_ora`
+    (non ha `chiamata`), quindi la guardia nuova sul registro non deve
+    toccarlo. Non e' un test ridondante con
+    `test_prometti_un_chiedi_crea_la_promessa`: quello non dichiara ESPLICITO
+    che il dispatcher e' senza registro -- lo e' per omissione dell'argomento
+    -- questo lo rende un'asserzione intenzionale, cosi' che un domani in cui
+    qualcuno stringesse la guardia a TUTTE le specie se ne accorga subito."""
+    d = _dispatcher(promesse)  # nessun registro, apposta
+    assert d._registro is None
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "verifica la temperatura",
+        "quando": _fra(60), "domanda": "e' aumentata?"})
+    assert "errore" not in esito
+    assert esito["promessa"]["specie"] == "chiedi"
 
 
 @pytest.mark.asyncio
@@ -154,6 +206,25 @@ async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
 
 
 class _RegistroFinto:
+    """Il doppio del registro dei servizi (`azione/registro.py::RegistroServizi`).
+
+    Fix review Task 6, Rilievo 1: espone SOLO i metodi che il percorso
+    esercitato da questo file legge davvero -- `domini()` e `servizio()`
+    (chiamati da `_verifica_ora`/`_verifica_recapito`), e `servizi_di()`, che
+    `azione/verifica.py` chiama nel ramo «il servizio non esiste» per
+    elencare quelli veri. Senza `servizi_di()` quel ramo faceva sollevare
+    `AttributeError`, catturato solo dalla rete di sicurezza generica di
+    `dispatch()`: il test bandiera passava lo stesso (`"errore" in esito`
+    resta vero anche per un'eccezione), ma non perche' la verifica avesse
+    rifiutato col motivo giusto -- perche' era esplosa. Un doppio allineato
+    «per avere gli stessi nomi» invece che per coprire cio' che viene letto
+    davvero.
+
+    `vuoto()` e `assicura_fresco()` (della classe vera, usati da
+    `azione/porta.py` prima di eseguire) sono usciti da qui apposta: nessun
+    gestore di `DispatcherStrumenti` li chiama, e tenerli avrebbe continuato
+    a dare l'illusione di un doppio completo senza che nulla li provasse.
+    """
     _SERVIZI = {("light", "turn_on"): {}, ("notify", "mobile_app_x"): {}}
 
     def domini(self):
@@ -162,11 +233,8 @@ class _RegistroFinto:
     def servizio(self, dominio, nome):
         return self._SERVIZI.get((dominio, nome))
 
-    def vuoto(self):
-        return False
-
-    async def assicura_fresco(self, ha):
-        return None
+    def servizi_di(self, dominio):
+        return sorted(nome for (dom, nome) in self._SERVIZI if dom == dominio)
 
 
 class _CacheFinta:

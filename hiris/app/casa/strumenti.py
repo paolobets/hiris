@@ -1185,9 +1185,25 @@ class DispatcherStrumenti:
         puo' verificare senza rete -- il servizio esiste, l'entita' nominata
         esiste, i parametri appartengono a quel servizio -- che e' esattamente
         cio' che sbaglia il modello.
+
+        Senza registro si RIFIUTA, non si tace piu' (fix review Task 6,
+        Rilievo 2, deciso dal proprietario): e' la STESSA guardia di
+        `azione/porta.py::_REGISTRO_MUTO` ("non so ancora cosa Home Assistant
+        sa fare"), spostata al momento della promessa invece che
+        dell'esecuzione -- due porte non devono rispondere in modo opposto
+        alla stessa situazione. La frase e' diversa apposta: li' si sta
+        eseguendo, qui si sta promettendo, e "riprova fra un momento" ha un
+        senso diverso nei due casi. Tacere qui lascerebbe nascere un `fai`
+        senza che il suo servizio sia mai stato verificato: `PROMETTI_TOOL_DEF`
+        dichiara al modello "viene VERIFICATA adesso" senza condizioni, e
+        prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
+        produzione -- quindi il silenzio avrebbe reso quella frase falsa
+        proprio ora, non in un caso limite futuro.
         """
         if self._registro is None:
-            return None  # senza registro non si puo' dire ne' si' ne' no: si tace
+            return ("non posso ancora prometterlo: non so cosa questa casa sa "
+                    "fare, perche' il registro dei servizi non e' pronto. "
+                    "Riprova fra un momento.")
         stati = self._stati_grezzi()
         if not stati:
             return None
