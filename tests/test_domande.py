@@ -570,3 +570,45 @@ def test_senza_unita_vive_si_comporta_come_prima():
                "area", "sala")
     sensore = next(e for e in d["entita"] if e["id"] == "sensor.sala_t")
     assert "unita" not in sensore
+
+
+# --- R2 (T8): il label_id esce come dato accessorio da cerca/guarda -------
+
+
+def test_cerca_un_etichetta_da_il_label_id_end_to_end():
+    """Requisito 2 del brief T8: un modello che sa solo il NOME di
+    un'etichetta arriva al suo `label_id` con UNA chiamata a `cerca` --
+    anche quando nessuna entita' la porta ancora, il vicolo cieco piu'
+    radicale della famiglia (R2, docs/design/2026-08-20-i-riferimenti.md):
+    fino a questa fetta il `label_id` non usciva da NESSUNA porta."""
+    casa = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
+           "categorie": [], "integrazioni": [],
+           "etichette": [{"id": "da_controllare", "nome": "Da controllare"}]}
+    indice = costruisci_indice(casa)
+    trovati = cerca(indice, "da controllare")
+    candidato = next(c for t in trovati for c in t["candidati"]
+                     if c["tipo"] == "etichetta")
+    assert candidato["riferimento"] == "da_controllare"
+    assert candidato["nome"] == "Da controllare"
+
+
+def test_guarda_un_entita_mostra_il_label_id_accanto_al_nome():
+    """Requisito 1 del brief T8: dove un'etichetta compare in una risposta
+    di `guarda`, l'id le sta accanto -- il nome resta protagonista, l'id e'
+    il dato accessorio (`Nome (id: X)`, la stessa forma dell'albero del
+    nucleo per aree/piani/automazioni)."""
+    casa = dict(_CASA, entita=[dict(_CASA["entita"][0], etichette=["notturne"])],
+               etichette=[{"id": "notturne", "nome": "Notturne"}])
+    d = guarda(casa, _COMPORTAMENTO, _RICORDI, _STATO, "entita", _CASA["entita"][0]["id"])
+    assert d["etichette"] == ["Notturne (id: notturne)"]
+
+
+def test_guarda_non_sa_aprire_un_etichetta():
+    """Come per i piani (`test_guarda_non_sa_aprire_un_piano`): `cerca` da
+    T8 risolve un'etichetta per nome, ma un'etichetta non e' una cosa che
+    si apre in dettaglio -- e' un'ancora per `esegui`. `guarda` lo dichiara
+    con la stessa onesta' di ogni altro tipo che non sa aprire, invece di
+    un `esiste: False` indistinguibile da "questa etichetta non esiste"."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "etichetta", "notturne")
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_so_guardare"] is True

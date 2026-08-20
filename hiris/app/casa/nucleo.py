@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
                        classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
-                       traduci_stato)
+                       nome_con_id, traduci_stato)
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -369,20 +369,10 @@ def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
     return {dominio: conteggio[dominio] for dominio in sorted(conteggio)}
 
 
-def _nome_con_id(nome: str, id_: str | None) -> str:
-    """Nome con l'id accanto tra parentesi, quando l'id dice qualcosa che il
-    nome da solo non dice (R1, fetta "i riferimenti", incidente 2026-08-20).
-
-    E' la regola unica dietro OGNI riferimento della casa nel nucleo: le
-    pseudo-aree la applicavano gia' da sole (IMPORTANT ⑦, sotto), qui si
-    generalizza invece di riscriverla per ogni chiamante. Tace in due casi:
-    id assente (un dispositivo o un'area con `id` NULL nell'archivio -- non
-    dovrebbe capitare per un'area vera, ma l'anagrafe non lo vieta) e id
-    identico al nome (caso limite, non impossibile): in entrambi una
-    parentesi in piu' sarebbe rumore, non informazione."""
-    if not id_ or id_ == nome:
-        return nome
-    return f"{nome} (id: {id_})"
+# `nome_con_id` (R1, fetta "i riferimenti", incidente 2026-08-20) ora vive in
+# `anagrafe.py`: T8 (R2) la riusa per le etichette di `guarda`, e una regola
+# che deve valere per OGNI riferimento della casa non puo' avere due sedi --
+# scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
 
 
 def _nome_area_visualizzato(area: dict) -> str:
@@ -402,7 +392,7 @@ def _nome_area_visualizzato(area: dict) -> str:
     che puo' permetterselo (una riga per area, non una per entita'), vedi
     `_nome_area_per_albero`."""
     if e_pseudo_area(area["id"]):
-        return _nome_con_id(area["nome"], area["id"])
+        return nome_con_id(area["nome"], area["id"])
     return area["nome"]
 
 
@@ -414,7 +404,7 @@ def _nome_area_per_albero(area: dict) -> str:
     nome mostrato. A differenza di `_nome_area_visualizzato`, che alimenta
     anche il prefisso di "Notevole adesso" (dove l'id resta fuori, vedi
     li'), qui il costo e' una riga per area."""
-    return _nome_con_id(area["nome"], area["id"])
+    return nome_con_id(area["nome"], area["id"])
 
 
 # I nomi italiani delle otto misure del sistema di unita' di Home Assistant.
@@ -516,7 +506,7 @@ def _righe_casa(piani: list[dict],
         return ["Nessun piano registrato."]
     righe = []
     for piano in piani:
-        righe.append(f"{_nome_con_id(piano['nome'], piano['id'])}:")
+        righe.append(f"{nome_con_id(piano['nome'], piano['id'])}:")
         if not piano["aree"]:
             righe.append("  - (nessuna area)")
             continue
@@ -723,8 +713,8 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
 
 def _righe_comportamento(comportamento: list[dict]) -> list[str]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
-    stessa regola di `_nome_con_id`: fetta "i riferimenti", incidente
-    2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
+    stessa regola di `nome_con_id` in `anagrafe.py`: fetta "i riferimenti",
+    incidente 2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
@@ -735,7 +725,7 @@ def _righe_comportamento(comportamento: list[dict]) -> list[str]:
         id_ = v.get("id")
         nome = v.get("nome") or id_ or "(senza nome)"
         tipo = v.get("tipo", "?")
-        riga = f"- {_nome_con_id(nome, id_)} ({tipo})"
+        riga = f"- {nome_con_id(nome, id_)} ({tipo})"
         if v.get("corpo") is None:
             riga += " -- corpo non disponibile, solo il nome"
         righe.append(riga)

@@ -502,3 +502,62 @@ def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
         assert [_riferimenti(t) for t in trovate] == [{"cucina"}, {"light.c"}]
         assert [t["nome_visto"] for t in trovate] == ["cucina", "luce"]
         assert "nome_dedotto" not in indice.verifica("entita", "light.c")
+
+
+# --- T8 (R2): le etichette stesse, come candidati -------------------------
+#
+# Prima di questo task un'etichetta entrava nell'indice SOLO come termine
+# che porta a chi la porta (vedi test_si_cerca_per_etichetta in
+# tests/test_casa_conoscenza_inespressa.py) -- mai come candidato essa
+# stessa: il suo `label_id` non usciva da NESSUNA porta, il vicolo cieco
+# piu' radicale della famiglia (R2). Vedi
+# docs/design/2026-08-20-i-riferimenti.md.
+
+
+def test_trova_un_etichetta_per_nome():
+    casa = dict(_CASA, etichette=[{"id": "da_controllare", "nome": "Da controllare"}])
+    trovate = costruisci_indice(casa).trova("segna da controllare")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is False
+    assert trovate[0]["candidati"] == [{"tipo": "etichetta", "riferimento": "da_controllare"}]
+
+
+def test_verifica_un_etichetta():
+    casa = dict(_CASA, etichette=[{"id": "da_controllare", "nome": "Da controllare"}])
+    trovato = costruisci_indice(casa).verifica("etichetta", "da_controllare")
+    assert trovato["nome"] == "Da controllare"
+
+
+def test_un_etichetta_orfana_si_trova_lo_stesso():
+    """Il caso che dimostra la chiusura del vicolo cieco: un'etichetta che
+    NON e' ancora assegnata a niente (nessuna entita', area o dispositivo
+    la porta) restava IRRAGGIUNGIBILE con la sola indicizzazione "come
+    termine di chi la porta" -- qui si trova comunque, perche' e' indicizzata
+    anche come candidato di se stessa."""
+    casa = {"aree": [], "entita": [], "dispositivi": [], "piani": [],
+            "categorie": [], "integrazioni": [],
+            "etichette": [{"id": "vacanza", "nome": "Vacanza"}]}
+    trovate = costruisci_indice(casa).trova("vacanza")
+    assert _riferimenti(trovate[0]) == {"vacanza"}
+    assert costruisci_indice(casa).verifica("etichetta", "vacanza") == {
+        "id": "vacanza", "nome": "Vacanza"}
+
+
+def test_due_etichette_omonime_sono_ambigue():
+    """Stessa regola delle due «Bagno» e dei due piani «Mansarda»:
+    l'ambiguita' si dichiara, non si sceglie in silenzio."""
+    casa = dict(_CASA, etichette=[{"id": "e1", "nome": "Da controllare"},
+                                  {"id": "e2", "nome": "Da controllare"}])
+    trovate = costruisci_indice(casa).trova("da controllare")
+    assert len(trovate) == 1
+    assert trovate[0]["ambiguo"] is True
+    assert _riferimenti(trovate[0]) == {"e1", "e2"}
+
+
+def test_un_etichetta_senza_nome_si_indicizza_col_suo_id():
+    """Stessa disciplina di `nomi_delle_etichette` (anagrafe.py): un
+    registro con un'etichetta senza nome non produce un termine muto -- si
+    usa l'id, l'unica cosa che si conosce di lei."""
+    casa = dict(_CASA, etichette=[{"id": "senza_nome", "nome": None}])
+    trovate = costruisci_indice(casa).trova("senza_nome")
+    assert _riferimenti(trovate[0]) == {"senza_nome"}

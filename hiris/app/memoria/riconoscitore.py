@@ -424,4 +424,33 @@ def costruisci_indice(casa: dict,
                                   *categorie_con_nome(voce, nomi_categorie).values()]:
             _registra(termini, termine_originale, (tipo_voce, riferimento))
 
+    # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md
+    # §2): fin qui sopra un'etichetta entrava nell'indice SOLO come termine
+    # che porta a un'entita'/area/dispositivo/automazione che la porta (vedi
+    # "Nome, alias E ETICHETTE" piu' sopra) -- mai come candidato essa
+    # stessa. Un'etichetta ancora inutilizzata, o assegnata solo a cose
+    # disabilitate o fuori registro, restava IRRAGGIUNGIBILE: nessuna
+    # sequenza di chiamate produceva mai il suo `label_id`, che
+    # `esegui(bersaglio.etichette=...)` pretende -- il vicolo cieco piu'
+    # radicale della famiglia (R2). Qui il suo NOME diventa un termine che
+    # porta a SE STESSA -- tipo "etichetta", riferimento il suo `label_id`
+    # -- cosi' un modello che sa solo il nome arriva all'id con UNA sola
+    # chiamata a `cerca`, invece di doverne prima trovare una cosa che la
+    # porta (che potrebbe non esistere).
+    #
+    # Fonte diversa da `_ARCHIVI` per lo stesso motivo di `comportamento`
+    # (vedi il commento su `_ARCHIVI` in cima al modulo): la tabella
+    # `etichette` non e' una voce con `nome`/`alias`/`etichette` proprie, e'
+    # gia' l'unione id->nome (`nomi_delle_etichette`, sopra). Un nome vuoto o
+    # un id assente non e' un'etichetta indicizzabile: si scarta invece di
+    # registrare un termine muto o un candidato senza riferimento.
+    registro_etichette = per_tipo.setdefault("etichetta", {})
+    for e in casa.get("etichette") or []:
+        label_id = e.get("id")
+        if label_id is None:
+            continue
+        nome_etichetta = (e.get("nome") or "").strip() or str(label_id)
+        registro_etichette[label_id] = {"id": label_id, "nome": nome_etichetta}
+        _registra(termini, nome_etichetta, ("etichetta", label_id))
+
     return Indice(termini, per_tipo)

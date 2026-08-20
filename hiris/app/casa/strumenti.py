@@ -135,9 +135,10 @@ CERCA_TOOL_DEF = {
     "name": "cerca",
     "description": (
         "Trova nella casa un'area, un'entita', un dispositivo, un piano, "
-        "un'automazione o uno script a partire da un nome o alias scritto in "
-        "linguaggio naturale (es. «il bagno», «la lavatrice», «il termostato del "
-        "salotto», «il piano di sotto», «la sveglia del mattino»). Per ogni "
+        "un'automazione, uno script o un'etichetta a partire da un nome o alias "
+        "scritto in linguaggio naturale (es. «il bagno», «la lavatrice», «il "
+        "termostato del salotto», «il piano di sotto», «la sveglia del mattino», "
+        "«da controllare»). Per ogni "
         "frammento di testo riconosciuto restituisce la lista COMPLETA dei candidati che quel nome "
         "puo' significare: se una sola voce lo usa la lista ha un elemento; se "
         "piu' voci si chiamano allo stesso modo (due «Bagno» su piani diversi, "
@@ -156,6 +157,11 @@ CERCA_TOOL_DEF = {
         "piano da solo: serve a `esegui(piani=...)`, per agire su tutte le aree di "
         "quel piano insieme. `automazione` e `script` invece si passano a `guarda` "
         "esattamente come `area`/`entita`/`dispositivo`. "
+        "Un candidato di tipo `etichetta` NEMMENO si passa a `guarda` (non e' una "
+        "cosa che si apre in dettaglio): il suo `riferimento` E' il `label_id` che "
+        "`esegui(bersaglio.etichette=[...])` pretende -- fino ad ora nessuna porta lo "
+        "faceva uscire per un'etichetta che nessuna entita' ancora porta; da «cerca» "
+        "sul suo NOME si arriva al `label_id` con una chiamata sola. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
         "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
@@ -175,8 +181,8 @@ CERCA_TOOL_DEF = {
                 "type": "string",
                 "description": (
                     "Il testo in cui cercare nomi di aree, entita', dispositivi, piani, "
-                    "automazioni o script, cosi' come l'ha scritto l'utente (es. "
-                    "'quanto fa caldo in soggiorno?')."
+                    "automazioni, script o etichette, cosi' come l'ha scritto l'utente "
+                    "(es. 'quanto fa caldo in soggiorno?')."
                 ),
             },
         },
@@ -472,8 +478,12 @@ ESEGUI_TOOL_DEF = {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Gli id delle etichette: tutto cio' che le porta, "
-                            "entita', dispositivi o aree."
+                            "Gli id delle etichette (`label_id`): tutto cio' che le "
+                            "porta, entita', dispositivi o aree. Si prendono da "
+                            "«cerca» sul NOME dell'etichetta (il candidato di tipo "
+                            "«etichetta» porta il suo id), o da «guarda», dove "
+                            "compaiono accanto al nome di ogni etichetta -- mai da "
+                            "solo, sono slug che nessuno scrive a memoria."
                         ),
                     },
                     "dispositivi": {

@@ -1,7 +1,8 @@
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import CERCA_TOOL_DEF, STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import (CERCA_TOOL_DEF, ESEGUI_TOOL_DEF,
+                                      STRUMENTI_CONOSCENZA, DispatcherStrumenti)
 from hiris.app.memoria.archivio import ArchivioMemoria
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
@@ -304,11 +305,29 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
 
 
 def test_cerca_tool_def_dichiara_i_tipi_nuovi():
-    """Requisito 4 del brief: la descrizione di `CERCA_TOOL_DEF` deve dire
-    cio' che lo strumento ora sa fare, non solo cio' che sapeva prima."""
-    for parola in ("piano", "automazione", "script"):
+    """Requisito 4 del brief T7 (esteso da T8): la descrizione di
+    `CERCA_TOOL_DEF` deve dire cio' che lo strumento ora sa fare, non solo
+    cio' che sapeva prima. «etichetta» (T8, R2) e' il tipo piu' recente:
+    senza dichiararlo qui, un modello che leggesse solo le definizioni degli
+    strumenti non scoprirebbe mai che `cerca` risolve un'etichetta per nome
+    -- il requisito 2 del brief T8 lo pretende esplicitamente («un modello
+    che sa solo il NOME di un'etichetta deve poter arrivare al label_id con
+    UNA chiamata»)."""
+    for parola in ("piano", "automazione", "script", "etichetta"):
         assert parola in CERCA_TOOL_DEF["description"], \
             f"CERCA_TOOL_DEF non dichiara «{parola}»"
+
+
+def test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id():
+    """Requisito 3 del brief T8 (R2): fino a questa fetta il `label_id` non
+    usciva da NESSUNA porta, e la descrizione del bersaglio non diceva
+    nemmeno DOVE andarlo a cercare -- un modello che leggesse solo la
+    definizione dello strumento non aveva modo di scoprire che «cerca» e
+    «guarda» lo producono ora."""
+    descrizione = ESEGUI_TOOL_DEF["input_schema"]["properties"]["bersaglio"][
+        "properties"]["etichette"]["description"].lower()
+    assert "cerca" in descrizione
+    assert "guarda" in descrizione
 
 
 class _CacheFinta:

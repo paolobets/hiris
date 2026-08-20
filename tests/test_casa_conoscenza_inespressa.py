@@ -84,25 +84,32 @@ def test_senza_piattaforma_la_chiave_non_compare(casa):
 # --- le etichette: la tassonomia scritta a mano dall'utente ---------------
 
 def test_guarda_un_entita_dice_le_sue_etichette_COL_NOME(casa):
-    """Col NOME, non col label_id.
+    """Col NOME protagonista, non lo slug al suo posto -- ma da T8 (R2) col
+    `label_id` accanto, come dato ACCESSORIO: `Nome (id: X)`.
 
     Home Assistant mette nei registri gli slug (`da_controllare`) e tiene i
     nomi in un registro a parte, che l'anagrafe salva gia' nella tabella
     `etichette`. Senza l'unione, HIRIS riferisce all'utente una stringa che
     l'utente non ha mai scritto -- e che non cambia mai piu': rinominare
-    l'etichetta in Home Assistant non tocca il suo id."""
+    l'etichetta in Home Assistant non tocca il suo id.
+
+    L'id NON sparisce piu' (come faceva fino a questa fetta): fino a T8
+    `esegui(bersaglio.etichette=[...])` pretendeva un `label_id` che
+    nessuna porta faceva uscire -- il vicolo cieco piu' radicale della
+    famiglia (R2, docs/design/2026-08-20-i-riferimenti.md)."""
     d = guarda(casa, [], [], {}, "entita", "sensor.frigo_temp")
-    assert d["etichette"] == ["Da controllare", "Consumi"]
+    assert d["etichette"] == ["Da controllare (id: da_controllare)",
+                              "Consumi (id: consumi)"]
 
 
 def test_guarda_un_area_dice_le_sue_etichette(casa):
     d = guarda(casa, [], [], {}, "area", "cucina")
-    assert d["etichette"] == ["Piano terra"]
+    assert d["etichette"] == ["Piano terra (id: piano_terra)"]
 
 
 def test_guarda_un_dispositivo_dice_le_sue_etichette(casa):
     d = guarda(casa, [], [], {}, "dispositivo", "d1")
-    assert d["etichette"] == ["Elettrodomestici"]
+    assert d["etichette"] == ["Elettrodomestici (id: elettrodomestici)"]
 
 
 def test_senza_etichette_la_chiave_non_compare(casa):

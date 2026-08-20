@@ -389,3 +389,40 @@ async def test_la_chiamata_dello_schedulatore_per_una_notifica_e_accettata():
     }
     v = verifica(chiamata_dello_schedulatore, await _registro_pronto(), STATI)
     assert v.ok is True, v.motivo
+
+
+# --- T8 (R2): dal nome di un'etichetta al label_id a un esegui verificato --
+#
+# Requisito 4 del brief: il giro intero che chiude il vicolo cieco piu'
+# radicale della famiglia (R2, docs/design/2026-08-20-i-riferimenti.md) --
+# dal NOME che l'utente ha scritto in Home Assistant, per `cerca`, al
+# `label_id`, a un bersaglio di `esegui` che `verifica()` ACCETTA. Non si
+# esegue: basta che il verdetto sia positivo con un id che, fino a questa
+# fetta, nessuna porta faceva uscire.
+
+_CASA_CON_ETICHETTA = {
+    "piani": [], "aree": [], "dispositivi": [], "entita": [],
+    "categorie": [], "integrazioni": [],
+    "etichette": [{"id": "da_controllare", "nome": "Da controllare"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_dal_nome_di_un_etichetta_al_label_id_a_una_verifica_che_passa():
+    from hiris.app.casa.domande import cerca
+    from hiris.app.memoria.riconoscitore import costruisci_indice
+
+    indice = costruisci_indice(_CASA_CON_ETICHETTA)
+    trovati = cerca(indice, "da controllare")
+    candidato = next(c for t in trovati for c in t["candidati"]
+                     if c["tipo"] == "etichetta")
+    assert candidato["riferimento"] == "da_controllare"
+
+    v = verifica({"servizio": "light.turn_off",
+                  "bersaglio": {"etichette": [candidato["riferimento"]]}},
+                 await _registro_pronto(), STATI,
+                 risolto={"entita": ["light.salotto"], "dispositivi": [], "aree": [],
+                          "dispositivi_mancanti": [], "aree_mancanti": [],
+                          "piani_mancanti": [], "etichette_mancanti": []})
+    assert v.ok is True, v.motivo
+    assert v.entita == ("light.salotto",)

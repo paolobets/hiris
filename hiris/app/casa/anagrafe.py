@@ -203,6 +203,28 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str],
     return stato, nomi, unita, classi
 
 
+def nome_con_id(nome: str, id_: str | None) -> str:
+    """Nome con l'id accanto tra parentesi, quando l'id dice qualcosa che il
+    nome da solo non dice (R1/R2, fetta "i riferimenti", incidente
+    2026-08-20).
+
+    LA regola unica dietro ogni riferimento della casa che deve portare
+    entrambi -- il nome protagonista, l'id accessorio: nata in `nucleo.py`
+    per l'albero (aree, piani, automazioni/script -- le pseudo-aree la
+    applicavano gia' da sole), qui perche' `etichette_con_nome` sotto la
+    riusa per lo stesso motivo (T8, R2) -- **un posto solo**, non una
+    seconda formattazione che domani diverge dalla prima (fondamenta:
+    stessa forma per lo stesso fatto).
+
+    Tace in due casi: id assente, e id identico al nome (un riferimento
+    penzolante, dove l'unica cosa che si conosce di lui e' il suo id) -- in
+    entrambi una parentesi in piu' sarebbe rumore, non informazione.
+    """
+    if not id_ or id_ == nome:
+        return nome
+    return f"{nome} (id: {id_})"
+
+
 def nomi_delle_etichette(casa: dict) -> dict[str, str]:
     """label_id -> nome, dal registro delle etichette dell'anagrafe.
 
@@ -229,17 +251,51 @@ def nomi_delle_etichette(casa: dict) -> dict[str, str]:
             for e in casa.get("etichette") or [] if e.get("id")}
 
 
+def _etichette_id_e_nome(voce: dict, nomi: dict[str, str]) -> list[tuple[str, str]]:
+    """(label_id, nome) per ogni etichetta valida della voce -- la base
+    condivisa da `etichette_con_nome` (ricerca: nomi PURI, mai l'id nel
+    testo che si indicizza) ed `etichette_con_id` (display: nome+id
+    accessorio, T8). Un id che il registro non conosce resta com'e' invece
+    di sparire: e' un riferimento penzolante (o un registro delle etichette
+    non letto), e «questa cosa ha un'etichetta che non so nominare» e' piu'
+    vero di «questa cosa non ha etichette». Stessa scelta di `gerarchia()`
+    con le aree sconosciute.
+    """
+    return [(str(e), nomi.get(str(e), str(e))) for e in (voce.get("etichette") or [])
+            if str(e).strip()]
+
+
 def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
     """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
 
-    Un id che il registro non conosce resta com'e' invece di sparire: e' un
-    riferimento penzolante (o un registro delle etichette non letto), e
-    «questa cosa ha un'etichetta che non so nominare» e' piu' vero di «questa
-    cosa non ha etichette». Stessa scelta di `gerarchia()` con le aree
-    sconosciute.
+    SOLO nomi, MAI l'id nel testo: alimenta anche l'indice di `cerca`
+    (`memoria/riconoscitore.py::costruisci_indice`), che indicizza questi
+    stessi nomi come TERMINI di ricerca -- un `label_id` mescolato nel
+    testo renderebbe "da controllare" irriconoscibile, perche' il termine
+    indicizzato sarebbe "da controllare (id: da_controllare)" e nessuno lo
+    scrive cosi'. Chi vuole l'id accanto per un display usa
+    `etichette_con_id` sotto: due usi diversi, due funzioni -- non una che
+    prova a servirli entrambi.
     """
-    return [nomi.get(str(e), str(e)) for e in (voce.get("etichette") or [])
-            if str(e).strip()]
+    return [nome for _, nome in _etichette_id_e_nome(voce, nomi)]
+
+
+def etichette_con_id(voce: dict, nomi: dict[str, str]) -> list[str]:
+    """Come `etichette_con_nome`, ma col `label_id` accanto come dato
+    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `nome_con_id` che
+    l'albero del nucleo usa gia' per aree/piani/automazioni (T8, R2:
+    decisione del proprietario 2026-08-20,
+    docs/design/2026-08-20-i-riferimenti.md §2).
+
+    Fino a questa fetta il `label_id` non usciva da NESSUNA porta:
+    `esegui(bersaglio.etichette=[...])` lo pretende, e nessuna sequenza di
+    chiamate lo produceva mai -- il vicolo cieco piu' radicale della
+    famiglia (R2). Per USARE questa funzione al posto di
+    `etichette_con_nome`: solo dove il testo e' per un umano/modello da
+    LEGGERE (`guarda`), mai dove diventa un termine da CERCARE -- vedi il
+    docstring di `etichette_con_nome`.
+    """
+    return [nome_con_id(nome, id_) for id_, nome in _etichette_id_e_nome(voce, nomi)]
 
 
 def nomi_delle_categorie(casa: dict) -> dict[tuple[str, str], str]:

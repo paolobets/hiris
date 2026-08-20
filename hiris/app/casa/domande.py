@@ -49,7 +49,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from .anagrafe import (categorie_con_nome, classe_effettiva, dominio_di,
-                       etichette_con_nome, gerarchia, nomi_delle_categorie,
+                       etichette_con_id, gerarchia, nomi_delle_categorie,
                        nomi_delle_etichette, traduci_stato, unita_effettiva)
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
@@ -316,14 +316,23 @@ def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) 
     porta. Un'etichetta che non porta a niente costringe l'utente a ripetere a
     parole cio' che aveva gia' dichiarato una volta.
 
-    Escono col NOME, non col `label_id`: l'unione la fa
-    `anagrafe.nomi_delle_etichette`, la stessa che usa l'indice di `cerca`.
+    Escono col NOME protagonista, col `label_id` accanto come dato
+    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `anagrafe.nome_con_id`
+    (T8, R2: fino a questa fetta il `label_id` non usciva da NESSUNA porta,
+    eppure `esegui(bersaglio.etichette=[...])` lo pretende -- il vicolo cieco
+    piu' radicale della famiglia, docs/design/2026-08-20-i-riferimenti.md).
+    La scelta di leggibilita' di questo modulo NON cambia: la parentesi entra
+    solo perche' l'id serve, non al posto del nome. L'unione la fa
+    `anagrafe.nomi_delle_etichette`, la stessa che usa l'indice di `cerca` --
+    che da T8 conosce anche le etichette stesse come candidati
+    (`memoria/riconoscitore.py::costruisci_indice`), per chi sa solo il nome
+    e non ha ancora nessuna cosa che la porti.
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle etichette caduto. Stessa disciplina di `unita`.
     """
-    etichette = etichette_con_nome(voce, nomi_etichette)
+    etichette = etichette_con_id(voce, nomi_etichette)
     if etichette:
         dettaglio["etichette"] = etichette
     return dettaglio
