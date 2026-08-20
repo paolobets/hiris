@@ -155,6 +155,20 @@ _NOMI_DOMINIO = {
 # `_DOMINI_EVENTO`). Non basta piu' un insieme di stringhe: `on` su una luce e
 # `on` su un'automazione sono due fatti diversi, e fino alla fetta «il
 # vocabolario delle tipologie» erano la stessa riga.
+#
+# La fonte, stato per stato -- verificata su home-assistant/core il
+# 20/08/2026 (ramo `dev`, non un modulo installato: nucleo.py resta PURO,
+# vedi il docstring in testa al file):
+#   "on"       -- STATE_ON,       homeassistant/const.py
+#   "open"     -- STATE_OPEN,     homeassistant/const.py
+#   "playing"  -- STATE_PLAYING,  homeassistant/const.py
+#   "unlocked" -- LockState.UNLOCKED,   homeassistant/components/lock/const.py
+#   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
+# Senza Home Assistant installato non c'e' un enum da importare e confrontare
+# a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
+# dichiarato) in tests/test_vocabolario_tipologie.py. Da riguardare quando
+# `_DOMINI_EVENTO` guadagna un dominio nuovo -- porta con se' il proprio
+# stato "attivo" da aggiungere qui.
 _STATI_ATTIVI = {"on", "open", "unlocked", "playing", "cleaning"}
 
 # I domini in cui l'attivo e' un'ECCEZIONE rispetto al riposo -- cioe' in cui
@@ -170,6 +184,14 @@ _STATI_ATTIVI = {"on", "open", "unlocked", "playing", "cleaning"}
 #   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
 #   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
 #     dei 72 `button` di questa casa sono `unknown` per costruzione.
+#
+# Ognuno dei dieci e' una piattaforma vera di Home Assistant (sottoinsieme
+# dichiarato di `_PIATTAFORME_HA`, la stessa fonte -- homeassistant/generated/
+# entity_platforms.py -- copiata in tests/test_vocabolario_domini.py); QUALE
+# sottoinsieme merita il trattamento "evento" e' un giudizio del prodotto,
+# non qualcosa che HA dichiara da se'. Pinnato in
+# tests/test_vocabolario_tipologie.py: da riguardare quando un dominio nuovo
+# entra nel prodotto e ha un proprio stato "attivo" degno di annuncio.
 _DOMINI_EVENTO = {
     "light", "switch", "cover", "lock", "fan",
     "media_player", "valve", "remote", "siren", "vacuum",
@@ -181,6 +203,16 @@ _DOMINI_EVENTO = {
 # `presence`, `sound`, `vibration`, `light`, `running`, `moving`, `power`,
 # `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
 # `battery_charging`), che si vanno a chiedere e non si annunciano.
+#
+# Sottoinsieme DICHIARATO delle 28 classi di
+# developers.home-assistant.io/docs/core/entity/binary-sensor/ -- la STESSA
+# fonte di `_SIGNIFICATO_CLASSE` in anagrafe.py (verificata il 16/08/2026):
+# ogni classe qui elencata deve comparire anche li', altrimenti si leggerebbe
+# «acceso» invece del suo significato -- e' l'incoerenza pinnata da
+# test_ogni_classe_di_evento_ha_anche_un_significato (sottoinsieme, piu'
+# forte di un elenco ricopiato). L'elenco stesso e' pinnato di suo (mutazione:
+# toglierne una classe fa rosso) in tests/test_vocabolario_tipologie.py; da
+# riguardare quando HA aggiunge una nuova device_class di allarme o apertura.
 _CLASSI_EVENTO = {
     # allarmi
     "moisture", "smoke", "gas", "carbon_monoxide", "safety", "tamper", "problem",
