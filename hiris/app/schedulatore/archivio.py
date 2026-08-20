@@ -18,7 +18,8 @@ import threading
 
 from ..storage import connect, init_schema
 from .promessa import (
-    CONSERVAZIONE_S, STATI_CONCLUSI, TETTO_IN_SOSPESO, serializza, valida,
+    CONSERVAZIONE_S, STATI_CONCLUSI, STATI_SOSPESO, TETTO_IN_SOSPESO,
+    serializza, valida,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
 
 _CONCLUSI = ",".join("'%s'" % s for s in STATI_CONCLUSI)
+# Stessa forma di `_CONCLUSI` qui sopra, per lo stesso motivo: composta UNA
+# volta dal vocabolario di `promessa.py`, mai riscritta a mano nelle due
+# query sotto (review finale, rilievo ②).
+_SOSPESI = ",".join("'%s'" % s for s in STATI_SOSPESO)
 
 
 def _json(valore) -> str | None:
@@ -72,7 +77,7 @@ class ArchivioPromesse:
         with self._lock:
             self._pota(adesso)
             in_sospeso = self._conn.execute(
-                "SELECT count(*) FROM promesse WHERE stato IN ('in_attesa','in_corso')"
+                "SELECT count(*) FROM promesse WHERE stato IN (%s)" % _SOSPESI
             ).fetchone()[0]
             if in_sospeso >= TETTO_IN_SOSPESO:
                 return {"errore": ("ho gia' %d promesse in sospeso, che e' il tetto "
@@ -176,8 +181,9 @@ class ArchivioPromesse:
         with self._lock:
             if solo_in_sospeso:
                 righe = self._conn.execute(
-                    "SELECT * FROM promesse WHERE stato IN ('in_attesa','in_corso') "
-                    "ORDER BY quando_ts ASC LIMIT ?", (int(limite),)).fetchall()
+                    "SELECT * FROM promesse WHERE stato IN (%s) "
+                    "ORDER BY quando_ts ASC LIMIT ?" % _SOSPESI,
+                    (int(limite),)).fetchall()
             else:
                 righe = self._conn.execute(
                     "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",

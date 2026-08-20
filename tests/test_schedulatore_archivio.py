@@ -129,6 +129,40 @@ def test_il_tetto_delle_in_sospeso_rifiuta_nominandolo(archivio):
     assert str(TETTO_IN_SOSPESO) in esito["errore"]
 
 
+def test_elenca_in_sospeso_include_anche_in_corso(archivio):
+    """Review finale, rilievo ②: l'insieme «in sospeso» e' `STATI_SOSPESO`
+    (`schedulatore/promessa.py`), non solo `in_attesa` -- una promessa presa
+    dall'orologio (`in_corso`) non e' ancora conclusa (guida di disegno §1),
+    e non deve sparire dall'elenco fra `prendi()` e `concludi()`.
+
+    Mutazione che deve farlo fallire: restringere la query di `elenca` a
+    `stato='in_attesa'`."""
+    ident = archivio.crea(_fai(), adesso=ADESSO)["promessa"]["id"]
+    archivio.prendi(ident, adesso=ADESSO + 1)
+
+    sospese = archivio.elenca(solo_in_sospeso=True)
+    assert [p["id"] for p in sospese] == [ident]
+    assert sospese[0]["stato"] == "in_corso"
+
+
+def test_lo_stato_in_corso_conta_nel_tetto_delle_in_sospeso(archivio):
+    """Una promessa presa dall'orologio (`in_corso`) e' ancora sospesa, e
+    deve continuare a occupare un posto sotto `TETTO_IN_SOSPESO` -- se
+    contasse solo `in_attesa`, l'orologio potrebbe far salire il numero vero
+    di promesse in volo oltre il tetto nella finestra fra `prendi` e
+    `concludi`.
+
+    Mutazione che deve farlo fallire: contare `stato='in_attesa'` invece di
+    `stato IN (STATI_SOSPESO)` in `crea()`."""
+    for _ in range(TETTO_IN_SOSPESO - 1):
+        archivio.crea(_fai(), adesso=ADESSO)
+    ultima = archivio.crea(_fai(), adesso=ADESSO)["promessa"]["id"]
+    assert archivio.prendi(ultima, adesso=ADESSO + 1) is True  # ora e' in_corso
+
+    esito = archivio.crea(_fai(), adesso=ADESSO)
+    assert "errore" in esito, "in_corso deve continuare a contare per il tetto"
+
+
 def test_le_concluse_vecchie_si_potano_alla_scrittura_le_in_sospeso_mai(archivio):
     vecchia = archivio.crea(_fai(quando_ts=ADESSO + 10), adesso=ADESSO)["promessa"]["id"]
     archivio.prendi(vecchia, adesso=ADESSO + 10)

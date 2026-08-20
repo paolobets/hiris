@@ -1,8 +1,13 @@
 """La forma di una promessa: cosa può nascere, e come si legge da tutte le porte."""
+import re
+from pathlib import Path
+
 from hiris.app.schedulatore.promessa import (
-    CONSERVAZIONE_S, ORIZZONTE_S, TETTO_IN_SOSPESO, TOLLERANZA_S,
-    motivo_ritardo, serializza, valida,
+    CONSERVAZIONE_S, ORIZZONTE_S, STATI_CONCLUSI, STATI_SOSPESO,
+    TETTO_IN_SOSPESO, TOLLERANZA_S, motivo_ritardo, serializza, valida,
 )
+
+BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 ADESSO = 1_755_600_000.0  # un istante fisso: nessun test di questo file legge l'orologio
 
@@ -112,3 +117,42 @@ def test_il_motivo_del_ritardo_dice_i_minuti_misurati():
 def test_le_costanti_sono_quelle_dichiarate_nella_spec():
     assert (TOLLERANZA_S, ORIZZONTE_S, TETTO_IN_SOSPESO, CONSERVAZIONE_S) == (
         120, 30 * 86400, 50, 90 * 86400)
+
+
+# ---------------------------------------------------------------------------
+# STATI_SOSPESO / STATI_CONCLUSI: lo stesso insieme in Python e nel
+# JavaScript della pagina (review finale, rilievo ②). Il vocabolario di
+# `promesse-route.js` esiste PRIMA di questo test -- qui non e' un doppione
+# costruito apposta, e' quello LEGATO da una prova (`scripts/doppioni.py`,
+# `_costanti_gia_legate`): la divergenza smette di essere silenziosa perche'
+# questo test la vede.
+#
+# Un test gemello, dal lato JavaScript, vive in
+# `tests/js/promesse-route-vocabolario.test.mjs` (stesso confronto, letto
+# nell'altro verso): questo qui chiude specificamente il rilevatore
+# meccanico del progetto, che sa leggere solo prove Python che nominano la
+# costante e leggono un `.js`.
+# ---------------------------------------------------------------------------
+
+def _promesse_route_js() -> str:
+    return (BASE / "config" / "promesse-route.js").read_text(encoding="utf-8")
+
+
+def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
+    js = _promesse_route_js()
+    m = re.search(r"var STATI_SOSPESO = \[([^\]]*)\];", js)
+    assert m, "STATI_SOSPESO non trovata in promesse-route.js"
+    dal_js = {s.strip().strip("'\"") for s in m.group(1).split(",") if s.strip()}
+    assert dal_js == set(STATI_SOSPESO)
+
+
+def test_ogni_stato_concluso_ha_una_voce_in_stato_label_e_stato_badge():
+    js = _promesse_route_js()
+    label = re.search(r"var STATO_LABEL = \{([\s\S]*?)\};", js)
+    badge = re.search(r"var STATO_BADGE = \{([\s\S]*?)\};", js)
+    assert label and badge, "STATO_LABEL / STATO_BADGE non trovati in promesse-route.js"
+    chiavi_label = set(re.findall(r"(\w+):", label.group(1)))
+    chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
+    for stato in STATI_CONCLUSI:
+        assert stato in chiavi_label, "STATO_LABEL non conosce «%s»" % stato
+        assert stato in chiavi_badge, "STATO_BADGE non conosce «%s»" % stato

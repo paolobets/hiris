@@ -20,6 +20,18 @@ import json
 
 SPECIE = ("fai", "chiedi")
 STATI_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
+# L'insieme «in sospeso» -- la sua UNICA casa (review finale, rilievo ②).
+# Prima viveva scritto a mano in due punti di `archivio.py` (due `WHERE
+# stato IN (...)` SQL letterali) e una terza volta in
+# `static/config/promesse-route.js::STATI_SOSPESO`, senza niente che li
+# legasse: uno stato non conclusivo aggiunto qui un domani sarebbe sparito
+# in silenzio dalla sezione azionabile della pagina, senza che niente
+# fallisse -- precisamente il rischio che la spec §12 nomina per la fetta
+# successiva (i lavori di sistema, «la specie e' un campo, non un `if`»).
+# `tests/js/promesse-route-vocabolario.test.mjs` lega questo insieme al
+# JavaScript: e' quello che rende la divergenza NON silenziosa
+# (`scripts/doppioni.py`, `_costanti_gia_legate`).
+STATI_SOSPESO = ("in_attesa", "in_corso")
 
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
 # si dichiara `saltata`. Una sola, non configurabile per promessa (spec §7).
