@@ -269,6 +269,34 @@ def test_guarda_un_area_non_trovata_dichiara_il_registro_caduto():
     assert dettaglio["non_disponibile"] is True
 
 
+def test_guarda_col_registro_caduto_non_suggerisce_cerca():
+    """Review indipendente Task 3 (Important, confermato): quando il
+    registro e' caduto (`non_disponibile: True`), la causa non e' un nome
+    scambiato per un id -- e' un guasto. `cerca` legge la STESSA anagrafe
+    incompleta, quindi suggerirlo sarebbe una strada altrettanto cieca, e
+    diluirebbe la distinzione fra "non trovato" e "non ho potuto guardare"
+    che questo file marca come critica tre volte (CRITICAL ③). Le due
+    chiavi sono mutuamente esclusive sui tre rami: mai insieme."""
+    con_registro_caduto = {
+        "area": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "area", "taverna", non_disponibili=("aree",)),
+        "entita": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                         "entita", "light.cucina_0", non_disponibili=("entita",)),
+        "dispositivo": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                              "dispositivo", "d_inventato", non_disponibili=("dispositivi",)),
+    }
+    for tipo, dettaglio in con_registro_caduto.items():
+        assert dettaglio["esiste"] is False
+        assert dettaglio["non_disponibile"] is True
+        assert "suggerimento" not in dettaglio, \
+            f"il ramo «{tipo}» suggerisce «cerca» anche col registro caduto"
+    # Il caso normale (nessun registro caduto) continua ad avere il
+    # suggerimento -- la condizione nuova non lo cancella per tutti.
+    senza_registro_caduto = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                                   "area", "taverna")
+    assert "suggerimento" in senza_registro_caduto
+
+
 def test_guarda_un_automazione_non_trovata_dichiara_i_file_non_letti():
     """CRITICAL ③, quinto ramo: `_guarda_comportamento` non aveva alcun
     punto d'ingresso per `file_non_letti` -- uno script il cui file non si

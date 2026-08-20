@@ -352,6 +352,35 @@ def _suggerimento_cerca(riferimento) -> str:
             f"poi ripeti «guarda» con quello.")
 
 
+def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dict:
+    """Il dict `esiste: False` comune ai tre rami che possono confondere un
+    NOME con un id -- area, entita', dispositivo.
+
+    "non trovato" ha due cause DIVERSE (CRITICAL ③, gia' pagato piu' volte
+    su questo file): il riferimento non c'e' davvero, oppure il registro
+    che lo conterrebbe non ha risposto. Sono anche due RIMEDI diversi, non
+    solo due dichiarazioni:
+
+    - riferimento assente -> `suggerimento` (invita a `cerca`, potrebbe
+      essere un nome scambiato per un id);
+    - registro caduto -> SOLO `non_disponibile`, MAI `suggerimento`:
+      `cerca` legge la STESSA anagrafe incompleta, quindi "prova a
+      cercare" sarebbe una strada altrettanto cieca -- e diluirebbe
+      proprio la distinzione che `non_disponibile` esiste per marcare
+      (review indipendente Task 3, confermata: suggerire quando la causa
+      e' un guasto e' un rischio, non un aiuto).
+
+    Un punto solo per questa scelta: i tre rami non portano tre copie
+    della stessa condizione, e chi la cambia la cambia qui una volta sola.
+    """
+    dettaglio = {"esiste": False, "tipo": tipo, "riferimento": riferimento}
+    if registro_caduto:
+        dettaglio["non_disponibile"] = True
+    else:
+        dettaglio["suggerimento"] = _suggerimento_cerca(riferimento)
+    return dettaglio
+
+
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
                  nomi_di_ripiego: dict[str, str] | None = None,
@@ -368,16 +397,13 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     nomi_categorie = nomi_delle_categorie(casa)
     area = _trova_area(piani, riferimento)
     if area is None:
-        dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento,
-                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③: se il registro delle aree non ha risposto, "non
         # trovata" non e' lo stesso di "non esiste" -- potrebbe stare
         # proprio nella parte che non si e' letta. Senza dichiararlo, il
         # modello legge "quest'area non esiste nella tua casa", un'
-        # affermazione che nessuno ha il diritto di fare.
-        if "aree" in non_disponibili:
-            dettaglio["non_disponibile"] = True
-        return dettaglio
+        # affermazione che nessuno ha il diritto di fare. La scelta fra
+        # `non_disponibile` e `suggerimento` e' in `_dettaglio_non_trovato`.
+        return _dettaglio_non_trovato("area", riferimento, "aree" in non_disponibili)
     entita = [
         _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
@@ -425,17 +451,13 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  classi_vive: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
-        dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento,
-                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
         # lascia la tabella vuota), un'entita' vera non trovata qui non e'
         # un'entita' che non esiste -- e' un registro che non ha risposto.
         # Prima di questo fix la firma non aveva nemmeno un punto d'ingresso
         # per dirlo: `non_disponibili` era ricevuto da `guarda()` ma
         # inoltrato SOLO a `_guarda_area`.
-        if "entita" in non_disponibili:
-            dettaglio["non_disponibile"] = True
-        return dettaglio
+        return _dettaglio_non_trovato("entita", riferimento, "entita" in non_disponibili)
     dettaglio = {
         "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
         # `unita` NON viene da qui: `config/entity_registry/list` risponde con
@@ -473,13 +495,10 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
-        dettaglio = {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento,
-                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③, stesso difetto applicato al dispositivo: col registro
         # "dispositivi" caduto, "non trovato" non e' "non esiste".
-        if "dispositivi" in non_disponibili:
-            dettaglio["non_disponibile"] = True
-        return dettaglio
+        return _dettaglio_non_trovato("dispositivo", riferimento,
+                                      "dispositivi" in non_disponibili)
     # Stessa ragione per cui `_guarda_entita` porta `disabilitata`: qui si
     # legge `casa["entita"]` grezzo, fuori da `gerarchia()`, che le disabilitate
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
@@ -605,6 +624,14 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     non su `_guarda_comportamento` ne' su `_guarda_ricordo`, che non hanno
     questa ambiguita' (un id di automazione/script/ricordo non si scrive
     mai al posto di un nome).
+
+    MA non quando `non_disponibile` e' vero (`_dettaglio_non_trovato`): se
+    il registro e' caduto, `cerca` legge la STESSA anagrafe incompleta --
+    suggerirlo sarebbe una strada altrettanto cieca, e diluirebbe la
+    distinzione fra "non trovato" e "non ho potuto guardare" che questo
+    modulo marca come critica. Le due chiavi sono quindi mutuamente
+    esclusive su questi tre rami: mai `suggerimento` insieme a
+    `non_disponibile`.
 
     E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
     il riferimento non c'e' (le cinque funzioni qui sopra), oppure il TIPO
