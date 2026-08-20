@@ -5,10 +5,17 @@ le sole due rotte in prova -- vedi lo stesso ragionamento in
 `test_impostazioni_api.py`. La rotta nuova deve passare dagli stessi
 middleware di ogni altra (`internal_auth_middleware`, `csrf_middleware`): un
 test che li scavalcasse non direbbe niente su cio' che accade in produzione.
-Il CSRF resta silenzioso qui perche' `conftest.py` mette
-`HIRIS_ALLOW_NO_CSRF=1` per l'intera suite -- la stessa valvola che ogni
-altro test di API con questa fixture usa (vedi `test_api.py`,
-`test_impostazioni_api.py`): nessuna eccezione dedicata a questa rotta.
+
+Per la maggior parte dei test il CSRF resta silenzioso perche' `conftest.py`
+mette `HIRIS_ALLOW_NO_CSRF=1` per l'intera suite. Ma l'invariante «questa
+DELETE rifiuta le scritture cross-site» merita un test proprio, non solo la
+copertura generica di `test_security.py`: la sorella `/api/memoria/{id}` ha
+lo stesso trattamento in `test_impostazioni_api.py` (fixture `csrf_stretto`,
+riusata qui per import -- niente di specifico alle impostazioni, stesso
+riuso cross-file gia' praticato dal progetto per `client`). Senza un test
+dedicato, una futura esenzione aggiunta per errore (o una registrazione
+della rotta prima del middleware) lascerebbe la suite verde: vedi
+`test_delete_senza_x_requested_with_e_403_e_non_disdice` piu' sotto.
 """
 import os
 
@@ -18,6 +25,11 @@ import pytest_asyncio
 from hiris.app.chat_store import close_all_stores
 from hiris.app.schedulatore.archivio import ArchivioPromesse
 from hiris.app.server import create_app
+# Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),
+# senza niente di specifico alle impostazioni: stesso riuso cross-file gia'
+# praticato dal progetto per `client` (vedi `test_elenco_anthropic.py`,
+# `test_models_api.py`). Non ne scrivo una seconda identica.
+from tests.test_impostazioni_api import csrf_stretto  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +83,13 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
                            "quando_ts": 3601.0, "domanda": "?"},
                           adesso=1.0)["promessa"]["id"]
 
-    assert (await client.delete("/api/promesse/%s" % ident)).status == 200
+    primo = await client.delete("/api/promesse/%s" % ident)
+    assert primo.status == 200
+    # Il corpo del 200 deve portare la promessa vera, non un `{}`: e' il
+    # corpo che la pagina usera' per aggiornarsi senza una seconda GET.
+    corpo = await primo.json()
+    assert corpo["promessa"]["id"] == ident
+    assert corpo["promessa"]["stato"] == "disdetta"
     assert archivio.leggi(ident)["stato"] == "disdetta"
 
     secondo = await client.delete("/api/promesse/%s" % ident)
@@ -82,6 +100,36 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
 @pytest.mark.asyncio
 async def test_delete_di_un_id_inesistente_da_404(client):
     assert (await client.delete("/api/promesse/mai-esistita")).status == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_stretto):
+    """La rotta non ha un'autenticazione propria: passa dallo stesso
+    `csrf_middleware` di `/api/memoria/{id}`. Un 403 non deve aver toccato
+    l'archivio -- la promessa resta `in_attesa`, disdicibile per davvero piu'
+    tardi, non "disdetta a meta'"."""
+    archivio = client.app["promesse"]
+    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+                           "quando_ts": 3601.0, "domanda": "?"},
+                          adesso=1.0)["promessa"]["id"]
+
+    risposta = await client.delete("/api/promesse/%s" % ident)
+    assert risposta.status == 403
+    assert (await risposta.json())["error"] == "csrf_required"
+    assert archivio.leggi(ident)["stato"] == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, csrf_stretto):
+    archivio = client.app["promesse"]
+    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+                           "quando_ts": 3601.0, "domanda": "?"},
+                          adesso=1.0)["promessa"]["id"]
+
+    risposta = await client.delete("/api/promesse/%s" % ident,
+                                   headers={"X-Requested-With": "fetch"})
+    assert risposta.status == 200
+    assert archivio.leggi(ident)["stato"] == "disdetta"
 
 
 @pytest.mark.asyncio
