@@ -19,19 +19,25 @@ from hiris.app.azione.verifica import verifica
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
-        # `target` come lo manda Home Assistant davvero (vedi
-        # `tests/test_azione_bersagli.py`, che lo misura per prima): senza,
-        # `test_senza_bersaglio_rifiutato` sotto passerebbe per il motivo
-        # sbagliato dopo la review finale (rilievo CRITICO ①) -- non perche'
-        # «serve un bersaglio», ma perche' nessun servizio di questo fixture
-        # ne dichiarava mai uno.
+        # `target`, scritto a mano nella forma plausibile di /api/services
+        # (NON misurato su un'installazione vera -- vedi la nota sopra
+        # `_DOMINI_UNIVERSALI` in `azione/verifica.py`: quel dato non c'e'
+        # ancora). Senza, `test_senza_bersaglio_rifiutato` sotto passerebbe
+        # per il motivo sbagliato dopo la review finale (rilievo CRITICO ①)
+        # -- non perche' «serve un bersaglio», ma perche' nessun servizio di
+        # questo fixture ne dichiarava mai uno.
         "turn_on": {"fields": {"brightness_pct": {}, "transition": {}},
                     "target": {"entity": [{"domain": ["light"]}]}},
         "turn_off": {"fields": {"transition": {}},
                      "target": {"entity": [{"domain": ["light"]}]}},
     }},
     {"domain": "switch", "services": {"turn_on": {"fields": {}, "target": {}}}},
-    {"domain": "homeassistant", "services": {"turn_off": {"fields": {}}}},
+    {"domain": "homeassistant", "services": {
+        "turn_off": {"fields": {}},
+        # senza `target`, come `notify.*` -- ma "homeassistant" non e' un
+        # recapito: serve alla famiglia sotto (review indipendente, punto ①)
+        "restart": {"fields": {}},
+    }},
     # Un servizio SENZA `target`, come i `notify.*` veri: la review finale
     # (rilievo CRITICO ①) l'aggiunge apposta per provare che un bersaglio
     # vuoto e' legittimo qui e SOLO qui.
@@ -331,6 +337,31 @@ async def test_un_target_vuoto_ma_dichiarato_resta_rifiutato_senza_bersaglio():
     v = verifica({"servizio": "switch.turn_on"}, await _registro_pronto(), STATI)
     assert v.ok is False
     assert "serve un bersaglio" in v.motivo
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_di_sistema_senza_target_resta_rifiutato_senza_bersaglio():
+    """Decisione del proprietario (review indipendente, punto ①): il criterio
+    iniziale («senza target ⇒ bersaglio vuoto ammesso») era troppo largo --
+    rendeva raggiungibili dalla porta anche `homeassistant.restart`,
+    `hassio.host_reboot`, `recorder.purge`, `automation.reload`,
+    `shell_command.*`, oggi DI FATTO irraggiungibili perche' un bersaglio
+    vuoto era sempre un rifiuto e non esiste nessuna lista nera che li fermi
+    altrimenti. Il bersaglio vuoto resta ammesso SOLO per i recapiti
+    (`notify`, `persistent_notification`): `homeassistant.restart` non
+    dichiara un `target` (come i notify.*, vedi `RISPOSTA_HA`) ma non e' un
+    recapito, e deve restare rifiutato esattamente come prima.
+
+    Prova per mutazione: togliendo il controllo sulla famiglia da
+    `_bersaglio_vuoto_e_legittimo` (tornando a `not _dichiara_bersaglio(...)`
+    da solo) questo test diventa rosso.
+    """
+    v = verifica({"servizio": "homeassistant.restart"}, await _registro_pronto(), STATI)
+    assert v.ok is False
+    assert v.motivo == ("serve un bersaglio: «entita» con gli id esatti, oppure "
+                        "«aree», «piani», «etichette» o «dispositivi» -- Home "
+                        "Assistant risolve da se' cosa contengono, e non serve "
+                        "elencare le entita' a mano.")
 
 
 @pytest.mark.asyncio

@@ -68,9 +68,22 @@ significava che una promessa «chiedi» non poteva mai notificare
 (`schedulatore/orologio.py` costruisce la sua chiamata con `"bersaglio": {}`,
 e questa funzione la rifiutava incondizionatamente, PRIMA di guardare il
 servizio). Adesso un bersaglio vuoto e' legittimo quando -- e solo quando --
-il registro dice che quel servizio non dichiara un `target` (vedi
-`_dichiara_bersaglio`, e `Verdetto.senza_bersaglio`). Per ogni altro servizio
-il rifiuto resta identico a prima, parola per parola.
+il servizio non dichiara un `target` **e** appartiene alla famiglia dei
+recapiti (`_DOMINI_DI_RECAPITO`: `notify`, `persistent_notification`). Per
+ogni altro servizio il rifiuto resta identico a prima, parola per parola.
+
+**Perche' e' ristretto ai recapiti, e non a "qualunque servizio senza
+target".** La prima versione di questo fix (re-review indipendente) allargava
+su QUALUNQUE servizio senza `target`: avrebbe reso raggiungibili dalla porta
+anche `homeassistant.restart`, `hassio.host_reboot`, `recorder.purge`,
+`automation.reload`, `shell_command.*` -- servizi di sistema oggi DI FATTO
+irraggiungibili, perche' un bersaglio vuoto era sempre un rifiuto e non esiste
+nessuna lista nera che li fermi altrimenti. C'e' anche un'asimmetria che il
+reviewer ha trovato leggendo la nota sopra `_DOMINI_UNIVERSALI`: lo stesso
+campo `target` e' gia' giudicato INAFFIDABILE per RESTRINGERE (mai misurato su
+un'installazione vera), e non si puo' usarlo per ALLARGARE nello stesso
+momento senza la stessa cautela. Restringersi ai recapiti e' la famiglia che
+serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 """
 from dataclasses import dataclass, field
 from ..casa.anagrafe import dominio_di
@@ -124,8 +137,37 @@ def _dichiara_bersaglio(definizione: dict) -> bool:
     negativo qui richiede comunque un bersaglio in piu', mai in meno: per
     tutti gli altri servizi il rifiuto resta identico a prima, parola per
     parola).
+
+    **Non basta da sola** -- vedi `_bersaglio_vuoto_e_legittimo`, che la
+    combina con l'appartenenza alla famiglia dei recapiti: usata qui isolata
+    allargherebbe su qualunque servizio senza `target`, non solo su chi
+    serve davvero.
     """
     return isinstance(definizione.get("target"), dict)
+
+
+# I domini "di recapito": la SOLA famiglia per cui un bersaglio vuoto e'
+# ammesso quando il servizio non dichiara un `target` (review indipendente,
+# punto ①). Una casa sola, e provvisoria di proposito: non e' una lista nera
+# travestita da regola, e' una regola STRETTA in attesa di un dato. Si
+# allarghera' -- se si allarghera' -- quando la prova 1 di
+# `docs/prova-azione.md` avra' MISURATO cosa dichiara davvero `target` su
+# un'installazione vera per i servizi di sistema (`homeassistant.restart`,
+# `hassio.host_reboot`, `recorder.purge`, `automation.reload`,
+# `shell_command.*`...), non prima. Finche' quel dato non c'e', restano
+# rifiutati come sempre.
+_DOMINI_DI_RECAPITO = frozenset({"notify", "persistent_notification"})
+
+
+def _bersaglio_vuoto_e_legittimo(dominio: str, definizione: dict) -> bool:
+    """Vero se un bersaglio vuoto e' la forma giusta per QUESTA chiamata.
+
+    Combina le due condizioni che, insieme, restano dentro il perimetro
+    misurato: il servizio non dichiara un `target` (`_dichiara_bersaglio`) E
+    il suo dominio e' uno dei recapiti (`_DOMINI_DI_RECAPITO`). La prima da
+    sola era troppo larga -- vedi il docstring del modulo.
+    """
+    return dominio in _DOMINI_DI_RECAPITO and not _dichiara_bersaglio(definizione)
 
 
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
@@ -184,12 +226,13 @@ class Verdetto:
     scartate: tuple[str, ...] = field(default_factory=tuple)   # altro dominio
     sconosciute: tuple[str, ...] = field(default_factory=tuple)  # senza stato
     # Vero quando il verdetto e' positivo e il servizio non dichiara un
-    # `target` (vedi `_dichiara_bersaglio`): `entita` e `bersaglio` restano
-    # vuoti apposta, e non e' un difetto -- e' la forma giusta per un
-    # servizio come `notify.*`, che non ha niente da bersagliare. La porta lo
-    # legge per non iniettare `entity_id: []` (che direbbe una cosa diversa
-    # da «nessun bersaglio») e per non aprire un ascolto di stato che non
-    # avrebbe niente da attendere (review finale, rilievo CRITICO ①).
+    # `target` **ed e' un recapito** (vedi `_bersaglio_vuoto_e_legittimo`):
+    # `entita` e `bersaglio` restano vuoti apposta, e non e' un difetto -- e'
+    # la forma giusta per un servizio come `notify.*`, che non ha niente da
+    # bersagliare. La porta lo legge per non iniettare `entity_id: []` (che
+    # direbbe una cosa diversa da «nessun bersaglio») e per non aprire un
+    # ascolto di stato che non avrebbe niente da attendere (review finale,
+    # rilievo CRITICO ①; ristretto ai recapiti dalla review indipendente).
     senza_bersaglio: bool = False
 
 
@@ -298,17 +341,17 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
         return _no(f"questo bersaglio non si legge: {'; '.join(illeggibili)}. "
                    f"Ogni voce dev'essere un identificatore, o un elenco di "
                    f"identificatori.")
-    if not bersaglio_ha and _dichiara_bersaglio(definizione):
+    if not bersaglio_ha and not _bersaglio_vuoto_e_legittimo(dominio, definizione):
         return _no("serve un bersaglio: «entita» con gli id esatti, oppure "
                    "«aree», «piani», «etichette» o «dispositivi» -- Home "
                    "Assistant risolve da se' cosa contengono, e non serve "
                    "elencare le entita' a mano.")
     # Se `bersaglio_ha` e' vuoto ED e' arrivato fin qui, il servizio non
-    # dichiara un target (review finale, rilievo CRITICO ①): non si rifiuta
-    # subito, si scende fino in fondo alla funzione -- che riconosce questo
-    # caso all'UNICO altro punto in cui puo' arrivarci vuoto -- cosi' i
-    # controlli sui parametri restano gli stessi di ogni altra chiamata,
-    # invece di separare un binario apposta per lui.
+    # dichiara un target ED e' un recapito (review indipendente, punto ①):
+    # non si rifiuta subito, si scende fino in fondo alla funzione -- che
+    # riconosce questo caso all'UNICO altro punto in cui puo' arrivarci
+    # vuoto -- cosi' i controlli sui parametri restano gli stessi di ogni
+    # altra chiamata, invece di separare un binario apposta per lui.
 
     # Le entita' che il modello ha NOMINATO restano strette, anche quando
     # arrivano insieme a un'area: un id inventato o di un altro dominio e' una
@@ -354,9 +397,9 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
 
     if not bersaglio_ha:
         # Ci si arriva SOLO se il controllo sopra ha gia' lasciato passare
-        # perche' il servizio non dichiara un target: un bersaglio vuoto e'
-        # la forma giusta per chiamarlo, non un errore (review finale,
-        # rilievo CRITICO ①). Vedi `Verdetto.senza_bersaglio`.
+        # perche' il servizio non dichiara un target ED e' un recapito: un
+        # bersaglio vuoto e' la forma giusta per chiamarlo, non un errore
+        # (review indipendente, punto ①). Vedi `Verdetto.senza_bersaglio`.
         return Verdetto(ok=True, dominio=dominio, servizio=nome,
                         entita=(), bersaglio={}, senza_bersaglio=True)
 
