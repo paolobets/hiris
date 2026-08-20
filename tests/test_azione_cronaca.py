@@ -37,14 +37,6 @@ def test_una_riga_fallita_porta_il_motivo(cronaca):
     assert "500" in riga["errore"]
 
 
-def test_l_elenco_e_in_ordine_dal_piu_recente(cronaca):
-    primo = cronaca.registra(origine="chat", servizio="a.b", entita=[],
-                             eseguito=True, adesso=ADESSO)
-    secondo = cronaca.registra(origine="chat", servizio="c.d", entita=[],
-                               eseguito=True, adesso=ADESSO + 10)
-    assert [r["id"] for r in cronaca.elenca()] == [secondo, primo]
-
-
 def test_le_righe_vecchie_si_potano_alla_scrittura(cronaca):
     vecchia = cronaca.registra(origine="chat", servizio="a.b", entita=[],
                                eseguito=True, adesso=ADESSO)

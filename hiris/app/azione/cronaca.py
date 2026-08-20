@@ -107,10 +107,3 @@ class Cronaca:
             r = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE id=?", (esecuzione_id,)).fetchone()
         return None if r is None else _riga(r)
-
-    def elenca(self, *, limite: int = 50) -> list[dict]:
-        with self._lock:
-            righe = self._conn.execute(
-                "SELECT * FROM esecuzioni ORDER BY quando_ts DESC, rowid DESC LIMIT ?",
-                (int(limite),)).fetchall()
-        return [_riga(r) for r in righe]

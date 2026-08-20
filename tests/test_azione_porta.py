@@ -69,11 +69,12 @@ def _scadenza_corta(monkeypatch):
 
 
 RISPOSTA_HA = [
-    # `target`, come lo manda Home Assistant davvero (misurato per primo in
-    # `tests/test_azione_bersagli.py`): senza, dopo la review finale (rilievo
-    # CRITICO ①) questi due servizi smetterebbero di richiedere un
-    # bersaglio, e i test di questo file che chiamano SPEGNI_IL_SALOTTO
-    # smetterebbero di provare cio' che dicono di provare.
+    # `target`, scritto a mano nella forma plausibile di /api/services (NON
+    # misurato su un'installazione vera -- vedi la nota sopra
+    # `_DOMINI_UNIVERSALI` in `azione/verifica.py`): senza, dopo la review
+    # finale (rilievo CRITICO ①) questi due servizi smetterebbero di
+    # richiedere un bersaglio, e i test di questo file che chiamano
+    # SPEGNI_IL_SALOTTO smetterebbero di provare cio' che dicono di provare.
     {"domain": "light", "services": {
         "turn_off": {"fields": {"transition": {}},
                      "target": {"entity": [{"domain": ["light"]}]}},
@@ -1102,12 +1103,20 @@ async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
     registrano i tentativi che hanno SUPERATO la verifica, riusciti o
     falliti. Un rifiuto della verifica non e' un'esecuzione -- e' un errore
     del modello, gia' detto al modello -- e non deve mai riempire il
-    registro di cose che non sono successe."""
+    registro di cose che non sono successe.
+
+    `Cronaca` non ha un elenco (`elenca()` e' uscita, review indipendente
+    punto ④: zero chiamanti di produzione): qui si guarda direttamente la
+    tabella con una seconda connessione allo stesso file, che e' cio' che un
+    test puo' fare senza chiedere alla classe una capacita' che nessuno usa.
+    """
     import os
+    import sqlite3
 
     from hiris.app.azione.cronaca import Cronaca
 
-    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    db_path = os.path.join(str(tmp_path), "azioni.db")
+    cronaca = Cronaca(db_path)
     try:
         porta = await _porta_di_prova(cronaca=cronaca)
         esito = await porta.esegui(
@@ -1115,7 +1124,14 @@ async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
             origine="chat")
         assert esito["eseguito"] is False
         assert "esecuzione_id" not in esito
-        assert cronaca.elenca() == [], (
+
+        ispezione = sqlite3.connect(db_path)
+        try:
+            conteggio = ispezione.execute(
+                "SELECT count(*) FROM esecuzioni").fetchone()[0]
+        finally:
+            ispezione.close()
+        assert conteggio == 0, (
             "un rifiuto della verifica ha scritto una riga in cronaca: sta "
             "registrando cose che non sono successe")
     finally:
@@ -1210,21 +1226,6 @@ async def test_una_notifica_non_apre_un_ascolto():
         "modulo): se qualcuno lo riaprisse anche per zero entita', lo si "
         "vedrebbe qui -- guardare `client.ascoltatori` DOPO `esegui()` non "
         "basterebbe, perche' la porta lo chiude sempre prima di tornare")
-
-
-@pytest.mark.asyncio
-async def test_una_notifica_non_paga_mai_la_scadenza_di_attesa():
-    client = FintoClient()
-    registro = await _registro_pronto(client)
-    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
-
-    inizio = time.monotonic()
-    await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
-    durata = time.monotonic() - inizio
-
-    assert durata < SCADENZA_NEI_TEST, (
-        "una notifica non ha nessuno stato da aspettare: se pagasse "
-        "`ATTESA_STATO_S`, ogni notifica costerebbe la scadenza intera")
 
 
 @pytest.mark.asyncio

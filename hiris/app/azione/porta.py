@@ -554,13 +554,19 @@ class PortaAzione:
         Non e' un caso limite delle tre fonti del «dopo» (vedi il docstring
         del modulo): e' un ramo a parte, perche' per un servizio senza
         bersaglio quelle tre fonti non hanno NIENTE su cui applicarsi -- zero
-        entita', zero annunci possibili. Non si apre nemmeno l'ascolto:
-        aprirlo per zero entita' e aspettare la scadenza farebbe pagare
-        `ATTESA_STATO_S` a ogni notifica, per un dato che non arrivera' mai.
-        L'esito dice solo cio' che e' vero: la chiamata e' partita ed e'
-        stata accettata, e non c'era nessuno stato da guardare -- mai «entro
-        N secondi non e' cambiato niente», che sarebbe una misura inventata
-        su qualcosa che non si e' mai potuto misurare.
+        entita', zero annunci possibili. Non si apre nemmeno l'ascolto -- e
+        la ragione vera **non** e' il tempo: `_AscoltoStati.attendi` esce
+        subito quando non c'e' nessuna entita' da aspettare (`_attese`
+        vuoto), quindi anche aprendolo la scadenza non si pagherebbe
+        comunque (correzione della review indipendente, punto ②: qui prima
+        c'era scritto il contrario). La ragione e' che per questo servizio
+        non c'e' NESSUNO stato da osservare: registrare e subito dopo togliere
+        un ascoltatore che non puo' mai sentire niente sarebbe un giro a
+        vuoto, non una protezione da un costo. L'esito dice solo cio' che e'
+        vero: la chiamata e' partita ed e' stata accettata, e non c'era
+        nessuno stato da guardare -- mai «entro N secondi non e' cambiato
+        niente», che sarebbe una misura inventata su qualcosa che non si e'
+        mai potuto misurare.
         """
         servizio = f"{verdetto.dominio}.{verdetto.servizio}"
         try:
