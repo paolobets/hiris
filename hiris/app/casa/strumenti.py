@@ -1293,6 +1293,15 @@ class DispatcherStrumenti:
         Senza l'unita' e senza l'istante, «e' aumentata» non ha un termine di
         paragone e il modello se lo inventerebbe. E' la fondamenta n.1: il `72`
         che non si sa se sia Celsius o Fahrenheit.
+
+        `stati` (da `_stati_grezzi()`) e' la forma MINIMALE vera di
+        `proxy/entity_cache.py::_to_minimal` -- non lo stato grezzo di Home
+        Assistant. L'unita' vive li' nella chiave `unit` DI PRIMO LIVELLO,
+        non dentro `attributes.unit_of_measurement` (quello e' HA grezzo, mai
+        cio' che questo dispatcher vede): leggerla dagli attributi e' il
+        difetto R6 -- l'istantanea nasceva SEMPRE senza unita' in produzione.
+        `valore` invece era gia' corretto: legge `state`, che e' una chiave
+        di primo livello identica in entrambe le forme.
         """
         import time as _time
 
@@ -1306,9 +1315,8 @@ class DispatcherStrumenti:
                                "misurato_ts": adesso,
                                "nota": "non esisteva quando l'hai chiesto"})
                 continue
-            attributi = stato.get("attributes") or {}
             misure.append({"entita": ident, "valore": stato.get("state"),
-                           "unita": attributi.get("unit_of_measurement"),
+                           "unita": stato.get("unit") or None,
                            "misurato_ts": adesso})
         return misure
 

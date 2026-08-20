@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.schedulatore.archivio import ArchivioPromesse
 
 # NON un `pytestmark` di modulo: a differenza di `test_schedulatore_orologio.py`
@@ -264,6 +265,31 @@ async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
     assert misure[0]["unita"] == "°C"      # senza unita' e' il `72` senza scala
 
 
+def test_la_cache_finta_riproduce_la_forma_minimale_vera():
+    """`_CacheFinta.all_states()` non inventa la forma: deve coincidere,
+    campo per campo, con cio' che `_to_minimal()` -- la funzione VERA di
+    `proxy/entity_cache.py` -- produce sulle stesse entita' HA grezze.
+
+    Questo e' il test che pinna il doppio (mutazione 2 del task R6): se
+    qualcuno rimettesse in `_CacheFinta` la forma HA grezza
+    (`attributes.unit_of_measurement` invece di `unit` di primo livello),
+    questo confronto fallirebbe SUBITO, invece di lasciare che il doppio si
+    allontani in silenzio dal codice vero -- esattamente come e' successo
+    con la forma precedente.
+    """
+    grezzi = [
+        {"entity_id": "light.studio", "state": "off",
+         "attributes": {"friendly_name": "Studio"}},
+        {"entity_id": "sensor.camera_t", "state": "21.4",
+         "attributes": {"friendly_name": "Camera T",
+                         "unit_of_measurement": "°C",
+                         "device_class": "temperature",
+                         "state_class": "measurement"}},
+    ]
+    attesi = [_to_minimal(g) for g in grezzi]
+    assert _CacheFinta().all_states() == attesi
+
+
 @pytest.mark.asyncio
 async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
     esito = await _dispatcher(promesse).dispatch("prometti", {
@@ -330,12 +356,43 @@ class _CacheFinta:
     il test del passo 7 chiede di provare: `_stati_grezzi()` avrebbe sempre
     ricevuto una cache "senza `all_states`" e il test sarebbe passato anche
     con `_verifica_ora` saltata per intero.
+
+    Il difetto R6: `all_states()` NON e' lo stato grezzo di Home Assistant
+    (`entity_id`/`attributes.unit_of_measurement`/`attributes.friendly_name`)
+    -- e' cio' che produce `proxy/entity_cache.py::_to_minimal`, che PROIETTA
+    quella forma su una diversa: chiave `id` (non `entity_id`), `name` al
+    posto di `attributes.friendly_name`, e soprattutto `unit` DI PRIMO
+    LIVELLO al posto di `attributes.unit_of_measurement`. Prima di questo
+    fix il doppio riproduceva la forma grezza -- `{"attributes":
+    {"unit_of_measurement": "°C"}}` -- e cosi' facendo nascondeva il
+    disallineamento che il codice vero ha in produzione, invece di provarlo:
+    e' il decimo "test che non puo' fallire" di questo progetto (R6 della
+    spec 2026-08-20-i-riferimenti).
+
+    Le due voci sotto sono `_to_minimal()` applicata a mano alle stesse
+    entita' HA grezze che `test_la_cache_finta_riproduce_la_forma_minimale_vera`
+    ricalcola con la funzione vera: se questo elenco tornasse a imitare la
+    forma grezza, quel test lo direbbe SUBITO (mutazione 2 del task).
     """
     loaded = True
 
     def all_states(self):
         return [
-            {"id": "light.studio", "state": "off", "attributes": {}},
-            {"id": "sensor.camera_t", "state": "21.4",
-             "attributes": {"unit_of_measurement": "°C"}},
+            # `_to_minimal({"entity_id": "light.studio", "state": "off",
+            #               "attributes": {"friendly_name": "Studio"}})`:
+            # dominio "light" senza "brightness"/"color_temp" negli
+            # attributi -> nessuna chiave "attributes" nel risultato.
+            {"id": "light.studio", "state": "off", "name": "Studio",
+             "unit": "", "domain": "light", "device_class": None,
+             "state_class": None},
+            # `_to_minimal({"entity_id": "sensor.camera_t", "state": "21.4",
+            #               "attributes": {"friendly_name": "Camera T",
+            #                              "unit_of_measurement": "°C",
+            #                              "device_class": "temperature",
+            #                              "state_class": "measurement"}})`:
+            # dominio "sensor" non e' in `_DOMAIN_ATTRS` -> nessuna chiave
+            # "attributes" nemmeno qui.
+            {"id": "sensor.camera_t", "state": "21.4", "name": "Camera T",
+             "unit": "°C", "domain": "sensor", "device_class": "temperature",
+             "state_class": "measurement"},
         ]
