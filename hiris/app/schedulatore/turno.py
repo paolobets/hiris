@@ -154,10 +154,25 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
 
 
 def _prompt_di_sistema() -> str:
+    # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
+    # della chat (`costruisci_nucleo`, vedi `interpreta_promessa` sopra), coi
+    # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
+    # queste due righe il prompt non lo spiegava, e il modello non aveva modo
+    # di sapere che poteva usarli direttamente invece di chiamare `cerca`.
+    # Il parallelismo, qui, e' vero al 100%: il turno gira su `runner.chat`,
+    # lo STESSO ciclo di `claude_runner.py` (`BASE_REGOLE_STRUMENTI`) che
+    # conta un giro per risposta, non per chiamata -- a differenza del ponte
+    # (vedi `agent/prompts._GUIDA_CON_STRUMENTI`, dove la stessa frase e'
+    # falsa perche' il tetto MCP conta ogni `tools/call`).
     return (
         "Stai mantenendo una promessa: qualcuno ti ha chiesto, tempo fa, di "
         "guardare qualcosa a quest'ora e di dirgli com'e' andata. Adesso non c'e' "
         "nessuno davanti allo schermo.\n"
+        "Gli id fra parentesi che vedi nell'albero della casa -- `Nome (id: X)` -- "
+        "sono gia' gli identificatori esatti per gli strumenti: usali direttamente, "
+        "non serve chiamare «cerca» per qualcosa che hai gia'.\n"
+        "Se devi fare piu' letture indipendenti, chiamale IN PARALLELO nella stessa "
+        "risposta: il ciclo conta un giro per risposta, non per chiamata.\n"
         "Guarda con gli strumenti che hai, poi chiama SEMPRE «concludi». Se la "
         "condizione che ti era stata chiesta non si e' verificata, concludi con "
         "avvisare=false: e' la risposta giusta, non un fallimento.\n"

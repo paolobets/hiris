@@ -30,6 +30,24 @@ def test_ogni_nome_ammesso_esiste_davvero_nel_catalogo_della_chat():
     assert set(SOLA_LETTURA) <= veri
 
 
+def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
+    """Fix finale ④ (review 2026-08-20): il turno riceve lo STESSO nucleo
+    della chat, coi suoi `(id: X)` accanto ad aree/piani/automazioni/script
+    (`costruisci_nucleo`, vedi `interpreta_promessa`), ma prima di questo fix
+    il prompt non lo spiegava affatto, ne' diceva il conteggio del
+    parallelismo -- che QUI e' vero al 100% perche' il turno gira su
+    `runner.chat`, lo stesso ciclo di `claude_runner.py`
+    (`BASE_REGOLE_STRUMENTI`) che conta un giro per risposta, non per
+    chiamata."""
+    from hiris.app.schedulatore.turno import _prompt_di_sistema
+    testo = _prompt_di_sistema()
+    assert "(id: X)" in testo, "il prompt non spiega piu' gli id fra parentesi dell'albero"
+    assert "IN PARALLELO" in testo, "il prompt non insegna piu' il parallelismo"
+    assert "il ciclo conta un giro per risposta, non per chiamata" in testo, (
+        "qui la giustificazione del parallelismo e' vera (il turno gira su "
+        "runner.chat): deve restare, non diventare la frase falsa del ponte")
+
+
 class DispatcherFinto:
     """Sa rispondere a TUTTO, `esegui` compreso: se il wrapper lasciasse
     passare uno strumento che scrive, questo doppio glielo eseguirebbe."""
