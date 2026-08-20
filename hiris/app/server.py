@@ -27,11 +27,15 @@ from .version import read_version
 from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
 from .azione.porta import PortaAzione
+from .azione.cronaca import Cronaca
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import (AREE_PER_GIRO, aree_dell_albero,
                            confronta_con_home_assistant, gerarchia,
                            ricostruisci, scegli_campione)
 from .memoria.archivio import ArchivioMemoria
+from .schedulatore.archivio import ArchivioPromesse
+from .schedulatore.orologio import Orologio
+from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
@@ -1135,6 +1139,21 @@ async def _on_startup(app: web.Application) -> None:
     # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
     app["cache_indice_strumenti"] = CacheIndice()
 
+    # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
+    # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
+    # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
+    # porta la riceve qui sotto.
+    app["cronaca"] = Cronaca(os.path.join(data_dir, "azioni.db"))
+
+    # L'archivio delle promesse (`schedulatore/archivio.py`): l'unica casa di
+    # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
+    # di questo cablaggio. La legge sia la chat (via
+    # `costruisci_dispatcher_strumenti`, per `prometti`/`promesse`/`disdici`)
+    # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
+    # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
+    # questa funzione.
+    app["promesse"] = ArchivioPromesse(os.path.join(data_dir, "promesse.db"))
+
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
     # (`azione/porta.py`). Sta QUI, e non accanto a `registro_servizi` piu'
     # sopra, per l'ordine: la porta ha bisogno dello specchio dello stato
@@ -1145,7 +1164,7 @@ async def _on_startup(app: web.Application) -> None:
     # via `costruisci_dispatcher_strumenti`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
     app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
-                                      app.get("entity_cache"))
+                                      app.get("entity_cache"), app["cronaca"])
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
@@ -1792,6 +1811,51 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=300,
     )
 
+    # Il battito dello schedulatore delle promesse (Task 7 SDD schedulatore).
+    #
+    # Le prese a meta' del giro precedente (`schedulatore/archivio.py::risana`):
+    # al riavvio diventano `fallita`, col motivo, e non ripartono (spec §7,
+    # «mai due volte»). PRIMA di registrare il battito, non dopo: se il primo
+    # giro del battito arrivasse prima di questa riga, potrebbe prendere in
+    # mano una promessa che risana() avrebbe dovuto dichiarare fallita. Un
+    # disco che non collabora non deve impedire il boot -- stessa disciplina
+    # dell'anagrafe e del comportamento qui sopra: si dichiara e si prosegue,
+    # e le promesse `in_corso` restano tali fino al prossimo riavvio.
+    try:
+        app["promesse"].risana(adesso=_time.time())
+    except Exception as exc:
+        logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
+
+    # L'orologio (`schedulatore/orologio.py`): non conosce ne' la chat ne' il
+    # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
+    # `interpreta` (il turno di `chiedi`, `schedulatore/turno.py`).
+    # `interpreta_promessa` prende DUE argomenti (`app`, `promessa`); l'orologio
+    # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
+    # quel secondo argomento, catturato.
+    async def _interpreta(promessa: dict) -> dict:
+        return await interpreta_promessa(app, promessa)
+
+    app["orologio"] = Orologio(
+        app["promesse"],
+        esegui=app["porta_azione"].esegui,
+        interpreta=_interpreta,
+    )
+
+    async def _battito() -> None:
+        await app["orologio"].batti(_time.time())
+
+    # Quindici secondi, battito FISSO: la verita' e' la tabella, non un timer
+    # per promessa. Un battito fisso non si perde se l'ora di sistema salta
+    # (NTP, ora legale), e `misfire_grace_time` corto perche' un battito perso
+    # lo rimpiazza quello dopo: e' la tolleranza dello SCHEDULATORE (120 s,
+    # spec §7, `TOLLERANZA_S`) a decidere cosa e' troppo tardi, non APScheduler.
+    scheduler.add_job(
+        _battito,
+        trigger="interval", seconds=15,
+        id="hiris_schedulatore_battito", replace_existing=True,
+        misfire_grace_time=30,
+    )
+
     # Daily retention job (chat messages only -- knowledge/memory items no
     # longer expire, Task 6 "la memoria non evapora": handle_save_memory
     # stopped computing a valid_until, so purge_expired_chatbot had no more
@@ -2392,6 +2456,12 @@ async def _on_cleanup(app: web.Application) -> None:
         app["archivio_casa"].chiudi()
     if "archivio_memoria" in app:
         app["archivio_memoria"].chiudi()
+    # I due archivi del Task 7 (schedulatore): stessa disciplina dei due qui
+    # sopra -- senza chiuderli un riavvio lascerebbe il file sqlite bloccato.
+    if "promesse" in app:
+        app["promesse"].close()
+    if "cronaca" in app:
+        app["cronaca"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di

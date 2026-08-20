@@ -1199,8 +1199,19 @@ class DispatcherStrumenti:
         prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
         produzione -- quindi il silenzio avrebbe reso quella frase falsa
         proprio ora, non in un caso limite futuro.
+
+        Dal cablaggio del Task 7 c'e' un secondo caso, raggiungibile per la
+        prima volta: all'avvio il registro esiste (non e' `None`, `server.py`
+        lo costruisce sempre) ma e' ancora VUOTO -- mai caricato da Home
+        Assistant. Lasciare proseguire fino a `verifica()` produrrebbe «il
+        dominio non esiste. Domini disponibili: .» -- la frase FALSA detta
+        con sicurezza contro cui mette in guardia `azione/porta.py`
+        (`_REGISTRO_MUTO`). Le due assenze raccontano lo stesso fatto («non so
+        ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
+        criterio della porta -- si CHIEDE al registro (`domini()` vuoto), non
+        si reinventa la regola in un secondo posto.
         """
-        if self._registro is None:
+        if self._registro is None or not self._registro.domini():
             return ("non posso ancora prometterlo: non so cosa questa casa sa "
                     "fare, perche' il registro dei servizi non e' pronto. "
                     "Riprova fra un momento.")

@@ -51,10 +51,13 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
-    I sei strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
+    I nove strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
     trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
-    `guarda`, `legami`, `ricorda`, `richiama`) e il sesto, `esegui`, la comanda
-    passando per la porta unica (vedi il docstring di quel modulo). Il dispatcher si costruisce dagli
+    `guarda`, `legami`, `ricorda`, `richiama`), il sesto, `esegui`, la comanda
+    passando per la porta unica (vedi il docstring di quel modulo), e gli
+    ultimi tre (`prometti`, `promesse`, `disdici`, fetta «lo schedulatore»)
+    la impegnano per un momento futuro, passando per l'archivio delle
+    promesse (`schedulatore/archivio.py`). Il dispatcher si costruisce dagli
     stessi oggetti dell'app che alimentano `costruisci_nucleo()`
     (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`
     -- lo stesso specchio dello stato vivo, non uno ricalcolato a mano -- ed e'
@@ -103,6 +106,14 @@ def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
         # canale: due connessioni verso HA sarebbero due stati di
         # riconnessione da tenere allineati.
         ha=app.get("ha_client"),
+        # Il registro dei servizi (`azione/registro.py`), la STESSA istanza
+        # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
+        # Serve a `prometti` per verificare un `fai` ADESSO
+        # (`DispatcherStrumenti._verifica_ora`) e un `recapito`.
+        registro=app.get("registro_servizi"),
+        # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
+        # `prometti`/`promesse`/`disdici`.
+        promesse=app.get("promesse"),
     )
 
 

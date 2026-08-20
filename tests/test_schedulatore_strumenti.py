@@ -145,6 +145,32 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
 
 
 @pytest.mark.asyncio
+async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_senza_registro(promesse):
+    """Il caso limite che il cablaggio del Task 7 rende raggiungibile per la
+    prima volta: all'avvio `server.py` costruisce SEMPRE `RegistroServizi()`
+    (mai `None`), ma vuoto -- si carica al primo uso, non all'avvio. Senza la
+    guardia su `domini()`, `_verifica_ora` avrebbe proseguito fino a
+    `verifica()`, che avrebbe rifiutato con «il dominio "light" non esiste in
+    questa casa. Domini disponibili: .» -- una frase FALSA detta con
+    sicurezza (la casa non e' vuota, e' il registro che non e' stato letto),
+    esattamente cio' da cui mette in guardia `azione/porta.py::_REGISTRO_MUTO`.
+    """
+    # `cache=_CacheFinta()`: senza uno specchio dello stato leggibile
+    # `_verifica_ora` si ferma prima (`_stati_grezzi()` -> `None` -> nessun
+    # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
+    # esiste per chiudere -- vedi `verifica()` in `azione/verifica.py`.
+    d = _dispatcher(promesse, registro=_RegistroVuoto(), cache=_CacheFinta())
+    esito = await d.dispatch("prometti", {
+        "specie": "fai", "frase": "alle 17 accendi lo studio",
+        "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
+    assert "errore" in esito
+    assert "Domini disponibili" not in esito["errore"]
+    assert promesse.elenca() == []
+
+
+@pytest.mark.asyncio
 async def test_un_chiedi_nasce_anche_senza_registro(promesse):
     """Il gemello del test sopra: un `chiedi` non passa da `_verifica_ora`
     (non ha `chiamata`), quindi la guardia nuova sul registro non deve
@@ -235,6 +261,20 @@ class _RegistroFinto:
 
     def servizi_di(self, dominio):
         return sorted(nome for (dom, nome) in self._SERVIZI if dom == dominio)
+
+
+class _RegistroVuoto:
+    """Il doppio del registro PRESENTE ma mai caricato da Home Assistant --
+    lo stato reale di `app["registro_servizi"]` fra l'avvio e la prima
+    `assicura_fresco()`. Solo `domini()`: e' l'UNICO metodo che
+    `_verifica_ora` deve poter chiamare su un registro in questo stato, prima
+    di rifiutare -- se ne chiamasse un altro (`servizio()`, `servizi_di()`)
+    solleverebbe `AttributeError` invece di rifiutare col motivo giusto,
+    esattamente l'errore che la review del Task 6 aveva trovato nel percorso
+    gemello (vedi `_RegistroFinto` sopra)."""
+
+    def domini(self):
+        return []
 
 
 class _CacheFinta:
