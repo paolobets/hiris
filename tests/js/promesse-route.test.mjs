@@ -130,6 +130,65 @@ test('senza promesse la pagina lo dice invece di restare bianca', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// `in_corso`: sta in "In sospeso" come `in_attesa`, ma senza il bottone
+// (review Task 9, rilievo 1 -- il commento di testa del file lo dichiara
+// "non negoziabile" ma nessuna fixture lo esercitava).
+// ---------------------------------------------------------------------------
+
+test('in_corso sta in "In sospeso" insieme a in_attesa, ma senza il bottone per disdire', async () => {
+  const { document } = await monta({
+    get: {
+      promesse: [
+        PROMESSE[0], // p1, in_attesa
+        { ...PROMESSE[0], id: 'p5', frase: 'sto accendendo il forno', stato: 'in_corso' },
+      ],
+    },
+  });
+  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
+  assert.ok(sospeso.textContent.includes('sto accendendo il forno'),
+    'in_corso non e\' ancora concluso: deve stare in "In sospeso"');
+  const storico = document.querySelector('[data-sezione="storico"]');
+  assert.ok(!storico.textContent.includes('sto accendendo il forno'),
+    'in_corso non deve finire nello storico: sparirebbe e ricomparirebbe a ogni ricaricamento');
+
+  const bottoni = document.querySelectorAll('[data-disdici]');
+  assert.equal(bottoni.length, 1, 'solo p1 (in_attesa) deve avere il bottone');
+  assert.equal(bottoni[0].getAttribute('data-disdici'), 'p1');
+  assert.equal(document.querySelector('[data-disdici="p5"]'), null,
+    'archivio.disdici() scrive WHERE stato=\'in_attesa\': un bottone su in_corso sarebbe piu\' ' +
+    'confuso di nessun bottone');
+});
+
+// ---------------------------------------------------------------------------
+// «Mantenuta con motivo»: HIRIS aveva qualcosa da dire e nessun canale per
+// venire a cercarti (spec §6, guida di disegno §3) -- non e' un settimo
+// stato: badge verde (e' successo davvero), motivo comunque visibile in
+// ambra sotto (review Task 9, rilievo 2).
+// ---------------------------------------------------------------------------
+
+test('una promessa mantenuta con motivo resta badge verde, ma il motivo si vede comunque', async () => {
+  const { document } = await monta({
+    get: {
+      promesse: [{
+        ...PROMESSE[0], id: 'p6', specie: 'fai', frase: 'accendi le luci del giardino',
+        stato: 'mantenuta',
+        motivo: 'nessun modo di avvisarti: non avevi lasciato un canale per farlo.',
+      }],
+    },
+  });
+  const testo = document.body.textContent;
+  assert.match(testo, /nessun modo di avvisarti/, 'il motivo deve essere visibile, non taciuto');
+
+  const badge = Array.from(document.querySelectorAll('.agent-badge'))
+    .find((b) => b.textContent === 'Mantenuta');
+  assert.ok(badge, 'il badge deve restare quello del successo, "Mantenuta"');
+  assert.ok(badge.classList.contains('badge-on'), 'verde: e\' successo davvero, non e\' un fallimento');
+  assert.ok(!badge.classList.contains('badge-err') && !badge.classList.contains('badge-warn'),
+    'il badge non diventa ne\' rosso ne\' ambra: la sfumatura sta nel colore del testo del motivo, ' +
+    'non nel badge (guida §3)');
+});
+
+// ---------------------------------------------------------------------------
 // Vocabolario: due parole deliberatamente diverse, non due rime
 // ---------------------------------------------------------------------------
 
@@ -226,13 +285,18 @@ test('la DELETE riuscita (200, non 204) ricarica l\'elenco e conferma sulla riga
 // ---------------------------------------------------------------------------
 
 test('la DELETE 404 mostra il testo esatto del server, poi ricarica comunque', async () => {
-  const { window, document } = await monta({
+  const { window, document, chiamate } = await monta({
     deleteStatus: 404,
     deleteBody: { errore: 'non ho nessuna promessa con quell\'identificatore.' },
   });
   document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
   assert.match(document.body.textContent, /non ho nessuna promessa con quell'identificatore/);
+  // Il titolo del test promette "poi ricarica comunque" (review Task 9, minor):
+  // senza questa riga l'asserzione non provava il ricaricamento, solo il
+  // messaggio. Una seconda GET dopo la DELETE 404 e' il ricaricamento.
+  assert.equal(chiamate.filter((c) => c.method === 'GET').length, 2,
+    'un 404 non deve fermare il ricaricamento: la lista si aggiorna comunque');
 });
 
 test('la DELETE 409 mostra il testo esatto del server (gia\' concluso: non si disdice)', async () => {
