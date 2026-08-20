@@ -238,11 +238,15 @@ Alla nascita **tutto viene verificato adesso, non fra due ore**:
    di fallire in silenzio alle 17;
 2. il `notify.*` del recapito deve esistere nel registro dei servizi;
 3. l'`istantanea` di un `chiedi` viene presa **adesso** dallo specchio dello stato, con l'unità;
-4. `quando` diventa un istante assoluto risolto col fuso della casa. **A risolvere l'espressione è il
+4. ogni riferimento del `da_confrontare` di un `chiedi` deve esistere **adesso** nello specchio dello
+   stato: uno che lo specchio non conosce (un nome al posto di un id, un id inventato) è un rifiuto
+   alla nascita, col motivo che nomina il riferimento e invita a «cerca» — non una promessa che nasce
+   con `valore: null` e una nota che nessuno legge fra un'ora;
+5. `quando` diventa un istante assoluto risolto col fuso della casa. **A risolvere l'espressione è il
    modello** — «fra un'ora», «alle 17» — e a rifiutare è il codice: un istante passato non si
    corregge da soli tirando a indovinare il giorno. Il rifiuto lo dice con la domanda dentro: *«le 17
    di oggi sono passate: intendevi domani?»*;
-5. **due tetti dichiarati**: non si promette oltre **30 giorni**, e non stanno in sospeso più di **50**
+6. **due tetti dichiarati**: non si promette oltre **30 giorni**, e non stanno in sospeso più di **50**
    promesse insieme. Servono perché un modello che va in circolo non deve poter riempire il disco. Il
    rifiuto dice quale tetto è stato toccato.
 

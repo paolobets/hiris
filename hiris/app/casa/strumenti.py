@@ -1152,8 +1152,12 @@ class DispatcherStrumenti:
                 return {"errore": rifiuto}
             dati["chiamata"] = chiamata
         else:
+            da_confrontare = argomenti.get("da_confrontare") or []
+            rifiuto = self._verifica_da_confrontare(da_confrontare)
+            if rifiuto is not None:
+                return {"errore": rifiuto}
             dati["domanda"] = argomenti.get("domanda")
-            dati["istantanea"] = self._istantanea(argomenti.get("da_confrontare") or [])
+            dati["istantanea"] = self._istantanea(da_confrontare)
 
         if dati["recapito"]:
             rifiuto = self._verifica_recapito(dati["recapito"])
@@ -1241,14 +1245,69 @@ class DispatcherStrumenti:
             # `azione/porta.py::_SPECCHIO_CIECO` (`None` e `{}` insieme, di
             # proposito: una casa che davvero non ha nessuna entita' non ha
             # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
-            # che questo rifiuto possa negare).
-            return ("non posso ancora prometterlo: non vedo lo stato di "
-                    "questa casa, l'inventario delle entita' non e' "
-                    "disponibile. Riprova fra un momento.")
+            # che questo rifiuto possa negare). Estratta in
+            # `_specchio_cieco_rifiuto()` (Task 2, R7): `_verifica_da_confrontare`
+            # fa la STESSA domanda, e una seconda stringa scritta a mano li'
+            # sarebbe un doppione appena creato.
+            return self._specchio_cieco_rifiuto()
         verdetto = verifica(chiamata, self._registro, stati)
         if verdetto.da_risolvere:
             return None  # bersaglio per area: lo risolvera' la porta, al momento
         return None if verdetto.ok else verdetto.motivo
+
+    def _specchio_cieco_rifiuto(self) -> str:
+        """Il rifiuto quando lo specchio dello stato non e' leggibile: "non
+        so ancora", non un silenzio.
+
+        Estratta (Task 2, spec R7) perche' `_verifica_ora` e
+        `_verifica_da_confrontare` fanno la STESSA domanda a
+        `_stati_grezzi()` -- una seconda stringa scritta a mano in un
+        secondo posto sarebbe un doppione appena creato (fondamenta n.2),
+        lo stesso rilievo gia' fatto per `_registro_non_pronto`.
+        """
+        return ("non posso ancora prometterlo: non vedo lo stato di "
+                "questa casa, l'inventario delle entita' non e' "
+                "disponibile. Riprova fra un momento.")
+
+    def _verifica_da_confrontare(self, entita: list) -> str | None:
+        """Il rifiuto se `da_confrontare` nomina un riferimento che lo
+        specchio non conosce, o `None`. Sola lettura, come `_verifica_ora`.
+
+        Lista vuota -> `None` SUBITO, senza toccare lo specchio: un `chiedi`
+        senza `da_confrontare` resta legittimo (spec R7, requisito 2) --
+        nessuna istantanea e' stata chiesta, quindi non c'e' niente da
+        verificare, e non c'e' motivo di rifiutare un `chiedi` sulla sola
+        base che lo specchio non e' pronto quando nessuno lo interroga.
+
+        Specchio non leggibile -> stesso rifiuto di `_verifica_ora`
+        (`_specchio_cieco_rifiuto`, requisito 3): "non lo so ancora" si
+        rifiuta, non si tace -- senza sapere cosa esiste non si puo' dire
+        che un riferimento NON esiste, e lasciare nascere la promessa
+        renderebbe falsa la dichiarazione di `PROMETTI_TOOL_DEF` («viene
+        VERIFICATA adesso»).
+
+        Uno specchio leggibile ma senza il riferimento -> il rifiuto vero
+        (requisito 1): oggi (prima di questo fix) `_istantanea` lasciava
+        nascere la promessa con `valore: null` e la nota "non esisteva
+        quando l'hai chiesto" -- il danno matura fra un'ora, quando nessuno
+        puo' piu' correggere. «Il modello propone, il codice restringe»
+        (spec §9.1), gia' applicato al `fai` (`_verifica_ora`) e al
+        recapito (`_verifica_recapito`): un `chiedi` non puo' rispondere
+        diversamente alla stessa domanda solo perche' e' la terza specie.
+        Il motivo nomina il riferimento (cosa non esiste) e la strada per
+        correggersi (pattern `azione/verifica.py:430-432`: «usa "cerca"...»).
+        """
+        if not entita:
+            return None
+        stati = self._stati_grezzi()
+        if not stati:
+            return self._specchio_cieco_rifiuto()
+        sconosciuti = [str(e) for e in entita if e not in stati]
+        if sconosciuti:
+            return ("non posso prometterlo: %s non esiste in questa casa. "
+                     "Usa «cerca» per trovare l'id esatto e ripeti la "
+                     "richiesta." % ", ".join(sconosciuti))
+        return None
 
     def _registro_non_pronto(self) -> bool:
         """«Non so ancora cosa questa casa sa fare»: il registro e' assente

@@ -265,6 +265,61 @@ async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
     assert misure[0]["unita"] == "°C"      # senza unita' e' il `72` senza scala
 
 
+@pytest.mark.asyncio
+async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_nascita(promesse):
+    """Il cuore della fetta R7: un `chiedi` che nomina un riferimento che lo
+    specchio non conosce ("Soggiorno" invece di un entity_id vero, o
+    qualunque id inventato) non nasce con `valore: null` e una nota che
+    nessuno legge fra un'ora -- si rifiuta SUBITO, come un `fai` con un
+    servizio inventato (`test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO`).
+
+    Si asserisce il CONTENUTO del rifiuto (il riferimento nominato + l'invito
+    a "cerca"), non solo la sua presenza -- lo stesso rilievo gia' fatto
+    su quel test gemello: un rifiuto generico che non nomina nulla
+    lascerebbe passare una guardia rotta che rifiuta sempre, a caso.
+    """
+    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "verifica il soggiorno",
+        "quando": _fra(60),
+        "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
+    assert "errore" in esito
+    assert "sensor.soggiorno_t" in esito["errore"]
+    assert "cerca" in esito["errore"]
+    assert promesse.elenca() == []
+
+
+@pytest.mark.asyncio
+async def test_un_chiedi_senza_da_confrontare_resta_legittimo_anche_senza_specchio(promesse):
+    """Requisito 2 della spec R7, reso esplicito: un `chiedi` senza
+    `da_confrontare` non chiede mai nessuna istantanea, quindi non deve MAI
+    toccare lo specchio -- nessuna cache passata al dispatcher, apposta: se
+    la guardia nuova leggesse lo specchio anche a lista vuota, questo test lo
+    direbbe (il rifiuto "non vedo lo stato di questa casa" comparirebbe)."""
+    d = _dispatcher(promesse)  # nessuna cache, apposta
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "x", "quando": _fra(60),
+        "domanda": "e' aumentata?"})
+    assert "errore" not in esito
+    assert esito["promessa"]["istantanea"] == []
+
+
+@pytest.mark.asyncio
+async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verificato_in_silenzio(promesse):
+    """Requisito 3: stessa domanda di `_verifica_ora` sullo specchio cieco
+    (`test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio`), qui
+    per `da_confrontare` -- riusa la STESSA forma, non ne inventa una terza:
+    senza uno specchio leggibile non si sa se il riferimento esiste, quindi
+    non si tace facendo nascere una promessa mai verificata."""
+    d = _dispatcher(promesse, registro=_RegistroFinto())  # nessuna cache
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "verifica il soggiorno",
+        "quando": _fra(60),
+        "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
+    assert "errore" in esito
+    assert promesse.elenca() == []
+
+
 def test_la_cache_finta_riproduce_la_forma_minimale_vera():
     """`_CacheFinta.all_states()` non inventa la forma: deve coincidere,
     campo per campo, con cio' che `_to_minimal()` -- la funzione VERA di
