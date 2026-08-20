@@ -201,12 +201,36 @@ async def test_un_fai_valido_nasce(promesse):
 
 @pytest.mark.asyncio
 async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
+    """Registro CARICO, recapito davvero inesistente: il rifiuto vero, non
+    quello di «non lo so ancora» -- le due frasi restano distinte (review
+    Task 7, Rilievo 1)."""
     d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.non_esiste"})
     assert "errore" in esito
     assert "notify" in esito["errore"]
+    assert "non e' pronto" not in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(promesse):
+    """Il gemello del test sopra su `_verifica_ora` (review Task 7, Rilievo
+    1): prima del fix, un `_RegistroVuoto` (presente, `domini()` vuoto)
+    faceva rispondere `servizio(dominio, nome)` con `None` per QUALUNQUE
+    recapito -- «"notify.mobile_app_x" non esiste in questa casa», una frase
+    FALSA (il servizio esiste, e' il registro che non e' stato ancora letto).
+    Peggio del `fai` equivalente: un recapito sbagliato non fallisce
+    rumorosamente, fa si' che la risposta della promessa non arrivi a
+    nessuno."""
+    d = _dispatcher(promesse, registro=_RegistroVuoto(), cache=_CacheFinta())
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "x", "quando": _fra(60),
+        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
+    assert "errore" in esito
+    assert "non e' pronto" in esito["errore"]
+    assert "non esiste in questa casa" not in esito["errore"]
+    assert promesse.elenca() == []
 
 
 @pytest.mark.asyncio

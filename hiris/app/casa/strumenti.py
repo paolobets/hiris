@@ -644,12 +644,14 @@ class DispatcherStrumenti:
         # su cosa esiste, e potrebbero divergere. Serve a `prometti` per
         # verificare un `fai` ADESSO (`_verifica_ora`) e un `recapito`
         # (`_verifica_recapito`). `None` e' legittimo e NON passa da
-        # `_archivio_mancante`: senza registro non si puo' dire ne' si' ne'
-        # no, quindi quei due controlli si tacciono invece di rifiutare --
-        # esattamente come `legami` si tace senza canale HA, ma qui il
-        # silenzio lascia comunque nascere la promessa, perche' il tetto vero
-        # (l'installazione reale) la trovera' comunque all'esecuzione tramite
-        # la porta.
+        # `_archivio_mancante` (che solleverebbe un errore diverso, "l'archivio
+        # non e' caricato"): senza registro PRONTO -- assente o presente ma mai
+        # caricato da Home Assistant, `_registro_non_pronto()` -- i due
+        # controlli RIFIUTANO invece di tacere (fix review Task 6 Rilievo 2 per
+        # `_verifica_ora`, esteso a `_verifica_recapito` da review Task 7
+        # Rilievo 1): un `fai` o un recapito mai verificati nascerebbero con
+        # una promessa che dichiara "viene VERIFICATA adesso" senza esserlo
+        # stata.
         self._registro = registro
         # L'archivio delle promesse (`schedulatore/archivio.py`). `None` e'
         # legittimo come per la porta: i tre strumenti dichiarano un errore
@@ -1209,9 +1211,13 @@ class DispatcherStrumenti:
         (`_REGISTRO_MUTO`). Le due assenze raccontano lo stesso fatto («non so
         ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
         criterio della porta -- si CHIEDE al registro (`domini()` vuoto), non
-        si reinventa la regola in un secondo posto.
+        si reinventa la regola in un secondo posto. Il criterio vive in
+        `_registro_non_pronto()`, condiviso con `_verifica_recapito`: sono la
+        STESSA domanda («so gia' cosa questa casa sa fare?»), fatta da due
+        strumenti diversi -- una seconda copia della condizione sarebbe un
+        doppione appena creato (review Task 7, Rilievo 1).
         """
-        if self._registro is None or not self._registro.domini():
+        if self._registro_non_pronto():
             return ("non posso ancora prometterlo: non so cosa questa casa sa "
                     "fare, perche' il registro dei servizi non e' pronto. "
                     "Riprova fra un momento.")
@@ -1223,9 +1229,35 @@ class DispatcherStrumenti:
             return None  # bersaglio per area: lo risolvera' la porta, al momento
         return None if verdetto.ok else verdetto.motivo
 
+    def _registro_non_pronto(self) -> bool:
+        """«Non so ancora cosa questa casa sa fare»: il registro e' assente
+        (`None`) o presente ma mai caricato da Home Assistant (`domini()`
+        vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
+        `azione/porta.py::Porta.esegui` per la guardia `_REGISTRO_MUTO` --
+        perche' senza domini non si puo' verificare NIENTE, ne' un `fai` ne'
+        un recapito. Estratta qui (review Task 7, Rilievo 1) perche'
+        `_verifica_ora` e `_verifica_recapito` la interrogavano entrambe, e la
+        prima la scriveva mentre la seconda restava ferma al vecchio
+        `is None`: due letture della stessa domanda che potevano divergere --
+        e infatti divergevano, la seconda rifiutava un recapito ESISTENTE con
+        «non esiste in questa casa» invece di dire che non lo sapeva ancora.
+        """
+        return self._registro is None or not self._registro.domini()
+
     def _verifica_recapito(self, servizio: str) -> str | None:
-        if self._registro is None:
-            return None
+        """Il rifiuto della verifica su un recapito, o `None`.
+
+        Senza registro pronto si RIFIUTA (allineato a `_verifica_ora`, non
+        piu' al silenzio di prima -- review Task 7, Rilievo 1): un recapito
+        che HIRIS non ha potuto verificare non fallisce rumorosamente quando
+        la promessa matura, fa si' che la risposta non arrivi a nessuno --
+        il modo peggiore in cui una promessa puo' rompersi, perche' nessuno
+        se ne accorge finche' non manca all'appuntamento.
+        """
+        if self._registro_non_pronto():
+            return ("non posso ancora prometterlo con questo recapito: non so "
+                    "cosa questa casa sa fare, perche' il registro dei "
+                    "servizi non e' pronto. Riprova fra un momento.")
         if "." not in servizio:
             return "«%s» non e' un servizio: serve «notify.qualcosa»." % servizio
         dominio, nome = servizio.split(".", 1)

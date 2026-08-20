@@ -189,6 +189,62 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     porta_finta.esegui.assert_not_awaited()
 
 
+# ── L'ultimo anello: la chiusura `_battito` chiama DAVVERO `orologio.batti` ──
+#
+# Review Task 7, Rilievo 2 (Minor, richiesto lo stesso): nessuno dei test qui
+# sopra invoca la chiusura `_battito` -- `_load_battito_avvio()` prova che
+# viene REGISTRATA su APScheduler con l'id/trigger giusti, non che il suo
+# CORPO faccia la cosa giusta quando lo scheduler la chiama davvero, quindici
+# secondi dopo. E' l'unico anello fra il job e l'orologio: se dicesse
+# `orologio.batti()` a vuoto (o chiamasse un altro metodo), l'intera fetta
+# sarebbe verde e nessuna promessa scatterebbe mai in produzione -- nessun
+# test degli altri file se ne accorgerebbe, perche' il resto della catena e'
+# provato a pezzi separati (Orologio per conto suo in
+# `test_schedulatore_orologio.py`, la registrazione del job qui sopra).
+
+
+def _load_battito_closure():
+    """Estrae SOLO la chiusura `_battito` (non l'intero blocco di
+    `_load_battito_avvio`) dal sorgente vero di `_on_startup`, e la
+    restituisce pronta per essere chiamata con un `app` e un `_time` finti.
+    Stessa tecnica delle altre estrazioni di questo file (e di
+    `test_avvio_websocket.py`): il corpo vero, non una sua imitazione."""
+    src = inspect.getsource(server._on_startup)
+    start = src.index('    async def _battito() -> None:')
+    end_marker = 'await app["orologio"].batti(_time.time())'
+    end = src.index(end_marker, start) + len(end_marker)
+    body = textwrap.dedent(src[start:end])
+    func_src = (
+        "async def _wrap(app, _time):\n" + textwrap.indent(body, "    ")
+        + "\n    return _battito\n"
+    )
+    namespace: dict = {}
+    exec(compile(func_src, "<_on_startup battito closure>", "exec"), namespace)
+    return namespace["_wrap"]
+
+
+@pytest.mark.asyncio
+async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante():
+    orologio_finto = MagicMock()
+    orologio_finto.batti = AsyncMock()
+    app = {"orologio": orologio_finto}
+
+    wrap = _load_battito_closure()
+    battito = await wrap(app, _time_module)
+    await battito()
+
+    orologio_finto.batti.assert_awaited_once()
+    # "CON un istante", non a vuoto: una chiusura che chiamasse
+    # `orologio.batti()` senza argomenti supererebbe un `assert_awaited()`
+    # generico ma non `Orologio.batti(self, adesso)`, che lo richiede -- il
+    # doppio qui non lo impone (e' un MagicMock), quindi lo impone il test.
+    args, kwargs = orologio_finto.batti.await_args
+    assert len(args) == 1 and isinstance(args[0], float), (
+        "la chiusura deve passare un istante (`_time.time()`), non chiamare "
+        "`batti` a vuoto")
+    assert not kwargs
+
+
 # ── _on_cleanup chiude i due archivi nuovi ──────────────────────────────────
 
 
