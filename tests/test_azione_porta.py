@@ -69,10 +69,24 @@ def _scadenza_corta(monkeypatch):
 
 
 RISPOSTA_HA = [
-    {"domain": "light", "services": {"turn_off": {"fields": {"transition": {}}},
-                                     "turn_on": {"fields": {"brightness": {}}}}},
+    # `target`, come lo manda Home Assistant davvero (misurato per primo in
+    # `tests/test_azione_bersagli.py`): senza, dopo la review finale (rilievo
+    # CRITICO ①) questi due servizi smetterebbero di richiedere un
+    # bersaglio, e i test di questo file che chiamano SPEGNI_IL_SALOTTO
+    # smetterebbero di provare cio' che dicono di provare.
+    {"domain": "light", "services": {
+        "turn_off": {"fields": {"transition": {}},
+                     "target": {"entity": [{"domain": ["light"]}]}},
+        "turn_on": {"fields": {"brightness": {}},
+                    "target": {"entity": [{"domain": ["light"]}]}}}},
     # un servizio parametrico vero, per il confronto che guarda gli attributi
-    {"domain": "climate", "services": {"set_temperature": {"fields": {"temperature": {}}}}},
+    {"domain": "climate", "services": {
+        "set_temperature": {"fields": {"temperature": {}},
+                            "target": {"entity": [{"domain": ["climate"]}]}}}},
+    # Un servizio SENZA `target`, come i `notify.*` veri -- la famiglia
+    # «senza bersaglio», in fondo al file.
+    {"domain": "notify", "services": {
+        "mobile_app_x": {"fields": {"message": {}, "title": {}}}}},
 ]
 
 
@@ -1049,6 +1063,40 @@ async def test_senza_cronaca_la_porta_si_comporta_come_prima():
 
 
 @pytest.mark.asyncio
+async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_path):
+    """Il ramo `eseguito=False` CON cronaca presente, mai esercitato prima
+    della review finale (rilievo minore): la chiamata SUPERA la verifica ma
+    Home Assistant la rifiuta -- e' un tentativo che e' successo, non un
+    errore del modello, quindi deve finire in cronaca (a differenza del
+    rifiuto della verifica, provato subito sotto)."""
+    import os
+
+    from hiris.app.azione.cronaca import Cronaca
+
+    class ClientCheRompe(FintoClient):
+        async def call_service(self, dominio, servizio, dati):
+            raise RuntimeError("HTTP 500")
+
+    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    try:
+        client = ClientCheRompe()
+        registro = await _registro_pronto(client)
+        porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO),
+                            cronaca=cronaca)
+
+        esito = await porta.esegui(SPEGNI_IL_SALOTTO, origine="chat")
+
+        assert esito["eseguito"] is False
+        assert "esecuzione_id" in esito
+        riga = cronaca.leggi(esito["esecuzione_id"])
+        assert riga["eseguito"] is False
+        assert "HTTP 500" in riga["errore"]
+        assert riga["entita"] == ["light.salotto"]
+    finally:
+        cronaca.close()
+
+
+@pytest.mark.asyncio
 async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
     """L'invariante che la spec di `cronaca.py` dichiara con piu' enfasi: si
     registrano i tentativi che hanno SUPERATO la verifica, riusciti o
@@ -1096,3 +1144,164 @@ def test_la_scadenza_e_dichiarata_finita_e_una_sola():
         "restare allineati sono un difetto, non una configurazione")
     # e non e' infinita: un'attesa senza scadenza sarebbe una chat appesa
     assert 0 < modulo_vero.ATTESA_STATO_S <= 5
+
+
+# --- 5. i servizi senza bersaglio --------------------------------------------
+#
+# Review finale, rilievo CRITICO ①. `verifica()` accetta ora un bersaglio
+# vuoto per un servizio che non dichiara un `target` (`notify.*`,
+# `Verdetto.senza_bersaglio`): questa famiglia prova che la PORTA tratta quel
+# verdetto con la stessa onesta' di ogni altro -- niente `entity_id`
+# iniettato (sarebbe una cosa diversa da «nessun bersaglio»), niente ascolto
+# aperto ne' attesa pagata su zero entita', e un esito che dice solo cio' che
+# e' vero: la chiamata e' partita, e non c'era nessuno stato da rileggere.
+#
+# E' anche la giuntura che la review finale ha trovato rotta: prima di questo
+# fix, `verifica()` rifiutava QUALUNQUE bersaglio vuoto -- incondizionatamente
+# -- e la promessa che `schedulatore/orologio.py::_mantieni_chiedi` costruisce
+# per notificare (`"bersaglio": {}`) non passava mai di qui.
+
+NOTIFICA_HIRIS = {"servizio": "notify.mobile_app_x", "bersaglio": {},
+                  "dati": {"message": "ciao", "title": "HIRIS"}}
+
+
+class ClientCheRegistraGliAscoltatori(FintoClient):
+    """Fotografa `self.ascoltatori` nell'ISTANTE in cui `call_service` gira --
+    prima che `_chiudi_ascolto` (nel `finally` della porta) possa svuotarli.
+    E' l'unico modo per provare che un ascolto NON e' stato aperto: guardare
+    `client.ascoltatori` DOPO `esegui()` sarebbe vuoto comunque, aperto o no,
+    perche' la porta lo chiude sempre prima di tornare."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ascoltatori_durante_la_chiamata: list | None = None
+
+    async def call_service(self, dominio, servizio, dati):
+        self.ascoltatori_durante_la_chiamata = list(self.ascoltatori)
+        return await super().call_service(dominio, servizio, dati)
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_non_inietta_entity_id():
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+
+    assert esito["eseguito"] is True
+    assert client.chiamate == [
+        ("notify", "mobile_app_x", {"message": "ciao", "title": "HIRIS"})], (
+        "`entity_id` non deve comparire: iniettare `entity_id: []` direbbe "
+        "una cosa diversa da «nessun bersaglio», e questo servizio non ne ha "
+        "uno")
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_non_apre_un_ascolto():
+    client = ClientCheRegistraGliAscoltatori()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+
+    assert client.ascoltatori_durante_la_chiamata == [], (
+        "l'ascolto si apre PRIMA della chiamata (vedi il docstring del "
+        "modulo): se qualcuno lo riaprisse anche per zero entita', lo si "
+        "vedrebbe qui -- guardare `client.ascoltatori` DOPO `esegui()` non "
+        "basterebbe, perche' la porta lo chiude sempre prima di tornare")
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_non_paga_mai_la_scadenza_di_attesa():
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    inizio = time.monotonic()
+    await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+    durata = time.monotonic() - inizio
+
+    assert durata < SCADENZA_NEI_TEST, (
+        "una notifica non ha nessuno stato da aspettare: se pagasse "
+        "`ATTESA_STATO_S`, ogni notifica costerebbe la scadenza intera")
+
+
+@pytest.mark.asyncio
+async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
+    """Il punto piu' delicato del rilievo: per un servizio senza bersaglio
+    NON c'e' nessuno stato da rileggere, e l'esito non deve fingere di
+    averlo guardato."""
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+
+    assert esito["entita"] == []
+    assert esito["prima"] == {}
+    assert esito["dopo"] == {}
+    assert esito["cambiato"] == []
+    avviso = esito["avviso"].lower()
+    assert "non c'era nessuno stato da rileggere" in avviso
+    for parola in ("ho aspettato", "secondi", "cambiamento"):
+        assert parola not in avviso, (
+            f"l'avviso contiene «{parola}»: e' il linguaggio di un'attesa "
+            "mai fatta, cioe' una misura inventata su uno stato che non si "
+            "e' mai potuto guardare")
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_fallita_e_un_errore_leggibile():
+    class ClientCheRompe(FintoClient):
+        async def call_service(self, dominio, servizio, dati):
+            raise RuntimeError("il servizio di notifica non risponde")
+
+    client = ClientCheRompe()
+    registro = await _registro_pronto(client)
+    porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO))
+
+    esito = await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+
+    assert esito["eseguito"] is False
+    assert "non risponde" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_riuscita_finisce_in_cronaca_con_entita_vuote(tmp_path):
+    """Anche una notifica e' un'esecuzione (spec §8, «uniforme»): deve poter
+    essere CHIESTA come ogni altra, con `entita` onestamente vuote."""
+    import os
+
+    from hiris.app.azione.cronaca import Cronaca
+
+    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    try:
+        client = FintoClient()
+        registro = await _registro_pronto(client)
+        porta = PortaAzione(client, registro, FintaCache(SALOTTO_ACCESO),
+                            cronaca=cronaca)
+
+        esito = await porta.esegui(NOTIFICA_HIRIS, origine="schedulatore")
+
+        assert esito["eseguito"] is True
+        riga = cronaca.leggi(esito["esecuzione_id"])
+        assert riga["servizio"] == "notify.mobile_app_x"
+        assert riga["entita"] == []
+        assert riga["eseguito"] is True
+    finally:
+        cronaca.close()
+
+
+@pytest.mark.asyncio
+async def test_il_bersaglio_dichiara_un_target_ancora_richiesto():
+    """Il rovescio: `light.turn_off` DICHIARA un `target` (vedi
+    `RISPOSTA_HA`), quindi il rifiuto di sempre resta -- questo test cade se
+    la review finale avesse allargato il bypass oltre i servizi che non
+    hanno davvero un bersaglio."""
+    porta, client, _ = await _porta_pronta()
+    esito = await porta.esegui(
+        {"servizio": "light.turn_off"}, origine="chat")
+    assert esito["eseguito"] is False
+    assert "serve un bersaglio" in esito["errore"]
+    assert client.chiamate == []

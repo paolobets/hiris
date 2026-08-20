@@ -19,11 +19,24 @@ from hiris.app.azione.verifica import verifica
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
-        "turn_on": {"fields": {"brightness_pct": {}, "transition": {}}},
-        "turn_off": {"fields": {"transition": {}}},
+        # `target` come lo manda Home Assistant davvero (vedi
+        # `tests/test_azione_bersagli.py`, che lo misura per prima): senza,
+        # `test_senza_bersaglio_rifiutato` sotto passerebbe per il motivo
+        # sbagliato dopo la review finale (rilievo CRITICO ①) -- non perche'
+        # «serve un bersaglio», ma perche' nessun servizio di questo fixture
+        # ne dichiarava mai uno.
+        "turn_on": {"fields": {"brightness_pct": {}, "transition": {}},
+                    "target": {"entity": [{"domain": ["light"]}]}},
+        "turn_off": {"fields": {"transition": {}},
+                     "target": {"entity": [{"domain": ["light"]}]}},
     }},
-    {"domain": "switch", "services": {"turn_on": {"fields": {}}}},
+    {"domain": "switch", "services": {"turn_on": {"fields": {}, "target": {}}}},
     {"domain": "homeassistant", "services": {"turn_off": {"fields": {}}}},
+    # Un servizio SENZA `target`, come i `notify.*` veri: la review finale
+    # (rilievo CRITICO ①) l'aggiunge apposta per provare che un bersaglio
+    # vuoto e' legittimo qui e SOLO qui.
+    {"domain": "notify", "services": {
+        "mobile_app_x": {"fields": {"message": {}, "title": {}}}}},
 ]
 
 STATI = {
@@ -255,3 +268,93 @@ async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
                  await _registro_pronto(), STATI)
     assert v.ok is False
     assert "non accetta parametri" in v.motivo
+
+
+# --- i servizi senza bersaglio -----------------------------------------------
+#
+# Review finale, rilievo CRITICO ①. Fino a questa passata un bersaglio vuoto
+# era SEMPRE un rifiuto -- anche per un servizio come `notify.*` che non
+# accetta un `target` -- e questo significava che una promessa «chiedi» non
+# poteva MAI notificare: `schedulatore/orologio.py::_mantieni_chiedi`
+# costruisce la sua chiamata con `"bersaglio": {}`, e questa funzione la
+# rifiutava incondizionatamente, prima ancora di guardare il servizio.
+#
+# La prova per mutazione di questa famiglia: rimettere `if not bersaglio_ha:`
+# incondizionato (senza `and _dichiara_bersaglio(definizione)`) fa cadere
+# `test_un_servizio_senza_target_accetta_un_bersaglio_vuoto`.
+
+@pytest.mark.asyncio
+async def test_un_servizio_senza_target_accetta_un_bersaglio_vuoto():
+    v = verifica({"servizio": "notify.mobile_app_x",
+                  "bersaglio": {},
+                  "dati": {"message": "ciao", "title": "HIRIS"}},
+                 await _registro_pronto(), STATI)
+    assert v.ok is True, v.motivo
+    assert v.entita == ()
+    assert v.bersaglio == {}
+    assert v.senza_bersaglio is True
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_senza_target_accetta_anche_bersaglio_del_tutto_assente():
+    """«Bersaglio assente» e «bersaglio: {}» sono la stessa cosa per
+    `traduci_bersaglio` (vedi il suo docstring): devono restare la stessa
+    cosa anche qui."""
+    v = verifica({"servizio": "notify.mobile_app_x",
+                  "dati": {"message": "ciao"}},
+                 await _registro_pronto(), STATI)
+    assert v.ok is True, v.motivo
+    assert v.senza_bersaglio is True
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_col_target_resta_rifiutato_senza_bersaglio():
+    """Il rifiuto di sempre non deve sparire per il servizio sbagliato: qui
+    `light.turn_off` DICHIARA un `target` (vedi `RISPOSTA_HA`), quindi un
+    bersaglio vuoto resta un errore -- identico a prima, parola per parola.
+    E' il test gemello di `test_senza_bersaglio_rifiutato`, con l'assert piu'
+    stretto sul motivo esatto."""
+    v = verifica({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
+    assert v.ok is False
+    assert v.motivo == ("serve un bersaglio: «entita» con gli id esatti, oppure "
+                        "«aree», «piani», «etichette» o «dispositivi» -- Home "
+                        "Assistant risolve da se' cosa contengono, e non serve "
+                        "elencare le entita' a mano.")
+
+
+@pytest.mark.asyncio
+async def test_un_target_vuoto_ma_dichiarato_resta_rifiutato_senza_bersaglio():
+    """`target: {}` (dichiarato, ma senza restrizioni -- il caso vero di
+    `switch.turn_on` in `RISPOSTA_HA`) NON e' «nessun target»: e' un `target`
+    che accetta di tutto. Il verso prudente di `_dichiara_bersaglio` tratta
+    qualunque `dict`, anche vuoto, come «lo dichiara»."""
+    v = verifica({"servizio": "switch.turn_on"}, await _registro_pronto(), STATI)
+    assert v.ok is False
+    assert "serve un bersaglio" in v.motivo
+
+
+@pytest.mark.asyncio
+async def test_un_servizio_senza_target_verifica_comunque_i_parametri():
+    """Il bypass del bersaglio non e' un bypass di tutto: un parametro
+    inventato resta un rifiuto, come per ogni altro servizio."""
+    v = verifica({"servizio": "notify.mobile_app_x",
+                  "dati": {"colore_del_mercoledi": "blu"}},
+                 await _registro_pronto(), STATI)
+    assert v.ok is False
+    assert "non e' un parametro" in v.motivo
+
+
+@pytest.mark.asyncio
+async def test_la_chiamata_dello_schedulatore_per_una_notifica_e_accettata():
+    """La giuntura che nessuna review per-task attraversava (CRITICO). La
+    forma esatta che `schedulatore/orologio.py::_mantieni_chiedi` costruisce
+    per notificare -- bersaglio vuoto, servizio `notify.*` -- passata alla
+    verifica VERA con un registro che contiene un `notify.*` vero: deve
+    risultare accettata. Se qualcuno domani rimettesse il rifiuto
+    incondizionato su bersaglio vuoto, questo test torna rosso."""
+    chiamata_dello_schedulatore = {
+        "servizio": "notify.mobile_app_x", "bersaglio": {},
+        "dati": {"message": "e' salita di 2 gradi", "title": "HIRIS"},
+    }
+    v = verifica(chiamata_dello_schedulatore, await _registro_pronto(), STATI)
+    assert v.ok is True, v.motivo

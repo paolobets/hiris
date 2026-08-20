@@ -192,6 +192,19 @@ _CAMBIATO_NON_MOSTRABILE = ("Home Assistant ha riportato un cambiamento su quest
                             "ce n'e' nessuno diverso: il comando ha avuto effetto "
                             "su qualcosa che non so mostrare")
 
+# Il quarto avviso, per il caso che i tre sopra non possono descrivere: un
+# servizio senza `target` (`Verdetto.senza_bersaglio`, review finale, rilievo
+# CRITICO ①). Per lui non esiste NESSUNO stato da rileggere -- zero entita',
+# zero annunci da attendere -- e dire «entro N secondi Home Assistant non ha
+# riportato cambiamenti» sarebbe una misura inventata su qualcosa che non si
+# e' mai potuto misurare: e' precisamente la stessa disciplina di
+# `_nessun_cambiamento`, applicata al caso in cui non c'e' NIENTE da
+# guardare invece di qualcosa che non si e' mosso. Nessuna scadenza nominata:
+# non se n'e' pagata nessuna (vedi `PortaAzione._chiama_senza_bersaglio`).
+_SENZA_STATO_DA_RILEGGERE = ("la chiamata e' partita ed e' stata accettata: questo "
+                             "servizio non ha un bersaglio, quindi non c'era "
+                             "nessuno stato da rileggere.")
+
 
 def _anteprima(verdetto, risolto: dict) -> dict:
     """Cosa il bersaglio conteneva, e cosa di quello si tocca.
@@ -533,6 +546,49 @@ class PortaAzione:
                            type(errore).__name__, errore)
             return None
 
+    async def _chiama_senza_bersaglio(self, verdetto, dati: dict, origine: str) -> dict:
+        """La chiamata di un servizio che non dichiara un target
+        (`Verdetto.senza_bersaglio`): niente entita' da iniettare, niente
+        stato da rileggere. Review finale, rilievo CRITICO ①.
+
+        Non e' un caso limite delle tre fonti del «dopo» (vedi il docstring
+        del modulo): e' un ramo a parte, perche' per un servizio senza
+        bersaglio quelle tre fonti non hanno NIENTE su cui applicarsi -- zero
+        entita', zero annunci possibili. Non si apre nemmeno l'ascolto:
+        aprirlo per zero entita' e aspettare la scadenza farebbe pagare
+        `ATTESA_STATO_S` a ogni notifica, per un dato che non arrivera' mai.
+        L'esito dice solo cio' che e' vero: la chiamata e' partita ed e'
+        stata accettata, e non c'era nessuno stato da guardare -- mai «entro
+        N secondi non e' cambiato niente», che sarebbe una misura inventata
+        su qualcosa che non si e' mai potuto misurare.
+        """
+        servizio = f"{verdetto.dominio}.{verdetto.servizio}"
+        try:
+            await self._ha.call_service(verdetto.dominio, verdetto.servizio, dati)
+        except Exception as errore:
+            logger.warning("azione fallita [origine=%s] %s: %s",
+                           origine, servizio, errore)
+            messaggio = f"Home Assistant ha rifiutato la chiamata: {errore}"
+            esecuzione_id = self._annota(
+                origine=origine, servizio=servizio, entita=[],
+                eseguito=False, errore=messaggio)
+            esito = {"eseguito": False, "errore": messaggio}
+            if esecuzione_id is not None:
+                esito["esecuzione_id"] = esecuzione_id
+            return esito
+
+        logger.info("azione eseguita [origine=%s] %s -- nessun bersaglio: "
+                    "niente stato da rileggere", origine, servizio)
+        esito = {"eseguito": True, "servizio": servizio, "entita": [],
+                 "prima": {}, "dopo": {}, "cambiato": [],
+                 "avviso": _SENZA_STATO_DA_RILEGGERE}
+        esecuzione_id = self._annota(
+            origine=origine, servizio=servizio, entita=[],
+            eseguito=True, cambiato=[], avviso=esito["avviso"])
+        if esecuzione_id is not None:
+            esito["esecuzione_id"] = esecuzione_id
+        return esito
+
     async def esegui(self, chiamata: dict, *, origine: str) -> dict:
         try:
             await self._registro.assicura_fresco(self._ha)
@@ -591,6 +647,14 @@ class PortaAzione:
                         len(verdetto.scartate), len(verdetto.sconosciute), origine)
 
         dati = dict(chiamata.get("dati") or {})
+        if verdetto.senza_bersaglio:
+            # Niente da iniettare: `entity_id: []` direbbe una cosa diversa
+            # da «questo servizio non ha bersaglio» (review finale, rilievo
+            # CRITICO ①). Il resto della sequenza -- ascolto, attesa, le tre
+            # fonti del «dopo» -- non si applica a un servizio che non ha
+            # niente da rileggere, ed e' un ramo a parte apposta: vedi
+            # `_chiama_senza_bersaglio`.
+            return await self._chiama_senza_bersaglio(verdetto, dati, origine)
         dati["entity_id"] = list(verdetto.entita)
 
         # L'ascolto si apre PRIMA della chiamata (vedi il docstring del

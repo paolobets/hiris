@@ -60,6 +60,17 @@ per una dimenticanza:
 - **le entita' che il modello ha NOMINATO restano strette.** Un id che non
   esiste, o di un altro dominio, e' un'affermazione sbagliata del modello e
   si rifiuta come sempre -- anche quando arriva insieme a un'area.
+
+**I servizi che non hanno niente da bersagliare.** Review finale, rilievo
+CRITICO ①. Fino a questa passata un bersaglio vuoto era SEMPRE un rifiuto,
+anche per un servizio come `notify.*` che non accetta un `target` -- e questo
+significava che una promessa «chiedi» non poteva mai notificare
+(`schedulatore/orologio.py` costruisce la sua chiamata con `"bersaglio": {}`,
+e questa funzione la rifiutava incondizionatamente, PRIMA di guardare il
+servizio). Adesso un bersaglio vuoto e' legittimo quando -- e solo quando --
+il registro dice che quel servizio non dichiara un `target` (vedi
+`_dichiara_bersaglio`, e `Verdetto.senza_bersaglio`). Per ogni altro servizio
+il rifiuto resta identico a prima, parola per parola.
 """
 from dataclasses import dataclass, field
 from ..casa.anagrafe import dominio_di
@@ -88,6 +99,33 @@ from ..casa.anagrafe import dominio_di
 # versi, e chiede di guardare `target` nell'output della prova 1: con quel
 # dato in mano la decisione si prende misurata.
 _DOMINI_UNIVERSALI = frozenset({"homeassistant"})
+
+
+def _dichiara_bersaglio(definizione: dict) -> bool:
+    """Vero se questo servizio si aspetta un bersaglio (entita', area...).
+
+    Review finale, rilievo CRITICO ①. Il campo e' `target` di
+    `/api/services`, che `azione/registro.py` conserva TALE E QUALE (vedi il
+    suo docstring): quando c'e' -- anche vuoto, `{}` -- il servizio accetta un
+    bersaglio, e un bersaglio vuoto resta un errore, come e' sempre stato.
+    Quando manca, o e' `None`, il servizio non lo dichiara affatto: e' il
+    caso di `notify.*` e di parecchi servizi di sistema, che oggi HIRIS
+    rifiuta SEMPRE anche quando non hanno niente da bersagliare -- il difetto
+    per cui una promessa «chiedi» non poteva mai notificare (vedi
+    `schedulatore/orologio.py::_mantieni_chiedi`).
+
+    **Il verso e' quello prudente.** Si allarga SOLO quando il dato dice
+    esplicitamente «niente bersaglio» (`isinstance(..., dict)` falso): mai per
+    un'assenza ambigua che potrebbe voler dire «questa installazione non lo
+    misura». E' la stessa cautela gia' scritta sopra `_DOMINI_UNIVERSALI` per
+    lo stesso campo -- usata li' per allargare un'ESENZIONE (rischioso: un
+    falso negativo apre un dominio intero), qui per allargare la sola
+    ammissione di un bersaglio vuoto su un servizio specifico (un falso
+    negativo qui richiede comunque un bersaglio in piu', mai in meno: per
+    tutti gli altri servizi il rifiuto resta identico a prima, parola per
+    parola).
+    """
+    return isinstance(definizione.get("target"), dict)
 
 
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
@@ -145,6 +183,14 @@ class Verdetto:
     # chiude.
     scartate: tuple[str, ...] = field(default_factory=tuple)   # altro dominio
     sconosciute: tuple[str, ...] = field(default_factory=tuple)  # senza stato
+    # Vero quando il verdetto e' positivo e il servizio non dichiara un
+    # `target` (vedi `_dichiara_bersaglio`): `entita` e `bersaglio` restano
+    # vuoti apposta, e non e' un difetto -- e' la forma giusta per un
+    # servizio come `notify.*`, che non ha niente da bersagliare. La porta lo
+    # legge per non iniettare `entity_id: []` (che direbbe una cosa diversa
+    # da «nessun bersaglio») e per non aprire un ascolto di stato che non
+    # avrebbe niente da attendere (review finale, rilievo CRITICO ①).
+    senza_bersaglio: bool = False
 
 
 def _no(motivo: str) -> Verdetto:
@@ -252,11 +298,17 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
         return _no(f"questo bersaglio non si legge: {'; '.join(illeggibili)}. "
                    f"Ogni voce dev'essere un identificatore, o un elenco di "
                    f"identificatori.")
-    if not bersaglio_ha:
+    if not bersaglio_ha and _dichiara_bersaglio(definizione):
         return _no("serve un bersaglio: «entita» con gli id esatti, oppure "
                    "«aree», «piani», «etichette» o «dispositivi» -- Home "
                    "Assistant risolve da se' cosa contengono, e non serve "
                    "elencare le entita' a mano.")
+    # Se `bersaglio_ha` e' vuoto ED e' arrivato fin qui, il servizio non
+    # dichiara un target (review finale, rilievo CRITICO ①): non si rifiuta
+    # subito, si scende fino in fondo alla funzione -- che riconosce questo
+    # caso all'UNICO altro punto in cui puo' arrivarci vuoto -- cosi' i
+    # controlli sui parametri restano gli stessi di ogni altra chiamata,
+    # invece di separare un binario apposta per lui.
 
     # Le entita' che il modello ha NOMINATO restano strette, anche quando
     # arrivano insieme a un'area: un id inventato o di un altro dominio e' una
@@ -299,6 +351,14 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
     # passare costa un errore chiaro di Home Assistant, che il modello legge e
     # da cui si corregge: e' la stessa regola gia' dichiarata qui sopra per i
     # valori dei parametri.
+
+    if not bersaglio_ha:
+        # Ci si arriva SOLO se il controllo sopra ha gia' lasciato passare
+        # perche' il servizio non dichiara un target: un bersaglio vuoto e'
+        # la forma giusta per chiamarlo, non un errore (review finale,
+        # rilievo CRITICO ①). Vedi `Verdetto.senza_bersaglio`.
+        return Verdetto(ok=True, dominio=dominio, servizio=nome,
+                        entita=(), bersaglio={}, senza_bersaglio=True)
 
     if set(bersaglio_ha) == {"entity_id"}:
         # Il caso di sempre: il modello ha detto esattamente cosa toccare, e

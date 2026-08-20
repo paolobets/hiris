@@ -247,3 +247,78 @@ async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
     p = archivio.leggi(ident)
     assert p["stato"] == "fallita"
     assert "non ha concluso" in p["motivo"]
+
+
+# --- la cucitura vera: nessuna finta dai due lati -----------------------------
+#
+# Review finale, rilievo CRITICO ①. Ogni test qui sopra usa `PortaFinta`, che
+# verifica solo la FORMA della chiamata che l'orologio costruisce -- mai che
+# quella forma sia ACCETTABILE per la `verifica` vera. La stringa `"bersaglio":
+# {}` che `orologio._mantieni_chiedi` costruisce per notificare compariva una
+# sola volta in tutto il repo -- la riga che la genera -- e mai in un test
+# contro `azione/verifica.py` vera: e' cosi' che il difetto e' sopravvissuto a
+# nove task e alla loro review.
+#
+# Questo test attraversa la giuntura per davvero: la STESSA `Orologio`, con la
+# `PortaAzione` VERA (non un doppio), un registro VERO caricato da un
+# `notify.*` vero (senza `target`, com'e' in Home Assistant), e nessuna finta
+# a meta' strada. Se qualcuno rimettesse il rifiuto incondizionato su
+# bersaglio vuoto in `verifica()`, questo test torna rosso -- e non per un
+# assert su una stringa isolata, ma perche' la promessa non risulterebbe piu'
+# "mantenuta" con un motivo onesto.
+
+class _ClientSoloNotifica:
+    """Home Assistant, ridotto al minimo che serve a questa cucitura: UN
+    servizio, `notify.mobile_app_x`, che come i `notify.*` veri non dichiara
+    un `target`. Nessun `add_state_listener`/`remove_state_listener`: la
+    riparazione di `porta.py` non deve aprirne uno per una chiamata senza
+    bersaglio, e questo doppio lo dimostra non avendoli affatto -- se la
+    porta provasse a chiamarli, la sospensione griderebbe `AttributeError`
+    invece di restare silenziosa."""
+
+    def __init__(self) -> None:
+        self.chiamate = []
+
+    async def get_services(self):
+        return [{"domain": "notify", "services": {
+            "mobile_app_x": {"fields": {"message": {}, "title": {}}}}}]
+
+    async def call_service(self, dominio, servizio, dati):
+        self.chiamate.append((dominio, servizio, dati))
+        return []
+
+
+class _CasaMinima:
+    """Lo specchio dello stato vivo, con una sola entita' -- basta a
+    soddisfare la guardia (b) di `PortaAzione.esegui` (uno specchio VUOTO e
+    uno MAI CALDO valgono uguale, vedi il suo docstring); la notifica non
+    guarda nessuna entita', ma la porta deve comunque poter dire di aver
+    visto la casa prima di rifiutare o proseguire."""
+
+    def all_states(self):
+        return [{"id": "sun.sun", "state": "above_horizon"}]
+
+
+async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
+    from hiris.app.azione.porta import PortaAzione
+    from hiris.app.azione.registro import RegistroServizi
+
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
+    client = _ClientSoloNotifica()
+    registro = RegistroServizi()
+    await registro.aggiorna(client)
+    porta = PortaAzione(client, registro, _CasaMinima())
+    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
+
+    await Orologio(archivio, esegui=porta.esegui, interpreta=turno).batti(ADESSO + 11)
+
+    assert client.chiamate == [
+        ("notify", "mobile_app_x",
+         {"message": "e' salita di 2 gradi", "title": "HIRIS"})], (
+        "la chiamata non e' arrivata a Home Assistant: la guardia sul "
+        "bersaglio vuoto ha rifiutato una notifica che non ha un bersaglio")
+    p = archivio.leggi(ident)
+    assert p["stato"] == "mantenuta"
+    assert p["motivo"] is None, (
+        f"la notifica non e' partita, ed e' esattamente il difetto CRITICO "
+        f"della review finale: {p['motivo']!r}")

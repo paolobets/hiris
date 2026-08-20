@@ -29,6 +29,17 @@ fino al modello (`unhashable type: 'dict'` come motivo di un rifiuto), e un
 `fields` **a sezioni** -- la forma che Home Assistant >= 2024.6 manda per
 parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
 `advanced_fields` come «uno di quelli veri».
+
+**`target` non viene toccato, ed e' voluto** (review finale, rilievo CRITICO
+①). A differenza di `fields`, che va appiattito per essere letto,
+`_dettaglio()` lo lascia esattamente come Home Assistant lo manda -- spreads
+`**grezzo`, quindi la chiave sopravvive intera, `None` compreso -- perche' qui
+serve il dato grezzo, non una sua interpretazione: e' `azione/verifica.py` a
+decidere cosa significhi «un servizio senza `target`» (vedi
+`verifica._dichiara_bersaglio`), non questo modulo. `servizio("light", "turn_on") == {"target": {}}` (con) e `servizio("light",
+"toggle") == {}` (senza -- la chiave non compare affatto) sono ENTRAMBI casi
+gia' pinnati da un test (`tests/test_azione_registro.py::
+test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 """
 import logging
 import time
