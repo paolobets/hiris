@@ -74,6 +74,7 @@
         (route === 'conoscenza' && (hash === '#/' || hash === '')) ||
         (route === 'albero' && hash.indexOf('#/albero') === 0) ||
         (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
+        (route === 'promesse' && hash.indexOf('#/promesse') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
@@ -123,6 +124,19 @@
       HirisMemoriaRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Memoria</div>';
+    }
+  });
+  /* fetta «lo schedulatore» Task 9: la pagina #/promesse -- vedi
+     config/promesse-route.js per il perche'. Una sola rotta: la pagina
+     legge UNA GET /api/promesse?tutte=1 e filtra lì per `stato`, invece di
+     chiederne due -- lo stato di una promessa è un campo, non un
+     endpoint. */
+  HirisRouter.register(/^#\/promesse\/?$/, function() {
+    setCrumbHere('Promesse');
+    if (window.HirisPromesseRoute) {
+      HirisPromesseRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Promesse</div>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

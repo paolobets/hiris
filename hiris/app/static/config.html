@@ -89,6 +89,17 @@
       </span>
       <span class="nav-label">Memoria</span>
     </a>
+    <!-- fetta «lo schedulatore» Task 9: la terza condizione della spec (§10)
+         -- «si vede»: un posto dove guardare cosa e' in sospeso e
+         annullarlo. Legge/disdice l'archivio vero (GET/DELETE
+         /api/promesse*, config/promesse-route.js). Icona orologio: nessun'
+         altra voce dice "quando". -->
+    <a class="nav-item" href="#/promesse" data-route="promesse" title="Promesse" aria-label="Promesse">
+      <span class="nav-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      </span>
+      <span class="nav-label">Promesse</span>
+    </a>
     <!-- fetta E5 Task 2: i sette campi di ImpostazioniChat (prompt di
          sistema, modello, forma della risposta, ragionamento, tetto di turni,
          restrizione alla casa, nome) prima si cambiavano solo scrivendo a
@@ -171,6 +182,10 @@
        fetch, stesso pattern di impostazioni-route.js), quindi la posizione
        nell'ordine non vincola niente. -->
   <script src="static/config/memoria-route.js"></script>
+  <!-- fetta «lo schedulatore» Task 9: pagina #/promesse. Nessuna dipendenza
+       (solo document e fetch, stesso pattern di memoria-route.js), quindi
+       la posizione nell'ordine non vincola niente. -->
+  <script src="static/config/promesse-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

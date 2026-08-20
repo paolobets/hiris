@@ -1,0 +1,272 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadScripts, tick } from './helpers/dom.mjs';
+
+/* fetta «lo schedulatore» Task 9: la pagina #/promesse (config/promesse-route.js).
+   Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
+   cosa e' in sospeso e annullarlo.» Legge UNA sola GET /api/promesse?tutte=1 e
+   filtra lato client per `stato` -- lo stato e' un campo della stessa lista,
+   non due mondi (progetto, guida di disegno §1).
+
+   Tre cose non negoziabili, dettate dalla guida di disegno e da
+   handlers_promesse.py/archivio.py:
+   - la DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
+     /api/memoria/{id} -- un test lo pinza sotto;
+   - il vocabolario mostrato non e' quello del backend: `saltata` -> «Non
+     eseguita», `fallita` -> «Non riuscita» (guida §0/§3);
+   - nessun window.confirm() per disdire: e' reversibile (chiedendo di nuovo a
+     voce) e la riga non sparisce, passa allo storico. */
+
+function fixtureHtml() {
+  return '<!doctype html><body><div id="route-outlet"></div></body>';
+}
+
+const SCRIPTS = ['config/promesse-route.js'];
+
+function jsonResponse(body, status) {
+  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
+}
+
+const PROMESSE = [
+  {
+    id: 'p1', specie: 'fai', frase: 'alle 17 accendi lo studio',
+    quando_ts: 1755600000, quando_detto: 'alle 17', fuso: 'Europe/Rome',
+    chiamata: { servizio: 'light.turn_on' }, domanda: null, istantanea: null,
+    recapito: null, stato: 'in_attesa', motivo: null, esecuzione_id: null,
+    testo: null, avvisare: null, nata_ts: 1755590000, risvegliata_ts: null, origine: null,
+  },
+  {
+    id: 'p2', specie: 'chiedi', frase: 'verifica la temperatura',
+    quando_ts: 1755500000, quando_detto: 'fra un\'ora', fuso: 'Europe/Rome',
+    chiamata: null, domanda: 'com\'e\' la temperatura del salotto?', istantanea: null,
+    recapito: null, stato: 'saltata',
+    motivo: 'scaduta da 41 minuti quando l\'orologio l\'ha vista -- non eseguita.',
+    esecuzione_id: null, testo: null, avvisare: null,
+    nata_ts: 1755490000, risvegliata_ts: 1755500100, origine: null,
+  },
+  {
+    id: 'p3', specie: 'chiedi', frase: 'posso aprire le finestre?',
+    quando_ts: 1755400000, quando_detto: 'fra due ore', fuso: 'Europe/Rome',
+    chiamata: null, domanda: 'la temperatura esterna e\' sotto i 25 gradi?',
+    istantanea: [{ entita: 'sensor.temp_esterna', valore: 31, unita: '°C' }],
+    recapito: null, stato: 'mantenuta', motivo: null, esecuzione_id: 'e1',
+    testo: 'no: fuori ci sono 31 gradi', avvisare: false,
+    nata_ts: 1755390000, risvegliata_ts: 1755400050, origine: null,
+  },
+];
+
+/* Il finto server: risponde a GET/DELETE api/promesse*, stesso pattern di
+   montaConServer() in memoria-route.test.mjs. */
+function montaConServer(opts = {}) {
+  const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const chiamate = [];
+  let getCount = 0;
+  ctx.window.fetch = async (url, options) => {
+    const u = String(url);
+    const method = (options || {}).method || 'GET';
+    chiamate.push({ url: u, method, opts: options || {} });
+    if (method === 'GET') {
+      getCount += 1;
+      if (opts.getRotto) throw new Error('rete giu\'');
+      if (opts.get503) return jsonResponse({ promesse: [], errore: 'archivio non disponibile' }, 503);
+      const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
+      return jsonResponse(corpo !== undefined ? corpo : { promesse: PROMESSE });
+    }
+    if (method === 'DELETE') {
+      if (opts.deleteRotto) throw new Error('rete giu\'');
+      return jsonResponse(
+        opts.deleteBody !== undefined ? opts.deleteBody : { promessa: { ...PROMESSE[0], stato: 'disdetta' } },
+        opts.deleteStatus !== undefined ? opts.deleteStatus : 200);
+    }
+    throw new Error('metodo inatteso: ' + method);
+  };
+  return Object.assign(ctx, { chiamate });
+}
+
+async function monta(opts) {
+  const { window, document, chiamate } = montaConServer(opts);
+  window.HirisPromesseRoute.mount();
+  await tick(20);
+  return { window, document, chiamate };
+}
+
+// ---------------------------------------------------------------------------
+// I cinque test del brief (Task 9, step 1)
+// ---------------------------------------------------------------------------
+
+test('le in sospeso e lo storico stanno in due sezioni distinte', async () => {
+  const { document } = await monta();
+  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
+  const storico = document.querySelector('[data-sezione="storico"]');
+  assert.ok(sospeso, 'deve esistere la sezione in sospeso');
+  assert.ok(storico, 'deve esistere la sezione storico');
+  assert.ok(sospeso.textContent.includes('accendi lo studio'));
+  assert.ok(!sospeso.textContent.includes('verifica la temperatura'));
+  assert.ok(storico.textContent.includes('verifica la temperatura'));
+});
+
+test('una promessa saltata mostra il motivo, non solo lo stato', async () => {
+  const { document } = await monta();
+  assert.ok(document.body.textContent.includes('41 minuti'));
+  assert.match(document.body.textContent, /Non eseguita/, 'il vocabolario a schermo, non "saltata"');
+});
+
+test('un chiedi concluso in silenzio mostra comunque cio\' che ha trovato', async () => {
+  const { document } = await monta();
+  assert.ok(document.body.textContent.includes('31 gradi'));
+});
+
+test('solo le in sospeso hanno il bottone per disdire', async () => {
+  const { document } = await monta();
+  const bottoni = document.querySelectorAll('[data-disdici]');
+  assert.equal(bottoni.length, 1);
+  assert.equal(bottoni[0].getAttribute('data-disdici'), 'p1');
+});
+
+test('senza promesse la pagina lo dice invece di restare bianca', async () => {
+  const { document } = await monta({ get: { promesse: [] } });
+  assert.ok(document.body.textContent.trim().length > 0);
+  assert.match(document.body.textContent, /nessuna promessa/i);
+});
+
+// ---------------------------------------------------------------------------
+// Vocabolario: due parole deliberatamente diverse, non due rime
+// ---------------------------------------------------------------------------
+
+test('una promessa fallita dice «Non riuscita», mai «Non eseguita»', async () => {
+  const { document } = await monta({
+    get: { promesse: [{ ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' }] },
+  });
+  const testo = document.body.textContent;
+  assert.match(testo, /Non riuscita/);
+  assert.doesNotMatch(testo, /Non eseguita/);
+});
+
+test('il badge di "Non eseguita" non e\' rosso: e\' una scelta del prodotto, non un guasto', async () => {
+  const { document } = await monta();
+  const badge = Array.from(document.querySelectorAll('.agent-badge'))
+    .find((b) => b.textContent === 'Non eseguita');
+  assert.ok(badge, 'deve esistere il badge "Non eseguita"');
+  assert.ok(badge.classList.contains('badge-warn'), 'ambra, non rosso: classList=' + badge.className);
+  assert.ok(!badge.classList.contains('badge-err'));
+});
+
+// ---------------------------------------------------------------------------
+// Ordine: la prossima cosa prima nel sospeso, la piu' recente prima nello storico
+// ---------------------------------------------------------------------------
+
+test('in sospeso l\'ordine e\' per quando_ts crescente (la prossima prima)', async () => {
+  const { document } = await monta({
+    get: {
+      promesse: [
+        { ...PROMESSE[0], id: 'a', frase: 'la piu\' tardiva', quando_ts: 1755700000 },
+        { ...PROMESSE[0], id: 'b', frase: 'la piu\' vicina', quando_ts: 1755600000 },
+      ],
+    },
+  });
+  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
+  const idxVicina = sospeso.textContent.indexOf('la piu\' vicina');
+  const idxTardiva = sospeso.textContent.indexOf('la piu\' tardiva');
+  assert.ok(idxVicina >= 0 && idxTardiva >= 0);
+  assert.ok(idxVicina < idxTardiva, 'la prossima a scattare deve comparire prima');
+});
+
+test('nello storico l\'ordine e\' per quando_ts decrescente (la piu\' recente prima)', async () => {
+  const { document } = await monta();
+  const storico = document.querySelector('[data-sezione="storico"]');
+  // p2 (quando_ts 1755500000) e' piu' recente di p3 (1755400000).
+  const idxP2 = storico.textContent.indexOf('verifica la temperatura');
+  const idxP3 = storico.textContent.indexOf('posso aprire le finestre');
+  assert.ok(idxP2 >= 0 && idxP3 >= 0);
+  assert.ok(idxP2 < idxP3);
+});
+
+// ---------------------------------------------------------------------------
+// Nessuna conferma per disdire
+// ---------------------------------------------------------------------------
+
+test('«Disdici» non chiede conferma: manda subito la DELETE', async () => {
+  const { window, document, chiamate } = await monta();
+  let confirmChiamato = false;
+  window.confirm = () => { confirmChiamato = true; return true; };
+
+  const bottone = document.querySelector('[data-disdici="p1"]');
+  bottone.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  assert.equal(confirmChiamato, false, 'nessun window.confirm() per disdire');
+  const del = chiamate.find((c) => c.method === 'DELETE');
+  assert.ok(del, 'il click deve mandare subito la DELETE');
+  assert.equal(del.url, 'api/promesse/p1');
+  assert.equal(del.opts.headers['X-Requested-With'], 'fetch',
+    'senza questo header csrf_middleware risponde 403');
+});
+
+test('la DELETE riuscita (200, non 204) ricarica l\'elenco e conferma sulla riga di stato', async () => {
+  const { window, document } = await monta({
+    deleteStatus: 200,
+    deleteBody: { promessa: { ...PROMESSE[0], stato: 'disdetta' } },
+    // Dopo la disdetta il ricaricamento vede la lista vera: p1 non e' piu'
+    // fra le in sospeso (l'archivio ora la darebbe 'disdetta'). Il PRIMO
+    // GET (al mount) deve invece portare ancora p1 in_attesa, altrimenti
+    // il bottone da cliccare non esiste nemmeno.
+    getSuccessivo: { promesse: [] },
+  });
+  document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  const testo = document.body.textContent;
+  assert.match(testo, /Promessa disdetta/,
+    'trappola del brief: la DELETE risponde 200 con un corpo, non 204 come /api/memoria/{id} -- ' +
+    'chi legge "res.status === 204" per il successo qui leggerebbe sempre un fallimento');
+  assert.match(testo, /nessuna promessa/i, 'la lista si e\' ricaricata: ora e\' vuota davvero');
+});
+
+// ---------------------------------------------------------------------------
+// Gli errori della DELETE: 404 e 409 dicono cose diverse
+// ---------------------------------------------------------------------------
+
+test('la DELETE 404 mostra il testo esatto del server, poi ricarica comunque', async () => {
+  const { window, document } = await monta({
+    deleteStatus: 404,
+    deleteBody: { errore: 'non ho nessuna promessa con quell\'identificatore.' },
+  });
+  document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /non ho nessuna promessa con quell'identificatore/);
+});
+
+test('la DELETE 409 mostra il testo esatto del server (gia\' concluso: non si disdice)', async () => {
+  const { window, document } = await monta({
+    deleteStatus: 409,
+    deleteBody: { errore: 'quella promessa e\' gia\' mantenuta: non si disdice, si legge.' },
+  });
+  document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /gia' mantenuta: non si disdice, si legge/);
+});
+
+test('la DELETE senza risposta di rete si dichiara, non un catch muto', async () => {
+  const { window, document } = await monta({ deleteRotto: true });
+  document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+  assert.match(document.body.textContent, /non ha risposto/);
+});
+
+// ---------------------------------------------------------------------------
+// Gli errori della GET: 503 con `promesse: []' nel corpo non e' una lista vuota vera
+// ---------------------------------------------------------------------------
+
+test('un GET fallito mostra un errore con "Riprova", non una lista vuota silenziosa', async () => {
+  const { document } = await monta({ getRotto: true });
+  assert.match(document.body.textContent, /Non è stato possibile leggere le promesse/);
+  const retry = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Riprova');
+  assert.ok(retry, 'deve esserci un modo di riprovare');
+});
+
+test('il 503 "archivio non disponibile" (con promesse:[] nel corpo) non si legge come lista vuota vera', async () => {
+  const { document } = await monta({ get503: true });
+  const testo = document.body.textContent;
+  assert.match(testo, /Non è stato possibile leggere le promesse/);
+  assert.doesNotMatch(testo, /nessuna promessa/i,
+    'un guasto non deve sembrare "non hai promesse"');
+});

@@ -1066,6 +1066,24 @@
   background: var(--accent-tint);
   border-color: var(--accent-tint-2);
 }
+/* fetta «lo schedulatore» Task 9 (#/promesse): mancava una variante ambra e
+   una rossa di `.agent-badge` -- i token `--warn-*`/`--err-*` esistono dal
+   principio e sono gia' usati come colore di testo inline in
+   memoria-route.js, ma nessuna pagina li aveva mai portati fin qui come
+   badge. Non e' la resurrezione di `.badge-warn`/`.dot.warn`, usciti da
+   questo file con la fetta «la catena e' l'unica verita'» (sopra, provider):
+   e' un consumatore vivo nuovo, per un significato diverso -- lo stato di
+   una promessa, non di un provider. */
+.agent-badge.badge-warn {
+  color: var(--warn-ink);
+  background: var(--warn-tint);
+  border-color: var(--warn);
+}
+.agent-badge.badge-err {
+  color: var(--err-ink);
+  background: var(--err-tint);
+  border-color: var(--err);
+}
 /* fetta E5 Task 8: `.prop-card*` e `.adv-card*` (le card delle proposte e
    delle segnalazioni del Brain) avevano un unico portatore, la vecchia
    Dashboard: la riscrittura in «Cosa HIRIS sa» le ha lasciate senza nessun
@@ -1325,6 +1343,11 @@
    sequenza che si legge di seguito, riga-connettore-riga. Il `gap` grande del
    `.sc-body` (--sp-5) spezzerebbe proprio cio' che tiene insieme la frase. */
 #catena-body, #fuori-body { gap: 0; }
+
+/* fetta «lo schedulatore» Task 9 (#/promesse): stesso motivo di sopra --
+   ogni riga porta il proprio separatore (`border-top`), non il gap del
+   flex del `.sc-body` che eredita. */
+#promesse-sospeso-body, #promesse-storico-body { gap: 0; }
 
 /* La riga-provider: quattro colonne, quattro domande. Dove sei (la posizione),
    chi sei (il nome), con che cosa (il modello), quanto costi (la natura). Il
