@@ -865,13 +865,38 @@ class DispatcherStrumenti:
         rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
         spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
         motivi: list[str] = []
+        # Fix finale ① (2026-08-20): `CHIAVE_ARCHIVIO_PER_TIPO` e' apposta
+        # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
+        # `_ARCHIVI` in memoria/riconoscitore.py -- allargarla rifarebbe il
+        # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
+        # una tabella vera di `_TABELLE` (casa/archivio.py) che PUO' cadere
+        # in `non_disponibili()`, e da T8 (R2) `cerca` indicizza le
+        # etichette stesse come candidati: un registro etichette caduto
+        # merita lo stesso motivo dei registri di `CHIAVE_ARCHIVIO_PER_TIPO`,
+        # aggiunta qui invece che nella mappa che serve a un altro scopo.
         caduti = sorted(set(self._casa.non_disponibili())
-                        & set(CHIAVE_ARCHIVIO_PER_TIPO.values()))
+                        & (set(CHIAVE_ARCHIVIO_PER_TIPO.values()) | {"etichette"}))
         if caduti:
             motivi.append(
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
                 f"{', '.join(caduti)}. Cio' che sta li' dentro non e' cercabile adesso, "
                 "e potrebbe esistere lo stesso.")
+        # Fix finale ① (2026-08-20): il comportamento (automazioni/script)
+        # non passa MAI da `non_disponibili()` -- la sua fonte e' un file
+        # YAML riletto a una cadenza propria (`ArchivioCasa.comportamento()`),
+        # non un registro dell'anagrafe, col proprio segnale di
+        # incompletezza (`file_non_letti()`). `_guarda` lo legge gia' per lo
+        # stesso motivo (vedi `_guarda` qui sotto, `_dettaglio_non_trovato`
+        # in domande.py); `_cerca` non lo leggeva affatto, quindi un file di
+        # comportamento non letto restituiva 'trovati': [] nudo per un nome
+        # di automazione/script che poteva essere scritto proprio li'.
+        file_non_letti = self._casa.file_non_letti()
+        if file_non_letti:
+            motivi.append(
+                f"file di automazioni/script non letti: "
+                f"{', '.join(sorted(file_non_letti))}. Cio' che c'e' scritto li' dentro "
+                "non e' cercabile adesso, e potrebbe esistere lo stesso.")
+
         senza_nome = [e for e in casa.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
         specchio_ok = specchio_letto and inventario_leggibile(self._cache)

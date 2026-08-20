@@ -669,6 +669,42 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(arc
     assert "non_ho_potuto_guardare" not in esito
 
 
+@pytest.mark.asyncio
+async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memoria):
+    """Fix finale ①: `etichette` e' una tabella vera di `_TABELLE` che puo'
+    comparire in `non_disponibili()` (T8, R2 -- `cerca` indicizza le
+    etichette stesse come candidati), ma `_cecita` filtrava i registri
+    caduti con `CHIAVE_ARCHIVIO_PER_TIPO.values()`, che non la contiene
+    (deliberatamente: non e' un tipo di ancora, vedi il commento su
+    `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
+    nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
+    archivio_casa.sostituisci({"aree": [], "entita": []}, ["etichette"])
+    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+        "cerca", {"testo": "da controllare"})
+    assert esito["trovati"] == []
+    assert "non_ho_potuto_guardare" in esito
+    assert any("etichette" in m for m in esito["non_ho_potuto_guardare"])
+
+
+@pytest.mark.asyncio
+async def test_cerca_dichiara_i_file_di_comportamento_non_letti(archivio_casa, memoria):
+    """Fix finale ①: il comportamento (automazioni/script) non passa affatto
+    da `non_disponibili()` -- la sua fonte e' `automations.yaml`/
+    `scripts.yaml`, col proprio segnale di incompletezza
+    (`ArchivioCasa.file_non_letti()`, la stessa lettura che gia' fa
+    `_guarda` per lo stesso motivo). Prima del fix `_cerca` non lo leggeva
+    mai: un file di comportamento non letto restituiva 'trovati': [] nudo
+    per un nome di automazione/script che potrebbe essere scritto proprio
+    li'."""
+    archivio_casa.sostituisci_comportamento(
+        [], file_non_letti={"automations.yaml": "assente"})
+    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+        "cerca", {"testo": "una automazione che non esiste per niente"})
+    assert esito["trovati"] == []
+    assert "non_ho_potuto_guardare" in esito
+    assert any("automations.yaml" in m for m in esito["non_ho_potuto_guardare"])
+
+
 def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, memoria):
     """Fix E1-(3), esteso ai nomi: meta' dei nomi e' peggio di nessuno,
     perche' le entita' mancanti sembrerebbero non esistere."""
