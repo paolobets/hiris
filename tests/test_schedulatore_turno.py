@@ -83,3 +83,93 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
     await d.dispatch("concludi", {"avvisare": False, "testo": "niente"})
     await d.dispatch("concludi", {"avvisare": True, "testo": "invece si'"})
     assert d.conclusione == {"avvisare": True, "testo": "invece si'"}
+
+
+# --- interpreta_promessa, end-to-end ------------------------------------------
+#
+# Rilievo minore della review finale: `interpreta_promessa` non era coperta
+# end-to-end. E' la SECONDA giuntura non attraversata da nessun test -- la
+# prima (`orologio.py` + `verifica.py`, vedi `test_schedulatore_orologio.py`)
+# si e' rivelata rotta, ed e' la priorita' fra i minori per lo stesso motivo:
+# ogni test altrove costruisce un `TurnoFinto` che RESTITUISCE gia' la
+# conclusione, mai un runner che la produce chiamando `concludi` attraverso
+# `DispatcherPromessa` -- il percorso vero.
+#
+# Un `app` vuoto (`{}`) e' legittimo: `costruisci_nucleo` e
+# `costruisci_dispatcher_strumenti` sono "SEMPRE componibili" per contratto
+# (vedi i loro docstring in `hiris/app/api/handlers_casa.py` e
+# `handlers_chat.py`), anche senza archivi -- e' la stessa disciplina che
+# rende `interpreta_promessa` provabile senza un server vero.
+
+class _RunnerCheConclude:
+    """Un runner finto che CHIAMA `concludi` attraverso il dispatcher che
+    riceve -- non lo restituisce gia' pronto: e' cio' che attraversa
+    davvero `DispatcherPromessa`, non un suo doppio."""
+
+    def __init__(self, avvisare: bool, testo: str) -> None:
+        self._avvisare = avvisare
+        self._testo = testo
+        self.chiamato_con: dict | None = None
+
+    async def chat(self, **kwargs):
+        self.chiamato_con = kwargs
+        await kwargs["dispatcher"].dispatch(
+            "concludi", {"avvisare": self._avvisare, "testo": self._testo})
+
+
+class _RunnerCheNonConclude:
+    """Il turno che gira e non chiama MAI `concludi`: la promessa "forse e'
+    andata bene" che la spec vieta esplicitamente (§6.2)."""
+
+    async def chat(self, **kwargs):
+        return None
+
+
+def _promessa_chiedi(**extra) -> dict:
+    dati = {"id": "p1", "frase": "fra un'ora verifica la temperatura",
+            "domanda": "e' aumentata?", "istantanea": []}
+    dati.update(extra)
+    return dati
+
+
+@pytest.mark.asyncio
+async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    runner = _RunnerCheConclude(avvisare=True, testo="e' salita di 2 gradi")
+    app = {"llm_router": runner}
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert esito == {"avvisare": True, "testo": "e' salita di 2 gradi"}
+    # il catalogo che arriva al runner e' quello RISTRETTO (SOLA_LETTURA +
+    # concludi), non il catalogo intero della chat -- e' la garanzia
+    # strutturale della spec (§6.2), non solo un fatto su questo test
+    assert ({d["name"] for d in runner.chiamato_con["strumenti"]}
+            == set(SOLA_LETTURA) | {"concludi"})
+    assert runner.chiamato_con["agent_type"] == "promessa"
+
+
+@pytest.mark.asyncio
+async def test_interpreta_promessa_senza_concludi_e_un_errore_dichiarato():
+    """Il turno che non conclude: `interpreta_promessa` non deve inventare un
+    "forse e' andata bene" -- deve dichiarare l'errore, cosi' l'orologio
+    marca la promessa `fallita` con un motivo vero (vedi
+    `orologio._mantieni_chiedi`)."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    esito = await interpreta_promessa({"llm_router": _RunnerCheNonConclude()},
+                                      _promessa_chiedi())
+
+    assert "errore" in esito
+    assert "non ha concluso" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_interpreta_promessa_senza_runner_e_un_errore_dichiarato():
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    esito = await interpreta_promessa({}, _promessa_chiedi())
+
+    assert "errore" in esito
+    assert "modello" in esito["errore"]

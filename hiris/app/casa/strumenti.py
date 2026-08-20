@@ -1216,6 +1216,13 @@ class DispatcherStrumenti:
         STESSA domanda («so gia' cosa questa casa sa fare?»), fatta da due
         strumenti diversi -- una seconda copia della condizione sarebbe un
         doppione appena creato (review Task 7, Rilievo 1).
+
+        Un terzo caso, trovato dalla review finale: uno specchio dello stato
+        NON leggibile faceva tornare `None` (nessun rifiuto) invece di
+        rifiutare -- la stessa dimenticanza del registro (Task 6) e del
+        recapito (Task 7), sull'ultimo ingresso rimasto. Riusa la STESSA
+        forma decisa li' -- si rifiuta, non si tace -- invece di scriverne
+        una terza copia.
         """
         if self._registro_non_pronto():
             return ("non posso ancora prometterlo: non so cosa questa casa sa "
@@ -1223,7 +1230,21 @@ class DispatcherStrumenti:
                     "Riprova fra un momento.")
         stati = self._stati_grezzi()
         if not stati:
-            return None
+            # Terza occorrenza dello stesso schema (review finale, rilievo
+            # minore): il registro assente si rifiuta (Task 6), il recapito
+            # non verificabile si rifiuta (Task 7), e uno specchio cieco deve
+            # rifiutarsi allo stesso modo -- non tornare `None` in silenzio.
+            # Prima di questo fix una `chiamata` nasceva SENZA che
+            # `_verifica_ora` avesse potuto verificare l'entita' nominata,
+            # mentre `PROMETTI_TOOL_DEF` dichiara al modello, senza
+            # condizioni, «viene VERIFICATA adesso». Stesso criterio di
+            # `azione/porta.py::_SPECCHIO_CIECO` (`None` e `{}` insieme, di
+            # proposito: una casa che davvero non ha nessuna entita' non ha
+            # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
+            # che questo rifiuto possa negare).
+            return ("non posso ancora prometterlo: non vedo lo stato di "
+                    "questa casa, l'inventario delle entita' non e' "
+                    "disponibile. Riprova fra un momento.")
         verdetto = verifica(chiamata, self._registro, stati)
         if verdetto.da_risolvere:
             return None  # bersaglio per area: lo risolvera' la porta, al momento

@@ -353,6 +353,18 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
     "agent": "claude-haiku-4-5-20251001",
 }
+# Il turno di una promessa "chiedi" (`schedulatore/turno.py::interpreta_promessa`)
+# ragiona come un turno di chat -- confronta un valore con un'istantanea,
+# giudica se una condizione si e' verificata -- e per giunta gira SENZA
+# nessuno davanti: e' il caso in cui la qualita' del modello conta di piu',
+# non di meno, non un lavoro leggero da ripiegare su "agent" (haiku). Prima
+# di questa voce, `resolve_model("auto", "promessa", "")` ripiegava sulla
+# costante `MODEL` -- che vale lo stesso di `AUTO_MODEL_MAP["chat"]` solo per
+# coincidenza, non perche' le due cose fossero legate: le due costanti
+# potevano divergere senza che nessun test se ne accorgesse (review finale
+# della fetta «lo schedulatore», rilievo minore). Si punta alla chiave
+# "chat", non a una stringa duplicata: nessun doppione.
+AUTO_MODEL_MAP["promessa"] = AUTO_MODEL_MAP["chat"]
 
 from .backends.pricing import get_price as _prezzo
 

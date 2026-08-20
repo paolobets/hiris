@@ -171,6 +171,24 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
 
 
 @pytest.mark.asyncio
+async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(promesse):
+    """Rilievo minore della review finale, terza occorrenza dello stesso
+    schema gia' deciso due volte (registro assente: Task 6; recapito: Task
+    7): senza uno specchio leggibile `_verifica_ora` tornava `None` -- nessun
+    rifiuto -- e la promessa nasceva senza che il suo servizio fosse mai
+    stato verificato, mentre `PROMETTI_TOOL_DEF` dichiara al modello «viene
+    VERIFICATA adesso» senza condizioni."""
+    d = _dispatcher(promesse, registro=_RegistroFinto())  # nessuna cache
+    esito = await d.dispatch("prometti", {
+        "specie": "fai", "frase": "alle 17 accendi lo studio",
+        "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
+    assert "errore" in esito
+    assert promesse.elenca() == []
+
+
+@pytest.mark.asyncio
 async def test_un_chiedi_nasce_anche_senza_registro(promesse):
     """Il gemello del test sopra: un `chiedi` non passa da `_verifica_ora`
     (non ha `chiamata`), quindi la guardia nuova sul registro non deve
