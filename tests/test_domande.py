@@ -288,6 +288,33 @@ def test_guarda_un_automazione_non_trovata_senza_file_non_letti_non_si_inventa_i
     assert "non_disponibile" not in dettaglio
 
 
+def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_nei_tre_tipi():
+    """R5: il rifiuto nudo (`{"esiste": False}`) e' indistinguibile da "non
+    esiste davvero" -- e' il meccanismo diretto dell'incidente che ha
+    generato questa fetta (un nome al posto di un id, il modello ritenta
+    uguale finche' il turno muore). I tre rami che possono confondere un
+    nome con un id -- area, entita', dispositivo -- devono insegnare la
+    stessa correzione, con la STESSA chiave e la STESSA forma di frase
+    (fondamenta 3): un modello che ha appena sbagliato con un nome in un
+    ramo non deve indovinare la differenza per gli altri due.
+
+    Il confronto e' fra i tre rami stessi (non tre asserzioni indipendenti):
+    stesso `riferimento` per tutti, quindi lo stesso suggerimento deve
+    uscire IDENTICO dai tre -- se un ramo perde il campo o cambia la frase,
+    l'insieme delle forme smette di avere un solo elemento."""
+    esiti = {
+        "area": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "Soggiorno"),
+        "entita": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "Soggiorno"),
+        "dispositivo": guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "dispositivo", "Soggiorno"),
+    }
+    for tipo, dettaglio in esiti.items():
+        assert dettaglio["esiste"] is False
+        assert "suggerimento" in dettaglio, f"manca il suggerimento nel ramo «{tipo}»"
+        assert "cerca" in dettaglio["suggerimento"]
+    forme = {dettaglio["suggerimento"] for dettaglio in esiti.values()}
+    assert len(forme) == 1, f"i tre rami non usano la stessa forma: {forme}"
+
+
 def test_guarda_un_area_marca_le_entita_disabilitate_invece_di_nasconderle():
     """MINOR: `_guarda_area` nascondeva le entita' disabilitate senza dirlo,
     mentre `_guarda_dispositivo` le mostra marcate. Per una vista di

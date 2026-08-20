@@ -329,6 +329,29 @@ def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) 
     return dettaglio
 
 
+def _suggerimento_cerca(riferimento) -> str:
+    """Il messaggio che accompagna un `esiste: False` sui tre rami che
+    possono confondere un NOME con un id -- area, entita', dispositivo.
+
+    R5 (2026-08-20, misurato dal vivo): il modello chiama `guarda` con un
+    nome («Soggiorno») al posto dell'id (`soggiorno`), e riceveva
+    `{"esiste": False}` nudo -- indistinguibile da "quest'area non esiste
+    davvero", nessun invito a `cerca`. E' il meccanismo diretto
+    dell'incidente che ha generato questa fetta: il modello ritenta uguale
+    finche' il turno muore.
+
+    Il pattern esiste gia' in `azione/verifica.py::_no` per il bersaglio
+    non risolto («Usa "cerca" per trovare il nome giusto e ripeti il
+    comando») -- questa funzione lo estende a `guarda`, non lo reinventa:
+    UNA sola sorgente per i tre rami (fondamenta 3, "stessa forma"), cosi'
+    che togliere il richiamo da un ramo solo non lascia gli altri due
+    invariati -- si nota, perche' la frase e' la stessa ovunque.
+    """
+    return (f"«{riferimento}» non e' stato trovato. Se e' un NOME (non un "
+            f"id), chiama «cerca» con questo testo per trovare l'id giusto, "
+            f"poi ripeti «guarda» con quello.")
+
+
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
                  nomi_di_ripiego: dict[str, str] | None = None,
@@ -345,7 +368,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     nomi_categorie = nomi_delle_categorie(casa)
     area = _trova_area(piani, riferimento)
     if area is None:
-        dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "area", "riferimento": riferimento,
+                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③: se il registro delle aree non ha risposto, "non
         # trovata" non e' lo stesso di "non esiste" -- potrebbe stare
         # proprio nella parte che non si e' letta. Senza dichiararlo, il
@@ -401,7 +425,8 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  classi_vive: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
-        dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "entita", "riferimento": riferimento,
+                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
         # lascia la tabella vuota), un'entita' vera non trovata qui non e'
         # un'entita' che non esiste -- e' un registro che non ha risposto.
@@ -448,7 +473,8 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:
-        dettaglio = {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento}
+        dettaglio = {"esiste": False, "tipo": "dispositivo", "riferimento": riferimento,
+                     "suggerimento": _suggerimento_cerca(riferimento)}
         # CRITICAL ③, stesso difetto applicato al dispositivo: col registro
         # "dispositivi" caduto, "non trovato" non e' "non esiste".
         if "dispositivi" in non_disponibili:
@@ -571,6 +597,14 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     si inventa: nessun `entita: []`, nessun `corpo: None` che si potrebbe
     scambiare per un fatto sulla casa invece che per "non trovato" -- un
     silenzio non dichiarato e' indistinguibile da un'assenza di problemi.
+
+    R5: sui tre rami che possono confondere un NOME con un id -- area,
+    entita', dispositivo -- `esiste: False` porta anche `suggerimento`
+    (`_suggerimento_cerca`): invita a chiamare `cerca` col riferimento
+    ricevuto. STESSA chiave, STESSA frase nei tre rami (fondamenta 3) --
+    non su `_guarda_comportamento` ne' su `_guarda_ricordo`, che non hanno
+    questa ambiguita' (un id di automazione/script/ricordo non si scrive
+    mai al posto di un nome).
 
     E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
     il riferimento non c'e' (le cinque funzioni qui sopra), oppure il TIPO

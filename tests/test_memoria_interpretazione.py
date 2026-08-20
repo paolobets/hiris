@@ -52,6 +52,19 @@ def test_un_ancora_che_non_esiste_non_si_scrive(indice):
     assert any("taverna" in p for p in problemi)
 
 
+def test_un_ancora_che_non_esiste_insegna_a_correggersi(indice):
+    """R5: il ricordo si salva comunque -- decisione del proprietario, il
+    testo e' la verita' -- ma il problema dentro `problemi` deve insegnare
+    la correzione, non solo scartare in silenzio. Stesso pattern gia' in
+    `azione/verifica.py::_no` (bersaglio non risolto: «Usa "cerca" per
+    trovare il nome giusto...»), esteso qui a `ricorda`."""
+    _pulita, problemi, _correzioni = valida(
+        {"ancore": [{"tipo": "area", "riferimento": "taverna", "nome_visto": "taverna"}]}, indice)
+    problema = next(p for p in problemi if "taverna" in p)
+    assert "cerca" in problema
+    assert "ricorda" in problema
+
+
 def test_una_interpretazione_vuota_e_legittima(indice):
     """Regola 3: parziale e opzionale. «Mi piace il caffe'» non ha ne' ancore
     ne' condizioni, e non e' un errore."""

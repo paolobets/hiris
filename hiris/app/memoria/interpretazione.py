@@ -189,9 +189,17 @@ def _valida_ancore(ancore, indice, tipi_non_verificabili: frozenset[str],
                 f"non si scrive)")
             continue
         if riferimento is None or indice.verifica(tipo, riferimento) is None:
+            # R5: si scarta comunque (il ricordo si salva, il testo resta
+            # la verita' -- decisione del proprietario), ma il problema deve
+            # INSEGNARE la correzione, non solo dichiarare lo scarto: stesso
+            # pattern gia' in `azione/verifica.py::_no` per un bersaglio non
+            # risolto («Usa "cerca" per trovare il nome giusto e ripeti il
+            # comando»), esteso qui a `ricorda`.
             problemi.append(
                 f"ancora {tipo} «{etichetta}» non esiste nell'anagrafe -- scartata "
-                f"(un'ancora senza riscontro non si scrive)")
+                f"(un'ancora senza riscontro non si scrive). Se «{etichetta}» e' un "
+                f"nome (non un id), chiama «cerca» per trovare l'id giusto e ripeti "
+                f"«ricorda» con quello.")
             continue
         pulite.append({"tipo": tipo, "riferimento": riferimento,
                         "nome_visto": ancora.get("nome_visto")})
