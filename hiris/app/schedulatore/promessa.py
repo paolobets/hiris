@@ -38,7 +38,7 @@ STATI_SOSPESO = ("in_attesa", "in_corso")
 # Copre il caso vero per cui esiste: un aggiornamento dell'add-on che cade
 # sopra l'orario.
 TOLLERANZA_S = 120
-# I due tetti (spec §9.1.5): non si promette oltre 30 giorni, e non stanno in
+# I due tetti (spec §9.1.6): non si promette oltre 30 giorni, e non stanno in
 # sospeso piu' di 50 promesse. Servono perche' un modello che va in circolo non
 # deve poter riempire il disco.
 ORIZZONTE_S = 30 * 86400

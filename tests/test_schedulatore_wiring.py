@@ -164,7 +164,7 @@ async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
 async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_finta):
     """Una promessa lasciata `in_corso` da un add-on morto non deve ripartire
     (spec §7, «mai due volte»): al prossimo avvio deve leggersi `fallita`."""
-    # `quando_ts` entro il tetto dei 30 giorni da `adesso` (spec §9.1.5,
+    # `quando_ts` entro il tetto dei 30 giorni da `adesso` (spec §9.1.6,
     # `promessa.ORIZZONTE_S`): una data fissa lontana avrebbe fatto rifiutare
     # `crea()` con "non tengo promesse oltre 30 giorni" invece di crearla --
     # lo stesso difetto di date-a-mano gia' documentato in

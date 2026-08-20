@@ -52,7 +52,7 @@ def test_una_specie_inventata_e_un_rifiuto():
 def test_un_istante_passato_porta_la_domanda_dentro_il_rifiuto():
     motivo = valida(_fai(quando_ts=ADESSO - 60), adesso=ADESSO)
     assert motivo is not None
-    # Non basta rifiutare: il rifiuto deve dire cosa fare (spec §9.1.4).
+    # Non basta rifiutare: il rifiuto deve dire cosa fare (spec §9.1.5).
     assert "passat" in motivo.lower()
     assert "domani" in motivo.lower()
 
