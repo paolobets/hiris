@@ -4,14 +4,27 @@
 in `tests/test_claude_runner.py` per la prova che il ciclo processi davvero
 piu' blocchi `tool_use` di una risposta in un solo giro).
 
-Questo file pinna le DUE istruzioni nuove -- "risolvi piu' nomi con UNA
-chiamata cerca" e "chiama le letture indipendenti in parallelo" -- e la riga
-raccolta dal Task 4 che lega gli id `(id: X)` dell'albero agli strumenti, su
-ENTRAMBE le guide: `claude_runner.BASE_REGOLE_STRUMENTI` (il percorso
-sincrono, con chiave API) e `agent.prompts._GUIDA_CON_STRUMENTI` (il ponte,
-chat in abbonamento) -- guardare `tests/test_prompt_azione.py` per il perche'
-un'istruzione di prodotto deve stare in BASE_REGOLE_STRUMENTI e non nella
-sola guida del ponte.
+Questo file pinna le istruzioni nuove -- "risolvi piu' nomi con UNA chiamata
+cerca" e la riga raccolta dal Task 4 che lega gli id `(id: X)` dell'albero
+agli strumenti -- su ENTRAMBE le guide: `claude_runner.BASE_REGOLE_STRUMENTI`
+(il percorso sincrono, con chiave API) e `agent.prompts._GUIDA_CON_STRUMENTI`
+(il ponte, chat in abbonamento) -- guardare `tests/test_prompt_azione.py` per
+il perche' un'istruzione di prodotto deve stare in BASE_REGOLE_STRUMENTI e non
+nella sola guida del ponte.
+
+Fix finale ② (review 2026-08-20): il parallelismo NON e' piu' un'istruzione
+identica sulle due guide, perche' la sua giustificazione non e' vera nello
+stesso modo sui due percorsi:
+- sincrono (`BASE_REGOLE_STRUMENTI`): il ciclo di `claude_runner.py` conta
+  UN giro per risposta, non per chiamata -- N `tool_use` nella stessa
+  risposta costano un'iterazione sola. La giustificazione e' vera, e resta;
+- ponte (`_GUIDA_CON_STRUMENTI`): il tetto vero e' quello del server MCP
+  (`MAX_GIRI_STRUMENTI` in `api/handlers_mcp.py`), e `_conta_giro` incrementa
+  a OGNI `tools/call` -- 8 `guarda` paralleli nella stessa risposta della CLI
+  costano comunque 8 giri su 10 (ora 50). La VECCHIA frase ("il ciclo conta
+  un giro per risposta, non per chiamata") era falsa su questo percorso: qui
+  il risparmio vero e' il batch di `cerca` e la parsimonia, non il
+  parallelismo -- vedi `test_solo_il_ponte_insegna_ogni_chiamata_conta` sotto.
 
 Sono test di presenza-testo: deboli in generale (un sinonimo li elude), ma
 qui SONO il contratto -- e' il prompt che deve dire queste parole al modello,
@@ -42,17 +55,6 @@ def test_entrambe_le_guide_insegnano_il_batch_di_cerca():
             "il costo che questo task doveva evitare")
 
 
-def test_entrambe_le_guide_insegnano_il_parallelismo():
-    """"Piu' letture indipendenti -> chiamale IN PARALLELO nella stessa
-    risposta" (R3: il ciclo gia' processa piu' blocchi tool_use di una
-    risposta in un solo giro, ma nessun prompt lo diceva al modello)."""
-    for percorso, testo in _le_due_guide().items():
-        assert "IN PARALLELO" in testo, (
-            f"la guida {percorso} non insegna piu' il parallelismo: un turno "
-            "con N letture indipendenti torna a consumare N iterazioni "
-            "invece di una, e il tetto (50) si avvicina molto piu' in fretta")
-
-
 def test_entrambe_le_guide_legano_gli_id_dell_albero_agli_strumenti():
     """Raccolta dal Task 4 (nota in progress.md): l'albero della casa ora
     porta gli id fra parentesi (`Nome (id: X)`, T4), ma senza questa riga
@@ -63,6 +65,42 @@ def test_entrambe_le_guide_legano_gli_id_dell_albero_agli_strumenti():
         assert "(id: X)" in testo, (
             f"la guida {percorso} non lega piu' gli id fra parentesi "
             "dell'albero agli strumenti")
+
+
+def test_entrambe_le_guide_legano_anche_gli_script_agli_id_dell_albero():
+    """Fix finale ③: l'albero annota gli id anche per gli SCRIPT
+    (`nucleo.py::_righe_comportamento`, stessa forma di aree/piani/
+    automazioni), ma la riga che lega gli id fra parentesi agli strumenti
+    nominava solo "un'area, un piano o un'automazione" -- dimenticando lo
+    script, che porta l'id con la stessa identica annotazione."""
+    for percorso, testo in _le_due_guide().items():
+        assert "o uno script" in testo, (
+            f"la guida {percorso} non menziona piu' lo script fra le cose "
+            "che portano l'id fra parentesi nell'albero")
+
+
+def test_il_sincrono_insegna_il_parallelismo_col_conteggio_vero():
+    """Sul percorso sincrono la giustificazione e' vera (il ciclo di
+    `claude_runner.py` conta un giro per risposta, non per chiamata): resta
+    l'istruzione originale, invariata."""
+    assert "IN PARALLELO" in BASE_REGOLE_STRUMENTI
+    assert "il ciclo conta un giro per risposta, non per" in BASE_REGOLE_STRUMENTI
+
+
+def test_solo_il_ponte_insegna_ogni_chiamata_conta():
+    """Sul ponte il tetto vero e' quello MCP (`MAX_GIRI_STRUMENTI`,
+    `api/handlers_mcp.py`), e `_conta_giro` incrementa a OGNI `tools/call`:
+    8 `guarda` paralleli nella stessa risposta della CLI costano comunque 8
+    giri. La guida del ponte non deve piu' promettere il risparmio falso
+    ("un giro per risposta, non per chiamata") -- deve dire che ogni
+    chiamata conta, e che il risparmio vero e' il batch di `cerca` piu' la
+    parsimonia."""
+    assert "il ciclo conta un giro per risposta, non per" not in _GUIDA_CON_STRUMENTI, (
+        "la guida del ponte ripete ancora la giustificazione falsa: sul "
+        "ponte ogni chiamata (anche parallela) consuma un giro del tetto MCP")
+    basso = _GUIDA_CON_STRUMENTI.lower()
+    assert "ogni chiamata conta" in basso
+    assert "parsimoni" in basso
 
 
 def test_il_tetto_delle_iterazioni_e_50():
