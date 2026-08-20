@@ -1,5 +1,68 @@
 # HIRIS — Changelog
 
+## [3.8.0] — HIRIS mantiene le promesse (2026-08-20)
+
+Dalla chat si può chiedere qualcosa **per dopo**: «alle 17 accendi lo studio»,
+«fra un'ora verifica la temperatura della camera e se è aumentata avvisami»,
+«fra due ore dimmi se posso aprire le finestre». HIRIS se ne ricorda, e al
+momento giusto lo fa — o guarda e risponde.
+
+### Un magazzino con un orologio
+
+La promessa vive su disco e sopravvive ai riavvii dell'add-on. Due specie:
+**fai** (un'azione: all'ora giusta parte, senza scomodare nessun modello) e
+**chiedi** (una domanda: all'ora giusta HIRIS guarda la casa e risponde).
+Tre strumenti nuovi in chat: `prometti`, `promesse`, `disdici`.
+
+Due regole non negoziabili. **Mai in ritardo**: se l'add-on era spento
+all'ora stabilita, oltre due minuti la promessa si dichiara «non eseguita»,
+col ritardo misurato — una luce che si accende alle 19 perché doveva
+accendersi alle 14 è peggio di una luce spenta. **Mai due volte**: una
+promessa presa in carico non riparte, nemmeno dopo un guasto a metà.
+
+### Tutto si verifica quando prometti, non alle 17
+
+Il servizio, le entità e i parametri vengono controllati contro **questa**
+installazione nel momento in cui la promessa nasce: un servizio che non
+esiste te lo dico subito, non fra due ore quando non c'è più nessuno a
+correggerlo. Se chiedi un confronto («se è aumentata»), i valori di partenza
+vengono fotografati adesso, con la loro unità e l'istante della misura.
+
+### Il turno che si sveglia da solo non tocca la casa
+
+Per un «chiedi», all'ora stabilita si sveglia un turno di modello che ha
+solo strumenti di **lettura**: non può agire, non può scrivere nella
+memoria, non può darsi appuntamenti da solo. Conclude sempre in modo
+dichiarato — anche «non c'era niente da dirti» è un esito registrato, non
+un silenzio da interpretare. La notifica, se l'avevi chiesta, la spedisce
+HIRIS sul canale scelto quando hai promesso.
+
+### La pagina «Promesse»
+
+Nella configurazione: cosa è in sospeso (con il bottone per disdire) e lo
+storico — quando doveva succedere, com'è andata, e il motivo quando è
+andata male. Per un «fai» mantenuto si vede **cosa è cambiato davvero**,
+letto dalla cronaca delle esecuzioni.
+
+### La cronaca delle esecuzioni
+
+Ogni azione che passa dalla porta — chiesta in chat o mantenuta dallo
+Schedulatore — lascia una riga interrogabile: cosa, su cosa, esito,
+origine. Chiude la promessa che la fetta «comandare» aveva lasciato
+aperta: prima quel registro era una riga di log che nessuno poteva
+chiedere.
+
+### La porta impara i servizi senza bersaglio
+
+Prima di questa versione HIRIS non poteva mandare una notifica **nemmeno
+dalla chat**: `notify.*` non ha un bersaglio, e un bersaglio vuoto era
+sempre un rifiuto. Ora la porta accetta il bersaglio vuoto — ma solo per
+la famiglia dei recapiti (`notify`, `persistent_notification`), finché il
+comportamento dichiarato dagli altri servizi non sarà misurato su
+un'installazione vera. L'esito di una notifica è onesto: dice che la
+chiamata è partita e che non c'era nessuno stato da rileggere, invece di
+fingere una misura mai fatta.
+
 ## [3.7.3] — La ricerca torna a funzionare (2026-08-18)
 
 **Correzione urgente.** Dalla 3.7.0 `cerca` e `ricorda` fallivano a ogni
