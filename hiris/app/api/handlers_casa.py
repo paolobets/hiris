@@ -13,6 +13,8 @@ proprie parole e sparirebbe dal censimento invece di comparire come solo-test.
 """
 from __future__ import annotations
 
+import time
+
 from aiohttp import web
 
 from ..casa.anagrafe import gerarchia, nomi_delle_categorie, specchio_vivo
@@ -321,6 +323,13 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         classi_vive=classi_vive,
         problemi=problemi,
         confronto=confronto,
+        # L'orologio entra QUI, nell'unico compositore di produzione (chat
+        # sincrona, ponte e GET /api/nucleo passano tutti di qua), perche'
+        # `componi` e' pura e non legge nulla da sola. Senza questa riga il
+        # parametro esisterebbe, i test di `componi` passerebbero, e il modello
+        # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
+        # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
+        adesso=time.time(),
     )
 
 

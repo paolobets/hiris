@@ -155,6 +155,55 @@ def test_il_nucleo_dichiara_il_riferimento():
     assert "2026.8.1" in testo
 
 
+def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
+    """«Domani alle 8» non vuol dire niente senza il fuso -- e «fra un'ora»
+    non vuol dire niente senza SAPERE CHE ORA E'.
+
+    Difetto misurato sull'add-on vero il 21/08/2026: `prometti` ordina al
+    modello «`quando` e' un istante ISO-8601: risolvilo tu da "fra un'ora"»,
+    ma nessuno gli diceva l'ora. Alle 21:01 il modello ha creduto fossero le
+    23:52 e ha fissato la promessa alle 23:55; se ne e' accorto e l'ha
+    disdetta, ma quella sbagliata era gia' stata accettata. Il server l'ora
+    ce l'ha esatta -- `crea(dati, adesso=time.time())` la usa per VALIDARE
+    l'istante che il modello ha indovinato: si chiedeva al modello un fatto
+    che HIRIS possiede, e poi lo si giudicava con la propria copia.
+
+    L'istante sta accanto al fuso perche' e' lo stesso oggetto: un orario
+    senza il suo fuso e' il «72» senza i gradi."""
+    # 21/08/2026, 17:00:00 a Roma (l'istante del risveglio andato male).
+    testo, _ = componi({"entita": []}, [], [], {},
+                       sistema_di_riferimento=sistema_di_riferimento(_CONFIG),
+                       adesso=1787324400.0)
+    assert "17:00" in testo, "senza l'ora il modello se la inventa"
+    assert "21/08/2026" in testo, "senza la data «alle 17» e' ambiguo fra oggi e domani"
+
+
+def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
+    """Chi lo riempie? La domanda che questo progetto ha gia' pagato tre volte.
+
+    `componi` e' pura e riceve `adesso`: se `costruisci_nucleo` -- l'unico
+    compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
+    GET /api/nucleo -- non gliela passa, il parametro esiste, i test passano,
+    e il modello continua a indovinare l'ora esattamente come prima."""
+    from hiris.app.api.handlers_casa import costruisci_nucleo
+
+    archivio.sostituisci({}, [], sistema_di_riferimento=sistema_di_riferimento(_CONFIG))
+
+    testo, _ = costruisci_nucleo({"archivio_casa": archivio})
+
+    assert "Adesso sono le" in testo, (
+        "il nucleo di produzione non porta l'ora: il parametro c'e' e nessuno "
+        "lo riempie")
+    assert "(fuso Europe/Rome)" in testo
+
+
+def test_senza_l_istante_il_nucleo_non_ne_inventa_uno():
+    """Stessa disciplina del fuso: tacere e' meglio che affermare un'ora a
+    caso. `componi` resta PURA -- non legge l'orologio, lo riceve."""
+    testo = _nucleo(sistema_di_riferimento(_CONFIG))
+    assert "adesso sono le" not in testo.lower()
+
+
 def test_senza_riferimento_il_nucleo_non_ne_inventa_uno():
     """Nessuna riga e' meglio di una riga che afferma un fuso a caso: il
     modello che non legge un fuso chiede, quello che ne legge uno sbagliato

@@ -43,6 +43,9 @@ cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
                        classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
                        nome_con_id, traduci_stato)
@@ -456,7 +459,35 @@ _NOMI_MISURA = {
 }
 
 
-def _righe_sistema(sistema: dict | None) -> list[str]:
+def _riga_adesso(sistema: dict | None, adesso: float | None) -> str:
+    """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
+
+    Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `prometti`
+    ordina al modello «`quando` e' un istante ISO-8601 col fuso: risolvilo tu
+    da "fra un'ora"», e il nucleo dichiarava il fuso e MAI l'ora. Alle 21:01
+    il modello ha creduto fossero le 23:52 e ha fissato una promessa alle
+    23:55. Il server l'ora ce l'ha esatta -- la usa per validare l'istante che
+    il modello ha indovinato: si chiedeva al modello un fatto che HIRIS
+    possiede (fondamenta n.2, ogni fatto ha una sola casa).
+
+    L'ora esce insieme al suo fuso, sempre: un orario senza fuso e' il «72»
+    senza i gradi. Se il fuso della casa manca o non e' un fuso vero si dice
+    UTC E LO SI SCRIVE -- non e' il ripiego silenzioso che questo modulo
+    vieta, e' un'altra affermazione vera.
+    """
+    if adesso is None:
+        return ""
+    nome = (sistema or {}).get("fuso") or ""
+    try:
+        fuso, etichetta = (ZoneInfo(nome), nome) if nome else (timezone.utc, "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        fuso, etichetta = timezone.utc, "UTC"
+    quando = datetime.fromtimestamp(adesso, fuso)
+    return "Adesso sono le %s del %s (fuso %s)." % (
+        quando.strftime("%H:%M"), quando.strftime("%d/%m/%Y"), etichetta)
+
+
+def _righe_sistema(sistema: dict | None, adesso: float | None = None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
     Va PRIMA di tutto il resto perche' e' cio' che rende leggibile tutto il
@@ -496,6 +527,14 @@ def _righe_sistema(sistema: dict | None) -> list[str]:
         identita.append(f"Home Assistant {sistema['versione_ha']}")
     if identita:
         righe.append("Riferimento: " + ", ".join(identita) + ".")
+    # Subito dopo il fuso, perche' e' lo stesso oggetto: l'ora e il sistema in
+    # cui leggerla. Dentro `righe_sistema` e non accanto, cosi' eredita il peso
+    # 0 del taglio (`pesi_casa` in `componi`): un nucleo che tronca via
+    # l'orologio rimetterebbe il modello a indovinare l'ora proprio nei casi
+    # in cui la casa e' grande.
+    riga_adesso = _riga_adesso(sistema, adesso)
+    if riga_adesso:
+        righe.append(riga_adesso)
 
     unita = sistema.get("unita") or {}
     if isinstance(unita, dict):
@@ -1221,7 +1260,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             sistema_di_riferimento: dict | None = None,
             classi_vive: dict[str, str] | None = None,
             problemi: dict | None = None,
-            confronto: dict | None = None) -> tuple[str, dict]:
+            confronto: dict | None = None,
+            adesso: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1410,7 +1450,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte
     # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
-    righe_sistema = _righe_sistema(sistema_di_riferimento)
+    righe_sistema = _righe_sistema(sistema_di_riferimento, adesso)
     righe_casa = righe_sistema + _righe_casa(piani, nomi_dispositivo)
 
     inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile, non_disponibili)
