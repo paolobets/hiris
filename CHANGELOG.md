@@ -1,5 +1,42 @@
 # HIRIS — Changelog
 
+## [3.9.3] — Le promesse che chiedevano di essere avvisati (2026-08-21)
+
+**Correzione urgente**, e stavolta la cosa rotta era proprio quella per cui le
+promesse esistono: **ogni promessa che chiedeva di essere avvisati falliva.**
+
+Quando arrivava l'ora, HIRIS si svegliava, leggeva davvero quello che doveva
+leggere — le otto stanze, i valori giusti — e poi si fermava, lasciando in
+pagina un «non riuscita: il turno non ha concluso: non so cosa dirti». Nessuna
+notifica, nessun testo, nessuna spiegazione.
+
+Il motivo: la frase con cui l'avevi chiesta arriva al risveglio **parola per
+parola**, e quando diceva «e mandami una notifica» HIRIS cercava un modo per
+mandarla. Non ce l'ha, e non deve averlo: la notifica la manda lui *dopo* aver
+concluso, sul canale che tu avevi approvato quando la promessa e' nata. Ma
+niente glielo diceva — e allora scriveva la risposta a parole, come se ci
+fosse qualcuno a leggerla. Non c'era nessuno.
+
+Trovato riproducendolo tre volte sulla casa vera, cambiando una cosa per
+volta: una stanza senza notifica, riuscita; otto stanze col confronto e senza
+notifica, riuscita; le stesse otto stanze **con** la notifica, fallita.
+
+### Fixed
+
+- **Le promesse con notifica funzionano.** Il turno del risveglio sa che
+  chiedere di avvisare la persona *e'* il modo di avvisarla, e che la notifica
+  parte da HIRIS sul canale gia' approvato.
+- **HIRIS non tira piu' a indovinare che ore sono.** Per fissare «fra un'ora»
+  serve sapere l'ora, e nessuno gliela diceva: sapeva il fuso della casa e non
+  l'istante. Misurato: alle 21:01 ha fissato un «fra tre minuti» alle 23:55 —
+  se n'e' accorto da solo e ha corretto, ma la promessa sbagliata era gia'
+  stata presa. Adesso l'ora e la data stanno scritte accanto al fuso, in cima a
+  cio' che HIRIS ha sempre davanti.
+- **Quando un risveglio non conclude, la pagina dice cosa e' successo.** Il
+  motivo era sempre la stessa frase — «non so cosa dirti» — mentre le tre cose
+  diverse che possono andare storte lasciavano tre tracce diverse, e HIRIS le
+  buttava via. Adesso riporta cio' che il modello aveva risposto.
+
 ## [3.9.2] — Promettere non aspetta piu' un'azione (2026-08-21)
 
 **Correzione urgente**, terza trovata provando la 3.9.x sulla casa vera — e
