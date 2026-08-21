@@ -36,10 +36,14 @@ CONCLUDI_TOOL_DEF = {
         "sapra' cosa dire alla persona. `avvisare` dice se c'e' qualcosa per cui "
         "valga la pena disturbarla: mettilo a `false` quando la condizione che ti "
         "era stata chiesta NON si e' verificata -- non e' un fallimento, e' la "
-        "risposta giusta, e viene comunque registrata. `testo` e' cio' che le "
-        "diresti: una o due frasi, con i numeri veri e le loro unita', non un "
-        "riassunto vago. Non puoi toccare la casa da qui: se la risposta implica "
-        "un'azione, dilla come proposta e sara' la persona a decidere."
+        "risposta giusta, e viene comunque registrata. Se lo metti a `true` la "
+        "notifica alla persona la manda HIRIS per te, sul canale che lei aveva "
+        "approvato quando ti ha fatto la promessa: qui non esiste uno strumento "
+        "per notificare, e non serve -- chiamare «concludi» E' il modo di "
+        "avvisarla. `testo` e' cio' che le diresti: una o due frasi, con i numeri "
+        "veri e le loro unita', non un riassunto vago; ed e' anche cio' che le "
+        "arriva nella notifica. Non puoi toccare la casa da qui: se la risposta "
+        "implica un'azione, dilla come proposta e sara' la persona a decidere."
     ),
     "input_schema": {
         "type": "object",
@@ -131,7 +135,7 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
         nucleo = ""
 
     try:
-        await runner.chat(
+        risposta = await runner.chat(
             user_message=_domanda(promessa),
             system_prompt=_prompt_di_sistema(),
             context_str=nucleo,
@@ -149,8 +153,41 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
         return {"errore": "il modello non ha risposto (%s)." % type(errore).__name__}
 
     if dispatcher.conclusione is None:
-        return {"errore": "il turno non ha concluso: non so cosa dirti."}
+        logger.warning("promessa %s: il turno non ha chiamato «concludi»; "
+                       "aveva risposto %d caratteri di testo",
+                       promessa["id"], len(risposta or ""))
+        return {"errore": _senza_conclusione(risposta)}
     return dispatcher.conclusione
+
+
+# Quanto della risposta del modello entra nel motivo. Il motivo finisce in una
+# colonna di SQLite e in una riga della pagina Promesse: riportarla intera
+# sarebbe un allegato, non un motivo.
+_TETTO_RIPORTO = 300
+
+
+def _senza_conclusione(risposta) -> str:
+    """Il motivo di un turno che NON ha chiamato `concludi`, con dentro cio'
+    che il modello aveva risposto al suo posto.
+
+    Fino al 21/08/2026 questa funzione non esisteva e il motivo era una
+    costante: «il turno non ha concluso: non so cosa dirti». Vera, e
+    inutilizzabile -- perche' le TRE uscite del ciclo di `claude_runner.chat`
+    che portano qui restituiscono tre stringhe DIVERSE (il testo del modello,
+    `_MAX_ITERATIONS_NOTICE`, `_TRUNCATION_NOTICE`) e quella stringa era
+    l'unica cosa che le distingueva. `interpreta_promessa` la scartava: per
+    sapere quale delle tre fosse capitata sulla casa vera e' servita
+    un'indagine con tre riproduzioni sull'add-on vivo.
+
+    Quando non c'e' proprio niente da riportare si torna alla frase di prima:
+    un virgolettato vuoto affermerebbe «ha detto questo», e questo e' niente.
+    """
+    detto = risposta.strip() if isinstance(risposta, str) else ""
+    if not detto:
+        return "il turno non ha concluso: non so cosa dirti."
+    if len(detto) > _TETTO_RIPORTO:
+        detto = detto[:_TETTO_RIPORTO].rstrip() + "…"
+    return "il turno non ha concluso. Aveva risposto a parole: «%s»" % detto
 
 
 def _prompt_di_sistema() -> str:
@@ -177,7 +214,10 @@ def _prompt_di_sistema() -> str:
         "condizione che ti era stata chiesta non si e' verificata, concludi con "
         "avvisare=false: e' la risposta giusta, non un fallimento.\n"
         "Non puoi toccare la casa da qui. Se cio' che hai trovato richiede "
-        "un'azione, scrivila come proposta nel testo."
+        "un'azione, scrivila come proposta nel campo `testo` di «concludi» -- "
+        "non nella tua risposta, che nessuno legge. E se quello che ti era "
+        "stato chiesto includeva l'avvisare la persona, leggi cosa fa "
+        "`avvisare`: e' li' che si avvisa, non altrove."
     )
 
 

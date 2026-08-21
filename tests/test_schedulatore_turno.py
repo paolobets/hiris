@@ -48,6 +48,41 @@ def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
         "runner.chat): deve restare, non diventare la frase falsa del ponte")
 
 
+def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
+    """Il difetto che ha rotto le promesse con notifica (21/08/2026).
+
+    La frase della persona arriva VERBATIM al turno (`_domanda`), e quando
+    dice «mandami una notifica» il modello cerca uno strumento per mandarla.
+    Non c'e', e non deve esserci: la manda lo Schedulatore DOPO `concludi`,
+    sul canale approvato alla nascita. Ma niente glielo diceva -- la
+    descrizione di `avvisare` parlava solo del GIUDIZIO («se valga la pena
+    disturbarla»), mai del MECCANISMO -- e il modello rispondeva a parole
+    invece di concludere. Riprodotto tre volte sull'add-on vero: senza la
+    richiesta di notifica il turno conclude, con la richiesta fallisce."""
+    from hiris.app.schedulatore.turno import CONCLUDI_TOOL_DEF
+
+    d = CONCLUDI_TOOL_DEF["description"]
+    assert "la manda HIRIS per te" in d, (
+        "il modello deve sapere che la notifica non la manda lui")
+    assert "non esiste uno strumento per notificare" in d, (
+        "deve sapere che l'assenza dello strumento e' voluta, non una lacuna "
+        "da aggirare rispondendo a parole")
+
+
+def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
+    """«scrivila come proposta nel testo» era ambiguo fra il campo `testo` di
+    «concludi» e la propria risposta. Il modello sceglieva la seconda, e il
+    turno moriva senza conclusione. Il prompt PUNTA al meccanismo, non lo
+    ricopia: la sua casa e' `CONCLUDI_TOOL_DEF` (fondamenta n.2)."""
+    from hiris.app.schedulatore.turno import _prompt_di_sistema
+
+    testo = _prompt_di_sistema()
+    assert "nel campo `testo` di «concludi»" in testo, (
+        "«nel testo» da solo si legge come «nella tua risposta»")
+    assert "leggi cosa fa `avvisare`" in testo, (
+        "il caso «mi era stato chiesto di avvisare» deve portare a concludi")
+
+
 class DispatcherFinto:
     """Sa rispondere a TUTTO, `esegui` compreso: se il wrapper lasciasse
     passare uno strumento che scrive, questo doppio glielo eseguirebbe."""
@@ -181,6 +216,79 @@ async def test_interpreta_promessa_senza_concludi_e_un_errore_dichiarato():
 
     assert "errore" in esito
     assert "non ha concluso" in esito["errore"]
+
+
+class _RunnerCheRispondeInTesto:
+    """Il turno che risponde IN TESTO invece di chiamare `concludi`.
+
+    E' il modo esatto in cui la promessa delle 17:00 del 21/08/2026 e' fallita
+    sull'add-on vero, riprodotto poi tre volte di seguito: la frase della
+    persona chiedeva una notifica, il turno non ha nessuno strumento per
+    mandarla (non ce l'ha per progetto -- la manda lo Schedulatore dopo
+    `concludi`), e il modello ha risposto a parole invece di concludere.
+
+    `_RunnerCheNonConclude` NON sapeva produrre questo difetto: restituisce
+    `None`, mentre `chat()` in produzione restituisce SEMPRE una stringa -- ed
+    e' proprio quella stringa che diceva cosa fosse successo, e che
+    `interpreta_promessa` buttava via. Una finta che non sa produrre il
+    difetto non lo puo' testare.
+    """
+
+    def __init__(self, testo: str) -> None:
+        self._testo = testo
+
+    async def chat(self, **kwargs) -> str:
+        return self._testo
+
+
+@pytest.mark.asyncio
+async def test_il_turno_che_non_conclude_riporta_cio_che_il_modello_aveva_detto():
+    """Il motivo che si legge dalla pagina deve dire COSA e' successo.
+
+    «Il turno non ha concluso: non so cosa dirti» e' vero e inutilizzabile:
+    HIRIS il testo ce l'aveva in mano e lo scartava, e per sapere quale delle
+    tre uscite del ciclo avesse preso il turno e' servita un'indagine di
+    un'ora sull'add-on vivo."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    app = {"llm_router": _RunnerCheRispondeInTesto(
+        "Ho letto le otto stanze, ma da qui non posso mandarti una notifica.")}
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert "errore" in esito
+    assert "non ha concluso" in esito["errore"]
+    assert "non posso mandarti una notifica" in esito["errore"], (
+        "senza cio' che il modello ha risposto, il motivo non distingue "
+        "«ha risposto a parole» da «ha esaurito le iterazioni» da «e' stato "
+        "troncato»: sono tre guasti diversi con lo stesso messaggio")
+
+
+@pytest.mark.asyncio
+async def test_la_risposta_del_modello_entra_nel_motivo_troncata():
+    """Il motivo finisce in una colonna di SQLite e in una pagina: la
+    risposta del modello puo' essere lunghissima, e va riportata a misura."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    app = {"llm_router": _RunnerCheRispondeInTesto("temperatura " * 2000)}
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert len(esito["errore"]) < 600, (
+        "un motivo di ventimila caratteri non e' un motivo, e' un allegato")
+
+
+@pytest.mark.asyncio
+async def test_se_il_modello_non_ha_detto_proprio_niente_il_motivo_lo_dichiara():
+    """L'altra meta' del fatto: quando non c'e' NESSUNA risposta da
+    riportare, il motivo non deve inventarsi un virgolettato vuoto."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    esito = await interpreta_promessa({"llm_router": _RunnerCheNonConclude()},
+                                      _promessa_chiedi())
+
+    assert "non ha concluso" in esito["errore"]
+    assert "«»" not in esito["errore"]
 
 
 @pytest.mark.asyncio
