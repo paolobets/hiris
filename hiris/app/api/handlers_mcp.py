@@ -107,17 +107,39 @@ METODI = ("initialize", "tools/list", "tools/call")
 # Fetta "i riferimenti" (Task 5, R3): il tetto sincrono e' salito a 50 (8
 # stanze da guardare una a una servivano 10 round-trip minimi contro un
 # tetto di 10 -- morte garantita a esecuzione perfetta). Questo qui, il tetto
-# del PONTE, resta 10 per una ragione SUA e successiva, non piu' per parita':
-# la fetta "come sta la casa" (2026-08-15) ha deciso esplicitamente di non
-# alzarlo -- "non si alza un freno: si toglie il motivo per cui mordeva". I
-# due numeri divergono apposta, non per un aggiornamento dimenticato.
+# del PONTE, era rimasto a 10 per una ragione SUA: la fetta "come sta la
+# casa" (2026-08-15) aveva deciso esplicitamente di non alzarlo -- "non si
+# alza un freno: si toglie il motivo per cui mordeva".
+#
+# Fix "il ponte muore a 9" (2026-08-21, misurato dal vivo): quella ragione non
+# regge quando il ponte E' la chat del proprietario. La decisione della fetta
+# "i riferimenti" era "tetto a 50 per chat e promessa" -- non "per il ramo
+# sincrono": sul ponte l'abbonamento e' forfettario, quindi 50 chiamate non
+# hanno un costo marginale in piu' di 10, e un turno reale (8 stanze da
+# guardare + 1 `cerca` + la `prometti` finale) moriva esattamente come
+# sarebbe morto il ramo sincrono col vecchio tetto. Il numero torna a essere
+# lo stesso su entrambi i percorsi, per la stessa decisione del proprietario.
+#
+# **Cio' che NON torna uguale: il CONTATORE.** I due tetti condividono il
+# valore ma non l'unita' che contano, ed e' questo che resta vero e va
+# tenuto a mente leggendo l'uno alla luce dell'altro. `MAX_TOOL_ITERATIONS`
+# (sincrono) conta un giro per RISPOSTA del modello: N blocchi `tool_use`
+# nella stessa risposta costano una sola iterazione (vedi il for su
+# `response.content` in `claude_runner.chat()`). `MAX_GIRI_STRUMENTI` (qui)
+# conta un giro per OGNI singola `tools/call` che arriva su questa rotta,
+# comprese quelle parallele della stessa risposta della CLI: 8 `guarda`
+# richiesti insieme dal modello costano comunque 8 giri qui, non 1. Stesso
+# tetto, contatori diversi -- e' per questo che `agent/prompts.py::
+# _GUIDA_CON_STRUMENTI` insegna al ponte una parsimonia che
+# `claude_runner.BASE_REGOLE_STRUMENTI` non ha bisogno di insegnare al ramo
+# sincrono (vedi `tests/test_prompt_parallelismo.py`).
 #
 # **Costante di modulo, non un'opzione dell'add-on** (regole della fetta): un
 # opzione vive in cinque posti (config.yaml options+schema, run.sh, le due
 # traduzioni, il lettore Python), e qui non c'e' niente che l'utente debba
 # toccare oggi -- se un giorno servira' configurarla, si fara' il giro dei
 # cinque posti allora.
-MAX_GIRI_STRUMENTI = 10
+MAX_GIRI_STRUMENTI = 50
 
 # Quante identita' di turno diverse restano tracciate insieme. Piccolo di
 # proposito (Step 2 del brief, "N piccolo"): serve solo a impedire che il

@@ -66,12 +66,23 @@ manda anche `X-HIRIS-Turno` dentro la `--mcp-config` (`config_mcp`), un
 `secrets.token_urlsafe` mintato UNA volta per turno (non per invocazione
 della CLI), a prescindere da quante invocazioni il turno finira' per avere
 (Task 4). E' il gancio con cui `api/handlers_mcp.py` tiene
-il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI = 10`, deciso e
-tenuto fermo da "come sta la casa", 2026-08-15 -- non piu' parita' col ramo
-sincrono, che dalla fetta "i riferimenti" e' salito a 50): il freno che
+il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI`): il freno che
 sostituisce un `--max-turns` che la CLI non
 ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
 che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
+
+Fix "il ponte muore a 9" (2026-08-21): `MAX_GIRI_STRUMENTI` era rimasto a 10
+mentre la fetta "i riferimenti" alzava a 50 solo `MAX_TOOL_ITERATIONS` del
+ramo sincrono -- un turno reale (8 stanze + 1 `cerca` + la `prometti`
+finale) moriva sul ponte esattamente come sarebbe morto il sincrono col
+vecchio tetto. La decisione del proprietario era "50 per chat e promessa",
+non "50 solo sul ramo sincrono": i due tetti tornano allo stesso numero.
+Cio' che resta diverso, e va tenuto a mente, e' COSA contano: il tetto
+sincrono conta un giro per risposta del modello (N blocchi `tool_use`
+paralleli costano una iterazione sola), questo tetto del ponte conta un
+giro per OGNI `tools/call` che arriva sulla rotta, comprese quelle
+parallele della stessa risposta della CLI -- vedi il commento su
+`MAX_GIRI_STRUMENTI` in `api/handlers_mcp.py` per il dettaglio.
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:

@@ -21,10 +21,20 @@ stesso modo sui due percorsi:
 - ponte (`_GUIDA_CON_STRUMENTI`): il tetto vero e' quello del server MCP
   (`MAX_GIRI_STRUMENTI` in `api/handlers_mcp.py`), e `_conta_giro` incrementa
   a OGNI `tools/call` -- 8 `guarda` paralleli nella stessa risposta della CLI
-  costano comunque 8 giri su 10 (ora 50). La VECCHIA frase ("il ciclo conta
-  un giro per risposta, non per chiamata") era falsa su questo percorso: qui
-  il risparmio vero e' il batch di `cerca` e la parsimonia, non il
+  costano comunque 8 giri. La VECCHIA frase ("il ciclo conta un giro per
+  risposta, non per chiamata") era falsa su questo percorso: qui il
+  risparmio vero e' il batch di `cerca` e la parsimonia, non il
   parallelismo -- vedi `test_solo_il_ponte_insegna_ogni_chiamata_conta` sotto.
+
+Fix "il ponte muore a 9" (2026-08-21): `MAX_GIRI_STRUMENTI` era rimasto a 10
+mentre questo file era scritto (la fetta aveva alzato solo il tetto
+sincrono); un turno reale sul ponte moriva prima di arrivare a `prometti`.
+La decisione del proprietario era "50 per chat e promessa", non "50 solo
+sul ramo sincrono": i due tetti tornano allo stesso NUMERO per la stessa
+decisione. Cio' che questo file continua a provare -- e che resta vero
+anche col numero allineato -- e' che i due percorsi contano UNITA' diverse
+(risposta contro singola chiamata): e' quella differenza, non il valore
+assoluto, a rendere ancora necessaria una guida diversa sul ponte.
 
 Sono test di presenza-testo: deboli in generale (un sinonimo li elude), ma
 qui SONO il contratto -- e' il prompt che deve dire queste parole al modello,
@@ -110,6 +120,25 @@ def test_il_tetto_delle_iterazioni_e_50():
     tool_use) lo prova `test_claude_runner.py` sopra citato."""
     from hiris.app.claude_runner import MAX_TOOL_ITERATIONS
     assert MAX_TOOL_ITERATIONS == 50
+
+
+def test_il_tetto_del_ponte_e_50():
+    """Fix "il ponte muore a 9" (2026-08-21, misurato dal vivo): un turno
+    reale sul ponte (8 `guarda` per le stanze + 1 `cerca` + la `prometti`
+    finale = 10 chiamate) moriva contro il vecchio `MAX_GIRI_STRUMENTI = 10`
+    prima di arrivare a `prometti`. La decisione del proprietario citata dal
+    test sopra era "tetto a 50 per chat E promessa", non "50 solo sul ramo
+    sincrono": il ponte E' la chat quando l'abbonamento e' attivo, e il suo
+    costo e' forfettario (nessun costo marginale sulle chiamate in piu').
+
+    Pin diretto sulla costante (non sul comportamento, gia' pinnato da
+    `tests/test_rotta_mcp.py`): senza questo test la suite restava verde
+    anche riportando il tetto del ponte a 10, perche' nessun altro test lo
+    lega al valore -- tutti usano `handlers_mcp.MAX_GIRI_STRUMENTI` in modo
+    relativo. Se qualcuno lo riabbassa senza dichiararlo qui, questo test
+    diventa rosso."""
+    from hiris.app.api.handlers_mcp import MAX_GIRI_STRUMENTI
+    assert MAX_GIRI_STRUMENTI == 50
 
 
 def test_il_tetto_ollama_resta_proporzionato():
