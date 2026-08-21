@@ -1,5 +1,25 @@
 # HIRIS — Changelog
 
+## [3.9.2] — Promettere non aspetta piu' un'azione (2026-08-21)
+
+**Correzione urgente**, terza trovata provando la 3.9.x sulla casa vera — e
+questa volta a scattare a vuoto era una protezione aggiunta da noi.
+
+HIRIS chiede a Home Assistant l'elenco dei servizi che sa fare, e lo tiene da
+parte. Quell'elenco pero' veniva caricato in un punto solo: la **prima volta
+che HIRIS eseguiva un'azione**. Chi voleva soltanto *promettere* qualcosa —
+«fra un'ora controlla e avvisami» — leggeva un elenco ancora vuoto, e riceveva
+un rifiuto onesto ma sbagliato: «il registro dei servizi non e' ancora pronto».
+
+Su un add-on appena riavviato — cioe' subito dopo ogni aggiornamento — la
+promessa era **sempre** rifiutata: sia quella che chiede un canale di
+notifica, sia quella che deve compiere un'azione piu' tardi. Bastava eseguire
+un comando qualsiasi per sbloccare tutto, ma nessuno poteva saperlo.
+
+Adesso e' «prometti» stesso a chiedere l'elenco quando gli serve, con la
+stessa cura che usa la porta delle azioni: se Home Assistant non risponde, il
+rifiuto resta quello onesto di prima, non un guasto travestito.
+
 ## [3.9.1] — Anche il ponte respira (2026-08-21)
 
 **Correzione urgente**, trovata provando la 3.9.0 sulla casa vera.
