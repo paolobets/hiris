@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from hiris.app.azione.registro import RegistroServizi
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.schedulatore.archivio import ArchivioPromesse
@@ -253,6 +254,58 @@ async def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_com
 
 
 @pytest.mark.asyncio
+async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
+    """Il difetto misurato dal vivo su 3.9.1: un add-on appena avviato ha un
+    registro PRESENTE ma mai caricato (si carica pigramente alla prima
+    azione ESEGUITA, `azione/porta.py::Porta.esegui`) -- e prima di questo
+    fix `_prometti` interrogava `_registro_non_pronto()` senza mai scaldare
+    il registro. L'utente aveva appena chiesto di leggere le otto
+    temperature (riuscito: quella lettura passa da un'altra strada, non dal
+    registro dei servizi) e poi un `prometti` con recapito veniva rifiutato
+    per sempre con "il registro dei servizi non e' pronto", anche se Home
+    Assistant era raggiungibile e pronto a rispondere.
+
+    `_HaConServizi` deve saper rispondere `get_services()` per DAVVERO (una
+    lista non vuota, nella forma vera di `/api/services`): se rispondesse un
+    errore o niente il registro resterebbe vuoto comunque, e questo test
+    passerebbe per il motivo sbagliato -- non proverebbe che il registro si
+    e' scaldato, solo che non e' esploso.
+    """
+    ha = _HaConServizi()
+    registro = RegistroServizi()
+    assert registro.vuoto()  # la premessa esatta del difetto: mai caricato
+    d = _dispatcher(promesse, registro=registro, ha=ha, cache=_CacheFinta())
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "x", "quando": _fra(60),
+        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
+    assert "errore" not in esito
+    assert ha.chiamate_get_services == 1
+    assert not registro.vuoto()  # scaldato per davvero, non solo tollerato
+
+
+@pytest.mark.asyncio
+async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promesse):
+    """Il gemello del test sopra (punto 3 del task): senza un canale HA vivo
+    il registro non si puo' caricare (`assicura_fresco` vuole un client), e
+    deve restare il rifiuto onesto di sempre -- MAI tentare comunque.
+
+    `_RegistroTracciaScaldamento.assicura_fresco` solleva se viene chiamato:
+    e' la finta che sa PRODURRE il difetto (fondamenta "test che non possono
+    fallire") -- se la guardia sul canale assente sparisse, questa finta lo
+    direbbe subito, mentre un'asserzione sul solo messaggio di errore no
+    (un `try/except` a monte lo inghiottirebbe comunque in "non e' pronto").
+    """
+    registro = _RegistroTracciaScaldamento()
+    d = _dispatcher(promesse, registro=registro, cache=_CacheFinta())  # nessun ha
+    esito = await d.dispatch("prometti", {
+        "specie": "chiedi", "frase": "x", "quando": _fra(60),
+        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
+    assert not registro.chiamato  # non si e' nemmeno tentato di scaldarlo
+    assert "errore" in esito
+    assert "non e' pronto" in esito["errore"]
+
+
+@pytest.mark.asyncio
 async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
     d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
@@ -398,6 +451,52 @@ class _RegistroVuoto:
 
     def domini(self):
         return []
+
+
+class _HaConServizi:
+    """Il doppio del canale HA che risponde a `get_services()` per davvero
+    -- quello che `RegistroServizi.assicura_fresco` chiama per scaldarsi.
+
+    Deve saper PRODURRE il difetto: `light`/`notify` con almeno un
+    servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
+    (`tests/test_azione_porta.py`) -- una lista vuota o un'eccezione
+    lascerebbe il registro vuoto comunque, e nasconderebbe che
+    `assicura_fresco` non e' mai stata chiamata invece di provarlo.
+    """
+
+    def __init__(self):
+        self.chiamate_get_services = 0
+
+    async def get_services(self):
+        self.chiamate_get_services += 1
+        return [
+            {"domain": "light", "services": {
+                "turn_on": {"target": {"entity": [{"domain": ["light"]}]}}}},
+            {"domain": "notify", "services": {"mobile_app_x": {}}},
+        ]
+
+
+class _RegistroTracciaScaldamento:
+    """Il doppio del registro che si accorge se qualcuno ha provato a
+    scaldarlo -- e si rifiuta di farlo passare inosservato: solleva.
+
+    Serve al test gemello di quello sopra (canale HA assente): la guardia
+    su `_canale_ha() is None` deve impedire la chiamata PRIMA che parta, non
+    limitarsi a sperare che un `try/except` a valle la inghiotta -- questa
+    finta lo dimostra tenendo il conto (`chiamato`) invece di limitarsi a
+    non rompersi.
+    """
+
+    def __init__(self):
+        self.chiamato = False
+
+    def domini(self):
+        return []
+
+    async def assicura_fresco(self, ha_client):
+        self.chiamato = True
+        raise AssertionError(
+            "assicura_fresco non doveva essere chiamato senza un canale HA")
 
 
 class _CacheFinta:

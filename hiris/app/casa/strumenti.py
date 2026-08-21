@@ -775,10 +775,12 @@ class DispatcherStrumenti:
             "disdici": self._disdici,
         }[nome]
         try:
-            # `_esegui` e `_legami` sono coroutine (fanno rete); gli altri
-            # quattro no. Si attende cio' che e' attendibile invece di rendere
-            # `async` anche i quattro sincroni: cambiare la loro firma avrebbe
-            # toccato sei gestori per un bisogno di due.
+            # `_esegui`, `_legami` e `_prometti` sono coroutine (fanno rete,
+            # o -- `_prometti` -- possono scaldare il registro dei servizi
+            # prima di verificare); gli altri cinque no. Si attende cio' che
+            # e' attendibile invece di rendere `async` anche i cinque
+            # sincroni: cambiare la loro firma avrebbe toccato otto gestori
+            # per un bisogno di tre.
             esito = gestore(argomenti)
             if inspect.isawaitable(esito):
                 esito = await esito
@@ -1178,7 +1180,50 @@ class DispatcherStrumenti:
 
     # -- le promesse -----------------------------------------------------
 
-    def _prometti(self, argomenti: dict[str, Any]) -> dict:
+    async def _assicura_registro_fresco(self) -> None:
+        """Scalda il registro dei servizi prima di verificare, se puo'.
+
+        Stessa forma di `azione/porta.py::Porta.esegui` (righe ~598-604): un
+        `try/except` attorno a `assicura_fresco`, perche' il registro si
+        carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
+        sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
+        nessuna azione arriva qui con un registro presente ma VUOTO, e senza
+        questa chiamata `_registro_non_pronto()` rifiuterebbe SEMPRE, anche
+        quando Home Assistant e' raggiungibile e pronto a rispondere.
+        Difetto misurato dal vivo su 3.9.1: «verifica le temperature di ogni
+        stanza e fra un'ora mandami il delta» rifiutato con «il registro dei
+        servizi non e' ancora pronto», mentre le otto temperature erano appena
+        state lette correttamente (da un'altra strada, non dal registro).
+
+        Diversa dalla porta in un punto: qui un guasto non diventa un errore
+        diverso da mostrare al modello -- degrada al rifiuto onesto gia'
+        scritto in `_registro_non_pronto()` ("non e' pronto"), perche' e' gia'
+        la frase giusta per «non so ancora cosa questa casa sa fare»: una
+        seconda frase per lo stesso fatto sarebbe un doppione.
+
+        Senza registro (`None`, legittimo: `prometti` non lo dichiara come
+        archivio richiesto in `_ARCHIVIO_PER_STRUMENTO`) o senza un canale HA
+        vivo (`_canale_ha()` e' `None`, altrettanto legittimo per lo stesso
+        motivo) non si tenta nemmeno: il registro non si puo' caricare senza
+        un client a cui chiedere, e restare senza canale resta il rifiuto
+        onesto di sempre -- non diventa "«prometti» non e' disponibile"
+        (quel messaggio e' di `_archivio_mancante`, per un'altra assenza:
+        aggiungere "ha" a `_ARCHIVIO_PER_STRUMENTO["prometti"]` sarebbe
+        proprio quello scambio).
+        """
+        if self._registro is None:
+            return
+        canale = self._canale_ha()
+        if canale is None:
+            return
+        try:
+            await self._registro.assicura_fresco(canale)
+        except Exception as errore:
+            logger.warning(
+                "prometti: rinfresco del registro servizi fallito (%s: %s), "
+                "resta il rifiuto onesto", type(errore).__name__, errore)
+
+    async def _prometti(self, argomenti: dict[str, Any]) -> dict:
         """Il modello propone, il codice restringe (spec §9.1).
 
         Tutto si verifica ADESSO: la chiamata contro questa installazione, il
@@ -1187,10 +1232,19 @@ class DispatcherStrumenti:
         due tetti (30 giorni, 50 in sospeso) restano a `promessa.valida` /
         `archivio.crea`: sono verifiche sulla FORMA della promessa, non su
         questa installazione, e vivono gia' li'.
+
+        Coroutine (non piu' sincrona) da quando questo metodo scalda il
+        registro (`_assicura_registro_fresco`, sopra): il dispatcher gia'
+        sapeva attendere un gestore awaitable (`dispatch`, `inspect.
+        isawaitable`), quindi renderlo `async` non ha toccato nessun
+        chiamante -- tutti passano gia' da `dispatch("prometti", ...)`,
+        sempre atteso.
         """
         import time as _time
 
         from ..azione.verifica import verifica
+
+        await self._assicura_registro_fresco()
 
         quando = _istante(argomenti.get("quando"))
         if quando is None:
