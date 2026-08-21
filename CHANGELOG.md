@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.9.1] — Anche il ponte respira (2026-08-21)
+
+**Correzione urgente**, trovata provando la 3.9.0 sulla casa vera.
+
+La 3.9.0 aveva alzato da 10 a 50 il numero di passi che HIRIS può fare in un
+turno. Ma quel tetto viveva in due posti: nei motori che parlano con i
+provider a consumo, e — separatamente — nel **ponte**, cioè la strada che
+HIRIS usa quando risponde col Piano Claude Max. Il ponte era rimasto a 10.
+
+Il risultato, misurato: alla richiesta «verifica le temperature di ogni
+stanza e fra un'ora dimmi il delta», HIRIS leggeva tutte e otto le stanze
+correttamente — poi finiva i passi prima di riuscire a fissare la promessa,
+e si congedava dicendo cosa gli era mancato.
+
+Adesso il tetto è 50 su entrambe le strade. Sul ponte il costo è quello
+dell'abbonamento, quindi cinquanta passi non costano più di dieci.
+
+**Resta una differenza, e va saputa**: sul ponte ogni singola chiamata a uno
+strumento consuma un passo, mentre sull'altra strada ne consuma uno l'intera
+risposta del modello, anche quando contiene più chiamate insieme. Stesso
+numero, contatori diversi — è scritto accanto a entrambi.
+
 ## [3.9.0] — La casa si lascia trovare (2026-08-21)
 
 Nasce da una richiesta vera andata male: «verifica le temperature per ogni
