@@ -1,5 +1,50 @@
 # HIRIS — Changelog
 
+## [3.9.0] — La casa si lascia trovare (2026-08-21)
+
+Nasce da una richiesta vera andata male: «verifica le temperature per ogni
+stanza, ricontrolla fra un'ora e notificami il delta» — otto stanze, e il
+turno moriva esaurendo i passi disponibili, senza né temperature né promessa.
+Tre indagini indipendenti hanno mappato tutta la famiglia del difetto.
+
+### L'albero della casa porta i riferimenti
+
+Aree, piani, automazioni e script compaiono ora col loro identificatore
+accanto al nome — «Soggiorno (id: soggiorno)» — che è esattamente ciò che
+gli strumenti chiedono. Prima HIRIS mostrava il nome e poi rifiutava chi
+lo usava: il modello indovinava, sbagliava, e bruciava il turno.
+
+### «cerca» trova tutto, e sa dire perché non trova
+
+Piani, automazioni, script ed etichette si risolvono ora per nome, in una
+sola chiamata anche in gruppo. E quando la lista è vuota per un guasto —
+un registro caduto, un file non letto — HIRIS lo dichiara invece di
+lasciar credere che la cosa non esista: vale ora per ogni tipo che
+«cerca» conosce.
+
+### Gli errori insegnano a correggersi
+
+Un riferimento sbagliato non riceve più un «non esiste» nudo: la risposta
+dice come trovare quello giusto. E una promessa con un riferimento
+inventato viene rifiutata subito, quando c'è ancora qualcuno che può
+correggere — non fra un'ora.
+
+### Più respiro, e usato meglio
+
+Il tetto dei passi per turno sale da 10 a 50, e HIRIS ha imparato a
+raggruppare le ricerche e a fare le letture in parallelo: la richiesta
+delle otto stanze costa ora tre passi. Se il tetto si esaurisce comunque,
+lo dice in italiano, spiega cosa resta valido, e consiglia di spezzare la
+richiesta — e la cosa finisce nei log.
+
+### Due correzioni di sostanza
+
+L'istantanea di una promessa «chiedi» salvava i valori di partenza senza
+unità di misura — un 21,4 che non si sapeva se fosse gradi o percento —
+per un disallineamento con la forma della cache: corretto, col test che
+ora usa la forma vera. E i vocabolari interni delle tipologie sono
+pinnati alla fonte di Home Assistant, con la fonte scritta accanto.
+
 ## [3.8.0] — HIRIS mantiene le promesse (2026-08-20)
 
 Dalla chat si può chiedere qualcosa **per dopo**: «alle 17 accendi lo studio»,
