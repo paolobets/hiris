@@ -180,3 +180,16 @@ def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
         assert _chiama(handle_reset_usage, {"consumi": vuoto}).status == 200
     finally:
         vuoto.close()
+
+
+def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
+    """La pagina ha un interruttore «da ultimo azzeramento / da sempre». Se il
+    server ignorasse il parametro sarebbe un pulsante che non fa niente --
+    difetto trovato rileggendo il proprio codice, non da un test caduto."""
+    app["consumi"].sposta_ancora(T22 + 3600)
+
+    da_ancora = _corpo(_chiama(handle_usage, app))
+    da_sempre = _corpo(_chiama(handle_usage, app, {"da": "sempre"}))
+
+    assert da_ancora["total_requests"] == 0, "dopo l'ancora non si e' consumato niente"
+    assert da_sempre["total_requests"] == 2, "la storia intera c'e' ancora"

@@ -112,8 +112,13 @@ async def handle_usage(request: web.Request) -> web.Response:
     if archivio is None or (archivio.vuoto() and not _puo_rispondere(request.app)):
         return web.json_response(_non_misurata())
 
-    sezioni = archivio.sezioni(da_ancora=True)
-    totali = archivio.totali(da_ancora=True)
+    # `?da=sempre` chiede la storia intera; senza parametro si conta
+    # dall'ancora, che e' cio' che la pagina mostra per primo. Il parametro
+    # esiste perche' l'interruttore «da ultimo azzeramento / da sempre» possa
+    # davvero cambiare qualcosa: senza, sarebbe un pulsante che non fa niente.
+    da_ancora = request.query.get("da") != "sempre"
+    sezioni = archivio.sezioni(da_ancora=da_ancora)
+    totali = archivio.totali(da_ancora=da_ancora)
 
     # `input_tokens` in cima e' INCLUSIVO della cache: e' la stessa quantita'
     # che la pagina e il riquadro della chat mostravano prima di questa fetta.
