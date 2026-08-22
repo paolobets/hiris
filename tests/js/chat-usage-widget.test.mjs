@@ -58,12 +58,12 @@ test('con tutti gli elementi presenti, loadUsage popola anche la data di azzeram
   assert.equal(document.getElementById('u-requests').textContent, '42');
   /* Era `€0.1234`. Un costo si legge a due decimali, e soprattutto si legge
      ALLO STESSO MODO nelle due superfici: la pagina «Consumi» mostrava gli
-     stessi dati come `€ 3.21` mentre questo riquadro scriveva `€3.2149`, e chi
+     stessi dati come `€ 3,21` mentre questo riquadro scriveva `€3.2149`, e chi
      guardava l'una dopo l'altra aveva ragione di credere che una delle due
      stesse sbagliando. Adesso il formato viene da `fmtEuro` (config/api.js),
      che e' l'unico posto in cui e' scritto. */
-  assert.equal(document.getElementById('u-cost').textContent, '€ 0.12');
-  assert.match(document.getElementById('usage-last-reset').textContent, /Azzerato il/,
+  assert.equal(document.getElementById('u-cost').textContent, '€ 0,12');
+  assert.match(document.getElementById('usage-last-reset').textContent, /Conta da/,
     'deve dire da quando i numeri contano');
 });
 
@@ -83,7 +83,7 @@ test('senza #usage-last-reset in pagina, gli altri contatori si popolano comunqu
   assert.equal(document.getElementById('u-requests').textContent, '7');
   assert.equal(document.getElementById('u-input').textContent, '500');
   assert.equal(document.getElementById('u-output').textContent, '300');
-  assert.equal(document.getElementById('u-cost').textContent, '€ 0.02');
+  assert.equal(document.getElementById('u-cost').textContent, '€ 0,02');
 });
 
 // ---------------------------------------------------------------------------

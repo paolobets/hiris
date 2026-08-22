@@ -170,7 +170,7 @@ test('C-1: con i consumi misurati non cambia niente — i numeri si vedono e le 
 
   assert.equal(fermati.length, 0, 'qui il timer serve: i numeri cambiano');
   assert.equal(document.getElementById('u-requests').textContent, '42');
-  assert.equal(document.getElementById('u-cost').textContent, '€ 0.12');
+  assert.equal(document.getElementById('u-cost').textContent, '€ 0,12');
   const righe = [...document.querySelectorAll('#usage-widget .usage-row')];
   for (const r of righe) assert.notEqual(r.style.display, 'none');
 });

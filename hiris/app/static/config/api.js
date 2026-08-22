@@ -24,9 +24,24 @@ function fmtNum(n) {
        : String(n);
 }
 
-function fmtEuro(n) {
+/* `decimali` e' il MASSIMO, non il fisso: due bastano a un totale, e una riga
+   di modello ne vuole fino a quattro.
+
+   Prima faceva `'€ ' + Number(n).toFixed(2)`, e sbagliava due volte.
+   `toFixed(2)` scriveva «0.00» per un modello costato tre decimillesimi di
+   euro: dopo aver tolto dai DATI lo zero che afferma (fetta «i consumi, per
+   modello»), riaverlo a schermo sarebbe la stessa bugia con un'altra
+   provenienza. E `toFixed` non conosce la lingua, quindi produceva il
+   separatore col punto in una pagina dove la data accanto e' formattata
+   `it-IT` -- difetto preesistente, trovato dall'audit di disegno.
+
+   La funzione e' CONDIVISA col riquadro della chat: sistemarla la sistema in
+   tutti e due i posti, che e' il punto di averla qui. */
+function fmtEuro(n, decimali) {
   if (n == null) return '—';
-  return '€ ' + Number(n).toFixed(2);
+  var max = decimali == null ? 2 : decimali;
+  return '€ ' + Number(n).toLocaleString('it-IT',
+    { minimumFractionDigits: 2, maximumFractionDigits: max });
 }
 
 /* Data e ora nel formato italiano, l'unico che il prodotto usa a schermo.
@@ -115,7 +130,11 @@ async function loadUsage() {
     _setUsageText('u-output', fmtNum(d.output_tokens));
     _setUsageText('u-cost', fmtEuro(d.cost_eur));
     var quando = fmtDataOra(d.last_reset);
-    if (quando) _setUsageText('usage-last-reset', 'Azzerato il ' + quando);
+    /* «Conta da», non «Azzerato il»: dalla fetta «i consumi, per modello»
+       il pulsante sposta un'ancora e non cancella piu' niente, e `last_reset`
+       porta l'istante di quell'ancora. Dire «azzerato» descriverebbe un gesto
+       che il prodotto non compie piu'. */
+    if (quando) _setUsageText('usage-last-reset', 'Conta da ' + quando);
     return true;
   } catch(e) {
     console.error('loadUsage failed', e);

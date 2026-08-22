@@ -84,7 +84,7 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
 // ---------------------------------------------------------------------------
 // I9 -- lo stesso numero, scritto in due modi. Il riquadro «Utilizzo» della
 // chat e questa pagina leggono LA STESSA rotta (`GET api/usage`) e mostrano gli
-// stessi dati: scrivevano `1.28M` contro `1.3M`, `€3.2149` contro `€ 3.21`, e
+// stessi dati: scrivevano `1.28M` contro `1.3M`, `€3.2149` contro `€ 3,21`, e
 // `da 2026-08-01` contro il formato italiano usato ovunque nel prodotto. Non e'
 // un dettaglio tipografico: chi guarda le due schermate una dopo l'altra ha
 // ragione di credere che una delle due stia sbagliando. Questo test tiene le
@@ -118,7 +118,9 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
     'i token di ingresso: stessa cifra, stesse abbreviazioni');
   assert.equal(ctx.document.getElementById('u-cost').textContent, tessere[3],
     'il costo: stesso simbolo, stessa spaziatura, stessi due decimali');
-  assert.equal(tessere[3], '€ 3.21', 'due decimali, mai quattro');
+  assert.equal(tessere[3], '€ 3,21',
+    'due decimali, e la VIRGOLA: `toFixed` non conosce la lingua, e il '
+    + 'punto stonava accanto a una data formattata it-IT');
   const quando = ctx.document.querySelector('#usage-global-grid .st-delta').textContent;
   assert.doesNotMatch(quando, /2026-08-01/,
     'la data si scrive come nel resto del prodotto, non come un ISO tagliato a metà');
