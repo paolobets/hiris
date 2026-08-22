@@ -37,3 +37,16 @@ def get_price(model: str) -> dict[str, float]:
     si collega.
     """
     return PRICING.get(model, PRICING["_default"])
+
+
+def prezzo_noto(model: str) -> bool:
+    """Se di questo modello conosciamo davvero il listino.
+
+    `get_price` ripiega su `_default` (zero) per qualunque nome sconosciuto, e
+    quello zero e' indistinguibile da «gratuito» per chi legge il risultato:
+    e' il meccanismo per cui il costo di OpenRouter e' sempre stato 0,00 senza
+    che niente lo dicesse. Qui la domanda si fa esplicita, ed e' l'unico modo
+    perche' il costo di un modello fuori tabella possa uscire come `null`
+    invece che come uno zero che afferma.
+    """
+    return model in PRICING and model != "_default"
