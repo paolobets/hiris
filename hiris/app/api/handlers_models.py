@@ -746,16 +746,21 @@ async def _fetch_ollama_models(local_model_url: str,
 # "No endpoints found that support tool use" (see hermes-3-llama-3.1-405b:free,
 # removed in v0.9.8 after observed failures). The live filter in
 # `_fetch_openrouter_models` is authoritative when available.
+# La RISERVA, e soltanto quella: cio' che si mostra quando openrouter.ai non
+# risponde. Non e' piu' il filtro dell'elenco vivo (vedi
+# `_fetch_openrouter_models`), che adesso porta tutti i modelli utilizzabili.
+#
+# Verificato contro openrouter.ai il 22/08/2026: dei precedenti undici nomi,
+# SETTE erano stati ritirati o rinominati -- i cinque `:free` e i due
+# `anthropic/*`. Una riserva che elenca modelli morti e' una riserva che
+# fallisce in silenzio: chi ne sceglie uno scopre il problema al primo
+# messaggio, non qui. Restano i quattro vivi.
+#
+# **Questa lista invecchiera' di nuovo, ed e' accettato**: si vede solo quando
+# la lettura viva fallisce, la riga di provenienza dichiara che viene dal
+# sorgente, e chi vuole un modello che non c'e' lo incolla nel campo della
+# pagina Modelli -- che e' la vera via d'uscita, e non passa di qui.
 _OPENROUTER_PRESETS = [
-    # Free tier (rate-limited but $0)
-    "openrouter:meta-llama/llama-3.3-70b-instruct:free",
-    "openrouter:google/gemma-3-27b-it:free",
-    "openrouter:qwen/qwen-2.5-72b-instruct:free",
-    "openrouter:deepseek/deepseek-chat:free",
-    "openrouter:mistralai/mistral-nemo:free",
-    # Popular paid models accessible through OpenRouter
-    "openrouter:anthropic/claude-sonnet-4-6",
-    "openrouter:anthropic/claude-opus-4-7",
     "openrouter:openai/gpt-4o",
     "openrouter:openai/gpt-4.1",
     "openrouter:google/gemini-2.5-flash",
@@ -827,21 +832,32 @@ async def _fetch_openrouter_models(api_key: str,
 
         hide_free = bool(nascondi_gratuiti)
 
-        # Keep curated presets first (in order), filtered by capability.
-        result = [
-            m for m in _OPENROUTER_PRESETS
-            if m.removeprefix("openrouter:") in tool_capable_ids
-            and not (hide_free and m.endswith(":free"))
-        ]
-        # Add any other ':free' tool-capable models not already in presets.
-        # Skip them entirely when the box is ticked.
-        if not hide_free:
-            for entry in data.get("data", []):
-                mid = entry.get("id", "")
-                if mid.endswith(":free") and mid in tool_capable_ids:
-                    tagged = f"openrouter:{mid}"
-                    if tagged not in result:
-                        result.append(tagged)
+        # TUTTI i modelli utilizzabili, non un sottoinsieme curato a mano.
+        #
+        # Fino al 22/08/2026 qui si partiva da `_OPENROUTER_PRESETS` -- undici
+        # nomi scritti nel sorgente -- e si teneva solo l'intersezione con
+        # quelli capaci di usare gli strumenti. Misurato sull'installazione del
+        # proprietario: OpenRouter pubblicava 421 modelli, 352 capaci, e HIRIS
+        # gliene mostrava QUATTRO, perche' SETTE degli undici erano stati nel
+        # frattempo ritirati o rinominati. Non era il suo account: era una
+        # lista scritta a mano che aveva marcito in silenzio -- lo stesso
+        # difetto di `pricing.py`, che non conosce nessun id OpenRouter e per
+        # questo il costo usciva zero.
+        #
+        # Il filtro sulle capacita' RESTA, ed e' l'unico che serva: HIRIS manda
+        # sempre il catalogo delle azioni, e un modello che non sa usarle
+        # rifiuta ogni richiesta con un 404. Ma escludere i 69 incapaci non
+        # significa mostrarne quattro.
+        #
+        # La pagina Modelli era gia' fatta per un elenco lungo: ha un filtro di
+        # ricerca e la voce «scritto da te» per un identificatore che l'elenco
+        # non ha. La lista corta era l'anomalia, non il vincolo.
+        #
+        # Ordinato: due letture uguali devono disegnare la stessa pagina.
+        result = sorted(
+            f"openrouter:{mid}" for mid in tool_capable_ids
+            if not (hide_free and mid.endswith(":free"))
+        )
         return (result, "viva") if result else (_OPENROUTER_PRESETS, "riserva")
     except Exception as exc:
         logger.warning("Could not fetch OpenRouter models: %s", exc)

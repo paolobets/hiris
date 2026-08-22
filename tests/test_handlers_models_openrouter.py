@@ -255,16 +255,22 @@ async def test_una_lettura_fallita_dichiara_la_riserva_invece_di_fingere():
 
 
 @pytest.mark.asyncio
-async def test_sulla_riserva_i_gratuiti_ricompaiono_anche_con_la_casella_spuntata():
-    """Il difetto gemello, dichiarato invece che nascosto: il ripiego
-    restituisce i preset NON filtrati. Non si corregge qui (filtrarli
-    renderebbe la riserva una lista diversa da quella scritta nel sorgente,
-    cioe' una terza cosa): si rende leggibile, e il pannello lo dice."""
+async def test_sulla_riserva_non_c_e_piu_niente_che_contraddica_la_casella():
+    """Il «difetto gemello» che qui si dichiarava e' USCITO col suo soggetto.
+
+    Diceva: il ripiego restituisce i preset NON filtrati, quindi con la
+    casella «nascondi gratuiti» spuntata i `:free` ricompaiono lo stesso, e il
+    pannello lo dichiara invece di correggerlo. Era vero finche' la riserva
+    conteneva cinque `:free` -- che erano anche i cinque nomi morti, ritirati
+    da OpenRouter. Potata la riserva, non ne resta nemmeno uno: la casella non
+    puo' piu' essere contraddetta, e l'avviso che lo diceva non deve piu'
+    comparire (e' legato al CONTENUTO dell'elenco, non a una condizione che lo
+    indovina -- vedi `decisione_modelli.componi_pannello`)."""
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
             "k", nascondi_gratuiti=True)
     assert fonte == "riserva"
-    assert any(m.endswith(":free") for m in modelli)
+    assert not any(m.endswith(":free") for m in modelli)
 
 
 @pytest.mark.asyncio
@@ -385,3 +391,108 @@ def test_i_modelli_di_claude_non_offrono_piu_la_parola_auto():
         "se un giorno resolve_model imparasse a scartare la parola, questa "
         "prova va riscritta: oggi il difetto e' reale"
     )
+
+
+# --- l'elenco vivo e' TUTTO l'elenco vivo ------------------------------------
+#
+# Misurato il 22/08/2026 sull'installazione del proprietario: OpenRouter
+# pubblica 421 modelli, 352 dei quali sanno usare gli strumenti, e HIRIS gliene
+# mostrava QUATTRO. Non era il suo account: era una lista di undici nomi
+# scritta nel sorgente, di cui SETTE non esistevano piu' -- e la casella
+# «nascondi gratuiti» toglieva i cinque `:free`, tutti gia' morti.
+#
+# Il filtro sugli strumenti resta e va tenuto: HIRIS manda sempre il catalogo
+# delle azioni, e un modello che non sa usarli rifiuterebbe OGNI richiesta con
+# un 404. Ma escludere i 69 incapaci non significa mostrarne quattro.
+#
+# La pagina Modelli era gia' fatta per un elenco lungo: ha un filtro di ricerca
+# e la voce «scritto da te» quando non trova niente. La lista corta era
+# l'anomalia, non il vincolo.
+
+
+@pytest.mark.asyncio
+async def test_l_elenco_vivo_porta_TUTTI_i_modelli_utilizzabili():
+    """Un modello nuovo compare da solo, senza essere in nessuna lista."""
+    payload = {
+        "data": [
+            {"id": "anthropic/claude-opus-4.6", "supported_parameters": ["tools"]},
+            {"id": "z-ai/glm-5.3", "supported_parameters": ["tools"]},
+            {"id": "provider/appena-uscito", "supported_parameters": ["tools"]},
+            {"id": "vecchio/senza-strumenti", "supported_parameters": ["max_tokens"]},
+        ],
+    }
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        modelli, fonte = await handlers_models._fetch_openrouter_models("sk-or-test")
+
+    assert fonte == "viva"
+    assert "openrouter:provider/appena-uscito" in modelli, (
+        "un modello uscito ieri deve comparire senza che nessuno lo aggiunga "
+        "a mano: e' il difetto per cui il proprietario ne vedeva quattro")
+    assert "openrouter:z-ai/glm-5.3" in modelli
+    assert "openrouter:vecchio/senza-strumenti" not in modelli
+    assert len(modelli) == 3
+
+
+@pytest.mark.asyncio
+async def test_l_elenco_vivo_NON_e_limitato_alla_lista_del_sorgente():
+    """La prova diretta: nessuno dei modelli vivi sta nei preset, e devono
+    esserci lo stesso."""
+    payload = {"data": [
+        {"id": "provider-x/modello-1", "supported_parameters": ["tools"]},
+        {"id": "provider-y/modello-2", "supported_parameters": ["function_calling"]},
+    ]}
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        modelli, _ = await handlers_models._fetch_openrouter_models("sk-or-test")
+
+    nei_preset = {m.removeprefix("openrouter:")
+                  for m in handlers_models._OPENROUTER_PRESETS}
+    assert not ({"provider-x/modello-1", "provider-y/modello-2"} & nei_preset)
+    assert len(modelli) == 2
+
+
+@pytest.mark.asyncio
+async def test_l_elenco_e_ordinato_e_stabile():
+    """Due letture uguali disegnano la stessa pagina: senza un ordine, la
+    lista ballerebbe a ogni apertura."""
+    payload = {"data": [
+        {"id": "zeta/ultimo", "supported_parameters": ["tools"]},
+        {"id": "alfa/primo", "supported_parameters": ["tools"]},
+    ]}
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        modelli, _ = await handlers_models._fetch_openrouter_models("sk-or-test")
+
+    assert modelli == sorted(modelli)
+
+
+@pytest.mark.asyncio
+async def test_nascondi_gratuiti_toglie_i_free_anche_dall_elenco_vivo():
+    payload = {"data": [
+        {"id": "a/pagante", "supported_parameters": ["tools"]},
+        {"id": "b/gratis:free", "supported_parameters": ["tools"]},
+    ]}
+    session_cm = _mock_openrouter_response(payload)
+    with patch("aiohttp.ClientSession", return_value=session_cm):
+        modelli, _ = await handlers_models._fetch_openrouter_models(
+            "sk-or-test", nascondi_gratuiti=True)
+
+    assert modelli == ["openrouter:a/pagante"]
+
+
+def test_la_riserva_non_contiene_modelli_che_non_esistono_piu():
+    """Verificato contro openrouter.ai il 22/08/2026: sette degli undici nomi
+    erano stati ritirati o rinominati. Una riserva che elenca modelli morti e'
+    una riserva che fallisce in silenzio -- chi ne sceglie uno scopre il
+    problema al primo messaggio, non qui."""
+    morti = {
+        "openrouter:meta-llama/llama-3.3-70b-instruct:free",
+        "openrouter:google/gemma-3-27b-it:free",
+        "openrouter:qwen/qwen-2.5-72b-instruct:free",
+        "openrouter:deepseek/deepseek-chat:free",
+        "openrouter:mistralai/mistral-nemo:free",
+        "openrouter:anthropic/claude-sonnet-4-6",
+        "openrouter:anthropic/claude-opus-4-7",
+    }
+    assert not (morti & set(handlers_models._OPENROUTER_PRESETS))

@@ -1014,8 +1014,17 @@ def componi_pannello(
         "fonte": fonte,
         "provenienza": provenienza(
             provider_id, fonte, indirizzo=indirizzo,
+            # L'avviso si lega a CIO' CHE C'E' NELL'ELENCO, non a una
+            # condizione che lo indovina. Fino al 22/08/2026 bastavano
+            # «openrouter + riserva + casella spuntata» per affermare che
+            # l'elenco conteneva gratuiti comunque -- vero finche' la riserva
+            # ne conteneva cinque. Da quando la riserva e' stata potata dei
+            # nomi morti (che erano tutti `:free`) quella condizione avrebbe
+            # continuato ad affermarlo su un elenco che non ne ha piu' nemmeno
+            # uno: una riga che dice il falso su cio' che si sta guardando.
             avviso_gratuiti=(provider_id == "openrouter"
-                             and fonte == "riserva" and bool(nascondi_gratuiti))),
+                             and fonte == "riserva" and bool(nascondi_gratuiti)
+                             and any(str(v).endswith(":free") for v in valori))),
         "spiegazione": spiegazione(provider_id),
         # Da quando ha effetto la scelta: NIENTE, perché ha effetto dal
         # prossimo messaggio, e questo vale per OGNI provider e per ogni campo

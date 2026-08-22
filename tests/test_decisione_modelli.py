@@ -688,12 +688,16 @@ def test_il_difetto_gemello_si_LEGGE_invece_di_essere_taciuto():
 def test_il_pannello_di_openrouter_lo_dice_solo_quando_la_casella_e_spuntata():
     """La composizione intera, non la funzione isolata: e' li' che il fatto e
     la parola si incontrano."""
-    acceso = componi_pannello(provider_id="openrouter", valori=[], fonte="riserva",
-                              scelto="", nascondi_gratuiti=True)
-    spento = componi_pannello(provider_id="openrouter", valori=[], fonte="riserva",
-                              scelto="", nascondi_gratuiti=False)
-    viva = componi_pannello(provider_id="openrouter", valori=[], fonte="viva",
-                            scelto="", nascondi_gratuiti=True)
+    # L'elenco deve CONTENERE un gratuito, o l'avviso sarebbe una riga falsa
+    # su cio' che l'utente ha davanti (fetta OpenRouter, 22/08/2026: la
+    # riserva e' stata potata dei nomi morti, che erano tutti `:free`).
+    con_free = ["openrouter:a/b:free", "openrouter:c/d"]
+    acceso = componi_pannello(provider_id="openrouter", valori=con_free,
+                              fonte="riserva", scelto="", nascondi_gratuiti=True)
+    spento = componi_pannello(provider_id="openrouter", valori=con_free,
+                              fonte="riserva", scelto="", nascondi_gratuiti=False)
+    viva = componi_pannello(provider_id="openrouter", valori=con_free,
+                            fonte="viva", scelto="", nascondi_gratuiti=True)
     assert "non ha effetto" in acceso["provenienza"]
     assert "non ha effetto" not in spento["provenienza"]
     assert "non ha effetto" not in viva["provenienza"], (
@@ -1004,3 +1008,26 @@ def test_la_nota_nomina_il_piano_con_il_nome_che_ha_in_tutto_il_prodotto():
     testo = nota_ripiego(motivo="scadenza", chi_ha_risposto="openrouter")
     assert testo.startswith("Il " + nome("subscription") + " ")
     assert nome("openrouter") in testo
+
+
+def test_l_avviso_sui_gratuiti_segue_il_CONTENUTO_dell_elenco():
+    """Fetta OpenRouter (22/08/2026). L'avviso «la casella non ha effetto,
+    l'elenco di riserva li contiene comunque» era calcolato da una condizione
+    che lo INDOVINAVA: openrouter + riserva + casella spuntata. Vero finche' la
+    riserva conteneva cinque `:free`; falso dal momento in cui e' stata potata
+    dei nomi morti, che erano tutti gratuiti. Una riga che dice il falso su
+    cio' che si sta guardando e' il difetto n.1 di questo prodotto."""
+    from hiris.app.decisione_modelli import componi_pannello
+
+    con_gratuiti = componi_pannello(
+        provider_id="openrouter", valori=["openrouter:a/b:free", "openrouter:c/d"],
+        fonte="riserva", scelto="", nascondi_gratuiti=True)
+    senza = componi_pannello(
+        provider_id="openrouter", valori=["openrouter:c/d"],
+        fonte="riserva", scelto="", nascondi_gratuiti=True)
+
+    assert "non ha effetto" in con_gratuiti["provenienza"], (
+        "l'elenco ne contiene uno: l'avviso e' vero e va detto")
+    assert "non ha effetto" not in senza["provenienza"], (
+        "l'elenco non ne contiene: l'avviso sarebbe una riga falsa su cio' "
+        "che l'utente ha davanti")
