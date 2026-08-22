@@ -79,7 +79,24 @@ class Orologio:
             self._archivio.concludi(promessa["id"], stato="fallita", adesso=adesso,
                                     motivo=risposta["errore"])
             return
+        await self.concludi_chiedi(promessa, risposta, adesso=adesso)
 
+    async def concludi_chiedi(self, promessa: dict, risposta: dict, *,
+                              adesso: float) -> None:
+        """Il SECONDO TEMPO di «mantieni»: la conclusione, da qualunque strada arrivi.
+
+        Estratto da `_mantieni_chiedi` con la fetta «le promesse seguono la
+        catena» (22/08/2026), senza cambiarne una riga di comportamento. Sul
+        ramo sincrono la conclusione torna dal turno e si chiude subito, come
+        sempre; sul ponte il turno gira altrove e per minuti, e a chiamare qui
+        e' la rotta MCP quando il modello ha chiamato `concludi`.
+
+        **Un solo punto conclude una promessa**, come `azione/porta.py` e'
+        l'unico che esegue: un secondo sarebbe un difetto, non
+        un'ottimizzazione -- due strade che decidono se notificare, e con
+        quali parole, sono due strade libere di divergere sul gesto piu'
+        visibile che il prodotto compie.
+        """
         avvisare = bool(risposta.get("avvisare"))
         testo = risposta.get("testo") or ""
         motivo = None

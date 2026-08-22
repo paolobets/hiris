@@ -25,6 +25,7 @@ from hiris.app import server
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.schedulatore.archivio import ArchivioPromesse
+from hiris.app.schedulatore.orologio import Orologio
 from tests.test_strumenti_conoscenza import _semina_casa
 
 TOKEN = "token-di-prova-del-turno-di-promessa"
@@ -71,6 +72,13 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     app["archivio_memoria"] = memoria
     app["promesse"] = promesse
     app["porta_azione"] = porta
+    # L'orologio vero: e' lui che conclude una promessa e fa partire la
+    # notifica dalla porta. `interpreta` non viene mai chiamato in questi test
+    # -- qui il turno gira sul ponte, non sulla catena.
+    async def _mai(_promessa):
+        raise AssertionError("il turno non doveva passare dalla catena")
+
+    app["orologio"] = Orologio(promesse, esegui=porta.esegui, interpreta=_mai)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -182,3 +190,70 @@ async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
     corpo = await risposta.json()
     assert corpo["result"].get("isError") is not True
     assert json.loads(corpo["result"]["content"][0]["text"])["esiste"] is True
+
+
+@pytest.mark.asyncio
+async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(rotta):
+    """Il secondo tempo di `mantieni`, raggiunto dall'altra strada.
+
+    Sul ramo sincrono la conclusione torna a `interpreta_promessa` e
+    l'orologio chiude. Sul ponte non torna niente a nessuno: `concludi` e'
+    una `tools/call` come le altre, e se questa rotta si limitasse a
+    registrarla nel dispatcher la promessa resterebbe `in_corso` per
+    sempre -- che e' peggio di una fallita, perche' non si vede."""
+    client, promesse, porta = rotta
+    ident = _crea_in_corso(promesse, recapito="notify.mobile_app_x")
+
+    risposta = await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 6, "method": "tools/call",
+        "params": {"name": "concludi",
+                   "arguments": {"avvisare": True,
+                                 "testo": "in bagno +0,4 gradi"}},
+    }, promessa=ident)
+
+    corpo = await risposta.json()
+    assert corpo["result"].get("isError") is not True
+
+    p = promesse.leggi(ident)
+    assert p["stato"] == "mantenuta"
+    assert p["testo"] == "in bagno +0,4 gradi"
+    assert p["avvisare"] is True
+    assert porta.chiamate, "la notifica non e' partita dalla porta"
+    assert porta.chiamate[0][0]["servizio"] == "notify.mobile_app_x"
+    assert porta.chiamate[0][1] == "schedulatore"
+
+
+@pytest.mark.asyncio
+async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
+    """«La condizione non si e' verificata» e' un esito RIUSCITO, e resta
+    scritto: e' cio' che rende il silenzio un fatto dichiarato."""
+    client, promesse, porta = rotta
+    ident = _crea_in_corso(promesse, recapito="notify.mobile_app_x")
+
+    await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+        "params": {"name": "concludi",
+                   "arguments": {"avvisare": False, "testo": "tutto fermo"}},
+    }, promessa=ident)
+
+    p = promesse.leggi(ident)
+    assert p["stato"] == "mantenuta"
+    assert p["testo"] == "tutto fermo"
+    assert porta.chiamate == [], "non c'era niente per cui disturbarlo"
+
+
+@pytest.mark.asyncio
+async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
+    """Il guardiano rifiuta e la promessa resta in corso: chiudere su un
+    `concludi` malformato scriverebbe in pagina un testo che il modello non
+    ha mai composto."""
+    client, promesse, porta = rotta
+    ident = _crea_in_corso(promesse)
+
+    risposta = await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+        "params": {"name": "concludi", "arguments": {"avvisare": "forse"}},
+    }, promessa=ident)
+
+    assert (await risposta.json())["result"]["isError"] is True
+    assert promesse.leggi(ident)["stato"] == "in_corso"

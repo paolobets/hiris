@@ -68,6 +68,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections import OrderedDict
 
 from aiohttp import web
@@ -431,6 +432,33 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # turno finisce.
         dispatcher = DispatcherPromessa(dispatcher)
     risultato = await dispatcher.dispatch(nome, argomenti)
+
+    if id_promessa and dispatcher.conclusione is not None:
+        # Il turno ha chiamato `concludi`: la promessa si chiude ADESSO, e la
+        # notifica parte adesso. Non si aspetta la consegna del job -- se la
+        # CLI morisse dopo aver concluso, la decisione del modello sarebbe gia'
+        # al sicuro, e il `submit` che arriva dopo trovera' una promessa non
+        # piu' `in_corso` e non toccheranno niente (`handlers_reasoning`).
+        #
+        # A concludere e' l'orologio, non questa rotta: un secondo punto che
+        # decide se notificare e con quali parole sarebbe libero di divergere
+        # dal primo, sul gesto piu' visibile che il prodotto compia.
+        orologio = request.app.get("orologio")
+        promessa = (request.app.get("promesse") or None)
+        riga = promessa.leggi(id_promessa) if promessa is not None else None
+        if orologio is None or riga is None:
+            # Silenzio dichiarato: il modello ha concluso e noi non abbiamo di
+            # che chiudere. Non si finge che sia andata: lo si dice a lui, che
+            # e' l'unico che puo' ancora fare qualcosa (riprovare, o dirlo nel
+            # testo), e lo si scrive nel log per chi indaga.
+            logger.error(
+                "MCP «concludi» per la promessa %s: orologio o archivio "
+                "assenti, la promessa NON e' stata chiusa", id_promessa)
+            risultato = {"errore": ("ho ricevuto la conclusione ma non ho "
+                                    "potuto chiudere la promessa.")}
+        else:
+            await orologio.concludi_chiedi(
+                riga, dispatcher.conclusione, adesso=time.time())
 
     contenuto: dict = {
         "content": [{"type": "text", "text": json.dumps(risultato, ensure_ascii=False)}],
