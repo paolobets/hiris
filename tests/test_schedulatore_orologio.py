@@ -322,3 +322,31 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
     assert p["motivo"] is None, (
         f"la notifica non e' partita, ed e' esattamente il difetto CRITICO "
         f"della review finale: {p['motivo']!r}")
+
+
+async def test_la_nota_del_ripiego_finisce_nel_motivo_della_promessa(archivio):
+    """Fetta «le promesse seguono la catena»: quando il turno scende dal piano
+    alla catena, la promessa lo dichiara -- e' l'unico posto in cui l'utente
+    puo' leggerlo, perche' una promessa non ha una risposta in chat."""
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
+    turno = TurnoFinto({"avvisare": False, "testo": "tutto fermo",
+                        "nota": "Il Piano Claude Max non ha un token con cui "
+                                "rispondere: questo turno l'ha mantenuto la "
+                                "catena, a consumo."})
+
+    await Orologio(archivio, esegui=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
+
+    p = archivio.leggi(ident)
+    assert p["stato"] == "mantenuta"
+    assert p["testo"] == "tutto fermo"
+    assert "a consumo" in (p["motivo"] or ""), (
+        "il passaggio dal forfait al consumo non e' scritto da nessuna parte")
+
+
+async def test_senza_nota_il_motivo_resta_pulito(archivio):
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
+    turno = TurnoFinto({"avvisare": False, "testo": "tutto fermo"})
+
+    await Orologio(archivio, esegui=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
+
+    assert archivio.leggi(ident)["motivo"] is None

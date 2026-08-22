@@ -299,3 +299,148 @@ async def test_interpreta_promessa_senza_runner_e_un_errore_dichiarato():
 
     assert "errore" in esito
     assert "modello" in esito["errore"]
+
+
+# --- l'instradamento: la promessa segue la catena, ponte compreso ------------
+#
+# Fetta «le promesse seguono la catena» (22/08/2026). Prima di qui
+# `interpreta_promessa` andava SEMPRE a `llm_router`, qualunque cosa dicesse la
+# gerarchia dei modelli -- e su una casa che gira interamente sul Piano Claude
+# Max le promesse morivano su chiavi API esaurite mentre la chat funzionava.
+
+
+class _CodaFinta:
+    def __init__(self):
+        self.accodati = []
+
+    def count_turni_oggi(self, now=None):
+        return 0
+
+    def enqueue(self, kind, wake, context, deadline_ts, *, job_id=None, now):
+        self.accodati.append({"kind": kind, "context": context,
+                              "deadline_ts": deadline_ts, "now": now})
+        return "job-1"
+
+
+class _RouterCheNonDeveRispondere:
+    def __init__(self):
+        self.chiamato = False
+
+    async def chat(self, **kwargs):
+        self.chiamato = True
+        return "non dovevi chiedere a me"
+
+
+def _app_col_ponte(coda=None, router=None):
+    return {
+        "ponte_attivo": True,
+        "reasoning_queue": coda if coda is not None else _CodaFinta(),
+        "models_config": {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}},
+        "llm_router": router if router is not None else _RouterCheNonDeveRispondere(),
+    }
+
+
+@pytest.fixture
+def col_token_del_piano(monkeypatch):
+    from hiris.app.decisione_modelli import VARIABILE_TOKEN_DEL_PIANO
+    monkeypatch.setenv(VARIABILE_TOKEN_DEL_PIANO, "un-token-qualunque")
+
+
+@pytest.mark.asyncio
+async def test_col_ponte_in_testa_il_turno_va_in_coda_e_non_al_router(col_token_del_piano):
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    coda, router = _CodaFinta(), _RouterCheNonDeveRispondere()
+    app = _app_col_ponte(coda, router)
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert esito == {"accodata": True}
+    assert router.chiamato is False, (
+        "il piano era in testa alla catena: il router non doveva rispondere")
+    assert len(coda.accodati) == 1
+    assert coda.accodati[0]["kind"] == "promessa"
+
+
+@pytest.mark.asyncio
+async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_piano):
+    """Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job
+    non esiste per lui. Senza `promessa_id` la rotta MCP non saprebbe quale
+    turno sta parlando, e `concludi` non avrebbe niente da chiudere."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    coda = _CodaFinta()
+    await interpreta_promessa(coda and _app_col_ponte(coda), _promessa_chiedi())
+
+    contesto = coda.accodati[0]["context"]
+    assert contesto["promessa_id"] == "p1"
+    assert contesto["domanda"]
+    assert "system_prompt" in contesto and contesto["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_senza_il_token_del_piano_il_turno_scende_alla_catena(monkeypatch):
+    """Il ripiego della chat, identico: e' la regola sola che la fetta cerca."""
+    from hiris.app.decisione_modelli import VARIABILE_TOKEN_DEL_PIANO
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    monkeypatch.delenv(VARIABILE_TOKEN_DEL_PIANO, raising=False)
+    coda = _CodaFinta()
+    app = _app_col_ponte(coda, _RunnerCheConclude(avvisare=True, testo="fa caldo"))
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert coda.accodati == [], "il piano non poteva: non si accoda a nessuno"
+    assert esito["testo"] == "fa caldo"
+
+
+@pytest.mark.asyncio
+async def test_col_ponte_spento_il_turno_resta_sulla_catena_come_sempre():
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    coda = _CodaFinta()
+    app = _app_col_ponte(coda, _RunnerCheConclude(avvisare=False, testo="niente"))
+    app["ponte_attivo"] = False
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert coda.accodati == []
+    assert esito["avvisare"] is False
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_dal_piano_alla_catena_finisce_nella_promessa(monkeypatch):
+    """Il ripiego si annuncia OGNI VOLTA (decisione del proprietario, 13
+    agosto): un passaggio dal forfait al consumo che nessuno dichiara si
+    scopre a fine mese. In chat lo dice una nota in coda alla risposta; una
+    promessa non ha una risposta in cui metterla -- ha il suo motivo, ed e'
+    quello che si legge dalla pagina."""
+    from hiris.app.decisione_modelli import VARIABILE_TOKEN_DEL_PIANO
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    monkeypatch.delenv(VARIABILE_TOKEN_DEL_PIANO, raising=False)
+    app = _app_col_ponte(_CodaFinta(),
+                         _RunnerCheConclude(avvisare=True, testo="fa caldo"))
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert esito["testo"] == "fa caldo"
+    assert esito.get("nota"), (
+        "il turno e' passato dal forfait al consumo e la promessa non lo dice")
+    assert "Piano Claude Max" in esito["nota"]
+
+
+@pytest.mark.asyncio
+async def test_senza_ripiego_non_si_annuncia_niente():
+    """Ponte spento non e' un ripiego: e' la configurazione. Una nota a ogni
+    promessa direbbe all'utente che sta perdendo qualcosa che non ha mai
+    avuto."""
+    from hiris.app.schedulatore.turno import interpreta_promessa
+
+    app = _app_col_ponte(_CodaFinta(),
+                         _RunnerCheConclude(avvisare=False, testo="niente"))
+    app["ponte_attivo"] = False
+
+    esito = await interpreta_promessa(app, _promessa_chiedi())
+
+    assert not esito.get("nota")

@@ -17,8 +17,10 @@ un'assenza da interpretare.
 from __future__ import annotations
 
 import logging
+import time
 
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..decisione_modelli import _MOTIVI_RIPIEGO
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,18 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
     """
     from ..api.handlers_casa import costruisci_nucleo
     from ..api.handlers_chat import costruisci_dispatcher_strumenti
+    from ..instradamento import chi_risponde
+
+    # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
+    # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
+    # router -- dove il ponte non e' nemmeno un anello -- qualunque cosa
+    # dicesse la gerarchia dei modelli che l'utente aveva ordinato. Su una
+    # casa che gira interamente sul Piano Claude Max le promesse morivano su
+    # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
+    # diceva.
+    via, motivo_ripiego = chi_risponde(app)
+    if via == "ponte":
+        return _accoda_al_ponte(app, promessa)
 
     runner = app.get("llm_router") or app.get("claude_runner")
     if runner is None:
@@ -157,7 +171,11 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
                        "aveva risposto %d caratteri di testo",
                        promessa["id"], len(risposta or ""))
         return {"errore": _senza_conclusione(risposta)}
-    return dispatcher.conclusione
+    conclusione = dict(dispatcher.conclusione)
+    nota = _nota_del_ripiego(motivo_ripiego)
+    if nota:
+        conclusione["nota"] = nota
+    return conclusione
 
 
 # Quanto della risposta del modello entra nel motivo. Il motivo finisce in una
@@ -188,6 +206,80 @@ def _senza_conclusione(risposta) -> str:
     if len(detto) > _TETTO_RIPORTO:
         detto = detto[:_TETTO_RIPORTO].rstrip() + "…"
     return "il turno non ha concluso. Aveva risposto a parole: «%s»" % detto
+
+
+def _nota_del_ripiego(motivo: str) -> str:
+    """La riga che dichiara un ripiego dal piano alla catena, o "" se non ce n'e'.
+
+    Il ripiego si annuncia OGNI VOLTA (decisione del proprietario, 13 agosto):
+    un passaggio dal forfait al consumo che nessuno dichiara si scopre a fine
+    mese. In chat lo dice una nota in coda alla risposta (`nota_ripiego`); una
+    promessa non ha una risposta in cui metterla -- ha il suo motivo, che si
+    legge dalla pagina.
+
+    Non si dice CHI ha risposto, a differenza della chat: li' si misura dal
+    registro degli esiti dopo la chiamata, qui non c'e' una request da cui
+    leggerlo, e una riga che nominasse il provider sbagliato sarebbe peggio del
+    silenzio -- questa riga parla di soldi. Si dice cio' che si sa per certo:
+    il piano non ha risposto, e ha risposto la catena, a consumo.
+    """
+    fatto = _MOTIVI_RIPIEGO.get(motivo)
+    if not fatto:
+        return ""
+    return ("Il Piano Claude Max %s: questo turno l'ha mantenuto la catena, "
+            "a consumo." % fatto)
+
+
+def _accoda_al_ponte(app, promessa: dict) -> dict:
+    """Il turno va al piano: si accoda e si torna SUBITO.
+
+    Il battito non aspetta -- e' cio' che tiene in piedi «mai in ritardo»
+    (tolleranza 120 s) quando un turno del ponte dura minuti: le altre
+    promesse dello stesso giro partono lo stesso, invece di essere marcate
+    saltate mentre questa pensa.
+
+    La promessa resta `in_corso`, e a concluderla sara' `concludi` attraverso
+    la rotta MCP (`api/handlers_mcp`), oppure la consegna del job se il turno
+    finisce senza aver concluso.
+
+    Il ponte gira altrove e non ha gli archivi: **cio' che non entra nel job
+    non esiste per lui**. Da cui `promessa_id` (senza, la rotta MCP non
+    saprebbe quale turno sta parlando), la domanda gia' composta con
+    l'istantanea, il prompt di sistema del turno di promessa, e il nucleo --
+    composto qui perche' e' l'ultimo punto in cui esistono l'app e gli
+    archivi, con la STESSA funzione del ramo sincrono.
+    """
+    from ..api.handlers_casa import costruisci_nucleo
+    from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
+
+    try:
+        nucleo, _riepilogo = costruisci_nucleo(app)
+    except Exception as errore:
+        logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
+                       promessa["id"], type(errore).__name__, errore)
+        nucleo = ""
+
+    # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
+    # l'utente cambia dev'essere quella che il turno subisce.
+    scadenza_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
+    adesso = time.time()
+    app["reasoning_queue"].enqueue(
+        "promessa",
+        {"promessa_id": promessa["id"]},
+        {
+            "promessa_id": promessa["id"],
+            "frase": promessa.get("frase") or "",
+            "domanda": _domanda(promessa),
+            "system_prompt": _prompt_di_sistema(),
+            "contesto": nucleo,
+        },
+        adesso + scadenza_min * 60,
+        now=adesso,
+    )
+    logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
+                promessa["id"], scadenza_min)
+    return {"accodata": True}
 
 
 def _prompt_di_sistema() -> str:

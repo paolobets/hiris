@@ -75,6 +75,12 @@ class Orologio:
 
     async def _mantieni_chiedi(self, promessa: dict, adesso: float) -> None:
         risposta = await self._interpreta(promessa)
+        if risposta.get("accodata"):
+            # Il turno e' andato al piano: la promessa resta `in_corso` e sara'
+            # la sua conclusione a chiuderla, minuti dopo. Qui non c'e' niente
+            # da decidere -- e soprattutto non si aspetta: il battito prosegue
+            # col resto del giro.
+            return
         if "errore" in risposta:
             self._archivio.concludi(promessa["id"], stato="fallita", adesso=adesso,
                                     motivo=risposta["errore"])
@@ -119,6 +125,16 @@ class Orologio:
             # c'e' e si legge dalla pagina -- e dichiara la consegna mancata
             # invece di farla passare per riuscita.
             motivo = _SENZA_RECAPITO
+
+        # La nota del ripiego, quando c'e': il turno e' passato dal forfait al
+        # consumo, e la promessa e' l'unico posto in cui l'utente puo'
+        # leggerlo -- non ha una risposta in chat in cui metterla. Si accoda a
+        # un motivo che ci fosse gia' (la notifica non partita, il recapito
+        # mancante) invece di sostituirlo: sono due fatti diversi, e il primo
+        # non smette di essere vero perche' e' arrivato il secondo.
+        nota = risposta.get("nota") or ""
+        if nota:
+            motivo = ("%s %s" % (motivo, nota)) if motivo else nota
 
         self._archivio.concludi(promessa["id"], stato="mantenuta", adesso=adesso,
                                 motivo=motivo, testo=testo, avvisare=avvisare,
