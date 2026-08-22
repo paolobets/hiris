@@ -6,6 +6,7 @@ import os
 import re
 import threading
 import time
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 import httpx as _httpx
@@ -258,6 +259,7 @@ class OpenAICompatRunner:
         usage_path: str = "",
         leggi_modello=None,
         timeout_s: float = 0.0,
+        registra_consumo=None,
     ) -> None:
         # fetta «la catena diventa l'unica verita'» (Task 10): `fixed_model`
         # era UN parametro per TRE cose insieme -- «questo e' Ollama»,
@@ -275,6 +277,18 @@ class OpenAICompatRunner:
         self._locale = locale
         self._leggi_modello = leggi_modello
         self._is_cloud = not locale  # True = cloud (OpenAI); False = local (Ollama)
+        # Il runner non conosce l'archivio dei consumi: conosce una funzione.
+        # Stessa disciplina di `leggi_modello`. Ed e' la regola non negoziabile
+        # di CLAUDE.md: un kwarg nuovo di `ClaudeRunner` lo accetta ANCHE
+        # questa classe, o i backend non-Claude si rompono in silenzio.
+        self._registra_consumo = registra_consumo
+        # Il nome AUTOREVOLE del provider. `type(self).__name__` non lo
+        # distingue: `OpenRouterRunner` e' una sottoclasse di questa classe, e
+        # un consumo di OpenRouter finirebbe scritto sulla riga di OpenAI --
+        # lo stesso difetto che `LLMRouter._ordered_backends_con_nome` e' gia'
+        # stato scritto per evitare nel registro degli esiti, e per la stessa
+        # ragione.
+        self.provider_nome = "ollama" if locale else "openai"
         # Circuit-breaker message noun, so a cloud backend doesn't report
         # itself as "il backend locale" (review backlog #7).
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
@@ -429,6 +443,40 @@ class OpenAICompatRunner:
         self.total_output_tokens += out
         self.total_cost_usd += cost
         self._save_usage()
+
+        # OpenRouter dichiara il costo VERO in ogni risposta -- `usage.cost`,
+        # sempre presente, anche in streaming (Usage Accounting, verificato
+        # sulla loro documentazione il 21/08/2026). Leggerlo trasforma in un
+        # fatto quella che era una stima, e la stima valeva ZERO: `_prezzo` non
+        # conosce nessun identificativo OpenRouter e cadeva su `_default`. E'
+        # il difetto da cui nasce l'intera fetta.
+        if self._registra_consumo is None:
+            return
+        from ..consumi.vocabolario import stato_e_costo
+
+        dichiarato = getattr(usage, "cost", None)
+        stato, costo = stato_e_costo(self.provider_nome, model,
+                                     costo_dichiarato=dichiarato,
+                                     costo_da_listino=cost)
+        self._registra_consumo(
+            self.provider_nome, model, token_in=inp, token_out=out,
+            cache_lettura=getattr(usage, "cached_tokens", 0) or 0,
+            cache_scrittura=getattr(usage, "cache_write_tokens", 0) or 0,
+            costo_usd=costo, costo_stato=stato, adesso=time.time())
+
+    def _scrivi_rifiuto(self, modello: str) -> None:
+        """Un 429 si conta sulla riga del modello che l'ha preso.
+
+        `richieste=0`: un rifiuto non e' una richiesta servita. Oggi
+        `total_rate_limit_errors` e' un numero solo per tutto il prodotto e
+        non dice CHI stia rifiutando -- che e' l'unica cosa che serve sapere
+        quando succede.
+        """
+        if self._registra_consumo is None:
+            return
+        self._registra_consumo(
+            self.provider_nome, modello, richieste=0, errori_rate_limit=1,
+            costo_usd=None, costo_stato="non_noto", adesso=time.time())
 
     # ------------------------------------------------------------------
     # Model resolution
@@ -730,6 +778,7 @@ class OpenAICompatRunner:
                     )
             except _openai.RateLimitError as exc:
                 self.total_rate_limit_errors += 1
+                self._scrivi_rifiuto(effective_model)
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
                 # Un 429 è famiglia `altro`: è un guasto vero, ma non dice a
@@ -1009,6 +1058,7 @@ class OpenAICompatRunner:
                     stream = await self._client.chat.completions.create(**kwargs)
                 except _openai.RateLimitError as exc:
                     self.total_rate_limit_errors += 1
+                    self._scrivi_rifiuto(effective_model)
                     logger.error("OpenAI rate limit (stream): %s", exc)
                     upstream = parse_upstream_rate_limit(exc)
                     err_msg = upstream or "Rate limit — riprova tra poco."

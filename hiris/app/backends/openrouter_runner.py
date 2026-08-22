@@ -56,6 +56,7 @@ class OpenRouterRunner(OpenAICompatRunner):
         *,
         usage_path: str = "",
         leggi_modello=None,
+        registra_consumo=None,
     ) -> None:
         # `locale=False`: OpenRouter expects a different model per request,
         # selected by the user via the Designer model field. Default agent
@@ -72,11 +73,16 @@ class OpenRouterRunner(OpenAICompatRunner):
             api_key=api_key,
             usage_path=usage_path,
             leggi_modello=leggi_modello,
+            registra_consumo=registra_consumo,
         )
         # OpenRouter is always a US cloud proxy — override the parent default
         # (_is_cloud = not locale would yield True since locale=False here too,
         # but we set it explicitly for clarity and correctness).
         self._is_cloud = True
+        # Il nome col quale i consumi finiscono nell'archivio. Senza questa
+        # riga sarebbero scritti sulla riga di OpenAI: questa classe eredita
+        # da `OpenAICompatRunner`, che si dichiara `"openai"`.
+        self.provider_nome = "openrouter"
 
     def _resolve_model(self, model: str, agent_type: str) -> str:
         """Strip 'openrouter:' / 'openrouter/' prefix before sending to OR."""

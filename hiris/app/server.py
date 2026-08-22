@@ -967,6 +967,12 @@ def _governa_lavoratore_del_ponte(app) -> None:
     if voluto and not vivo:
         from .agent import runner as _agent_runner
 
+        if app.get("consumi") is not None:
+            # I token dell'abbonamento smettono di finire solo nel log. Si
+            # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
+            # processo separato (`main()`) `/data` non e' di quel processo, e
+            # li' il registro resta `None` -- dichiarato, non dimenticato.
+            _agent_runner.imposta_registro_consumi(app["consumi"].registra)
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
@@ -1243,6 +1249,16 @@ async def _on_startup(app: web.Application) -> None:
     # ricostruira' comunque.
     archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))
     app["archivio_casa"] = archivio_casa
+
+    # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
+    # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
+    # scrittura, non alla costruzione: la casa puo' cambiarlo
+    # (`core_config_updated`), e un fuso cotto qui sarebbe quello dell'avvio.
+    from .consumi.archivio import ArchivioConsumi
+
+    app["consumi"] = ArchivioConsumi(
+        os.path.join(data_dir, "consumi.db"),
+        leggi_fuso=lambda: (archivio_casa.sistema_di_riferimento() or {}).get("fuso", ""))
     try:
         await ricostruisci(ha_client, archivio_casa)
     except Exception as exc:
@@ -2262,10 +2278,22 @@ async def _on_startup(app: web.Application) -> None:
             api_key=api_key,
             usage_path=usage_path,
             leggi_modello=_modello_di("claude"),
+            registra_consumo=app["consumi"].registra,
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
     _usage_ext = _usage_ext or ".json"
+
+    # I quattro contatori di prima entrano nell'archivio UNA volta sola, come
+    # una riga «(prima del dettaglio)» per provider: il totale ereditato non si
+    # puo' attribuire a un modello -- nessuno lo ha mai registrato -- e dirlo
+    # e' meglio che spalmarlo. I file NON vengono cancellati.
+    app["consumi"].importa_legacy([
+        usage_path,
+        f"{_usage_base}_openai{_usage_ext}",
+        f"{_usage_base}_openrouter{_usage_ext}",
+        f"{_usage_base}_ollama{_usage_ext}",
+    ], adesso=time.time())
 
     openai_runner = None
     if openai_api_key and _credenziali["openai"]:
@@ -2274,6 +2302,7 @@ async def _on_startup(app: web.Application) -> None:
             api_key=openai_api_key,
             usage_path=f"{_usage_base}_openai{_usage_ext}",
             leggi_modello=_modello_di("openai"),
+            registra_consumo=app["consumi"].registra,
         )
 
     ollama_runner = None
@@ -2297,6 +2326,7 @@ async def _on_startup(app: web.Application) -> None:
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
             leggi_modello=_modello_locale,
+            registra_consumo=app["consumi"].registra,
         )
     if _risponde["ollama"]:
         # Quick reachability check — warn but don't abort startup.
@@ -2332,6 +2362,7 @@ async def _on_startup(app: web.Application) -> None:
             api_key=openrouter_api_key,
             usage_path=f"{_usage_base}_openrouter{_usage_ext}",
             leggi_modello=_modello_di("openrouter"),
+            registra_consumo=app["consumi"].registra,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 

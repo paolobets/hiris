@@ -1004,6 +1004,26 @@ def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
     return True, ""
 
 
+# Iniettato da `server.py` quando parte il lavoratore in-addon. Resta `None`
+# nel percorso a PROCESSO SEPARATO (`main()`, il gateway esterno), dove `/data`
+# non e' di questo processo: li' l'uso continua a finire solo nel log, ed e'
+# dichiarato invece che dimenticato.
+_registra_consumo = None
+
+
+def imposta_registro_consumi(fn) -> None:
+    """Collega (o scollega) l'archivio dei consumi al ponte.
+
+    Un attributo di modulo e non un parametro passato di mano in mano perche'
+    `_logga_uso` sta in fondo a cinque chiamate (`run_loop` -> `run_once` ->
+    `reason` -> `_reason_chat` -> `_invoca`) e nessuna delle cinque ha motivo
+    di conoscere i consumi: infilarcelo vorrebbe dire allargare cinque firme
+    per un dato che riguarda solo l'ultima.
+    """
+    global _registra_consumo
+    _registra_consumo = fn
+
+
 def _logga_uso(esito: EsitoFlusso, job_id) -> None:
     """La misura che chiudera' la domanda aperta 2 (Task 2, Step 4).
 
@@ -1019,6 +1039,52 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
         job_id, uso.get("input_tokens"), uso.get("cache_creation_input_tokens"),
         uso.get("cache_read_input_tokens"), uso.get("output_tokens"),
         esito.num_turni)
+
+    # Fetta «i consumi, per modello» (22/08/2026). Fino a qui questi numeri
+    # esistevano e nessuna porta del prodotto poteva chiederli: la fondamenta
+    # n.4 alla lettera -- se un dato c'e' e nessuno puo' chiederlo, non esiste.
+    #
+    # Il costo esce `compreso`, non zero: l'abbonamento non espone il prezzo
+    # del singolo turno, e uno zero direbbe «gratis», che e' un'altra cosa.
+    if _registra_consumo is None or not uso:
+        # Senza `usage` non c'e' niente da contare, e una riga di zeri direbbe
+        # «questo modello ha risposto e non e' costato niente»: lo stesso zero
+        # che afferma da cui nasce l'intera fetta. Il log qui sopra dichiara
+        # comunque il turno.
+        return
+    _registra_consumo(
+        "ponte", modello_del_turno(esito),
+        richieste=1,
+        token_in=int(uso.get("input_tokens") or 0),
+        token_out=int(uso.get("output_tokens") or 0),
+        cache_lettura=int(uso.get("cache_read_input_tokens") or 0),
+        cache_scrittura=int(uso.get("cache_creation_input_tokens") or 0),
+        costo_usd=None, costo_stato="compreso", adesso=time.time())
+
+
+def modello_del_turno(esito: EsitoFlusso) -> str:
+    """Il modello che ha davvero risposto a questo turno del ponte.
+
+    La CLI puo' dichiararlo nell'evento `result` -- e' cio' che va creduto,
+    perche' e' cosa e' SUCCESSO. Se non lo dichiara si ripiega sull'alias che
+    HIRIS ha chiesto (`context["model"]`, «sonnet»/«opus»/«haiku»), e la
+    pagina lo mostrera' per quello che e': un alias, non un identificativo di
+    versione.
+
+    Il ripiego e' dichiarato e non silenzioso: `(alias)` in coda al nome dice
+    a chi legge che quel nome e' cio' che abbiamo CHIESTO, non cio' che
+    abbiamo misurato.
+    """
+    risultato = esito.risultato or {}
+    vero = risultato.get("model") or risultato.get("modelUsage")
+    if isinstance(vero, dict) and vero:
+        # `modelUsage` e' una mappa id-del-modello -> conteggi: il nome vero
+        # e' la sua chiave.
+        return str(next(iter(vero)))
+    if isinstance(vero, str) and vero.strip():
+        return vero.strip()
+    alias = (esito.usage or {}).get("model") or ""
+    return ("%s (alias)" % alias) if alias else "sonnet (alias)"
 
 
 def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",

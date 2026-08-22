@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 import anthropic
@@ -629,9 +630,16 @@ class ClaudeRunner:
         api_key: str,
         usage_path: str = "",
         leggi_modello=None,
+        registra_consumo=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._usage_path = usage_path
+        # Il runner non conosce l'archivio dei consumi: conosce una funzione.
+        # Stessa disciplina di `leggi_modello` qui sotto -- ed e' cio' che
+        # tiene i runner provabili senza costruire mezzo add-on.
+        # `None` e' il ramo di libreria e dei test: non deve diventare un
+        # AttributeError dentro il ciclo del modello.
+        self._registra_consumo = registra_consumo
         # fetta «la catena diventa l'unica verita'» (Task 10): il modello NON e'
         # piu' un valore ricevuto alla costruzione. Era la meta' nascosta del
         # difetto peggiore trovato dal progetto: lo STESSO valore aveva effetto
@@ -787,6 +795,45 @@ class ClaudeRunner:
             loop.run_in_executor(None, _write)
         except RuntimeError:
             _write()
+
+    def _scrivi_consumo(self, modello: str, inp: int, out: int,
+                        cache_scrittura: int, cache_lettura: int,
+                        costo: float) -> None:
+        """Una risposta entra nell'archivio dei consumi, col NOME del modello.
+
+        Fino a questa fetta il nome era qui, in mano, e finiva solo dentro il
+        calcolo del costo: i contatori del runner sommavano tutto insieme e
+        nessuno poteva piu' sapere quale modello avesse consumato che cosa.
+
+        `token_in` sono i token d'ingresso PURI: la cache ha due campi suoi,
+        perche' costa due tariffe diverse (`cache_write`/`cache_read` in
+        `pricing.py`) ed e' il numero che dice se il prefisso sta lavorando.
+        Il totale che la pagina mostra resta la somma dei tre.
+        """
+        if self._registra_consumo is None:
+            return
+        from .consumi.vocabolario import stato_e_costo
+
+        stato, costo_usd = stato_e_costo(
+            "claude", modello, costo_dichiarato=None, costo_da_listino=costo)
+        self._registra_consumo(
+            "claude", modello, token_in=inp, token_out=out,
+            cache_lettura=cache_lettura, cache_scrittura=cache_scrittura,
+            costo_usd=costo_usd, costo_stato=stato, adesso=time.time())
+
+    def _scrivi_rifiuto(self, modello: str) -> None:
+        """Un 429 si conta sulla riga del modello che l'ha preso.
+
+        Oggi `total_rate_limit_errors` e' un numero solo per tutto il
+        prodotto, e non dice CHI stia rifiutando -- che e' l'unica cosa che
+        serve sapere quando succede. `richieste=0`: un rifiuto non e' una
+        richiesta servita.
+        """
+        if self._registra_consumo is None:
+            return
+        self._registra_consumo(
+            "claude", modello, richieste=0, errori_rate_limit=1,
+            costo_usd=None, costo_stato="non_noto", adesso=time.time())
 
     def reset_usage(self) -> None:
         self.total_input_tokens = 0
@@ -969,6 +1016,8 @@ class ClaudeRunner:
             ) / 1_000_000
             self.total_cost_usd += cost
             self._save_usage()
+            self._scrivi_consumo(effective_model, inp, out,
+                                 cache_creation, cache_read, cost)
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
@@ -1127,6 +1176,7 @@ class ClaudeRunner:
             except anthropic.APIStatusError as exc:
                 if exc.status_code in (429, 529) and attempt < MAX_RETRIES:
                     self.total_rate_limit_errors += 1
+                    self._scrivi_rifiuto(kwargs.get('model') or '')
                     delay = RETRY_DELAYS[attempt]
                     logger.warning("Rate limit (attempt %d/%d), retry in %ds", attempt + 1, MAX_RETRIES, delay)
                     await asyncio.sleep(delay)
