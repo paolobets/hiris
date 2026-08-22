@@ -31,6 +31,43 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     job = q.get(job_id)
     outcome = "recorded"
 
+    if (job or {}).get("kind") == "promessa":
+        # Fetta «le promesse seguono la catena» (22/08/2026). La consegna di un
+        # turno di promessa NON porta la risposta all'utente: la conclusione,
+        # se c'e' stata, e' gia' arrivata per un'altra strada -- `concludi`
+        # attraverso `POST /api/mcp`, che chiude la promessa e fa partire la
+        # notifica nel momento in cui il modello decide, senza aspettare qui.
+        #
+        # Questo ramo serve al caso opposto: il turno e' finito e `concludi`
+        # non e' mai stato chiamato. La promessa non puo' restare `in_corso` --
+        # sarebbe invisibile, e peggio di una fallita.
+        #
+        # L'id viene da `wake`, non dal contesto: `q.submit()` qui sopra ha
+        # gia' azzerato `context_json` (porta il nucleo per intero e non deve
+        # restare su disco). `wake` no, ed e' per questo che
+        # `schedulatore/turno._accoda_al_ponte` ce lo mette.
+        from ..schedulatore.turno import _senza_conclusione
+
+        ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
+        archivio = request.app.get("promesse")
+        riga = archivio.leggi(ident) if (archivio is not None and ident) else None
+        if riga is None:
+            logger.warning(
+                "consegna di un turno di promessa senza promessa (job_id=%s, "
+                "id=%r): non c'e' niente da chiudere", job_id, ident)
+            outcome = "promessa_sconosciuta"
+        elif riga.get("stato") != "in_corso":
+            # `concludi` e' gia' arrivato: la promessa e' chiusa e non si
+            # riapre. Riaprirla cancellerebbe un testo che l'utente puo' gia'
+            # aver letto -- o peggio, farebbe partire una seconda notifica.
+            outcome = "promessa_gia_conclusa"
+        else:
+            archivio.concludi(
+                ident, stato="fallita", adesso=_now(request),
+                motivo=_senza_conclusione(decision.get("reply")))
+            outcome = "promessa_senza_conclusione"
+        return web.json_response({"ok": True, "outcome": outcome})
+
     if (job or {}).get("kind") == "chat":
         # Chat-via-abbonamento (Slice 4b): a chat job's submit writes the
         # reply into chat_store — it must NEVER actuate the house through

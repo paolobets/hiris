@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 from pathlib import Path
 import aiohttp
 from aiohttp import web
@@ -71,6 +72,37 @@ def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+def _chiudi_promessa_scaduta(app, job: dict) -> None:
+    """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
+
+    Estratta invece che scritta in linea dentro lo sweep perche' ha una
+    ragione sua e va provata da sola: e' l'unico punto che impedisce a una
+    promessa servita dal ponte di restare `in_corso` per sempre quando il
+    piano non risponde. `risana()` la chiuderebbe soltanto al prossimo
+    riavvio -- cioe' forse mai.
+
+    L'id viene da `wake`: `sweep_expired` azzera `context_json` come fa
+    `submit`, e `wake` e' la sola parte del job che sopravvive.
+    """
+    ident = (job.get("wake") or {}).get("promessa_id") or ""
+    archivio = app.get("promesse")
+    riga = archivio.leggi(ident) if (archivio is not None and ident) else None
+    if riga is None or riga.get("stato") != "in_corso":
+        # Gia' conclusa da `concludi` mentre il turno finiva: non si
+        # riapre. E' lo stesso ordine di controlli della consegna
+        # (`handlers_reasoning`), per la stessa ragione.
+        return
+    minuti = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", 5))
+    archivio.concludi(
+        ident, stato="fallita", adesso=time.time(),
+        motivo=("ho aspettato il Piano Claude Max per %d minuti e non ha "
+                "risposto: non so cosa dirti." % minuti))
+    logger.warning(
+        "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
+        ident, minuti)
 
 
 def _ponte_attivo(archivio: dict | None) -> bool:
@@ -2117,6 +2149,14 @@ async def _on_startup(app: web.Application) -> None:
         if not app.get("ponte_attivo"):
             return
         for job in reasoning_queue.sweep_expired(_time.time()):
+            if job.get("kind") == "promessa":
+                # Fetta «le promesse seguono la catena» (22/08/2026): il turno
+                # e' scaduto senza che il piano rispondesse. La promessa non
+                # puo' restare `in_corso` -- sarebbe invisibile, e peggio di
+                # una fallita: `risana()` la chiuderebbe solo al prossimo
+                # riavvio, cioe' forse mai.
+                _chiudi_promessa_scaduta(app, job)
+                continue
             if job.get("kind") != "chat":
                 logger.warning(
                     "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, fetta E3 Task 4), scartato",
