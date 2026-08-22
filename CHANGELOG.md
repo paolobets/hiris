@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [3.10.3] — Quattro frasi che dicevano piu' di quel che sapevano (2026-08-22)
+
+Nessuna funzione nuova: quattro punti in cui HIRIS affermava qualcosa che non
+aveva misurato. Tre erano segnati come minori da chiudere, il quarto e' uscito
+guardando la pagina Consumi vera.
+
+### Fixed
+
+- **Il rate limit di OpenRouter non ti dice piu' che stai usando un modello
+  gratuito quando non lo sa.** Se OpenRouter non nomina il modello, HIRIS non
+  puo' sapere quale sia — e diceva «il modello :free selezionato», mandando a
+  cercare un problema che non c'era su un modello a pagamento.
+- **Una promessa interrotta da un riavvio dice cosa puo' essere successo, e
+  cosa no.** Se era un'azione, il dubbio e' se la casa sia stata toccata. Se
+  era una domanda, la casa non e' stata toccata di sicuro e l'unico dubbio e'
+  la notifica. Prima era la stessa frase per tutt'e due. Nessuna delle due si
+  riprova, ed e' voluto: l'ora che avevi dato e' passata, e una risposta fuori
+  tempo sarebbe sbagliata.
+- **Nella pagina Consumi, una sezione senza nessun costo noto non scrive piu'
+  «0,00».** L'abbonamento non ha un costo per turno: la riga lo diceva
+  correttamente («compreso»), la sezione sopra affermava zero euro.
+- **Il modello dell'abbonamento e' quello vero**, non un alias: la pagina
+  Consumi mostra `claude-haiku-4-5-20251001`. Verificato leggendo la pagina
+  viva, non il codice.
+
 ## [3.10.2] — I modelli di OpenRouter ci sono tutti (2026-08-22)
 
 Nella pagina Modelli, sotto OpenRouter, si vedevano **quattro** modelli.
