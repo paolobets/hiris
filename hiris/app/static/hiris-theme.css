@@ -67,6 +67,19 @@
   --err:       oklch(0.62 0.22 25);
   --err-tint:  oklch(0.95 0.05 25);
 
+  /* I cinque provider dei consumi. Palette QUALITATIVA -- tinte che si
+     distinguono, non una scala che ordina -- e deliberatamente estranea a
+     --ok/--warn/--err, che in HIRIS significano gia' riuscito/incerto/fallito
+     (le pastiglie di Modelli e Promesse). Un provider colorato --warn si
+     leggerebbe come «in stato di allerta» invece che come il suo nome.
+     Riempiono barre larghe: la soglia di contrasto e' 3:1 sul fondo (oggetti
+     grafici non testuali), non 4,5:1. */
+  --consumo-claude:     oklch(0.62 0.15 280);
+  --consumo-openai:     oklch(0.60 0.13 200);
+  --consumo-openrouter: oklch(0.64 0.14 330);
+  --consumo-ollama:     oklch(0.66 0.11 160);
+  --consumo-ponte:      oklch(0.58 0.09 60);
+
   /* I tre colori semantici sopra sono nati per PALLINI e RIEMPIMENTI, e su
      fondo chiaro stanno a 2.04:1 (warn), 2.49:1 (ok), 4.05:1 (err): sotto AA
      tutti e tre. Finche' colorano un `.dot` o un bordo non importa; quando
@@ -115,6 +128,14 @@
   --text-3:    oklch(0.62 0.018 280);
   --text-4:    oklch(0.42 0.020 280);
 
+  /* I gemelli chiari delle cinque tinte dei consumi: sul fondo scuro servono
+     piu' luminose per tenere il 3:1, come ogni altro colore di questo blocco. */
+  --consumo-claude:     oklch(0.74 0.15 280);
+  --consumo-openai:     oklch(0.72 0.13 200);
+  --consumo-openrouter: oklch(0.76 0.14 330);
+  --consumo-ollama:     oklch(0.78 0.11 160);
+  --consumo-ponte:      oklch(0.72 0.10 60);
+
   --accent:        oklch(0.78 0.17 280);
   --accent-ink:    oklch(0.86 0.14 280);
   --accent-tint:   oklch(0.30 0.10 280);
@@ -154,6 +175,14 @@
     /* Gemello del blocco [data-theme="dark"] qui sopra. */
     --text-3:    oklch(0.62 0.018 280);
     --text-4:    oklch(0.42 0.020 280);
+
+  /* I gemelli chiari delle cinque tinte dei consumi: sul fondo scuro servono
+     piu' luminose per tenere il 3:1, come ogni altro colore di questo blocco. */
+  --consumo-claude:     oklch(0.74 0.15 280);
+  --consumo-openai:     oklch(0.72 0.13 200);
+  --consumo-openrouter: oklch(0.76 0.14 330);
+  --consumo-ollama:     oklch(0.78 0.11 160);
+  --consumo-ponte:      oklch(0.72 0.10 60);
     --accent:        oklch(0.78 0.17 280);
     --accent-ink:    oklch(0.86 0.14 280);
     --accent-tint:   oklch(0.30 0.10 280);

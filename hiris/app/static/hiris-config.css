@@ -98,20 +98,6 @@
       line-height: 1.4;
     }
     /* USAGE PANEL */
-    .usage-panel {
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      padding: 1rem 1.25rem;
-      margin-top: 1.5rem;
-    }
-    .usage-panel h2 {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.75rem;
-    }
     .usage-stats {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -370,19 +356,6 @@
     }
 
     /* USAGE PANEL → modern compact card */
-    .usage-panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r-md);
-      padding: 18px 22px;
-      margin: 0 0 24px;
-      box-shadow: var(--shadow-sm);
-    }
-    .usage-panel h2 {
-      font-size: 11px; color: var(--text-3); font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.10em;
-      margin-bottom: 12px;
-    }
     .usage-stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1682,3 +1655,91 @@
    chiave resta sui browser gia' usati e non serve piu' a niente, non e' un
    file in /data e non si cancella da qui. */
 
+
+
+/* ---- Consumi: il dettaglio per modello -----------------------------------
+   Fetta «i consumi, per modello» (22/08/2026), disegno di ux-ui-specialist.
+   I cinque stati del costo si distinguono per TIPOGRAFIA e non per pastiglie
+   colorate: sono due numeri veri e tre non-numeri di natura diversa, e cinque
+   pastiglie li appiattirebbero di nuovo. */
+
+.usage-barra {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;
+  justify-content: space-between; margin: 12px 0 20px;
+}
+.usage-quando { display: inline-flex; gap: 4px; }
+.usage-quando .btn.attivo {
+  background: var(--surface-3); color: var(--text); border-color: var(--border-2);
+}
+.usage-riparti-blocco { max-width: 42ch; }
+.usage-riparti-blocco .hint { margin-top: 4px; }
+
+.st-avviso { color: var(--warn-ink); }
+
+/* I due grafici. SVG scritto a mano: nessun build step, nessuna libreria. */
+.usage-grafici { margin: 24px 0; }
+.usage-testa-grafico {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.usage-grafici h3 {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  margin: 18px 0 8px; text-transform: none; letter-spacing: 0;
+}
+.usage-grafico { width: 100%; height: auto; display: block; }
+.usage-legenda {
+  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px;
+  font-size: 12px; color: var(--text-2);
+}
+.usage-legenda .ulg { display: inline-flex; align-items: center; gap: 6px; }
+.usage-legenda i {
+  width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+}
+.usage-tabella { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.usage-tabella th, .usage-tabella td {
+  text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le sezioni per provider: APERTE, tutte. E' una pagina a bassa frequenza di
+   visita il cui unico scopo e' la trasparenza, e nascondere il dettaglio
+   dietro un clic la contraddice. */
+.usage-provider { margin-top: 26px; }
+.usec-testa {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px;
+}
+.usec-nome { font-size: 14.5px; font-weight: 600; margin: 0; color: var(--text); }
+.usec-costo { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.usage-provider .sc-desc { margin: 6px 0 10px; }
+
+/* Una riga di modello e' una card a tre righe, con lo STESSO markup a ogni
+   ampiezza -- non una tabella che diventa card sotto una soglia. */
+.usage-model-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.usage-model-row:last-child { border-bottom: 0; }
+.umr-top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.umr-nome {
+  font-family: var(--font-mono); font-size: 13px; color: var(--text);
+  word-break: break-all;
+}
+.umr-costo {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  white-space: nowrap; color: var(--text);
+}
+/* Uno zero VERO: e' un numero, e si dice come parola per non confonderlo con
+   un costo che non si conosce. */
+.umr-gratuito { color: var(--text-2); font-family: inherit; }
+/* Un'assenza NEUTRA: non c'e' niente da fare, e non c'e' niente da temere. */
+.umr-compreso { color: var(--text-3); font-family: inherit; }
+/* Un'assenza che CHIEDE ATTENZIONE: qualcosa e' stato speso e non sappiamo
+   quanto. Mai in --err: non e' un guasto, e' una lacuna. */
+.umr-ignoto { color: var(--warn-ink); }
+.umr-meta { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
+.umr-foot { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+@media (max-width: 640px) {
+  .usage-barra { flex-direction: column; gap: 10px; }
+  .umr-top { flex-direction: column; gap: 2px; }
+}

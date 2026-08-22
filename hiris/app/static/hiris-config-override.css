@@ -255,21 +255,6 @@ legend {
 #delete-btn:hover { background: var(--err) !important; color: #fff !important; border-color: transparent !important; }
 
 /* ─── Usage panel ────────────────────────────────────────── */
-.usage-panel {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--r-md) !important;
-  padding: 18px 20px !important;
-  box-shadow: var(--shadow-sm);
-}
-.usage-panel h2 {
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-3) !important;
-  margin-bottom: 12px !important;
-}
 #usage-last-reset {
   font-family: var(--font-mono);
   font-size: 11px !important;

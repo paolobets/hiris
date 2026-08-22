@@ -51,13 +51,15 @@ test('C-1: senza contatori non si offre di azzerarli', async () => {
   const { outlet } = await monta(() => ({
     ok: true,
     status: 200,
-    json: () => Promise.resolve({ misurata: false, motivo: 'abbonamento', messaggio: MESSAGGIO }),
+    json: () => Promise.resolve({ misurata: false, motivo: 'nessun_provider', messaggio: MESSAGGIO }),
   }));
 
-  const azioni = outlet.querySelector('#usage-azioni');
-  assert.ok(azioni, 'la barra delle azioni esiste nel markup');
-  assert.equal(azioni.style.display, 'none',
-    '«Azzera contatori globali» su contatori che non esistono è un pulsante che mente');
+  /* Dalla fetta «i consumi, per modello» il pulsante non si nasconde: non
+     viene disegnato affatto. Il fatto difeso e' lo stesso -- offrire di
+     azzerare cio' che non esiste e' un pulsante che mente -- e l'assenza e'
+     un modo piu' forte di dirlo di un `display:none`. */
+  assert.equal(outlet.querySelector('#usage-riparti'), null,
+    'non c\'è nessuna ancora da spostare');
 });
 
 test('C-1: un guasto vero resta un guasto — la pagina non si confonde', async () => {
@@ -73,12 +75,13 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
     json: () => Promise.resolve({
       misurata: true, total_requests: 42, input_tokens: 1200,
       output_tokens: 800, cost_eur: 1.5, last_reset: '2026-07-01T00:00:00Z',
+      costo_parziale: false, sezioni: [],
     }),
   }));
 
   assert.match(testo, /42/);
   assert.match(testo, /1\.2k/, 'i token si abbreviano, ma ci sono');
-  assert.notEqual(outlet.querySelector('#usage-azioni').style.display, 'none');
+  assert.ok(outlet.querySelector('#usage-riparti'), 'il pulsante c\'è');
 });
 
 // ---------------------------------------------------------------------------
@@ -112,19 +115,27 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
   await tick(0);
   await tick(0);
 
-  const tessere = [...ctx.document.querySelectorAll('#usage-global-grid .stat-tile')]
+  const tessere = [...ctx.document.querySelectorAll('#usage-riepilogo .stat-tile')]
     .map((t) => t.querySelector('.st-value').textContent);
-  assert.equal(ctx.document.getElementById('u-input').textContent, tessere[1],
+  // L'ordine delle tessere e' cambiato col disegno nuovo -- il costo viene per
+  // primo, perche' e' la domanda che si fa chi apre questa pagina -- ma
+  // l'invariante non e' l'ordine: e' che i DUE posti scrivano lo stesso numero
+  // nello stesso modo. Si cercano per etichetta, non per posizione.
+  const perEtichetta = {};
+  [...ctx.document.querySelectorAll('#usage-riepilogo .stat-tile')].forEach((t) => {
+    perEtichetta[t.querySelector('.st-label').textContent] = t.querySelector('.st-value').textContent;
+  });
+  assert.equal(ctx.document.getElementById('u-input').textContent, perEtichetta['Token IN'],
     'i token di ingresso: stessa cifra, stesse abbreviazioni');
-  assert.equal(ctx.document.getElementById('u-cost').textContent, tessere[3],
+  assert.equal(ctx.document.getElementById('u-cost').textContent, perEtichetta['Costo'],
     'il costo: stesso simbolo, stessa spaziatura, stessi due decimali');
-  assert.equal(tessere[3], '€ 3,21',
+  assert.equal(perEtichetta['Costo'], '€ 3,21',
     'due decimali, e la VIRGOLA: `toFixed` non conosce la lingua, e il '
     + 'punto stonava accanto a una data formattata it-IT');
-  const quando = ctx.document.querySelector('#usage-global-grid .st-delta').textContent;
-  assert.doesNotMatch(quando, /2026-08-01/,
+  assert.equal(tessere.length, 4, 'le quattro tessere del riepilogo ci sono tutte');
+  assert.doesNotMatch(ctx.document.getElementById('route-outlet').textContent, /2026-08-01T/,
     'la data si scrive come nel resto del prodotto, non come un ISO tagliato a metà');
-  assert.match(quando, /01\/08\/2026/);
+  assert.match(ctx.document.getElementById('route-outlet').textContent, /01\/08\/2026/);
 });
 
 test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', async () => {
