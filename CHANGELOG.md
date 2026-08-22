@@ -1,5 +1,70 @@
 # HIRIS — Changelog
 
+## [3.10.0] — Le promesse usano il piano, e i consumi dicono di chi sono (2026-08-22)
+
+Due cose che HIRIS non sapeva fare, e una che faceva male.
+
+**Le promesse adesso usano il Piano Claude Max.** Fino a ieri seguivano una
+regola tutta loro su chi dovesse rispondere: andavano dritte alle chiavi API, e
+il piano non era nemmeno fra le possibilita'. Su una casa che gira interamente
+sull'abbonamento la chat funzionava e le promesse morivano tutte, senza che
+nessuna pagina lo dicesse. Adesso la gerarchia dei modelli e' una sola per
+tutta l'applicazione: quella che ordini nella pagina Modelli vale per la chat e
+per i risvegli.
+
+Quando tocca al piano, HIRIS non resta ad aspettare: mette il turno in coda e
+prosegue col resto del giro, e la promessa si chiude quando il piano risponde.
+E' cio' che permette a una promessa lenta di non far arrivare in ritardo tutte
+le altre.
+
+**La pagina Consumi dice quale modello ha speso.** Mostrava quattro numeri, la
+somma di tutto: non c'era modo di sapere quale modello avesse consumato che
+cosa, ne' quale provider. Adesso c'e' una sezione per ogni provider che hai
+davvero usato — e solo per quelli — con dentro ogni modello: richieste, token,
+cache, primo e ultimo utilizzo, e quanto e' costato. Sotto, la storia giorno
+per giorno.
+
+**E i costi che mostrava erano sbagliati.** Il costo di OpenRouter e' sempre
+stato zero: il listino interno non conosce nessuno dei suoi modelli, e uno zero
+non e' un prezzo basso — e' un prezzo mancante. Adesso si legge quello che
+OpenRouter dichiara di aver addebitato davvero. Stessa cosa per
+`claude-opus-4-8`: non e' in listino, e adesso lo dice invece di far finta di
+zero. Ogni riga della pagina distingue cinque cose che prima erano tutte
+«0,00»: un costo misurato, un costo addebitato, uno zero vero, il compreso
+nell'abbonamento, e un prezzo che non conosciamo.
+
+### Added
+
+- **Il turno di una promessa puo' essere servito dal piano a forfait.** Si
+  accoda, il battito non aspetta, e la promessa si chiude quando il piano
+  risponde — o fallisce dicendo perche', se il piano non risponde in tempo.
+- **Sezioni di dettaglio per provider e per modello** nella pagina Consumi, con
+  la storia giorno per giorno e due grafici: il costo, e le richieste.
+- **I token dell'abbonamento si misurano.** Il costo del singolo turno no — non
+  esiste — e la pagina scrive «compreso nell'abbonamento», non «0,00».
+
+### Fixed
+
+- **Il costo di OpenRouter non e' piu' zero**: si legge quello dichiarato dalla
+  risposta, che e' quanto e' stato addebitato davvero.
+- **Un modello fuori listino non dichiara piu' un costo che non conosce.**
+- **«Azzera» non cancella piu' la storia**: sposta il punto da cui si conta, e
+  il grafico resta intero. Il pulsante si chiama «Riparti da adesso», e lo dice.
+- **I rifiuti per limite di frequenza dicono su quale modello sono arrivati.**
+  Erano un numero solo per tutto il prodotto, e non dicevano chi stesse
+  rifiutando — l'unica cosa che serva sapere quando succede.
+- **I costi piccoli non si arrotondano piu' a zero a schermo**, e i decimali si
+  scrivono con la virgola come nel resto del prodotto.
+
+### Changed
+
+- **Il tetto giornaliero del piano conta tutti i turni**, non solo quelli di
+  chat: e' «quanto uso il piano al giorno», e con l'abbonamento che serve anche
+  i risvegli contarne meta' sarebbe una mezza verita'.
+- **I contatori dei consumi vivono in un posto solo.** Quelli che stavano
+  dentro i modelli sono usciti: sommavano tutto insieme e non sapevano dire di
+  chi fosse la spesa.
+
 ## [3.9.3] — Le promesse che chiedevano di essere avvisati (2026-08-21)
 
 **Correzione urgente**, e stavolta la cosa rotta era proprio quella per cui le

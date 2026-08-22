@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "3.9.3"
+version: "3.10.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -98,9 +98,10 @@ options:
   # entita', cosa e' notevole adesso, cosa la casa fa da sola) e i ricordi di
   # cio' che le persone hanno detto, sessioni precedenti comprese -- sotto le
   # condizioni d'uso e di conservazione del piano Claude Max, DIVERSE da
-  # quelle dell'API a consumo. E i consumi non si misurano: il piano non
-  # espone ne' i token ne' il costo della singola risposta (la pagina Consumi
-  # lo dichiara invece di mostrare zeri).
+  # quelle dell'API a consumo. Dalla 3.10.0 i TOKEN del piano si misurano e
+  # compaiono nella pagina Consumi, in una sezione sua; il costo della singola
+  # risposta no -- il piano non lo espone -- e li' si legge «compreso
+  # nell'abbonamento», che non e' ne' uno zero ne' un dato mancante.
   #
   # Il token da solo NON accende piu' il ponte (versione B). Fino alla 2.5.0
   # `provider_subscription` acceso col token lo implicava, e quell'implicazione
