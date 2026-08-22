@@ -14,7 +14,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_config import handle_config
-from .api.handlers_usage import handle_usage, handle_reset_usage
+from .api.handlers_usage import (handle_usage, handle_reset_usage,
+                                 handle_storia_usage)
 from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
 from .api.handlers_models import (
     handle_list_models, handle_get_models_config, handle_save_models_config,
@@ -2622,6 +2623,7 @@ def create_app() -> web.Application:
     # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
     app.router.add_get("/api/usage", handle_usage)
+    app.router.add_get("/api/usage/storia", handle_storia_usage)
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
