@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [3.10.2] — I modelli di OpenRouter ci sono tutti (2026-08-22)
+
+Nella pagina Modelli, sotto OpenRouter, si vedevano **quattro** modelli.
+OpenRouter ne pubblica 421, e 352 sono utilizzabili da HIRIS.
+
+Non era una questione di account ne' di chiave: dentro HIRIS c'era una lista
+di undici nomi scritta a mano, usata come filtro. Di quegli undici, **sette
+non esistevano piu'** — OpenRouter li ha ritirati o rinominati, e la lista e'
+rimasta ferma. Con la casella «nascondi i gratuiti» spuntata ne restavano
+quattro.
+
+Adesso l'elenco e' quello vero, letto da OpenRouter al momento in cui apri la
+pagina, e la casella di ricerca che c'era gia' serve a trovarci dentro cio'
+che cerchi.
+
+Resta il filtro sugli strumenti, ed e' l'unico che serva: HIRIS manda sempre
+il catalogo delle azioni, e un modello che non sa usarle rifiuterebbe ogni
+richiesta. Sono 69 su 421, e restano fuori.
+
+### Fixed
+
+- **L'elenco di OpenRouter porta tutti i modelli utilizzabili**, e un modello
+  uscito ieri compare da solo.
+- **L'elenco di scorta** — quello che si vede quando openrouter.ai non
+  risponde — non contiene piu' modelli ritirati.
+- **L'avviso sulla casella «nascondi i gratuiti»** compare solo quando e'
+  vero, cioe' quando l'elenco che stai guardando ne contiene davvero.
+
 ## [3.10.1] — Il risveglio sul piano arriva fino in fondo (2026-08-22)
 
 **Correzione**, trovata provando sulla casa vera la 3.10.0 di stamattina.
