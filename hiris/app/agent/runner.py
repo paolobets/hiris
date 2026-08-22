@@ -96,6 +96,7 @@ from dataclasses import dataclass, field
 import httpx
 from . import prompts
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..schedulatore.turno import strumenti_promessa
 from ..decisione_modelli import ALIAS_DEL_PIANO
 from ..chat_store import (PREFISSO_ERRORE_RUNNER, SENTINELLA_FLUSSO_INCOMPLETO,
                           SENTINELLA_MOCK, SENTINELLA_RUNNER_ASSENTE,
@@ -156,7 +157,7 @@ def _nome_server_mcp() -> str:
     return NOME_SERVER_MCP
 
 
-def nomi_mcp() -> tuple[str, ...]:
+def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
     Attraverso MCP la CLI prefissa ogni strumento col nome del server: `cerca`
@@ -172,7 +173,19 @@ def nomi_mcp() -> tuple[str, ...]:
     dell'import differito qui sopra: il prefisso ha bisogno del nome del server,
     che a import-time non si puo' ancora leggere."""
     prefisso = f"mcp__{_nome_server_mcp()}__"
-    return tuple(f"{prefisso}{d['name']}" for d in STRUMENTI_CONOSCENZA)
+    # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
+    # promessa ne vede cinque -- i quattro lettori piu' `concludi` -- e i due
+    # elenchi non sono l'uno il sottoinsieme dell'altro: `concludi` esiste solo
+    # di la', `esegui` solo di qua.
+    #
+    # Difetto trovato dalla VERIFICA LIVE della 3.10.0: la fetta «le promesse
+    # seguono la catena» aveva reso il catalogo per-turno nella rotta MCP e
+    # lasciato qui i nove nomi della chat. Il turno di promessa ne risolveva
+    # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
+    # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
+    # `concludi`, cioe' senza nessun modo di finire.
+    definizioni = strumenti_promessa() if per_promessa else STRUMENTI_CONOSCENZA
+    return tuple(f"{prefisso}{d['name']}" for d in definizioni)
 
 
 def config_mcp(base_url: str, token: str, id_turno: str = "",
@@ -413,7 +426,7 @@ def _motivo_eccezione(exc: BaseException, token: str | None = None) -> str:
 
 
 def sonda_strumenti(client, base_url: str, headers: dict,
-                    *, job_id=None) -> tuple[bool, str]:
+                    *, job_id=None, id_promessa: str = "") -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
 
     Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
@@ -457,7 +470,12 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     tocca» di questa fetta. Provato: la redazione funziona (il motivo diventa
     `Illegal header value b'***'`). Si consegna al task che potra' riscrivere
     quel pin insieme al codice, invece di scavalcarlo qui."""
-    attesi = {d["name"] for d in STRUMENTI_CONOSCENZA}
+    # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
+    # stessa cosa che il turno usera': con l'intestazione della promessa la
+    # rotta serve cinque strumenti, senza ne serve nove, e una sonda che
+    # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
+    definizioni = strumenti_promessa() if id_promessa else STRUMENTI_CONOSCENZA
+    attesi = {d["name"] for d in definizioni}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
     def _no(motivo: str) -> tuple[bool, str]:
@@ -468,8 +486,11 @@ def sonda_strumenti(client, base_url: str, headers: dict,
         return False, motivo
 
     try:
+        intestazioni_sonda = dict(headers or {})
+        if id_promessa:
+            intestazioni_sonda["X-HIRIS-Promessa"] = id_promessa
         risposta = client.post(
-            url, headers=headers,
+            url, headers=intestazioni_sonda,
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             timeout=15)
     except Exception as exc:
@@ -502,7 +523,8 @@ def sonda_strumenti(client, base_url: str, headers: dict,
 
 def _chat_claude_args(system: str, user: str, model: str, *,
                       strumenti_attivi: bool = False,
-                      mcp_config: str = "") -> list:
+                      mcp_config: str = "",
+                      per_promessa: bool = False) -> list:
     """L'argv del ponte.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
@@ -562,7 +584,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
             "--output-format", "stream-json", "--verbose"]
     if strumenti_attivi:
         argv += ["--mcp-config", mcp_config,
-                 "--allowedTools", ",".join(nomi_mcp())]
+                 "--allowedTools", ",".join(nomi_mcp(per_promessa))]
     return argv
 
 
@@ -959,7 +981,7 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
         len(strumenti) if isinstance(strumenti, list) else 0)
 
 
-def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
+def verifica_init(esito: EsitoFlusso, per_promessa: bool = False) -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
     `sonda_strumenti` (difesa 1) prova che la rotta risponde con tutti i nomi
@@ -996,7 +1018,7 @@ def verifica_init(esito: EsitoFlusso) -> tuple[bool, str]:
                        "arrivato, o formato cambiato)")
     server = _server_dichiarati(esito)
     stato = next((s.get("status") for s in server if s.get("name") == nome), None)
-    mancanti = sorted(set(nomi_mcp()) - _strumenti_risolti(esito))
+    mancanti = sorted(set(nomi_mcp(per_promessa)) - _strumenti_risolti(esito))
     if str(stato or "").strip().lower() != "connected" or mancanti:
         return False, (f"mcp_servers={server}; server {nome!r} stato={stato!r} "
                        f"(atteso 'connected'); strumenti non risolti dalla CLI="
@@ -1177,7 +1199,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     intestazioni = headers if headers is not None else build_headers()
     if attesi:
         strumenti, _motivo = sonda_strumenti(client, base_url, intestazioni,
-                                             job_id=job_id)
+                                             job_id=job_id,
+                                             id_promessa=id_promessa)
     else:
         strumenti = False
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
@@ -1307,7 +1330,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             restrict_to_home=restrict_to_home, response_mode=response_mode)
         argv = _chat_claude_args(system, user, model,
                                  strumenti_attivi=strumenti_attivi,
-                                 mcp_config=mcp_config)
+                                 mcp_config=mcp_config,
+                                 per_promessa=bool(id_promessa))
         try:
             proc = subprocess.run(argv, capture_output=True, text=True,
                                   timeout=300, env=_safe_subprocess_env())
@@ -1388,7 +1412,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # per un guasto che il ritentativo non ripara (la CLI non c'e').
     ritentato = False
     if strumenti:
-        confermato, motivo = verifica_init(invocazione.esito)
+        confermato, motivo = verifica_init(invocazione.esito,
+                                           per_promessa=bool(id_promessa))
         if not confermato:
             # Silenzio dichiarato ② della fetta. Il motivo si reda come tutto
             # cio' che nasce dal sottoprocesso: non c'e' una seconda via.

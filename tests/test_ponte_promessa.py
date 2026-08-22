@@ -70,3 +70,60 @@ def test_un_kind_davvero_sconosciuto_resta_dichiarato(caplog):
 
     assert esito == {}
     assert "job non-chat in coda" in caplog.text
+
+
+# --- il catalogo del turno vale su TUTTI e tre i punti ------------------------
+#
+# Difetto trovato dalla VERIFICA LIVE della 3.10.0, non dalla suite: il ponte
+# ha servito il risveglio (l'instradamento era giusto) ma il turno ha
+# dichiarato «non ho potuto usare gli strumenti» e ha risposto a parole.
+#
+# La fetta aveva reso il catalogo PER TURNO nella rotta MCP, e lasciato tre
+# punti ancorati a quello della chat: `--allowedTools`, la sonda, e la verifica
+# dell'init. Un turno di promessa riceve 5 strumenti (4 lettori + `concludi`),
+# la verifica ne pretendeva 9, li dichiarava mancanti, e il ritentativo
+# ripartiva senza strumenti. Il modello non aveva `concludi`, quindi non aveva
+# nessun modo di finire.
+
+
+def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
+    from hiris.app.agent.runner import nomi_mcp
+
+    chat = set(nomi_mcp())
+    promessa = set(nomi_mcp(per_promessa=True))
+
+    assert any(n.endswith("__concludi") for n in promessa), (
+        "senza «concludi» fra i nomi permessi il turno non ha modo di finire")
+    assert not any(n.endswith("__esegui") for n in promessa), (
+        "un turno che gira senza nessuno davanti non tocca la casa")
+    assert any(n.endswith("__esegui") for n in chat), "la chat non cambia"
+    assert any(n.endswith("__guarda") for n in promessa), "i lettori restano"
+
+
+def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
+    """Il punto esatto in cui il turno moriva: 9 attesi contro 5 risolti."""
+    from hiris.app.agent.runner import EsitoFlusso, nomi_mcp, verifica_init
+
+    esito = EsitoFlusso()
+    esito.init = {
+        "mcp_servers": [{"name": "hiris", "status": "connected"}],
+        "tools": list(nomi_mcp(per_promessa=True)),
+    }
+
+    ok, motivo = verifica_init(esito, per_promessa=True)
+    assert ok is True, motivo
+
+    ok_chat, motivo_chat = verifica_init(esito, per_promessa=False)
+    assert ok_chat is False, (
+        "col catalogo della chat quegli stessi cinque strumenti risultano "
+        "incompleti: e' il difetto che la verifica live ha colto")
+
+
+def test_l_argv_permette_concludi_su_un_turno_di_promessa():
+    from hiris.app.agent.runner import _chat_claude_args
+
+    argv = _chat_claude_args("sys", "user", "sonnet", strumenti_attivi=True,
+                             mcp_config="{}", per_promessa=True)
+    permessi = argv[argv.index("--allowedTools") + 1]
+    assert "__concludi" in permessi
+    assert "__esegui" not in permessi
