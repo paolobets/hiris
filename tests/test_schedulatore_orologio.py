@@ -350,3 +350,38 @@ async def test_senza_nota_il_motivo_resta_pulito(archivio):
     await Orologio(archivio, esegui=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
 
     assert archivio.leggi(ident)["motivo"] is None
+
+
+# --- il riavvio: la stessa decisione, due parole diverse ----------------------
+
+def test_al_riavvio_un_fai_e_un_chiedi_dicono_cose_DIVERSE(archivio):
+    """`risana()` non riprova NESSUNA delle due, e fa bene: il momento della
+    promessa e' passato, e rieseguire «il delta rispetto a un'ora fa» tre ore
+    dopo darebbe una risposta confidentemente falsa. E' la stessa ragione per
+    cui esiste la tolleranza dei 120 secondi.
+
+    Cio' che cambia e' cosa l'utente puo' CONCLUDERE. Per un `fai` il dubbio e'
+    se la casa sia stata toccata -- una serranda. Per un `chiedi` la casa non
+    e' stata toccata di sicuro (il turno ha solo strumenti di lettura, per
+    costruzione: `SOLA_LETTURA`), e l'unico dubbio e' se la notifica fosse gia'
+    partita. Due dubbi diversi meritano due frasi diverse: una sola le
+    appiattisce e fa cercare all'utente un problema che non ha."""
+    fai = _crea_fai(archivio, quando=ADESSO + 10)
+    chiedi = _crea_chiedi(archivio, quando=ADESSO + 10)
+    assert archivio.prendi(fai, adesso=ADESSO + 11)
+    assert archivio.prendi(chiedi, adesso=ADESSO + 11)
+
+    assert archivio.risana(adesso=ADESSO + 20) == 2
+
+    p_fai = archivio.leggi(fai)
+    p_chiedi = archivio.leggi(chiedi)
+    assert p_fai["stato"] == "fallita" and p_chiedi["stato"] == "fallita"
+
+    assert "non so se fosse gia' partita" in p_fai["motivo"], (
+        "per un'azione il dubbio e' se la casa sia stata toccata: resta")
+    assert "non so se fosse gia' partita" not in p_chiedi["motivo"], (
+        "un `chiedi` non tocca la casa: quel dubbio li' non esiste")
+    assert "non ho toccato niente" in p_chiedi["motivo"]
+    assert "notifica" in p_chiedi["motivo"], (
+        "l'unico dubbio vero di un `chiedi`: la notifica poteva essere gia' "
+        "partita, perche' parte prima che la promessa si chiuda")

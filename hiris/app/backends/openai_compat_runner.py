@@ -222,11 +222,27 @@ def parse_upstream_rate_limit(exc: Any) -> Optional[str]:
     if not m:
         # Some providers emit the plain phrase without naming the model.
         if "rate-limited upstream" in msg.lower():
+            # NON si dice `:free`. Il provider non ha nominato il modello,
+            # quindi non sappiamo QUALE sia -- e non sapendo quale, non
+            # possiamo sapere che sia gratuito. Visto dal vivo il 21/08/2026:
+            # il modello dell'utente era `mistralai/mistral-large`, a
+            # pagamento, e questa riga gli diceva che era un `:free`,
+            # mandandolo a cercare un problema che non aveva. E' lo stesso
+            # difetto della diagnosi inventata di `azione/porta.py` («probabile
+            # problema di comunicazione col dispositivo»), che gli fece cercare
+            # un guasto inesistente: una frase che afferma piu' del misurato.
+            #
+            # Il consiglio resta -- e' cio' che serve a chi legge -- ma senza
+            # nominare la fascia gratuita nemmeno come ipotesi: il caso e'
+            # frequente, non certo, e il test lo controlla con un `not in`
+            # netto. Una guardia che deve distinguere un'ipotesi da
+            # un'affermazione e' piu' debole di una che vieta la parola.
             return (
-                "Il modello :free selezionato ha esaurito il rate limit "
-                "upstream. Riprova tra qualche minuto oppure passa a un "
-                "modello a pagamento (o aggiungi una tua API key del provider "
-                "su openrouter.ai/settings/integrations)."
+                "Il modello selezionato ha esaurito il rate limit upstream — "
+                "OpenRouter non ha detto quale. Riprova tra qualche minuto, "
+                "oppure scegli un altro modello nella pagina Modelli (o "
+                "aggiungi una tua API key del provider su "
+                "openrouter.ai/settings/integrations)."
             )
         return None
     model_name = m.group(1)

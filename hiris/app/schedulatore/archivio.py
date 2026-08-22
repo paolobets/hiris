@@ -153,15 +153,41 @@ class ArchivioPromesse:
         """Le prese a meta' al riavvio: `fallita`, col motivo, e non ripartono.
 
         Una promessa `in_corso` all'avvio significa una cosa sola: l'add-on si
-        e' fermato mentre la manteneva. Non si sa se l'azione sia partita --
-        e proprio per questo non si riprova. Una luce accesa due volte e'
-        innocua; una serranda no.
+        e' fermato mentre la manteneva.
+
+        **Non si riprova, ne' l'una ne' l'altra specie**, e non e' timidezza:
+        il momento della promessa e' passato. Rieseguire «il delta rispetto a
+        un'ora fa» tre ore dopo darebbe una risposta confidentemente falsa --
+        la stessa ragione per cui esiste la tolleranza dei 120 secondi
+        (`promessa.TOLLERANZA_S`). Fallire e' meglio che rispondere sbagliato.
+        Questo vale ancora di piu' dalla fetta «le promesse seguono la catena»,
+        che ha allargato da secondi a minuti la finestra in cui una promessa e'
+        `in_corso`: piu' spesso, non diversamente.
+
+        **Cio' che cambia e' cosa l'utente puo' CONCLUDERE**, e per le due
+        specie non e' la stessa cosa. Per un `fai` il dubbio e' se la casa sia
+        stata toccata: una luce accesa due volte e' innocua, una serranda no.
+        Per un `chiedi` la casa non e' stata toccata di sicuro -- quel turno ha
+        solo strumenti di lettura per costruzione (`turno.SOLA_LETTURA`) -- e
+        l'unico dubbio e' la notifica, che parte PRIMA che la promessa si
+        chiuda (`orologio.concludi_chiedi`). Due dubbi diversi, due frasi
+        diverse: una sola li appiattisce, e manda a cercare un problema che
+        non c'e'.
         """
+        _MOTIVO_FAI = (
+            "l'add-on si e' fermato mentre la manteneva: non l'ho ripetuta, "
+            "perche' non so se fosse gia' partita.")
+        _MOTIVO_CHIEDI = (
+            "l'add-on si e' fermato mentre guardavo: non ho toccato niente in "
+            "casa, ma non so se la notifica fosse gia' partita. Non l'ho "
+            "ripetuta: l'ora che mi avevi dato e' passata, e una risposta "
+            "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato='fallita', motivo=? WHERE stato='in_corso'",
-                ("l'add-on si e' fermato mentre la manteneva: non l'ho ripetuta, "
-                 "perche' non so se fosse gia' partita.",))
+                "UPDATE promesse SET stato='fallita', "
+                "motivo=CASE WHEN specie='fai' THEN ? ELSE ? END "
+                "WHERE stato='in_corso'",
+                (_MOTIVO_FAI, _MOTIVO_CHIEDI))
             self._conn.commit()
             quante = cur.rowcount
         if quante:

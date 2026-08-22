@@ -180,14 +180,22 @@ class ArchivioConsumi:
                 "provider": r["provider"],
                 "etichetta": ETICHETTA.get(r["provider"], r["provider"]),
                 "nota": NOTA.get(r["provider"], ""),
-                "costo_usd": 0.0,
+                # `None`, non `0.0`: una sezione i cui modelli non hanno NESSUN
+                # costo noto -- l'abbonamento, per dirne una -- affermerebbe
+                # «zero euro» per una cosa che un costo non ce l'ha. E' lo zero
+                # che afferma, rientrato un piano piu' su di dove la fetta lo
+                # aveva tolto. Trovato MISURANDO la pagina viva il 22/08/2026:
+                # la riga diceva «compreso» e la sezione che la conteneva
+                # diceva 0,0. Diventa un numero appena un modello ne porta uno.
+                "costo_usd": None,
                 "costo_parziale": False,
                 "modelli": [],
                 **{c: 0 for c in CAMPI},
             })
             for c in CAMPI:
                 sezione[c] += r[c] or 0
-            sezione["costo_usd"] += r["costo_usd"] or 0.0
+            if r["costo_usd"] is not None:
+                sezione["costo_usd"] = (sezione["costo_usd"] or 0.0) + r["costo_usd"]
             sezione["costo_parziale"] = sezione["costo_parziale"] or bool(r["ignoti"])
             sezione["modelli"].append({
                 "modello": r["modello"],

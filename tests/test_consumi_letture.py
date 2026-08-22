@@ -77,3 +77,43 @@ def test_la_storia_da_un_secchiello_per_giorno_e_provider(archivio):
 
 def test_la_storia_fuori_intervallo_e_vuota_e_non_esplode(archivio):
     assert archivio.storia(da="2026-01-01", a="2026-01-31") == []
+
+
+def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
+    """Trovato MISURANDO la pagina viva il 22/08/2026, non da un test.
+
+    La riga dell'abbonamento diceva «compreso» -- giusto -- e la SEZIONE che
+    la conteneva diceva «0,0 EUR»: la somma trattava i costi ignoti come zero.
+    E' lo zero che afferma, rientrato un piano piu' su di dove la fetta lo
+    aveva tolto. La pagina lo nascondeva trattando il ponte a parte, il che
+    rende il difetto peggiore e non migliore: l'API lo affermava lo stesso, a
+    chiunque altro lo leggesse."""
+    a = ArchivioConsumi(str(tmp_path / "c.db"), leggi_fuso=lambda: ROMA)
+    try:
+        a.registra("ponte", "claude-haiku-4-5", token_in=80, token_out=9,
+                   costo_usd=None, costo_stato="compreso", adesso=T21)
+
+        sezione = a.sezioni()[0]
+        assert sezione["costo_usd"] is None, (
+            "nessun costo noto: 0.0 direbbe «misurato, e non e' costato niente»")
+        assert a.totali()["costo_usd"] == 0.0, (
+            "il TOTALE resta un numero: e' la somma di cio' che si conosce, e "
+            "`costo_parziale` dice che c'e' dell'altro")
+    finally:
+        a.close()
+
+
+def test_una_sezione_con_un_costo_noto_e_uno_ignoto_somma_quello_noto(tmp_path):
+    """Il pavimento a scala di sezione: «questo l'ho pagato di sicuro»."""
+    a = ArchivioConsumi(str(tmp_path / "c.db"), leggi_fuso=lambda: ROMA)
+    try:
+        a.registra("openrouter", "a/pagante", costo_usd=1.5,
+                   costo_stato="reale", adesso=T21)
+        a.registra("openrouter", "b/ignoto", costo_usd=None,
+                   costo_stato="non_noto", adesso=T21)
+
+        sezione = a.sezioni()[0]
+        assert sezione["costo_usd"] == 1.5
+        assert sezione["costo_parziale"] is True
+    finally:
+        a.close()

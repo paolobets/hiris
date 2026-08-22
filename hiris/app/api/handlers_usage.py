@@ -156,7 +156,9 @@ async def handle_usage(request: web.Request) -> web.Response:
             "token_out": s["token_out"],
             "cache_lettura": s["cache_lettura"],
             "cache_scrittura": s["cache_scrittura"],
-            "costo_usd": round(s["costo_usd"], 6),
+            # `None` attraversa: una sezione senza nessun costo noto -- il
+            # ponte -- non deve uscire di qui con uno zero che afferma.
+            "costo_usd": None if s["costo_usd"] is None else round(s["costo_usd"], 6),
             "cost_eur": _euro(s["costo_usd"]),
             "costo_parziale": s["costo_parziale"],
             "modelli": [_modello_fuori(m) for m in s["modelli"]],

@@ -1136,3 +1136,42 @@ def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():
     assert _codice_di(_Conn()) is None
     assert _codice_di(Exception("nudo")) is None
     assert _codice_di(_Strano()) is None
+
+
+# --- un messaggio non afferma cio' che non sa --------------------------------
+
+def test_il_rate_limit_senza_nome_NON_inventa_che_il_modello_e_gratuito():
+    """Visto dal vivo il 21/08/2026 sull'installazione del proprietario: il suo
+    modello OpenRouter era `mistralai/mistral-large`, a PAGAMENTO, e HIRIS
+    rispondeva «il modello :free selezionato ha esaurito il rate limit».
+
+    Il ramo esiste per il caso in cui il provider dice «rate-limited upstream»
+    senza nominare il modello. Non sapendo QUALE sia, non puo' nemmeno sapere
+    che sia gratuito -- e affermarlo manda a cercare un problema che non c'e',
+    esattamente come la diagnosi inventata di `azione/porta.py` mando' il
+    proprietario a cercare un guasto di comunicazione inesistente."""
+    from hiris.app.backends.openai_compat_runner import parse_upstream_rate_limit
+
+    class _Exc(Exception):
+        message = "Provider returned error: temporarily rate-limited upstream"
+
+    messaggio = parse_upstream_rate_limit(_Exc())
+
+    assert messaggio, "il caso va comunque riconosciuto e spiegato"
+    assert ":free" not in messaggio, (
+        "non sappiamo quale modello sia: non possiamo dire che sia gratuito")
+    assert "rate limit" in messaggio.lower()
+
+
+def test_quando_il_provider_NOMINA_il_modello_gratuito_lo_si_dice():
+    """L'altra meta': quando il nome c'e', si usa quello. Il ramo che sa non
+    va sacrificato per riparare il ramo che non sa."""
+    from hiris.app.backends.openai_compat_runner import parse_upstream_rate_limit
+
+    class _Exc(Exception):
+        message = ("meta-llama/llama-3.3-70b-instruct:free is temporarily "
+                   "rate-limited upstream")
+
+    messaggio = parse_upstream_rate_limit(_Exc())
+
+    assert "meta-llama/llama-3.3-70b-instruct:free" in messaggio
