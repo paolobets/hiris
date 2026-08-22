@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.10.1] — Il risveglio sul piano arriva fino in fondo (2026-08-22)
+
+**Correzione**, trovata provando sulla casa vera la 3.10.0 di stamattina.
+
+Il pezzo grosso della 3.10.0 funzionava: la promessa e' andata davvero al
+Piano Claude Max, il turno e' partito, e la promessa si e' chiusa. Quello che
+non arrivava era l'ultimo passo: il modello si e' trovato **senza gli
+strumenti** — non poteva rileggere i sensori, e soprattutto non aveva il modo
+di concludere la promessa. Cosi' ha risposto a parole, a nessuno, e la
+promessa e' fallita a un passo dalla fine.
+
+Il motivo: quando HIRIS mantiene una promessa mette in mano al modello cinque
+strumenti invece dei nove della chat — puo' guardare, non toccare. Tre punti
+del codice continuavano pero' a pretendere i nove di sempre, trovavano cinque
+strumenti invece di nove, li dichiaravano incompleti, e facevano ripartire il
+turno senza nessuno strumento.
+
+### Fixed
+
+- **Un risveglio servito dal piano arriva fino in fondo**: legge i sensori,
+  conclude, e la notifica parte.
+
 ## [3.10.0] — Le promesse usano il piano, e i consumi dicono di chi sono (2026-08-22)
 
 Due cose che HIRIS non sapeva fare, e una che faceva male.
