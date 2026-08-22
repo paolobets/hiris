@@ -141,7 +141,7 @@ def test_il_job_risolto_resta_distinguibile_da_un_job_mai_esistito(q):
     assert q.get("non-esiste") is None
 
     # Il conteggio giornaliero (contabilita') non e' toccato dall'azzeramento.
-    assert q.count_chat_today(now=base + 3) == 1
+    assert q.count_turni_oggi(now=base + 3) == 1
 
 
 def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
@@ -157,7 +157,7 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
     assert job["context"] == {}
 
     assert q.get("non-esiste") is None
-    assert q.count_chat_today(now=base + 20) == 1
+    assert q.count_turni_oggi(now=base + 20) == 1
 
 
 # ---------------------------------------------------------------------------

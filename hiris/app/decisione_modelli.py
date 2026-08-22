@@ -41,7 +41,7 @@ import os
 # (`server.should_start_agent_worker`), se il piano ENTRA nella catena
 # (`server._credenziali`), cosa la pagina Modelli DICHIARA
 # (`handlers_models._config_has_credential`), e se il turno si ACCODA
-# (`handlers_chat._piano_puo_rispondere`).
+# (`instradamento._piano_puo_rispondere`).
 #
 # Oggi erano identiche. Il giorno in cui il token seguisse la strada che hanno
 # gia' fatto `ponte.attivo`, `tetto_giornaliero` e `scadenza_min` -- da
@@ -329,7 +329,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
 # divergere dalla prima.
 
 # I tre fatti che il turno puo' aver osservato, e non uno di piu'. Sono le
-# STESSE tre parole che `api/handlers_chat._piano_puo_rispondere` restituisce e
+# STESSE tre parole che `instradamento._piano_puo_rispondere` restituisce e
 # che `_ripiega_sulla_catena` passa: la corrispondenza e' pinnata da un test,
 # perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
 # -- produrrebbe silenzio, che e' peggio.

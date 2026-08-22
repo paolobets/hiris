@@ -255,7 +255,7 @@ class ReasoningQueue:
         app["ponte_attivo"]) never ran or is off. Without this, an
         expired-but-unswept job would 409 the conversation forever with no
         way to clear it. Takes an explicit `now`, like every other method on
-        this class (enqueue/claim/submit/sweep_expired/count_chat_today),
+        this class (enqueue/claim/submit/sweep_expired/count_turni_oggi),
         defaulting to time.time() only when the caller (production code)
         doesn't pass one.
 
@@ -277,11 +277,18 @@ class ReasoningQueue:
                 (ts,)).fetchone()
         return row is not None
 
-    def count_chat_today(self, now: Optional[float] = None) -> int:
-        """Count of kind="chat" jobs enqueued (created_ts) on the same local
-        calendar day as `now`. Slice 4b Task 3's separate daily chat cap --
-        counts every chat turn enqueued today regardless of its current
-        status (resolved/expired turns still consumed the day's budget).
+    def count_turni_oggi(self, now: Optional[float] = None) -> int:
+        """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.
+
+        Fino al 22/08/2026 si chiamava `count_chat_today` e filtrava
+        `kind='chat'`. Con la fetta «le promesse seguono la catena» il piano
+        serve anche i risvegli, e un tetto che ne contasse meta' sarebbe una
+        mezza verita': chi lo mette a 150 lo mette per non sfondare
+        l'abbonamento, non per limitare una superficie sola.
+
+        Conta ogni turno accodato oggi qualunque sia il suo stato adesso: un
+        turno risolto o scaduto il budget della giornata l'ha comunque
+        consumato.
 
         Takes an explicit `now`, like every other method on this class
         (enqueue/claim/submit/sweep_expired), defaulting to time.time() only
@@ -294,7 +301,7 @@ class ReasoningQueue:
         with self._lock:
             r = self._conn.execute(
                 "SELECT COUNT(*) AS c FROM reasoning_jobs "
-                "WHERE kind='chat' AND created_ts >= ? AND created_ts < ?",
+                "WHERE created_ts >= ? AND created_ts < ?",
                 (day_start, day_end)).fetchone()
         return r["c"]
 

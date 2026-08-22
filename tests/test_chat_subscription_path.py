@@ -2,7 +2,7 @@
 
 When ``app["ponte_attivo"]`` is truthy AND the reasoning-queue
 bridge is wired (``app["reasoning_queue"]`` present — see
-``handlers_chat._bridge_on``), ``handle_chat`` must:
+``instradamento._bridge_on``), ``handle_chat`` must:
   1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
      session could start on an assistant turn, which the Claude API rejects
      (contract from Task 1's report);
@@ -557,7 +557,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # bridge is ALSO truly usable (BRIDGE_ENABLED), otherwise chat jobs would be
 # enqueued into a queue nothing sweeps/claims/prunes -> eternal pending + DB
 # growth (the queue itself is created unconditionally in _on_startup, so
-# handlers_chat._bridge_on's "queue present" check alone can't catch this).
+# instradamento._bridge_on's "queue present" check alone can't catch this).
 #
 # Full _on_startup is HA-client/engine-heavy and out of scope for a unit
 # test here -- verified at the source level instead, same convention as the
@@ -1069,7 +1069,7 @@ async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_pat
     runner.chat.assert_awaited_once()
     # E niente e' stato accodato: non si mette un messaggio in una coda che
     # nessuno servira'.
-    assert q.count_chat_today() == 0
+    assert q.count_turni_oggi() == 0
 
 
 @pytest.mark.asyncio
@@ -1108,7 +1108,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
-    from hiris.app.api.handlers_chat import _piano_puo_rispondere
+    from hiris.app.instradamento import _piano_puo_rispondere
     from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
 
     app, q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)

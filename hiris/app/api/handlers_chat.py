@@ -19,7 +19,8 @@ from ..chat_store import (
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
-from ..decisione_modelli import nota_ripiego, piano_ha_il_token
+from ..decisione_modelli import nota_ripiego
+from ..instradamento import chi_risponde
 from .handlers_casa import costruisci_nucleo
 
 logger = logging.getLogger(__name__)
@@ -229,64 +230,14 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     return "\n\n".join(context_parts)
 
 
-def _bridge_on(app) -> bool:
-    """Whether the reasoning-queue bridge is wired into this app.
-
-    server.py's ``_on_startup`` always creates ``app["reasoning_queue"]``
-    unconditionally — ``ponte.attivo`` (nell'archivio di HIRIS, dalla
-    versione B: era l'opzione dell'add-on che esportava ``BRIDGE_ENABLED``)
-    only gates whether server.py's sweep (``_reasoning_sweep``) actually
-    claims/prunes that queue and whether ``app["ponte_attivo"]`` comes out
-    true (fetta E3 Task 4 removed the third reader, the holistic path's own
-    enqueue via ``_holistic_reason`` — that path is gone entirely now), it
-    doesn't control whether the queue object exists. So presence of the key is the
-    right signal for chat: it's also how tests opt in/out (wire or don't
-    wire ``app["reasoning_queue"]``) without touching env vars.
-    """
-    return app.get("reasoning_queue") is not None
-
-
-def _piano_puo_rispondere(app) -> tuple[bool, str]:
-    """Il piano può servire un turno adesso? E, se no, con quali parole.
-
-    Le due condizioni sono le stesse che fino alla 2.4.1 facevano finire il
-    turno con un errore: il token assente (senza cui `server.
-    should_start_agent_worker` non fa partire il worker, e il messaggio veniva
-    accodato in una coda che nessuno serviva e scadeva dopo N minuti) e il
-    tetto giornaliero pieno (429, «Limite giornaliero di messaggi chat
-    raggiunto»). Sono, alla lettera, «il piano non è disponibile» -- la frase
-    che il proprietario ha chiesto -- e da questo task non finiscono più in un
-    errore: il turno scende alla catena.
-
-    La seconda parola NON porta il numero. È una chiave di
-    `decisione_modelli._MOTIVI_RIPIEGO`, non una frase per l'utente: la frase
-    la compone `nota_ripiego`, e un motivo che non è fra le tre chiavi non
-    produrrebbe un errore -- produrrebbe silenzio. Il numero vive nel log, che
-    è dove serve a chi indaga.
-
-    Il tetto si legge dall'ARCHIVIO (`ponte.tetto_giornaliero`), non da
-    `CHAT_DAILY_CAP`: fino a questo task erano DUE rappresentazioni dello
-    stesso numero -- l'ambiente, letto qui, e la copia d'archivio scritta dal
-    Task 6 che nessuno leggeva e che la pagina Modelli poteva riscrivere. È lo
-    stesso spostamento che il Task 10 ha fatto per `ponte.scadenza_min`, e per
-    la stessa ragione: quella che l'utente cambia dev'essere quella che il
-    turno subisce (invariante 1).
-    """
-    if not piano_ha_il_token():
-        return False, "manca il token"
-    # Il predefinito viene da `_PREDEFINITI_ARCHIVIO`, non ridigitato qui:
-    # erano gli stessi numeri in quattro punti, e un `50` rimasto indietro
-    # avrebbe fatto tagliare i turni a un tetto diverso da quello che la
-    # pagina mostra.
-    tetto = int((app.get("models_config") or {})
-                .get("ponte", {}).get("tetto_giornaliero",
-                                      _PREDEFINITI_ARCHIVIO["ponte"]["tetto_giornaliero"]))
-    if app["reasoning_queue"].count_chat_today() >= tetto:
-        logger.warning(
-            "Tetto giornaliero del ponte raggiunto (%d messaggi): il turno "
-            "passa alla catena.", tetto)
-        return False, "tetto giornaliero"
-    return True, ""
+# fetta «le promesse seguono la catena» (22/08/2026): `_bridge_on` e
+# `_piano_puo_rispondere` sono USCITE da qui e vivono in `app/instradamento.py`,
+# insieme alla decisione che compongono. Restavano importabili da questo nome
+# per due soli chiamanti -- questa funzione e i suoi test -- e lasciarle qui
+# avrebbe reso circolare l'import: la chat chiede a `instradamento`, e
+# `instradamento` avrebbe dovuto chiedere alla chat.
+#
+# Non sono un doppione ri-esportato: si importano da dove vivono.
 
 
 def _nota_di_chi_ha_risposto(request: web.Request, *, motivo: str) -> str:
@@ -724,7 +675,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     # disponibile» finiva in un errore invece che nel provider successivo. Il
     # ramo `else` più sotto è il ritorno: si scende alla catena, che è la riga
     # subito dopo questo blocco.
-    if request.app.get("ponte_attivo") and _bridge_on(request.app):
+    _via, _motivo_del_piano = chi_risponde(request.app)
+    if _via == "ponte" or _motivo_del_piano:
         # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
         # above/below is unaffected when the flag is off. Checked before
         # anything is persisted/enqueued so a blocked turn leaves no trace.
@@ -743,8 +695,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"error": "C'è già una risposta in arrivo per questa conversazione."},
                 status=409,
             )
-        _puo, _motivo = _piano_puo_rispondere(request.app)
-        if not _puo:
+        if _motivo_del_piano:
             # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
             # gli manca il token (il worker non parte, `should_start_agent_
             # worker`) oppure il tetto giornaliero è pieno. Non si accoda un
@@ -757,11 +708,11 @@ async def handle_chat(request: web.Request) -> web.Response:
             # averlo chiesto -- ed è esattamente il caso per cui il ripiego si
             # annuncia (la `nota` in fondo a questa funzione). Senza quella
             # riga questo cambio sarebbe un prelievo silenzioso.
-            _motivo_ripiego = _motivo
+            _motivo_ripiego = _motivo_del_piano
             logger.warning(
                 "Il piano non può rispondere a questo turno (%s): il turno "
                 "passa alla catena. Il costo cambia -- dal forfait al consumo.",
-                _motivo)
+                _motivo_del_piano)
         else:
             return await _enqueue_chat_job(request, impostazioni, message, data_dir)
 
