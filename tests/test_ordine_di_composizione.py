@@ -69,7 +69,6 @@ def _runner(tmp_path):
     return OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "usage.json"),
     )
 
 
@@ -144,7 +143,7 @@ async def test_claude_runner_mette_i_modificatori_prima_del_contesto(tmp_path):
     sull'ultimo blocco stabile, mai sul contesto volatile."""
     from hiris.app.claude_runner import ClaudeRunner
 
-    runner = ClaudeRunner(api_key="sk-test", usage_path=str(tmp_path / "usage.json"))
+    runner = ClaudeRunner(api_key="sk-test")
 
     catturate: list[dict] = []
 

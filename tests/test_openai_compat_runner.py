@@ -22,7 +22,6 @@ def test_init_openai_cloud_does_not_raise(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "usage.json"),
     )
     assert isinstance(runner._client.timeout, httpx.Timeout)
 
@@ -41,7 +40,6 @@ def test_init_ollama_local_does_not_raise(tmp_path):
         api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
         timeout_s=90,
-        usage_path=str(tmp_path / "usage_ollama.json"),
     )
     assert isinstance(runner._client.timeout, httpx.Timeout)
     assert runner._client.timeout.read == 90.0
@@ -51,85 +49,15 @@ def test_init_ollama_local_does_not_raise(tmp_path):
 # usage.json's "per_agent" -- stessa mossa e stesso motivo del pin gemello in
 # tests/test_claude_runner.py (vedi il suo commento per il perche').
 
-def test_usage_json_per_agent_legacy_logged_when_present(tmp_path, caplog):
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-        "per_agent": {"agent-x": {"input_tokens": 10}},
-    }), encoding="utf-8")
-    with caplog.at_level("INFO"):
-        OpenAICompatRunner(
-            base_url="https://api.openai.com/v1",
-            api_key="sk-test",
-            usage_path=str(usage_file),
-        )
-    assert any(
-        "per_agent" in rec.message and "installazione precedente" in rec.message
-        for rec in caplog.records
-    )
-
-
-def test_usage_json_per_agent_silent_when_absent(tmp_path, caplog):
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-    }), encoding="utf-8")
-    with caplog.at_level("INFO"):
-        OpenAICompatRunner(
-            base_url="https://api.openai.com/v1",
-            api_key="sk-test",
-            usage_path=str(usage_file),
-        )
-    assert not any("per_agent" in rec.message for rec in caplog.records)
-
-
-def test_usage_json_per_agent_legacy_survives_a_save(tmp_path):
-    """fix round 1 (Important 2 della review indipendente): stessa mossa e
-    stesso motivo del pin gemello in tests/test_claude_runner.py -- prima
-    `_save_usage()` ricostruiva il file da zero e cancellava silenziosamente
-    `per_agent` al primo salvataggio dopo un upgrade. Ora sopravvive."""
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-        "per_agent": {"agent-x": {"input_tokens": 10}},
-    }), encoding="utf-8")
-    runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1",
-        api_key="sk-test",
-        usage_path=str(usage_file),
-    )
-    runner.total_requests += 1
-    runner._save_usage()
-    with open(usage_file, encoding="utf-8") as f:
-        data = json.load(f)
-    assert data.get("per_agent") == {"agent-x": {"input_tokens": 10}}
-    assert data["total_requests"] == 1
-
-
-@pytest.mark.asyncio
-async def test_circuit_open_message_names_cloud_backend(tmp_path):
-    """Backlog #7: an open circuit on a CLOUD backend must not call itself
-    'il backend locale' -- the noun tracks _is_cloud."""
-    import time as _time
-    runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1", api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
-    )
-    assert runner._backend_noun == "Il servizio AI"
-    runner._circuit_open_until = _time.monotonic() + 60
-    with pytest.raises(RunnerBackendError) as exc_info:
-        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=64)
-    msg = exc_info.value.friendly_message
-    assert "Il servizio AI" in msg and "backend locale" not in msg
+# fetta «i consumi, per modello» (22/08/2026): qui vivevano i due test
+# della persistenza di `usage.json` -- il silenzio dichiarato su `per_agent`
+# di un'installazione precedente e la lettura-modifica-scrittura che non
+# doveva perderlo. Escono col loro soggetto: `_load_usage`/`_save_usage` non
+# esistono piu', il consumo ha una casa sola (`consumi/archivio.py`).
+#
+# Il fatto che difendevano -- «mai dati dell'utente rimossi in silenzio» --
+# non esce con loro: i vecchi `usage_*.json` restano sul disco e vengono
+# importati una volta sola. Lo pinna `tests/test_consumi_ancora.py`.
 
 
 def test_circuit_open_message_names_local_backend(tmp_path):
@@ -137,7 +65,6 @@ def test_circuit_open_message_names_local_backend(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._backend_noun == "Il backend locale"
 
@@ -148,7 +75,6 @@ def test_ollama_disables_sdk_retry(tmp_path):
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
         locale=True, leggi_modello=lambda: "gemma4:e4b",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._client.max_retries == 0
 
@@ -158,7 +84,6 @@ def test_openai_cloud_keeps_default_retry(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._client.max_retries == 2
 
@@ -170,7 +95,6 @@ async def test_ollama_chat_passes_think_false(tmp_path):
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
         locale=True, leggi_modello=lambda: "gemma4:e4b",
-        usage_path=str(tmp_path / "u.json"),
     )
     # Mock the API to return a plain stop response
     msg = MagicMock()
@@ -193,7 +117,6 @@ async def test_openai_cloud_chat_omits_extra_body(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "ok"
@@ -221,7 +144,6 @@ async def test_chat_accepts_thinking_budget_kwarg_silently(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "ok"
@@ -247,7 +169,6 @@ def test_openrouter_runner_accepts_thinking_budget_kwarg(tmp_path):
     from hiris.app.backends.openrouter_runner import OpenRouterRunner
     runner = OpenRouterRunner(
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     # Just verify the method signature accepts thinking_budget (introspection).
     # fetta E3 Task 8: la seconda meta' di questo test (su `run_with_actions`)
@@ -342,7 +263,6 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "get_ha_healthיׂ{\"sections\": [\"all\"]}"
@@ -371,7 +291,6 @@ async def test_chat_passes_through_clean_text(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "Tutto ok — la casa è in buone condizioni."
@@ -432,7 +351,6 @@ async def test_chat_retries_on_402_afford_message(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
 
     # Simulate APIError with the OpenRouter 402 message
@@ -474,7 +392,6 @@ async def test_chat_returns_explicit_error_when_402_retry_also_fails(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     err = _openai.APIError(
         message="You requested up to 4096 tokens, but can only afford 3907.",
@@ -507,7 +424,6 @@ async def test_chat_non_402_api_error_still_returns_generic_message(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     err = _openai.APIError(
         message="Internal Server Error",
@@ -568,7 +484,6 @@ async def test_chat_returns_clear_message_on_upstream_rate_limit(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     # Use a real OpenRouter-shaped exception body so the runner sees the
     # provider-specific message inside the standard RateLimitError.
@@ -598,7 +513,6 @@ async def test_simple_chat_circuit_breaker_skips_dead_backend(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
     runner._client.chat.completions.create = create
@@ -618,7 +532,6 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u2.json"),
     )
     ok = MagicMock()
     ok.choices = [MagicMock(message=MagicMock(content="hi"))]
@@ -646,7 +559,6 @@ def test_openai_compat_runner_ollama_is_not_cloud(tmp_path):
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._is_cloud is False
 
@@ -656,7 +568,6 @@ def test_openai_compat_runner_cloud_is_cloud(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._is_cloud is True
 
@@ -666,7 +577,6 @@ def test_openrouter_runner_is_cloud(tmp_path):
     from hiris.app.backends.openrouter_runner import OpenRouterRunner
     runner = OpenRouterRunner(
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert runner._is_cloud is True
 
@@ -679,7 +589,6 @@ async def test_chat_length_finish_returns_truncation_notice(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "Ora creo la dashboard!"
@@ -728,7 +637,6 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, ca
 
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1", api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=[
         _risposta_tool_call("guarda", '{"area": "cucina"}', "tc-1"),
@@ -794,7 +702,6 @@ async def test_chat_stream_length_finish_yields_truncation_notice(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
 
     stream = _FakeStream([
@@ -824,7 +731,6 @@ async def test_chat_stream_normal_stop_has_no_truncation_notice(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
 
     stream = _FakeStream([
@@ -885,7 +791,6 @@ async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(tm
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
 
     def _stream_sempre_tool(nome, argomenti, tc_id):
@@ -937,7 +842,6 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -955,7 +859,6 @@ async def test_chat_stream_short_circuits_when_breaker_open(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -979,7 +882,6 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",
-        usage_path=str(tmp_path / "u.json"),
     )
     conn_err = _openai.APIConnectionError(request=MagicMock())
     runner._client.chat.completions.create = AsyncMock(side_effect=conn_err)
@@ -998,7 +900,6 @@ async def test_chat_healthy_backend_behavior_unchanged(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     msg = MagicMock()
     msg.content = "ok"
@@ -1170,8 +1071,7 @@ async def test_un_404_del_provider_arriva_al_router_come_famiglia_modello(tmp_pa
     import openai
 
     runner = OpenAICompatRunner(
-        base_url="https://api.openai.com/v1", api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"))
+        base_url="https://api.openai.com/v1", api_key="sk-test")
 
     class _Sparito(openai.APIError):
         def __init__(self):
@@ -1196,8 +1096,7 @@ async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
     import openai
 
     runner = OpenAICompatRunner(
-        base_url="https://openrouter.ai/api/v1", api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"))
+        base_url="https://openrouter.ai/api/v1", api_key="sk-or-test")
 
     class _Credito(openai.APIError):
         def __init__(self):

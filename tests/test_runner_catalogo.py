@@ -102,7 +102,6 @@ def claude_runner():
 def openai_runner(tmp_path):
     return OpenAICompatRunner(
         base_url="https://api.openai.com/v1", api_key="sk-test",
-        usage_path=str(tmp_path / "u.json"),
     )
 
 

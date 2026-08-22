@@ -54,7 +54,6 @@ class OpenRouterRunner(OpenAICompatRunner):
         self,
         api_key: str,
         *,
-        usage_path: str = "",
         leggi_modello=None,
         registra_consumo=None,
     ) -> None:
@@ -71,7 +70,6 @@ class OpenRouterRunner(OpenAICompatRunner):
         super().__init__(
             base_url=_OPENROUTER_BASE_URL,
             api_key=api_key,
-            usage_path=usage_path,
             leggi_modello=leggi_modello,
             registra_consumo=registra_consumo,
         )

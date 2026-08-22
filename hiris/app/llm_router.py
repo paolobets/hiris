@@ -310,36 +310,16 @@ class LLMRouter:
     # `last_pseudonym_map`, che rileggeva la ContextVar omonima di
     # claude_runner.py. Esce con la pseudonimizzazione (brain/privacy.py).
 
-    @property
-    def total_input_tokens(self) -> int:
-        return sum(getattr(r, "total_input_tokens", 0) for r in self._all)
-
-    @property
-    def total_output_tokens(self) -> int:
-        return sum(getattr(r, "total_output_tokens", 0) for r in self._all)
-
-    @property
-    def total_requests(self) -> int:
-        return sum(getattr(r, "total_requests", 0) for r in self._all)
-
-    @property
-    def total_cost_usd(self) -> float:
-        return sum(getattr(r, "total_cost_usd", 0.0) for r in self._all)
-
-    @property
-    def total_rate_limit_errors(self) -> int:
-        return sum(getattr(r, "total_rate_limit_errors", 0) for r in self._all)
-
-    @property
-    def usage_last_reset(self) -> str:
-        resets = [getattr(r, "usage_last_reset", "") for r in self._all]
-        return min((s for s in resets if s), default="")
-
     # fetta E4 Task 6 ("un bot solo"): `get_chatbot_usage`/`reset_chatbot_usage`
     # sono usciti -- aggregavano la stessa contabilita' per-chatbot uscita dai
     # due runner (claude_runner.py/openai_compat_runner.py, stessa mossa),
     # zero chiamanti di produzione.
-
-    def reset_usage(self) -> None:
-        for r in self._all:
-            r.reset_usage()
+    #
+    # fetta «i consumi, per modello» (22/08/2026): con loro escono anche le SEI
+    # proprieta' aggreganti (`total_input_tokens`, `total_output_tokens`,
+    # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
+    # `usage_last_reset`) e `reset_usage`. Sommavano i contatori dei runner,
+    # e quei contatori non esistono piu': il consumo ha una casa sola,
+    # `consumi/archivio.py`, che sa anche DI CHI sia -- cosa che questa somma
+    # buttava via per costruzione. Zero chiamanti di produzione al momento
+    # della cancellazione (`handlers_usage` legge l'archivio).

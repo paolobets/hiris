@@ -1536,6 +1536,9 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
+    # Serve solo all'importazione una-tantum dei contatori di prima
+    # (`consumi/archivio.importa_legacy`): i runner non scrivono piu' su
+    # questi file, e i file restano dov'erano.
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
     if local_model_url:
@@ -2277,7 +2280,6 @@ async def _on_startup(app: web.Application) -> None:
     if api_key and _credenziali["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            usage_path=usage_path,
             leggi_modello=_modello_di("claude"),
             registra_consumo=app["consumi"].registra,
         )
@@ -2301,7 +2303,6 @@ async def _on_startup(app: web.Application) -> None:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
-            usage_path=f"{_usage_base}_openai{_usage_ext}",
             leggi_modello=_modello_di("openai"),
             registra_consumo=app["consumi"].registra,
         )
@@ -2321,7 +2322,6 @@ async def _on_startup(app: web.Application) -> None:
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
             locale=True,
-            usage_path=f"{_usage_base}_ollama{_usage_ext}",
             # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
@@ -2361,7 +2361,6 @@ async def _on_startup(app: web.Application) -> None:
     if openrouter_api_key and _credenziali["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            usage_path=f"{_usage_base}_openrouter{_usage_ext}",
             leggi_modello=_modello_di("openrouter"),
             registra_consumo=app["consumi"].registra,
         )

@@ -85,7 +85,6 @@ async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "usage.json"),
     )
 
     class _FakeMessage:
@@ -117,7 +116,6 @@ async def test_openai_compat_runner_chat_stream_carries_memory_rule(tmp_path):
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
-        usage_path=str(tmp_path / "usage.json"),
     )
 
     class _FakeDelta:

@@ -56,10 +56,11 @@ async def test_router_chat_delegates_to_runner(mock_runner):
     assert result == "response text"
 
 
-def test_router_proxies_usage_properties(mock_runner):
-    router = LLMRouter(claude=mock_runner)
-    assert router.total_input_tokens == 10
-    assert router.last_tool_calls == []
+# fetta «i consumi, per modello» (22/08/2026): qui viveva il test che
+# pinnava le sei proprieta' aggreganti del router (`total_input_tokens` e
+# compagnia) e `reset_usage`. Sono uscite: sommavano i contatori dei runner,
+# e quella somma buttava via per costruzione l'unica cosa che serviva
+# sapere -- DI CHI fosse il consumo. Adesso lo sa `consumi/archivio.py`.
 
 
 def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_runner):
@@ -262,7 +263,6 @@ def test_openrouter_runner_init(tmp_path):
     from hiris.app.backends.openrouter_runner import OpenRouterRunner
     runner = OpenRouterRunner(
         api_key="sk-or-test",
-        usage_path=str(tmp_path / "u.json"),
     )
     assert "openrouter.ai/api/v1" in str(runner._client.base_url)
     # locale=False -> cloud retry profile

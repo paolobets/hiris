@@ -83,11 +83,26 @@ def mock_ha():
 
 
 @pytest.fixture
-def runner(mock_ha):
+def rifiuti():
+    """Le righe di rifiuto (429) che il runner scrive nell'archivio dei consumi.
+
+    Fetta «i consumi, per modello»: `total_rate_limit_errors` era un numero
+    solo per tutto il prodotto e non diceva CHI stesse rifiutando -- l'unica
+    cosa che serva sapere quando succede. Adesso il fatto si scrive sulla riga
+    del modello che l'ha preso, e questa lista e' la sua casa nei test.
+    """
+    return []
+
+
+@pytest.fixture
+def runner(mock_ha, rifiuti):
     # Nessun dispatcher di scorta (ToolDispatcher e' uscito): i test qui
     # sotto non ne hanno bisogno -- vedi il docstring del modulo.
+    def _registra(provider, modello, **kw):
+        rifiuti.append({"provider": provider, "modello": modello, **kw})
+
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key")
+        r = ClaudeRunner(api_key="test-key", registra_consumo=_registra)
     r._ha = mock_ha  # shortcut for tests
     return r
 
@@ -219,7 +234,7 @@ async def test_chat_uses_resolved_model_for_agent(runner):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_retries_once_and_succeeds(runner):
+async def test_rate_limit_retries_once_and_succeeds(runner, rifiuti):
     """_call_api retries on 429 and succeeds on second attempt."""
     success = MagicMock()
     success.stop_reason = "end_turn"
@@ -248,11 +263,13 @@ async def test_rate_limit_retries_once_and_succeeds(runner):
 
     assert result is success
     assert call_count == 2
-    assert runner.total_rate_limit_errors == 1
+    assert [x for x in rifiuti if x["errori_rate_limit"] == 1], (
+        "un 429 si conta ancora -- adesso sulla riga del modello che l'ha "
+        "preso, invece che in un numero solo che non diceva CHI rifiutasse")
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_exhausts_retries_raises(runner):
+async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
     """_call_api raises after MAX_RETRIES 429 errors."""
     from hiris.app.claude_runner import MAX_RETRIES
 
@@ -274,7 +291,9 @@ async def test_rate_limit_exhausts_retries_raises(runner):
                 model="claude-sonnet-4-6", max_tokens=100, messages=[]
             )
 
-    assert runner.total_rate_limit_errors == MAX_RETRIES
+    assert len(rifiuti) == MAX_RETRIES, (
+        "ogni tentativo rifiutato si conta, come prima: solo, adesso si sa "
+        "su quale modello")
     assert call_count == MAX_RETRIES + 1
 
 
@@ -713,110 +732,18 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # ed e' il motivo per cui questo stand-in doveva scriverci dentro a mano.
 
 
-# fetta E4 Task 6 ("un bot solo"): silenzio dichiarato e pinnato per
-# usage.json's "per_agent" -- la contabilita' per-chatbot esce (vedi sopra),
-# ma un usage.json scritto da una versione precedente con quella chiave
-# popolata non va ignorato in muto: `_load_usage` lo dichiara in log, stesso
-# principio di tests/test_startup_legacy_db_silence.py (qui senza il
-# meccanismo di estrazione via inspect.getsource -- `_load_usage` e' gia' un
-# metodo autonomo, non un blocco inline dentro una funzione piu' grande).
-
-def test_usage_json_per_agent_legacy_logged_when_present(tmp_path, caplog):
-    import json as _json
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(_json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-        "per_agent": {"agent-x": {"input_tokens": 10}},
-    }), encoding="utf-8")
-    with patch("anthropic.AsyncAnthropic"), caplog.at_level("INFO"):
-        from hiris.app.claude_runner import ClaudeRunner
-        ClaudeRunner(api_key="test", usage_path=str(usage_file))
-    assert any(
-        "per_agent" in rec.message and "installazione precedente" in rec.message
-        for rec in caplog.records
-    )
-
-
-def test_usage_json_per_agent_silent_when_absent(tmp_path, caplog):
-    import json as _json
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(_json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-    }), encoding="utf-8")
-    with patch("anthropic.AsyncAnthropic"), caplog.at_level("INFO"):
-        from hiris.app.claude_runner import ClaudeRunner
-        ClaudeRunner(api_key="test", usage_path=str(usage_file))
-    assert not any("per_agent" in rec.message for rec in caplog.records)
-
-
-def test_usage_json_per_agent_legacy_survives_a_save(tmp_path):
-    """fix round 1 (Important 2 della review indipendente): `_save_usage()`
-    ricostruiva `usage.json` da zero, scrivendo SOLO le chiavi che il runner
-    conosce -- quindi il PRIMO salvataggio dopo un upgrade cancellava
-    silenziosamente `per_agent` di un'installazione precedente, il contrario
-    esatto di quanto dichiara il commento di `_load_usage` ("mai rimossi
-    silenziosamente") e del log dei due test gemelli sopra ("non piu' letto
-    ne' scritto", che un operatore legge come "e' ancora li'"). Ora
-    `_save_usage()` fa lettura-modifica-scrittura: la chiave sopravvive a un
-    salvataggio reale, non solo al load."""
-    import json as _json
-    usage_file = tmp_path / "usage.json"
-    usage_file.write_text(_json.dumps({
-        "schema_version": 1,
-        "total_input_tokens": 0, "total_output_tokens": 0, "total_requests": 0,
-        "last_reset": "2026-01-01T00:00:00Z", "total_cost_usd": 0.0,
-        "total_rate_limit_errors": 0,
-        "per_agent": {"agent-x": {"input_tokens": 10}},
-    }), encoding="utf-8")
-    from hiris.app.claude_runner import ClaudeRunner
-    with patch("anthropic.AsyncAnthropic"):
-        runner = ClaudeRunner(api_key="test", usage_path=str(usage_file))
-    runner.total_requests += 1
-    runner._save_usage()
-    with open(usage_file, encoding="utf-8") as f:
-        data = _json.load(f)
-    assert data.get("per_agent") == {"agent-x": {"input_tokens": 10}}
-    assert data["total_requests"] == 1
-
-
-def test_save_usage_concurrent_writes_keep_valid_json(tmp_path):
-    """Concurrent _save_usage() calls must not corrupt usage.json.
-
-    _save_usage runs on every API response and is reachable from multiple
-    concurrent agent runs / chats; without the write lock two threads race on
-    the same .tmp path and leave invalid JSON on disk.
-    """
-    import json as _json
-    import threading
-    from unittest.mock import MagicMock
-    from hiris.app.claude_runner import ClaudeRunner
-
-    runner = ClaudeRunner(
-        api_key="test",
-        usage_path=str(tmp_path / "usage.json"),
-    )
-
-    def worker():
-        for _ in range(25):
-            runner.total_requests += 1
-            runner._save_usage()
-
-    threads = [threading.Thread(target=worker) for _ in range(4)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    with open(runner._usage_path, encoding="utf-8") as f:
-        data = _json.load(f)  # corrupt file would raise here
-    assert data["total_requests"] >= 25
-
+# fetta «i consumi, per modello» (22/08/2026): qui vivevano i test della
+# persistenza di `usage.json` -- il silenzio dichiarato su `per_agent` di
+# un'installazione precedente, la lettura-modifica-scrittura che non doveva
+# perdere chiavi sconosciute, e le scritture concorrenti che non dovevano
+# corrompere il file. Sono usciti col loro soggetto: i contatori globali e la
+# loro persistenza non esistono piu', il consumo ha una casa sola
+# (`consumi/archivio.py`) e ci arriva per callback.
+#
+# Il fatto che quei test difendevano -- «mai dati dell'utente rimossi in
+# silenzio» -- non e' uscito con loro: i vecchi `usage_*.json` restano sul
+# disco e vengono importati una volta sola come riga «(prima del dettaglio)».
+# Lo pinna `tests/test_consumi_ancora.py`.
 
 # --- render_template e il perimetro delle entita' ---------------------------
 # fetta E2 Task 8 ("escono i trentaquattro"): i tre test che vivevano qui

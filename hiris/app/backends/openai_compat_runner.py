@@ -4,8 +4,6 @@ import json
 import logging
 import os
 import re
-import threading
-import time
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -256,7 +254,6 @@ class OpenAICompatRunner:
         api_key: str,
         *,
         locale: bool = False,
-        usage_path: str = "",
         leggi_modello=None,
         timeout_s: float = 0.0,
         registra_consumo=None,
@@ -292,7 +289,6 @@ class OpenAICompatRunner:
         # Circuit-breaker message noun, so a cloud backend doesn't report
         # itself as "il backend locale" (review backlog #7).
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
-        self._usage_path = usage_path
         # Ollama su hardware lento: timeout esplicito per evitare hang infiniti.
         # Cloud OpenAI: 600s (rispetta default SDK per risposte lunghe). Il
         # numero arriva dal chiamante -- per Ollama e' `ollama.timeout_s`
@@ -302,113 +298,28 @@ class OpenAICompatRunner:
         # d'archivio (invariante 1), e le due potevano dire cose diverse.
         self._timeout_s = 0.0
         self.applica_timeout(float(timeout_s) if timeout_s else (120.0 if locale else 600.0))
-        # Serialize usage.json writes (see ClaudeRunner._save_lock for rationale).
-        self._save_lock = threading.Lock()
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0
         # last_tool_calls is intentionally NOT initialized here — it's a
         # per-call/per-Task class-level descriptor (see above); chat() resets
         # it at the start of every call, scoped to the calling Task.
-        self.total_input_tokens: int = 0
-        self.total_output_tokens: int = 0
-        self.total_requests: int = 0
-        self.total_cost_usd: float = 0.0
-        self.total_rate_limit_errors: int = 0
-        self.usage_last_reset: str = datetime.now(timezone.utc).isoformat()
-        self._load_usage()
+        # fetta «i consumi, per modello» (22/08/2026): qui vivevano i contatori
+        # globali (`total_input_tokens`, `total_output_tokens`,
+        # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
+        # `usage_last_reset`), la loro persistenza (`_load_usage`/`_save_usage`
+        # su `usage.json`, col lock che ne serializzava le scritture) e
+        # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
+        # sommava tutto insieme e non sapeva dire di quale modello parlasse --
+        # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
+        # `consumi/archivio.py` attraverso `registra_consumo`, e i vecchi
+        # `usage_*.json` ci entrano una volta sola all'avvio come riga
+        # «(prima del dettaglio)»: i file restano sul disco, mai dati
+        # dell'utente cancellati in silenzio.
 
     # ------------------------------------------------------------------
     # Usage tracking
     # ------------------------------------------------------------------
-
-    def _load_usage(self) -> None:
-        if not self._usage_path or not os.path.exists(self._usage_path):
-            return
-        try:
-            with open(self._usage_path, encoding="utf-8") as f:
-                data = json.load(f)
-            self.total_input_tokens = data.get("total_input_tokens", 0)
-            self.total_output_tokens = data.get("total_output_tokens", 0)
-            self.total_requests = data.get("total_requests", 0)
-            self.usage_last_reset = data.get("last_reset", self.usage_last_reset)
-            self.total_cost_usd = data.get("total_cost_usd", 0.0)
-            self.total_rate_limit_errors = data.get("total_rate_limit_errors", 0)
-            # fetta E4 Task 6 ("un bot solo"): stessa mossa di claude_runner.py
-            # -- la contabilita' per-chatbot esce, "per_agent" di un
-            # usage.json legacy non viene ne' migrata ne' cancellata, solo
-            # dichiarata in log se presente e non vuota (silenzio dichiarato,
-            # modello tests/test_startup_legacy_db_silence.py). fix round 1
-            # (Important 2 della review indipendente): "non piu' scritta" NON
-            # significa "sparisce al prossimo save" -- vedi `_save_usage`
-            # sotto, che la riporta avanti intatta con una lettura-modifica-
-            # scrittura invece di ricostruire il file da zero.
-            _per_agent_legacy = data.get("per_agent")
-            if _per_agent_legacy:
-                logger.info(
-                    "usage.json contiene 'per_agent' (%d voci) di un'installazione "
-                    "precedente -- non piu' letto ne' scritto da questa versione.",
-                    len(_per_agent_legacy),
-                )
-        except Exception as exc:
-            logger.warning("Failed to load usage from %s: %s", self._usage_path, exc)
-
-    def _save_usage(self) -> None:
-        if not self._usage_path:
-            return
-        tmp = self._usage_path + ".tmp"
-
-        def _write() -> None:
-            with self._save_lock:
-                try:
-                    # fix round 1 (Important 2 della review indipendente):
-                    # lettura-modifica-scrittura -- stessa mossa e stesso
-                    # motivo del commento gemello in claude_runner.py (la
-                    # vecchia versione cancellava silenziosamente `per_agent`
-                    # al primo save dopo un upgrade, il contrario esatto di
-                    # quanto dichiarato in `_load_usage`).
-                    disk_data: dict = {}
-                    if os.path.exists(self._usage_path):
-                        try:
-                            with open(self._usage_path, encoding="utf-8") as f:
-                                disk_data = json.load(f)
-                        except Exception as exc:
-                            logger.warning(
-                                "usage.json illeggibile prima del save, si riparte da zero "
-                                "(chiavi sconosciute di un file corrotto non recuperabili): %s",
-                                exc,
-                            )
-                            disk_data = {}
-                    disk_data.update({
-                        "schema_version": 1,
-                        "total_input_tokens": self.total_input_tokens,
-                        "total_output_tokens": self.total_output_tokens,
-                        "total_requests": self.total_requests,
-                        "last_reset": self.usage_last_reset,
-                        "total_cost_usd": self.total_cost_usd,
-                        "total_rate_limit_errors": self.total_rate_limit_errors,
-                    })
-                    os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
-                    with open(tmp, "w", encoding="utf-8") as f:
-                        json.dump(disk_data, f, indent=2)
-                    os.replace(tmp, self._usage_path)
-                except Exception as exc:
-                    logger.error("Failed to save usage to %s: %s", self._usage_path, exc)
-
-        try:
-            loop = asyncio.get_running_loop()
-            loop.run_in_executor(None, _write)
-        except RuntimeError:
-            _write()
-
-    def reset_usage(self) -> None:
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
-        self.total_requests = 0
-        self.total_cost_usd = 0.0
-        self.total_rate_limit_errors = 0
-        self.usage_last_reset = datetime.now(timezone.utc).isoformat()
-        self._save_usage()
 
     # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
     # `reset_chatbot_usage` sono usciti -- stessa mossa e stessa storia del
@@ -439,10 +350,6 @@ class OpenAICompatRunner:
         out = getattr(usage, "completion_tokens", 0) or 0
         prices = _prezzo(model)
         cost = (inp * prices["input"] + out * prices["output"]) / 1_000_000
-        self.total_input_tokens += inp
-        self.total_output_tokens += out
-        self.total_cost_usd += cost
-        self._save_usage()
 
         # OpenRouter dichiara il costo VERO in ogni risposta -- `usage.cost`,
         # sempre presente, anche in streaming (Usage Accounting, verificato
@@ -665,7 +572,6 @@ class OpenAICompatRunner:
             )
 
         self.last_tool_calls = []
-        self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
 
@@ -777,7 +683,6 @@ class OpenAICompatRunner:
                         len(response.choices[0].message.tool_calls or []) if response.choices else 0,
                     )
             except _openai.RateLimitError as exc:
-                self.total_rate_limit_errors += 1
                 self._scrivi_rifiuto(effective_model)
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
@@ -994,7 +899,6 @@ class OpenAICompatRunner:
             return
 
         self.last_tool_calls = []
-        self.total_requests += 1
 
         effective_model = self._resolve_model(model, agent_type)
         # Stesso ordine di `chat()` qui sopra: blocchi stabili, poi il
@@ -1057,7 +961,6 @@ class OpenAICompatRunner:
                 try:
                     stream = await self._client.chat.completions.create(**kwargs)
                 except _openai.RateLimitError as exc:
-                    self.total_rate_limit_errors += 1
                     self._scrivi_rifiuto(effective_model)
                     logger.error("OpenAI rate limit (stream): %s", exc)
                     upstream = parse_upstream_rate_limit(exc)
