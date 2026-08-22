@@ -29,6 +29,17 @@ proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
 `costruisci_dispatcher_strumenti(app)`, la stessa funzione del turno sincrono.
 
+**Dalla fetta «le promesse seguono la catena» (22/08/2026) e' consapevole del
+TURNO.** Quando il job che il ponte sta servendo e' un `kind="promessa"`, la
+`--mcp-config` porta `X-HIRIS-Promessa`, questa rotta lo VERIFICA contro una
+promessa `in_corso`, e per quel turno serve `strumenti_promessa()` dispacciando
+con `DispatcherPromessa`. Non incrina niente di quanto scritto qui sopra: sono
+gli STESSI due oggetti del ramo sincrono, e `strumenti_promessa()` filtra le
+definizioni di `STRUMENTI_CONOSCENZA` invece di riscriverle. Senza questo, un
+turno di promessa sul ponte non avrebbe `concludi` -- cioe' nessun modo di
+finire -- e vedrebbe `esegui`, cioe' potrebbe toccare la casa senza nessuno
+davanti.
+
 **E' anche un canale di azione, dalla fetta «comandare».** Fino a quel momento
 qui si leggeva «gli strumenti restano quattro e nessuno tocca Home Assistant --
 HIRIS conosce e non agisce»: era vero, e ha smesso di esserlo su entrambe le
@@ -64,6 +75,7 @@ from aiohttp import web
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
 from ..version import read_version
 from .handlers_chat import costruisci_dispatcher_strumenti
+from ..schedulatore.turno import DispatcherPromessa, strumenti_promessa
 
 logger = logging.getLogger(__name__)
 
@@ -200,16 +212,47 @@ def _errore(codice: int, messaggio: str, id_richiesta=None, *, stato: int = 200)
     )
 
 
-def catalogo_mcp() -> list[dict]:
-    """`STRUMENTI_CONOSCENZA` nella grafia di MCP: `input_schema` -> `inputSchema`.
+def _promessa_del_turno(request: web.Request) -> str:
+    """L'id della promessa che questo turno sta mantenendo, oppure `""`.
+
+    `X-HIRIS-Promessa` e' l'intestazione che `agent/runner.py::config_mcp`
+    aggiunge alla `--mcp-config` quando il job che il ponte sta servendo e' un
+    `kind="promessa"`. Dice QUALE turno sta parlando -- non e'
+    un'autenticazione, che resta il token interno (vedi il docstring in cima a
+    questo modulo).
+
+    Proprio perche' non autentica, si VERIFICA: un id che non corrisponde a una
+    promessa `in_corso` non vale niente. Senza questo controllo l'intestazione
+    sarebbe un modo per farsi servire un catalogo diverso -- quello che contiene
+    `concludi` -- mostrando un identificatore qualunque.
+
+    Fetta «le promesse seguono la catena» (22/08/2026).
+    """
+    ident = (request.headers.get("X-HIRIS-Promessa") or "").strip()
+    if not ident:
+        return ""
+    archivio = request.app.get("promesse")
+    if archivio is None:
+        return ""
+    riga = archivio.leggi(ident)
+    return ident if riga and riga.get("stato") == "in_corso" else ""
+
+
+def catalogo_mcp(definizioni: list[dict] | None = None) -> list[dict]:
+    """Un catalogo di strumenti nella grafia di MCP: `input_schema` -> `inputSchema`.
 
     Trasformazione **meccanica**, e deve restare tale: nessun testo nuovo,
     nessuna descrizione riscritta, nessun nome aggiunto o tolto. Le altre chiavi
     passano invariate, cosi' che una chiave nuova in `casa/strumenti.py` arrivi
     qui da sola invece di essere dimenticata.
+
+    Il parametro serve al turno di una promessa, che ha un catalogo suo
+    (`strumenti_promessa()`: i quattro lettori piu' `concludi`). E' la STESSA
+    trasformazione, non una seconda: due funzioni che riformattano cataloghi
+    sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
     voci: list[dict] = []
-    for definizione in STRUMENTI_CONOSCENZA:
+    for definizione in (STRUMENTI_CONOSCENZA if definizioni is None else definizioni):
         voce = {chiave: valore for chiave, valore in definizione.items()
                 if chiave != "input_schema"}
         if "input_schema" in definizione:
@@ -378,6 +421,15 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
     # qui a indovinare.
     dispatcher = costruisci_dispatcher_strumenti(request.app)
+    id_promessa = _promessa_del_turno(request)
+    if id_promessa:
+        # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
+        # `SOLA_LETTURA` e' un elenco di AMMISSIONE, e con due implementazioni
+        # uno strumento nuovo che scrive entrerebbe da solo in una delle due il
+        # giorno in cui qualcuno lo aggiunge alla chat. `concludi` non esiste
+        # nel dispatcher della chat: lo serve il wrapper, ed e' li' che il
+        # turno finisce.
+        dispatcher = DispatcherPromessa(dispatcher)
     risultato = await dispatcher.dispatch(nome, argomenti)
 
     contenuto: dict = {
@@ -494,7 +546,15 @@ async def handle_mcp(request: web.Request) -> web.Response:
                 "serverInfo": {"name": NOME_SERVER_MCP, "version": read_version()},
             })
         if metodo == "tools/list":
-            return _risposta(id_richiesta, {"tools": catalogo_mcp()})
+            _promessa = _promessa_del_turno(request)
+            # Il turno di una promessa vede il catalogo della promessa:
+            # i quattro lettori piu' `concludi`, che li' e' l'unico modo
+            # in cui il turno puo' finire. Le definizioni sono le STESSE
+            # di `STRUMENTI_CONOSCENZA` (strumenti_promessa le filtra, non
+            # le riscrive), quindi una descrizione migliorata vale su
+            # entrambe le strade.
+            return _risposta(id_richiesta, {"tools": catalogo_mcp(
+                strumenti_promessa() if _promessa else None)})
         if metodo == "tools/call":
             return await _chiama_strumento(request, corpo.get("params") or {}, id_richiesta)
         return _errore(
