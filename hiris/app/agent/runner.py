@@ -175,7 +175,8 @@ def nomi_mcp() -> tuple[str, ...]:
     return tuple(f"{prefisso}{d['name']}" for d in STRUMENTI_CONOSCENZA)
 
 
-def config_mcp(base_url: str, token: str, id_turno: str = "") -> str:
+def config_mcp(base_url: str, token: str, id_turno: str = "",
+               id_promessa: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
     `id_turno` (Task 6 della fetta, facoltativo e vuoto per default) diventa
@@ -236,6 +237,20 @@ def config_mcp(base_url: str, token: str, id_turno: str = "") -> str:
     }
     if id_turno:
         intestazioni["X-HIRIS-Turno"] = id_turno
+    # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
+    # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
+    # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
+    # `strumenti_promessa()` (i quattro lettori piu' `concludi`) e dispaccia
+    # con `DispatcherPromessa`. Come `X-HIRIS-Turno` qui sopra NON e'
+    # un'autenticazione -- quella resta il token -- e per questo la rotta la
+    # VERIFICA contro una promessa `in_corso` invece di crederle.
+    #
+    # Viaggia nell'`argv` come tutto il resto della mcp-config: l'id di una
+    # promessa non e' un segreto, ma la disciplina di redazione dell'eco
+    # (`reda_segreti` su `forme_del_token`) resta quella di sempre, e questa
+    # chiave non la indebolisce -- non contiene il token.
+    if id_promessa:
+        intestazioni["X-HIRIS-Promessa"] = id_promessa
     return json.dumps({
         "mcpServers": {
             _nome_server_mcp(): {
@@ -1083,6 +1098,10 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # un'autenticazione (quella resta il token interno negli stessi header) e
     # non va scambiata per tale -- vedi il docstring di `config_mcp`.
     id_turno = secrets.token_urlsafe(9)
+    # Fetta «le promesse seguono la catena»: un job `kind="promessa"` porta
+    # l'id della promessa che questo turno sta mantenendo. Vuoto per un turno
+    # di chat -- e' la stessa macchina, con un contenuto diverso.
+    id_promessa = (context.get("promessa_id") or "") if isinstance(context, dict) else ""
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
@@ -1210,7 +1229,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # turno (mintato una volta sola sopra, prima di questa funzione): e'
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
-        mcp_config = config_mcp(base_url, token, id_turno) if strumenti_attivi else ""
+        mcp_config = (config_mcp(base_url, token, id_turno, id_promessa)
+                      if strumenti_attivi else "")
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono
         # divergere: se un giorno queste due righe si allontanano, e' li' che
@@ -1414,7 +1434,22 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     `handle_reasoning_submit` (api/handlers_reasoning.py) la registra e
     basta: non attua piu' nulla da fetta E3 Task 9."""
     kind = (job or {}).get("kind")
-    if kind == "chat":
+    if kind in ("chat", "promessa"):
+        # Un turno di promessa E' un turno: stessa sonda degli strumenti,
+        # stesso ritentativo, stessa `verifica_init`, stessa redazione. Cio'
+        # che cambia e' il CONTENUTO -- la domanda al posto della
+        # conversazione, il prompt del turno di promessa al posto di quello
+        # della chat, e l'id della promessa nella mcp-config -- e il contenuto
+        # arriva tutto dal contesto del job (`schedulatore/turno.
+        # _accoda_al_ponte`). Un `_reason_promessa` gemello avrebbe duplicato
+        # trecento righe di macchinario per cambiare tre stringhe: e' la
+        # «funzione doppia» che CLAUDE.md vieta, e la copia sarebbe rimasta
+        # indietro alla prima correzione fatta di qua.
+        #
+        # Il nome della funzione resta `_reason_chat` per non toccare
+        # settantuno riferimenti scritti in prosa nei commenti di questo file
+        # e di `prompts.py`: il churn supererebbe il chiarimento. Il docstring
+        # dice cosa serve davvero.
         # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): il client e
         # la base_url del giro passano di qui SENZA essere ricostruiti. La sonda
         # degli strumenti deve girare sullo STESSO `httpx.Client` del claim e

@@ -374,8 +374,12 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
 
     contesto = coda.accodati[0]["context"]
     assert contesto["promessa_id"] == "p1"
-    assert contesto["domanda"]
-    assert "system_prompt" in contesto and contesto["system_prompt"]
+    # Le chiavi che il turno del ponte legge DAVVERO: se il job ne portasse
+    # altre, sarebbero dati scritti che nessuno interroga.
+    assert contesto["history"][0]["role"] == "user"
+    assert "fra un'ora verifica la temperatura" in contesto["history"][0]["content"]
+    assert "e' aumentata?" in contesto["history"][0]["content"]
+    assert "mantenendo una promessa" in contesto["system_prompt"]
 
 
 @pytest.mark.asyncio

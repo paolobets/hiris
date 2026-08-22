@@ -269,8 +269,13 @@ def _accoda_al_ponte(app, promessa: dict) -> dict:
         {"promessa_id": promessa["id"]},
         {
             "promessa_id": promessa["id"],
-            "frase": promessa.get("frase") or "",
-            "domanda": _domanda(promessa),
+            # `history` e `system_prompt` sono le chiavi che il turno del
+            # ponte legge davvero (`agent/runner._reason_chat` ->
+            # `prompts.build_chat_messages`): un turno di promessa e' un turno
+            # con un contenuto diverso, non una seconda macchina. La domanda
+            # entra come l'unico messaggio dell'utente -- che e' esattamente
+            # cio' che e': qualcuno, tempo fa, ha chiesto questo.
+            "history": [{"role": "user", "content": _domanda(promessa)}],
             "system_prompt": _prompt_di_sistema(),
             "contesto": nucleo,
         },
