@@ -40,6 +40,23 @@ ORIGINI_UMANE = ("pagina",)
 
 _GESTI = ("crea", "modifica", "cancella")
 
+# Gli stati interni (snake_case) tradotti per una frase rivolta all'utente.
+# «applicata», «rifiutata» e «scaduta» sono gia' parole italiane leggibili
+# cosi' come sono; «in_corso» no -- e' l'unico che il round 3 della review ha
+# trovato a fuoriuscire grezzo in un messaggio d'errore. `.get(stato, stato)`
+# tiene la mappa un ripiego, non un obbligo di completezza: uno stato nuovo
+# non ancora tradotto resta comunque leggibile, solo con l'underscore.
+_STATO_LEGGIBILE = {
+    "applicata": "applicata",
+    "rifiutata": "rifiutata",
+    "scaduta": "scaduta",
+    "in_corso": "in corso",
+}
+
+
+def _stato_leggibile(stato: str) -> str:
+    return _STATO_LEGGIBILE.get(stato, stato)
+
 
 class Officina:
     def __init__(self, ha, archivio, cronaca) -> None:
@@ -246,7 +263,7 @@ class Officina:
         if proposta is None:
             return {"errore": "non ho nessuna proposta con quell'identificatore."}
         if proposta["stato"] != "in_attesa":
-            return {"errore": f"quella proposta e' gia' {proposta['stato']}."}
+            return {"errore": f"quella proposta e' gia' {_stato_leggibile(proposta['stato'])}."}
         cancello = self._cancello(proposta, origine, turno)
         if cancello is not None:
             return {"errore": cancello}
@@ -511,6 +528,14 @@ class Officina:
         # letteralmente lo stesso turno), e la riga resterebbe `in_attesa` a
         # bruciare un posto del tetto di 20 per sette giorni -- venti
         # tentativi bloccherebbero le proposte di tutto il prodotto.
+        if not turno:
+            # Senza un turno riconoscibile questa proposta non sara' MAI
+            # confermabile da un'origine non umana (`_cancello`, IMPORTANT 1
+            # del round 2): l'unica strada e' la pagina, e l'anteprima
+            # restituita deve dirlo -- lo stesso messaggio che `applica` da'
+            # gia' in quel caso, non un'anteprima muta su un vicolo cieco.
+            anteprima += ("\nSenza un turno riconoscibile non potro' confermare da "
+                         "qui: apri la pagina Costruzioni e conferma di la'.")
         return {"proposta_id": proposta["id"], "anteprima": anteprima}
 
 
@@ -523,15 +548,26 @@ def _forma_invalida(intento: dict) -> str | None:
     lasciati esplodere piu' sotto (`_seme_da` su un `alias` non hashabile con
     `TypeError: unhashable type`, `helper.get(...)` su una stringa con
     `AttributeError`).
+
+    **`chiave` e `campi` (round 3 della review, IMPORTANT 6 chiuso solo a
+    meta').** `"chiave": 1771` invece di `"1771"` e' l'errore di forma piu'
+    probabile che un modello faccia su questo campo: essendo un intero
+    truthy, arriva intatto a `HAClient._CHIAVE_RE.match(chiave or "")` (l'`or`
+    sostituisce solo i valori falsy) e solleva `TypeError`. `campi` non
+    testuale-a-dizionario arriva a `forme.componi_script`, che fa
+    `dict(campi)` -- `ValueError` su una stringa, `TypeError` su un intero.
     """
-    for chiave in ("alias", "descrizione", "frase"):
-        valore = intento.get(chiave)
+    for campo in ("alias", "descrizione", "frase", "chiave"):
+        valore = intento.get(campo)
         if valore is not None and not isinstance(valore, str):
-            return f"«{chiave}» deve essere testo, non {type(valore).__name__}."
-    for chiave in ("innesco", "condizioni", "azioni", "stati", "helper", "parametri"):
-        valore = intento.get(chiave)
+            return f"«{campo}» deve essere testo, non {type(valore).__name__}."
+    for campo in ("innesco", "condizioni", "azioni", "stati", "helper", "parametri"):
+        valore = intento.get(campo)
         if valore is not None and not isinstance(valore, list):
-            return f"«{chiave}» deve essere una lista, non {type(valore).__name__}."
+            return f"«{campo}» deve essere una lista, non {type(valore).__name__}."
+    campi = intento.get("campi")
+    if campi is not None and not isinstance(campi, dict):
+        return f"«campi» deve essere un dizionario, non {type(campi).__name__}."
     for voce in intento.get("helper") or []:
         if not isinstance(voce, dict) or not isinstance(voce.get("dominio"), str):
             return "ogni helper deve essere un dizionario con un «dominio» testuale."

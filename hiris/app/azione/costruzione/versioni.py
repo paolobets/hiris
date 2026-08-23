@@ -28,6 +28,14 @@ from ...storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
 
+# L'insieme «in sospeso» -- stessa forma di `STATI_SOSPESO` in
+# `schedulatore/promessa.py`, per lo stesso motivo: una proposta rivendicata
+# (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
+# pendenti ne' smettere di contare contro il tetto nella finestra fra
+# `rivendica` e la transizione finale (`applicata`/`rifiutata`).
+STATI_SOSPESO = ("in_attesa", "in_corso")
+_SOSPESI_SQL = ",".join("'%s'" % s for s in STATI_SOSPESO)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
     id TEXT PRIMARY KEY,
@@ -107,8 +115,15 @@ class ArchivioCostruzioni:
             # questa riga la scadenza sarebbe scritta e mai eseguita -- una
             # regola vera solo nei test.
             self._scadi(adesso)
+            # `stato IN (STATI_SOSPESO)`, non solo `in_attesa`: una proposta
+            # rivendicata (`in_corso`) e' ancora in sospeso, e deve continuare
+            # a occupare un posto sotto il tetto -- se contasse solo
+            # `in_attesa`, due `applica` in corsa potrebbero far salire il
+            # numero vero di proposte in volo oltre il tetto nella finestra
+            # fra `rivendica` e la transizione finale.
             aperte = self._conn.execute(
-                "SELECT count(*) FROM costruzioni WHERE stato='in_attesa'").fetchone()[0]
+                "SELECT count(*) FROM costruzioni WHERE stato IN (%s)"
+                % _SOSPESI_SQL).fetchone()[0]
             if aperte >= self.MAX_IN_ATTESA:
                 return {"errore": (f"ci sono gia' {aperte} proposte in attesa (il tetto e' "
                                    f"{self.MAX_IN_ATTESA}): decidi quelle prima di farne altre.")}
@@ -130,9 +145,13 @@ class ArchivioCostruzioni:
         return None if r is None else _riga(r)
 
     def elenca(self, *, solo_in_attesa: bool = False, limite: int = 200) -> list[dict]:
+        """`solo_in_attesa=True` elenca le pendenti -- `stato IN
+        (STATI_SOSPESO)`, non solo `in_attesa`: una proposta rivendicata
+        (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco
+        nella finestra fra `rivendica` e la transizione finale."""
         sql = "SELECT * FROM costruzioni"
         if solo_in_attesa:
-            sql += " WHERE stato='in_attesa'"
+            sql += " WHERE stato IN (%s)" % _SOSPESI_SQL
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             righe = self._conn.execute(sql, (int(limite),)).fetchall()
@@ -161,6 +180,51 @@ class ArchivioCostruzioni:
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
         return {"id": ident, "stato": "in_corso"}
+
+    def risana(self, *, adesso: float) -> int:
+        """Le proposte rimaste `in_corso` al riavvio: chiuse, non ripescate.
+
+        Stessa forma di `ArchivioPromesse.risana` (`schedulatore/archivio.py`):
+        una riga `in_corso` all'avvio significa una cosa sola, l'add-on si e'
+        fermato fra `rivendica` e la transizione finale (`applica` non ha
+        fatto in tempo a chiamare `segna_applicata` o `segna_rifiutata`).
+
+        **Senza questa chiusura la riga resterebbe un fantasma per sempre**:
+        con `rivendica` a farla uscire da `in_attesa`, nessun altro percorso
+        del modulo la riporta a uno stato terminale -- non `_scadi` (filtra
+        su `stato='in_attesa'`), non un secondo `rivendica` (la sua UPDATE e'
+        anch'essa `WHERE stato='in_attesa'`), non l'utente (ogni `applica`
+        successiva la troverebbe gia' "in corso" e rifiuterebbe). Invisibile
+        a `elenca(solo_in_attesa=True)` PRIMA di questa correzione, non piu'
+        adesso che quella query legge `STATI_SOSPESO` -- ma restare `in_corso`
+        per sempre resterebbe comunque un fantasma: mai scaduta, sempre
+        contata contro il tetto, cancellata in silenzio dalla potatura dopo
+        novanta giorni senza che nessuno abbia mai saputo com'e' andata.
+
+        **Non si riprova a scrivere.** Dopo un riavvio a meta' non sappiamo
+        se Home Assistant abbia gia' ricevuto la scrittura: ripeterla
+        rischierebbe un doppione, non ripeterla rischierebbe di perdere una
+        modifica riuscita -- e indovinare in una direzione o nell'altra
+        sarebbe peggio che dirlo. Si dichiara **l'incertezza**, non un esito.
+
+        Va chiamata all'avvio (dal Task 8, che monta l'officina), PRIMA che
+        una nuova `applica` possa rivendicare qualcosa.
+
+        Restituisce quante righe ha chiuso.
+        """
+        motivo = ("l'add-on si e' riavviato mentre la stavo applicando: non so "
+                  "se la scrittura sia arrivata a Home Assistant.")
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE costruzioni SET stato='rifiutata', aggiornata_ts=?, motivo=? "
+                "WHERE stato='in_corso'",
+                (adesso, motivo))
+            self._conn.commit()
+            quante = cur.rowcount
+        if quante:
+            logger.warning("costruzioni: %d proposte erano in_corso all'avvio, "
+                           "risanate a rifiutata (non riprovate)", quante)
+        return quante
 
     def segna_applicata(self, ident: str, *, adesso: float,
                         esecuzione_id: str | None) -> dict:

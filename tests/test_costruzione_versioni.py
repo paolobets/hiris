@@ -168,3 +168,40 @@ def test_segna_applicata_transita_anche_da_in_corso(archivio):
     assert "errore" not in esito
     assert archivio.leggi(ident)["stato"] == "applicata"
 
+
+def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
+    """Se l'add-on muore fra `rivendica` e la transizione finale, la riga
+    resterebbe `in_corso` per sempre -- un fantasma senza via d'uscita
+    (mai scaduta, mai piu' rivendicabile). `risana()` la chiude dichiarando
+    l'incertezza, non un esito: dopo un riavvio a meta' non si sa se Home
+    Assistant abbia gia' ricevuto la scrittura."""
+    ident = _proponi(archivio)["id"]
+    archivio.rivendica(ident, adesso=ADESSO + 1)
+
+    quante = archivio.risana(adesso=ADESSO + 100)
+
+    assert quante == 1
+    riga = archivio.leggi(ident)
+    assert riga["stato"] == "rifiutata"
+    assert "riavviato" in riga["motivo"]
+    # Non riparte: dopo `risana` non e' piu' rivendicabile ne' scaduta.
+    assert "errore" in archivio.rivendica(ident, adesso=ADESSO + 200)
+
+
+def test_una_proposta_in_corso_compare_fra_le_pendenti_e_conta_contro_il_tetto(archivio):
+    """Una proposta rivendicata (`in_corso`) e' ancora in sospeso, non
+    conclusa: non deve sparire dall'elenco delle pendenti ne' smettere di
+    occupare un posto sotto il tetto nella finestra fra `rivendica` e la
+    transizione finale -- altrimenti due `applica` in corsa potrebbero far
+    salire il numero vero di proposte in volo oltre il tetto dichiarato."""
+    ident = _proponi(archivio)["id"]
+    archivio.rivendica(ident, adesso=ADESSO + 1)
+
+    pendenti = [r["id"] for r in archivio.elenca(solo_in_attesa=True)]
+    assert pendenti == [ident]
+
+    for n in range(ArchivioCostruzioni.MAX_IN_ATTESA - 1):
+        assert "errore" not in _proponi(archivio, chiave=f"altra{n}")
+    esito = _proponi(archivio, chiave="una_di_troppo")
+    assert "id" not in esito, "in_corso deve continuare a contare per il tetto"
+

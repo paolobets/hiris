@@ -1,5 +1,6 @@
 """L'officina: l'unico punto che scrive CONFIGURAZIONE su Home Assistant."""
 import os
+import re
 
 import pytest
 
@@ -8,6 +9,14 @@ from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
 from hiris.app.azione.cronaca import Cronaca
 
 ADESSO = 1_756_000_000.0
+
+# La stessa guardia di `HAClient._CHIAVE_RE` (hiris/app/proxy/ha_client.py):
+# `chiave or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
+# vuota -- un intero o un dizionario, essendo truthy, arrivano intatti a
+# `.match()`, che solleva `TypeError` su qualunque cosa non sia str/bytes.
+# Una finta che accettasse una chiave non testuale nasconderebbe esattamente
+# il difetto che il cliente vero produce (review round 3, IMPORTANT 6).
+_CHIAVE_RE_FINTA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class FintoHA:
@@ -56,6 +65,13 @@ class FintoHA:
     async def leggi_configurazione(self, dominio, chiave):
         if "leggi" in self._override:
             return self._override["leggi"]
+        if not _CHIAVE_RE_FINTA.match(chiave or ""):
+            # Fedele a `HAClient._CHIAVE_RE.match(chiave or "")`: una chiave
+            # falsy (None, "") diventa "" e fallisce il match normalmente; una
+            # chiave truthy non testuale (un intero, un dizionario) arriva
+            # intatta a `.match()` e solleva `TypeError` -- lo stesso crash
+            # del client vero, non nascosto da una finta piu' permissiva.
+            return {"errore": "la chiave non ha una forma ammessa"}
         if chiave in self.esistenti:
             return {"corpo": {"id": chiave, "alias": "com'era"}}
         return {"assente": True}
@@ -439,9 +455,19 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
     vero, dove la lettura iniziale non e' piu' aggiornata nell'istante in cui
     la si confronta con l'esito di una richiesta concorrente. L'unica difesa
     possibile e' l'UPDATE atomica dentro `applica`, non il controllo sullo
-    stato gia' letto in testa alla funzione."""
+    stato gia' letto in testa alla funzione.
+
+    L'intento porta un `helper` apposta (review round 3, punto 3): creare un
+    helper E' una scrittura su Home Assistant, ed e' quella la cui disfatta
+    e' inaffidabile. Se la rivendicazione si spostasse DOPO il ciclo degli
+    helper (invece che prima, come deve stare), due `applica` simultanee
+    creerebbero entrambe l'helper prima che una delle due trovi la
+    rivendicazione gia' presa -- il perdente uscirebbe sull'errore di
+    rivendicazione senza mai chiamare `_disfa`. `ha.salvate == []` da solo
+    non lo vedrebbe: serve anche `ha.helper_creati == []`."""
     officina, ha, archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
+    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
     proposta_stantia = archivio.leggi(p["proposta_id"])
     assert proposta_stantia["stato"] == "in_attesa"
     # Un'altra richiesta rivendica per prima: il DB passa a `in_corso`.
@@ -453,6 +479,7 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
                                    adesso=ADESSO + 60)
     assert "errore" in esito
     assert ha.salvate == []
+    assert ha.helper_creati == []
 
 
 @pytest.mark.asyncio
@@ -531,6 +558,35 @@ async def test_un_helper_che_non_e_un_dizionario_si_rifiuta_invece_di_esplodere(
 
 
 @pytest.mark.asyncio
+async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
+    """IMPORTANT 6 (round 3, chiuso a meta' nel round 2): `"chiave": 1771`
+    invece di `"1771"` e' l'errore di forma piu' probabile che un modello
+    faccia su questo campo -- `HAClient._CHIAVE_RE.match(chiave or "")`
+    riceve un intero intatto (e' truthy: `or ""` non lo tocca) e solleva
+    `TypeError`. La finta ora e' fedele su questo punto (vedi
+    `FintoHA.leggi_configurazione`), quindi questo test misura il codice
+    vero, non un fake troppo permissivo."""
+    officina, ha, archivio, _ = banco
+    esito = await officina.proponi(_intento(gesto="modifica", chiave=1771),
+                                   origine="chat", turno="t1", adesso=ADESSO)
+    assert "errore" in esito
+    assert "chiave" in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_dei_campi_che_non_sono_un_dizionario_si_rifiuta_invece_di_esplodere(banco):
+    """IMPORTANT 6 (round 3): `forme.componi_script` fa `dict(campi)` --
+    `dict("abc")` solleva `ValueError`, `dict(5)` solleva `TypeError`."""
+    officina, ha, archivio, _ = banco
+    esito = await officina.proponi(_intento(dominio="script", campi="abc"),
+                                   origine="chat", turno="t1", adesso=ADESSO)
+    assert "errore" in esito
+    assert "campi" in esito["errore"]
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
 async def test_cancellare_chiama_cancella_configurazione_con_la_chiave_giusta(banco):
     """IMPORTANT 7: nessun test esercitava il gesto distruttivo."""
     officina, ha, archivio, _ = banco
@@ -555,3 +611,35 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
                                       adesso=ADESSO + 120)
     assert esito["applicata"] is True
     assert ha.cancellate == [("automation", chiave_nata)]
+
+
+# ==== Review 2026-08-23 round 3: 4 e 2 (i due minori) =====================
+
+@pytest.mark.asyncio
+async def test_lo_stato_in_corso_non_esce_come_token_grezzo(banco):
+    """Minore 1: «in_corso» e' un token interno (snake_case), non una parola
+    italiana da mostrare dentro una frase all'utente."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    archivio.rivendica(p["proposta_id"], adesso=ADESSO + 1)
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+    assert "errore" in esito
+    assert "in_corso" not in esito["errore"]
+    assert "in corso" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
+    """Minore 2: se il chiamante di `ripristina` non porta un'identita' di
+    turno, la proposta appena creata non sara' MAI confermabile da un'origine
+    non umana (IMPORTANT 1, round 2) -- e l'anteprima restituita deve dirlo,
+    come gia' fa il messaggio del cancello in `applica`."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
+                               origine="chat", turno="t1", adesso=ADESSO)
+    await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
+    esito = await officina.ripristina(p["proposta_id"], origine="chat", turno=None,
+                                      adesso=ADESSO + 120)
+    assert "proposta_id" in esito
+    assert "pagina" in esito["anteprima"].lower()
