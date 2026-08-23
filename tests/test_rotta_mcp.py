@@ -648,9 +648,9 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
     chiamate = []
     vero = handlers_mcp.costruisci_dispatcher_strumenti
 
-    def _spia(app):
+    def _spia(app, turno=None):
         chiamate.append(app)
-        return vero(app)
+        return vero(app, turno=turno)
 
     monkeypatch.setattr(handlers_mcp, "costruisci_dispatcher_strumenti", _spia)
     client, _ = rotta

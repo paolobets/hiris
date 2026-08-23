@@ -204,6 +204,15 @@ _GUIDA_SENZA_STRUMENTI = (
 #   istante futuro, verificata SUBITO contro questa installazione -- il testo
 #   lo dice esplicitamente (ADESSO / PIU' TARDI) perche' il modello non lo
 #   confonda con l'unico strumento che scrive nella casa nel turno stesso.
+#
+# fetta «costruire» (Task 9). Da 9 a 11: entrano `costruisci` e `conferma` --
+#   di nuovo lo stesso ricollegamento nome nudo -> nome prefissato, non un
+#   secondo giro di logica. Le REGOLE del giro in due tempi (mostra
+#   l'anteprima, aspetta il turno successivo, non concatenare) stanno SOLO in
+#   `claude_runner.BASE_REGOLE_STRUMENTI`, che questo ramo compone comunque
+#   (vedi `build_chat_messages`): ripeterle qui sarebbe il secondo posto da
+#   tenere allineato che questo modulo esiste per evitare. Qui basta che il
+#   modello sappia CON CHE NOME chiamarli, come per gli altri nove.
 _GUIDA_CON_STRUMENTI = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
@@ -217,10 +226,14 @@ _GUIDA_CON_STRUMENTI = (
     "contro questa casa, non quando arriva il momento di mantenerla), "
     "`mcp__hiris__promesse` per sapere cosa e' ancora in sospeso o com'e' "
     "andata, `mcp__hiris__disdici` per annullare una promessa non ancora "
-    "mantenuta. Quando il prompt qui sopra parla di `cerca`, "
-    "`guarda`, `legami`, `ricorda`, `richiama`, `esegui`, `prometti`, "
-    "`promesse` o `disdici` parla di questi "
-    "STESSI strumenti, non di altri: usa il nome prefissato per chiamarli.\n"
+    "mantenuta, `mcp__hiris__costruisci` per proporre di creare, modificare o "
+    "cancellare un'automazione, uno script o una scena (non scrive: restituisce "
+    "un'anteprima), `mcp__hiris__conferma` per applicare quella proposta, in un "
+    "turno diverso da quello che l'ha creata. Quando il prompt qui sopra parla "
+    "di `cerca`, `guarda`, `legami`, `ricorda`, `richiama`, `esegui`, "
+    "`prometti`, `promesse`, `disdici`, `costruisci` o `conferma` parla di "
+    "questi STESSI strumenti, non di altri: usa il nome prefissato per "
+    "chiamarli.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
     "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
     "stati, valori o entita', e non dire di aver guardato, di aver preso "

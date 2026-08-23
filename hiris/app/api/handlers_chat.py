@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import secrets
 import time
 
 from aiohttp import web
@@ -49,22 +50,35 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
-def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
+def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> DispatcherStrumenti:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
-    I nove strumenti della chat (`casa/strumenti.py`) -- non il catalogo di
-    trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
+    Gli undici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
+    di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
     `guarda`, `legami`, `ricorda`, `richiama`), il sesto, `esegui`, la comanda
-    passando per la porta unica (vedi il docstring di quel modulo), e gli
-    ultimi tre (`prometti`, `promesse`, `disdici`, fetta «lo schedulatore»)
-    la impegnano per un momento futuro, passando per l'archivio delle
-    promesse (`schedulatore/archivio.py`). Il dispatcher si costruisce dagli
-    stessi oggetti dell'app che alimentano `costruisci_nucleo()`
-    (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`
-    -- lo stesso specchio dello stato vivo, non uno ricalcolato a mano -- ed e'
-    SEMPRE costruibile, anche quando archivi e porta sono assenti: i suoi
-    gestori non sollevano mai, dichiarano un `errore` per strumento invece (vedi
+    passando per la porta unica (vedi il docstring di quel modulo), tre
+    (`prometti`, `promesse`, `disdici`, fetta «lo schedulatore») la impegnano
+    per un momento futuro passando per l'archivio delle promesse
+    (`schedulatore/archivio.py`), e gli ultimi due (`costruisci`, `conferma`,
+    fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
+    nuova -- passando per l'officina (`azione/costruzione/officina.py`). Il
+    dispatcher si costruisce dagli stessi oggetti dell'app che alimentano
+    `costruisci_nucleo()` (`archivio_casa`, `archivio_memoria`,
+    `entity_cache`), piu' `porta_azione` e `officina` -- lo stesso specchio
+    dello stato vivo, non uno ricalcolato a mano -- ed e' SEMPRE costruibile,
+    anche quando archivi, porta e officina sono assenti: i suoi gestori non
+    sollevano mai, dichiarano un `errore` per strumento invece (vedi
     `DispatcherStrumenti.dispatch`).
+
+    `turno` (fetta «costruire», facoltativo e `None` per default: ogni
+    chiamante che non lo passa non cambia comportamento) e' l'identita' di
+    QUESTO turno, coniata UNA volta dal chiamante e non una per strumento --
+    serve alla guardia dell'officina, che rifiuta di confermare una proposta
+    nel turno stesso in cui e' nata. Sul ramo sincrono la conia
+    `handle_chat`/`_ripiega_sulla_catena` (`secrets.token_urlsafe(8)`, una
+    volta per richiesta); sulla rotta MCP e' `X-HIRIS-Turno`, che
+    `handlers_mcp.py` legge gia' per il tetto dei giri di strumento e
+    ripropone qui.
 
     **Perche' e' una funzione e non tre righe ripetute.** Dalla fetta «il ponte
     riceve gli strumenti» (parita' B, Task 1) i costruttori sarebbero stati DUE:
@@ -115,6 +129,13 @@ def costruisci_dispatcher_strumenti(app) -> DispatcherStrumenti:
         # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
         # `prometti`/`promesse`/`disdici`.
         promesse=app.get("promesse"),
+        # L'officina (`azione/costruzione/officina.py`, fetta «costruire»):
+        # la casa di `costruisci`/`conferma`. Sorella di `porta_azione`, non
+        # sua sostituta -- due canali diversi, spec «un canale, una porta».
+        officina=app.get("officina"),
+        # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
+        # la conia e perche' non e' mai il dispatcher stesso a farlo.
+        turno=turno,
     )
 
 
@@ -468,6 +489,12 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
     cronologia = contesto.get("history") or []
     ultimo = cronologia[-1]["content"] if cronologia else ""
     try:
+        # L'identita' di QUESTO turno, coniata UNA volta qui e non dentro il
+        # dispatcher: questa funzione risponde a UNA sola richiesta HTTP (il
+        # poll che ha scoperto la scadenza), quindi una sola identita' le
+        # basta -- vedi il docstring di `costruisci_dispatcher_strumenti` per
+        # la guardia che la usa.
+        id_turno = secrets.token_urlsafe(8)
         risposta = await runner.chat(
             user_message=ultimo,
             system_prompt=contesto.get("system_prompt", ""),
@@ -494,7 +521,7 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
             # dell'accodamento.
             thinking_budget=0,
             strumenti=STRUMENTI_CONOSCENZA,
-            dispatcher=costruisci_dispatcher_strumenti(request.app),
+            dispatcher=costruisci_dispatcher_strumenti(request.app, turno=id_turno),
         )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
@@ -794,7 +821,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = componi_contesto_chat(request.app, data_dir)
 
-    # I cinque strumenti della chat -- il perche' di ogni riga sta
+    # Gli undici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `costruisci_dispatcher_strumenti` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
@@ -809,7 +836,14 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
     # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
     # trappola stessa non esiste piu'.
-    dispatcher_strumenti = costruisci_dispatcher_strumenti(request.app)
+    #
+    # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
+    # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
+    # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
+    # basta. Serve alla guardia dell'officina (`costruisci`/`conferma`, vedi
+    # il docstring di `costruisci_dispatcher_strumenti`).
+    id_turno = secrets.token_urlsafe(8)
+    dispatcher_strumenti = costruisci_dispatcher_strumenti(request.app, turno=id_turno)
 
     # fetta "la catena diventa l'unica verita'": qui c'era
     # `agent_model = impostazioni.model`. Il campo e' uscito con la decisione

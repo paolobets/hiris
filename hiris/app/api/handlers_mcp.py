@@ -421,7 +421,16 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # protocollo. Se un giorno arrivasse, il dispatcher lo direbbe con un
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
     # qui a indovinare.
-    dispatcher = costruisci_dispatcher_strumenti(request.app)
+    #
+    # fetta «costruire»: si ripropone al dispatcher la STESSA `id_turno` gia'
+    # letta sopra da `X-HIRIS-Turno` per il tetto dei giri -- non se ne conia
+    # una seconda. E' l'identita' che la guardia dell'officina usa per
+    # rifiutare una `conferma` nello stesso turno della `costruisci` che
+    # l'ha proposta. Quando l'intestazione manca (`id_turno` e' `None`, il
+    # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
+    # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
+    # non esiste.
+    dispatcher = costruisci_dispatcher_strumenti(request.app, turno=id_turno)
     id_promessa = _promessa_del_turno(request)
     if id_promessa:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
