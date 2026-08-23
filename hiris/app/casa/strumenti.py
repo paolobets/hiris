@@ -1464,10 +1464,10 @@ class DispatcherStrumenti:
         turno dal chiamante (`api/handlers_chat.py`/`api/handlers_mcp.py`)."""
         import time as _time
         proposta_id = (argomenti or {}).get("proposta_id")
-        if not proposta_id:
+        if not isinstance(proposta_id, str) or not proposta_id.strip():
             return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
         return await self._officina.applica(
-            proposta_id, origine="chat", turno=self._turno, adesso=_time.time())
+            proposta_id.strip(), origine="chat", turno=self._turno, adesso=_time.time())
 
     def _verifica_ora(self, chiamata: dict, verifica) -> str | None:
         """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.

@@ -494,6 +494,20 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
         # poll che ha scoperto la scadenza), quindi una sola identita' le
         # basta -- vedi il docstring di `costruisci_dispatcher_strumenti` per
         # la guardia che la usa.
+        #
+        # Review indipendente (I3, fetta «costruire»): CONVERSAZIONALMENTE
+        # e' lo stesso turno del lavoro sul ponte che e' appena scaduto, ma
+        # riceve un'identita' NUOVA, diversa da quella (se mai ce n'e' stata
+        # una) che il ponte aveva coniato per quel job. Oggi non morde: la
+        # cronologia del ripiego (`contesto.get("history")`, sopra) porta
+        # solo messaggi utente/assistente, un `proposta_id` non ci arriva
+        # mai, e questo ramo non puo' quindi confermare una proposta nata sul
+        # ponte. Ma e' a un cambiamento di distanza dall'aprire il cancello
+        # in silenzio: se un giorno il contesto del ripiego portasse anche lo
+        # stato di una `costruisci` in sospeso, questa identita' nuova la
+        # renderebbe confermabile qui -- fuori dal turno che l'ha proposta,
+        # ed e' esattamente cio' che la guardia esiste per impedire. Chi
+        # tocca questo contesto deve saperlo.
         id_turno = secrets.token_urlsafe(8)
         risposta = await runner.chat(
             user_message=ultimo,

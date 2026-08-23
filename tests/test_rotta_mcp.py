@@ -644,18 +644,32 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
 @pytest.mark.asyncio
 async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monkeypatch):
     """La controprova dinamica del test qui sopra: se `handle_mcp` smettesse di
-    passare da `costruisci_dispatcher_strumenti`, questo test cadrebbe."""
+    passare da `costruisci_dispatcher_strumenti`, questo test cadrebbe.
+
+    fetta «costruire», review indipendente (I3): il cablaggio della guardia
+    non era pinnato da nessun test -- cancellare `turno=id_turno` dalla
+    chiamata in `handlers_mcp.py` avrebbe reso ogni proposta nata dal ponte
+    inconfermabile, e nessun test se ne sarebbe accorto. Qui si verifica che
+    il `turno` ricevuto dal costruttore sia DAVVERO il valore
+    dell'intestazione `X-HIRIS-Turno`, non un `None` o un valore inventato."""
     chiamate = []
     vero = handlers_mcp.costruisci_dispatcher_strumenti
 
     def _spia(app, turno=None):
-        chiamate.append(app)
+        chiamate.append((app, turno))
         return vero(app, turno=turno)
 
     monkeypatch.setattr(handlers_mcp, "costruisci_dispatcher_strumenti", _spia)
     client, _ = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-guardia-mcp"}
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
-    })
+    }, intestazioni=intestazioni)
     assert len(chiamate) == 1
+    _app_vista, turno_visto = chiamate[0]
+    assert turno_visto == "turno-guardia-mcp", (
+        "il turno che arriva al dispatcher non e' quello dell'intestazione "
+        "X-HIRIS-Turno: la guardia dell'officina riceverebbe un'identita' "
+        "sbagliata (o nessuna) e non potrebbe piu' distinguere il turno "
+        "della proposta da quello della conferma")

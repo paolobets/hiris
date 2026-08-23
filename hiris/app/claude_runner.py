@@ -256,7 +256,7 @@ BASE_REGOLE_STRUMENTI = (
     " quello che ha annunciato un istante dopo, che HIRIS aspetta apposta per un"
     " tempo breve e limitato."
     " `esegui` non scrive automazioni, script o scene — per costruirli usa"
-    " `costruisci` (vedi sotto) — e non programma niente per dopo da solo:"
+    " `costruisci` (vedi sotto) — e non programma niente per dopo:"
     " ogni sua azione nasce da una richiesta di questa conversazione.\n\n"
     "## Regole fondamentali\n"
     "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"

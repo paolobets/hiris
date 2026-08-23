@@ -27,7 +27,9 @@ la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
 `STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
-`costruisci_dispatcher_strumenti(app)`, la stessa funzione del turno sincrono.
+`costruisci_dispatcher_strumenti(app, turno=id_turno)`, la stessa funzione del
+turno sincrono -- con l'identita' di `X-HIRIS-Turno` ripropagata, dalla fetta
+«costruire».
 
 **Dalla fetta «le promesse seguono la catena» (22/08/2026) e' consapevole del
 TURNO.** Quando il job che il ponte sta servendo e' un `kind="promessa"`, la

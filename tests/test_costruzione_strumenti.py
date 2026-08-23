@@ -74,6 +74,26 @@ async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
 
 
 @pytest.mark.asyncio
+async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
+    """La proprieta' su cui si regge la guardia non e' che un turno letterale
+    combaci per coincidenza fra due test separati (i due qui sopra
+    costruiscono ciascuno un proprio `DispatcherStrumenti`, ed entrambi
+    usano "t7" per caso, non per dimostrazione): e' che LA STESSA istanza --
+    quella che il chiamante costruisce UNA volta per turno
+    (`costruisci_dispatcher_strumenti`) -- dia la stessa identita' a
+    ENTRAMBI gli strumenti quando li chiama in sequenza nello stesso turno.
+    fetta «costruire», review indipendente (I3)."""
+    officina = FintaOfficina()
+    d = _dispatcher(officina=officina, turno="stesso-turno-vero")
+    await d.dispatch("costruisci", {"gesto": "crea", "dominio": "automation"})
+    await d.dispatch("conferma", {"proposta_id": "p1"})
+    assert len(officina.chiamate) == 2
+    turno_costruisci = officina.chiamate[0][3]
+    turno_conferma = officina.chiamate[1][3]
+    assert turno_costruisci == turno_conferma == "stesso-turno-vero"
+
+
+@pytest.mark.asyncio
 async def test_senza_officina_lo_strumento_dichiara_un_errore_e_non_solleva():
     d = _dispatcher()
     esito = await d.dispatch("costruisci", {"gesto": "crea", "dominio": "automation"})

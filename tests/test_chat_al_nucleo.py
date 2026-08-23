@@ -199,6 +199,30 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
 
 
 @pytest.mark.asyncio
+async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_client, tmp_path):
+    """fetta «costruire», review indipendente (I3): il cablaggio della
+    guardia non era pinnato da nessun test sul ramo sincrono -- cancellare la
+    coniatura in `handle_chat` (`handlers_chat.py`) avrebbe reso ogni
+    proposta nata dalla chat sincrona inconfermabile (`self._turno` sarebbe
+    tornato al default `None`), e nessun test se ne sarebbe accorto.
+
+    Il dispatcher che arriva al runner e' un `DispatcherStrumenti` VERO (non
+    una finta): si legge `_turno` direttamente, la stessa via che
+    `costruisci`/`conferma` usano per passare l'identita' all'officina."""
+    client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
+
+    resp = await client.post("/api/chat", json={"message": "ciao"})
+    assert resp.status == 200
+
+    dispatcher = mock_runner.chat.call_args.kwargs["dispatcher"]
+    assert isinstance(dispatcher._turno, str) and dispatcher._turno, (
+        "il dispatcher che arriva al runner non porta un'identita' di turno "
+        "non vuota: la guardia dell'officina rifiuterebbe QUALUNQUE "
+        "`conferma` fatta dalla chat sincrona, anche in un turno successivo "
+        "a quello della `costruisci`")
+
+
+@pytest.mark.asyncio
 async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path):
     """Il buco oltre il brief: quando questo test e' stato scritto, le due
     superfici della chat sceglievano strade diverse -- la card Lovelace
