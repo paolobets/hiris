@@ -5,10 +5,13 @@ L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
-anche AGIRE su di essa -- gli strumenti sono cinque, e il quinto (`esegui`)
-chiama un servizio di Home Assistant passando per la porta unica
-(`azione/porta.py`), la stessa della chat sincrona. Le note che seguono sono la
-STORIA di come ci si e' arrivati, e sono al passato apposta: fino alla review
+anche AGIRE su di essa -- gli strumenti sono undici, lo stesso catalogo della
+chat sincrona (`casa/strumenti.py`): fra loro `esegui` chiama un servizio di
+Home Assistant passando per la porta dei servizi (`azione/porta.py`), e
+`costruisci`/`conferma` (fetta «costruire») passano per l'officina
+(`azione/costruzione/officina.py`) -- due canali, due porte, non piu' una
+sola. Le note che seguono sono la STORIA di come ci si e' arrivati, e sono al
+passato apposta: fino alla review
 totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
 era la prima cosa che un lettore di questo file trovava. La riga qui sopra ha
 appena smesso a sua volta di dire «e NON agisce» (fetta «comandare», Task 5):
@@ -86,9 +89,10 @@ parallele della stessa risposta della CLI -- vedi il commento su
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono cinque e il quinto tocca
-Home Assistant (hiris/app/casa/strumenti.py): il ponte agisce quando la sonda
-dice di si', esattamente come la chat sincrona, e per la stessa porta. Cio' che
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono undici (hiris/app/casa/
+strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
+la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
+«costruire», per quella della configurazione (`costruisci`/`conferma`). Cio' che
 resta vero e' il confine: nessuna autonomia. Ogni esecuzione nasce da una frase
 in chat -- non c'e' trigger ne' schedulazione che possa farne partire una."""
 import asyncio, json, logging, os, secrets, subprocess, time

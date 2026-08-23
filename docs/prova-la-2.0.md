@@ -16,7 +16,9 @@ invece di restare indietro.*
 Assistant piani, aree, dispositivi, entità, automazioni e script; ricorda ciò che gli
 dici; e c'è una chat per interrogarlo e per comandarlo. Accende, spegne, imposta —
 chiamando i servizi di Home Assistant, **solo** quando glielo chiedi in chat e mai
-di sua iniziativa. Non manda notifiche e non scrive automazioni.
+di sua iniziativa. Non manda notifiche. Da questa fetta può anche costruire
+un'automazione, uno script o una scena se glielo chiedi — ma solo dopo che
+confermi l'anteprima, e non scrive dashboard (§5).
 
 **Non ti viene chiesta nessuna conferma prima di un'azione, ed è voluto.** Prima la
 capacità, poi le sicurezze, in una fase pensata apposta: quello che c'è al posto
@@ -282,10 +284,10 @@ definitiva e la conferma ti mostra la frase esatta prima di procedere.
 Nessuna di queste è un difetto da segnalare. Sono scelte, e sono la ragione per cui
 questa versione esiste.
 
-- **Non costruisce.** Non crea né modifica automazioni, script, scene o dashboard.
-  Chiamare un servizio sì (`esegui`, §4): scrivere oggetti dentro Home Assistant no.
-  Questo è ciò che tornerà rifatto quando HIRIS saprà **costruire**, ed è un progetto
-  a sé.
+- **Non costruisce dashboard.** Automazioni, script e scene sono rientrati con la
+  fetta **costruire**: chiedili in chat, `costruisci` li compone e li fa validare da
+  Home Assistant, e li scrive solo quando confermi l'anteprima (`conferma`). Le
+  dashboard restano fuori.
 - **Non ti scrive mai per primo.** Niente notifiche, niente Telegram, niente
   messaggi push, niente promemoria. Parla solo quando gli parli tu.
 - **Non ragiona da solo, e non agisce da solo.** Niente agenti, niente sentinella,
