@@ -40,7 +40,13 @@ class FintoHA:
         # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
         # senza questo il finto Home Assistant direbbe sempre «non e'
         # comparsa», e il test dell'etichetta misurerebbe il fake, non il codice.
-        self.stati[0]["attributes"]["id"] = chiave
+        # Guardia aggiunta rispetto al brief: quando un test svuota `stati`
+        # apposta per simulare che l'entita' non compaia mai (vedi
+        # test_se_l_entita_non_compare_lo_dice_invece_di_dichiarare_riuscito),
+        # non c'e' nessuna voce da aggiornare -- indicizzare stati[0] a vuoto
+        # sollevava IndexError, un guasto della finta e non del codice.
+        if self.stati:
+            self.stati[0]["attributes"]["id"] = chiave
         return {"salvato": True}
 
     async def cancella_configurazione(self, dominio, chiave):
