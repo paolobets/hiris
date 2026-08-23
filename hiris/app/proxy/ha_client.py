@@ -465,15 +465,105 @@ class HAClient:
         if not extra:
             return {"errore": "niente da validare"}
         msg = await self._ws_command("validate_config", extra)
-        if msg is None:
-            return {"errore": "Home Assistant non ha risposto alla validazione"}
-        if msg.get("error"):
-            errore = msg["error"]
-            return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
-        risultato = msg.get("result")
+        esito = self._esito_ws(msg, "risultato")
+        if "errore" in esito:
+            return esito
+        risultato = esito["risultato"]
         if not isinstance(risultato, dict):
             return {"errore": "risposta in forma inattesa dalla validazione"}
         return risultato
+
+    # Gli helper che questa fetta sa creare. Sono collezioni gestite da
+    # `StorageCollectionWebsocket` di Home Assistant, che espone per ognuna
+    # `{dominio}/create`, `{dominio}/update`, `{dominio}/delete` -- e la
+    # chiave del delete porta il NOME DEL DOMINIO (`input_boolean_id`), non
+    # `id`. Non e' un dettaglio estetico: con `id` il comando viene rifiutato.
+    DOMINI_HELPER = ("input_boolean", "input_number", "input_select",
+                     "input_text", "input_datetime", "timer", "counter",
+                     "schedule")
+
+    @staticmethod
+    def _esito_ws(msg: dict | None, chiave: str) -> dict:
+        """Il `result` di un comando WS, oppure il motivo -- mai un successo muto."""
+        if msg is None:
+            return {"errore": "Home Assistant non ha risposto"}
+        if msg.get("error"):
+            errore = msg["error"]
+            return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
+        if not msg.get("success"):
+            return {"errore": "Home Assistant ha rifiutato il comando"}
+        return {chiave: msg.get("result")}
+
+    async def crea_helper(self, dominio: str, dati: dict) -> dict:
+        """Crea un helper. Primitiva nuda: un solo chiamante, l'officina.
+
+        Gli helper sono nel perimetro della fetta perche' meta' delle
+        automazioni utili ne ha bisogno (spec §3.1): un'automazione che si puo'
+        comporre ma non accendere perche' manca un `input_boolean` si ferma a
+        un passo dalla fine.
+        """
+        if dominio not in self.DOMINI_HELPER:
+            return {"errore": (f"«{dominio}» non e' un helper che so creare. "
+                               f"Helper: {', '.join(self.DOMINI_HELPER)}.")}
+        return self._esito_ws(
+            await self._ws_command(f"{dominio}/create", dict(dati)), "helper")
+
+    async def cancella_helper(self, dominio: str, helper_id: str) -> dict:
+        """Cancella un helper. Serve alla DISFATTA (spec §3.1): se l'automazione
+        viene rifiutata dopo che gli helper sono nati, l'officina li toglie."""
+        if dominio not in self.DOMINI_HELPER:
+            return {"errore": f"«{dominio}» non e' un helper che so cancellare."}
+        msg = await self._ws_command(f"{dominio}/delete", {f"{dominio}_id": helper_id})
+        esito = self._esito_ws(msg, "_")
+        return {"errore": esito["errore"]} if "errore" in esito else {"cancellato": True}
+
+    async def elenca_etichette(self) -> dict:
+        """Le etichette del registro di Home Assistant."""
+        esito = self._esito_ws(
+            await self._ws_command("config/label_registry/list"), "etichette")
+        if "errore" in esito:
+            return esito
+        righe = esito["etichette"]
+        return {"etichette": righe if isinstance(righe, list) else []}
+
+    async def crea_etichetta(self, nome: str) -> dict:
+        """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
+        QUI, nel registro di Home Assistant, e non in una tabella nostra: e'
+        un fatto che HA sa gia' tenere, e duplicarlo sarebbe la fondamenta 2
+        violata (spec §5)."""
+        return self._esito_ws(
+            await self._ws_command("config/label_registry/create", {"name": nome}),
+            "etichetta")
+
+    async def aggiungi_etichetta_a(self, entity_id: str, label_id: str) -> dict:
+        """Aggiunge un'etichetta a un'entita', SENZA togliere le altre.
+
+        `config/entity_registry/update` **sostituisce** la lista `labels`: chi
+        manda solo la propria cancella quelle che l'utente aveva messo a mano.
+        Si legge, si unisce, si riscrive.
+
+        E se la lettura non riesce **non si scrive**: «non ho letto» non e'
+        «non ce n'erano», e trattarli allo stesso modo cancellerebbe le
+        etichette dell'utente proprio quando Home Assistant sta rispondendo
+        male.
+        """
+        letto = self._esito_ws(
+            await self._ws_command("config/entity_registry/get",
+                                   {"entity_id": entity_id}),
+            "voce")
+        if "errore" in letto:
+            return {"errore": f"non ho potuto leggere le etichette di {entity_id}: "
+                              f"{letto['errore']}"}
+        voce = letto["voce"] if isinstance(letto["voce"], dict) else {}
+        attuali = voce.get("labels")
+        attuali = list(attuali) if isinstance(attuali, list) else []
+        if label_id in attuali:
+            return {"applicata": True}
+        msg = await self._ws_command(
+            "config/entity_registry/update",
+            {"entity_id": entity_id, "labels": attuali + [label_id]})
+        esito = self._esito_ws(msg, "_")
+        return {"errore": esito["errore"]} if "errore" in esito else {"applicata": True}
 
     # I cinque campi con cui Home Assistant accetta un bersaglio: sono le
     # chiavi di `cv.TARGET_FIELDS` (homeassistant/helpers/config_validation.py),
