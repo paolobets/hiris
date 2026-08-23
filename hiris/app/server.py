@@ -2820,11 +2820,18 @@ def create_app() -> web.Application:
     # da aggiungere altrove perche' queste due non saltino la protezione.
     from .api.handlers_costruzioni import (
         handle_conferma_costruzione, handle_get_costruzione,
-        handle_get_costruzioni, handle_ripristina_costruzione)
+        handle_get_costruzioni, handle_rifiuta_costruzione,
+        handle_ripristina_costruzione)
     app.router.add_get("/api/costruzioni", handle_get_costruzioni)
     app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)
     app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)
     app.router.add_post("/api/costruzioni/{id}/ripristina", handle_ripristina_costruzione)
+    # Il «no» del proprietario (Task 10-bis): stessa protezione CSRF delle
+    # due righe sopra -- il middleware la copre per METODO e prefisso, non
+    # per un elenco di rotte, quindi non c'e' niente da aggiungere altrove
+    # perche' anche questa non la salti. Non scrive su Home Assistant: si
+    # scrive nell'archivio e basta (vedi il modulo `handlers_costruzioni`).
+    app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_rifiuta_costruzione)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.

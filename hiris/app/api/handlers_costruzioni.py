@@ -1,4 +1,4 @@
-"""Le quattro rotte della pagina Costruzioni.
+"""Le cinque rotte della pagina Costruzioni.
 
 Non serializzano niente per conto proprio: la forma di una costruzione e' UNA
 e vive in `azione/costruzione/versioni.py::_riga`, gia' usata dall'archivio.
@@ -13,10 +13,17 @@ esplicitamente -- `pagina` -- e finisce nella cronaca, cosi' resta scritto chi
 ha deciso.
 
 I codici portano la distinzione che conta: 404 «non esiste», 409 «esiste ma
-non e' piu' in attesa», 503 «non disponibile» (l'archivio per le due GET,
-l'archivio o l'officina per le due POST -- vedi i messaggi qui sotto, che
-sono testo VERO e non una parafrasi). Un 400 unico avrebbe costretto la
-pagina a leggere il testo dell'errore per sapere quale dei tre mostrare.
+non e' piu' in attesa», 503 «non disponibile» (l'archivio per le due GET e
+per il rifiuto, l'archivio o l'officina per conferma e ripristino -- vedi i
+messaggi qui sotto, che sono testo VERO e non una parafrasi). Un 400 unico
+avrebbe costretto la pagina a leggere il testo dell'errore per sapere quale
+dei tre mostrare.
+
+**Il rifiuto non passa dall'officina.** Le altre due POST scrivono su Home
+Assistant; questa no -- il «no» del proprietario si scrive nell'archivio e
+basta, e farlo passare dall'officina gli darebbe la stessa superficie di
+rischio di una conferma. Non e' una quinta rotta uguale alle altre: e'
+un'assenza deliberata.
 """
 from __future__ import annotations
 
@@ -79,3 +86,22 @@ async def handle_conferma_costruzione(request: web.Request) -> web.Response:
 
 async def handle_ripristina_costruzione(request: web.Request) -> web.Response:
     return await _agisci(request, "ripristina")
+
+
+async def handle_rifiuta_costruzione(request: web.Request) -> web.Response:
+    """Il «no»: si scrive nell'archivio e basta.
+
+    Non passa dall'officina, e non e' una svista: non c'e' niente da scrivere
+    su Home Assistant, e farlo passare da li' darebbe a un rifiuto la stessa
+    superficie di rischio di una conferma.
+    """
+    archivio = _archivio(request)
+    if archivio is None:
+        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+    ident = request.match_info["id"]
+    if archivio.leggi(ident) is None:
+        return web.json_response({"errore": _NON_TROVATA}, status=404)
+    esito = archivio.segna_disdetta(ident, adesso=time.time())
+    if "errore" in esito:
+        return web.json_response(esito, status=409)
+    return web.json_response(esito)

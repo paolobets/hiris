@@ -233,6 +233,20 @@ class ArchivioCostruzioni:
     def segna_rifiutata(self, ident: str, *, adesso: float, motivo: str) -> dict:
         return self._cambia_stato(ident, "rifiutata", adesso, None, motivo)
 
+    def segna_disdetta(self, ident: str, *, adesso: float) -> dict:
+        """Il «no» del proprietario -- che NON e' un fallimento.
+
+        `rifiutata` vuol dire «ho provato e non ci sono riuscito»: validazione
+        caduta, Home Assistant che rifiuta, riavvio a meta'. Questo e' l'altro
+        caso, ed e' quello che vogliamo sia facile: l'utente ha guardato la
+        proposta e ha detto di no. Tenerli separati e' cio' che permette alla
+        pagina di non colorare di rosso l'esercizio del controllo per cui
+        l'intero giro in due tempi esiste. Stessa distinzione che lo
+        schedulatore fa gia' fra `fallita` e `disdetta`, e stessa parola.
+        """
+        return self._cambia_stato(ident, "disdetta", adesso, None,
+                                  "rifiutata dal proprietario")
+
     def _cambia_stato(self, ident: str, stato: str, adesso: float,
                       esecuzione_id: str | None, motivo: str | None) -> dict:
         with self._lock:
