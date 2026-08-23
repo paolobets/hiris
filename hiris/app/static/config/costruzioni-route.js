@@ -84,15 +84,21 @@
    "Scaduta" (ambra, non rosso: tempo passato senza decisione, non un
    fallimento) · disdetta -- il «no» del proprietario, badge NEUTRO come
    `in_attesa`, mai la faccia di `rifiutata`.
-   ADATTAMENTO rispetto al testo letterale della guida (da riportare nel
-   rapporto): la guida propone l'etichetta "Rifiutata da te" per `disdetta`.
-   Ma un test pinnato vieta che il token "rifiutata" (parola intera,
-   maiuscole/minuscole indifferenti) compaia OVUNQUE nel testo della pagina --
-   ed e' lo stesso principio della guida, applicato alla lettera: se il
-   proprietario legge la parola "rifiutata" su UNA riga che e' invece il suo
-   "no", la distinzione per cui questa tabella esiste e' gia' persa, non
-   importa quanto sia neutro il colore attorno. L'etichetta usata qui e' "Hai
-   detto no" -- stesso significato, nessuna parola in comune con "rifiutata".
+   ADATTAMENTO rispetto al testo letterale della guida (confermato dalla
+   review indipendente del Task 11: la guida si contraddiceva da sola,
+   proponendo nella STESSA sezione l'etichetta "Rifiutata da te" per
+   `disdetta` e insieme la regola che quello stato non deve mai avere la
+   faccia di `rifiutata`). Un test pinnato vieta che il token "rifiutata"
+   (parola intera, maiuscole/minuscole indifferenti) compaia OVUNQUE nel
+   testo della pagina -- ed e' lo stesso principio della guida, applicato
+   alla lettera: se il proprietario legge la parola "rifiutata" su UNA riga
+   che e' invece il suo "no", la distinzione per cui questa tabella esiste e'
+   gia' persa, non importa quanto sia neutro il colore attorno. L'etichetta
+   usata qui e' "Declinata da te": stesso significato ("sei stato tu, non e'
+   un fallimento"), nessuna parola in comune con "rifiutata", e resta nel
+   registro participiale delle altre cinque etichette (In attesa, In corso,
+   Applicata, Non riuscita, Scaduta) -- "Hai detto no", la prima versione,
+   parlava in seconda persona e stonava nella fila dei badge (review Task 11).
    SCOPERTA VERA, non solo del test: `versioni.py::segna_disdetta` scrive
    *letteralmente* `motivo="rifiutata dal proprietario"` su OGNI riga
    `disdetta` -- se la pagina mostrasse `motivo` verbatim anche li' (come fa
@@ -133,7 +139,7 @@ window.HirisCostruzioni = (function () {
     /* Vedi il commento di testa: ADATTAMENTO deliberato rispetto al testo
        letterale della guida ("Rifiutata da te"), per non far comparire la
        parola "rifiutata" su una riga che e' il "no" del proprietario. */
-    disdetta: 'Hai detto no',
+    disdetta: 'Declinata da te',
     rifiutata: 'Non riuscita',
     scaduta: 'Scaduta'
   };
@@ -223,12 +229,31 @@ window.HirisCostruzioni = (function () {
     return typeof c.frase === 'string' && c.frase.indexOf('ripristino di ') === 0;
   }
 
+  /* Conta gli elementi di un array O di un dizionario -- serve per la
+     `scene`: `entities` li' non e' un array come per automazioni/script, e'
+     una mappa entity_id -> attributi (`forme.py::componi_scena`,
+     Home Assistant la restituisce nella stessa forma per `prima`). In
+     Python `len()` funziona uguale su liste e dict (`officina.py::
+     _compatta`); in JS `{}.length` e' `undefined`, non `0` -- senza questo
+     ramo il pannello mostrava letteralmente "entita': undefined" per ogni
+     scena. Ritorna `null` solo quando la chiave non c'e' o non e' un
+     array/oggetto -- una lista/dizionario vuoto ma PRESENTE resta `0`,
+     distinzione che `righeConfronto` usa per decidere se mostrare la riga. */
+  function contaElementi(valore) {
+    if (valore === undefined || valore === null) return null;
+    if (Array.isArray(valore)) return valore.length;
+    if (typeof valore === 'object') return Object.keys(valore).length;
+    return null;
+  }
+
   function contaChiave(corpo, def) {
     if (!corpo) return null;
-    var lista = corpo[def.chiave];
-    if ((!lista || !lista.length) && def.chiaveAlt) lista = corpo[def.chiaveAlt];
-    if (!lista) return null;
-    return lista.length;
+    var n = contaElementi(corpo[def.chiave]);
+    if ((n === null || n === 0) && def.chiaveAlt) {
+      var alt = contaElementi(corpo[def.chiaveAlt]);
+      if (alt !== null) n = alt;
+    }
+    return n;
   }
 
   /* guida §3: la transizione "azioni: 2 -> 3", non due numeri separati da
@@ -247,9 +272,24 @@ window.HirisCostruzioni = (function () {
     return righe;
   }
 
+  /* Gli `entity_id` toccati (guida §3): per una `scene` sono le CHIAVI del
+     dizionario `entities` (stesso motivo di `contaElementi` sopra), non i
+     suoi valori (gli attributi) -- per automazione/script, se mai portassero
+     un array, sono gia' loro. E' proprio il dominio in cui questa lista e'
+     tutto il contenuto dell'oggetto (guida §3): senza questo ramo non
+     compariva MAI. */
+  function elencoEntita(valore) {
+    if (!valore) return null;
+    if (Array.isArray(valore)) return valore.length ? valore : null;
+    if (typeof valore === 'object') {
+      var chiavi = Object.keys(valore);
+      return chiavi.length ? chiavi : null;
+    }
+    return null;
+  }
+
   function entitaToccate(c) {
-    var lista = (c.dopo && c.dopo.entities) || (c.prima && c.prima.entities);
-    return (lista && lista.length) ? lista : null;
+    return elencoEntita(c.dopo && c.dopo.entities) || elencoEntita(c.prima && c.prima.entities);
   }
 
   /* guida §3: il rivelatore e' SINCRONO -- niente rete, `prima`/`dopo`
@@ -327,14 +367,22 @@ window.HirisCostruzioni = (function () {
       });
   }
 
-  function bottoneAzione(azione, etichetta, cls, c, statusEl, ricarica) {
+  /* `gruppo`, opzionale: l'array di bottoni SOLIDALI da disabilitare insieme
+     durante la richiesta -- Approva e Rifiuta stanno sulla stessa card e la
+     UPDATE atomica del backend regge comunque un doppio clic, ma lasciare
+     cliccabile il gemello mentre l'altro sta gia' girando e' un'incoerenza
+     visibile che due righe evitano. Riempito dal chiamante DOPO aver creato
+     entrambi i bottoni (vedi `riga()`): la closure lo legge al click, non
+     alla creazione, quindi vede gia' il gruppo completo. Senza `gruppo`
+     (Ripristina, sola sulla propria riga) si disabilita solo se stesso. */
+  function bottoneAzione(azione, etichetta, cls, c, statusEl, ricarica, gruppo) {
     var b = el('button', cls, etichetta);
     b.type = 'button';
     b.setAttribute('data-azione', azione);
     b.setAttribute('data-id', c.id);
     b.addEventListener('click', function () {
       if (azione === 'ripristina' && !window.confirm(messaggioRipristino(c))) return;
-      eseguiAzione(azione, c.id, [b], statusEl, ricarica);
+      eseguiAzione(azione, c.id, gruppo || [b], statusEl, ricarica);
     });
     return b;
   }
@@ -403,8 +451,12 @@ window.HirisCostruzioni = (function () {
        attesa": `in_corso` ci sta ma non e' azionabile (guida §6, nessuna UI
        di recupero, la guarigione e' gia' lato server). */
     if (c.stato === 'in_attesa') {
-      azioni.appendChild(bottoneAzione('conferma', 'Approva', 'btn btn-primary', c, statusEl, ricarica));
-      azioni.appendChild(bottoneAzione('rifiuta', 'Rifiuta', 'btn', c, statusEl, ricarica));
+      var gruppoAttesa = [];
+      var bConferma = bottoneAzione('conferma', 'Approva', 'btn btn-primary', c, statusEl, ricarica, gruppoAttesa);
+      var bRifiuta = bottoneAzione('rifiuta', 'Rifiuta', 'btn', c, statusEl, ricarica, gruppoAttesa);
+      gruppoAttesa.push(bConferma, bRifiuta);
+      azioni.appendChild(bConferma);
+      azioni.appendChild(bRifiuta);
     }
     if (c.stato === 'applicata') {
       azioni.appendChild(bottoneAzione('ripristina', 'Rimetti com’era',

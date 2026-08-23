@@ -97,3 +97,35 @@ test('solo le costruzioni applicate offrono il ripristino', async () => {
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
   assert.equal(dom.window.document.querySelectorAll('[data-azione="ripristina"]').length, 0);
 });
+
+test('una scena mostra il conteggio e gli entity_id anche se `entities` è un dizionario', async () => {
+  // Rilievo della review: `forme.py::componi_scena` (e Home Assistant per
+  // `prima`) rappresentano `entities` di una scena come un DIZIONARIO
+  // entity_id -> attributi, non un array come per automazioni/script.
+  // `{}.length` in JS è `undefined`, non `0`: senza gestire questa forma il
+  // pannello mostrava "entità: undefined" e gli entity_id non comparivano
+  // mai -- proprio per il dominio in cui quella lista è tutto il contenuto
+  // dell'oggetto (guida §3).
+  const { dom } = montaCon({ costruzioni: [
+    { id: 's1', stato: 'applicata', gesto: 'modifica', dominio: 'scene',
+      chiave: 'scena_sera', anteprima: '',
+      prima: { alias: 'Scena sera', entities: { 'light.cucina': { state: 'on' } } },
+      dopo: { alias: 'Scena sera', entities: {
+        'light.cucina': { state: 'on' }, 'light.salotto': { state: 'off' } } },
+      creata_ts: 1 },
+  ] });
+  await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+  const dettagli = Array.from(document.querySelectorAll('button'))
+    .find((b) => b.textContent === 'Dettagli tecnici');
+  assert.ok(dettagli, 'la card deve avere il rivelatore dei dettagli tecnici');
+  dettagli.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  const testo = document.body.textContent;
+  assert.doesNotMatch(testo, /undefined/,
+    '{}.length e\' undefined in JS, non 0: un dizionario non trattato come tale lo fa trapelare');
+  assert.match(testo, /entità: 1 → 2/,
+    'il conteggio deve leggere le CHIAVI del dizionario, non .length su un dizionario');
+  assert.match(testo, /light\.cucina/);
+  assert.match(testo, /light\.salotto/);
+});
