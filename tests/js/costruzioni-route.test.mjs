@@ -129,3 +129,36 @@ test('una scena mostra il conteggio e gli entity_id anche se `entities` è un di
   assert.match(testo, /light\.cucina/);
   assert.match(testo, /light\.salotto/);
 });
+
+test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', async () => {
+  // Rilievo della review: il backend regge un doppio clic (la UPDATE e'
+  // atomica), ma restava un'incoerenza visibile -- premuto Approva, Rifiuta
+  // rimaneva cliccabile mentre la richiesta girava ancora. La `fetch` per la
+  // conferma qui NON si risolve mai (`new Promise(() => {})`): e' l'unico
+  // modo di osservare lo stato "in volo", non quello dopo -- lo stub di
+  // `montaCon`, che risponde subito, non lo permetterebbe.
+  const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  dom.window.fetch = async (url, opzioni) => {
+    if (String(url).indexOf('/conferma') !== -1) return new Promise(() => {});
+    return { ok: true, status: 200, json: async () => ({ costruzioni: [
+      { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
+    ] }) };
+  };
+  global.fetch = dom.window.fetch;
+  new dom.window.Function(SORGENTE)();
+
+  await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
+  const conferma = dom.window.document.querySelector('[data-azione="conferma"]');
+  const rifiuta = dom.window.document.querySelector('[data-azione="rifiuta"]');
+  conferma.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  // Nessun await qui: la disabilitazione avviene sincrona dentro il
+  // gestore del click (`eseguiAzione` disabilita PRIMA di chiamare fetch),
+  // quindi si asserisce subito, prima di qualunque flush di microtask.
+  assert.equal(conferma.disabled, true, 'il bottone premuto si disabilita');
+  assert.equal(rifiuta.disabled, true,
+    'il gemello deve disabilitarsi insieme, non restare cliccabile mentre la richiesta è in volo');
+});
