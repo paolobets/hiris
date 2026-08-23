@@ -103,8 +103,18 @@ attivi solo dopo un sì).
 (agosto 2026) la **chat** esegue: chiede a `hiris/app/azione/porta.py`, che verifica la chiamata
 contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
-Quando ② e ③ arriveranno, **quella porta resta l'unica**: chi vuole agire chiede a lei. Un secondo
-punto di scrittura è un difetto, non un'ottimizzazione.
+**Un canale, una porta.** Per ogni canale di scrittura verso Home Assistant esiste **un unico
+modulo** che lo attraversa. Oggi sono due: i **servizi** (`azione/porta.py`, dalla fetta
+«comandare») e la **configurazione** (`azione/costruzione/officina.py`, dalla fetta «costruire»).
+Sono canali diversi in tutto — rotta, verifica, «dopo» — e condividono ciò che conta: la cronaca,
+l'`origine` e la forma del rifiuto motivato, che vivono **una volta sola** e hanno la **stessa
+forma da entrambi**. Un terzo punto che scriva su Home Assistant fuori da queste due porte è un
+difetto, non un'ottimizzazione. Spec: `docs/design/2026-08-22-costruire-in-home-assistant.md` §2.1.
+
+**Non si scrive mai `automations.yaml`, `scripts.yaml` o `scenes.yaml` in proprio.** Scrive Home
+Assistant, attraverso l'API di configurazione, trovando la voce per `id` e sostituendola. È questa
+proprietà che rende impossibile ripetere il danno misurato sulla casa del proprietario: la voce
+accodata quattro volte, resa invisibile dalle ancore YAML di PyYAML.
 
 **La porta è la Chat**: si interroga il Brain e si **costruisce** con lui.
 

@@ -288,13 +288,6 @@ class ArchivioCostruzioni:
         self._conn.commit()
         return cur.rowcount
 
-    def ultima_applicata(self, dominio: str, chiave: str) -> dict | None:
-        with self._lock:
-            r = self._conn.execute(
-                "SELECT * FROM costruzioni WHERE dominio=? AND chiave=? AND stato='applicata' "
-                "ORDER BY creata_ts DESC LIMIT 1", (dominio, chiave)).fetchone()
-        return None if r is None else _riga(r)
-
     def _pota(self, adesso: float) -> int:
         """Le righe vecchie se ne vanno -- tranne l'ultima applicata di ogni
         oggetto, che e' l'unica copia del «prima» rimasta al mondo.

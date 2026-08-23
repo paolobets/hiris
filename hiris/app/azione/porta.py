@@ -5,9 +5,18 @@ non chiama i servizi -- chiede qui. Lo schedulatore (fetta 3) e il brain
 faranno lo stesso, senza che questo modulo cambi: per questo `esegui` prende
 un'`origine` e non sa nulla di chi lo chiama.
 
-Un secondo punto di scrittura verso Home Assistant e' un difetto, non
+Un secondo punto di scrittura SULLO STESSO CANALE e' un difetto, non
 un'ottimizzazione: verifica, registro e -- il giorno in cui si affronteranno
 le sicurezze -- i controlli si scrivono UNA volta e valgono per chiunque.
+
+**Dalla fetta «costruire» i canali sono due, e le porte anche.** Questa e' la
+porta dei SERVIZI. La configurazione -- automazioni, script, scene, helper --
+passa da `azione/costruzione/officina.py`, che e' un modulo diverso perche' e'
+un canale diverso: altra rotta di Home Assistant, altra verifica
+(`validate_config` invece del registro dei servizi), altro «dopo» (un `reload`
+e un'entita' che compare, non un `state_changed`). Le due porte condividono la
+cronaca, l'`origine` e la forma del rifiuto. Non ci sono altre porte, e
+aggiungerne una terza va discusso prima di scriverla.
 
 Non solleva mai: ogni guasto diventa un dizionario con `errore`, perche' il
 suo chiamante e' uno strumento che parla a un modello.

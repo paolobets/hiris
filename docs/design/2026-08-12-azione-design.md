@@ -111,6 +111,12 @@ all'utente — fatto da sapere, non da festeggiare.
 
 ## 4. Fetta 2 — Costruire
 
+> **SUPERATA** dalla spec `docs/design/2026-08-22-costruire-in-home-assistant.md` (22 agosto 2026).
+> Questa sezione era stata scritta senza leggere il sorgente di Home Assistant: tre delle sue
+> premesse non reggono ai fatti, una questione che lasciava aperta si è chiusa, e tre affermazioni
+> si sono confermate — la tabella dei perché è al §1.3 della nuova spec. Resta storia, non
+> specifica.
+
 **Nel perimetro: automazione, script, scena.** La **plancia resta fuori** (§4.3).
 
 ### 4.1 I costruttori

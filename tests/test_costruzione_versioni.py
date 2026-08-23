@@ -88,22 +88,6 @@ def test_proporre_fa_scadere_le_vecchie_da_solo(archivio):
     assert archivio.leggi(archivio.elenca()[-1]["id"])["stato"] == "scaduta"
 
 
-def test_l_ultima_versione_applicata_di_un_oggetto_si_ritrova(archivio):
-    primo = _proponi(archivio, gesto="modifica", prima={"alias": "vecchio"},
-                     dopo={"alias": "nuovo"})["id"]
-    archivio.segna_applicata(primo, adesso=ADESSO, esecuzione_id="e1")
-    secondo = _proponi(archivio, gesto="modifica", prima={"alias": "nuovo"},
-                       dopo={"alias": "nuovissimo"}, adesso=ADESSO + 100)["id"]
-    archivio.segna_applicata(secondo, adesso=ADESSO + 100, esecuzione_id="e2")
-    # Una terza proposta, piu' recente, ma lasciata `in_attesa`: non e' mai
-    # stata applicata, quindi non deve vincere l'ORDER BY su `secondo`.
-    _proponi(archivio, gesto="modifica", prima={"alias": "nuovissimo"},
-             dopo={"alias": "mai_successo"}, adesso=ADESSO + 200)
-    ultima = archivio.ultima_applicata("automation", "1771")
-    assert ultima["id"] == secondo
-    assert ultima["prima"]["alias"] == "nuovo"
-
-
 def test_la_potatura_non_cancella_mai_l_ultima_versione_di_un_oggetto(archivio):
     """HA non tiene storico: quella riga e' l'unica copia esistente al mondo."""
     vecchia = _proponi(archivio, gesto="modifica", prima={"alias": "a"},

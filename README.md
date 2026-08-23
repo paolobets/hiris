@@ -29,18 +29,23 @@ to command it**.
 
 That is the whole product. It reads Home Assistant, it remembers what you tell
 it, and it calls Home Assistant services on your behalf when you ask it to in
-chat. It does not *write* objects into Home Assistant: no automations, no
-scripts, no scenes, no dashboards.
+chat. Since the "costruire" slice it also *builds*: ask it for an automation,
+a script or a scene and it composes one, shows you the preview, and writes it
+into Home Assistant only once you say to go ahead. It does not write
+dashboards.
 
 **Read that boundary literally, because it is narrower than it sounds.** There
 is no category of service that HIRIS holds back — the only limits are the ones
 below (the service and the entity have to exist, and have to match). Two
 consequences worth knowing before you install it:
 
-- **your automations are not out of reach.** HIRIS will not rewrite one, but
-  `automation.turn_off` on an `automation.*` entity is an ordinary service call
-  and it will make it if you ask. Unlike a light, a disabled automation is not
-  obvious to look at and it stays disabled until something re-enables it.
+- **your automations are not out of reach.** `automation.turn_off` on an
+  `automation.*` entity is an ordinary service call and it will make it if you
+  ask — unlike a light, a disabled automation is not obvious to look at and it
+  stays disabled until something re-enables it. Since "costruire", HIRIS can
+  go further and rewrite one: it declares that the automation is already
+  yours before touching it, shows the before/after, and "Rimetti com'era"
+  restores it exactly.
 - **notifications are not carved out either.** HIRIS has no notification
   channel of its own (see [what is *not* in 2.0](#what-is-not-in-20)), but on
   an installation that exposes `notify.*` entities — ordinary since Home
@@ -387,10 +392,11 @@ These existed in 1.x and are deliberately **out of the running product**. The
 code largely still sits in git history; anything that comes back will come back
 rewritten, with a design of its own.
 
-- **Building things** — no creating or editing automations, scripts, scenes or
-  dashboards. Calling a service *is* back (`esegui`, above); writing objects
-  into Home Assistant is not. Note the seam: *enabling and disabling* an
-  automation is a service call, and is therefore **in**
+- **Dashboards** — no creating or editing Lovelace views. Building
+  automations, scripts and scenes moved back **in** with the "costruire"
+  slice (`costruisci` and `conferma`, two of the chat's tools): HIRIS
+  composes them, validates against your installation, and writes them into
+  Home Assistant only once you confirm the preview.
 - **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
   Action returned without it, on purpose: safeguards are a designed phase of
   their own, not an inheritance from 1.x
