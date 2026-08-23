@@ -2554,6 +2554,11 @@ async def _on_cleanup(app: web.Application) -> None:
         app["promesse"].close()
     if "cronaca" in app:
         app["cronaca"].close()
+    # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
+    # dell'officina (`azione/costruzione/versioni.py`), costruito in
+    # `_on_startup` accanto a `app["cronaca"]`. Stessa disciplina dei due
+    # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
+    # al riavvio.
     if "costruzioni" in app:
         app["costruzioni"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
