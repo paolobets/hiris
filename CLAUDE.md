@@ -199,8 +199,11 @@ Se stai per estendere una di queste cose, **fermati e chiedi**:
 | **vocabolario** «Sentinella», «Agentbot», «Persona», «Lente» | resta **agente** |
 | **il workbench come prodotto** (sandbox/eval/telemetria per-entità) | mai costruito; non è ciò che serve alla casa |
 
-`PRODUCT.md` è **superato** su scopo, utenti e criteri di successo. Restano validi solo i suoi
-capitoli su identità visiva e accessibilità.
+`PRODUCT.md` è **interamente storico** — lo dichiara da sé, nel blocco del 10 agosto in cima al
+file: non descrive un prodotto in tre sezioni superate, descrive un prodotto che non esiste più
+punto e basta. Anche i suoi capitoli su identità visiva e accessibilità vanno riletti contro il
+prodotto vero, non presi per buoni: nominano superfici (sandbox, editor Agentbot, telemetria
+per-entità) che non ci sono più.
 
 ---
 
@@ -228,9 +231,12 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (15 file) handlers_* — la superficie HTTP
+    ├── api/        (16 file) handlers_* — la superficie HTTP
     ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
-    ├── azione/     (5)       porta.py — l'UNICO punto che esegue — verifica.py, registro.py, cronaca.py
+    ├── azione/     (5)       porta.py — i SERVIZI, l'unica porta sul canale — verifica.py,
+    │                         registro.py, cronaca.py; costruzione/ (4) — officina.py, l'unica
+    │                         porta sul canale della CONFIGURAZIONE — forme.py, mestiere.py,
+    │                         versioni.py (fetta «costruire»)
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
     ├── memoria/    (4)       archivio, interpretazione, riconoscitore
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
@@ -265,8 +271,8 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 2.111 test + 1 skip (2.0 @ fetta «lo Schedulatore» chiusa)
-npm test                     # 217 test frontend: node --test + jsdom
+python -m pytest -q          # 2.413 test + 1 skip
+npm test                     # 242 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
