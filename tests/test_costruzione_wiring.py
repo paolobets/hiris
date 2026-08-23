@@ -63,3 +63,11 @@ def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore(
     sorgente = inspect.getsource(server)
     assert sorgente.index('app["costruzioni"].risana(') < sorgente.index(
         'id="hiris_schedulatore_battito"')
+
+
+def test_le_quattro_rotte_sono_registrate():
+    sorgente = inspect.getsource(server)
+    assert 'app.router.add_get("/api/costruzioni", handle_get_costruzioni)' in sorgente
+    assert 'app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)' in sorgente
+    assert '"/api/costruzioni/{id}/conferma"' in sorgente
+    assert '"/api/costruzioni/{id}/ripristina"' in sorgente
