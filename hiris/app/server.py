@@ -2811,6 +2811,21 @@ def create_app() -> web.Application:
     # da rispettare, stessa esenzione di GET /api/promesse.
     app.router.add_get("/api/esecuzioni/{id}", handle_get_esecuzione)
 
+    # Task 10 SDD costruire: la faccia dell'officina -- guardare le proposte,
+    # aprirne una, confermare, rimettere com'era. Le due GET sono metodi
+    # safe, come `GET /api/promesse`; le due POST scrivono su Home Assistant
+    # e passano dallo stesso `csrf_middleware` di ogni altra scrittura --
+    # quel middleware protegge per METODO (`POST`/`PUT`/`PATCH`/`DELETE` sotto
+    # `/api/*`), non per un elenco di rotte scritto a mano: non c'e' niente
+    # da aggiungere altrove perche' queste due non saltino la protezione.
+    from .api.handlers_costruzioni import (
+        handle_conferma_costruzione, handle_get_costruzione,
+        handle_get_costruzioni, handle_ripristina_costruzione)
+    app.router.add_get("/api/costruzioni", handle_get_costruzioni)
+    app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)
+    app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)
+    app.router.add_post("/api/costruzioni/{id}/ripristina", handle_ripristina_costruzione)
+
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
     # Nata senza faccia, come /api/casa e /api/memoria: dalla fetta E5
