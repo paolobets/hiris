@@ -188,6 +188,31 @@ def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
     assert "errore" in archivio.rivendica(ident, adesso=ADESSO + 200)
 
 
+def test_il_no_del_proprietario_e_uno_stato_suo_non_un_fallimento(archivio):
+    """`rifiutata` vuol dire «ho provato e non ci sono riuscito». Il no
+    dell'utente non e' un fallimento e non deve leggersi come tale."""
+    ident = _proponi(archivio)["id"]
+    esito = archivio.segna_disdetta(ident, adesso=ADESSO + 5)
+    assert "errore" not in esito
+    riga = archivio.leggi(ident)
+    assert riga["stato"] == "disdetta"
+    assert riga["motivo"]
+
+
+def test_non_si_disdice_cio_che_e_gia_stato_applicato(archivio):
+    ident = _proponi(archivio)["id"]
+    archivio.segna_applicata(ident, adesso=ADESSO, esecuzione_id="e1")
+    assert "errore" in archivio.segna_disdetta(ident, adesso=ADESSO + 5)
+
+
+def test_una_proposta_disdetta_libera_il_posto_sotto_il_tetto(archivio):
+    for n in range(ArchivioCostruzioni.MAX_IN_ATTESA):
+        _proponi(archivio, chiave=f"k{n}")
+    prima = archivio.elenca(solo_in_attesa=True)[0]["id"]
+    archivio.segna_disdetta(prima, adesso=ADESSO + 1)
+    assert "id" in _proponi(archivio, chiave="adesso_ci_sta", adesso=ADESSO + 2)
+
+
 def test_una_proposta_in_corso_compare_fra_le_pendenti_e_conta_contro_il_tetto(archivio):
     """Una proposta rivendicata (`in_corso`) e' ancora in sospeso, non
     conclusa: non deve sparire dall'elenco delle pendenti ne' smettere di

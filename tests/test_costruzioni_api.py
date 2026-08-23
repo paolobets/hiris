@@ -7,7 +7,7 @@ from aiohttp import web
 
 from hiris.app.api.handlers_costruzioni import (
     handle_conferma_costruzione, handle_get_costruzione, handle_get_costruzioni,
-    handle_ripristina_costruzione)
+    handle_ripristina_costruzione, handle_rifiuta_costruzione)
 from hiris.app.azione.costruzione.officina import Officina
 from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
 from hiris.app.azione.cronaca import Cronaca
@@ -20,9 +20,11 @@ from tests.test_impostazioni_api import csrf_stretto  # noqa: F401
 
 
 class FintoArchivio:
-    def __init__(self, righe=None):
+    def __init__(self, righe=None, esito_disdetta=None):
         self._righe = righe or []
         self.scadenze_chieste = 0
+        self.disdette = []
+        self._esito_disdetta = esito_disdetta
 
     def scadi(self, adesso):
         self.scadenze_chieste += 1
@@ -38,6 +40,10 @@ class FintoArchivio:
             if r["id"] == ident:
                 return r
         return None
+
+    def segna_disdetta(self, ident, *, adesso):
+        self.disdette.append(ident)
+        return self._esito_disdetta or {"id": ident, "stato": "disdetta"}
 
 
 class FintaOfficina:
@@ -136,6 +142,27 @@ async def test_confermare_senza_officina_da_503():
     risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 503
     assert b"officina non disponibile" in risposta.body
+
+
+@pytest.mark.asyncio
+async def test_rifiutare_dalla_pagina_non_tocca_home_assistant():
+    """Il no non passa dall'officina: non c'e' niente da scrivere."""
+    officina = FintaOfficina({"applicata": True})
+    archivio = FintoArchivio([{"id": "p1", "stato": "in_attesa"}])
+    app = _app(archivio, officina)
+    risposta = await handle_rifiuta_costruzione(FintaRichiesta(app, ident="p1"))
+    assert risposta.status == 200
+    assert officina.chiamate == [], "il rifiuto non deve passare dall'officina"
+    assert archivio.disdette == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
+    archivio = FintoArchivio([{"id": "p1", "stato": "applicata"}],
+                             esito_disdetta={"errore": "quella proposta non e' piu' in attesa"})
+    risposta = await handle_rifiuta_costruzione(
+        FintaRichiesta(_app(archivio, FintaOfficina({})), ident="p1"))
+    assert risposta.status == 409
 
 
 # ---------------------------------------------------------------------------
