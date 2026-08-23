@@ -1,9 +1,7 @@
 """Le forme: si compongono dai PARAMETRI, mai inoltrando lo YAML del modello."""
-import pytest
-
 from hiris.app.azione.costruzione.forme import (
     componi_automazione, componi_scena, componi_script, nuovo_id,
-    parti_da_validare, slug_libero)
+    parti_da_validare, problemi_stati, slug_libero)
 
 
 def test_l_automazione_porta_lo_schema_moderno_al_plurale():
@@ -90,3 +88,40 @@ def test_da_validare_di_una_scena_non_manda_niente():
     e chiedergli di validare liste vuote tornerebbe «valido» su nulla."""
     corpo = componi_scena(id_="1", alias="X", stati=[{"entity_id": "light.x", "state": "on"}])
     assert parti_da_validare("scene", corpo) == {}
+
+
+def test_lo_slug_traslittera_gli_accenti_e():
+    """Un alias con accenti non perde lettere: «perché» → «perche», non «perch»."""
+    assert "perche" in slug_libero("Buonanotte perché", set())
+
+
+def test_lo_slug_traslittera_gli_accenti_a():
+    """Un alias con accenti non perde lettere: «città» → «citta», non «citt»."""
+    assert "citta" in slug_libero("Luci città", set())
+
+
+def test_problemi_stati_lista_vuota_ok():
+    """Una lista vuota di stati non ha problemi."""
+    assert problemi_stati([]) == []
+
+
+def test_problemi_stati_voce_non_dizionario():
+    """Una voce che non è un dizionario è un problema."""
+    problemi = problemi_stati(["not_a_dict", None, 123])
+    assert len(problemi) > 0
+
+
+def test_problemi_stati_voce_senza_entity_id():
+    """Una voce senza `entity_id` è un problema."""
+    problemi = problemi_stati([{"state": "on"}])
+    assert len(problemi) > 0
+
+
+def test_problemi_stati_entity_id_duplicato():
+    """Due voci con lo stesso `entity_id` è un problema, e il nome deve comparire."""
+    problemi = problemi_stati([
+        {"entity_id": "light.salotto", "state": "on"},
+        {"entity_id": "light.salotto", "state": "off"}
+    ])
+    assert len(problemi) > 0
+    assert "light.salotto" in " ".join(problemi)

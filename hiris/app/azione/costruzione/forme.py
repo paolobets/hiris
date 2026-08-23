@@ -17,6 +17,7 @@ Puro: niente rete, niente orologio, niente archivio.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 _NON_SLUG = re.compile(r"[^a-z0-9_]+")
 
@@ -43,7 +44,11 @@ def nuovo_id(esistenti: set[str], seme: int) -> str:
 
 def slug_libero(base: str, esistenti: set[str]) -> str:
     """Una chiave di script che non collide. `cv.slug` la valida lato HA."""
-    grezzo = _NON_SLUG.sub("_", (base or "").strip().lower()).strip("_")
+    # Traslittera gli accenti prima di applicare la regex, altrimenti
+    # "perché" → "perch" invece di "perche".
+    base_clean = unicodedata.normalize("NFKD", base or "")
+    base_ascii = base_clean.encode("ascii", "ignore").decode("ascii")
+    grezzo = _NON_SLUG.sub("_", base_ascii.strip().lower()).strip("_")
     if not grezzo:
         # Uno slug vuoto finirebbe in `/api/config/script/config/`, che e'
         # un'altra rotta: mai restituire la stringa vuota.
@@ -92,6 +97,11 @@ def componi_scena(*, id_: str, alias: str, stati: list[dict]) -> dict:
     attributi; HA vuole una MAPPA `entity_id -> attributi`. La conversione sta
     qui e non nel chiamante: e' la forma dell'oggetto, non una scelta di chi
     lo chiede.
+
+    **Precondizione**: gli stati sono gia' controllati con `problemi_stati`.
+    Una scena e' l'unico dominio che a valle non viene validato da Home
+    Assistant (`parti_da_validare` restituisce {}): uno stato perso qui non
+    lo intercetta piu' nessuno.
     """
     entita: dict[str, dict] = {}
     for voce in stati:
@@ -102,6 +112,38 @@ def componi_scena(*, id_: str, alias: str, stati: list[dict]) -> dict:
             continue
         entita[eid] = {k: v for k, v in voce.items() if k != "entity_id"}
     return {"id": id_, "name": alias, "entities": entita}
+
+
+def problemi_stati(stati: list) -> list[str]:
+    """Cosa non va negli stati di una scena, in italiano leggibile.
+
+    Le tre `componi_*` hanno la stessa forma e restituiscono un corpo, non
+    una coppia: la diagnosi vive qui, e la chiede il chiamante PRIMA di
+    comporre. E' la stessa forma di `casa/comportamento.py::componi`, che
+    gia' separa cio' che ha costruito da cio' che non ha potuto concludere.
+
+    Serve perche' una scena e' l'unico dominio che a valle non viene
+    validato da Home Assistant (`parti_da_validare` restituisce {}): uno
+    stato perso qui non lo intercetta piu' nessuno.
+    """
+    problemi: list[str] = []
+    viste: set[str] = set()
+
+    for i, voce in enumerate(stati):
+        if not isinstance(voce, dict):
+            problemi.append(f"Voce {i}: non e' un dizionario")
+            continue
+
+        eid = voce.get("entity_id")
+        if not eid:
+            problemi.append(f"Voce {i}: manca entity_id")
+            continue
+
+        if eid in viste:
+            problemi.append(f"Duplicato: {eid} gia' visto")
+        viste.add(eid)
+
+    return problemi
 
 
 def parti_da_validare(dominio: str, corpo: dict) -> dict:
