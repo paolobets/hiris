@@ -13,15 +13,21 @@ esplicitamente -- `pagina` -- e finisce nella cronaca, cosi' resta scritto chi
 ha deciso.
 
 I codici portano la distinzione che conta: 404 «non esiste», 409 «esiste ma
-non e' piu' in attesa», 503 «archivio non disponibile». Un 400 unico avrebbe
-costretto la pagina a leggere il testo dell'errore per sapere quale dei tre
-mostrare.
+non e' piu' in attesa», 503 «non disponibile» (l'archivio per le due GET,
+l'archivio o l'officina per le due POST -- vedi i messaggi qui sotto, che
+sono testo VERO e non una parafrasi). Un 400 unico avrebbe costretto la
+pagina a leggere il testo dell'errore per sapere quale dei tre mostrare.
 """
 from __future__ import annotations
 
 import time
 
 from aiohttp import web
+
+# Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
+# agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
+# incoerenza da mantenere sincronizzata a mano per sempre.
+_NON_TROVATA = "non ho nessuna costruzione con quell'identificatore."
 
 
 def _archivio(request):
@@ -48,9 +54,7 @@ async def handle_get_costruzione(request: web.Request) -> web.Response:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
     riga = archivio.leggi(request.match_info["id"])
     if riga is None:
-        return web.json_response(
-            {"errore": "non ho nessuna costruzione con quell'identificatore."},
-            status=404)
+        return web.json_response({"errore": _NON_TROVATA}, status=404)
     return web.json_response({"costruzione": riga})
 
 
@@ -61,9 +65,7 @@ async def _agisci(request: web.Request, verbo: str) -> web.Response:
         return web.json_response({"errore": "officina non disponibile"}, status=503)
     ident = request.match_info["id"]
     if archivio.leggi(ident) is None:
-        return web.json_response(
-            {"errore": "non ho nessuna costruzione con quell'identificatore."},
-            status=404)
+        return web.json_response({"errore": _NON_TROVATA}, status=404)
     metodo = getattr(officina, verbo)
     esito = await metodo(ident, origine="pagina", turno=None, adesso=time.time())
     if "errore" in esito:
