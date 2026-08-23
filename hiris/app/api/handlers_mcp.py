@@ -42,14 +42,17 @@ turno di promessa sul ponte non avrebbe `concludi` -- cioe' nessun modo di
 finire -- e vedrebbe `esegui`, cioe' potrebbe toccare la casa senza nessuno
 davanti.
 
-**E' anche un canale di azione, dalla fetta «comandare».** Fino a quel momento
-qui si leggeva «gli strumenti restano quattro e nessuno tocca Home Assistant --
-HIRIS conosce e non agisce»: era vero, e ha smesso di esserlo su entrambe le
-meta'. Gli strumenti sono cinque e il quinto, `esegui`, chiama un servizio di
-Home Assistant. Cio' che NON cambia e' il motivo per cui la frase stava qui:
+**E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
+«costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
+strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
+non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
+strumenti sono undici, lo stesso catalogo del turno sincrono: `esegui` chiama
+un servizio di Home Assistant, `costruisci`/`conferma` compongono e scrivono
+configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
-la stessa funzione del turno sincrono, che dispaccia alla stessa porta unica
-(`azione/porta.py`) -- il ponte non ha una strada verso la casa che la chat non
+la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
+`azione/porta.py` per i servizi, `azione/costruzione/officina.py` per la
+configurazione -- il ponte non ha una strada verso la casa che la chat non
 abbia, e non ne ha una sua. Un secondo punto di scrittura sarebbe un difetto,
 non un'ottimizzazione.
 

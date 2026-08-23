@@ -218,11 +218,17 @@ cosa.
 
 ## 4. Cosa chiedere alla chat
 
-Il modello riceve il nucleo (la casa condensata) più **cinque strumenti**. Quattro
-leggono e ricordano: `cerca` (trova per nome o alias), `guarda` (il dettaglio di una
-cosa sola), `ricorda` (salva ciò che hai detto), `richiama` (i ricordi legati a una
-parte della casa). Il quinto, `esegui`, è l'unico che tocca Home Assistant: chiama un
-servizio — verificato prima, con lo stato riletto dopo.
+Il modello riceve il nucleo (la casa condensata) più **undici strumenti** — lo
+stesso catalogo di `hiris/app/casa/strumenti.py`. Cinque leggono e ricordano: `cerca`
+(trova per nome o alias), `guarda` (il dettaglio di una cosa sola), `legami` (chi
+tocca una cosa — quali automazioni, script o scene la nominano), `ricorda` (salva ciò
+che hai detto), `richiama` (i ricordi legati a una parte della casa). `esegui` è
+l'unico che chiama un servizio di Home Assistant — verificato prima, con lo stato
+riletto dopo. Tre riguardano le promesse — cose da fare più tardi: `prometti`,
+`promesse` (lo storico) e `disdici` (annulla). Due, in coppia, scrivono
+configurazione — non un servizio: `costruisci` (compone un'automazione, uno script o
+una scena e non scrive nulla) e `conferma` (la applica, solo in un turno successivo a
+quello dell'anteprima).
 
 Sette richieste che li esercitano davvero:
 
