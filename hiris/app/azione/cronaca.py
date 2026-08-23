@@ -18,6 +18,12 @@ possono chiamarsi allo stesso modo in due file vicini.
 Registra i tentativi che hanno superato la verifica -- riusciti o falliti. Un
 rifiuto della verifica non e' un'esecuzione: e' un errore del modello, gia'
 detto al modello, e riempirebbe il registro di cose che non sono successe.
+
+Dalla fetta «costruire» registra due generi. Un comando (una chiamata di
+servizio, dalla porta) e una costruzione (una scrittura di configurazione,
+dall'officina). La tabella e' una sola perche' la domanda dell'utente e' una
+sola -- «cosa hai fatto?» -- e due tabelle avrebbero costretto ogni lettore a
+interrogarle entrambe e a fonderle a mano.
 """
 from __future__ import annotations
 
@@ -50,10 +56,28 @@ CREATE TABLE IF NOT EXISTS esecuzioni (
     eseguito INTEGER NOT NULL,
     cambiato_json TEXT,
     errore TEXT,
-    avviso TEXT
+    avviso TEXT,
+    genere TEXT NOT NULL DEFAULT 'comando',
+    oggetto TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_esecuzioni_quando ON esecuzioni(quando_ts DESC);
 """
+
+
+def _migrazione_2(conn) -> None:
+    """v1 -> v2: la cronaca registra anche le costruzioni.
+
+    Due colonne aggiunte, nessuna riscritta: le righe gia' scritte restano
+    esattamente com'erano e diventano `genere='comando'`, che e' cio' che
+    sono. Una migrazione che ricostruisce la tabella per due colonne
+    rischierebbe di perdere una cronaca vera per un guadagno estetico.
+    """
+    esistenti = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
+    if "genere" not in esistenti:
+        conn.execute("ALTER TABLE esecuzioni ADD COLUMN genere TEXT NOT NULL "
+                     "DEFAULT 'comando'")
+    if "oggetto" not in esistenti:
+        conn.execute("ALTER TABLE esecuzioni ADD COLUMN oggetto TEXT")
 
 
 def _riga(r) -> dict:
@@ -67,6 +91,8 @@ def _riga(r) -> dict:
         "cambiato": None if r["cambiato_json"] is None else json.loads(r["cambiato_json"]),
         "errore": r["errore"],
         "avviso": r["avviso"],
+        "genere": r["genere"],
+        "oggetto": r["oggetto"],
     }
 
 
@@ -74,7 +100,7 @@ class Cronaca:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrazione_2})
 
     def close(self) -> None:
         with self._lock:
@@ -90,11 +116,44 @@ class Cronaca:
                 (adesso - CONSERVAZIONE_ESECUZIONI_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
-                "eseguito,cambiato_json,errore,avviso) VALUES(?,?,?,?,?,?,?,?,?)",
+                "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
+                "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL)",
                 (ident, adesso, origine, servizio, json.dumps(list(entita)),
                  int(bool(eseguito)),
                  None if cambiato is None else json.dumps(list(cambiato)),
                  errore, avviso))
+            self._conn.commit()
+        return ident
+
+    def registra_costruzione(self, *, origine: str, gesto: str, dominio: str,
+                             chiave: str, entita: list[str], eseguito: bool,
+                             adesso: float, errore: str | None = None,
+                             avviso: str | None = None) -> str:
+        """Un atto di costruzione, nella STESSA tabella dei comandi.
+
+        Un atto e' lo stesso fatto qualunque sia l'origine e qualunque sia il
+        canale: due registri avrebbero dato allo stesso fatto due trattamenti,
+        e sarebbero stati fusi dopo (fondamenta 3). `genere` dice come si legge
+        la riga.
+
+        **`servizio` per una costruzione porta `dominio.gesto`** -- per esempio
+        `automation.crea`. Non e' un servizio di Home Assistant e non va letto
+        come tale: `genere` e' li' apposta per distinguerli. `entita` porta le
+        entita' NATE o toccate dall'atto, che e' la stessa cosa che porta per
+        un comando.
+        """
+        ident = secrets.token_urlsafe(9)
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM esecuzioni WHERE quando_ts < ?",
+                (adesso - CONSERVAZIONE_ESECUZIONI_S,))
+            self._conn.execute(
+                "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
+                "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
+                "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?)",
+                (ident, adesso, origine, f"{dominio}.{gesto}",
+                 json.dumps(list(entita)), int(bool(eseguito)), errore, avviso,
+                 f"{dominio}.{chiave}"))
             self._conn.commit()
         return ident
 
