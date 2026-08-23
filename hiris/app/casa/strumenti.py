@@ -8,9 +8,13 @@ trentaquattro e il semaforo sono usciti per intero (fetta E2 Task 8 "escono
 i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
-Qui il modello ne riceveva SEI, e dalla fetta «lo schedulatore» (Task 6) ne
-riceve NOVE. Cinque leggono e ricordano; `esegui` fa succedere qualcosa in
-casa SUBITO -- ed e' l'unico che scrive nella casa. Per un tratto della 2.0
+Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
+riceve NOVE, e dalla fetta «costruire» (Task 9) ne riceve UNDICI. Cinque
+leggono e ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e'
+l'unico strumento che scrive nella casa (i servizi, non la configurazione);
+`costruisci` e `conferma`, in coppia, sono l'unica strada che scrive
+CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
+apposta (vedi piu' sotto). Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
@@ -28,20 +32,36 @@ stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
     esegui   -- chiama un servizio di Home Assistant, verificato prima e
                 riletto dopo: l'unico strumento che tocca la casa
 
-Gli ultimi tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e
-fanno nascere, leggere e disdire una PROMESSA -- «alle 17 accendi lo
-studio», «fra un'ora dimmi se e' aumentata»: qualcosa da fare o da guardare
-piu' tardi, non adesso. La differenza con `esegui` non e' di importanza ma di
-QUANDO: `esegui` agisce ora, `prometti` mette da parte un'azione o una
-domanda per un istante futuro, e tutto cio' che si puo' verificare contro
-questa installazione (il servizio esiste, l'entita' esiste, il canale di
-notifica esiste) si verifica ALLA NASCITA, non al momento di mantenerla --
-vedi `DispatcherStrumenti._prometti`.
+Tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e fanno nascere,
+leggere e disdire una PROMESSA -- «alle 17 accendi lo studio», «fra un'ora
+dimmi se e' aumentata»: qualcosa da fare o da guardare piu' tardi, non adesso.
+La differenza con `esegui` non e' di importanza ma di QUANDO: `esegui` agisce
+ora, `prometti` mette da parte un'azione o una domanda per un istante futuro,
+e tutto cio' che si puo' verificare contro questa installazione (il servizio
+esiste, l'entita' esiste, il canale di notifica esiste) si verifica ALLA
+NASCITA, non al momento di mantenerla -- vedi `DispatcherStrumenti._prometti`.
 
     prometti -- mette da parte un `fai` (verificato subito) o un `chiedi`
                 (con l'istantanea di partenza) per un istante futuro
     promesse -- cosa e' ancora in sospeso, o com'e' andata
     disdici  -- annulla una promessa non ancora mantenuta
+
+Gli ultimi due vengono dalla fetta «costruire» (spec
+`docs/design/2026-08-22-costruire-in-home-assistant.md`) e scrivono
+CONFIGURAZIONE -- non un servizio, non uno stato: un'automazione, uno script
+o una scena che prima non esisteva, o che smette di esistere. La differenza
+con `esegui` non e' di importanza ma di NATURA: `esegui` chiama qualcosa che
+gia' esiste, questi due fanno esistere o smettere di esistere qualcosa. Ed e'
+per questo che sono DUE e non uno: `costruisci` compone e fa validare contro
+QUESTA casa (mai uno YAML scritto a mano), `conferma` scrive -- e in mezzo
+deve starci un umano, riconosciuto dal TURNO e non da un campo che il modello
+potrebbe compilare da solo. Vedi `azione/costruzione/officina.py` per il
+giro intero e la guardia.
+
+    costruisci -- propone (crea, modifica, cancella): non scrive, restituisce
+                  un'anteprima con un `proposta_id`
+    conferma   -- applica una proposta, in un turno diverso da quello che
+                  l'ha creata
 
 **Perche' `legami` e' uno strumento e non un campo di `guarda`.** E' la
 decisione di questa fetta, e ha quattro ragioni che tirano tutte dalla stessa
@@ -604,10 +624,104 @@ DISDICI_TOOL_DEF = {
     },
 }
 
+COSTRUISCI_TOOL_DEF = {
+    "name": "costruisci",
+    "description": (
+        "PROPONE di creare, modificare o cancellare un'automazione, uno script "
+        "o una scena in Home Assistant. **Non scrive niente**: compone, fa "
+        "validare la configurazione a QUESTA casa e restituisce un'anteprima "
+        "con un `proposta_id`. Per farla diventare vera serve `conferma`, e "
+        "**non nello stesso turno**: mostra l'anteprima all'utente e aspetta "
+        "che sia lui a dire di procedere. "
+        "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
+        "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
+        "dell'automazione o della scena, lo slug dello script): la trovi con "
+        "`cerca` o `guarda`. "
+        "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
+        "`azioni` per un'automazione; `azioni` per uno script; `stati` per una "
+        "scena. Usa lo schema moderno di Home Assistant (`trigger:`, `action:` "
+        "dentro le voci). Se la validazione fallisce ricevi il motivo VERO di "
+        "Home Assistant: correggiti su quello. "
+        "Se servono helper che non esistono, elencali in `helper`: nascono "
+        "insieme all'oggetto, e se l'oggetto viene rifiutato vengono disfatti. "
+        "Se quello che chiedi ha la forma sbagliata -- un'automazione per una "
+        "cosa che e' uno script -- l'anteprima te lo dice: riferiscilo "
+        "all'utente invece di ignorarlo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "gesto": {"type": "string",
+                      "description": "crea, modifica o cancella."},
+            "dominio": {"type": "string",
+                        "description": "automation, script o scene."},
+            "chiave": {"type": "string",
+                       "description": "L'id o lo slug dell'oggetto da toccare "
+                                      "(solo per modifica e cancella)."},
+            "alias": {"type": "string", "description": "Il nome dell'oggetto."},
+            "descrizione": {"type": "string",
+                            "description": "A cosa serve, in italiano: finisce "
+                                           "dentro l'oggetto e la legge chi lo "
+                                           "aprira' in Home Assistant."},
+            "innesco": {"type": "array", "items": {"type": "object"},
+                        "description": "I trigger dell'automazione."},
+            "condizioni": {"type": "array", "items": {"type": "object"},
+                           "description": "Le condizioni dell'automazione."},
+            "azioni": {"type": "array", "items": {"type": "object"},
+                       "description": "Le azioni dell'automazione o i passi dello script."},
+            "stati": {"type": "array", "items": {"type": "object"},
+                      "description": "Per una scena: gli stati da ristabilire, "
+                                     "ognuno con `entity_id`."},
+            "campi": {"type": "object",
+                      "description": "Per uno script parametrico: i `fields`."},
+            "parametri": {"type": "array", "items": {"type": "string"},
+                          "description": "I nomi dei parametri in ingresso, se ce ne sono."},
+            "riuso": {"type": "boolean",
+                      "description": "true se la sequenza serve anche altrove."},
+            "ricorrente": {"type": "boolean",
+                           "description": "true se e' una cosa che si ripete "
+                                          "(«ogni giorno alle 7»)."},
+            "richiesto": {"type": "string",
+                          "description": "Cosa ha chiesto l'utente: automazione, "
+                                         "script o scena. Serve a dirti se non "
+                                         "sono d'accordo."},
+            "helper": {"type": "array", "items": {"type": "object"},
+                       "description": "Gli helper da creare insieme: ognuno con "
+                                      "`dominio` e `dati`."},
+            "frase": {"type": "string",
+                      "description": "La frase dell'utente da cui nasce, verbatim."},
+        },
+        "required": ["gesto", "dominio"],
+    },
+}
+
+CONFERMA_TOOL_DEF = {
+    "name": "conferma",
+    "description": (
+        "Applica una proposta creata da `costruisci`: da qui in poi la cosa "
+        "esiste davvero in Home Assistant. "
+        "**Chiamalo SOLO dopo che l'utente ha detto di procedere**, in un turno "
+        "successivo a quello in cui hai mostrato l'anteprima: se lo chiami nello "
+        "stesso turno viene rifiutato, ed e' voluto -- il si' dell'utente non e' "
+        "una cosa che puoi dare per scontata. "
+        "L'esito dice cosa e' nato davvero (`entita`) e, se qualcosa non torna, "
+        "un `avviso`: riferiscilo invece di dichiarare un successo pieno."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "proposta_id": {"type": "string",
+                            "description": "L'identificatore restituito da `costruisci`."},
+        },
+        "required": ["proposta_id"],
+    },
+}
+
 STRUMENTI_CONOSCENZA: list[dict] = [
     CERCA_TOOL_DEF, GUARDA_TOOL_DEF, LEGAMI_TOOL_DEF, RICORDA_TOOL_DEF,
     RICHIAMA_TOOL_DEF, ESEGUI_TOOL_DEF,
     PROMETTI_TOOL_DEF, PROMESSE_TOOL_DEF, DISDICI_TOOL_DEF,
+    COSTRUISCI_TOOL_DEF, CONFERMA_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -622,7 +736,8 @@ _NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
 class DispatcherStrumenti:
-    """Collega i nove strumenti agli archivi, alla porta e al canale HA -- e non altro.
+    """Collega gli undici strumenti agli archivi, alla porta, all'officina e al
+    canale HA -- e non altro.
 
     Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
@@ -636,7 +751,8 @@ class DispatcherStrumenti:
 
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
                  cache=None, porta=None, cache_indice: CacheIndice | None = None,
-                 ha=None, registro=None, promesse=None) -> None:
+                 ha=None, registro=None, promesse=None, officina=None,
+                 turno: str | None = None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -686,6 +802,16 @@ class DispatcherStrumenti:
         # legittimo come per la porta: i tre strumenti dichiarano un errore
         # leggibile invece di sollevare.
         self._promesse = promesse
+        # L'officina (`azione/costruzione/officina.py`), l'unico punto che
+        # scrive CONFIGURAZIONE. Sorella della porta, non sua sostituta: sono
+        # due canali diversi (spec «un canale, una porta»). `None` e'
+        # legittimo come per la porta: i due strumenti dichiarano un errore.
+        self._officina = officina
+        # L'identita' di QUESTO turno. Serve alla guardia dell'officina: una
+        # proposta non si conferma nel turno che l'ha creata. Senza identita'
+        # l'officina rifiuta di applicare dalla chat e indica la pagina --
+        # un cancello che non sa chi sta passando non e' un cancello.
+        self._turno = turno
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
@@ -694,6 +820,7 @@ class DispatcherStrumenti:
         "esegui": ("porta",),
         "prometti": ("promesse",), "promesse": ("promesse",),
         "disdici": ("promesse",),
+        "costruisci": ("officina",), "conferma": ("officina",),
     }
 
     def _canale_ha(self):
@@ -739,6 +866,9 @@ class DispatcherStrumenti:
                 return "non c'e' un collegamento vivo con Home Assistant a cui chiederli"
             if quale == "promesse" and self._promesse is None:
                 return "l'archivio delle promesse non e' ancora stato caricato"
+            if quale == "officina" and self._officina is None:
+                return ("non posso costruire: l'officina non e' disponibile "
+                        "(Home Assistant non e' raggiungibile, o l'add-on e' appena partito)")
         return None
 
     async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
@@ -773,14 +903,16 @@ class DispatcherStrumenti:
             "prometti": self._prometti,
             "promesse": self._promesse_elenco,
             "disdici": self._disdici,
+            "costruisci": self._costruisci,
+            "conferma": self._conferma,
         }[nome]
         try:
-            # `_esegui`, `_legami` e `_prometti` sono coroutine (fanno rete,
-            # o -- `_prometti` -- possono scaldare il registro dei servizi
-            # prima di verificare); gli altri cinque no. Si attende cio' che
-            # e' attendibile invece di rendere `async` anche i cinque
-            # sincroni: cambiare la loro firma avrebbe toccato otto gestori
-            # per un bisogno di tre.
+            # `_esegui`, `_legami`, `_prometti`, `_costruisci` e `_conferma`
+            # sono coroutine (fanno rete, o -- `_prometti` -- possono
+            # scaldare il registro dei servizi prima di verificare); gli
+            # altri sei no. Si attende cio' che e' attendibile invece di
+            # rendere `async` anche i sei sincroni: cambiare la loro firma
+            # avrebbe toccato undici gestori per un bisogno di cinque.
             esito = gestore(argomenti)
             if inspect.isawaitable(esito):
                 esito = await esito
@@ -1300,6 +1432,42 @@ class DispatcherStrumenti:
         if not isinstance(ident, str) or not ident.strip():
             return {"errore": "«disdici» ha bisogno dell'`id` della promessa."}
         return self._promesse.disdici(ident.strip(), adesso=_time.time())
+
+    async def _costruisci(self, argomenti: dict[str, Any]) -> dict:
+        """Propone. Non scrive: lo fa `conferma`, e non nello stesso turno."""
+        import time as _time
+        intento = {
+            "gesto": argomenti.get("gesto"),
+            "dominio": argomenti.get("dominio"),
+            "chiave": argomenti.get("chiave"),
+            "alias": argomenti.get("alias"),
+            "descrizione": argomenti.get("descrizione") or "",
+            "innesco": argomenti.get("innesco") or [],
+            "condizioni": argomenti.get("condizioni") or [],
+            "azioni": argomenti.get("azioni") or [],
+            "stati": argomenti.get("stati") or [],
+            "campi": argomenti.get("campi"),
+            "parametri": argomenti.get("parametri") or [],
+            "riuso": bool(argomenti.get("riuso")),
+            "ricorrente": bool(argomenti.get("ricorrente")),
+            "richiesto": argomenti.get("richiesto"),
+            "helper": argomenti.get("helper") or [],
+            "frase": argomenti.get("frase"),
+        }
+        return await self._officina.proponi(
+            intento, origine="chat", turno=self._turno, adesso=_time.time())
+
+    async def _conferma(self, argomenti: dict[str, Any]) -> dict:
+        """Applica una proposta gia' creata da `costruisci`. La guardia del
+        turno (non si conferma nel turno che ha proposto) vive nell'officina:
+        qui si passa `self._turno`, la stessa identita' coniata una volta per
+        turno dal chiamante (`api/handlers_chat.py`/`api/handlers_mcp.py`)."""
+        import time as _time
+        proposta_id = (argomenti or {}).get("proposta_id")
+        if not isinstance(proposta_id, str) or not proposta_id.strip():
+            return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
+        return await self._officina.applica(
+            proposta_id.strip(), origine="chat", turno=self._turno, adesso=_time.time())
 
     def _verifica_ora(self, chiamata: dict, verifica) -> str | None:
         """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.

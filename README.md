@@ -29,18 +29,23 @@ to command it**.
 
 That is the whole product. It reads Home Assistant, it remembers what you tell
 it, and it calls Home Assistant services on your behalf when you ask it to in
-chat. It does not *write* objects into Home Assistant: no automations, no
-scripts, no scenes, no dashboards.
+chat. Since the "costruire" slice it also *builds*: ask it for an automation,
+a script or a scene and it composes one, shows you the preview, and writes it
+into Home Assistant only once you say to go ahead. It does not write
+dashboards.
 
 **Read that boundary literally, because it is narrower than it sounds.** There
 is no category of service that HIRIS holds back — the only limits are the ones
 below (the service and the entity have to exist, and have to match). Two
 consequences worth knowing before you install it:
 
-- **your automations are not out of reach.** HIRIS will not rewrite one, but
-  `automation.turn_off` on an `automation.*` entity is an ordinary service call
-  and it will make it if you ask. Unlike a light, a disabled automation is not
-  obvious to look at and it stays disabled until something re-enables it.
+- **your automations are not out of reach.** `automation.turn_off` on an
+  `automation.*` entity is an ordinary service call and it will make it if you
+  ask — unlike a light, a disabled automation is not obvious to look at and it
+  stays disabled until something re-enables it. Since "costruire", HIRIS can
+  go further and rewrite one: it declares that the automation is already
+  yours before touching it, shows the before/after, and "Rimetti com'era"
+  restores it exactly.
 - **notifications are not carved out either.** HIRIS has no notification
   channel of its own (see [what is *not* in 2.0](#what-is-not-in-20)), but on
   an installation that exposes `notify.*` entities — ordinary since Home
@@ -143,25 +148,33 @@ Saved memories come back in the nucleo on the next turn, under
 
 ---
 
-## The chat, and its five tools
+## The chat, and its eleven tools
 
-The chat is the only surface. The model gets the nucleo plus exactly five tools
+The chat is the only surface. The model gets the nucleo plus exactly eleven tools
 (`hiris/app/casa/strumenti.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
 |---|---|
 | `cerca` | finds an area, entity or device from a name or alias — and returns **every** candidate, flagging the ambiguous ones instead of silently picking the first |
 | `guarda` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
+| `legami` | who touches a thing, according to Home Assistant — which automations, scripts, scenes, groups or people name it, and where it lives |
 | `ricorda` | saves what a person said, with its anchors to the house |
 | `richiama` | the memories anchored to one part of the house |
 | `esegui` | calls a Home Assistant service — verified against your installation before it is sent, and the state read back after, so `prima`, `dopo` and `cambiato` say what actually changed |
+| `prometti` | schedules an action or a question for later — the action is verified now, against this installation, not when it eventually runs |
+| `promesse` | what HIRIS still owes, and the history of what happened to the rest |
+| `disdici` | cancels a promise that has not been kept yet |
+| `costruisci` | proposes an automation, a script or a scene — composes it, validates it against this installation, and writes nothing |
+| `conferma` | applies a proposal `costruisci` made, only in a turn after the one where the preview was shown |
 
-Four of the five read and remember; only `esegui` touches Home Assistant, and
-it does so through the single door described above. There is no allowlist and
-no confirmation step to configure — the catalogue of thirty-four tools and the
-action gate that stood in front of them were both removed in 2.0, and when
-action came back it came back as **one** tool with a verification step, not as
-a catalogue with a gate.
+Two of the eleven write to Home Assistant. `esegui` does it immediately, through the services
+door (`azione/porta.py`), with no confirmation step — verified against your installation, not
+approved by you first. `conferma` does it through the configuration door
+(`azione/costruzione/officina.py`), applying a proposal `costruisci` already composed and
+validated, and only in a turn after the one where you saw the preview. Everything else reads,
+remembers, schedules or proposes without touching the house. The catalogue of thirty-four tools
+and the action gate that stood in front of them were both removed in 2.0; what came back is two
+doors, each with its own verification, not a catalogue with a gate.
 
 Answers stream token by token (`text/event-stream`) when the client asks for
 it, and closed sessions are summarised back into the next conversation
@@ -215,10 +228,10 @@ turn is enqueued together with the same context the synchronous chat composes
 (`handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
 before it starts (`agent/runner.py::sonda_strumenti`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
-arguments the CLI is launched with. When the probe succeeds the model has
-`cerca`, `guarda`, `ricorda`, `richiama` and `esegui` under an `mcp__hiris__`
-prefix: it can look at the current state, not just the snapshot, and it can act
-— through the very same door as the synchronous path, never one of its own.
+arguments the CLI is launched with. When the probe succeeds the model gets the
+same eleven tools as the synchronous path, under an `mcp__hiris__` prefix: it
+can look at the current state, not just the snapshot, and it can act — through
+the same two doors as the synchronous path, never one of its own.
 When it fails, the answer
 is prefixed with a line saying the tools were not available this turn
 (`AVVISO_STRUMENTI_ASSENTI`) instead of quietly pretending it looked; on that
@@ -280,7 +293,7 @@ nesting renames an option, and a renamed option loses its stored value silently.
 | `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
 
 > With `local_model.url` + `local_model.model` set and `provider_ollama`
-> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the four
+> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the eleven
 > tools all work without any cloud key. If no provider is both enabled and
 > credentialed, AI calls are disabled.
 
@@ -387,10 +400,11 @@ These existed in 1.x and are deliberately **out of the running product**. The
 code largely still sits in git history; anything that comes back will come back
 rewritten, with a design of its own.
 
-- **Building things** — no creating or editing automations, scripts, scenes or
-  dashboards. Calling a service *is* back (`esegui`, above); writing objects
-  into Home Assistant is not. Note the seam: *enabling and disabling* an
-  automation is a service call, and is therefore **in**
+- **Dashboards** — no creating or editing Lovelace views. Building
+  automations, scripts and scenes moved back **in** with the "costruire"
+  slice (`costruisci` and `conferma`, two of the chat's tools): HIRIS
+  composes them, validates against your installation, and writes them into
+  Home Assistant only once you confirm the preview.
 - **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
   Action returned without it, on purpose: safeguards are a designed phase of
   their own, not an inheritance from 1.x
@@ -405,7 +419,7 @@ rewritten, with a design of its own.
   can call their services like any other
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
-- **The thirty-four-tool catalogue** — replaced by the five above
+- **The thirty-four-tool catalogue** — replaced by the eleven above
 
 ---
 

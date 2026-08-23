@@ -27,7 +27,9 @@ la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
 `STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
-`costruisci_dispatcher_strumenti(app)`, la stessa funzione del turno sincrono.
+`costruisci_dispatcher_strumenti(app, turno=id_turno)`, la stessa funzione del
+turno sincrono -- con l'identita' di `X-HIRIS-Turno` ripropagata, dalla fetta
+«costruire».
 
 **Dalla fetta «le promesse seguono la catena» (22/08/2026) e' consapevole del
 TURNO.** Quando il job che il ponte sta servendo e' un `kind="promessa"`, la
@@ -40,14 +42,17 @@ turno di promessa sul ponte non avrebbe `concludi` -- cioe' nessun modo di
 finire -- e vedrebbe `esegui`, cioe' potrebbe toccare la casa senza nessuno
 davanti.
 
-**E' anche un canale di azione, dalla fetta «comandare».** Fino a quel momento
-qui si leggeva «gli strumenti restano quattro e nessuno tocca Home Assistant --
-HIRIS conosce e non agisce»: era vero, e ha smesso di esserlo su entrambe le
-meta'. Gli strumenti sono cinque e il quinto, `esegui`, chiama un servizio di
-Home Assistant. Cio' che NON cambia e' il motivo per cui la frase stava qui:
+**E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
+«costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
+strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
+non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
+strumenti sono undici, lo stesso catalogo del turno sincrono: `esegui` chiama
+un servizio di Home Assistant, `costruisci`/`conferma` compongono e scrivono
+configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
-la stessa funzione del turno sincrono, che dispaccia alla stessa porta unica
-(`azione/porta.py`) -- il ponte non ha una strada verso la casa che la chat non
+la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
+`azione/porta.py` per i servizi, `azione/costruzione/officina.py` per la
+configurazione -- il ponte non ha una strada verso la casa che la chat non
 abbia, e non ne ha una sua. Un secondo punto di scrittura sarebbe un difetto,
 non un'ottimizzazione.
 
@@ -421,7 +426,16 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # protocollo. Se un giorno arrivasse, il dispatcher lo direbbe con un
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
     # qui a indovinare.
-    dispatcher = costruisci_dispatcher_strumenti(request.app)
+    #
+    # fetta «costruire»: si ripropone al dispatcher la STESSA `id_turno` gia'
+    # letta sopra da `X-HIRIS-Turno` per il tetto dei giri -- non se ne conia
+    # una seconda. E' l'identita' che la guardia dell'officina usa per
+    # rifiutare una `conferma` nello stesso turno della `costruisci` che
+    # l'ha proposta. Quando l'intestazione manca (`id_turno` e' `None`, il
+    # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
+    # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
+    # non esiste.
+    dispatcher = costruisci_dispatcher_strumenti(request.app, turno=id_turno)
     id_promessa = _promessa_del_turno(request)
     if id_promessa:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:

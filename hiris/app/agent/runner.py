@@ -5,10 +5,13 @@ L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
-anche AGIRE su di essa -- gli strumenti sono cinque, e il quinto (`esegui`)
-chiama un servizio di Home Assistant passando per la porta unica
-(`azione/porta.py`), la stessa della chat sincrona. Le note che seguono sono la
-STORIA di come ci si e' arrivati, e sono al passato apposta: fino alla review
+anche AGIRE su di essa -- gli strumenti sono undici, lo stesso catalogo della
+chat sincrona (`casa/strumenti.py`): fra loro `esegui` chiama un servizio di
+Home Assistant passando per la porta dei servizi (`azione/porta.py`), e
+`costruisci`/`conferma` (fetta «costruire») passano per l'officina
+(`azione/costruzione/officina.py`) -- due canali, due porte, non piu' una
+sola. Le note che seguono sono la STORIA di come ci si e' arrivati, e sono al
+passato apposta: fino alla review
 totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
 era la prima cosa che un lettore di questo file trovava. La riga qui sopra ha
 appena smesso a sua volta di dire «e NON agisce» (fetta «comandare», Task 5):
@@ -86,9 +89,10 @@ parallele della stessa risposta della CLI -- vedi il commento su
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono cinque e il quinto tocca
-Home Assistant (hiris/app/casa/strumenti.py): il ponte agisce quando la sonda
-dice di si', esattamente come la chat sincrona, e per la stessa porta. Cio' che
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono undici (hiris/app/casa/
+strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
+la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
+«costruire», per quella della configurazione (`costruisci`/`conferma`). Cio' che
 resta vero e' il confine: nessuna autonomia. Ogni esecuzione nasce da una frase
 in chat -- non c'e' trigger ne' schedulazione che possa farne partire una."""
 import asyncio, json, logging, os, secrets, subprocess, time
@@ -197,16 +201,24 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     verso `/api/mcp`: e' cosi' che quella rotta sa QUALE turno sta chiamando
     e puo' tenere il tetto ai giri di strumento per turno
     (`api/handlers_mcp.MAX_GIRI_STRUMENTI`) -- il freno che sostituisce un
-    `--max-turns` che la CLI non ha (verificato su `claude --help`). **Serve
-    solo a contare**: non e' un'autenticazione (quella resta il token qui
-    sopra) e non va scambiata per tale -- e' pero' il gancio esatto su cui la
-    fase sicurezze potra' innestare il "token per-invocazione di validita'
-    pari al turno" che il progetto suggerisce (§3.3), senza dover inventare
-    un secondo meccanismo. Il default vuoto (nessuna intestazione aggiunta)
-    e' cio' che permette a `test_strumenti_al_ponte.py`/
-    `test_agent_runner_inaddon.py` di continuare a chiamare questa funzione
-    coi soli due argomenti di sempre: un tetto per-turno non e' niente che
-    quei test debbano conoscere.
+    `--max-turns` che la CLI non ha (verificato su `claude --help`). Non e'
+    un'autenticazione (quella resta il token qui sopra) e non va scambiata
+    per tale: un turno sbagliato o assente non lascia entrare nessuno che
+    non ci fosse gia'. **Dalla fetta «costruire» pero' non serve piu' solo a
+    contare**: e' anche l'UNICA identita' su cui la guardia dell'officina
+    (`azione/costruzione/officina.py`) rifiuta di confermare una proposta
+    nel turno stesso in cui e' stata creata -- consumata da
+    `api/handlers_mcp.py::_chiama_strumento`, che la ripropone al dispatcher
+    invariata. Toglierla o smettere di propagarla non e' piu' un dettaglio
+    del conteggio: apre il cancello del consenso in silenzio, lasciando
+    passare una `conferma` nello stesso turno della `costruisci` che l'ha
+    proposta. Resta comunque il gancio esatto su cui la fase sicurezze potra'
+    innestare il "token per-invocazione di validita' pari al turno" che il
+    progetto suggerisce (§3.3), senza dover inventare un secondo meccanismo.
+    Il default vuoto (nessuna intestazione aggiunta) e' cio' che permette a
+    `test_strumenti_al_ponte.py`/`test_agent_runner_inaddon.py` di continuare
+    a chiamare questa funzione coi soli due argomenti di sempre: un tetto
+    per-turno non e' niente che quei test debbano conoscere.
 
     **Un'identita' per TURNO, non per invocazione della CLI.** Il chiamante
     (`_reason_chat`, sotto) la conia UNA sola volta per turno, PRIMA di
@@ -472,7 +484,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     quel pin insieme al codice, invece di scavalcarlo qui."""
     # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
     # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve cinque strumenti, senza ne serve nove, e una sonda che
+    # rotta serve cinque strumenti, senza ne serve undici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
     definizioni = strumenti_promessa() if id_promessa else STRUMENTI_CONOSCENZA
     attesi = {d["name"] for d in definizioni}
@@ -1182,9 +1194,12 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # turno in cui il ponte ha gia' fallito una volta -- l'opposto di un
     # freno.
     #
-    # Un `secrets.token_urlsafe` breve: **serve solo a contare**, non e'
-    # un'autenticazione (quella resta il token interno negli stessi header) e
-    # non va scambiata per tale -- vedi il docstring di `config_mcp`.
+    # Un `secrets.token_urlsafe` breve: non e' un'autenticazione (quella
+    # resta il token interno negli stessi header) e non va scambiata per
+    # tale. Dalla fetta «costruire» pero' non e' piu' solo il contatore del
+    # tetto: e' anche l'UNICA identita' su cui la guardia dell'officina
+    # rifiuta di confermare una proposta nel turno che l'ha creata -- vedi il
+    # docstring di `config_mcp`.
     id_turno = secrets.token_urlsafe(9)
     # Fetta «le promesse seguono la catena»: un job `kind="promessa"` porta
     # l'id della promessa che questo turno sta mantenendo. Vuoto per un turno

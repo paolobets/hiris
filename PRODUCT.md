@@ -51,6 +51,22 @@
 > nessuna autonomia — ogni esecuzione nasce da una frase in chat — e nessun semaforo, che non è
 > tornato con lei. Per cosa il prodotto fa davvero oggi, il `README.md`.
 
+> ## 🗄 Annotazione — 23 agosto 2026
+>
+> Il blocco del 12 agosto qui sopra è a sua volta superato su un numero, per lo stesso motivo per
+> cui lui stesso supera il 10: non si riscrive, si annota. Diceva che *«gli strumenti della chat
+> sono **cinque**, e il quinto (`esegui`) chiama i servizi di Home Assistant»*.
+>
+> Era vero il 12 agosto. Da allora il catalogo è cresciuto per tappe, e dalla fetta **«costruire»**
+> gli strumenti della chat sono **undici** (`hiris/app/casa/strumenti.py`). `esegui` continua a
+> chiamare i servizi passando dalla stessa porta di allora (`hiris/app/azione/porta.py`);
+> `costruisci` e `conferma`, in coppia, scrivono **configurazione** — automazioni, script, scene —
+> passando da un secondo canale che verifica e rilegge come il primo ma non lo sostituisce, l'officina
+> (`hiris/app/azione/costruzione/officina.py`). Questo tocca anche il blocco del 4 agosto qui
+> sotto: dove dice che la 2.0 pubblicata «non costruisce né oggetti HA né agenti», la prima metà
+> ha smesso di essere vera — HIRIS costruisce oggetti Home Assistant dalla fetta «costruire»; resta
+> vero che non costruisce agenti. Per cosa il prodotto fa davvero oggi, il `README.md`.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

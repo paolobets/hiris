@@ -320,6 +320,251 @@ class HAClient:
             risposta = await resp.json()
         return _cambiati_da(risposta)
 
+    # I tre domini che l'API di configurazione governa. Sono i VALORI delle
+    # rotte di `components/config/` (automation.py, script.py, scene.py),
+    # verificati alla fonte: `/api/config/{component}/{config_type}/{config_key}`
+    # di `components/config/view.py`. Non c'e' una quarta rotta: le plance si
+    # scrivono su un altro canale (WS `lovelace/config/save`), che riscrive
+    # TUTTO -- vedi la spec §1.1 -- e non passa di qui.
+    DOMINI_CONFIGURABILI = ("automation", "script", "scene")
+
+    # La chiave finisce dentro un URL. Per automazioni e scene e' l'`id`
+    # (cifre), per gli script uno slug (`cv.slug`): questa forma li copre
+    # entrambi e RIFIUTA tutto il resto. E' una GUARDIA, e come quella su
+    # `entity_id` va tenuta STRETTA: allargarla per far passare una chiave
+    # esotica e' una decisione di sicurezza, non una pulizia.
+    _CHIAVE_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+    def _rotta_config(self, dominio: str, chiave: str) -> tuple[str | None, str | None]:
+        """L'URL della rotta di configurazione, oppure il motivo del rifiuto."""
+        if dominio not in self.DOMINI_CONFIGURABILI:
+            return None, (f"il dominio «{dominio}» non si configura da qui. "
+                          f"Domini configurabili: {', '.join(self.DOMINI_CONFIGURABILI)}.")
+        if not self._CHIAVE_RE.match(chiave or ""):
+            return None, (f"la chiave «{chiave}» non ha una forma ammessa "
+                          "(lettere, cifre, trattino e trattino basso, max 64).")
+        return f"{self._base_url}/api/config/{dominio}/config/{chiave}", None
+
+    @staticmethod
+    async def _motivo_http(resp) -> str:
+        """Il motivo vero che Home Assistant manda nel corpo, non solo il numero.
+
+        L'editor di HA mostra all'utente esattamente questa stringa: e' la
+        frase che dice PERCHE' la configurazione e' stata rifiutata, ed e' il
+        valore di prodotto della spec §2.5. Se il corpo non e' leggibile resta
+        il codice, che e' comunque piu' di «non posso».
+        """
+        try:
+            corpo = await resp.json()
+            if isinstance(corpo, dict) and corpo.get("message"):
+                return str(corpo["message"])
+        except Exception:
+            pass
+        try:
+            testo = (await resp.text()) or ""
+        except Exception:
+            testo = ""
+        return f"Home Assistant ha risposto {resp.status}. {testo}".strip()
+
+    async def leggi_configurazione(self, dominio: str, chiave: str) -> dict:
+        """Il corpo scritto di un oggetto, letto dalla stessa rotta dell'editor.
+
+        Serve al «prima» di una modifica e di una cancellazione (spec §6): HA
+        non tiene storico, e questa e' la fonte di cio' che c'era. NON si usa
+        `casa/comportamento.py` al suo posto: quello e' l'archivio di HIRIS,
+        aggiornato a cadenza propria, e potrebbe essere vecchio di minuti.
+        """
+        url, rifiuto = self._rotta_config(dominio, chiave)
+        if url is None:
+            return {"errore": rifiuto}
+        async with self._session.get(url) as resp:
+            if resp.status == 404:
+                # «Non c'e'» e' un FATTO, non un guasto, ed e' anche il modo
+                # con cui si verifica che un id nuovo sia libero. Confonderlo
+                # con un errore di rete significherebbe, il giorno in cui HA
+                # risponde male, dichiarare libero un id occupato e far
+                # SOSTITUIRE l'automazione che c'era.
+                return {"assente": True}
+            if resp.status != 200:
+                return {"errore": await self._motivo_http(resp)}
+            return {"corpo": await resp.json()}
+
+    async def salva_configurazione(self, dominio: str, chiave: str, corpo: dict) -> dict:
+        """Scrive un oggetto di configurazione. La primitiva che COSTRUISCE.
+
+        **Non chiamarla direttamente.** L'unico chiamante di produzione e'
+        `azione/costruzione/officina.py`, che compone il corpo dai parametri,
+        lo valida, archivia il «prima» e rilegge dopo.
+
+        **Non solleva sul rifiuto**, ed e' la differenza voluta con
+        `call_service` qui sopra: un `400` di Home Assistant su questa rotta
+        non e' un guasto di rete, e' il **validatore vero del dominio**
+        (`async_validate_config_item`) che dice cosa non va. Quella frase deve
+        arrivare al modello perche' si corregga su un fatto di questa
+        installazione. Solleva solo cio' che rompe il trasporto.
+
+        **Chi scrive il file e' Home Assistant**, e lo fa trovando la voce per
+        `id` e SOSTITUENDOLA (`components/config/view.py::_write_value`). E'
+        questa proprieta' che rende impossibile ripetere il danno misurato su
+        `automations.yaml` -- la voce accodata quattro volte, nascosta dalle
+        ancore YAML. HIRIS non serializza nessuno YAML, e non deve iniziare.
+        """
+        url, rifiuto = self._rotta_config(dominio, chiave)
+        if url is None:
+            return {"errore": rifiuto}
+        async with self._session.post(url, json=corpo) as resp:
+            if resp.status != 200:
+                return {"errore": await self._motivo_http(resp)}
+            return {"salvato": True}
+
+    async def cancella_configurazione(self, dominio: str, chiave: str) -> dict:
+        """Cancella un oggetto di configurazione.
+
+        Il `post_write_hook` di Home Assistant toglie anche l'entita' dal
+        registro: dopo questa chiamata l'automazione non esiste piu' ne' nel
+        file ne' fra le entita'. Il «prima» deve gia' essere archiviato PRIMA
+        di chiamarla (spec §6): dopo, non c'e' piu' nessuna fonte da cui
+        rileggerlo.
+        """
+        url, rifiuto = self._rotta_config(dominio, chiave)
+        if url is None:
+            return {"errore": rifiuto}
+        async with self._session.delete(url) as resp:
+            if resp.status != 200:
+                return {"errore": await self._motivo_http(resp)}
+            return {"cancellato": True}
+
+    async def valida_config(self, *, triggers=None, conditions=None,
+                            actions=None) -> dict:
+        """La prova a vuoto: valido o no, secondo QUESTA casa, senza salvare.
+
+        E' il comando WS `validate_config` (`components/websocket_api/
+        commands.py`): accetta `triggers`, `conditions`, `actions` e risponde
+        per ciascuna chiave `{"valid": bool, "error": str|None}`. **Non scrive
+        niente.**
+
+        E' cio' che permette al giro della spec (§3) di mostrare un'anteprima
+        gia' verificata: un tentativo sbagliato non costa una scrittura, e il
+        modello si corregge su un fatto invece che su un ricordo.
+
+        Si mandano SOLO le chiavi presenti: mandarne una vuota significherebbe
+        chiedere a HA di validare una lista vuota, che e' valida -- e un
+        «valido» su una cosa che non abbiamo chiesto e' una frase falsa detta
+        con sicurezza.
+
+        Un guasto di comunicazione torna come `{"errore": ...}` e **mai** come
+        un esito valido: il silenzio di Home Assistant non e' un permesso.
+        """
+        extra: dict = {}
+        if triggers is not None:
+            extra["triggers"] = triggers
+        if conditions is not None:
+            extra["conditions"] = conditions
+        if actions is not None:
+            extra["actions"] = actions
+        if not extra:
+            return {"errore": "niente da validare"}
+        msg = await self._ws_command("validate_config", extra)
+        esito = self._esito_ws(msg, "risultato")
+        if "errore" in esito:
+            return esito
+        risultato = esito["risultato"]
+        if not isinstance(risultato, dict):
+            return {"errore": "risposta in forma inattesa dalla validazione"}
+        return risultato
+
+    # Gli helper che questa fetta sa creare. Sono collezioni gestite da
+    # `StorageCollectionWebsocket` di Home Assistant, che espone per ognuna
+    # `{dominio}/create`, `{dominio}/update`, `{dominio}/delete` -- e la
+    # chiave del delete porta il NOME DEL DOMINIO (`input_boolean_id`), non
+    # `id`. Non e' un dettaglio estetico: con `id` il comando viene rifiutato.
+    DOMINI_HELPER = ("input_boolean", "input_number", "input_select",
+                     "input_text", "input_datetime", "timer", "counter",
+                     "schedule")
+
+    @staticmethod
+    def _esito_ws(msg: dict | None, chiave: str) -> dict:
+        """Il `result` di un comando WS, oppure il motivo -- mai un successo muto."""
+        if msg is None:
+            return {"errore": "Home Assistant non ha risposto"}
+        if msg.get("error"):
+            errore = msg["error"]
+            return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
+        if not msg.get("success"):
+            return {"errore": "Home Assistant ha rifiutato il comando"}
+        return {chiave: msg.get("result")}
+
+    async def crea_helper(self, dominio: str, dati: dict) -> dict:
+        """Crea un helper. Primitiva nuda: un solo chiamante, l'officina.
+
+        Gli helper sono nel perimetro della fetta perche' meta' delle
+        automazioni utili ne ha bisogno (spec §3.1): un'automazione che si puo'
+        comporre ma non accendere perche' manca un `input_boolean` si ferma a
+        un passo dalla fine.
+        """
+        if dominio not in self.DOMINI_HELPER:
+            return {"errore": (f"«{dominio}» non e' un helper che so creare. "
+                               f"Helper: {', '.join(self.DOMINI_HELPER)}.")}
+        return self._esito_ws(
+            await self._ws_command(f"{dominio}/create", dict(dati)), "helper")
+
+    async def cancella_helper(self, dominio: str, helper_id: str) -> dict:
+        """Cancella un helper. Serve alla DISFATTA (spec §3.1): se l'automazione
+        viene rifiutata dopo che gli helper sono nati, l'officina li toglie."""
+        if dominio not in self.DOMINI_HELPER:
+            return {"errore": f"«{dominio}» non e' un helper che so cancellare."}
+        msg = await self._ws_command(f"{dominio}/delete", {f"{dominio}_id": helper_id})
+        esito = self._esito_ws(msg, "_")
+        return {"errore": esito["errore"]} if "errore" in esito else {"cancellato": True}
+
+    async def elenca_etichette(self) -> dict:
+        """Le etichette del registro di Home Assistant."""
+        esito = self._esito_ws(
+            await self._ws_command("config/label_registry/list"), "etichette")
+        if "errore" in esito:
+            return esito
+        righe = esito["etichette"]
+        return {"etichette": righe if isinstance(righe, list) else []}
+
+    async def crea_etichetta(self, nome: str) -> dict:
+        """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
+        QUI, nel registro di Home Assistant, e non in una tabella nostra: e'
+        un fatto che HA sa gia' tenere, e duplicarlo sarebbe la fondamenta 2
+        violata (spec §5)."""
+        return self._esito_ws(
+            await self._ws_command("config/label_registry/create", {"name": nome}),
+            "etichetta")
+
+    async def aggiungi_etichetta_a(self, entity_id: str, label_id: str) -> dict:
+        """Aggiunge un'etichetta a un'entita', SENZA togliere le altre.
+
+        `config/entity_registry/update` **sostituisce** la lista `labels`: chi
+        manda solo la propria cancella quelle che l'utente aveva messo a mano.
+        Si legge, si unisce, si riscrive.
+
+        E se la lettura non riesce **non si scrive**: «non ho letto» non e'
+        «non ce n'erano», e trattarli allo stesso modo cancellerebbe le
+        etichette dell'utente proprio quando Home Assistant sta rispondendo
+        male.
+        """
+        letto = self._esito_ws(
+            await self._ws_command("config/entity_registry/get",
+                                   {"entity_id": entity_id}),
+            "voce")
+        if "errore" in letto:
+            return {"errore": f"non ho potuto leggere le etichette di {entity_id}: "
+                              f"{letto['errore']}"}
+        voce = letto["voce"] if isinstance(letto["voce"], dict) else {}
+        attuali = voce.get("labels")
+        attuali = list(attuali) if isinstance(attuali, list) else []
+        if label_id in attuali:
+            return {"applicata": True}
+        msg = await self._ws_command(
+            "config/entity_registry/update",
+            {"entity_id": entity_id, "labels": attuali + [label_id]})
+        esito = self._esito_ws(msg, "_")
+        return {"errore": esito["errore"]} if "errore" in esito else {"applicata": True}
+
     # I cinque campi con cui Home Assistant accetta un bersaglio: sono le
     # chiavi di `cv.TARGET_FIELDS` (homeassistant/helpers/config_validation.py),
     # verificate alla fonte. Qui ci sono i VALORI delle costanti, non i loro

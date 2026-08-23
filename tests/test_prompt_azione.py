@@ -145,22 +145,6 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
                 "cosa che l'utente legge del prodotto")
 
 
-def test_il_benvenuto_dice_le_tre_cose_vere_dell_azione():
-    """Le stesse tre di `claude_runner.BASE_REGOLE_STRUMENTI` e della voce
-    `ponte.attivo`, e con le stesse parole: agisce SU RICHIESTA, non
-    COSTRUISCE, non fa niente DA SOLA. Scritte in tre posti, divergono in una
-    settimana se nessuno le tiene insieme."""
-    benvenuto = _testi_che_legge_l_utente()["index.html"].lower()
-    assert "accendo, spengo, imposto" in benvenuto, (
-        "il benvenuto non dice piu' cosa HIRIS sa fare, o non lo dice con le "
-        "stesse parole degli altri due posti (accendere, spegnere, impostare)")
-    assert "non scrivo automazioni" in benvenuto, (
-        "il benvenuto non dice piu' il confine: HIRIS agisce ma non COSTRUISCE")
-    assert "mai da sola" in benvenuto, (
-        "il benvenuto non dice piu' che nessuna azione parte da sola: e' la "
-        "cosa che l'utente ha diritto di sapere prima di tutte le altre")
-
-
 # -- 2. Gli id, non i nomi --------------------------------------------------
 
 def test_la_guida_chiede_gli_id_non_i_nomi():
@@ -553,3 +537,11 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
     assert "usa sempre gli strumenti" in sincrono, (
         "il percorso sincrono non impone piu' gli strumenti per i dati sulla "
         "casa: e' l'unica riga che gli impedisce di rispondere col contesto")
+
+
+def test_il_prompt_dice_che_costruire_e_in_due_tempi():
+    from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
+    assert "costruisci" in BASE_REGOLE_STRUMENTI
+    assert "conferma" in BASE_REGOLE_STRUMENTI
+    # La regola che conta: non si concatena la conferma alla proposta.
+    assert "stesso turno" in BASE_REGOLE_STRUMENTI

@@ -30,6 +30,8 @@ from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
 from .azione.porta import PortaAzione
 from .azione.cronaca import Cronaca
+from .azione.costruzione.officina import Officina
+from .azione.costruzione.versioni import ArchivioCostruzioni
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import (AREE_PER_GIRO, aree_dell_albero,
                            confronta_con_home_assistant, gerarchia,
@@ -1205,6 +1207,16 @@ async def _on_startup(app: web.Application) -> None:
     app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
                                       app.get("entity_cache"), app["cronaca"])
 
+    # L'archivio delle costruzioni e l'officina (fetta «costruire»,
+    # docs/design/2026-08-22-costruire-in-home-assistant.md). Nascono QUI e non
+    # piu' in alto per l'ordine: l'officina riceve la cronaca (che nasce sopra)
+    # e il canale HA. Non riceve la porta e non la usa: sono due canali di
+    # scrittura diversi -- «un canale, una porta», spec §2.1 -- e l'officina
+    # non chiama mai un servizio.
+    app["costruzioni"] = ArchivioCostruzioni(
+        os.path.join(data_dir, "costruzioni.db"))
+    app["officina"] = Officina(ha_client, app["costruzioni"], app["cronaca"])
+
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
     # stata spostata).
@@ -1878,6 +1890,15 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
+    # Fetta «costruire»: le proposte rimaste `in_corso` da un riavvio a meta'.
+    # Come per le promesse, si chiude PRIMA che qualcuno possa applicarne una
+    # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
+    # nessuna `applica`, e resterebbe un fantasma fino alla potatura.
+    try:
+        app["costruzioni"].risana(adesso=_time.time())
+    except Exception as exc:
+        logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
+
     # L'orologio (`schedulatore/orologio.py`): non conosce ne' la chat ne' il
     # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
     # `interpreta` (il turno di `chiedi`, `schedulatore/turno.py`).
@@ -2533,6 +2554,13 @@ async def _on_cleanup(app: web.Application) -> None:
         app["promesse"].close()
     if "cronaca" in app:
         app["cronaca"].close()
+    # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
+    # dell'officina (`azione/costruzione/versioni.py`), costruito in
+    # `_on_startup` accanto a `app["cronaca"]`. Stessa disciplina dei due
+    # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
+    # al riavvio.
+    if "costruzioni" in app:
+        app["costruzioni"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di
@@ -2782,6 +2810,28 @@ def create_app() -> web.Application:
     # dell'esecuzione ricopiati. Rotta di lettura -- niente csrf_middleware
     # da rispettare, stessa esenzione di GET /api/promesse.
     app.router.add_get("/api/esecuzioni/{id}", handle_get_esecuzione)
+
+    # Task 10 SDD costruire: la faccia dell'officina -- guardare le proposte,
+    # aprirne una, confermare, rimettere com'era. Le due GET sono metodi
+    # safe, come `GET /api/promesse`; le due POST qui sopra scrivono su Home Assistant
+    # e passano dallo stesso `csrf_middleware` di ogni altra scrittura --
+    # quel middleware protegge per METODO (`POST`/`PUT`/`PATCH`/`DELETE` sotto
+    # `/api/*`), non per un elenco di rotte scritto a mano: non c'e' niente
+    # da aggiungere altrove perche' queste due non saltino la protezione.
+    from .api.handlers_costruzioni import (
+        handle_conferma_costruzione, handle_get_costruzione,
+        handle_get_costruzioni, handle_rifiuta_costruzione,
+        handle_ripristina_costruzione)
+    app.router.add_get("/api/costruzioni", handle_get_costruzioni)
+    app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)
+    app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)
+    app.router.add_post("/api/costruzioni/{id}/ripristina", handle_ripristina_costruzione)
+    # Il «no» del proprietario (Task 10-bis): stessa protezione CSRF delle
+    # due righe sopra -- il middleware la copre per METODO e prefisso, non
+    # per un elenco di rotte, quindi non c'e' niente da aggiungere altrove
+    # perche' anche questa non la salti. Non scrive su Home Assistant: si
+    # scrive nell'archivio e basta (vedi il modulo `handlers_costruzioni`).
+    app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_rifiuta_costruzione)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.

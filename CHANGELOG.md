@@ -1,5 +1,50 @@
 # HIRIS — Changelog
 
+## [Unreleased] — HIRIS costruisce (fetta «costruire»)
+
+**Non solo servizi: adesso HIRIS scrive anche configurazione.** Fino a ieri l'unica cosa che
+la chat poteva far succedere in Home Assistant era chiamare un servizio — accendere, spegnere,
+impostare. Da questa fetta puo' anche **comporre** un'automazione, uno script o una scena,
+mostrarne l'anteprima gia' validata da Home Assistant, e scriverla solo quando dici di
+procedere. Non e' pubblicata: resta dietro le verifiche dal vivo del §9 della spec
+(`docs/design/2026-08-22-costruire-in-home-assistant.md`) prima di qualunque rilascio.
+
+### Added
+
+- **L'officina** (`hiris/app/azione/costruzione/officina.py`) — il secondo canale di scrittura
+  verso Home Assistant, per la configurazione: compone automazioni, script e scene dai
+  parametri (mai scrivendo YAML a mano), li fa validare da Home Assistant su QUESTA
+  installazione, scrive attraverso l'API di configurazione trovando la voce per `id` e
+  sostituendola — mai un `automations.yaml` scritto in proprio — e rilegge lo stato. Un
+  identificatore gia' occupato non viene mai riutilizzato alla cieca. Gli oggetti che nascono
+  vengono etichettati `HIRIS` in Home Assistant; quelli modificati restano tuoi.
+- **Due strumenti nuovi in chat**: `costruisci` (propone, valida, non scrive mai) e `conferma`
+  (applica una proposta — solo in un turno successivo a quello dell'anteprima, mai nello stesso
+  turno). Undici strumenti serviti in totale.
+- **Helper nati e disfatti**: se una proposta ha bisogno di un `input_boolean` che non esiste,
+  nasce insieme all'oggetto e viene disfatto se l'oggetto viene rifiutato o la validazione fallisce.
+- **Il ritorno indietro.** Ogni costruzione applicata puo' essere disfatta: «Rimetti com'era»
+  passa dallo stesso giro di validazione di tutte le altre proposte, e se il «prima» non e' piu'
+  valido lo dice invece di scriverlo.
+- **La pagina Costruzioni** — il prima/dopo di ogni proposta, applicata o no, e il pulsante per
+  tornare indietro su quelle applicate.
+- **Il no del proprietario** e' uno stato suo (`disdetta`), non un fallimento: una proposta a cui
+  non si e' mai risposto non sparisce ne' si confonde con un errore.
+
+### Changed
+
+- **La cronaca registra due generi**: un atto sul canale dei servizi e un atto sul canale della
+  configurazione sono lo stesso fatto — stessa `origine`, stessa forma del rifiuto motivato — letto
+  da due porte diverse.
+- **L'invariante «una porta sola» e' diventato «un canale, una porta».** Non e' piu' vero che
+  esiste un solo punto di scrittura verso Home Assistant: ce ne sono due, uno per i servizi
+  (`azione/porta.py`) e uno per la configurazione (`azione/costruzione/officina.py`), e ciascuno
+  resta l'unico sul proprio canale. Vedi `CLAUDE.md` («L'impianto») e il docstring di `porta.py`.
+- **Il benvenuto della chat** non elenca piu' cosa HIRIS non fa: restano il saluto e le
+  scorciatoie, non un paragrafo che una fetta di due giorni dopo avrebbe reso falso.
+- **`docs/design/2026-08-12-azione-design.md` §4** e' marcata superata dalla spec del 22 agosto:
+  resta storia, non specifica.
+
 ## [3.10.3] — Quattro frasi che dicevano piu' di quel che sapevano (2026-08-22)
 
 Nessuna funzione nuova: quattro punti in cui HIRIS affermava qualcosa che non

@@ -52,6 +52,9 @@ const ROUTE = [
   ['#/memoria', 'Memoria'],
   // fetta «lo schedulatore» Task 9: la terza condizione della spec, «si vede».
   ['#/promesse', 'Promesse'],
+  // fetta «costruire» Task 11: approvare o rifiutare cio' che HIRIS propone
+  // di scrivere in Home Assistant, leggere il prima/dopo, tornare indietro.
+  ['#/costruzioni', 'Costruzioni'],
   ['#/usage', 'Consumi'],
   ['#/models', 'Modelli'],
   // fetta «esce il documentale»: qui c'era ['#/history', 'Storicizzazione'].
@@ -77,7 +80,7 @@ test('main.js non dereferenzia nessun modulo di route al parse: senza NESSUNO di
   const { window } = avvia();
 
   for (const globale of ['HirisDashboard', 'HirisAlberoRoute', 'HirisMemoriaRoute', 'HirisPromesseRoute',
-                         'HirisUsageRoute', 'HirisModelsRoute', 'HirisImpostazioniRoute']) {
+                         'HirisCostruzioni', 'HirisUsageRoute', 'HirisModelsRoute', 'HirisImpostazioniRoute']) {
     assert.equal(typeof window[globale], 'undefined',
       `precondizione: ${globale} non deve essere caricato in questo test`);
   }

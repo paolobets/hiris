@@ -85,15 +85,16 @@ def dispatcher_ambiguo(archivio_casa_ambiguo, memoria):
     return DispatcherStrumenti(archivio_casa_ambiguo, memoria)
 
 
-def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
+def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     """L'UNICO pin dell'identita' del catalogo: qui i nomi si scrivono a mano
     apposta, cosi' che aggiungerne o toglierne uno sia una decisione e non un
     effetto collaterale. Ovunque altro si DERIVANO da qui.
 
-    Da 34 a 4, poi 5, poi 6, e ora 9. `esegui` resta l'unico che scrive in
-    Home Assistant SUBITO -- e non lo fa da se': chiede alla porta unica
-    (`azione/porta.py`), che verifica prima e rilegge dopo. E' la differenza
-    con i trentaquattro usciti, dove ciascuno attuava per conto proprio.
+    Da 34 a 4, poi 5, poi 6, poi 9, e ora 11. `esegui` resta l'unico che
+    scrive un SERVIZIO in Home Assistant SUBITO -- e non lo fa da se': chiede
+    alla porta unica (`azione/porta.py`), che verifica prima e rilegge dopo.
+    E' la differenza con i trentaquattro usciti, dove ciascuno attuava per
+    conto proprio.
 
     Il sesto e' `legami`: chiede a Home Assistant CHI tocca una cosa. Non e'
     un sesto modo di leggere gli archivi -- non ne legge nessuno -- ed e' il
@@ -101,15 +102,22 @@ def test_il_catalogo_e_questo_e_uno_solo_di_essi_tocca_la_casa():
     sono momentanei, non si archiviano, e chiederli costa un giro di rete che
     `guarda` non deve pagare (vedi il docstring di `casa/strumenti.py`).
 
-    Gli ultimi tre -- `prometti`, `promesse`, `disdici` (fetta «lo
-    schedulatore», Task 6) -- mettono da parte un'azione o una domanda per
-    UN ISTANTE FUTURO, invece di agire adesso: `prometti` non scrive nella
-    casa nel turno in cui viene chiamato (un `fai` viene solo VERIFICATO
-    contro questa installazione, non eseguito), quindi non e' un secondo
-    `esegui`."""
+    Tre -- `prometti`, `promesse`, `disdici` (fetta «lo schedulatore», Task
+    6) -- mettono da parte un'azione o una domanda per UN ISTANTE FUTURO,
+    invece di agire adesso: `prometti` non scrive nella casa nel turno in cui
+    viene chiamato (un `fai` viene solo VERIFICATO contro questa
+    installazione, non eseguito), quindi non e' un secondo `esegui`.
+
+    Gli ultimi due -- `costruisci`, `conferma` (fetta «costruire», Task 9) --
+    sono la SECONDA strada che scrive su Home Assistant, e scrivono
+    CONFIGURAZIONE (un'automazione, uno script, una scena), non un servizio:
+    passano per l'officina (`azione/costruzione/officina.py`), sorella della
+    porta e non sua sostituta. `costruisci` non scrive neanche lui -- compone
+    e fa validare, come `prometti` verifica senza eseguire -- e' `conferma`,
+    in un turno diverso, a far scrivere davvero."""
     nomi = {s["name"] for s in STRUMENTI_CONOSCENZA}
     assert nomi == {"cerca", "guarda", "legami", "ricorda", "richiama", "esegui",
-                    "prometti", "promesse", "disdici"}
+                    "prometti", "promesse", "disdici", "costruisci", "conferma"}
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():
