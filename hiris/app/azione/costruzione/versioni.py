@@ -20,10 +20,13 @@ ogni oggetto no, per sempre.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import threading
 
 from ...storage import connect, init_schema
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
@@ -186,17 +189,30 @@ class ArchivioCostruzioni:
                 "ORDER BY creata_ts DESC LIMIT 1", (dominio, chiave)).fetchone()
         return None if r is None else _riga(r)
 
-    def _pota(self, adesso: float) -> None:
+    def _pota(self, adesso: float) -> int:
         """Le righe vecchie se ne vanno -- tranne l'ultima applicata di ogni
         oggetto, che e' l'unica copia del «prima» rimasta al mondo.
 
+        E' l'unica operazione irreversibile del modulo: restituisce quante
+        righe ha tolto e lo scrive nel log quando ne toglie almeno una, cosi'
+        una regressione nella soglia o nella chiave di partizione lascia una
+        traccia invece di sparire in silenzio. Committa da sola: la sua
+        durabilita' non puo' dipendere dal commit di un metodo chiamato dopo.
+
         Va chiamata con il lock gia' preso.
         """
-        self._conn.execute(
+        soglia = adesso - self.CONSERVAZIONE_S
+        cur = self._conn.execute(
             "DELETE FROM costruzioni WHERE creata_ts < ? AND id NOT IN ("
             "  SELECT id FROM ("
             "    SELECT id, ROW_NUMBER() OVER ("
             "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
             "    FROM costruzioni WHERE stato='applicata'"
             "  ) WHERE rn = 1)",
-            (adesso - self.CONSERVAZIONE_S,))
+            (soglia,))
+        self._conn.commit()
+        quante = cur.rowcount
+        if quante:
+            logger.info("costruzioni: potate %d righe piu' vecchie della soglia %s "
+                        "(l'ultima applicata di ogni oggetto e' esclusa)", quante, soglia)
+        return quante

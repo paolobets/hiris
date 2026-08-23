@@ -26,7 +26,8 @@ def _proponi(a, **kw):
 
 
 def test_una_proposta_nasce_in_attesa_e_si_rilegge_intera(archivio):
-    ident = _proponi(archivio)["id"]
+    helper = [{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}]
+    ident = _proponi(archivio, helper=helper)["id"]
     riga = archivio.leggi(ident)
     assert riga["stato"] == "in_attesa"
     assert riga["gesto"] == "crea"
@@ -34,6 +35,9 @@ def test_una_proposta_nasce_in_attesa_e_si_rilegge_intera(archivio):
     assert riga["frase"] == "apri le tapparelle all'alba"
     assert riga["dopo"]["alias"] == "Tapparelle"
     assert riga["prima"] is None
+    assert riga["origine"] == "chat"
+    assert riga["helper"] == helper
+    assert riga["anteprima"] == "Creo un'automazione che apre le tapparelle all'alba."
 
 
 def test_applicare_scrive_lo_stato_e_il_collegamento_alla_cronaca(archivio):
@@ -56,7 +60,7 @@ def test_oltre_il_tetto_non_si_propone_e_il_rifiuto_dice_quante(archivio):
         _proponi(archivio, chiave=f"k{n}")
     esito = _proponi(archivio, chiave="una_di_troppo")
     assert "id" not in esito
-    assert str(ArchivioCostruzioni.MAX_IN_ATTESA) in esito["errore"]
+    assert f"il tetto e' {ArchivioCostruzioni.MAX_IN_ATTESA}" in esito["errore"]
 
 
 def test_una_proposta_vecchia_scade_e_lo_dichiara(archivio):
@@ -91,6 +95,10 @@ def test_l_ultima_versione_applicata_di_un_oggetto_si_ritrova(archivio):
     secondo = _proponi(archivio, gesto="modifica", prima={"alias": "nuovo"},
                        dopo={"alias": "nuovissimo"}, adesso=ADESSO + 100)["id"]
     archivio.segna_applicata(secondo, adesso=ADESSO + 100, esecuzione_id="e2")
+    # Una terza proposta, piu' recente, ma lasciata `in_attesa`: non e' mai
+    # stata applicata, quindi non deve vincere l'ORDER BY su `secondo`.
+    _proponi(archivio, gesto="modifica", prima={"alias": "nuovissimo"},
+             dopo={"alias": "mai_successo"}, adesso=ADESSO + 200)
     ultima = archivio.ultima_applicata("automation", "1771")
     assert ultima["id"] == secondo
     assert ultima["prima"]["alias"] == "nuovo"
@@ -116,7 +124,11 @@ def test_una_riga_vecchia_e_superata_si_pota(archivio):
                        dopo={"alias": "c"}, adesso=ADESSO + 60)["id"]
     archivio.segna_applicata(recente, adesso=ADESSO + 60, esecuzione_id="e2")
     tardi = ADESSO + ArchivioCostruzioni.CONSERVAZIONE_S + 86400
-    _proponi(archivio, chiave="altra", adesso=tardi)
+    # `_pota` e' l'unica operazione irreversibile del modulo: il suo
+    # conteggio va sorvegliato quanto quello pubblico di `scadi`.
+    with archivio._lock:
+        quante = archivio._pota(tardi)
+    assert quante == 1
     assert archivio.leggi(superata) is None
     assert archivio.leggi(recente) is not None
 
