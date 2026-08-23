@@ -63,3 +63,29 @@ def test_un_intento_vuoto_non_consiglia_niente_e_lo_dice():
     assert esito["strutture"] == []
     assert esito["motivo"]
     assert esito["dissenso"] is False
+
+
+def test_una_ricorrenza_con_soli_stati_fa_automazione_piu_scena():
+    """Gli stati non vengono mai consumati da automazione né da script.
+    Una ricorrenza (che fa automazione) con stati da ristabilire richiede anche una scena.
+    L'automazione oraria accende la scena."""
+    esito = consiglia(_intento(ricorrente=True,
+                               stati=[{"entity_id": "light.salotto", "state": "on"}]))
+    assert esito["strutture"] == ["automazione", "scena"]
+    assert "accende" in esito["motivo"] or "scena" in esito["motivo"]
+
+
+def test_un_innesco_con_stati_senza_passi_fa_automazione_piu_scena():
+    """Un innesco senza passi è un'automazione che accende una scena con gli stati."""
+    esito = consiglia(_intento(innesco=[{"trigger": "state"}],
+                               stati=[{"entity_id": "light.salotto", "state": "on"}]))
+    assert esito["strutture"] == ["automazione", "scena"]
+    assert "accende" in esito["motivo"] or "scena" in esito["motivo"]
+
+
+def test_soli_stati_rimangono_solo_scena():
+    """Quando l'unica cosa è ristabilire stati, la struttura è solo una scena.
+    Non deve diventare automazione + scena."""
+    esito = consiglia(_intento(stati=[{"entity_id": "light.salotto", "state": "on"}]))
+    assert esito["strutture"] == ["scena"]
+    assert "scena" in esito["motivo"]

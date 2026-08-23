@@ -58,6 +58,9 @@ def consiglia(intento: dict) -> dict:
             strutture.append("script")
         motivi.append("serve un parametro in ingresso, e le automazioni non ne "
                       "prendono: quella parte e' uno script con `fields`")
+        if riuso and passi:
+            motivi.append("inoltre la sequenza si riusa anche altrove, quindi lo script "
+                          "puo' essere richiamato da altri posti")
     elif riuso and passi and "automazione" in strutture:
         strutture.append("script")
         motivi.append("la sequenza si riusa anche altrove, quindi vive in uno script "
@@ -66,10 +69,23 @@ def consiglia(intento: dict) -> dict:
         strutture.append("script")
         motivi.append("e' una sequenza che lanci tu, senza innesco: e' uno script")
 
-    if stati and not strutture:
+    if stati:
         strutture.append("scena")
-        motivi.append("sono stati da ristabilire insieme, senza innesco e senza "
-                      "sequenza: e' una scena")
+        if len(strutture) == 1:
+            # Solo scena, nessuna automazione o script
+            motivi.append("sono stati da ristabilire insieme, senza innesco e senza "
+                          "sequenza: e' una scena")
+        else:
+            # Scena accesa da automazione e/o script
+            if "automazione" in strutture and "script" in strutture:
+                motivi.append("gli stati vengono ristabiliti in una scena che automazione "
+                              "e script accendono insieme")
+            elif "automazione" in strutture:
+                motivi.append("gli stati vengono ristabiliti in una scena che l'automazione "
+                              "accende")
+            else:
+                motivi.append("gli stati vengono ristabiliti in una scena che lo script "
+                              "accende")
 
     dissenso = bool(richiesto) and richiesto not in strutture
     if dissenso:
