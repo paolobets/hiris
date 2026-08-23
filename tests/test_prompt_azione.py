@@ -553,3 +553,11 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
     assert "usa sempre gli strumenti" in sincrono, (
         "il percorso sincrono non impone piu' gli strumenti per i dati sulla "
         "casa: e' l'unica riga che gli impedisce di rispondere col contesto")
+
+
+def test_il_prompt_dice_che_costruire_e_in_due_tempi():
+    from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
+    assert "costruisci" in BASE_REGOLE_STRUMENTI
+    assert "conferma" in BASE_REGOLE_STRUMENTI
+    # La regola che conta: non si concatena la conferma alla proposta.
+    assert "stesso turno" in BASE_REGOLE_STRUMENTI
