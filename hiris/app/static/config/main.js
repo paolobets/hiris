@@ -75,6 +75,7 @@
         (route === 'albero' && hash.indexOf('#/albero') === 0) ||
         (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
         (route === 'promesse' && hash.indexOf('#/promesse') === 0) ||
+        (route === 'costruzioni' && hash.indexOf('#/costruzioni') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
@@ -137,6 +138,18 @@
       HirisPromesseRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Promesse</div>';
+    }
+  });
+  /* fetta «costruire» Task 11: la pagina #/costruzioni -- vedi
+     config/costruzioni-route.js per il perche'. `mount(outlet)` porta il
+     proprio outlet, a differenza delle altre route qui sopra: e' l'unico
+     modulo di questa SPA con quella firma, pinnata dal Task 11. */
+  HirisRouter.register(/^#\/costruzioni\/?$/, function() {
+    setCrumbHere('Costruzioni');
+    if (window.HirisCostruzioni) {
+      HirisCostruzioni.mount(document.getElementById('route-outlet'));
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Costruzioni</div>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

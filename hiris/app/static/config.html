@@ -100,6 +100,18 @@
       </span>
       <span class="nav-label">Promesse</span>
     </a>
+    <!-- fetta «costruire» Task 11: il posto dove il proprietario approva o
+         rifiuta cio' che HIRIS propone di scrivere in Home Assistant, legge
+         il confronto prima/dopo e rimette com'era un oggetto. Legge/scrive
+         l'archivio vero (GET /api/costruzioni, POST .../conferma|rifiuta|
+         ripristina, config/costruzioni-route.js). Icona chiave inglese:
+         nessun'altra voce parla di "costruire" dentro la casa. -->
+    <a class="nav-item" href="#/costruzioni" data-route="costruzioni" title="Costruzioni" aria-label="Costruzioni">
+      <span class="nav-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </span>
+      <span class="nav-label">Costruzioni</span>
+    </a>
     <!-- fetta E5 Task 2: i sette campi di ImpostazioniChat (prompt di
          sistema, modello, forma della risposta, ragionamento, tetto di turni,
          restrizione alla casa, nome) prima si cambiavano solo scrivendo a
@@ -186,6 +198,10 @@
        (solo document e fetch, stesso pattern di memoria-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
   <script src="static/config/promesse-route.js"></script>
+  <!-- fetta «costruire» Task 11: pagina #/costruzioni. Nessuna dipendenza
+       (solo document e fetch, stesso pattern di promesse-route.js), quindi
+       la posizione nell'ordine non vincola niente. -->
+  <script src="static/config/costruzioni-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>
