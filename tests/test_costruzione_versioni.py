@@ -146,3 +146,25 @@ def test_applicare_due_volte_la_stessa_proposta_non_si_puo(archivio):
     assert "errore" not in archivio.segna_applicata(ident, adesso=ADESSO, esecuzione_id="e1")
     secondo = archivio.segna_applicata(ident, adesso=ADESSO + 1, esecuzione_id="e2")
     assert "errore" in secondo
+
+
+def test_rivendicare_prende_in_carico_una_sola_volta(archivio):
+    """La stessa guardia usata dalle promesse in schedulatore/archivio.py:
+    chi rivendica per primo vince, il secondo trova la porta chiusa."""
+    ident = _proponi(archivio)["id"]
+    prima = archivio.rivendica(ident, adesso=ADESSO + 1)
+    assert "errore" not in prima
+    assert archivio.leggi(ident)["stato"] == "in_corso"
+    seconda = archivio.rivendica(ident, adesso=ADESSO + 2)
+    assert "errore" in seconda
+
+
+def test_segna_applicata_transita_anche_da_in_corso(archivio):
+    """Dopo `rivendica` la riga e' `in_corso`, non piu' `in_attesa`: la
+    transizione finale deve continuare a funzionare da li'."""
+    ident = _proponi(archivio)["id"]
+    archivio.rivendica(ident, adesso=ADESSO + 1)
+    esito = archivio.segna_applicata(ident, adesso=ADESSO + 2, esecuzione_id="e1")
+    assert "errore" not in esito
+    assert archivio.leggi(ident)["stato"] == "applicata"
+

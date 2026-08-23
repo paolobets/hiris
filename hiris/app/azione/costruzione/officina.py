@@ -59,6 +59,9 @@ class Officina:
         if dominio not in self._ha.DOMINI_CONFIGURABILI:
             return {"errore": (f"non so costruire «{dominio}». So costruire: "
                                f"{', '.join(self._ha.DOMINI_CONFIGURABILI)}.")}
+        motivo_forma = _forma_invalida(intento)
+        if motivo_forma is not None:
+            return {"errore": motivo_forma}
 
         consiglio = consiglia({
             "richiesto": intento.get("richiesto"),
@@ -69,6 +72,15 @@ class Officina:
             "riuso": intento.get("riuso"),
             "ricorrente": intento.get("ricorrente"),
         })
+        if gesto in ("crea", "modifica") and not consiglio["strutture"]:
+            # L'unico caso in cui il mestiere non ha niente da dire e' proprio
+            # quello in cui tace (`consiglia` torna col ritorno anticipato,
+            # `dissenso: False`). Senza questo controllo il corpo composto
+            # sotto avrebbe tre liste vuote, Home Assistant lo direbbe
+            # «valido», e una conferma scriverebbe in casa un'automazione
+            # inerte. Per `cancella` non si compone niente: il controllo non
+            # si applica.
+            return {"errore": consiglio["motivo"] or "non ho capito cosa costruire."}
 
         prima = None
         chiave = intento.get("chiave")
@@ -76,6 +88,15 @@ class Officina:
             if not chiave:
                 return {"errore": f"per {gesto} serve la chiave dell'oggetto da toccare."}
             letto = await self._ha.leggi_configurazione(dominio, chiave)
+            if letto.get("assente"):
+                # `leggi_configurazione` ha TRE forme (`corpo`, `errore`,
+                # `assente`), non due: indicizzare `letto["corpo"]` su questo
+                # ramo solleverebbe `KeyError` fuori dal modulo, raggiungibile
+                # con argomenti perfettamente validi -- il modello propone una
+                # modifica a un'automazione che l'utente ha cancellato nel
+                # frattempo.
+                return {"errore": f"non trovo piu' {dominio}.{chiave} in casa tua: "
+                                  "forse e' stato cancellato nel frattempo."}
             if "errore" in letto:
                 return {"errore": f"non ho potuto leggere com'e' adesso: {letto['errore']}"}
             prima = letto["corpo"]
@@ -188,23 +209,31 @@ class Officina:
     def _anteprima(self, gesto, dominio, chiave, intento, prima, dopo,
                    consiglio) -> str:
         nomi = {"automation": "automazione", "script": "script", "scene": "scena"}
+        # `.get(dominio, dominio)`, non un indice nudo: l'elenco dei domini
+        # configurabili e' del client (`HAClient.DOMINI_CONFIGURABILI`), non
+        # di questo dizionario locale -- un quarto dominio aggiunto la'
+        # solleverebbe `KeyError` qui.
+        nome_dominio = nomi.get(dominio, dominio)
         righe = []
         if gesto == "crea":
-            righe.append(f"Creo un'{nomi[dominio]} chiamata «{intento.get('alias')}».")
+            righe.append(f"Creo un'{nome_dominio} chiamata «{intento.get('alias')}».")
         elif gesto == "modifica":
-            righe.append(f"Modifico l'{nomi[dominio]} «{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Modifico l'{nome_dominio} «{(prima or {}).get('alias') or chiave}», "
                          "che esiste gia' in casa tua.")
             righe.append(f"Prima: {_compatta(prima)}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
-            righe.append(f"Cancello l'{nomi[dominio]} «{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Cancello l'{nome_dominio} «{(prima or {}).get('alias') or chiave}», "
                          "che esiste gia' in casa tua. Conservo com'era.")
         if intento.get("descrizione"):
             righe.append(f"A cosa serve: {intento['descrizione']}")
         for helper in intento.get("helper") or []:
             righe.append(f"Nasce anche un {helper.get('dominio')}: "
                          f"{(helper.get('dati') or {}).get('name')}")
-        if consiglio.get("dissenso"):
+        if consiglio.get("motivo"):
+            # Prima finiva nell'anteprima solo in caso di dissenso: ma il
+            # verdetto del mestiere e' un fatto utile anche quando concorda,
+            # non solo quando litiga.
             righe.append(f"Nota: {consiglio['motivo']}.")
         righe.append("Non ho scritto niente: dimmi di procedere e lo faccio.")
         return "\n".join(righe)
@@ -222,18 +251,38 @@ class Officina:
         if cancello is not None:
             return {"errore": cancello}
 
+        # Rivendicazione atomica (spec §7): il controllo sullo stato appena
+        # letto qui sopra non basta -- e' una lettura che una richiesta
+        # concorrente (doppio clic sulla pagina, o pagina e chat insieme) puo'
+        # gia' aver superato prima che questa arrivi a scrivere. La UPDATE
+        # atomica `WHERE stato='in_attesa'` di `ArchivioCostruzioni.rivendica`
+        # e' l'unico punto in cui chi arriva prima puo' davvero vincere.
+        rivendicata = self._archivio.rivendica(proposta_id, adesso=adesso)
+        if "errore" in rivendicata:
+            return {"errore": "quella proposta e' gia' stata presa in carico da "
+                              "un'altra richiesta."}
+
         dominio, chiave, gesto = proposta["dominio"], proposta["chiave"], proposta["gesto"]
         nati: list[tuple[str, str]] = []
+        senza_id: list[str] = []
         for helper in proposta["helper"]:
             esito = await self._ha.crea_helper(helper.get("dominio"),
                                                helper.get("dati") or {})
             if "errore" in esito:
-                await self._disfa(nati)
+                nota = await self._disfa(nati, senza_id)
                 return self._fallita(proposta, adesso, origine,
-                                     f"non sono riuscito a creare l'helper: {esito['errore']}")
+                                     f"non sono riuscito a creare l'helper: "
+                                     f"{esito['errore']}{nota}")
             creato = esito.get("helper") or {}
             if creato.get("id"):
                 nati.append((helper.get("dominio"), creato["id"]))
+            else:
+                # Creato, ma senza un id restituito: non entra in `nati` e
+                # quindi non e' mai disfabile da questo modulo. Tacerlo
+                # sarebbe la stessa spazzatura di un helper mai disfatto, in
+                # una forma piu' subdola -- l'utente non saprebbe nemmeno che
+                # c'e' qualcosa da controllare (spec §3.1).
+                senza_id.append(str(helper.get("dominio")))
 
         if gesto == "cancella":
             scritto = await self._ha.cancella_configurazione(dominio, chiave)
@@ -243,9 +292,9 @@ class Officina:
             riuscito = "salvato" in scritto
 
         if not riuscito:
-            await self._disfa(nati)
+            nota = await self._disfa(nati, senza_id)
             return self._fallita(proposta, adesso, origine,
-                                 _traduci_rifiuto(scritto.get("errore", ""), dominio))
+                                 _traduci_rifiuto(scritto.get("errore", ""), dominio) + nota)
 
         entita, avviso = await self._rileggi(dominio, chiave, gesto)
         if gesto == "crea":
@@ -260,8 +309,16 @@ class Officina:
         esecuzione_id = self._cronaca.registra_costruzione(
             origine=origine, gesto=gesto, dominio=dominio, chiave=chiave,
             entita=entita, eseguito=True, adesso=adesso, avviso=avviso)
-        self._archivio.segna_applicata(proposta_id, adesso=adesso,
-                                       esecuzione_id=esecuzione_id)
+        esito_stato = self._archivio.segna_applicata(proposta_id, adesso=adesso,
+                                                      esecuzione_id=esecuzione_id)
+        if "errore" in esito_stato:
+            # Non ignorato: se la riga non e' piu' rivendicabile (un caso che
+            # oggi non dovrebbe capitare, essendo appena stata rivendicata da
+            # QUESTA chiamata) l'utente ha comunque avuto il suo risultato --
+            # Home Assistant ha scritto -- e la traccia serve a chi legge il
+            # log, non a cambiare l'esito verso l'utente.
+            logger.warning("segna_applicata non riuscita per %s: %s", proposta_id,
+                           esito_stato["errore"])
         return {"applicata": True, "esecuzione_id": esecuzione_id,
                 "entita": entita, "avviso": avviso}
 
@@ -273,34 +330,75 @@ class Officina:
         e il sì dell'utente sparirebbe senza che nessuno se ne accorga.
         """
         if origine in ORIGINI_UMANE:
+            # Qualunque valore di `origine` uguale a una voce di ORIGINI_UMANE
+            # scavalca la guardia: se il Task 8 (o chi verra' dopo) sbagliasse
+            # a inoltrare un'origine scelta dal modello come `pagina`, questa
+            # riga e' l'unica traccia che ne resterebbe.
+            logger.info("cancello scavalcato dall'origine umana %r per la proposta %s",
+                       origine, proposta["id"])
             return None
-        if not turno:
+        # Una proposta nata SENZA identita' di turno (il ramo sincrono della
+        # chat, un'intestazione mancante -- casi normali) non e' confermabile
+        # da un'origine non umana, qualunque turno arrivi dopo. La forma
+        # precedente (`proposta["turno"] and proposta["turno"] == turno`)
+        # restava FALSA quando il turno memorizzato era `None`, e lasciava
+        # passare la prima conferma che capitava: la regola giusta e'
+        # l'inversa, e la strada e' la stessa di un chiamante che oggi non
+        # porta un turno -- la pagina.
+        if not turno or not proposta["turno"]:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
                     "apri la pagina Costruzioni e conferma di la'.")
-        if proposta["turno"] and proposta["turno"] == turno:
+        if proposta["turno"] == turno:
             return ("questa proposta e' nata in questo stesso turno: te l'ho mostrata, "
                     "ora dimmi tu se procedere.")
         return None
 
-    async def _disfa(self, nati: list[tuple[str, str]]) -> None:
-        """Gli helper nati per un'automazione che non e' nata.
+    async def _disfa(self, nati: list[tuple[str, str]],
+                     senza_id: list[str] | None = None) -> str:
+        """Prova a disfare gli helper nati, e DICE cosa e' successo (spec §3.1).
 
         Senza questa disfatta ogni tentativo fallito lascia rifiuti in casa
         dell'utente -- ed e' il modo esatto in cui si accumula la spazzatura
-        che nessuno cancella piu' (spec §3.1).
+        che nessuno cancella piu'. Ma disfare in silenzio non basta: se anche
+        `cancella_helper` fallisce a sua volta, o un helper non e' mai entrato
+        fra i disfabili (nessun `id` restituito alla creazione), tacerlo
+        lascerebbe l'archivio dire «non e' successo niente» mentre in casa
+        resta un orfano che nessuno pulira' piu'. Restituisce il pezzo di
+        frase da appendere al motivo del rifiuto, o `""` se non c'e' niente
+        da dire.
         """
+        disfatti: list[str] = []
+        rimasti: list[str] = []
         for dominio, helper_id in reversed(nati):
             esito = await self._ha.cancella_helper(dominio, helper_id)
             if "errore" in esito:
                 logger.warning("helper %s.%s creato e NON disfatto: %s",
                                dominio, helper_id, esito["errore"])
+                rimasti.append(f"{dominio}.{helper_id}")
+            else:
+                disfatti.append(f"{dominio}.{helper_id}")
+        pezzi: list[str] = []
+        if disfatti:
+            pezzi.append("ho tolto anche " + ", ".join(disfatti))
+        if rimasti:
+            pezzi.append("l'helper " + ", ".join(rimasti) +
+                         " e' rimasto in casa tua, toglilo a mano")
+        for dominio in senza_id or []:
+            pezzi.append(f"un helper {dominio} e' stato creato ma senza un id "
+                         "restituito: non posso disfarlo automaticamente, "
+                         "controllalo a mano")
+        return (" " + "; ".join(pezzi) + ".") if pezzi else ""
 
     def _fallita(self, proposta: dict, adesso: float, origine: str, motivo: str) -> dict:
         esecuzione_id = self._cronaca.registra_costruzione(
             origine=origine, gesto=proposta["gesto"], dominio=proposta["dominio"],
             chiave=proposta["chiave"], entita=[], eseguito=False, adesso=adesso,
             errore=motivo)
-        self._archivio.segna_rifiutata(proposta["id"], adesso=adesso, motivo=motivo)
+        esito_stato = self._archivio.segna_rifiutata(proposta["id"], adesso=adesso,
+                                                      motivo=motivo)
+        if "errore" in esito_stato:
+            logger.warning("segna_rifiutata non riuscita per %s: %s", proposta["id"],
+                           esito_stato["errore"])
         return {"errore": motivo, "esecuzione_id": esecuzione_id}
 
     async def _rileggi(self, dominio: str, chiave: str,
@@ -330,25 +428,45 @@ class Officina:
         return trovate, None
 
     async def _etichetta(self, entity_id: str) -> None:
+        if self._label_id is None and not await self._risolvi_etichetta():
+            return
+        esito = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        if "errore" not in esito:
+            return
+        # Il `label_id` in cache potrebbe non esistere piu' in Home Assistant
+        # (etichetta cancellata a mano dopo la prima risoluzione): restare
+        # muti fino al riavvio perderebbe la paternita' di ogni oggetto
+        # successivo in silenzio. Si azzera la cache e si ritenta UNA volta.
+        logger.warning("etichetta non applicata a %s (label_id=%s): %s -- riprovo "
+                       "risolvendo l'etichetta da capo", entity_id, self._label_id,
+                       esito["errore"])
+        self._label_id = None
+        if not await self._risolvi_etichetta():
+            return
+        esito = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        if "errore" in esito:
+            logger.warning("etichetta non applicata a %s nemmeno al secondo tentativo: %s",
+                           entity_id, esito["errore"])
+
+    async def _risolvi_etichetta(self) -> bool:
+        """Trova o crea il `label_id` di HIRIS in Home Assistant, aggiornando
+        la cache dell'istanza. Restituisce True se una `label_id` valida e'
+        nota dopo la chiamata."""
+        elenco = await self._ha.elenca_etichette()
+        if "errore" in elenco:
+            logger.debug("etichette non lette: %s", elenco["errore"])
+            return False
+        for voce in elenco["etichette"]:
+            if (voce.get("name") or "").strip().lower() == NOME_ETICHETTA.lower():
+                self._label_id = voce.get("label_id")
+                break
         if self._label_id is None:
-            elenco = await self._ha.elenca_etichette()
-            if "errore" in elenco:
-                logger.debug("etichette non lette: %s", elenco["errore"])
-                return
-            for voce in elenco["etichette"]:
-                if (voce.get("name") or "").strip().lower() == NOME_ETICHETTA.lower():
-                    self._label_id = voce.get("label_id")
-                    break
-            if self._label_id is None:
-                creata = await self._ha.crea_etichetta(NOME_ETICHETTA)
-                if "errore" in creata:
-                    logger.debug("etichetta non creata: %s", creata["errore"])
-                    return
-                self._label_id = (creata.get("etichetta") or {}).get("label_id")
-        if self._label_id:
-            esito = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
-            if "errore" in esito:
-                logger.debug("etichetta non applicata a %s: %s", entity_id, esito["errore"])
+            creata = await self._ha.crea_etichetta(NOME_ETICHETTA)
+            if "errore" in creata:
+                logger.debug("etichetta non creata: %s", creata["errore"])
+                return False
+            self._label_id = (creata.get("etichetta") or {}).get("label_id")
+        return self._label_id is not None
 
     # ---- ripristinare ---------------------------------------------------
 
@@ -384,19 +502,52 @@ class Officina:
             dopo=dopo, helper=[], anteprima=anteprima, adesso=adesso)
         if "errore" in proposta:
             return proposta
-        return await self.applica(proposta["id"], origine=origine, turno=turno,
-                                  adesso=adesso)
+        if origine in ORIGINI_UMANE:
+            return await self.applica(proposta["id"], origine=origine, turno=turno,
+                                      adesso=adesso)
+        # Dalla chat il ripristino e' un giro in due tempi come tutto il
+        # resto (spec §7): applicarlo subito con lo STESSO `turno` che ha
+        # appena creato la proposta farebbe rifiutare SEMPRE dal cancello (e'
+        # letteralmente lo stesso turno), e la riga resterebbe `in_attesa` a
+        # bruciare un posto del tetto di 20 per sette giorni -- venti
+        # tentativi bloccherebbero le proposte di tutto il prodotto.
+        return {"proposta_id": proposta["id"], "anteprima": anteprima}
+
+
+def _forma_invalida(intento: dict) -> str | None:
+    """Le forme che l'intento deve avere perche' il resto del modulo non
+    sollevi. Il chiamante e' uno strumento riempito da un modello: un `alias`
+    che arriva come dizionario o un `helper` che arriva come lista di
+    stringhe non sono ipotesi remote, sono un modello che ha sbagliato la
+    forma di un campo -- e vanno rifiutati con un motivo leggibile, non
+    lasciati esplodere piu' sotto (`_seme_da` su un `alias` non hashabile con
+    `TypeError: unhashable type`, `helper.get(...)` su una stringa con
+    `AttributeError`).
+    """
+    for chiave in ("alias", "descrizione", "frase"):
+        valore = intento.get(chiave)
+        if valore is not None and not isinstance(valore, str):
+            return f"«{chiave}» deve essere testo, non {type(valore).__name__}."
+    for chiave in ("innesco", "condizioni", "azioni", "stati", "helper", "parametri"):
+        valore = intento.get(chiave)
+        if valore is not None and not isinstance(valore, list):
+            return f"«{chiave}» deve essere una lista, non {type(valore).__name__}."
+    for voce in intento.get("helper") or []:
+        if not isinstance(voce, dict) or not isinstance(voce.get("dominio"), str):
+            return "ogni helper deve essere un dizionario con un «dominio» testuale."
+    return None
 
 
 def _seme_da(intento: dict) -> int:
     """Un seme per l'id, derivato dall'intento e non dall'orologio.
 
     L'orologio lo legge il chiamante (`adesso`), non le funzioni pure: qui
-    serve solo un numero grande e stabile, e la lunghezza del testo
-    dell'intento con un'ancora fissa lo da' senza far diventare questo modulo
-    dipendente dal tempo. La verifica di unicita' vera la fa
-    `forme.nuovo_id` contro gli id esistenti, e Home Assistant rifiuterebbe
-    comunque un duplicato.
+    serve solo un numero grande e stabile PER LA DURATA DI QUESTO PROCESSO.
+    `hash()` su una tupla di stringhe e' salato per processo in Python (non
+    e' la lunghezza del testo a determinarlo): lo stesso intento produce semi
+    diversi fra un riavvio e l'altro, e non e' un problema, perche' la
+    verifica di unicita' VERA la fa `forme.nuovo_id` contro gli id esistenti
+    in QUESTA casa, e Home Assistant rifiuterebbe comunque un duplicato.
     """
     base = 1_700_000_000_000
     return base + abs(hash((intento.get("alias"), intento.get("frase")))) % 100_000_000

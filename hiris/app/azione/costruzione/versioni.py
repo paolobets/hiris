@@ -138,6 +138,30 @@ class ArchivioCostruzioni:
             righe = self._conn.execute(sql, (int(limite),)).fetchall()
         return [_riga(r) for r in righe]
 
+    def rivendica(self, ident: str, *, adesso: float) -> dict:
+        """Prende in carico una proposta PRIMA di scrivere su Home Assistant
+        (spec §7).
+
+        E' la stessa guardia gia' usata per le promesse in
+        `schedulatore/archivio.py`: una UPDATE atomica `WHERE stato=
+        'in_attesa'` e' l'UNICO punto in cui due conferme quasi simultanee
+        della stessa proposta si possono distinguere. Chi la chiama per primo
+        vince e la proposta passa a `in_corso`; l'altro trova `rowcount == 0`
+        e deve fermarsi PRIMA di scrivere -- un controllo fatto leggendo lo
+        stato con `leggi()` non basta, perche' quella lettura e' gia' stantia
+        nel momento stesso in cui la si confronta con una richiesta
+        concorrente.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE costruzioni SET stato='in_corso', aggiornata_ts=? "
+                "WHERE id=? AND stato='in_attesa'",
+                (adesso, ident))
+            self._conn.commit()
+        if cur.rowcount == 0:
+            return {"errore": "quella proposta non e' piu' in attesa"}
+        return {"id": ident, "stato": "in_corso"}
+
     def segna_applicata(self, ident: str, *, adesso: float,
                         esecuzione_id: str | None) -> dict:
         return self._cambia_stato(ident, "applicata", adesso, esecuzione_id, None)
@@ -148,13 +172,17 @@ class ArchivioCostruzioni:
     def _cambia_stato(self, ident: str, stato: str, adesso: float,
                       esecuzione_id: str | None, motivo: str | None) -> dict:
         with self._lock:
-            # Il `WHERE stato='in_attesa'` sta nella UPDATE e non in un
-            # controllo del chiamante: e' cosi' che due conferme simultanee
-            # non applicano due volte la stessa proposta. Stessa forma della
-            # presa in carico di una promessa (`schedulatore/archivio.py`).
+            # `IN ('in_attesa','in_corso')`: la transizione finale arriva
+            # quasi sempre da `in_corso` (dopo `rivendica`), ma resta valida
+            # anche direttamente da `in_attesa` -- i chiamanti che non passano
+            # da `rivendica` (i test di questo modulo, per esempio) devono
+            # continuare a funzionare esattamente come prima. La UPDATE resta
+            # atomica: e' cosi' che due conferme simultanee non applicano due
+            # volte la stessa proposta. Stessa forma della presa in carico di
+            # una promessa (`schedulatore/archivio.py`).
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato=?, aggiornata_ts=?, esecuzione_id=?, motivo=? "
-                "WHERE id=? AND stato='in_attesa'",
+                "WHERE id=? AND stato IN ('in_attesa','in_corso')",
                 (stato, adesso, esecuzione_id, motivo, ident))
             self._conn.commit()
         if cur.rowcount == 0:
