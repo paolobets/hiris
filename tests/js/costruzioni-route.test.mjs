@@ -37,13 +37,28 @@ test('le proposte in attesa hanno il bottone di conferma, le applicate no', asyn
 });
 
 test('una modifica a un oggetto non creato da HIRIS lo dichiara', async () => {
+  // La regola l'ha posta il proprietario con parole sue -- "se tocca
+  // qualcosa lo deve dire" -- ed e' il testo esatto sotto, non il badge
+  // "Modificata" (`/modificat/i`): quel badge compare per OGNI gesto di
+  // modifica, riuscita o no, e cancellando `eraGiaLi()` insieme alla riga
+  // "Questo oggetto esiste già in casa tua" la vecchia asserzione restava
+  // verde (ondata finale, punto 4 -- il difetto n.1: un test che non puo'
+  // fallire). Una `crea`, per contrasto, non deve MAI portare questa
+  // dichiarazione: non ha toccato niente che esistesse gia'.
   const { dom } = montaCon({ costruzioni: [
     { id: 'c1', stato: 'applicata', gesto: 'modifica', dominio: 'automation',
       chiave: '1772', anteprima: '', prima: { alias: 'la tua automazione' },
       dopo: { alias: 'modificata' }, creata_ts: 1756000000 },
+    { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+      chiave: '1773', anteprima: '', prima: null,
+      dopo: { alias: 'nuova' }, creata_ts: 1756000000 },
   ] });
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
-  assert.match(dom.window.document.body.textContent, /modificat/i);
+  const document = dom.window.document;
+  const storico = document.getElementById('costruzioni-storico-body');
+  const aperte = document.getElementById('costruzioni-aperte-body');
+  assert.match(storico.textContent, /Questo oggetto esiste già in casa tua\./);
+  assert.doesNotMatch(aperte.textContent, /esiste già/);
 });
 
 test('il sorgente non usa innerHTML, in nessuna forma', () => {

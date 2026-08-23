@@ -76,7 +76,15 @@ async def _agisci(request: web.Request, verbo: str) -> web.Response:
     metodo = getattr(officina, verbo)
     esito = await metodo(ident, origine="pagina", turno=None, adesso=time.time())
     if "errore" in esito:
-        return web.json_response(esito, status=409)
+        # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
+        # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la
+        # stessa indisponibilita' che le due GET, qui sopra, dichiarano con
+        # 503. Prima questo ramo appiattiva ogni errore dell'officina su 409,
+        # anche quando la causa era Home Assistant irraggiungibile. Il flag
+        # e' interno (`Officina._fallita`/`_rete`): non deve uscire nel corpo
+        # della risposta.
+        status = 503 if esito.pop("guasto_rete", False) else 409
+        return web.json_response(esito, status=status)
     return web.json_response(esito)
 
 

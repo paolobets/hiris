@@ -2813,7 +2813,7 @@ def create_app() -> web.Application:
 
     # Task 10 SDD costruire: la faccia dell'officina -- guardare le proposte,
     # aprirne una, confermare, rimettere com'era. Le due GET sono metodi
-    # safe, come `GET /api/promesse`; le due POST scrivono su Home Assistant
+    # safe, come `GET /api/promesse`; le due POST qui sopra scrivono su Home Assistant
     # e passano dallo stesso `csrf_middleware` di ogni altra scrittura --
     # quel middleware protegge per METODO (`POST`/`PUT`/`PATCH`/`DELETE` sotto
     # `/api/*`), non per un elenco di rotte scritto a mano: non c'e' niente

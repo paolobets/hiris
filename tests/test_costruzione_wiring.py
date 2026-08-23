@@ -65,9 +65,24 @@ def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore(
         'id="hiris_schedulatore_battito"')
 
 
-def test_le_quattro_rotte_sono_registrate():
+def test_le_cinque_rotte_sono_registrate():
+    """Ondata finale, punto 6: la registrazione di `/rifiuta` non era pinnata
+    da nessun test, e le altre quattro erano pinnate solo per SOTTOSTRINGA
+    (`'"/api/costruzioni/{id}/conferma"' in sorgente`), che una registrazione
+    commentata avrebbe lasciato passare -- la sottostringa combacia UGUALE
+    dentro un commento (`# app.router.add_post(...)` la contiene per intero),
+    quindi `in sorgente` da solo non basta: serve una riga, non solo un
+    frammento (misurato mutando `add_post(".../rifiuta"...)` in un
+    commento -- la vecchia forma restava verde). Si cerca la riga ESATTA
+    (spogliata dell'indentazione) fra le righe del sorgente, non un
+    sottinsieme di caratteri al suo interno."""
     sorgente = inspect.getsource(server)
-    assert 'app.router.add_get("/api/costruzioni", handle_get_costruzioni)' in sorgente
-    assert 'app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)' in sorgente
-    assert '"/api/costruzioni/{id}/conferma"' in sorgente
-    assert '"/api/costruzioni/{id}/ripristina"' in sorgente
+    righe = [r.strip() for r in sorgente.splitlines()]
+    for attesa in (
+        'app.router.add_get("/api/costruzioni", handle_get_costruzioni)',
+        'app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)',
+        'app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)',
+        'app.router.add_post("/api/costruzioni/{id}/ripristina", handle_ripristina_costruzione)',
+        'app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_rifiuta_costruzione)',
+    ):
+        assert attesa in righe, f"rotta non registrata (o commentata): {attesa}"

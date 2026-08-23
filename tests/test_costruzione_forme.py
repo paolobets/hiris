@@ -105,6 +105,18 @@ def test_problemi_stati_lista_vuota_ok():
     assert problemi_stati([]) == []
 
 
+def test_problemi_stati_due_voci_valide_ok():
+    """Correzione scritta nel ledger dal Task 4 e mai applicata (ondata
+    finale, punto 5): una lista VUOTA non entra nemmeno nel ciclo di
+    `problemi_stati`, quindi un difetto futuro che segnalasse come
+    problematica ogni voce valida non verrebbe preso da nessun test del file
+    -- le scene sono l'unico dominio senza validazione a valle (`parti_da_
+    validare` restituisce {} per loro), il posto peggiore per avere un test
+    che non puo' fallire."""
+    assert problemi_stati([{"entity_id": "light.cucina", "state": "on"},
+                           {"entity_id": "light.salotto", "state": "off"}]) == []
+
+
 def test_problemi_stati_voce_non_dizionario():
     """Una voce che non è un dizionario è un problema."""
     problemi = problemi_stati(["not_a_dict", None, 123])

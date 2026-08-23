@@ -1,4 +1,4 @@
-"""Le quattro rotte: guardare, guardarne una, confermare, rimettere com'era."""
+"""Le cinque rotte: guardare, guardarne una, confermare, rimettere com'era, rifiutare."""
 import os
 
 import pytest
@@ -120,6 +120,21 @@ async def test_una_conferma_rifiutata_non_risponde_200():
     app = _app(FintoArchivio([{"id": "p1", "stato": "applicata"}]), officina)
     risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 409
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
+    """Ondata finale, punto 7 (terza pulizia): `_agisci` appiattiva ogni
+    errore dell'officina su 409 -- anche un guasto di Home Assistant, che
+    dalla GET sarebbe un 503. `Officina._fallita`/`_rete` marcano un guasto
+    di trasporto con `guasto_rete: True`; questa rotta lo deve leggere."""
+    officina = FintaOfficina({"errore": "Home Assistant non ha risposto: timeout",
+                              "guasto_rete": True})
+    app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
+    risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
+    assert risposta.status == 503
+    # Il flag e' interno: non deve trapelare nel corpo della risposta.
+    assert b"guasto_rete" not in risposta.body
 
 
 @pytest.mark.asyncio

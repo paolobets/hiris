@@ -243,9 +243,35 @@ class ArchivioCostruzioni:
         pagina di non colorare di rosso l'esercizio del controllo per cui
         l'intero giro in due tempi esiste. Stessa distinzione che lo
         schedulatore fa gia' fra `fallita` e `disdetta`, e stessa parola.
+
+        **Transita SOLO da `in_attesa`** -- una `WHERE` dedicata, non quella
+        (`IN ('in_attesa','in_corso')`) condivisa da `_cambia_stato` (ondata
+        finale, punto 2). L'invariante della potatura (`_pota`, sopra) fu
+        dimostrato quando la transizione `in_attesa -> applicata` era a senso
+        unico: aggiungere `disdetta` sopra la `WHERE` di `_cambia_stato`
+        l'ha rotto in silenzio. La corsa che apriva: una conferma dalla chat
+        rivendica la riga (`in_corso`) e comincia a scrivere su Home
+        Assistant; nella stessa finestra un Rifiuta dalla pagina la porta a
+        `disdetta` PRIMA che la scrittura torni. La scrittura arriva
+        comunque a Home Assistant, `segna_applicata` trova la riga gia'
+        `disdetta` e fallisce -- ma l'automazione E' stata scritta davvero, e
+        la riga che la descrive resta `disdetta`: FUORI dall'insieme protetto
+        dalla potatura, quindi il suo «prima» -- l'unica copia esistente al
+        mondo di com'era quell'oggetto -- diventa cancellabile a 90 giorni.
+        Impedire la disdetta di una riga gia' rivendicata chiude la corsa
+        alla radice: chi ha vinto la rivendicazione porta la transizione
+        finale fino in fondo (`applicata` o `rifiutata`), e solo allora la
+        riga torna leggibile come non piu' in sospeso.
         """
-        return self._cambia_stato(ident, "disdetta", adesso, None,
-                                  "rifiutata dal proprietario")
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE costruzioni SET stato='disdetta', aggiornata_ts=?, motivo=? "
+                "WHERE id=? AND stato='in_attesa'",
+                (adesso, "rifiutata dal proprietario", ident))
+            self._conn.commit()
+        if cur.rowcount == 0:
+            return {"errore": "quella proposta non e' piu' in attesa"}
+        return {"id": ident, "stato": "disdetta"}
 
     def _cambia_stato(self, ident: str, stato: str, adesso: float,
                       esecuzione_id: str | None, motivo: str | None) -> dict:

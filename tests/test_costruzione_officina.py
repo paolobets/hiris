@@ -36,12 +36,27 @@ class FintoHA:
         self.stati = [{"entity_id": "automation.tapparelle_all_alba",
                        "state": "on", "attributes": {"id": "1771"}}]
         self.DOMINI_CONFIGURABILI = ("automation", "script", "scene")
+        # Ondata finale, punto 1: prima di questa riga `FintoHA` non
+        # sollevava MAI, e nessun test poteva vedere cosa succede quando Home
+        # Assistant e' irraggiungibile durante un'`applica` -- il difetto n.1
+        # (`test_che_non_possono_fallire`) applicato al livello della finta
+        # intera, non della singola asserzione. `self._solleva` e' l'insieme
+        # dei nomi dei metodi REST (`leggi_configurazione`,
+        # `salva_configurazione`, `cancella_configurazione`) che devono
+        # sollevare invece di rispondere, fedele a cio' che il client vero fa
+        # su un guasto di trasporto (`ClientConnectorError`, timeout).
+        self._solleva: set[str] = set()
+
+    def _forse_solleva(self, nome: str) -> None:
+        if nome in self._solleva:
+            raise ConnectionError(f"finta interruzione di rete durante {nome}")
 
     async def valida_config(self, **kw):
         return self._override.get("valida", {
             k: {"valid": True, "error": None} for k in kw})
 
     async def salva_configurazione(self, dominio, chiave, corpo):
+        self._forse_solleva("salva_configurazione")
         if "salva" in self._override:
             return self._override["salva"]
         self.salvate.append((dominio, chiave, corpo))
@@ -59,10 +74,12 @@ class FintoHA:
         return {"salvato": True}
 
     async def cancella_configurazione(self, dominio, chiave):
+        self._forse_solleva("cancella_configurazione")
         self.cancellate.append((dominio, chiave))
         return {"cancellato": True}
 
     async def leggi_configurazione(self, dominio, chiave):
+        self._forse_solleva("leggi_configurazione")
         if "leggi" in self._override:
             return self._override["leggi"]
         if not _CHIAVE_RE_FINTA.match(chiave or ""):
@@ -627,6 +644,143 @@ async def test_lo_stato_in_corso_non_esce_come_token_grezzo(banco):
     assert "errore" in esito
     assert "in_corso" not in esito["errore"]
     assert "in corso" in esito["errore"]
+
+
+# ==== Ondata finale 2026-08-23: cuciture fra task ==========================
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in_corso(banco):
+    """Punto 1: con Home Assistant irraggiungibile durante un'`applica`, le
+    tre conseguenze che il ledger nomina -- (a) un esito, non un'eccezione,
+    (b) gli helper appena nati si disfano, (c) la proposta non resta bloccata
+    `in_corso`. La finta solleva DAVVERO (vedi `_forse_solleva`), non un
+    override che restituisce un dizionario: senza questa capacita' nessun
+    test poteva vedere il difetto, ed e' esattamente la ragione per cui la
+    review dei nove rischi del Task 7 non l'ha visto."""
+    officina, ha, archivio, _ = banco
+    intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
+    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    ha._solleva.add("salva_configurazione")
+
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+
+    # (a) un dizionario con errore, non un'eccezione sollevata fuori da qui.
+    assert "errore" in esito
+    assert "non ha risposto" in esito["errore"]
+    # (b) l'helper nato viene disfatto.
+    assert ha.helper_creati, "l'helper doveva essere creato prima del guasto"
+    assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
+    # (c) la proposta non resta bloccata in_corso.
+    assert archivio.leggi(p["proposta_id"])["stato"] == "rifiutata"
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco):
+    """Punto 7 (terza pulizia): `_agisci` (handlers_costruzioni.py) deve poter
+    distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
+    per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    ha._solleva.add("salva_configurazione")
+
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+
+    assert esito.get("guasto_rete") is True
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
+    """Punto 1, il terzo sito guardato (`cancella_configurazione`,
+    officina.py:305): stessa protezione sul gesto distruttivo."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(gesto="cancella", chiave="1771"),
+                               origine="chat", turno="t1", adesso=ADESSO)
+    ha._solleva.add("cancella_configurazione")
+
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+
+    assert "errore" in esito
+    assert esito.get("guasto_rete") is True
+    assert archivio.leggi(p["proposta_id"])["stato"] == "rifiutata"
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_durante_proponi_non_solleva(banco):
+    """Punto 1, il sito di `_chiave_libera` (officina.py:168, gesto `crea`):
+    il modulo dichiara «non solleva mai» anche qui, non solo durante
+    `applica`."""
+    officina, ha, archivio, _ = banco
+    ha._solleva.add("leggi_configurazione")
+
+    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+
+    assert "proposta_id" not in esito
+    assert "errore" in esito
+    assert archivio.elenca() == []
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_durante_proponi_una_modifica_non_solleva(banco):
+    """Punto 1, il quarto e ultimo sito (officina.py:107, gesto `modifica`/
+    `cancella`, la lettura del «prima» prima di scrivere): senza `_rete`
+    anche qui, un `ConnectionError` di questo ramo usciva fuori dal modulo
+    tale e quale, non trasformato in `{"errore": ...}`."""
+    officina, ha, archivio, _ = banco
+    ha._solleva.add("leggi_configurazione")
+
+    esito = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
+                                   origine="chat", turno="t1", adesso=ADESSO)
+
+    assert "proposta_id" not in esito
+    assert "errore" in esito
+    assert archivio.elenca() == []
+
+
+@pytest.mark.asyncio
+async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banco):
+    """Punto 3: spec §5 testuale, «l'etichetta si applica all'entita' nata,
+    helper compresi». Un helper creato da `crea_helper` e' SEMPRE nato,
+    indipendentemente dal gesto sul dominio principale -- una `modifica`
+    all'automazione non rende meno nuovo l'`input_boolean` che nasce insieme.
+    Prima di questa correzione `_rileggi` filtrava per `{dominio}.`, quindi
+    l'helper non riceveva mai l'etichetta, e non esistendo un registro
+    interno (la paternita' vive nel registro di HA, fondamenta 2) quella
+    paternita' non era da nessuna parte."""
+    officina, ha, _, _ = banco
+    intento = _intento(gesto="modifica", chiave="1771",
+                       helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
+    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    await officina.applica(p["proposta_id"], origine="chat", turno="t2", adesso=ADESSO + 60)
+    assert ("input_boolean.modalita_notte", "hiris") in ha.etichettate
+    # Contrasto: l'oggetto principale modificato NON prende l'etichetta
+    # (spec §5 -- una modifica non rende suo cio' che HIRIS non ha creato).
+    assert ("automation.tapparelle_all_alba", "hiris") not in ha.etichettate
+
+
+def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
+    """Punto 7, prima pulizia: «un'script», «l'script» e «un'scena» erano le
+    forme sbagliate composte da un indice nudo su un dizionario che non
+    distingueva vocale da consonante. Script e scena non prendono MAI
+    l'apostrofo."""
+    officina, _, _, _ = banco
+    consiglio = {"motivo": None}
+    for dominio, atteso in (("automation", "un'automazione"),
+                            ("script", "uno script"),
+                            ("scene", "una scena")):
+        anteprima = officina._anteprima("crea", dominio, "1", {"alias": "X"}, None, None,
+                                        consiglio)
+        assert atteso in anteprima
+        assert "un'script" not in anteprima
+        assert "un'scena" not in anteprima
+    for dominio, atteso in (("automation", "l'automazione"),
+                            ("script", "lo script"),
+                            ("scene", "la scena")):
+        anteprima = officina._anteprima("modifica", dominio, "1", {"alias": "X"},
+                                        {"alias": "X"}, {"alias": "Y"}, consiglio)
+        assert atteso in anteprima
 
 
 @pytest.mark.asyncio

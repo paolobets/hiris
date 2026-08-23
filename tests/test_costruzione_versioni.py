@@ -189,6 +189,32 @@ def test_non_si_disdice_cio_che_e_gia_stato_applicato(archivio):
     assert "errore" in archivio.segna_disdetta(ident, adesso=ADESSO + 5)
 
 
+def test_non_si_disdice_una_riga_gia_rivendicata(archivio):
+    """Cucitura Task 5 <-> Task 10-bis (ondata finale, punto 2): la disdetta
+    transita SOLO da `in_attesa`, non anche da `in_corso` come la `WHERE`
+    condivisa da `_cambia_stato` ammetterebbe.
+
+    La corsa che questo test chiude: una conferma dalla chat rivendica la
+    riga (passa a `in_corso`) e comincia a scrivere su Home Assistant; nella
+    stessa finestra un Rifiuta dalla pagina arriverebbe a `disdetta` PRIMA
+    che la scrittura torni. Se la disdetta fosse permessa da `in_corso`, la
+    scrittura arriverebbe comunque a Home Assistant -- l'automazione
+    esisterebbe DAVVERO -- ma la riga che la descrive resterebbe `disdetta`,
+    fuori dall'insieme che `_pota` protegge per sempre: il suo «prima»,
+    l'unica copia al mondo di com'era l'oggetto, diventerebbe cancellabile a
+    90 giorni. Impedendo la transizione da `in_corso`, chi ha vinto la
+    rivendicazione e' l'unico che puo' portare la riga a uno stato finale."""
+    ident = _proponi(archivio)["id"]
+    rivendicata = archivio.rivendica(ident, adesso=ADESSO + 1)
+    assert "errore" not in rivendicata
+    assert archivio.leggi(ident)["stato"] == "in_corso"
+
+    esito = archivio.segna_disdetta(ident, adesso=ADESSO + 2)
+
+    assert "errore" in esito
+    assert archivio.leggi(ident)["stato"] == "in_corso"
+
+
 def test_una_proposta_disdetta_libera_il_posto_sotto_il_tetto(archivio):
     for n in range(ArchivioCostruzioni.MAX_IN_ATTESA):
         _proponi(archivio, chiave=f"k{n}")

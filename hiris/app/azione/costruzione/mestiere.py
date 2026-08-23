@@ -16,8 +16,6 @@ senza Home Assistant.
 """
 from __future__ import annotations
 
-STRUTTURE = ("automazione", "script", "scena")
-
 
 def consiglia(intento: dict) -> dict:
     """`{"strutture": [...], "motivo": str, "dissenso": bool}`.

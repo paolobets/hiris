@@ -12,6 +12,19 @@ difetto, non un'ottimizzazione.
 **Non solleva mai.** Ogni guasto diventa un dizionario con `errore`, perche' i
 suoi chiamanti sono uno strumento che parla a un modello e una rotta HTTP.
 
+**Dove vive la rete (ondata finale, punto 1).** Le primitive REST di
+`HAClient` (`leggi_configurazione`, `salva_configurazione`,
+`cancella_configurazione`) sollevano quello che rompe il trasporto -- e'
+scritto nel loro stesso docstring, e resta vero: quella frase non cambia.
+La guardia vive QUI, all'unico chiamante (`_rete`, sotto): un
+`ClientConnectorError` o un timeout durante un'`applica` diventano
+`{"errore": "Home Assistant non ha risposto: ...", "guasto_rete": True}`,
+trattati esattamente come un rifiuto di Home Assistant -- gli helper appena
+nati si disfano, la proposta non resta bloccata `in_corso`. Sono le due
+frasi -- «solleva solo il trasporto» la' e «non solleva mai» qui -- che con
+Home Assistant irraggiungibile durante un'`applica` non potevano restare
+vere insieme finche' nessuno metteva la rete da nessuna delle due parti.
+
 **Il giro, e perche' e' in due tempi.** `proponi` compone, valida contro
 questa casa e ARCHIVIA una proposta: non tocca niente. `applica` scrive. In
 mezzo ci deve stare un umano -- e il modo in cui questo modulo lo sa e' il
@@ -39,6 +52,20 @@ NOME_ETICHETTA = "HIRIS"
 ORIGINI_UMANE = ("pagina",)
 
 _GESTI = ("crea", "modifica", "cancella")
+
+# Le due forme dell'articolo -- indeterminativo per «crea», determinativo per
+# «modifica»/«cancella» -- per i tre domini che questa fetta costruisce.
+# Script e scena non prendono MAI l'apostrofo: iniziano per consonante.
+# Automazione si', perche' inizia per vocale. «un'script», «l'script» e
+# «un'scena» sono le forme sbagliate che comparivano in ogni anteprima --
+# sotto gli occhi dell'utente, nel testo su cui decide (ondata finale, punto
+# 7). La stessa distinzione (con l'apostrofo tipografico ’) vive in
+# `ARTICOLO_DOMINIO`, `costruzioni-route.js`: non e' importata da li' (i due
+# lati non condividono un modulo), ma la scelta grammaticale e' la stessa.
+ARTICOLO_INDETERMINATIVO = {"automation": "un'automazione", "script": "uno script",
+                            "scene": "una scena"}
+ARTICOLO_DETERMINATIVO = {"automation": "l'automazione", "script": "lo script",
+                          "scene": "la scena"}
 
 # Gli stati interni (snake_case) tradotti per una frase rivolta all'utente.
 # «applicata», «rifiutata» e «scaduta» sono gia' parole italiane leggibili
@@ -104,7 +131,7 @@ class Officina:
         if gesto in ("modifica", "cancella"):
             if not chiave:
                 return {"errore": f"per {gesto} serve la chiave dell'oggetto da toccare."}
-            letto = await self._ha.leggi_configurazione(dominio, chiave)
+            letto = await self._rete(self._ha.leggi_configurazione(dominio, chiave))
             if letto.get("assente"):
                 # `leggi_configurazione` ha TRE forme (`corpo`, `errore`,
                 # `assente`), non due: indicizzare `letto["corpo"]` su questo
@@ -165,7 +192,7 @@ class Officina:
         else:
             candidata = forme.nuovo_id(occupate, seme=_seme_da(intento))
         for _ in range(5):
-            letto = await self._ha.leggi_configurazione(dominio, candidata)
+            letto = await self._rete(self._ha.leggi_configurazione(dominio, candidata))
             if letto.get("assente"):
                 return {"chiave": candidata}
             if "errore" in letto:
@@ -225,22 +252,23 @@ class Officina:
 
     def _anteprima(self, gesto, dominio, chiave, intento, prima, dopo,
                    consiglio) -> str:
-        nomi = {"automation": "automazione", "script": "script", "scene": "scena"}
         # `.get(dominio, dominio)`, non un indice nudo: l'elenco dei domini
         # configurabili e' del client (`HAClient.DOMINI_CONFIGURABILI`), non
-        # di questo dizionario locale -- un quarto dominio aggiunto la'
-        # solleverebbe `KeyError` qui.
-        nome_dominio = nomi.get(dominio, dominio)
+        # di queste tabelle locali (ARTICOLO_INDETERMINATIVO/DETERMINATIVO,
+        # sopra) -- un quarto dominio aggiunto la' solleverebbe `KeyError` qui.
         righe = []
         if gesto == "crea":
-            righe.append(f"Creo un'{nome_dominio} chiamata «{intento.get('alias')}».")
+            righe.append(f"Creo {ARTICOLO_INDETERMINATIVO.get(dominio, dominio)} "
+                         f"chiamata «{intento.get('alias')}».")
         elif gesto == "modifica":
-            righe.append(f"Modifico l'{nome_dominio} «{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Modifico {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
+                         f"«{(prima or {}).get('alias') or chiave}», "
                          "che esiste gia' in casa tua.")
             righe.append(f"Prima: {_compatta(prima)}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
-            righe.append(f"Cancello l'{nome_dominio} «{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
+                         f"«{(prima or {}).get('alias') or chiave}», "
                          "che esiste gia' in casa tua. Conservo com'era.")
         if intento.get("descrizione"):
             righe.append(f"A cosa serve: {intento['descrizione']}")
@@ -302,16 +330,18 @@ class Officina:
                 senza_id.append(str(helper.get("dominio")))
 
         if gesto == "cancella":
-            scritto = await self._ha.cancella_configurazione(dominio, chiave)
+            scritto = await self._rete(self._ha.cancella_configurazione(dominio, chiave))
             riuscito = "cancellato" in scritto
         else:
-            scritto = await self._ha.salva_configurazione(dominio, chiave, proposta["dopo"])
+            scritto = await self._rete(
+                self._ha.salva_configurazione(dominio, chiave, proposta["dopo"]))
             riuscito = "salvato" in scritto
 
         if not riuscito:
             nota = await self._disfa(nati, senza_id)
             return self._fallita(proposta, adesso, origine,
-                                 _traduci_rifiuto(scritto.get("errore", ""), dominio) + nota)
+                                 _traduci_rifiuto(scritto.get("errore", ""), dominio) + nota,
+                                 guasto_rete=scritto.get("guasto_rete", False))
 
         entita, avviso = await self._rileggi(dominio, chiave, gesto)
         if gesto == "crea":
@@ -322,6 +352,18 @@ class Officina:
             # cronaca, l'archivio delle versioni, la pagina.
             for entity_id in entita:
                 await self._etichetta(entity_id)
+        # Gli helper sono SEMPRE nati -- `crea_helper` non e' altro --
+        # indipendentemente dal gesto sul dominio principale: una
+        # `modifica` puo' portarsi dietro un helper nuovo tanto quanto un
+        # `crea`. Spec §5, testuale: l'etichetta si applica «all'entita'
+        # nata, helper compresi». Senza questa riga `_rileggi` (sopra)
+        # filtra per `{dominio}.`, quindi un `input_boolean` nato da HIRIS
+        # non riceveva mai l'etichetta -- e poiche' la paternita' vive nel
+        # registro di Home Assistant e non in una tabella nostra (fondamenta
+        # 2, spec §5), quella paternita' non esisteva da NESSUNA parte
+        # (fondamenta 4: un dato che nessuno puo' chiedere non esiste).
+        for dominio_helper, helper_id in nati:
+            await self._etichetta(f"{dominio_helper}.{helper_id}")
 
         esecuzione_id = self._cronaca.registra_costruzione(
             origine=origine, gesto=gesto, dominio=dominio, chiave=chiave,
@@ -370,6 +412,32 @@ class Officina:
                     "ora dimmi tu se procedere.")
         return None
 
+    async def _rete(self, chiamata) -> dict:
+        """Esegue una chiamata alle primitive REST di `HAClient`, catturando i
+        guasti di TRASPORTO (ondata finale, punto 1).
+
+        `leggi_configurazione`, `salva_configurazione` e
+        `cancella_configurazione` sollevano quello che rompe il trasporto --
+        e' scritto nel loro docstring (`proxy/ha_client.py`), e resta cosi':
+        la guardia vive qui, all'unico chiamante, non li'. Senza di lei, un
+        Home Assistant irraggiungibile durante un'`applica` salterebbe
+        `_disfa` (spazzatura in casa dell'utente, spec §3.1), lascerebbe la
+        riga bloccata `in_corso` fino al riavvio, e farebbe uscire un 500
+        grezzo dalla pagina invece del contratto 404/409/503 dichiarato da
+        `handlers_costruzioni.py`.
+
+        Ritorna cio' che `chiamata` ritorna, oppure `{"errore": "Home
+        Assistant non ha risposto: ...", "guasto_rete": True}` -- la stessa
+        forma con cui l'officina dice ogni altro guasto, con in piu' il flag
+        che distingue un guasto di rete da un rifiuto vero di Home Assistant.
+        """
+        try:
+            return await chiamata
+        except Exception as exc:
+            logger.warning("chiamata verso Home Assistant non riuscita: %s", exc)
+            return {"errore": f"Home Assistant non ha risposto: {exc}",
+                    "guasto_rete": True}
+
     async def _disfa(self, nati: list[tuple[str, str]],
                      senza_id: list[str] | None = None) -> str:
         """Prova a disfare gli helper nati, e DICE cosa e' successo (spec §3.1).
@@ -406,7 +474,8 @@ class Officina:
                          "controllalo a mano")
         return (" " + "; ".join(pezzi) + ".") if pezzi else ""
 
-    def _fallita(self, proposta: dict, adesso: float, origine: str, motivo: str) -> dict:
+    def _fallita(self, proposta: dict, adesso: float, origine: str, motivo: str, *,
+                guasto_rete: bool = False) -> dict:
         esecuzione_id = self._cronaca.registra_costruzione(
             origine=origine, gesto=proposta["gesto"], dominio=proposta["dominio"],
             chiave=proposta["chiave"], entita=[], eseguito=False, adesso=adesso,
@@ -416,7 +485,15 @@ class Officina:
         if "errore" in esito_stato:
             logger.warning("segna_rifiutata non riuscita per %s: %s", proposta["id"],
                            esito_stato["errore"])
-        return {"errore": motivo, "esecuzione_id": esecuzione_id}
+        esito = {"errore": motivo, "esecuzione_id": esecuzione_id}
+        if guasto_rete:
+            # Distingue un guasto di TRASPORTO da un rifiuto vero di Home
+            # Assistant (validazione, 400): `_agisci` (handlers_costruzioni.py)
+            # legge questo flag per rispondere 503 invece di 409 -- la stessa
+            # indisponibilita' che la GET dichiarerebbe (ondata finale, punto
+            # 7, terza pulizia).
+            esito["guasto_rete"] = True
+        return esito
 
     async def _rileggi(self, dominio: str, chiave: str,
                        gesto: str) -> tuple[list[str], str | None]:
