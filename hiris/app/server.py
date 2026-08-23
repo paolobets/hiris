@@ -30,6 +30,8 @@ from .proxy.ha_client import HAClient
 from .azione.registro import RegistroServizi
 from .azione.porta import PortaAzione
 from .azione.cronaca import Cronaca
+from .azione.costruzione.officina import Officina
+from .azione.costruzione.versioni import ArchivioCostruzioni
 from .casa.archivio import ArchivioCasa
 from .casa.anagrafe import (AREE_PER_GIRO, aree_dell_albero,
                            confronta_con_home_assistant, gerarchia,
@@ -1205,6 +1207,16 @@ async def _on_startup(app: web.Application) -> None:
     app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
                                       app.get("entity_cache"), app["cronaca"])
 
+    # L'archivio delle costruzioni e l'officina (fetta «costruire»,
+    # docs/design/2026-08-22-costruire-in-home-assistant.md). Nascono QUI e non
+    # piu' in alto per l'ordine: l'officina riceve la cronaca (che nasce sopra)
+    # e il canale HA. Non riceve la porta e non la usa: sono due canali di
+    # scrittura diversi -- «un canale, una porta», spec §2.1 -- e l'officina
+    # non chiama mai un servizio.
+    app["costruzioni"] = ArchivioCostruzioni(
+        os.path.join(data_dir, "costruzioni.db"))
+    app["officina"] = Officina(ha_client, app["costruzioni"], app["cronaca"])
+
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
     # stata spostata).
@@ -1878,6 +1890,15 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
+    # Fetta «costruire»: le proposte rimaste `in_corso` da un riavvio a meta'.
+    # Come per le promesse, si chiude PRIMA che qualcuno possa applicarne una
+    # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
+    # nessuna `applica`, e resterebbe un fantasma fino alla potatura.
+    try:
+        app["costruzioni"].risana(adesso=_time.time())
+    except Exception as exc:
+        logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
+
     # L'orologio (`schedulatore/orologio.py`): non conosce ne' la chat ne' il
     # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
     # `interpreta` (il turno di `chiedi`, `schedulatore/turno.py`).
@@ -2533,6 +2554,8 @@ async def _on_cleanup(app: web.Application) -> None:
         app["promesse"].close()
     if "cronaca" in app:
         app["cronaca"].close()
+    if "costruzioni" in app:
+        app["costruzioni"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di
