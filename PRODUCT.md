@@ -67,6 +67,21 @@
 > ha smesso di essere vera — HIRIS costruisce oggetti Home Assistant dalla fetta «costruire»; resta
 > vero che non costruisce agenti. Per cosa il prodotto fa davvero oggi, il `README.md`.
 
+> ## 🗄 Annotazione — 24 agosto 2026
+>
+> Il blocco del 23 agosto qui sopra è a sua volta superato su un numero, per lo stesso motivo per
+> cui lui stesso supera il 12: non si riscrive, si annota. Diceva che *«dalla fetta «costruire»
+> gli strumenti della chat sono **undici** (`hiris/app/casa/strumenti.py`)»*.
+>
+> Era vero il 23 agosto. Con la fetta **«HIRIS e il tempo»** gli strumenti della chat sono
+> **tredici**. Gli ultimi due, `andamento` e `accaduto`, guardano INDIETRO nel tempo passando
+> sempre da Home Assistant, senza un archivio proprio: come è andato un valore nel tempo (una
+> temperatura, un consumo), e cosa è successo in casa e per mano di chi, quando si può dirlo. Ciò
+> che resta vero è il resto del blocco del 23 agosto qui sopra: due canali di scrittura
+> (`hiris/app/azione/porta.py` per i servizi, `hiris/app/azione/costruzione/officina.py` per la
+> configurazione), nessuna autonomia, nessun semaforo. Per cosa il prodotto fa davvero oggi, il
+> `README.md`.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

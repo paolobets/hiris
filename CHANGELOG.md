@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [3.12.0] — HIRIS e il tempo (fetta «HIRIS e il tempo») (2026-08-24)
+
+**HIRIS impara a guardare indietro.** Fino a ieri conosceva la casa solo al presente: «da quanto è
+accesa questa luce?», «quanto ho consumato ieri?», «perché si è accesa la luce del corridoio?» non
+avevano risposta, anche quando Home Assistant la sapeva. Da questa fetta la chat espone due
+strumenti nuovi che guardano indietro nel tempo passando **sempre** da Home Assistant — nessun
+archivio nostro, nessuna dimensione temporale duplicata.
+
+**Cosa non è ancora stato provato, e perché esce lo stesso.** Le tre primitive verso Home Assistant
+su cui poggia questa fetta (`storico`, `diario`, `statistiche` — `hiris/app/proxy/ha_client.py`)
+non hanno **mai girato contro una casa vera**: la forma delle loro risposte, nei test, è scritta a
+mano — cioè immaginata. È la stessa trappola già pagata dalla fetta «comandare» su
+`/api/services`: se la forma vera fosse diversa, si correggono i test e il traduttore di chiavi
+**prima** di appoggiarci un ragionamento. Restano da misurare sulla casa vera, fra le altre: quanto
+indietro arrivano davvero le statistiche di questa installazione (decide se l'esempio «un mese fa
+alle 14:32» regge o va dichiarato come terzo esito) e se le fasce orarie che `andamento` restituisce
+oltre le 24 ore sono la grana che ci si aspettava. Questa versione esce per poterle fare.
+
+### Added
+
+- **Due strumenti nuovi in chat**: `andamento` (come è andato nel tempo il valore di un'entità — una
+  temperatura, un consumo, se una porta è rimasta aperta) e `accaduto` (cosa è successo in casa in
+  una finestra di tempo, e per mano di chi, quando si può dirlo, unendo la cronaca di HIRIS al
+  logbook di Home Assistant). Tredici strumenti serviti in totale.
+- **`hiris/app/casa/tempo.py`** — il quarto pezzo del catalogo, mai un archivio nostro: sceglie da
+  sola la superficie giusta (dettaglio o statistiche orarie) in base a quanto indietro si chiede e
+  a se l'entità ha `state_class`, dichiara sempre l'unità, la grana davvero usata e la finestra
+  davvero coperta, e distingue quattro esiti — mai cambiato, fuori dalla conservazione, mai
+  registrato, Home Assistant non ha risposto — invece di confonderli in un elenco vuoto.
+- **Due primitive tornano dall'orfanotrofio, con un chiamante vero**: `storico` (ex `get_history`,
+  uscita orfana con la fetta E3) e `diario` (ex `get_logbook`) leggono rispettivamente
+  `GET /api/history/period` e `GET /api/logbook` di Home Assistant. Una terza, `statistiche` (ex
+  `get_statistics`, `recorder/statistics_during_period`), era già scritta e testata ma senza
+  chiamanti: adesso ne ha uno.
+- **`last_changed` smette di essere buttato via.** Arrivava già da Home Assistant e veniva scartato
+  nella proiezione della cache: ora `guarda` lo espone, e «da quanto è così» costa un campo in più,
+  zero chiamate in più.
+- **Le promesse guadagnano memoria del tempo.** Il turno che mantiene una promessa vede ora anche
+  `andamento` e `accaduto` nel suo catalogo di ammissione, così una promessa può confrontare un
+  valore con quello di un'ora prima invece di portarsi dietro la fotografia scattata alla nascita.
+
+### Changed
+
+- **Il reperto n.6 di `docs/design/2026-08-16-cosa-hiris-sa-di-home-assistant.md` è chiuso a
+  metà**: `get_logbook` e `get_statistics` hanno un chiamante vero, `render_template` resta orfano
+  per motivi suoi.
+
 ## [3.11.0] — HIRIS costruisce (fetta «costruire») (2026-08-24)
 
 **Non solo servizi: adesso HIRIS scrive anche configurazione.** Fino a ieri l'unica cosa che

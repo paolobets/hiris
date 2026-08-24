@@ -53,6 +53,11 @@ monossido** è scritta `co` invece di `carbon_monoxide` (§3.0).
 | **Plance (Lovelace)** | `lovelace/dashboards/list` + `lovelace/config` | Lette tutte, **predefinita compresa** (che non compare nell'elenco), con gli entity_id estratti ricorsivamente (`comportamento.py:305`) | Nessuno scostamento. Copertura migliore della media |
 | **Comportamento (automazioni/script)** | Automazioni e script vivono in `automations.yaml`/`scripts.yaml` **o** in packages, `!include`, cartelle, o nella UI | Legge **solo i due file** (`comportamento.py:23-24`) e incrocia con lo stato, marcando `solo_stato` chi ha nome ma non corpo | Corretto e dichiarato. Ma **scene** (dominio nominato in `_NOMI_DOMINIO`), **helper** e **template** non hanno corpo per nessuna via: `guarda` accetta `automazione` e `script`, non `scena` |
 
+> **Chiuso a metà il 24/08/2026**, fetta «HIRIS e il tempo»: `get_logbook` e
+> `get_statistics` sono diventati `diario` e `statistiche`, e hanno un
+> chiamante vero (`casa/tempo.py`). `render_template` resta orfano, per motivi
+> suoi.
+
 ---
 
 ## 3. I buchi in ordine di danno

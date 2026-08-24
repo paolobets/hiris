@@ -176,7 +176,7 @@ async def test_col_turno_di_promessa_esegui_viene_RIFIUTATO_e_la_casa_non_si_toc
 
 @pytest.mark.asyncio
 async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
-    """L'elenco AMMETTE i quattro lettori: chiuderli tutti renderebbe il turno
+    """L'elenco AMMETTE i sei lettori: chiuderli tutti renderebbe il turno
     cieco invece che prudente."""
     client, promesse, _ = rotta
     ident = _crea_in_corso(promesse)

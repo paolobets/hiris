@@ -218,7 +218,7 @@ cosa.
 
 ## 4. Cosa chiedere alla chat
 
-Il modello riceve il nucleo (la casa condensata) più **undici strumenti** — lo
+Il modello riceve il nucleo (la casa condensata) più **tredici strumenti** — lo
 stesso catalogo di `hiris/app/casa/strumenti.py`. Cinque leggono e ricordano: `cerca`
 (trova per nome o alias), `guarda` (il dettaglio di una cosa sola), `legami` (chi
 tocca una cosa — quali automazioni, script o scene la nominano), `ricorda` (salva ciò
@@ -228,9 +228,13 @@ riletto dopo. Tre riguardano le promesse — cose da fare più tardi: `prometti`
 `promesse` (lo storico) e `disdici` (annulla). Due, in coppia, scrivono
 configurazione — non un servizio: `costruisci` (compone un'automazione, uno script o
 una scena e non scrive nulla) e `conferma` (la applica, solo in un turno successivo a
-quello dell'anteprima).
+quello dell'anteprima). Gli ultimi due, arrivati con questa build, guardano
+INDIETRO nel tempo passando da Home Assistant, senza un archivio proprio:
+`andamento` (come è andato nel tempo il valore di un'entità — una temperatura,
+un consumo, se una porta è rimasta aperta) e `accaduto` (cosa è successo in
+casa in una finestra di tempo, e per mano di chi, quando si può dirlo).
 
-Sette richieste che li esercitano davvero:
+Otto richieste che li esercitano davvero:
 
 1. **«Quante luci ci sono al piano di sopra?»** — risponde dal nucleo, che **conta
    invece di elencare**: le entità di una casa non entrerebbero tutte nel contesto,
@@ -266,6 +270,13 @@ Sette richieste che li esercitano davvero:
    dichiarare un successo. Prova anche a chiedergli qualcosa di impossibile
    («imposta il colore del termostato»): deve dirti **cosa** non esiste, non «non
    posso».
+8. **«Com'è andata la temperatura del soggiorno nelle ultime 48 ore?» e «perché si
+   è accesa la luce del corridoio?»** — `andamento` e `accaduto`, i due strumenti
+   che guardano indietro nel tempo. Non sono mai girati contro un impianto vero:
+   guarda se la grana che dichiarano è quella giusta (i cambi veri sotto le 24 ore,
+   le fasce orarie oltre — e se dice che i dati coprono un periodo più corto di
+   quello chiesto, deve dirlo), e se l'abbinamento a `per_mano_di: HIRIS` sulla
+   cronaca si dichiara **probabile**, mai certo.
 
 **Se hai mezz'ora e un impianto vero**, `prova-azione.md` (in questa stessa cartella)
 è il foglio delle nove prove che mettono alla prova solo `esegui` — cosa deve succedere
