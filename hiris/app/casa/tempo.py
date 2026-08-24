@@ -350,17 +350,38 @@ async def accaduto(*, ha, cronaca, entita: str | None, ore,
 
 
 def _abbina(voce: dict, atti: list[dict]) -> dict:
-    """La voce del diario, piu' l'atto di HIRIS che PROBABILMENTE l'ha causata."""
+    """La voce del diario, piu' -- dove si puo' dire -- l'atto che PROBABILMENTE
+    l'ha causata. Senza abbinamento la voce esce INVARIATA: «e' successo
+    qualcosa e non so chi» resta una risposta onesta.
+
+    Senza entita' sulla voce non c'e' nessun aggancio possibile, e non si
+    tenta. Il logbook di Home Assistant produce voci senza `entity_id` (i
+    trigger di automazione, per esempio): abbinarle sulla sola vicinanza
+    temporale prenderebbe un atto su un'ALTRA entita' e lo marcherebbe
+    `per_mano_di: HIRIS` -- un falso positivo travestito da probabilita', e
+    con `entita=None` (la domanda "cosa e' successo in casa" senza filtro)
+    non e' un angolo remoto ma l'uso di prima classe dell'interfaccia.
+
+    Fra i candidati che passano entita' e tolleranza si sceglie quello con lo
+    scarto temporale MINORE, non il primo che la cronaca restituisce
+    (ordinata per tempo decrescente): con due tentativi ravvicinati sulla
+    stessa entita' il primo della lista non e' detto sia il gesto giusto.
+    """
     quando = epoch_istante(voce.get("quando"))
-    if quando is None:
-        return voce
     entita_voce = voce.get("entita")
+    if quando is None or not entita_voce:
+        return voce
+    migliore, scarto_migliore = None, None
     for atto in atti:
-        if entita_voce and entita_voce not in (atto.get("entita") or []):
+        if entita_voce not in (atto.get("entita") or []):
             continue
-        if abs(float(atto.get("quando_ts") or 0.0) - quando) > TOLLERANZA_ABBINAMENTO_S:
+        scarto = abs(float(atto.get("quando_ts") or 0.0) - quando)
+        if scarto > TOLLERANZA_ABBINAMENTO_S:
             continue
-        return {**voce, "per_mano_di": "HIRIS", "abbinamento": "probabile",
-                "atto": {"id": atto.get("id"), "origine": atto.get("origine"),
-                         "servizio": atto.get("servizio")}}
-    return voce
+        if scarto_migliore is None or scarto < scarto_migliore:
+            migliore, scarto_migliore = atto, scarto
+    if migliore is None:
+        return voce
+    return {**voce, "per_mano_di": "HIRIS", "abbinamento": "probabile",
+            "atto": {"id": migliore.get("id"), "origine": migliore.get("origine"),
+                     "servizio": migliore.get("servizio")}}
