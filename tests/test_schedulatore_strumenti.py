@@ -538,7 +538,7 @@ class _CacheFinta:
             # attributi -> nessuna chiave "attributes" nel risultato.
             {"id": "light.studio", "state": "off", "name": "Studio",
              "unit": "", "domain": "light", "device_class": None,
-             "state_class": None},
+             "state_class": None, "last_changed": None},
             # `_to_minimal({"entity_id": "sensor.camera_t", "state": "21.4",
             #               "attributes": {"friendly_name": "Camera T",
             #                              "unit_of_measurement": "°C",
@@ -548,5 +548,5 @@ class _CacheFinta:
             # "attributes" nemmeno qui.
             {"id": "sensor.camera_t", "state": "21.4", "name": "Camera T",
              "unit": "°C", "domain": "sensor", "device_class": "temperature",
-             "state_class": "measurement"},
+             "state_class": "measurement", "last_changed": None},
         ]

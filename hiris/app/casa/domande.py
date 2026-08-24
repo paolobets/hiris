@@ -405,7 +405,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
                  nomi_di_ripiego: dict[str, str] | None = None,
                  unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None) -> dict:
+                 classi_vive: dict[str, str] | None = None,
+                 da_quando_vive: dict[str, str] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -427,7 +428,9 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     entita = [
         _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]), "disabilitata": False},
+             "stato": stato.get(e["id"]),
+             "da_quando": (da_quando_vive or {}).get(e["id"]),
+             "disabilitata": False},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
             nomi_categorie)
         for e in area["entita"]
@@ -439,7 +442,9 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # anagrafe.py).
         _arricchisci_entita(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]), "disabilitata": True},
+             "stato": stato.get(e["id"]),
+             "da_quando": (da_quando_vive or {}).get(e["id"]),
+             "disabilitata": True},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
             nomi_categorie)
         for e in area.get("entita_disabilitate", [])
@@ -468,7 +473,8 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                    non_disponibili: tuple[str, ...] = (),
                    nomi_di_ripiego: dict[str, str] | None = None,
                    unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None) -> dict:
+                 classi_vive: dict[str, str] | None = None,
+                 da_quando_vive: dict[str, str] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
         # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
@@ -493,6 +499,7 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # che sia una stanza arredata (stesso principio di anagrafe.py).
         "disabilitata": bool(entita.get("disabilitata")),
         "stato": stato.get(entita["id"]),
+        "da_quando": (da_quando_vive or {}).get(entita["id"]),
         "ricordi": _ricordi_ancorati(ricordi, "entita", riferimento),
     }
     # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
@@ -509,7 +516,8 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
                         non_disponibili: tuple[str, ...] = (),
                         nomi_di_ripiego: dict[str, str] | None = None,
                         unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None) -> dict:
+                 classi_vive: dict[str, str] | None = None,
+                 da_quando_vive: dict[str, str] | None = None) -> dict:
     nomi_etichette = nomi_delle_etichette(casa)
     nomi_categorie = nomi_delle_categorie(casa)
     dispositivo = next(
@@ -531,6 +539,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
             # che non c'e', e il modello o dice "non lo so" o lo inventa.
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
              "stato": stato.get(e["id"]),
+             "da_quando": (da_quando_vive or {}).get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
             nomi_categorie)
@@ -630,7 +639,8 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
            file_non_letti: dict[str, str] | None = None,
            nomi_di_ripiego: dict[str, str] | None = None,
            unita_vive: dict[str, str] | None = None,
-           classi_vive: dict[str, str] | None = None) -> dict:
+           classi_vive: dict[str, str] | None = None,
+           da_quando_vive: dict[str, str] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -692,19 +702,26 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     registro non ha un nome: se c'e' esce come `nome_dedotto`, mai scritto
     sopra `nome` -- dichiarato e dedotto restano due fatti diversi.
 
+    `da_quando_vive` (entity_id -> `last_changed` dallo specchio dello stato,
+    stessa forma di `unita_vive`/`classi_vive`) accompagna OGNI `"stato"` che
+    esce da questa funzione: il campo che Home Assistant manda a ogni cambio
+    di stato e che la proiezione della cache scartava (fondamenta 3 -- la
+    stessa domanda non puo' avere due risposte diverse a seconda di quale
+    ramo di `guarda` la porta).
+
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
     """
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
-                            nomi_di_ripiego, unita_vive, classi_vive)
+                            nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
-                              nomi_di_ripiego, unita_vive, classi_vive)
+                              nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
     if tipo == "dispositivo":
         return _guarda_dispositivo(casa, ricordi, stato, riferimento, non_disponibili,
-                                   nomi_di_ripiego, unita_vive, classi_vive)
+                                   nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
     if tipo in _TIPI_COMPORTAMENTO:
         return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":

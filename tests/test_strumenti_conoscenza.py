@@ -90,7 +90,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     apposta, cosi' che aggiungerne o toglierne uno sia una decisione e non un
     effetto collaterale. Ovunque altro si DERIVANO da qui.
 
-    Da 34 a 4, poi 5, poi 6, poi 9, e ora 11. `esegui` resta l'unico che
+    Da 34 a 4, poi 5, poi 6, poi 9, poi 11, e ora 13. `esegui` resta l'unico che
     scrive un SERVIZIO in Home Assistant SUBITO -- e non lo fa da se': chiede
     alla porta unica (`azione/porta.py`), che verifica prima e rilegge dopo.
     E' la differenza con i trentaquattro usciti, dove ciascuno attuava per
@@ -108,16 +108,25 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     viene chiamato (un `fai` viene solo VERIFICATO contro questa
     installazione, non eseguito), quindi non e' un secondo `esegui`.
 
-    Gli ultimi due -- `costruisci`, `conferma` (fetta «costruire», Task 9) --
-    sono la SECONDA strada che scrive su Home Assistant, e scrivono
-    CONFIGURAZIONE (un'automazione, uno script, una scena), non un servizio:
-    passano per l'officina (`azione/costruzione/officina.py`), sorella della
-    porta e non sua sostituta. `costruisci` non scrive neanche lui -- compone
-    e fa validare, come `prometti` verifica senza eseguire -- e' `conferma`,
-    in un turno diverso, a far scrivere davvero."""
+    Due -- `costruisci`, `conferma` (fetta «costruire», Task 9) -- sono la
+    SECONDA strada che scrive su Home Assistant, e scrivono CONFIGURAZIONE
+    (un'automazione, uno script, una scena), non un servizio: passano per
+    l'officina (`azione/costruzione/officina.py`), sorella della porta e non
+    sua sostituta. `costruisci` non scrive neanche lui -- compone e fa
+    validare, come `prometti` verifica senza eseguire -- e' `conferma`, in un
+    turno diverso, a far scrivere davvero.
+
+    Gli ultimi due -- `andamento`, `accaduto` (fetta «HIRIS e il tempo», Task
+    6) -- non scrivono niente: guardano INDIETRO nel tempo passando per
+    `casa/tempo.py`, come e' andato un valore e cosa e' successo (e per mano
+    di chi). LEGGONO e basta, come i primi cinque -- ed e' per questo che
+    entrano anche nel catalogo del turno delle promesse
+    (`schedulatore/turno.py::SOLA_LETTURA`), da cui `costruisci` e `conferma`
+    restano fuori."""
     nomi = {s["name"] for s in STRUMENTI_CONOSCENZA}
     assert nomi == {"cerca", "guarda", "legami", "ricorda", "richiama", "esegui",
-                    "prometti", "promesse", "disdici", "costruisci", "conferma"}
+                    "prometti", "promesse", "disdici", "costruisci", "conferma",
+                    "andamento", "accaduto"}
 
 
 def test_ogni_definizione_ha_una_descrizione_utile():
@@ -414,7 +423,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, unita, classi, letto = d._specchio()
+    stato, nomi, unita, classi, da_quando, letto = d._specchio()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
@@ -727,17 +736,17 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
         def all_states(self):
             yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
             raise RuntimeError("boom")
-    stato, nomi, unita, classi, letto = DispatcherStrumenti(
+    stato, nomi, unita, classi, da_quando, letto = DispatcherStrumenti(
         archivio_casa, memoria, cache=_Rotta())._specchio()
-    # Anche le UNITA' raccolte a meta' si buttano: mezzo dizionario di unita'
-    # farebbe apparire senza unita' proprio le entita' che la lettura non ha
-    # raggiunto -- lo stesso difetto dei nomi, sul campo nuovo.
-    assert (stato, nomi, unita, classi, letto) == ({}, {}, {}, {}, False)
+    # Anche le UNITA' (e l'ISTANTE) raccolti a meta' si buttano: mezzo
+    # dizionario farebbe apparire senza unita'/istante proprio le entita' che
+    # la lettura non ha raggiunto -- lo stesso difetto dei nomi, sui campi nuovi.
+    assert (stato, nomi, unita, classi, da_quando, letto) == ({}, {}, {}, {}, {}, False)
 
 
 def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
     assert DispatcherStrumenti(
-        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, True)
+        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, {}, True)
 
 
 @pytest.mark.asyncio

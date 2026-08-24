@@ -99,3 +99,96 @@ def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
         assert riga["servizio"] == "light.turn_on"
     finally:
         c.close()
+
+
+# -- elenca: la cronaca diventa interrogabile nel tempo ---------------------
+
+def test_elenca_restituisce_solo_la_finestra_chiesta(cronaca):
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=1000.0)
+    cronaca.registra(origine="chat", servizio="light.turn_off",
+                     entita=["light.cucina"], eseguito=True, adesso=5000.0)
+    righe = cronaca.elenca(da_ts=4000.0, a_ts=6000.0)
+    assert [r["servizio"] for r in righe] == ["light.turn_off"]
+
+
+def test_elenca_torna_dalla_piu_recente(cronaca):
+    for ts in (1000.0, 2000.0, 3000.0):
+        cronaca.registra(origine="chat", servizio=f"light.s{int(ts)}",
+                         entita=["light.cucina"], eseguito=True, adesso=ts)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0)
+    assert [r["quando_ts"] for r in righe] == [3000.0, 2000.0, 1000.0]
+
+
+def test_elenca_filtra_per_entita_senza_confondere_i_prefissi(cronaca):
+    """`light.cucina` e `light.cucina_2` sono due entita' diverse. Un filtro
+    per sottostringa le confonderebbe -- ed e' il motivo per cui il confronto
+    avviene sulla lista DECODIFICATA, non sul JSON grezzo."""
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=1000.0)
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina_2"], eseguito=True, adesso=2000.0)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0, entita="light.cucina")
+    assert len(righe) == 1
+    assert righe[0]["entita"] == ["light.cucina"]
+
+
+def test_elenca_vede_anche_le_costruzioni(cronaca):
+    """Una tabella sola perche' la domanda dell'utente e' una sola -- «cosa hai
+    fatto?». Un `elenca` che vedesse solo i comandi avrebbe reintrodotto la
+    divisione che `registra_costruzione` ha evitato."""
+    cronaca.registra_costruzione(origine="chat", gesto="crea", dominio="automation",
+                                 chiave="abc", entita=["automation.sveglia"],
+                                 eseguito=True, adesso=1000.0)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0)
+    assert righe[0]["genere"] == "costruzione"
+    assert righe[0]["oggetto"] == "automation.abc"
+
+
+def test_elenca_ha_un_tetto(cronaca):
+    for i in range(300):
+        cronaca.registra(origine="chat", servizio="light.turn_on",
+                         entita=["light.cucina"], eseguito=True, adesso=float(i))
+    assert len(cronaca.elenca(da_ts=0.0, a_ts=9999.0)) == 200
+    assert len(cronaca.elenca(da_ts=0.0, a_ts=9999.0, limite=10)) == 10
+
+
+def test_elenca_moltiplica_il_limite_per_10_con_filtro_entita(cronaca):
+    """Il LIMIT di SQL non puo' essere il risultato finale quando filtra per
+    entita'. Registriamo piu' di `limite` righe ma meno di `limite*10` di
+    un'altra entita' (tutte piu' recenti), poi una riga dell'entita' cercata
+    piu' indietro. Senza il moltiplicatore per 10, la query leggerebbe solo
+    `limite` righe e non vedrebbe la riga che cerchiamo."""
+    # Registra 99 righe di light.cucina_2 con timestamp 1000-1098
+    for i in range(99):
+        cronaca.registra(origine="chat", servizio="light.turn_on",
+                         entita=["light.cucina_2"], eseguito=True, adesso=float(1000 + i))
+    # Registra una riga di light.cucina con timestamp 999 (piu' indietro ma
+    # entro i 100 risultati del LIMIT moltiplicato per 10)
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=999.0)
+    # Con limite=10 e moltiplicazione per 10, leggiamo 100 righe e troviamo
+    # la riga di light.cucina. Senza il moltiplicatore (solo 10 righe),
+    # vedremmo solo le ultime 10 di light.cucina_2.
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0, entita="light.cucina", limite=10)
+    assert len(righe) == 1
+    assert righe[0]["quando_ts"] == 999.0
+
+
+def test_elenca_il_moltiplicatore_ha_un_confine(cronaca):
+    """Il moltiplicatore per 10 NON risolve il problema, lo sposta. Se piu'
+    di `limite*10` righe piu' recenti nella finestra non appartengono
+    all'entita' richiesta, il risultato puo' essere ancora vuoto pur
+    avendone. Questo test documenta il confine: con 2100 righe di un'altra
+    entita' e limite=10 (tetto 100), la riga cercata resta fuori."""
+    # Registra 2100 righe di light.cucina_2 con timestamp 100-2199
+    for i in range(2100):
+        cronaca.registra(origine="chat", servizio="light.turn_on",
+                         entita=["light.cucina_2"], eseguito=True, adesso=float(100 + i))
+    # Registra una riga di light.cucina con timestamp 50 (piu' indietro)
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=50.0)
+    # Con limite=10 e moltiplicazione per 10, leggiamo 100 righe, tutte di
+    # light.cucina_2. La riga di light.cucina non entra nel risultato.
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0, entita="light.cucina", limite=10)
+    assert len(righe) == 0  # La riga e' fuori dal tetto di lettura

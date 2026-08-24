@@ -70,27 +70,27 @@ def _anagrafe_letta(casa_archivio) -> bool:
     return casa_archivio is not None and casa_archivio.aggiornata_il() is not None
 
 
-def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict]:
-    """Lo specchio dello stato per questa pagina: `(stato, nomi, unita, classi)`.
+def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict, dict]:
+    """Lo specchio dello stato per questa pagina: `(stato, nomi, unita, classi, da_quando)`.
 
     La lettura vera sta in `casa.anagrafe.specchio_vivo`, la stessa che usa il
     dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
     ne' la vista ne' la correzione di un ricordo devono fallire per colpa dello
     specchio.
 
-    Restituisce la QUATERNA e non il solo pezzo che serviva prima: i nomi e le
-    unita' arrivano dalla stessa lettura, e chiamarla due volte per prenderne
-    un pezzo per volta avrebbe voluto dire leggere lo specchio in due istanti
-    diversi -- la stessa classe di divergenza che `specchio_vivo` esiste per
-    chiudere.
+    Restituisce la CINQUINA e non il solo pezzo che serviva prima: i nomi, le
+    unita' e l'istante arrivano dalla stessa lettura, e chiamarla due volte per
+    prenderne un pezzo per volta avrebbe voluto dire leggere lo specchio in due
+    istanti diversi -- la stessa classe di divergenza che `specchio_vivo`
+    esiste per chiudere.
     """
     cache = request.app.get("entity_cache")
     if cache is None or not hasattr(cache, "all_states"):
-        return {}, {}, {}, {}
+        return {}, {}, {}, {}, {}
     try:
         return specchio_vivo(cache.all_states())
     except Exception:
-        return {}, {}, {}, {}
+        return {}, {}, {}, {}, {}
 
 
 def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str]:

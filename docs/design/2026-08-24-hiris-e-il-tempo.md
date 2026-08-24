@@ -267,7 +267,21 @@ all'ultimo giro è sfuggita per l'ordine delle parole.
    in produzione**: la forma della risposta nei test è scritta a mano, cioè immaginaria. È la stessa
    trappola della fetta «comandare», dove la forma di `/api/services` era immaginaria e la spec
    disse «fermati se cade». **Si legge dalla casa vera prima di appoggiarci un ragionamento.**
-2. **La forma vera del logbook**, per la stessa ragione.
+2. **La forma vera del logbook**, per la stessa ragione — **compresi i campi `context_*`**
+   (`context_entity_id`, `context_user_id`, ...), oggi scartati da `ha_client.diario`. È da lì che
+   passa la paternità di un'automazione o di una persona quando la si potrà consegnare: la
+   descrizione di `accaduto` promette oggi solo ciò che il codice consegna (revisione finale, F5) —
+   HIRIS riconosce i propri atti, per il resto riporta il messaggio del diario così com'è — perché
+   quella forma non è mai stata misurata. Aggiungere quei campi indovinandone la forma non
+   manterrebbe comunque la promessa.
+
+   **E la forma di `when`, nella stessa misura.** `_abbina` legge l'istante di ogni voce per
+   agganciarla alla cronaca: se il logbook lo rendesse in una forma che non sappiamo leggere — un
+   numero invece di un ISO, lo scenario gemello di quello misurato al punto 1 — **nessuna voce si
+   abbinerebbe più**, in silenzio. Non nascerebbe un dato falso (la guardia rifiuta invece di
+   attribuire), ma la frase «una voce senza `per_mano_di` non è mia» diventerebbe falsa detta con
+   sicurezza, e la verifica §7.5 è la prima che se ne accorgerebbe. Rilevata dalla re-review
+   dell'onda finale come residuo non bloccante: **si misura qui, non si indovina.**
 3. **I due confini su questa casa.** `purge_keep_days` è configurabile, e il default vale finché
    nessuno l'ha cambiato. E soprattutto: **quanto indietro arrivano davvero le statistiche.** Che
    sopravvivano alla potatura del dettaglio è certo — è il motivo per cui esistono — ma «per

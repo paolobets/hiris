@@ -1,9 +1,9 @@
 """Test per le tre letture diagnostiche di HAClient:
-system_health (WS), logbook (REST) e render_template (REST).
+system_health (WS), diario (REST) e render_template (REST).
 
 Stile: fake della sessione aiohttp + asserzione sull'URL esatto chiamato.
-Tutti i metodi sono di sola lettura e degradano in silenzio: nessuna
-eccezione deve mai raggiungere il chiamante.
+Tutti i metodi sono di sola lettura e degradano senza sollevare: `diario`
+distingue pero' il vuoto dal guasto, vedi tests/test_ha_client_tempo.py.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app.proxy.ha_client import (
     HAClient,
-    MAX_LOGBOOK_ENTRIES,
-    MAX_LOGBOOK_HOURS,
+    MAX_DIARIO_VOCI,
+    MAX_DIARIO_ORE,
     MAX_TEMPLATE_LEN,
     MAX_TEMPLATE_RESPONSE_LEN,
     _truncate,
@@ -136,15 +136,15 @@ async def test_get_system_health_never_raises(client, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# get_logbook
+# diario (era get_logbook)
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_get_logbook_builds_url_without_entity(client):
-    """Senza entity_id: path /api/logbook/<start ISO>, nessun parametro entity,
-    end_time presente. Lo start deve corrispondere a now - hours."""
+async def test_diario_builds_url_without_entity(client):
+    """Senza entita': path /api/logbook/<start ISO>, nessun parametro entity,
+    end_time presente. Lo start deve corrispondere a now - ore."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    await client.get_logbook(entity_id=None, hours=6)
+    await client.diario(entita=None, ore=6)
 
     url = calls[0][0]
     parsed = urlsplit(url)
@@ -160,16 +160,16 @@ async def test_get_logbook_builds_url_without_entity(client):
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_includes_entity_param(client):
+async def test_diario_includes_entity_param(client):
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    await client.get_logbook(entity_id="light.cucina", hours=1)
+    await client.diario(entita="light.cucina", ore=1)
 
     qs = parse_qs(urlsplit(calls[0][0]).query)
     assert qs["entity"] == ["light.cucina"]
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_extracts_fields(client):
+async def test_diario_extracts_fields(client):
     payload = [
         {"when": "2026-08-01T10:00:00+00:00", "name": "Luce cucina",
          "message": "e' stata accesa", "entity_id": "light.cucina",
@@ -178,127 +178,163 @@ async def test_get_logbook_extracts_fields(client):
          "message": "e' stata spenta", "entity_id": "light.cucina"},
     ]
     _fake_session(client, "get", _resp(200, json_data=payload))
-    out = await client.get_logbook(entity_id="light.cucina", hours=2)
+    esito = await client.diario(entita="light.cucina", ore=2)
 
-    assert out == [
-        {"when": "2026-08-01T10:00:00+00:00", "name": "Luce cucina",
-         "message": "e' stata accesa", "entity_id": "light.cucina"},
-        {"when": "2026-08-01T10:05:00+00:00", "name": "Luce cucina",
-         "message": "e' stata spenta", "entity_id": "light.cucina"},
-    ]
+    assert esito == {"voci": [
+        {"quando": "2026-08-01T10:00:00+00:00", "nome": "Luce cucina",
+         "messaggio": "e' stata accesa", "entita": "light.cucina"},
+        {"quando": "2026-08-01T10:05:00+00:00", "nome": "Luce cucina",
+         "messaggio": "e' stata spenta", "entita": "light.cucina"},
+    ], "troncato": False, "ore": 2}
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_empty_on_bad_status(client):
+async def test_diario_un_guasto_non_e_un_diario_vuoto_bad_status(client):
     _fake_session(client, "get", _resp(404, json_data=[]))
-    assert await client.get_logbook(entity_id=None, hours=1) == []
+    esito = await client.diario(entita=None, ore=1)
+    assert "voci" not in esito
+    assert "errore" in esito
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_empty_on_non_list_payload(client):
+async def test_diario_un_guasto_non_e_un_diario_vuoto_payload(client):
     _fake_session(client, "get", _resp(200, json_data={"message": "boom"}))
-    assert await client.get_logbook(entity_id=None, hours=1) == []
+    esito = await client.diario(entita=None, ore=1)
+    assert "voci" not in esito
+    assert "errore" in esito
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_empty_on_exception(client):
+async def test_diario_un_guasto_non_e_un_diario_vuoto_exception(client):
     _fake_session(client, "get", exc=OSError("connection refused"))
-    assert await client.get_logbook(entity_id=None, hours=1) == []
+    esito = await client.diario(entita=None, ore=1)
+    assert "voci" not in esito
+    assert "errore" in esito
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_caps_entries_keeping_most_recent(client):
-    """Il logbook di una settimana puo' essere enorme e finirebbe nel prompt:
-    si tiene solo la coda piu' recente, fino al cap dichiarato."""
+async def test_diario_caps_entries_keeping_most_recent(client):
+    """Il diario di una settimana puo' essere enorme e finirebbe nel prompt:
+    si tiene solo la coda piu' recente, fino al cap dichiarato -- e il
+    troncamento e' dichiarato invece che dedotto."""
     payload = [{"when": f"t{i}", "name": "n", "message": "m",
                 "entity_id": "light.cucina"}
-               for i in range(MAX_LOGBOOK_ENTRIES + 50)]
+               for i in range(MAX_DIARIO_VOCI + 50)]
     _fake_session(client, "get", _resp(200, json_data=payload))
-    out = await client.get_logbook(entity_id=None, hours=168)
+    esito = await client.diario(entita=None, ore=168)
 
-    assert len(out) == MAX_LOGBOOK_ENTRIES
-    assert out[-1]["when"] == f"t{MAX_LOGBOOK_ENTRIES + 49}"
-    assert out[0]["when"] == "t50"
+    assert len(esito["voci"]) == MAX_DIARIO_VOCI
+    assert esito["voci"][-1]["quando"] == f"t{MAX_DIARIO_VOCI + 49}"
+    assert esito["voci"][0]["quando"] == "t50"
+    assert esito["troncato"] is True
+    assert esito["ore"] == 168
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_rejects_invalid_entity_id(client):
-    """entity_id ostile: mai comporre l'URL, nessuna chiamata HTTP."""
+async def test_diario_rejects_invalid_entity_id(client):
+    """entita' ostile: mai comporre l'URL, nessuna chiamata HTTP, e il
+    rifiuto e' un guasto dichiarato -- non un diario vuoto."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    assert await client.get_logbook(entity_id="light.cucina&evil=1", hours=1) == []
+    esito = await client.diario(entita="light.cucina&evil=1", ore=1)
+    assert "voci" not in esito
+    assert "errore" in esito
     assert calls == []
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_skips_non_dict_entries(client):
+async def test_diario_skips_non_dict_entries(client):
     _fake_session(client, "get", _resp(200, json_data=[
         "non un dict",
         {"when": "t", "name": "n", "message": "m", "entity_id": "light.x"},
     ]))
-    out = await client.get_logbook(entity_id=None, hours=1)
-    assert out == [{"when": "t", "name": "n", "message": "m",
-                    "entity_id": "light.x"}]
+    esito = await client.diario(entita=None, ore=1)
+    assert esito["voci"] == [{"quando": "t", "nome": "n", "messaggio": "m",
+                              "entita": "light.x"}]
+    assert esito["troncato"] is False
 
 
 @pytest.mark.asyncio
-async def test_get_logbook_caps_after_filtering(client):
+async def test_diario_caps_after_filtering(client):
     """Il cap si applica DOPO aver scartato le voci non valide: altrimenti si
     restituiscono meno voci del massimo pur avendone di valide piu' vecchie."""
     payload = [{"when": f"t{i}", "name": "n", "message": "m",
                 "entity_id": "light.cucina"}
-               for i in range(MAX_LOGBOOK_ENTRIES)]
+               for i in range(MAX_DIARIO_VOCI)]
     payload += ["non un dict"] * 100
     _fake_session(client, "get", _resp(200, json_data=payload))
-    out = await client.get_logbook(entity_id=None, hours=24)
+    esito = await client.diario(entita=None, ore=24)
 
-    assert len(out) == MAX_LOGBOOK_ENTRIES
-    assert out[0]["when"] == "t0"
+    assert len(esito["voci"]) == MAX_DIARIO_VOCI
+    assert esito["voci"][0]["quando"] == "t0"
+    assert esito["troncato"] is False
 
 
-# --- normalizzazione di `hours` -------------------------------------------
-# `hours` arriva direttamente da una tool-call dell'LLM: puo' essere assurdo o
+# --- normalizzazione di `ore` -----------------------------------------------
+# `ore` arriva direttamente da una tool-call dell'LLM: puo' essere assurdo o
 # allucinato. Nessun valore deve mai sollevare verso il chiamante.
 
 _ORE_OSTILI = [-5, 0, None, "abc", float("nan"), float("inf"), 18_000_000, 10**12]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("hours", _ORE_OSTILI)
-async def test_get_logbook_never_raises_on_hostile_hours(client, hours):
+@pytest.mark.parametrize("ore", _ORE_OSTILI)
+async def test_diario_never_raises_on_hostile_ore(client, ore):
     _fake_session(client, "get", _resp(200, json_data=[]))
-    assert await client.get_logbook(entity_id=None, hours=hours) == []
+    esito = await client.diario(entita=None, ore=ore)
+    assert esito["voci"] == []
+    assert "errore" not in esito
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("hours", [-5, 0, 0.4])
-async def test_get_logbook_clamps_hours_to_minimum(client, hours):
+@pytest.mark.parametrize("ore", [-5, 0, 0.4])
+async def test_diario_clamps_ore_to_minimum(client, ore):
     """Finestra non positiva: si clampa a un'ora, non si sbaglia il verso."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    await client.get_logbook(entity_id=None, hours=hours)
+    esito = await client.diario(entita=None, ore=ore)
 
     assert abs(_start_ore_indietro(calls[0][0]) - 1) < 0.02
+    assert esito["ore"] == 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("hours", [None, "abc", float("nan"), object()])
-async def test_get_logbook_falls_back_on_non_numeric_hours(client, hours):
+@pytest.mark.parametrize("ore", [None, "abc", float("nan"), object()])
+async def test_diario_falls_back_on_non_numeric_ore(client, ore):
     """Valore non convertibile: finestra di default di 24 ore."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    await client.get_logbook(entity_id=None, hours=hours)
+    esito = await client.diario(entita=None, ore=ore)
 
     assert abs(_start_ore_indietro(calls[0][0]) - 24) < 0.02
+    assert esito["ore"] == 24
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("hours", [float("inf"), 18_000_000, 10**12,
-                                   MAX_LOGBOOK_HOURS + 1])
-async def test_get_logbook_clamps_hours_to_maximum(client, hours):
-    """Valori enormi: la finestra e' limitata a MAX_LOGBOOK_HOURS, cosi' HA non
+@pytest.mark.parametrize("ore", [float("inf"), 18_000_000, 10**12,
+                                 MAX_DIARIO_ORE + 1])
+async def test_diario_clamps_ore_to_maximum(client, ore):
+    """Valori enormi: la finestra e' limitata a MAX_DIARIO_ORE, cosi' HA non
     deve scandire l'intero database del recorder."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
-    await client.get_logbook(entity_id=None, hours=hours)
+    esito = await client.diario(entita=None, ore=ore)
 
-    assert abs(_start_ore_indietro(calls[0][0]) - MAX_LOGBOOK_HOURS) < 0.02
+    assert abs(_start_ore_indietro(calls[0][0]) - MAX_DIARIO_ORE) < 0.02
+    assert esito["ore"] == MAX_DIARIO_ORE
+
+
+@pytest.mark.asyncio
+async def test_diario_usa_il_suo_tetto_non_quello_di_tempo():
+    """L'unificazione di normalizza_ore: diario ha tetto 168, tempo.py ha tetto
+    2160. Questo test verifica che diario usi il suo tetto specifico. Se togli
+    tetto=MAX_DIARIO_ORE dalla chiamata di normalizza_ore in ha_client.py, il
+    diario clatherebbe il valore 200 a 2160 invece di 168 e il test
+    fallirebbe."""
+    client = HAClient(base_url="http://supervisor/core", token="test-token")
+    calls = _fake_session(client, "get", _resp(200, json_data=[]))
+    # 200 ore: fra il tetto di diario (168) e il tetto di tempo (2160)
+    esito = await client.diario(entita=None, ore=200)
+
+    # Con il tetto corretto di diario (168), la finestra inizia 168 ore indietro
+    assert abs(_start_ore_indietro(calls[0][0]) - MAX_DIARIO_ORE) < 0.02
+    assert esito["ore"] == MAX_DIARIO_ORE
 
 
 # --------------------------------------------------------------------------

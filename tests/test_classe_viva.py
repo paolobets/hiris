@@ -55,14 +55,14 @@ def test_la_regola_sta_in_un_posto_solo():
 
 
 def test_lo_specchio_porta_anche_le_classi():
-    _stato, _nomi, _unita, classi = specchio_vivo(_SPECCHIO)
+    _stato, _nomi, _unita, classi, _da_quando = specchio_vivo(_SPECCHIO)
     assert classi["binary_sensor.perdita_lavatrice"] == "moisture"
 
 
 def test_un_allagamento_entra_nel_digesto():
     """LA PROVA CHE CONTA. Con la classe dal solo registro questa e' rossa:
     il sensore e' `on` e il digesto dice «Niente di notevole al momento»."""
-    stato, _n, _u, classi = specchio_vivo(_SPECCHIO)
+    stato, _n, _u, classi, _da_quando = specchio_vivo(_SPECCHIO)
     testo, _ = componi(_CASA, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "bagnato" in sezione, sezione
@@ -77,7 +77,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
                         "classe": None}]}
     specchio = [{"id": "light.cucina", "state": "on", "name": "Faretto",
                  "device_class": None, "unit": ""}]
-    stato, _n, _u, classi = specchio_vivo(specchio)
+    stato, _n, _u, classi, _da_quando = specchio_vivo(specchio)
     testo, _ = componi(casa, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "acceso" in sezione
@@ -85,7 +85,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
 
 
 def test_guarda_dice_la_classe_che_prometteva():
-    _s, _n, _u, classi = specchio_vivo(_SPECCHIO)
+    _s, _n, _u, classi, _da_quando = specchio_vivo(_SPECCHIO)
     d = guarda(_CASA, [], [], {"binary_sensor.perdita_lavatrice": "on"},
                "entita", "binary_sensor.perdita_lavatrice", classi_vive=classi)
     assert d["classe"] == "moisture"

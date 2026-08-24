@@ -157,33 +157,40 @@ def e_pseudo_area(area_id: str) -> bool:
     return area_id in _ID_PSEUDO_AREA
 
 
-def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str],
+def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str],
                                   dict[str, str], dict[str, str]]:
-    """Lo specchio dello stato in quattro dizionari: `(stato, nomi, unita, classi)`.
+    """Lo specchio dello stato in cinque dizionari: `(stato, nomi, unita, classi, da_quando)`.
 
     `righe` e' cio' che `entity_cache.all_states()` restituisce: dizionari
     nella forma di `_to_minimal` -- chiave `id` (non `entity_id`), piu' `state`,
-    `name` (il `friendly_name`) e `unit`.
+    `name` (il `friendly_name`), `unit` e `last_changed`.
 
-    Una passata sola per tre dizionari, e in un posto solo per tutti i
+    Una passata sola per tutti i dizionari, e in un posto solo per tutti i
     chiamanti. Prima lo specchio si leggeva in `casa/strumenti.py` e basta: chi
     stava altrove (la correzione di un ricordo dalla pagina, per esempio) o
     rileggeva la cache per conto suo, o faceva a meno di cio' che ci sta
     dentro. Nel secondo caso la stessa domanda dava due risposte diverse a
     seconda della porta -- l'unita' dedotta in chat e non dedotta dalla pagina.
 
-    Nomi, unita' e classi vuoti si saltano: una stringa vuota non e' un nome e
-    non e' un'unita', e' l'assenza dell'una e dell'altra.
+    Nomi, unita', classi e istanti vuoti si saltano: una stringa vuota non e'
+    un nome e non e' un'unita', e' l'assenza dell'una e dell'altra.
 
     `classi` (entity_id -> `device_class`) e' arrivata per ultima ed e' la piu'
     importante: il registro delle entita' NON manda la classe (vedi
     `classe_effettiva`), quindi finche' nessuno leggeva questa nessun sensore
     binario ha mai avuto una classe in tutto il prodotto.
+
+    `da_quando` (entity_id -> `last_changed`) e' l'ultima arrivata: il campo
+    che Home Assistant manda a ogni cambio di stato e che la proiezione della
+    cache (`entity_cache._to_minimal`) scartava. HIRIS sapeva che in camera ci
+    sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire «e'
+    fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
     """
     stato: dict[str, str] = {}
     nomi: dict[str, str] = {}
     unita: dict[str, str] = {}
     classi: dict[str, str] = {}
+    da_quando: dict[str, str] = {}
     for e in righe:
         if not isinstance(e, dict):
             continue
@@ -200,7 +207,10 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str],
         classe = e.get("device_class")
         if isinstance(classe, str) and classe.strip():
             classi[entity_id] = classe.strip()
-    return stato, nomi, unita, classi
+        istante = e.get("last_changed")
+        if isinstance(istante, str) and istante.strip():
+            da_quando[entity_id] = istante.strip()
+    return stato, nomi, unita, classi, da_quando
 
 
 def nome_con_id(nome: str, id_: str | None) -> str:

@@ -213,6 +213,13 @@ _GUIDA_SENZA_STRUMENTI = (
 #   (vedi `build_chat_messages`): ripeterle qui sarebbe il secondo posto da
 #   tenere allineato che questo modulo esiste per evitare. Qui basta che il
 #   modello sappia CON CHE NOME chiamarli, come per gli altri nove.
+#
+# fetta «HIRIS e il tempo» (Task 6). Da 11 a 13: entrano `andamento` e
+#   `accaduto` -- ancora lo stesso ricollegamento nome nudo -> nome
+#   prefissato, non un terzo giro di logica. Sono lettori come i primi
+#   cinque (nessuna regola del giro in due tempi da ripetere): guardano
+#   INDIETRO nel tempo invece che lo stato di adesso, ed e' l'unica cosa
+#   che questo testo -- quello dei NOMI -- deve dire su di loro.
 _GUIDA_CON_STRUMENTI = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
@@ -228,10 +235,14 @@ _GUIDA_CON_STRUMENTI = (
     "andata, `mcp__hiris__disdici` per annullare una promessa non ancora "
     "mantenuta, `mcp__hiris__costruisci` per proporre di creare, modificare o "
     "cancellare un'automazione, uno script o una scena (non scrive: restituisce "
-    "un'anteprima), `mcp__hiris__conferma` per applicare quella proposta. "
+    "un'anteprima), `mcp__hiris__conferma` per applicare quella proposta, "
+    "`mcp__hiris__andamento` per come e' andato nel tempo il valore di UNA "
+    "entita', `mcp__hiris__accaduto` per cosa e' successo in casa e per mano "
+    "di chi. "
     "Quando il prompt qui sopra parla "
     "di `cerca`, `guarda`, `legami`, `ricorda`, `richiama`, `esegui`, "
-    "`prometti`, `promesse`, `disdici`, `costruisci` o `conferma` parla di "
+    "`prometti`, `promesse`, `disdici`, `costruisci`, `conferma`, `andamento` "
+    "o `accaduto` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "

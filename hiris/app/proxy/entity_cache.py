@@ -107,6 +107,14 @@ def _to_minimal(raw: dict) -> dict:
         # attributi di ogni sensore, e questa proiezione lo buttava.
         # Il nome e' `sensor.const.ATTR_STATE_CLASS`, verificato.
         "state_class": attrs.get("state_class"),
+        # `last_changed` arriva a OGNI cambio di stato e questa proiezione lo
+        # buttava: HIRIS sapeva che in camera ci sono 22,4 gradi e non sapeva
+        # da quando -- non poteva nemmeno dire «e' fermo da tre ore». Costa un
+        # campo e zero chiamate a Home Assistant.
+        # `last_changed` e non `last_updated`: il secondo si muove anche quando
+        # cambia solo un attributo, e «da quando e' accesa» diventerebbe «da
+        # quando qualcuno ne ha toccato la luminosita'».
+        "last_changed": raw.get("last_changed"),
     }
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
     if domain_keys:

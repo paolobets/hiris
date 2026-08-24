@@ -5,7 +5,7 @@ L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
-anche AGIRE su di essa -- gli strumenti sono undici, lo stesso catalogo della
+anche AGIRE su di essa -- gli strumenti sono tredici, lo stesso catalogo della
 chat sincrona (`casa/strumenti.py`): fra loro `esegui` chiama un servizio di
 Home Assistant passando per la porta dei servizi (`azione/porta.py`), e
 `costruisci`/`conferma` (fetta «costruire») passano per l'officina
@@ -89,7 +89,7 @@ parallele della stessa risposta della CLI -- vedi il commento su
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono undici (hiris/app/casa/
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono tredici (hiris/app/casa/
 strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
 la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
 «costruire», per quella della configurazione (`costruisci`/`conferma`). Cio' che
@@ -178,7 +178,7 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     che a import-time non si puo' ancora leggere."""
     prefisso = f"mcp__{_nome_server_mcp()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
-    # promessa ne vede cinque -- i quattro lettori piu' `concludi` -- e i due
+    # promessa ne vede sette -- i sei lettori piu' `concludi` -- e i due
     # elenchi non sono l'uno il sottoinsieme dell'altro: `concludi` esiste solo
     # di la', `esegui` solo di qua.
     #
@@ -265,7 +265,7 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `strumenti_promessa()` (i quattro lettori piu' `concludi`) e dispaccia
+    # `strumenti_promessa()` (i sei lettori piu' `concludi`) e dispaccia
     # con `DispatcherPromessa`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.
@@ -484,7 +484,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     quel pin insieme al codice, invece di scavalcarlo qui."""
     # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
     # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve cinque strumenti, senza ne serve undici, e una sonda che
+    # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
     definizioni = strumenti_promessa() if id_promessa else STRUMENTI_CONOSCENZA
     attesi = {d["name"] for d in definizioni}

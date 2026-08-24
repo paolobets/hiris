@@ -53,21 +53,24 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> DispatcherStrumenti:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
-    Gli undici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
+    I tredici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
     di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
     `guarda`, `legami`, `ricorda`, `richiama`), il sesto, `esegui`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
     (`prometti`, `promesse`, `disdici`, fetta «lo schedulatore») la impegnano
     per un momento futuro passando per l'archivio delle promesse
-    (`schedulatore/archivio.py`), e gli ultimi due (`costruisci`, `conferma`,
+    (`schedulatore/archivio.py`), due (`costruisci`, `conferma`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
-    nuova -- passando per l'officina (`azione/costruzione/officina.py`). Il
-    dispatcher si costruisce dagli stessi oggetti dell'app che alimentano
-    `costruisci_nucleo()` (`archivio_casa`, `archivio_memoria`,
-    `entity_cache`), piu' `porta_azione` e `officina` -- lo stesso specchio
-    dello stato vivo, non uno ricalcolato a mano -- ed e' SEMPRE costruibile,
-    anche quando archivi, porta e officina sono assenti: i suoi gestori non
-    sollevano mai, dichiarano un `errore` per strumento invece (vedi
+    nuova -- passando per l'officina (`azione/costruzione/officina.py`), e gli
+    ultimi due (`andamento`, `accaduto`, fetta «HIRIS e il tempo») guardano
+    INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
+    mano di chi -- passando per `casa/tempo.py`. Il dispatcher si costruisce
+    dagli stessi oggetti dell'app che alimentano `costruisci_nucleo()`
+    (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`,
+    `officina` e `cronaca` -- lo stesso specchio dello stato vivo, non uno
+    ricalcolato a mano -- ed e' SEMPRE costruibile, anche quando archivi,
+    porta e officina sono assenti: i suoi gestori non sollevano mai,
+    dichiarano un `errore` per strumento invece (vedi
     `DispatcherStrumenti.dispatch`).
 
     `turno` (fetta «costruire», facoltativo e `None` per default: ogni
@@ -136,6 +139,10 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> Dispatcher
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
         turno=turno,
+        # La cronaca degli atti: la STESSA istanza che riceve l'officina in
+        # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
+        # `accaduto` per attribuire a HIRIS cio' che ha fatto HIRIS.
+        cronaca=app.get("cronaca"),
     )
 
 
@@ -835,7 +842,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = componi_contesto_chat(request.app, data_dir)
 
-    # Gli undici strumenti della chat -- il perche' di ogni riga sta
+    # I tredici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `costruisci_dispatcher_strumenti` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
