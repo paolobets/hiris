@@ -1,13 +1,22 @@
 # HIRIS — Changelog
 
-## [Unreleased] — HIRIS costruisce (fetta «costruire»)
+## [3.11.0] — HIRIS costruisce (fetta «costruire») (2026-08-24)
 
 **Non solo servizi: adesso HIRIS scrive anche configurazione.** Fino a ieri l'unica cosa che
 la chat poteva far succedere in Home Assistant era chiamare un servizio — accendere, spegnere,
 impostare. Da questa fetta puo' anche **comporre** un'automazione, uno script o una scena,
 mostrarne l'anteprima gia' validata da Home Assistant, e scriverla solo quando dici di
-procedere. Non e' pubblicata: resta dietro le verifiche dal vivo del §9 della spec
-(`docs/design/2026-08-22-costruire-in-home-assistant.md`) prima di qualunque rilascio.
+procedere.
+
+**Cosa non e' ancora stato provato, e perche' esce lo stesso.** Le cinque verifiche del §9 della
+spec (`docs/design/2026-08-22-costruire-in-home-assistant.md`) si possono fare **solo con il
+codice installato**: la prima di tutte — una scrittura vera sul canale di configurazione —
+dimostra che l'add-on e' davvero amministratore attraverso il proxy del Supervisor, e nessun
+banco di prova puo' dirlo al posto suo. Questa versione esce per poterle fare. Finche' non sono
+fatte, la fetta e' costruita e rivista ma non assestata: se la prima cade, la strada e' una
+patch, non un ritiro. Le altre quattro: un'automazione creata che scatta davvero, una modifica a
+un oggetto scritto a mano con il ritorno indietro, un helper nato e disfatto dopo un rifiuto, e
+la forma vera della validazione su questa versione di Home Assistant.
 
 ### Added
 
