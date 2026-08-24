@@ -946,7 +946,7 @@ class DispatcherStrumenti:
         # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
         # passa affatto -- il comportamento non e' un tipo di ancora).
         comportamento = self._casa.comportamento()
-        _, nomi_vivi, _unita, _classi, specchio_letto = self._specchio()
+        _, nomi_vivi, _unita, _classi, _da_quando, specchio_letto = self._specchio()
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
         # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
         # T7) e i nomi vivi di ripiego non cambiano -- vedi
@@ -1094,13 +1094,14 @@ class DispatcherStrumenti:
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato, nomi_vivi, unita_vive, classi_vive, letto = self._specchio()
+        stato, nomi_vivi, unita_vive, classi_vive, da_quando_vive, letto = self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
                                       file_non_letti=file_non_letti,
                                       nomi_di_ripiego=nomi_vivi,
                                       unita_vive=unita_vive,
-                                      classi_vive=classi_vive)
+                                      classi_vive=classi_vive,
+                                      da_quando_vive=da_quando_vive)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -1113,8 +1114,8 @@ class DispatcherStrumenti:
         return dettaglio
 
     def _specchio(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                                 dict[str, str], bool]:
-        """Lo specchio vivo in UNA lettura: `(stato, nomi, unita, classi, letto)`.
+                                 dict[str, str], dict[str, str], bool]:
+        """Lo specchio vivo in UNA lettura: `(stato, nomi, unita, classi, da_quando, letto)`.
 
         Sostituisce `_stato_vivo`, non gli si affianca: `cerca` ha bisogno dei
         `friendly_name` e `guarda` dello stato, e due metodi che chiamano
@@ -1138,20 +1139,25 @@ class DispatcherStrumenti:
         della casa: Home Assistant converte **solo alla prima aggiunta del
         sensore**, quindi `unit_system` non descrive le entita' gia' presenti.
 
+        `da_quando` e' entity_id -> `last_changed`, saltando i vuoti, e arriva
+        dalla STESSA lettura per lo stesso motivo: HIRIS sapeva che in camera
+        ci sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire
+        «e' fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
+
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
         l'inventario non e' guardabile ci pensa `inventario_leggibile`."""
         if self._cache is None or not hasattr(self._cache, "all_states"):
-            return {}, {}, {}, {}, True
+            return {}, {}, {}, {}, {}, True
         try:
             # La lettura vera e' in `anagrafe.specchio_vivo`, condivisa con chi
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
-            stato, nomi, unita, classi = specchio_vivo(self._cache.all_states())
+            stato, nomi, unita, classi, da_quando = specchio_vivo(self._cache.all_states())
         except Exception:
-            return {}, {}, {}, {}, False
-        return stato, nomi, unita, classi, True
+            return {}, {}, {}, {}, {}, False
+        return stato, nomi, unita, classi, da_quando, True
 
     # -- legami --------------------------------------------------------
 
@@ -1247,7 +1253,7 @@ class DispatcherStrumenti:
         # Le unita' VIVE: il registro di Home Assistant non le manda (le riempie
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
-        _stato, _nomi, unita_vive, _classi, _letto = self._specchio()
+        _stato, _nomi, unita_vive, _classi, _da_quando, _letto = self._specchio()
         pulita, problemi, correzioni = valida(
             interpretazione, indice, tipi_non_verificabili, unita_vive)
 

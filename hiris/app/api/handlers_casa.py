@@ -269,7 +269,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     classi_vive: dict[str, str] = {}
     if cache is not None:
         try:
-            stato, _nomi, _unita, classi_vive = specchio_vivo(cache.all_states())
+            stato, _nomi, _unita, classi_vive, _da_quando = specchio_vivo(cache.all_states())
         except Exception:
             stato, classi_vive = {}, {}
 
