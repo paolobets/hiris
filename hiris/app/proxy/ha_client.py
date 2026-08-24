@@ -89,9 +89,11 @@ MAX_DIARIO_VOCI = 200
 MAX_DIARIO_ORE = 168
 # Finestra usata quando `ore` non e' un numero interpretabile.
 DEFAULT_DIARIO_ORE = 24
-# Cap sui punti di storico dettagliato riportati da UNA chiamata. Due giorni di
-# un sensore chiacchierone ne producono migliaia: il cap protegge la memoria di
-# QUESTO processo, non la leggibilita' della risposta (di quella si occupa
+# Cap sui punti di storico dettagliato riportati per SINGOLA entita' -- non
+# per chiamata: con N entita' nella lista la risposta puo' portarne fino a
+# N x MAX_STORICO_PUNTI. Due giorni di un sensore chiacchierone ne producono
+# migliaia: il cap protegge la memoria di QUESTO processo per ogni singola
+# serie, non la leggibilita' della risposta (di quella si occupa
 # `casa/tempo.py`, che riassume). Chi legge deve poter sapere che e' scattato,
 # quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
 # troncamento del diario, imparata li'.
@@ -895,11 +897,13 @@ class HAClient:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
         GET /api/history/period/<da>.
 
-        Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}}`, piu'
-        `troncato: True` se il cap sui punti e' scattato. In caso di guasto
-        ritorna `{"errore": str}` e NON la chiave `serie`: una serie vuota
-        afferma «il valore non e' mai cambiato», che e' una cosa che non
-        sappiamo quando la domanda non e' nemmeno arrivata (spec §3.3).
+        Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
+        bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso: stessa forma
+        di `diario`, non due modi di dire la stessa cosa) ed e' vero se il cap
+        sui punti e' scattato su almeno un'entita'. In caso di guasto ritorna
+        `{"errore": str}` e NON la chiave `serie`: una serie vuota afferma «il
+        valore non e' mai cambiato», che e' una cosa che non sappiamo quando
+        la domanda non e' nemmeno arrivata (spec §3.3).
 
         Non solleva mai: ogni guasto diventa `errore`.
 
@@ -928,8 +932,7 @@ class HAClient:
             return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(dati, list):
             return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        serie: dict[str, list[dict]] = {}
-        troncato = False
+        grezzi: dict[str, list[dict]] = {}
         for gruppo in dati:
             if not isinstance(gruppo, list):
                 continue
@@ -947,15 +950,20 @@ class HAClient:
                 quando = voce.get("last_changed") or voce.get("last_updated")
                 if quando is None:
                     continue
-                punti = serie.setdefault(corrente, [])
-                if len(punti) >= MAX_STORICO_PUNTI:
-                    troncato = True
-                    continue
-                punti.append({"quando": quando, "valore": voce.get("state")})
-        esito: dict = {"serie": serie}
-        if troncato:
-            esito["troncato"] = True
-        return esito
+                grezzi.setdefault(corrente, []).append(
+                    {"quando": quando, "valore": voce.get("state")})
+        # /api/history/period risponde in ordine cronologico ASCENDENTE: il
+        # taglio tiene la CODA -- i punti piu' RECENTI -- e scarta la testa,
+        # non il contrario. Per "com'e' andata" contano i dati di adesso; un
+        # sensore chiacchierone che perdesse la coda ometterebbe lo stato
+        # attuale mostrando solo ore vecchie della finestra chiesta.
+        troncato = False
+        serie: dict[str, list[dict]] = {}
+        for entity_id, punti in grezzi.items():
+            if len(punti) > MAX_STORICO_PUNTI:
+                troncato = True
+            serie[entity_id] = punti[-MAX_STORICO_PUNTI:]
+        return {"serie": serie, "troncato": troncato}
 
     async def diario(self, entita: str | None, ore: int) -> dict:
         """Cronologia eventi via GET /api/logbook/<ISO start>.
@@ -982,7 +990,7 @@ class HAClient:
         """
         if entita is not None and not _ENTITY_ID_RE.match(str(entita)):
             logger.warning("diario: entita' non valida: %r", entita)
-            return {"errore": f"entita' non valida: {entita!r}"}
+            return {"errore": _truncate(f"entita' non valida: {entita!r}", 200)}
         # `ore` arriva direttamente da una tool-call dell'LLM: puo' essere
         # None, una stringa, NaN o un numero fuori scala. Si normalizza in
         # spazio float e si clampa PRIMA di costruire il timedelta, perche'

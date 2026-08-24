@@ -67,10 +67,12 @@ async def test_storico_restituisce_una_serie_per_entita():
     c = _client([_FintaRisposta(200, corpo)])
     esito = await c.storico(["sensor.camera"], "2026-08-24T08:00:00+00:00",
                             "2026-08-24T10:00:00+00:00")
+    # `troncato` c'e' SEMPRE, anche a falso: stessa forma di `diario`, non due
+    # modi di dire la stessa cosa (fondamenta HIRIS, consistenza fra porte).
     assert esito == {"serie": {"sensor.camera": [
         {"quando": "2026-08-24T08:00:00+00:00", "valore": "21.0"},
         {"quando": "2026-08-24T09:00:00+00:00", "valore": "21.4"},
-    ]}}
+    ]}, "troncato": False}
 
 
 @pytest.mark.asyncio
@@ -109,14 +111,36 @@ async def test_storico_chiede_solo_le_entita_domandate():
 
 @pytest.mark.asyncio
 async def test_storico_tetto_sui_punti_e_dichiarato():
+    """/api/history/period risponde in ordine cronologico ASCENDENTE: il
+    taglio deve tenere la CODA -- i punti piu' RECENTI -- non la testa.
+    `len == 5000` da solo non lo proverebbe: un taglio nel verso sbagliato
+    (tenere i primi 5000 invece degli ultimi) avrebbe la stessa lunghezza e lo
+    stesso flag, ma ometterebbe lo stato attuale del sensore."""
     corpo = [[{"entity_id": "sensor.x", "state": str(i),
                "last_changed": f"2026-08-24T00:00:{i % 60:02d}+00:00"}
               for i in range(6000)]]
     c = _client([_FintaRisposta(200, corpo)])
     esito = await c.storico(["sensor.x"], "2026-08-24T00:00:00+00:00",
                             "2026-08-24T10:00:00+00:00")
-    assert len(esito["serie"]["sensor.x"]) == 5000
+    punti = esito["serie"]["sensor.x"]
+    assert len(punti) == 5000
     assert esito["troncato"] is True
+    # I 6000 punti sono generati in ordine 0..5999: sopravvivono gli ultimi
+    # 5000, cioe' 1000..5999 -- non 0..4999.
+    assert punti[0]["valore"] == "1000"
+    assert punti[-1]["valore"] == "5999"
+
+
+@pytest.mark.asyncio
+async def test_storico_un_corpo_di_forma_inattesa_non_e_una_serie_vuota():
+    """HTTP 200 ma un corpo che non e' la lista-di-liste attesa: non e' una
+    domanda a cui HA ha risposto «niente», e' una risposta che questo metodo
+    non sa leggere -- resta un guasto, non un `{"serie": {}}`."""
+    c = _client([_FintaRisposta(200, {"non": "una lista di liste"})])
+    esito = await c.storico(["sensor.camera"], "2026-08-24T08:00:00+00:00",
+                            "2026-08-24T10:00:00+00:00")
+    assert "serie" not in esito
+    assert "errore" in esito
 
 
 @pytest.mark.asyncio
