@@ -294,3 +294,37 @@ async def test_senza_troncamento_il_conteggio_resta_esatto():
     esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita=None,
                             ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
     assert "almeno" not in (esito["nota"] or "")
+
+
+@pytest.mark.asyncio
+async def test_i_punti_escono_nello_STESSO_fuso_della_finestra_coperta():
+    """Visto dal vivo il 24/08/2026: `finestra_coperta` diceva
+    `2026-08-24T14:18+02:00` e `punti[0]` diceva `2026-08-24T12:18+00:00`.
+    Sono lo STESSO istante, ma dentro un dizionario solo, e chi legge puo'
+    concluderne che i dati cominciano due ore dopo l'apertura della finestra
+    -- che e' falso. Lo storico di Home Assistant torna in UTC, la finestra
+    nasce nel fuso della casa: e' la fondamenta 3 dentro una risposta sola.
+    """
+    ha = _FintoHA(storico={"serie": {"sensor.camera": [
+        {"quando": "2026-08-24T10:18:50+00:00", "valore": "25.5"},
+        {"quando": "2026-08-24T11:00:00+00:00", "valore": "25.6"},
+    ]}, "troncato": False})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=6, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert esito["punti"][0]["quando"] == "2026-08-24T12:18:50+02:00"
+    assert esito["punti"][1]["quando"] == "2026-08-24T13:00:00+02:00"
+    assert esito["finestra_coperta"]["da"] == esito["punti"][0]["quando"]
+
+
+@pytest.mark.asyncio
+async def test_anche_le_fasce_escono_nel_fuso_della_casa():
+    """Il gemello del test qui sopra sul ramo delle statistiche: stessa
+    domanda, stessa forma della risposta (fondamenta 3)."""
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
+        {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
+         "massimo": 27.1, "media": 26.5},
+    ]}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert esito["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
+    assert esito["finestra_coperta"]["da"] == esito["punti"][0]["inizio"]

@@ -182,8 +182,8 @@ async def test_diario_extracts_fields(client):
 
     assert esito == {"voci": [
         {"quando": "2026-08-01T10:00:00+00:00", "nome": "Luce cucina",
-         "messaggio": "e' stata accesa", "entita": "light.cucina"},
-        {"quando": "2026-08-01T10:05:00+00:00", "nome": "Luce cucina",
+         "stato": None, "messaggio": "e' stata accesa", "entita": "light.cucina"},
+        {"quando": "2026-08-01T10:05:00+00:00", "nome": "Luce cucina", "stato": None,
          "messaggio": "e' stata spenta", "entita": "light.cucina"},
     ], "troncato": False, "ore": 2}
 
@@ -248,8 +248,8 @@ async def test_diario_skips_non_dict_entries(client):
         {"when": "t", "name": "n", "message": "m", "entity_id": "light.x"},
     ]))
     esito = await client.diario(entita=None, ore=1)
-    assert esito["voci"] == [{"quando": "t", "nome": "n", "messaggio": "m",
-                              "entita": "light.x"}]
+    assert esito["voci"] == [{"quando": "t", "nome": "n", "stato": None,
+                              "messaggio": "m", "entita": "light.x"}]
     assert esito["troncato"] is False
 
 

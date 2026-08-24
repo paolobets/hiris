@@ -263,7 +263,10 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
                     f"a {len(ridotte)} distribuite nel tempo.")
         return {**base, "grana": "oraria",
                 "finestra_coperta": _coperta(fasce, "inizio", a_iso),
-                "punti": ridotte, "nota": nota}
+                # Stesso motivo del ramo dettaglio: le statistiche tornano in
+                # UTC e la finestra nasce nel fuso della casa. Due offset nella
+                # stessa risposta sono la fondamenta 3 rotta in un dizionario.
+                "punti": _nel_fuso(ridotte, "inizio", a_iso), "nota": nota}
 
     esito = await ha.storico([entita], da_iso, a_iso)
     if "serie" not in esito:
@@ -300,7 +303,15 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
             "davvero coperta e' percio' piu' corta di quella chiesta.")
     return {**base, "grana": "dettaglio",
             "finestra_coperta": _coperta(punti, "quando", a_iso),
-            "punti": ridotti, "nota": nota}
+            # Gli istanti dei punti si riscrivono nel fuso della casa, come
+            # gia' fa `_coperta` per gli estremi della finestra. Visto dal
+            # vivo il 24/08/2026: `finestra_coperta` diceva `14:18+02:00` e
+            # `punti[0]` diceva `12:18+00:00` -- lo STESSO istante, dentro un
+            # dizionario solo. Chi legge (un modello, che poi parla a una
+            # persona) puo' concluderne che i dati cominciano due ore dopo
+            # l'apertura della finestra. E' la fondamenta 3 dentro una sola
+            # risposta, e costa una riscrittura.
+            "punti": _nel_fuso(ridotti, "quando", a_iso), "nota": nota}
 
 
 def epoch_istante(grezzo) -> float | None:
@@ -322,6 +333,32 @@ def epoch_istante(grezzo) -> float | None:
     except ValueError:
         return None
     return None if momento.tzinfo is None else momento.timestamp()
+
+
+def _nel_fuso(punti: list[dict], chiave: str, a_iso: str) -> list[dict]:
+    """Gli istanti di `punti` riscritti nel fuso di `a_iso`.
+
+    Lo storico di Home Assistant torna in UTC, la finestra nasce nel fuso
+    della casa: senza questa riscrittura la stessa risposta porta due offset
+    e chi legge deve fare i conti da solo -- o non li fa.
+
+    Cio' che non si sa leggere resta com'e': meglio un istante nel fuso
+    sbagliato che uno inventato, e la coppia `finestra_coperta` lo dichiara
+    comunque con la stessa regola.
+    """
+    zona = None
+    try:
+        zona = datetime.fromisoformat(a_iso).tzinfo
+    except ValueError:
+        return list(punti)
+    riscritti = []
+    for p in punti:
+        quando = epoch_istante(p.get(chiave))
+        if quando is None:
+            riscritti.append(p)
+            continue
+        riscritti.append({**p, chiave: datetime.fromtimestamp(quando, tz=zona).isoformat()})
+    return riscritti
 
 
 def _coperta(punti: list[dict], chiave: str, a_iso: str) -> dict | None:

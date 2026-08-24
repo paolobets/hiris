@@ -111,6 +111,34 @@ _TRUNC_MARK = " [troncato]"
 logger = logging.getLogger(__name__)
 
 
+def _istante_da_ha(grezzo):
+    """Un istante come lo manda Home Assistant -> ISO-8601 con fuso.
+
+    **Misurato sulla casa il 24/08/2026**, non dedotto:
+    `recorder/statistics_during_period` risponde
+    `{"start": 1787342400000, "end": ..., "max": .., "mean": .., "min": ..}`
+    -- `start` e' un INTERO in millisecondi. Prima di questa misura il
+    traduttore lo lasciava passare cosi' com'era, e `casa/tempo.py` rifiutava
+    di rispondere perche' non sapeva leggerlo: l'intero ramo delle statistiche
+    era fermo, ed e' il difetto che la prima domanda vera ha rivelato.
+
+    Regge anche una stringa gia' ISO (le versioni di HA non sono tutte
+    uguali) e i secondi invece dei millisecondi: la soglia 1e11 separa i due
+    senza ambiguita' -- 1e11 secondi e' l'anno 5138, 1e11 millisecondi il
+    1973, e nessuna casa ha dati la'.
+
+    Cio' che NON si sa leggere torna **invariato**, non convertito a caso: chi
+    lo riceve lo rifiuta rumorosamente, ed e' meglio di un istante inventato.
+    """
+    if isinstance(grezzo, bool) or not isinstance(grezzo, (int, float)):
+        return grezzo
+    secondi = grezzo / 1000.0 if abs(grezzo) > 1e11 else float(grezzo)
+    try:
+        return datetime.fromtimestamp(secondi, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return grezzo
+
+
 def _truncate(text: str, cap: int) -> str:
     """Tronca `text` a `cap` caratteri marcandolo, marcatore incluso nel cap.
 
@@ -985,7 +1013,8 @@ class HAClient:
         e' la finestra all'indietro da adesso, normalizzata fra 1 e
         MAX_DIARIO_ORE (valori non numerici valgono DEFAULT_DIARIO_ORE).
 
-        Ritorna `{"voci": [{"quando", "nome", "messaggio", "entita"}, ...],
+        Ritorna `{"voci": [{"quando", "nome", "stato", "messaggio", "entita"},
+        ...],
         "troncato": bool, "ore": int}`, tenendo al piu' MAX_DIARIO_VOCI voci
         (le piu' recenti). In caso di guasto -- o di un'entita' non valida --
         ritorna `{"errore": str}` e NON la chiave `voci`: una lista vuota
@@ -1033,6 +1062,14 @@ class HAClient:
             voci.append({
                 "quando": item.get("when"),
                 "nome": item.get("name"),
+                # `stato` e `messaggio` restano DUE campi, non se ne fonde uno:
+                # «on» e «entered zone Casa» sono fatti di natura diversa, e
+                # chi legge deve poterli distinguere. La misura del 24/08/2026
+                # su questa casa: 754 voci su 755 portano `state`, una sola
+                # porta `message` -- e prima di quella misura questa proiezione
+                # teneva solo il secondo, cioe' buttava il testo di quasi
+                # tutte le voci.
+                "stato": item.get("state"),
                 "messaggio": item.get("message"),
                 "entita": item.get("entity_id"),
             })
@@ -1191,7 +1228,8 @@ class HAClient:
             for f in fasce:
                 if not isinstance(f, dict):
                     continue
-                voce = {"inizio": f.get("start"), "minimo": f.get("min"),
+                voce = {"inizio": _istante_da_ha(f.get("start")),
+                        "minimo": f.get("min"),
                         "massimo": f.get("max"), "media": f.get("mean")}
                 if f.get("sum") is not None:
                     voce["somma"] = f.get("sum")
