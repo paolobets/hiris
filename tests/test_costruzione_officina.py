@@ -854,9 +854,46 @@ def _e_chiamata_a_rete(nodo: ast.AST) -> bool:
             and nodo.func.value.id == "self")
 
 
+def _e_self_ha(nodo: ast.AST) -> bool:
+    """L'espressione `self._ha`, letterale."""
+    return (isinstance(nodo, ast.Attribute)
+            and nodo.attr == "_ha"
+            and isinstance(nodo.value, ast.Name)
+            and nodo.value.id == "self")
+
+
 def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
     sorgente = inspect.getsource(officina_modulo)
     albero = ast.parse(sorgente)
+
+    # Secondo giro di review: `_e_chiamata_a_primitiva_rest` riconosce SOLO
+    # `self._ha.<primitiva>(...)` letterale -- un Attribute su un Name che si
+    # chiama esattamente "self". Un alias di comodo (`ha = self._ha`, poi
+    # `ha.salva_configurazione(...)`) cambia `func.value` in `Name(id="ha")`:
+    # zero corrispondenze, ne' fra le protette ne' fra le nude. Quella
+    # chiamata sparirebbe dal controllo invece di finirci come violazione --
+    # e il guardrail sul numero minimo di siti (sotto) non se ne
+    # accorgerebbe, perche' i quattro siti letterali di oggi restano intatti.
+    # E' lo stesso vettore che questo test vuole escludere (una primitiva
+    # REST chiamata senza passare da `self._rete`), imboccato con un nome
+    # diverso -- e uno che si sceglie in buona fede, per leggibilita'.
+    #
+    # Si chiude vietando il VETTORE, non inseguendo ogni forma di alias:
+    # se `self._ha` non puo' MAI essere legato a un nome locale in questo
+    # modulo, il pattern sopra torna esaustivo per costruzione -- ogni
+    # chiamata alle tre primitive deve passare per forza dalla forma
+    # `self._ha.<primitiva>(...)` che il resto del test gia' copre. Non e'
+    # avversione agli alias: e' che un alias qui renderebbe cieco proprio
+    # questo controllo. Chi un giorno vorra' davvero legare `self._ha` a un
+    # nome locale trovera' questa riga e potra' decidere sapendo cosa perde
+    # (o aggiornare anche `_e_chiamata_a_primitiva_rest` a riconoscerlo).
+    legami_a_self_ha = [n for n in ast.walk(albero)
+                        if isinstance(n, (ast.Assign, ast.AnnAssign))
+                        and n.value is not None and _e_self_ha(n.value)]
+    assert not legami_a_self_ha, (
+        "self._ha e' legato a un nome locale in officina.py: questo rende "
+        "cieco il controllo sulle primitive REST, che riconosce solo la "
+        "forma letterale self._ha.<primitiva>(...).")
 
     tutte = [n for n in ast.walk(albero) if _e_chiamata_a_primitiva_rest(n)]
     # Se questa lista fosse vuota il test passerebbe SEMPRE, a vuoto: un
