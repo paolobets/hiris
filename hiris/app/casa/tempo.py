@@ -57,10 +57,17 @@ def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
     (con tetto di una settimana). I tetti sono l'unica cosa che cambia fra i
     due usi. Si normalizza in float, e il chiamante puo' convertire in int se
     serve.
+
+    Il contratto e' "qualunque cosa → un numero fra 1 e il tetto": una
+    clausola stretta (TypeError, ValueError) trasformerebbe una difesa in un
+    buco. `float(10**400)` solleva OverflowError, che non e' ne' TypeError
+    ne' ValueError, cioe' esattamente la classe di input che una tool-call
+    JSON produce. Una funzione totale per contratto ha diritto a un except
+    totale.
     """
     try:
         numero = float(grezzo)
-    except (TypeError, ValueError):
+    except Exception:
         return default
     if numero != numero:  # NaN: non confrontabile, vale come assente
         return default

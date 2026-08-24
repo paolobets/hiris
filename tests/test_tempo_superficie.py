@@ -8,7 +8,7 @@ conosca la politica di conservazione del recorder di QUESTA casa.
 import pytest
 
 from hiris.app.casa.tempo import (
-    MAX_FINESTRA_ORE, SOGLIA_GRANA_ORE, finestra, normalizza_ore,
+    DEFAULT_ORE, MAX_FINESTRA_ORE, SOGLIA_GRANA_ORE, finestra, normalizza_ore,
     scegli_superficie,
 )
 
@@ -67,17 +67,10 @@ def test_un_fuso_che_non_esiste_non_solleva():
     assert a.endswith("+00:00")
 
 
-def test_normalizza_ore_unificata_clampla_al_tetto_del_diario():
-    """La normalizzazione ore e' centrale: la usano sia gli strumenti del tempo
-    (tetto 2160 = 90 giorni) sia il diario del client (tetto 168 = una
-    settimana). Questo test verifica che il diario riceva il suo tetto
-    specifico, non quello di tempo.py. Se togli tetto=MAX_DIARIO_ORE dalla
-    chiamata di normalizza_ore in ha_client.py, questo test arrossisce
-    (perche' 200 ore non verrebbe clampato a 168)."""
-    MAX_DIARIO_ORE = 168
-    DEFAULT_DIARIO_ORE = 24
-    # 200 ore: sopra il tetto di diario (168), ma sotto il tetto di tempo (2160)
-    # Con tetto=168: ritorna 168
-    # Senza tetto corretto: ritorna 200 e il test fallisce
-    ore = normalizza_ore(200, tetto=MAX_DIARIO_ORE, default=DEFAULT_DIARIO_ORE)
-    assert ore == MAX_DIARIO_ORE
+def test_ore_impossibili_interi_enormi_non_sollevano():
+    """`float(10**400)` solleva OverflowError, non TypeError o ValueError.
+    E' la classe di input che una tool-call JSON senza punto decimale produce.
+    normalizza_ore deve catturare Exception, non un sottoinsieme, perche' il
+    suo contratto e' «qualunque cosa → un numero fra 1 e il tetto»."""
+    ore = normalizza_ore(10**400)
+    assert ore == DEFAULT_ORE
