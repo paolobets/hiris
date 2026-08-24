@@ -183,11 +183,16 @@ def test_legge_tetti_e_pavimenti_da_requirements():
     """
     import re as _re
     testo = (vc.RADICE / "hiris" / "requirements.txt").read_text(encoding="utf-8")
-    atteso = _re.search(r"^anthropic>=([\d.]+)", testo, _re.M)
-    assert atteso, "anthropic non ha piu' un pavimento in requirements.txt"
+    # Il tetto (`major_escluso`) va letto dalla riga esattamente come il
+    # pavimento: pinnarlo a un numero incollato qui e' lo stesso difetto che
+    # il docstring dice gia' corretto per il pavimento -- si rompe a ogni
+    # bump legittimo del major (misurato: passato da 1 a 2 quando il
+    # pavimento e' salito a 1.0.0, con la riga sotto ancora ferma a `== 1`).
+    atteso = _re.search(r"^anthropic>=([\d.]+),<(\d+)\.0\.0", testo, _re.M)
+    assert atteso, "anthropic non ha piu' un pavimento/tetto in requirements.txt"
 
     letti = vc.leggi_i_file()
-    assert letti["tetti"]["anthropic"]["major_escluso"] == 1
+    assert letti["tetti"]["anthropic"]["major_escluso"] == int(atteso.group(2))
     assert letti["pavimenti"]["anthropic"]["minimo"] == atteso.group(1)
     # `installato` puo' essere None (pacchetto assente): e' un fatto, non un
     # errore, e a valle si salta invece di inventare uno scarto.

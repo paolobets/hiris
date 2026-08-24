@@ -1,9 +1,13 @@
 """L'officina: l'unico punto che scrive CONFIGURAZIONE su Home Assistant."""
+import ast
+import inspect
+import logging
 import os
 import re
 
 import pytest
 
+from hiris.app.azione.costruzione import officina as officina_modulo
 from hiris.app.azione.costruzione.officina import Officina
 from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
 from hiris.app.azione.cronaca import Cronaca
@@ -298,9 +302,9 @@ async def test_modificare_un_oggetto_esistente_lo_dichiara_nell_anteprima(banco)
                                             origine="chat", turno="t1", adesso=ADESSO)
     esito_crea = await officina.proponi(_intento(), origine="chat", turno="t1",
                                         adesso=ADESSO)
-    assert ("esiste gia" in esito_modifica["anteprima"]
-            or "gia' esistente" in esito_modifica["anteprima"])
-    assert "esiste gia" not in esito_crea["anteprima"]
+    assert ("esiste già" in esito_modifica["anteprima"]
+            or "già esistente" in esito_modifica["anteprima"])
+    assert "esiste già" not in esito_crea["anteprima"]
 
 
 @pytest.mark.asyncio
@@ -764,7 +768,12 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
     """Punto 7, prima pulizia: «un'script», «l'script» e «un'scena» erano le
     forme sbagliate composte da un indice nudo su un dizionario che non
     distingueva vocale da consonante. Script e scena non prendono MAI
-    l'apostrofo."""
+    l'apostrofo.
+
+    Punto 5 (residuo): guardare l'articolo da solo lascia passare la frase
+    intera sgrammaticata -- «Creo uno script chiamata «X».» ha «un'script»
+    assente e «uno script» presente, e il vecchio test qui sopra passava
+    ugualmente. Si guarda la FRASE, non solo l'articolo."""
     officina, _, _, _ = banco
     consiglio = {"motivo": None}
     for dominio, atteso in (("automation", "un'automazione"),
@@ -772,15 +781,16 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
                             ("scene", "una scena")):
         anteprima = officina._anteprima("crea", dominio, "1", {"alias": "X"}, None, None,
                                         consiglio)
-        assert atteso in anteprima
+        assert f"Creo {atteso} di nome «X»." in anteprima
         assert "un'script" not in anteprima
         assert "un'scena" not in anteprima
+        assert "chiamata «X»" not in anteprima
     for dominio, atteso in (("automation", "l'automazione"),
                             ("script", "lo script"),
                             ("scene", "la scena")):
         anteprima = officina._anteprima("modifica", dominio, "1", {"alias": "X"},
                                         {"alias": "X"}, {"alias": "Y"}, consiglio)
-        assert atteso in anteprima
+        assert f"Modifico {atteso} «X», che esiste già in casa tua." in anteprima
 
 
 @pytest.mark.asyncio
@@ -797,3 +807,192 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
                                       adesso=ADESSO + 120)
     assert "proposta_id" in esito
     assert "pagina" in esito["anteprima"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Punto 1 (residuo) -- IMPORTANT, il solo che conta davvero.
+#
+# Oggi i quattro siti che chiamano `leggi_configurazione`/
+# `salva_configurazione`/`cancella_configurazione` sono tutti avvolti in
+# `self._rete(...)`: e' cio' che trasforma un guasto di TRASPORTO in
+# `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire come
+# eccezione fuori dall'officina (il modulo dichiara "non solleva mai"). Ma
+# oggi questo e' solo disciplina -- nessun test lo garantisce -- e un quinto
+# sito aggiunto domani senza l'involucro riaprirebbe il difetto IN SILENZIO,
+# con la suite verde, per la STESSA ragione per cui nessuno vedeva il difetto
+# originale: niente lo guarda.
+#
+# Un controllo per sottostringa (`'_rete' in sorgente`) non difenderebbe
+# niente: sarebbe vero comunque, perche' la parola compare in decine
+# d'altri punti del file (docstring comprese). Serve legare OGNI occorrenza
+# delle tre primitive alla presenza dell'involucro -- qui strutturalmente,
+# con l'AST, non per posizione testuale: cosi' non importa se la chiamata
+# sta su una riga sola o e' spezzata su piu' righe (`salva_configurazione`,
+# in `applica`, lo e').
+# ---------------------------------------------------------------------------
+
+_PRIMITIVE_REST = ("leggi_configurazione", "salva_configurazione", "cancella_configurazione")
+
+
+def _e_chiamata_a_primitiva_rest(nodo: ast.AST) -> bool:
+    """`self._ha.<primitiva>(...)`, una delle tre."""
+    return (isinstance(nodo, ast.Call)
+            and isinstance(nodo.func, ast.Attribute)
+            and nodo.func.attr in _PRIMITIVE_REST
+            and isinstance(nodo.func.value, ast.Attribute)
+            and nodo.func.value.attr == "_ha"
+            and isinstance(nodo.func.value.value, ast.Name)
+            and nodo.func.value.value.id == "self")
+
+
+def _e_chiamata_a_rete(nodo: ast.AST) -> bool:
+    """`self._rete(...)`."""
+    return (isinstance(nodo, ast.Call)
+            and isinstance(nodo.func, ast.Attribute)
+            and nodo.func.attr == "_rete"
+            and isinstance(nodo.func.value, ast.Name)
+            and nodo.func.value.id == "self")
+
+
+def _e_self_ha(nodo: ast.AST) -> bool:
+    """L'espressione `self._ha`, letterale."""
+    return (isinstance(nodo, ast.Attribute)
+            and nodo.attr == "_ha"
+            and isinstance(nodo.value, ast.Name)
+            and nodo.value.id == "self")
+
+
+def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
+    sorgente = inspect.getsource(officina_modulo)
+    albero = ast.parse(sorgente)
+
+    # Secondo giro di review: `_e_chiamata_a_primitiva_rest` riconosce SOLO
+    # `self._ha.<primitiva>(...)` letterale -- un Attribute su un Name che si
+    # chiama esattamente "self". Un alias di comodo (`ha = self._ha`, poi
+    # `ha.salva_configurazione(...)`) cambia `func.value` in `Name(id="ha")`:
+    # zero corrispondenze, ne' fra le protette ne' fra le nude. Quella
+    # chiamata sparirebbe dal controllo invece di finirci come violazione --
+    # e il guardrail sul numero minimo di siti (sotto) non se ne
+    # accorgerebbe, perche' i quattro siti letterali di oggi restano intatti.
+    # E' lo stesso vettore che questo test vuole escludere (una primitiva
+    # REST chiamata senza passare da `self._rete`), imboccato con un nome
+    # diverso -- e uno che si sceglie in buona fede, per leggibilita'.
+    #
+    # Si chiude vietando il VETTORE, non inseguendo ogni forma di alias:
+    # se `self._ha` non puo' MAI essere legato a un nome locale in questo
+    # modulo, il pattern sopra torna esaustivo per costruzione -- ogni
+    # chiamata alle tre primitive deve passare per forza dalla forma
+    # `self._ha.<primitiva>(...)` che il resto del test gia' copre. Non e'
+    # avversione agli alias: e' che un alias qui renderebbe cieco proprio
+    # questo controllo. Chi un giorno vorra' davvero legare `self._ha` a un
+    # nome locale trovera' questa riga e potra' decidere sapendo cosa perde
+    # (o aggiornare anche `_e_chiamata_a_primitiva_rest` a riconoscerlo).
+    legami_a_self_ha = [n for n in ast.walk(albero)
+                        if isinstance(n, (ast.Assign, ast.AnnAssign))
+                        and n.value is not None and _e_self_ha(n.value)]
+    assert not legami_a_self_ha, (
+        "self._ha e' legato a un nome locale in officina.py: questo rende "
+        "cieco il controllo sulle primitive REST, che riconosce solo la "
+        "forma letterale self._ha.<primitiva>(...).")
+
+    tutte = [n for n in ast.walk(albero) if _e_chiamata_a_primitiva_rest(n)]
+    # Se questa lista fosse vuota il test passerebbe SEMPRE, a vuoto: un
+    # test che non trova mai niente da controllare non protegge niente. I
+    # quattro siti di oggi (due `leggi_configurazione`, una
+    # `salva_configurazione`, una `cancella_configurazione`) la tengono
+    # popolata.
+    assert len(tutte) >= 4, (
+        "le primitive REST non compaiono piu' nel sorgente atteso: "
+        "questo test non ha piu' niente da proteggere -- controllare a mano")
+
+    avvolte_da_rete: set[int] = set()
+    for nodo in ast.walk(albero):
+        if not _e_chiamata_a_rete(nodo):
+            continue
+        for figlio in ast.walk(nodo):
+            if figlio is not nodo and _e_chiamata_a_primitiva_rest(figlio):
+                avvolte_da_rete.add(id(figlio))
+
+    nude = [n.func.attr for n in tutte if id(n) not in avvolte_da_rete]
+    assert not nude, (
+        f"primitive REST chiamate fuori da self._rete(...): {nude}. Un "
+        "guasto di trasporto in quel punto risalirebbe come eccezione fuori "
+        "dall'officina, invece di diventare "
+        "{'errore': ..., 'guasto_rete': True} come ovunque altrove.")
+
+
+# ---------------------------------------------------------------------------
+# Punto 2 (residuo) -- `_traduci_rifiuto` puo' raccontare una bugia.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(banco):
+    """Prima dell'ondata un guasto di rete SOLLEVAVA e non arrivava mai a
+    `_traduci_rifiuto`. Adesso ci arriva come stringa, e quella funzione fa
+    `if "404" in errore` -- una sottostringa nuda su tutto il messaggio. Una
+    porta come 8404 o un IP che la contiene basta a far uscire "queste
+    automazioni sono gestite a mano...": una spiegazione architetturale
+    falsa, detta con sicurezza, per un guasto che e' semplicemente di rete."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+
+    async def _guasto_con_404(dominio, chiave, corpo):
+        raise ConnectionError(
+            "Cannot connect to host 192.168.1.95:8404 ssl:default [Connect call failed]")
+    ha.salva_configurazione = _guasto_con_404
+
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+
+    assert esito.get("guasto_rete") is True
+    assert "non ha risposto" in esito["errore"]
+    assert "gestite a mano" not in esito["errore"]
+
+
+# ---------------------------------------------------------------------------
+# Punto 3 (residuo) -- il log del catch largo non dice cosa e' successo.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
+    """Senza tipo ne' traceback un `TypeError` nostro (un difetto del codice)
+    e' indistinguibile, in log, da un guasto di rete vero: il difetto nascosto
+    due volte."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    ha._solleva.add("salva_configurazione")
+
+    with caplog.at_level(logging.WARNING,
+                         logger="hiris.app.azione.costruzione.officina"):
+        await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                               adesso=ADESSO + 60)
+
+    record = next(r for r in caplog.records if "non riuscita" in r.getMessage())
+    assert "ConnectionError" in record.getMessage()
+    assert record.exc_info is not None
+
+
+# ---------------------------------------------------------------------------
+# Punto 4 (residuo) -- la stringa dell'eccezione va nell'archivio senza limite.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_il_messaggio_dell_eccezione_e_troncato(banco):
+    """Quella stringa finisce in quattro superfici, due permanenti
+    (`costruzioni.motivo`/`errore` nella cronaca in SQLite): la cattura larga
+    toglie la garanzia che sia sempre una riga breve di trasporto -- e'
+    quella di QUALUNQUE eccezione."""
+    officina, ha, archivio, _ = banco
+    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    lunghissimo = "x" * 1000
+
+    async def _guasto_lungo(dominio, chiave, corpo):
+        raise ConnectionError(lunghissimo)
+    ha.salva_configurazione = _guasto_lungo
+
+    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
+                                   adesso=ADESSO + 60)
+
+    assert lunghissimo not in esito["errore"]
+    assert "[troncato]" in esito["errore"]
+    assert len(esito["errore"]) < 400

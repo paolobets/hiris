@@ -1466,8 +1466,16 @@ class DispatcherStrumenti:
         proposta_id = (argomenti or {}).get("proposta_id")
         if not isinstance(proposta_id, str) or not proposta_id.strip():
             return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
-        return await self._officina.applica(
+        esito = await self._officina.applica(
             proposta_id.strip(), origine="chat", turno=self._turno, adesso=_time.time())
+        # Punto 7 (residuo): `guasto_rete` e' interno (`Officina._fallita`/
+        # `_rete`) -- `handlers_costruzioni.py` lo toglie gia' sul percorso
+        # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
+        # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
+        # modello: senza questa riga il flag ci arrivava integro, e «interno»
+        # sarebbe stato vero da una sola delle due porte.
+        esito.pop("guasto_rete", None)
+        return esito
 
     def _verifica_ora(self, chiamata: dict, verifica) -> str | None:
         """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.

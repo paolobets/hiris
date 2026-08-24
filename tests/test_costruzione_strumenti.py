@@ -107,3 +107,19 @@ async def test_conferma_senza_identificatore_non_indovina():
     esito = await d.dispatch("conferma", {})
     assert "errore" in esito
     assert officina.chiamate == []
+
+
+@pytest.mark.asyncio
+async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
+    """Punto 7 (residuo): `guasto_rete` e' dichiarato «interno»
+    (`handlers_costruzioni.py`), e sul percorso HTTP lo e' davvero -- quella
+    rotta lo legge per scegliere 503 invece di 409 e poi lo toglie dal corpo.
+    Sul percorso chat, prima di questa correzione, lo strumento restituiva il
+    dizionario di `applica` tale e quale: il flag usciva integro verso il
+    modello. O e' interno da entrambe le porte, o il commento mente su una."""
+    officina = FintaOfficina(esito_applica={
+        "errore": "Home Assistant non ha risposto: timeout", "guasto_rete": True})
+    d = _dispatcher(officina=officina, turno="t7")
+    esito = await d.dispatch("conferma", {"proposta_id": "p1"})
+    assert "guasto_rete" not in esito
+    assert "errore" in esito

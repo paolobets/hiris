@@ -185,12 +185,12 @@ async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
 #
 # I test sopra chiamano gli handler direttamente con una `FintaRichiesta`
 # costruita a mano: scavalcano il router di aiohttp, la popolazione di
-# `match_info` e TUTTI i middleware, CSRF compreso. Che le due POST siano
-# protette dal CSRF lo sappiamo perche' lo si e' letto nel sorgente di
-# `middleware_csrf.py` -- non perche' un test lo dica. Senza un test che
-# passi per davvero dal router e dallo stack di middleware, una futura
-# esenzione aggiunta per errore (o una registrazione della rotta prima del
-# middleware) lascerebbe la suite verde. Stessa ragione, stessa forma di
+# `match_info` e TUTTI i middleware, CSRF compreso. Le POST protette dal CSRF
+# sono TRE -- conferma, ripristina, rifiuta -- e ciascuna ha qui sotto il suo
+# test che passa per davvero dal router e dallo stack di middleware: senza di
+# loro, una futura esenzione aggiunta per errore (o una registrazione della
+# rotta prima del middleware) lascerebbe la suite verde. Stessa ragione,
+# stessa forma di
 # `tests/test_promesse_api.py::test_delete_senza_x_requested_with_e_403_e_non_disdice`.
 # ---------------------------------------------------------------------------
 
@@ -283,3 +283,38 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(c
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert client.app["_ha_finta"].salvate
+
+
+@pytest.mark.asyncio
+async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
+    """Punto 9 (residuo): `/rifiuta` era l'unica delle tre POST senza questa
+    prova end-to-end, nel file il cui stesso commento argomenta perche' serve.
+    Non tocca Home Assistant (vedi `handlers_costruzioni.py`), quindi la meta'
+    che conta qui non e' `salvate == []` ma lo stato della proposta."""
+    archivio = client.app["costruzioni"]
+    ident = archivio.proponi(
+        gesto="crea", dominio="automation", chiave="tapparelle_rifiuta_csrf",
+        origine="chat", turno="turno-1", frase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
+        adesso=ADESSO_HTTP)["id"]
+
+    risposta = await client.post("/api/costruzioni/%s/rifiuta" % ident)
+    assert risposta.status == 403
+    assert (await risposta.json())["error"] == "csrf_required"
+    # La meta' che conta: sul 403 la proposta resta `in_attesa`.
+    assert archivio.leggi(ident)["stato"] == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client, csrf_stretto):
+    archivio = client.app["costruzioni"]
+    ident = archivio.proponi(
+        gesto="crea", dominio="automation", chiave="tapparelle_rifiuta_csrf_ok",
+        origine="chat", turno="turno-1", frase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
+        adesso=ADESSO_HTTP)["id"]
+
+    risposta = await client.post("/api/costruzioni/%s/rifiuta" % ident,
+                                 headers={"X-Requested-With": "fetch"})
+    assert risposta.status == 200
+    assert archivio.leggi(ident)["stato"] == "disdetta"
