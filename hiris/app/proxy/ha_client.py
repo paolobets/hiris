@@ -3,6 +3,7 @@ import logging
 
 from ..casa.anagrafe import SEVERITA_PROBLEMA
 from ..casa.tempo import normalizza_ore
+from ._sanitize import sanitize_ha_value
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -1059,9 +1060,20 @@ class HAClient:
         for item in data:
             if not isinstance(item, dict):
                 continue
+            # `nome`/`messaggio` sono testo LIBERO che Home Assistant non
+            # controlla -- il titolo di un brano, il testo di
+            # un'automazione, il nome che un ospite ha dato a un device --
+            # e finiscono grezzi nel contesto del modello via `_accaduto`
+            # (casa/tempo.py) se non si sanificano QUI, al confine (C-2,
+            # L1-sicurezza.md). Solo quando c'e' davvero un valore: un
+            # `None` sanificato non deve diventare una stringa vuota, che
+            # affermerebbe un fatto ("questa voce ha un nome") che il
+            # logbook non ha dichiarato.
+            nome = item.get("name")
+            messaggio = item.get("message")
             voci.append({
                 "quando": item.get("when"),
-                "nome": item.get("name"),
+                "nome": sanitize_ha_value(nome) if nome else nome,
                 # `stato` e `messaggio` restano DUE campi, non se ne fonde uno:
                 # «on» e «entered zone Casa» sono fatti di natura diversa, e
                 # chi legge deve poterli distinguere. La misura del 24/08/2026
@@ -1070,7 +1082,7 @@ class HAClient:
                 # teneva solo il secondo, cioe' buttava il testo di quasi
                 # tutte le voci.
                 "stato": item.get("state"),
-                "messaggio": item.get("message"),
+                "messaggio": sanitize_ha_value(messaggio) if messaggio else messaggio,
                 "entita": item.get("entity_id"),
             })
         # `ore` torna al chiamante CLAMPATO: chi compone la risposta per

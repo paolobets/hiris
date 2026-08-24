@@ -46,6 +46,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ..proxy._sanitize import sanitize_text
 from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
                        classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
                        nome_con_id, traduci_stato)
@@ -1215,7 +1216,17 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
         # colmarla.
-        righe.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {detto_da})")
+        # C-2 (L1-sicurezza.md): il ricordo e' l'UNICA cosa che entra intera
+        # nel nucleo, a OGNI turno, senza che il modello lo richieda -- e'
+        # il canale piu' pericoloso per un'iniezione che deve sopravvivere
+        # (I-1: una `ricorda()` avvenuta in un turno iniettato tornerebbe nel
+        # contesto di ogni turno successivo, per sempre). Sanificato QUI,
+        # dove il testo diventa parte di cio' che il modello legge sempre --
+        # non nell'archivio (`memoria/archivio.py`), che resta la verita'
+        # cosi' come e' stata detta (regola 1 del modulo): il testo
+        # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
+        righe.append(
+            f"- [#{r.get('id')}] \"{sanitize_text(r['testo'])}\" (detto da {detto_da})")
     return righe
 
 

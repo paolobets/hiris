@@ -4,6 +4,49 @@ Friendly names, sensor states, area names and any other field controllable
 through HA (or by users tinkering with HA) can carry prompt injection
 markers. We strip them before composing the system prompt or the context
 block so they cannot rewire the agent's instructions.
+
+WHERE THIS IS ACTUALLY WIRED (fixed 2026-08-25, audit finding C-2 /
+L1-sicurezza.md: this module used to have zero production callers while this
+docstring claimed an active defense -- a security module lying about itself).
+Every point where text HIRIS does not control can enter the model's context
+calls one of the two functions below:
+
+- `proxy/entity_cache.py::_to_minimal` -- the single point where a raw HA
+  state becomes what every reader sees (`specchio_vivo`, `guarda`, `cerca`,
+  the nucleo). Sanitizes `state`, `name` (friendly_name), and the free-text
+  media_player attributes (`media_title`, `media_artist`, `source`) -- the
+  concrete vector the audit verified. NOT sanitized: numeric/enum attributes
+  (`brightness`, `hvac_mode`, `current_position`, ...) -- they are not
+  attacker-writable free text, and running them through a text filter would
+  silently coerce numbers to strings for no real gain.
+- `proxy/ha_client.py::diario` -- the logbook boundary. Sanitizes `nome`
+  and `messaggio` per entry (free text HA does not control), leaves `None`
+  fields as `None` rather than manufacturing an empty string.
+- `casa/archivio.py::ArchivioCasa.sostituisci` -- the SOLE writer of the
+  house registry mirror. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
+  piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
+  categorie and integrazioni at write time, so every reader (`leggi()`, the
+  nucleo, `guarda`, `cerca`, the config page) inherits the defense for free
+  instead of each caller having to remember to filter.
+- `casa/nucleo.py::_righe_ricordi` and `casa/domande.py::guarda` -- a memory
+  is the one thing that re-enters the model's context on every subsequent
+  turn without being asked for (I-1: a `ricorda()` call from an injected
+  turn would otherwise plant a permanent backdoor). Sanitized where the text
+  becomes part of what the model reads, NOT in `memoria/archivio.py` itself
+  -- that archive's own contract ("il testo e' la verita'", rule 1 of its
+  module docstring) promises the stored text matches what was said, verbatim,
+  for the correction page and the record. Sanitizing on read, not on write,
+  keeps both promises true at once.
+
+DELIBERATELY NOT WIRED, and why: `casa/comportamento.py` (automation/script
+YAML) is a local file the house owner edits, not something a network device
+or a compromised integration can write -- it is not the vector this fix
+closes. `ha_client.py::storico()`'s historical `valore` series is numeric by
+construction (temperature/humidity charts); filtering it would risk mangling
+legitimate long numeric-like values for a residual, much narrower risk
+(it would require an attacker-controlled string to already be sitting in
+HA's own recorder history) than the always-on surfaces above. Both gaps are
+tracked as reasoned, not accidental -- see FIX1-report.md.
 """
 import re
 
