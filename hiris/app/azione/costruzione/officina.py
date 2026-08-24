@@ -85,6 +85,27 @@ def _stato_leggibile(stato: str) -> str:
     return _STATO_LEGGIBILE.get(stato, stato)
 
 
+# Punto 4 (residuo): il messaggio grezzo di `_rete` (sotto) finisce in quattro
+# superfici, due permanenti -- `costruzioni.motivo`/`errore` nella cronaca in
+# SQLite -- e la cattura larga toglie ogni garanzia sulla sua lunghezza: e'
+# quella di QUALUNQUE eccezione, non solo di un guasto di trasporto breve.
+# Rispecchia `_truncate`/`_TRUNC_MARK` di `proxy/ha_client.py` (la stessa
+# convenzione, introdotta li' per "il messaggio d'errore di HA, che puo'
+# includere un traceback intero"): e' privata di quel modulo, quindi si
+# duplica la FORMA qui, non si promuove l'helper.
+_TRUNC_MARK_RETE = " [troncato]"
+_CAP_ERRORE_RETE = 300
+
+
+def _tronca_errore_rete(testo: str) -> str:
+    """Tronca `testo` a `_CAP_ERRORE_RETE` caratteri, marcatore incluso."""
+    if len(testo) <= _CAP_ERRORE_RETE:
+        return testo
+    if _CAP_ERRORE_RETE <= len(_TRUNC_MARK_RETE):
+        return testo[:max(0, _CAP_ERRORE_RETE)]
+    return testo[:_CAP_ERRORE_RETE - len(_TRUNC_MARK_RETE)] + _TRUNC_MARK_RETE
+
+
 class Officina:
     def __init__(self, ha, archivio, cronaca) -> None:
         self._ha = ha
@@ -258,18 +279,23 @@ class Officina:
         # sopra) -- un quarto dominio aggiunto la' solleverebbe `KeyError` qui.
         righe = []
         if gesto == "crea":
+            # Punto 5 (residuo): la correzione dell'articolo (ondata finale,
+            # punto 7) non toccava il participio -- «chiamata» concorda solo
+            # con automazione e scena, e «uno script chiamata «X»» restava
+            # sgrammaticato. «di nome» e' invariabile: non serve una terza
+            # tabella di concordanze.
             righe.append(f"Creo {ARTICOLO_INDETERMINATIVO.get(dominio, dominio)} "
-                         f"chiamata «{intento.get('alias')}».")
+                         f"di nome «{intento.get('alias')}».")
         elif gesto == "modifica":
             righe.append(f"Modifico {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
                          f"«{(prima or {}).get('alias') or chiave}», "
-                         "che esiste gia' in casa tua.")
+                         "che esiste già in casa tua.")
             righe.append(f"Prima: {_compatta(prima)}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
             righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
                          f"«{(prima or {}).get('alias') or chiave}», "
-                         "che esiste gia' in casa tua. Conservo com'era.")
+                         "che esiste già in casa tua. Conservo com'era.")
         if intento.get("descrizione"):
             righe.append(f"A cosa serve: {intento['descrizione']}")
         for helper in intento.get("helper") or []:
@@ -339,9 +365,20 @@ class Officina:
 
         if not riuscito:
             nota = await self._disfa(nati, senza_id)
-            return self._fallita(proposta, adesso, origine,
-                                 _traduci_rifiuto(scritto.get("errore", ""), dominio) + nota,
-                                 guasto_rete=scritto.get("guasto_rete", False))
+            guasto_rete = scritto.get("guasto_rete", False)
+            errore_grezzo = scritto.get("errore", "")
+            # Punto 2 (residuo): `_traduci_rifiuto` cerca «404» come SOTTOSTRINGA
+            # nuda su tutto il messaggio -- un guasto di rete puo' contenere
+            # quella cifra per caso (una porta, un IP) e uscirebbe come una
+            # spiegazione architetturale falsa («queste automazioni sono
+            # gestite a mano...») invece che come cio' che e' davvero: Home
+            # Assistant irraggiungibile. Il flag che l'ondata ha introdotto
+            # due righe sopra distingue gia' i due casi -- non serve indovinare
+            # dal testo.
+            motivo = errore_grezzo if guasto_rete else _traduci_rifiuto(
+                errore_grezzo, dominio)
+            return self._fallita(proposta, adesso, origine, motivo + nota,
+                                 guasto_rete=guasto_rete)
 
         entita, avviso = await self._rileggi(dominio, chiave, gesto)
         if gesto == "crea":
@@ -430,12 +467,24 @@ class Officina:
         Assistant non ha risposto: ...", "guasto_rete": True}` -- la stessa
         forma con cui l'officina dice ogni altro guasto, con in piu' il flag
         che distingue un guasto di rete da un rifiuto vero di Home Assistant.
+        Il messaggio dell'eccezione e' troncato (punto 4, residuo): finisce in
+        quattro superfici, due permanenti (`costruzioni.motivo`/`errore` nella
+        cronaca in SQLite), e la cattura larga toglie ogni garanzia sulla sua
+        lunghezza -- e' quella di QUALUNQUE eccezione, non solo di un guasto
+        di trasporto breve.
         """
         try:
             return await chiamata
         except Exception as exc:
-            logger.warning("chiamata verso Home Assistant non riuscita: %s", exc)
-            return {"errore": f"Home Assistant non ha risposto: {exc}",
+            # Punto 3 (residuo): la cattura larga e' la scelta giusta (restringere
+            # vorrebbe dire importare aiohttp qui, in un modulo deliberatamente
+            # agnostico al trasporto), ma senza tipo ne' traceback un nostro
+            # `TypeError` diventa indistinguibile, in log, da un guasto di rete
+            # vero -- il difetto nascosto due volte. Stessa forma gia' usata da
+            # `casa/strumenti.py` nella sua rete finale.
+            logger.warning("chiamata verso Home Assistant non riuscita (%s): %s",
+                           type(exc).__name__, exc, exc_info=True)
+            return {"errore": f"Home Assistant non ha risposto: {_tronca_errore_rete(str(exc))}",
                     "guasto_rete": True}
 
     async def _disfa(self, nati: list[tuple[str, str]],

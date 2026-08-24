@@ -366,6 +366,13 @@ class HAClient:
             testo = ""
         return f"Home Assistant ha risposto {resp.status}. {testo}".strip()
 
+    # Punto 6 (residuo, ondata finale punto 1): queste tre primitive sollevano
+    # quello che rompe il trasporto -- non catturano niente da sole. Il loro
+    # UNICO chiamante (`azione/costruzione/officina.py::Officina._rete`) le
+    # avvolge apposta: quella guardia e' cio' che trasforma un guasto di rete
+    # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
+    # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a
+    # queste tre non deve aggirarla.
     async def leggi_configurazione(self, dominio: str, chiave: str) -> dict:
         """Il corpo scritto di un oggetto, letto dalla stessa rotta dell'editor.
 
@@ -373,6 +380,8 @@ class HAClient:
         non tiene storico, e questa e' la fonte di cio' che c'era. NON si usa
         `casa/comportamento.py` al suo posto: quello e' l'archivio di HIRIS,
         aggiornato a cadenza propria, e potrebbe essere vecchio di minuti.
+
+        Solleva solo cio' che rompe il trasporto.
         """
         url, rifiuto = self._rotta_config(dominio, chiave)
         if url is None:
@@ -425,6 +434,8 @@ class HAClient:
         file ne' fra le entita'. Il «prima» deve gia' essere archiviato PRIMA
         di chiamarla (spec §6): dopo, non c'e' piu' nessuna fonte da cui
         rileggerlo.
+
+        Solleva solo cio' che rompe il trasporto.
         """
         url, rifiuto = self._rotta_config(dominio, chiave)
         if url is None:
