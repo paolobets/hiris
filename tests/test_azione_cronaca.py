@@ -99,3 +99,55 @@ def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
         assert riga["servizio"] == "light.turn_on"
     finally:
         c.close()
+
+
+# -- elenca: la cronaca diventa interrogabile nel tempo ---------------------
+
+def test_elenca_restituisce_solo_la_finestra_chiesta(cronaca):
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=1000.0)
+    cronaca.registra(origine="chat", servizio="light.turn_off",
+                     entita=["light.cucina"], eseguito=True, adesso=5000.0)
+    righe = cronaca.elenca(da_ts=4000.0, a_ts=6000.0)
+    assert [r["servizio"] for r in righe] == ["light.turn_off"]
+
+
+def test_elenca_torna_dalla_piu_recente(cronaca):
+    for ts in (1000.0, 2000.0, 3000.0):
+        cronaca.registra(origine="chat", servizio=f"light.s{int(ts)}",
+                         entita=["light.cucina"], eseguito=True, adesso=ts)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0)
+    assert [r["quando_ts"] for r in righe] == [3000.0, 2000.0, 1000.0]
+
+
+def test_elenca_filtra_per_entita_senza_confondere_i_prefissi(cronaca):
+    """`light.cucina` e `light.cucina_2` sono due entita' diverse. Un filtro
+    per sottostringa le confonderebbe -- ed e' il motivo per cui il confronto
+    avviene sulla lista DECODIFICATA, non sul JSON grezzo."""
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina"], eseguito=True, adesso=1000.0)
+    cronaca.registra(origine="chat", servizio="light.turn_on",
+                     entita=["light.cucina_2"], eseguito=True, adesso=2000.0)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0, entita="light.cucina")
+    assert len(righe) == 1
+    assert righe[0]["entita"] == ["light.cucina"]
+
+
+def test_elenca_vede_anche_le_costruzioni(cronaca):
+    """Una tabella sola perche' la domanda dell'utente e' una sola -- «cosa hai
+    fatto?». Un `elenca` che vedesse solo i comandi avrebbe reintrodotto la
+    divisione che `registra_costruzione` ha evitato."""
+    cronaca.registra_costruzione(origine="chat", gesto="crea", dominio="automation",
+                                 chiave="abc", entita=["automation.sveglia"],
+                                 eseguito=True, adesso=1000.0)
+    righe = cronaca.elenca(da_ts=0.0, a_ts=9999.0)
+    assert righe[0]["genere"] == "costruzione"
+    assert righe[0]["oggetto"] == "automation.abc"
+
+
+def test_elenca_ha_un_tetto(cronaca):
+    for i in range(300):
+        cronaca.registra(origine="chat", servizio="light.turn_on",
+                         entita=["light.cucina"], eseguito=True, adesso=float(i))
+    assert len(cronaca.elenca(da_ts=0.0, a_ts=9999.0)) == 200
+    assert len(cronaca.elenca(da_ts=0.0, a_ts=9999.0, limite=10)) == 10
