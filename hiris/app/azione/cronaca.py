@@ -185,18 +185,25 @@ class Cronaca:
         `LIKE '%light.cucina%'` prenderebbe anche `light.cucina_2`, che e'
         un'altra lampada. Il filtro costa una decodifica per riga sulle sole
         righe gia' ristrette dalla finestra, che l'indice `idx_esecuzioni_
-        quando` copre.
+        quando` copre. Il moltiplicatore per 10 sulla lettura da SQL non
+        risolve il compromesso, lo sposta: se piu' di `limite*10` righe piu'
+        recenti della finestra non appartengono all'entita' cercata, il
+        risultato puo' essere vuoto o incompleto pur avendone nella finestra.
+
+        La finestra rispetta il vincolo di conservazione: righe piu' vecchie
+        di 90 giorni dalla data di oggi sono potate a ogni scrittura, quindi
+        una finestra interamente oltre quel confine restituisce `[]`,
+        indistinguibile da «non ho fatto niente in quel periodo».
 
         Il lock e' lo STESSO delle scritture, per la ragione scritta in
         `leggi`: connessione condivisa fra thread.
         """
         with self._lock:
-            # Moltiplicare il limite di lettura per 10 e' un tetto di lettura
-            # da SQL, non il risultato finale: col filtro per entita', il
-            # LIMIT di SQL non puo' essere quello finale. Su una casa attiva,
-            # chiedere le ultime 200 righe e poi filtrarle per una sola lampada
-            # restituirebbe zero risultati pur avendone. Leggiamo 10x piu'
-            # righe e poi filtriamo e tagliamo a `limite`.
+            # Il LIMIT di SQL non puo' essere quello finale col filtro per
+            # entita': leggiamo 10x il limite richiesto per avere piu' righe
+            # su cui applicare il filtro Python. Questo MIGLIORA la probabilita'
+            # di trovare righe dell'entita' cercata, ma non la garantisce se
+            # la finestra contiene piu' di `limite*10` righe di altre entita'.
             righe = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE quando_ts >= ? AND quando_ts <= ? "
                 "ORDER BY quando_ts DESC LIMIT ?",
