@@ -263,6 +263,29 @@ all'ultimo giro è sfuggita per l'ordine delle parole.
 
 ## 7. Le verifiche che nessun banco può dare
 
+> **Misurate il 24 agosto 2026, sulla casa vera, subito dopo il rilascio della 3.12.0.**
+> I punti 1 e 2 sono **chiusi**, e avevano ragione a esistere: **entrambe le forme erano
+> diverse da come le avevamo immaginate, e ognuna delle due bloccava il suo strumento.**
+>
+> - **Statistiche** (§7.1): `start` ed `end` sono **interi, epoch in millisecondi**
+>   (`1787342400000`), non stringhe ISO. Le chiavi vere di una fascia sono
+>   `start`, `end`, `min`, `max`, `mean`, `last_reset`. I dati ci sono e sono fitti —
+>   71 fasce orarie su tre giorni per un sensore di temperatura. Serviva la sola
+>   traduzione dell'istante, ed è stata scritta **dopo** la misura.
+> - **Logbook** (§7.2): il testo di un cambio di stato vive in **`state`**, non in
+>   `message`. Su 755 voci vere in tre ore, **754 portano `state` e una sola porta
+>   `message`** — e la proiezione teneva solo il secondo, quindi «accaduto» rispondeva
+>   con nome e ora e nient'altro. I campi di paternità esistono e si chiamano
+>   `context_domain`, `context_service`, `context_event_type`, `context_user_id`;
+>   restano fuori da questa fetta (vedi il punto 2), ma **adesso si sa dove sono**.
+> - **`when` è già ISO-8601 col fuso** — il dubbio residuo sull'abbinamento del diario,
+>   registrato al punto 2 dalla re-review dell'onda finale, **cade qui**.
+>
+> Il modo in cui il difetto si è presentato vale quanto il difetto: alla prima domanda vera
+> HIRIS ha detto *«Home Assistant ha risposto con dati in un formato che non riesco a
+> interpretare senza rischiare di darti numeri sbagliati»*, invece di «non ci sono
+> registrazioni». È la correzione F1 dell'onda finale, ripagata alla prima chiamata.
+
 1. **La forma vera di `recorder/statistics_during_period`.** `get_statistics` **non ha mai girato
    in produzione**: la forma della risposta nei test è scritta a mano, cioè immaginaria. È la stessa
    trappola della fetta «comandare», dove la forma di `/api/services` era immaginaria e la spec
