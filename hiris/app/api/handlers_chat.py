@@ -842,7 +842,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = componi_contesto_chat(request.app, data_dir)
 
-    # Gli undici strumenti della chat -- il perche' di ogni riga sta
+    # I tredici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `costruisci_dispatcher_strumenti` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni

@@ -9,12 +9,16 @@ i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
 Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
-riceve NOVE, e dalla fetta «costruire» (Task 9) ne riceve UNDICI. Cinque
-leggono e ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e'
+riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, e dalla
+fetta «HIRIS e il tempo» (Task 6) ne riceve TREDICI. Cinque leggono e
+ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e'
 l'unico strumento che scrive nella casa (i servizi, non la configurazione);
 `costruisci` e `conferma`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
-apposta (vedi piu' sotto). Per un tratto della 2.0
+apposta (vedi piu' sotto); `andamento` e `accaduto`, gli ultimi due, leggono
+INDIETRO nel tempo passando per `casa/tempo.py` -- come e' andato un valore,
+cosa e' successo e per mano di chi (vedi la sezione «-- il tempo --» piu'
+sotto). Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
@@ -999,12 +1003,13 @@ class DispatcherStrumenti:
             "accaduto": self._accaduto,
         }[nome]
         try:
-            # `_esegui`, `_legami`, `_prometti`, `_costruisci` e `_conferma`
-            # sono coroutine (fanno rete, o -- `_prometti` -- possono
-            # scaldare il registro dei servizi prima di verificare); gli
-            # altri sei no. Si attende cio' che e' attendibile invece di
-            # rendere `async` anche i sei sincroni: cambiare la loro firma
-            # avrebbe toccato undici gestori per un bisogno di cinque.
+            # `_esegui`, `_legami`, `_prometti`, `_costruisci`, `_conferma`,
+            # `_andamento` e `_accaduto` sono coroutine (fanno rete, o --
+            # `_prometti` -- possono scaldare il registro dei servizi prima
+            # di verificare); gli altri sei no. Si attende cio' che e'
+            # attendibile invece di rendere `async` anche i sei sincroni:
+            # cambiare la loro firma avrebbe toccato tredici gestori per un
+            # bisogno di sette.
             esito = gestore(argomenti)
             if inspect.isawaitable(esito):
                 esito = await esito

@@ -20,14 +20,43 @@ def test_il_catalogo_porta_tredici_strumenti():
     assert {"andamento", "accaduto"} <= nomi
 
 
-def test_ogni_strumento_del_catalogo_ha_un_gestore():
+# La convenzione di nomenclatura `nome -> self._nome` regge su dodici dei
+# tredici strumenti: `promesse` e' servito da `_promesse_elenco`, non da
+# `_promesse` (quell'attributo e' gia' l'archivio, vedi il commento nel
+# `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
+# saltando la verifica per quel nome.
+_GESTORE_ATTESO = {"promesse": "_promesse_elenco"}
+
+
+@pytest.mark.asyncio
+async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
     """Il difetto che questo test chiude: uno strumento nel catalogo arriva al
-    modello, e poi si sente rispondere «non e' fra quelli disponibili» -- una
-    incoerenza che il modello non puo' ne' capire ne' aggirare."""
-    d = DispatcherStrumenti(None, None)
-    sorgente = inspect.getsource(DispatcherStrumenti.dispatch)
+    modello, e poi si sente rispondere «non e' fra quelli disponibili» (nessun
+    gestore per quel nome) OPPURE -- refuso di copia-incolla fra due nomi
+    adiacenti, es. `"accaduto": self._andamento` -- viene servito dal gestore
+    di un ALTRO strumento senza che nessuno se ne accorga: in entrambi i casi
+    il modello non puo' ne' capire ne' aggirare l'incoerenza.
+
+    Una ricerca di sottostringa (`f'"{nome}": self._' in sorgente`) non
+    coglie il secondo caso: la sottostringa c'e' comunque. Qui si chiama
+    DAVVERO `dispatch(nome, ...)`, con il gestore atteso rimpiazzato da un
+    finto che restituisce un marcatore UNICO per quel nome: se la risposta non
+    e' quel marcatore, o `dispatch` ha chiamato un gestore diverso, o non ne
+    ha chiamato nessuno."""
     for definizione in STRUMENTI_CONOSCENZA:
-        assert f'"{definizione["name"]}": self._' in sorgente
+        nome = definizione["name"]
+        attributo = _GESTORE_ATTESO.get(nome, f"_{nome}")
+        d = DispatcherStrumenti(object(), object(), ha=object(), porta=object(),
+                                 promesse=object(), officina=object())
+        assert hasattr(d, attributo), (
+            f"«{nome}» dovrebbe essere servito da `self.{attributo}`, che non "
+            "esiste sul dispatcher")
+        marcatore = {"marcato": nome}
+        setattr(d, attributo, lambda argomenti, _m=marcatore: _m)
+        esito = await d.dispatch(nome, {})
+        assert esito == marcatore, (
+            f"«{nome}» non ha chiamato `self.{attributo}`: il dispatcher lo "
+            "lega a un gestore diverso da quello atteso")
 
 
 def test_i_due_lettori_entrano_nel_turno_delle_promesse():
@@ -91,3 +120,31 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
         modulo.tempo.andamento = originale
     assert visti["unita"] == "°C"
     assert visti["ha_statistiche"] is True
+
+
+@pytest.mark.asyncio
+async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
+    """Il gemello del test sopra, per `accaduto`. Senza questo test la prova
+    mentale che conta e' negativa: se `cronaca=self._cronaca` diventasse
+    `cronaca=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
+    questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.accaduto` e
+    non il dispatcher. L'effetto sarebbe silenzioso: la risposta continua ad
+    arrivare, solo senza mai dire «l'ho fatto io» -- l'attribuzione sparisce
+    e nessuno se ne accorge."""
+    visti = {}
+    cronaca_vera = object()  # un oggetto RICONOSCIBILE: deve arrivare esso
+                              # stesso, non un sostituto costruito qui.
+
+    async def _finto_accaduto(**kwargs):
+        visti.update(kwargs)
+        return {"voci": [], "troncato": False, "ore": kwargs["ore"], "nota": None}
+
+    import hiris.app.casa.strumenti as modulo
+    originale = modulo.tempo.accaduto
+    modulo.tempo.accaduto = _finto_accaduto
+    try:
+        d = DispatcherStrumenti(None, None, ha=object(), cronaca=cronaca_vera)
+        await d.dispatch("accaduto", {"ore": 6})
+    finally:
+        modulo.tempo.accaduto = originale
+    assert visti["cronaca"] is cronaca_vera
