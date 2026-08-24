@@ -122,6 +122,7 @@ from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from .domande import legami as _legami_leggibili
+from .tempo import epoch_istante
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
 from ..memoria.cache_indice import CacheIndice
@@ -1384,7 +1385,7 @@ class DispatcherStrumenti:
 
         await self._assicura_registro_fresco()
 
-        quando = _istante(argomenti.get("quando"))
+        quando = epoch_istante(argomenti.get("quando"))
         if quando is None:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
@@ -1724,22 +1725,3 @@ class DispatcherStrumenti:
         if self._casa is None:
             return None
         return self._casa.sistema_di_riferimento().get("fuso")
-
-
-def _istante(grezzo) -> float | None:
-    """Un ISO-8601 col fuso -> epoch. `None` se non si legge.
-
-    Un istante SENZA fuso viene rifiutato: «alle 17» di quale fuso? E' la
-    stessa regola dell'unita' di misura applicata al tempo.
-    """
-    from datetime import datetime
-
-    if not isinstance(grezzo, str) or not grezzo.strip():
-        return None
-    try:
-        momento = datetime.fromisoformat(grezzo.strip())
-    except ValueError:
-        return None
-    if momento.tzinfo is None:
-        return None
-    return momento.timestamp()

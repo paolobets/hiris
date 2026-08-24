@@ -12,9 +12,11 @@ con sicurezza -- ed e' cio' che il prodotto diceva prima di questa fetta.
 La finta sa produrre TUTTE queste forme. Una finta che risponde sempre bene
 non prova nessuno dei quattro.
 """
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
-from hiris.app.casa.tempo import MAX_PUNTI_IN_RISPOSTA, andamento
+from hiris.app.casa.tempo import MAX_PUNTI_IN_RISPOSTA, andamento, epoch_istante
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
 
@@ -66,6 +68,10 @@ async def test_quarantotto_ore_di_un_sensore_ricevono_le_fasce_orarie():
     assert esito["grana"] == "oraria"
     assert esito["punti"][0]["media"] == 26.5
     assert ha.chiamate[0][0] == "statistiche"
+    # M5: un refuso su "hour" o nel calcolo dei giorni passerebbe inosservato
+    # se nessuno guardasse cosa arriva davvero a `ha.statistiche`.
+    assert ha.chiamate[0][2] == "hour"
+    assert ha.chiamate[0][3] == int(48 / 24) + 1
 
 
 @pytest.mark.asyncio
@@ -150,3 +156,45 @@ async def test_senza_statistiche_una_finestra_lunga_resta_sul_dettaglio():
                             ha_statistiche=False, adesso_ts=ADESSO, fuso="Europe/Rome")
     assert esito["grana"] == "dettaglio"
     assert ha.chiamate[0][0] == "storico"
+
+
+@pytest.mark.asyncio
+async def test_la_finestra_coperta_riscrive_il_fuso_dal_sorgente_UTC():
+    """I3: le statistiche di Home Assistant tornano SEMPRE in UTC -- e' il
+    caso NORMALE, non l'eccezione. Nessuno degli altri test lo esercita: se
+    la riscrittura del fuso in `_coperta` sparisse, nessuno se ne
+    accorgerebbe, perche' gli altri test partono gia' da un sorgente in
+    +02:00. 13:00 UTC di agosto sono 15:00 a Roma (CEST, +02:00)."""
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
+        {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
+         "massimo": 27.1, "media": 26.5},
+    ]}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert esito["finestra_coperta"]["da"] == "2026-08-23T15:00:00+02:00"
+
+
+@pytest.mark.asyncio
+async def test_le_fasce_oltre_il_massimo_si_campionano_come_il_dettaglio():
+    """C2: uno slice secco (`fasce[-N:]`) sposta `punti[0]` avanti nel tempo
+    mentre `finestra_coperta` restava calcolata sull'elenco INTERO -- una
+    copertura dichiarata e mai consegnata. Il ramo statistiche deve
+    campionare come il gemello del dettaglio (`_assottiglia`, primo e ultimo
+    sempre compresi) e dichiarare il numero VERO di fasce quando riduce.
+
+    Il confronto fra `punti[0]["inizio"]` e `finestra_coperta["da"]` passa
+    per `epoch_istante`, non per l'uguaglianza di stringa: le fasce tornano
+    in UTC (`+00:00`) mentre `finestra_coperta` e' riscritta nel fuso della
+    casa (`+02:00`) -- stesso istante, offset diverso, stessa fondamenta 3
+    del test precedente."""
+    base = datetime(2026, 8, 15, 9, 0, 0, tzinfo=timezone.utc)
+    fasce = [{"inizio": (base + timedelta(hours=i)).isoformat(),
+              "minimo": 20.0, "massimo": 21.0, "media": 20.5}
+             for i in range(200)]
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": fasce}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=240, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert len(esito["punti"]) <= MAX_PUNTI_IN_RISPOSTA
+    assert epoch_istante(esito["punti"][0]["inizio"]) == \
+        epoch_istante(esito["finestra_coperta"]["da"])
+    assert "200" in esito["nota"]  # il numero VERO delle fasce, non «molte»
