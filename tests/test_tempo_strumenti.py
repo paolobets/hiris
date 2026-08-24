@@ -148,3 +148,43 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     finally:
         modulo.tempo.accaduto = originale
     assert visti["cronaca"] is cronaca_vera
+
+
+@pytest.mark.asyncio
+async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
+    """F4 (onda finale): `measurement_angle` e' un `state_class` vero e
+    proprio ma NON produce statistiche (spec S1). Il cablaggio ingenuo
+    (`bool(state_class)`) manderebbe una banderuola oltre le 24 ore sul ramo
+    statistiche, cioe' su un elenco vuoto che direbbe «non e' mai cambiata»
+    -- mentre il dettaglio, la superficie giusta per lei, esiste. Qui
+    `tempo.andamento` gira DAVVERO (non e' fintato): se il cablaggio tornasse
+    a `bool(...)`, `grana` sarebbe «oraria» e la finta HA registrerebbe
+    «statistiche», non «storico»."""
+    class _Cache:
+        loaded = True
+
+        def all_states(self):
+            return [{"id": "sensor.vento_direzione", "state": "180", "unit": "°",
+                     "name": "Direzione vento", "device_class": None,
+                     "state_class": "measurement_angle", "domain": "sensor"}]
+
+    class _HA:
+        def __init__(self):
+            self.chiamate = []
+
+        async def storico(self, entita, da_iso, a_iso):
+            self.chiamate.append("storico")
+            return {"serie": {entita[0]: [
+                {"quando": "2026-08-24T08:00:00+02:00", "valore": "180"}]},
+                "troncato": False}
+
+        async def statistiche(self, identificatori, periodo, giorni):
+            self.chiamate.append("statistiche")
+            return {"serie": {}}
+
+    ha = _HA()
+    d = DispatcherStrumenti(None, None, cache=_Cache(), ha=ha)
+    esito = await d.dispatch(
+        "andamento", {"entita": "sensor.vento_direzione", "ore": 48})
+    assert esito["grana"] == "dettaglio"
+    assert ha.chiamate == ["storico"]

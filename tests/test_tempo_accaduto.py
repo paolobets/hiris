@@ -141,12 +141,15 @@ async def test_la_cronaca_si_interroga_sulla_stessa_finestra_del_diario():
 @pytest.mark.asyncio
 async def test_senza_cronaca_l_accaduto_risponde_lo_stesso():
     """`cronaca=None` e' legittimo (il dispatcher e' SEMPRE costruibile): si
-    perde l'attribuzione, non la risposta."""
+    perde l'attribuzione, non la risposta -- ma la perdita si DICHIARA (F3,
+    onda finale): senza questa nota «HIRIS non l'ha fatto» e «non ho potuto
+    controllare» hanno la stessa faccia, nessuna voce con `per_mano_di`."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
     esito = await accaduto(ha=ha, cronaca=None, entita=None, ore=24,
                            adesso_ts=ADESSO)
     assert len(esito["voci"]) == 1
+    assert "cronaca" in esito["nota"]
 
 
 class _FintaCronacaCheSolleva:
@@ -159,12 +162,18 @@ class _FintaCronacaCheSolleva:
 
 @pytest.mark.asyncio
 async def test_una_cronaca_che_solleva_degrada_e_non_rompe():
+    """Prima di F3 (onda finale) questo test pinnava SOLO la sopravvivenza --
+    cioe' pinnava il silenzio: la risposta arrivava comunque, ma senza dire
+    che l'attribuzione non era stata verificata. «HIRIS non l'ha fatto» e
+    «non ho potuto guardare la mia cronaca» avevano la stessa faccia. Ora
+    pretende anche la dichiarazione, nella `nota`."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
     esito = await accaduto(ha=ha, cronaca=_FintaCronacaCheSolleva(),
                            entita="light.cucina", ore=24, adesso_ts=ADESSO)
     assert len(esito["voci"]) == 1
     assert "per_mano_di" not in esito["voci"][0]
+    assert "cronaca" in esito["nota"]
 
 
 @pytest.mark.asyncio

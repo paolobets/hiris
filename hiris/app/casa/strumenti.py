@@ -767,20 +767,31 @@ ANDAMENTO_TOOL_DEF = {
 ACCADUTO_TOOL_DEF = {
     "name": "accaduto",
     "description": (
+        # F5 (onda finale): la versione precedente prometteva «quale
+        # automazione, quale persona» come se fossero sempre disponibili. Il
+        # diario di Home Assistant (`ha_client.diario`) oggi scarta i campi
+        # `context_*` -- il posto dove vive quella paternita' -- e la loro
+        # forma vera non e' mai stata misurata dal vivo (spec §7): la
+        # promessa era piu' grande di cio' che il codice consegna. Questa
+        # descrizione dice solo cio' che avviene oggi: HIRIS riconosce i
+        # PROPRI atti (unendo la propria cronaca); per il resto riporta il
+        # messaggio del diario cosi' com'e', che puo' nominare o non
+        # nominare chi ha agito.
         "Cosa e' successo in casa in una finestra di tempo, e -- dove si puo' "
-        "dire -- per mano di chi: quale automazione, quale persona, o HIRIS "
-        "stesso. Serve alle domande «perche' si e' accesa?», «cosa e' "
-        "successo stanotte?». `entita` e' facoltativa: senza, guarda tutta la "
-        "casa. "
-        "Quando una voce porta `per_mano_di: HIRIS` significa che in quel "
+        "dire -- per mano di chi. Serve alle domande «perche' si e' accesa?», "
+        "«cosa e' successo stanotte?». `entita` e' facoltativa: senza, guarda "
+        "tutta la casa. "
+        "Riconosco i MIEI atti confrontando il diario con la mia cronaca: "
+        "quando una voce porta `per_mano_di: HIRIS` significa che in quel "
         "momento avevo eseguito io un'azione su quella entita' -- e "
         "`abbinamento: probabile` e' li' apposta: Home Assistant non firma le "
         "voci del suo diario, l'aggancio e' l'istante. Dillo come probabile "
         "(«dovrei averla accesa io alle 18:04, me l'avevi chiesto»), non come "
-        "certo. Una voce SENZA `per_mano_di` non e' mia: puo' essere "
-        "un'automazione, una persona o un interruttore fisico, e se il "
-        "messaggio non lo dice la risposta onesta e' «l'ha accesa qualcuno e "
-        "non so chi». "
+        "certo. Una voce SENZA `per_mano_di` non e' mia, ma il diario non "
+        "dice sempre chi e' stato: il messaggio arriva cosi' com'e' -- puo' "
+        "nominare un'automazione o una persona, o dire solo che il servizio "
+        "e' stato chiamato. Se non lo dice, la risposta onesta e' «l'ha "
+        "accesa qualcuno e non so chi». "
         "`troncato: true` o una `nota` significano che l'elenco non e' "
         "completo: non concludere «non e' successo altro». `errore` significa "
         "che il diario non e' disponibile: non e' una giornata tranquilla."
@@ -1843,7 +1854,12 @@ class DispatcherStrumenti:
         return await tempo.andamento(
             ha=self._canale_ha(), entita=entita, ore=argomenti.get("ore"),
             unita=voce.get("unit") or None,
-            ha_statistiche=bool(voce.get("state_class")),
+            # `tempo.produce_statistiche`, non `bool(state_class)` (fix onda
+            # finale, F4): `measurement_angle` e' un `state_class` vero e
+            # proprio ma NON produce statistiche (spec §1) -- una banderuola
+            # interrogata oltre la soglia di grana finirebbe su un elenco
+            # vuoto invece che sul dettaglio, la superficie giusta per lei.
+            ha_statistiche=tempo.produce_statistiche(voce.get("state_class")),
             adesso_ts=_time.time(), fuso=self._fuso())
 
     async def _accaduto(self, argomenti: dict[str, Any]) -> dict:

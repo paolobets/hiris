@@ -167,7 +167,7 @@ The chat is the only surface. The model gets the nucleo plus exactly thirteen to
 | `costruisci` | proposes an automation, a script or a scene — composes it, validates it against this installation, and writes nothing |
 | `conferma` | applies a proposal `costruisci` made, only in a turn after the one where the preview was shown |
 | `andamento` | how a value moved over time — an entity's real changes within the last 24 hours, hourly min/max/average buckets beyond that, always declaring which grain and which window it actually got |
-| `accaduto` | what happened in the house in a time window, and — where it can tell — who did it: an automation, a person, or HIRIS itself, matched against its own history and reported as *probable*, never certain |
+| `accaduto` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
 
 Two of the thirteen write to Home Assistant. `esegui` does it immediately, through the services
 door (`azione/porta.py`), with no confirmation step — verified against your installation, not

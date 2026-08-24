@@ -74,6 +74,35 @@ def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
     return min(float(tetto), max(1.0, numero))
 
 
+# I soli state_class che Home Assistant traduce DAVVERO in statistiche a
+# lungo termine -- i valori di `sensor.const.SensorStateClass` che il
+# recorder aggrega, verificati alla fonte (non a memoria: e' la stessa
+# trappola di `carbon_monoxide`/`co` gia' pagata da questo progetto).
+# `measurement_angle` ESISTE come state_class (angoli, es. la direzione del
+# vento) ma NON produce statistiche -- e' documentato da Home Assistant, non
+# un'omissione nostra (spec §1). Un'appartenenza a questo insieme, non
+# un'esclusione della sola `measurement_angle`: il vocabolario di HA non si
+# arrotonda, e domani potrebbe crescere di un'altra classe che non aggrega.
+STATE_CLASS_CON_STATISTICHE = frozenset({"measurement", "total", "total_increasing"})
+
+
+def produce_statistiche(state_class) -> bool:
+    """Se questo `state_class` produce DAVVERO una statistica a lungo termine.
+
+    Non `bool(state_class)`: quel cablaggio manderebbe ANCHE
+    `measurement_angle` sul ramo statistiche, e una banderuola interrogata
+    oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
+    cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
+    Vive qui (pura, senza rete) accanto a `scegli_superficie`, che la
+    consuma: e' domanda di vocabolario HA, non di scelta della superficie.
+
+    Il nome e' diverso dal parametro `ha_statistiche` che questo modulo passa
+    in giro (`andamento`, `scegli_superficie`): quello e' gia' il booleano
+    risolto, questa e' la funzione che lo risolve dal vocabolario di HA --
+    due cose diverse, non due nomi per la stessa."""
+    return state_class in STATE_CLASS_CON_STATISTICHE
+
+
 def scegli_superficie(*, ore: float, ha_statistiche: bool) -> str:
     """`"dettaglio"` o `"statistiche"`, e nient'altro puo' deciderlo.
 
@@ -149,6 +178,23 @@ _NOTA_FASCE = (
     "valori a fasce orarie (minimo, massimo, media di ogni ora), non le "
     "singole misure: la finestra chiesta e' piu' lunga di un giorno."
 )
+# F1 (onda finale): un `inizio` che non si legge come ISO-8601 col fuso NON e'
+# «nessuna registrazione» -- e' una forma che questo modulo non sa leggere.
+# Prima dell'onda finale l'`or 0.0` sulla riga qui sotto trasformava
+# `epoch_istante(None)` in zero, il confronto con `da_ts` (~1,7 miliardi)
+# scartava la fascia come "prima della finestra", e un'entita' con dati VERI
+# finiva su «Home Assistant non ha registrazioni». Non e' un'ipotesi di
+# scuola: alcune versioni del recorder rendono `start` come epoch in
+# millisecondi (un numero), non come stringa ISO -- MAI misurato dal vivo su
+# questo prodotto (spec §7). Fallire rumorosamente qui, invece di convertire
+# in silenzio, e' la parte obbligatoria della correzione (vedi il rapporto
+# dell'onda finale): il modello deve poter dire «non ho potuto leggere»
+# invece di «non c'e' niente».
+_ERRORE_FASCIA_ILLEGGIBILE = (
+    "Home Assistant ha risposto con fasce orarie il cui istante di inizio "
+    "non e' nella forma attesa (ISO-8601 con fuso): non posso dire se i dati "
+    "ci sono senza rischiare di leggerli male."
+)
 
 
 async def andamento(*, ha, entita: str, ore, unita: str | None,
@@ -167,6 +213,11 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
     `purge_keep_days`: quel valore non e' leggibile da nessuna API di Home
     Assistant, e una costante scritta qui sarebbe un'assunzione che questa
     casa puo' smentire in silenzio.
+
+    **Una fascia oraria con un `inizio` che non si legge come ISO-8601 col
+    fuso e' un guasto, non un vuoto** (fix onda finale, F1): convertirla in
+    silenzio in «prima della finestra» produrrebbe la stessa frase falsa di
+    `_NOTA_NESSUNA_REGISTRAZIONE` su un'entita' che invece ha dati veri.
     """
     ore = normalizza_ore(ore)
     da_iso, a_iso = finestra(ore=ore, adesso_ts=adesso_ts, fuso=fuso)
@@ -183,8 +234,15 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
         # ordinabili come testo -- «2026-08-23T13:00:00+00:00» sembra maggiore
         # di «2026-08-23T14:00:00+02:00» e sono lo stesso istante.
         da_ts = epoch_istante(da_iso) or 0.0
-        fasce = [f for f in esito["serie"].get(entita, [])
-                 if (epoch_istante(f.get("inizio")) or 0.0) >= da_ts]
+        tutte = esito["serie"].get(entita, [])
+        # Si separa PRIMA «non si legge» da «e' prima della finestra»: un
+        # `or 0.0` unico per i due casi (come c'era) confonde un istante
+        # illeggibile con un istante fuori finestra, e il secondo scarta la
+        # fascia in silenzio mentre il primo deve fermare la risposta.
+        illeggibili = [f for f in tutte if epoch_istante(f.get("inizio")) is None]
+        if illeggibili:
+            return {**base, "errore": _ERRORE_FASCIA_ILLEGGIBILE}
+        fasce = [f for f in tutte if epoch_istante(f.get("inizio")) >= da_ts]
         if not fasce:
             return {**base, "grana": "oraria", "finestra_coperta": None,
                     "punti": [], "nota": _NOTA_NESSUNA_REGISTRAZIONE}
@@ -214,16 +272,32 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
     if not punti:
         return {**base, "grana": "dettaglio", "finestra_coperta": None,
                 "punti": [], "nota": _NOTA_NESSUNA_REGISTRAZIONE}
+    # F2 (onda finale): `ha.storico` promette nel proprio docstring che
+    # `troncato` c'e' SEMPRE, apposta perche' «chi legge deve poter sapere
+    # che e' scattato». Non leggerlo qui butta via quella promessa: dopo il
+    # cap del client `len(punti)` e' un PAVIMENTO (il client tiene la CODA --
+    # i punti piu' recenti -- e scarta la testa), non il conteggio vero, e
+    # spacciarlo per esatto direbbe «5000 cambi» quando ce n'erano 12.000. La
+    # stessa ragione per cui `finestra_coperta` si e' ristretta: il taglio ha
+    # scartato i cambi piu' vecchi, non la casa ha smesso di generarli.
+    troncato_dal_client = bool(esito.get("troncato"))
+    conteggio = f"almeno {len(punti)}" if troncato_dal_client else str(len(punti))
     nota = None
-    if len(punti) == 1:
+    if len(punti) == 1 and not troncato_dal_client:
         nota = _NOTA_MAI_CAMBIATO
     ridotti = punti
     if len(punti) > MAX_PUNTI_IN_RISPOSTA:
         ridotti = _assottiglia(punti, MAX_PUNTI_IN_RISPOSTA)
-        # Il numero VERO, non «molti»: e' cio' che permette a chi legge di
-        # capire che sta guardando un campione e non l'elenco intero.
-        nota = (f"{len(punti)} cambi nella finestra, ridotti a "
+        # Il numero VERO (o il pavimento dichiarato come tale), non «molti»:
+        # e' cio' che permette a chi legge di capire che sta guardando un
+        # campione e non l'elenco intero.
+        nota = (f"{conteggio} cambi nella finestra, ridotti a "
                 f"{len(ridotti)} punti distribuiti nel tempo.")
+    if troncato_dal_client:
+        nota = (nota or f"{conteggio} cambi nella finestra.") + (
+            " Home Assistant ne aveva di piu' di quelli che questo elenco "
+            "puo' portare: sono stati tenuti i piu' recenti, e la finestra "
+            "davvero coperta e' percio' piu' corta di quella chiesta.")
     return {**base, "grana": "dettaglio",
             "finestra_coperta": _coperta(punti, "quando", a_iso),
             "punti": ridotti, "nota": nota}
@@ -257,14 +331,17 @@ def _coperta(punti: list[dict], chiave: str, a_iso: str) -> dict | None:
     finestra nasce nel fuso della casa, e due estremi della STESSA finestra
     con due offset diversi sono la fondamenta 3 rotta dentro un dizionario di
     due chiavi. Se l'istante non si legge si restituisce com'e' arrivato --
-    meglio un formato inatteso che un istante inventato.
+    meglio un formato inatteso che un istante inventato -- ma SEMPRE come
+    stringa: `da` e `a` sono la stessa coppia, e un `da` numerico accanto a un
+    `a` ISO (fix onda finale, F1) sarebbe una frase vera che significa una
+    cosa falsa quanto una grana taciuta.
     """
     if not punti:
         return None
     grezzo = punti[0].get(chiave)
     quando = epoch_istante(grezzo)
     if quando is None:
-        return {"da": grezzo, "a": a_iso}
+        return {"da": grezzo if grezzo is None else str(grezzo), "a": a_iso}
     try:
         zona = datetime.fromisoformat(a_iso).tzinfo
         da = datetime.fromtimestamp(quando, tz=zona).isoformat()
@@ -318,6 +395,13 @@ async def accaduto(*, ha, cronaca, entita: str | None, ore,
     `TOLLERANZA_ABBINAMENTO_S`. Restituire un `esecuzione_id` che il modello
     non puo' risolvere rispetterebbe la lettera della fondamenta 2 violando la
     4, quindi l'atto viaggia con origine e servizio, non col solo numero.
+
+    **Se la cronaca e' assente o non risponde, la nota lo dichiara** (fix
+    onda finale, F3): senza questa dichiarazione «HIRIS non l'ha fatto» e
+    «non ho potuto guardare la mia cronaca» hanno la stessa faccia -- nessuna
+    voce porta `per_mano_di` -- e il modello direbbe con sicurezza «l'ha
+    accesa qualcuno, non so chi» anche quando era stato HIRIS e il dato
+    c'era, solo illeggibile.
     """
     ore = normalizza_ore(ore)
     esito = await ha.diario(entita, int(ore))
@@ -328,18 +412,36 @@ async def accaduto(*, ha, cronaca, entita: str | None, ore,
     # produrrebbero atti senza voce e voci senza atto, in modo invisibile.
     ore_vere = float(esito.get("ore") or ore)
     atti = []
-    if cronaca is not None:
+    # F3 (onda finale): `cronaca_letta` distingue «HIRIS non l'ha fatto» da
+    # «non ho potuto guardare la mia cronaca» -- oggi le due hanno la STESSA
+    # faccia (l'assenza di `per_mano_di` su ogni voce), e senza questa
+    # dichiarazione il modello direbbe «l'ha accesa qualcuno, non so chi»
+    # ANCHE quando e' stato HIRIS e il dato c'era, solo illeggibile. E' la
+    # stessa ragione per cui `_cerca` costruisce `non_ho_potuto_guardare`
+    # (`_cecita` in strumenti.py): due facce diverse per due fatti diversi.
+    cronaca_letta = False
+    if cronaca is None:
+        logger.debug("accaduto: nessuna cronaca disponibile, attribuzione persa")
+    else:
         try:
             atti = cronaca.elenca(da_ts=adesso_ts - ore_vere * 3600,
                                   a_ts=adesso_ts, entita=entita)
+            cronaca_letta = True
         except Exception as errore:
             # L'attribuzione e' un di piu': un archivio che non risponde non
-            # deve togliere all'utente la risposta sulla casa.
+            # deve togliere all'utente la risposta sulla casa -- ma deve
+            # dichiararsi, non sparire in silenzio (vedi sopra).
             logger.warning("cronaca illeggibile durante «accaduto» (%s: %s)",
                            type(errore).__name__, errore)
             atti = []
     voci = [_abbina(v, atti) for v in esito["voci"]]
     note = []
+    if not cronaca_letta:
+        note.append(
+            "non ho potuto controllare la mia cronaca: una voce senza "
+            "«per_mano_di» potrebbe comunque essere mia, e non solo di "
+            "un'automazione o di una persona."
+        )
     if esito.get("troncato"):
         note.append("le voci piu' vecchie della finestra non sono in questo elenco.")
     if ore_vere < ore:

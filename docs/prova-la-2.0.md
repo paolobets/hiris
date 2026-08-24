@@ -260,8 +260,9 @@ Otto richieste che li esercitano davvero:
 6. **«Cosa ti ho già detto sulla cucina?»** — `richiama`. Nessun ricordo non
    significa «la casa non ha ricordi»: significa che nessuno di quelli salvati
    nomina proprio la cucina.
-7. **«Spegni la luce della cucina»** — `esegui`. È la novità di questa build, ed è
-   quella su cui ti chiediamo di essere più severo. Guarda tre cose, in quest'ordine:
+7. **«Spegni la luce della cucina»** — `esegui`. Arrivata con la build del 12 agosto
+   (non con questa), ed è ancora quella su cui ti chiediamo di essere più severo. Guarda
+   tre cose, in quest'ordine:
    che **spenga quella giusta** (se in casa hai due «cucina», deve chiedertelo invece
    di tirare a indovinare — è lo stesso comportamento del punto 3, applicato a
    qualcosa che poi succede per davvero); che ti racconti **cos'è cambiato**, non

@@ -16,7 +16,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from hiris.app.casa.tempo import MAX_PUNTI_IN_RISPOSTA, andamento, epoch_istante
+from hiris.app.casa.tempo import (
+    MAX_PUNTI_IN_RISPOSTA, _coperta, andamento, epoch_istante,
+)
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
 
@@ -198,3 +200,97 @@ async def test_le_fasce_oltre_il_massimo_si_campionano_come_il_dettaglio():
     assert epoch_istante(esito["punti"][0]["inizio"]) == \
         epoch_istante(esito["finestra_coperta"]["da"])
     assert "200" in esito["nota"]  # il numero VERO delle fasce, non «molte»
+
+
+# -- F1 (onda finale): un istante non leggibile e' un guasto, non un vuoto --
+
+@pytest.mark.asyncio
+async def test_fascia_con_inizio_numerico_fallisce_rumorosamente():
+    """Alcune versioni del recorder rendono `start` come epoch in
+    millisecondi (un numero), non come stringa ISO -- mai misurato dal vivo
+    su questo prodotto (spec S7). Prima della correzione l'`or 0.0` faceva
+    scambiare questo caso per «prima della finestra»: la fascia spariva in
+    silenzio e la risposta diceva con sicurezza «nessuna registrazione» per
+    un'entita' che invece aveva dati veri."""
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
+        {"inizio": 1787569200000, "minimo": 25.9, "massimo": 27.1, "media": 26.5},
+    ]}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert "punti" not in esito
+    assert "errore" in esito
+    # Non e' la nota del terzo esito (§3.3): un guasto non e' un vuoto.
+    assert "non ha registrazioni" not in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_fascia_senza_inizio_fallisce_rumorosamente():
+    """Lo stesso guasto, ma con la chiave assente invece che di un tipo
+    inatteso: anche qui `epoch_istante` torna `None`, e deve fermare la
+    risposta invece di essere confuso con un vuoto legittimo."""
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
+        {"minimo": 25.9, "massimo": 27.1, "media": 26.5},
+    ]}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert "punti" not in esito
+    assert "errore" in esito
+
+
+@pytest.mark.asyncio
+async def test_statistiche_davvero_vuote_restano_lesito_nessuna_registrazione():
+    """Regressione: senza NESSUNA fascia (non un problema di forma, un vuoto
+    vero) l'esito resta il terzo del §3.3, non un errore -- la correzione di
+    F1 non deve trasformare ogni assenza in un guasto."""
+    ha = _FintoHA(statistiche={"serie": {}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert "errore" not in esito
+    assert esito["punti"] == []
+    assert "esclusa" in esito["nota"]
+
+
+def test_coperta_con_istante_non_leggibile_ha_tipi_coerenti():
+    """`_coperta` non deve mescolare tipi nella stessa coppia: se l'istante
+    grezzo non si legge, sia `da` sia `a` restano stringhe -- un `da`
+    numerico accanto a un `a` ISO e' la stessa famiglia di difetto di una
+    grana taciuta."""
+    risultato = _coperta([{"quando": 1787569200000}], "quando",
+                         "2026-08-24T14:00:00+02:00")
+    assert isinstance(risultato["da"], str)
+    assert risultato["da"] == "1787569200000"
+
+
+def test_coperta_con_istante_assente_resta_none():
+    """Il caso degenere: nessuna chiave a cui appoggiarsi resta `None`, non
+    la stringa letterale "None"."""
+    risultato = _coperta([{}], "quando", "2026-08-24T14:00:00+02:00")
+    assert risultato["da"] is None
+
+
+# -- F2 (onda finale): il troncamento del CLIENT diventa un pavimento -------
+
+@pytest.mark.asyncio
+async def test_il_troncamento_del_client_diventa_un_pavimento_dichiarato():
+    """`ha.storico` promette `troncato` SEMPRE, apposta perche' «chi legge
+    deve poter sapere che e' scattato». Se `tempo.andamento` non lo legge, il
+    conteggio nella nota e' un pavimento spacciato per esatto: su 12.000
+    cambi veri direbbe «5000 cambi», non «almeno 5000»."""
+    punti = [{"quando": f"2026-08-24T00:{m:02d}:00+02:00", "valore": "x"}
+             for m in range(60)]
+    ha = _FintoHA(storico={"serie": {"sensor.camera": punti}, "troncato": True})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita=None,
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert f"almeno {len(punti)}" in esito["nota"]
+    assert "piu' corta" in esito["nota"] or "piu' vecchi" in esito["nota"]
+
+
+@pytest.mark.asyncio
+async def test_senza_troncamento_il_conteggio_resta_esatto():
+    """Regressione: senza `troncato`, la nota non deve mai dire «almeno»."""
+    punti = [{"quando": f"2026-08-24T00:{m:02d}:00+02:00", "valore": "x"}
+             for m in range(60)]
+    ha = _FintoHA(storico={"serie": {"sensor.camera": punti}, "troncato": False})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita=None,
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert "almeno" not in (esito["nota"] or "")

@@ -132,6 +132,37 @@ async def test_storico_tetto_sui_punti_e_dichiarato():
 
 
 @pytest.mark.asyncio
+async def test_storico_rifiuta_un_entity_id_non_valido_prima_di_fare_rete():
+    """F6 (onda finale): era l'ultima asimmetria rimasta con `diario`, che
+    valida gia'. Non e' un buco di sicurezza -- il percent-encoding chiude
+    l'iniezione nell'URL -- ma un identificatore malformato deve fermarsi
+    con un errore leggibile, non partire verso Home Assistant: la prova e'
+    che NESSUN URL viene chiesto, non solo che la risposta contenga
+    `errore` (senza la guardia la richiesta parte comunque, e su questa
+    sessione fittizia senza risposte pronte fallisce lo stesso -- ma per un
+    motivo che non ha niente a che fare con la guardia mancante)."""
+    c = _client([])
+    esito = await c.storico(["sensor.camera; DROP TABLE"],
+                            "2026-08-24T08:00:00+00:00", "2026-08-24T10:00:00+00:00")
+    assert "serie" not in esito
+    assert "errore" in esito
+    assert c._session.url_chiesti == []  # nessuna richiesta e' partita
+
+
+@pytest.mark.asyncio
+async def test_storico_con_piu_entita_rifiuta_se_una_sola_non_e_valida():
+    """`entita` e' una LISTA (a differenza di `diario`, che ne prende una
+    sola): un solo identificatore malformato deve fermare l'intera
+    richiesta, non solo scartare quello."""
+    c = _client([])
+    esito = await c.storico(["sensor.buona", "non e' un entity_id"],
+                            "2026-08-24T08:00:00+00:00", "2026-08-24T10:00:00+00:00")
+    assert "serie" not in esito
+    assert "errore" in esito
+    assert c._session.url_chiesti == []
+
+
+@pytest.mark.asyncio
 async def test_storico_un_corpo_di_forma_inattesa_non_e_una_serie_vuota():
     """HTTP 200 ma un corpo che non e' la lista-di-liste attesa: non e' una
     domanda a cui HA ha risposto «niente», e' una risposta che questo metodo

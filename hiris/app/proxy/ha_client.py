@@ -917,7 +917,19 @@ class HAClient:
         e' la forma della risposta -- solo il PRIMO elemento di ogni lista
         porta `entity_id`, gli altri no -- e questo metodo lo paga portando
         avanti l'identificatore.
+
+        **Valida ogni `entity_id` PRIMA di fare rete** (F6, onda finale): era
+        l'ultima asimmetria rimasta con `diario` qui sotto, che lo fa gia'.
+        Il percent-encoding chiude comunque l'iniezione nella URL -- non e'
+        un buco di sicurezza -- ma un identificatore ostile o malformato deve
+        fermarsi con un errore leggibile, non partire verso Home Assistant.
+        `entita` e' una LISTA (quella di `diario` e' singola): tutti gli
+        elementi devono avere una forma valida, o nessuna richiesta parte.
         """
+        non_validi = [e for e in entita if not _ENTITY_ID_RE.match(str(e))]
+        if non_validi:
+            logger.warning("storico: entita' non valide: %r", non_validi)
+            return {"errore": _truncate(f"entita' non valide: {non_validi!r}", 200)}
         filtro = quote(",".join(entita), safe="")
         url = (f"{self._base_url}/api/history/period/{da_iso}"
                f"?end_time={quote(a_iso, safe='')}"

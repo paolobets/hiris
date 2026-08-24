@@ -9,7 +9,7 @@ import pytest
 
 from hiris.app.casa.tempo import (
     DEFAULT_ORE, MAX_FINESTRA_ORE, SOGLIA_GRANA_ORE, finestra, normalizza_ore,
-    scegli_superficie,
+    produce_statistiche, scegli_superficie,
 )
 
 
@@ -74,3 +74,19 @@ def test_ore_impossibili_interi_enormi_non_sollevano():
     suo contratto e' «qualunque cosa → un numero fra 1 e il tetto»."""
     ore = normalizza_ore(10**400)
     assert ore == DEFAULT_ORE
+
+
+# -- F4 (onda finale): measurement_angle NON produce statistiche -----------
+
+def test_measurement_angle_non_produce_statistiche():
+    """Spec S1: `measurement_angle` esiste come `state_class` (angoli, es.
+    la direzione del vento) ma NON produce statistiche -- va trattato come
+    le entita' senza classe. Un'appartenenza al vero insieme di HA
+    (`measurement`, `total`, `total_increasing`), non un `bool(state_class)`
+    ne' un'esclusione della sola `measurement_angle`."""
+    assert produce_statistiche("measurement_angle") is False
+    assert produce_statistiche("measurement") is True
+    assert produce_statistiche("total") is True
+    assert produce_statistiche("total_increasing") is True
+    assert produce_statistiche(None) is False
+    assert produce_statistiche("") is False
