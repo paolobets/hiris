@@ -30,8 +30,17 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #   4. dopo il deploy, la CLI che gira DAVVERO si rilegge nel log, riga
 #      «init del ponte», campo `cli=`: e' li' che si verifica che il pin
 #      sia arrivato fino al container, invece di fidarsi di questo file
+# 24 agosto 2026 — alzata da 2.1.234 a 2.1.241 nel giro di manutenzione che ha
+# preceduto la fetta «costruire». **La 2.1.241 non e' ancora stata provata su
+# questo container**, e finche' non lo e' questa riga vale meno di quanto
+# sembri: il pin garantisce la RIPRODUCIBILITA', non che la versione funzioni.
+# Si verifica col passo 4 qui sopra — la riga «init del ponte», campo `cli=` —
+# nello stesso giro di verifiche live che la fetta «costruire» ha gia' in
+# sospeso (spec §9): il ponte lo esercita qualunque turno di chat, quindi non
+# costa un passo in piu'. Se la 2.1.241 dovesse dare problemi, si torna alla
+# 2.1.234, che e' l'ultima provata sul serio.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.234 \
+    && npm install -g @anthropic-ai/claude-code@2.1.241 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

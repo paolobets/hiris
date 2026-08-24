@@ -3,8 +3,8 @@
 #
 # Un pavimento sotto la versione provata e' un'affermazione di supporto che
 # niente verifica -- la stessa classe di difetto che questo progetto insegue
-# ovunque. Dichiarare `anthropic>=0.87.0` mentre si prova solo su 0.122.0
-# significa promettere trentacinque versioni che nessuno ha mai eseguito.
+# ovunque. Dichiarare `anthropic>=0.87.0` mentre si prova solo su 1.0.0
+# significa promettere decine di versioni che nessuno ha mai eseguito.
 #
 # I TETTI restano al major successivo: quelli sono una difesa contro un
 # cambiamento che romperebbe, e non hanno bisogno di essere provati per valere.
@@ -12,7 +12,7 @@
 # Le PR di dependabot che proponevano pavimenti piu' bassi di questi sono
 # superate: le loro versioni erano gia' vecchie quando sono arrivate.
 aiohttp>=3.14.3,<4.0.0
-anthropic>=0.122.0,<1.0.0
+anthropic>=1.0.0,<2.0.0
 apscheduler>=3.11.3,<4.0.0
 python-dotenv>=1.2.2
 pytest>=9.1.1,<10.0.0

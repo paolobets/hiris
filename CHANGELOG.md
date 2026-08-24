@@ -33,6 +33,17 @@ procedere. Non e' pubblicata: resta dietro le verifiche dal vivo del §9 della s
 
 ### Changed
 
+- **Adottato il major `anthropic` 1.0.0** (era `>=0.122.0,<1.0.0`). La 1.x sposta l'SDK da
+  `httpx` alla sua fork mantenuta `httpx2` e toglie superficie deprecata da tempo; HIRIS ne usa
+  quattro cose in un file solo (`claude_runner.py`), tutte invariate. Il punto che poteva soffrire
+  in silenzio — la classificazione degli errori di provider — controlla per prime le classi di
+  eccezione dell'SDK, che non cambiano, e solo dopo ripiega su `httpx` per gli altri provider:
+  resta corretta. `httpx` resta dichiarato, lo usano il ponte, gli embedding e il runner
+  OpenAI-compat. Il pavimento e' 1.0.0 perche' e' la versione su cui la suite ha girato davvero.
+- **CLI del ponte alzata a `2.1.241`** (era `2.1.234`). **Non ancora provata su questo
+  container**: si verifica nel giro di verifiche live gia' in sospeso, leggendo il campo `cli=`
+  della riga «init del ponte» nel log. Il pin garantisce la riproducibilita', non che la versione
+  funzioni — e finche' non e' provata, la 2.1.234 resta l'ultima di cui lo sappiamo.
 - **La cronaca registra due generi**: un atto sul canale dei servizi e un atto sul canale della
   configurazione sono lo stesso fatto — stessa `origine`, stessa forma del rifiuto motivato — letto
   da due porte diverse.
