@@ -1,5 +1,36 @@
 # HIRIS — Changelog
 
+## [3.12.1] — Le forme vere (2026-08-24)
+
+**Le verifiche dal vivo hanno trovato quello che dovevano trovare, e i due strumenti del
+tempo adesso funzionano davvero.** La 3.12.0 li aveva rilasciati dichiarando apertamente che
+le risposte di Home Assistant non erano mai state misurate: le forme nei test erano scritte a
+mano. Misurate sulla casa vera, **erano diverse entrambe**, e ognuna bloccava il suo
+strumento.
+
+- **`andamento` oltre le 24 ore era fermo.** `recorder/statistics_during_period` manda
+  l'istante di ogni fascia come **intero in millisecondi**, non come stringa ISO: HIRIS non
+  sapeva leggerlo e si rifiutava di rispondere. Adesso lo traduce. I dati ci sono e sono
+  fitti — 71 fasce orarie su tre giorni per un sensore di temperatura.
+- **`accaduto` non diceva niente.** Il logbook mette il testo di un cambio di stato in
+  `state`, non in `message`: su 755 voci vere ne portavano `state` 754, e la proiezione
+  teneva solo l'altro. Lo strumento rispondeva con nome e ora e nient'altro. Adesso `stato` e
+  `messaggio` escono come due campi distinti: «on» e «entered zone Casa» sono fatti di natura
+  diversa e fonderli sarebbe stato comodo e falso.
+- **Un istante, un fuso.** `finestra_coperta` usciva nel fuso della casa e i punti in UTC,
+  nella stessa risposta: chi legge poteva concluderne che i dati cominciano due ore dopo
+  l'apertura della finestra. Adesso tutta la risposta parla un fuso solo.
+
+**Il difetto si e' presentato come doveva.** Alla prima domanda vera HIRIS ha risposto «Home
+Assistant ha risposto con dati in un formato che non riesco a interpretare senza rischiare di
+darti numeri sbagliati» invece di «non ci sono dati storici». Con la seconda frase avresti
+creduto che la casa non avesse storico.
+
+**Cosa resta da provare.** La paternita' di un'automazione o di una persona: i campi che la
+portano (`context_domain`, `context_service`, `context_user_id`) adesso si sa dove sono, ma
+non sono ancora consegnati — la descrizione dello strumento promette solo cio' che il codice
+fa, cioe' che HIRIS riconosce i propri atti.
+
 ## [3.12.0] — HIRIS e il tempo (fetta «HIRIS e il tempo») (2026-08-24)
 
 **HIRIS impara a guardare indietro.** Fino a ieri conosceva la casa solo al presente: «da quanto è
