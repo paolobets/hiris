@@ -120,3 +120,137 @@ def finestra(*, ore: float, adesso_ts: float, fuso: str | None) -> tuple[str, st
     a = datetime.fromtimestamp(adesso_ts, tz=zona)
     da = a - timedelta(hours=ore)
     return da.isoformat(), a.isoformat()
+
+
+# Quanti punti arrivano al modello in UNA risposta. Non e' il cap del client
+# (`MAX_STORICO_PUNTI`, che protegge la memoria di questo processo): questo
+# protegge la LEGGIBILITA'. Per le entita' con statistiche il problema non si
+# pone -- sopra la soglia si passa alle fasce -- ma per le altre il dettaglio
+# e' l'unica fonte che esista, e li' si riassume di nostro.
+MAX_PUNTI_IN_RISPOSTA = 120
+
+_NOTA_MAI_CAMBIATO = "in questa finestra il valore non e' mai cambiato."
+_NOTA_NESSUNA_REGISTRAZIONE = (
+    "Home Assistant non ha registrazioni per questa entita' in questa "
+    "finestra: potrebbe essere esclusa dalla registrazione (in quel caso non "
+    "ne restera' mai), oppure non esistere piu'."
+)
+_NOTA_FASCE = (
+    "valori a fasce orarie (minimo, massimo, media di ogni ora), non le "
+    "singole misure: la finestra chiesta e' piu' lunga di un giorno."
+)
+
+
+async def andamento(*, ha, entita: str, ore, unita: str | None,
+                    ha_statistiche: bool, adesso_ts: float,
+                    fuso: str | None) -> dict:
+    """Un valore nel tempo, con la grana e la finestra DAVVERO coperte.
+
+    Ritorna `{"entita", "grana", "unita", "finestra_chiesta_ore",
+    "finestra_coperta", "punti", "nota"}`, oppure `{"entita", "errore"}` --
+    mai `punti: []` per un guasto (spec §3.3).
+
+    **La finestra coperta si misura dai dati tornati**, non si deduce da
+    `purge_keep_days`: quel valore non e' leggibile da nessuna API di Home
+    Assistant, e una costante scritta qui sarebbe un'assunzione che questa
+    casa puo' smentire in silenzio.
+    """
+    ore = normalizza_ore(ore)
+    da_iso, a_iso = finestra(ore=ore, adesso_ts=adesso_ts, fuso=fuso)
+    superficie = scegli_superficie(ore=ore, ha_statistiche=ha_statistiche)
+    base = {"entita": entita, "unita": unita, "finestra_chiesta_ore": ore}
+
+    if superficie == "statistiche":
+        esito = await ha.statistiche([entita], "hour", int(ore / 24) + 1)
+        if "serie" not in esito:
+            return {**base, "errore": esito.get("errore", "statistiche non disponibili")}
+        # Il confronto passa per l'epoch, MAI per le stringhe: le statistiche
+        # tornano in UTC (`+00:00`) e la finestra nasce nel fuso della casa
+        # (`+02:00` d'estate a Roma). Due ISO-8601 con offset diversi non sono
+        # ordinabili come testo -- «2026-08-23T13:00:00+00:00» sembra maggiore
+        # di «2026-08-23T14:00:00+02:00» e sono lo stesso istante.
+        da_ts = _epoch(da_iso) or 0.0
+        fasce = [f for f in esito["serie"].get(entita, [])
+                 if (_epoch(f.get("inizio")) or 0.0) >= da_ts]
+        return {**base, "grana": "oraria",
+                "finestra_coperta": _coperta(fasce, "inizio", a_iso),
+                "punti": fasce[-MAX_PUNTI_IN_RISPOSTA:],
+                "nota": _NOTA_FASCE if fasce else _NOTA_NESSUNA_REGISTRAZIONE}
+
+    esito = await ha.storico([entita], da_iso, a_iso)
+    if "serie" not in esito:
+        return {**base, "errore": esito.get("errore", "storico non disponibile")}
+    punti = esito["serie"].get(entita, [])
+    if not punti:
+        return {**base, "grana": "dettaglio", "finestra_coperta": None,
+                "punti": [], "nota": _NOTA_NESSUNA_REGISTRAZIONE}
+    nota = None
+    if len(punti) == 1:
+        nota = _NOTA_MAI_CAMBIATO
+    ridotti = punti
+    if len(punti) > MAX_PUNTI_IN_RISPOSTA:
+        ridotti = _assottiglia(punti, MAX_PUNTI_IN_RISPOSTA)
+        # Il numero VERO, non «molti»: e' cio' che permette a chi legge di
+        # capire che sta guardando un campione e non l'elenco intero.
+        nota = (f"{len(punti)} cambi nella finestra, ridotti a "
+                f"{len(ridotti)} punti distribuiti nel tempo.")
+    return {**base, "grana": "dettaglio",
+            "finestra_coperta": _coperta(punti, "quando", a_iso),
+            "punti": ridotti, "nota": nota}
+
+
+def _epoch(grezzo) -> float | None:
+    """Un ISO-8601 col fuso -> epoch. `None` se non si legge o se il fuso manca.
+
+    Un istante SENZA fuso viene rifiutato invece di essere letto come locale:
+    «alle 17» di quale fuso? E' la stessa regola dell'unita' di misura
+    applicata al tempo, gia' scritta in `strumenti._istante` per gli istanti
+    in INGRESSO -- questa e' la sua gemella per quelli che arrivano da Home
+    Assistant.
+    """
+    if not isinstance(grezzo, str) or not grezzo.strip():
+        return None
+    try:
+        momento = datetime.fromisoformat(grezzo.strip())
+    except ValueError:
+        return None
+    return None if momento.tzinfo is None else momento.timestamp()
+
+
+def _coperta(punti: list[dict], chiave: str, a_iso: str) -> dict | None:
+    """La finestra che i dati coprono DAVVERO -- dal primo istante tornato.
+
+    `da` si riscrive nel fuso di `a`: le statistiche tornano in UTC e la
+    finestra nasce nel fuso della casa, e due estremi della STESSA finestra
+    con due offset diversi sono la fondamenta 3 rotta dentro un dizionario di
+    due chiavi. Se l'istante non si legge si restituisce com'e' arrivato --
+    meglio un formato inatteso che un istante inventato.
+    """
+    if not punti:
+        return None
+    grezzo = punti[0].get(chiave)
+    quando = _epoch(grezzo)
+    if quando is None:
+        return {"da": grezzo, "a": a_iso}
+    try:
+        zona = datetime.fromisoformat(a_iso).tzinfo
+        da = datetime.fromtimestamp(quando, tz=zona).isoformat()
+    except ValueError:
+        da = grezzo
+    return {"da": da, "a": a_iso}
+
+
+def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
+    """Un campione distribuito nel tempo, primo e ultimo sempre compresi.
+
+    Non una media: la media di stati che possono essere `on`/`off` non
+    significa niente, e questa funzione serve anche a quelli. Perdere dei
+    punti e' dichiarato dalla nota che accompagna la risposta; INVENTARNE uno
+    che non e' mai esistito non si dichiara in nessun modo.
+    """
+    if len(punti) <= quanti:
+        return list(punti)
+    passo = (len(punti) - 1) / (quanti - 1)
+    scelti = [punti[int(round(i * passo))] for i in range(quanti)]
+    scelti[-1] = punti[-1]
+    return scelti
