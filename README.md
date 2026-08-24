@@ -148,9 +148,9 @@ Saved memories come back in the nucleo on the next turn, under
 
 ---
 
-## The chat, and its eleven tools
+## The chat, and its thirteen tools
 
-The chat is the only surface. The model gets the nucleo plus exactly eleven tools
+The chat is the only surface. The model gets the nucleo plus exactly thirteen tools
 (`hiris/app/casa/strumenti.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
@@ -166,8 +166,10 @@ The chat is the only surface. The model gets the nucleo plus exactly eleven tool
 | `disdici` | cancels a promise that has not been kept yet |
 | `costruisci` | proposes an automation, a script or a scene — composes it, validates it against this installation, and writes nothing |
 | `conferma` | applies a proposal `costruisci` made, only in a turn after the one where the preview was shown |
+| `andamento` | how a value moved over time — an entity's real changes within the last 24 hours, hourly min/max/average buckets beyond that, always declaring which grain and which window it actually got |
+| `accaduto` | what happened in the house in a time window, and — where it can tell — who did it: an automation, a person, or HIRIS itself, matched against its own history and reported as *probable*, never certain |
 
-Two of the eleven write to Home Assistant. `esegui` does it immediately, through the services
+Two of the thirteen write to Home Assistant. `esegui` does it immediately, through the services
 door (`azione/porta.py`), with no confirmation step — verified against your installation, not
 approved by you first. `conferma` does it through the configuration door
 (`azione/costruzione/officina.py`), applying a proposal `costruisci` already composed and
@@ -229,7 +231,7 @@ turn is enqueued together with the same context the synchronous chat composes
 before it starts (`agent/runner.py::sonda_strumenti`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model gets the
-same eleven tools as the synchronous path, under an `mcp__hiris__` prefix: it
+same thirteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
 can look at the current state, not just the snapshot, and it can act — through
 the same two doors as the synchronous path, never one of its own.
 When it fails, the answer
@@ -293,7 +295,7 @@ nesting renames an option, and a renamed option loses its stored value silently.
 | `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
 
 > With `local_model.url` + `local_model.model` set and `provider_ollama`
-> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the eleven
+> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the thirteen
 > tools all work without any cloud key. If no provider is both enabled and
 > credentialed, AI calls are disabled.
 
@@ -419,7 +421,7 @@ rewritten, with a design of its own.
   can call their services like any other
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
-- **The thirty-four-tool catalogue** — replaced by the eleven above
+- **The thirty-four-tool catalogue** — replaced by the thirteen above
 
 ---
 

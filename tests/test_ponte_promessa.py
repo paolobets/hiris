@@ -114,9 +114,11 @@ def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
     assert ok is True, motivo
 
     ok_chat, motivo_chat = verifica_init(esito, per_promessa=False)
+    n_promessa = len(esito.init["tools"])
     assert ok_chat is False, (
-        "col catalogo della chat quegli stessi cinque strumenti risultano "
-        "incompleti: e' il difetto che la verifica live ha colto")
+        f"col catalogo della chat quegli stessi {n_promessa} strumenti del turno "
+        "di promessa risultano incompleti: e' il difetto che la verifica live ha "
+        "colto")
 
 
 def test_l_argv_permette_concludi_su_un_turno_di_promessa():
