@@ -417,3 +417,32 @@ async def test_render_template_error_on_exception_without_echoing_exc(client):
 
     assert "error" in out
     assert "segreto interno" not in out["error"]
+
+
+# --- La forma VERA del logbook, misurata sulla casa il 24/08/2026 -----
+
+
+@pytest.mark.asyncio
+async def test_diario_il_testo_di_un_cambio_di_stato_vive_in_state(client):
+    """La misura del 24/08/2026: su 755 voci vere, **754 portano `state` e una
+    sola porta `message`**. Il diario proiettava solo `message`, quindi
+    «accaduto» rispondeva con duecento voci che dicevano nome e ora e
+    NIENT'ALTRO -- uno strumento che non poteva rispondere alla domanda per
+    cui esiste.
+
+    I due campi restano DUE, non si fondono: «on» e «entered zone Casa» sono
+    fatti di natura diversa, e chi legge deve poterli distinguere.
+    """
+    corpo = [
+        {"state": "on", "entity_id": "binary_sensor.movimento",
+         "name": "Movimento", "when": "2026-08-24T16:34:04.487614+00:00"},
+        {"name": "iPhone di Marta", "message": "entered zone Casa",
+         "entity_id": "zone.home", "domain": "mobile_app",
+         "when": "2026-08-24T17:05:55.727146+00:00"},
+    ]
+    _fake_session(client, "get", resp=_resp(200, json_data=corpo))
+    esito = await client.diario(None, 3)
+    assert esito["voci"][0]["stato"] == "on"
+    assert esito["voci"][0]["messaggio"] is None
+    assert esito["voci"][1]["messaggio"] == "entered zone Casa"
+    assert esito["voci"][1]["stato"] is None

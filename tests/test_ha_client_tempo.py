@@ -213,3 +213,66 @@ async def test_statistiche_distinguono_il_vuoto_dal_guasto(monkeypatch):
     monkeypatch.setattr(c, "_ws_request", _giu)
     esito = await c.statistiche(["sensor.camera"], "hour", 30)
     assert "serie" not in esito and "errore" in esito
+
+
+# --- Le forme VERE, misurate sulla casa il 24/08/2026 -----------------
+#
+# Fino a qui la forma delle risposte di Home Assistant in questo file era
+# scritta a mano, cioe' immaginata (spec §7.1-7.2), e lo diceva il docstring
+# in cima. La verifica dal vivo l'ha misurata, e ha trovato due scarti che
+# rendevano inutilizzabili tutti e due gli strumenti del tempo. Questi test
+# pinnano cio' che la casa ha risposto DAVVERO, non cio' che ci aspettavamo.
+
+
+@pytest.mark.asyncio
+async def test_statistiche_lo_start_e_un_epoch_in_MILLISECONDI(monkeypatch):
+    """La misura del 24/08/2026: `recorder/statistics_during_period` risponde
+    `{"start": 1787342400000, "end": ..., "max": .., "mean": .., "min": ..}`
+    -- `start` e' un INTERO in millisecondi, non una stringa ISO.
+
+    Era il difetto che fermava l'intero ramo delle statistiche: `andamento`
+    non sapeva leggere quell'istante e rifiutava di rispondere (correttamente:
+    dichiarava di non poter leggere invece di dire «non ci sono dati»).
+    """
+    c = HAClient("http://ha.local", "token")
+
+    async def _reale(_tipo, extra=None, timeout=10.0):
+        return {"sensor.camera": [
+            {"start": 1787342400000, "end": 1787346000000,
+             "max": 25.2, "mean": 25.2, "min": 25.2, "last_reset": None},
+        ]}
+
+    monkeypatch.setattr(c, "_ws_request", _reale)
+    esito = await c.statistiche(["sensor.camera"], "hour", 3)
+    fascia = esito["serie"]["sensor.camera"][0]
+    assert fascia["inizio"] == "2026-08-21T20:00:00+00:00"
+    assert fascia["media"] == 25.2
+
+
+@pytest.mark.asyncio
+async def test_statistiche_reggono_anche_lo_start_gia_in_ISO(monkeypatch):
+    """Le versioni di Home Assistant non sono tutte uguali: se un giorno
+    `start` tornasse gia' come stringa ISO, non deve rompersi niente."""
+    c = HAClient("http://ha.local", "token")
+
+    async def _iso(_tipo, extra=None, timeout=10.0):
+        return {"sensor.camera": [{"start": "2026-08-21T20:00:00+00:00", "mean": 25.2}]}
+
+    monkeypatch.setattr(c, "_ws_request", _iso)
+    esito = await c.statistiche(["sensor.camera"], "hour", 3)
+    assert esito["serie"]["sensor.camera"][0]["inizio"] == "2026-08-21T20:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_statistiche_un_istante_illeggibile_resta_illeggibile(monkeypatch):
+    """Non si inventa: una forma che non sappiamo leggere passa cosi' com'e',
+    e chi la riceve la rifiuta rumorosamente (`casa/tempo.py`). Convertirla a
+    caso sarebbe peggio del difetto che stiamo chiudendo."""
+    c = HAClient("http://ha.local", "token")
+
+    async def _strano(_tipo, extra=None, timeout=10.0):
+        return {"sensor.camera": [{"start": {"non": "un istante"}, "mean": 1.0}]}
+
+    monkeypatch.setattr(c, "_ws_request", _strano)
+    esito = await c.statistiche(["sensor.camera"], "hour", 3)
+    assert esito["serie"]["sensor.camera"][0]["inizio"] == {"non": "un istante"}
