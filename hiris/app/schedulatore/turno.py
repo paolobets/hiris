@@ -24,11 +24,17 @@ from ..decisione_modelli import _MOTIVI_RIPIEGO
 
 logger = logging.getLogger(__name__)
 
-# I quattro che leggono e basta. Non `esegui` (tocca la casa), non `ricorda`
+# I sei che leggono e basta. Non `esegui` (tocca la casa), non `ricorda`
 # (scrive nella memoria, che entra verbatim nel prompt di sistema), non
 # `prometti`/`disdici` (un turno che si da' appuntamenti da solo e' autonomia
-# costruita per sbaglio).
-SOLA_LETTURA = ("cerca", "guarda", "legami", "richiama")
+# costruita per sbaglio), non `costruisci`/`conferma` (scrivono
+# configurazione: un turno che nessuno guarda non costruisce).
+#
+# `andamento` e `accaduto` (fetta «HIRIS e il tempo») entrano: leggono e
+# basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare la
+# temperatura con quella di un'ora prima invece di portarsi dietro una
+# fotografia scattata alla nascita.
+SOLA_LETTURA = ("cerca", "guarda", "legami", "richiama", "andamento", "accaduto")
 
 CONCLUDI_TOOL_DEF = {
     "name": "concludi",

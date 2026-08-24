@@ -122,7 +122,7 @@ from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from .domande import legami as _legami_leggibili
-from .tempo import epoch_istante
+from . import tempo
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
 from ..memoria.cache_indice import CacheIndice
@@ -718,11 +718,91 @@ CONFERMA_TOOL_DEF = {
     },
 }
 
+ANDAMENTO_TOOL_DEF = {
+    "name": "andamento",
+    "description": (
+        "Come e' andato nel tempo il valore di UNA entita': la temperatura di "
+        "una camera nelle ultime ore, se una porta e' rimasta aperta, quanto "
+        "ha consumato un contatore. Richiede `entita` (l'identificatore "
+        "ESATTO -- se hai solo un nome, usa prima `cerca`) e `ore`, la "
+        "finestra all'indietro da adesso. "
+        "**La grana la scelgo io, non tu**, e la risposta te la dichiara: "
+        "entro le ultime 24 ore ricevi i cambi veri (`grana: dettaglio`); su "
+        "finestre piu' lunghe, per i sensori che le hanno, ricevi le fasce "
+        "orarie di Home Assistant (`grana: oraria`, con minimo/massimo/media "
+        "di ogni ora). Una media oraria NON e' una misura: se dici «alle 14 "
+        "c'erano 26,5 gradi» quando la risposta porta una fascia, stai "
+        "affermando una precisione che non hai -- di' «fra le 14 e le 15». "
+        "`finestra_coperta` dice il periodo che i dati coprono DAVVERO, che "
+        "puo' essere piu' corto di quello chiesto: Home Assistant conserva i "
+        "cambi per un tempo limitato, e oltre non resta niente. "
+        "`punti: []` con una `nota` significa che non ci sono registrazioni, "
+        "il che NON vuol dire «non e' mai cambiato»: leggi la nota, che "
+        "distingue i due casi. Se invece torna `errore`, Home Assistant non "
+        "ha risposto: non concludere niente sulla casa, dillo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "entita": {
+                "type": "string",
+                "description": "L'identificatore esatto dell'entita' (es. 'sensor.camera_temperatura').",
+            },
+            "ore": {
+                "type": "number",
+                "description": (
+                    "Quante ore all'indietro guardare, da adesso. 24 = oggi, "
+                    "48 = due giorni, 720 = un mese. Il massimo e' 2160 (90 giorni)."
+                ),
+            },
+        },
+        "required": ["entita", "ore"],
+    },
+}
+
+ACCADUTO_TOOL_DEF = {
+    "name": "accaduto",
+    "description": (
+        "Cosa e' successo in casa in una finestra di tempo, e -- dove si puo' "
+        "dire -- per mano di chi: quale automazione, quale persona, o HIRIS "
+        "stesso. Serve alle domande «perche' si e' accesa?», «cosa e' "
+        "successo stanotte?». `entita` e' facoltativa: senza, guarda tutta la "
+        "casa. "
+        "Quando una voce porta `per_mano_di: HIRIS` significa che in quel "
+        "momento avevo eseguito io un'azione su quella entita' -- e "
+        "`abbinamento: probabile` e' li' apposta: Home Assistant non firma le "
+        "voci del suo diario, l'aggancio e' l'istante. Dillo come probabile "
+        "(«dovrei averla accesa io alle 18:04, me l'avevi chiesto»), non come "
+        "certo. Una voce SENZA `per_mano_di` non e' mia: puo' essere "
+        "un'automazione, una persona o un interruttore fisico, e se il "
+        "messaggio non lo dice la risposta onesta e' «l'ha accesa qualcuno e "
+        "non so chi». "
+        "`troncato: true` o una `nota` significano che l'elenco non e' "
+        "completo: non concludere «non e' successo altro». `errore` significa "
+        "che il diario non e' disponibile: non e' una giornata tranquilla."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "entita": {
+                "type": "string",
+                "description": "Facoltativa: l'identificatore esatto su cui restringere. Senza, tutta la casa.",
+            },
+            "ore": {
+                "type": "number",
+                "description": "Quante ore all'indietro guardare. Il diario copre al piu' 168 ore (7 giorni).",
+            },
+        },
+        "required": ["ore"],
+    },
+}
+
 STRUMENTI_CONOSCENZA: list[dict] = [
     CERCA_TOOL_DEF, GUARDA_TOOL_DEF, LEGAMI_TOOL_DEF, RICORDA_TOOL_DEF,
     RICHIAMA_TOOL_DEF, ESEGUI_TOOL_DEF,
     PROMETTI_TOOL_DEF, PROMESSE_TOOL_DEF, DISDICI_TOOL_DEF,
     COSTRUISCI_TOOL_DEF, CONFERMA_TOOL_DEF,
+    ANDAMENTO_TOOL_DEF, ACCADUTO_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -737,7 +817,7 @@ _NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
 
 
 class DispatcherStrumenti:
-    """Collega gli undici strumenti agli archivi, alla porta, all'officina e al
+    """Collega i tredici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
     Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
@@ -753,7 +833,7 @@ class DispatcherStrumenti:
     def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
                  cache=None, porta=None, cache_indice: CacheIndice | None = None,
                  ha=None, registro=None, promesse=None, officina=None,
-                 turno: str | None = None) -> None:
+                 turno: str | None = None, cronaca=None) -> None:
         self._casa = archivio_casa
         self._memoria = archivio_memoria
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -813,6 +893,14 @@ class DispatcherStrumenti:
         # l'officina rifiuta di applicare dalla chat e indica la pagina --
         # un cancello che non sa chi sta passando non e' un cancello.
         self._turno = turno
+        # La cronaca degli atti (`azione/cronaca.py`), la STESSA istanza che
+        # riceve l'officina -- non una seconda apertura dello stesso file
+        # SQLite. Serve ad `accaduto` per dire «l'ho fatto io» dove il diario
+        # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
+        # legittimo e NON passa da `_archivio_mancante`: senza cronaca lo
+        # strumento risponde lo stesso, perdendo l'attribuzione e non la
+        # risposta -- che e' una degradazione, non un guasto.
+        self._cronaca = cronaca
 
     _ARCHIVIO_PER_STRUMENTO = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
@@ -822,6 +910,7 @@ class DispatcherStrumenti:
         "prometti": ("promesse",), "promesse": ("promesse",),
         "disdici": ("promesse",),
         "costruisci": ("officina",), "conferma": ("officina",),
+        "andamento": ("ha",), "accaduto": ("ha",),
     }
 
     def _canale_ha(self):
@@ -906,6 +995,8 @@ class DispatcherStrumenti:
             "disdici": self._disdici,
             "costruisci": self._costruisci,
             "conferma": self._conferma,
+            "andamento": self._andamento,
+            "accaduto": self._accaduto,
         }[nome]
         try:
             # `_esegui`, `_legami`, `_prometti`, `_costruisci` e `_conferma`
@@ -1385,7 +1476,7 @@ class DispatcherStrumenti:
 
         await self._assicura_registro_fresco()
 
-        quando = epoch_istante(argomenti.get("quando"))
+        quando = tempo.epoch_istante(argomenti.get("quando"))
         if quando is None:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
@@ -1725,3 +1816,38 @@ class DispatcherStrumenti:
         if self._casa is None:
             return None
         return self._casa.sistema_di_riferimento().get("fuso")
+
+    # -- il tempo ------------------------------------------------------
+
+    async def _andamento(self, argomenti: dict[str, Any]) -> dict:
+        """Un valore nel tempo. La scelta della superficie e' di `casa/tempo.py`.
+
+        Qui si legge dallo specchio cio' che il modello non deve doverci
+        dire: l'unita' di misura e `state_class`. Chiederglieli sarebbe
+        chiedergli di sapere una cosa che abbiamo noi -- e sbaglierebbe in
+        silenzio (spec §3.1).
+        """
+        entita = argomenti.get("entita")
+        if not isinstance(entita, str) or not entita.strip():
+            return {"errore": "«andamento» richiede «entita»: l'identificatore esatto."}
+        import time as _time
+
+        entita = entita.strip()
+        stati = self._stati_grezzi() or {}
+        voce = stati.get(entita) or {}
+        return await tempo.andamento(
+            ha=self._canale_ha(), entita=entita, ore=argomenti.get("ore"),
+            unita=voce.get("unit") or None,
+            ha_statistiche=bool(voce.get("state_class")),
+            adesso_ts=_time.time(), fuso=self._fuso())
+
+    async def _accaduto(self, argomenti: dict[str, Any]) -> dict:
+        entita = argomenti.get("entita")
+        if entita is not None and (not isinstance(entita, str) or not entita.strip()):
+            return {"errore": "«accaduto» vuole «entita» come identificatore, oppure niente."}
+        import time as _time
+
+        return await tempo.accaduto(
+            ha=self._canale_ha(), cronaca=self._cronaca,
+            entita=entita.strip() if isinstance(entita, str) else None,
+            ore=argomenti.get("ore"), adesso_ts=_time.time())

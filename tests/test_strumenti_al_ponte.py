@@ -169,10 +169,14 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     entrano `costruisci` e `conferma` -- che scrivono CONFIGURAZIONE passando
     per l'officina, non un servizio (`schedulatore/turno.py` li tiene FUORI
     dallo stesso elenco di ammissione, per la stessa ragione: un turno di
-    promessa non costruisce da solo)."""
+    promessa non costruisce da solo). Fetta «HIRIS e il tempo» Task 6: da 11
+    a 13, entrano `andamento` e `accaduto` -- che guardano indietro nel tempo
+    passando per `casa/tempo.py`, LEGGONO e basta, ed entrano invece nello
+    stesso elenco di ammissione del turno delle promesse, per la ragione
+    opposta a `costruisci`/`conferma`."""
     nomi = runner.nomi_mcp()
 
-    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 11
+    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 13
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
