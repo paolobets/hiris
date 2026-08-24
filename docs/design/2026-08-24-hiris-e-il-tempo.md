@@ -274,6 +274,14 @@ all'ultimo giro è sfuggita per l'ordine delle parole.
    HIRIS riconosce i propri atti, per il resto riporta il messaggio del diario così com'è — perché
    quella forma non è mai stata misurata. Aggiungere quei campi indovinandone la forma non
    manterrebbe comunque la promessa.
+
+   **E la forma di `when`, nella stessa misura.** `_abbina` legge l'istante di ogni voce per
+   agganciarla alla cronaca: se il logbook lo rendesse in una forma che non sappiamo leggere — un
+   numero invece di un ISO, lo scenario gemello di quello misurato al punto 1 — **nessuna voce si
+   abbinerebbe più**, in silenzio. Non nascerebbe un dato falso (la guardia rifiuta invece di
+   attribuire), ma la frase «una voce senza `per_mano_di` non è mia» diventerebbe falsa detta con
+   sicurezza, e la verifica §7.5 è la prima che se ne accorgerebbe. Rilevata dalla re-review
+   dell'onda finale come residuo non bloccante: **si misura qui, non si indovina.**
 3. **I due confini su questa casa.** `purge_keep_days` è configurabile, e il default vale finché
    nessuno l'ha cambiato. E soprattutto: **quanto indietro arrivano davvero le statistiche.** Che
    sopravvivano alla potatura del dettaglio è certo — è il motivo per cui esistono — ma «per
