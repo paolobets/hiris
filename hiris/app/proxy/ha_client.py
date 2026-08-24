@@ -80,15 +80,22 @@ _CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
 # Il logbook di una settimana puo' contenere decine di migliaia di voci.
-MAX_LOGBOOK_ENTRIES = 200
-# Finestra massima interrogabile dal logbook. Il cap sulle voci limita la
+MAX_DIARIO_VOCI = 200
+# Finestra massima interrogabile dal diario. Il cap sulle voci limita la
 # risposta, non il costo della query: senza un tetto sulle ore HA scandisce
 # l'intero database del recorder. 168 ore = 7 giorni, quanto basta per "cosa e'
 # successo questa settimana?" e non di piu' (il recorder di default ne conserva
 # 10, quindi oltre non c'e' comunque granche' da leggere).
-MAX_LOGBOOK_HOURS = 168
-# Finestra usata quando `hours` non e' un numero interpretabile.
-DEFAULT_LOGBOOK_HOURS = 24
+MAX_DIARIO_ORE = 168
+# Finestra usata quando `ore` non e' un numero interpretabile.
+DEFAULT_DIARIO_ORE = 24
+# Cap sui punti di storico dettagliato riportati da UNA chiamata. Due giorni di
+# un sensore chiacchierone ne producono migliaia: il cap protegge la memoria di
+# QUESTO processo, non la leggibilita' della risposta (di quella si occupa
+# `casa/tempo.py`, che riassume). Chi legge deve poter sapere che e' scattato,
+# quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
+# troncamento del diario, imparata li'.
+MAX_STORICO_PUNTI = 5000
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
 # ma un payload.
 MAX_TEMPLATE_LEN = 2000
@@ -276,6 +283,11 @@ class HAClient:
     # ORFANO DICHIARATO, i suoi call site (history_tools.py, calendar_tools.py)
     # erano gia' caduti col ToolDispatcher. Raccolto qui (fetta E3 Task 12):
     # verificato di nuovo, zero chiamanti in tutto il repo.
+    #
+    # 24/08/2026, fetta «HIRIS e il tempo»: lo storico dettagliato e' TORNATO, come
+    # `storico()` qui sotto, e questa volta con un chiamante vero (`casa/tempo.py`).
+    # La rimozione raccontata sopra resta vera come storia -- usci' perche' nessuno
+    # leggeva -- ma non descrive piu' lo stato di adesso.
 
     async def call_service(self, dominio: str, servizio: str, dati: dict) -> list[dict]:
         """Chiama un servizio di Home Assistant. La primitiva che ATTUA.
@@ -879,72 +891,148 @@ class HAClient:
                 health[str(domain)] = entries
         return health
 
-    async def get_logbook(self, entity_id: str | None, hours: int) -> list[dict]:
+    async def storico(self, entita: list[str], da_iso: str, a_iso: str) -> dict:
+        """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
+        GET /api/history/period/<da>.
+
+        Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}}`, piu'
+        `troncato: True` se il cap sui punti e' scattato. In caso di guasto
+        ritorna `{"errore": str}` e NON la chiave `serie`: una serie vuota
+        afferma «il valore non e' mai cambiato», che e' una cosa che non
+        sappiamo quando la domanda non e' nemmeno arrivata (spec §3.3).
+
+        Non solleva mai: ogni guasto diventa `errore`.
+
+        **Questa primitiva era gia' esistita ed e' uscita come orfana**
+        (`get_history`, censimento del 17/08/2026: scriveva e nessuno
+        leggeva). Torna adesso con un chiamante vero, `casa/tempo.py`.
+
+        `minimal_response` + `no_attributes`: senza, Home Assistant rimanda
+        l'intero dizionario degli attributi a ogni cambio di stato. Il prezzo
+        e' la forma della risposta -- solo il PRIMO elemento di ogni lista
+        porta `entity_id`, gli altri no -- e questo metodo lo paga portando
+        avanti l'identificatore.
+        """
+        filtro = quote(",".join(entita), safe="")
+        url = (f"{self._base_url}/api/history/period/{da_iso}"
+               f"?end_time={quote(a_iso, safe='')}"
+               f"&filter_entity_id={filtro}"
+               f"&minimal_response&no_attributes")
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status != 200:
+                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
+                dati = await resp.json()
+        except Exception as exc:
+            logger.debug("storico: non disponibile (%s)", exc)
+            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+        if not isinstance(dati, list):
+            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+        serie: dict[str, list[dict]] = {}
+        troncato = False
+        for gruppo in dati:
+            if not isinstance(gruppo, list):
+                continue
+            corrente = None
+            for voce in gruppo:
+                if not isinstance(voce, dict):
+                    continue
+                # Solo il primo elemento porta l'entita' (minimal_response):
+                # si porta avanti. Un gruppo che non la porta affatto non e'
+                # attribuibile a nessuno e si salta, invece di finire sotto
+                # una chiave inventata.
+                corrente = voce.get("entity_id") or corrente
+                if not corrente:
+                    continue
+                quando = voce.get("last_changed") or voce.get("last_updated")
+                if quando is None:
+                    continue
+                punti = serie.setdefault(corrente, [])
+                if len(punti) >= MAX_STORICO_PUNTI:
+                    troncato = True
+                    continue
+                punti.append({"quando": quando, "valore": voce.get("state")})
+        esito: dict = {"serie": serie}
+        if troncato:
+            esito["troncato"] = True
+        return esito
+
+    async def diario(self, entita: str | None, ore: int) -> dict:
         """Cronologia eventi via GET /api/logbook/<ISO start>.
 
-        `entity_id` filtra su una singola entita' (None = tutta la casa),
-        `hours` e' la finestra all'indietro da adesso, normalizzata fra 1 e
-        MAX_LOGBOOK_HOURS (valori non numerici valgono DEFAULT_LOGBOOK_HOURS).
-        Ritorna al piu' MAX_LOGBOOK_ENTRIES voci {when, name, message,
-        entity_id}, tenendo le piu' recenti; [] se il dato non e' disponibile.
-        Non solleva mai: ogni fallimento vale come "dato non disponibile".
+        `entita` filtra su una singola entita' (None = tutta la casa), `ore`
+        e' la finestra all'indietro da adesso, normalizzata fra 1 e
+        MAX_DIARIO_ORE (valori non numerici valgono DEFAULT_DIARIO_ORE).
 
-        TRONCAMENTO — una lista lunga esattamente MAX_LOGBOOK_ENTRIES voci
-        significa quasi certamente che le voci PIU' VECCHIE della finestra sono
-        state scartate. Il tipo di ritorno non ospita un flag, quindi il
-        chiamante che confeziona la risposta per l'utente DEVE controllare
-        `len(voci) == MAX_LOGBOOK_ENTRIES` e dichiarare il troncamento:
-        altrimenti l'LLM conclude che "non e' successo altro". Vale lo stesso
-        per la finestra: se `hours` e' stato clampato a MAX_LOGBOOK_HOURS il
-        periodo coperto e' piu' corto di quello richiesto."""
-        if entity_id is not None and not _ENTITY_ID_RE.match(str(entity_id)):
-            logger.warning("get_logbook: entity_id non valido: %r", entity_id)
-            return []
-        # `hours` arriva direttamente da una tool-call dell'LLM: puo' essere
+        Ritorna `{"voci": [{"quando", "nome", "messaggio", "entita"}, ...],
+        "troncato": bool, "ore": int}`, tenendo al piu' MAX_DIARIO_VOCI voci
+        (le piu' recenti). In caso di guasto -- o di un'entita' non valida --
+        ritorna `{"errore": str}` e NON la chiave `voci`: una lista vuota
+        affermerebbe «non e' successo niente», che e' un'altra cosa dal «non
+        ho potuto chiedere» (spec §3.3). Non solleva mai: ogni fallimento
+        diventa `errore`.
+
+        Sia `ore` sia `troncato` tornano DICHIARATI al chiamante che
+        confeziona la risposta per l'utente: prima questo dato restava dentro
+        il metodo e il docstring gli chiedeva di ricostruirlo da
+        `len(voci) == MAX_DIARIO_VOCI` -- cioe' di indovinarlo -- e lo stesso
+        valeva per la finestra clampata, altrimenti l'LLM concludeva «non e'
+        successo altro» o diceva «nell'ultimo mese» avendo guardato una
+        settimana.
+        """
+        if entita is not None and not _ENTITY_ID_RE.match(str(entita)):
+            logger.warning("diario: entita' non valida: %r", entita)
+            return {"errore": f"entita' non valida: {entita!r}"}
+        # `ore` arriva direttamente da una tool-call dell'LLM: puo' essere
         # None, una stringa, NaN o un numero fuori scala. Si normalizza in
         # spazio float e si clampa PRIMA di costruire il timedelta, perche'
         # int(inf), int(10**12) come ore e timedelta(hours=18_000_000)
         # sollevano OverflowError, che non deve mai raggiungere il chiamante.
         try:
-            numeric = float(hours)
+            numeric = float(ore)
         except Exception:
-            numeric = float(DEFAULT_LOGBOOK_HOURS)
+            numeric = float(DEFAULT_DIARIO_ORE)
         if numeric != numeric:  # NaN: non confrontabile, vale come assente
-            numeric = float(DEFAULT_LOGBOOK_HOURS)
-        window = int(min(float(MAX_LOGBOOK_HOURS), max(1.0, numeric)))
+            numeric = float(DEFAULT_DIARIO_ORE)
+        finestra = int(min(float(MAX_DIARIO_ORE), max(1.0, numeric)))
         now = datetime.now(timezone.utc)
-        start = (now - timedelta(hours=window)).isoformat()
+        start = (now - timedelta(hours=finestra)).isoformat()
         # start sta nel path (come /api/history/period); end_time ed entity
         # stanno nella query, dove il "+" del fuso orario va percent-encoded
         # o verrebbe letto come spazio.
         url = (f"{self._base_url}/api/logbook/{start}"
                f"?end_time={quote(now.isoformat(), safe='')}")
-        if entity_id is not None:
-            url += f"&entity={quote(entity_id, safe='')}"
+        if entita is not None:
+            url += f"&entity={quote(entita, safe='')}"
         try:
             async with self._session.get(url) as resp:
                 if resp.status != 200:
-                    logger.debug("get_logbook: HTTP %s — nessun dato", resp.status)
-                    return []
+                    logger.debug("diario: HTTP %s — nessun dato", resp.status)
+                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
                 data = await resp.json()
         except Exception as exc:
-            logger.debug("get_logbook: non disponibile (%s)", exc)
-            return []
+            logger.debug("diario: non disponibile (%s)", exc)
+            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(data, list):
-            return []
-        entries = []
+            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+        voci = []
         for item in data:
             if not isinstance(item, dict):
                 continue
-            entries.append({
-                "when": item.get("when"),
-                "name": item.get("name"),
-                "message": item.get("message"),
-                "entity_id": item.get("entity_id"),
+            voci.append({
+                "quando": item.get("when"),
+                "nome": item.get("name"),
+                "messaggio": item.get("message"),
+                "entita": item.get("entity_id"),
             })
-        # Cap DOPO il filtro: troncare prima farebbe restituire meno voci del
-        # massimo pur essendocene di valide piu' vecchie.
-        return entries[-MAX_LOGBOOK_ENTRIES:]
+        # `ore` torna al chiamante CLAMPATO: chi compone la risposta per
+        # l'utente deve poter dire «nell'ultima settimana» invece di ripetere
+        # il mese che gli era stato chiesto. Prima questo dato restava dentro
+        # il metodo e il docstring chiedeva al chiamante di ricostruirlo --
+        # cioe' di indovinarlo.
+        return {"voci": voci[-MAX_DIARIO_VOCI:],
+                "troncato": len(voci) > MAX_DIARIO_VOCI,
+                "ore": finestra}
 
     async def render_template(self, template: str) -> dict:
         """Valuta un template Jinja di HA via POST /api/template.
@@ -987,7 +1075,7 @@ class HAClient:
     # stessa fetta: il loro unico chiamante era `tools/calendar_tools.
     # get_calendar_events`, uscito lui stesso perche' orfano dal Task 7 (il
     # `ToolDispatcher` che lo chiamava e' uscito). Nessun test le copriva
-    # come API del client (a differenza di `get_statistics`, che ha una sua
+    # come API del client (a differenza di `statistiche`, che ha una sua
     # suite dedicata, tests/test_ha_client_statistics.py, e resta): nessuna
     # garanzia persa.
 
@@ -1056,22 +1144,49 @@ class HAClient:
         result = await self._ws_request(msg_type, timeout=timeout)
         return result if isinstance(result, list) else []
 
-    async def get_statistics(self, statistic_ids: list[str], period: str,
-                             days: int) -> dict:
-        """HA Long-Term Statistics for measurement sensors over the last N days.
+    async def statistiche(self, identificatori: list[str], periodo: str,
+                          giorni: int) -> dict:
+        """Le statistiche a lungo termine: min/max/media per fascia.
 
-        period: "5minute" | "hour" | "day" | "week" | "month".
-        Returns {statistic_id: [{start, mean, min, max, sum?}, ...]} ({} on failure).
-        end_time is omitted -> HA defaults it to now.
+        `periodo`: "5minute" | "hour" | "day" | "week" | "month".
+        Ritorna `{"serie": {statistic_id: [{"inizio","minimo","massimo",
+        "media","somma"}]}}`, oppure `{"errore": str}` -- mai `{}`, che
+        direbbe «non ci sono statistiche» anche quando il websocket e' giu'.
+
+        Le chiavi si traducono qui, all'unico confine con Home Assistant:
+        `start`/`min`/`max`/`mean`/`sum` sono il vocabolario di HA, e lasciarle
+        passare significherebbe farle affiorare fino al modello mescolate a
+        chiavi italiane. `somma` c'e' solo per i contatori: si omette quando HA
+        non la manda, invece di metterla a `None` (una somma nulla e una somma
+        assente non sono la stessa cosa).
+
+        **Mai girata in produzione** (spec §7.1): la forma della risposta e'
+        quella documentata, non quella misurata.
         """
-        start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        result = await self._ws_request(
+        start = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+        grezzo = await self._ws_request(
             "recorder/statistics_during_period",
             extra={"start_time": start,
-                   "statistic_ids": list(statistic_ids),
-                   "period": period},
+                   "statistic_ids": list(identificatori),
+                   "period": periodo},
         )
-        return result if isinstance(result, dict) else {}
+        if not isinstance(grezzo, dict):
+            return {"errore": "Home Assistant non ha risposto alla richiesta di statistiche"}
+        serie: dict[str, list[dict]] = {}
+        for ident, fasce in grezzo.items():
+            if not isinstance(fasce, list):
+                continue
+            tradotte = []
+            for f in fasce:
+                if not isinstance(f, dict):
+                    continue
+                voce = {"inizio": f.get("start"), "minimo": f.get("min"),
+                        "massimo": f.get("max"), "media": f.get("mean")}
+                if f.get("sum") is not None:
+                    voce["somma"] = f.get("sum")
+                tradotte.append(voce)
+            serie[ident] = tradotte
+        return {"serie": serie}
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
     # (`components/search/__init__.py`), non coi nomi delle costanti.
