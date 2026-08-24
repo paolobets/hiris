@@ -46,6 +46,11 @@ from ..storage import connect, init_schema
 # accorga.
 CONSERVAZIONE_ESECUZIONI_S = 90 * 86400
 
+# Quante righe torna UNA interrogazione. La cronaca conserva 90 giorni: senza
+# tetto, «cosa hai fatto» su una casa attiva restituirebbe l'intero trimestre
+# dentro il contesto di un modello.
+MAX_RIGHE_ELENCO = 200
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS esecuzioni (
     id TEXT PRIMARY KEY,
@@ -166,3 +171,38 @@ class Cronaca:
             r = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE id=?", (esecuzione_id,)).fetchone()
         return None if r is None else _riga(r)
+
+    def elenca(self, *, da_ts: float, a_ts: float, entita: str | None = None,
+               limite: int = MAX_RIGHE_ELENCO) -> list[dict]:
+        """Gli atti di HIRIS in una finestra, dal piu' recente.
+
+        Fino a questa fetta la cronaca si poteva solo SCRIVERE e leggere per
+        identificatore: nessuno poteva chiederle «cosa hai fatto ieri», e
+        nessuno strumento la esponeva al modello. Era scritta e muta --
+        fondamenta 4 -- e il dato per rispondere c'era gia' in tabella.
+
+        `entita` filtra sulla lista DECODIFICATA, non sul JSON grezzo: un
+        `LIKE '%light.cucina%'` prenderebbe anche `light.cucina_2`, che e'
+        un'altra lampada. Il filtro costa una decodifica per riga sulle sole
+        righe gia' ristrette dalla finestra, che l'indice `idx_esecuzioni_
+        quando` copre.
+
+        Il lock e' lo STESSO delle scritture, per la ragione scritta in
+        `leggi`: connessione condivisa fra thread.
+        """
+        with self._lock:
+            # Moltiplicare il limite di lettura per 10 e' un tetto di lettura
+            # da SQL, non il risultato finale: col filtro per entita', il
+            # LIMIT di SQL non puo' essere quello finale. Su una casa attiva,
+            # chiedere le ultime 200 righe e poi filtrarle per una sola lampada
+            # restituirebbe zero risultati pur avendone. Leggiamo 10x piu'
+            # righe e poi filtriamo e tagliamo a `limite`.
+            righe = self._conn.execute(
+                "SELECT * FROM esecuzioni WHERE quando_ts >= ? AND quando_ts <= ? "
+                "ORDER BY quando_ts DESC LIMIT ?",
+                (da_ts, a_ts, int(max(1, limite)) if entita is None
+                 else int(max(1, limite)) * 10)).fetchall()
+        esiti = [_riga(r) for r in righe]
+        if entita is not None:
+            esiti = [e for e in esiti if entita in e["entita"]]
+        return esiti[:int(max(1, limite))]
