@@ -291,3 +291,29 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 
     assert dispatcher._registro is registro_sentinella
     assert dispatcher._promesse is promesse_sentinella
+
+
+# ── Il README dichiara UN NUMERO di lavori periodici -- deve restare vero ───
+#
+# Audit 2026-08-24, Critical C1 (L3-architettura.md): il README diceva
+# «four APScheduler jobs», il codice ne registra sette, e uno di essi (il
+# battito dello schedulatore delle promesse) TOCCA la casa -- non e' pura
+# manutenzione interna come gli altri. Corretto in README.md/PRODUCT.md/
+# docs/prova-la-2.0.md/hiris/config.yaml il 25/08/2026, col numero vero e
+# l'elenco di cosa fa ognuno.
+#
+# Questo test ancora quel numero al codice, non lo ripete a mano: se una
+# fetta futura aggiunge o toglie un `add_job`, questo test si rompe PRIMA
+# che la documentazione torni a mentire in silenzio -- lo stesso principio
+# di `test_js_suite_wired.py::_MIN_JS_TEST_FILES` (M4 dello stesso audit):
+# un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
+# frase che invecchia senza avvisare.
+
+def test_i_lavori_periodici_registrati_sono_sette_come_dichiara_il_readme():
+    src = inspect.getsource(server._on_startup)
+    n = src.count("scheduler.add_job(")
+    assert n == 7, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 7: "
+        "il README (sezione «What HIRIS 2.0 is»), PRODUCT.md, "
+        "docs/prova-la-2.0.md e hiris/config.yaml dichiarano un numero "
+        "preciso e vanno aggiornati insieme al codice, non dopo.")

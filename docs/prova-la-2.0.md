@@ -222,10 +222,12 @@ Il modello riceve il nucleo (la casa condensata) più **tredici strumenti** — 
 stesso catalogo di `hiris/app/casa/strumenti.py`. Cinque leggono e ricordano: `cerca`
 (trova per nome o alias), `guarda` (il dettaglio di una cosa sola), `legami` (chi
 tocca una cosa — quali automazioni, script o scene la nominano), `ricorda` (salva ciò
-che hai detto), `richiama` (i ricordi legati a una parte della casa). `esegui` è
-l'unico che chiama un servizio di Home Assistant — verificato prima, con lo stato
-riletto dopo. Tre riguardano le promesse — cose da fare più tardi: `prometti`,
-`promesse` (lo storico) e `disdici` (annulla). Due, in coppia, scrivono
+che hai detto), `richiama` (i ricordi legati a una parte della casa). `esegui` chiama
+un servizio di Home Assistant SUBITO — verificato prima, con lo stato riletto
+dopo. Tre riguardano le promesse — cose da fare più tardi: `prometti` (una
+promessa `fai` NON chiama il servizio subito, ma lo schedulatore lo farà da solo,
+dalla stessa porta di `esegui`, quando arriva l'ora che hai detto — vedi «Cosa
+NON fa» più sotto), `promesse` (lo storico) e `disdici` (annulla). Due, in coppia, scrivono
 configurazione — non un servizio: `costruisci` (compone un'automazione, uno script o
 una scena e non scrive nulla) e `conferma` (la applica, solo in un turno successivo a
 quello dell'anteprima). Gli ultimi due, arrivati con questa build, guardano
@@ -306,12 +308,20 @@ questa versione esiste.
   fetta **costruire**: chiedili in chat, `costruisci` li compone e li fa validare da
   Home Assistant, e li scrive solo quando confermi l'anteprima (`conferma`). Le
   dashboard restano fuori.
-- **Non ti scrive mai per primo.** Niente notifiche, niente Telegram, niente
-  messaggi push, niente promemoria. Parla solo quando gli parli tu.
-- **Non ragiona da solo, e non agisce da solo.** Niente agenti, niente sentinella,
-  niente ronde, niente proposte da approvare, niente segnalazioni. Ogni azione nasce
-  da una frase che hai scritto tu in chat: non esiste nessun percorso — orario,
-  evento, regola — che possa farne partire una senza di te.
+- **Non ha un canale suo per scriverti, ma una promessa sì.** Niente Telegram, niente
+  push, niente Apprise: HIRIS non ha un modo proprio di raggiungerti. Ma se chiedi
+  «fra un'ora dimmi se la temperatura è salita» e dai un recapito (un `notify.*`
+  della tua installazione), quella risposta ti arriva su quel canale quando è pronta
+  — anche se non sei più nella chat. Non è HIRIS che decide di scriverti: è la
+  promessa che hai fatto tu, mantenuta.
+- **Non ragiona da solo, e non decide da solo di agire.** Niente agenti, niente
+  sentinella, niente ronde, niente proposte da approvare, niente segnalazioni: nessun
+  giudizio nasce senza una frase tua. Ma un'eccezione va detta con la stessa chiarezza:
+  una promessa `prometti` («alle 17 accendi lo studio») fa succedere quel servizio DA
+  SOLO, ore dopo che l'hai chiesto e senza che tu sia in chat — lo *ha già deciso* la
+  tua frase, lo *esegue* lo schedulatore quando arriva l'ora. Non c'è nessun percorso
+  che agisca su una casa senza che una tua frase l'abbia prima autorizzato — ma un
+  orario che hai dato tu è, appunto, un percorso, e questa build lo ha.
 - **Non ha un semaforo dei permessi.** Non esistono livelli, liste di divieti,
   conferme rinforzate. Adesso che HIRIS agisce questa è una scelta, non una
   conseguenza: prima la capacità, poi le sicurezze, disegnate sui rischi veri di

@@ -8,8 +8,11 @@ description: >-
   scripts already do, and gives you one chat to ask it and to command it.
   Service calls are checked against your own installation before they are sent
   and the state is read back after, so it tells you what actually happened.
-  It never acts on its own: every action starts from a sentence you type.
-  It can also build: ask it for an automation, a script or a scene and it
+  Every action starts from a sentence you type - including a promise you set
+  for later ("at 5pm...", "in an hour, check and tell me..."), which HIRIS
+  carries out on its own once it is due and can notify you about outside the
+  chat if you gave it a channel. It can also build: ask it for an automation,
+  a script or a scene and it
   composes one, shows you the preview and writes it into Home Assistant only
   after you confirm - and it can undo what it wrote. It does not write
   dashboards. It calls services too, and that includes switching an

@@ -82,6 +82,22 @@
 > configurazione), nessuna autonomia, nessun semaforo. Per cosa il prodotto fa davvero oggi, il
 > `README.md`.
 
+> ## 🗄 Annotazione — 25 agosto 2026
+>
+> Il blocco del 24 agosto qui sopra è a sua volta superato su una parola, per lo stesso motivo per
+> cui lui stesso supera il 23: non si riscrive, si annota. Diceva *«nessuna autonomia, nessun
+> semaforo»*, come se le due cose fossero ancora vere insieme.
+>
+> Resta vero che non c'è un semaforo. Non è più vero, da tre fette (la fetta «schedulare»), che
+> non ci sia autonomia: lo schedulatore delle promesse (`hiris/app/schedulatore/orologio.py`,
+> battito ogni 15 secondi) esegue una promessa `fai` da solo, ore dopo la frase che l'ha creata e
+> senza nessuno in chat, passando dalla stessa porta di `esegui`; e una promessa `chiedi` con
+> recapito manda una notifica sul canale `notify.*` scelto, fuori dalla chat. Non è un giudizio
+> che nasce da solo — il *cosa* e il *quando* li ha decisi una frase dell'utente — ma è un'azione
+> reale sulla casa e un messaggio reale che può arrivare mentre l'utente dorme, e chiamarlo
+> «nessuna autonomia» senza qualificarlo è la stessa frase falsa che il README ha appena corretto
+> (`README.md`, sezione «What HIRIS 2.0 is»). Per cosa il prodotto fa davvero oggi, il `README.md`.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal
