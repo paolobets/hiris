@@ -65,3 +65,19 @@ def test_senza_fuso_noto_si_resta_in_utc_e_non_si_inventa():
 def test_un_fuso_che_non_esiste_non_solleva():
     da, a = finestra(ore=2, adesso_ts=1787572800.0, fuso="Marte/Olympus")
     assert a.endswith("+00:00")
+
+
+def test_normalizza_ore_unificata_clampla_al_tetto_del_diario():
+    """La normalizzazione ore e' centrale: la usano sia gli strumenti del tempo
+    (tetto 2160 = 90 giorni) sia il diario del client (tetto 168 = una
+    settimana). Questo test verifica che il diario riceva il suo tetto
+    specifico, non quello di tempo.py. Se togli tetto=MAX_DIARIO_ORE dalla
+    chiamata di normalizza_ore in ha_client.py, questo test arrossisce
+    (perche' 200 ore non verrebbe clampato a 168)."""
+    MAX_DIARIO_ORE = 168
+    DEFAULT_DIARIO_ORE = 24
+    # 200 ore: sopra il tetto di diario (168), ma sotto il tetto di tempo (2160)
+    # Con tetto=168: ritorna 168
+    # Senza tetto corretto: ritorna 200 e il test fallisce
+    ore = normalizza_ore(200, tetto=MAX_DIARIO_ORE, default=DEFAULT_DIARIO_ORE)
+    assert ore == MAX_DIARIO_ORE

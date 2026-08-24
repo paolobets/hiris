@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from ..casa.anagrafe import SEVERITA_PROBLEMA
+from ..casa.tempo import normalizza_ore
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -991,18 +992,8 @@ class HAClient:
         if entita is not None and not _ENTITY_ID_RE.match(str(entita)):
             logger.warning("diario: entita' non valida: %r", entita)
             return {"errore": _truncate(f"entita' non valida: {entita!r}", 200)}
-        # `ore` arriva direttamente da una tool-call dell'LLM: puo' essere
-        # None, una stringa, NaN o un numero fuori scala. Si normalizza in
-        # spazio float e si clampa PRIMA di costruire il timedelta, perche'
-        # int(inf), int(10**12) come ore e timedelta(hours=18_000_000)
-        # sollevano OverflowError, che non deve mai raggiungere il chiamante.
-        try:
-            numeric = float(ore)
-        except Exception:
-            numeric = float(DEFAULT_DIARIO_ORE)
-        if numeric != numeric:  # NaN: non confrontabile, vale come assente
-            numeric = float(DEFAULT_DIARIO_ORE)
-        finestra = int(min(float(MAX_DIARIO_ORE), max(1.0, numeric)))
+        finestra = int(normalizza_ore(ore, tetto=MAX_DIARIO_ORE,
+                                      default=DEFAULT_DIARIO_ORE))
         now = datetime.now(timezone.utc)
         start = (now - timedelta(hours=finestra)).isoformat()
         # start sta nel path (come /api/history/period); end_time ed entity

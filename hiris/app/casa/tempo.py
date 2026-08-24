@@ -43,22 +43,28 @@ MAX_FINESTRA_ORE = 24 * 90
 DEFAULT_ORE = 24.0
 
 
-def normalizza_ore(grezzo) -> float:
-    """Qualunque cosa -> un numero di ore fra 1 e `MAX_FINESTRA_ORE`.
+def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
+                   default: float = DEFAULT_ORE) -> float:
+    """Qualunque cosa -> un numero di ore fra 1 e `tetto`.
 
     `ore` arriva da una tool-call del modello: puo' essere `None`, una
     stringa, NaN o un numero fuori scala. Si normalizza in spazio float e si
     clampa PRIMA che diventi un `timedelta`, perche' `timedelta(hours=1e12)`
-    solleva `OverflowError` -- ed e' esattamente il difetto gia' pagato in
-    `ha_client.diario`, imparato li' e non due volte.
+    solleva `OverflowError`.
+
+    E' la normalizzazione centrale per le ore nel prodotto: la usano sia gli
+    strumenti del tempo (con tetto di 90 giorni) sia il diario del client
+    (con tetto di una settimana). I tetti sono l'unica cosa che cambia fra i
+    due usi. Si normalizza in float, e il chiamante puo' convertire in int se
+    serve.
     """
     try:
         numero = float(grezzo)
     except (TypeError, ValueError):
-        return DEFAULT_ORE
+        return default
     if numero != numero:  # NaN: non confrontabile, vale come assente
-        return DEFAULT_ORE
-    return min(float(MAX_FINESTRA_ORE), max(1.0, numero))
+        return default
+    return min(float(tetto), max(1.0, numero))
 
 
 def scegli_superficie(*, ore: float, ha_statistiche: bool) -> str:
