@@ -254,3 +254,74 @@ def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
     scelti = [punti[int(round(i * passo))] for i in range(quanti)]
     scelti[-1] = punti[-1]
     return scelti
+
+
+# Quanto possono distare un atto della cronaca e la voce del diario che
+# racconta il suo effetto, perche' si possano considerare lo stesso gesto.
+# Home Assistant NON mette un nostro identificatore nel logbook: l'unico
+# aggancio e' entita' + istante vicino, e sessanta secondi sono larghi per la
+# latenza di una chiamata di servizio e stretti per due gesti distinti sulla
+# stessa lampada. E' il motivo per cui l'esito si chiama «probabile».
+TOLLERANZA_ABBINAMENTO_S = 60
+
+
+async def accaduto(*, ha, cronaca, entita: str | None, ore,
+                   adesso_ts: float) -> dict:
+    """Cosa e' successo in una finestra, e -- dove si puo' dire -- per mano di chi.
+
+    Ritorna `{"voci", "troncato", "ore", "nota"}` oppure `{"errore"}`.
+
+    Le due fonti restano DUE (fondamenta 2): il diario di Home Assistant dice
+    cosa e' successo in casa, la cronaca dice cosa ha fatto HIRIS. Si uniscono
+    qui, al momento della lettura, e mai in una tabella.
+
+    L'abbinamento e' dichiarato `probabile` e non si finge certo: vedi
+    `TOLLERANZA_ABBINAMENTO_S`. Restituire un `esecuzione_id` che il modello
+    non puo' risolvere rispetterebbe la lettera della fondamenta 2 violando la
+    4, quindi l'atto viaggia con origine e servizio, non col solo numero.
+    """
+    ore = normalizza_ore(ore)
+    esito = await ha.diario(entita, int(ore))
+    if "voci" not in esito:
+        return {"errore": esito.get("errore", "il diario non e' disponibile")}
+    # La finestra dell'abbinamento e' quella che il diario ha DAVVERO coperto
+    # (`ore` puo' essere stato clampato dal client): due finestre diverse
+    # produrrebbero atti senza voce e voci senza atto, in modo invisibile.
+    ore_vere = float(esito.get("ore") or ore)
+    atti = []
+    if cronaca is not None:
+        try:
+            atti = cronaca.elenca(da_ts=adesso_ts - ore_vere * 3600,
+                                  a_ts=adesso_ts, entita=entita)
+        except Exception as errore:
+            # L'attribuzione e' un di piu': un archivio che non risponde non
+            # deve togliere all'utente la risposta sulla casa.
+            logger.warning("cronaca illeggibile durante «accaduto» (%s: %s)",
+                           type(errore).__name__, errore)
+            atti = []
+    voci = [_abbina(v, atti) for v in esito["voci"]]
+    note = []
+    if esito.get("troncato"):
+        note.append("le voci piu' vecchie della finestra non sono in questo elenco.")
+    if ore_vere < ore:
+        note.append(f"il diario copre al piu' {int(ore_vere)} ore, non le "
+                    f"{int(ore)} chieste.")
+    return {"voci": voci, "troncato": bool(esito.get("troncato")),
+            "ore": int(ore_vere), "nota": " ".join(note) or None}
+
+
+def _abbina(voce: dict, atti: list[dict]) -> dict:
+    """La voce del diario, piu' l'atto di HIRIS che PROBABILMENTE l'ha causata."""
+    quando = _epoch(voce.get("quando"))
+    if quando is None:
+        return voce
+    entita_voce = voce.get("entita")
+    for atto in atti:
+        if entita_voce and entita_voce not in (atto.get("entita") or []):
+            continue
+        if abs(float(atto.get("quando_ts") or 0.0) - quando) > TOLLERANZA_ABBINAMENTO_S:
+            continue
+        return {**voce, "per_mano_di": "HIRIS", "abbinamento": "probabile",
+                "atto": {"id": atto.get("id"), "origine": atto.get("origine"),
+                         "servizio": atto.get("servizio")}}
+    return voce
