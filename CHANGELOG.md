@@ -1,5 +1,32 @@
 # HIRIS — Changelog
 
+## [3.12.2] — Quello che l'audit ha trovato (2026-08-25)
+
+**Un audit a 360 gradi su tutto il prodotto** — sicurezza, dipendenze, architettura, funzionale
+sulla casa vera, e interfaccia su desktop e telefono. Il verdetto d'insieme e' che il codice e'
+tenuto insieme; tre dei quattro difetti gravi erano **frasi false**, non funzioni sbagliate.
+
+- **La difesa contro l'iniezione di istruzioni non c'era.** Il modulo che doveva filtrare il
+  testo che arriva dalla casa prima che entri nel prompt del modello era **codice morto**, con
+  zero chiamanti, mentre dichiarava una protezione attiva. Adesso e' cablato su tutte le vie:
+  gli stati, l'anagrafe, i ricordi, il diario, lo storico e i nomi delle automazioni. Attenzione
+  a cosa significa: **e' una mitigazione, non un confine** — ferma le frasi note, non l'iniezione
+  in se'.
+- **Il README dichiarava un confine che il prodotto aveva gia' superato.** Diceva quattro lavori
+  periodici e «nessuno tocca la casa»: sono sette, e uno esegue servizi e manda notifiche fuori
+  dalla chat. Corretto ovunque lo dicesse, compresa la descrizione dell'add-on nello store.
+- **Sul telefono, chiudere il menu della chat ti portava altrove.** Il pannello copriva il
+  bottone che l'aveva aperto, e ritoccare lo stesso punto attivava il link nascosto sotto.
+- **L'albero della casa sfondava lo schermo.** Nasceva tutto espanso, settantamila pixel di
+  altezza, e sul telefono era l'unica pagina che si potesse scorrere in orizzontale. Adesso
+  si apre per piani, e gli identificatori lunghi vanno a capo invece di essere tagliati.
+
+**Zero CVE** su undici dipendenze, immagine base e CLI, con doppia scansione.
+
+**Cosa NON e' stato corretto, per scelta:** `esegui` continua a toccare la casa senza conferma —
+e' una scelta di prodotto, non un difetto, e resta al proprietario. Il referto la descrive per
+intero, con la sequenza d'attacco misurata.
+
 ## [3.12.1] — Le forme vere (2026-08-24)
 
 **Le verifiche dal vivo hanno trovato quello che dovevano trovare, e i due strumenti del
