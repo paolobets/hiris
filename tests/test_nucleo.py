@@ -83,6 +83,16 @@ def test_un_ricordo_legittimo_con_accenti_e_apostrofi_non_si_mutila():
     assert "l'irrigazione dell'orto va spenta dopo le 21 (giardino n°2)" in testo
 
 
+
+# N1 (review indipendente 25/08/2026): `_righe_ricordi` deve usare la
+# funzione CONDIVISA `domande.ricordi_sanificati`, non una propria copia
+# inline di `sanitize_text` -- e' l'unico modo per cui il docstring di
+# `_sanitize.py` ("un punto solo, non tre") sia vero da solo, non per una
+# lista tenuta allineata a mano.
+def test_il_nucleo_usa_la_funzione_condivisa_ricordi_sanificati():
+    from hiris.app.casa import domande
+    assert nucleo.ricordi_sanificati is domande.ricordi_sanificati
+
 def test_i_nomi_di_cio_che_la_casa_fa_da_sola_ci_sono_i_corpi_no():
     testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
     assert "Sveglia" in testo and "Buonanotte" in testo
