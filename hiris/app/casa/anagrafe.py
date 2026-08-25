@@ -158,12 +158,14 @@ def e_pseudo_area(area_id: str) -> bool:
 
 
 def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                                  dict[str, str], dict[str, str]]:
-    """Lo specchio dello stato in cinque dizionari: `(stato, nomi, unita, classi, da_quando)`.
+                                  dict[str, str], dict[str, str], dict[str, dict]]:
+    """Lo specchio dello stato in sei dizionari:
+    `(stato, nomi, unita, classi, da_quando, attributi)`.
 
     `righe` e' cio' che `entity_cache.all_states()` restituisce: dizionari
     nella forma di `_to_minimal` -- chiave `id` (non `entity_id`), piu' `state`,
-    `name` (il `friendly_name`), `unit` e `last_changed`.
+    `name` (il `friendly_name`), `unit`, `last_changed` e, quando il dominio ne
+    ha, `attributes`.
 
     Una passata sola per tutti i dizionari, e in un posto solo per tutti i
     chiamanti. Prima lo specchio si leggeva in `casa/strumenti.py` e basta: chi
@@ -185,12 +187,25 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]
     cache (`entity_cache._to_minimal`) scartava. HIRIS sapeva che in camera ci
     sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire «e'
     fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
+
+    `attributi` (entity_id -> il dizionario `attributes` di `_to_minimal`,
+    quando non e' vuoto) e' il difetto misurato dal proprietario, fetta
+    "attributi al modello" (2026-08-25): `entity_cache._to_minimal` raccoglie
+    gia' `hvac_action`, `current_temperature`, la luminosita' di una luce, la
+    posizione di una tapparella -- `_DOMAIN_ATTRS` in `proxy/entity_cache.py`
+    -- e QUESTA funzione, l'unico punto da cui passano `guarda`, `cerca` e il
+    nucleo, li buttava tutti tenendo solo `state`. Un termostato IMPOSTATO su
+    riscaldamento e FERMO (`hvac_mode: heat`, `hvac_action: idle`) usciva da
+    `guarda` come `stato: "heat"` e basta -- indistinguibile da uno che sta
+    scaldando davvero. Il modello ha risposto con quell'unica informazione,
+    ed era vera solo a meta'.
     """
     stato: dict[str, str] = {}
     nomi: dict[str, str] = {}
     unita: dict[str, str] = {}
     classi: dict[str, str] = {}
     da_quando: dict[str, str] = {}
+    attributi: dict[str, dict] = {}
     for e in righe:
         if not isinstance(e, dict):
             continue
@@ -210,7 +225,10 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]
         istante = e.get("last_changed")
         if isinstance(istante, str) and istante.strip():
             da_quando[entity_id] = istante.strip()
-    return stato, nomi, unita, classi, da_quando
+        extra = e.get("attributes")
+        if isinstance(extra, dict) and extra:
+            attributi[entity_id] = extra
+    return stato, nomi, unita, classi, da_quando, attributi
 
 
 def nome_con_id(nome: str, id_: str | None) -> str:
@@ -457,10 +475,71 @@ _SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
 }
 
 
-def traduci_stato(valore, classe: str | None = None) -> str:
+# Un termostato ha DUE fatti, non uno: `hvac_mode` (il valore di `stato`)
+# dice a cosa e' IMPOSTATO, `hvac_action` dice se sta FUNZIONANDO adesso.
+# `heat` da solo confonde i due -- e' esattamente il difetto misurato dal
+# proprietario (2026-08-25): due termostati impostati su riscaldamento e
+# FERMI (`hvac_action: idle`, target 17, temperatura reale 25) sono usciti
+# da `guarda` come «heat», e il modello ha letto «in modalita'
+# riscaldamento» come se stessero scaldando davvero.
+#
+# I valori sono quelli veri di `ClimateEntityFeature`/`HVACMode`
+# (`components/climate/const.py`), verificati: il dominio non ha una
+# `device_class` propria (a differenza di sensori e binary_sensor), quindi
+# questa tabella si applica per DOMINIO, non per classe.
+_HVAC_MODE_LEGGIBILE = {
+    "off": "spento", "heat": "riscaldamento", "cool": "raffrescamento",
+    "heat_cool": "riscaldamento/raffrescamento", "auto": "automatica",
+    "dry": "deumidificazione", "fan_only": "sola ventilazione",
+}
+
+# `hvac_action`: cosa sta succedendo ADESSO, non cosa e' impostato. Un
+# termostato senza questo attributo (integrazioni che non lo mandano) resta
+# onesto per omissione -- vedi `_stato_leggibile_climate` sotto, che senza
+# azione nota dice solo l'impostazione e non inventa un funzionamento.
+_HVAC_ACTION_LEGGIBILE = {
+    "heating": "sta scaldando", "cooling": "sta raffrescando",
+    "drying": "sta deumidificando", "fan": "sta ventilando",
+    "preheating": "sta preriscaldando", "idle": "fermo", "off": "spento",
+}
+
+
+def _stato_leggibile_climate(valore, hvac_action: str | None) -> str:
+    """Lo stato di un termostato in parole, onesto sulla differenza fra
+    impostazione e funzionamento (vedi `_HVAC_MODE_LEGGIBILE`).
+
+    Senza `hvac_action` (integrazione che non lo manda, o valore fuori
+    vocabolario) si dichiara solo l'impostazione -- «impostato su
+    riscaldamento» -- perche' e' l'unica cosa che si sa davvero: MEGLIO
+    un'informazione parziale dichiarata come tale che una frase che
+    suggerisce un funzionamento che nessuno ha confermato.
+    """
+    v = str(valore).lower()
+    modo = _HVAC_MODE_LEGGIBILE.get(v)
+    if modo is None:
+        return str(valore)
+    if v == "off":
+        return modo
+    azione = _HVAC_ACTION_LEGGIBILE.get(str(hvac_action).lower()) if hvac_action else None
+    if azione:
+        return f"impostato su {modo}, {azione}"
+    return f"impostato su {modo}"
+
+
+def traduci_stato(valore, classe: str | None = None, dominio: str | None = None,
+                  hvac_action: str | None = None) -> str:
     """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
     `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
-    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant."""
+    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant.
+
+    `dominio` e `hvac_action` sono opzionali e servono a UN solo dominio,
+    `climate`: senza di loro un termostato traduce come qualunque altro stato
+    sconosciuto (la stringa grezza, `heat`), che e' esattamente il difetto che
+    questa firma esiste per chiudere -- vedi `_stato_leggibile_climate`.
+    Chi non li passa (il nucleo, per scelta: e' testo pagato a ogni turno, e
+    il climate non entra mai in "Notevole adesso") si comporta come prima."""
+    if dominio == "climate":
+        return _stato_leggibile_climate(valore, hvac_action)
     v = str(valore).lower()
     significato = _SIGNIFICATO_CLASSE.get(classe or "")
     if significato:

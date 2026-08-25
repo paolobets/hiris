@@ -55,14 +55,14 @@ def test_la_regola_sta_in_un_posto_solo():
 
 
 def test_lo_specchio_porta_anche_le_classi():
-    _stato, _nomi, _unita, classi, _da_quando = specchio_vivo(_SPECCHIO)
+    _stato, _nomi, _unita, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
     assert classi["binary_sensor.perdita_lavatrice"] == "moisture"
 
 
 def test_un_allagamento_entra_nel_digesto():
     """LA PROVA CHE CONTA. Con la classe dal solo registro questa e' rossa:
     il sensore e' `on` e il digesto dice «Niente di notevole al momento»."""
-    stato, _n, _u, classi, _da_quando = specchio_vivo(_SPECCHIO)
+    stato, _n, _u, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
     testo, _ = componi(_CASA, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "bagnato" in sezione, sezione
@@ -77,7 +77,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
                         "classe": None}]}
     specchio = [{"id": "light.cucina", "state": "on", "name": "Faretto",
                  "device_class": None, "unit": ""}]
-    stato, _n, _u, classi, _da_quando = specchio_vivo(specchio)
+    stato, _n, _u, classi, _da_quando, _attributi = specchio_vivo(specchio)
     testo, _ = componi(casa, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "acceso" in sezione
@@ -85,7 +85,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
 
 
 def test_guarda_dice_la_classe_che_prometteva():
-    _s, _n, _u, classi, _da_quando = specchio_vivo(_SPECCHIO)
+    _s, _n, _u, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
     d = guarda(_CASA, [], [], {"binary_sensor.perdita_lavatrice": "on"},
                "entita", "binary_sensor.perdita_lavatrice", classi_vive=classi)
     assert d["classe"] == "moisture"
@@ -105,9 +105,16 @@ def test_lo_specchio_tiene_state_class():
 
 
 def test_lo_specchio_tiene_gli_attributi_del_meteo():
-    """`guarda` su un'entita' meteo rispondeva «sereno» e basta: temperatura,
-    umidita', vento e pressione sono attributi di stato, gia' dentro
-    `get_states`, e nessuna chiamata nuova serviva per averli."""
+    """SOLO `_to_minimal`: la raccolta dentro la proiezione della cache.
+
+    ATTENZIONE (corretto 2026-08-25, fetta "attributi al modello"): questo
+    test da solo NON prova che `guarda` veda questi attributi -- prima li
+    provava, e il commento diceva "guarda su un'entita' weather rispondeva
+    sereno e basta", ma `guarda` non arrivava mai a leggerli: `specchio_vivo`
+    (`casa/anagrafe.py`) li buttava tutti, su ogni dominio, un anello piu' in
+    la'. Il difetto vero (misurato dal proprietario sui termostati, non sul
+    meteo) e' rimasto invisibile finche' nessun test seguiva la catena intera
+    -- vedi `test_attributi_al_modello.py`, che la segue fino a `guarda`."""
     from hiris.app.proxy.entity_cache import _to_minimal
     voce = _to_minimal({"entity_id": "weather.casa", "state": "sunny",
                         "attributes": {"temperature": 24.1, "temperature_unit": "°C",

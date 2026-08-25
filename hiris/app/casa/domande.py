@@ -190,7 +190,8 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
                         unita_vive: dict[str, str] | None = None,
                         nomi_etichette: dict[str, str] | None = None,
                         classi_vive: dict[str, str] | None = None,
-                        nomi_categorie: dict[tuple[str, str], str] | None = None) -> dict:
+                        nomi_categorie: dict[tuple[str, str], str] | None = None,
+                        attributi_vivi: dict[str, dict] | None = None) -> dict:
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
@@ -247,10 +248,20 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     # digesto ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel
     # digesto non entra affatto. La tabella e' la stessa
     # (`anagrafe._SIGNIFICATO_CLASSE`): due tabelle sarebbero due significati.
+    #
+    # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
+    # `anagrafe.classe_effettiva` vale anche qui) alimentano il solo caso in
+    # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
+    # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
+    # proprietario (2026-08-25, `anagrafe.traduci_stato`). Passati anche
+    # quando l'entita' non e' un termostato: `traduci_stato` li ignora per
+    # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
+    # farlo condizionale.
     valore = dettaglio_entita.get("stato")
     if valore is not None:
+        hvac_action = ((attributi_vivi or {}).get(entita_id) or {}).get("hvac_action")
         dettaglio_entita["stato_leggibile"] = traduci_stato(
-            valore, dettaglio_entita.get("classe"))
+            valore, dettaglio_entita.get("classe"), dominio_di(entita_id), hvac_action)
     # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
     # una cosa non risponde e cosa le si puo' chiedere.
     piattaforma = (voce.get("piattaforma") or "").strip()
@@ -407,7 +418,8 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  nomi_di_ripiego: dict[str, str] | None = None,
                  unita_vive: dict[str, str] | None = None,
                  classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None) -> dict:
+                 da_quando_vive: dict[str, str] | None = None,
+                 attributi_vivi: dict[str, dict] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -433,7 +445,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
              "da_quando": (da_quando_vive or {}).get(e["id"]),
              "disabilitata": False},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie)
+            nomi_categorie, attributi_vivi)
         for e in area["entita"]
     ] + [
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
@@ -447,7 +459,7 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
              "da_quando": (da_quando_vive or {}).get(e["id"]),
              "disabilitata": True},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie)
+            nomi_categorie, attributi_vivi)
         for e in area.get("entita_disabilitate", [])
     ]
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
@@ -475,7 +487,8 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                    nomi_di_ripiego: dict[str, str] | None = None,
                    unita_vive: dict[str, str] | None = None,
                  classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None) -> dict:
+                 da_quando_vive: dict[str, str] | None = None,
+                 attributi_vivi: dict[str, dict] | None = None) -> dict:
     entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
     if entita is None:
         # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
@@ -508,9 +521,25 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_arricchisci_entita`).
-    return _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
-                               nomi_delle_etichette(casa), classi_vive,
-                               nomi_delle_categorie(casa))
+    dettaglio = _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
+                                    nomi_delle_etichette(casa), classi_vive,
+                                    nomi_delle_categorie(casa), attributi_vivi)
+    # GLI ATTRIBUTI CURATI (`_DOMAIN_ATTRS`, `proxy/entity_cache.py`): solo
+    # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
+    # fetta "attributi al modello" (2026-08-25). `_guarda_area` e
+    # `_guarda_dispositivo` elencano entita' a decine (un'area con venti
+    # cose, un dispositivo con le sue entita'): mettere gli attributi di
+    # ognuna dentro quegli elenchi gonfierebbe la risposta di un dato che
+    # nessuno ha chiesto per la singola cosa. Qui invece il modello ha gia'
+    # chiesto IL DETTAGLIO di questa entita' precisa, ed e' il momento in cui
+    # l'informazione si paga -- non prima. `hvac_action` (climate) alimenta
+    # comunque `stato_leggibile` ovunque, dentro `_arricchisci_entita`: la
+    # differenza qui e' solo se il resto degli attributi grezzi (luminosita',
+    # posizione, titolo del brano...) esce come chiave a se'.
+    attributi = (attributi_vivi or {}).get(entita["id"])
+    if attributi:
+        dettaglio["attributi"] = attributi
+    return dettaglio
 
 
 def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferimento,
@@ -518,7 +547,8 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
                         nomi_di_ripiego: dict[str, str] | None = None,
                         unita_vive: dict[str, str] | None = None,
                  classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None) -> dict:
+                 da_quando_vive: dict[str, str] | None = None,
+                 attributi_vivi: dict[str, dict] | None = None) -> dict:
     nomi_etichette = nomi_delle_etichette(casa)
     nomi_categorie = nomi_delle_categorie(casa)
     dispositivo = next(
@@ -543,7 +573,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
              "da_quando": (da_quando_vive or {}).get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie)
+            nomi_categorie, attributi_vivi)
         for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
     ]
     dettaglio = {
@@ -660,7 +690,8 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
            nomi_di_ripiego: dict[str, str] | None = None,
            unita_vive: dict[str, str] | None = None,
            classi_vive: dict[str, str] | None = None,
-           da_quando_vive: dict[str, str] | None = None) -> dict:
+           da_quando_vive: dict[str, str] | None = None,
+           attributi_vivi: dict[str, dict] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -729,6 +760,26 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     stessa domanda non puo' avere due risposte diverse a seconda di quale
     ramo di `guarda` la porta).
 
+    `attributi_vivi` (entity_id -> il dizionario `attributes` dello specchio
+    dello stato, `_DOMAIN_ATTRS` di `proxy/entity_cache.py`: `hvac_action` e
+    la temperatura di un termostato, la luminosita' di una luce, la
+    posizione di una tapparella, ...) alimenta DUE cose diverse, e non allo
+    stesso modo:
+
+    - `stato_leggibile` lo legge SEMPRE, su ogni ramo che elenca entita'
+      (dentro `_arricchisci_entita`), perche' e' un campo che gia' usciva
+      ovunque e che per un termostato mentiva da solo -- vedi
+      `anagrafe.traduci_stato`. Il difetto misurato dal proprietario
+      (2026-08-25): `hvac_mode: heat` con `hvac_action: idle` usciva come
+      «heat», indistinguibile da un termostato che sta scaldando davvero.
+    - Il dizionario `attributi` INTERO esce solo dal ramo `entita` (decisione
+      del proprietario): un'area o un dispositivo elencano entita' a decine,
+      e mettere tutti gli attributi di ognuna dentro quegli elenchi
+      gonfierebbe la risposta di un dato che nessuno ha chiesto per la
+      singola cosa. Il dettaglio di UNA entita' e' il momento in cui il
+      modello ha gia' chiesto quella cosa precisa, e l'informazione si paga
+      solo li'.
+
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
@@ -746,13 +797,16 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     ricordi = ricordi_sanificati(ricordi)
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
-                            nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
+                            nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
+                            attributi_vivi)
     if tipo == "entita":
         return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
-                              nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
+                              nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
+                              attributi_vivi)
     if tipo == "dispositivo":
         return _guarda_dispositivo(casa, ricordi, stato, riferimento, non_disponibili,
-                                   nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)
+                                   nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
+                                   attributi_vivi)
     if tipo in _TIPI_COMPORTAMENTO:
         return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
     if tipo == "ricordo":
