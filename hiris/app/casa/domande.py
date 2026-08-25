@@ -48,6 +48,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
+from ..proxy._sanitize import sanitize_text
 from .anagrafe import (categorie_con_nome, classe_effettiva, dominio_di,
                        etichette_con_id, gerarchia, nomi_delle_categorie,
                        nomi_delle_etichette, traduci_stato, unita_effettiva)
@@ -633,6 +634,25 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
     return dettaglio
 
 
+def ricordi_sanificati(ricordi: list[dict] | None) -> list[dict]:
+    """I ricordi con `testo` passato dal sanitizzatore -- funzione condivisa,
+    non una riga ripetuta a ogni porta che restituisce ricordi al modello.
+
+    C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
+    versione di questa correzione sanificava il testo dentro `guarda()` ma
+    non dentro `strumenti.py::_richiama` (che legge `ArchivioMemoria.per_ancora`
+    direttamente, senza passare da qui) -- lo stesso ricordo usciva filtrato
+    da una porta e grezzo dall'altra: la fondamenta 3 (consistenza fra porte)
+    rotta dentro la correzione che doveva chiuderla. Un punto SOLO, importato
+    da entrambe le porte, e' l'unico modo per cui questo non possa ripetersi
+    con una terza porta futura.
+
+    Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola 1): questa
+    e' una copia, non una riscrittura -- vedi il docstring di `guarda()`."""
+    return [dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
+           for r in (ricordi or [])]
+
+
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
            tipo: str, riferimento,
            non_disponibili: tuple[str, ...] = (),
@@ -712,7 +732,18 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
+
+    C-2 (L1-sicurezza.md): il testo di un ricordo passa dal sanitizzatore
+    UNA volta, qui, prima di qualunque ramo -- per id diretto
+    (`_guarda_ricordo`), ancorato a un'area/entita'/dispositivo
+    (`_ricordi_ancorati`, dentro i tre rami sopra) o ancorato a
+    un'automazione/script (`_guarda_comportamento`). Un punto solo, non uno
+    per ramo: la fondamenta 3 (consistenza fra porte) e' anche questo -- lo
+    stesso ricordo non deve poter uscire filtrato da una via e grezzo da
+    un'altra. Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola
+    1): questa e' una copia, non una riscrittura.
     """
+    ricordi = ricordi_sanificati(ricordi)
     if tipo == "area":
         return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
                             nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive)

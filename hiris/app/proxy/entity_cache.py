@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from ..casa.anagrafe import dominio_di
+from ._sanitize import sanitize_ha_value
 
 logger = logging.getLogger(__name__)
 
@@ -89,14 +90,35 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Gli attributi del media_player che sono testo LIBERO -- titolo, artista,
+# sorgente -- e non un valore tecnico (`volume_level`, `brightness`): sono il
+# vettore concreto che l'audit di sicurezza ha verificato (C-2, L1-sicurezza.md):
+# un media_player col titolo del brano che dice "ignora le istruzioni
+# precedenti" arriva al modello ogni volta che `guarda`/`cerca` lo tocca. Gli
+# altri attributi di `_DOMAIN_ATTRS` sono numeri o enumerazioni chiuse decise
+# dall'integrazione (hvac_mode, preset_mode, current_position...), non testo
+# che un dispositivo di rete possa scrivere liberamente: sanificarli
+# convertirebbe un numero in stringa senza motivo, e non chiude un rischio
+# vero -- e' l'eccesso di zelo che il modulo stesso mette in guardia.
+_ATTRIBUTI_TESTO_LIBERO = frozenset({"media_title", "media_artist", "source"})
+
+
 def _to_minimal(raw: dict) -> dict:
     attrs = raw.get("attributes") or {}
     eid = raw["entity_id"]
     dom = _domain(eid)
     result: dict = {
         "id": eid,
-        "state": raw.get("state", "unknown"),
-        "name": attrs.get("friendly_name") or "",
+        # Il confine con Home Assistant: `state` e `friendly_name` sono
+        # testo che l'entita' porta con se' e che HIRIS non controlla -- il
+        # nome di un dispositivo che un ospite ha messo in rete, lo stato di
+        # un sensore-messaggio (email/ntfy/SMS). Sanificarli QUI, nell'unico
+        # punto in cui uno stato grezzo diventa cio' che ogni lettore vede
+        # (`specchio_vivo`, `guarda`, `cerca`, il nucleo), significa che
+        # nessun consumatore a valle deve ricordarsene da solo (C-2,
+        # L1-sicurezza.md).
+        "state": sanitize_ha_value(raw.get("state", "unknown")),
+        "name": sanitize_ha_value(attrs.get("friendly_name") or ""),
         "unit": attrs.get("unit_of_measurement") or "",
         "domain": dom,
         "device_class": attrs.get("device_class"),
@@ -119,6 +141,9 @@ def _to_minimal(raw: dict) -> dict:
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
     if domain_keys:
         extra = {k: attrs[k] for k in domain_keys if k in attrs}
+        for chiave in _ATTRIBUTI_TESTO_LIBERO:
+            if isinstance(extra.get(chiave), str):
+                extra[chiave] = sanitize_ha_value(extra[chiave])
         if extra:
             result["attributes"] = extra
     return result

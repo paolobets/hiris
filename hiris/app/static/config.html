@@ -34,6 +34,14 @@
   </div>
 
   <template id="tpl-side-nav">
+    <!-- C1 (audit 2026-08-24), stesso difetto della chat: sul telefono il
+         cassetto copre l'hamburger che l'ha aperto, e ritoccare lo stesso
+         punto attivava il primo link del pannello. Bottone di chiusura
+         esplicito, stesso angolo di `#cfg-menu-btn`. Solo mobile
+         (hiris-config.css). -->
+    <button class="sidenav-close-btn" id="sidenav-close-btn" aria-label="Chiudi menu" title="Chiudi menu">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
     <div class="brand">
       <img src="static/hiris-icon.svg" alt="HIRIS">
       <span class="brand-name">HIRIS<small id="hc-version-side"></small></span>

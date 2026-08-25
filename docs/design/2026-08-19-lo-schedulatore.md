@@ -56,6 +56,20 @@ modello che gira **senza nessuno davanti** possa toccare la casa. Vedi §6.2.
 Resta perciò vera la frase che `hiris/config.yaml` dichiara al mondo: *«It never acts on its own:
 every action starts from a sentence you type»*. Differita, ma tua.
 
+> ## 🗄 Annotazione — 25 agosto 2026
+>
+> Il paragrafo qui sopra non si riscrive, si annota (stessa disciplina di `PRODUCT.md`). Il verbo
+> era al presente ed è diventato falso su un punto: da un audit di sicurezza (C1,
+> `.superpowers/audit-2026-08-24/L3-architettura.md`) e dalla correzione che ne è seguita,
+> `hiris/config.yaml` **non dichiara più** quella frase — descriveva un confine più assoluto di
+> quanto il codice permetta (il battito dello schedulatore esegue una promessa `fai` da solo, ore
+> dopo, e una promessa `chiedi` con recapito notifica fuori dalla chat). La descrizione ora dice
+> che ogni azione parte da una frase che hai scritto, **compresa una promessa che esegue da sola
+> più tardi**. L'argomento di questo paragrafo — «differita, ma tua» — resta valido come lettura
+> del *perché* non è autonomia nel senso del Brain (nessun giudizio nasce senza una frase); non è
+> più la citazione di un testo che esiste ancora parola per parola. Per cosa il prodotto dichiara
+> oggi, `hiris/config.yaml` stesso e `README.md` (sezione «What HIRIS 2.0 is»).
+
 ---
 
 ## 4. L'oggetto e i suoi confini

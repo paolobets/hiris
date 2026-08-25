@@ -92,9 +92,21 @@ ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
 AGIRE». La fetta l'ha cambiata. Gli strumenti sono tredici (hiris/app/casa/
 strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
 la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
-«costruire», per quella della configurazione (`costruisci`/`conferma`). Cio' che
-resta vero e' il confine: nessuna autonomia. Ogni esecuzione nasce da una frase
-in chat -- non c'e' trigger ne' schedulazione che possa farne partire una."""
+«costruire», per quella della configurazione (`costruisci`/`conferma`).
+
+Cio' che resta vero e' il confine sul GIUDIZIO: nessun turno decide di agire
+o cosa dire senza una frase scritta da una persona. Non e' piu' vero -- dalla
+fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
+IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
+tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
+`chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promessa`
+-> `chi_risponde` -> `_accoda_al_ponte`, quando il ponte e' la via) tanto
+quanto un turno di chat vero: il battito dello schedulatore
+(`schedulatore/orologio.py`, ogni 15 s) lo sveglia da solo, ore dopo la
+promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
+se) resta della persona che ha promesso; il MOMENTO in cui accade no --
+vedi `README.md`, sezione «What HIRIS 2.0 is», per la stessa distinzione
+scritta per l'utente."""
 import asyncio, json, logging, os, secrets, subprocess, time
 from dataclasses import dataclass, field
 import httpx

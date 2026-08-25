@@ -53,6 +53,9 @@
       padding: 8px 12px;
       display: flex; flex-direction: column; gap: 2px;
     }
+    /* Solo mobile (vedi @media max-width:768px per la posizione): su
+       desktop il pannello non e' un cassetto, non serve chiuderlo. */
+    #sidebar-close-btn { display: none; }
     .sb-nav-item {
       display: flex; align-items: center; gap: 11px;
       padding: 9px 10px;
@@ -567,6 +570,17 @@
       }
       #sidebar.open { transform: translateX(0); }
       #sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55; }
+      /* C1: stesso angolo, stessa misura di #menu-btn nell'header sotto --
+         cosi' chi ritocca d'istinto lo stesso punto per richiudere trova
+         adesso una X che chiude davvero, non il link Configurazione. */
+      #sidebar-close-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 44px; height: 44px; flex-shrink: 0;
+        margin: 8px 0 0 12px;
+        background: transparent; border: none; color: var(--text); cursor: pointer;
+        border-radius: 8px;
+      }
+      #sidebar-close-btn:active { background: var(--surface-2, rgba(255,255,255,.06)); }
       .msg-row, #welcome, #input-inner { padding-left: 16px; padding-right: 16px; }
       #input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
 

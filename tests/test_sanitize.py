@@ -53,7 +53,28 @@ def test_legitimate_italian_not_filtered():
 
 def test_length_clamp_and_none():
     assert sanitize_ha_value(None) == ""
-    assert len(sanitize_ha_value("x" * 500)) == 120
+    # I2 (review indipendente 25/08/2026): il vecchio tetto di 120 caratteri
+    # tagliava in silenzio -- gli stati (`input_text` arriva a 255), i
+    # messaggi del logbook e il motivo di un'integrazione uscivano MOZZATI
+    # e sembravano interi. Home Assistant stesso limita `state` a 255
+    # caratteri (`homeassistant.core.MAX_LENGTH_STATE_STATE`): e' il tetto
+    # vero, non uno inventato per prudenza. Un taglio che avviene lo stesso
+    # (testo piu' lungo di 255) si DICHIARA col marcatore, la stessa
+    # convenzione di `proxy/ha_client.py::_truncate`/`_TRUNC_MARK` --
+    # "non dire una cosa falsa con sicurezza" vale anche per la lunghezza.
+    lungo = sanitize_ha_value("x" * 500)
+    assert len(lungo) == 255
+    assert lungo.endswith(" [troncato]")
+
+
+def test_length_under_the_cap_is_untouched():
+    corto = "a" * 254
+    assert sanitize_ha_value(corto) == corto  # 254 < 255: nessun taglio, nessun marcatore
+
+
+def test_length_exactly_at_the_cap_is_untouched():
+    esatto = "a" * 255
+    assert sanitize_ha_value(esatto) == esatto  # 255 == 255: nessun taglio
 
 
 # ---------------------------------------------------------------------------

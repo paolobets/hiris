@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from ..proxy._sanitize import sanitize_ha_value
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -84,6 +85,33 @@ _CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
 
 def _lista(valore) -> str:
     return json.dumps(valore if isinstance(valore, list) else [], ensure_ascii=False)
+
+
+def _nome(valore) -> str | None:
+    """Un nome/titolo/motivo destinato all'anagrafe, sanificato al confine.
+
+    C-2 (L1-sicurezza.md): `sostituisci` e' l'UNICO scrittore dell'anagrafe --
+    ogni riga che entra qui viene da un registro di Home Assistant, e un
+    nome/alias/titolo/motivo e' testo che HIRIS non controlla (un dispositivo
+    di rete ostile, un'integrazione compromessa, un ospite che rinomina
+    qualcosa). Sanificare QUI, e non a valle, significa che ogni lettore
+    dell'anagrafe (`leggi()`, il nucleo, `guarda`, `cerca`, la pagina) eredita
+    la difesa senza doverla ripetere -- un punto solo, non cinque.
+
+    `None`/non-stringa passano invariati: un campo assente non deve
+    diventare una stringa vuota che afferma "questo nome c'e' ed e' vuoto"."""
+    return sanitize_ha_value(valore) if isinstance(valore, str) else valore
+
+
+def _lista_sanificata(valore) -> str:
+    """Come `_lista`, ma ogni voce stringa passa dal sanitizzatore -- per gli
+    ALIAS (testo scelto dall'utente o dall'integrazione), MAI per le liste di
+    id (`labels`, slug che Home Assistant genera e che l'anagrafe risolve
+    altrove, dalla tabella `etichette` -- gia' sanificata alla propria
+    sorgente)."""
+    if not isinstance(valore, list):
+        return "[]"
+    return json.dumps([_nome(v) for v in valore], ensure_ascii=False)
 
 
 def _dizionario(valore) -> str:
@@ -237,7 +265,7 @@ class ArchivioCasa:
 
             for p in registri.get("piani", []):
                 c.execute("INSERT INTO piani (id, nome, livello, icona) VALUES (?,?,?,?)",
-                          (p["floor_id"], p.get("name") or p["floor_id"],
+                          (p["floor_id"], _nome(p.get("name")) or p["floor_id"],
                            p.get("level"), p.get("icon")))
 
             for a in registri.get("aree", []):
@@ -250,16 +278,17 @@ class ArchivioCasa:
                 # costava zero chiamate.
                 c.execute("INSERT INTO aree (id, nome, piano_id, icona, alias, etichette, "
                           " entita_temperatura, entita_umidita) VALUES (?,?,?,?,?,?,?,?)",
-                          (a["area_id"], a.get("name") or a["area_id"], a.get("floor_id"),
-                           a.get("icon"), _lista(a.get("aliases")), _lista(a.get("labels")),
+                          (a["area_id"], _nome(a.get("name")) or a["area_id"], a.get("floor_id"),
+                           a.get("icon"), _lista_sanificata(a.get("aliases")),
+                           _lista(a.get("labels")),
                            a.get("temperature_entity_id"), a.get("humidity_entity_id")))
 
             for d in registri.get("dispositivi", []):
                 c.execute("INSERT INTO dispositivi "
                           "(id, nome, produttore, modello, area_id, disabilitato, etichette) "
                           "VALUES (?,?,?,?,?,?,?)",
-                          (d["id"], d.get("name_by_user") or d.get("name"),
-                           d.get("manufacturer"), d.get("model"), d.get("area_id"),
+                          (d["id"], _nome(d.get("name_by_user") or d.get("name")),
+                           _nome(d.get("manufacturer")), _nome(d.get("model")), d.get("area_id"),
                            1 if d.get("disabled_by") else 0, _lista(d.get("labels"))))
 
             for e in registri.get("entita", []):
@@ -285,19 +314,19 @@ class ArchivioCasa:
                            # Il nome scelto dall'utente vince su quello che
                            # l'integrazione ha proposto: e' il primo posto in cui
                            # HIRIS deve chiamare le cose come le chiama lui.
-                           e.get("name") or e.get("original_name"),
+                           _nome(e.get("name") or e.get("original_name")),
                            e.get("area_id"), e.get("device_id"), e.get("platform"),
                            e.get("entity_category"),
                            e.get("device_class") or e.get("original_device_class"),
                            e.get("unit_of_measurement"),
                            1 if e.get("disabled_by") else 0,
                            1 if e.get("hidden_by") else 0,
-                           _lista(e.get("aliases")), _lista(e.get("labels")),
+                           _lista_sanificata(e.get("aliases")), _lista(e.get("labels")),
                            _dizionario(e.get("categories"))))
 
             for et in registri.get("etichette", []):
                 c.execute("INSERT INTO etichette (id, nome, colore, icona) VALUES (?,?,?,?)",
-                          (et["label_id"], et.get("name") or et["label_id"],
+                          (et["label_id"], _nome(et.get("name")) or et["label_id"],
                            et.get("color"), et.get("icon")))
 
             for ca in registri.get("categorie", []):
@@ -308,7 +337,7 @@ class ArchivioCasa:
                 # primaria, e in SQLite NULL non e' uguale a NULL -- due righe
                 # con ambito nullo non sarebbero considerate doppie.
                 c.execute("INSERT INTO categorie (id, nome, ambito) VALUES (?,?,?)",
-                          (ca["category_id"], ca.get("name") or ca["category_id"],
+                          (ca["category_id"], _nome(ca.get("name")) or ca["category_id"],
                            ca.get("ambito") or ""))
 
             for i in registri.get("integrazioni", []):
@@ -318,8 +347,8 @@ class ArchivioCasa:
                 # che HIRIS poteva solo non sapere.
                 c.execute("INSERT INTO integrazioni (dominio, titolo, stato, motivo) "
                           "VALUES (?,?,?,?)",
-                          (i.get("domain", ""), i.get("title"), i.get("state"),
-                           i.get("reason") or i.get("error_reason_translation_key")))
+                          (i.get("domain", ""), _nome(i.get("title")), i.get("state"),
+                           _nome(i.get("reason") or i.get("error_reason_translation_key"))))
 
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
@@ -385,6 +414,20 @@ class ArchivioCasa:
         conservarli solo in una riga di log li rende invisibili a chiunque non
         stia leggendo il log in quel momento (vedi `non_disponibili` sopra,
         stesso principio).
+
+        N2 (review indipendente 25/08/2026): `nome` e `corpo` hanno DUE fonti
+        diverse e vanno trattati diversamente. `corpo` viene dal file YAML
+        (`automations.yaml`/`scripts.yaml`) che il proprietario di casa
+        scrive di persona -- resta cosi' com'e', nessuna sanificazione, come
+        gia' deciso per `casa/comportamento.py` in generale. Ma `nome` NON
+        viene dal file: e' il `friendly_name` letto da `get_states([])`
+        (`comportamento.rileggi()`), una lettura di rete GREZZA che non
+        passa da `entity_cache._to_minimal` -- lo stesso genere di testo
+        controllabile da chi non e' il proprietario che C-2 sanifica
+        ovunque arrivi cosi'. Sanificato qui con `_nome()`, lo stesso
+        pattern di `sostituisci()` qui sopra: un punto solo per fonte, non
+        un cablaggio dimenticato perche' "e' un file locale" -- quella
+        ragione copre il corpo, non il nome.
         """
         c = self._conn
         try:
@@ -394,7 +437,7 @@ class ArchivioCasa:
                 corpo = v.get("corpo")
                 c.execute("INSERT INTO comportamento (id, tipo, nome, corpo, origine) "
                           "VALUES (?,?,?,?,?)",
-                          (v["id"], v["tipo"], v.get("nome"),
+                          (v["id"], v["tipo"], _nome(v.get("nome")),
                            # `None` resta `None`: «non ho il corpo» e «il corpo
                            # e' vuoto» sono due cose diverse.
                            None if corpo is None else json.dumps(corpo, ensure_ascii=False),

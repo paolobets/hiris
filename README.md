@@ -60,18 +60,42 @@ exist, the parameters have to belong to that service — and the state is read
 back afterwards, so the chat tells you what actually happened rather than what
 was asked for. There is no confirmation step and no allowlist: capability
 first, safeguards as a designed phase of their own. What there is instead is a
-hard boundary — **nothing acts on its own.** Every execution starts from a
-sentence you typed. No schedule, no trigger, no autonomous agent.
+boundary on **judgment, not on time**: nothing decides to act, or decides what
+to say, on its own — every execution traces back to a sentence you typed. What
+that does *not* mean is *immediately*, or *never on a schedule*: `prometti`,
+one of the thirteen tools below, lets a sentence you type now run later, at a
+time you name, with nobody in the chat when it happens — see the next
+paragraph for what that means in practice.
 
-Periodic work *does* run — four APScheduler jobs are registered at startup —
-but every one of them is internal housekeeping: none of them speaks to you, and
-none of them touches the house. They are: the entity-inventory reload every
-2 minutes (`hiris/app/server.py:969-974`), the `mtime` sentinel over
-`automations.yaml`/`scripts.yaml` every 5 minutes (`:980-985`), chat-history
-retention at 03:00, and the reasoning-queue sweep every 2 minutes. The
-03:30 history compaction, the 04:00 nightly digest and the Mayan document
-poll were removed in 2.1.0 together with the document integration and the
-knowledge archive they fed.
+Periodic work *does* run — the scheduler registers **seven** APScheduler jobs
+at startup, not four, and one of them is not housekeeping: it is the reason
+the paragraph above needed the caveat. Six are internal bookkeeping — none of
+them speaks to you and none of them touches the house: the entity-inventory
+reload every 2 minutes (`server.py::_ricarica_inventario`), the reread of Home
+Assistant's own diagnosed issues every 5 minutes
+(`server.py::_rileggi_problemi`), the tree-vs-Home-Assistant comparison
+sample every 15 minutes (`server.py::confronta_albero`), the `mtime` sentinel
+over `automations.yaml`/`scripts.yaml` every 5 minutes
+(`server.py::guarda_comportamento`), chat-history retention at 03:00, and the
+reasoning-queue sweep every 2 minutes. The 03:30 history compaction, the 04:00
+nightly digest and the Mayan document poll were removed in 2.1.0 together with
+the document integration and the knowledge archive they fed.
+
+The seventh is the promise scheduler's heartbeat, every 15 seconds
+(`server.py::_battito` → `schedulatore/orologio.py::Orologio.batti`). A
+promise is created from a sentence in chat — "at 5pm, turn on the office",
+"in an hour, check the temperature and tell me if it went up" — and its
+service call, or its comparison, is verified at that moment, the same way
+`esegui` is. But its *when* is checked, not acted on, right away: once the
+named moment arrives, the heartbeat carries out that service call **by
+itself, hours after the sentence that created it, with nobody in the chat**
+— and for a `chiedi` promise that named a `notify.*` recapito, it delivers
+the answer on that channel, **outside the chat**, the one way this add-on can
+reach you when you are not looking. Nothing here decided to act: the promise
+did what you told it to, when you told it to. But it is real, unattended
+action on your house and a real message that can arrive while you are asleep,
+and a sentence that says otherwise would be exactly the kind of claim this
+README has already had to walk back once (see above).
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
 (autonomous agents, a proactive brain, proposals, an action gate); most of it
@@ -169,14 +193,18 @@ The chat is the only surface. The model gets the nucleo plus exactly thirteen to
 | `andamento` | how a value moved over time — an entity's real changes within the last 24 hours, hourly min/max/average buckets beyond that, always declaring which grain and which window it actually got |
 | `accaduto` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
 
-Two of the thirteen write to Home Assistant. `esegui` does it immediately, through the services
-door (`azione/porta.py`), with no confirmation step — verified against your installation, not
-approved by you first. `conferma` does it through the configuration door
-(`azione/costruzione/officina.py`), applying a proposal `costruisci` already composed and
-validated, and only in a turn after the one where you saw the preview. Everything else reads,
-remembers, schedules or proposes without touching the house. The catalogue of thirty-four tools
-and the action gate that stood in front of them were both removed in 2.0; what came back is two
-doors, each with its own verification, not a catalogue with a gate.
+Two of the thirteen write to Home Assistant the moment they are called. `esegui` does it
+immediately, through the services door (`azione/porta.py`), with no confirmation step — verified
+against your installation, not approved by you first. `conferma` does it through the configuration
+door (`azione/costruzione/officina.py`), applying a proposal `costruisci` already composed and
+validated, and only in a turn after the one where you saw the preview. A third, `prometti`, does
+not touch the house when it is called — a `fai` promise only verifies and stores a service call —
+but it *will*, through the same services door, once the time you named arrives: see
+[the scheduler's heartbeat](#what-hiris-20-is) above for what that means. Everything else reads,
+remembers, or proposes without touching the house. The catalogue of thirty-four tools and the
+action gate that stood in front of them were both removed in 2.0; what came back is two doors,
+each with its own verification, not a catalogue with a gate — plus a scheduler that can walk
+through the services door on its own, later, for a promise you made.
 
 Answers stream token by token (`text/event-stream`) when the client asks for
 it, and closed sessions are summarised back into the next conversation
@@ -415,10 +443,13 @@ rewritten, with a design of its own.
 - **The Brain**, its proposals and its advisories
 - **Multiple chatbots**, their editors, their per-bot budgets and allowlists
 - **Notifications** — HIRIS has no notification channel of its own: no
-  Apprise, no HA push, no Telegram/ntfy/…, and nothing that can reach you when
-  you are not in the chat. That is a statement about HIRIS, not a guarantee
-  about your house: if your installation exposes `notify.*` entities, `esegui`
-  can call their services like any other
+  Apprise, no HA push, no Telegram/ntfy/… That is a statement about HIRIS, not
+  a guarantee about your house: if your installation exposes `notify.*`
+  entities, `esegui` can call their services like any other while you are in
+  the chat, and a `chiedi` promise (see [the boundary](#what-hiris-20-is)
+  above) that named a `notify.*` recapito **will** reach you when you are not
+  in the chat — it is the one way this add-on can, on a channel you chose
+  yourself, not one of its own
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
 - **The thirty-four-tool catalogue** — replaced by the thirteen above

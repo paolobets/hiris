@@ -49,6 +49,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
                        classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
                        nome_con_id, traduci_stato)
+from .domande import ricordi_sanificati
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -1205,7 +1206,26 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     codice, non il caso con cui arrivano gli argomenti."""
     if not ricordi:
         return ["Nessun ricordo registrato."]
-    ricordi_ordinati = sorted(ricordi, key=lambda r: r.get("id", 0), reverse=True)
+    # N1 (review indipendente 25/08/2026): questa riga chiamava
+    # `sanitize_text` inline invece di `ricordi_sanificati()` -- la funzione
+    # CONDIVISA introdotta apposta perche' un ricordo non potesse piu' uscire
+    # filtrato da una porta e grezzo da un'altra (I1). Il nucleo era filtrato
+    # comunque, ma smentiva l'argomento stesso con cui la funzione condivisa
+    # e' nata: "un punto solo, non una terza copia". Ora e' un punto solo
+    # anche qui -- il docstring di `_sanitize.py` che elenca le porte diventa
+    # vero da se', non per una lista da tenere aggiornata a mano.
+    #
+    # C-2 (L1-sicurezza.md): il ricordo e' l'UNICA cosa che entra intera
+    # nel nucleo, a OGNI turno, senza che il modello lo richieda -- e'
+    # il canale piu' pericoloso per un'iniezione che deve sopravvivere
+    # (I-1: una `ricorda()` avvenuta in un turno iniettato tornerebbe nel
+    # contesto di ogni turno successivo, per sempre). Sanificato QUI,
+    # dove il testo diventa parte di cio' che il modello legge sempre --
+    # non nell'archivio (`memoria/archivio.py`), che resta la verita'
+    # cosi' come e' stata detta (regola 1 del modulo): il testo
+    # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
+    ricordi_ordinati = sorted(ricordi_sanificati(ricordi), key=lambda r: r.get("id", 0),
+                              reverse=True)
     righe = []
     for r in ricordi_ordinati:
         detto_da = r.get("detto_da") or "qualcuno"
