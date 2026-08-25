@@ -747,6 +747,9 @@
 .cfg-menu-btn:active { background: var(--hover); }
 .sidenav-overlay { display: none; }
 @media (pointer: coarse) { .cfg-menu-btn { width: 44px; height: 44px; } }
+/* Solo mobile (vedi @media max-width:768px per la posizione): su desktop
+   il pannello non e' un cassetto, non serve chiuderlo. */
+.sidenav-close-btn { display: none; }
 
 @media (max-width: 768px) {
   .app-shell { grid-template-columns: 1fr !important; }
@@ -759,6 +762,17 @@
     padding-top: calc(var(--sp-4) + env(safe-area-inset-top));
   }
   .side-nav.open { transform: translateX(0) !important; }
+  /* C1: stesso angolo, stessa misura di .cfg-menu-btn nella chrome sotto --
+     cosi' chi ritocca d'istinto lo stesso punto per richiudere trova
+     adesso una X che chiude davvero, non il primo link del cassetto. */
+  .sidenav-close-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; flex-shrink: 0;
+    position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 12px;
+    background: transparent; border: none; color: var(--text); cursor: pointer;
+    border-radius: 8px;
+  }
+  .sidenav-close-btn:active { background: var(--hover); }
   /* Le tre regole del blocco dei 1023 px servono al rail da 64 px, dove le
      etichette non esistono. Qui il rail non esiste: c'e' un cassetto largo
      280 px con le etichette visibili, e quelle regole vanno annullate tutte e

@@ -27,6 +27,20 @@
 <div id="app">
   <div id="sidebar-overlay" style="display:none"></div>
   <aside id="sidebar">
+    <!-- C1 (audit 2026-08-24): sul telefono il pannello copriva l'hamburger
+         che l'aveva aperto, e ritoccare lo stesso punto attivava invece il
+         link «Configurazione» nascosto sotto -- verificato con
+         document.elementFromPoint. Il pannello e' impilato sopra l'header
+         (z-index piu' alto, necessario per stare sopra i messaggi quando e'
+         aperto), quindi l'hamburger non puo' restare visibile sopra di lui:
+         niente trucco di z-index lo risolve senza spostarlo fuori
+         dall'header nel DOM. Un bottone di chiusura esplicito, nello stesso
+         angolo in alto a sinistra dove stava l'hamburger, e' la correzione
+         che il referto stesso propone come alternativa. Solo mobile
+         (hiris-chat.css). -->
+    <button id="sidebar-close-btn" aria-label="Chiudi menu" title="Chiudi menu">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
     <div id="sidebar-footer">
       <a href="config" class="sb-nav-item">
         <span class="ic">
@@ -59,7 +73,7 @@
 
   <main id="main">
     <header id="header">
-      <button id="menu-btn" aria-label="Apri menu" title="Menu">
+      <button id="menu-btn" aria-label="Apri menu" title="Menu" aria-expanded="false">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
       <img id="header-icon" src="static/hiris-icon.svg" alt="HIRIS">

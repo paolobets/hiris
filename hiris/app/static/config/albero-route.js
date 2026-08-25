@@ -224,15 +224,25 @@ window.HirisAlberoRoute = (function () {
 
   function rigaEntita(ul, e, disabilitata, mappaEtichette) {
     var li = el('li');
-    li.style.cssText = 'margin-bottom:8px;font-size:var(--fs-13)';
+    /* `overflow-wrap:anywhere` anche qui (non solo sull'id): alias ed
+       etichette penzolanti sono a loro volta slug senza spazi, stesso
+       rischio di sfondare la larghezza. */
+    li.style.cssText = 'margin-bottom:8px;font-size:var(--fs-13);overflow-wrap:anywhere';
 
     var testa = el('span', null, (e.nome || e.id || '?') + ' ');
     testa.style.fontWeight = '500';
     li.appendChild(testa);
 
     if (e.id) {
+      /* C2 (audit 2026-08-24): gli entity_id lunghi (es.
+         "binary_sensor.presence_sensor_fp2_2763_presence_sensor_1") sono
+         una parola sola, senza spazi -- senza `overflow-wrap` il browser non
+         ha un punto dove andare a capo e allarga tutta la pagina in
+         orizzontale (misurato: scrollWidth 669px su un viewport di 390).
+         Va a capo, non troncato: e' proprio l'id per intero che questa
+         pagina serve a far leggere. */
       var idSpan = el('span', null, '(' + e.id + ')');
-      idSpan.style.cssText = 'color:var(--text-3);font-size:var(--fs-12)';
+      idSpan.style.cssText = 'color:var(--text-3);font-size:var(--fs-12);overflow-wrap:anywhere';
       li.appendChild(idSpan);
     }
 
@@ -287,7 +297,14 @@ window.HirisAlberoRoute = (function () {
 
   function rendiArea(container, area, mappaEtichette) {
     var det = el('details');
-    det.open = true;
+    /* C2 (audit 2026-08-24): con `open` sempre vero, una casa di 1224
+       entità rendeva 49.282px di pagina su desktop e 70.154px su mobile --
+       ogni singola entità nasceva gia' espansa. Le AREE nascono chiuse
+       (un riepilogo per riga, "Cucina — 3 entità"); i PIANI (rendiPiano,
+       sotto) restano aperti: e' il primo livello, la mappa della casa. Chi
+       cerca un dispositivo apre l'area che gli interessa -- resta possibile
+       aprire il resto, non e' un limite, solo non nasce gia' tutto steso. */
+    det.open = false;
 
     var sommario = el('summary', null, area.nome + ' — ' + etichettaConteggioEntita(area));
     sommario.style.cssText = 'cursor:pointer;font-weight:500';
@@ -346,6 +363,8 @@ window.HirisAlberoRoute = (function () {
 
   function rendiPiano(container, piano, mappaEtichette) {
     var det = el('details');
+    /* Primo livello: resta aperto (vedi il commento in rendiArea per il
+       perche' le aree, sotto, non lo sono piu'). */
     det.open = true;
 
     var titoloPiano = piano.nome + (piano.livello != null ? ' (livello ' + piano.livello + ')' : '');

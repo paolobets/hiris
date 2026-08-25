@@ -30,6 +30,11 @@
     }
     if (menuBtn) menuBtn.addEventListener('click', function () { toggleNav(); });
     if (overlay) overlay.addEventListener('click', function () { toggleNav(false); });
+    /* C1 (audit 2026-08-24): bottone di chiusura esplicito in cima al
+       cassetto, nello stesso angolo dell'hamburger che il cassetto copre
+       da sotto. */
+    var closeBtn = document.getElementById('sidenav-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', function () { toggleNav(false); });
     sn.addEventListener('click', function (e) {
       if (e.target.closest('.nav-item') && window.matchMedia('(max-width: 768px)').matches) toggleNav(false);
     });
