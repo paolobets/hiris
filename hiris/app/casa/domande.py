@@ -124,7 +124,18 @@ def cerca(indice, testo: str) -> list[dict]:
       registro ma ricavato dal `friendly_name` dello specchio dello stato
       (vedi `memoria/riconoscitore.costruisci_indice`). Un nome dedotto e'
       un fatto diverso da un nome scelto dall'utente e non va spacciato per
-      tale -- stessa forma di `nome_dedotto` in `guarda()`/`_guarda_entita`.
+      tale -- stessa forma di `nome_dedotto` in `guarda()`/`_guarda_entita`;
+    - `nascosta` (solo per le entita', e solo quando e' vera), fetta
+      "nascoste fuori dagli elenchi" (2026-08-25): il proprietario ha
+      misurato in produzione che `cerca` non riportava affatto questo campo
+      -- «lampadario» trovava tre lampade LIFX nascoste e nulla lo diceva.
+      Qui NON si esclude come in `guarda`: un'entita' cercata per nome e'
+      una domanda diretta, e togliere dalla lista una cosa che esiste
+      sarebbe rispondere «non esiste» di una cosa che c'e' -- la frase che
+      questo prodotto non deve mai dire con sicurezza. Si MARCA soltanto, e
+      solo quando e' vera: `nascosta: false` su ogni candidato di una casa
+      da 1226 entita' sarebbe rumore in ogni risposta -- stessa disciplina
+      di `unita`/`categorie` in `guarda()`.
 
     `verifica()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
@@ -145,6 +156,8 @@ def cerca(indice, testo: str) -> list[dict]:
                 candidato["nome_dedotto"] = dedotto
             if candidato["tipo"] == "entita":
                 candidato["dominio"] = dominio_di(candidato["riferimento"])
+                if oggetto.get("nascosta"):
+                    candidato["nascosta"] = True
     return risultati
 
 
@@ -413,6 +426,33 @@ def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dic
     return dettaglio
 
 
+def _righe_entita(elenco: list[dict], stato: dict, da_quando_vive: dict[str, str] | None,
+                  disabilitata: bool, nomi_di_ripiego: dict[str, str] | None,
+                  unita_vive: dict[str, str] | None, nomi_etichette: dict[str, str],
+                  classi_vive: dict[str, str] | None,
+                  nomi_categorie: dict[tuple[str, str], str],
+                  attributi_vivi: dict[str, dict] | None) -> list[dict]:
+    """Un elenco grezzo di voci dell'anagrafe (`entita`/`entita_disabilitate`/
+    `entita_nascoste` di `gerarchia()`) arricchito UNA riga alla volta con
+    `_arricchisci_entita` -- il ciclo si scriveva tre volte in `_guarda_area`
+    (una per lista) con la stessa forma, e tre copie sono tre posti in cui la
+    stessa correzione si dimentica di una.
+
+    `disabilitata` e' un valore FISSO per l'intero elenco, non letto dalla
+    voce: chi chiama sa gia' da quale lista viene (le disabilitate hanno gia'
+    lasciato `per_area`/`per_area_nascoste` in `gerarchia()`)."""
+    return [
+        _arricchisci_entita(
+            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+             "stato": stato.get(e["id"]),
+             "da_quando": (da_quando_vive or {}).get(e["id"]),
+             "disabilitata": disabilitata},
+            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
+            nomi_categorie, attributi_vivi)
+        for e in elenco
+    ]
+
+
 def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
                  non_disponibili: tuple[str, ...] = (),
                  nomi_di_ripiego: dict[str, str] | None = None,
@@ -438,30 +478,35 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # affermazione che nessuno ha il diritto di fare. La scelta fra
         # `non_disponibile` e `suggerimento` e' in `_dettaglio_non_trovato`.
         return _dettaglio_non_trovato("area", riferimento, "aree" in non_disponibili)
-    entita = [
-        _arricchisci_entita(
-            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]),
-             "da_quando": (da_quando_vive or {}).get(e["id"]),
-             "disabilitata": False},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie, attributi_vivi)
-        for e in area["entita"]
-    ] + [
+    entita = (
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
         # dire "questa luce c'e' ma e' disabilitata" -- `_guarda_dispositivo`
         # e `_guarda_entita` lo fanno gia', `_guarda_area` no. `gerarchia()`
         # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
-        # anagrafe.py).
-        _arricchisci_entita(
-            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]),
-             "da_quando": (da_quando_vive or {}).get(e["id"]),
-             "disabilitata": True},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie, attributi_vivi)
-        for e in area.get("entita_disabilitate", [])
-    ]
+        # anagrafe.py). Restano dentro `entita`, marcate: sapere che quella
+        # luce c'e' ma non funziona e' informazione, non rumore.
+        _righe_entita(area["entita"], stato, da_quando_vive, False, nomi_di_ripiego,
+                     unita_vive, nomi_etichette, classi_vive, nomi_categorie, attributi_vivi)
+        + _righe_entita(area.get("entita_disabilitate", []), stato, da_quando_vive, True,
+                       nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
+                       nomi_categorie, attributi_vivi)
+    )
+    # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
+    # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
+    # elenchi", 2026-08-25). Il proprietario ha misurato in produzione che
+    # `guarda("area", "sala_da_pranzo")` elencava sette luci mescolate,
+    # quattro nascoste, col campo `nascosta` gia' presente su ognuna: stare
+    # nella STESSA lista non ha impedito che venissero nominate lo stesso.
+    # La regola voluta -- "HIRIS non considera le nascoste, a meno che non
+    # gli vengano chieste esplicitamente" -- si applica per STRUTTURA: il
+    # modello che legge `entita` per rispondere "quali luci ci sono in sala
+    # da pranzo" non le vede affatto, senza dover ricordare di filtrarle da
+    # un campo. Restano pero' COMPLETE e raggiungibili qui, per la stessa
+    # domanda esplicita -- "cosa hai nascosto?" -- che il campo `nascosta`
+    # serviva gia' quando l'entita' si guarda da sola (`_guarda_entita`).
+    entita_nascoste = _righe_entita(area.get("entita_nascoste", []), stato, da_quando_vive,
+                                    False, nomi_di_ripiego, unita_vive, nomi_etichette,
+                                    classi_vive, nomi_categorie, attributi_vivi)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incompleto = sorted(set(non_disponibili) & {"aree", "dispositivi", "entita"})
     dettaglio = {
@@ -469,6 +514,11 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         "entita": entita,
         "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
     }
+    # Solo quando ce n'e' almeno una: `entita_nascoste: []` su ogni area
+    # (la stragrande maggioranza non ne ha) sarebbe rumore in ogni risposta
+    # -- stessa disciplina di `unita`/`etichette`/`categorie` in questo file.
+    if entita_nascoste:
+        dettaglio["entita_nascoste"] = entita_nascoste
     # Le entita' di riferimento della stanza: solo quando l'utente le ha
     # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
     # indistinguibile da un registro delle aree caduto.
@@ -562,6 +612,20 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
     # legge `casa["entita"]` grezzo, fuori da `gerarchia()`, che le disabilitate
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
     # avrebbero la stessa forma di uno che funziona.
+    #
+    # Le NASCOSTE (e non disabilitate: stessa precedenza di `gerarchia()` --
+    # una disabilitata e nascosta insieme resta fra le disabilitate, non
+    # duplica il fatto in due chiavi) si separano PRIMA di arricchire, con la
+    # stessa regola dell'area: fuori da `entita`, dentro `entita_nascoste`
+    # (fetta "nascoste fuori dagli elenchi", 2026-08-25) -- STESSA chiave,
+    # STESSA forma della porta area, cosi' il modello non impara due
+    # vocabolari per lo stesso fatto su due porte diverse.
+    entita_grezze_del_dispositivo = [
+        e for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento]
+    nascoste_grezze = [e for e in entita_grezze_del_dispositivo
+                       if e.get("nascosta") and not e.get("disabilitata")]
+    visibili_grezze = [e for e in entita_grezze_del_dispositivo
+                       if not (e.get("nascosta") and not e.get("disabilitata"))]
     entita_del_dispositivo = [
         _arricchisci_entita(
             # `classe` e `stato` come dall'area: la stessa entita' e' la stessa
@@ -574,8 +638,11 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
              "disabilitata": bool(e.get("disabilitata"))},
             e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
             nomi_categorie, attributi_vivi)
-        for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento
+        for e in visibili_grezze
     ]
+    entita_nascoste_dispositivo = _righe_entita(
+        nascoste_grezze, stato, da_quando_vive, False, nomi_di_ripiego, unita_vive,
+        nomi_etichette, classi_vive, nomi_categorie, attributi_vivi)
     dettaglio = {
         "esiste": True, "tipo": "dispositivo", "id": dispositivo["id"],
         "nome": dispositivo.get("nome"),
@@ -583,6 +650,9 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
         "entita": entita_del_dispositivo,
         "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
     }
+    # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
+    if entita_nascoste_dispositivo:
+        dettaglio["entita_nascoste"] = entita_nascoste_dispositivo
     # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
     # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
     # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
@@ -701,6 +771,25 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     si inventa: nessun `entita: []`, nessun `corpo: None` che si potrebbe
     scambiare per un fatto sulla casa invece che per "non trovato" -- un
     silenzio non dichiarato e' indistinguibile da un'assenza di problemi.
+
+    Sui due rami che elencano entita' -- area e dispositivo -- `entita` NON
+    contiene mai le NASCOSTE (`hidden_by` di Home Assistant, l'utente le ha
+    tolte dalle proprie viste): fetta "nascoste fuori dagli elenchi"
+    (2026-08-25), decisione del proprietario -- "HIRIS non prende in
+    considerazione le entita' nascoste, a meno che non gli vengano chieste
+    esplicitamente". Restano complete e raggiungibili nella chiave parallela
+    `entita_nascoste` (presente solo quando ce n'e' almeno una), la stessa
+    forma di `gerarchia()` per le disabilitate. La differenza col
+    trattamento delle disabilitate e' voluta: quelle restano DENTRO `entita`,
+    marcate (`disabilitata: true`) -- e' un dato utile su un impianto che
+    esiste, "questa luce c'e' ma non funziona"; le nascoste sono una scelta
+    di VISTA dell'utente, e la misura in produzione (`guarda("area",
+    "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
+    che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha
+    impedito che venissero elencate. Una singola entita' guardata da sola
+    (`_guarda_entita`) continua a portare il campo `nascosta` invece che una
+    chiave a parte: non c'e' un elenco da cui separarla, hai chiesto
+    esplicitamente proprio lei.
 
     R5: sui rami che possono confondere un NOME con un id -- area, entita',
     dispositivo, e da T7 (R2) anche automazione e script -- `esiste: False`

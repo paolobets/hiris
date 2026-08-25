@@ -32,7 +32,11 @@
    2) Le entita' DISABILITATE -- `entita_disabilitate`, la chiave
       parallela a `entita` che ogni area vera porta. Presenti e marcate,
       MAI nascoste: un'area con tre luci disabilitate e zero attive non
-      deve sembrare un'area vuota.
+      deve sembrare un'area vuota. Dalla fetta "nascoste fuori dagli
+      elenchi" (2026-08-25) vale la STESSA cosa per `entita_nascoste`: la
+      chat non le nomina piu' di sua iniziativa (struttura, non istruzione),
+      ma questa pagina esiste apposta per non far sparire niente, e le
+      mostra in una sezione propria -- stesso trattamento, stessa ragione.
    3) `non_disponibili` e `sistema_di_riferimento`, con la stessa
       disciplina a tre stati di `dashboard.js`: un `null` non e' un `[]`,
       e una casa letta a meta' non deve sembrare una casa piccola.
@@ -291,8 +295,15 @@ window.HirisAlberoRoute = (function () {
   function etichettaConteggioEntita(area) {
     var attive = (area.entita || []).length;
     var disabilitate = (area.entita_disabilitate || []).length;
+    var nascoste = (area.entita_nascoste || []).length;
     var base = attive + ' entità';
-    return disabilitate ? base + ', ' + disabilitate + ' disabilitata'.concat(disabilitate === 1 ? '' : 'e') : base;
+    if (disabilitate) base += ', ' + disabilitate + ' disabilitata'.concat(disabilitate === 1 ? '' : 'e');
+    /* Stessa disciplina delle disabilitate (fetta "nascoste fuori dagli
+       elenchi", 2026-08-25): questa pagina esiste per non far sparire
+       niente -- un'area con quattro luci nascoste e tre attive deve
+       leggersi come "3 entità, 4 nascoste", non come "3 entità" secco. */
+    if (nascoste) base += ', ' + nascoste + ' nascosta'.concat(nascoste === 1 ? '' : 'e');
+    return base;
   }
 
   function rendiArea(container, area, mappaEtichette) {
@@ -325,8 +336,14 @@ window.HirisAlberoRoute = (function () {
 
     var attive = area.entita || [];
     var disabilitate = area.entita_disabilitate || [];
+    /* `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25):
+       da quando `gerarchia()` le toglie da `entita` per STRUTTURA (la stessa
+       ragione per cui la chat non le nomina piu' di sua iniziativa), questa
+       pagina -- che esiste apposta per non far sparire niente -- le rende in
+       una sezione propria, come gia' faceva per le disabilitate. */
+    var nascoste = area.entita_nascoste || [];
 
-    if (!attive.length && !disabilitate.length) {
+    if (!attive.length && !disabilitate.length && !nascoste.length) {
       riga(corpo, 'Nessuna entità.', TONO_QUIETO);
     }
     if (attive.length) {
@@ -347,6 +364,20 @@ window.HirisAlberoRoute = (function () {
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
       disabilitate.forEach(function (e) { rigaEntita(ulD, e, true, mappaEtichette); });
       corpo.appendChild(ulD);
+    }
+    if (nascoste.length) {
+      /* Stessa disciplina delle disabilitate qui sopra, per lo stesso
+         motivo: "questa luce c'è ma l'hai nascosta" è informazione, non
+         un'assenza -- questa pagina audita cosa HIRIS sa, non filtra cosa
+         mostrare come farebbe una risposta in chat. */
+      var titoloNas = el('div', null,
+        nascoste.length === 1 ? 'Entità nascosta' : 'Entità nascoste (' + nascoste.length + ')');
+      titoloNas.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
+      corpo.appendChild(titoloNas);
+      var ulN = el('ul');
+      ulN.style.cssText = 'margin:4px 0;padding-left:18px';
+      nascoste.forEach(function (e) { rigaEntita(ulN, e, false, mappaEtichette); });
+      corpo.appendChild(ulN);
     }
 
     det.appendChild(corpo);

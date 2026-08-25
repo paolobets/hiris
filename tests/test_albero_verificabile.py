@@ -529,9 +529,15 @@ def test_componi_resta_pura(confronto):
 def test_gerarchia_resta_pura_e_non_sa_niente_del_confronto():
     """`gerarchia()` non cambia forma: il confronto e' un secondo parere che si
     mette ACCANTO all'albero, non un campo che gli si appende dentro. Un albero
-    che portasse il proprio verdetto sarebbe lo stesso fatto in due case."""
+    che portasse il proprio verdetto sarebbe lo stesso fatto in due case.
+
+    `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25) e'
+    nella forma attesa: stessa chiave parallela di `entita_disabilitate`, non
+    un campo del confronto -- e' per questo che si aggiunge qui invece di
+    romperlo."""
     casa = _casa([_entita("light.cucina", area="cucina")])
     piani = gerarchia(casa)
     cucina = piani[0]["aree"][0]
     assert set(cucina) == {"id", "nome", "alias", "etichette", "entita_temperatura",
-                           "entita_umidita", "entita", "entita_disabilitate"}
+                           "entita_umidita", "entita", "entita_disabilitate",
+                           "entita_nascoste"}

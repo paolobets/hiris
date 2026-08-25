@@ -158,6 +158,32 @@ test('un\'entità disabilitata compare SEMPRE, marcata, anche quando è l\'unica
     'un\'area con solo entità disabilitate non è "nessuna entità": ce ne sono, sono marcate');
 });
 
+test('un\'entità nascosta compare SEMPRE, marcata, in una sezione propria (2026-08-25)', async () => {
+  // Stessa prova gemella di quella per le disabilitate qui sopra: fetta
+  // "nascoste fuori dagli elenchi" -- `gerarchia()` toglie le nascoste da
+  // `entita` per STRUTTURA (la stessa ragione per cui la chat non le nomina
+  // piu' di sua iniziativa), ma questa pagina audita cosa HIRIS sa e non
+  // deve far sparire niente: le mostra in `entita_nascoste`, come già fa per
+  // `entita_disabilitate`.
+  const casa = casaCompleta();
+  casa.piani[0].aree[0].entita = [];
+  casa.piani[0].aree[0].entita_nascoste = [
+    { id: 'light.lampadario_fake', nome: null, nome_dedotto: 'Lampadario fake',
+      piattaforma: 'ave_domina', categoria: null, classe: null, unita: null,
+      disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+  ];
+  const { document } = await rendi(casa);
+  const sommarioCucina = [...document.querySelectorAll('summary')]
+    .find((s) => s.textContent.indexOf('Cucina') === 0);
+  assert.ok(sommarioCucina, 'precondizione: l’area Cucina deve essere disegnata');
+  assert.match(sommarioCucina.textContent, /1 nascosta/, 'il conteggio in sommario le dichiara');
+  const corpoCucina = sommarioCucina.closest('details').textContent;
+  assert.match(corpoCucina, /Entità nascosta/, 'il titolo di sezione compare');
+  assert.match(corpoCucina, /\[nascosta in Home Assistant\]/, 'e l’entità è marcata come tale');
+  assert.doesNotMatch(corpoCucina, /Nessuna entità\./,
+    'un\'area con solo entità nascoste non è "nessuna entità": ce n\'è una, marcata');
+});
+
 test('«non_disponibili» pieno: una casa letta a metà non sembra una casa piccola', async () => {
   const { testo } = await rendi(casaCompleta({ non_disponibili: ['aree', 'categorie:script'] }));
   assert.match(testo, /Registri che non hanno risposto all’ultima lettura/);

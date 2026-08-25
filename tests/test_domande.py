@@ -641,3 +641,208 @@ def test_guarda_non_sa_aprire_un_etichetta():
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "etichetta", "notturne")
     assert dettaglio["esiste"] is False
     assert dettaglio["non_so_guardare"] is True
+
+
+# --- Fetta "nascoste fuori dagli elenchi" (2026-08-25) ---------------------
+#
+# Il caso VERO, misurato in produzione dal proprietario (non una casa finta
+# piu' semplice): `guarda("area", "sala_da_pranzo")` restituiva sette luci
+# mescolate, quattro nascoste (tre lampade LIFX piu' una che si chiama
+# "lampadario fake"), sei senza nome dichiarato nel registro (nome_dedotto
+# dallo specchio dello stato). La regola voluta dal proprietario: "HIRIS non
+# prende in considerazione le entita' nascoste, a meno che non gli vengano
+# chieste esplicitamente".
+
+
+def _casa_sala_da_pranzo():
+    return {
+        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "sala_da_pranzo", "nome": "Sala da pranzo", "piano_id": "terra",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [
+            {"id": "dev_lampadario", "nome": "Lampadario", "area_id": "sala_da_pranzo",
+             "disabilitato": False},
+        ],
+        "entita": [
+            # Visibile: il gruppo, con nome dichiarato.
+            {"id": "light.lampadario_sala_da_pranzo", "nome": "Lampadario sala da pranzo",
+             "classe": None, "unita": None, "area_id": "sala_da_pranzo",
+             "dispositivo_id": None, "disabilitata": 0, "nascosta": 0},
+            # Visibili: senza nome dichiarato (uno None, uno stringa vuota --
+            # entrambe le forme che il registro usa davvero), con ripiego.
+            {"id": "light.applique", "nome": None, "classe": None, "unita": None,
+             "area_id": "sala_da_pranzo", "dispositivo_id": None,
+             "disabilitata": 0, "nascosta": 0},
+            {"id": "light.nicchia", "nome": "", "classe": None, "unita": None,
+             "area_id": "sala_da_pranzo", "dispositivo_id": None,
+             "disabilitata": 0, "nascosta": 0},
+            # Visibile: un pulsante sullo stesso dispositivo delle nascoste,
+            # per esercitare la PARTIZIONE su `_guarda_dispositivo` -- non
+            # tutte le entita' di quel dispositivo sono nascoste.
+            {"id": "button.lampadario_riavvia", "nome": "Riavvia", "classe": "restart",
+             "unita": None, "area_id": None, "dispositivo_id": "dev_lampadario",
+             "disabilitata": 0, "nascosta": 0},
+            # Nascoste: le tre lampade LIFX, sullo stesso dispositivo.
+            {"id": "light.lampadario", "nome": None, "classe": None, "unita": None,
+             "area_id": None, "dispositivo_id": "dev_lampadario",
+             "disabilitata": 0, "nascosta": 1},
+            {"id": "light.lampadario_2", "nome": None, "classe": None, "unita": None,
+             "area_id": None, "dispositivo_id": "dev_lampadario",
+             "disabilitata": 0, "nascosta": 1},
+            {"id": "light.lampadario_3", "nome": None, "classe": None, "unita": None,
+             "area_id": None, "dispositivo_id": "dev_lampadario",
+             "disabilitata": 0, "nascosta": 1},
+            # Nascosta: "lampadario fake", area propria (non su un dispositivo).
+            {"id": "light.lampadario_fake", "nome": "", "classe": None, "unita": None,
+             "area_id": "sala_da_pranzo", "dispositivo_id": None,
+             "disabilitata": 0, "nascosta": 1},
+        ],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }
+
+
+def _ripiego_sala_da_pranzo():
+    return {
+        "light.applique": "Sala pranzo applique",
+        "light.nicchia": "Sala pranzo nicchia",
+        "light.lampadario": "Lampadario",
+        "light.lampadario_2": "Lampadario 2",
+        "light.lampadario_3": "Lampadario 3",
+        "light.lampadario_fake": "Lampadario fake",
+    }
+
+
+def test_guarda_un_area_non_mescola_le_nascoste_nell_elenco_che_conta():
+    """Il caso vero: prima di questa fetta le sette luci uscivano tutte da
+    `entita`, quattro gia' marcate `nascosta: true` -- e il marcatore non
+    impediva che venissero elencate lo stesso. Ora le quattro nascoste non
+    stanno proprio in `entita`."""
+    dettaglio = guarda(_casa_sala_da_pranzo(), [], [], {}, "area", "sala_da_pranzo",
+                       nomi_di_ripiego=_ripiego_sala_da_pranzo())
+    ids_visibili = {e["id"] for e in dettaglio["entita"]}
+    assert ids_visibili == {
+        "light.lampadario_sala_da_pranzo", "light.applique", "light.nicchia",
+        "button.lampadario_riavvia"}
+
+
+def test_guarda_un_area_riporta_le_nascoste_complete_in_una_chiave_a_parte():
+    """Non sparite: raggiungibili e COMPLETE (nome_dedotto compreso) in
+    `entita_nascoste` -- "questa cosa c'e' ma l'hai nascosta" e' informazione,
+    non un'assenza."""
+    dettaglio = guarda(_casa_sala_da_pranzo(), [], [], {}, "area", "sala_da_pranzo",
+                       nomi_di_ripiego=_ripiego_sala_da_pranzo())
+    ids_nascoste = {e["id"] for e in dettaglio["entita_nascoste"]}
+    assert ids_nascoste == {
+        "light.lampadario", "light.lampadario_2", "light.lampadario_3",
+        "light.lampadario_fake"}
+    per_id = {e["id"]: e for e in dettaglio["entita_nascoste"]}
+    assert per_id["light.lampadario_fake"]["nome_dedotto"] == "Lampadario fake"
+    assert per_id["light.lampadario"]["nome_dedotto"] == "Lampadario"
+
+
+def test_guarda_un_area_senza_nascoste_non_porta_la_chiave():
+    """Rumore evitato: un'area senza nascoste (la stragrande maggioranza)
+    non porta `entita_nascoste: []` su ogni risposta."""
+    dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
+    assert "entita_nascoste" not in dettaglio
+
+
+def test_guarda_un_entita_nascosta_resta_raggiungibile_da_sola():
+    """Nessun elenco da cui separarla: hai chiesto esplicitamente proprio
+    lei, e la porta continua a marcarla con `nascosta: true` sul dettaglio,
+    come faceva gia' prima di questa fetta."""
+    dettaglio = guarda(_casa_sala_da_pranzo(), [], [], {}, "entita", "light.lampadario_fake",
+                       nomi_di_ripiego=_ripiego_sala_da_pranzo())
+    assert dettaglio["esiste"] is True
+    assert dettaglio["nascosta"] is True
+    assert dettaglio["nome_dedotto"] == "Lampadario fake"
+
+
+def test_guarda_un_dispositivo_non_mescola_le_nascoste_nell_elenco_che_conta():
+    dettaglio = guarda(_casa_sala_da_pranzo(), [], [], {}, "dispositivo", "dev_lampadario",
+                       nomi_di_ripiego=_ripiego_sala_da_pranzo())
+    ids_visibili = {e["id"] for e in dettaglio["entita"]}
+    assert ids_visibili == {"button.lampadario_riavvia"}
+
+
+def test_guarda_un_dispositivo_riporta_le_nascoste_complete_in_una_chiave_a_parte():
+    dettaglio = guarda(_casa_sala_da_pranzo(), [], [], {}, "dispositivo", "dev_lampadario",
+                       nomi_di_ripiego=_ripiego_sala_da_pranzo())
+    ids_nascoste = {e["id"] for e in dettaglio["entita_nascoste"]}
+    assert ids_nascoste == {"light.lampadario", "light.lampadario_2", "light.lampadario_3"}
+    per_id = {e["id"]: e for e in dettaglio["entita_nascoste"]}
+    assert per_id["light.lampadario_2"]["nome_dedotto"] == "Lampadario 2"
+
+
+def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
+    """Stessa precedenza di `gerarchia()`/`nucleo.py`: chi e' disabilitata E
+    nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate,
+    marcata `disabilitata: true`, mai in `entita_nascoste`."""
+    casa = _casa_sala_da_pranzo()
+    casa["entita"] = casa["entita"] + [
+        {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
+         "area_id": None, "dispositivo_id": "dev_lampadario",
+         "disabilitata": 1, "nascosta": 1}]
+    dettaglio = guarda(casa, [], [], {}, "dispositivo", "dev_lampadario")
+    ids_entita = {e["id"] for e in dettaglio["entita"]}
+    assert "light.lampadario_morto" in ids_entita
+    assert "light.lampadario_morto" not in {
+        e["id"] for e in dettaglio.get("entita_nascoste", [])}
+    marcata = next(e for e in dettaglio["entita"] if e["id"] == "light.lampadario_morto")
+    assert marcata["disabilitata"] is True
+
+
+def test_guarda_un_area_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
+    """Stessa prova, sul ramo area -- la precedenza la decide `gerarchia()`,
+    ma va verificata dalla porta che il modello chiama davvero."""
+    casa = _casa_sala_da_pranzo()
+    casa["entita"] = casa["entita"] + [
+        {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
+         "area_id": "sala_da_pranzo", "dispositivo_id": None,
+         "disabilitata": 1, "nascosta": 1}]
+    dettaglio = guarda(casa, [], [], {}, "area", "sala_da_pranzo")
+    ids_entita = {e["id"] for e in dettaglio["entita"]}
+    assert "light.lampadario_morto" in ids_entita
+    assert "light.lampadario_morto" not in {
+        e["id"] for e in dettaglio.get("entita_nascoste", [])}
+
+
+def test_cerca_marca_un_candidato_entita_nascosto():
+    """Misurato in produzione: `cerca` non riportava affatto questo campo --
+    "lampadario" trovava le lampade LIFX nascoste e nulla lo diceva."""
+    casa = _casa_sala_da_pranzo()
+    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
+    trovati = cerca(indice, "lampadario fake")
+    candidato = next(c for t in trovati for c in t["candidati"]
+                     if c["tipo"] == "entita" and c["riferimento"] == "light.lampadario_fake")
+    assert candidato["nascosta"] is True
+
+
+def test_cerca_non_marca_un_candidato_entita_visibile():
+    """Mutazione uccisa: marcare `nascosta` su ogni candidato invece che
+    solo su chi lo e' davvero -- `nascosta: false` su una casa da 1226
+    entita' sarebbe rumore in ogni risposta. Il termine indicizzato e' il
+    nome dedotto INTERO ("Sala pranzo applique"), non la singola parola: e'
+    cosi' che `trova()` riconosce i termini, non per sottostringa."""
+    casa = _casa_sala_da_pranzo()
+    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
+    trovati = cerca(indice, "sala pranzo applique")
+    candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "entita")
+    assert "nascosta" not in candidato
+
+
+def test_cerca_non_esclude_i_candidati_nascosti():
+    """Il caso che questa fetta distingue esplicitamente da `guarda`:
+    cercare "lampadario 2" (il nome dedotto intero di una lampada LIFX
+    nascosta) deve TROVARLA, non farla sparire -- dire "non esiste" di una
+    cosa che c'e' e' precisamente la frase che questo prodotto non deve mai
+    dire con sicurezza."""
+    casa = _casa_sala_da_pranzo()
+    indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
+    trovati = cerca(indice, "lampadario 2")
+    riferimenti = {c["riferimento"] for t in trovati for c in t["candidati"]
+                  if c["tipo"] == "entita"}
+    assert "light.lampadario_2" in riferimenti
+    candidato = next(c for t in trovati for c in t["candidati"]
+                     if c["tipo"] == "entita" and c["riferimento"] == "light.lampadario_2")
+    assert candidato["nascosta"] is True
