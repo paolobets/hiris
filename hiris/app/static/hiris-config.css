@@ -759,7 +759,26 @@
     width: min(82vw, 280px); z-index: 60;
     transform: translateX(-100%); transition: transform .22s ease;
     box-shadow: 2px 0 28px rgba(0,0,0,.45);
-    padding-top: calc(var(--sp-4) + env(safe-area-inset-top));
+    /* Regressione trovata dalla review indipendente: `.sidenav-close-btn`
+       sotto (44x44 a top:8/left:12, quindi y:8-52) disegnava la X esatta-
+       mente sopra il marchio (`.brand img`, 24x24 a x:24-48/y:24-48) --
+       stesso angolo, stesso raggio d'azione del pollice, ma a pannello
+       APERTO quell'angolo era gia' occupato dal logo. Non ho spostato il
+       bottone (avrebbe riaperto il difetto originale, il pollice lo
+       cercherebbe ancora li'): ho spostato il logo, allargando lo spazio
+       sopra il primo elemento del cassetto (`.brand`, il primo figlio in
+       flusso normale) fino a superare i 52px del bottone, con un margine
+       di 8px.
+
+       `!important` necessario, non decorativo: la regola INCONDIZIONATA
+       `.side-nav { padding: var(--sp-4) var(--sp-3); ... }` piu' sotto nel
+       file ha la STESSA specificita' e viene DOPO nel foglio di stile, quindi
+       vince lei sul padding-top a parita' di specificita' -- lo stesso motivo
+       per cui poco sopra `position` e `height` in questo blocco hanno gia'
+       `!important`. Misurato dal vivo: senza `!important` qui il
+       `getBoundingClientRect()` del logo restava invariato (24-48,24-48),
+       la correzione non aveva alcun effetto. */
+    padding-top: calc(60px + env(safe-area-inset-top)) !important;
   }
   .side-nav.open { transform: translateX(0) !important; }
   /* C1: stesso angolo, stessa misura di .cfg-menu-btn nella chrome sotto --
