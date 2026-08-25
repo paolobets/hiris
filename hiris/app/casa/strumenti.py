@@ -11,9 +11,14 @@ che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
 riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, e dalla
 fetta «HIRIS e il tempo» (Task 6) ne riceve TREDICI. Cinque leggono e
-ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e'
-l'unico strumento che scrive nella casa (i servizi, non la configurazione);
-`costruisci` e `conferma`, in coppia, sono l'unica strada che scrive
+ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
+DIRETTAMENTE dal modello in un turno, l'unico che scrive nella casa (i
+servizi, non la configurazione) senza passare da un'attesa. Non e' pero'
+l'unica STRADA verso lo stesso effetto (fix I3, review indipendente
+25/08/2026): `prometti` con specie `fai` (vedi sotto) scrive lo stesso
+servizio, dalla STESSA porta, solo piu' tardi -- lo schedulatore lo chiama
+da solo quando la promessa matura, senza un turno del modello in quel
+momento. `costruisci` e `conferma`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
 apposta (vedi piu' sotto); `andamento` e `accaduto`, gli ultimi due, leggono
 INDIETRO nel tempo passando per `casa/tempo.py` -- come e' andato un valore,
@@ -34,7 +39,9 @@ stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
     ricorda  -- salva cio' che l'utente ha detto, con le ancore alla casa
     richiama -- i ricordi che riguardano una parte della casa
     esegui   -- chiama un servizio di Home Assistant, verificato prima e
-                riletto dopo: l'unico strumento che tocca la casa
+                riletto dopo: chiamato dal modello, tocca la casa SUBITO --
+                ma non e' il solo modo in cui la casa viene toccata, vedi
+                `prometti` due righe sotto
 
 Tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e fanno nascere,
 leggere e disdire una PROMESSA -- «alle 17 accendi lo studio», «fra un'ora
@@ -126,6 +133,7 @@ from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from .domande import legami as _legami_leggibili
+from .domande import ricordi_sanificati as _ricordi_sanificati
 from . import tempo
 from ..memoria.archivio import ArchivioMemoria
 from ..proxy.entity_cache import inventario_leggibile
@@ -1410,7 +1418,12 @@ class DispatcherStrumenti:
                 visti.add(ricordo["id"])
                 ricordi.append(ricordo)
         ricordi.sort(key=lambda r: r["id"], reverse=True)
-        return {"ricordi": ricordi}
+        # C-2/I1 (review indipendente 25/08/2026): `per_ancora` legge
+        # l'archivio direttamente, non passa da `domande.guarda` -- senza
+        # questa riga il testo usciva filtrato da `guarda` e grezzo da
+        # `richiama`, la fondamenta 3 rotta dentro la correzione che doveva
+        # chiuderla. Stessa funzione condivisa, un punto solo.
+        return {"ricordi": _ricordi_sanificati(ricordi)}
 
     # -- esegui --------------------------------------------------------
 

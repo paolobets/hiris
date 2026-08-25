@@ -992,8 +992,19 @@ class HAClient:
                 quando = voce.get("last_changed") or voce.get("last_updated")
                 if quando is None:
                     continue
+                # I1 (review indipendente 25/08/2026): `valore` e' lo stato
+                # GREZZO di QUALUNQUE entita' richiesta, non un numero per
+                # costruzione -- un'affermazione contraria era finita anche
+                # nel docstring di `_sanitize.py`, ed era falsa: si vede qui.
+                # `andamento` (casa/tempo.py) promuove esplicitamente questo
+                # strumento anche per «se una porta e' rimasta aperta», e
+                # L1-sicurezza.md elenca il sensore-messaggio (testo libero)
+                # come il PRIMO vettore concreto -- si applica identico alla
+                # storia quanto allo stato vivo.
+                valore = voce.get("state")
                 grezzi.setdefault(corrente, []).append(
-                    {"quando": quando, "valore": voce.get("state")})
+                    {"quando": quando,
+                     "valore": sanitize_ha_value(valore) if valore else valore})
         # /api/history/period risponde in ordine cronologico ASCENDENTE: il
         # taglio tiene la CODA -- i punti piu' RECENTI -- e scarta la testa,
         # non il contrario. Per "com'e' andata" contano i dati di adesso; un
@@ -1071,6 +1082,7 @@ class HAClient:
             # logbook non ha dichiarato.
             nome = item.get("name")
             messaggio = item.get("message")
+            stato = item.get("state")
             voci.append({
                 "quando": item.get("when"),
                 "nome": sanitize_ha_value(nome) if nome else nome,
@@ -1081,7 +1093,16 @@ class HAClient:
                 # porta `message` -- e prima di quella misura questa proiezione
                 # teneva solo il secondo, cioe' buttava il testo di quasi
                 # tutte le voci.
-                "stato": item.get("state"),
+                #
+                # I1 (review indipendente 25/08/2026): `stato` va sanificato
+                # esattamente come `nome`/`messaggio` -- per un sensore che
+                # porta testo libero (un sensore-messaggio: email/ntfy/SMS,
+                # il vettore che L1-sicurezza.md elenca per PRIMO) il testo
+                # ostile e' proprio il valore dello stato, non il nome o il
+                # messaggio del logbook. Prima di questa riga `nome` usciva
+                # filtrato e `stato` grezzo per la STESSA voce -- due facce
+                # diverse dello stesso rischio.
+                "stato": sanitize_ha_value(stato) if stato else stato,
                 "messaggio": sanitize_ha_value(messaggio) if messaggio else messaggio,
                 "entita": item.get("entity_id"),
             })
