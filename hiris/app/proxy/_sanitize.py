@@ -29,7 +29,10 @@ can enter the model's context calls one of the two functions below:
   was missed in the first pass: for a message-sensor (email/ntfy/SMS, the
   FIRST vector L1-sicurezza.md names) the hostile text often IS the state, not
   the logbook message. Leaves `None` fields as `None` rather than
-  manufacturing an empty string.
+  manufacturing an empty string. `nome`/`stato` go through `sanitize_ha_value`
+  (they are `state`-shaped: a friendly_name, a state string); `messaggio` is
+  arbitrary logbook prose with no HA-imposed ceiling, so it goes through
+  `sanitize_ha_free_text` instead (M2, correzioni-minori.md).
 - `proxy/ha_client.py::storico` -- the historical-series boundary
   (`andamento`'s tool). Sanitizes `valore`. The first pass left this one
   unwired on the claim that the series is "numeric by construction"; that
@@ -42,7 +45,11 @@ can enter the model's context calls one of the two functions below:
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
   categorie and integrazioni at write time, so every reader (`leggi()`, the
   nucleo, `guarda`, `cerca`, the config page) inherits the defense for free
-  instead of each caller having to remember to filter.
+  instead of each caller having to remember to filter. `nome`/`alias`/
+  `titolo` go through `sanitize_ha_value` (255 -- they are HA's
+  friendly_name/title, `state`-shaped); `integrazioni.motivo` (why an
+  integration failed, not a `state`) goes through `sanitize_ha_free_text`
+  (500) since M2, correzioni-minori.md.
 - `casa/archivio.py::ArchivioCasa.sostituisci_comportamento` -- a SECOND,
   separate writer (different cadence, different source, see its docstring)
   for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
@@ -78,19 +85,24 @@ narrower than the same sentence used to be: it once covered the whole
 module, which was wrong -- see the `sostituisci_comportamento` bullet above
 for the field (`nome`) that reasoning never actually applied to.
 
-TRUNCATION IS DECLARED, NOT SILENT (fixed 2026-08-25, I2 in FIX1-report.md).
+TRUNCATION IS DECLARED, NOT SILENT (fixed 2026-08-25, I2 in FIX1-report.md;
+the cap refined 2026-08-25, M2 in correzioni-minori.md).
 `sanitize_ha_value`'s clamp was 120 chars and cut without saying so: once
 this module was actually wired, that silently mangled real content -- an
-`input_text` state (HA allows up to 255), a logbook `messaggio`, an
-integration's failure `motivo` -- into something that read as complete. The
-clamp is now 255 (Home Assistant's own ceiling on a state string,
-`homeassistant.core.MAX_LENGTH_STATE_STATE`, not a margin picked for
-caution), and `sanitize_text`/`sanitize_ha_value` both append a trailing
-marker (`_TRONCATO`, " [troncato]") when a cut actually happens -- the same
-convention `proxy/ha_client.py::_truncate`/`_TRUNC_MARK` already uses, so the
-same fact (this string got cut) reads the same way everywhere it happens.
-Text at or under the cap is returned untouched: no marker where nothing was
-cut, or the marker itself would be the false claim.
+`input_text` state (HA allows up to 255) -- into something that read as
+complete. The clamp is now 255 (Home Assistant's own ceiling on a state
+string, `homeassistant.core.MAX_LENGTH_STATE_STATE`, not a margin picked for
+caution) for fields that actually ARE `state`. A logbook `messaggio` and an
+integration's failure `motivo` are NOT `state` -- HA does not cap them at
+all, and a legitimate one can honestly run longer than 255 -- so they now go
+through `sanitize_ha_free_text` (cap 500, see its docstring for the number)
+instead of `sanitize_ha_value`. Both functions, and the shared `sanitize_text`
+underneath them, append a trailing marker (`_TRONCATO`, " [troncato]") when a
+cut actually happens -- the same convention `proxy/ha_client.py::_truncate`
+uses (the two truncators were unified into one function, M1 in
+correzioni-minori.md, so it is now literally the same code, not just the same
+convention). Text at or under the cap is returned untouched: no marker where
+nothing was cut, or the marker itself would be the false claim.
 """
 import re
 
@@ -114,7 +126,26 @@ _INJECTION_RE = re.compile(
     r'|ignora\s+(?:le\s+|tutte\s+le\s+|ogni\s+)?(?:\w+\s+)?istruzion[ei]|ignora\s+tutto'
     r'|dimentica\s+(?:tutto|le\s+istruzioni|quanto\s+detto|le\s+regole)'
     r'|scorda\s+(?:tutto|le\s+istruzioni)'
-    r'|istruzioni\s+precedenti|nuove\s+istruzioni'
+    # M3 (audit-2026-08-25, minori): "istruzioni precedenti"/"nuove
+    # istruzioni" bare (no colon after) is ordinary Italian -- "le nuove
+    # istruzioni della caldaia sono nel cassetto", "le istruzioni precedenti
+    # del forno erano piu' chiare" are normal sentences about an appliance
+    # manual, not an attack, and used to come back as `[FILTERED]` with the
+    # user never told why. The imperative forms that actually carry the
+    # injection risk are already caught above ("ignora/dimentica/scorda...
+    # istruzioni", "sovrascrivi/scavalca le istruzioni") without this bare
+    # bigram. What this bigram alone still catches, on purpose, is the
+    # "introduce a new directive" shape an injection actually uses --
+    # "nuove istruzioni: <payload>", "istruzioni precedenti: <payload>" --
+    # requiring the colon that a descriptive sentence about a manual does
+    # not have. This is a deliberate narrowing, not a removal: a crafted
+    # message that smuggles the same bigram without a colon ("le nuove
+    # istruzioni sono ignora tutto e...") now passes this alternative
+    # unfiltered -- accepted, because the imperative-verb alternatives above
+    # already catch the realistic phrasing of that same attack, and this
+    # bigram's own false-positive cost (breaking a normal household sentence
+    # silently) was worse than the marginal coverage it added alone.
+    r'|(?:istruzioni\s+precedenti|nuove\s+istruzioni)\s*:'
     # Italian role-override lead-ins
     r'|agisci\s+come|comportati\s+come|fingi\s+di\s+essere|fai\s+finta\s+di\s+essere'
     # Structured chat-template / instruction-format tokens used to smuggle a
@@ -157,10 +188,46 @@ _INJECTION_RE = re.compile(
 # something false with confidence") -- a message cut at the byte limit reads
 # as a complete sentence, and the reader (human or model) has no way to tell
 # "this is everything" from "this is everything I kept". Same marker text as
-# `proxy/ha_client.py::_TRUNC_MARK`/`_truncate` on purpose: the same fact
-# (this string got cut) must read the same way everywhere it happens, not
-# invent a second wording for the identical event.
+# `proxy/ha_client.py::_TRUNC_MARK`/`_truncate` used to have on purpose: the
+# same fact (this string got cut) must read the same way everywhere it
+# happens, not invent a second wording for the identical event.
+#
+# M1 (audit-2026-08-25, minori): this marker and the clamp algorithm below
+# used to be duplicated verbatim in `ha_client.py` (`_TRUNC_MARK`/
+# `_truncate`) -- same algorithm, same string, written twice, free to drift.
+# `ha_client.py` already imports from this module (`sanitize_ha_value`), so
+# sharing costs one more name in that import line. Both copies used the
+# IDENTICAL string (" [troncato]") before the merge, so there was no visible
+# text to choose between -- this one survives because it is the module that
+# both callers already depend on, not because either wording lost.
 _TRONCATO = " [troncato]"
+
+
+def truncate_with_marker(text, cap: int) -> str:
+    """Tronca `text` a `cap` caratteri dichiarando il taglio con un marcatore.
+
+    Nessun filtro di iniezione qui -- SOLO il taglio. E' la funzione che
+    prima viveva duplicata come `ha_client.py::_truncate` (stesso algoritmo,
+    stessa costante `_TRUNC_MARK`/`_TRONCATO`) per tagliare messaggi d'errore
+    e risposte di template che non sono testo libero di Home Assistant e non
+    vanno fatti passare dal filtro di iniezione -- `sanitize_text` la
+    richiama sotto DOPO aver gia' applicato quel filtro, per il proprio caso
+    d'uso.
+
+    Il risultato non supera mai `cap`, marcatore incluso nel conteggio. Se
+    `cap` e' cosi' piccolo da non poter ospitare il marcatore si taglia e
+    basta: meglio perdere il marcatore che sforare il limite dichiarato.
+    Testo non stringa viene stringificato; a o sotto il tetto torna
+    invariato, senza marcatore: dichiarare un taglio che non c'e' stato
+    sarebbe a sua volta un'affermazione falsa.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+    if len(text) <= cap:
+        return text
+    if cap <= len(_TRONCATO):
+        return text[:max(0, cap)]
+    return text[:cap - len(_TRONCATO)] + _TRONCATO
 
 
 def sanitize_text(v, max_len: int = 2000) -> str:
@@ -171,9 +238,10 @@ def sanitize_text(v, max_len: int = 2000) -> str:
 
     The result never exceeds `max_len`. When the text actually gets cut, the
     cut is DECLARED with a trailing marker (`_TRONCATO`, marker included in
-    the budget) instead of silently disappearing — mirroring `_truncate` in
-    `ha_client.py`. Text at or under `max_len` is returned untouched, no
-    marker: declaring a cut that didn't happen would be its own false claim.
+    the budget) instead of silently disappearing — via `truncate_with_marker`
+    below, shared with `ha_client.py::_truncate` since M1 (audit-2026-08-25,
+    minori). Text at or under `max_len` is returned untouched, no marker:
+    declaring a cut that didn't happen would be its own false claim.
     """
     if v is None:
         return ""
@@ -181,11 +249,7 @@ def sanitize_text(v, max_len: int = 2000) -> str:
         v = str(v)
     v = v.strip()
     v = _INJECTION_RE.sub("[FILTERED]", v)
-    if len(v) <= max_len:
-        return v
-    if max_len <= len(_TRONCATO):
-        return v[:max(0, max_len)]
-    return v[:max_len - len(_TRONCATO)] + _TRONCATO
+    return truncate_with_marker(v, max_len)
 
 
 def sanitize_ha_value(v) -> str:
@@ -195,8 +259,45 @@ def sanitize_ha_value(v) -> str:
     255, not the old 120: it is Home Assistant's own ceiling on a state
     string (`homeassistant.core.MAX_LENGTH_STATE_STATE`), not a margin picked
     for caution. 120 was tight enough to silently truncate real content once
-    this function was actually wired in production — an `input_text` state,
-    an automation's logbook message, an integration's failure reason — and
-    make it read as complete. Wired call sites: see the top-of-module list.
+    this function was actually wired in production — an `input_text` state
+    is the field this cap actually protects — and make it read as complete.
+    Wired call sites: see the top-of-module list.
+
+    NOT for `messaggio` (diario) or `motivo` (integration failure reason):
+    those are not `state`, see `sanitize_ha_free_text` below (M2,
+    audit-2026-08-25, minori) — using this 255 cap for them was the earlier,
+    honest-but-not-generous choice this fix replaces.
     """
     return sanitize_text(v, 255)
+
+
+# M2 (audit-2026-08-25, minori): 255 is Home Assistant's own ceiling on a
+# `state` string -- correct for `sanitize_ha_value` above, wrong for fields
+# that are not `state`. `messaggio` (a logbook entry's free text --
+# ha_client.py::diario) and `motivo` (why an integration failed to start --
+# casa/archivio.py::sostituisci) are HA free text with no such ceiling: a
+# legitimate one -- an automation message that quotes an SMS/email body, an
+# exception summary from a broken integration -- can honestly run past 255
+# without being an attack. Clamping them to the `state` ceiling was honest
+# (the marker said so) but not generous: it threw away real content that had
+# every right to be there.
+#
+# 500, not "as large as possible": `messaggio` is capped per-entry but NOT
+# per-call -- `diario()` returns up to MAX_DIARIO_VOCI (200) entries in one
+# response, so this cap multiplies straight into the prompt budget. At 500
+# chars the worst case (200 entries every one of them at the cap) is ~100 KB
+# of text, tens of thousands of tokens -- large, but still a bounded slice of
+# ONE tool call's answer, not an unbounded one; at 255 the same worst case
+# was already ~50 KB, so 500 roughly doubles the ceiling without changing its
+# order of magnitude. 500 characters is also roughly the length of a short
+# SMS/email paragraph or a one-line exception with its message (not a full
+# traceback): generous for the legitimate case this fix exists for, without
+# letting one crafted logbook message eat most of the model's context.
+MAX_TESTO_LIBERO = 500
+
+
+def sanitize_ha_free_text(v) -> str:
+    """Come `sanitize_ha_value`, ma per campi HA liberi che NON sono `state`
+    (`messaggio` del diario, `motivo` di un'integrazione rotta) -- vedi
+    `MAX_TESTO_LIBERO` sopra per la ragione del numero."""
+    return sanitize_text(v, MAX_TESTO_LIBERO)

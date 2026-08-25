@@ -3,7 +3,7 @@ import logging
 
 from ..casa.anagrafe import SEVERITA_PROBLEMA
 from ..casa.tempo import normalizza_ore
-from ._sanitize import sanitize_ha_value
+from ._sanitize import sanitize_ha_value, sanitize_ha_free_text, truncate_with_marker as _truncate
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -107,8 +107,6 @@ MAX_TEMPLATE_LEN = 2000
 # puo' includere un traceback intero).
 MAX_TEMPLATE_RESPONSE_LEN = 2000
 
-_TRUNC_MARK = " [troncato]"
-
 logger = logging.getLogger(__name__)
 
 
@@ -140,17 +138,15 @@ def _istante_da_ha(grezzo):
         return grezzo
 
 
-def _truncate(text: str, cap: int) -> str:
-    """Tronca `text` a `cap` caratteri marcandolo, marcatore incluso nel cap.
-
-    Il risultato non supera mai `cap`. Se `cap` e' cosi' piccolo da non poter
-    ospitare il marcatore si taglia e basta: meglio perdere il marcatore che
-    sforare il limite dichiarato."""
-    if len(text) <= cap:
-        return text
-    if cap <= len(_TRUNC_MARK):
-        return text[:max(0, cap)]
-    return text[:cap - len(_TRUNC_MARK)] + _TRUNC_MARK
+# M1 (audit-2026-08-25, minori): `_truncate` used to be defined here,
+# duplicating `_sanitize.py`'s clamp algorithm and marker constant
+# (`_TRUNC_MARK = " [troncato]"`) line for line. This module already imports
+# from `._sanitize` (`sanitize_ha_value`), so the shared version costs one
+# more name on that import line above -- `truncate_with_marker as _truncate`
+# keeps every call site below unchanged. Both copies used the identical
+# marker string before the merge, so there was nothing to choose between;
+# `_sanitize.py` is the survivor because it is the module both this file and
+# `casa/archivio.py`/`casa/domande.py` already depend on.
 
 
 # fetta E3 Task 12 ("esce il ritratto", il task della coerenza): il Task 10
@@ -1103,7 +1099,12 @@ class HAClient:
                 # filtrato e `stato` grezzo per la STESSA voce -- due facce
                 # diverse dello stesso rischio.
                 "stato": sanitize_ha_value(stato) if stato else stato,
-                "messaggio": sanitize_ha_value(messaggio) if messaggio else messaggio,
+                # `messaggio` non e' uno `state` -- non ha il tetto di HA a
+                # 255 che giustifica sanitize_ha_value per nome/stato. M2
+                # (audit-2026-08-25, minori): cap dedicato piu' alto (500),
+                # vedi sanitize_ha_free_text in _sanitize.py per il perche'
+                # del numero.
+                "messaggio": sanitize_ha_free_text(messaggio) if messaggio else messaggio,
                 "entita": item.get("entity_id"),
             })
         # `ore` torna al chiamante CLAMPATO: chi compone la risposta per

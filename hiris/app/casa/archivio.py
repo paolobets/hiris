@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from ..proxy._sanitize import sanitize_ha_value
+from ..proxy._sanitize import sanitize_ha_value, sanitize_ha_free_text
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -88,19 +88,38 @@ def _lista(valore) -> str:
 
 
 def _nome(valore) -> str | None:
-    """Un nome/titolo/motivo destinato all'anagrafe, sanificato al confine.
+    """Un nome/alias/titolo destinato all'anagrafe, sanificato al confine.
 
     C-2 (L1-sicurezza.md): `sostituisci` e' l'UNICO scrittore dell'anagrafe --
     ogni riga che entra qui viene da un registro di Home Assistant, e un
-    nome/alias/titolo/motivo e' testo che HIRIS non controlla (un dispositivo
+    nome/alias/titolo e' testo che HIRIS non controlla (un dispositivo
     di rete ostile, un'integrazione compromessa, un ospite che rinomina
     qualcosa). Sanificare QUI, e non a valle, significa che ogni lettore
     dell'anagrafe (`leggi()`, il nucleo, `guarda`, `cerca`, la pagina) eredita
     la difesa senza doverla ripetere -- un punto solo, non cinque.
 
     `None`/non-stringa passano invariati: un campo assente non deve
-    diventare una stringa vuota che afferma "questo nome c'e' ed e' vuoto"."""
+    diventare una stringa vuota che afferma "questo nome c'e' ed e' vuoto".
+
+    Usa `sanitize_ha_value` (tetto 255): ogni campo che passa di qui e'
+    `state`-shaped (friendly_name, titolo, alias) -- per `motivo`, che non lo
+    e', vedi `_motivo()` sotto (M2, audit-2026-08-25, minori)."""
     return sanitize_ha_value(valore) if isinstance(valore, str) else valore
+
+
+def _motivo(valore) -> str | None:
+    """Il `motivo` per cui un'integrazione non e' partita, sanificato al
+    confine come `_nome()` -- stessa fonte (un registro di HA), stesso
+    rischio -- ma con un tetto DIVERSO.
+
+    M2 (audit-2026-08-25, minori): prima usava `_nome()`/`sanitize_ha_value`
+    (255, il tetto vero di uno `state`). `motivo` non e' uno `state`: e' la
+    spiegazione di un guasto (`error_reason_translation_key`/`reason` di HA),
+    HA non gli impone nessun tetto, e un motivo vero -- il riassunto di
+    un'eccezione -- puo' onestamente superare 255 senza essere un attacco.
+    Usa `sanitize_ha_free_text` (tetto 500): vedi il suo docstring in
+    `_sanitize.py` per il perche' del numero."""
+    return sanitize_ha_free_text(valore) if isinstance(valore, str) else valore
 
 
 def _lista_sanificata(valore) -> str:
@@ -348,7 +367,7 @@ class ArchivioCasa:
                 c.execute("INSERT INTO integrazioni (dominio, titolo, stato, motivo) "
                           "VALUES (?,?,?,?)",
                           (i.get("domain", ""), _nome(i.get("title")), i.get("state"),
-                           _nome(i.get("reason") or i.get("error_reason_translation_key"))))
+                           _motivo(i.get("reason") or i.get("error_reason_translation_key"))))
 
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
                       (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
