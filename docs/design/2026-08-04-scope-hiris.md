@@ -274,8 +274,9 @@ sovrapposizione non era nel motore — era nel linguaggio del prodotto.
 
 ## Riferimenti
 
-- `docs/design/2026-08-03-analisi-funzionale.md` — comportamento reale del codice, con riferimenti
-  puntuali. Descrive l'esistente; questo documento decide il voluto.
-- `docs/design/2026-08-03-revisione-tecnica.md`
+- `docs/out-of-scope/2026-08-03-analisi-funzionale.md` e
+  `docs/out-of-scope/2026-08-03-revisione-tecnica.md` — descrivevano il codice **prima** della
+  demolizione. 🗄 **Fuori scope dal 25/08/2026**: quasi ogni riferimento puntuale punta a codice
+  cancellato. Restano come storia di cosa c'era quando questo contratto fu scritto.
 - `PRODUCT.md` — **superato da questo documento** per quanto riguarda scopo, utenti e criteri di
   successo. Restano validi i capitoli su identità visiva e accessibilità.

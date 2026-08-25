@@ -17,6 +17,15 @@ Il criterio **non è la data**. Un documento sta qui se vale almeno una di quest
 > prodotto), `docs/design/2026-08-04-scope-hiris.md` (il contratto) e nei documenti datati vivi di
 > `docs/design/`.
 
+## Aggiunti il 25 agosto su decisione del proprietario
+
+| Documento | Cos'e' | Perche' non vale piu' |
+|---|---|---|
+| `2026-08-03-analisi-funzionale.md` | cosa faceva il codice, con `file:riga` | descriveva il prodotto **prima** della demolizione: quasi ogni riferimento punta a codice cancellato. **Tolto anche da `CLAUDE.md`**, dove era elencato fra i riferimenti vivi |
+| `2026-08-03-revisione-tecnica.md` | lo stato tecnico di allora | stessa ragione, stessa data, stesso prodotto. **Tolto da `CLAUDE.md`** |
+| `2026-08-04-come-nasce-un-agente.md` | lo strato ③, come nasce un agente | **mai costruito**, e il ripensamento del cervello del 25/08 lo travolge: il proprietario ha deciso che gli agenti «non serviranno piu'». Resta come storia di una strada non presa |
+
+
 ## Struttura — un archivio solo
 
 `docs/archive/` è stato **assorbito qui dentro** come [`pre-2.0/`](pre-2.0/): due archivi senza

@@ -10,8 +10,6 @@ del codice esistente è **deliberatamente condannata**. Prima di scrivere qualun
 | Cosa **deve** fare HIRIS | `docs/design/2026-08-04-scope-hiris.md` — **il contratto** |
 | Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
 | Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
-| Cosa **fa oggi** il codice, in dettaglio | `docs/design/2026-08-03-analisi-funzionale.md` — con `file:riga`. **Descrive**; la mappa **decide** |
-| Che **stato tecnico** ha | `docs/design/2026-08-03-revisione-tecnica.md` |
 
 Il lavoro del Refactor 2.0 vive sul ramo **`2.0`**. Non un repository nuovo: la mappa ha chiesto di
 **cancellare**, non di riscrivere — e cancellare si verifica con i test esistenti, ricostruire no.
