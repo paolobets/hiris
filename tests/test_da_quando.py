@@ -49,15 +49,27 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     nel file non difenderebbe niente: qui si LEGA ogni occorrenza di
     `"stato": stato.get(` alla presenza del suo gemello nelle righe
     immediatamente seguenti.
+
+    Erano quattro occorrenze TESTUALI il 24/08/2026 (una per lista di
+    entita' che `_guarda_area` costruiva a mano); dalla fetta "nascoste
+    fuori dagli elenchi" (2026-08-25) sono TRE, non perche' un punto abbia
+    perso l'istante, ma perche' `_righe_entita()` ha unito in una porta sola
+    cio' che prima erano due list comprehension duplicate dentro
+    `_guarda_area` (fondamenta: nessun doppione) -- e quella porta sola serve
+    oggi QUATTRO punti logici (`entita`, `entita_disabilitate` di un'area,
+    `entita_nascoste` di un'area e di un dispositivo), non uno. Il conteggio
+    resta una guardia contro una regex che non trova NIENTE, non una
+    proiezione 1:1 sui punti logici: la difesa vera e' il ciclo qui sotto.
     """
     sorgente = _SORGENTE_DOMANDE.read_text(encoding="utf-8")
     righe = sorgente.splitlines()
     punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*stato\.get\(', r)]
-    # Quattro, verificati col grep sul sorgente vero al 24/08/2026 (righe 430,
-    # 442, 495, 533). Il conteggio serve solo a impedire che una regex che non
-    # trova NIENTE passi per verde: la difesa vera e' il ciclo qui sotto, che
-    # lega ogni occorrenza al suo gemello.
-    assert len(punti) >= 4, "i punti che emettono uno stato sono cambiati: rileggi"
+    # Tre, verificati col grep sul sorgente vero al 25/08/2026 (righe 447 --
+    # `_righe_entita`, condivisa --, 565 -- `_guarda_entita` --, 636 --
+    # `_guarda_dispositivo` --). Il conteggio serve solo a impedire che una
+    # regex che non trova NIENTE passi per verde: la difesa vera e' il ciclo
+    # qui sotto, che lega ogni occorrenza al suo gemello.
+    assert len(punti) >= 3, "i punti che emettono uno stato sono cambiati: rileggi"
     for i in punti:
         vicinato = "\n".join(righe[max(0, i - 2):i + 3])
         assert "da_quando" in vicinato, f"riga {i + 1}: stato senza istante"

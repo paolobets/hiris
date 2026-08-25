@@ -176,6 +176,45 @@ def test_un_registro_piani_caduto_non_diventa_una_casa_senza_piani(archivio):
     assert [a["nome"] for a in piani[0]["aree"]] == ["Cucina"]
 
 
+def test_le_entita_nascoste_finiscono_in_una_chiave_a_parte(archivio):
+    """Fetta "nascoste fuori dagli elenchi" (2026-08-25): stessa forma delle
+    disabilitate -- fuori da `entita` (che conta), dentro `entita_nascoste`
+    (raggiungibile, non nei conteggi)."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "light.lampadario_nascosto", "device_id": "d1", "area_id": None,
+         "hidden_by": "user"}])
+    archivio.sostituisci(registri)
+    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina"][0]
+    assert "light.lampadario_nascosto" not in [e["id"] for e in cucina["entita"]]
+    assert [e["id"] for e in cucina["entita_nascoste"]] == ["light.lampadario_nascosto"]
+
+
+def test_un_area_senza_nascoste_ha_la_chiave_vuota(archivio):
+    """`entita_nascoste` esiste sempre nell'albero (a differenza della porta
+    `domande.guarda`, che la omette quando e' vuota): e' una struttura
+    interna, non la risposta finale al modello."""
+    archivio.sostituisci(_REGISTRI)
+    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina"][0]
+    assert cucina["entita_nascoste"] == []
+
+
+def test_una_entita_disabilitata_e_nascosta_resta_fra_le_disabilitate(archivio):
+    """Stessa precedenza che `nucleo.py` applica gia' al proprio conteggio
+    delle nascoste (`nascosta and not disabilitata`): chi e' entrambe le
+    cose non duplica il fatto in due chiavi diverse."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "light.morta_e_nascosta", "device_id": "d1", "area_id": None,
+         "disabled_by": "user", "hidden_by": "user"}])
+    archivio.sostituisci(registri)
+    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina"][0]
+    assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita_nascoste"]]
+    assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita"]]
+    assert "light.morta_e_nascosta" in [e["id"] for e in cucina["entita_disabilitate"]]
+
+
 def test_i_due_contenitori_hanno_identita_distinte(archivio):
     """Due piani con lo stesso id facevano sparire in silenzio le aree vere
     senza piano, appena qualcuno indicizzava per id."""

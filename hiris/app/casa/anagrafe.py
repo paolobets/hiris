@@ -727,12 +727,43 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
     una vista di DETTAGLIO su un'area (`domande.guarda`) deve poter mostrare
     "questa luce c'e' ma e' disabilitata", marcata, non farla sparire in
     silenzio come se non esistesse (IMPORTANT ⑦-adiacente, Minor).
+
+    Le entita' NASCOSTE (`hidden_by` non nullo: l'utente le ha tolte dalle
+    proprie viste in Home Assistant) prendono la STESSA forma, dalla fetta
+    "nascoste fuori dagli elenchi" (2026-08-25): fuori da `entita` -- che
+    conta, e che alimenta anche "La casa" del nucleo (`nucleo._righe_casa`
+    legge `area["entita"]` cosi' com'e') -- dentro una terza chiave
+    parallela, `entita_nascoste`. Il proprietario ha misurato in produzione
+    che `guarda("area", "sala_da_pranzo")` restituiva sette luci mescolate,
+    quattro delle quali nascoste: il campo `nascosta` c'era gia' su ogni
+    entita' (`domande._arricchisci_entita`), ma stare nella STESSA lista non
+    ha impedito che venissero elencate lo stesso -- la prova che un dato
+    presente non basta, la sua POSIZIONE deve escluderlo da chi legge solo
+    "cosa c'e' in questa stanza". Regola del proprietario: "HIRIS non prende
+    in considerazione le entita' nascoste, a meno che non gli vengano
+    chieste esplicitamente" -- e "non prende in considerazione" vuol dire
+    fuori dalla lista che si legge per prima, non un campo da ricordarsi di
+    filtrare.
+
+    Una disabilitata e nascosta insieme finisce in `entita_disabilitate`, non
+    in `entita_nascoste`: stessa precedenza che `nucleo.py` applica gia' al
+    proprio conteggio delle nascoste (`nascosta and not disabilitata`) -- non
+    due modi diversi di dire la stessa cosa su due rami diversi del prodotto.
+
+    Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
+    lo stesso `area["entita"]`, smette anch'essa di contare le nascoste nei
+    conteggi per dominio -- allineandosi a "Notevole adesso"
+    (`nucleo._righe_notevole`), che le esclude gia' da prima con un `if
+    e.get("nascosta"): continue` esplicito. Prima di questa fetta le due
+    sezioni del nucleo si contraddicevano fra loro: una le contava, l'altra
+    no.
     """
     dispositivi_letti = "dispositivi" not in non_disponibili
     area_del_dispositivo = {d["id"]: d.get("area_id") for d in casa.get("dispositivi", [])}
 
     per_area: dict[str | None, list[dict]] = {}
     per_area_disabilitate: dict[str | None, list[dict]] = {}
+    per_area_nascoste: dict[str | None, list[dict]] = {}
     dispositivi_non_letti = []
     for entita in casa.get("entita", []):
         area_propria = entita.get("area_id")
@@ -741,13 +772,16 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             # Erediterebbe l'area dal dispositivo, ma il registro dei
             # dispositivi non ha risposto: non possiamo sapere quale sarebbe,
             # quindi non finge di essere "senza area". Vale anche per le
-            # disabilitate: non risolvibili, non tracciate nemmeno a parte.
+            # disabilitate e le nascoste: non risolvibili, non tracciate
+            # nemmeno a parte.
             if not entita.get("disabilitata"):
                 dispositivi_non_letti.append(entita)
             continue
         area_id = area_effettiva(entita, area_del_dispositivo)
         if entita.get("disabilitata"):
             per_area_disabilitate.setdefault(area_id, []).append(entita)
+        elif entita.get("nascosta"):
+            per_area_nascoste.setdefault(area_id, []).append(entita)
         else:
             per_area.setdefault(area_id, []).append(entita)
 
@@ -768,6 +802,9 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             # Non nei conteggi (vedi il docstring), ma raggiungibili nel
             # dettaglio di un'area -- vedi `domande._guarda_area`.
             "entita_disabilitate": per_area_disabilitate.get(area["id"], []),
+            # Stessa forma, per le nascoste: non nei conteggi, raggiungibili
+            # a parte -- vedi il docstring qui sopra.
+            "entita_nascoste": per_area_nascoste.get(area["id"], []),
         })
 
     # Le entita' fuori dalle aree note si dividono per causa. Se le aree non
@@ -938,8 +975,14 @@ def _fuori_dal_confronto(entita: dict | None) -> bool:
     cioe' una riga che smette subito di essere letta.
 
     - **nascoste**: `_include_entry` scarta ogni voce con `hidden_by` non
-      nullo. `gerarchia()` invece le tiene (il nucleo le conta a parte): sono
-      entita' vere, che l'utente ha solo tolto dalle proprie viste;
+      nullo. `gerarchia()` le tiene anche lei -- fuori da `entita` (che
+      conta) e dalla `nostre` di questo confronto, dentro la chiave parallela
+      `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25):
+      sono entita' vere, che l'utente ha solo tolto dalle proprie viste, non
+      voci che HIRIS ha perso. Questa funzione non deve piu' scartarle a
+      mano sul lato "nostre" -- non ci sono gia' -- ma resta l'unico modo di
+      scartarle sul lato "loro" (`note`, letto dall'anagrafe grezza qui
+      sotto, non dall'albero di `gerarchia()`);
     - **di servizio** (`entity_category`, cioe' `config`/`diagnostic`): lo
       stesso `_include_entry` le scarta quando `primary_entities_only` e'
       vero, ed e' vero -- `estrai_dal_bersaglio` lo passa esplicito, perche'

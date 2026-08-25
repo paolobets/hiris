@@ -160,6 +160,22 @@ def test_le_entita_disabilitate_non_si_contano():
     assert "3 luci" not in testo                  # restano 2
 
 
+def test_le_entita_nascoste_non_si_contano_nemmeno_in_la_casa():
+    """Effetto collaterale voluto della fetta "nascoste fuori dagli elenchi"
+    (2026-08-25): `gerarchia()` non mette piu' le nascoste in
+    `area["entita"]`, e "La casa" legge lo STESSO albero di "Notevole
+    adesso" -- che le esclude gia' da prima (`if e.get("nascosta"):
+    continue`). Prima di questa fetta le due sezioni si contraddicevano: una
+    le contava nei conteggi per dominio, l'altra no."""
+    casa = dict(_CASA, entita=_CASA["entita"] + [
+        {"id": "light.nascosta", "nome": "Nascosta", "area_id": "cucina",
+         "dispositivo_id": None, "classe": None, "unita": None,
+         "disabilitata": 0, "nascosta": 1}])
+    testo, _ = componi(casa, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_casa = testo.split("## La casa")[1].split("## ")[0]
+    assert "3 luci" not in sezione_casa            # restano 2
+
+
 def test_un_registro_caduto_si_dichiara_nel_nucleo():
     """La lacuna piu' grave che esista: una casa letta a meta' che il nucleo
     racconterebbe come una casa piccola. La sezione «cio' che HIRIS ignora»
