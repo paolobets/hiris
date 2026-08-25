@@ -33,7 +33,7 @@ def test_uno_stato_senza_istante_non_inventa_niente():
 
 
 def test_lo_specchio_porta_l_istante_accanto_allo_stato():
-    stato, _n, _u, _c, da_quando = specchio_vivo([
+    stato, _n, _u, _c, da_quando, _a = specchio_vivo([
         {"id": "sensor.camera", "state": "22.4", "name": "Camera",
          "unit": "°C", "device_class": "temperature",
          "last_changed": "2026-08-24T11:00:00+00:00"},

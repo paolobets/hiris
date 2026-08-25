@@ -448,7 +448,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, unita, classi, da_quando, letto = d._specchio()
+    stato, nomi, unita, classi, da_quando, attributi, letto = d._specchio()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
@@ -761,17 +761,18 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
         def all_states(self):
             yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
             raise RuntimeError("boom")
-    stato, nomi, unita, classi, da_quando, letto = DispatcherStrumenti(
+    stato, nomi, unita, classi, da_quando, attributi, letto = DispatcherStrumenti(
         archivio_casa, memoria, cache=_Rotta())._specchio()
     # Anche le UNITA' (e l'ISTANTE) raccolti a meta' si buttano: mezzo
     # dizionario farebbe apparire senza unita'/istante proprio le entita' che
     # la lettura non ha raggiunto -- lo stesso difetto dei nomi, sui campi nuovi.
-    assert (stato, nomi, unita, classi, da_quando, letto) == ({}, {}, {}, {}, {}, False)
+    assert (stato, nomi, unita, classi, da_quando, attributi, letto) == (
+        {}, {}, {}, {}, {}, {}, False)
 
 
 def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
     assert DispatcherStrumenti(
-        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, {}, True)
+        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, {}, {}, True)
 
 
 @pytest.mark.asyncio

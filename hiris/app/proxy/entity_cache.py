@@ -79,8 +79,18 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
     "valve": ("current_position", "reports_position"),
     # Il meteo mancava, e non serviva nessuna chiamata nuova: temperatura,
     # umidita', vento e pressione sono ATTRIBUTI DI STATO dell'entita' meteo,
-    # gia' dentro `get_states`. Senza questa riga `guarda` su un'entita'
-    # `weather` rispondeva «sereno» e basta, buttando tutto il resto.
+    # gia' dentro `get_states`.
+    #
+    # ATTENZIONE a cosa questa riga NON faceva da sola, fino alla fetta
+    # "attributi al modello" (2026-08-25): `_to_minimal` li raccoglieva gia'
+    # dentro `result["attributes"]`, ma `casa.anagrafe.specchio_vivo` -- il
+    # punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava tutti,
+    # su OGNI dominio, tenendo solo la stringa di `state`. Un'entita' `weather`
+    # rispondeva «sereno» e basta non perche' mancasse questa riga, ma perche'
+    # nessuno la leggeva a valle: il difetto misurato sui termostati (il
+    # proprietario ha letto «heat» ed era `idle`) e' lo stesso, un dominio
+    # diverso. Da quella fetta `specchio_vivo` porta gli attributi fino al
+    # dettaglio di `guarda`, e questa riga finalmente serve a qualcosa.
     # I nomi sono quelli veri di `components/weather/const.py`, verificati:
     # le unita' viaggiano in attributi propri (`temperature_unit`, ...) perche'
     # il meteo non usa `unit_of_measurement`.
