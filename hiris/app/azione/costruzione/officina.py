@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 
+from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import forme
 from .mestiere import consiglia
 
@@ -89,21 +90,19 @@ def _stato_leggibile(stato: str) -> str:
 # superfici, due permanenti -- `costruzioni.motivo`/`errore` nella cronaca in
 # SQLite -- e la cattura larga toglie ogni garanzia sulla sua lunghezza: e'
 # quella di QUALUNQUE eccezione, non solo di un guasto di trasporto breve.
-# Rispecchia `_truncate`/`_TRUNC_MARK` di `proxy/ha_client.py` (la stessa
-# convenzione, introdotta li' per "il messaggio d'errore di HA, che puo'
-# includere un traceback intero"): e' privata di quel modulo, quindi si
-# duplica la FORMA qui, non si promuove l'helper.
-_TRUNC_MARK_RETE = " [troncato]"
+#
+# M1, terzo giro (correzioni-minori.md, audit-2026-08-25): questa era una
+# TERZA copia dello stesso algoritmo gia' unificato da M1 in
+# `_sanitize.py::truncate_with_marker` (con `ha_client.py::_truncate` come
+# alias dello stesso oggetto) -- nessuno dei tre referti dell'audit l'aveva
+# censita. Il commento che stava qui diceva che `_truncate` di `ha_client`
+# era privata del modulo, quindi qui si duplicava la forma invece di
+# importarla: quella ragione non esiste piu' da quando M1 ha reso
+# `truncate_with_marker` pubblica in `_sanitize.py` proprio per essere
+# condivisa. Il cap resta 300 -- e' una scelta di QUESTO modulo (il
+# messaggio finisce, fra l'altro, nella cronaca permanente in SQLite),
+# l'algoritmo e' quello condiviso.
 _CAP_ERRORE_RETE = 300
-
-
-def _tronca_errore_rete(testo: str) -> str:
-    """Tronca `testo` a `_CAP_ERRORE_RETE` caratteri, marcatore incluso."""
-    if len(testo) <= _CAP_ERRORE_RETE:
-        return testo
-    if _CAP_ERRORE_RETE <= len(_TRUNC_MARK_RETE):
-        return testo[:max(0, _CAP_ERRORE_RETE)]
-    return testo[:_CAP_ERRORE_RETE - len(_TRUNC_MARK_RETE)] + _TRUNC_MARK_RETE
 
 
 class Officina:
@@ -484,7 +483,8 @@ class Officina:
             # `casa/strumenti.py` nella sua rete finale.
             logger.warning("chiamata verso Home Assistant non riuscita (%s): %s",
                            type(exc).__name__, exc, exc_info=True)
-            return {"errore": f"Home Assistant non ha risposto: {_tronca_errore_rete(str(exc))}",
+            return {"errore": (f"Home Assistant non ha risposto: "
+                               f"{_truncate(str(exc), _CAP_ERRORE_RETE)}"),
                     "guasto_rete": True}
 
     async def _disfa(self, nati: list[tuple[str, str]],

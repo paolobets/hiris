@@ -996,3 +996,23 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
     assert lunghissimo not in esito["errore"]
     assert "[troncato]" in esito["errore"]
     assert len(esito["errore"]) < 400
+
+
+# ---------------------------------------------------------------------------
+# M1 (correzioni-minori, terzo giro) -- il TERZO troncatore.
+# ---------------------------------------------------------------------------
+
+def test_il_troncatore_dell_officina_e_lo_stesso_oggetto_di_sanitize():
+    """Una review indipendente ha trovato una TERZA copia dell'algoritmo di
+    troncamento gia' unificato da M1 (`_sanitize.py::truncate_with_marker`,
+    `ha_client.py::_truncate`): `officina.py::_tronca_errore_rete`, stesso
+    marcatore, stessa struttura a tre rami. Il commento che la giustificava
+    diceva che `_truncate` era privata di `ha_client` -- non piu' vero da
+    quando M1 l'ha resa pubblica in `_sanitize.py`. Non basta che si comporti
+    allo stesso modo: deve essere letteralmente lo stesso oggetto funzione,
+    come gia' verificato fra `ha_client` e `_sanitize`
+    (test_ha_client_diagnostics.py::test_truncate_e_la_stessa_funzione_di_
+    sanitize)."""
+    from hiris.app.proxy import _sanitize
+    from hiris.app.azione.costruzione import officina as officina_modulo
+    assert officina_modulo._truncate is _sanitize.truncate_with_marker
