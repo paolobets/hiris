@@ -1,8 +1,26 @@
 # Cosa sa il Brain
 
+> ## 🗄 Annotazione — 25 agosto 2026: superato, spostato fuori scope
+>
+> Questo documento è un verbale del 4 agosto e non viene riscritto — si annota. È stato superato
+> due volte: `docs/design/2026-08-05-la-conoscenza-di-hiris.md` ne ha ripreso il ritratto e la
+> mappa semantica; `docs/design/2026-08-25-il-cervello-da-capo.md` dichiara in testa di superare
+> e annullare **ogni documento sul Brain precedente**, questo compreso.
+>
+> **Cosa ne sopravvive**, ripreso come vincolante dal documento del 25 agosto
+> (§ «La trappola, misurata e non opinata»):
+>
+> - la **misura** del §3: il RAG vettoriale del prodotto vecchio era *«un pedaggio pagato in
+>   scrittura su dati che si leggono con una `WHERE` su una data»*;
+> - la **regola** che ne discende: *«la memoria prende la forma del dato che contiene»*.
+>
+> Il resto — ritratto, delta, viste — descrive un Brain che non esiste e non è la base del
+> prossimo.
+
 **Data:** 4 agosto 2026
 **Stato:** approvato — Atto 1 del Refactor 2.0, secondo pezzo.
-**Dipende da:** `2026-08-04-scope-hiris.md` (il contratto) · `2026-08-04-come-nasce-un-agente.md`.
+**Dipende da:** `docs/design/2026-08-04-scope-hiris.md` (il contratto) ·
+`docs/design/2026-08-04-come-nasce-un-agente.md`.
 
 Lo scope dice che la conoscenza è **la fondazione**, e che è la parte messa peggio. Questo documento
 dice che forma deve avere.

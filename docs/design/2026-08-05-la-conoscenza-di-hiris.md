@@ -2,7 +2,8 @@
 
 **Data:** 5 agosto 2026 · **Stato:** approvato nelle decisioni di fondo
 **Dipende da:** `2026-08-04-scope-hiris.md` (il contratto) · `2026-08-05-mappa-funzionalita.md` (la mappa)
-**Supera:** `2026-08-04-cosa-sa-il-brain.md` per la parte sul ritratto e sulla mappa semantica.
+**Supera:** `2026-08-04-cosa-sa-il-brain.md` (oggi in `docs/out-of-scope/`) per la parte sul
+ritratto e sulla mappa semantica.
 
 ---
 

@@ -1,5 +1,9 @@
 # Archivio — documenti superati
 
+> **Nota del 25 agosto 2026:** questa cartella era `docs/archive/`. È stata assorbita in
+> `docs/out-of-scope/` come `pre-2.0/`, perché l'archivio del progetto sia **uno solo** —
+> l'indice generale è `docs/out-of-scope/README.md`. Il contenuto e questo README sono invariati.
+
 **Questi documenti sono STORIA, non specifica.**
 
 Descrivono HIRIS com'era prima del **Refactor 2.0** (4 agosto 2026). Contengono decisioni,

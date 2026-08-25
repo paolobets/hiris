@@ -16,7 +16,8 @@ del codice esistente è **deliberatamente condannata**. Prima di scrivere qualun
 Il lavoro del Refactor 2.0 vive sul ramo **`2.0`**. Non un repository nuovo: la mappa ha chiesto di
 **cancellare**, non di riscrivere — e cancellare si verifica con i test esistenti, ricostruire no.
 
-Tutto ciò che sta in `docs/archive/` e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
+Tutto ciò che sta in `docs/out-of-scope/` (compreso `docs/out-of-scope/pre-2.0/`, l'ex
+`docs/archive/`) e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
 non specifica**: descrive il prodotto precedente. Non usarlo come fonte.
 
 ---
