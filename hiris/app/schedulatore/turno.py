@@ -25,7 +25,8 @@ from ..decisione_modelli import _MOTIVI_RIPIEGO
 logger = logging.getLogger(__name__)
 
 # I sei che leggono e basta. Non `esegui` (tocca la casa), non `ricorda`
-# (scrive nella memoria, che entra verbatim nel prompt di sistema), non
+# (scrive nella memoria, che dal giro 1 di questa correzione entra nel
+# prompt di sistema SANIFICATA -- C-2 -- non piu' verbatim), non
 # `prometti`/`disdici` (un turno che si da' appuntamenti da solo e' autonomia
 # costruita per sbaglio), non `costruisci`/`conferma` (scrivono
 # configurazione: un turno che nessuno guarda non costruisce).

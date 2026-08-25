@@ -414,6 +414,20 @@ class ArchivioCasa:
         conservarli solo in una riga di log li rende invisibili a chiunque non
         stia leggendo il log in quel momento (vedi `non_disponibili` sopra,
         stesso principio).
+
+        N2 (review indipendente 25/08/2026): `nome` e `corpo` hanno DUE fonti
+        diverse e vanno trattati diversamente. `corpo` viene dal file YAML
+        (`automations.yaml`/`scripts.yaml`) che il proprietario di casa
+        scrive di persona -- resta cosi' com'e', nessuna sanificazione, come
+        gia' deciso per `casa/comportamento.py` in generale. Ma `nome` NON
+        viene dal file: e' il `friendly_name` letto da `get_states([])`
+        (`comportamento.rileggi()`), una lettura di rete GREZZA che non
+        passa da `entity_cache._to_minimal` -- lo stesso genere di testo
+        controllabile da chi non e' il proprietario che C-2 sanifica
+        ovunque arrivi cosi'. Sanificato qui con `_nome()`, lo stesso
+        pattern di `sostituisci()` qui sopra: un punto solo per fonte, non
+        un cablaggio dimenticato perche' "e' un file locale" -- quella
+        ragione copre il corpo, non il nome.
         """
         c = self._conn
         try:
@@ -423,7 +437,7 @@ class ArchivioCasa:
                 corpo = v.get("corpo")
                 c.execute("INSERT INTO comportamento (id, tipo, nome, corpo, origine) "
                           "VALUES (?,?,?,?,?)",
-                          (v["id"], v["tipo"], v.get("nome"),
+                          (v["id"], v["tipo"], _nome(v.get("nome")),
                            # `None` resta `None`: «non ho il corpo» e «il corpo
                            # e' vuoto» sono due cose diverse.
                            None if corpo is None else json.dumps(corpo, ensure_ascii=False),

@@ -9,9 +9,12 @@ WHERE THIS IS ACTUALLY WIRED (fixed 2026-08-25, audit finding C-2 /
 L1-sicurezza.md: this module used to have zero production callers while this
 docstring claimed an active defense -- a security module lying about itself;
 extended 2026-08-25 after an independent review found two more raw paths and
-a false rationale for a third -- see I1 in FIX1-report.md). Every point where
-text HIRIS does not control can enter the model's context calls one of the
-two functions below:
+a false rationale for a third -- I1 in FIX1-report.md; extended again the
+same day after a second review found this list itself did not match the
+code -- the nucleo bypassed the shared memory function it was credited with
+using, and an automation/script name arriving over the network was uncovered
+-- N1/N2 in FIX1-report.md). Every point where text HIRIS does not control
+can enter the model's context calls one of the two functions below:
 
 - `proxy/entity_cache.py::_to_minimal` -- the single point where a raw HA
   state becomes what every reader sees (`specchio_vivo`, `guarda`, `cerca`,
@@ -40,6 +43,16 @@ two functions below:
   categorie and integrazioni at write time, so every reader (`leggi()`, the
   nucleo, `guarda`, `cerca`, the config page) inherits the defense for free
   instead of each caller having to remember to filter.
+- `casa/archivio.py::ArchivioCasa.sostituisci_comportamento` -- a SECOND,
+  separate writer (different cadence, different source, see its docstring)
+  for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
+  `friendly_name`, read by `comportamento.rileggi()` via a RAW
+  `get_states([])` call that does NOT go through `entity_cache._to_minimal`
+  -- the same network-controllable text C-2 sanitizes everywhere else it
+  surfaces, missed here on a first pass because the file it lives next to
+  (`corpo`, the automation/script body) genuinely comes from a local YAML
+  file the house owner edits. Two fields, two sources, two answers: `corpo`
+  is left alone (see below), `nome` is not.
 - `casa/domande.py::ricordi_sanificati` -- a memory is the one thing that
   re-enters the model's context on every subsequent turn without being asked
   for (I-1: a `ricorda()` call from an injected turn would otherwise plant a
@@ -57,10 +70,13 @@ two functions below:
   correction page and the record. Sanitizing on read, not on write, keeps
   both promises true at once.
 
-DELIBERATELY NOT WIRED, and why: `casa/comportamento.py` (automation/script
-YAML) is a local file the house owner edits, not something a network device
-or a compromised integration can write -- it is not the vector this fix
-closes.
+DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
+(`casa/comportamento.py`, `automations.yaml`/`scripts.yaml`) is a local file
+the house owner edits, not something a network device or a compromised
+integration can write -- it is not the vector this fix closes. This is
+narrower than the same sentence used to be: it once covered the whole
+module, which was wrong -- see the `sostituisci_comportamento` bullet above
+for the field (`nome`) that reasoning never actually applied to.
 
 TRUNCATION IS DECLARED, NOT SILENT (fixed 2026-08-25, I2 in FIX1-report.md).
 `sanitize_ha_value`'s clamp was 120 chars and cut without saying so: once
