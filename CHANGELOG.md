@@ -1,5 +1,31 @@
 # HIRIS — Changelog
 
+## [3.12.4] — Il riscaldamento non stava scaldando (2026-08-25)
+
+**Un bug trovato usando il prodotto, e piu' largo di come si presentava.** Alla domanda «il
+riscaldamento e' attivo?» HIRIS rispondeva di si', elencando i termostati «in modalita'
+riscaldamento» — e consigliava di abbassare il target. Era falso: i termostati erano *impostati* su
+riscaldamento ma **fermi**, con la casa gia' a 25 gradi e il target a 17.
+
+Il modello non aveva sbagliato a ragionare: **non aveva il dato che lo smentisce.** Home Assistant
+distingue `hvac_mode` (a cosa e' impostato) da `hvac_action` (se sta scaldando adesso), la
+proiezione della cache raccoglieva gia' entrambi — e lo strato successivo li buttava, tenendo la
+sola parola «heat».
+
+- **Gli attributi vivi arrivano al modello.** Aprendo una cosa nel dettaglio si vede cio' che la
+  casa dice davvero: se un termostato sta scaldando o e' fermo, la temperatura attuale e il target,
+  la luminosita' di una luce, la posizione di una tapparella, cosa sta suonando, la batteria. Erano
+  raccolti da sempre e non erano mai arrivati a nessuna porta.
+- **Un termostato non dice piu' «heat».** Dice «impostato su riscaldamento, fermo» oppure «sta
+  scaldando» — e se non lo sa, non lo inventa. Vale da ogni porta, non solo dal dettaglio.
+- Il riassunto sempre presente **non cresce**: questa informazione si paga solo quando il modello
+  guarda qualcosa davvero.
+
+Chiuso anche un commento nel codice che spiegava perche' una cosa funzionasse, mentre non
+funzionava.
+
+Suite a 2559 test verdi.
+
 ## [3.12.3] — Le code dell'audit (2026-08-25)
 
 Le rifiniture rimaste dall'audit a 360 gradi, piu' due cose che sono saltate fuori chiudendole.
