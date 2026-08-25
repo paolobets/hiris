@@ -132,3 +132,26 @@ porta e grezzo da un'altra.
 Non è sfortuna: **chi corregge guarda il punto, non la classe.** Vale come istruzione per la
 prossima volta — dopo aver chiuso un difetto, cercare i suoi fratelli è più produttivo che
 verificare tre volte la chiusura.
+
+---
+
+## Code chiuse dopo, e cosa hanno fatto emergere (25 agosto, 3.12.3)
+
+I cinque minori sono stati chiusi. Chiudendoli sono uscite tre cose che l'audit non aveva visto:
+
+1. **I troncatori erano tre, non due.** Il terzo viveva in
+   `azione/costruzione/officina.py`, e il commento che spiegava perche' non condividesse dava una
+   ragione che la correzione del primo rilievo aveva appena reso falsa. Tre referti indipendenti
+   avevano scritto «due»: il conteggio di un difetto non e' affidabile finche' non lo si rifa'.
+2. **Il costo del filtro allentato era sottostimato nel rapporto.** L'unico esempio di rischio
+   residuo che portava conteneva per caso un verbo gia' coperto da un'altra regola, quindi il buco
+   sembrava stretto. Cinque iniezioni realistiche costruite dal revisore passano tutte. Il rapporto
+   adesso lo dice.
+3. **Debito nuovo, non chiuso:** `claude_runner.py::_compress_old_tool_results` puo' produrre un
+   risultato che **supera il cap che dichiara** — viola l'invariante che `truncate_with_marker`
+   garantisce. Non e' una copia del troncatore: e' un difetto suo, trovato cercando la quarta copia.
+
+Sui separatori del filtro la decisione e' stata **non allargare**, verificata e non assunta: un
+inciso col trattino («le nuove istruzioni - quelle aggiornate a maggio - sono nel cassetto») e un
+messaggio spezzato su due righe riaprono entrambi il falso positivo che la correzione esisteva per
+chiudere.
