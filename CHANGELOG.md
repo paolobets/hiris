@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.12.5] — Le nascoste restano nascoste (2026-08-25)
+
+**Chiedere «le luci della sala da pranzo» restituiva sette luci, quattro delle quali nascoste.**
+HIRIS le elencava tutte: le tre lampade che avevi tolto dalle tue viste, il loro gruppo, e una che
+si chiama «lampadario fake». Il campo che dice «questa e' nascosta» c'era gia' su ognuna — e non
+bastava, perche' il modello le riceveva mescolate alle altre.
+
+**La regola adesso e': HIRIS non prende in considerazione le entita' nascoste, a meno che tu non
+gliele chieda.**
+
+- **Negli elenchi non ci sono piu'.** Aprendo un'area o un dispositivo si vede cio' che e' nelle tue
+  viste. Le nascoste escono in un elenco a parte, complete: «ci sono e le hai nascoste» resta
+  un'informazione, non diventa un silenzio.
+- **Nella ricerca ci sono ancora, marcate.** Se cerchi qualcosa per nome e quella cosa e' nascosta,
+  HIRIS te lo dice invece di rispondere «non esiste» — che sarebbe falso. Semplicemente non te la
+  propone di sua iniziativa.
+- **I conteggi non le contano piu'**, ne' nel riassunto ne' nel digesto della casa: prima le due
+  viste dicevano numeri diversi sulla stessa stanza.
+- La pagina dell'albero le mostra in una sezione propria, come gia' faceva con le disabilitate.
+
+Suite a 2574 test verdi.
+
 ## [3.12.4] — Il riscaldamento non stava scaldando (2026-08-25)
 
 **Un bug trovato usando il prodotto, e piu' largo di come si presentava.** Alla domanda «il
