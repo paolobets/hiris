@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## [3.12.3] — Le code dell'audit (2026-08-25)
+
+Le rifiniture rimaste dall'audit a 360 gradi, piu' due cose che sono saltate fuori chiudendole.
+
+- **Un solo troncatore, non tre.** Il rilievo diceva «due funzioni duplicate»: erano tre. La terza
+  viveva nell'officina delle costruzioni, e il commento che spiegava perche' non condividesse dava
+  una ragione che la correzione stessa aveva appena reso falsa.
+- **Il testo lungo non viene piu' tagliato come se fosse uno stato.** Il messaggio di un'automazione
+  nel diario e il motivo per cui un'integrazione e' rotta hanno un tetto loro (500 caratteri), non
+  quello dei 255 che vale per gli stati di Home Assistant.
+- **Il filtro non mangia piu' frasi italiane innocenti.** «Le nuove istruzioni della caldaia sono nel
+  cassetto» non viene piu' oscurato. **Il costo e' dichiarato per intero nel referto**, e non e'
+  piccolo: alcune formulazioni che prima venivano fermate adesso passano. E' uno scambio, ed e'
+  scritto come tale — il filtro resta una mitigazione, mai un confine.
+
+Suite a 2550 test verdi.
+
 ## [3.12.2] — Quello che l'audit ha trovato (2026-08-25)
 
 **Un audit a 360 gradi su tutto il prodotto** — sicurezza, dipendenze, architettura, funzionale
