@@ -145,6 +145,40 @@ def test_sostituisci_non_mutila_nomi_legittimi_con_accenti_apostrofi_e_simboli(a
     assert casa["aree"][0]["alias"] == ["l'angolo cottura"]
 
 
+# --- M2 (audit-2026-08-25, minori): `motivo` non e' uno `state` -----------
+#
+# Prima usava `_nome()`/sanitize_ha_value (255, il tetto vero di uno
+# `state`). Il motivo per cui un'integrazione non e' partita e' la
+# spiegazione di un guasto, non uno stato: puo' onestamente superare 255
+# senza essere un attacco (il riassunto di un'eccezione HA e' spesso una
+# frase intera). Ora usa `_motivo()`/sanitize_ha_free_text (tetto 500).
+
+_MOTIVO_LUNGO_LEGITTIMO = (
+    "Impossibile connettersi al bridge Zigbee: il dispositivo alla porta "
+    "USB /dev/ttyUSB0 non risponde da 3 tentativi consecutivi, verificare "
+    "che il cavo non sia stato scollegato durante l'ultimo riavvio e che "
+    "nessun altro processo stia occupando la porta seriale in questo momento."
+)
+
+
+def test_sostituisci_non_mutila_un_motivo_lungo_ma_legittimo(archivio):
+    assert 255 < len(_MOTIVO_LUNGO_LEGITTIMO) <= 500
+    registri = {**_REGISTRI, "integrazioni": [
+        {"domain": "zha", "title": "ZHA", "state": "setup_error",
+         "reason": _MOTIVO_LUNGO_LEGITTIMO}]}
+    archivio.sostituisci(registri)
+    assert archivio.leggi()["integrazioni"][0]["motivo"] == _MOTIVO_LUNGO_LEGITTIMO
+
+
+def test_sostituisci_dichiara_il_taglio_di_un_motivo_oltre_il_tetto_libero(archivio):
+    registri = {**_REGISTRI, "integrazioni": [
+        {"domain": "zha", "title": "ZHA", "state": "setup_error", "reason": "x" * 900}]}
+    archivio.sostituisci(registri)
+    motivo = archivio.leggi()["integrazioni"][0]["motivo"]
+    assert len(motivo) == 500
+    assert motivo.endswith(" [troncato]")
+
+
 _COMPORTAMENTO = [
     {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
      "corpo": {"trigger": [{"platform": "time", "at": "07:00"}]}, "origine": "file"},

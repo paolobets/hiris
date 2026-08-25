@@ -312,6 +312,52 @@ async def test_diario_lascia_intatti_i_campi_assenti():
     assert voce["messaggio"] is None
 
 
+# --- M2 (audit-2026-08-25, minori): `messaggio` non e' uno `state` ---------
+#
+# Prima usava sanitize_ha_value (255, il tetto di uno `state`): un messaggio
+# di automazione legittimo, piu' lungo del titolo di un brano ma ben sotto
+# il tetto dedicato (500, sanitize_ha_free_text), usciva mozzato e sembrava
+# completo -- esattamente il difetto che I2 aveva gia' corretto una volta,
+# ricomparso sul campo sbagliato.
+
+@pytest.mark.asyncio
+async def test_diario_non_mutila_un_messaggio_lungo_ma_legittimo():
+    messaggio = (
+        "Il corriere ha lasciato il pacco davanti alla porta principale alle "
+        "14:32, come da notifica dell'app di consegna che ho ricevuto sul "
+        "telefono qualche minuto fa; la telecamera dell'ingresso ha "
+        "registrato l'intera consegna e il video e' disponibile nella "
+        "libreria degli eventi recenti per chi vuole rivederlo."
+    )
+    assert 255 < len(messaggio) <= 500
+    corpo = [{
+        "when": "2026-08-24T08:00:00+00:00",
+        "name": "Videocitofono",
+        "state": "on",
+        "message": messaggio,
+        "entity_id": "sensor.videocitofono",
+    }]
+    c = _client([_FintaRisposta(200, corpo)])
+    esito = await c.diario(None, 24)
+    assert esito["voci"][0]["messaggio"] == messaggio
+
+
+@pytest.mark.asyncio
+async def test_diario_dichiara_il_taglio_di_un_messaggio_oltre_il_tetto_libero():
+    corpo = [{
+        "when": "2026-08-24T08:00:00+00:00",
+        "name": "Videocitofono",
+        "state": "on",
+        "message": "x" * 900,
+        "entity_id": "sensor.videocitofono",
+    }]
+    c = _client([_FintaRisposta(200, corpo)])
+    esito = await c.diario(None, 24)
+    messaggio = esito["voci"][0]["messaggio"]
+    assert len(messaggio) == 500
+    assert messaggio.endswith(" [troncato]")
+
+
 @pytest.mark.asyncio
 async def test_diario_clampa_la_finestra_e_lo_dichiara():
     """`ore` arriva da una tool-call del modello: puo' essere qualunque cosa.

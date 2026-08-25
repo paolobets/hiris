@@ -351,6 +351,18 @@ def test_truncate_never_exceeds_cap():
     assert len(lungo) == 100 and lungo.endswith("[troncato]")
 
 
+def test_truncate_e_la_stessa_funzione_di_sanitize():
+    """M1 (audit-2026-08-25, minori): `ha_client.py::_truncate` e
+    `_sanitize.py`'s `sanitize_text` usavano due implementazioni duplicate
+    (stesso algoritmo, stessa costante) del taglio con marcatore. Ora
+    `_truncate` E' `_sanitize.truncate_with_marker` -- non solo si comporta
+    allo stesso modo, e' letteralmente lo stesso oggetto funzione, come il
+    test di identita' introdotto per N1 in FIX1-report.md."""
+    from hiris.app.proxy import _sanitize
+    from hiris.app.proxy import ha_client
+    assert ha_client._truncate is _sanitize.truncate_with_marker
+
+
 # --------------------------------------------------------------------------
 # render_template
 # --------------------------------------------------------------------------
