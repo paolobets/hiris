@@ -97,6 +97,14 @@ detto, correla ciò che vede.
 
 ### ② Brain — il cervello
 
+> ## 🗄 Annotazione — 25 agosto 2026: questa sezione è superata
+>
+> Il proprietario ha deciso che il cervello va **rifatto da capo**:
+> `docs/design/2026-08-25-il-cervello-da-capo.md` dichiara in testa di superare e annullare questa
+> sezione ②, comprese le sue due «regole dure», che non si danno più per acquisite. Il resto dello
+> scope — le tre leggi, gli strati ① e ③, la porta — resta il contratto. La sezione qui sotto
+> non viene riscritta: è il verbale del 4 agosto.
+
 Legge **tutta** la conoscenza, ragiona, **impara e aggiorna la propria memoria da solo**.
 
 Il Brain **apre questioni**: propone l'oggetto giusto per il problema che ha visto — un'automazione,
@@ -266,8 +274,9 @@ sovrapposizione non era nel motore — era nel linguaggio del prodotto.
 
 ## Riferimenti
 
-- `docs/design/2026-08-03-analisi-funzionale.md` — comportamento reale del codice, con riferimenti
-  puntuali. Descrive l'esistente; questo documento decide il voluto.
-- `docs/design/2026-08-03-revisione-tecnica.md`
+- `docs/out-of-scope/2026-08-03-analisi-funzionale.md` e
+  `docs/out-of-scope/2026-08-03-revisione-tecnica.md` — descrivevano il codice **prima** della
+  demolizione. 🗄 **Fuori scope dal 25/08/2026**: quasi ogni riferimento puntuale punta a codice
+  cancellato. Restano come storia di cosa c'era quando questo contratto fu scritto.
 - `PRODUCT.md` — **superato da questo documento** per quanto riguarda scopo, utenti e criteri di
   successo. Restano validi i capitoli su identità visiva e accessibilità.

@@ -1,7 +1,7 @@
 # HIRIS — Coerenza: secondo e terzo lotto
 
 Data: 2026-08-02 · Stato: design approvato dall'utente
-Inventario di riferimento: `docs/design/2026-08-02-inventario-coerenza.md`
+Inventario di riferimento: `2026-08-02-inventario-coerenza.md` (in questa stessa cartella)
 
 ## Perché
 

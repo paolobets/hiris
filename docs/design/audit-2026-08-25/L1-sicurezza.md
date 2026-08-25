@@ -115,7 +115,7 @@ grep -rn "sanitize_ha_value|sanitize_text" --include=*.py .
 
 Gli unici riferimenti sono in `tests/` (`test_sanitize_text.py`,
 `test_models_config.py`) e in un documento di design archiviato
-(`docs/archive/design/2026-07-28-piano-SP3-brain-fulcro.md`). **Nessun modulo
+(`docs/out-of-scope/pre-2.0/design/2026-07-28-piano-SP3-brain-fulcro.md`). **Nessun modulo
 di produzione lo importa o lo chiama.** Il ramo che lo usava (il «rationale
 solo-display» del brain) è uscito, come il pseudonimizzatore, ma — a
 differenza del pseudonimizzatore, la cui rimozione è stata dichiarata e il cui
