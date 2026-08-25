@@ -212,7 +212,14 @@ def truncate_with_marker(text, cap: int) -> str:
     e risposte di template che non sono testo libero di Home Assistant e non
     vanno fatti passare dal filtro di iniezione -- `sanitize_text` la
     richiama sotto DOPO aver gia' applicato quel filtro, per il proprio caso
-    d'uso.
+    d'uso. Una TERZA copia, non censita dai primi due giri di correzione,
+    viveva anche in `azione/costruzione/officina.py` (`_tronca_errore_rete`,
+    cap 300 per il messaggio di un guasto di rete verso Home Assistant, due
+    delle quattro superfici in cui finisce sono permanenti nella cronaca
+    SQLite) -- unificata qui nello stesso giro (M1, terzo giro,
+    correzioni-minori.md). Quel modulo tiene il proprio cap come costante
+    locale (`_CAP_ERRORE_RETE`, una sua scelta) e importa solo l'algoritmo,
+    come `ha_client.py`.
 
     Il risultato non supera mai `cap`, marcatore incluso nel conteggio. Se
     `cap` e' cosi' piccolo da non poter ospitare il marcatore si taglia e
