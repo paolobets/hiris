@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { JSDOM } from 'jsdom';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* Giro di correzioni sulla pagina «L'osservatore» (config/osservatore-route.js),
@@ -57,6 +58,21 @@ function bottone(document, testo, entro) {
   return Array.from(scope.querySelectorAll('button')).find((b) => b.textContent === testo);
 }
 
+// Rilievo 2 del brief «css-morto»: il messaggio "nessun episodio" (sezione
+// 02, «Cosa è successo») va letto sul SUO nodo, non su tutto il contenitore
+// -- la descrizione statica della sezione 02 contiene ANCH'ESSA "00:20"
+// ("scritti alle 00:20, sul fuso della CASA"), quindi cercare `/00:20/` su
+// tutto `#route-outlet` resta sempre soddisfatta, a prescindere dal testo
+// del messaggio vero e proprio (mutazione provata: cambiando il messaggio in
+// "prima o poi" i vecchi test restavano verdi). Il messaggio è l'unico
+// `.sc-desc` dentro il `.sc-body` della seconda `.section-card`.
+function testoMessaggioOggetti(document) {
+  const card2 = document.querySelectorAll('.section-card')[1];
+  const msg = card2 && card2.querySelector('.sc-body .sc-desc');
+  assert.ok(msg, 'non trovo il nodo del messaggio dentro la sezione 02 (struttura pagina cambiata?)');
+  return msg.textContent;
+}
+
 // -- date locali, calcolate come le calcola la pagina (fuso del browser di
 //    chi fa girare il test), MAI hardcoded: una data fissa scritta nel test
 //    diventerebbe falsa il giorno dopo. --
@@ -77,10 +93,26 @@ const IERI = giornoFa(1);
 const VECCHIO = giornoFa(40); // sicuramente né oggi né ieri, qualunque sia la data di corsa
 
 // ---------------------------------------------------------------------------
-// Ortografia: «è» non «e’» (rilievo 2) — sulle stringhe VISIBILI
+// Ortografia: «è» non «e’»/«E’» (rilievo 2, e rilievo 3 del brief «css-morto»)
+// — sulle stringhe VISIBILI
 // ---------------------------------------------------------------------------
 
-test('nessun modulo di config/ contiene il refuso "e’ " al posto di "è " (rilievo 2)', () => {
+// Rileva il refuso "e’ "/"E’ " al posto di "è "/"È ", ovunque compaia.
+// Rilievo 3 del brief «css-morto»: la vecchia guardia escludeva i casi
+// "preceduti da una lettera" per difendersi da una parola tipo "che’ " che
+// NON esiste in italiano -- e con quella difesa saltava esattamente
+// "perche’ " e "cioe’ ", che sono la forma in cui il refuso compare più
+// spesso, e non copriva affatto la maiuscola "E’ ". Nessuna esclusione:
+// verificato (grep) che oggi nessun modulo di config/ contiene "e’ "
+// preceduto da una lettera, quindi togliere il filtro non introduce falsi
+// positivi sul codice reale.
+function trovaRefusiApostrofo(testo) {
+  const trovati = [];
+  for (const m of testo.matchAll(/[eE]’ /g)) trovati.push(m.index);
+  return trovati;
+}
+
+test('nessun modulo di config/ contiene il refuso "e’ "/"E’ " al posto di "è "/"È " (rilievo 2)', () => {
   // Guardia a livello di prodotto, non solo di questa pagina: scansiona TUTTI
   // i moduli di config/, cosi' il refuso non puo' tornare silenzioso da
   // nessun'altra parte della SPA di configurazione -- il brief lo chiede
@@ -90,15 +122,26 @@ test('nessun modulo di config/ contiene il refuso "e’ " al posto di "è " (ril
   const trovati = [];
   for (const f of file) {
     const testo = readFileSync(join(CONFIG_DIR, f), 'utf8');
-    for (const m of testo.matchAll(/e’ /g)) {
-      const start = m.index;
-      const prima = start > 0 ? testo[start - 1] : '';
-      if (/[a-zA-Zàèìòù]/.test(prima)) continue; // parte di un'altra parola (es. "che’ " non esiste, ma difensivo)
+    for (const start of trovaRefusiApostrofo(testo)) {
       const riga = testo.slice(0, start).split('\n').length;
       trovati.push(f + ':' + riga);
     }
   }
-  assert.deepEqual(trovati, [], 'refuso "e’ " (invece di "è ") trovato in: ' + trovati.join(', '));
+  assert.deepEqual(trovati, [], 'refuso "e’ "/"E’ " (invece di "è "/"È ") trovato in: ' + trovati.join(', '));
+});
+
+test('rilievo 3: la guardia del refuso cattura "perche’ " e "cioe’ ", non solo le forme isolate', () => {
+  // Provato iniettando entrambe le varianti (nella stringa del test, non in
+  // un file vero): con la vecchia esclusione "preceduto da una lettera"
+  // questo assert falliva (0 trovati, non 1) per entrambe.
+  assert.equal(trovaRefusiApostrofo('lo dico perche’ serve davvero').length, 1,
+    '"perche’ " deve essere rilevato');
+  assert.equal(trovaRefusiApostrofo('cioe’ questo è il punto').length, 1,
+    '"cioe’ " deve essere rilevato');
+});
+
+test('rilievo 3: la guardia del refuso cattura anche la maiuscola "E’ "', () => {
+  assert.equal(trovaRefusiApostrofo('E’ vero, non funzionava.').length, 1);
 });
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
@@ -217,6 +260,64 @@ test('mount: l\'etichetta «Giorno» è associata al campo data (for/id)', async
     'l\'etichetta deve puntare al campo con for/id, altrimenti per un lettore di schermo è anonimo');
 });
 
+test('mount: il campo Giorno entra ANCHE nel terzo blocco di stile (hiris-config-override.css, rilievo 4)', () => {
+  // hiris-config.css porta due blocchi condiviso legacy+v5 (verificati sopra),
+  // ma esiste un TERZO blocco -- con `!important`, quindi vince sempre --
+  // in hiris-config-override.css: senza `input[type=date]` anche lì, il tema
+  // scuro è a posto ma il campo Giorno resta con misure/spaziature diverse
+  // da ogni altro campo del prodotto. Verificato col grep che non ce n'è un
+  // quarto (`hiris-theme.css`/`hiris-chat.css` non definiscono liste di
+  // `input[type=...]`): sono tre in tutto `static/`.
+  const overrideCss = readFileSync(join(CONFIG_DIR, '..', 'hiris-config-override.css'), 'utf8');
+  const blocco = overrideCss.match(/input\[type=text\][^\n]*\{/);
+  assert.ok(blocco, 'il blocco condiviso di stile degli input in hiris-config-override.css non è più nella forma attesa');
+  assert.match(blocco[0], /input\[type=date\]/,
+    'il selettore condiviso in hiris-config-override.css deve includere anche il campo Giorno: ' + blocco[0]);
+});
+
+// ---------------------------------------------------------------------------
+// Lo span dentro una riga flex si restringe davvero (rilievo 1 del brief
+// «css-morto»): il selettore che azzera `min-width` deve corrispondere a uno
+// span costruito ESATTAMENTE come lo costruisce la SPA, cioè figlio di un
+// elemento il cui stile nasce da `style.cssText = 'display:flex;...'`, SENZA
+// spazio dopo i due punti (letterale nel sorgente, vedi rigaOggetto() sotto).
+// Il browser però RISERIALIZZA l'attributo `style` quando lo si legge,
+// aggiungendo lo spazio ("display: flex;") — verificato qui con lo stesso
+// comportamento di jsdom (nwsapi) e dal vivo in Chromium. Il selettore va
+// estratto dal file vero, non riscritto qui: così la mutazione richiesta dal
+// brief (rimettere `.section-card [style*="display:flex"] > span`, la forma
+// morta) arrossisce questo test senza dover toccare altro.
+// ---------------------------------------------------------------------------
+
+test('CSS: il selettore che azzera min-width sugli span corrisponde a uno span costruito come lo costruisce la SPA (rilievo 1)', () => {
+  const css = readFileSync(join(CONFIG_DIR, '..', 'hiris-config.css'), 'utf8');
+  const ancora = css.indexOf('Terza recidiva');
+  assert.ok(ancora > -1,
+    'il commento «Terza recidiva» (che documenta il difetto) non è più nel CSS: aggiorna l\'ancora di questo test');
+  const dopo = css.slice(ancora);
+  const regola = dopo.match(/\*\/\s*\n([^\n{]+)\{\s*\n\s*min-width:\s*0;/);
+  assert.ok(regola, 'nessuna regola `min-width: 0` subito dopo il commento «Terza recidiva»');
+  const selettore = regola[1].trim();
+
+  // Stessa struttura di rigaOggetto() in osservatore-route.js: uno span
+  // figlio diretto di una riga il cui style nasce da `style.cssText =
+  // 'display:flex;...'`, dentro una `.section-card`.
+  const dom = new JSDOM('<!doctype html><body><section class="section-card"><div class="sc-body"></div></section></body>');
+  const { document } = dom.window;
+  const corpo = document.querySelector('.sc-body');
+  const testa = document.createElement('div');
+  testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+  const span = document.createElement('span');
+  span.className = 'text-mono field-hint';
+  testa.appendChild(span);
+  corpo.appendChild(testa);
+
+  assert.equal(testa.getAttribute('style'), 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;',
+    'il browser riserializza l\'attributo style CON lo spazio dopo i due punti (precondizione del difetto)');
+  assert.ok(span.matches(selettore),
+    'il selettore «' + selettore + '» estratto da hiris-config.css non corrisponde a uno span costruito come lo costruisce la SPA');
+});
+
 // ---------------------------------------------------------------------------
 // «Riprova»: unica pagina di lettura che ne era priva (rilievo 4)
 // ---------------------------------------------------------------------------
@@ -283,12 +384,12 @@ test('nessun episodio per IERI: dice quando tornare (00:20), niente data ISO, ni
   window.HirisOsservatoreRoute.mount();
   await tick(20); // il campo nasce su "ieri" di default
 
-  const testo = document.getElementById('route-outlet').textContent;
-  assert.match(testo, /episodio/, 'parola utente: episodio, non oggetto');
-  assert.match(testo, /00:20/, 'deve dire quando tornare');
-  assert.match(testo, new RegExp(ggmmaaaa(IERI).replace(/\//g, '\\/')), 'la data va in gg/mm/aaaa');
-  assert.doesNotMatch(testo, /\d{4}-\d{2}-\d{2}/, 'nessuna data in formato ISO nel testo');
-  assert.doesNotMatch(testo, /potrebbe non aver fatto niente di osservabile/,
+  const messaggio = testoMessaggioOggetti(document);
+  assert.match(messaggio, /episodio/, 'parola utente: episodio, non oggetto');
+  assert.match(messaggio, /00:20/, 'deve dire quando tornare (nel messaggio, non altrove nella pagina)');
+  assert.match(messaggio, new RegExp(ggmmaaaa(IERI).replace(/\//g, '\\/')), 'la data va in gg/mm/aaaa');
+  assert.doesNotMatch(messaggio, /\d{4}-\d{2}-\d{2}/, 'nessuna data in formato ISO nel testo');
+  assert.doesNotMatch(messaggio, /potrebbe non aver fatto niente di osservabile/,
     'il primo giorno non deve seminare il dubbio che la casa non abbia fatto niente: è quasi impossibile');
 });
 
@@ -302,9 +403,9 @@ test('nessun episodio per OGGI: stesso trattamento del primo giorno (ieri/oggi s
   input.dispatchEvent(new window.Event('change'));
   await tick(20);
 
-  const testo = document.getElementById('route-outlet').textContent;
-  assert.match(testo, /00:20/);
-  assert.doesNotMatch(testo, /potrebbe non aver fatto niente di osservabile/);
+  const messaggio = testoMessaggioOggetti(document);
+  assert.match(messaggio, /00:20/, 'deve dire quando tornare (nel messaggio, non altrove nella pagina)');
+  assert.doesNotMatch(messaggio, /potrebbe non aver fatto niente di osservabile/);
 });
 
 test('nessun episodio per un giorno VECCHIO: l\'ipotesi doppia resta, ma la data è in gg/mm/aaaa', async () => {
