@@ -1,7 +1,7 @@
 # hiris/app/server.py
 import asyncio
 import contextlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import logging
 import os
@@ -41,6 +41,10 @@ from .schedulatore.archivio import ArchivioPromesse
 from .schedulatore.orologio import Orologio
 from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
+from .casa.tempo import zona_casa
+from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
+from .cervello.oggetti import aggrega_giorno
+from .cervello.osservatore import Osservatore
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
 from .token_interno import prepara_token_interno
@@ -636,6 +640,53 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     return esito
 
 
+async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
+    """Le condizioni di sistema (problemi diagnosticati + integrazioni non
+    caricate) verso `app["osservatore"].guarda_sistema` (fetta «l'osservatore»,
+    Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
+
+    **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
+    (`task-5-correzioni.md`, punto A.1). `HAClient.problemi()` torna
+    `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
+    dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
+    «non c'e' niente che non va». `Osservatore.guarda_sistema` chiude ogni
+    condizione che non trova piu' nell'elenco che riceve -- quindi un errore
+    letto come lista vuota scriverebbe «chiuso» su OGNI guasto aperto alla
+    prima disconnessione da Home Assistant: l'archivio registrerebbe che tutto
+    si e' risolto nel momento esatto in cui abbiamo smesso di poterlo vedere.
+    Vale identico per `leggi_registri`: se `"integrazioni"` compare in
+    `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
+    tutto bene. Meglio un buco nella storia che una bugia nella storia.
+
+    Chiamata una volta all'avvio (subito dopo `ricostruisci_condizioni`) e
+    ogni dieci minuti dal lavoro periodico registrato piu' sotto in
+    `_on_startup` -- stessa funzione, due chiamanti, come
+    `giro_di_confronto_albero`/`guarda_comportamento` qui accanto.
+
+    Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
+    puo' sollevare da `guarda_sistema` stesso, se `annota` fallisce a meta' --
+    e in quel caso deve propagare, per il motivo scritto sul suo docstring.
+    """
+    osservatore = app.get("osservatore")
+    if osservatore is None:
+        return None
+    esito_problemi = await ha_client.problemi()
+    if "errore" in esito_problemi:
+        logger.warning(
+            "cervello: condizioni di sistema non lette, problemi() ha "
+            "fallito (%s) -- giro saltato", esito_problemi["errore"])
+        return None
+    registri, non_disponibili = await ha_client.leggi_registri()
+    if "integrazioni" in non_disponibili:
+        logger.warning(
+            "cervello: condizioni di sistema non lette, il registro delle "
+            "integrazioni non e' disponibile -- giro saltato")
+        return None
+    return osservatore.guarda_sistema(
+        problemi=esito_problemi.get("problemi") or [],
+        integrazioni=registri.get("integrazioni") or [])
+
+
 def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
@@ -733,6 +784,32 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         return esito
 
     return giro
+
+
+def _comprimari_da_legami(ha_client):
+    """`legami` -> chi sta insieme al protagonista, per l'aggregazione
+    (`cervello/oggetti.py::aggrega_giorno`).
+
+    Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
+    lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
+    un sistema solo -- e solo `legami` lo sa dire.
+
+    Sincrono per contratto (l'aggregazione lo chiama in un ciclo stretto),
+    quindi la lettura di rete si fa **una volta sola per giorno**, prima: qui
+    si serve da una mappa gia' costruita.
+
+    **Questa versione restituisce sempre una lista vuota.** Il riempimento
+    della mappa da `legami` e' il Task 6 (`task-5-correzioni.md` non lo
+    tocca): non e' un segnaposto dimenticato, e' il confine dichiarato fra
+    due task, e questo -- il Task 5 -- deve restare verde da solo.
+    """
+    cache: dict[str, list[str]] = {}
+
+    def comprimari(soggetto: str) -> list[str]:
+        return cache.get(soggetto, [])
+
+    comprimari.cache = cache
+    return comprimari
 
 
 def should_start_agent_worker(ponte_attivo: bool) -> bool:
@@ -1179,6 +1256,39 @@ async def _on_startup(app: web.Application) -> None:
     # compilazione domina il costo, non la lettura -- vedi il rapporto del
     # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
     app["cache_indice_strumenti"] = CacheIndice()
+
+    # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
+    # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
+    # perche' e' il suo unico ingresso.
+    app["osservazioni"] = ArchivioOsservazioni(
+        os.path.join(data_dir, "osservazioni.db"))
+    app["osservatore"] = Osservatore(app["osservazioni"])
+    # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
+    # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
+    # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
+    # "aperto" per ogni guasto gia' aperto, come se fosse nato in quel
+    # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
+    # utile: da quando dura. **Prima** del primo giro delle condizioni, qui
+    # sotto. Non solleva mai (vedi il suo docstring).
+    app["osservatore"].ricostruisci_condizioni()
+    # LO STESSO rubinetto che alimenta lo specchio, non un secondo: due
+    # sorgenti degli stessi eventi sarebbero due cose che possono divergere.
+    # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
+    # lo specchio sia aggiornato prima.
+    ha_client.add_state_listener(app["osservatore"].guarda_cambio)
+    # La prima lettura delle condizioni di sistema (problemi diagnosticati +
+    # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
+    # per lo stesso motivo di `rileggi_problemi_ha` piu' sopra: senza,
+    # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
+    # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
+    # quella lettura, questa PUO' sollevare (`Osservatore.guarda_sistema`, se
+    # `annota` fallisce a meta'): un archivio che non risponde non deve
+    # impedire il boot.
+    try:
+        await guarda_condizioni_di_sistema(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
 
     # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
@@ -1875,6 +1985,76 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=300,
     )
 
+    # I tre lavori periodici del cervello (fetta «l'osservatore», Task 5:
+    # docs/design/2026-08-26-l-osservatore.md).
+    #
+    # Le condizioni di sistema, ogni dieci minuti: la stessa funzione della
+    # prima lettura fatta qui sopra all'avvio, `guarda_condizioni_di_sistema`
+    # -- vedi il suo docstring per il perche' un giro si salta interamente
+    # quando una delle due letture fallisce (task-5-correzioni.md, punto
+    # A.1): un errore letto come lista vuota chiuderebbe ogni condizione
+    # aperta, che e' peggio di non saperlo.
+    async def _guarda_condizioni() -> None:
+        try:
+            await guarda_condizioni_di_sistema(app, ha_client)
+        except Exception as exc:
+            logger.warning(
+                "cervello: giro delle condizioni di sistema fallito (%s: %s)",
+                type(exc).__name__, exc)
+
+    scheduler.add_job(
+        _guarda_condizioni,
+        trigger="interval", minutes=10,
+        id="hiris_cervello_condizioni", replace_existing=True,
+        misfire_grace_time=600,
+    )
+
+    # L'aggregazione notturna: costruisce gli oggetti del giorno appena
+    # finito (`cervello/oggetti.py::aggrega_giorno`). Gira alle 00:20 e non a
+    # mezzanotte: aggregare a mezzanotte esatta prenderebbe un giorno ancora
+    # aperto, e venti minuti bastano perche' gli ultimi eventi della sera
+    # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
+    # oggetto nasce mai.
+    async def _aggrega_ieri() -> None:
+        fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
+                if app.get("archivio_casa") else None)
+        ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
+        try:
+            quanti = aggrega_giorno(
+                archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
+                comprimari=_comprimari_da_legami(ha_client))
+            logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
+        except Exception as errore:
+            logger.warning("cervello: aggregazione di %s fallita (%s: %s)",
+                           ieri, type(errore).__name__, errore)
+
+    scheduler.add_job(
+        _aggrega_ieri,
+        trigger="cron", hour=0, minute=20,
+        id="hiris_cervello_aggregazione", replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
+    # Il numero di giorni non si scrive a mano -- si deriva dalla costante
+    # dell'archivio (`cervello/archivio.CONSERVAZIONE_CAMBI_S`, 22 giorni: 21
+    # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
+    # la riga di log non puo' mentire quando la costante cambia
+    # (task-5-correzioni.md, punto C).
+    async def _pota_osservazioni() -> None:
+        quanti = app["osservazioni"].pota(_time.time())
+        if quanti:
+            giorni = CONSERVAZIONE_CAMBI_S // 86400
+            logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
+                        quanti, giorni)
+
+    scheduler.add_job(
+        _pota_osservazioni,
+        trigger="cron", hour=3, minute=0,
+        id="hiris_cervello_potatura", replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     # Il battito dello schedulatore delle promesse (Task 7 SDD schedulatore).
     #
     # Le prese a meta' del giro precedente (`schedulatore/archivio.py::risana`):
@@ -2561,6 +2741,12 @@ async def _on_cleanup(app: web.Application) -> None:
     # al riavvio.
     if "costruzioni" in app:
         app["costruzioni"].close()
+    # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
+    # del cervello (`cervello/archivio.py`), costruito in `_on_startup`
+    # accanto a `app["cronaca"]`. Stessa disciplina degli archivi qui sopra:
+    # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
+    if "osservazioni" in app:
+        app["osservazioni"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di

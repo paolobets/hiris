@@ -67,21 +67,29 @@ one of the thirteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **seven** APScheduler jobs
+Periodic work *does* run — the scheduler registers **ten** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Six are internal bookkeeping — none of
+the paragraph above needed the caveat. Nine are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_ricarica_inventario`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
 (`server.py::_rileggi_problemi`), the tree-vs-Home-Assistant comparison
 sample every 15 minutes (`server.py::confronta_albero`), the `mtime` sentinel
 over `automations.yaml`/`scripts.yaml` every 5 minutes
-(`server.py::guarda_comportamento`), chat-history retention at 03:00, and the
-reasoning-queue sweep every 2 minutes. The 03:30 history compaction, the 04:00
+(`server.py::guarda_comportamento`), chat-history retention at 03:00, the
+reasoning-queue sweep every 2 minutes, and three more added by the "the
+observer" slice (`hiris/app/cervello/`): the system-conditions read — the same
+diagnosed issues plus the integrations Home Assistant has not loaded, folded
+into the observer's fault objects — every 10 minutes
+(`server.py::_guarda_condizioni`), the nightly aggregation of the previous
+day's raw state changes into objects at 00:20
+(`server.py::_aggrega_ieri` → `cervello/oggetti.py::aggrega_giorno`), and the
+pruning of raw changes older than 22 days at 03:00
+(`server.py::_pota_osservazioni`). The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
-The seventh is the promise scheduler's heartbeat, every 15 seconds
+The tenth is the promise scheduler's heartbeat, every 15 seconds
 (`server.py::_battito` → `schedulatore/orologio.py::Orologio.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its

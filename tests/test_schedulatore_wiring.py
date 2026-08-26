@@ -296,11 +296,15 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # ── Il README dichiara UN NUMERO di lavori periodici -- deve restare vero ───
 #
 # Audit 2026-08-24, Critical C1 (L3-architettura.md): il README diceva
-# «four APScheduler jobs», il codice ne registra sette, e uno di essi (il
+# «four APScheduler jobs», il codice ne registrava sette, e uno di essi (il
 # battito dello schedulatore delle promesse) TOCCA la casa -- non e' pura
-# manutenzione interna come gli altri. Corretto in README.md/PRODUCT.md/
-# docs/prova-la-2.0.md/hiris/config.yaml il 25/08/2026, col numero vero e
-# l'elenco di cosa fa ognuno.
+# manutenzione interna come gli altri. Corretto in README.md il 25/08/2026,
+# col numero vero e l'elenco di cosa fa ognuno.
+#
+# Fetta «l'osservatore», Task 5 (26/08/2026): il cablaggio aggiunge tre
+# lavori (`hiris_cervello_condizioni`, `hiris_cervello_aggregazione`,
+# `hiris_cervello_potatura`), sette diventano dieci -- e il README e'
+# aggiornato con loro, non dopo.
 #
 # Questo test ancora quel numero al codice, non lo ripete a mano: se una
 # fetta futura aggiunge o toglie un `add_job`, questo test si rompe PRIMA
@@ -309,11 +313,10 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_i_lavori_periodici_registrati_sono_sette_come_dichiara_il_readme():
+def test_i_lavori_periodici_registrati_sono_dieci_come_dichiara_il_readme():
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 7, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 7: "
-        "il README (sezione «What HIRIS 2.0 is»), PRODUCT.md, "
-        "docs/prova-la-2.0.md e hiris/config.yaml dichiarano un numero "
-        "preciso e vanno aggiornati insieme al codice, non dopo.")
+    assert n == 10, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 10: "
+        "il README (sezione «What HIRIS 2.0 is») dichiara un numero preciso "
+        "e va aggiornato insieme al codice, non dopo.")
