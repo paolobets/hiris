@@ -42,35 +42,79 @@ GENERI = ("funzionamento", "presenza", "consumo", "guasto", "sicurezza")
 # `humidifier`, `vacuum`, `valve` e `media_player` -- domini comuni che
 # funzionano come gli altri sei, e che prima di questa correzione cadevano in
 # silenzio (nessun oggetto, nessun errore).
+#
+# **LA REGOLA (spec, §6, corretta il 26 agosto): un dominio entra QUI
+# insieme al suo stato di riposo in `_SPENTO` qui sotto, nella STESSA
+# modifica. Le due cose non si toccano separatamente.** E' la terza volta in
+# questa fetta che lo stesso difetto nasce dal separarle: l'allarme
+# rovesciato (punto 3b), il consumo che non chiudeva mai (punto 6), e questi
+# quattro domini aggiunti QUI, al giro precedente, senza guardare i LORO
+# riposi -- il vacuum che torna alla base (`docked`) e il media_player fermo
+# (`idle`, `standby`) restavano oggetti aperti per sempre (`fine_ts: None`).
+# Un dominio dimenticato cade in silenzio (nessun oggetto); un dominio
+# aggiunto a meta' produce oggetti che non si chiudono mai -- lo stesso
+# costo, dai due lati opposti dello stesso elenco.
 _FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan",
                          "water_heater", "humidifier", "vacuum", "valve",
                          "media_player"})
 
 # Gli stati che valgono «a riposo»: chiudono un oggetto di funzionamento o di
-# sicurezza. "locked" e' il riposo della serratura. **"armed_*" e' il riposo
-# del pannello dell'allarme, "disarmed" e "triggered" NO** -- correzione al
-# rovesciamento della review (punto 3b): e' controintuitivo per chi legge in
-# fretta, ma un allarme si INSERISCE per stare a riposo, non il contrario.
-# Prima di questa correzione "disarmed" stava qui e "armed_*" non c'era da
-# nessuna parte: inserire l'allarme la sera apriva un oggetto, e disinserirlo
-# la mattina lo chiudeva -- otto ore di «oggetto» ogni notte per la cosa che
-# va bene, e la casa lasciata senza allarme un giorno intero non produceva
-# niente. Un solo insieme, non due che si sovrappongono: `_SPENTO` e' usato
-# da piu' rami (funzionamento e sicurezza), e i valori qui sotto sono
-# esclusivi per dominio (nessuna ambiguita' fra "locked"/"armed_home" e gli
-# stati di `_FUNZIONANO`).
-_SPENTO = frozenset({"off", "closed", "unavailable", "unknown", "none", "",
+# sicurezza. Ogni dominio in `_FUNZIONANO` ha il SUO qui dentro -- e' la
+# regola scritta sopra. "off"/"closed" per i sei domini originali, "locked"
+# per la serratura, "armed_*" per il pannello dell'allarme (**"disarmed" e
+# "triggered" NO** -- correzione al rovesciamento della review, punto 3b: e'
+# controintuitivo per chi legge in fretta, ma un allarme si INSERISCE per
+# stare a riposo, non il contrario). Per i quattro domini aggiunti al giro
+# precedente, verificati sulla documentazione Home Assistant -- non
+# sull'elenco scritto a mano di un mandato, che e' precisamente il modo in
+# cui questo difetto e' nato due volte:
+# - `vacuum`: "docked" (in base, eventualmente in carica), "idle" (fermo,
+#   non in carica ne' in errore), "paused" (in pausa senza essere tornato
+#   alla base), "returning" (sta rientrando, non sta piu' pulendo), "error".
+#   Solo "cleaning" e' acceso.
+# - `media_player`: "idle" (acceso ma non riproduce nulla), "paused",
+#   "standby" (deprecato verso "off"/"idle" dalla 2026.8, ma ancora prodotto
+#   da alcune integrazioni -- questa casa ce l'ha). "on" resta acceso
+#   (nessun dettaglio sullo stato: trattato come gli altri domini semplici
+#   on/off) e cosi' "buffering" (sta per riprodurre, non e' un riposo).
+# - `humidifier`: solo "on"/"off", nessuno stato intermedio -- gia' coperto,
+#   nessuna aggiunta.
+# - `valve`: "open", "opening", "closing" sono TUTTI attivi, come per
+#   "cover" (con cui condivide "closed" come unico riposo) -- una valvola a
+#   meta' apertura non e' ferma, e "opening"/"closing" qui chiuderebbe
+#   l'oggetto a meta' transizione. Nessuna aggiunta.
+# Un solo insieme, non due che si sovrappongono: `_SPENTO` e' usato da piu'
+# rami (funzionamento e sicurezza), e i valori qui sotto sono esclusivi per
+# dominio (nessuna ambiguita' fra "locked"/"armed_home" e gli stati di
+# `_FUNZIONANO`). **"unavailable"/"unknown" NON stanno qui** (vedi `_IGNOTO`
+# sotto, e la correzione del punto 2): non sono un riposo, sono «non lo
+# sappiamo» -- trattarli come riposo li faceva CHIUDERE un episodio in
+# corso, e il ritorno dello stato vero ne apriva un secondo.
+_SPENTO = frozenset({"off", "closed", "none", "",
                      "locked", "armed_home", "armed_away", "armed_night",
-                     "armed_vacation", "armed_custom_bypass"})
+                     "armed_vacation", "armed_custom_bypass",
+                     "docked", "paused", "returning", "error",
+                     "idle", "standby"})
 
 # Stati "non lo so", non stati della casa. Un riavvio di Home Assistant fa
-# attraversare questi due stati a OGNI entita', comprese le `person`: senza
-# questo filtro il ramo `presenza` (che controlla solo `r["a"] == "home"`)
-# apriva un oggetto «presenza, stato unavailable» di un minuto per ogni
-# persona, a ogni riavvio (correzione del giro di review, punto 2). Il ramo
-# `funzionamento` li tiene fuori gia' tramite `_SPENTO` (che li considera «a
-# riposo», quindi non apre niente); la presenza non ha un riposo che si
-# chiami "off", quindi il filtro va ripetuto qui esplicitamente.
+# attraversare questi due stati a OGNI entita'. **Non sono in `_SPENTO`**
+# (correzione punto 2 del secondo giro di review): la versione precedente li
+# metteva li' dentro, e "funzionamento"/"sicurezza" li trattavano come
+# riposo -- un riavvio a episodio in corso CHIUDEVA l'oggetto, e il ritorno
+# dello stato vero ne APRIVA un secondo. Ogni riavvio spezzava in due un
+# riscaldamento acceso, o una casa lasciata disarmata. Il commento che
+# viveva qui prima diceva che il funzionamento «li tiene fuori, quindi non
+# apre niente»: era vero sul non aprire e taceva che chiudevano -- mezza
+# frase vera usata come prova di coerenza.
+#
+# La semantica giusta e' la TERZA, non «e' finito» ne' «e' cominciato»: una
+# riga con questo stato si SALTA, e l'episodio in corso resta aperto
+# ATTRAVERSO il buco -- che e' la verita', non sappiamo che sia finito. Il
+# salto vive in un punto solo, in cima ad `aggrega_giorno`, prima di ogni
+# ramo e prima delle misure (correzione punto 3: senza il salto in cima,
+# un'`unavailable` da riavvio a bordo giornata finiva come prima o ultima
+# lettura di un consumo) -- non piu' duplicato con una semantica diversa in
+# ogni ramo che lo tocca.
 _IGNOTO = frozenset({"unavailable", "unknown"})
 
 
@@ -217,9 +261,32 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     l'ultima, e la loro differenza. Si chiude sempre dentro la giornata (mai
     `fine_ts: None`), perche' e' gia' cio' che si sa a fine giornata, non
     qualcosa ancora in corso.
+
+    **Debito dichiarato** (secondo giro di review, punto 5): la spec (§6)
+    promette che un consumo dica «quanto, in che periodo, COME DISTRIBUITO».
+    Questo riepilogo dice le prime due e non la terza -- prima lettura,
+    ultima e la loro differenza non dicono se il contatore e' salito piano
+    per tutto il giorno o e' scattato tutto in un'ora. Quella forma (a
+    bucket orari, o i punti intermedi) non c'e' ancora: la scelta e' onesta
+    finche' lo dice qui, non solo nel rapporto di un giro di correzioni che
+    fra un mese non legge piu' nessuno.
     """
     da_ts, a_ts = confini_giorno(giorno, fuso)
     righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
+
+    # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
+    # ramo e prima delle misure (`_IGNOTO`, correzione dei punti 2 e 3 del
+    # secondo giro di review): un riavvio di Home Assistant li fa
+    # attraversare a OGNI entita'. Filtrarli a valle -- come prima, con
+    # `_SPENTO` per funzionamento/sicurezza e un `if` locale per presenza --
+    # li faceva significare due cose diverse nello stesso modulo: riposo in
+    # un ramo (chiude un episodio in corso), salto nell'altro. La riga che
+    # si perde qui e' un buco nell'informazione, non un fatto sulla casa:
+    # non deve ne' aprire ne' chiudere niente, in NESSUN ramo, e non deve
+    # contaminare il riepilogo di un consumo (`misure`, sotto) con
+    # "unavailable" come prima o ultima lettura del giorno.
+    righe = [r for r in righe
+             if str(r["a"] or "").strip().lower() not in _IGNOTO]
 
     # Prima passata: le misure, per soggetto. Servono come contesto e non
     # generano oggetti da sole.
@@ -277,15 +344,16 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             # sempre un oggetto «in casa» ancora aperto, per ogni persona,
             # ogni notte -- rumore, non un fatto compiuto.
             #
-            # `_IGNOTO` (correzione punto 2): "unavailable"/"unknown" non
-            # sono uno stato della casa, sono un buco nell'informazione --
-            # un riavvio di HA li fa attraversare a ogni `person`. Un ramo
-            # che li trattasse come "non home" aprirebbe un oggetto fantasma
-            # a ogni riavvio, uno per persona.
-            stato = str(r["a"] or "").strip().lower()
-            if stato in _IGNOTO:
-                continue
-            if r["a"] == "home":
+            # "unavailable"/"unknown" sono gia' fuori da `righe` (il filtro
+            # in cima alla funzione): un riavvio di HA non apre ne' chiude
+            # niente qui, per nessuna `person`.
+            #
+            # Il confronto normalizza (strip, minuscole) come `_acceso` fa
+            # per gli altri rami -- pulizia del secondo giro di review: qui
+            # confrontava il valore grezzo, mentre il filtro degli stati
+            # ignoti, prima di questa correzione, normalizzava tre righe
+            # sopra. Due convenzioni per lo stesso valore, ora una sola.
+            if str(r["a"] or "").strip().lower() == "home":
                 chiudi(soggetto, r["quando_ts"])
             elif soggetto not in aperti:
                 aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
@@ -321,11 +389,19 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
         if not punti:
             continue
         iniziale, finale = punti[0][1], punti[-1][1]
+        # Una sola lettura nel giorno non dice quanto si e' consumato: e'
+        # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
+        # codice la fa gia' altrove restituendo `None` quando `_differenza`
+        # non riesce a leggere un valore come numero (pulizia del secondo
+        # giro di review). Con un solo punto, iniziale e finale sono la
+        # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non ha
+        # consumato niente" travestito da dato.
+        differenza = _differenza(iniziale, finale) if len(punti) > 1 else None
         episodi.append({"genere": "consumo", "protagonista": soggetto,
                         "inizio": punti[0][0], "fine": punti[-1][0],
                         "corpo_base": {"valore_iniziale": iniziale,
                                        "valore_finale": finale,
-                                       "differenza": _differenza(iniziale, finale)}})
+                                       "differenza": differenza}})
 
     # Il limite superiore delle misure di un comprimario e' l'inizio del
     # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata
