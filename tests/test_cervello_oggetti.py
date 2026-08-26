@@ -102,6 +102,33 @@ def test_un_assenza_e_un_oggetto(archivio):
     assert o["corpo"]["stato"] == "not_home"
 
 
+def test_un_cambio_di_zona_a_meta_assenza_non_riapre_l_oggetto(archivio):
+    """La settima finta (mandato, punto 1): la guardia del ramo presenza
+    (`elif soggetto not in aperti`) impedisce che un cambio di ZONA a meta'
+    di un'assenza -- le zone sono stati VERI di una `person`, non solo
+    "home"/"not_home" -- riapra l'oggetto azzerandone inizio e stato. Paolo
+    esce di casa alle 8:10 ("not_home"), entra in una zona ("ufficio") alle
+    9:00, rientra alle 17:34: l'assenza vera dura dalle 8:10 alle 17:34, con
+    stato "not_home" -- non dalle 9:00, con stato "ufficio".
+
+    Mutazione ESEGUITA e verificata rossa: `elif soggetto not in aperti:`
+    -> `else:` nel ramo presenza -- il cambio di zona delle 9:00 riapre
+    l'oggetto, e inizio_ts/stato tornano ts(9,0)/"ufficio" invece di
+    ts(8,10)/"not_home"."""
+    archivio.annota(quando_ts=ts(8, 10), fonte="entita",
+                    soggetto="person.paolo", da="home", a="not_home")
+    archivio.annota(quando_ts=ts(9, 0), fonte="entita",
+                    soggetto="person.paolo", da="not_home", a="ufficio")
+    archivio.annota(quando_ts=ts(17, 34), fonte="entita",
+                    soggetto="person.paolo", da="ufficio", a="home")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "presenza"
+    assert o["inizio_ts"] == ts(8, 10)
+    assert o["fine_ts"] == ts(17, 34)
+    assert o["corpo"]["stato"] == "not_home"
+
+
 def test_un_guasto_di_sistema_e_un_oggetto(archivio):
     archivio.annota(quando_ts=ts(9, 0), fonte="sistema",
                     soggetto="problema:sonos.subscriptions_failed", da=None, a="aperto")
@@ -668,15 +695,40 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
     spento alle 20:00: deve nascere UN oggetto dalle 15:30 alle 20:00, non
     due.
 
-    Mutazione ESEGUITA e verificata rossa (giro di pulizia, punto 2): NON
-    basta rimettere 'unavailable' in `_SPENTO` da sola -- provato dal vivo,
-    resta verde, perche' il filtro `_IGNOTO` in cima ad `aggrega_giorno`
-    toglie la riga PRIMA che arrivi a controllare `_SPENTO`, ed e' esattamente
-    cio' che rende quella mutazione, da sola, inerte contro il codice
-    consegnato. Serve la coppia: rimettere 'unavailable'/'unknown' dentro
-    `_SPENTO` **e** togliere il filtro `_IGNOTO` in cima (lo stato
-    pre-correzione, prima che le due difese esistessero) -- solo insieme
-    riproducono il difetto originale, e il conteggio torna 2 invece di 1."""
+    Le due difese in gioco sono `_SPENTO` (non contiene 'unavailable'/
+    'unknown') e il filtro `_IGNOTO` in cima ad `aggrega_giorno`. Mutazioni
+    ESEGUITE e verificate una per una (giro di pulizia, punto 3 -- il
+    rapporto precedente le diceva entrambe inerti per LA STESSA ragione,
+    ed era vero solo per la prima):
+
+    - rimettere 'unavailable' in `_SPENTO` da sola resta verde: il filtro
+      `_IGNOTO` in cima toglie la riga PRIMA che arrivi a controllare
+      `_SPENTO`, che quindi non la vede mai. **Questa meta' e' oggi
+      ridondanza morta**: nessun test la sorveglia da sola, la sua unica
+      guardia e' questo commento;
+    - togliere il filtro `_IGNOTO` in cima da solo resta verde ANCHE QUI,
+      ma per una ragione diversa: quando 'unavailable' arriva a episodio
+      GIA' aperto, `_acceso("unavailable")` torna `True` (non e' in
+      `_SPENTO`), e la guardia `if soggetto not in aperti` non fa nulla
+      perche' il soggetto e' gia' dentro -- l'oggetto resta aperto per
+      assorbimento del guardiano, non perche' la difesa regga qui.
+      **Questa meta', pero', e' sorvegliata altrove**: da
+      `test_un_riavvio_di_ha_non_apre_un_oggetto_di_presenza` e da
+      `test_il_riepilogo_del_consumo_salta_le_letture_unavailable`, dove
+      l'episodio NON e' ancora aperto quando arriva 'unavailable' e il
+      filtro e' l'unica cosa che impedisce un oggetto spurio o una
+      lettura contaminata -- provato dal vivo: entrambi arrossiscono
+      togliendo solo il filtro.
+
+    Serve quindi la COPPIA per arrossire proprio questo test: rimettere
+    'unavailable'/'unknown' dentro `_SPENTO` **e** togliere il filtro
+    `_IGNOTO` in cima (lo stato pre-correzione, prima che le due difese
+    esistessero) -- solo insieme riproducono il difetto originale, e il
+    conteggio torna 2 invece di 1. Questo test e il suo gemello (allarme)
+    sono comunque l'ultima linea: scattano il giorno in cui un refattore
+    togliesse il filtro credendo che l'appartenenza a `_SPENTO` da sola
+    copra il caso dell'episodio gia' aperto -- non lo copre, e senza il
+    filtro nessun altro test qui dentro se ne accorgerebbe."""
     archivio.annota(quando_ts=ts(15, 30), fonte="entita",
                     soggetto="climate.camera_t", da="off", a="heat")
     archivio.annota(quando_ts=ts(18, 0), fonte="entita",
@@ -696,12 +748,24 @@ def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
     cosa NOTEVOLE (vedi il punto 3b), e un riavvio a meta' non deve
     spezzarla in due.
 
-    Stessa mutazione del test gemello, ESEGUITA e verificata rossa (giro di
-    pulizia, punto 2): rimettere 'unavailable' in `_SPENTO` da sola resta
-    verde, schermata dal filtro `_IGNOTO` in cima. Serve la coppia --
-    rimettere 'unavailable'/'unknown' dentro `_SPENTO` **e** togliere il
-    filtro in cima -- e solo cosi' l'oggetto si chiude alle 5:00 e
-    "disarmed" alle 5:05 ne apre un secondo, portando il conteggio a 2."""
+    Stesso ragionamento del test gemello (riscaldamento), ESEGUITO e
+    verificato rosso per entrambe le meta' separatamente (giro di
+    pulizia, punto 3): rimettere 'unavailable' in `_SPENTO` da sola resta
+    verde, schermata dal filtro `_IGNOTO` in cima -- e QUI e' ridondanza
+    morta, nessun test la sorveglia da sola. Togliere il filtro `_IGNOTO`
+    in cima da solo resta verde anche qui, per lo stesso assorbimento:
+    l'episodio e' gia' aperto ("disarmed" dall'1:00) quando 'unavailable'
+    arriva alle 5:00, `_acceso("unavailable")` torna `True`, e la guardia
+    non fa nulla perche' il soggetto e' gia' dentro -- ma quella meta' e'
+    sorvegliata altrove (vedi il gemello per i due test che la
+    catturano).
+
+    Serve quindi la COPPIA per arrossire proprio questo test: rimettere
+    'unavailable'/'unknown' dentro `_SPENTO` **e** togliere il filtro in
+    cima -- e solo cosi' l'oggetto si chiude alle 5:00 e "disarmed" alle
+    5:05 ne apre un secondo, portando il conteggio a 2. Questo test e il
+    suo gemello sono l'ultima linea proprio per il caso dell'episodio
+    gia' aperto, che l'appartenenza a `_SPENTO` da sola non copre."""
     archivio.annota(quando_ts=ts(1, 0), fonte="entita",
                     soggetto="alarm_control_panel.casa", da="armed_home",
                     a="disarmed")
