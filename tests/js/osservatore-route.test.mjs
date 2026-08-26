@@ -520,7 +520,10 @@ test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () =>
     corpo: { stato: 'aperto' },
   }], null);
   assert.match(corpo.textContent, /ancora aperto/);
-  assert.match(corpo.textContent, /ancora in corso/, 'un fine_ts nullo si dichiara come "ancora in corso"');
+  assert.match(corpo.textContent, /in corso a fine giornata/,
+    'un fine_ts nullo si dichiara come "in corso a fine giornata", non "ancora in corso" ' +
+    '(cancello-rilascio-brief.md, punto 2): l\'aggregazione e\' per giornata, e non puo\' ' +
+    'promettere una continuita\' che non tiene oltre la mezzanotte');
   assert.match(corpo.textContent, /Problema Home Assistant: hue\.bridge_offline/,
     'un protagonista "problema:" diventa un nome leggibile, come in albero-route.js');
 });

@@ -781,7 +781,20 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
 def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non_blocca_l_avvio():
     """Punto 2(b): due vincoli separati, entrambi nel mandato -- l'ordine nel
     sorgente ('dopo la ricostruzione delle condizioni') e la protezione
-    ('non deve bloccare l'avvio')."""
+    ('non deve bloccare l'avvio').
+
+    **Cosa NON sorveglia** (cancello-rilascio-brief.md, punto 1, «la
+    lezione»): questo test guarda una STRINGA in un certo ordine nel
+    sorgente. Non sa dire se, nel punto in cui la chiamata compare, il
+    collaboratore di cui la funzione ha davvero bisogno --
+    `app["archivio_casa"]` -- esiste gia'. E' esattamente cosi' che il
+    CRITICAL del punto 1 e' rimasto invisibile per due giri: la chiamata
+    stava "dopo le condizioni" (verificato, verde) ma anche 87 righe PRIMA
+    della creazione di `archivio_casa` (non verificato, mai stato rosso).
+    La sorveglianza vera, per COMPORTAMENTO, e' il test qui sotto,
+    `test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito`, che
+    esegue la fetta reale del sorgente e legge cosa la riparazione riceve
+    DAVVERO."""
     sorgente = inspect.getsource(server._on_startup)
     assert "riaggrega_gli_ultimi_due_giorni(app, ha_client)" in sorgente
     assert sorgente.index('app["osservatore"].ricostruisci_condizioni()') \
@@ -790,6 +803,202 @@ def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non
     blocco = sorgente[pos - 80:pos + 200]
     assert "try:" in blocco
     assert "except Exception" in blocco
+
+
+def _estrai_blocco_riparazione_avvio() -> str:
+    """Il sorgente VERO di `_on_startup`, dalla creazione di `archivio_casa`
+    alla fine del try/except della riparazione all'avvio -- stessa tecnica di
+    `_estrai_funzione_innestata`, ma su una FETTA contigua invece che su una
+    funzione innestata: e' il modo di eseguire per davvero l'ordine fra le
+    due righe, invece di dedurlo confrontando due indici di stringa.
+
+    Se la chiamata alla riparazione torna a stare PRIMA della creazione di
+    `archivio_casa` (la regressione del punto 1), il marcatore di fine non si
+    trova piu' DOPO quello di inizio, e `sorgente.index(marcatore_fine,
+    inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
+    stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
+    src = inspect.getsource(server._on_startup)
+    marcatore_inizio = 'archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))'
+    marcatore_fine = '"fallita (%s: %s)", type(exc).__name__, exc)'
+    inizio = src.index(marcatore_inizio)
+    # Dall'INIZIO DELLA RIGA, non dal marcatore: altrimenti la prima riga
+    # perderebbe la sua indentazione (il marcatore comincia dopo gli spazi)
+    # e `textwrap.dedent` calcolerebbe un prefisso comune vuoto -- ogni riga
+    # successiva, ancora indentata, diventerebbe un `IndentationError`.
+    inizio_riga = src.rfind("\n", 0, inizio) + 1
+    fine = src.index(marcatore_fine, inizio) + len(marcatore_fine)
+    return textwrap.dedent(src[inizio_riga:fine])
+
+
+def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
+    """La sorveglianza per COMPORTAMENTO del punto 1 (CRITICAL,
+    cancello-rilascio-brief.md): si esegue la fetta VERA di `_on_startup` che
+    crea `archivio_casa`, lo mette in `app`, e subito dopo chiama la
+    riparazione -- con la riparazione sostituita da una spia che registra
+    cosa ha ricevuto. Non un `assert` su una posizione di stringa: la prova
+    che, quando la riparazione gira per davvero, il collaboratore che le
+    serve per leggere il fuso della casa (`archivio_casa`, non `None`) e'
+    gia' li'.
+
+    Le finte di TUTTI gli altri test di questo file (sopra) passano
+    `"archivio_casa": None` a `riaggrega_gli_ultimi_due_giorni` -- fedeli
+    alla produzione ROTTA, come rilevato dal cancello del rilascio: nessuna
+    di loro poteva vedere questo difetto, per costruzione. Questo test e' il
+    solo che guarda l'ORDINE VERO invece di darlo per assunto.
+
+    Mutazione ESEGUITA: spostando a mano la chiamata alla riparazione (e il
+    suo blocco di commento) di nuovo sopra la riga `archivio_casa =
+    ArchivioCasa(...)`, com'era prima di questo giro -- `_estrai_blocco_
+    riparazione_avvio` solleva `ValueError: substring not found`, perche' il
+    marcatore di fine non compare piu' dopo quello di inizio. Rosso,
+    esplicito. Ripristinato subito dopo."""
+    import os as os_reale
+
+    ricevuto: dict = {}
+
+    async def _spia(app, ha_client):
+        ricevuto["archivio_casa"] = app.get("archivio_casa")
+
+    namespace = {
+        "os": os_reale, "data_dir": str(tmp_path), "ArchivioCasa": server.ArchivioCasa,
+        "app": {}, "ha_client": None,
+        "riaggrega_gli_ultimi_due_giorni": _spia,
+        "logger": logging.getLogger("test_riparazione_riceve_archivio_casa"),
+    }
+    corpo = _estrai_blocco_riparazione_avvio()
+    func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
+    exec(compile(func_src, "<_on_startup riparazione avvio>", "exec"), namespace)
+
+    try:
+        asyncio.run(namespace["_check"]())
+        assert ricevuto.get("archivio_casa") is not None
+        assert isinstance(ricevuto["archivio_casa"], server.ArchivioCasa)
+        assert ricevuto["archivio_casa"] is namespace["app"]["archivio_casa"]
+    finally:
+        namespace["app"]["archivio_casa"].chiudi()
+
+
+def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path):
+    """Fondamenta n.3 (cancello-rilascio-brief.md, punto 1, CRITICAL -- la
+    terza volta che questa fondamenta si rompe sulla stessa funzione): le due
+    porte che aggregano il grezzo in oggetti -- l'aggregazione notturna
+    (mimata qui chiamando `aggrega_giorno` col fuso letto da `archivio_casa`,
+    come fa `_aggrega_ieri`) e la riparazione all'avvio -- devono produrre GLI
+    STESSI oggetti dato lo STESSO grezzo.
+
+    **La porta 2 non chiama `riaggrega_gli_ultimi_due_giorni` a mano**: esegue
+    la fetta VERA di `_on_startup` (`_estrai_blocco_riparazione_avvio`, sopra)
+    con la funzione VERA -- non una finta, non un `app` costruito a mano con
+    `archivio_casa` gia' dentro. E' la differenza che conta: un `app`
+    preparato a mano da questo test "sa" gia' come va a finire, e non
+    avrebbe potuto vedere il difetto del punto 1 (la chiamata era 87 righe
+    PRIMA che `archivio_casa` esistesse in `app`) -- sarebbe stato un test
+    che non puo' fallire per la ragione sbagliata, esattamente il vizio che
+    ha lasciato vivere questo difetto per due giri precedenti. Qui `app`
+    parte con solo `"osservazioni"`, come nel vero `_on_startup` in quel
+    punto, e `archivio_casa` nasce dentro l'estratto, esattamente come nasce
+    nel sorgente vero.
+
+    Il fuso arriva a `archivio_casa` non da una chiamata di rete (il finto
+    `ha_client` non la sa fare), ma da cio' che e' gia' scritto su
+    `casa.db`: `sistema_di_riferimento()` legge il fuso PERSISTITO dalle
+    sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
+    dell'add-on (`casa.db` sopravvive ai riavvii). Il file si semina una
+    volta, PRIMA di eseguire l'estratto, con una `ArchivioCasa` separata che
+    viene chiusa subito dopo: l'estratto ne apre una sua, fresca, sullo
+    stesso percorso.
+
+    **Provato eseguendo** (revisore, 26/08/2026, ripetuto qui): un
+    riscaldamento acceso 00:30-01:30 ora di Roma (CEST, UTC+2 in agosto --
+    che in UTC ricade nella sera del giorno PRIMA) piu' un ciclo pomeridiano
+    nello stesso giorno di Roma. Prima della correzione del punto 1, la
+    notte produceva 2 oggetti per quel giorno e la riparazione (che leggeva
+    sempre `fuso=None`, cioe' UTC, perche' `archivio_casa` non esisteva
+    ancora in `app` nel punto vero della chiamata) ne produceva 1: l'episodio
+    notturno spariva dal giorno a cui appartiene davvero.
+
+    Mutazione ESEGUITA: rimettendo a mano, in `server.py`, la chiamata alla
+    riparazione dov'era prima di questo giro (87 righe piu' in alto, prima
+    della creazione di `archivio_casa`) -- questo test arrossisce con
+    `ValueError: substring not found` dentro `_estrai_blocco_riparazione_
+    avvio` (lo stesso rosso di `test_la_riparazione_di_avvio_riceve_
+    archivio_casa_gia_costruito`, verificato li' per esteso). Verificato a
+    mano anche qui, ripristinato subito dopo."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    roma = ZoneInfo("Europe/Rome")
+    # Due giorni fa: e' uno dei due bersagli della riparazione all'avvio
+    # (`giorni = [oggi-2, oggi-1]`), e resta stabile anche se il test
+    # attraversa la mezzanotte fra la semina e l'esecuzione.
+    giorno_bersaglio_data = datetime.now(roma).date() - timedelta(days=2)
+    giorno_bersaglio = giorno_bersaglio_data.strftime("%Y-%m-%d")
+
+    casa_db = str(tmp_path / "casa.db")
+    osservazioni_db = str(tmp_path / "osservazioni.db")
+
+    seme = ArchivioCasa(casa_db)
+    seme.sostituisci({}, [], sistema_di_riferimento={"fuso": "Europe/Rome"})
+    seme.chiudi()
+
+    archivio = ArchivioOsservazioni(osservazioni_db)
+    try:
+        base = datetime(giorno_bersaglio_data.year, giorno_bersaglio_data.month,
+                        giorno_bersaglio_data.day, tzinfo=roma)
+        cambi = [
+            (base.replace(hour=0, minute=30), "off", "heat"),
+            (base.replace(hour=1, minute=30), "heat", "off"),
+            (base.replace(hour=15, minute=0), "off", "heat"),
+            (base.replace(hour=16, minute=0), "heat", "off"),
+        ]
+        for quando, da, a in cambi:
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="climate.soggiorno", da=da, a=a)
+
+        # Porta 1 -- la notte: fuso letto da `archivio_casa` gia' presente,
+        # come farebbe `_aggrega_ieri` alle 00:20.
+        server.aggrega_giorno(archivio=archivio, giorno=giorno_bersaglio,
+                              fuso="Europe/Rome", comprimari=lambda s: [])
+        oggetti_notte = archivio.oggetti(giorno=giorno_bersaglio)
+        assert len(oggetti_notte) == 2
+
+        # Si riparte dal grezzo puro: la riparazione deve arrivare allo
+        # STESSO risultato per conto suo, non ereditare il lavoro della notte.
+        archivio.sostituisci_giorno(giorno_bersaglio, [])
+
+        # Porta 2 -- la riparazione all'avvio, per DAVVERO: la fetta vera del
+        # sorgente, con la funzione vera. `app` parte senza `archivio_casa`,
+        # come nel vero `_on_startup` in quel punto.
+        import os as os_reale
+        cliente = _ClienteLegami()
+        namespace = {
+            "os": os_reale, "data_dir": str(tmp_path), "ArchivioCasa": server.ArchivioCasa,
+            "app": {"osservazioni": archivio}, "ha_client": cliente,
+            "riaggrega_gli_ultimi_due_giorni": server.riaggrega_gli_ultimi_due_giorni,
+            "logger": logging.getLogger("test_due_porte"),
+        }
+        corpo = _estrai_blocco_riparazione_avvio()
+        func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
+        exec(compile(func_src, "<_on_startup riparazione avvio -- due porte>", "exec"),
+            namespace)
+        try:
+            asyncio.run(namespace["_check"]())
+        finally:
+            namespace["app"]["archivio_casa"].chiudi()
+
+        oggetti_riparazione = archivio.oggetti(giorno=giorno_bersaglio)
+
+        def _normalizza(elenco):
+            return sorted(
+                ({k: v for k, v in o.items() if k != "id"} for o in elenco),
+                key=lambda o: (o["protagonista"], o["inizio_ts"]))
+
+        assert _normalizza(oggetti_notte) == _normalizza(oggetti_riparazione)
+    finally:
+        archivio.close()
 
 
 def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
