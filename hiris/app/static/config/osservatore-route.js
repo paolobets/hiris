@@ -262,7 +262,15 @@ window.HirisOsservatoreRoute = (function () {
   function periodo(o) {
     var inizio = fmtOrario(o.inizio_ts);
     var fine = fmtOrario(o.fine_ts);
-    if (fine == null) return 'dalle ' + inizio + ', ancora in corso';
+    /* «in corso a fine giornata», non «ancora in corso» (cancello-rilascio-
+       brief.md, punto 2): l'aggregazione e' per giornata, e un oggetto senza
+       fine non e' un oggetto che questo istante sa ancora essere aperto --
+       e' un oggetto che NON HA MAI RIVISTO una chiusura da quando la
+       giornata in cui e' nato e' stata aggregata. Se l'episodio attraversa
+       la mezzanotte, la sua vera fine (se c'e') e' scartata in silenzio
+       dall'aggregazione del giorno dopo (spec §6): questa pagina non deve
+       promettere una continuita' che il pavimento non tiene. */
+    if (fine == null) return 'dalle ' + inizio + ', in corso a fine giornata';
     return inizio + ' → ' + fine;
   }
 

@@ -137,9 +137,15 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | dispersione | i sensori binari di porta, finestra e apertura, e le tapparelle |
 | consumo | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
 | buono stato | le condizioni di sistema (§6) e i sensori di batteria |
-| sicurezza | **serrature, pannello dell'allarme, sirene, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore e gelo** |
+| sicurezza | **serrature, pannello dell'allarme, sirene, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore, gelo e incolumità (classe generica `safety`)** |
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
+
+*Correzione del cancello del rilascio, 26 agosto: l'elenco degli allarmi binari qui sopra ne contava
+otto. Il codice (`cervello/pavimento.py::_SICUREZZA_BINARIA`) e il vocabolario gemello
+(`casa/nucleo.py::_CLASSI_EVENTO`, vedi sotto, «la sesta gamba») ne hanno **nove** — mancava la classe
+generica `safety` (etichettata «sicuro»/«non sicuro» in `casa/anagrafe.py`). Contato di nuovo sui tre
+elenchi, non a memoria: coincidono, ora.*
 
 ### La sesta gamba, aggiunta il 26 agosto dalla review del primo task
 
@@ -228,12 +234,30 @@ riposo. Le due cose non si toccano separatamente.
 
 | Natura del protagonista | L'oggetto che ne esce |
 |---|---|
-| termostato, interruttore, luce, tapparella | **un funzionamento**: acceso/aperto da → a, e cosa ha fatto la grandezza collegata mentre durava |
+| termostato, tapparella | **un funzionamento**: acceso/aperto da → a, e cosa ha fatto la grandezza collegata mentre durava |
 | presenza | **una presenza o un'assenza**: dentro/fuori da → a |
 | temperatura, umidità | non generano oggetti da sole: sono il **contesto** di altri oggetti, più gli attraversamenti di soglia |
-| contatore | **un consumo**: quanto, in che periodo, come distribuito |
-| condizione di sistema | **un guasto**: nato quando, durato quanto, ancora aperto o chiuso |
+| contatore | **un consumo**: quanto, in che periodo, come distribuito (debito dichiarato: vedi sotto) |
+| condizione di sistema | **un guasto**: nato quando, durato quanto, ancora aperto o chiuso (limite dichiarato: vedi sotto) |
 | serratura, pannello dell'allarme, sirena, rilevatore di fumo/gas/monossido/allagamento | **una sicurezza**: cosa è successo, quando, per quanto |
+
+**Interruttore, luce e gli altri domini che «funzionano» come un termostato — non oggi.**
+*Correzione del cancello del rilascio, 26 agosto.* Qui la riga diceva «termostato, interruttore, luce,
+tapparella», ed era falsa per due terzi: `interruttore`/`luce` (i domini Home Assistant `switch` e
+`light`) **non sono nel pavimento** (`cervello/pavimento.py::gamba`) — nessuna riga del grezzo li
+contiene mai, quindi non possono essere protagonisti di nessun oggetto. Finiscono in **zero** oggetti,
+non in uno solo povero: la promessa non è "un funzionamento più scarno", è "niente". Lo stesso vale per
+`fan`, `water_heater`, `humidifier`, `vacuum`, `valve` e `media_player`: sono nell'elenco scritto a
+mano dei domini che aggregazione sa trattare (`cervello/oggetti.py::_FUNZIONANO`), ma il pavimento non
+li lascia passare — due elenchi mantenuti a mano, per due domande diverse («cosa aggrega» e «cosa si
+osserva»), e oggi non coincidono. Solo `climate` e `cover` sono in entrambi: sono gli unici due domini
+di questa riga verificati produrre davvero un oggetto.
+
+**Dipende dalla fetta dell'obiettivo, ed è la verità.** Il pavimento è un minimo, non un tetto («sopra
+di esso allarga, sotto mai», `pavimento.py`): se una fetta futura dell'obiettivo aggiungerà `switch`,
+`light` o uno degli altri domini di `_FUNZIONANO` al pavimento (o a un ampliamento sopra di esso), quella
+riga tornerà vera per loro. Finché non succede, promettere qui che generano un funzionamento manda la
+verifica sulla casa a inseguire un fantasma — vedi §9, «le verifiche che restano».
 
 **Il quinto genere, «sicurezza», è entrato il 26 agosto dalla review dell'aggregazione.** La prima
 stesura mandava tutta la sesta gamba nel genere «guasto», e non regge: una porta aperta con la
@@ -243,6 +267,41 @@ diverso. «Guasto» resta alle condizioni di sistema — un confine netto, per f
 La stessa review ha trovato che **lo stato che apriva l'oggetto era rovesciato**: inserire l'allarme
 la sera apriva un oggetto e disinserirlo la mattina lo chiudeva. Lo stato a riposo di un pannello
 d'allarme è quello **armato**.
+
+### Limite dichiarato: oltre il confine del giorno, la durata non si mantiene
+
+*Correzione del cancello del rilascio, 26 agosto.* La riga del guasto, sopra, promette «nato quando,
+durato quanto, ancora aperto o chiuso» — vero **dentro** una giornata, falso oltre. L'aggregazione è
+per giornata (`cervello/oggetti.py::aggrega_giorno`): un oggetto che nasce un giorno e non si chiude
+prima della mezzanotte della casa **perde la sua fine per sempre**. Non è un caso raro: è il caso
+**normale** per una condizione che dura più di un giorno, e vale per qualunque genere, non solo per
+«guasto» — un'assenza che comincia la sera e finisce il mattino dopo ha la stessa sorte (provato
+eseguendo: assenza il 24 alle 20:00, rientro il 25 alle 07:30 → il 24 ha un oggetto con fine assente,
+il 25 ne ha **zero**; il rientro non esiste da nessuna parte, perché l'aggregazione del giorno dopo
+scarta in silenzio una chiusura per un soggetto che, in quella finestra di ventiquattr'ore, non risulta
+mai aperto).
+
+**La conseguenza vera, per questa casa:** le 9 integrazioni non caricate misurate al §9④ diventeranno 9
+oggetti «guasto», ciascuno **in corso a fine giornata** dal giorno in cui l'osservatore le ha viste
+nascere — e non «ancora aperto» nel senso che la pagina lo mostrerebbe aggiornato: è un'istantanea del
+giorno in cui è nato, non seguita più oltre. **Il giorno in cui una di loro guarisce, la guarigione non
+comparirà in nessun oggetto**, per lo stesso motivo. Non è una sorpresa che l'utente scopre da solo: è
+un limite dichiarato qui.
+
+Non si corregge in questa fetta — è una decisione di disegno (spezzare l'oggetto a mezzanotte con una
+continuazione, o aggiornare l'oggetto del giorno prima quando il giorno dopo trova la chiusura mancante)
+che va presa da svegli, non nel cancello di un rilascio.
+
+### Debito dichiarato: il consumo non dice «come distribuito»
+
+*Correzione del cancello del rilascio, 26 agosto.* La riga del consumo, sopra, promette «quanto, in che
+periodo, **come distribuito**» — il terzo pezzo era un debito dichiarato solo nel modulo
+(`cervello/oggetti.py::aggrega_giorno`), non nella spec da cui il modulo dovrebbe discendere. L'oggetto
+di consumo che esce oggi è un riepilogo di giornata: la prima lettura, l'ultima, e la loro differenza.
+Dice le prime due promesse e non la terza — non dice se il contatore è salito piano per tutto il giorno
+o è scattato tutto in un'ora. Quella forma (a bucket orari, o i punti intermedi) non c'è ancora: la
+scelta è onesta finché lo dice anche qui, non solo nel commento di un giro di correzioni che fra un mese
+non legge più nessuno.
 
 ### Chi sta insieme a chi
 
@@ -371,8 +430,16 @@ ed esisteva già senza che nessuno lo guardasse.
 1. **Gli oggetti di una giornata vera, riletti a mano.** È la prova che conta: si guarda cosa è
    rimasto di ieri e ci si chiede se ci si potrebbe ragionare sopra. Se la risposta è no, l'analista
    non funzionerà mai, e si scopre adesso invece che fra un mese.
-2. **Il caso del lampadario**: le tre lampade, il gruppo e l'interruttore devono finire in **un
-   oggetto solo**, non in quattro.
+2. ~~**Il caso del lampadario**: le tre lampade, il gruppo e l'interruttore devono finire in un
+   oggetto solo, non in quattro.~~ **Ritirata (cancello del rilascio, 26 agosto): è IRREALIZZABILE
+   con questa fetta dell'obiettivo, e verificarla manderebbe chi controlla la casa a inseguire un
+   fantasma.** Le tre lampade LIFX e l'interruttore fisico sono entità `light`/`switch`: **non sono nel
+   pavimento** (`cervello/pavimento.py::gamba`, §6), quindi il grezzo non contiene mai una loro riga e
+   non possono essere protagonisti di nessun oggetto — non «un oggetto invece di quattro», **zero**
+   oggetti. `legami` sa ancora dire che sono un sistema solo (§6, «chi sta insieme a chi»): quello che
+   manca non è la capacità di legarle, è che non arrivano mai al grezzo da cui un oggetto potrebbe
+   nascere. La verifica torna in campo il giorno in cui una fetta dell'obiettivo aggiunge `light`/
+   `switch` al pavimento (o sopra di esso).
 3. **Il peso reale su disco** dopo la prima settimana, contro i 306.000 previsti.
 
 ## 10. Fuori scope, dichiarato

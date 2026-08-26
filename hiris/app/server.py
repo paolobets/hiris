@@ -1596,21 +1596,6 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(
             "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
 
-    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
-    # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
-    # -- vedi il docstring di `riaggrega_gli_ultimi_due_giorni` per il perche'
-    # di "due" e non "i giorni senza oggetti", e per quando si salta per
-    # intero invece di scrivere oggetti impoveriti. DOPO la ricostruzione
-    # delle condizioni qui sopra, attesa, e in un try/except che non deve
-    # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
-    # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
-    try:
-        await riaggrega_gli_ultimi_due_giorni(app, ha_client)
-    except Exception as exc:
-        logger.warning(
-            "cervello: riaggregazione degli ultimi due giorni all'avvio "
-            "fallita (%s: %s)", type(exc).__name__, exc)
-
     # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
@@ -1693,6 +1678,53 @@ async def _on_startup(app: web.Application) -> None:
     # ricostruira' comunque.
     archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))
     app["archivio_casa"] = archivio_casa
+
+    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
+    # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
+    # -- vedi il docstring di `riaggrega_gli_ultimi_due_giorni` per il perche'
+    # di "due" e non "i giorni senza oggetti", e per quando si salta per
+    # intero invece di scrivere oggetti impoveriti.
+    #
+    # **QUI, subito dopo `app["archivio_casa"]` (cancello-rilascio-brief.md,
+    # punto 1, CRITICAL -- la terza volta che questa stessa fondamenta si
+    # rompe sulla stessa funzione).** Fino a questo giro la chiamata stava 87
+    # righe piu' in alto, PRIMA che `archivio_casa` esistesse:
+    # `_fuso_da_archivio_casa(app.get("archivio_casa"))` leggeva sempre
+    # `None`, e questa riparazione lavorava SEMPRE in UTC -- mentre
+    # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto in questa stessa
+    # funzione, che gira alle 00:20 quando `archivio_casa` c'e' gia' da ore)
+    # lavora col fuso VERO della casa. Le due porte, sullo stesso grezzo,
+    # potevano quindi produrre oggetti diversi: un episodio a cavallo della
+    # mezzanotte UTC (che non e' la mezzanotte della casa) finiva nel giorno
+    # sbagliato, o spariva da entrambi, a OGNI riavvio dell'add-on -- cioe' a
+    # ogni aggiornamento. Prova per esecuzione in
+    # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
+    # (`tests/test_cervello_wiring.py`).
+    #
+    # Nasce PRIMA di `ArchivioConsumi` qui sotto e prima di `ricostruisci`
+    # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
+    # `sistema_di_riferimento()` legge il fuso GIA' PERSISTITO su disco dalle
+    # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
+    # `ricostruisci()`, che parla con Home Assistant, legherebbe questa
+    # riparazione a un servizio di rete che non le serve.
+    #
+    # **La lezione**: il test che sorvegliava l'ordine (ora
+    # `test_le_due_porte_...`, prima
+    # `test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_
+    # e_non_blocca_l_avvio`) verificava che una STRINGA comparisse in un certo
+    # ordine nel sorgente, non che il collaboratore di cui la funzione ha
+    # davvero bisogno (`archivio_casa`) esistesse in quel punto -- e le finte
+    # di questa stessa funzione, in ogni altro test di questo file, passano
+    # `"archivio_casa": None`: fedeli alla produzione ROTTA, non lo
+    # sorvegliavano nemmeno per caso. Attesa, e in un try/except che non deve
+    # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
+    # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
+    try:
+        await riaggrega_gli_ultimi_due_giorni(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: riaggregazione degli ultimi due giorni all'avvio "
+            "fallita (%s: %s)", type(exc).__name__, exc)
 
     # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
     # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
@@ -1870,6 +1902,30 @@ async def _on_startup(app: web.Application) -> None:
     # retention, spazzata della coda di ragionamento)
     # non hanno niente a che fare coi chatbot. Con l'entita' uscita per
     # intero, trova casa direttamente qui.
+    # **Nessun `timezone=` esplicito, ed e' una scelta verificata, non una
+    # dimenticanza** (cancello-rilascio-brief.md, punto 4). `AsyncIOScheduler()`
+    # senza `timezone` risolve col fuso LOCALE del sistema
+    # (`apscheduler.util.astimezone(None) or get_localzone()`, via `tzlocal`),
+    # che su Linux legge PRIMA la variabile d'ambiente `TZ`. Ne' `config.yaml`,
+    # ne' `Dockerfile`, ne' `run.sh` la impostano (cercato nei tre, nessun
+    # risultato) -- ma non serve che lo facciano: il Supervisor di Home
+    # Assistant imposta `TZ` da SOLO in OGNI container di add-on, al fuso
+    # configurato in Home Assistant (fallback: quello dell'host, poi UTC).
+    # Verificato leggendo il sorgente vero del Supervisor (non indovinato):
+    # `supervisor/docker/app.py` (`DockerApp.environment`, la property che
+    # costruisce l'ambiente Docker di OGNI add-on) scrive sempre
+    # `{ENV_TIME: self.sys_timezone}` con `ENV_TIME = "TZ"`
+    # (`supervisor/const.py`), e `sys_timezone`/`CoreSys.timezone`
+    # (`supervisor/coresys.py`) e' `config.timezone` (il fuso di HA) con
+    # ripiego sul fuso dell'host e poi su `"UTC"`. Quindi in produzione (sotto
+    # il Supervisor vero, non `docker run` nudo) `TZ` c'e' sempre, e le 00:20
+    # dichiarate da pagina, README e piano sono davvero le 00:20 della casa --
+    # la stessa fonte del fuso che `archivio_casa.sistema_di_riferimento()`
+    # legge per l'aggregazione stessa (§0 sopra). Nessuna correzione: ne' al
+    # container/schedulatore (gia' corretto da chi lo ospita), ne' alle tre
+    # frasi (gia' vere). Resta vero solo FUORI dal Supervisor -- uno sviluppo
+    # locale con `docker run` nudo vedrebbe UTC -- ma quel caso non e' come
+    # l'add-on gira davvero.
     scheduler = AsyncIOScheduler()
     scheduler.start()
     app["scheduler"] = scheduler

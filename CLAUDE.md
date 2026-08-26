@@ -226,7 +226,7 @@ Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un pia
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # ~1.900 righe: registrazione rotte E gran parte del wiring
+    ├── server.py         # 3.570 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
@@ -244,6 +244,10 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
+
+`server.py` era dichiarato «~1.900 righe» — già falso prima della fetta «l'osservatore» (2026-08-26),
+di più dopo. Misurato con `wc -l hiris/app/server.py` il 26 agosto: **3.570**. Verifica di nuovo
+prima di fidartene: è un numero che invecchia da solo, non un fatto che questo file possa custodire.
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
