@@ -391,7 +391,8 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "ha_client": None, "logger": logger_test,
         "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
         "timedelta": server.timedelta, "zona_casa": server.zona_casa,
-        "_comprimari_da_legami": server._comprimari_da_legami,
+        "confini_giorno": server.confini_giorno,
+        "costruisci_comprimari": server.costruisci_comprimari,
         "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
     })
 

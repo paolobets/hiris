@@ -43,7 +43,7 @@ from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
 from .casa.tempo import zona_casa
 from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
-from .cervello.oggetti import aggrega_giorno
+from .cervello.oggetti import aggrega_giorno, confini_giorno
 from .cervello.osservatore import Osservatore
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
@@ -786,30 +786,40 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
     return giro
 
 
-def _comprimari_da_legami(ha_client):
-    """`legami` -> chi sta insieme al protagonista, per l'aggregazione
-    (`cervello/oggetti.py::aggrega_giorno`).
+# I legami che valgono come comprimari: cose che FANNO o MISURANO qualcosa
+# mentre l'oggetto dura. Un'area e' dove sta, non cosa fa.
+_LEGAMI_COMPRIMARI = ("entita", "automazione", "scena", "script")
+
+
+async def costruisci_comprimari(ha_client, soggetti: list[str]) -> dict[str, list[str]]:
+    """Per ogni protagonista, chi sta con lui. **Una lettura per soggetto.**
 
     Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
     lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
-    un sistema solo -- e solo `legami` lo sa dire.
+    un sistema solo, e solo `legami` lo sa dire.
 
-    Sincrono per contratto (l'aggregazione lo chiama in un ciclo stretto),
-    quindi la lettura di rete si fa **una volta sola per giorno**, prima: qui
-    si serve da una mappa gia' costruita.
-
-    **Questa versione restituisce sempre una lista vuota.** Il riempimento
-    della mappa da `legami` e' il Task 6 (`task-5-correzioni.md` non lo
-    tocca): non e' un segnaposto dimenticato, e' il confine dichiarato fra
-    due task, e questo -- il Task 5 -- deve restare verde da solo.
+    Un guasto di `legami` costa i comprimari, non la giornata: un oggetto
+    senza contesto e' peggio di uno completo e infinitamente meglio di
+    nessun oggetto.
     """
-    cache: dict[str, list[str]] = {}
-
-    def comprimari(soggetto: str) -> list[str]:
-        return cache.get(soggetto, [])
-
-    comprimari.cache = cache
-    return comprimari
+    mappa: dict[str, list[str]] = {}
+    for soggetto in soggetti:
+        if soggetto in mappa or "." not in soggetto or soggetto.startswith(
+                ("problema:", "integrazione:")):
+            continue
+        try:
+            esito = await ha_client.legami("entita", soggetto)
+        except Exception as errore:
+            logger.debug("comprimari di %s non letti (%s)", soggetto, errore)
+            esito = {"errore": "non letto"}
+        legami = (esito or {}).get("legami") or {}
+        insieme: list[str] = []
+        for tipo in _LEGAMI_COMPRIMARI:
+            for altro in legami.get(tipo) or []:
+                if isinstance(altro, str) and altro != soggetto and altro not in insieme:
+                    insieme.append(altro)
+        mappa[soggetto] = insieme
+    return mappa
 
 
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:
@@ -880,14 +890,19 @@ def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> N
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
+    # Nessun comprimare qui (Task 6): `costruisci_comprimari` legge la rete
+    # verso Home Assistant, e questa riparazione gira SINCRONA, prima ancora
+    # che l'event loop dell'add-on sia in piedi per davvero. La riaggregazione
+    # notturna (`_aggrega_ieri`, sotto) e' l'unica che li costruisce -- questa
+    # ripara il giorno, non il contesto: un oggetto senza comprimari e'
+    # comunque infinitamente meglio di nessun oggetto.
     fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
     oggi = adesso(zona_casa(fuso)).date()
-    comprimari = _comprimari_da_legami(ha_client)
     for delta in (2, 1):
         giorno = (oggi - timedelta(days=delta)).strftime("%Y-%m-%d")
         quanti = aggrega_giorno(
             archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
-            comprimari=comprimari)
+            comprimari=None)
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             quanti, giorno)
@@ -2129,9 +2144,16 @@ async def _on_startup(app: web.Application) -> None:
             # prefisso «cervello:», e la notte salta in silenzio.
             fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
             ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
+            # I comprimari si leggono UNA volta per giornata, prima: dentro il
+            # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
+            # migliaia di richieste (Task 6, `costruisci_comprimari`).
+            da_ts, a_ts = confini_giorno(ieri, fuso)
+            soggetti = sorted({r["soggetto"] for r
+                               in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts)})
+            mappa = await costruisci_comprimari(ha_client, soggetti)
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
-                comprimari=_comprimari_da_legami(ha_client))
+                comprimari=lambda s: mappa.get(s, []))
             logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
         except Exception as errore:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
