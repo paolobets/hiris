@@ -392,6 +392,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
         "timedelta": server.timedelta, "zona_casa": server.zona_casa,
         "_comprimari_da_legami": server._comprimari_da_legami,
+        "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
     })
 
     with caplog.at_level(logging.WARNING, logger="test_aggrega_ieri_fuso"):

@@ -812,6 +812,19 @@ def _comprimari_da_legami(ha_client):
     return comprimari
 
 
+def _fuso_da_archivio_casa(archivio_casa) -> str | None:
+    """Il fuso della casa, letto da `sistema_di_riferimento()` -- `None` se
+    `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
+    costruisce). Un aiutante solo per una domanda che questo file faceva in
+    TRE punti (cablaggio-pulizia-brief.md, punto 4): `riaggrega_gli_ultimi_
+    due_giorni` qui sotto, `_aggrega_ieri` e la costruzione di
+    `ArchivioConsumi`, tutte e tre dentro `_on_startup`. Tre risposte alla
+    stessa domanda possono divergere, e la prima a divergere e' quella che
+    nessuno guarda.
+    """
+    return archivio_casa.sistema_di_riferimento().get("fuso") if archivio_casa else None
+
+
 def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
     """All'avvio, riaggrega **incondizionatamente** i due giorni pieni piu'
     recenti (oggi escluso: non e' ancora finito). Non torna niente: chi la
@@ -839,6 +852,23 @@ def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> N
     rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
     lo raddoppia.
 
+    **Il limite di questa cura, e perche' "due" e' sicuro mentre un domani
+    "venti" non lo sarebbe.** Riaggregare SOSTITUISCE gli oggetti del
+    giorno (`sostituisci_giorno`): non puo' distruggere comprensione finche'
+    il grezzo per rifarlo esiste ancora, e i due giorni bersaglio hanno al
+    massimo due giorni e qualche ora, ben dentro la potatura a
+    `CONSERVAZIONE_CAMBI_S` (22 giorni). L'ECCEZIONE, solo teorica: un
+    avvio con l'orologio di SISTEMA arretrato di venti giorni o piu'
+    rispetto all'ultima potatura riaggregherebbe giorni il cui grezzo la
+    potatura ha gia' cancellato -- `aggrega_giorno` troverebbe meno cambi
+    di quanti l'oggetto esistente ne raccontasse (o nessuno), e li
+    sostituirebbe con MENO oggetti, non con gli stessi. Non e' un caso da
+    difendere con codice (un orologio di sistema cosi' indietro e' un
+    guasto che precede questo problema), ma chi un giorno vorra' allargare
+    la finestra da due giorni a venti deve trovare qui la ragione per cui
+    due erano sicuri e venti no: senza questa riga l'allargamento
+    sembrerebbe innocuo.
+
     **Chi la chiama la mette DOPO la ricostruzione delle condizioni e in un
     try/except che non blocca l'avvio** (in `_on_startup`, subito sotto): un
     cervello che non parte perche' non e' riuscito a rifare l'altro ieri
@@ -850,8 +880,7 @@ def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> N
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
-    fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
-            if app.get("archivio_casa") else None)
+    fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
     oggi = adesso(zona_casa(fuso)).date()
     comprimari = _comprimari_da_legami(ha_client)
     for delta in (2, 1):
@@ -1447,7 +1476,7 @@ async def _on_startup(app: web.Application) -> None:
 
     app["consumi"] = ArchivioConsumi(
         os.path.join(data_dir, "consumi.db"),
-        leggi_fuso=lambda: (archivio_casa.sistema_di_riferimento() or {}).get("fuso", ""))
+        leggi_fuso=lambda: _fuso_da_archivio_casa(archivio_casa))
     try:
         await ricostruisci(ha_client, archivio_casa)
     except Exception as exc:
@@ -2098,8 +2127,7 @@ async def _on_startup(app: web.Application) -> None:
             # solleva FUORI da qui il warning contestualizzato non parte --
             # l'eccezione finisce nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salta in silenzio.
-            fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
-                    if app.get("archivio_casa") else None)
+            fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
             ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
