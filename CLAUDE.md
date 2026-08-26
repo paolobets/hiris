@@ -290,6 +290,61 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
 - Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
 
+### Come si scrive il codice
+
+**La lingua: il dominio in italiano, il confine nella lingua del sistema esterno.**
+
+I concetti nostri sono in italiano e restano tali — «pavimento», «gamba», «comprimari», «grezzo»,
+«promessa», «notevole». Non sono traduzioni di concetti inglesi: *sono* i concetti, nati in italiano.
+Rinominarli non li renderebbe più chiari.
+
+Ma **qualunque valore che viaggia verso un sistema esterno porta il nome vero di quel sistema, mai
+tradotto**: Home Assistant, SQL, HTTP, le librerie. `"entity"`, non `"entita"`. `device_class`, non
+`classe_dispositivo`.
+
+> **La riga operativa: una stringa letterale italiana non attraversa mai un confine.** Se la vedi
+> dentro una chiamata verso l'esterno, è un difetto — non uno stile.
+
+E **la traduzione fra i due mondi vive in un posto solo per confine**, con i suoi test. Una seconda
+copia della tabella di traduzione è un doppione ai sensi della fondamenta 2.
+
+*Perché è una regola e non un consiglio:* il 26 agosto la funzione che costruisce i comprimari è
+stata scritta chiedendo a Home Assistant un legame di tipo `"entita"`. HA conosce solo `"entity"`, e
+**rifiutava la richiesta prima di toccare la rete**. Stessa riga, altri due errori identici: leggeva
+la risposta in una busta italiana che il client non produce, e filtrava chiavi italiane su chiavi
+inglesi. Risultato: la funzione era **completamente inerte in produzione** e il lavoro notturno
+«riusciva» loggando oggetti costruiti che uscivano tutti vuoti. Tre errori, un errore solo: una
+parola italiana mandata dove serviva la parola del sistema esterno.
+
+**Le best practice sono un cancello, non un'aspirazione.**
+
+«Seguire le buone pratiche» senza uno strumento che le verifichi non è una regola: è un auspicio.
+Quindi valgono solo quelle **controllate automaticamente**, e ciò che non è controllato non si
+pretende.
+
+Lo stato al 26 agosto: **il progetto non ha nessun linter** — né `ruff`, né `flake8`, né `black`, né
+`mypy` — e niente di tutto ciò gira nel CI. Va colmato, e il debito è dichiarato qui invece che
+sottinteso.
+
+Quando entrerà, entra **così**: configurazione in `pyproject.toml`, esecuzione nel CI accanto alla
+suite, e appartenenza al cancello del rilascio come la suite verde. Un linter che si può ignorare non
+serve a niente.
+
+### Il debito dichiarato: la rinomina in inglese
+
+**Deciso il 26 agosto dal proprietario, da fare a sviluppo fermo, mai durante una fetta.**
+
+Gli identificatori — funzioni, metodi, parametri — vanno portati in inglese, per interoperabilità e
+per allineamento alle convenzioni. Il vocabolario **di dominio** resta discutibile caso per caso: una
+`gamba` tradotta in `leg` perde significato, un `aggrega_giorno` tradotto in `aggregate_day` non perde
+niente.
+
+Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose in silenzio:
+
+1. **Solo con la suite verde e il linter già in piedi**, mai insieme a un cambio di comportamento.
+2. **Un commit di sola rinomina**, verificabile: se il diff contiene una riga di logica, non è una
+   rinomina.
+
 ### Trappole note
 
 - **Cache**: la shell HTML è `no-store`, gli asset sono fingerprintati per contenuto. Se un
