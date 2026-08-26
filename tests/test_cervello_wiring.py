@@ -14,6 +14,9 @@ avrebbe lasciato nascere (task-5-correzioni.md):
 """
 import asyncio
 import inspect
+import logging
+import re
+import textwrap
 
 from hiris.app import server
 from hiris.app.cervello.archivio import CONSERVAZIONE_CAMBI_S
@@ -60,13 +63,50 @@ def test_l_archivio_si_chiude_nello_spegnimento():
     assert 'app["osservazioni"].close()' in sorgente
 
 
-def test_l_aggregazione_gira_DOPO_la_mezzanotte_della_casa():
-    """Aggregare a mezzanotte esatta prenderebbe un giorno ancora aperto.
-    L'ora scelta e' dichiarata nel sorgente con la sua ragione."""
+def _kwargs_add_job(sorgente: str, job_id: str) -> dict:
+    """Gli argomenti dell'`add_job` che registra `job_id`, letti dal blocco
+    fra `scheduler.add_job(` e la parentesi che lo chiude -- non un pezzo di
+    sorgente tagliato a un numero fisso di caratteri (task-5-fix-brief.md,
+    punto 1): un `blocco` ritagliato a mano intorno all'`id` puo' contenere
+    la parola `"cron"` anche quando l'ORA dentro quel blocco e' sbagliata --
+    ed e' esattamente il difetto, ricomparso cinque volte in questa fetta,
+    che questa funzione chiude leggendo `hour`/`minute` per davvero."""
+    marcatore = f'id="{job_id}"'
+    pos = sorgente.index(marcatore)
+    inizio = sorgente.rindex("scheduler.add_job(", 0, pos)
+    fine = sorgente.index(")", pos)
+    blocco = sorgente[inizio:fine]
+    assert 'trigger="cron"' in blocco, f"{job_id} non e' un lavoro a orario fisso"
+    kwargs = {}
+    for nome in ("hour", "minute"):
+        m = re.search(rf"\b{nome}=(\d+)", blocco)
+        if m:
+            kwargs[nome] = int(m.group(1))
+    return kwargs
+
+
+def test_l_aggregazione_gira_alle_00_20_della_casa():
+    """Aggregare a mezzanotte esatta prenderebbe un giorno ancora aperto: le
+    00:20 sono l'ora vera, non solo un blocco che contiene la parola 'cron'
+    (task-5-fix-brief.md, punto 1 -- la quinta ricomparsa del difetto n.1 in
+    questa fetta: un `hour=23` sarebbe restato verde col test precedente,
+    perche' 'cron' resta comunque nel blocco).
+
+    Mutazione provata a mano: `hour=0` -> `hour=23` in `server.py` fa
+    fallire questo test (`{'hour': 23, 'minute': 20} != {'hour': 0,
+    'minute': 20}`); ripristinato subito dopo."""
     sorgente = inspect.getsource(server)
-    blocco = sorgente[sorgente.index('id="hiris_cervello_aggregazione"') - 700:
-                      sorgente.index('id="hiris_cervello_aggregazione"') + 200]
-    assert "cron" in blocco
+    assert _kwargs_add_job(sorgente, "hiris_cervello_aggregazione") == {
+        "hour": 0, "minute": 20}
+
+
+def test_la_potatura_gira_alle_03_00():
+    """Stessa tecnica, stesso difetto possibile: qui l'ora e' quella della
+    notte (03:00), lontana dall'aggregazione (00:20) apposta -- l'una deve
+    finire prima che l'altra cominci a leggere il grezzo."""
+    sorgente = inspect.getsource(server)
+    assert _kwargs_add_job(sorgente, "hiris_cervello_potatura") == {
+        "hour": 3, "minute": 0}
 
 
 # --------------------------------------------------------------------------
@@ -107,20 +147,125 @@ def test_l_osservatore_ricostruisce_le_condizioni_all_avvio():
         < sorgente.index('guarda_condizioni_di_sistema(app, ha_client)')
 
 
-def test_la_potatura_non_scrive_a_mano_il_numero_di_giorni():
-    """Punto C: la ritenzione vera e' 22 giorni (21 di promessa, il 22esimo
-    la guardia), non 21 -- e il messaggio non deve poter mentire quando la
-    costante cambia. Non basta che il commento lo dica: e' la RIGA DI LOG a
-    dover derivare il numero dalla costante invece di scriverlo a mano, e
-    questa prova legge proprio quella riga, non la prosa attorno."""
-    sorgente = inspect.getsource(server._on_startup)
-    # La riga di log: nessuna cifra letterale, il numero arriva da un
-    # argomento (`%s`), non e' scritto nel formato.
-    assert '"cervello: %s cambi oltre i %s giorni sono usciti"' in sorgente
-    # E quell'argomento e' DERIVATO dalla costante dell'archivio, non un
-    # altro numero scritto a mano altrove nella funzione.
-    assert "giorni = CONSERVAZIONE_CAMBI_S // 86400" in sorgente
+def _estrai_funzione_innestata(nome_funzione: str) -> str:
+    """Il sorgente VERO di una funzione innestata in `_on_startup` (`async
+    def <nome_funzione>...`), dalla sua riga di definizione alla riga vuota
+    che la separa dal codice seguente (tipicamente `scheduler.add_job(...)`)
+    -- la stessa tecnica di `tests/test_avvio_websocket.py` e
+    `tests/test_potatura_notturna.py`: si esegue il sorgente vero isolato,
+    non un suo doppione riscritto a mano che potrebbe divergere da cio' che
+    gira davvero."""
+    src = inspect.getsource(server._on_startup)
+    inizio = src.index(f"async def {nome_funzione}(")
+    fine = src.index("\n\n", inizio)
+    return textwrap.dedent(src[inizio:fine])
+
+
+def _carica_funzione_innestata(nome_funzione: str, globali: dict):
+    """Compila il blocco estratto in un namespace con le variabili libere
+    (closure di `_on_startup`: `app`, `logger`, `_time`, ...) gia' dentro
+    `globali` -- cosi' la funzione, una volta chiamata, le risolve da li'
+    esattamente come farebbe dentro `_on_startup` vera."""
+    namespace = dict(globali)
+    exec(compile(_estrai_funzione_innestata(nome_funzione),
+                f"<_on_startup {nome_funzione}>", "exec"), namespace)
+    return namespace[nome_funzione]
+
+
+class _ArchivioOsservazioniFinto:
+    """La finta deve saper produrre il difetto che sorveglia (feedback
+    ricorrente di questo progetto): oltre a tornare un numero da `pota()`,
+    deve poter SOLLEVARE a comando, per provare che la potatura ha una rete
+    propria (punto 3 del mandato)."""
+
+    def __init__(self, quanti: int = 0, *, pota_solleva: bool = False):
+        self._quanti = quanti
+        self._pota_solleva = pota_solleva
+        self.chiamate = 0
+
+    def pota(self, adesso_ts):
+        self.chiamate += 1
+        if self._pota_solleva:
+            raise RuntimeError("disco pieno")
+        return self._quanti
+
+
+def _tempo_fisso(valore: float):
+    class _Tempo:
+        @staticmethod
+        def time():
+            return valore
+    return _Tempo()
+
+
+def test_la_potatura_logga_il_numero_vero_di_giorni(caplog):
+    """Punto 1, seconda meta' (task-5-fix-brief.md): il test precedente
+    verificava che la riga `giorni = CONSERVAZIONE_CAMBI_S // 86400`
+    ESISTESSE nel sorgente, non che la riga di log la USASSE davvero -- un
+    mutante che tiene l'assegnazione morta e passa `21` letterale al posto
+    di `giorni` restava verde. Qui si esegue la funzione vera e si legge il
+    messaggio prodotto.
+
+    Mutazione provata a mano: nella riga di log, `giorni` sostituito con
+    `21` letterale (l'assegnazione morta restava). Rosso:
+    `AssertionError: assert 'cervello: 5 cambi oltre i 21 giorni sono
+    usciti' == 'cervello: 5 cambi oltre i 22 giorni sono usciti'`.
+    Ripristinato subito dopo."""
     assert CONSERVAZIONE_CAMBI_S // 86400 == 22
+    finto = _ArchivioOsservazioniFinto(quanti=5)
+    logger_test = logging.getLogger("test_potatura_giorni")
+    job = _carica_funzione_innestata("_pota_osservazioni", {
+        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "logger": logger_test, "CONSERVAZIONE_CAMBI_S": CONSERVAZIONE_CAMBI_S,
+    })
+
+    with caplog.at_level(logging.INFO, logger="test_potatura_giorni"):
+        asyncio.run(job())
+
+    assert finto.chiamate == 1
+    [messaggio] = [r.getMessage() for r in caplog.records]
+    assert messaggio == "cervello: 5 cambi oltre i 22 giorni sono usciti"
+
+
+def test_la_potatura_non_logga_niente_quando_non_pota_niente(caplog):
+    """`if quanti:` -- una notte senza niente da potare non deve produrre
+    una riga di log vuota di significato."""
+    finto = _ArchivioOsservazioniFinto(quanti=0)
+    logger_test = logging.getLogger("test_potatura_silenziosa")
+    job = _carica_funzione_innestata("_pota_osservazioni", {
+        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "logger": logger_test, "CONSERVAZIONE_CAMBI_S": CONSERVAZIONE_CAMBI_S,
+    })
+
+    with caplog.at_level(logging.INFO, logger="test_potatura_silenziosa"):
+        asyncio.run(job())
+
+    assert caplog.records == []
+
+
+def test_la_potatura_non_lascia_uscire_l_eccezione(caplog):
+    """Punto 3 del mandato: `_pota_osservazioni` era l'unico dei tre lavori
+    SENZA un try/except suo -- un guasto di SQLite alle tre di notte finiva
+    nel registro di apscheduler senza il prefisso 'cervello:', a differenza
+    dei due lavori fratelli. Qui si prova che un errore di `pota()` sia
+    catturato e loggato con quel prefisso, non lasciato propagare.
+
+    La mutazione, qui, e' lo stato originale (nessun try/except): e' cio'
+    che questo test trova rosso PRIMA della correzione -- `asyncio.run(job())`
+    solleva `RuntimeError('disco pieno')` invece di tornare, e il test fallisce
+    con quell'eccezione."""
+    finto = _ArchivioOsservazioniFinto(pota_solleva=True)
+    logger_test = logging.getLogger("test_potatura_rete")
+    job = _carica_funzione_innestata("_pota_osservazioni", {
+        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "logger": logger_test, "CONSERVAZIONE_CAMBI_S": CONSERVAZIONE_CAMBI_S,
+    })
+
+    with caplog.at_level(logging.WARNING, logger="test_potatura_rete"):
+        asyncio.run(job())  # non deve sollevare
+
+    assert finto.chiamate == 1
+    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
 
 
 # --------------------------------------------------------------------------
@@ -211,3 +356,142 @@ def test_senza_osservatore_non_scrive_niente():
     esito = asyncio.run(guarda_condizioni_di_sistema({}, cliente))
 
     assert esito is None
+
+
+# --------------------------------------------------------------------------
+# Correzione punto 2 (task-5-fix-brief.md): se il fuso non si legge, quel
+# giorno non viene aggregato MAI PIU' -- `fuso` e `ieri` erano calcolati
+# FUORI dal try di `_aggrega_ieri`. Due correzioni distinte: (a) il minimo,
+# le due righe dentro il try; (b) la cura vera, la riaggregazione
+# incondizionata degli ultimi due giorni pieni all'avvio.
+# --------------------------------------------------------------------------
+
+class _ArchivioCasaCheSolleva:
+    """`sistema_di_riferimento()` che solleva -- la sua query SQL, dice il
+    mandato, non e' protetta: qui si simula il guasto vero, non solo
+    l'assenza di `archivio_casa`."""
+
+    def sistema_di_riferimento(self):
+        raise RuntimeError("sqlite del sistema di riferimento irraggiungibile")
+
+
+def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_non_si_legge(caplog):
+    """Punto 2(a): se `sistema_di_riferimento()` solleva, il warning
+    contestualizzato ('cervello: ...') deve partire comunque -- non finire
+    nel registro di apscheduler senza prefisso, cosa che succede quando
+    `fuso`/`ieri` sono calcolati FUORI dal try.
+
+    Prima della correzione questo test e' rosso per davvero, non per un
+    assert: `asyncio.run(job())` solleva `RuntimeError`, perche' l'eccezione
+    di `sistema_di_riferimento()` esce dalla funzione innestata prima ancora
+    di entrare nel try."""
+    logger_test = logging.getLogger("test_aggrega_ieri_fuso")
+    job = _carica_funzione_innestata("_aggrega_ieri", {
+        "app": {"archivio_casa": _ArchivioCasaCheSolleva()},
+        "ha_client": None, "logger": logger_test,
+        "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
+        "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+        "_comprimari_da_legami": server._comprimari_da_legami,
+    })
+
+    with caplog.at_level(logging.WARNING, logger="test_aggrega_ieri_fuso"):
+        asyncio.run(job())  # non deve sollevare
+
+    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+
+
+def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
+    """Punto 2(b), la cura vera: all'avvio si riaggregano INCONDIZIONATAMENTE
+    gli ultimi due giorni pieni (oggi escluso, che non e' ancora finito) --
+    non 'i giorni senza oggetti' (un giorno senza oggetti e' un esito
+    legittimo, vedi il mandato). Si popola il grezzo di TRE giorni e si
+    verifica che solo i due piu' recenti vengano scritti come oggetti.
+
+    Nessun `from ... import riaggrega_gli_ultimi_due_giorni` in cima al
+    file: se la funzione non esistesse ancora, l'errore deve fermare SOLO
+    questo test (AttributeError a questa riga), non far fallire la
+    collection dell'intero file -- la lezione del giro precedente."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        for delta, soggetto in ((3, "vecchio"), (2, "l_altro_ieri"), (1, "ieri")):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto=f"light.{soggetto}", da="off", a="on")
+
+        server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            adesso=lambda tz: oggi.astimezone(tz))
+
+        giorni_scritti = {o["giorno"] for o in archivio.oggetti(limite=10)}
+        assert giorni_scritti == {"2026-08-22", "2026-08-23"}
+
+        # Idempotente (`sostituisci_giorno`, non un doppio inserimento): un
+        # secondo giro non deve raddoppiare gli oggetti dei due giorni.
+        server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            adesso=lambda tz: oggi.astimezone(tz))
+        assert len(archivio.oggetti(limite=10)) == 2
+    finally:
+        archivio.close()
+
+
+def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non_blocca_l_avvio():
+    """Punto 2(b): due vincoli separati, entrambi nel mandato -- l'ordine nel
+    sorgente ('dopo la ricostruzione delle condizioni') e la protezione
+    ('non deve bloccare l'avvio')."""
+    sorgente = inspect.getsource(server._on_startup)
+    assert "riaggrega_gli_ultimi_due_giorni(app, ha_client)" in sorgente
+    assert sorgente.index('app["osservatore"].ricostruisci_condizioni()') \
+        < sorgente.index("riaggrega_gli_ultimi_due_giorni(app, ha_client)")
+    pos = sorgente.index("riaggrega_gli_ultimi_due_giorni(app, ha_client)")
+    blocco = sorgente[pos - 80:pos + 200]
+    assert "try:" in blocco
+    assert "except Exception" in blocco
+
+
+def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
+    """Provato eseguendo il VERO blocco try/except del punto di chiamata
+    (non un suo doppione), con `riaggrega_gli_ultimi_due_giorni` sostituita
+    da una finta che solleva: se il try/except venisse tolto, la chiamata
+    qui sotto solleverebbe `RuntimeError` e il test fallirebbe con
+    quell'eccezione -- e' la mutazione naturale (lo stato pre-correzione)."""
+    sorgente = inspect.getsource(server._on_startup)
+    chiamata = "riaggrega_gli_ultimi_due_giorni(app, ha_client)"
+    inizio = sorgente.rindex("try:", 0, sorgente.index(chiamata))
+    fine = sorgente.index("\n\n", inizio)
+    corpo = textwrap.dedent(sorgente[inizio:fine])
+
+    def _che_solleva(app, ha_client):
+        raise RuntimeError("archivio irraggiungibile")
+
+    logger_test = logging.getLogger("test_riaggrega_avvio_non_blocca")
+    namespace = {"app": {}, "ha_client": None,
+                "riaggrega_gli_ultimi_due_giorni": _che_solleva,
+                "logger": logger_test}
+    func_src = "def _check():\n" + textwrap.indent(corpo, "    ")
+    exec(compile(func_src, "<_on_startup riaggregazione>", "exec"), namespace)
+
+    with caplog.at_level(logging.WARNING, logger="test_riaggrega_avvio_non_blocca"):
+        namespace["_check"]()  # non deve sollevare
+
+    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+
+
+# --------------------------------------------------------------------------
+# Punto 5 del mandato: il doppione con `hiris_problemi_ha` (`repairs/
+# list_issues` letto due volte, per conto proprio) NON si unifica -- ma
+# resta documentato accanto al lavoro del cervello, o la seconda lettura
+# sembra una svista a chi legge dopo.
+# --------------------------------------------------------------------------
+
+def test_il_doppione_con_hiris_problemi_ha_e_documentato():
+    sorgente = inspect.getsource(server)
+    pos = sorgente.index('id="hiris_cervello_condizioni"')
+    blocco = sorgente[pos - 1000:pos]
+    assert "hiris_problemi_ha" in blocco
+    assert 'app["problemi_ha"]' in blocco

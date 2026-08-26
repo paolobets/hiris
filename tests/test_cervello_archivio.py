@@ -108,22 +108,24 @@ def test_la_potatura_NON_tocca_gli_oggetti(archivio):
     """Le due tabelle hanno due vite: il grezzo si butta, cio' che si e' capito
     resta. Una potatura che si portasse via gli oggetti cancellerebbe mesi di
     osservazione per liberare qualche megabyte."""
-    archivio.salva_oggetto(giorno="2026-07-01", genere="funzionamento",
-                           protagonista="climate.camera_t",
-                           inizio_ts=ADESSO - 60 * 86400, fine_ts=ADESSO - 60 * 86400 + 3600,
-                           corpo={"nota": "vecchissimo"})
+    archivio.sostituisci_giorno("2026-07-01", [
+        {"genere": "funzionamento", "protagonista": "climate.camera_t",
+         "inizio_ts": ADESSO - 60 * 86400, "fine_ts": ADESSO - 60 * 86400 + 3600,
+         "corpo": {"nota": "vecchissimo"}},
+    ])
     archivio.pota(ADESSO)
     assert len(archivio.oggetti()) == 1
 
 
 def test_un_oggetto_si_rilegge_col_suo_corpo(archivio):
-    ident = archivio.salva_oggetto(
-        giorno="2026-08-24", genere="funzionamento", protagonista="climate.camera_t",
-        inizio_ts=ADESSO, fine_ts=ADESSO + 5700,
-        corpo={"comprimari": ["sensor.camera_temperatura"],
-               "misure": {"temperatura": {"da": 18.2, "a": 21.0}}})
-    assert isinstance(ident, int)
+    archivio.sostituisci_giorno("2026-08-24", [
+        {"genere": "funzionamento", "protagonista": "climate.camera_t",
+         "inizio_ts": ADESSO, "fine_ts": ADESSO + 5700,
+         "corpo": {"comprimari": ["sensor.camera_temperatura"],
+                   "misure": {"temperatura": {"da": 18.2, "a": 21.0}}}},
+    ])
     o = archivio.oggetti(giorno="2026-08-24")[0]
+    assert isinstance(o["id"], int)
     assert o["protagonista"] == "climate.camera_t"
     assert o["corpo"]["misure"]["temperatura"]["a"] == 21.0
     assert o["fine_ts"] == ADESSO + 5700
@@ -132,36 +134,31 @@ def test_un_oggetto_si_rilegge_col_suo_corpo(archivio):
 def test_un_oggetto_ancora_aperto_non_ha_fine(archivio):
     """A mezzanotte una cosa puo' essere ancora in corso. `None` dice «non e'
     finita», che e' un fatto -- zero direbbe «e' finita subito»."""
-    archivio.salva_oggetto(giorno="2026-08-24", genere="guasto",
-                           protagonista="integrazione:sonos", inizio_ts=ADESSO,
-                           fine_ts=None, corpo={})
+    archivio.sostituisci_giorno("2026-08-24", [
+        {"genere": "guasto", "protagonista": "integrazione:sonos",
+         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
+    ])
     assert archivio.oggetti()[0]["fine_ts"] is None
 
 
 def test_oggetti_tornano_dal_PIU_RECENTE(archivio):
     """Il docstring lo afferma: con al piu' una riga per giorno la mutazione
     DESC->ASC non si nota. Ci vogliono piu' righe nello stesso giorno."""
-    for protagonista, ts in (("primo", ADESSO), ("terzo", ADESSO + 200), ("secondo", ADESSO + 100)):
-        archivio.salva_oggetto(giorno="2026-08-24", genere="funzionamento",
-                               protagonista=protagonista, inizio_ts=ts, fine_ts=None, corpo={})
+    archivio.sostituisci_giorno("2026-08-24", [
+        {"genere": "funzionamento", "protagonista": protagonista,
+         "inizio_ts": ts, "fine_ts": None, "corpo": {}}
+        for protagonista, ts in (("primo", ADESSO), ("terzo", ADESSO + 200),
+                                 ("secondo", ADESSO + 100))
+    ])
     assert [o["protagonista"] for o in archivio.oggetti(giorno="2026-08-24")] == \
         ["terzo", "secondo", "primo"]
 
 
-def test_dimenticare_un_giorno_lo_svuota_e_non_tocca_gli_altri(archivio):
-    """Rifare l'aggregazione di un giorno deve poter essere idempotente:
-    altrimenti ogni ritentativo raddoppia gli oggetti in silenzio."""
-    for g in ("2026-08-24", "2026-08-25"):
-        archivio.salva_oggetto(giorno=g, genere="funzionamento", protagonista="x",
-                               inizio_ts=ADESSO, fine_ts=None, corpo={})
-    assert archivio.dimentica_oggetti("2026-08-24") == 1
-    assert [o["giorno"] for o in archivio.oggetti()] == ["2026-08-25"]
-
-
 def test_sostituisci_giorno_sostituisce_non_accoda(archivio):
-    """`salva_oggetto` da solo e' un INSERT nudo: rifare un giorno chiamandolo
-    due volte accoderebbe. `sostituisci_giorno` e' l'operazione che rifa'
-    un giorno per intero, e deve lasciare UNA copia, non due."""
+    """Un INSERT nudo, ripetuto sullo stesso giorno, accoderebbe una seconda
+    copia senza errore. `sostituisci_giorno` e' l'operazione che rifa' un
+    giorno per intero, in una transazione sola, e deve lasciare UNA copia,
+    non due."""
     archivio.sostituisci_giorno("2026-08-24", [
         {"genere": "funzionamento", "protagonista": "vecchio",
          "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
@@ -181,8 +178,7 @@ def test_sostituisci_giorno_NON_tocca_gli_altri_giorni(archivio):
 
     Senza questo test una DELETE allargata per errore spazzerebbe via TUTTI
     gli oggetti -- mesi di comprensione, che oltre la ritenzione del grezzo non
-    si rifanno piu' -- e la suite resterebbe verde. L'invariante gemello e'
-    gia' sorvegliato per `dimentica_oggetti`; la via nuova non lo era.
+    si rifanno piu' -- e la suite resterebbe verde.
     """
     archivio.sostituisci_giorno("2026-08-23", [
         {"genere": "funzionamento", "protagonista": "l-altro-giorno",
