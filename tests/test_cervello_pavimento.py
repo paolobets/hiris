@@ -85,6 +85,7 @@ def test_cio_che_non_serve_all_obiettivo_resta_fuori():
     ("alarm_control_panel.centrale", {}, "sicurezza"),
     ("binary_sensor.fumo_cucina", {"device_class": "smoke"}, "sicurezza"),
     ("binary_sensor.fuga_gas_cucina", {"device_class": "gas"}, "sicurezza"),
+    ("binary_sensor.co_garage", {"device_class": "carbon_monoxide"}, "sicurezza"),
     ("sensor.rilevatore_co_soggiorno", {"device_class": "carbon_monoxide"}, "sicurezza"),
     ("binary_sensor.allagamento_bagno", {"device_class": "moisture"}, "sicurezza"),
     ("binary_sensor.porta_forzata", {"device_class": "safety"}, "sicurezza"),
