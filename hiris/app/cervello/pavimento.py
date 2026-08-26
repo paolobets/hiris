@@ -13,7 +13,7 @@ prompt non puo' togliere. Sopra di esso allarga; sotto, mai.
 """
 from __future__ import annotations
 
-GAMBE = ("chi c'e'", "comfort", "dispersione", "consumo", "buono stato", "sicurezza")
+GAMBE = ("chi c'e'", "comfort", "dispersione", "energia", "buono stato", "sicurezza")
 
 # Le classi che Home Assistant dichiara, raggruppate per gamba dell'obiettivo.
 # I nomi sono quelli veri di HA, non nostri.
@@ -29,7 +29,35 @@ _QUALITA_ARIA = frozenset({
     "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone",
     "sulphur_dioxide",
 })
-_CONSUMO = frozenset({"energy", "power", "gas", "water"})
+_ENERGIA = frozenset({"energy", "power", "gas", "water"})
+
+# DEBITO DICHIARATO (misurato il 26/08/2026, sulla casa vera -- vedi
+# `CLAUDE.md`, «Su Home Assistant non si ipotizza mai»): produzione e
+# consumo NON sono oggi distinguibili. Home Assistant usa `device_class:
+# energy` (e `power`) sia per l'energia PRODOTTA da un impianto
+# fotovoltaico sia per quella PRELEVATA dalla rete -- la classe da sola non
+# separa le due direzioni, e indovinarle dal NOME del sensore ("prodotta",
+# "esportata") si romperebbe sul prossimo inverter. Su questa casa i
+# sedici sensori dell'inverter con accumulo (energia e potenza prodotta,
+# esportata, importata, autoconsumata, consumata, carica e scarica della
+# batteria) sono tutti `energy`/`power` e finiscono tutti in questa gamba
+# sola -- prima si chiamava "consumo" e "consumo" archiviava anche la
+# PRODUZIONE, una frase falsa nel dato.
+#
+# **La fonte onesta esiste**: la configurazione della dashboard Energia di
+# Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
+# dichiara quale sensore e' produzione solare, quale e' scambio con la
+# rete e quale e' batteria. **Interrogata sul vivo il 26/08/2026: su
+# questa casa e' VUOTA** (`energy_sources` non contiene niente). Finche'
+# resta vuota la distinzione non e' conoscibile, quindi questa gamba resta
+# un'unica "energia" che copre onestamente entrambe le direzioni, invece
+# di affermarne una sola.
+#
+# **Prossimo passo dichiarato, non fatto oggi**: leggere `energy/get_prefs`
+# per separare produzione e consumo quando la dashboard di questa casa
+# sara' configurata. Scriverlo oggi sarebbe codice non verificabile sul
+# vivo -- la fonte e' vuota qui, e non si ipotizza come si comporterebbe
+# altrove.
 
 # La sesta gamba, aggiunta il 26/08/2026 dalla review del primo task: la
 # prima stesura non conteneva gli allarmi -- ne' fumo, ne' gas, ne'
@@ -54,7 +82,7 @@ _SICUREZZA_BINARIA = frozenset({
 # Trappola gia' documentata nel prodotto: la classe si chiama
 # `carbon_monoxide`, NON `co`. E trappola nuova: `gas` compare anche qui
 # sopra (`_SICUREZZA_BINARIA`) ma e' un'altra entita' -- il rilevatore di
-# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_CONSUMO`).
+# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_ENERGIA`).
 # Il ramo per dominio in `gamba()` le separa gia': un controllo per sola
 # classe le fonderebbe.
 _SICUREZZA_SENSORE = frozenset({"carbon_monoxide"})
@@ -75,8 +103,14 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
 
     L'obiettivo e' «ottimizzare la casa e renderla confortevole», e ha tre
     gambe -- efficiente, confortevole, in buono stato -- che qui diventano
-    sei domande: chi c'e', che aria si respira, cosa disperde, cosa consuma,
-    cosa si sta rompendo, cosa minaccia la sicurezza.
+    sei domande: chi c'e', che aria si respira, cosa disperde, quanta
+    energia si muove, cosa si sta rompendo, cosa minaccia la sicurezza.
+
+    **"Quanta energia si muove" e non "cosa consuma"** (correzione del
+    26/08/2026): questa gamba cattura energia PRODOTTA e PRELEVATA nella
+    stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
+    affermerebbe il contrario per meta' dei sedici sensori di un impianto
+    fotovoltaico con accumulo.
     """
     attributi = attributi if isinstance(attributi, dict) else {}
     dominio = str(entity_id).split(".")[0]
@@ -117,8 +151,8 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
             # 1226 in questa casa. Il filtro e' per CLASSE, non per categoria:
             # escludere `diagnostic` in blocco toglierebbe «buono stato».
             return "buono stato"
-        if classe in _CONSUMO or classe_stato == "total_increasing":
-            return "consumo"
+        if classe in _ENERGIA or classe_stato == "total_increasing":
+            return "energia"
     return None
 
 

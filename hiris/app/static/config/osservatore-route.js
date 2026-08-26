@@ -29,16 +29,20 @@
    -- I sei gambe dell'obiettivo, non un elenco a caso (`pavimento.GAMBE`) --
    Le voci di «cosa sto guardando» si raggruppano per gamba, nello stesso
    ordine in cui il pavimento le dichiara: chi c'e', comfort, dispersione,
-   consumo, buono stato, sicurezza. Duplicato qui (non importato: questa SPA
+   energia, buono stato, sicurezza. Duplicato qui (non importato: questa SPA
    non porta build step, ogni route e' autonoma come le sue sorelle) --
    stringhe letterali IDENTICHE a `pavimento.GAMBE`, apostrofo compreso
    («chi c'e'»).
 
    -- I cinque generi di oggetto (`cervello/oggetti.py::GENERI`) --
-   funzionamento, presenza, consumo, guasto, sicurezza. Ogni genere porta un
+   funzionamento, presenza, energia, guasto, sicurezza. Ogni genere porta un
    `corpo` di forma diversa (`aggrega_giorno`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
-   consumo porta `valore_iniziale`/`valore_finale`/`differenza`. Tutti e
+   energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
+   VARIAZIONE fra due letture, mai presentata come un consumo: il genere
+   copre anche l'energia PRODOTTA da un impianto fotovoltaico, e oggi HA
+   non dichiara la direzione (debito misurato il 26/08/2026, vedi
+   `cervello/pavimento.py::_ENERGIA`). Tutti e
    cinque portano `comprimari` (chi altro c'era, dal caso del lampadario) e
    `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
    durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
@@ -73,7 +77,7 @@ window.HirisOsservatoreRoute = (function () {
      mai, stessa regola di `NOMI_REGISTRI` in albero-route.js. I VALORI
      restano quelli letterali (identici a `pavimento.GAMBE`): solo la resa
      (`ETICHETTA_GAMBA` sotto) traduce la chiave in un'etichetta leggibile. */
-  var ORDINE_GAMBE = ["chi c'e'", 'comfort', 'dispersione', 'consumo', 'buono stato', 'sicurezza'];
+  var ORDINE_GAMBE = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
 
   /* Rilievo 8a della review: le intestazioni di gamba erano chiavi grezze
      ("chi c'e' — 95 voci", apostrofo ASCII e minuscola) in una pagina con
@@ -84,12 +88,12 @@ window.HirisOsservatoreRoute = (function () {
      "undefined". */
   var ETICHETTA_GAMBA = {
     "chi c'e'": 'Chi c’è', comfort: 'Comfort', dispersione: 'Dispersione',
-    consumo: 'Consumo', 'buono stato': 'Buono stato', sicurezza: 'Sicurezza'
+    energia: 'Energia', 'buono stato': 'Buono stato', sicurezza: 'Sicurezza'
   };
 
   var ETICHETTA_GENERE = {
     funzionamento: 'Funzionamento', presenza: 'Presenza / assenza',
-    consumo: 'Consumo', guasto: 'Guasto', sicurezza: 'Sicurezza'
+    energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza'
   };
 
   function el(tag, cls, testo) {
@@ -279,7 +283,7 @@ window.HirisOsservatoreRoute = (function () {
      generica: campi reali o niente. */
   function frasePrincipale(o) {
     var c = o.corpo || {};
-    if (o.genere === 'consumo') {
+    if (o.genere === 'energia') {
       if (c.differenza == null) {
         return 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (non calcolabile: una sola lettura, o un valore non numerico)';
       }

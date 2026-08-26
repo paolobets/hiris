@@ -34,7 +34,7 @@ from .pavimento import gamba
 # chiamata a `legami` dentro il ciclo farebbe migliaia di richieste per una
 # giornata. Renderla `async` "per il futuro" sarebbe generalita' speculativa.
 
-GENERI = ("funzionamento", "presenza", "consumo", "guasto", "sicurezza")
+GENERI = ("funzionamento", "presenza", "energia", "guasto", "sicurezza")
 
 # I domini che «funzionano»: si accendono e si spengono, si aprono e si
 # chiudono. Sono i protagonisti degli oggetti di funzionamento. **Lista
@@ -47,7 +47,7 @@ GENERI = ("funzionamento", "presenza", "consumo", "guasto", "sicurezza")
 # insieme al suo stato di riposo in `_SPENTO` qui sotto, nella STESSA
 # modifica. Le due cose non si toccano separatamente.** E' la terza volta in
 # questa fetta che lo stesso difetto nasce dal separarle: l'allarme
-# rovesciato (punto 3b), il consumo che non chiudeva mai (punto 6), e questi
+# rovesciato (punto 3b), l'energia che non chiudeva mai (punto 6), e questi
 # quattro domini aggiunti QUI, al giro precedente, senza guardare i LORO
 # riposi -- il vacuum che torna alla base (`docked`) e il media_player fermo
 # (`idle`, `standby`) restavano oggetti aperti per sempre (`fine_ts: None`).
@@ -128,7 +128,7 @@ _SPENTO = frozenset({"off", "closed", "none", "",
 # salto vive in un punto solo, in cima ad `aggrega_giorno`, prima di ogni
 # ramo e prima delle misure (correzione punto 3: senza il salto in cima,
 # un'`unavailable` da riavvio a bordo giornata finiva come prima o ultima
-# lettura di un consumo) -- non piu' duplicato con una semantica diversa in
+# lettura di un'energia) -- non piu' duplicato con una semantica diversa in
 # ogni ramo che lo tocca.
 _IGNOTO = frozenset({"unavailable", "unknown"})
 
@@ -175,8 +175,8 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
         return "funzionamento"
     if dominio in ("person", "device_tracker"):
         return "presenza"
-    if dominio == "sensor" and gamba_ == "consumo":
-        return "consumo"
+    if dominio == "sensor" and gamba_ == "energia":
+        return "energia"
     if gamba_ == "sicurezza":
         if dominio == "sensor":
             return None
@@ -242,8 +242,12 @@ def _differenza(iniziale, finale) -> float | None:
     """`finale - iniziale`, o `None` se uno dei due non si legge come numero.
 
     Un contatore scrive stringhe (`"1234.5"`). `None` e non zero quando la
-    lettura fallisce: zero direbbe «consumo nullo» per un valore che non si e'
-    nemmeno potuto interpretare, e sarebbe un fatto falso travestito da dato.
+    lettura fallisce: zero direbbe «variazione nulla» per un valore che non
+    si e' nemmeno potuto interpretare, e sarebbe un fatto falso travestito
+    da dato. **La parola resta neutra apposta** (correzione del 26/08/2026,
+    gamba "consumo" -> "energia"): questa differenza serve anche ai
+    contatori di energia PRODOTTA, e "consumo" per una lettura di
+    produzione sarebbe di nuovo la frase falsa che questa correzione toglie.
     """
     try:
         return float(finale) - float(iniziale)
@@ -269,22 +273,30 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     caso misurato del lampadario, dove tre lampade, il loro gruppo e
     l'interruttore fisico sono un sistema solo.
 
-    **Il consumo e' un genere a parte** (correzione del giro di review,
+    **L'energia e' un genere a parte** (correzione del giro di review,
     punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
     non nasce da un ciclo apri/chiudi come gli altri generi. Un oggetto di
-    consumo e' il RIEPILOGO del giorno per quel contatore: la prima lettura,
+    energia e' il RIEPILOGO del giorno per quel contatore: la prima lettura,
     l'ultima, e la loro differenza. Si chiude sempre dentro la giornata (mai
     `fine_ts: None`), perche' e' gia' cio' che si sa a fine giornata, non
     qualcosa ancora in corso.
 
     **Debito dichiarato** (secondo giro di review, punto 5): la spec (§6)
-    promette che un consumo dica «quanto, in che periodo, COME DISTRIBUITO».
+    promette che un'energia dica «quanto, in che periodo, COME DISTRIBUITO».
     Questo riepilogo dice le prime due e non la terza -- prima lettura,
     ultima e la loro differenza non dicono se il contatore e' salito piano
     per tutto il giorno o e' scattato tutto in un'ora. Quella forma (a
     bucket orari, o i punti intermedi) non c'e' ancora: la scelta e' onesta
     finche' lo dice qui, non solo nel rapporto di un giro di correzioni che
     fra un mese non legge piu' nessuno.
+
+    **Secondo debito dichiarato** (26/08/2026, misurato sulla casa vera --
+    vedi `pavimento.py::_ENERGIA` per la fonte completa): il riepilogo qui
+    sotto e' lo STESSO per un contatore che PRODUCE e uno che PRELEVA --
+    entrambi `device_class: energy`/`power`, e la distinzione vera vive
+    nella dashboard Energia di HA (`energy/get_prefs`), oggi vuota su
+    questa casa. Il genere si chiama "energia", non "consumo" o
+    "produzione", precisamente perche' oggi non sa dire quale delle due sia.
     """
     da_ts, a_ts = confini_giorno(giorno, fuso)
     righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
@@ -298,7 +310,7 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     # un ramo (chiude un episodio in corso), salto nell'altro. La riga che
     # si perde qui e' un buco nell'informazione, non un fatto sulla casa:
     # non deve ne' aprire ne' chiudere niente, in NESSUN ramo, e non deve
-    # contaminare il riepilogo di un consumo (`misure`, sotto) con
+    # contaminare il riepilogo di un'energia (`misure`, sotto) con
     # "unavailable" come prima o ultima lettura del giorno.
     righe = [r for r in righe
              if str(r["a"] or "").strip().lower() not in _IGNOTO]
@@ -315,7 +327,7 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
     # protagonista, che a meta' del ciclo non e' ancora noto.
     episodi: list[dict] = []
-    consumo_soggetti: set[str] = set()
+    energia_soggetti: set[str] = set()
 
     def chiudi(soggetto: str, quando: float | None) -> None:
         o = aperti.pop(soggetto, None)
@@ -382,37 +394,40 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             else:
                 chiudi(soggetto, r["quando_ts"])
             continue
-        if genere == "consumo":
+        if genere == "energia":
             # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
             # contatore visto oggi. Il riepilogo (prima lettura, ultima,
             # differenza) si costruisce dopo il ciclo, da `misure`, che gia'
             # tiene ogni lettura del giorno in ordine cronologico.
-            consumo_soggetti.add(soggetto)
+            energia_soggetti.add(soggetto)
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
     for soggetto in list(aperti):
         chiudi(soggetto, None)
 
-    # I consumi si costruiscono ora, dal riepilogo delle misure: un oggetto
-    # di consumo del giorno SI CHIUDE sempre (mai `fine_ts: None`, e' gia'
-    # cio' che si sa a fine giornata) e porta valore iniziale, finale e la
-    # differenza -- non la prima lettura sola con un oggetto perennemente
-    # aperto, che era il difetto misurato su 29 contatori della casa.
-    for soggetto in sorted(consumo_soggetti):
+    # Le energie si costruiscono ora, dal riepilogo delle misure: un
+    # oggetto di energia del giorno SI CHIUDE sempre (mai `fine_ts: None`,
+    # e' gia' cio' che si sa a fine giornata) e porta valore iniziale,
+    # finale e la differenza -- non la prima lettura sola con un oggetto
+    # perennemente aperto, che era il difetto misurato su 29 contatori
+    # della casa.
+    for soggetto in sorted(energia_soggetti):
         punti = misure.get(soggetto, [])
         if not punti:
             continue
         iniziale, finale = punti[0][1], punti[-1][1]
-        # Una sola lettura nel giorno non dice quanto si e' consumato: e'
+        # Una sola lettura nel giorno non dice quanto e' cambiato: e'
         # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
         # codice la fa gia' altrove restituendo `None` quando `_differenza`
         # non riesce a leggere un valore come numero (pulizia del secondo
         # giro di review). Con un solo punto, iniziale e finale sono la
-        # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non ha
-        # consumato niente" travestito da dato.
+        # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non e'
+        # cambiato niente" travestito da dato. **La parola resta neutra**
+        # (26/08/2026): "consumato" sarebbe falso per meta' dei sedici
+        # sensori di un impianto fotovoltaico con accumulo, che PRODUCONO.
         differenza = _differenza(iniziale, finale) if len(punti) > 1 else None
-        episodi.append({"genere": "consumo", "protagonista": soggetto,
+        episodi.append({"genere": "energia", "protagonista": soggetto,
                         "inizio": punti[0][0], "fine": punti[-1][0],
                         "corpo_base": {"valore_iniziale": iniziale,
                                        "valore_finale": finale,

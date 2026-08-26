@@ -102,7 +102,7 @@ l'ora cambia. Costa il 5% di disco su decine di megabyte.
 **Perché quelle tre e non la gamba già calcolata** (deciso il 26 agosto, dopo che l'implementatore
 dell'aggregazione ha misurato il buco e l'ha dichiarato invece di indovinare). Senza di esse
 l'aggregazione ha in mano solo il nome dell'entità, e il pavimento decide la gamba dei sensori
-proprio dalla classe: il genere «consumo» non sarebbe nato mai, e nemmeno un solo oggetto per fumo,
+proprio dalla classe: il genere «energia» non sarebbe nato mai, e nemmeno un solo oggetto per fumo,
 gas, monossido o allagamento — cioè i rilevatori per cui la sesta gamba esiste. La classe si conosce
 **solo al momento dell'osservazione**: non scriverla è perderla per sempre.
 
@@ -135,9 +135,31 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | chi c'è | `person`, i `device_tracker` **con `source_type: gps`**, e i sensori binari di presenza, occupazione, movimento |
 | comfort | i sensori di temperatura e umidità, e i termostati |
 | dispersione | i sensori binari di porta, finestra e apertura, e le tapparelle |
-| consumo | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
+| energia | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
 | buono stato | le condizioni di sistema (§6) e i sensori di batteria |
 | sicurezza | **serrature, pannello dell'allarme, sirene, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore, gelo e incolumità (classe generica `safety`)** |
+
+**Debito dichiarato: produzione e consumo non sono oggi distinguibili** (correzione del 26 agosto,
+dal difetto trovato usando la fetta sulla casa vera — un giorno dopo il rilascio). Questa gamba si
+chiamava «consumo» e archiviava **anche l'energia prodotta** da un impianto fotovoltaico sotto
+quel nome: «energia prodotta oggi: 24 kWh» etichettata «consumo» è una frase falsa nel dato, non
+un'imprecisione — ed è esattamente la differenza fra ciò che si produce e ciò che si consuma che
+misura l'efficienza di una casa.
+
+**Non si corregge indovinando dai nomi.** Home Assistant dichiara `device_class: energy` (e
+`power`) sia per l'energia **prodotta** sia per quella **prelevata dalla rete**: la classe da sola
+non separa le due direzioni, e leggerla dal nome del sensore («prodotta», «esportata») funziona su
+questo inverter e si rompe sul prossimo. **La fonte onesta esiste**: la configurazione della
+dashboard Energia di Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
+dichiara quale sensore è produzione, quale è scambio con la rete e quale è batteria. **Interrogata
+sul vivo il 26 agosto 2026: su questa casa `energy_sources` è VUOTA** — verificato, non supposto.
+
+Finché resta vuota la distinzione non è conoscibile, e la correzione è **smettere di affermare il
+falso**, non inventare la verità: la gamba diventa un'unica `"energia"` — vero per tutti e sedici i
+sensori misurati sull'inverter con accumulo (prodotta, esportata, importata, autoconsumata,
+consumata, carica e scarica della batteria), produzione compresa. **Prossimo passo dichiarato, non
+fatto oggi**: leggere `energy/get_prefs` per separare le due direzioni quando la dashboard di
+questa casa sarà configurata — codice per una fonte vuota qui non sarebbe verificabile sul vivo.
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
 
@@ -227,7 +249,7 @@ una lista scritta a mano: la natura la dichiara Home Assistant», e per la prima
 volte in una notte. Un dominio dimenticato cade in silenzio e non produce niente; un dominio
 aggiunto senza guardare **quali stati di riposo si porta dietro** produce oggetti che non si chiudono
 mai — è successo con l'aspirapolvere (`docked`) e col media player (`idle`, `standby`), esattamente
-come era già successo con l'allarme rovesciato e col consumo.
+come era già successo con l'allarme rovesciato e con l'energia.
 
 **La regola che ne esce:** ogni volta che un dominio entra nell'elenco, entra insieme al suo stato di
 riposo. Le due cose non si toccano separatamente.
@@ -237,7 +259,7 @@ riposo. Le due cose non si toccano separatamente.
 | termostato, tapparella | **un funzionamento**: acceso/aperto da → a, e cosa ha fatto la grandezza collegata mentre durava |
 | presenza | **una presenza o un'assenza**: dentro/fuori da → a |
 | temperatura, umidità | non generano oggetti da sole: sono il **contesto** di altri oggetti, più gli attraversamenti di soglia |
-| contatore | **un consumo**: quanto, in che periodo, come distribuito (debito dichiarato: vedi sotto) |
+| contatore | **un'energia**: quanto, in che periodo, come distribuito (debito dichiarato: vedi sotto) |
 | condizione di sistema | **un guasto**: nato quando, durato quanto, ancora aperto o chiuso (limite dichiarato: vedi sotto) |
 | serratura, pannello dell'allarme, sirena, rilevatore di fumo/gas/monossido/allagamento | **una sicurezza**: cosa è successo, quando, per quanto |
 
@@ -292,16 +314,21 @@ Non si corregge in questa fetta — è una decisione di disegno (spezzare l'ogge
 continuazione, o aggiornare l'oggetto del giorno prima quando il giorno dopo trova la chiusura mancante)
 che va presa da svegli, non nel cancello di un rilascio.
 
-### Debito dichiarato: il consumo non dice «come distribuito»
+### Debito dichiarato: l'energia non dice «come distribuito»
 
-*Correzione del cancello del rilascio, 26 agosto.* La riga del consumo, sopra, promette «quanto, in che
+*Correzione del cancello del rilascio, 26 agosto.* La riga dell'energia, sopra, promette «quanto, in che
 periodo, **come distribuito**» — il terzo pezzo era un debito dichiarato solo nel modulo
 (`cervello/oggetti.py::aggrega_giorno`), non nella spec da cui il modulo dovrebbe discendere. L'oggetto
-di consumo che esce oggi è un riepilogo di giornata: la prima lettura, l'ultima, e la loro differenza.
+di energia che esce oggi è un riepilogo di giornata: la prima lettura, l'ultima, e la loro differenza.
 Dice le prime due promesse e non la terza — non dice se il contatore è salito piano per tutto il giorno
 o è scattato tutto in un'ora. Quella forma (a bucket orari, o i punti intermedi) non c'è ancora: la
 scelta è onesta finché lo dice anche qui, non solo nel commento di un giro di correzioni che fra un mese
 non legge più nessuno.
+
+**Debito diverso da quello dichiarato al §4** (produzione e consumo non distinguibili oggi): quello
+riguarda la GAMBA — cosa può diventare protagonista di un oggetto di energia — questo riguarda cosa
+dice il CORPO dell'oggetto una volta che lo è. Nessuno dei due si corregge indovinando: entrambi
+aspettano la stessa fonte, `energy/get_prefs`, oggi vuota su questa casa.
 
 ### Chi sta insieme a chi
 
@@ -381,7 +408,7 @@ corretto la spec tre volte su tre. Restano qui perché sono i numeri su cui il c
 ### ① Il pavimento cattura 153 entità — ma 65 sono da buttare
 
 Su 852 entità con stato (escluse le disabilitate), il pavimento ne prende **153**: 95 «chi c'è», 29
-consumo, 23 comfort, 6 «buono stato». Una sola è nascosta.
+energia, 23 comfort, 6 «buono stato». Una sola è nascosta.
 
 **Ma 65 delle 95 sono `device_tracker` del router**, e non significano niente (§4). Tolte quelle, il
 pavimento vero è di **circa 88 entità** — la dimensione giusta: abbastanza da vedere la casa, poche
@@ -395,7 +422,7 @@ Misurato su 24 ore reali. La stima della prima stesura era sbagliata **di dieci 
 |---|---|---|
 | comfort | 10.421 | **71%** |
 | chi c'è | 2.090 | 14% |
-| consumo | 1.799 | 12% |
+| energia | 1.799 | 12% |
 | buono stato | 149 | 1% |
 | tracker del router | 114 | 0% |
 
