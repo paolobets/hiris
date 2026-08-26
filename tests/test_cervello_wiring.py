@@ -404,8 +404,17 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     """Punto 2(b), la cura vera: all'avvio si riaggregano INCONDIZIONATAMENTE
     gli ultimi due giorni pieni (oggi escluso, che non e' ancora finito) --
     non 'i giorni senza oggetti' (un giorno senza oggetti e' un esito
-    legittimo, vedi il mandato). Si popola il grezzo di TRE giorni e si
-    verifica che solo i due piu' recenti vengano scritti come oggetti.
+    legittimo, vedi il mandato). Si popola il grezzo di QUATTRO giorni,
+    OGGI compreso, e si verifica che solo i due piu' recenti FRA I FINITI
+    vengano scritti come oggetti.
+
+    Il giorno di oggi va seminato per davvero (cablaggio-pulizia-brief.md,
+    punto 1: sesta ricomparsa del difetto n.1) -- prima di questa riga il
+    test lasciava «oggi» senza niente da trovare, e la mutazione `for delta
+    in (2, 1)` -> `(2, 1, 0)` (aggregare anche il giorno ancora in corso)
+    restava verde perche' nessun assert la distingueva. Con `light.oggi`
+    seminato, quella mutazione scrive un oggetto per "2026-08-24" e
+    l'uguaglianza sotto arrossisce per davvero.
 
     Nessun `from ... import riaggrega_gli_ultimi_due_giorni` in cima al
     file: se la funzione non esistesse ancora, l'errore deve fermare SOLO
@@ -418,7 +427,8 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
         oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
-        for delta, soggetto in ((3, "vecchio"), (2, "l_altro_ieri"), (1, "ieri")):
+        for delta, soggetto in ((3, "vecchio"), (2, "l_altro_ieri"),
+                                (1, "ieri"), (0, "oggi")):
             quando = (oggi - timedelta(days=delta)).replace(hour=10)
             archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                             soggetto=f"light.{soggetto}", da="off", a="on")
@@ -429,6 +439,10 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
 
         giorni_scritti = {o["giorno"] for o in archivio.oggetti(limite=10)}
         assert giorni_scritti == {"2026-08-22", "2026-08-23"}
+        # Esplicito, non solo dedotto dall'uguaglianza sopra: oggi
+        # ("2026-08-24") non deve avere NESSUN oggetto, nonostante il grezzo
+        # per costruirlo ci sia.
+        assert archivio.oggetti(giorno="2026-08-24") == []
 
         # Idempotente (`sostituisci_giorno`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
@@ -455,19 +469,36 @@ def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non
 
 
 def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
-    """Provato eseguendo il VERO blocco try/except del punto di chiamata
-    (non un suo doppione), con `riaggrega_gli_ultimi_due_giorni` sostituita
-    da una finta che solleva: se il try/except venisse tolto, la chiamata
-    qui sotto solleverebbe `RuntimeError` e il test fallirebbe con
-    quell'eccezione -- e' la mutazione naturale (lo stato pre-correzione)."""
+    """Comportamento, non testo: si esegue il VERO try/except del punto di
+    chiamata, con `riaggrega_gli_ultimi_due_giorni` sostituita da una finta
+    che solleva `RuntimeError`, e si legge che l'avvio prosegue E logga quel
+    preciso errore -- non solo un qualunque messaggio con prefisso
+    'cervello:' (quella riga sola non distinguerebbe un `RuntimeError`
+    catturato per davvero da un errore diverso catturato per sbaglio).
+
+    **Correzione di cablaggio-pulizia-brief.md, punto 2.** La versione
+    precedente ancorava il blocco con `sorgente.rindex("try:", 0,
+    sorgente.index(chiamata))` -- "il `try:` piu' vicino prima della
+    chiamata". Con la correzione presente (il `try/except` qui sotto) quel
+    `try:` e' quello giusto, e il test passa -- ma per la ragione sbagliata:
+    verificato a mano togliendo il `try/except` che avvolge la chiamata
+    (mutazione naturale, lo stato pre-correzione), il `rindex` risale al
+    `try:` PRECEDENTE (quello di `guarda_condizioni_di_sistema`, qui
+    accanto), e il blocco che ne esce contiene un `await` fuori da una
+    funzione `async` -- il test arrossisce con `SyntaxError`, non con
+    `RuntimeError`. Rosso per accidente: se il blocco precedente diventasse
+    sincrono, o un altro `try` si frapponesse, sarebbe tornato verde senza
+    provare niente.
+
+    Qui l'ancora e' il blocco stesso -- il testo letterale che contiene sia
+    `try:` sia la chiamata, non "il try piu' vicino" -- quindi non puo' mai
+    agganciare un try estraneo: se il `try/except` sparisse, l'ancora non si
+    troverebbe piu' e `sorgente.index` solleverebbe, fermando il test con un
+    errore invece di un falso verde."""
     sorgente = inspect.getsource(server._on_startup)
-    chiamata = "riaggrega_gli_ultimi_due_giorni(app, ha_client)"
-    pos_try = sorgente.rindex("try:", 0, sorgente.index(chiamata))
-    # L'inizio della RIGA che contiene "try:", non della sola sottostringa:
-    # senza, la prima riga del blocco perde il suo rientro (4 spazi) mentre
-    # le altre lo tengono, e il ri-arretramento uniforme che segue produce
-    # un blocco con rientri incoerenti (IndentationError).
-    inizio = sorgente.rfind("\n", 0, pos_try) + 1
+    marcatore = ('    try:\n'
+                '        riaggrega_gli_ultimi_due_giorni(app, ha_client)')
+    inizio = sorgente.index(marcatore)
     fine = sorgente.index("\n\n", inizio)
     corpo = textwrap.dedent(sorgente[inizio:fine])
 
@@ -484,6 +515,10 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
     with caplog.at_level(logging.WARNING, logger="test_riaggrega_avvio_non_blocca"):
         namespace["_check"]()  # non deve sollevare
 
+    # Il comportamento vero: quel preciso RuntimeError e' stato catturato e
+    # loggato, non un altro errore qualsiasi.
+    assert any("RuntimeError: archivio irraggiungibile" in r.getMessage()
+              for r in caplog.records)
     assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
 
 
