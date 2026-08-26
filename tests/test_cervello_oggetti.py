@@ -12,7 +12,8 @@ import os
 import pytest
 
 from hiris.app.cervello.archivio import ArchivioOsservazioni
-from hiris.app.cervello.oggetti import GENERI, aggrega_giorno, genere_di
+from hiris.app.cervello.oggetti import (GENERI, aggrega_giorno, confini_giorno,
+                                         genere_di)
 
 # 24 agosto 2026: mezzanotte a Roma e' 22:00 UTC del 23.
 G = "2026-08-24"
@@ -143,15 +144,19 @@ def test_senza_fuso_noto_non_si_inventa(archivio):
     """`sistema_di_riferimento()` puo' non aver mai letto la casa. UTC e'
     dichiarato; un fuso inventato sposterebbe i giorni senza dirlo.
 
-    NOTA: il mandato scriveva qui `giorno="2026-08-23"`, un refuso -- `ts(15)`
-    e' 2026-08-24T13:00:00+00:00 (vedi MEZZANOTTE), quindi in UTC appartiene a
-    G, non al giorno prima. Con `giorno="2026-08-23"` l'aritmetica del
-    mandato e quella di `_confini` (corretta, e la correzione B vieta di
-    toccarla) si contraddicevano: qui vale `_confini`, e il refuso e' nel
-    giorno passato al test, non nella funzione."""
-    archivio.annota(quando_ts=ts(15), fonte="entita",
+    Correzione (giro di review, punto 1): la versione precedente usava
+    `ts(15)`, mezzogiorno abbondante -- un istante che cade dentro la
+    giornata sia in UTC sia in un fuso inventato, quindi il test passava in
+    entrambi i casi e provava solo che `fuso=None` non facesse crashare.
+
+    **Cambio a `ts(1)`**: le 23:00Z del 23 agosto, che cade FRA le due
+    mezzanotti. In UTC appartiene a "2026-08-23". Con un fuso inventato
+    (es. `Europe/Rome`, +02:00) apparterrebbe gia' al 24: il conteggio del 23
+    tornerebbe zero. E' la mutazione -- far tornare a `zona_casa(None)` un
+    `ZoneInfo("Europe/Rome")` -- che questo test deve rilevare."""
+    archivio.annota(quando_ts=ts(1), fonte="entita",
                     soggetto="climate.camera_t", da="off", a="heat")
-    assert aggrega_giorno(archivio=archivio, giorno=G, fuso=None) == 1
+    assert aggrega_giorno(archivio=archivio, giorno="2026-08-23", fuso=None) == 1
 
 
 # -- Correzione B: la finestra di `cambi()` e' semi-aperta -----------------
@@ -179,12 +184,17 @@ def test_il_genere_conosce_tutte_e_sei_le_gambe():
     chiuse o ancora aperte -- ma non lo STESSO genere (0.1: una porta aperta
     con la chiave e un'integrazione Sonos rotta non sono la stessa cosa). Un
     `else` che le mandasse a vuoto sarebbe il buco che la review del primo
-    task ha gia' trovato una volta (§4 della spec)."""
+    task ha gia' trovato una volta (§4 della spec).
+
+    `sensor.co_soggiorno` e' `None` e non `"sicurezza"` da questa correzione
+    (giro di review, punto 7): e' un `sensor` che MISURA (una concentrazione
+    numerica), non un `binary_sensor` che SCATTA -- vedi il docstring di
+    `genere_di` per la ragione per cui resta fuori."""
     assert genere_di("lock.porta_ingresso", "sicurezza") == "sicurezza"
     assert genere_di("alarm_control_panel.casa", "sicurezza") == "sicurezza"
     assert genere_di("siren.sirena_esterna", "sicurezza") == "sicurezza"
     assert genere_di("binary_sensor.fumo_cucina", "sicurezza") == "sicurezza"
-    assert genere_di("sensor.co_soggiorno", "sicurezza") == "sicurezza"
+    assert genere_di("sensor.co_soggiorno", "sicurezza") is None
 
 
 def test_una_sirena_che_suona_e_rientra_e_un_oggetto_di_sicurezza(archivio):
@@ -259,3 +269,249 @@ def test_riga_senza_le_tre_colonne_non_fa_sollevare_l_aggregazione(archivio):
     archivio.annota(quando_ts=ts(2, 0), fonte="entita",
                     soggetto="binary_sensor.fumo_cucina", da="off", a="on")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0
+
+
+# -- Giro di correzioni dopo la review (2026-08-26) -------------------------
+
+# -- Punto 2: la presenza non deve fabbricare oggetti a ogni riavvio di HA --
+
+def test_un_riavvio_di_ha_non_apre_un_oggetto_di_presenza(archivio):
+    """Il ramo `presenza` controllava solo `r["a"] == "home"`: qualunque
+    altro valore apriva un oggetto, compresi `unavailable` e `unknown`. A
+    ogni riavvio di Home Assistant le `person` ci passano, quindi nasceva un
+    oggetto <<presenza, stato unavailable>> di un minuto per ogni persona, a
+    ogni riavvio. Mutazione: togliere il filtro `_IGNOTO` dal ramo
+    `presenza` -- il conteggio tornerebbe 1 invece di 0."""
+    archivio.annota(quando_ts=ts(9, 0), fonte="entita",
+                    soggetto="person.paolo", da="home", a="unavailable")
+    archivio.annota(quando_ts=ts(9, 1), fonte="entita",
+                    soggetto="person.paolo", da="unavailable", a="home")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0
+
+
+# -- Punto 3b: il riposo di un pannello d'allarme e' ARMATO, non disarmato --
+
+def test_l_allarme_inserito_non_apre_un_oggetto(archivio):
+    """Inserire l'allarme la sera e' la cosa che va bene: deve chiudere,
+    mai aprire. Mutazione: rimettere "disarmed" in `_SPENTO` e togliere gli
+    "armed_*" -- "armed_home" tornerebbe "acceso" e aprirebbe un oggetto che
+    non chiuderebbe mai in giornata."""
+    archivio.annota(quando_ts=ts(22, 0), fonte="entita",
+                    soggetto="alarm_control_panel.casa", da="disarmed",
+                    a="armed_home")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0
+
+
+def test_l_allarme_disinserito_per_otto_ore_apre_un_oggetto(archivio):
+    """La casa lasciata senza allarme e' la cosa NOTEVOLE: otto ore da
+    "disarmed" a "armed_home" devono produrre un oggetto con quella durata.
+    Stessa mutazione del test gemello: con "disarmed" in `_SPENTO` questa
+    riga chiuderebbe (nessun oggetto aperto) invece di aprirne uno."""
+    archivio.annota(quando_ts=ts(1, 0), fonte="entita",
+                    soggetto="alarm_control_panel.casa", da="armed_home",
+                    a="disarmed")
+    archivio.annota(quando_ts=ts(9, 0), fonte="entita",
+                    soggetto="alarm_control_panel.casa", da="disarmed",
+                    a="armed_home")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "sicurezza"
+    assert o["inizio_ts"] == ts(1, 0)
+    assert o["fine_ts"] == ts(9, 0)
+
+
+# -- Punto 5: le misure non sconfinano nel prossimo episodio, ne' partono --
+# -- prima dell'inizio dell'oggetto -----------------------------------------
+
+def test_le_misure_non_sconfinano_nel_prossimo_episodio_dello_stesso_protagonista(archivio):
+    """Riscaldamento acceso 15:30-17:05 e di nuovo 19:00-20:00, temperature
+    misurate fino alle 23:00: il PRIMO episodio non deve riportare come
+    temperatura finale quella delle 23:00 -- e' il clima del secondo
+    episodio e oltre. Il limite superiore vero e' l'inizio del prossimo
+    oggetto dello STESSO protagonista, non la fine della giornata.
+    Mutazione: usare sempre `a_ts` come limite superiore -- il primo
+    episodio finirebbe con "a": "17.0" invece di "19.0"."""
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(16, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="19.0")
+    archivio.annota(quando_ts=ts(17, 5), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(19, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(19, 30), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="20.5")
+    archivio.annota(quando_ts=ts(20, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(23, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="17.0")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=lambda s: ["sensor.camera_temperatura"])
+    oggetti = sorted(archivio.oggetti(giorno=G), key=lambda o: o["inizio_ts"])
+    assert len(oggetti) == 2
+    primo, secondo = oggetti
+    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "19.0", "a": "19.0"}
+    assert secondo["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "20.5", "a": "17.0"}
+
+
+def test_le_misure_non_includono_letture_precedenti_all_inizio_dell_oggetto(archivio):
+    """Una misura delle 14:00, prima che il riscaldamento si accenda alle
+    15:30, non deve finire come valore INIZIALE dell'episodio: e' il clima
+    di prima, non quello di mentre l'oggetto durava. Mutazione: togliere il
+    confine inferiore (`e["inizio"] <= t`) -- la misura delle 14:00
+    entrerebbe e "da" diventerebbe "14.0" invece di "18.2"."""
+    archivio.annota(quando_ts=ts(14, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="14.0")
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(16, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="18.2")
+    archivio.annota(quando_ts=ts(17, 5), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=lambda s: ["sensor.camera_temperatura"])
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "18.2", "a": "18.2"}
+
+
+# -- Punto 6: un consumo si CHIUDE e porta iniziale/finale/differenza ------
+
+def test_un_consumo_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
+    """Prima di questa correzione un contatore apriva un oggetto al primo
+    cambio e non lo chiudeva MAI dentro la giornata: un oggetto
+    perennemente aperto, con dentro solo la prima lettura, per ognuno dei
+    29 contatori della casa. Mutazione: tornare al vecchio ramo "apri se non
+    gia' aperto, mai chiudere" -- `fine_ts` tornerebbe `None` e il corpo
+    non porterebbe piu' "valore_iniziale"/"valore_finale"/"differenza"."""
+    archivio.annota(quando_ts=ts(1), fonte="entita",
+                    soggetto="sensor.energia_casa", da=None, a="100.0",
+                    device_class="energy")
+    archivio.annota(quando_ts=ts(12), fonte="entita",
+                    soggetto="sensor.energia_casa", da=None, a="115.0",
+                    device_class="energy")
+    archivio.annota(quando_ts=ts(23), fonte="entita",
+                    soggetto="sensor.energia_casa", da=None, a="130.5",
+                    device_class="energy")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "consumo"
+    assert o["inizio_ts"] == ts(1)
+    assert o["fine_ts"] == ts(23)
+    assert o["corpo"]["valore_iniziale"] == "100.0"
+    assert o["corpo"]["valore_finale"] == "130.5"
+    assert o["corpo"]["differenza"] == pytest.approx(30.5)
+
+
+# -- Punto 7: un sensor numerico di monossido non genera un guasto perenne --
+
+def test_un_sensore_co_numerico_non_genera_un_oggetto_di_sicurezza(archivio):
+    """Un `sensor` MISURA, non SCATTA: senza una soglia onesta, una
+    concentrazione come "0.4" non e' mai in `_SPENTO` e aprirebbe un oggetto
+    di sicurezza perennemente aperto al giorno, per ogni sensore CO
+    numerico della casa. Mutazione: togliere l'eccezione `dominio ==
+    "sensor"` dal ramo sicurezza di `genere_di` -- il conteggio tornerebbe
+    1 invece di 0."""
+    archivio.annota(quando_ts=ts(2), fonte="entita",
+                    soggetto="sensor.co_soggiorno", da=None, a="0.4",
+                    device_class="carbon_monoxide")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0
+
+
+# -- Punto 8: tre finte e un elenco che non sapevano produrre il difetto ---
+
+def _comprimari_per_soggetto(soggetto):
+    """Finta che DISCRIMINA per soggetto -- non un `lambda s: [...]`
+    costante, che passerebbe anche se `aggrega_giorno` chiamasse
+    `comprimari` con il soggetto SBAGLIATO (es. sempre il primo
+    protagonista incontrato nel giorno)."""
+    return {
+        "climate.camera_t": ["sensor.camera_temperatura"],
+        "climate.soggiorno_t": ["sensor.soggiorno_temperatura"],
+    }.get(soggetto, [])
+
+
+def test_comprimari_riceve_il_soggetto_giusto_non_uno_qualunque(archivio):
+    """Se `aggrega_giorno` chiamasse `comprimari` con un soggetto sbagliato,
+    i due oggetti scambierebbero i comprimari: questa finta lo scoprirebbe
+    perche' torna elenchi DIVERSI per soggetti diversi, dove una finta
+    costante (`lambda s: [...]`) non lo scoprirebbe mai. Mutazione provata:
+    dentro `aggrega_giorno`, chiamare `comprimari(soggetto)` passando sempre
+    la stringa fissa "climate.camera_t" invece di `e["protagonista"]` --
+    l'oggetto di "climate.soggiorno_t" riceverebbe i comprimari sbagliati."""
+    archivio.annota(quando_ts=ts(10), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(10, 30), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="20.0")
+    archivio.annota(quando_ts=ts(11), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(12), fonte="entita",
+                    soggetto="climate.soggiorno_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(12, 30), fonte="entita",
+                    soggetto="sensor.soggiorno_temperatura", da=None, a="22.0")
+    archivio.annota(quando_ts=ts(13), fonte="entita",
+                    soggetto="climate.soggiorno_t", da="heat", a="off")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=_comprimari_per_soggetto)
+    oggetti = {o["protagonista"]: o for o in archivio.oggetti(giorno=G)}
+    assert oggetti["climate.camera_t"]["corpo"]["comprimari"] == [
+        "sensor.camera_temperatura"]
+    assert oggetti["climate.soggiorno_t"]["corpo"]["comprimari"] == [
+        "sensor.soggiorno_temperatura"]
+
+
+def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte(archivio):
+    """MEZZANOTTE - 1 e' l'ultimo istante del giorno che finisce: deve
+    restare FUORI da G. Mutazione: `da_ts - 1` dentro `confini_giorno` ("per
+    stare sicuri") -- l'istante entrerebbe in G per errore, e il conteggio
+    di G tornerebbe 1 invece di 0."""
+    archivio.annota(quando_ts=MEZZANOTTE - 1, fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0
+    assert aggrega_giorno(archivio=archivio, giorno="2026-08-23",
+                          fuso="Europe/Rome") == 1
+
+
+def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
+    """La trappola che il pavimento tiene separata per dominio: `sensor`
+    classe `gas` e' un CONTATORE (consumo), `binary_sensor` classe `gas` e'
+    un RILEVATORE di fuga (sicurezza). Se qualcuno fondesse i due rami per
+    sola classe, questo test arrossisce: coppia provata fianco a fianco,
+    nello stesso test."""
+    archivio.annota(quando_ts=ts(5), fonte="entita",
+                    soggetto="sensor.gas_contatore", da=None, a="120.5",
+                    device_class="gas")
+    archivio.annota(quando_ts=ts(6), fonte="entita",
+                    soggetto="binary_sensor.gas_cucina", da="off", a="on",
+                    device_class="gas")
+    archivio.annota(quando_ts=ts(6, 5), fonte="entita",
+                    soggetto="binary_sensor.gas_cucina", da="on", a="off",
+                    device_class="gas")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 2
+    oggetti = {o["protagonista"]: o for o in archivio.oggetti(giorno=G)}
+    assert oggetti["sensor.gas_contatore"]["genere"] == "consumo"
+    assert oggetti["binary_sensor.gas_cucina"]["genere"] == "sicurezza"
+
+
+def test_confini_giorno_ha_25_ore_nel_weekend_di_ottobre():
+    """La spec (§3) nomina proprio questo weekend: l'ora torna indietro e il
+    giorno dura un'ora in piu'. Mutazione: sommare sempre `timedelta(days=1)`
+    in secondi civili fissi (86400) invece che tramite l'aritmetica del
+    fuso -- la differenza tornerebbe 86400 invece di 90000."""
+    da_ts, a_ts = confini_giorno("2026-10-25", "Europe/Rome")
+    assert a_ts - da_ts == 25 * 3600
+
+
+# -- Punto 9: `_FUNZIONANO` era una lista scritta a mano incompleta --------
+
+def test_domini_aggiunti_a_funzionano_producono_un_funzionamento():
+    """`_FUNZIONANO` mancava domini comuni che funzionano come gli altri
+    sei, e cadevano in silenzio (nessun oggetto, nessun errore). Mutazione:
+    togliere uno dei quattro da `_FUNZIONANO` -- l'assert corrispondente
+    tornerebbe `None` invece di "funzionamento"."""
+    assert genere_di("humidifier.camera", None) == "funzionamento"
+    assert genere_di("vacuum.robot", None) == "funzionamento"
+    assert genere_di("valve.giardino", None) == "funzionamento"
+    assert genere_di("media_player.soggiorno", None) == "funzionamento"
