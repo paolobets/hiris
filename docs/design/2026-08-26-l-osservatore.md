@@ -213,7 +213,18 @@ adesso: e' affidata al fatto che il materiale grezzo c'e' ancora.
 ## 6. Come si costruisce un oggetto
 
 **L'obiettivo sceglie QUALI entità; la natura dell'entità decide CHE TIPO di oggetto ne esce.**
-Nessuna delle due è una lista scritta a mano: la natura la dichiara Home Assistant.
+
+*Correzione del 26 agosto, dalla review dell'aggregazione.* Qui c'era scritto «nessuna delle due è
+una lista scritta a mano: la natura la dichiara Home Assistant», e per la prima metà è vero — il
+**pavimento** si deriva davvero da ciò che HA dichiara. Per la seconda no: **quali domini
+"funzionano"** è un elenco scritto a mano, e fingere il contrario ha un costo concreto, misurato due
+volte in una notte. Un dominio dimenticato cade in silenzio e non produce niente; un dominio
+aggiunto senza guardare **quali stati di riposo si porta dietro** produce oggetti che non si chiudono
+mai — è successo con l'aspirapolvere (`docked`) e col media player (`idle`, `standby`), esattamente
+come era già successo con l'allarme rovesciato e col consumo.
+
+**La regola che ne esce:** ogni volta che un dominio entra nell'elenco, entra insieme al suo stato di
+riposo. Le due cose non si toccano separatamente.
 
 | Natura del protagonista | L'oggetto che ne esce |
 |---|---|
