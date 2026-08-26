@@ -1915,7 +1915,7 @@ async def _on_startup(app: web.Application) -> None:
     # `supervisor/docker/app.py` (`DockerApp.environment`, la property che
     # costruisce l'ambiente Docker di OGNI add-on) scrive sempre
     # `{ENV_TIME: self.sys_timezone}` con `ENV_TIME = "TZ"`
-    # (`supervisor/const.py`), e `sys_timezone`/`CoreSys.timezone`
+    # (`supervisor/docker/const.py`), e `sys_timezone`/`CoreSys.timezone`
     # (`supervisor/coresys.py`) e' `config.timezone` (il fuso di HA) con
     # ripiego sul fuso dell'host e poi su `"UTC"`. Quindi in produzione (sotto
     # il Supervisor vero, non `docker run` nudo) `TZ` c'e' sempre, e le 00:20

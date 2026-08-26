@@ -313,6 +313,14 @@ fisico che le comanda sono **un sistema solo**, e `legami` restituisce l'automaz
 indovinando dal nome. È anche la ragione per cui il grezzo resta nudo: **quel legame si scopre dopo**,
 e con l'episodio scritto per entità si sarebbe già deciso che sono quattro cose separate.
 
+> **Attenzione, il lampadario è un esempio di come funziona il meccanismo, non di ciò che si vede
+> oggi.** `light` e `switch` **non sono nel pavimento** (§4): il grezzo non contiene mai una loro riga,
+> quindi in questa fetta non possono essere né protagonisti né comprimari. Il meccanismo dei legami è
+> costruito e provato; entrerà in funzione su di loro quando il prompt dell'obiettivo allargherà il
+> pavimento — che è precisamente il verso in cui il pavimento può crescere. Lo stesso vale per `fan`,
+> `water_heater`, `humidifier`, `vacuum`, `valve` e `media_player`, elencati fra ciò che «funziona» e
+> oggi ugualmente irraggiungibili: **misurato il 26 agosto**, non dedotto.
+
 ### La salute di Home Assistant entra nella stessa forma
 
 *«Per dire che la casa è efficiente, confortevole e in buono stato l'osservatore deve osservare anche
