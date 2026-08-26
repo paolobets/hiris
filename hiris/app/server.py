@@ -3364,6 +3364,15 @@ def create_app() -> web.Application:
     from .api.handlers_casa import handle_get_nucleo
     app.router.add_get("/api/nucleo", handle_get_nucleo)
 
+    # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
+    # §7): la pagina che dice «cosa sto guardando e perche'» e mostra gli
+    # oggetti che l'aggregazione notturna ha costruito. Due GET, come
+    # /api/casa e /api/memoria qui sopra: nessuna scrittura, quindi nessun
+    # `csrf_middleware` da rispettare.
+    from .api.handlers_cervello import handle_oggetti, handle_osservate
+    app.router.add_get("/api/cervello/osservate", handle_osservate)
+    app.router.add_get("/api/cervello/oggetti", handle_oggetti)
+
     return app
 
 

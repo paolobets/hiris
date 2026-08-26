@@ -1,5 +1,68 @@
 # HIRIS — Changelog
 
+## [3.13.0] — L'osservatore (fetta «l'osservatore») (2026-08-26)
+
+**HIRIS si costruisce una memoria propria.** Fino a ieri conosceva la casa solo attraverso Home
+Assistant: `person.paolo_bettinelli`, misurato il 25 agosto, ha tre giorni di storico e nessuna
+statistica a lungo termine — l'esempio fondativo del cervello, «il mercoledì rientri alle 17:30, il
+riscaldamento scalda a vuoto», non è ricostruibile dai dati di HA in nessun modo. Da questa fetta
+HIRIS guarda la casa per conto proprio e ne ricava **oggetti**: cose compiute — «riscaldamento
+camera: acceso 15:30 → 17:05, temperatura da 18,2 a 21,0, finestra chiusa, nessuno in casa» — non
+un registro per entità da correlare.
+
+**Cosa NON fa, dichiarato apposta.** Questa fetta non conclude niente («il mercoledì rientri alle
+17:30» è una conclusione tratta da molti oggetti: la trarrà l'analista, che non esiste ancora), non
+parla, non propone, non notifica, e non tocca la casa in nessuna forma — nessuna scrittura. Non
+invoca nessun modello: il pavimento è deterministico e l'aggregazione è codice, quindi questa fetta
+costa zero token al giorno, per sempre. La pagina nuova (`#/osservatore`) nasce quasi vuota e si
+riempirà nei giorni, un giorno alla volta, con l'aggregazione notturna.
+
+**Cosa non è ancora stato provato, e perché esce lo stesso.** Nessun banco di prova può dare queste
+quattro verifiche (spec §9): (1) gli oggetti di una giornata vera, riletti a mano, per capire se ci
+si può ragionare sopra — se la risposta è no, l'analista non funzionerà mai; (2) il caso del
+lampadario, le tre lampade LIFX più il gruppo più l'interruttore devono finire in un oggetto solo,
+non in quattro; (3) il peso reale su disco dopo la prima settimana, contro i circa 306.000 cambi
+previsti su 21 giorni; (4) le 9 integrazioni non caricate e i 4 problemi aperti misurati sulla casa
+vera devono comparire come oggetti «guasto» fin dal primo giorno. Questa versione esce per poterle
+fare.
+
+### Added
+
+- **L'archivio delle osservazioni** (`hiris/app/cervello/archivio.py`) — due tabelle con due vite
+  diverse: i cambi grezzi, **senza nessun giudizio** (solo quale cosa, quando, da che valore a che
+  valore, e come Home Assistant la dichiara), vivono 22 giorni (21 di promessa — tre mercoledì,
+  l'unità dell'esempio fondativo — più un giorno di guardia contro il bordo dell'ora legale); gli
+  oggetti, cioè ciò che se n'è capito, restano finché l'utente non li cancella. Sbagliare
+  l'aggregazione costa un giorno, non tutto: finché il grezzo c'è, gli oggetti si rifanno.
+- **Il pavimento** (`hiris/app/cervello/pavimento.py`) — cosa si osserva **comunque**, qualunque
+  cosa dica il prompt dell'obiettivo (che oggi non allarga ancora niente): sei gambe — chi c'è,
+  comfort, dispersione, consumo, buono stato, sicurezza — derivate da ciò che Home Assistant
+  dichiara già su ogni entità, mai una lista scritta a mano. La sesta gamba (sicurezza: serrature,
+  pannello dell'allarme, sirene, i rilevatori di fumo/gas/monossido/allagamento) copre lo scenario
+  che il pavimento esiste per impedire: un allarme che scatta e rientra mentre nessuno è in casa,
+  sparito da Home Assistant dopo tre giorni.
+- **L'osservatore** (`hiris/app/cervello/osservatore.py`) — il rubinetto: si aggancia allo stesso
+  `add_state_listener` che alimenta lo specchio delle entità, mai un secondo ascoltatore che
+  potrebbe divergere dal primo, e annota ogni cambio del pavimento così com'è. Interroga anche
+  periodicamente le condizioni di sistema di Home Assistant (integrazioni non caricate, problemi
+  diagnosticati) e scrive un cambio quando una condizione nasce o finisce — la salute di HA entra
+  nella stessa forma del resto, non un canale a parte.
+- **L'aggregazione notturna** (`hiris/app/cervello/oggetti.py`) — costruisce gli oggetti del giorno
+  appena finito, alle 00:20. Cinque generi: funzionamento, presenza (o assenza), consumo, guasto,
+  sicurezza. Un oggetto porta il suo protagonista e i suoi **comprimari** — chi altro c'era intorno,
+  trovato chiedendo a `legami`, non indovinato dal nome: è il caso misurato del lampadario, tre
+  lampade più il gruppo più l'interruttore fisico sono un sistema solo.
+- **La pagina «L'osservatore»** (`#/osservatore`) — trasparenza al posto del permesso: due sezioni,
+  «cosa sto guardando» (ogni voce con la sua provenienza — oggi sempre `pavimento`, quindi non si
+  toglie) e «cosa è successo» (gli oggetti di un giorno, con chi c'era intorno dietro un
+  rivelatore). Due rotte nuove, entrambe di sola lettura: `GET /api/cervello/osservate`,
+  `GET /api/cervello/oggetti?giorno=YYYY-MM-DD`.
+- **Tre lavori periodici nuovi**: le condizioni di sistema ogni 10 minuti, l'aggregazione notturna
+  alle 00:20, la potatura del grezzo alle 03:00. Lo schedulatore registra ora **dieci** lavori
+  periodici all'avvio, non più sette.
+
+Suite a 2757 test verdi.
+
 ## [3.12.5] — Le nascoste restano nascoste (2026-08-25)
 
 **Chiedere «le luci della sala da pranzo» restituiva sette luci, quattro delle quali nascoste.**
