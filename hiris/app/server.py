@@ -812,6 +812,58 @@ def _comprimari_da_legami(ha_client):
     return comprimari
 
 
+def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
+    """All'avvio, riaggrega **incondizionatamente** i due giorni pieni piu'
+    recenti (oggi escluso: non e' ancora finito). Non torna niente: chi la
+    chiama vuole solo l'effetto, o il fallimento.
+
+    **La cura vera al buco del punto 2 (task-5-fix-brief.md).** `_aggrega_
+    ieri`, qui sotto, aggrega **solo** «ieri», ogni notte alle 00:20. Se
+    quella notte `sistema_di_riferimento()` solleva -- la sua query SQL non
+    e' protetta -- l'aggregazione salta, e poiche' il lavoro notturno guarda
+    sempre e solo «ieri», quel giorno **non viene piu' aggregato da nessun
+    percorso**: il grezzo per rifarlo resta li' fino alla potatura (22
+    giorni dopo), e nessuno lo rifa'. Muovere `fuso`/`ieri` dentro il try di
+    `_aggrega_ieri` (fatto in questo stesso giro) sistema il LOG, non il
+    buco: la notte salta comunque.
+
+    **Perche' due giorni fissi, e non «i giorni senza oggetti».** Un giorno
+    SENZA oggetti e' un esito legittimo -- puo' non essere successo niente
+    in casa -- e distinguerlo da un giorno MAI aggregato richiederebbe un
+    registro di cio' che e' stato fatto: uno stato in piu' che puo'
+    divergere da quello vero, lo stesso genere di doppione che questo
+    progetto ha gia' pagato altrove. Due giorni fissi non hanno stato:
+    guariscono da soli una notte saltata, al costo di rifare un lavoro che
+    il piu' delle volte non serviva -- un costo che si puo' permettere
+    perche' `sostituisci_giorno` (`cervello/archivio.py`) e' **idempotente**:
+    rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
+    lo raddoppia.
+
+    **Chi la chiama la mette DOPO la ricostruzione delle condizioni e in un
+    try/except che non blocca l'avvio** (in `_on_startup`, subito sotto): un
+    cervello che non parte perche' non e' riuscito a rifare l'altro ieri
+    sarebbe peggio del buco che questa funzione chiude. Qui dentro
+    l'eccezione **si lascia propagare**: e' il chiamante a decidere se e
+    come contenerla, come per `guarda_condizioni_di_sistema` qui sopra.
+
+    `adesso` e' iniettabile per i test, come `Osservatore.__init__`: nella
+    vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
+    dire cos'e' «oggi».
+    """
+    fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
+            if app.get("archivio_casa") else None)
+    oggi = adesso(zona_casa(fuso)).date()
+    comprimari = _comprimari_da_legami(ha_client)
+    for delta in (2, 1):
+        giorno = (oggi - timedelta(days=delta)).strftime("%Y-%m-%d")
+        quanti = aggrega_giorno(
+            archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
+            comprimari=comprimari)
+        logger.info(
+            "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
+            quanti, giorno)
+
+
 def should_start_agent_worker(ponte_attivo: bool) -> bool:
     """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
 
@@ -1289,6 +1341,20 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning(
             "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
+
+    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega
+    # INCONDIZIONATAMENTE gli ultimi due giorni pieni -- vedi il docstring di
+    # `riaggrega_gli_ultimi_due_giorni` per il perche' di "due" e non "i
+    # giorni senza oggetti". DOPO la ricostruzione delle condizioni qui
+    # sopra, e in un try/except che non deve bloccare l'avvio: un cervello
+    # che non riparte perche' non e' riuscito a rifare l'altro ieri sarebbe
+    # peggio del buco che sta chiudendo.
+    try:
+        riaggrega_gli_ultimi_due_giorni(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: riaggregazione degli ultimi due giorni all'avvio "
+            "fallita (%s: %s)", type(exc).__name__, exc)
 
     # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
@@ -1994,6 +2060,16 @@ async def _on_startup(app: web.Application) -> None:
     # quando una delle due letture fallisce (task-5-correzioni.md, punto
     # A.1): un errore letto come lista vuota chiuderebbe ogni condizione
     # aperta, che e' peggio di non saperlo.
+    #
+    # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
+    # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
+    # dieci minuti, verso l'archivio -- ma `hiris_problemi_ha` qui sopra lo
+    # interroga GIA', ogni cinque minuti, verso `app["problemi_ha"]` in RAM
+    # (che gia' porta la forma d'errore, `{"errore": ...}`, letta identica
+    # da entrambi). Non si unificano ora: la lettura diretta del cervello
+    # era mandata apposta, e legare il cervello a una cache di un altro
+    # pezzo del prodotto e' una dipendenza che oggi non serve. Ma va detto
+    # qui, o la seconda lettura sembra una svista a chi la trova dopo.
     async def _guarda_condizioni() -> None:
         try:
             await guarda_condizioni_di_sistema(app, ha_client)
@@ -2016,17 +2092,22 @@ async def _on_startup(app: web.Application) -> None:
     # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
     # oggetto nasce mai.
     async def _aggrega_ieri() -> None:
-        fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
-                if app.get("archivio_casa") else None)
-        ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
         try:
+            # `fuso`/`ieri` DENTRO il try (task-5-fix-brief.md, punto 2a):
+            # `sistema_di_riferimento()` fa una query SQL non protetta, e se
+            # solleva FUORI da qui il warning contestualizzato non parte --
+            # l'eccezione finisce nel registro di apscheduler senza il
+            # prefisso «cervello:», e la notte salta in silenzio.
+            fuso = (app["archivio_casa"].sistema_di_riferimento().get("fuso")
+                    if app.get("archivio_casa") else None)
+            ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
                 comprimari=_comprimari_da_legami(ha_client))
             logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
         except Exception as errore:
-            logger.warning("cervello: aggregazione di %s fallita (%s: %s)",
-                           ieri, type(errore).__name__, errore)
+            logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
+                           type(errore).__name__, errore)
 
     scheduler.add_job(
         _aggrega_ieri,
@@ -2041,12 +2122,22 @@ async def _on_startup(app: web.Application) -> None:
     # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
     # la riga di log non puo' mentire quando la costante cambia
     # (task-5-correzioni.md, punto C).
+    #
+    # try/except proprio (task-5-fix-brief.md, punto 3): era l'unico dei tre
+    # lavori del cervello senza una rete sua -- un guasto di SQLite alle tre
+    # di notte finiva nel registro di apscheduler senza il prefisso
+    # «cervello:», mentre i due fratelli (le condizioni, l'aggregazione) ce
+    # l'hanno gia'.
     async def _pota_osservazioni() -> None:
-        quanti = app["osservazioni"].pota(_time.time())
-        if quanti:
-            giorni = CONSERVAZIONE_CAMBI_S // 86400
-            logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
-                        quanti, giorni)
+        try:
+            quanti = app["osservazioni"].pota(_time.time())
+            if quanti:
+                giorni = CONSERVAZIONE_CAMBI_S // 86400
+                logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
+                            quanti, giorni)
+        except Exception as errore:
+            logger.warning("cervello: potatura fallita (%s: %s)",
+                           type(errore).__name__, errore)
 
     scheduler.add_job(
         _pota_osservazioni,

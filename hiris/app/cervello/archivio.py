@@ -192,22 +192,6 @@ class ArchivioOsservazioni:
 
     # -- gli oggetti ---------------------------------------------------
 
-    def salva_oggetto(self, *, giorno: str, genere: str, protagonista: str,
-                      inizio_ts: float, fine_ts: float | None,
-                      corpo: dict) -> int:
-        """`fine_ts` a `None` significa **ancora aperto**, ed e' un fatto: a
-        mezzanotte una cosa puo' essere in corso. Zero direbbe «finita
-        subito»."""
-        with self._lock:
-            cur = self._conn.execute(
-                "INSERT INTO oggetti(giorno,genere,protagonista,inizio_ts,fine_ts,corpo_json)"
-                " VALUES(?,?,?,?,?,?)",
-                (giorno, genere, protagonista, float(inizio_ts),
-                 None if fine_ts is None else float(fine_ts),
-                 json.dumps(corpo, ensure_ascii=False)))
-            self._conn.commit()
-            return int(cur.lastrowid)
-
     def oggetti(self, *, giorno: str | None = None, limite: int = 200) -> list[dict]:
         """Gli oggetti, dal piu' recente."""
         sql = "SELECT * FROM oggetti"
@@ -221,41 +205,38 @@ class ArchivioOsservazioni:
             righe = self._conn.execute(sql, tuple(args)).fetchall()
         return [_riga_oggetto(r) for r in righe]
 
-    def dimentica_oggetti(self, giorno: str) -> int:
-        """Svuota un giorno perche' l'aggregazione lo possa rifare.
-
-        Senza, ogni ritentativo raddoppierebbe gli oggetti in silenzio -- e
-        rifare un giorno e' esattamente cio' per cui il grezzo resta 22 giorni
-        (21 di promessa, uno di guardia).
-
-        **Per rifare davvero un giorno usa `sostituisci_giorno`**: questo
-        metodo da solo non e' transazionale con le scritture che seguono, e un
-        crash fra lo svuotamento e il reinserimento lascia il giorno vuoto.
-        """
-        with self._lock:
-            cur = self._conn.execute("DELETE FROM oggetti WHERE giorno = ?", (giorno,))
-            self._conn.commit()
-            return cur.rowcount or 0
-
+    # `salva_oggetto` (un INSERT nudo) e `dimentica_oggetti` (un DELETE nudo)
+    # sono uscite qui (giro di correzioni, task-5-fix-brief.md punto 4):
+    # nessun chiamante di produzione le usava -- `aggrega_giorno` scrive
+    # SEMPRE attraverso `sostituisci_giorno`, l'unica via transazionale, e i
+    # mandati dei task 6 e 7 non le reclamano (cercato in tutto `hiris/`,
+    # non solo nel cervello). Lasciarle accanto a quella transazionale era un
+    # invito a usarle in sequenza -- ed e' esattamente il difetto che
+    # `sostituisci_giorno` esiste per chiudere: un crash fra un DELETE e
+    # l'INSERT che lo segue lascia il giorno vuoto o mezzo scritto, e
+    # nessuno se ne accorge finche' non serve rileggerlo. Se la
+    # cancellazione utente della spec (§8, "dimentica un giorno") tornera'
+    # a servire, si riscrivera' allora, con i suoi test e la sua
+    # transazione.
     def sostituisci_giorno(self, giorno: str, oggetti: list[dict]) -> int:
         """Rifa' un giorno per intero, in **una sola transazione**: cancella
         gli oggetti esistenti di `giorno` e inserisce quelli nuovi.
 
         E' la correzione al difetto che questo prodotto ha gia' pagato una
         volta -- nella fetta «costruire» il vecchio accodava invece di
-        sostituire, e le ancore YAML lo nascondevano. `salva_oggetto` da solo
-        e' un INSERT nudo: chiamarlo due volte sullo stesso giorno accoderebbe
-        una seconda copia senza errore. E se lo svuotamento e il
-        reinserimento fossero due commit separati, un crash a meta' lascia un
-        giorno mezzo scritto, indistinguibile da uno completo.
+        sostituire, e le ancore YAML lo nascondevano. Un INSERT nudo,
+        ripetuto sullo stesso giorno, accoderebbe una seconda copia senza
+        errore. E se lo svuotamento e il reinserimento fossero due commit
+        separati, un crash a meta' lascia un giorno mezzo scritto,
+        indistinguibile da uno completo.
 
         Se un inserimento fallisce (es. un dato che rompe un vincolo di
         schema), **l'intera transazione va indietro**: il giorno resta quello
         di prima, mai mezzo riscritto.
 
         Ogni elemento di `oggetti` e' un dict con le chiavi `genere`,
-        `protagonista`, `inizio_ts`, `fine_ts`, `corpo` -- gli stessi argomenti
-        di `salva_oggetto`, meno `giorno` che qui e' comune a tutti.
+        `protagonista`, `inizio_ts`, `fine_ts`, `corpo` -- meno `giorno` che
+        qui e' comune a tutti.
         """
         with self._lock:
             try:

@@ -462,7 +462,12 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
     quell'eccezione -- e' la mutazione naturale (lo stato pre-correzione)."""
     sorgente = inspect.getsource(server._on_startup)
     chiamata = "riaggrega_gli_ultimi_due_giorni(app, ha_client)"
-    inizio = sorgente.rindex("try:", 0, sorgente.index(chiamata))
+    pos_try = sorgente.rindex("try:", 0, sorgente.index(chiamata))
+    # L'inizio della RIGA che contiene "try:", non della sola sottostringa:
+    # senza, la prima riga del blocco perde il suo rientro (4 spazi) mentre
+    # le altre lo tengono, e il ri-arretramento uniforme che segue produce
+    # un blocco con rientri incoerenti (IndentationError).
+    inizio = sorgente.rfind("\n", 0, pos_try) + 1
     fine = sorgente.index("\n\n", inizio)
     corpo = textwrap.dedent(sorgente[inizio:fine])
 
