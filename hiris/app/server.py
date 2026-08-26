@@ -793,7 +793,8 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
 _LEGAMI_COMPRIMARI = ("entita", "automazione", "scena", "script")
 
 
-async def costruisci_comprimari(ha_client, soggetti: list[str]) -> dict[str, list[str]]:
+async def costruisci_comprimari(
+        ha_client, soggetti: list[str]) -> tuple[dict[str, list[str]], int]:
     """Per ogni protagonista, chi sta con lui. **Una lettura per soggetto.**
 
     Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
@@ -818,13 +819,32 @@ async def costruisci_comprimari(ha_client, soggetti: list[str]) -> dict[str, lis
 
     **Un guasto di `legami`, per un soggetto, costa i comprimari di QUEL
     soggetto, non la giornata**: `mappa[soggetto] = []`, e si prosegue con
-    gli altri. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
+    gli altri -- QUI DENTRO, per QUESTA funzione, che costruisce sempre da
+    zero. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
     (`casa/domande.py::legami`, stessa regola), e chi rilegge il log deve
     poter distinguere «questa entita' non ha comprimari» da «non si e'
     potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
     88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
     fallito, e' la stessa disciplina di `guarda_condizioni_di_sistema` qui
     sopra.
+
+    **Il ritorno e' una coppia, `(mappa, falliti)`, non piu' solo `mappa`**
+    (correzione del CRITICAL «il grilletto non lo preme nessuno», review de
+    «l'osservatore», 26/08/2026). Il contatore dei falliti esisteva gia' --
+    serviva solo al warning qui sopra -- ma moriva dentro questa funzione:
+    nessuna `Exception` esce mai da qui (ogni ramo la contiene), quindi un
+    chiamante che decidesse «mi fermo se questa funzione solleva» non si
+    sarebbe MAI fermato in produzione. Il segnale vero e' questo numero, ed
+    e' compito del chiamante deciderne il peso:
+
+    **chi costruisce dal nulla (questa funzione, e chi la chiama di notte)
+    tollera il parziale -- un oggetto con qualche comprimare mancante e'
+    meglio di nessun oggetto, e si prosegue, come sopra; chi SOSTITUISCE cio'
+    che gia' c'e' (la riparazione all'avvio, `riaggrega_gli_ultimi_due_
+    giorni`) no -- un oggetto con qualche comprimare mancante e' PEGGIO di
+    quello che rimpiazzerebbe, e deve fermarsi anche per un solo fallito.**
+    Questa funzione non sa quale dei due casi sia: restituisce il numero,
+    non la decisione.
     """
     mappa: dict[str, list[str]] = {}
     falliti = 0
@@ -862,7 +882,7 @@ async def costruisci_comprimari(ha_client, soggetti: list[str]) -> dict[str, lis
         logger.warning(
             "cervello: comprimari non letti per %d soggetti su %d -- il "
             "contesto di questo giro e' parziale", falliti, len(mappa))
-    return mappa
+    return mappa, falliti
 
 
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:
@@ -971,6 +991,39 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     di sistema (`guarda_condizioni_di_sistema`, qui sopra): **meglio un buco
     nella storia che una bugia nella storia.**
 
+    **Il salto vero legge `falliti`, non un `except`** (CRITICAL «il
+    grilletto non lo preme nessuno», review de «l'osservatore», 26/08/2026 --
+    grilletto-brief.md). La prima stesura di questa cura avvolgeva la
+    chiamata a `costruisci_comprimari` in un `try/except` e saltava solo se
+    SOLLEVAVA -- ma `HAClient.legami` (`proxy/ha_client.py`) non solleva mai
+    su un guasto di rete: lo CONTIENE e torna `{"errore": ...}`, e
+    `costruisci_comprimari` fa lo stesso con quella risposta (mette `[]`,
+    conta un fallito, non rilancia). Il `try/except` avvolgeva quindi una
+    funzione che di fatto non puo' sollevare, e il salto era irraggiungibile
+    dal collaboratore vero -- proprio nel caso normale, non in un limite: un
+    riavvio dell'add-on con Home Assistant non ancora sveglio (i due
+    partono insieme). Il segnale giusto e' il contatore dei falliti che
+    `costruisci_comprimari` gia' costruiva per il proprio warning e ora
+    restituisce: se **anche un solo soggetto** e' fallito, questa funzione si
+    ferma, perche' quel soggetto verrebbe riscritto con `[]` mentre la
+    notte l'aveva letto -- e' l'asimmetria vera, e va detta per intero:
+
+    > Chi costruisce dal nulla tollera il parziale; chi sostituisce no.
+    >
+    > L'aggregazione notturna (`_aggrega_ieri`, e `costruisci_comprimari`
+    > stessa) costruisce da zero: un oggetto con qualche comprimare mancante
+    > e' meglio di nessun oggetto, e va avanti -- e' la regola del suo
+    > docstring. Questa funzione SOSTITUISCE cio' che c'e': un oggetto con
+    > qualche comprimare mancante e' PEGGIO di quello che sta rimpiazzando,
+    > e deve fermarsi. La stessa regola letta come «tollera sempre» sarebbe
+    > vera per la notte e falsa qui -- ed e' esattamente l'errore che questo
+    > CRITICAL correggeva.
+
+    Il `try/except` attorno alla chiamata resta, come difesa in profondita'
+    contro un bug futuro che facesse sollevare `costruisci_comprimari` per
+    davvero: ma il segnale di cui questa funzione si fida e' `falliti`, non
+    l'assenza di un'eccezione.
+
     **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
     `costruisci_comprimari`, che legge la rete verso Home Assistant (una
     `legami` per soggetto): va attesa. Qui c'era scritto che questa
@@ -1010,12 +1063,30 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         soggetti.update(r["soggetto"] for r
                         in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts))
     try:
-        mappa = await costruisci_comprimari(ha_client, sorted(soggetti))
+        mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
     except Exception as errore:
+        # Difesa in profondita': `costruisci_comprimari` non solleva mai in
+        # produzione (contiene ogni guasto di `legami`, vedi il suo
+        # docstring) -- il vero segnale, sotto, e' `falliti`. Ma un bug
+        # futuro qui non deve poter scrivere oggetti poveri sopra oggetti
+        # ricchi solo perche' l'eccezione non era quella prevista.
         logger.warning(
             "cervello: comprimari non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
             type(errore).__name__, errore)
+        return
+    if falliti:
+        # QUESTA funzione SOSTITUISCE (`sostituisci_giorno`), non costruisce
+        # da zero: qualunque fallito -- anche uno solo su cento soggetti --
+        # riscriverebbe un oggetto che la notte aveva letto con `[]`. Il
+        # warning che conta e' gia' partito dentro `costruisci_comprimari`;
+        # qui basta fermarsi. Non e' un buco peggiore di quello che c'era
+        # prima di questa cura: la notte prossima, o il riavvio successivo,
+        # ci riprovano.
+        logger.warning(
+            "cervello: comprimari parziali (%d falliti), riparazione "
+            "all'avvio saltata per intero -- si riprova al prossimo riavvio",
+            falliti)
         return
 
     for giorno in giorni:
@@ -2270,7 +2341,10 @@ async def _on_startup(app: web.Application) -> None:
             da_ts, a_ts = confini_giorno(ieri, fuso)
             soggetti = sorted({r["soggetto"] for r
                                in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts)})
-            mappa = await costruisci_comprimari(ha_client, soggetti)
+            # Il conteggio dei falliti si ignora apposta (`_`): questo giro
+            # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
+            # il parziale, come dice il docstring di `costruisci_comprimari`.
+            mappa, _ = await costruisci_comprimari(ha_client, soggetti)
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
                 comprimari=lambda s: mappa.get(s, []))

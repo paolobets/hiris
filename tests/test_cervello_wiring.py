@@ -415,16 +415,35 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         for r in caplog.records)
 
 
+class _ClienteVuoto:
+    """Un `HAClient` finto che non fallisce mai e non ha niente da dire: ogni
+    `legami` torna un dizionario grezzo vuoto (nessun legame, non un
+    guasto) -- `costruisci_comprimari` lo traduce in `mappa[soggetto] = []`
+    con `falliti == 0`. Usato dove il test vuole la riparazione INCONDIZIONATA
+    (nessun soggetto fallito), non la sua reazione a un guasto.
+
+    **Non e' `ha_client=None`** (correzione del CRITICAL, grilletto-brief.md):
+    con `None`, `costruisci_comprimari` chiama `None.legami(...)`, prende
+    `AttributeError`, la CONTIENE (e' il suo contratto, vedi il suo
+    docstring) e conta ogni soggetto come fallito -- da quando questa
+    funzione si ferma su QUALUNQUE fallito, `ha_client=None` fermerebbe
+    SEMPRE la riparazione, non la farebbe girare incondizionata. Prima
+    della correzione il contatore non veniva letto e il test passava per
+    la ragione sbagliata."""
+
+    async def legami(self, tipo, identificatore):
+        return {}
+
+
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
     """Punto 2(b), la cura vera: all'avvio si riaggregano gli ultimi due
     giorni pieni (oggi escluso, che non e' ancora finito) -- non 'i giorni
     senza oggetti' (un giorno senza oggetti e' un esito legittimo, vedi il
     mandato). Si popola il grezzo di QUATTRO giorni, OGGI compreso, e si
     verifica che solo i due piu' recenti FRA I FINITI vengano scritti come
-    oggetti. Qui `ha_client=None`: `costruisci_comprimari` non solleva (i
-    guasti per soggetto sono suoi, non del chiamante -- vedi il suo
-    docstring), quindi la riparazione gira per intero come se fosse
-    incondizionata.
+    oggetti. Qui `ha_client=_ClienteVuoto()`: nessun soggetto fallisce
+    (vedi il suo docstring sul perche' non e' `None`), quindi la
+    riparazione gira per intero come se fosse incondizionata.
 
     Il giorno di oggi va seminato per davvero (cablaggio-pulizia-brief.md,
     punto 1: sesta ricomparsa del difetto n.1) -- prima di questa riga il
@@ -452,7 +471,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
                             soggetto=f"light.{soggetto}", da="off", a="on")
 
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteVuoto(),
             adesso=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in archivio.oggetti(limite=10)}
@@ -465,7 +484,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # Idempotente (`sostituisci_giorno`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteVuoto(),
             adesso=lambda tz: oggi.astimezone(tz)))
         assert len(archivio.oggetti(limite=10)) == 2
     finally:
