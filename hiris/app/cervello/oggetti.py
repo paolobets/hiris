@@ -428,8 +428,6 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     prossimi_inizi: dict[str, list[float]] = {}
     for e in episodi:
         prossimi_inizi.setdefault(e["protagonista"], []).append(e["inizio"])
-    for lista in prossimi_inizi.values():
-        lista.sort()
 
     def limite_superiore(protagonista: str, inizio: float) -> float:
         successivi = [i for i in prossimi_inizi.get(protagonista, []) if i > inizio]
