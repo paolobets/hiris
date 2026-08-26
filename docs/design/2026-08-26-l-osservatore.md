@@ -96,7 +96,21 @@ l'ora cambia. Costa il 5% di disco su decine di megabyte.
 ### La condizione che regge tutto
 
 > **Nel grezzo non c'è nessun giudizio.** Il cambio si scrive così com'è: quale cosa, quando, da che
-> valore a che valore.
+> valore a che valore, **e come Home Assistant dichiara quella cosa** — `device_class`,
+> `state_class`, `source_type`.
+
+**Perché quelle tre e non la gamba già calcolata** (deciso il 26 agosto, dopo che l'implementatore
+dell'aggregazione ha misurato il buco e l'ha dichiarato invece di indovinare). Senza di esse
+l'aggregazione ha in mano solo il nome dell'entità, e il pavimento decide la gamba dei sensori
+proprio dalla classe: il genere «consumo» non sarebbe nato mai, e nemmeno un solo oggetto per fumo,
+gas, monossido o allagamento — cioè i rilevatori per cui la sesta gamba esiste. La classe si conosce
+**solo al momento dell'osservazione**: non scriverla è perderla per sempre.
+
+Salvare invece la **gamba** sarebbe stato più comodo ed è la scelta sbagliata: la gamba è un
+giudizio nostro, e il grezzo dura tre settimane precisamente perché il giudizio si possa **rifare**.
+Congelata lì dentro, il giorno che nascesse una settima gamba quei giorni diventerebbero
+irrecuperabili — si perderebbe l'unica cosa per cui il grezzo esiste. `device_class` è invece ciò
+che **Home Assistant dichiara**: è grezzo per definizione.
 
 Tutto il giudizio sta nell'aggregazione, che è **rifacibile per 21 giorni**. È il criterio con cui
 vanno giudicate tutte le scelte di questa fetta: **una decisione presa in scrittura non si corregge
@@ -208,6 +222,16 @@ Nessuna delle due è una lista scritta a mano: la natura la dichiara Home Assist
 | temperatura, umidità | non generano oggetti da sole: sono il **contesto** di altri oggetti, più gli attraversamenti di soglia |
 | contatore | **un consumo**: quanto, in che periodo, come distribuito |
 | condizione di sistema | **un guasto**: nato quando, durato quanto, ancora aperto o chiuso |
+| serratura, pannello dell'allarme, sirena, rilevatore di fumo/gas/monossido/allagamento | **una sicurezza**: cosa è successo, quando, per quanto |
+
+**Il quinto genere, «sicurezza», è entrato il 26 agosto dalla review dell'aggregazione.** La prima
+stesura mandava tutta la sesta gamba nel genere «guasto», e non regge: una porta aperta con la
+chiave e un'integrazione Sonos rotta non sono la stessa cosa, e chi analizzerà le tratterà in modo
+diverso. «Guasto» resta alle condizioni di sistema — un confine netto, per fonte.
+
+La stessa review ha trovato che **lo stato che apriva l'oggetto era rovesciato**: inserire l'allarme
+la sera apriva un oggetto e disinserirlo la mattina lo chiudeva. Lo stato a riposo di un pannello
+d'allarme è quello **armato**.
 
 ### Chi sta insieme a chi
 
