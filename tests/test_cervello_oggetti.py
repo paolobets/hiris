@@ -129,11 +129,17 @@ def test_il_giorno_e_quello_della_CASA_non_UTC(archivio):
 
 def test_senza_fuso_noto_non_si_inventa(archivio):
     """`sistema_di_riferimento()` puo' non aver mai letto la casa. UTC e'
-    dichiarato; un fuso inventato sposterebbe i giorni senza dirlo."""
+    dichiarato; un fuso inventato sposterebbe i giorni senza dirlo.
+
+    NOTA: il mandato scriveva qui `giorno="2026-08-23"`, un refuso -- `ts(15)`
+    e' 2026-08-24T13:00:00+00:00 (vedi MEZZANOTTE), quindi in UTC appartiene a
+    G, non al giorno prima. Con `giorno="2026-08-23"` l'aritmetica del
+    mandato e quella di `_confini` (corretta, e la correzione B vieta di
+    toccarla) si contraddicevano: qui vale `_confini`, e il refuso e' nel
+    giorno passato al test, non nella funzione."""
     archivio.annota(quando_ts=ts(15), fonte="entita",
                     soggetto="climate.camera_t", da="off", a="heat")
-    assert aggrega_giorno(archivio=archivio, giorno="2026-08-23",
-                                fuso=None) == 1
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso=None) == 1
 
 
 # -- Correzione B: la finestra di `cambi()` e' semi-aperta -----------------
