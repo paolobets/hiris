@@ -38,13 +38,15 @@ _CONSUMO = frozenset({"energy", "power", "gas", "water"})
 # di tutte (docs/design/2026-08-26-l-osservatore.md §4).
 #
 # Il vocabolario gemello vive in `casa/nucleo.py::_DOMINI_EVENTO` e
-# `_CLASSI_EVENTO`, verificato sulla documentazione di Home Assistant il
-# 16/08/2026. Qui NON e' importato, e' RICOPIATO: `nucleo.py` risponde a
+# `_CLASSI_EVENTO`. La prima e' un giudizio del prodotto, misurato
+# sull'impianto, con gli stati verificati il 20/08/2026; la seconda e'
+# verificata sulla documentazione di Home Assistant il 16/08/2026. Qui NON
+# e' importato, e' RICOPIATO: `nucleo.py` risponde a
 # «cosa e' notevole ADESSO» (un evento da annunciare), questo modulo
 # risponde a «cosa si osserva SEMPRE» (cosa entra nel pavimento) -- due
 # domande diverse i cui elenchi possono divergere in futuro per ragioni
 # proprie. Chi tocca uno dei due elenchi guardi anche l'altro.
-_DOMINI_SICUREZZA = frozenset({"lock", "alarm_control_panel"})
+_DOMINI_SICUREZZA = frozenset({"lock", "alarm_control_panel", "siren"})
 _SICUREZZA_BINARIA = frozenset({
     "smoke", "gas", "carbon_monoxide", "moisture", "safety", "tamper",
     "problem", "heat", "cold",

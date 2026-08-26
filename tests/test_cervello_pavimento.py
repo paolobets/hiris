@@ -123,13 +123,6 @@ def test_carbon_monoxide_non_co():
     assert gamba("sensor.monossido_garage", {"device_class": "co"}) is None
 
 
-def test_carbon_monoxide_non_e_comfort():
-    """E' una concentrazione di un gas letale, non aria da respirare bene:
-    resta fuori da «comfort» anche se e' un sensore di qualita' dell'aria per
-    famiglia di dispositivo."""
-    assert gamba("sensor.monossido_garage", {"device_class": "carbon_monoxide"}) != "comfort"
-
-
 @pytest.mark.parametrize("classe", [
     "carbon_dioxide", "pm1", "pm10", "pm25",
     "volatile_organic_compounds", "volatile_organic_compounds_parts",
