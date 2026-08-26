@@ -226,7 +226,7 @@ Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un pia
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # ~1.900 righe: registrazione rotte E gran parte del wiring
+    ├── server.py         # 3.570 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
@@ -244,6 +244,10 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
+
+`server.py` era dichiarato «~1.900 righe» — già falso prima della fetta «l'osservatore» (2026-08-26),
+di più dopo. Misurato con `wc -l hiris/app/server.py` il 26 agosto: **3.570**. Verifica di nuovo
+prima di fidartene: è un numero che invecchia da solo, non un fatto che questo file possa custodire.
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
@@ -289,6 +293,91 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
   env var che `run.sh` non esporta è di fatto una costante.
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
 - Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
+
+### Cosa rende buono un test (affinamento del 26 agosto)
+
+Il difetto n.1 di questo progetto e' «i test che non possono fallire», e la disciplina che lo
+contrasta e' **prima il test rosso, poi il codice**. Ma la regola nasconde la sua stessa ragione, e
+serve dirla per intero perche' altrimenti si applica dove non serve e si salta dove serve:
+
+> **Il valore di un test non e' il rosso storico: e' il suo potere discriminante.** L'evidenza che
+> serve e' che **esista uno stato difettoso plausibile del programma sotto cui quel test fallisce, e
+> che quello stato sia stato prodotto e osservato.**
+
+Il rosso del TDD e' solo **il modo piu' comodo** di ottenere quell'evidenza quando il difetto c'e'
+gia'. Quando il codice e' gia' giusto e manca soltanto la sorveglianza, la **mutazione eseguita** e'
+la stessa evidenza fabbricata a comando — e a volte e' piu' forte del rosso naturale, perche' la
+mutazione si sceglie: si rompe **il peggioramento semantico esatto** invece di un guasto incidentale.
+
+Un test nato verde vale meno **solo se il rosso non e' mai stato visto**. Le due condizioni che
+rendono la moneta buona, e che vanno entrambe verificate:
+
+1. il rosso arriva **per la ragione giusta** — si legge il messaggio d'errore, non solo il colore;
+2. il ripristino e' **verificato** (`git status`), non assunto.
+
+**Corollario, imparato quattro volte in una notte: le mutazioni si ESEGUONO, non si deducono.** Una
+mutazione dichiarata e mai eseguita puo' essere **inerte** (un'altra difesa la scherma), o **rossa
+per la ragione sbagliata** (un errore di sintassi introdotto dall'estrazione invece del difetto
+vero). In entrambi i casi la frase «questa mutazione arrossisce» e' una prova che non prova.
+
+**E un numero non misurato non si scrive** — ne' in un test, ne' in un commento, ne' in un rapporto,
+ne' in un registro di lavoro. Un numero scritto in un registro viene ricopiato in un mandato, e li'
+diventa un fatto: e' successo, ed era falso.
+
+### Come si scrive il codice
+
+**La lingua: il dominio in italiano, il confine nella lingua del sistema esterno.**
+
+I concetti nostri sono in italiano e restano tali — «pavimento», «gamba», «comprimari», «grezzo»,
+«promessa», «notevole». Non sono traduzioni di concetti inglesi: *sono* i concetti, nati in italiano.
+Rinominarli non li renderebbe più chiari.
+
+Ma **qualunque valore che viaggia verso un sistema esterno porta il nome vero di quel sistema, mai
+tradotto**: Home Assistant, SQL, HTTP, le librerie. `"entity"`, non `"entita"`. `device_class`, non
+`classe_dispositivo`.
+
+> **La riga operativa: una stringa letterale italiana non attraversa mai un confine.** Se la vedi
+> dentro una chiamata verso l'esterno, è un difetto — non uno stile.
+
+E **la traduzione fra i due mondi vive in un posto solo per confine**, con i suoi test. Una seconda
+copia della tabella di traduzione è un doppione ai sensi della fondamenta 2.
+
+*Perché è una regola e non un consiglio:* il 26 agosto la funzione che costruisce i comprimari è
+stata scritta chiedendo a Home Assistant un legame di tipo `"entita"`. HA conosce solo `"entity"`, e
+**rifiutava la richiesta prima di toccare la rete**. Stessa riga, altri due errori identici: leggeva
+la risposta in una busta italiana che il client non produce, e filtrava chiavi italiane su chiavi
+inglesi. Risultato: la funzione era **completamente inerte in produzione** e il lavoro notturno
+«riusciva» loggando oggetti costruiti che uscivano tutti vuoti. Tre errori, un errore solo: una
+parola italiana mandata dove serviva la parola del sistema esterno.
+
+**Le best practice sono un cancello, non un'aspirazione.**
+
+«Seguire le buone pratiche» senza uno strumento che le verifichi non è una regola: è un auspicio.
+Quindi valgono solo quelle **controllate automaticamente**, e ciò che non è controllato non si
+pretende.
+
+Lo stato al 26 agosto: **il progetto non ha nessun linter** — né `ruff`, né `flake8`, né `black`, né
+`mypy` — e niente di tutto ciò gira nel CI. Va colmato, e il debito è dichiarato qui invece che
+sottinteso.
+
+Quando entrerà, entra **così**: configurazione in `pyproject.toml`, esecuzione nel CI accanto alla
+suite, e appartenenza al cancello del rilascio come la suite verde. Un linter che si può ignorare non
+serve a niente.
+
+### Il debito dichiarato: la rinomina in inglese
+
+**Deciso il 26 agosto dal proprietario, da fare a sviluppo fermo, mai durante una fetta.**
+
+Gli identificatori — funzioni, metodi, parametri — vanno portati in inglese, per interoperabilità e
+per allineamento alle convenzioni. Il vocabolario **di dominio** resta discutibile caso per caso: una
+`gamba` tradotta in `leg` perde significato, un `aggrega_giorno` tradotto in `aggregate_day` non perde
+niente.
+
+Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose in silenzio:
+
+1. **Solo con la suite verde e il linter già in piedi**, mai insieme a un cambio di comportamento.
+2. **Un commit di sola rinomina**, verificabile: se il diff contiene una riga di logica, non è una
+   rinomina.
 
 ### Trappole note
 

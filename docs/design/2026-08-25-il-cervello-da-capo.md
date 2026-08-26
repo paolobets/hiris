@@ -319,3 +319,102 @@ sugli altri.
 3. Se l'avviso sulla prima osservazione delle persone entra o no.
 4. Come la memoria si lega ai **ricordi** che già esistono con le loro ancore.
 5. **Che poteri ha il verificatore** quando trova che un altro attore ha sbagliato.
+
+---
+
+# L'osservatore — la forma decisa (26 agosto)
+
+## Cos'e' una riga: il cambio nudo
+
+Durante la giornata l'osservatore annota **il cambio cosi' com'e'**: entita', istante, valore.
+Nessun giudizio in scrittura.
+
+**La ragione e' una sola, e regge tutto il disegno.** La proprieta' che rende buono lo schema a due
+strati e' che *sbagliare il consolidamento costa un giorno, non tutto* — domani si rifa' con una
+logica migliore, perche' il grezzo e' ancora li'. **Quella proprieta' regge a una condizione: che nel
+grezzo non ci sia nessun giudizio.**
+
+Le due alternative sono state scartate per questo:
+
+- **L'episodio gia' chiuso** («termostato acceso 15:30→17:05») e' meta' delle righe e assomiglia al
+  ragionamento, ma decidere *quando finisce* e' un giudizio fatto **in scrittura**: se sbaglia,
+  sbaglia per sempre, e la rete di sicurezza sparisce. Ed e' esattamente cio' che il consolidamento
+  deve produrre: anticiparlo non aggiunge, toglie la possibilita' di rifarlo.
+- **Il cambio piu' il contesto attorno** decide **oggi** cosa sara' rilevante domani, e duplica lo
+  stesso valore in ogni riga che lo nomina.
+
+**E c'e' un argomento che viene dalla casa vera.** Le quattro luci nascoste della sala da pranzo sono
+**un sistema solo**: tre lampade LIFX, il loro gruppo, e l'interruttore fisico che le comanda
+(`legami` lo dice — quell'interruttore e' l'innesco di `automation.interruttore_gruppo_lifx`). Col
+cambio nudo quel legame si scopre **dopo** e si applica al consolidamento; con l'episodio scritto
+per entita' si sarebbe gia' deciso che sono quattro cose, e nessun consolidamento potrebbe piu'
+rimetterle insieme.
+
+*Volume misurato: ~6.000 cambi al giorno su tutta la casa; ristretto a cio' che serve, un migliaio o
+due. Su SQLite non e' un criterio — la scelta si e' giocata tutta sul giudizio, non sul peso.*
+
+## Si osserva anche Home Assistant
+
+Parole del proprietario: *«per dire che la casa e' efficiente, confortevole e in buono stato
+l'osservatore deve osservare anche HA»*. **«In buono stato» e' la terza gamba dell'obiettivo**, e le
+superfici esistono gia' nel client (problemi delle integrazioni, salute del sistema, registro
+errori).
+
+**Aperto:** «l'integrazione Reolink e' rotta da due giorni» **non e' un cambio di stato di
+un'entita'** — e' una condizione del sistema. La sua riga non ha la stessa forma, e va decisa.
+
+## Il pavimento: il prompt allarga, non restringe
+
+> **Punto dichiarato fondamentale dal proprietario:** *«attenzione a cosa entra nelle osservazioni,
+> che sono decise dal prompt dell'obiettivo dell'intero brain»*.
+
+Il pericolo, reso esplicito: **se il prompt decide cosa entra, il prompt e' un punto singolo che puo'
+accecare l'osservatore senza che nessuno se ne accorga** — e cio' che non e' stato osservato **non
+esiste piu'**. Riscrivere il prompt fra tre mesi non fa ricomparire i tre mesi mancanti. Il danno si
+scopre il giorno in cui serve quel dato, cioe' troppo tardi.
+
+**Decisione: un pavimento fisso che il prompt non puo' togliere.** Presenza, temperature, aperture,
+consumi, salute di Home Assistant si osservano **comunque**, qualunque cosa dica l'obiettivo. Il
+prompt **allarga** e da' priorita'; non restringe mai sotto il pavimento.
+
+Costa poche decine di entita' e rende **impossibile** il danno irreversibile. Il contenuto esatto del
+pavimento resta da fissare.
+
+## Cosa resta aperto per l'osservatore
+
+1. **Dove vive la memoria** — un archivio nuovo, e questo prodotto ne ha gia' seppellito uno
+   (`history.db`, uscito perche' scriveva e nessuno leggeva). Va deciso **esplicitamente**, non di
+   straforo, e va detto perche' questa volta e' diverso.
+2. **La forma della riga per la salute di HA**, che non e' un cambio di stato.
+3. **Per quanto vivono i consolidati** — per sempre? anni? E cosa succede quando il prompt cambia.
+4. Il contenuto esatto del pavimento.
+
+## Una memoria sola, due nature, la provenienza scritta
+
+Parole del proprietario: *«mi piacerebbe che fosse tutto nella pagina memoria, con l'evidenza di
+cosa si e' salvato in autonomia — i fatti — e cosa gli e' stato detto: le istruzioni date dagli
+utenti. Il grezzo puo' stare in un oggetto transitorio giornaliero. Cosi' la memoria di HIRIS
+diventa una sola, su cui sia chat che brain lavorano, e su cui io posso avere il controllo e in caso
+applicare modifiche.»*
+
+**La conseguenza che rende sicura la scelta: la provenienza e' un campo di prima classe.** Ogni cosa
+che HIRIS sa porta scritto chi ce l'ha messa — la persona, oppure il cervello, e in quel caso con
+quali prove e quanta fiducia. Senza, una deduzione sbagliata finirebbe per sembrare una cosa che
+l'utente ha detto.
+
+**Risolve per meta' il problema del ponderare** (§6): chi pondera ha almeno un criterio solido da cui
+partire.
+
+**E la correzione umana e' essa stessa un'informazione.** Quando il proprietario corregge un fatto
+dedotto, quello non e' solo un dato aggiustato: e' il segnale piu' forte che il cervello possa
+ricevere su come sta sbagliando a ragionare.
+
+**Due nature, una pagina.** Un ricordo dell'utente (*«queste due luci sono di servizio, devono
+restare accese»*) e un fatto osservato (*«il mercoledi' rientri fra le 17:15 e le 17:45, 8 settimane
+su 9»*) **non hanno la stessa forma**: il secondo porta confidenza, prove, un periodo, e cambia nel
+tempo; il primo vale finche' non lo cambi. Restano **due cose distinte** — la memoria prende la forma
+del dato che contiene — ma la pagina le mostra **insieme**, filtrabili, e **chat e cervello leggono
+entrambe**. Nessuna delle due si deforma per stare nel formato dell'altra.
+
+**Il grezzo resta fuori dalla memoria**: oggetto transitorio giornaliero, nasce e muore. Non compare
+nella pagina, non e' conoscenza — e' materiale di lavoro.

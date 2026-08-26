@@ -57,7 +57,7 @@
     }
     #new-btn:hover { background: var(--surface-4); }
     label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; margin-top: 0.9rem; }
-    input[type=text], input[type=number], select, textarea {
+    input[type=text], input[type=number], input[type=date], select, textarea {
       width: 100%; background: var(--input-bg); border: 1px solid var(--border-subtle);
       border-radius: 8px; color: var(--text); padding: 0.5rem 0.75rem;
       font-size: 0.85rem; font-family: inherit;
@@ -492,7 +492,7 @@
     }
     fieldset > label:first-of-type { margin-top: 4px; }
 
-    input[type=text], input[type=number], input[type=password], select, textarea {
+    input[type=text], input[type=number], input[type=password], input[type=date], select, textarea {
       width: 100%;
       background: var(--surface);
       border: 1px solid var(--border);
@@ -948,6 +948,7 @@
   color: var(--text-3);
   line-height: var(--lh-snug);
   margin-bottom: var(--sp-5);
+  overflow-wrap: anywhere;
 }
 .section-card .sc-body {
   display: flex; flex-direction: column;
@@ -960,6 +961,41 @@
    riscriveva il prompt di sistema. Vale per i bottoni di oggi e per quelli che
    verranno. */
 .section-card .sc-body > .btn { align-self: flex-start; }
+
+/* Terza recidiva (pagina «l'osservatore», 2026-08-26): un identificatore
+   lungo (fino a 93 caratteri misurati) messo in uno `<span>` dentro una riga
+   flessibile sfonda lo schermo di un telefono -- su ~318px utili la card
+   superava i 600px. `overflow-wrap: anywhere` su `.text-mono`/`.field-hint`/
+   `.sc-desc` (sotto) rompe il TESTO; questa riga fa l'altra meta': senza
+   `min-width: 0` uno span flessibile non si restringe sotto la propria
+   dimensione intrinseca, quindi il testo puo' anche sapere rompersi e
+   comunque non bastare.
+
+   Prima versione di questa riga (CSS MORTO, trovato da una review indipendente
+   con un motore di layout vero): il selettore era `.section-card
+   [style*="display:flex"] > span`, e cercava la stringa letterale che la SPA
+   scrive con `style.cssText = 'display:flex;...'` -- SENZA spazio dopo i due
+   punti. Il browser pero' RISERIALIZZA l'attributo `style` quando lo si legge
+   (`getAttribute('style')`, e con lui qualunque motore di selettori),
+   aggiungendo lo spazio: `display: flex;`. Il selettore cercava la forma
+   sbagliata e non corrispondeva a NESSUNO span (verificato: `min-width`
+   calcolato restava `auto` su tutti). La pagina non sfondava comunque, ma
+   solo per merito di `overflow-wrap: anywhere` qui sopra -- non di questa
+   riga, che era morta.
+
+   Selettore corretto: nessuna dipendenza dall'attributo `style` (ne' dalla
+   classe, ne' da `display:flex`). Si applica a OGNI span dentro una
+   `.section-card`, quindi vale DAVVERO -- non solo a parole -- per ogni riga
+   gia' scritta in ciascuna sorella (albero-, memoria-, promesse-,
+   costruzioni-, osservatore-route.js) e per quella che la prossima pagina
+   scrivera' domani, senza doversene ricordare: uno span che non sta mai in
+   una riga flex non ha comunque bisogno di restringersi, quindi la regola
+   resta innocua li'. Scoperta solo negli span (non nei bottoni/input): un
+   bottone che si restringe sotto la sua etichetta è un difetto nuovo, non
+   questo. */
+.section-card span {
+  min-width: 0;
+}
 
 /* Field group inside a section */
 .field-group {
@@ -990,8 +1026,16 @@
   font-size: var(--fs-12);
   color: var(--text-3);
   line-height: var(--lh-snug);
+  /* Stesso difetto del blocco `.section-card [style*="display:flex"]` piu'
+     sopra: `.field-hint` porta spesso un identificatore o una chiave tecnica
+     (date, entity_id, chiavi di misura) dentro un `<p>` semplice, non un
+     flex -- li' basta che il testo sappia rompersi. */
+  overflow-wrap: anywhere;
 }
 .field .field-hint {
+  /* `overflow-wrap: anywhere` NON si ripete qui: `.field-hint` (sopra) e'
+     indipendente dalla classe, quindi copre gia' anche questo caso -- la
+     ripetizione era un doppione, non una specificita' diversa (rilievo 5). */
   font-size: var(--fs-12);
   color: var(--text-3);
   line-height: var(--lh-snug);
@@ -1328,7 +1372,7 @@
 .gap-3 { gap: var(--sp-3); }
 .mt-3 { margin-top: var(--sp-3); }
 .mt-4 { margin-top: var(--sp-4); }
-.text-mono { font-family: var(--font-mono); }
+.text-mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .divider {
   height: 1px; background: var(--border); margin: var(--sp-4) 0;
 }

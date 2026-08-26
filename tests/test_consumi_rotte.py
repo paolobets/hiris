@@ -32,6 +32,21 @@ class _Req:
         self.query = query or {}
 
 
+class _ArchivioCasaFinto:
+    """Il minimo che `_fuso_da_archivio_casa` (`server.py`) legge:
+    `sistema_di_riferimento()`. Sostituisce `app["fuso_casa"]` (riparazione-
+    impoverisce-brief.md, appendice punto 7): quella chiave non la popolava
+    nessun codice di produzione, solo questa finta -- il difetto che questo
+    progetto chiama «chi lo riempie?». La strada vera passa da
+    `archivio_casa`, come ogni altra lettura del fuso nel prodotto."""
+
+    def __init__(self, fuso):
+        self._fuso = fuso
+
+    def sistema_di_riferimento(self):
+        return {"fuso": self._fuso}
+
+
 def _corpo(risposta):
     return json.loads(risposta.body.decode("utf-8"))
 
@@ -49,7 +64,8 @@ def app(tmp_path):
     archivio.registra("openrouter", "un/modello", token_in=50, token_out=5,
                       costo_usd=None, costo_stato="non_noto", adesso=T22)
     try:
-        yield {"consumi": archivio, "llm_router": object(), "fuso_casa": ROMA}
+        yield {"consumi": archivio, "llm_router": object(),
+              "archivio_casa": _ArchivioCasaFinto(ROMA)}
     finally:
         archivio.close()
 

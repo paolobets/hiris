@@ -81,6 +81,7 @@
         (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
         (route === 'promesse' && hash.indexOf('#/promesse') === 0) ||
         (route === 'costruzioni' && hash.indexOf('#/costruzioni') === 0) ||
+        (route === 'osservatore' && hash.indexOf('#/osservatore') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
@@ -155,6 +156,19 @@
       HirisCostruzioni.mount(document.getElementById('route-outlet'));
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Costruzioni</div>';
+    }
+  });
+  /* fetta «l'osservatore» Task 7: la pagina #/osservatore -- vedi
+     config/osservatore-route.js per il perche'. `mount()` senza argomenti,
+     legge da solo `#route-outlet`: stesso pattern di albero-route.js e
+     memoria-route.js, non quello di costruzioni-route.js (che porta
+     l'outlet come parametro). */
+  HirisRouter.register(/^#\/osservatore\/?$/, function() {
+    setCrumbHere('L’osservatore');
+    if (window.HirisOsservatoreRoute) {
+      HirisOsservatoreRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">L’osservatore</div>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {

@@ -1,7 +1,7 @@
 # hiris/app/server.py
 import asyncio
 import contextlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import logging
 import os
@@ -41,6 +41,12 @@ from .schedulatore.archivio import ArchivioPromesse
 from .schedulatore.orologio import Orologio
 from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
+from .casa.domande import TIPO_LEGAME_HA
+from .casa.domande import legami as _legami_leggibili
+from .casa.tempo import zona_casa
+from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
+from .cervello.oggetti import aggrega_giorno, confini_giorno
+from .cervello.osservatore import Osservatore
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
 from .token_interno import prepara_token_interno
@@ -636,6 +642,53 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     return esito
 
 
+async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
+    """Le condizioni di sistema (problemi diagnosticati + integrazioni non
+    caricate) verso `app["osservatore"].guarda_sistema` (fetta «l'osservatore»,
+    Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
+
+    **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
+    (`task-5-correzioni.md`, punto A.1). `HAClient.problemi()` torna
+    `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
+    dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
+    «non c'e' niente che non va». `Osservatore.guarda_sistema` chiude ogni
+    condizione che non trova piu' nell'elenco che riceve -- quindi un errore
+    letto come lista vuota scriverebbe «chiuso» su OGNI guasto aperto alla
+    prima disconnessione da Home Assistant: l'archivio registrerebbe che tutto
+    si e' risolto nel momento esatto in cui abbiamo smesso di poterlo vedere.
+    Vale identico per `leggi_registri`: se `"integrazioni"` compare in
+    `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
+    tutto bene. Meglio un buco nella storia che una bugia nella storia.
+
+    Chiamata una volta all'avvio (subito dopo `ricostruisci_condizioni`) e
+    ogni dieci minuti dal lavoro periodico registrato piu' sotto in
+    `_on_startup` -- stessa funzione, due chiamanti, come
+    `giro_di_confronto_albero`/`guarda_comportamento` qui accanto.
+
+    Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
+    puo' sollevare da `guarda_sistema` stesso, se `annota` fallisce a meta' --
+    e in quel caso deve propagare, per il motivo scritto sul suo docstring.
+    """
+    osservatore = app.get("osservatore")
+    if osservatore is None:
+        return None
+    esito_problemi = await ha_client.problemi()
+    if "errore" in esito_problemi:
+        logger.warning(
+            "cervello: condizioni di sistema non lette, problemi() ha "
+            "fallito (%s) -- giro saltato", esito_problemi["errore"])
+        return None
+    registri, non_disponibili = await ha_client.leggi_registri()
+    if "integrazioni" in non_disponibili:
+        logger.warning(
+            "cervello: condizioni di sistema non lette, il registro delle "
+            "integrazioni non e' disponibile -- giro saltato")
+        return None
+    return osservatore.guarda_sistema(
+        problemi=esito_problemi.get("problemi") or [],
+        integrazioni=registri.get("integrazioni") or [])
+
+
 def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
@@ -733,6 +786,336 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         return esito
 
     return giro
+
+
+# I legami che valgono come comprimari: cose che FANNO o MISURANO qualcosa
+# mentre l'oggetto dura. Un'area e' dove sta, non cosa fa.
+_LEGAMI_COMPRIMARI = ("entita", "automazione", "scena", "script")
+
+
+async def costruisci_comprimari(
+        ha_client, soggetti: list[str]) -> tuple[dict[str, list[str]], int]:
+    """Per ogni protagonista, chi sta con lui. **Una lettura per soggetto.**
+
+    Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
+    lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
+    un sistema solo, e solo `legami` lo sa dire.
+
+    **Il contratto vero di `HAClient.legami`, non quello immaginato**
+    (correzione trovata dalla review de «l'osservatore», 26/08/2026 --
+    prima di questa correzione questa funzione era INERTE in produzione:
+    zero chiamate di rete, `mappa` sempre vuota, e nessuna riga di log lo
+    diceva). `HAClient.legami(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
+    contro `TIPI_LEGAME`, che ha i valori INGLESI di Home Assistant
+    (`"entity"`, non `"entita"`); un tipo che non riconosce lo rifiuta con
+    `{"errore": ...}` **prima di toccare la rete**. E la risposta buona non
+    porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
+    `search/related`, a chiavi inglesi (`"entity"`, `"automation"`, ...). La
+    traduzione -- tipo in ingresso, chiavi in uscita -- e' un fatto gia'
+    codificato altrove (`casa/domande.py::NOME_LEGAME`/`TIPO_LEGAME_HA`, e la
+    funzione pura `casa/domande.py::legami` che la applica): si usano quelle,
+    non se ne scrive una terza copia -- sarebbe il doppione che questo
+    progetto insegue da una notte intera.
+
+    **Un guasto di `legami`, per un soggetto, costa i comprimari di QUEL
+    soggetto, non la giornata**: `mappa[soggetto] = []`, e si prosegue con
+    gli altri -- QUI DENTRO, per QUESTA funzione, che costruisce sempre da
+    zero. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
+    (`casa/domande.py::legami`, stessa regola), e chi rilegge il log deve
+    poter distinguere «questa entita' non ha comprimari» da «non si e'
+    potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
+    88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
+    fallito, e' la stessa disciplina di `guarda_condizioni_di_sistema` qui
+    sopra.
+
+    **Il ritorno e' una coppia, `(mappa, falliti)`, non piu' solo `mappa`**
+    (correzione del CRITICAL «il grilletto non lo preme nessuno», review de
+    «l'osservatore», 26/08/2026). Il contatore dei falliti esisteva gia' --
+    serviva solo al warning qui sopra -- ma moriva dentro questa funzione: un
+    chiamante che decidesse «mi fermo se questa funzione solleva» non poteva
+    fidarsi di quel segnale da solo. Il segnale vero, per il caso ORDINARIO,
+    e' questo numero, ed e' compito del chiamante deciderne il peso:
+
+    **Cosa e' contenuto qui dentro, e cosa no** (corretto in questo stesso
+    giro, review de «l'osservatore», 26/08/2026 -- qui c'era scritto «nessuna
+    `Exception` esce mai da qui», falso). Un guasto di RETE o di Home
+    Assistant -- `HAClient.legami` che rifiuta il `tipo` o non risponde -- e'
+    contenuto per intero, sempre: e' il `try/except` qui sopra, che mette
+    `mappa[soggetto] = []` e conta un fallito. La TRADUZIONE di una risposta
+    BUONA (`_legami_leggibili`, cioe' `casa/domande.py::legami`, chiamata
+    subito dopo quel `try/except`) NON e' contenuta: e' fuori da ogni `try`
+    di questa funzione. Home Assistant vero non manda mai una chiave che non
+    porti una lista, ma nessun contratto lo impedisce a un client rotto o a
+    una versione futura -- e in quel caso una vera `Exception` (tipicamente
+    `TypeError`) esce da QUESTA funzione, non contenuta. Un chiamante che si
+    fida di «non solleva mai» per decidere se fermarsi non si fermerebbe MAI
+    per il primo guasto (serve il numero, sotto), ma si fermerebbe ancora
+    per il secondo -- i due casi non sono lo stesso rischio.
+
+    **chi costruisce dal nulla (questa funzione, e chi la chiama di notte)
+    tollera il parziale -- un oggetto con qualche comprimare mancante e'
+    meglio di nessun oggetto, e si prosegue, come sopra; chi SOSTITUISCE cio'
+    che gia' c'e' (la riparazione all'avvio, `riaggrega_gli_ultimi_due_
+    giorni`) no -- un oggetto con qualche comprimare mancante e' PEGGIO di
+    quello che rimpiazzerebbe, e deve fermarsi anche per un solo fallito.**
+    Questa funzione non sa quale dei due casi sia: restituisce il numero,
+    non la decisione.
+    """
+    mappa: dict[str, list[str]] = {}
+    falliti = 0
+    tipo_ha = TIPO_LEGAME_HA["entita"]  # sempre "entity": i soggetti che
+    # arrivano qui sono protagonisti di oggetti, cioe' entita' di Home
+    # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
+    # `search/related` sa collegare.
+    for soggetto in soggetti:
+        if soggetto in mappa or "." not in soggetto or soggetto.startswith(
+                ("problema:", "integrazione:")):
+            continue
+        try:
+            grezzo = await ha_client.legami(tipo_ha, soggetto)
+        except Exception as errore:
+            logger.debug("cervello: comprimari di %s non letti (%s: %s)",
+                        soggetto, type(errore).__name__, errore)
+            mappa[soggetto] = []
+            falliti += 1
+            continue
+        esito = _legami_leggibili(grezzo, "entita", soggetto)
+        if "errore" in esito:
+            logger.debug("cervello: comprimari di %s non letti (%s)",
+                        soggetto, esito["errore"])
+            mappa[soggetto] = []
+            falliti += 1
+            continue
+        legami = esito.get("legami") or {}
+        insieme: list[str] = []
+        for tipo in _LEGAMI_COMPRIMARI:
+            for altro in legami.get(tipo) or []:
+                if isinstance(altro, str) and altro != soggetto and altro not in insieme:
+                    insieme.append(altro)
+        mappa[soggetto] = insieme
+    if falliti:
+        logger.warning(
+            "cervello: comprimari non letti per %d soggetti su %d -- il "
+            "contesto di questo giro e' parziale", falliti, len(mappa))
+    return mappa, falliti
+
+
+def _fuso_da_archivio_casa(archivio_casa) -> str | None:
+    """Il fuso della casa, letto da `sistema_di_riferimento()` -- `None` se
+    `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
+    costruisce).
+
+    Un aiutante per una domanda che il codice faceva ripetendo la stessa
+    lettura in piu' punti (cablaggio-pulizia-brief.md, punto 4). **Il
+    conteggio di quanti e' stato sbagliato per DIFETTO tre volte in questo
+    progetto** -- qui e' la terza correzione (riparazione-impoverisce-
+    brief.md, appendice punti 5 e 6): prima si contavano "tre punti, tutte e
+    tre dentro `_on_startup`", frase in parte falsa (sotto); poi la caccia
+    attiva ne ha trovata una quarta viva altrove. Chi conta la prossima
+    volta riparta da questo elenco, verificato con una ricerca su tutto
+    `hiris/`, non da un ricordo:
+
+    - `_aggrega_ieri` e la costruzione di `ArchivioConsumi` (il `lambda`
+      passato a `leggi_fuso`) leggono il fuso DAVVERO dentro `_on_startup`
+      -- sono scritte li', a livello di codice, non solo chiamate da li';
+    - `riaggrega_gli_ultimi_due_giorni`, qui sotto, e' una funzione a se':
+      solo la sua CHIAMATA sta dentro `_on_startup`, il corpo che legge il
+      fuso no. La frase che c'era prima diceva «tutte e tre dentro
+      `_on_startup`» senza questa distinzione, ed era falsa per questo caso;
+    - `handle_usage` (`api/handlers_usage.py`) e' la quarta: gira a ogni
+      `GET /api/usage`, mai dentro `_on_startup`. Prima di usare questo
+      aiutante leggeva `app["fuso_casa"]` per prima cosa -- una chiave che
+      nessun codice di produzione popolava (riparazione-impoverisce-
+      brief.md, appendice punto 7): il ramo e' uscito insieme alla chiave.
+
+    **Una quinta lettura resta fuori, deliberatamente**: `casa/
+    strumenti.py::_fuso` (il campo dichiarativo di una promessa) ha un
+    docstring suo che dice perche' non si unifica qui. Non toccarla senza
+    leggerlo prima.
+    """
+    return archivio_casa.sistema_di_riferimento().get("fuso") if archivio_casa else None
+
+
+async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
+    """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
+    non e' ancora finito) **con gli stessi comprimari che costruirebbe
+    l'aggregazione notturna** -- non piu' senza. Non torna niente: chi la
+    chiama vuole solo l'effetto, o il fallimento. Se i comprimari non si
+    riescono a costruire la riparazione si salta per intero (vedi piu'
+    sotto): non e' piu' incondizionata.
+
+    **La cura vera al buco del punto 2 (task-5-fix-brief.md).** `_aggrega_
+    ieri`, qui sotto, aggrega **solo** «ieri», ogni notte alle 00:20. Se
+    quella notte `sistema_di_riferimento()` solleva -- la sua query SQL non
+    e' protetta -- l'aggregazione salta, e poiche' il lavoro notturno guarda
+    sempre e solo «ieri», quel giorno **non viene piu' aggregato da nessun
+    percorso**: il grezzo per rifarlo resta li' fino alla potatura (22
+    giorni dopo), e nessuno lo rifa'. Muovere `fuso`/`ieri` dentro il try di
+    `_aggrega_ieri` (fatto in questo stesso giro) sistema il LOG, non il
+    buco: la notte salta comunque.
+
+    **Perche' due giorni fissi, e non «i giorni senza oggetti».** Un giorno
+    SENZA oggetti e' un esito legittimo -- puo' non essere successo niente
+    in casa -- e distinguerlo da un giorno MAI aggregato richiederebbe un
+    registro di cio' che e' stato fatto: uno stato in piu' che puo'
+    divergere da quello vero, lo stesso genere di doppione che questo
+    progetto ha gia' pagato altrove. Due giorni fissi non hanno stato:
+    guariscono da soli una notte saltata, al costo di rifare un lavoro che
+    il piu' delle volte non serviva -- un costo che si puo' permettere
+    perche' `sostituisci_giorno` (`cervello/archivio.py`) e' **idempotente**:
+    rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
+    lo raddoppia.
+
+    **Il limite di questa cura, e perche' "due" e' sicuro mentre un domani
+    "venti" non lo sarebbe.** Riaggregare SOSTITUISCE gli oggetti del
+    giorno (`sostituisci_giorno`): non puo' distruggere comprensione finche'
+    il grezzo per rifarlo esiste ancora, e i due giorni bersaglio hanno al
+    massimo due giorni e qualche ora, ben dentro la potatura a
+    `CONSERVAZIONE_CAMBI_S` (22 giorni). L'ECCEZIONE, solo teorica: un
+    avvio con l'orologio di SISTEMA arretrato di venti giorni o piu'
+    rispetto all'ultima potatura riaggregherebbe giorni il cui grezzo la
+    potatura ha gia' cancellato -- `aggrega_giorno` troverebbe meno cambi
+    di quanti l'oggetto esistente ne raccontasse (o nessuno), e li
+    sostituirebbe con MENO oggetti, non con gli stessi. Non e' un caso da
+    difendere con codice (un orologio di sistema cosi' indietro e' un
+    guasto che precede questo problema), ma chi un giorno vorra' allargare
+    la finestra da due giorni a venti deve trovare qui la ragione per cui
+    due erano sicuri e venti no: senza questa riga l'allargamento
+    sembrerebbe innocuo.
+
+    **SOSTITUISCE, quindi non deve mai produrre meno di quello che trova**
+    (CRITICAL trovato dalla review de «l'osservatore», 26/08/2026 --
+    riparazione-impoverisce-brief.md). La prima stesura di questa funzione
+    chiamava `aggrega_giorno(..., comprimari=None)` col ragionamento che «un
+    oggetto senza comprimari e' comunque infinitamente meglio di nessun
+    oggetto» -- vero quando l'oggetto NON C'E'. E' falso qui: l'aggregazione
+    notturna, la notte prima, ha gia' costruito quel giorno CON i comprimari,
+    e questa funzione lo SOSTITUISCE, non lo aggiunge. Rimpiazzare un oggetto
+    ricco con uno povero a ogni riavvio dell'add-on -- che succede a ogni
+    aggiornamento -- e' un danno, non una riparazione: e' esattamente lo
+    scenario che il paragrafo qui sopra («SOSTITUISCE, non puo' distruggere
+    comprensione») credeva impossibile, assumendo che le due strade
+    producessero lo stesso risultato. Da quando la notte costruisce i
+    comprimari e questa funzione no, non lo producono piu'.
+
+    **Se i comprimari non si riescono a costruire, la riparazione si salta
+    per intero -- non si scrive niente, ne' per l'altro ieri ne' per ieri.**
+    La scelta non e' «riaggrego senza»: sostituire oggetti ricchi con oggetti
+    poveri e' un danno, mentre non ripararli e' solo un'attesa fino al
+    prossimo riavvio. Stessa regola gia' presa per il giro delle condizioni
+    di sistema (`guarda_condizioni_di_sistema`, qui sopra): **meglio un buco
+    nella storia che una bugia nella storia.**
+
+    **Il salto vero legge `falliti`, non un `except`** (CRITICAL «il
+    grilletto non lo preme nessuno», review de «l'osservatore», 26/08/2026 --
+    grilletto-brief.md). La prima stesura di questa cura avvolgeva la
+    chiamata a `costruisci_comprimari` in un `try/except` e saltava solo se
+    SOLLEVAVA -- ma `HAClient.legami` (`proxy/ha_client.py`) non solleva mai
+    su un guasto di rete: lo CONTIENE e torna `{"errore": ...}`, e
+    `costruisci_comprimari` fa lo stesso con quella risposta (mette `[]`,
+    conta un fallito, non rilancia). Il `try/except` avvolgeva quindi una
+    funzione che di fatto non puo' sollevare, e il salto era irraggiungibile
+    dal collaboratore vero -- proprio nel caso normale, non in un limite: un
+    riavvio dell'add-on con Home Assistant non ancora sveglio (i due
+    partono insieme). Il segnale giusto e' il contatore dei falliti che
+    `costruisci_comprimari` gia' costruiva per il proprio warning e ora
+    restituisce: se **anche un solo soggetto** e' fallito, questa funzione si
+    ferma, perche' quel soggetto verrebbe riscritto con `[]` mentre la
+    notte l'aveva letto -- e' l'asimmetria vera, e va detta per intero:
+
+    > Chi costruisce dal nulla tollera il parziale; chi sostituisce no.
+    >
+    > L'aggregazione notturna (`_aggrega_ieri`, e `costruisci_comprimari`
+    > stessa) costruisce da zero: un oggetto con qualche comprimare mancante
+    > e' meglio di nessun oggetto, e va avanti -- e' la regola del suo
+    > docstring. Questa funzione SOSTITUISCE cio' che c'e': un oggetto con
+    > qualche comprimare mancante e' PEGGIO di quello che sta rimpiazzando,
+    > e deve fermarsi. La stessa regola letta come «tollera sempre» sarebbe
+    > vera per la notte e falsa qui -- ed e' esattamente l'errore che questo
+    > CRITICAL correggeva.
+
+    Il `try/except` attorno alla chiamata resta, come difesa in profondita'
+    contro il guasto REALE che puo' far sollevare `costruisci_comprimari` per
+    davvero -- una risposta malformata che la sua traduzione non contiene,
+    vedi il suo docstring, corretto in questo stesso giro: non e' un bug
+    futuro ipotetico -- ma il segnale di cui questa funzione si fida per il
+    caso ORDINARIO e' `falliti`, non l'assenza di un'eccezione.
+
+    **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
+    `costruisci_comprimari`, che legge la rete verso Home Assistant (una
+    `legami` per soggetto): va attesa. Qui c'era scritto che questa
+    riparazione «gira SINCRONA, prima ancora che l'event loop dell'add-on sia
+    in piedi per davvero» -- non era vero: il chiamante e' `_on_startup`, una
+    coroutine di avvio di aiohttp, e quando gira l'event loop c'e' ed e' in
+    esecuzione. La sincronia era un vincolo dei TEST di questa funzione (non
+    passavano da `asyncio.run`), non della produzione, ed e' stata scambiata
+    per un vincolo tecnico -- ed e' la ragione per cui il difetto sopra e'
+    nato: se costruire i comprimari fosse stato davvero impossibile qui,
+    ometterli sarebbe sembrata l'unica scelta. Non lo e': basta attenderla,
+    come fa gia' `_aggrega_ieri` qui sotto.
+
+    **Chi la chiama la mette DOPO la ricostruzione delle condizioni, la
+    attende, e la mette in un try/except che non blocca l'avvio** (in
+    `_on_startup`, subito sotto): un cervello che non parte perche' non e'
+    riuscito a rifare l'altro ieri sarebbe peggio del buco che questa
+    funzione chiude. Qui dentro l'eccezione **si lascia propagare** (tranne
+    quella di `costruisci_comprimari`, contenuta sopra apposta): e' il
+    chiamante a decidere se e come contenerla, come per
+    `guarda_condizioni_di_sistema` qui sopra.
+
+    `adesso` e' iniettabile per i test, come `Osservatore.__init__`: nella
+    vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
+    dire cos'e' «oggi».
+    """
+    fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
+    oggi = adesso(zona_casa(fuso)).date()
+    giorni = [(oggi - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
+
+    # I comprimari si leggono UNA volta per i due giorni insieme, come fa
+    # `_aggrega_ieri` per uno solo (Task 6, `costruisci_comprimari`): una
+    # chiamata di rete per cambio farebbe migliaia di richieste.
+    soggetti: set[str] = set()
+    for giorno in giorni:
+        da_ts, a_ts = confini_giorno(giorno, fuso)
+        soggetti.update(r["soggetto"] for r
+                        in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts))
+    try:
+        mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
+    except Exception as errore:
+        # Difesa in profondita': un guasto di RETE o di Home Assistant e'
+        # gia' contenuto dentro `costruisci_comprimari` (mette `[]`, conta un
+        # fallito -- il vero segnale, sotto, e' `falliti`). Ma la sua
+        # TRADUZIONE (`_legami_leggibili`, dentro `costruisci_comprimari`,
+        # vedi il suo docstring) non lo e': una risposta malformata fa
+        # uscire un `TypeError` per davvero, non un bug ipotetico. Qui non
+        # deve poter scrivere oggetti poveri sopra oggetti ricchi solo
+        # perche' l'eccezione non era quella prevista.
+        logger.warning(
+            "cervello: comprimari non costruiti, riparazione all'avvio "
+            "saltata -- si riprova al prossimo riavvio (%s: %s)",
+            type(errore).__name__, errore)
+        return
+    if falliti:
+        # QUESTA funzione SOSTITUISCE (`sostituisci_giorno`), non costruisce
+        # da zero: qualunque fallito -- anche uno solo su cento soggetti --
+        # riscriverebbe un oggetto che la notte aveva letto con `[]`. Il
+        # warning che conta e' gia' partito dentro `costruisci_comprimari`;
+        # qui basta fermarsi. Non e' un buco peggiore di quello che c'era
+        # prima di questa cura: la notte prossima, o il riavvio successivo,
+        # ci riprovano.
+        logger.warning(
+            "cervello: comprimari parziali (%d falliti), riparazione "
+            "all'avvio saltata per intero -- si riprova al prossimo riavvio",
+            falliti)
+        return
+
+    for giorno in giorni:
+        quanti = aggrega_giorno(
+            archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
+            comprimari=lambda s, mappa=mappa: mappa.get(s, []))
+        logger.info(
+            "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
+            quanti, giorno)
 
 
 def should_start_agent_worker(ponte_attivo: bool) -> bool:
@@ -1180,6 +1563,39 @@ async def _on_startup(app: web.Application) -> None:
     # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
     app["cache_indice_strumenti"] = CacheIndice()
 
+    # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
+    # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
+    # perche' e' il suo unico ingresso.
+    app["osservazioni"] = ArchivioOsservazioni(
+        os.path.join(data_dir, "osservazioni.db"))
+    app["osservatore"] = Osservatore(app["osservazioni"])
+    # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
+    # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
+    # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
+    # "aperto" per ogni guasto gia' aperto, come se fosse nato in quel
+    # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
+    # utile: da quando dura. **Prima** del primo giro delle condizioni, qui
+    # sotto. Non solleva mai (vedi il suo docstring).
+    app["osservatore"].ricostruisci_condizioni()
+    # LO STESSO rubinetto che alimenta lo specchio, non un secondo: due
+    # sorgenti degli stessi eventi sarebbero due cose che possono divergere.
+    # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
+    # lo specchio sia aggiornato prima.
+    ha_client.add_state_listener(app["osservatore"].guarda_cambio)
+    # La prima lettura delle condizioni di sistema (problemi diagnosticati +
+    # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
+    # per lo stesso motivo di `rileggi_problemi_ha` piu' sopra: senza,
+    # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
+    # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
+    # quella lettura, questa PUO' sollevare (`Osservatore.guarda_sistema`, se
+    # `annota` fallisce a meta'): un archivio che non risponde non deve
+    # impedire il boot.
+    try:
+        await guarda_condizioni_di_sistema(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
+
     # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
@@ -1263,6 +1679,53 @@ async def _on_startup(app: web.Application) -> None:
     archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))
     app["archivio_casa"] = archivio_casa
 
+    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
+    # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
+    # -- vedi il docstring di `riaggrega_gli_ultimi_due_giorni` per il perche'
+    # di "due" e non "i giorni senza oggetti", e per quando si salta per
+    # intero invece di scrivere oggetti impoveriti.
+    #
+    # **QUI, subito dopo `app["archivio_casa"]` (cancello-rilascio-brief.md,
+    # punto 1, CRITICAL -- la terza volta che questa stessa fondamenta si
+    # rompe sulla stessa funzione).** Fino a questo giro la chiamata stava 87
+    # righe piu' in alto, PRIMA che `archivio_casa` esistesse:
+    # `_fuso_da_archivio_casa(app.get("archivio_casa"))` leggeva sempre
+    # `None`, e questa riparazione lavorava SEMPRE in UTC -- mentre
+    # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto in questa stessa
+    # funzione, che gira alle 00:20 quando `archivio_casa` c'e' gia' da ore)
+    # lavora col fuso VERO della casa. Le due porte, sullo stesso grezzo,
+    # potevano quindi produrre oggetti diversi: un episodio a cavallo della
+    # mezzanotte UTC (che non e' la mezzanotte della casa) finiva nel giorno
+    # sbagliato, o spariva da entrambi, a OGNI riavvio dell'add-on -- cioe' a
+    # ogni aggiornamento. Prova per esecuzione in
+    # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
+    # (`tests/test_cervello_wiring.py`).
+    #
+    # Nasce PRIMA di `ArchivioConsumi` qui sotto e prima di `ricostruisci`
+    # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
+    # `sistema_di_riferimento()` legge il fuso GIA' PERSISTITO su disco dalle
+    # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
+    # `ricostruisci()`, che parla con Home Assistant, legherebbe questa
+    # riparazione a un servizio di rete che non le serve.
+    #
+    # **La lezione**: il test che sorvegliava l'ordine (ora
+    # `test_le_due_porte_...`, prima
+    # `test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_
+    # e_non_blocca_l_avvio`) verificava che una STRINGA comparisse in un certo
+    # ordine nel sorgente, non che il collaboratore di cui la funzione ha
+    # davvero bisogno (`archivio_casa`) esistesse in quel punto -- e le finte
+    # di questa stessa funzione, in ogni altro test di questo file, passano
+    # `"archivio_casa": None`: fedeli alla produzione ROTTA, non lo
+    # sorvegliavano nemmeno per caso. Attesa, e in un try/except che non deve
+    # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
+    # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
+    try:
+        await riaggrega_gli_ultimi_due_giorni(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: riaggregazione degli ultimi due giorni all'avvio "
+            "fallita (%s: %s)", type(exc).__name__, exc)
+
     # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
     # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
     # scrittura, non alla costruzione: la casa puo' cambiarlo
@@ -1271,7 +1734,7 @@ async def _on_startup(app: web.Application) -> None:
 
     app["consumi"] = ArchivioConsumi(
         os.path.join(data_dir, "consumi.db"),
-        leggi_fuso=lambda: (archivio_casa.sistema_di_riferimento() or {}).get("fuso", ""))
+        leggi_fuso=lambda: _fuso_da_archivio_casa(archivio_casa))
     try:
         await ricostruisci(ha_client, archivio_casa)
     except Exception as exc:
@@ -1439,6 +1902,30 @@ async def _on_startup(app: web.Application) -> None:
     # retention, spazzata della coda di ragionamento)
     # non hanno niente a che fare coi chatbot. Con l'entita' uscita per
     # intero, trova casa direttamente qui.
+    # **Nessun `timezone=` esplicito, ed e' una scelta verificata, non una
+    # dimenticanza** (cancello-rilascio-brief.md, punto 4). `AsyncIOScheduler()`
+    # senza `timezone` risolve col fuso LOCALE del sistema
+    # (`apscheduler.util.astimezone(None) or get_localzone()`, via `tzlocal`),
+    # che su Linux legge PRIMA la variabile d'ambiente `TZ`. Ne' `config.yaml`,
+    # ne' `Dockerfile`, ne' `run.sh` la impostano (cercato nei tre, nessun
+    # risultato) -- ma non serve che lo facciano: il Supervisor di Home
+    # Assistant imposta `TZ` da SOLO in OGNI container di add-on, al fuso
+    # configurato in Home Assistant (fallback: quello dell'host, poi UTC).
+    # Verificato leggendo il sorgente vero del Supervisor (non indovinato):
+    # `supervisor/docker/app.py` (`DockerApp.environment`, la property che
+    # costruisce l'ambiente Docker di OGNI add-on) scrive sempre
+    # `{ENV_TIME: self.sys_timezone}` con `ENV_TIME = "TZ"`
+    # (`supervisor/docker/const.py`), e `sys_timezone`/`CoreSys.timezone`
+    # (`supervisor/coresys.py`) e' `config.timezone` (il fuso di HA) con
+    # ripiego sul fuso dell'host e poi su `"UTC"`. Quindi in produzione (sotto
+    # il Supervisor vero, non `docker run` nudo) `TZ` c'e' sempre, e le 00:20
+    # dichiarate da pagina, README e piano sono davvero le 00:20 della casa --
+    # la stessa fonte del fuso che `archivio_casa.sistema_di_riferimento()`
+    # legge per l'aggregazione stessa (§0 sopra). Nessuna correzione: ne' al
+    # container/schedulatore (gia' corretto da chi lo ospita), ne' alle tre
+    # frasi (gia' vere). Resta vero solo FUORI dal Supervisor -- uno sviluppo
+    # locale con `docker run` nudo vedrebbe UTC -- ma quel caso non e' come
+    # l'add-on gira davvero.
     scheduler = AsyncIOScheduler()
     scheduler.start()
     app["scheduler"] = scheduler
@@ -1873,6 +2360,110 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=5,
         id="hiris_comportamento_sentinella", replace_existing=True,
         misfire_grace_time=300,
+    )
+
+    # I tre lavori periodici del cervello (fetta «l'osservatore», Task 5:
+    # docs/design/2026-08-26-l-osservatore.md).
+    #
+    # Le condizioni di sistema, ogni dieci minuti: la stessa funzione della
+    # prima lettura fatta qui sopra all'avvio, `guarda_condizioni_di_sistema`
+    # -- vedi il suo docstring per il perche' un giro si salta interamente
+    # quando una delle due letture fallisce (task-5-correzioni.md, punto
+    # A.1): un errore letto come lista vuota chiuderebbe ogni condizione
+    # aperta, che e' peggio di non saperlo.
+    #
+    # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
+    # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
+    # dieci minuti, verso l'archivio -- ma `hiris_problemi_ha` qui sopra lo
+    # interroga GIA', ogni cinque minuti, verso `app["problemi_ha"]` in RAM
+    # (che gia' porta la forma d'errore, `{"errore": ...}`, letta identica
+    # da entrambi). Non si unificano ora: la lettura diretta del cervello
+    # era mandata apposta, e legare il cervello a una cache di un altro
+    # pezzo del prodotto e' una dipendenza che oggi non serve. Ma va detto
+    # qui, o la seconda lettura sembra una svista a chi la trova dopo.
+    async def _guarda_condizioni() -> None:
+        try:
+            await guarda_condizioni_di_sistema(app, ha_client)
+        except Exception as exc:
+            logger.warning(
+                "cervello: giro delle condizioni di sistema fallito (%s: %s)",
+                type(exc).__name__, exc)
+
+    scheduler.add_job(
+        _guarda_condizioni,
+        trigger="interval", minutes=10,
+        id="hiris_cervello_condizioni", replace_existing=True,
+        misfire_grace_time=600,
+    )
+
+    # L'aggregazione notturna: costruisce gli oggetti del giorno appena
+    # finito (`cervello/oggetti.py::aggrega_giorno`). Gira alle 00:20 e non a
+    # mezzanotte: aggregare a mezzanotte esatta prenderebbe un giorno ancora
+    # aperto, e venti minuti bastano perche' gli ultimi eventi della sera
+    # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
+    # oggetto nasce mai.
+    async def _aggrega_ieri() -> None:
+        try:
+            # `fuso`/`ieri` DENTRO il try (task-5-fix-brief.md, punto 2a):
+            # `sistema_di_riferimento()` fa una query SQL non protetta, e se
+            # solleva FUORI da qui il warning contestualizzato non parte --
+            # l'eccezione finisce nel registro di apscheduler senza il
+            # prefisso «cervello:», e la notte salta in silenzio.
+            fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
+            ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
+            # I comprimari si leggono UNA volta per giornata, prima: dentro il
+            # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
+            # migliaia di richieste (Task 6, `costruisci_comprimari`).
+            da_ts, a_ts = confini_giorno(ieri, fuso)
+            soggetti = sorted({r["soggetto"] for r
+                               in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts)})
+            # Il conteggio dei falliti si ignora apposta (`_`): questo giro
+            # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
+            # il parziale, come dice il docstring di `costruisci_comprimari`.
+            mappa, _ = await costruisci_comprimari(ha_client, soggetti)
+            quanti = aggrega_giorno(
+                archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
+                comprimari=lambda s: mappa.get(s, []))
+            logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
+        except Exception as errore:
+            logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
+                           type(errore).__name__, errore)
+
+    scheduler.add_job(
+        _aggrega_ieri,
+        trigger="cron", hour=0, minute=20,
+        id="hiris_cervello_aggregazione", replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
+    # Il numero di giorni non si scrive a mano -- si deriva dalla costante
+    # dell'archivio (`cervello/archivio.CONSERVAZIONE_CAMBI_S`, 22 giorni: 21
+    # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
+    # la riga di log non puo' mentire quando la costante cambia
+    # (task-5-correzioni.md, punto C).
+    #
+    # try/except proprio (task-5-fix-brief.md, punto 3): era l'unico dei tre
+    # lavori del cervello senza una rete sua -- un guasto di SQLite alle tre
+    # di notte finiva nel registro di apscheduler senza il prefisso
+    # «cervello:», mentre i due fratelli (le condizioni, l'aggregazione) ce
+    # l'hanno gia'.
+    async def _pota_osservazioni() -> None:
+        try:
+            quanti = app["osservazioni"].pota(_time.time())
+            if quanti:
+                giorni = CONSERVAZIONE_CAMBI_S // 86400
+                logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
+                            quanti, giorni)
+        except Exception as errore:
+            logger.warning("cervello: potatura fallita (%s: %s)",
+                           type(errore).__name__, errore)
+
+    scheduler.add_job(
+        _pota_osservazioni,
+        trigger="cron", hour=3, minute=0,
+        id="hiris_cervello_potatura", replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     # Il battito dello schedulatore delle promesse (Task 7 SDD schedulatore).
@@ -2561,6 +3152,12 @@ async def _on_cleanup(app: web.Application) -> None:
     # al riavvio.
     if "costruzioni" in app:
         app["costruzioni"].close()
+    # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
+    # del cervello (`cervello/archivio.py`), costruito in `_on_startup`
+    # accanto a `app["cronaca"]`. Stessa disciplina degli archivi qui sopra:
+    # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
+    if "osservazioni" in app:
+        app["osservazioni"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di
@@ -2842,6 +3439,15 @@ def create_app() -> web.Application:
     # ne ricalcola nessun dato per conto proprio.
     from .api.handlers_casa import handle_get_nucleo
     app.router.add_get("/api/nucleo", handle_get_nucleo)
+
+    # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
+    # §7): la pagina che dice «cosa sto guardando e perche'» e mostra gli
+    # oggetti che l'aggregazione notturna ha costruito. Due GET, come
+    # /api/casa e /api/memoria qui sopra: nessuna scrittura, quindi nessun
+    # `csrf_middleware` da rispettare.
+    from .api.handlers_cervello import handle_oggetti, handle_osservate
+    app.router.add_get("/api/cervello/osservate", handle_osservate)
+    app.router.add_get("/api/cervello/oggetti", handle_oggetti)
 
     return app
 
