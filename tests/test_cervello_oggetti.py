@@ -41,6 +41,18 @@ def test_il_genere_discende_dalla_natura():
         assert isinstance(g, str)
 
 
+def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
+    """Correzione 0.1: 'guasto' resta per le condizioni di SISTEMA
+    (problema:/integrazione:, un confine netto); la gamba sicurezza ha un
+    genere proprio, 'sicurezza' -- una porta aperta con la chiave e
+    un'integrazione Sonos rotta non sono lo stesso genere di fatto."""
+    assert genere_di("lock.porta_ingresso", "sicurezza") == "sicurezza"
+    assert genere_di("problema:sonos.x", None) == "guasto"
+    assert genere_di("integrazione:abc", None) == "guasto"
+    assert "sicurezza" in GENERI
+    assert len(GENERI) == 5
+
+
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):
     archivio.annota(quando_ts=ts(15, 30), fonte="entita",
                     soggetto="climate.camera_t", da="off", a="heat")
@@ -157,22 +169,25 @@ def test_un_cambio_a_mezzanotte_appartiene_al_giorno_che_comincia(archivio):
 
 
 # -- Correzione E: il pavimento ha sei gambe, la sicurezza non e' un buco --
+# -- Correzione 0.1: la sicurezza e' un genere proprio, non piu' 'guasto' --
 
 def test_il_genere_conosce_tutte_e_sei_le_gambe():
     """Le nature risolvibili dal solo dominio -- serratura, pannello
     dell'allarme, sirena -- e i rilevatori (quando la gamba e' nota) diventano
-    un guasto: sono una minaccia, non un funzionamento normale, e hanno la
-    stessa forma di una condizione di sistema -- nate, durate, chiuse o
-    ancora aperte. Un `else` che le mandasse a vuoto sarebbe il buco che la
-    review del primo task ha gia' trovato una volta (§4 della spec)."""
-    assert genere_di("lock.porta_ingresso", "sicurezza") == "guasto"
-    assert genere_di("alarm_control_panel.casa", "sicurezza") == "guasto"
-    assert genere_di("siren.sirena_esterna", "sicurezza") == "guasto"
-    assert genere_di("binary_sensor.fumo_cucina", "sicurezza") == "guasto"
-    assert genere_di("sensor.co_soggiorno", "sicurezza") == "guasto"
+    un oggetto di sicurezza: sono una minaccia, non un funzionamento normale,
+    e hanno la stessa FORMA di una condizione di sistema -- nate, durate,
+    chiuse o ancora aperte -- ma non lo STESSO genere (0.1: una porta aperta
+    con la chiave e un'integrazione Sonos rotta non sono la stessa cosa). Un
+    `else` che le mandasse a vuoto sarebbe il buco che la review del primo
+    task ha gia' trovato una volta (§4 della spec)."""
+    assert genere_di("lock.porta_ingresso", "sicurezza") == "sicurezza"
+    assert genere_di("alarm_control_panel.casa", "sicurezza") == "sicurezza"
+    assert genere_di("siren.sirena_esterna", "sicurezza") == "sicurezza"
+    assert genere_di("binary_sensor.fumo_cucina", "sicurezza") == "sicurezza"
+    assert genere_di("sensor.co_soggiorno", "sicurezza") == "sicurezza"
 
 
-def test_una_sirena_che_suona_e_rientra_e_un_guasto(archivio):
+def test_una_sirena_che_suona_e_rientra_e_un_oggetto_di_sicurezza(archivio):
     """Lo scenario che la spec §4 chiama il buco peggiore possibile: un
     allarme che scatta e rientra deve diventare un oggetto con la sua durata,
     non sparire come sarebbe successo prima che la sesta gamba esistesse."""
@@ -182,12 +197,12 @@ def test_una_sirena_che_suona_e_rientra_e_un_guasto(archivio):
                     soggetto="siren.sirena_esterna", da="on", a="off")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
     o = archivio.oggetti(giorno=G)[0]
-    assert o["genere"] == "guasto"
+    assert o["genere"] == "sicurezza"
     assert o["inizio_ts"] == ts(3, 15)
     assert o["fine_ts"] == ts(3, 20)
 
 
-def test_una_serratura_sbloccata_e_richiusa_e_un_guasto(archivio):
+def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
     """Lock e pannello dell'allarme non usano il vocabolario on/off: qui la
     prova che «locked» chiude l'episodio esattamente come «off» lo fa per gli
     altri, e che «unlocked» lo tiene aperto."""
@@ -197,6 +212,50 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_guasto(archivio):
                     soggetto="lock.porta_ingresso", da="unlocked", a="locked")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
     o = archivio.oggetti(giorno=G)[0]
-    assert o["genere"] == "guasto"
+    assert o["genere"] == "sicurezza"
     assert o["inizio_ts"] == ts(22, 0)
     assert o["fine_ts"] == ts(22, 5)
+
+
+# -- Task 3, punto 0: il grezzo porta le tre classi che il pavimento legge --
+#
+# Prima di questa correzione, `_gamba_del_cambio` chiamava `pavimento.gamba`
+# SENZA attributi: per `sensor`/`binary_sensor` (che decidono la gamba dalla
+# classe, non dal dominio) la gamba tornava sempre `None`. Conseguenza
+# misurata: il genere `consumo` non nasceva MAI, e nemmeno un solo oggetto
+# per fumo, gas, monossido, allagamento, manomissione -- la gamba "sicurezza"
+# restava raggiungibile solo per serrature, sirene e pannello dell'allarme.
+
+def test_un_binary_sensor_di_fumo_diventa_un_oggetto_di_sicurezza(archivio):
+    """La mutazione e' non passare le classi a `gamba` dentro
+    `_gamba_del_cambio`: senza `device_class="smoke"`, `pavimento.gamba`
+    tornerebbe `None` per un `binary_sensor`, `genere_di` tornerebbe `None`, e
+    questo oggetto -- oggi impossibile -- non nascerebbe."""
+    archivio.annota(quando_ts=ts(2, 0), fonte="entita",
+                    soggetto="binary_sensor.fumo_cucina", da="off", a="on",
+                    device_class="smoke")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "sicurezza"
+    assert o["protagonista"] == "binary_sensor.fumo_cucina"
+
+
+def test_un_sensor_di_energia_diventa_un_oggetto_di_consumo(archivio):
+    """Il genere `consumo` non nasceva mai (punto 0 del mandato): stessa
+    mutazione del test gemello sul fumo, sul dominio `sensor`."""
+    archivio.annota(quando_ts=ts(2, 0), fonte="entita",
+                    soggetto="sensor.energia_casa", da=None, a="1234.5",
+                    device_class="energy")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "consumo"
+    assert o["protagonista"] == "sensor.energia_casa"
+
+
+def test_riga_senza_le_tre_colonne_non_fa_sollevare_l_aggregazione(archivio):
+    """Il grezzo gia' in casa, scritto prima di questa correzione, non porta
+    le tre classi: le colonne sono annullabili apposta perche' continui a
+    rileggersi senza far sollevare `aggrega_giorno`."""
+    archivio.annota(quando_ts=ts(2, 0), fonte="entita",
+                    soggetto="binary_sensor.fumo_cucina", da="off", a="on")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0

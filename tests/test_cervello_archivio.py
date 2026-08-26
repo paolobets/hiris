@@ -29,7 +29,33 @@ def test_un_cambio_si_rilegge_intero(archivio):
                     soggetto="climate.camera_t", da="off", a="heat")
     righe = archivio.cambi(da_ts=0.0, a_ts=ADESSO + 1)
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
-                      "soggetto": "climate.camera_t", "da": "off", "a": "heat"}]
+                      "soggetto": "climate.camera_t", "da": "off", "a": "heat",
+                      "device_class": None, "state_class": None, "source_type": None}]
+
+
+def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
+    """Il pavimento decide la gamba di `sensor`/`binary_sensor` da queste tre
+    classi (Task 3, punto 0): senza, l'aggregazione non puo' mai ricostruire
+    la gamba di un rilevatore di fumo o di un contatore di energia."""
+    archivio.annota(quando_ts=ADESSO, fonte="entita",
+                    soggetto="binary_sensor.fumo_cucina", da="off", a="on",
+                    device_class="smoke", state_class=None, source_type=None)
+    riga = archivio.cambi(da_ts=0.0, a_ts=ADESSO + 1)[0]
+    assert riga["device_class"] == "smoke"
+    assert riga["state_class"] is None
+    assert riga["source_type"] is None
+
+
+def test_annota_senza_classi_scrive_none(archivio):
+    """Le condizioni di sistema, e il grezzo scritto prima di questa
+    correzione, non portano le tre classi: devono rileggersi come `None`, non
+    far sollevare `annota`."""
+    archivio.annota(quando_ts=ADESSO, fonte="sistema",
+                    soggetto="problema:sonos.x", da=None, a="aperto")
+    riga = archivio.cambi(da_ts=0.0, a_ts=ADESSO + 1)[0]
+    assert riga["device_class"] is None
+    assert riga["state_class"] is None
+    assert riga["source_type"] is None
 
 
 def test_i_cambi_tornano_dal_PIU_VECCHIO(archivio):
@@ -209,3 +235,56 @@ def test_ENTRAMBE_le_fonti_ammesse_entrano(archivio):
     archivio.annota(quando_ts=ADESSO + 1, fonte="sistema",
                     soggetto="problema:sonos.subscriptions_failed", da=None, a="aperto")
     assert [r["fonte"] for r in archivio.cambi(da_ts=0.0, a_ts=ADESSO + 2)]         == ["entita", "sistema"]
+
+
+# -- D1: il filtro per fonte deve entrare nella query SQL -------------------
+#
+# `ricostruisci_condizioni` chiedeva TUTTI i cambi senza `limite`: col LIMIT
+# di default sopravvivono i piu' VECCHI, e sui 320.000 cambi/22gg misurati
+# (spec §9②) questo perdeva gli ultimi otto giorni. La correzione e' filtrare
+# per `fonte="sistema"` -- poche centinaia di righe -- PRIMA del LIMIT.
+
+def test_cambi_filtro_per_fonte(archivio):
+    """La mutazione e' togliere il filtro dalla query: con righe di entrambe
+    le fonti nell'archivio, `cambi(fonte="sistema")` deve tornare SOLO quelle
+    di sistema."""
+    archivio.annota(quando_ts=ADESSO, fonte="entita",
+                    soggetto="climate.camera", da="off", a="heat")
+    archivio.annota(quando_ts=ADESSO + 1, fonte="sistema",
+                    soggetto="problema:sonos.subscriptions_failed", da=None, a="aperto")
+    archivio.annota(quando_ts=ADESSO + 2, fonte="entita",
+                    soggetto="light.salotto", da="off", a="on")
+    righe = archivio.cambi(da_ts=0.0, a_ts=ADESSO + 3, fonte="sistema")
+    assert [r["soggetto"] for r in righe] == ["problema:sonos.subscriptions_failed"]
+
+
+def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
+    """Una riga scritta dallo schema v1 (senza le tre colonne di classe) deve
+    continuare a rileggersi: la migrazione aggiunge colonne, non riscrive la
+    tabella. E' la stessa garanzia gia' provata per `Cronaca`."""
+    percorso = os.path.join(str(tmp_path), "vecchio.db")
+    conn = sqlite3.connect(percorso)
+    conn.executescript(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " quando_ts REAL NOT NULL,"
+        " fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),"
+        " soggetto TEXT NOT NULL, da TEXT, a TEXT);")
+    conn.execute(
+        "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a) VALUES(?,?,?,?,?)",
+        (ADESSO, "entita", "climate.vecchio", "off", "heat"))
+    conn.commit()
+    conn.close()
+
+    a = ArchivioOsservazioni(percorso)
+    try:
+        riga = a.cambi(da_ts=0.0, a_ts=ADESSO + 1)[0]
+        assert riga["soggetto"] == "climate.vecchio"
+        assert riga["device_class"] is None
+        # E la scrittura nuova, con le classi, deve funzionare sullo stesso db.
+        a.annota(quando_ts=ADESSO + 1, fonte="entita",
+                soggetto="binary_sensor.fumo", da="off", a="on",
+                device_class="smoke")
+        riga_nuova = a.cambi(da_ts=0.0, a_ts=ADESSO + 2, soggetto="binary_sensor.fumo")[0]
+        assert riga_nuova["device_class"] == "smoke"
+    finally:
+        a.close()
