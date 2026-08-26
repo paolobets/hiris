@@ -831,11 +831,26 @@ async def costruisci_comprimari(
     **Il ritorno e' una coppia, `(mappa, falliti)`, non piu' solo `mappa`**
     (correzione del CRITICAL «il grilletto non lo preme nessuno», review de
     «l'osservatore», 26/08/2026). Il contatore dei falliti esisteva gia' --
-    serviva solo al warning qui sopra -- ma moriva dentro questa funzione:
-    nessuna `Exception` esce mai da qui (ogni ramo la contiene), quindi un
-    chiamante che decidesse «mi fermo se questa funzione solleva» non si
-    sarebbe MAI fermato in produzione. Il segnale vero e' questo numero, ed
-    e' compito del chiamante deciderne il peso:
+    serviva solo al warning qui sopra -- ma moriva dentro questa funzione: un
+    chiamante che decidesse «mi fermo se questa funzione solleva» non poteva
+    fidarsi di quel segnale da solo. Il segnale vero, per il caso ORDINARIO,
+    e' questo numero, ed e' compito del chiamante deciderne il peso:
+
+    **Cosa e' contenuto qui dentro, e cosa no** (corretto in questo stesso
+    giro, review de «l'osservatore», 26/08/2026 -- qui c'era scritto «nessuna
+    `Exception` esce mai da qui», falso). Un guasto di RETE o di Home
+    Assistant -- `HAClient.legami` che rifiuta il `tipo` o non risponde -- e'
+    contenuto per intero, sempre: e' il `try/except` qui sopra, che mette
+    `mappa[soggetto] = []` e conta un fallito. La TRADUZIONE di una risposta
+    BUONA (`_legami_leggibili`, cioe' `casa/domande.py::legami`, chiamata
+    subito dopo quel `try/except`) NON e' contenuta: e' fuori da ogni `try`
+    di questa funzione. Home Assistant vero non manda mai una chiave che non
+    porti una lista, ma nessun contratto lo impedisce a un client rotto o a
+    una versione futura -- e in quel caso una vera `Exception` (tipicamente
+    `TypeError`) esce da QUESTA funzione, non contenuta. Un chiamante che si
+    fida di «non solleva mai» per decidere se fermarsi non si fermerebbe MAI
+    per il primo guasto (serve il numero, sotto), ma si fermerebbe ancora
+    per il secondo -- i due casi non sono lo stesso rischio.
 
     **chi costruisce dal nulla (questa funzione, e chi la chiama di notte)
     tollera il parziale -- un oggetto con qualche comprimare mancante e'
@@ -1020,9 +1035,11 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     > CRITICAL correggeva.
 
     Il `try/except` attorno alla chiamata resta, come difesa in profondita'
-    contro un bug futuro che facesse sollevare `costruisci_comprimari` per
-    davvero: ma il segnale di cui questa funzione si fida e' `falliti`, non
-    l'assenza di un'eccezione.
+    contro il guasto REALE che puo' far sollevare `costruisci_comprimari` per
+    davvero -- una risposta malformata che la sua traduzione non contiene,
+    vedi il suo docstring, corretto in questo stesso giro: non e' un bug
+    futuro ipotetico -- ma il segnale di cui questa funzione si fida per il
+    caso ORDINARIO e' `falliti`, non l'assenza di un'eccezione.
 
     **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
     `costruisci_comprimari`, che legge la rete verso Home Assistant (una
@@ -1065,11 +1082,14 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     try:
         mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
     except Exception as errore:
-        # Difesa in profondita': `costruisci_comprimari` non solleva mai in
-        # produzione (contiene ogni guasto di `legami`, vedi il suo
-        # docstring) -- il vero segnale, sotto, e' `falliti`. Ma un bug
-        # futuro qui non deve poter scrivere oggetti poveri sopra oggetti
-        # ricchi solo perche' l'eccezione non era quella prevista.
+        # Difesa in profondita': un guasto di RETE o di Home Assistant e'
+        # gia' contenuto dentro `costruisci_comprimari` (mette `[]`, conta un
+        # fallito -- il vero segnale, sotto, e' `falliti`). Ma la sua
+        # TRADUZIONE (`_legami_leggibili`, dentro `costruisci_comprimari`,
+        # vedi il suo docstring) non lo e': una risposta malformata fa
+        # uscire un `TypeError` per davvero, non un bug ipotetico. Qui non
+        # deve poter scrivere oggetti poveri sopra oggetti ricchi solo
+        # perche' l'eccezione non era quella prevista.
         logger.warning(
             "cervello: comprimari non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
