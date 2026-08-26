@@ -37,27 +37,36 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # energy` (e `power`) sia per l'energia PRODOTTA da un impianto
 # fotovoltaico sia per quella PRELEVATA dalla rete -- la classe da sola non
 # separa le due direzioni, e indovinarle dal NOME del sensore ("prodotta",
-# "esportata") si romperebbe sul prossimo inverter. Su questa casa i
-# sedici sensori dell'inverter con accumulo (energia e potenza prodotta,
-# esportata, importata, autoconsumata, consumata, carica e scarica della
-# batteria) sono tutti `energy`/`power` e finiscono tutti in questa gamba
-# sola -- prima si chiamava "consumo" e "consumo" archiviava anche la
-# PRODUZIONE, una frase falsa nel dato.
+# "esportata") si romperebbe sul prossimo inverter. Su questa casa
+# l'inverter con accumulo ha 17 entita': il pavimento ne cattura 16, di cui
+# **15 finiscono in questa gamba** (energia e potenza prodotta, esportata,
+# importata, autoconsumata, consumata, carica e scarica) perche' sono tutte
+# `energy`/`power`; la sedicesima e' la percentuale di carica (`battery`) e
+# va in "buono stato". Prima questa gamba si chiamava "consumo", e
+# "consumo" archiviava anche la PRODUZIONE: una frase falsa nel dato.
 #
 # **La fonte onesta esiste**: la configurazione della dashboard Energia di
 # Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
 # dichiara quale sensore e' produzione solare, quale e' scambio con la
 # rete e quale e' batteria. **Interrogata sul vivo il 26/08/2026: su
-# questa casa e' VUOTA** (`energy_sources` non contiene niente). Finche'
-# resta vuota la distinzione non e' conoscibile, quindi questa gamba resta
-# un'unica "energia" che copre onestamente entrambe le direzioni, invece
-# di affermarne una sola.
+# questa casa E' CONFIGURATA**, con tre sorgenti --
+#   grid    -> `stat_energy_from` = ..._energia_importata_oggi
+#              `stat_energy_to`   = ..._energia_esportata_oggi
+#   solar   -> `stat_energy_from` = ..._energia_prodotta_oggi
+#   battery -> `stat_energy_from` = ..._energia_scarica_oggi (scarica)
+#              `stat_energy_to`   = ..._energia_carica_oggi  (carica)
+# **Trappola di forma, misurata:** la sorgente `grid` porta i due sensori in
+# campi SCALARI (`stat_energy_from`/`stat_energy_to`), non in liste di
+# flussi -- uno script che si aspetta liste legge una configurazione piena
+# come se fosse vuota. E' successo qui, il 26/08/2026, alla prima misura.
 #
-# **Prossimo passo dichiarato, non fatto oggi**: leggere `energy/get_prefs`
-# per separare produzione e consumo quando la dashboard di questa casa
-# sara' configurata. Scriverlo oggi sarebbe codice non verificabile sul
-# vivo -- la fonte e' vuota qui, e non si ipotizza come si comporterebbe
-# altrove.
+# **Prossimo passo dichiarato, non fatto in questa fetta**: leggere
+# `energy/get_prefs` e separare produzione, scambio con la rete e batteria.
+# La fonte c'e' ed e' verificabile sul vivo, quindi il passo e' pronto: non
+# e' stato fatto qui solo per non allargare una correzione di parole a un
+# cambio di comportamento. Finche' non c'e', questa gamba resta un'unica
+# "energia" che copre onestamente tutte le direzioni invece di affermarne
+# una sola.
 
 # La sesta gamba, aggiunta il 26/08/2026 dalla review del primo task: la
 # prima stesura non conteneva gli allarmi -- ne' fumo, ne' gas, ne'
@@ -109,8 +118,8 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
     **"Quanta energia si muove" e non "cosa consuma"** (correzione del
     26/08/2026): questa gamba cattura energia PRODOTTA e PRELEVATA nella
     stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
-    affermerebbe il contrario per meta' dei sedici sensori di un impianto
-    fotovoltaico con accumulo.
+    affermerebbe il contrario per una buona meta' dei 15 sensori che un
+    impianto fotovoltaico con accumulo porta in questa gamba.
     """
     attributi = attributi if isinstance(attributi, dict) else {}
     dominio = str(entity_id).split(".")[0]

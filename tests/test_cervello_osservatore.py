@@ -79,7 +79,7 @@ def test_una_cosa_del_pavimento_si_annota(coppia):
 
 def test_guarda_cambio_scrive_le_tre_classi_quando_ci_sono(coppia):
     """Senza le tre classi nel grezzo, `aggrega_giorno` non puo' sapere che
-    `binary_sensor.fumo_cucina` e' un rilevatore di fumo: il genere `consumo`
+    `binary_sensor.fumo_cucina` e' un rilevatore di fumo: il genere `energia`
     e la sesta gamba per classe non nascono mai (Task 3, punto 0)."""
     archivio, osservatore = coppia
     ev = _evento("binary_sensor.fumo_cucina", "off", "on",

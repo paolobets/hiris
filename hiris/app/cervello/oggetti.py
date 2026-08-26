@@ -294,9 +294,11 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     vedi `pavimento.py::_ENERGIA` per la fonte completa): il riepilogo qui
     sotto e' lo STESSO per un contatore che PRODUCE e uno che PRELEVA --
     entrambi `device_class: energy`/`power`, e la distinzione vera vive
-    nella dashboard Energia di HA (`energy/get_prefs`), oggi vuota su
-    questa casa. Il genere si chiama "energia", non "consumo" o
-    "produzione", precisamente perche' oggi non sa dire quale delle due sia.
+    nella dashboard Energia di HA (`energy/get_prefs`) -- che su questa casa
+    **e' configurata** (misurato il 26/08/2026) e che questa fetta **non
+    legge ancora**. Il genere si chiama "energia", non "consumo" o
+    "produzione", precisamente perche' qui dentro non sa dire quale delle
+    due sia.
     """
     da_ts, a_ts = confini_giorno(giorno, fuso)
     righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
@@ -424,8 +426,8 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
         # giro di review). Con un solo punto, iniziale e finale sono la
         # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non e'
         # cambiato niente" travestito da dato. **La parola resta neutra**
-        # (26/08/2026): "consumato" sarebbe falso per meta' dei sedici
-        # sensori di un impianto fotovoltaico con accumulo, che PRODUCONO.
+        # (26/08/2026): "consumato" sarebbe falso per la meta' dei sensori
+        # di un impianto fotovoltaico con accumulo, che PRODUCONO.
         differenza = _differenza(iniziale, finale) if len(punti) > 1 else None
         episodi.append({"genere": "energia", "protagonista": soggetto,
                         "inizio": punti[0][0], "fine": punti[-1][0],

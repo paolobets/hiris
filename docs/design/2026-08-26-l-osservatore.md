@@ -152,14 +152,23 @@ non separa le due direzioni, e leggerla dal nome del sensore («prodotta», «es
 questo inverter e si rompe sul prossimo. **La fonte onesta esiste**: la configurazione della
 dashboard Energia di Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
 dichiara quale sensore è produzione, quale è scambio con la rete e quale è batteria. **Interrogata
-sul vivo il 26 agosto 2026: su questa casa `energy_sources` è VUOTA** — verificato, non supposto.
+sul vivo il 26 agosto 2026: su questa casa è CONFIGURATA**, con tre sorgenti — `grid` (importata /
+esportata), `solar` (prodotta) e `battery` (carica / scarica) — tutte sull'inverter di casa.
 
-Finché resta vuota la distinzione non è conoscibile, e la correzione è **smettere di affermare il
-falso**, non inventare la verità: la gamba diventa un'unica `"energia"` — vero per tutti e sedici i
-sensori misurati sull'inverter con accumulo (prodotta, esportata, importata, autoconsumata,
-consumata, carica e scarica della batteria), produzione compresa. **Prossimo passo dichiarato, non
-fatto oggi**: leggere `energy/get_prefs` per separare le due direzioni quando la dashboard di
-questa casa sarà configurata — codice per una fonte vuota qui non sarebbe verificabile sul vivo.
+> **Una trappola di forma, misurata lo stesso giorno e a nostre spese.** La sorgente `grid` porta i
+> due sensori in campi **scalari** (`stat_energy_from` / `stat_energy_to`), non in liste di flussi.
+> Il primo script che ha interrogato quella fonte si aspettava liste, non le ha trovate, e ha
+> concluso che **la dashboard fosse vuota**. Era piena. È la regola «su Home Assistant non si
+> ipotizza» applicata a chi l'aveva appena scritta: non basta interrogare la fonte vera — bisogna
+> anche non presumere la forma della risposta.
+
+La correzione di questa fetta resta comunque **smettere di affermare il falso**, non inventare la
+verità: la gamba diventa un'unica `"energia"` — vera per tutti e 15 i sensori dell'inverter che vi
+finiscono (prodotta, esportata, importata, autoconsumata, consumata, carica e scarica; la
+percentuale di carica è `battery` e va in «buono stato»), produzione compresa. **Prossimo passo
+dichiarato, non fatto in questa fetta**: leggere `energy/get_prefs` e separare produzione, scambio
+con la rete e batteria. La fonte c'è ed è verificabile sul vivo, quindi il passo è pronto — non è
+stato fatto qui solo per non allargare una correzione di parole a un cambio di comportamento.
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
 
@@ -328,7 +337,8 @@ non legge più nessuno.
 **Debito diverso da quello dichiarato al §4** (produzione e consumo non distinguibili oggi): quello
 riguarda la GAMBA — cosa può diventare protagonista di un oggetto di energia — questo riguarda cosa
 dice il CORPO dell'oggetto una volta che lo è. Nessuno dei due si corregge indovinando: entrambi
-aspettano la stessa fonte, `energy/get_prefs`, oggi vuota su questa casa.
+aspettano la stessa fonte, `energy/get_prefs` — che su questa casa **è configurata** e che questa
+fetta non legge ancora.
 
 ### Chi sta insieme a chi
 

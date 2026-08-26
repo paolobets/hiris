@@ -246,7 +246,7 @@ dichiara Home Assistant, e da lì:
 | temperatura | minimi, massimi, medie per fascia, attraversamenti di soglia |
 | presenza | episodi dentro/fuori, con le durate |
 | termostato | episodi acceso/spento, **e cosa ha fatto la temperatura mentre era acceso** |
-| contatore | consumo del giorno e come si distribuisce |
+| contatore | l'energia del giorno e come si distribuisce — **energia**, non «consumo»: la stessa classe di HA copre ciò che si preleva e ciò che l'impianto **produce** (correzione del 26/08/2026) |
 | porta / finestra | aperture, durate, **e se qualcosa scaldava mentre era aperta** |
 
 > **L'obiettivo sceglie QUALI entità, la natura decide COME riassumerle.** Nessuna delle due è una

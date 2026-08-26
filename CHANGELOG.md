@@ -11,16 +11,22 @@ Ma li etichettava tutti **«consumo»**. «Energia *prodotta* oggi: 24 kWh» arc
 non è un'imprecisione di etichetta: è una frase falsa nel dato, e l'efficienza di una casa è
 esattamente la differenza fra ciò che produce e ciò che consuma.
 
-**La gamba e il genere si chiamano «energia»**, che è vero di tutti e sedici.
+**La gamba e il genere si chiamano «energia»**, che è vero di tutti.
 
 **Perché non si è corretto meglio, e dove sta la strada.** La tentazione era leggere i nomi —
 «prodotta», «esportata» — e sarebbe stato indovinare: funziona su questo inverter e si rompe sul
 prossimo. Home Assistant *sa* quale sensore è produzione, quale è scambio con la rete e quale è
 batteria, e lo dichiara nella configurazione della **dashboard Energia** (`energy/get_prefs`).
-**Su questa casa quella dashboard è vuota — misurato, non supposto.** Finché non sarà configurata la
-distinzione non è conoscibile, e il prodotto smette di affermarla invece di inventarla. Il grezzo
-conserva `device_class` e `state_class`: il giorno che la dashboard ci sarà, le tre settimane di
-osservazioni si riaggregano con la distinzione giusta senza perdere niente.
+**Su questa casa quella dashboard è configurata — misurato, non supposto**: `grid` (importata /
+esportata), `solar` (prodotta), `battery` (carica / scarica). Leggerla è il passo successivo, ed è
+pronto; questa versione non lo fa per non trasformare una correzione di parole in un cambio di
+comportamento. Il grezzo conserva `device_class` e `state_class`, quindi quando quel passo arriverà
+le tre settimane di osservazioni si riaggregano con la distinzione giusta senza perdere niente.
+
+*Una nota di metodo, perché è costata:* la prima interrogazione di quella fonte l'aveva dichiarata
+**vuota**. Era piena — lo script si aspettava liste di flussi, mentre la sorgente `grid` porta i due
+sensori in campi scalari. Non basta interrogare la fonte vera: bisogna anche non presumere la forma
+della risposta.
 
 **E una regola nuova**, che questo difetto ha pagato: su ogni integrazione o lettura da Home
 Assistant **non si ipotizza** — prima la documentazione ufficiale, poi le API di HA vere, e si scrive
