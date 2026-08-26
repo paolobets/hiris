@@ -113,9 +113,31 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | comfort | i sensori di temperatura e umidità, e i termostati |
 | dispersione | i sensori binari di porta, finestra e apertura, e le tapparelle |
 | consumo | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
-| buono stato | le condizioni di sistema (§6), e i sensori di batteria |
+| buono stato | le condizioni di sistema (§6), i sensori di batteria, **e gli allarmi** |
+| sicurezza | **serrature, pannello dell'allarme, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore e gelo** |
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
+
+### La sesta gamba, aggiunta il 26 agosto dalla review del primo task
+
+La prima stesura di questa spec **non conteneva gli allarmi**: né fumo, né gas, né monossido, né
+allagamento; né le serrature, né il pannello dell'allarme. Era una dimenticanza, non una scelta, e
+la review l'ha trovata guardando l'elenco vero delle classi di Home Assistant invece del mio.
+
+**Perché è il buco peggiore possibile in questa spec.** Un allarme che scatta e rientra mentre
+nessuno è in casa — una falsa partenza, un episodio risolto — dopo tre giorni non esiste più in
+Home Assistant, e dopo ventuno non esisterebbe più nemmeno qui. È esattamente lo scenario
+irreversibile che il pavimento esiste per impedire, sulla categoria di dati che conta più di tutte.
+
+**E il prodotto quel vocabolario ce l'aveva già**, verificato sulla documentazione di HA il 16
+agosto e con la trappola documentata (`carbon_monoxide`, **non** `co`):
+`casa/nucleo.py::_CLASSI_EVENTO` e `_DOMINI_EVENTO`. Sono due domande diverse — «cosa è notevole
+adesso» contro «cosa si osserva sempre» — ma **sugli allarmi le due risposte devono coincidere**, e
+non coincidevano.
+
+**Le classi di qualità dell'aria** (`carbon_dioxide`, `pm25`, `pm10`, i composti organici volatili)
+entrano in **comfort**: il docstring prometteva «che aria si respira» e la spec copriva solo
+temperatura e umidità. Anche questa era una dimenticanza.
 
 ### Tre decisioni sul perimetro, con la loro ragione
 
