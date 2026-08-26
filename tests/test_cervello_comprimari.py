@@ -17,9 +17,16 @@ rete, perche' `TIPI_LEGAME` ha i valori inglesi) e leggere `esito["legami"]`
 da una risposta che il client vero non manda mai -- **inerte in produzione,
 zero chiamate di rete utili, `mappa` sempre vuota** -- e questi cinque test
 restavano tutti verdi, perche' la finta non validava `tipo` e rispondeva
-gia' nella forma che il codice (sbagliato) si aspettava. E' l'ottava volta
-in questa fetta che una finta accetta un parametro e lo ignora.
-"""
+gia' nella forma che il codice (sbagliato) si aspettava. E' un difetto
+ricorrente di questa fetta: una finta che accetta un parametro e lo ignora.
+
+**Il ritorno e' cambiato** (correzione del CRITICAL «il grilletto non lo
+preme nessuno», 26/08/2026): `costruisci_comprimari` tornava solo `mappa`.
+Il contatore dei falliti esisteva gia' -- serviva al warning di log -- ma
+moriva dentro la funzione: il chiamante non poteva mai sapere se il giro
+era stato parziale, solo se una `Exception` era uscita (e non esce mai: la
+`legami` vera CONTIENE ogni guasto in `{"errore": ...}`, non solleva). Ora
+torna `(mappa, falliti)`: ogni test qui sotto legge la coppia."""
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
@@ -46,8 +53,9 @@ class _FintoHA:
 async def test_i_comprimari_arrivano_da_legami():
     ha = _FintoHA({"climate.camera_t": {
         "entity": ["sensor.camera_temperatura"], "area": ["camera_da_letto"]}})
-    mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
+    mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
+    assert falliti == 0
 
 
 @pytest.mark.asyncio
@@ -63,9 +71,10 @@ async def test_si_chiede_sempre_il_tipo_giusto_a_home_assistant():
     `[("entity", "climate.camera_t")]`, e la `mappa` risultante e' vuota
     (il client finto rifiuta il tipo)."""
     ha = _FintoHA({"climate.camera_t": {"entity": ["sensor.camera_temperatura"]}})
-    mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
+    mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert ha.chiesti == [("entity", "climate.camera_t")]
     assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
+    assert falliti == 0
 
 
 @pytest.mark.asyncio
@@ -76,8 +85,9 @@ async def test_aree_piani_e_dispositivi_NON_sono_comprimari():
     ha = _FintoHA({"climate.camera_t": {
         "area": ["camera"], "floor": ["terra"], "device": ["abc"],
         "integration": ["ave_domina"], "entity": ["sensor.t"]}})
-    mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
+    mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert mappa["climate.camera_t"] == ["sensor.t"]
+    assert falliti == 0
 
 
 @pytest.mark.asyncio
@@ -85,8 +95,9 @@ async def test_un_guasto_di_sistema_non_si_chiede_a_legami():
     """`problema:sonos.x` non e' un'entita' di Home Assistant: chiederlo
     produrrebbe una chiamata di rete per ogni guasto, tutte fallite."""
     ha = _FintoHA({})
-    mappa = await costruisci_comprimari(ha, ["problema:sonos.x", "integrazione:abc"])
+    mappa, falliti = await costruisci_comprimari(ha, ["problema:sonos.x", "integrazione:abc"])
     assert mappa == {}
+    assert falliti == 0
     assert ha.chiesti == []
 
 
@@ -95,13 +106,19 @@ async def test_un_guasto_di_legami_non_ferma_l_aggregazione():
     """Se `legami` non risponde si perdono i comprimari, non la giornata: un
     oggetto senza contesto e' peggio di uno completo, ma infinitamente meglio
     di nessun oggetto. Qui la finta risponde gia' nella forma vera del
-    client (`{"errore": ...}`): non serviva toccarla."""
+    client (`{"errore": ...}`): non serviva toccarla.
+
+    Il conteggio dei falliti torna al chiamante ora (era il CRITICAL: moriva
+    qui dentro): questa e' la prova diretta che `falliti` sale a 1 quando
+    QUESTA funzione -- non un mandante che ha monkeypatchato -- incontra il
+    guasto vero."""
     class _Rotto:
         async def legami(self, tipo, identificatore):
             return {"errore": "Home Assistant non ha risposto"}
 
-    mappa = await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
+    mappa, falliti = await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
     assert mappa == {"climate.camera_t": []}
+    assert falliti == 1
 
 
 @pytest.mark.asyncio
@@ -109,7 +126,13 @@ async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
     """Punto C del Critical (review de «l'osservatore», 26/08/2026): un
     guasto di lettura non e' «non c'e' niente» -- deve lasciare traccia nel
     log, non finire nello stesso `[]` di un'entita' che davvero non ha
-    comprimari, senza che nessuno se ne accorga."""
+    comprimari, senza che nessuno se ne accorga.
+
+    **Correzione del residuo 2 (grilletto-brief.md, appendice):** l'assert
+    controllava solo `startswith("cervello:")`, lo stesso schema gia'
+    corretto nel test gemello di `test_cervello_wiring.py` -- un messaggio
+    DIVERSO col prefisso giusto sarebbe passato ugualmente. Qui si legge il
+    messaggio preciso."""
     import logging
 
     class _Rotto:
@@ -119,7 +142,10 @@ async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
     with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
         await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
 
-    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+    assert any(
+        r.getMessage() == "cervello: comprimari non letti per 1 soggetti su 1 "
+                          "-- il contesto di questo giro e' parziale"
+        for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -129,3 +155,22 @@ async def test_si_chiede_una_volta_sola_per_soggetto():
     ha = _FintoHA({})
     await costruisci_comprimari(ha, ["climate.a", "climate.a", "climate.b"])
     assert len(ha.chiesti) == 2
+
+
+@pytest.mark.asyncio
+async def test_falliti_conta_solo_i_soggetti_rotti_non_tutti():
+    """Un guasto PARZIALE (un soggetto su due) deve contare 1, non 2 e non 0
+    -- e' esattamente il numero che `riaggrega_gli_ultimi_due_giorni` legge
+    per decidere se fermarsi (CRITICAL, grilletto-brief.md): se questo
+    numero fosse sbagliato in un senso o nell'altro, la riparazione
+    scriverebbe quando non deve o si fermerebbe quando potrebbe procedere."""
+    class _MistoHA:
+        async def legami(self, tipo, identificatore):
+            if identificatore == "climate.rotto":
+                return {"errore": "Home Assistant non ha risposto"}
+            return {"entity": ["sensor.buono"]}
+
+    mappa, falliti = await costruisci_comprimari(
+        _MistoHA(), ["climate.buono", "climate.rotto"])
+    assert mappa == {"climate.buono": ["sensor.buono"], "climate.rotto": []}
+    assert falliti == 1

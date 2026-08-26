@@ -532,21 +532,48 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
         archivio.close()
 
 
-def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path, monkeypatch):
+class _ClienteSempreRotto:
+    """Fedele al contratto VERO di `HAClient.legami`: un guasto di rete NON
+    solleva, torna `{"errore": ...}` -- esattamente come fa `HAClient.legami`
+    quando `_ws_batch` solleva (`proxy/ha_client.py`, contenuto in un
+    `try/except` interno). Il giro precedente su questo pezzo aveva
+    monkeypatchato `costruisci_comprimari` con una versione che SOLLEVA: una
+    finta che produce un difetto che il collaboratore vero quasi mai
+    produce (il difetto n.1 di questo progetto, rientrato dentro la sua
+    stessa correzione -- grilletto-brief.md). Questa finta non tocca
+    `costruisci_comprimari`: passa dalla catena vera."""
+
+    async def legami(self, tipo, identificatore):
+        return {"errore": "Home Assistant non ha risposto"}
+
+
+def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
     """CRITICAL, punto 2 del mandato -- **il test che conta**: e' l'unico che
     distingue «non guarisco» da «peggioro». Si semina il grezzo di ieri e
     l'altro ieri, si scrive PRIMA un oggetto ricco (con comprimari, come
-    farebbe la notte) per entrambi i giorni -- poi si fa fallire
-    `costruisci_comprimari` e si riaggrega. Gli oggetti di prima devono
-    restare ESATTAMENTE com'erano: quando i comprimari non si riescono a
-    costruire, la riparazione non deve toccare l'archivio.
+    farebbe la notte) per entrambi i giorni -- poi si riaggrega con un
+    client che risponde SEMPRE `{"errore": ...}`, non uno che solleva. Gli
+    oggetti di prima devono restare ESATTAMENTE com'erano: quando i
+    comprimari non si riescono a costruire, la riparazione non deve toccare
+    l'archivio.
 
-    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`,
-    invece di saltare quando `costruisci_comprimari` solleva, chiamare
-    comunque `aggrega_giorno(..., comprimari=None)` (lo stato precedente al
-    CRITICAL). Arrossisce: gli oggetti ricchi vengono sostituiti da oggetti
-    senza comprimari -- e' esattamente il peggioramento che il mandato
-    descrive."""
+    **Correzione del CRITICAL vero (grilletto-brief.md).** La versione
+    precedente di questo test monkeypatchava `costruisci_comprimari` per
+    farla sollevare -- ma la funzione vera CONTIENE ogni guasto di `legami`
+    (mette `[]`, conta un fallito, non rilancia mai), quindi quel ramo
+    `except` in `riaggrega_gli_ultimi_due_giorni` era irraggiungibile dal
+    collaboratore vero. Il test passava per un motivo che la produzione non
+    incontra mai. Qui si usa `_ClienteSempreRotto`, che risponde come
+    risponde Home Assistant quando non c'e' davvero, e nessun monkeypatch:
+    la catena e' quella vera, `legami` -> `costruisci_comprimari` -> il
+    contatore dei falliti che ora torna al chiamante.
+
+    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, il
+    controllo `if falliti:` sostituito con `if False:` (ignorare il
+    contatore, come prima della correzione). Arrossisce: gli oggetti ricchi
+    vengono sostituiti da oggetti senza comprimari -- `dopo != prima` --
+    esattamente il peggioramento che il mandato descrive. Ripristinato
+    subito dopo."""
     from datetime import datetime, timedelta, timezone
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
@@ -571,18 +598,114 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path, 
         archivio.sostituisci_giorno(ieri, ricco)
         prima = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
 
-        async def _costruisci_comprimari_che_fallisce(ha_client, soggetti):
-            raise RuntimeError("Home Assistant non ha risposto")
-
-        monkeypatch.setattr(server, "costruisci_comprimari",
-                            _costruisci_comprimari_che_fallisce)
-
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            {"archivio_casa": None, "osservazioni": archivio},
+            ha_client=_ClienteSempreRotto(),
             adesso=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
         assert dopo == prima
+    finally:
+        archivio.close()
+
+
+class _ClienteParzialmenteRotto:
+    """Un guasto PARZIALE: un soggetto risponde `{"errore": ...}`, gli altri
+    rispondono come Home Assistant fa davvero (chiavi inglesi, nessuna
+    busta) -- non un client tutto rotto o tutto sano."""
+
+    def __init__(self, soggetto_rotto: str):
+        self._rotto = soggetto_rotto
+
+    async def legami(self, tipo, identificatore):
+        if identificatore == self._rotto:
+            return {"errore": "Home Assistant non ha risposto"}
+        return {"entity": ["sensor.buono"]}
+
+
+def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
+    """Rilievo n.2 del referto (grilletto-brief.md): **quanto parziale e'
+    troppo, per la riparazione, e' qualunque.** Un soggetto su due fallisce,
+    l'altro riesce -- ma quel soggetto verrebbe comunque riscritto con `[]`
+    mentre la notte l'aveva letto. La riparazione deve fermarsi lo stesso,
+    non solo sul guasto totale provato sopra."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        for soggetto in ("light.buono", "light.rotto"):
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto=soggetto, da="off", a="on")
+
+        ricco = [{"genere": "funzionamento", "protagonista": "light.rotto",
+                  "inizio_ts": 0.0, "fine_ts": 1.0,
+                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
+                           "misure": {}}}]
+        archivio.sostituisci_giorno(ieri, ricco)
+        prima = archivio.oggetti(giorno=ieri)
+
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": None, "osservazioni": archivio},
+            ha_client=_ClienteParzialmenteRotto("light.rotto"),
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        assert archivio.oggetti(giorno=ieri) == prima
+    finally:
+        archivio.close()
+
+
+def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path):
+    """L'altra meta' della regola (grilletto-brief.md): **chi costruisce dal
+    nulla tollera il parziale.** Nello STESSO scenario del test sopra (un
+    soggetto su due fallisce), l'aggregazione notturna (`_aggrega_ieri`) non
+    deve fermarsi -- costruisce l'oggetto del giorno da zero, e un oggetto
+    con un comprimare mancante e' meglio di nessun oggetto. Senza questo
+    test, la correzione del CRITICAL potrebbe fermare anche la notte insieme
+    alla riparazione all'avvio -- lo stesso `if falliti:` messo nel punto
+    sbagliato lo farebbe.
+
+    `_aggrega_ieri` legge `datetime.now()` per davvero (non e' iniettabile
+    come `adesso` di `riaggrega_gli_ultimi_due_giorni`): il grezzo si semina
+    per "ieri" vero, rispetto all'orologio reale del test."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        adesso_reale = datetime.now(timezone.utc)
+        ieri = adesso_reale - timedelta(days=1)
+        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
+        for soggetto in ("light.buono", "light.rotto"):
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto=soggetto, da="off", a="on")
+
+        logger_test = logging.getLogger("test_aggrega_ieri_parziale")
+        job = _carica_funzione_innestata("_aggrega_ieri", {
+            "app": {"archivio_casa": None, "osservazioni": archivio},
+            "ha_client": _ClienteParzialmenteRotto("light.rotto"),
+            "logger": logger_test,
+            "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
+            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "confini_giorno": server.confini_giorno,
+            "costruisci_comprimari": server.costruisci_comprimari,
+            "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
+        })
+
+        asyncio.run(job())
+
+        ieri_str = ieri.strftime("%Y-%m-%d")
+        oggetti = archivio.oggetti(giorno=ieri_str)
+        assert {o["protagonista"] for o in oggetti} == {"light.buono", "light.rotto"}
+        rotto = [o for o in oggetti if o["protagonista"] == "light.rotto"][0]
+        assert rotto["corpo"]["comprimari"] == []
+        buono = [o for o in oggetti if o["protagonista"] == "light.buono"][0]
+        assert buono["corpo"]["comprimari"] == ["sensor.buono"]
     finally:
         archivio.close()
 
