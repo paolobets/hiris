@@ -84,6 +84,15 @@ vorranno un'aggregazione diversa, tre settimane di oggetti **si rifanno davvero*
 **Ventuno giorni sono tre mercoledì**, cioè l'unità dell'esempio da cui nasce tutto il cervello. È il
 periodo in cui rifare i conti serve di più, e costa poco disco.
 
+**Ma la ritenzione vera è ventidue giorni, e il ventiduesimo è una guardia.** La review dell'archivio
+il 26 agosto ha misurato che una soglia di 21×86400 secondi *non* contiene tre mercoledì interi: se la
+potatura gira alle 03:00, del giorno a −21 sopravvive solo ciò che è successo dopo le 03:00, e nel
+weekend di ottobre in cui l'ora torna indietro — un giorno da 25 ore — è **l'evento fondativo stesso**,
+il mercoledì alle 17:30, a cadere oltre la soglia. La promessa e la sua aritmetica si contraddicevano.
+Il giorno di guardia le riconcilia: la soglia resta in secondi assoluti, senza far entrare il fuso
+orario nell'archivio, e i ventuno giorni promessi ci sono **per intero** anche al bordo e anche quando
+l'ora cambia. Costa il 5% di disco su decine di megabyte.
+
 ### La condizione che regge tutto
 
 > **Nel grezzo non c'è nessun giudizio.** Il cambio si scrive così com'è: quale cosa, quando, da che
@@ -113,7 +122,7 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | comfort | i sensori di temperatura e umidità, e i termostati |
 | dispersione | i sensori binari di porta, finestra e apertura, e le tapparelle |
 | consumo | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
-| buono stato | le condizioni di sistema (§6), i sensori di batteria, **e gli allarmi** |
+| buono stato | le condizioni di sistema (§6) e i sensori di batteria |
 | sicurezza | **serrature, pannello dell'allarme, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore e gelo** |
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
