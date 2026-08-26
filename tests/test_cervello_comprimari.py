@@ -33,25 +33,62 @@ from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import costruisci_comprimari
 
 
-class _FintoHA:
-    """Valida `tipo` come fa il client vero (i valori INGLESI di
-    `HAClient.TIPI_LEGAME`) e risponde nella forma GREZZA del client --
-    chiavi inglesi, nessuna busta `{"legami": ...}`."""
+class _ClienteLegami:
+    """L'UNICA finta di `HAClient` per `legami`, importata anche da
+    `test_cervello_wiring.py`.
 
-    def __init__(self, risposte):
-        self.risposte = risposte  # identificatore -> dict grezzo (chiavi inglesi)
+    **Perche' una sola** (difesa-profondita-brief.md, punto 4). Prima ce
+    n'erano quattro, indipendenti, fra questo file e quello -- una delle
+    quali definita due volte nello stesso file -- e potevano divergere dal
+    contratto vero ciascuna per conto proprio. E' esattamente cosi' che la
+    finta infedele originale (quella che accettava `legami("entita", ...)`,
+    la chiave ITALIANA che il client vero rifiuta, e rispondeva gia' nella
+    busta tradotta `{"legami": {...}}`) e' sopravvissuta abbastanza a lungo
+    da rendere invisibile il Critical dei comprimari: nessuna delle quattro
+    copie l'avrebbe presa da sola, ma nessuna era IL posto dove correggerla
+    una volta per tutte.
+
+    Valida `tipo` come fa il client vero (i valori INGLESI di
+    `HAClient.TIPI_LEGAME`, importati -- non ricopiati) e risponde nella
+    forma GREZZA del client: chiavi inglesi, nessuna busta `{"legami": ...}`.
+
+    Costruita sui quattro esiti che `HAClient.legami` produce davvero:
+
+    - **risposta buona**: `mappa[identificatore]` un dizionario grezzo
+      (es. `{"entity": ["sensor.x"]}`);
+    - **risposta vuota**: `identificatore` assente da `mappa` (o mappato a
+      `{}`) -- "nessun legame", non un guasto. E' anche il default quando
+      non si passa `mappa`: un client che non fallisce mai e non ha niente
+      da dire, per i test che vogliono la riparazione INCONDIZIONATA
+      (nessun soggetto fallito). Deliberatamente non e' `ha_client=None`:
+      con `None`, `costruisci_comprimari` chiamerebbe `None.legami(...)`,
+      prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni
+      soggetto come fallito -- il contrario di "incondizionata";
+    - **dizionario d'errore**: `mappa[identificatore] = {"errore": ...}`, o
+      `default={"errore": ...}` per farlo rispondere cosi' a QUALUNQUE
+      identificatore senza doverli elencare tutti;
+    - **risposta malformata**: `mappa[identificatore]` un dizionario la cui
+      traduzione (`casa/domande.py::legami`, chiamata da
+      `costruisci_comprimari`) non e' contenuta -- es. `{"entity": 5}`, un
+      intero al posto della lista che Home Assistant vero manda sempre. E'
+      l'innesco del punto 1 (difesa-profondita-brief.md): fa uscire un
+      `TypeError` vero dalla catena vera, senza monkeypatch."""
+
+    def __init__(self, mappa: dict[str, dict] | None = None, *, default=None):
+        self._mappa = mappa or {}
+        self._default = {} if default is None else default
         self.chiesti = []
 
     async def legami(self, tipo, identificatore):
         self.chiesti.append((tipo, identificatore))
         if tipo not in HAClient.TIPI_LEGAME:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
-        return self.risposte.get(identificatore, {})
+        return self._mappa.get(identificatore, self._default)
 
 
 @pytest.mark.asyncio
 async def test_i_comprimari_arrivano_da_legami():
-    ha = _FintoHA({"climate.camera_t": {
+    ha = _ClienteLegami({"climate.camera_t": {
         "entity": ["sensor.camera_temperatura"], "area": ["camera_da_letto"]}})
     mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
@@ -70,7 +107,7 @@ async def test_si_chiede_sempre_il_tipo_giusto_a_home_assistant():
     perche' `ha.chiesti` torna `[("entita", "climate.camera_t")]` invece di
     `[("entity", "climate.camera_t")]`, e la `mappa` risultante e' vuota
     (il client finto rifiuta il tipo)."""
-    ha = _FintoHA({"climate.camera_t": {"entity": ["sensor.camera_temperatura"]}})
+    ha = _ClienteLegami({"climate.camera_t": {"entity": ["sensor.camera_temperatura"]}})
     mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert ha.chiesti == [("entity", "climate.camera_t")]
     assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
@@ -82,7 +119,7 @@ async def test_aree_piani_e_dispositivi_NON_sono_comprimari():
     """Un'area non e' una cosa che fa qualcosa mentre il termostato scalda:
     e' dove sta. Metterla fra i comprimari riempirebbe ogni oggetto di
     identificatori che non misurano niente."""
-    ha = _FintoHA({"climate.camera_t": {
+    ha = _ClienteLegami({"climate.camera_t": {
         "area": ["camera"], "floor": ["terra"], "device": ["abc"],
         "integration": ["ave_domina"], "entity": ["sensor.t"]}})
     mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
@@ -94,7 +131,7 @@ async def test_aree_piani_e_dispositivi_NON_sono_comprimari():
 async def test_un_guasto_di_sistema_non_si_chiede_a_legami():
     """`problema:sonos.x` non e' un'entita' di Home Assistant: chiederlo
     produrrebbe una chiamata di rete per ogni guasto, tutte fallite."""
-    ha = _FintoHA({})
+    ha = _ClienteLegami({})
     mappa, falliti = await costruisci_comprimari(ha, ["problema:sonos.x", "integrazione:abc"])
     assert mappa == {}
     assert falliti == 0
@@ -112,11 +149,8 @@ async def test_un_guasto_di_legami_non_ferma_l_aggregazione():
     qui dentro): questa e' la prova diretta che `falliti` sale a 1 quando
     QUESTA funzione -- non un mandante che ha monkeypatchato -- incontra il
     guasto vero."""
-    class _Rotto:
-        async def legami(self, tipo, identificatore):
-            return {"errore": "Home Assistant non ha risposto"}
-
-    mappa, falliti = await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
+    ha = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
+    mappa, falliti = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert mappa == {"climate.camera_t": []}
     assert falliti == 1
 
@@ -135,12 +169,9 @@ async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
     messaggio preciso."""
     import logging
 
-    class _Rotto:
-        async def legami(self, tipo, identificatore):
-            return {"errore": "Home Assistant non ha risposto"}
-
+    ha = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
     with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
-        await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
+        await costruisci_comprimari(ha, ["climate.camera_t"])
 
     assert any(
         r.getMessage() == "cervello: comprimari non letti per 1 soggetti su 1 "
@@ -152,7 +183,7 @@ async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
 async def test_si_chiede_una_volta_sola_per_soggetto():
     """L'aggregazione chiama i comprimari dentro un ciclo: una chiamata di rete
     per ogni cambio farebbe migliaia di richieste per una giornata."""
-    ha = _FintoHA({})
+    ha = _ClienteLegami({})
     await costruisci_comprimari(ha, ["climate.a", "climate.a", "climate.b"])
     assert len(ha.chiesti) == 2
 
@@ -164,13 +195,11 @@ async def test_falliti_conta_solo_i_soggetti_rotti_non_tutti():
     per decidere se fermarsi (CRITICAL, grilletto-brief.md): se questo
     numero fosse sbagliato in un senso o nell'altro, la riparazione
     scriverebbe quando non deve o si fermerebbe quando potrebbe procedere."""
-    class _MistoHA:
-        async def legami(self, tipo, identificatore):
-            if identificatore == "climate.rotto":
-                return {"errore": "Home Assistant non ha risposto"}
-            return {"entity": ["sensor.buono"]}
+    ha = _ClienteLegami({
+        "climate.buono": {"entity": ["sensor.buono"]},
+        "climate.rotto": {"errore": "Home Assistant non ha risposto"}})
 
     mappa, falliti = await costruisci_comprimari(
-        _MistoHA(), ["climate.buono", "climate.rotto"])
+        ha, ["climate.buono", "climate.rotto"])
     assert mappa == {"climate.buono": ["sensor.buono"], "climate.rotto": []}
     assert falliti == 1

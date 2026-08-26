@@ -21,6 +21,7 @@ import textwrap
 from hiris.app import server
 from hiris.app.cervello.archivio import CONSERVAZIONE_CAMBI_S
 from hiris.app.server import guarda_condizioni_di_sistema
+from tests.test_cervello_comprimari import _ClienteLegami
 
 
 # --------------------------------------------------------------------------
@@ -415,35 +416,20 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         for r in caplog.records)
 
 
-class _ClienteVuoto:
-    """Un `HAClient` finto che non fallisce mai e non ha niente da dire: ogni
-    `legami` torna un dizionario grezzo vuoto (nessun legame, non un
-    guasto) -- `costruisci_comprimari` lo traduce in `mappa[soggetto] = []`
-    con `falliti == 0`. Usato dove il test vuole la riparazione INCONDIZIONATA
-    (nessun soggetto fallito), non la sua reazione a un guasto.
-
-    **Non e' `ha_client=None`** (correzione del CRITICAL, grilletto-brief.md):
-    con `None`, `costruisci_comprimari` chiama `None.legami(...)`, prende
-    `AttributeError`, la CONTIENE (e' il suo contratto, vedi il suo
-    docstring) e conta ogni soggetto come fallito -- da quando questa
-    funzione si ferma su QUALUNQUE fallito, `ha_client=None` fermerebbe
-    SEMPRE la riparazione, non la farebbe girare incondizionata. Prima
-    della correzione il contatore non veniva letto e il test passava per
-    la ragione sbagliata."""
-
-    async def legami(self, tipo, identificatore):
-        return {}
-
-
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
     """Punto 2(b), la cura vera: all'avvio si riaggregano gli ultimi due
     giorni pieni (oggi escluso, che non e' ancora finito) -- non 'i giorni
     senza oggetti' (un giorno senza oggetti e' un esito legittimo, vedi il
     mandato). Si popola il grezzo di QUATTRO giorni, OGGI compreso, e si
     verifica che solo i due piu' recenti FRA I FINITI vengano scritti come
-    oggetti. Qui `ha_client=_ClienteVuoto()`: nessun soggetto fallisce
-    (vedi il suo docstring sul perche' non e' `None`), quindi la
-    riparazione gira per intero come se fosse incondizionata.
+    oggetti. Qui `ha_client=_ClienteLegami()`: senza `mappa`, ogni `legami`
+    torna vuoto (nessun legame, non un guasto -- vedi il suo docstring),
+    quindi nessun soggetto fallisce e la riparazione gira per intero come se
+    fosse incondizionata. Deliberatamente non e' `ha_client=None`: con
+    `None`, `costruisci_comprimari` chiamerebbe `None.legami(...)`,
+    prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni soggetto
+    come fallito -- il contrario di "incondizionata" (correzione del
+    CRITICAL, grilletto-brief.md).
 
     Il giorno di oggi va seminato per davvero (cablaggio-pulizia-brief.md,
     punto 1: sesta ricomparsa del difetto n.1) -- prima di questa riga il
@@ -471,7 +457,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
                             soggetto=f"light.{soggetto}", da="off", a="on")
 
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteVuoto(),
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteLegami(),
             adesso=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in archivio.oggetti(limite=10)}
@@ -484,36 +470,11 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # Idempotente (`sostituisci_giorno`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteVuoto(),
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteLegami(),
             adesso=lambda tz: oggi.astimezone(tz)))
         assert len(archivio.oggetti(limite=10)) == 2
     finally:
         archivio.close()
-
-
-class _ClienteLegami:
-    """HAClient finto per `costruisci_comprimari`, **fedele al contratto
-    vero** di `HAClient.legami` (`proxy/ha_client.py`) -- non a come lo
-    descriveva il mandato originale del Task 6. E' la correzione al Critical
-    trovato dalla review de «l'osservatore» (26/08/2026): la finta di prima
-    accettava `legami("entita", ...)` e rispondeva con la busta
-    `{"legami": {...}}` che e' la forma di `casa/domande.py::legami` (lo
-    strato TRADOTTO), non quella del client -- e per questo non avrebbe MAI
-    potuto arrossire, nemmeno con `costruisci_comprimari` completamente
-    inerte in produzione. Questa finta valida `tipo` contro i VERI valori di
-    `HAClient.TIPI_LEGAME` (importati, non ricopiati -- una terza tabella
-    sarebbe il doppione che questo progetto insegue da stanotte) e risponde
-    nella forma grezza del client: chiavi inglesi, nessuna busta."""
-
-    def __init__(self, mappa: dict[str, dict[str, list[str]]]):
-        # soggetto -> {tipo_inglese: [identificatori]}, come la manda HA.
-        self._mappa = mappa
-
-    async def legami(self, tipo, identificatore):
-        from hiris.app.proxy.ha_client import HAClient
-        if tipo not in HAClient.TIPI_LEGAME:
-            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
-        return dict(self._mappa.get(identificatore, {}))
 
 
 def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
@@ -551,21 +512,6 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
         archivio.close()
 
 
-class _ClienteSempreRotto:
-    """Fedele al contratto VERO di `HAClient.legami`: un guasto di rete NON
-    solleva, torna `{"errore": ...}` -- esattamente come fa `HAClient.legami`
-    quando `_ws_batch` solleva (`proxy/ha_client.py`, contenuto in un
-    `try/except` interno). Il giro precedente su questo pezzo aveva
-    monkeypatchato `costruisci_comprimari` con una versione che SOLLEVA: una
-    finta che produce un difetto che il collaboratore vero quasi mai
-    produce (il difetto n.1 di questo progetto, rientrato dentro la sua
-    stessa correzione -- grilletto-brief.md). Questa finta non tocca
-    `costruisci_comprimari`: passa dalla catena vera."""
-
-    async def legami(self, tipo, identificatore):
-        return {"errore": "Home Assistant non ha risposto"}
-
-
 def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
     """CRITICAL, punto 2 del mandato -- **il test che conta**: e' l'unico che
     distingue «non guarisco» da «peggioro». Si semina il grezzo di ieri e
@@ -582,10 +528,11 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
     (mette `[]`, conta un fallito, non rilancia mai), quindi quel ramo
     `except` in `riaggrega_gli_ultimi_due_giorni` era irraggiungibile dal
     collaboratore vero. Il test passava per un motivo che la produzione non
-    incontra mai. Qui si usa `_ClienteSempreRotto`, che risponde come
-    risponde Home Assistant quando non c'e' davvero, e nessun monkeypatch:
-    la catena e' quella vera, `legami` -> `costruisci_comprimari` -> il
-    contatore dei falliti che ora torna al chiamante.
+    incontra mai. Qui si usa `_ClienteLegami(default={"errore": ...})`, che
+    risponde come risponde Home Assistant quando non c'e' davvero per
+    QUALUNQUE soggetto, e nessun monkeypatch: la catena e' quella vera,
+    `legami` -> `costruisci_comprimari` -> il contatore dei falliti che ora
+    torna al chiamante.
 
     Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, il
     controllo `if falliti:` sostituito con `if False:` (ignorare il
@@ -619,7 +566,7 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
 
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
             {"archivio_casa": None, "osservazioni": archivio},
-            ha_client=_ClienteSempreRotto(),
+            ha_client=_ClienteLegami(default={"errore": "Home Assistant non ha risposto"}),
             adesso=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
@@ -628,18 +575,73 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
         archivio.close()
 
 
-class _ClienteParzialmenteRotto:
-    """Un guasto PARZIALE: un soggetto risponde `{"errore": ...}`, gli altri
-    rispondono come Home Assistant fa davvero (chiavi inglesi, nessuna
-    busta) -- non un client tutto rotto o tutto sano."""
+def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, caplog):
+    """Punto 1 (difesa-profondita-brief.md): il ramo protettivo di «difesa in
+    profondita'» attorno alla chiamata a `costruisci_comprimari`, dentro
+    `riaggrega_gli_ultimi_due_giorni`, non lo sorvegliava nessun test. Una
+    mutazione che lo facesse proseguire con `mappa` vuota e `falliti == 0` --
+    esattamente il peggioramento che il ramo esiste per impedire -- restava
+    verde in tutta la suite.
 
-    def __init__(self, soggetto_rotto: str):
-        self._rotto = soggetto_rotto
+    **L'innesco e' producibile SENZA monkeypatch.** Un client che risponde
+    `{"entity": 5}` -- un intero al posto della lista che Home Assistant
+    manda sempre -- fa uscire un `TypeError` VERO dalla catena vera: non da
+    `costruisci_comprimari` (che CONTIENE solo il guasto di `HAClient.legami`
+    stesso, non la forma della sua risposta buona), ma da
+    `casa/domande.py::legami` (`_legami_leggibili`, chiamata da
+    `costruisci_comprimari` FUORI dal suo `try/except` interno): `list(5)`
+    solleva mentre traduce le chiavi. E' il controesempio del punto 2: la
+    frase «nessuna `Exception` esce mai da qui» era falsa esattamente per
+    questo caso, corretta in questo stesso giro.
 
-    async def legami(self, tipo, identificatore):
-        if identificatore == self._rotto:
-            return {"errore": "Home Assistant non ha risposto"}
-        return {"entity": ["sensor.buono"]}
+    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, il
+    blocco `except Exception as errore: logger.warning(...); return`
+    sostituito con `except Exception: mappa, falliti = {}, 0` (proseguire con
+    la mappa vuota invece di fermarsi, come se il guasto non fosse successo).
+    Arrossisce su entrambi gli assert: l'oggetto ricco viene sostituito da un
+    oggetto senza comprimari (`dopo != prima`), e il messaggio atteso non
+    compare piu' nel log. Ripristinato subito dopo."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="light.principale", da="off", a="on")
+
+        # Il "gia' fatto dalla notte": un oggetto CON comprimari, per
+        # entrambi i giorni bersaglio.
+        ricco = [{"genere": "funzionamento", "protagonista": "light.principale",
+                  "inizio_ts": 0.0, "fine_ts": 1.0,
+                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
+                           "misure": {}}}]
+        archivio.sostituisci_giorno(l_altro_ieri, ricco)
+        archivio.sostituisci_giorno(ieri, ricco)
+        prima = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+
+        # La risposta MALFORMATA: un intero al posto della lista.
+        cliente = _ClienteLegami({"light.principale": {"entity": 5}})
+        with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+            asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+                {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+                adesso=lambda tz: oggi.astimezone(tz)))
+
+        dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+        assert dopo == prima
+
+        assert any(
+            r.getMessage() == "cervello: comprimari non costruiti, riparazione "
+                              "all'avvio saltata -- si riprova al prossimo riavvio "
+                              "(TypeError: 'int' object is not iterable)"
+            for r in caplog.records)
+    finally:
+        archivio.close()
 
 
 def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
@@ -668,12 +670,56 @@ def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
         archivio.sostituisci_giorno(ieri, ricco)
         prima = archivio.oggetti(giorno=ieri)
 
+        cliente = _ClienteLegami({
+            "light.rotto": {"errore": "Home Assistant non ha risposto"},
+            "light.buono": {"entity": ["sensor.buono"]}})
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
             {"archivio_casa": None, "osservazioni": archivio},
-            ha_client=_ClienteParzialmenteRotto("light.rotto"),
+            ha_client=cliente,
             adesso=lambda tz: oggi.astimezone(tz)))
 
         assert archivio.oggetti(giorno=ieri) == prima
+    finally:
+        archivio.close()
+
+
+def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
+    """Punto 3 (difesa-profondita-brief.md): il warning che avvisa che la
+    riparazione e' stata saltata per `falliti` (non per un'eccezione: quello
+    e' il test gemello sopra) e' l'unica traccia visibile all'operatore di un
+    mancato recupero -- storpiarlo lascerebbe tutto verde, e nessun test in
+    tutta la codebase lo asserisce ancora sul testo preciso. Stesso schema
+    gia' chiuso per `_aggrega_ieri` (vedi il test omonimo piu' sopra, che
+    assertava solo `startswith` prima della sua correzione): chiuderlo su un
+    messaggio e lasciarlo aperto sul suo gemello sarebbe la fondamenta della
+    consistenza, rotta fra due righe vicine.
+
+    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, tolte
+    le parole "per intero" dal testo del warning nel ramo `if falliti:`.
+    Arrossisce: nessun record col testo atteso in `caplog`. Ripristinato
+    subito dopo."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="light.rotto", da="off", a="on")
+
+        cliente = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
+        with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+            asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+                {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+                adesso=lambda tz: oggi.astimezone(tz)))
+
+        assert any(
+            r.getMessage() == "cervello: comprimari parziali (1 falliti), "
+                              "riparazione all'avvio saltata per intero -- "
+                              "si riprova al prossimo riavvio"
+            for r in caplog.records)
     finally:
         archivio.close()
 
@@ -705,9 +751,12 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
                             soggetto=soggetto, da="off", a="on")
 
         logger_test = logging.getLogger("test_aggrega_ieri_parziale")
+        cliente = _ClienteLegami({
+            "light.rotto": {"errore": "Home Assistant non ha risposto"},
+            "light.buono": {"entity": ["sensor.buono"]}})
         job = _carica_funzione_innestata("_aggrega_ieri", {
             "app": {"archivio_casa": None, "osservazioni": archivio},
-            "ha_client": _ClienteParzialmenteRotto("light.rotto"),
+            "ha_client": cliente,
             "logger": logger_test,
             "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
             "timedelta": server.timedelta, "zona_casa": server.zona_casa,
