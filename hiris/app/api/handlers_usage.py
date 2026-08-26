@@ -128,9 +128,15 @@ async def handle_usage(request: web.Request) -> web.Response:
     # sembrerebbe una perdita di dati invece di un cambio di rappresentazione.
     ingresso = (totali["token_in"] + totali["cache_lettura"]
                 + totali["cache_scrittura"])
-    fuso = (request.app.get("fuso_casa")
-            or ((request.app.get("archivio_casa").sistema_di_riferimento() or {})
-                .get("fuso", "") if request.app.get("archivio_casa") else ""))
+    # L'aiutante di `server.py` -- import locale per evitare il ciclo:
+    # `server` importa GIA' `handle_usage` da questo modulo (riparazione-
+    # impoverisce-brief.md, appendice punto 6). Prima di questa riga c'era
+    # una quarta copia a mano della stessa domanda («dov'e' il fuso della
+    # casa?»), con in piu' un primo ramo morto (`app["fuso_casa"]`, appendice
+    # punto 7): nessun codice di produzione scriveva quella chiave, la
+    # riempiva solo la finta di un test -- vedi `tests/test_consumi_rotte.py`.
+    from ..server import _fuso_da_archivio_casa
+    fuso = _fuso_da_archivio_casa(request.app.get("archivio_casa")) or ""
 
     return web.json_response({
         "misurata": True,

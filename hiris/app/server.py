@@ -41,6 +41,8 @@ from .schedulatore.archivio import ArchivioPromesse
 from .schedulatore.orologio import Orologio
 from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
+from .casa.domande import TIPO_LEGAME_HA
+from .casa.domande import legami as _legami_leggibili
 from .casa.tempo import zona_casa
 from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
 from .cervello.oggetti import aggrega_giorno, confini_giorno
@@ -798,47 +800,114 @@ async def costruisci_comprimari(ha_client, soggetti: list[str]) -> dict[str, lis
     lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
     un sistema solo, e solo `legami` lo sa dire.
 
-    Un guasto di `legami` costa i comprimari, non la giornata: un oggetto
-    senza contesto e' peggio di uno completo e infinitamente meglio di
-    nessun oggetto.
+    **Il contratto vero di `HAClient.legami`, non quello immaginato**
+    (correzione trovata dalla review de «l'osservatore», 26/08/2026 --
+    prima di questa correzione questa funzione era INERTE in produzione:
+    zero chiamate di rete, `mappa` sempre vuota, e nessuna riga di log lo
+    diceva). `HAClient.legami(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
+    contro `TIPI_LEGAME`, che ha i valori INGLESI di Home Assistant
+    (`"entity"`, non `"entita"`); un tipo che non riconosce lo rifiuta con
+    `{"errore": ...}` **prima di toccare la rete**. E la risposta buona non
+    porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
+    `search/related`, a chiavi inglesi (`"entity"`, `"automation"`, ...). La
+    traduzione -- tipo in ingresso, chiavi in uscita -- e' un fatto gia'
+    codificato altrove (`casa/domande.py::NOME_LEGAME`/`TIPO_LEGAME_HA`, e la
+    funzione pura `casa/domande.py::legami` che la applica): si usano quelle,
+    non se ne scrive una terza copia -- sarebbe il doppione che questo
+    progetto insegue da una notte intera.
+
+    **Un guasto di `legami`, per un soggetto, costa i comprimari di QUEL
+    soggetto, non la giornata**: `mappa[soggetto] = []`, e si prosegue con
+    gli altri. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
+    (`casa/domande.py::legami`, stessa regola), e chi rilegge il log deve
+    poter distinguere «questa entita' non ha comprimari» da «non si e'
+    potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
+    88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
+    fallito, e' la stessa disciplina di `guarda_condizioni_di_sistema` qui
+    sopra.
     """
     mappa: dict[str, list[str]] = {}
+    falliti = 0
+    tipo_ha = TIPO_LEGAME_HA["entita"]  # sempre "entity": i soggetti che
+    # arrivano qui sono protagonisti di oggetti, cioe' entita' di Home
+    # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
+    # `search/related` sa collegare.
     for soggetto in soggetti:
         if soggetto in mappa or "." not in soggetto or soggetto.startswith(
                 ("problema:", "integrazione:")):
             continue
         try:
-            esito = await ha_client.legami("entita", soggetto)
+            grezzo = await ha_client.legami(tipo_ha, soggetto)
         except Exception as errore:
-            logger.debug("comprimari di %s non letti (%s)", soggetto, errore)
-            esito = {"errore": "non letto"}
-        legami = (esito or {}).get("legami") or {}
+            logger.debug("cervello: comprimari di %s non letti (%s: %s)",
+                        soggetto, type(errore).__name__, errore)
+            mappa[soggetto] = []
+            falliti += 1
+            continue
+        esito = _legami_leggibili(grezzo, "entita", soggetto)
+        if "errore" in esito:
+            logger.debug("cervello: comprimari di %s non letti (%s)",
+                        soggetto, esito["errore"])
+            mappa[soggetto] = []
+            falliti += 1
+            continue
+        legami = esito.get("legami") or {}
         insieme: list[str] = []
         for tipo in _LEGAMI_COMPRIMARI:
             for altro in legami.get(tipo) or []:
                 if isinstance(altro, str) and altro != soggetto and altro not in insieme:
                     insieme.append(altro)
         mappa[soggetto] = insieme
+    if falliti:
+        logger.warning(
+            "cervello: comprimari non letti per %d soggetti su %d -- il "
+            "contesto di questo giro e' parziale", falliti, len(mappa))
     return mappa
 
 
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     """Il fuso della casa, letto da `sistema_di_riferimento()` -- `None` se
     `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
-    costruisce). Un aiutante solo per una domanda che questo file faceva in
-    TRE punti (cablaggio-pulizia-brief.md, punto 4): `riaggrega_gli_ultimi_
-    due_giorni` qui sotto, `_aggrega_ieri` e la costruzione di
-    `ArchivioConsumi`, tutte e tre dentro `_on_startup`. Tre risposte alla
-    stessa domanda possono divergere, e la prima a divergere e' quella che
-    nessuno guarda.
+    costruisce).
+
+    Un aiutante per una domanda che il codice faceva ripetendo la stessa
+    lettura in piu' punti (cablaggio-pulizia-brief.md, punto 4). **Il
+    conteggio di quanti e' stato sbagliato per DIFETTO tre volte in questo
+    progetto** -- qui e' la terza correzione (riparazione-impoverisce-
+    brief.md, appendice punti 5 e 6): prima si contavano "tre punti, tutte e
+    tre dentro `_on_startup`", frase in parte falsa (sotto); poi la caccia
+    attiva ne ha trovata una quarta viva altrove. Chi conta la prossima
+    volta riparta da questo elenco, verificato con una ricerca su tutto
+    `hiris/`, non da un ricordo:
+
+    - `_aggrega_ieri` e la costruzione di `ArchivioConsumi` (il `lambda`
+      passato a `leggi_fuso`) leggono il fuso DAVVERO dentro `_on_startup`
+      -- sono scritte li', a livello di codice, non solo chiamate da li';
+    - `riaggrega_gli_ultimi_due_giorni`, qui sotto, e' una funzione a se':
+      solo la sua CHIAMATA sta dentro `_on_startup`, il corpo che legge il
+      fuso no. La frase che c'era prima diceva «tutte e tre dentro
+      `_on_startup`» senza questa distinzione, ed era falsa per questo caso;
+    - `handle_usage` (`api/handlers_usage.py`) e' la quarta: gira a ogni
+      `GET /api/usage`, mai dentro `_on_startup`. Prima di usare questo
+      aiutante leggeva `app["fuso_casa"]` per prima cosa -- una chiave che
+      nessun codice di produzione popolava (riparazione-impoverisce-
+      brief.md, appendice punto 7): il ramo e' uscito insieme alla chiave.
+
+    **Una quinta lettura resta fuori, deliberatamente**: `casa/
+    strumenti.py::_fuso` (il campo dichiarativo di una promessa) ha un
+    docstring suo che dice perche' non si unifica qui. Non toccarla senza
+    leggerlo prima.
     """
     return archivio_casa.sistema_di_riferimento().get("fuso") if archivio_casa else None
 
 
-def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
-    """All'avvio, riaggrega **incondizionatamente** i due giorni pieni piu'
-    recenti (oggi escluso: non e' ancora finito). Non torna niente: chi la
-    chiama vuole solo l'effetto, o il fallimento.
+async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
+    """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
+    non e' ancora finito) **con gli stessi comprimari che costruirebbe
+    l'aggregazione notturna** -- non piu' senza. Non torna niente: chi la
+    chiama vuole solo l'effetto, o il fallimento. Se i comprimari non si
+    riescono a costruire la riparazione si salta per intero (vedi piu'
+    sotto): non e' piu' incondizionata.
 
     **La cura vera al buco del punto 2 (task-5-fix-brief.md).** `_aggrega_
     ieri`, qui sotto, aggrega **solo** «ieri», ogni notte alle 00:20. Se
@@ -879,30 +948,80 @@ def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> N
     due erano sicuri e venti no: senza questa riga l'allargamento
     sembrerebbe innocuo.
 
-    **Chi la chiama la mette DOPO la ricostruzione delle condizioni e in un
-    try/except che non blocca l'avvio** (in `_on_startup`, subito sotto): un
-    cervello che non parte perche' non e' riuscito a rifare l'altro ieri
-    sarebbe peggio del buco che questa funzione chiude. Qui dentro
-    l'eccezione **si lascia propagare**: e' il chiamante a decidere se e
-    come contenerla, come per `guarda_condizioni_di_sistema` qui sopra.
+    **SOSTITUISCE, quindi non deve mai produrre meno di quello che trova**
+    (CRITICAL trovato dalla review de «l'osservatore», 26/08/2026 --
+    riparazione-impoverisce-brief.md). La prima stesura di questa funzione
+    chiamava `aggrega_giorno(..., comprimari=None)` col ragionamento che «un
+    oggetto senza comprimari e' comunque infinitamente meglio di nessun
+    oggetto» -- vero quando l'oggetto NON C'E'. E' falso qui: l'aggregazione
+    notturna, la notte prima, ha gia' costruito quel giorno CON i comprimari,
+    e questa funzione lo SOSTITUISCE, non lo aggiunge. Rimpiazzare un oggetto
+    ricco con uno povero a ogni riavvio dell'add-on -- che succede a ogni
+    aggiornamento -- e' un danno, non una riparazione: e' esattamente lo
+    scenario che il paragrafo qui sopra («SOSTITUISCE, non puo' distruggere
+    comprensione») credeva impossibile, assumendo che le due strade
+    producessero lo stesso risultato. Da quando la notte costruisce i
+    comprimari e questa funzione no, non lo producono piu'.
+
+    **Se i comprimari non si riescono a costruire, la riparazione si salta
+    per intero -- non si scrive niente, ne' per l'altro ieri ne' per ieri.**
+    La scelta non e' «riaggrego senza»: sostituire oggetti ricchi con oggetti
+    poveri e' un danno, mentre non ripararli e' solo un'attesa fino al
+    prossimo riavvio. Stessa regola gia' presa per il giro delle condizioni
+    di sistema (`guarda_condizioni_di_sistema`, qui sopra): **meglio un buco
+    nella storia che una bugia nella storia.**
+
+    **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
+    `costruisci_comprimari`, che legge la rete verso Home Assistant (una
+    `legami` per soggetto): va attesa. Qui c'era scritto che questa
+    riparazione «gira SINCRONA, prima ancora che l'event loop dell'add-on sia
+    in piedi per davvero» -- non era vero: il chiamante e' `_on_startup`, una
+    coroutine di avvio di aiohttp, e quando gira l'event loop c'e' ed e' in
+    esecuzione. La sincronia era un vincolo dei TEST di questa funzione (non
+    passavano da `asyncio.run`), non della produzione, ed e' stata scambiata
+    per un vincolo tecnico -- ed e' la ragione per cui il difetto sopra e'
+    nato: se costruire i comprimari fosse stato davvero impossibile qui,
+    ometterli sarebbe sembrata l'unica scelta. Non lo e': basta attenderla,
+    come fa gia' `_aggrega_ieri` qui sotto.
+
+    **Chi la chiama la mette DOPO la ricostruzione delle condizioni, la
+    attende, e la mette in un try/except che non blocca l'avvio** (in
+    `_on_startup`, subito sotto): un cervello che non parte perche' non e'
+    riuscito a rifare l'altro ieri sarebbe peggio del buco che questa
+    funzione chiude. Qui dentro l'eccezione **si lascia propagare** (tranne
+    quella di `costruisci_comprimari`, contenuta sopra apposta): e' il
+    chiamante a decidere se e come contenerla, come per
+    `guarda_condizioni_di_sistema` qui sopra.
 
     `adesso` e' iniettabile per i test, come `Osservatore.__init__`: nella
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
-    # Nessun comprimare qui (Task 6): `costruisci_comprimari` legge la rete
-    # verso Home Assistant, e questa riparazione gira SINCRONA, prima ancora
-    # che l'event loop dell'add-on sia in piedi per davvero. La riaggregazione
-    # notturna (`_aggrega_ieri`, sotto) e' l'unica che li costruisce -- questa
-    # ripara il giorno, non il contesto: un oggetto senza comprimari e'
-    # comunque infinitamente meglio di nessun oggetto.
     fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
     oggi = adesso(zona_casa(fuso)).date()
-    for delta in (2, 1):
-        giorno = (oggi - timedelta(days=delta)).strftime("%Y-%m-%d")
+    giorni = [(oggi - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
+
+    # I comprimari si leggono UNA volta per i due giorni insieme, come fa
+    # `_aggrega_ieri` per uno solo (Task 6, `costruisci_comprimari`): una
+    # chiamata di rete per cambio farebbe migliaia di richieste.
+    soggetti: set[str] = set()
+    for giorno in giorni:
+        da_ts, a_ts = confini_giorno(giorno, fuso)
+        soggetti.update(r["soggetto"] for r
+                        in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts))
+    try:
+        mappa = await costruisci_comprimari(ha_client, sorted(soggetti))
+    except Exception as errore:
+        logger.warning(
+            "cervello: comprimari non costruiti, riparazione all'avvio "
+            "saltata -- si riprova al prossimo riavvio (%s: %s)",
+            type(errore).__name__, errore)
+        return
+
+    for giorno in giorni:
         quanti = aggrega_giorno(
             archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
-            comprimari=None)
+            comprimari=lambda s, mappa=mappa: mappa.get(s, []))
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             quanti, giorno)
@@ -1386,15 +1505,16 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(
             "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
 
-    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega
-    # INCONDIZIONATAMENTE gli ultimi due giorni pieni -- vedi il docstring di
-    # `riaggrega_gli_ultimi_due_giorni` per il perche' di "due" e non "i
-    # giorni senza oggetti". DOPO la ricostruzione delle condizioni qui
-    # sopra, e in un try/except che non deve bloccare l'avvio: un cervello
-    # che non riparte perche' non e' riuscito a rifare l'altro ieri sarebbe
-    # peggio del buco che sta chiudendo.
+    # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
+    # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
+    # -- vedi il docstring di `riaggrega_gli_ultimi_due_giorni` per il perche'
+    # di "due" e non "i giorni senza oggetti", e per quando si salta per
+    # intero invece di scrivere oggetti impoveriti. DOPO la ricostruzione
+    # delle condizioni qui sopra, attesa, e in un try/except che non deve
+    # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
+    # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
     try:
-        riaggrega_gli_ultimi_due_giorni(app, ha_client)
+        await riaggrega_gli_ultimi_due_giorni(app, ha_client)
     except Exception as exc:
         logger.warning(
             "cervello: riaggregazione degli ultimi due giorni all'avvio "
