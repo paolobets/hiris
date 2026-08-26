@@ -18,8 +18,8 @@ from hiris.app.cervello.pavimento import GAMBE, gamba, nel_pavimento
     ("climate.camera_t", {}, "comfort"),
     ("binary_sensor.porta_ingresso", {"device_class": "door"}, "dispersione"),
     ("cover.tapparella_studio", {}, "dispersione"),
-    ("sensor.presa_energia", {"device_class": "energy"}, "consumo"),
-    ("sensor.contatore", {"state_class": "total_increasing"}, "consumo"),
+    ("sensor.presa_energia", {"device_class": "energy"}, "energia"),
+    ("sensor.contatore", {"state_class": "total_increasing"}, "energia"),
     ("sensor.iphone_batteria", {"device_class": "battery"}, "buono stato"),
     ("lock.porta_ingresso", {}, "sicurezza"),
     ("alarm_control_panel.centrale", {}, "sicurezza"),
@@ -107,11 +107,11 @@ def test_la_sesta_gamba_sicurezza(eid, attributi, atteso):
 
 def test_la_trappola_del_gas_due_gambe_per_lo_stesso_nome_di_classe():
     """`gas` vive in due gambe a seconda del DOMINIO, non della classe da
-    sola: `sensor` con classe `gas` e' il contatore dei metri cubi (consumo),
+    sola: `sensor` con classe `gas` e' il contatore dei metri cubi (energia),
     `binary_sensor` con classe `gas` e' il rilevatore di fuga (sicurezza). Il
     ramo per dominio le separa gia'; un controllo per sola classe le
     fonderebbe."""
-    assert gamba("sensor.contatore_gas", {"device_class": "gas"}) == "consumo"
+    assert gamba("sensor.contatore_gas", {"device_class": "gas"}) == "energia"
     assert gamba("binary_sensor.fuga_gas", {"device_class": "gas"}) == "sicurezza"
 
 

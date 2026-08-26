@@ -487,11 +487,11 @@ test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il conte
 // (rilievo 9: la resa era priva di qualunque test)
 // ---------------------------------------------------------------------------
 
-test('seam _rendiOggetti: un consumo mostra da/a e la differenza col segno', () => {
+test('seam _rendiOggetti: un oggetto di energia mostra da/a e la differenza col segno', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
-    id: 1, genere: 'consumo', protagonista: 'sensor.energia_forno',
+    id: 1, genere: 'energia', protagonista: 'sensor.energia_forno',
     inizio_ts: 1755270600, fine_ts: 1755277500,
     corpo: { valore_iniziale: 12.5, valore_finale: 15.0, differenza: 2.5 },
   }], null);
@@ -499,11 +499,11 @@ test('seam _rendiOggetti: un consumo mostra da/a e la differenza col segno', () 
   assert.match(corpo.textContent, /\+2\.5/);
 });
 
-test('seam _rendiOggetti: un consumo con differenza non calcolabile lo dichiara, mai un NaN silenzioso', () => {
+test('seam _rendiOggetti: un oggetto di energia con differenza non calcolabile lo dichiara, mai un NaN silenzioso', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
-    id: 1, genere: 'consumo', protagonista: 'sensor.contatore',
+    id: 1, genere: 'energia', protagonista: 'sensor.contatore',
     inizio_ts: 1, fine_ts: 2,
     corpo: { valore_iniziale: 5, valore_finale: 'unavailable', differenza: null },
   }], null);
