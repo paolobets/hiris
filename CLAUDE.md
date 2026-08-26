@@ -290,6 +290,36 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
 - Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
 
+### Cosa rende buono un test (affinamento del 26 agosto)
+
+Il difetto n.1 di questo progetto e' «i test che non possono fallire», e la disciplina che lo
+contrasta e' **prima il test rosso, poi il codice**. Ma la regola nasconde la sua stessa ragione, e
+serve dirla per intero perche' altrimenti si applica dove non serve e si salta dove serve:
+
+> **Il valore di un test non e' il rosso storico: e' il suo potere discriminante.** L'evidenza che
+> serve e' che **esista uno stato difettoso plausibile del programma sotto cui quel test fallisce, e
+> che quello stato sia stato prodotto e osservato.**
+
+Il rosso del TDD e' solo **il modo piu' comodo** di ottenere quell'evidenza quando il difetto c'e'
+gia'. Quando il codice e' gia' giusto e manca soltanto la sorveglianza, la **mutazione eseguita** e'
+la stessa evidenza fabbricata a comando — e a volte e' piu' forte del rosso naturale, perche' la
+mutazione si sceglie: si rompe **il peggioramento semantico esatto** invece di un guasto incidentale.
+
+Un test nato verde vale meno **solo se il rosso non e' mai stato visto**. Le due condizioni che
+rendono la moneta buona, e che vanno entrambe verificate:
+
+1. il rosso arriva **per la ragione giusta** — si legge il messaggio d'errore, non solo il colore;
+2. il ripristino e' **verificato** (`git status`), non assunto.
+
+**Corollario, imparato quattro volte in una notte: le mutazioni si ESEGUONO, non si deducono.** Una
+mutazione dichiarata e mai eseguita puo' essere **inerte** (un'altra difesa la scherma), o **rossa
+per la ragione sbagliata** (un errore di sintassi introdotto dall'estrazione invece del difetto
+vero). In entrambi i casi la frase «questa mutazione arrossisce» e' una prova che non prova.
+
+**E un numero non misurato non si scrive** — ne' in un test, ne' in un commento, ne' in un rapporto,
+ne' in un registro di lavoro. Un numero scritto in un registro viene ricopiato in un mandato, e li'
+diventa un fatto: e' successo, ed era falso.
+
 ### Come si scrive il codice
 
 **La lingua: il dominio in italiano, il confine nella lingua del sistema esterno.**
