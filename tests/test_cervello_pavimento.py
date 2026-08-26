@@ -93,6 +93,7 @@ def test_cio_che_non_serve_all_obiettivo_resta_fuori():
     ("binary_sensor.guasto_caldaia", {"device_class": "problem"}, "sicurezza"),
     ("binary_sensor.caldo_eccessivo", {"device_class": "heat"}, "sicurezza"),
     ("binary_sensor.gelo_tubi", {"device_class": "cold"}, "sicurezza"),
+    ("siren.sirena_esterna", {}, "sicurezza"),
 ])
 def test_la_sesta_gamba_sicurezza(eid, attributi, atteso):
     """La sesta gamba, aggiunta il 26/08 dalla review del primo task: la prima
