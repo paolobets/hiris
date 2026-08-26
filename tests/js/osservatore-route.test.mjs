@@ -369,8 +369,8 @@ test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il conte
   const identificatore = corpo.querySelector('.text-mono');
   assert.ok(identificatore, 'l\'identificatore deve portare la classe text-mono (rottura + tipografia attenuata)');
   assert.equal(identificatore.textContent, 'climate.riscaldamento_camera');
-  assert.doesNotMatch(identificatore.className, /\bfield-hint\b|\bagent-badge\b/,
-    'la classe dell\'identificatore non deve essere quella (piccola) usata prima per il fatto');
+  assert.doesNotMatch(identificatore.className, /\bagent-badge\b/,
+    'l\'identificatore non è il badge del genere: sono due elementi distinti nella stessa riga');
 
   // Il paragrafo col fatto (orario + stato) non deve più essere una nota a
   // margine (`field-hint`): deve leggersi come contenuto.

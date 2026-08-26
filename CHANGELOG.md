@@ -2,7 +2,7 @@
 
 ## [3.13.0] — L'osservatore (fetta «l'osservatore») (2026-08-26)
 
-**HIRIS si costruisce una memoria propria.** Fino a ieri conosceva la casa solo attraverso Home
+**HIRIS si costruisce un archivio proprio di ciò che vede.** Fino a ieri conosceva la casa solo attraverso Home
 Assistant: `person.paolo_bettinelli`, misurato il 25 agosto, ha tre giorni di storico e nessuna
 statistica a lungo termine — l'esempio fondativo del cervello, «il mercoledì rientri alle 17:30, il
 riscaldamento scalda a vuoto», non è ricostruibile dai dati di HA in nessun modo. Da questa fetta
