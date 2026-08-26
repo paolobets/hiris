@@ -123,7 +123,7 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | dispersione | i sensori binari di porta, finestra e apertura, e le tapparelle |
 | consumo | i sensori di energia, potenza, gas e acqua, e i contatori che salgono |
 | buono stato | le condizioni di sistema (§6) e i sensori di batteria |
-| sicurezza | **serrature, pannello dell'allarme, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore e gelo** |
+| sicurezza | **serrature, pannello dell'allarme, sirene, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore e gelo** |
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
 
@@ -143,6 +143,11 @@ agosto e con la trappola documentata (`carbon_monoxide`, **non** `co`):
 `casa/nucleo.py::_CLASSI_EVENTO` e `_DOMINI_EVENTO`. Sono due domande diverse — «cosa è notevole
 adesso» contro «cosa si osserva sempre» — ma **sugli allarmi le due risposte devono coincidere**, e
 non coincidevano.
+
+**Le sirene sono entrate il 26 agosto**, dalla re-review dello stesso task: `siren` stava nel
+vocabolario gemello di `nucleo.py` e non in questa gamba. Una sirena che suona e rientra mentre in
+casa non c'è nessuno è **letteralmente** lo scenario che il paragrafo qui sopra descrive: se la
+sesta gamba esiste per quello, non può escludere la cosa che fa rumore quando succede.
 
 **Le classi di qualità dell'aria** (`carbon_dioxide`, `pm25`, `pm10`, i composti organici volatili)
 entrano in **comfort**: il docstring prometteva «che aria si respira» e la spec copriva solo
