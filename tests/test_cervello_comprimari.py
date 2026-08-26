@@ -4,27 +4,67 @@ Il caso misurato: `light.lampadario_fake_lampadario_fake` sembrava un residuo di
 prova. E' l'interruttore fisico che comanda il gruppo LIFX, e `legami` dice che
 e' l'innesco di `automation.interruttore_gruppo_lifx`. Quelle quattro entita'
 nascoste sono UN SISTEMA SOLO.
+
+**La finta e' stata riscritta per essere fedele al contratto VERO di
+`HAClient.legami`** (`proxy/ha_client.py`), non a come lo descriveva il
+mandato originale del Task 6 (correzione del Critical trovato dalla review
+de «l'osservatore», 26/08/2026). La finta precedente accettava QUALUNQUE
+`tipo` e rispondeva gia' nella busta TRADOTTA `{"legami": {...}}` -- che e'
+la forma di `casa/domande.py::legami`, non quella del client. Con quella
+finta, `costruisci_comprimari` poteva chiamare `ha_client.legami("entita",
+...)` (la chiave ITALIANA: il client vero la rifiuta prima di toccare la
+rete, perche' `TIPI_LEGAME` ha i valori inglesi) e leggere `esito["legami"]`
+da una risposta che il client vero non manda mai -- **inerte in produzione,
+zero chiamate di rete utili, `mappa` sempre vuota** -- e questi cinque test
+restavano tutti verdi, perche' la finta non validava `tipo` e rispondeva
+gia' nella forma che il codice (sbagliato) si aspettava. E' l'ottava volta
+in questa fetta che una finta accetta un parametro e lo ignora.
 """
 import pytest
 
+from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import costruisci_comprimari
 
 
 class _FintoHA:
+    """Valida `tipo` come fa il client vero (i valori INGLESI di
+    `HAClient.TIPI_LEGAME`) e risponde nella forma GREZZA del client --
+    chiavi inglesi, nessuna busta `{"legami": ...}`."""
+
     def __init__(self, risposte):
-        self.risposte = risposte
+        self.risposte = risposte  # identificatore -> dict grezzo (chiavi inglesi)
         self.chiesti = []
 
     async def legami(self, tipo, identificatore):
         self.chiesti.append((tipo, identificatore))
-        return self.risposte.get(identificatore, {"legami": {}})
+        if tipo not in HAClient.TIPI_LEGAME:
+            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
+        return self.risposte.get(identificatore, {})
 
 
 @pytest.mark.asyncio
 async def test_i_comprimari_arrivano_da_legami():
-    ha = _FintoHA({"climate.camera_t": {"legami": {
-        "entita": ["sensor.camera_temperatura"], "area": ["camera_da_letto"]}}})
+    ha = _FintoHA({"climate.camera_t": {
+        "entity": ["sensor.camera_temperatura"], "area": ["camera_da_letto"]}})
     mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
+    assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
+
+
+@pytest.mark.asyncio
+async def test_si_chiede_sempre_il_tipo_giusto_a_home_assistant():
+    """Il Critical vero: `costruisci_comprimari` chiedeva `"entita"` (la
+    chiave ITALIANA), che il client vero rifiuta prima di toccare la rete --
+    `"entita" not in HAClient.TIPI_LEGAME`. Qui si legge cosa e' stato
+    chiesto DAVVERO, non solo cosa e' tornato.
+
+    Mutazione ESEGUITA: `tipo_ha = TIPO_LEGAME_HA["entita"]` sostituito con
+    la stringa letterale `"entita"` in `costruisci_comprimari` -- arrossisce,
+    perche' `ha.chiesti` torna `[("entita", "climate.camera_t")]` invece di
+    `[("entity", "climate.camera_t")]`, e la `mappa` risultante e' vuota
+    (il client finto rifiuta il tipo)."""
+    ha = _FintoHA({"climate.camera_t": {"entity": ["sensor.camera_temperatura"]}})
+    mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
+    assert ha.chiesti == [("entity", "climate.camera_t")]
     assert mappa["climate.camera_t"] == ["sensor.camera_temperatura"]
 
 
@@ -33,9 +73,9 @@ async def test_aree_piani_e_dispositivi_NON_sono_comprimari():
     """Un'area non e' una cosa che fa qualcosa mentre il termostato scalda:
     e' dove sta. Metterla fra i comprimari riempirebbe ogni oggetto di
     identificatori che non misurano niente."""
-    ha = _FintoHA({"climate.camera_t": {"legami": {
-        "area": ["camera"], "piano": ["terra"], "dispositivo": ["abc"],
-        "integrazione": ["ave_domina"], "entita": ["sensor.t"]}}})
+    ha = _FintoHA({"climate.camera_t": {
+        "area": ["camera"], "floor": ["terra"], "device": ["abc"],
+        "integration": ["ave_domina"], "entity": ["sensor.t"]}})
     mappa = await costruisci_comprimari(ha, ["climate.camera_t"])
     assert mappa["climate.camera_t"] == ["sensor.t"]
 
@@ -54,13 +94,32 @@ async def test_un_guasto_di_sistema_non_si_chiede_a_legami():
 async def test_un_guasto_di_legami_non_ferma_l_aggregazione():
     """Se `legami` non risponde si perdono i comprimari, non la giornata: un
     oggetto senza contesto e' peggio di uno completo, ma infinitamente meglio
-    di nessun oggetto."""
+    di nessun oggetto. Qui la finta risponde gia' nella forma vera del
+    client (`{"errore": ...}`): non serviva toccarla."""
     class _Rotto:
         async def legami(self, tipo, identificatore):
             return {"errore": "Home Assistant non ha risposto"}
 
     mappa = await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
     assert mappa == {"climate.camera_t": []}
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
+    """Punto C del Critical (review de «l'osservatore», 26/08/2026): un
+    guasto di lettura non e' «non c'e' niente» -- deve lasciare traccia nel
+    log, non finire nello stesso `[]` di un'entita' che davvero non ha
+    comprimari, senza che nessuno se ne accorga."""
+    import logging
+
+    class _Rotto:
+        async def legami(self, tipo, identificatore):
+            return {"errore": "Home Assistant non ha risposto"}
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+        await costruisci_comprimari(_Rotto(), ["climate.camera_t"])
+
+    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
 
 
 @pytest.mark.asyncio

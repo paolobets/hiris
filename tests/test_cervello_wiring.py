@@ -384,7 +384,17 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
     Prima della correzione questo test e' rosso per davvero, non per un
     assert: `asyncio.run(job())` solleva `RuntimeError`, perche' l'eccezione
     di `sistema_di_riferimento()` esce dalla funzione innestata prima ancora
-    di entrare nel try."""
+    di entrare nel try.
+
+    **Correzione di riparazione-impoverisce-brief.md, appendice punto 4.**
+    Prima assertava SOLO il prefisso, come il test gemello sotto assertava
+    SOLO 'cervello:' prima della sua correzione: un `NameError` dentro la
+    funzione estratta (una variabile libera mancante in `globali`, per un
+    refuso futuro in questa lista) e' anch'esso un'`Exception`, viene
+    inghiottito dallo stesso `except`, e produce un messaggio che INIZIA per
+    'cervello:' esattamente come il `RuntimeError` che questo test dichiara
+    di provare -- indistinguibile con un `assert ... .startswith(...)`. Qui
+    l'assert e' sul messaggio preciso, come nel test gemello."""
     logger_test = logging.getLogger("test_aggrega_ieri_fuso")
     job = _carica_funzione_innestata("_aggrega_ieri", {
         "app": {"archivio_casa": _ArchivioCasaCheSolleva()},
@@ -399,16 +409,22 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
     with caplog.at_level(logging.WARNING, logger="test_aggrega_ieri_fuso"):
         asyncio.run(job())  # non deve sollevare
 
-    assert any(r.getMessage().startswith("cervello:") for r in caplog.records)
+    assert any(
+        "cervello: aggregazione notturna fallita (RuntimeError: sqlite del "
+        "sistema di riferimento irraggiungibile)" in r.getMessage()
+        for r in caplog.records)
 
 
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
-    """Punto 2(b), la cura vera: all'avvio si riaggregano INCONDIZIONATAMENTE
-    gli ultimi due giorni pieni (oggi escluso, che non e' ancora finito) --
-    non 'i giorni senza oggetti' (un giorno senza oggetti e' un esito
-    legittimo, vedi il mandato). Si popola il grezzo di QUATTRO giorni,
-    OGGI compreso, e si verifica che solo i due piu' recenti FRA I FINITI
-    vengano scritti come oggetti.
+    """Punto 2(b), la cura vera: all'avvio si riaggregano gli ultimi due
+    giorni pieni (oggi escluso, che non e' ancora finito) -- non 'i giorni
+    senza oggetti' (un giorno senza oggetti e' un esito legittimo, vedi il
+    mandato). Si popola il grezzo di QUATTRO giorni, OGGI compreso, e si
+    verifica che solo i due piu' recenti FRA I FINITI vengano scritti come
+    oggetti. Qui `ha_client=None`: `costruisci_comprimari` non solleva (i
+    guasti per soggetto sono suoi, non del chiamante -- vedi il suo
+    docstring), quindi la riparazione gira per intero come se fosse
+    incondizionata.
 
     Il giorno di oggi va seminato per davvero (cablaggio-pulizia-brief.md,
     punto 1: sesta ricomparsa del difetto n.1) -- prima di questa riga il
@@ -435,9 +451,9 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
             archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                             soggetto=f"light.{soggetto}", da="off", a="on")
 
-        server.riaggrega_gli_ultimi_due_giorni(
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
             {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
-            adesso=lambda tz: oggi.astimezone(tz))
+            adesso=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in archivio.oggetti(limite=10)}
         assert giorni_scritti == {"2026-08-22", "2026-08-23"}
@@ -448,10 +464,125 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
 
         # Idempotente (`sostituisci_giorno`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
-        server.riaggrega_gli_ultimi_due_giorni(
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
             {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
-            adesso=lambda tz: oggi.astimezone(tz))
+            adesso=lambda tz: oggi.astimezone(tz)))
         assert len(archivio.oggetti(limite=10)) == 2
+    finally:
+        archivio.close()
+
+
+class _ClienteLegami:
+    """HAClient finto per `costruisci_comprimari`, **fedele al contratto
+    vero** di `HAClient.legami` (`proxy/ha_client.py`) -- non a come lo
+    descriveva il mandato originale del Task 6. E' la correzione al Critical
+    trovato dalla review de «l'osservatore» (26/08/2026): la finta di prima
+    accettava `legami("entita", ...)` e rispondeva con la busta
+    `{"legami": {...}}` che e' la forma di `casa/domande.py::legami` (lo
+    strato TRADOTTO), non quella del client -- e per questo non avrebbe MAI
+    potuto arrossire, nemmeno con `costruisci_comprimari` completamente
+    inerte in produzione. Questa finta valida `tipo` contro i VERI valori di
+    `HAClient.TIPI_LEGAME` (importati, non ricopiati -- una terza tabella
+    sarebbe il doppione che questo progetto insegue da stanotte) e risponde
+    nella forma grezza del client: chiavi inglesi, nessuna busta."""
+
+    def __init__(self, mappa: dict[str, dict[str, list[str]]]):
+        # soggetto -> {tipo_inglese: [identificatori]}, come la manda HA.
+        self._mappa = mappa
+
+    async def legami(self, tipo, identificatore):
+        from hiris.app.proxy.ha_client import HAClient
+        if tipo not in HAClient.TIPI_LEGAME:
+            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
+        return dict(self._mappa.get(identificatore, {}))
+
+
+def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
+    """CRITICAL, punto 1 del mandato (riparazione-impoverisce-brief.md): la
+    riparazione all'avvio costruisce i comprimari come fa la notte -- non
+    piu' `comprimari=None`.
+
+    Mutazione ESEGUITA: rimettere `comprimari=None` al posto della lambda
+    che legge `mappa`, nel corpo di `riaggrega_gli_ultimi_due_giorni`.
+    Arrossisce: `corpo["comprimari"]` di `light.principale` torna `[]`
+    invece di `["light.secondario"]`."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="light.principale", da="off", a="on")
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="light.secondario", da="off", a="on")
+
+        cliente = _ClienteLegami({"light.principale": {"entity": ["light.secondario"]}})
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        [oggetto] = [o for o in archivio.oggetti(giorno=ieri)
+                    if o["protagonista"] == "light.principale"]
+        assert oggetto["corpo"]["comprimari"] == ["light.secondario"]
+    finally:
+        archivio.close()
+
+
+def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path, monkeypatch):
+    """CRITICAL, punto 2 del mandato -- **il test che conta**: e' l'unico che
+    distingue «non guarisco» da «peggioro». Si semina il grezzo di ieri e
+    l'altro ieri, si scrive PRIMA un oggetto ricco (con comprimari, come
+    farebbe la notte) per entrambi i giorni -- poi si fa fallire
+    `costruisci_comprimari` e si riaggrega. Gli oggetti di prima devono
+    restare ESATTAMENTE com'erano: quando i comprimari non si riescono a
+    costruire, la riparazione non deve toccare l'archivio.
+
+    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`,
+    invece di saltare quando `costruisci_comprimari` solleva, chiamare
+    comunque `aggrega_giorno(..., comprimari=None)` (lo stato precedente al
+    CRITICAL). Arrossisce: gli oggetti ricchi vengono sostituiti da oggetti
+    senza comprimari -- e' esattamente il peggioramento che il mandato
+    descrive."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="light.principale", da="off", a="on")
+
+        # Il "gia' fatto dalla notte": un oggetto CON comprimari, per
+        # entrambi i giorni bersaglio.
+        ricco = [{"genere": "funzionamento", "protagonista": "light.principale",
+                  "inizio_ts": 0.0, "fine_ts": 1.0,
+                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
+                           "misure": {}}}]
+        archivio.sostituisci_giorno(l_altro_ieri, ricco)
+        archivio.sostituisci_giorno(ieri, ricco)
+        prima = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+
+        async def _costruisci_comprimari_che_fallisce(ha_client, soggetti):
+            raise RuntimeError("Home Assistant non ha risposto")
+
+        monkeypatch.setattr(server, "costruisci_comprimari",
+                            _costruisci_comprimari_che_fallisce)
+
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": None, "osservazioni": archivio}, ha_client=None,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+        assert dopo == prima
     finally:
         archivio.close()
 
@@ -499,23 +630,23 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
     errore invece di un falso verde."""
     sorgente = inspect.getsource(server._on_startup)
     marcatore = ('    try:\n'
-                '        riaggrega_gli_ultimi_due_giorni(app, ha_client)')
+                '        await riaggrega_gli_ultimi_due_giorni(app, ha_client)')
     inizio = sorgente.index(marcatore)
     fine = sorgente.index("\n\n", inizio)
     corpo = textwrap.dedent(sorgente[inizio:fine])
 
-    def _che_solleva(app, ha_client):
+    async def _che_solleva(app, ha_client):
         raise RuntimeError("archivio irraggiungibile")
 
     logger_test = logging.getLogger("test_riaggrega_avvio_non_blocca")
     namespace = {"app": {}, "ha_client": None,
                 "riaggrega_gli_ultimi_due_giorni": _che_solleva,
                 "logger": logger_test}
-    func_src = "def _check():\n" + textwrap.indent(corpo, "    ")
+    func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
     exec(compile(func_src, "<_on_startup riaggregazione>", "exec"), namespace)
 
     with caplog.at_level(logging.WARNING, logger="test_riaggrega_avvio_non_blocca"):
-        namespace["_check"]()  # non deve sollevare
+        asyncio.run(namespace["_check"]())  # non deve sollevare
 
     # Il comportamento vero: quel preciso RuntimeError e' stato catturato e
     # loggato, non un altro errore qualsiasi.
