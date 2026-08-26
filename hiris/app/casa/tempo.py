@@ -120,12 +120,18 @@ def scegli_superficie(*, ore: float, ha_statistiche: bool) -> str:
     return "statistiche" if ha_statistiche else "dettaglio"
 
 
-def _zona(fuso: str | None):
+def zona_casa(fuso: str | None):
     """Il fuso della casa, o UTC se non lo sappiamo. Non inventa mai.
 
     Un fuso sbagliato sposta le ore di una risposta senza che nessuno se ne
     accorga: e' peggio di non averlo. Con UTC almeno l'offset e' scritto
     nell'istante, e chi legge puo' fare i conti.
+
+    **Pubblica (giro di correzioni, punto 4):** prima era `_zona`, privata,
+    e `cervello/oggetti.py` la importava comunque per calcolare i confini
+    del giorno -- un nome con underscore attraversato da fuori e' esattamente
+    come nascono i doppioni, perche' il prossimo che ne ha bisogno o importa
+    il nome privato o riscrive il calcolo.
     """
     if not fuso:
         return timezone.utc
@@ -146,7 +152,7 @@ def finestra(*, ore: float, adesso_ts: float, fuso: str | None) -> tuple[str, st
     qui sotto, applica in lettura (e che `casa/strumenti.py` riusa per gli
     istanti in ingresso della chat) -- applicata qui in uscita.
     """
-    zona = _zona(fuso)
+    zona = zona_casa(fuso)
     a = datetime.fromtimestamp(adesso_ts, tz=zona)
     da = a - timedelta(hours=ore)
     return da.isoformat(), a.isoformat()

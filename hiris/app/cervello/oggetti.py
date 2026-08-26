@@ -12,14 +12,21 @@ guardia -- vedi `archivio.CONSERVAZIONE_CAMBI_S`), uno preso in scrittura non
 si corregge piu'.
 
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
-esce.** Nessuna delle due e' una lista scritta a mano: la natura la dichiara
-Home Assistant.
+esce.** La prima non e' una lista scritta a mano: il pavimento (`pavimento.
+gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
+dominio, `device_class`, `state_class`. **La seconda, invece, SI'**
+(correzione del giro di review, punto 9): `_FUNZIONANO` qui sotto e' una
+lista scritta a mano dei domini che si accendono e si spengono. Non c'e' modo
+di derivarla: Home Assistant non dichiara da nessuna parte «questo dominio
+funziona come un interruttore», quindi va mantenuta a mano e tenuta
+aggiornata quando un dominio nuovo lo fa -- la vecchia frase di questo
+docstring affermava il contrario, ed era falsa quanto una funzione sbagliata.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ..casa.tempo import _zona
+from ..casa.tempo import zona_casa
 from .pavimento import gamba
 
 # `aggrega_giorno` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
@@ -30,15 +37,41 @@ from .pavimento import gamba
 GENERI = ("funzionamento", "presenza", "consumo", "guasto", "sicurezza")
 
 # I domini che «funzionano»: si accendono e si spengono, si aprono e si
-# chiudono. Sono i protagonisti degli oggetti di funzionamento.
-_FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan", "water_heater"})
-# Gli stati che valgono «spento/chiuso/finito». "locked" e "disarmed" sono gli
-# «a riposo» della sesta gamba (serratura, pannello dell'allarme): senza
-# questi due un lock/alarm_control_panel che apre un oggetto non si
-# richiuderebbe mai, perche' ne' "locked" ne' "unlocked" (ne' "armed_*"/
-# "disarmed") sono "off" o "closed" in inglese.
+# chiudono. Sono i protagonisti degli oggetti di funzionamento. **Lista
+# scritta a mano, dichiaratamente** (vedi il docstring del modulo): mancavano
+# `humidifier`, `vacuum`, `valve` e `media_player` -- domini comuni che
+# funzionano come gli altri sei, e che prima di questa correzione cadevano in
+# silenzio (nessun oggetto, nessun errore).
+_FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan",
+                         "water_heater", "humidifier", "vacuum", "valve",
+                         "media_player"})
+
+# Gli stati che valgono «a riposo»: chiudono un oggetto di funzionamento o di
+# sicurezza. "locked" e' il riposo della serratura. **"armed_*" e' il riposo
+# del pannello dell'allarme, "disarmed" e "triggered" NO** -- correzione al
+# rovesciamento della review (punto 3b): e' controintuitivo per chi legge in
+# fretta, ma un allarme si INSERISCE per stare a riposo, non il contrario.
+# Prima di questa correzione "disarmed" stava qui e "armed_*" non c'era da
+# nessuna parte: inserire l'allarme la sera apriva un oggetto, e disinserirlo
+# la mattina lo chiudeva -- otto ore di «oggetto» ogni notte per la cosa che
+# va bene, e la casa lasciata senza allarme un giorno intero non produceva
+# niente. Un solo insieme, non due che si sovrappongono: `_SPENTO` e' usato
+# da piu' rami (funzionamento e sicurezza), e i valori qui sotto sono
+# esclusivi per dominio (nessuna ambiguita' fra "locked"/"armed_home" e gli
+# stati di `_FUNZIONANO`).
 _SPENTO = frozenset({"off", "closed", "unavailable", "unknown", "none", "",
-                     "locked", "disarmed"})
+                     "locked", "armed_home", "armed_away", "armed_night",
+                     "armed_vacation", "armed_custom_bypass"})
+
+# Stati "non lo so", non stati della casa. Un riavvio di Home Assistant fa
+# attraversare questi due stati a OGNI entita', comprese le `person`: senza
+# questo filtro il ramo `presenza` (che controlla solo `r["a"] == "home"`)
+# apriva un oggetto «presenza, stato unavailable» di un minuto per ogni
+# persona, a ogni riavvio (correzione del giro di review, punto 2). Il ramo
+# `funzionamento` li tiene fuori gia' tramite `_SPENTO` (che li considera «a
+# riposo», quindi non apre niente); la presenza non ha un riposo che si
+# chiami "off", quindi il filtro va ripetuto qui esplicitamente.
+_IGNOTO = frozenset({"unavailable", "unknown"})
 
 
 def genere_di(soggetto: str, gamba_: str | None) -> str | None:
@@ -62,6 +95,19 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     tutta la gamba omonima. Qui il criterio e' `gamba_ == "sicurezza"`,
     qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
     classi che il pavimento gia' tiene.
+
+    **Eccezione dichiarata (correzione del giro di review, punto 7): un
+    `sensor` numerico della gamba sicurezza NON genera un oggetto.** Oggi
+    l'unico caso raggiungibile e' il monossido misurato in concentrazione
+    (`carbon_monoxide` su `sensor`, non su `binary_sensor`): una lettura come
+    "0.4" non e' mai in `_SPENTO`, quindi userebbe `_acceso` per aprire un
+    oggetto che non chiuderebbe mai -- un guasto perennemente aperto al
+    giorno, per ogni sensore CO numerico della casa. Un sensore che MISURA
+    non e' un sensore che SCATTA: servirebbe una soglia per decidere quando
+    la concentrazione diventa una minaccia, e non ne abbiamo una onesta.
+    **Restare fuori e' la decisione**, non una dimenticanza: il
+    `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
+    -- resta dentro senza bisogno di nessuna soglia.
     """
     if soggetto.startswith(("problema:", "integrazione:")):
         return "guasto"
@@ -73,6 +119,8 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     if dominio == "sensor" and gamba_ == "consumo":
         return "consumo"
     if gamba_ == "sicurezza":
+        if dominio == "sensor":
+            return None
         return "sicurezza"
     return None
 
@@ -102,7 +150,7 @@ def _gamba_del_cambio(soggetto: str, riga: dict) -> str | None:
     })
 
 
-def _confini(giorno: str, fuso: str | None) -> tuple[float, float]:
+def confini_giorno(giorno: str, fuso: str | None) -> tuple[float, float]:
     """L'inizio e la fine di un giorno **nel fuso della casa**.
 
     Le 23:30 di Roma sono le 21:30 UTC: un giorno calcolato in UTC spezzerebbe
@@ -114,14 +162,34 @@ def _confini(giorno: str, fuso: str | None) -> tuple[float, float]:
     stare sicuri" riaprirebbe un buco di un secondo a ogni mezzanotte, e con
     due confini inclusivi un cambio esattamente a mezzanotte finirebbe contato
     in due giorni.
+
+    **Pubblica (correzione del giro di review, punto 4).** Prima era `_confini`
+    e importava `_zona`, un'altra privata, da `casa/tempo.py`: due nomi con
+    underscore attraversati da fuori dal solo import. Il calcolo e' uno solo
+    (nessun doppione nel prodotto); tenerlo privato avrebbe solo obbligato chi
+    ne ha bisogno a importare comunque il nome privato, o a riscrivere il
+    calcolo -- che e' esattamente come nascono i doppioni.
     """
-    zona = _zona(fuso)
+    zona = zona_casa(fuso)
     inizio = datetime.fromisoformat(giorno).replace(tzinfo=zona)
     return inizio.timestamp(), (inizio + timedelta(days=1)).timestamp()
 
 
 def _acceso(valore) -> bool:
     return str(valore or "").strip().lower() not in _SPENTO
+
+
+def _differenza(iniziale, finale) -> float | None:
+    """`finale - iniziale`, o `None` se uno dei due non si legge come numero.
+
+    Un contatore scrive stringhe (`"1234.5"`). `None` e non zero quando la
+    lettura fallisce: zero direbbe «consumo nullo» per un valore che non si e'
+    nemmeno potuto interpretare, e sarebbe un fatto falso travestito da dato.
+    """
+    try:
+        return float(finale) - float(iniziale)
+    except (TypeError, ValueError):
+        return None
 
 
 def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
@@ -141,8 +209,16 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     (una chiamata di rete) e nei test no. **Non si indovina dal nome**: e' il
     caso misurato del lampadario, dove tre lampade, il loro gruppo e
     l'interruttore fisico sono un sistema solo.
+
+    **Il consumo e' un genere a parte** (correzione del giro di review,
+    punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
+    non nasce da un ciclo apri/chiudi come gli altri generi. Un oggetto di
+    consumo e' il RIEPILOGO del giorno per quel contatore: la prima lettura,
+    l'ultima, e la loro differenza. Si chiude sempre dentro la giornata (mai
+    `fine_ts: None`), perche' e' gia' cio' che si sa a fine giornata, non
+    qualcosa ancora in corso.
     """
-    da_ts, a_ts = _confini(giorno, fuso)
+    da_ts, a_ts = confini_giorno(giorno, fuso)
     righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
 
     # Prima passata: le misure, per soggetto. Servono come contesto e non
@@ -152,29 +228,20 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
         misure.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
 
     aperti: dict[str, dict] = {}
-    costruiti: list[dict] = []
+    # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
+    # Si separano dal corpo apposta (vedi sotto): il limite superiore delle
+    # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
+    # protagonista, che a meta' del ciclo non e' ancora noto.
+    episodi: list[dict] = []
+    consumo_soggetti: set[str] = set()
 
     def chiudi(soggetto: str, quando: float | None) -> None:
         o = aperti.pop(soggetto, None)
         if o is None:
             return
-        corpo = {"stato": o["stato"], "comprimari": [], "misure": {}}
-        for altro in (comprimari(soggetto) if comprimari else []):
-            # Il limite superiore e' la fine della GIORNATA (`a_ts`), non
-            # l'istante di chiusura dell'oggetto: «temperatura da 18,2 a
-            # 21,0» dell'esempio fondativo e' l'ultima misura nota di quella
-            # giornata per il comprimario, anche se arriva dopo che il
-            # riscaldamento si e' spento -- e' cio' che si sapeva della
-            # grandezza collegata mentre l'oggetto durava E subito dopo,
-            # prima del prossimo cambio di argomento.
-            punti = [(t, v) for t, v in misure.get(altro, [])
-                     if o["inizio"] <= t < a_ts]
-            corpo["comprimari"].append(altro)
-            if punti:
-                corpo["misure"][altro] = {"da": punti[0][1], "a": punti[-1][1]}
-        costruiti.append({"genere": o["genere"], "protagonista": soggetto,
-                          "inizio_ts": o["inizio"], "fine_ts": quando,
-                          "corpo": corpo})
+        episodi.append({"genere": o["genere"], "protagonista": soggetto,
+                        "inizio": o["inizio"], "fine": quando,
+                        "corpo_base": {"stato": o["stato"]}})
 
     for r in righe:
         soggetto = r["soggetto"]
@@ -209,6 +276,15 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             # gia' `fine_ts` dell'assenza) e a fine giornata lascerebbe per
             # sempre un oggetto «in casa» ancora aperto, per ogni persona,
             # ogni notte -- rumore, non un fatto compiuto.
+            #
+            # `_IGNOTO` (correzione punto 2): "unavailable"/"unknown" non
+            # sono uno stato della casa, sono un buco nell'informazione --
+            # un riavvio di HA li fa attraversare a ogni `person`. Un ramo
+            # che li trattasse come "non home" aprirebbe un oggetto fantasma
+            # a ogni riavvio, uno per persona.
+            stato = str(r["a"] or "").strip().lower()
+            if stato in _IGNOTO:
+                continue
             if r["a"] == "home":
                 chiudi(soggetto, r["quando_ts"])
             elif soggetto not in aperti:
@@ -223,13 +299,72 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             else:
                 chiudi(soggetto, r["quando_ts"])
             continue
-        if genere == "consumo" and soggetto not in aperti:
-            aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
-                                "stato": r["a"]}
+        if genere == "consumo":
+            # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
+            # contatore visto oggi. Il riepilogo (prima lettura, ultima,
+            # differenza) si costruisce dopo il ciclo, da `misure`, che gia'
+            # tiene ogni lettura del giorno in ordine cronologico.
+            consumo_soggetti.add(soggetto)
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
     for soggetto in list(aperti):
         chiudi(soggetto, None)
+
+    # I consumi si costruiscono ora, dal riepilogo delle misure: un oggetto
+    # di consumo del giorno SI CHIUDE sempre (mai `fine_ts: None`, e' gia'
+    # cio' che si sa a fine giornata) e porta valore iniziale, finale e la
+    # differenza -- non la prima lettura sola con un oggetto perennemente
+    # aperto, che era il difetto misurato su 29 contatori della casa.
+    for soggetto in sorted(consumo_soggetti):
+        punti = misure.get(soggetto, [])
+        if not punti:
+            continue
+        iniziale, finale = punti[0][1], punti[-1][1]
+        episodi.append({"genere": "consumo", "protagonista": soggetto,
+                        "inizio": punti[0][0], "fine": punti[-1][0],
+                        "corpo_base": {"valore_iniziale": iniziale,
+                                       "valore_finale": finale,
+                                       "differenza": _differenza(iniziale, finale)}})
+
+    # Il limite superiore delle misure di un comprimario e' l'inizio del
+    # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata
+    # SOLO se non ce n'e' uno (correzione del giro di review, punto 5). Prima
+    # di questa correzione il limite era sempre `a_ts`: un riscaldamento
+    # acceso 15:30-17:05 e di nuovo 19:00-20:00, con la temperatura misurata
+    # fino alle 23:00, faceva riportare al PRIMO episodio come temperatura
+    # finale quella delle 23:00 -- il clima del secondo episodio e oltre.
+    prossimi_inizi: dict[str, list[float]] = {}
+    for e in episodi:
+        prossimi_inizi.setdefault(e["protagonista"], []).append(e["inizio"])
+    for lista in prossimi_inizi.values():
+        lista.sort()
+
+    def limite_superiore(protagonista: str, inizio: float) -> float:
+        successivi = [i for i in prossimi_inizi.get(protagonista, []) if i > inizio]
+        return min(successivi) if successivi else a_ts
+
+    costruiti: list[dict] = []
+    for e in episodi:
+        alto = limite_superiore(e["protagonista"], e["inizio"])
+        corpo = {**e["corpo_base"], "comprimari": [], "misure": {}}
+        for altro in (comprimari(e["protagonista"]) if comprimari else []):
+            # Il limite INFERIORE e' l'inizio dell'oggetto: una misura presa
+            # PRIMA che l'episodio cominciasse non e' cio' che si sapeva
+            # della grandezza collegata mentre l'oggetto durava, e' il clima
+            # di prima. Il limite SUPERIORE e' il prossimo episodio dello
+            # stesso protagonista (sopra), o la fine della giornata se non ce
+            # n'e' uno: cio' che si sapeva della grandezza mentre l'oggetto
+            # durava e subito dopo, prima del prossimo episodio DI QUESTO
+            # protagonista -- non del prossimo cambio di un argomento
+            # qualunque.
+            punti = [(t, v) for t, v in misure.get(altro, [])
+                     if e["inizio"] <= t < alto]
+            corpo["comprimari"].append(altro)
+            if punti:
+                corpo["misure"][altro] = {"da": punti[0][1], "a": punti[-1][1]}
+        costruiti.append({"genere": e["genere"], "protagonista": e["protagonista"],
+                          "inizio_ts": e["inizio"], "fine_ts": e["fine"],
+                          "corpo": corpo})
 
     return archivio.sostituisci_giorno(giorno, costruiti)
