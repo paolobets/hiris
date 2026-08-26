@@ -27,19 +27,18 @@ from hiris.app.casa.domande import NOME_LEGAME, guarda, legami
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.proxy.ha_client import HAClient
+from tests.test_cervello_comprimari import _ClienteLegami
 
-
-class _FintoHA:
-    """Il client, ridotto a cio' che `legami` gli chiede. Registra le chiamate
-    perche' meta' delle prove qui riguardano cosa NON si e' chiesto."""
-
-    def __init__(self, risposta):
-        self.risposta = risposta
-        self.chiamate = []
-
-    async def legami(self, tipo, identificatore):
-        self.chiamate.append((tipo, identificatore))
-        return self.risposta
+# La finta di `HAClient.legami` usata qui e' `_ClienteLegami`, importata da
+# `test_cervello_comprimari.py` -- l'UNICA del progetto (vedi il suo
+# docstring). Prima di questa correzione questo file ne aveva una propria
+# (`_FintoHA`), che accettava QUALUNQUE `tipo` e rispondeva sempre la stessa
+# mappa: la nona finta dello stesso contratto, la stessa infedelta' che ha
+# reso invisibile il Critical dei comprimari. Qui non serve estenderla: ogni
+# prova sotto chiede sempre lo stesso `riferimento` per chiamata, quindi
+# `_ClienteLegami(default=...)` -- che risponde a QUALUNQUE identificatore,
+# ma valida `tipo` contro `HAClient.TIPI_LEGAME` prima di rispondere -- basta
+# senza bisogno di popolare `mappa` per identificatore.
 
 
 class _FintaPorta:
@@ -85,8 +84,8 @@ async def test_i_legami_escono_nel_vocabolario_della_casa_e_ordinati(casa, memor
     `automation` dovrebbe imparare due vocabolari per la stessa casa, e il
     `riferimento` che passa a `guarda` verrebbe da una risposta scritta in
     un'altra lingua."""
-    ha = _FintoHA({"script": ["script.sera"], "automation": ["automation.a"],
-                   "entity": ["light.corridoio"]})
+    ha = _ClienteLegami(default={"script": ["script.sera"], "automation": ["automation.a"],
+                                  "entity": ["light.corridoio"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert esito["legami"] == {"automazione": ["automation.a"],
@@ -103,21 +102,21 @@ async def test_il_tipo_si_traduce_verso_home_assistant(casa, memoria):
     """Il verso opposto della stessa tabella. Senza, il comando partirebbe con
     `item_type: "entita"` e Home Assistant lo rifiuterebbe -- un guasto
     prodotto da noi che arriva al modello come un errore suo."""
-    ha = _FintoHA({})
+    ha = _ClienteLegami()
     await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "dispositivo", "riferimento": "abc123"})
-    assert ha.chiamate == [("device", "abc123")]
+    assert ha.chiesti == [("device", "abc123")]
 
 
 @pytest.mark.asyncio
 async def test_un_tipo_che_home_assistant_non_conosce_si_ferma_prima_della_rete(
         casa, memoria):
-    ha = _FintoHA({})
+    ha = _ClienteLegami()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "stanza", "riferimento": "cucina"})
     assert "errore" in esito
     assert "legami" not in esito
-    assert ha.chiamate == [], "non si disturba Home Assistant per un tipo che rifiuterebbe"
+    assert ha.chiesti == [], "non si disturba Home Assistant per un tipo che rifiuterebbe"
 
 
 def test_un_tipo_nuovo_di_home_assistant_non_si_perde_per_strada():
@@ -134,7 +133,7 @@ def test_un_tipo_nuovo_di_home_assistant_non_si_perde_per_strada():
 async def test_un_guasto_non_diventa_un_elenco_vuoto(casa, memoria):
     """La prova centrale. `legami: {}` significa «non la tocca nessuno»: e'
     un'affermazione, e su un canale caduto e' falsa."""
-    ha = _FintoHA({"errore": "Home Assistant non ha risposto"})
+    ha = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "errore" in esito
@@ -148,7 +147,7 @@ async def test_nessun_legame_resta_dicibile(casa, memoria):
     """L'altra meta': una cosa che davvero non tocca nessuno deve poterlo
     dire. Se il guasto e l'assenza avessero la stessa forma, il rimedio
     sarebbe peggiore del male."""
-    ha = _FintoHA({})
+    ha = _ClienteLegami()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.mai_usata"})
     assert esito["legami"] == {}
@@ -191,7 +190,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
     muto perche' non ha la connessione e uno muto perche' non ci sono legami
     direbbero la stessa cosa, e sono opposti.
     """
-    porta_con_canale = _FintaPorta(_FintoHA({"automation": ["automation.a"]}))
+    porta_con_canale = _FintaPorta(_ClienteLegami(default={"automation": ["automation.a"]}))
     esito = await _dispatcher(casa, memoria, porta=porta_con_canale).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "legami" not in esito, (
@@ -205,7 +204,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
 async def test_col_canale_passato_lo_strumento_risponde(casa, memoria):
     """Il verso positivo, e serve quanto l'altro: senza, un dispatcher che non
     risponde MAI farebbe passare la prova qui sopra per il motivo sbagliato."""
-    ha = _FintoHA({"automation": ["automation.a"]})
+    ha = _ClienteLegami(default={"automation": ["automation.a"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert esito["legami"] == {"automazione": ["automation.a"]}
@@ -237,7 +236,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
             return hashlib.sha256(f"{dump}{attorno}".encode()).hexdigest()
 
         prima = _impronta()
-        ha = _FintoHA({"automation": ["automation.a"], "scene": ["scene.sera"]})
+        ha = _ClienteLegami(default={"automation": ["automation.a"], "scene": ["scene.sera"]})
         esito = await _dispatcher(archivio, memoria, ha=ha).dispatch(
             "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
         assert esito["legami"]

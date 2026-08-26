@@ -24,9 +24,13 @@ ricorrente di questa fetta: una finta che accetta un parametro e lo ignora.
 preme nessuno», 26/08/2026): `costruisci_comprimari` tornava solo `mappa`.
 Il contatore dei falliti esisteva gia' -- serviva al warning di log -- ma
 moriva dentro la funzione: il chiamante non poteva mai sapere se il giro
-era stato parziale, solo se una `Exception` era uscita (e non esce mai: la
-`legami` vera CONTIENE ogni guasto in `{"errore": ...}`, non solleva). Ora
-torna `(mappa, falliti)`: ogni test qui sotto legge la coppia."""
+era stato parziale, solo se una `Exception` era uscita -- e in generale non
+esce: la `legami` vera CONTIENE i guasti di canale in `{"errore": ...}`, non
+solleva. Eccetto un caso, vero anche lui: una risposta malformata fa uscire
+un `TypeError` vero dalla catena vera, perche' la traduzione
+(`casa/domande.py::legami`, chiamata da `costruisci_comprimari`) sta FUORI
+da quel contenimento -- il quarto esito che `_ClienteLegami` sa produrre, piu'
+sotto. Ora torna `(mappa, falliti)`: ogni test qui sotto legge la coppia."""
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
