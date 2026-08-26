@@ -294,6 +294,39 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
 - Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
 
+### Su Home Assistant non si ipotizza mai: prima la documentazione, poi le API vere
+
+**Regola non negoziabile, dal proprietario il 26 agosto 2026.**
+
+Prima di scrivere, correggere o *giudicare* qualunque cosa che riguardi un'integrazione con Home
+Assistant o una lettura da Home Assistant — la forma di una risposta, i valori ammessi di un campo,
+gli stati di un dominio, cosa un'entita' dichiara — l'ordine e' questo, e non ammette scorciatoie:
+
+1. **Non si ipotizza.** Nemmeno «quasi certamente», nemmeno «di solito e' cosi'». Un'ipotesi su un
+   sistema esterno scritta in un commento diventa un fatto per chi legge dopo.
+2. **Si interroga la documentazione ufficiale** — `developers.home-assistant.io`, o direttamente il
+   sorgente di Home Assistant / del Supervisor quando la documentazione tace.
+3. **Poi si interroga Home Assistant vero**, perche' **per noi e' fattibile**: la casa e' raggiungibile,
+   le API REST e WebSocket sono aperte, i token stanno su disco fuori dai repo
+   (`~/.ha-token` per HA, `~/.hiris-debug-token` per l'add-on). Vedi «Come si entra» nelle note di
+   debug live.
+4. **Si scrive nel codice cosa e' stato misurato e quando.** «Misurato il 26/08/2026» accanto a un
+   valore vale piu' di qualunque ragionamento.
+
+**Perche' e' una regola e non un consiglio.** In una sola fetta questa mancanza e' costata:
+- una funzione **completamente inerte in produzione** — chiedeva un tipo di legame col nome italiano
+  mentre HA accetta solo quello inglese, e la richiesta veniva rifiutata **prima di toccare la rete**;
+- un mandato che dichiarava «il container e' probabilmente in UTC, quindi le nostre frasi sull'orario
+  sono false» — smentito leggendo il sorgente del Supervisor, che imposta **sempre** `TZ`;
+- l'aggregazione che etichettava **l'energia prodotta dall'impianto solare come «consumo»**, perche'
+  Home Assistant usa `device_class: energy` per la produzione **e** per il prelievo, e la distinzione
+  vera vive nella configurazione della **dashboard Energia** (`energy/get_prefs`) — una fonte che
+  nessuno aveva pensato di interrogare.
+
+Il corollario: **quando HA ha una fonte dichiarativa, quella e' la risposta.** Aree, dispositivi,
+legami, classi, e la dashboard Energia sono cose che HA **sa gia'**: indovinarle dai nomi delle
+entita' funziona su un impianto e si rompe sul successivo.
+
 ### Cosa rende buono un test (affinamento del 26 agosto)
 
 Il difetto n.1 di questo progetto e' «i test che non possono fallire», e la disciplina che lo
