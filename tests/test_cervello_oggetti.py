@@ -560,20 +560,24 @@ def test_una_tv_che_va_in_idle_chiude_il_suo_oggetto(archivio):
 
 def test_gli_altri_riposi_dei_domini_nuovi_chiudono_anche_loro(archivio):
     """Home Assistant documenta altri riposi per gli stessi due domini,
-    oltre a 'docked' e 'idle': 'paused', 'returning' ed 'error' per il
-    vacuum (il robot in pausa, che sta rientrando, o in errore non sta
-    piu' pulendo); 'standby' e 'paused' per il media_player ('standby' e'
-    deprecato verso 'off'/'idle' dalla 2026.8 ma ancora prodotto da alcune
-    integrazioni -- questa casa ce l'ha). Ognuno chiude l'oggetto
-    esattamente come 'docked'/'idle'. Mutazione, ripetuta per ciascuno:
-    toglierlo da `_SPENTO` -- il numero di oggetti ancora aperti a fine
-    giornata salirebbe da 0 al numero di stati rimossi."""
+    oltre a 'docked' e 'idle': 'returning' ed 'error' per il vacuum (il
+    robot che sta rientrando, o in errore, non sta piu' pulendo); 'standby'
+    per il media_player ('standby' e' deprecato verso 'off'/'idle' dalla
+    2026.8 ma ancora prodotto da alcune integrazioni -- questa casa ce
+    l'ha). Ognuno chiude l'oggetto esattamente come 'docked'/'idle'.
+
+    **'paused' NON e' fra questi** (giro di pulizia, punto 3, correzione
+    del 26 agosto): una pausa non e' un riposo, e' un'attivita' SOSPESA --
+    l'apparecchio non ha finito. Vedi
+    `test_un_film_in_pausa_resta_un_solo_oggetto` per la prova dedicata.
+
+    Mutazione, ripetuta per ciascuno dei riposi rimasti: toglierlo da
+    `_SPENTO` -- il numero di oggetti ancora aperti a fine giornata
+    salirebbe da 0 al numero di stati rimossi."""
     casi = [
-        ("vacuum.robot_soggiorno", "cleaning", "paused"),
         ("vacuum.robot_soggiorno", "cleaning", "returning"),
         ("vacuum.robot_soggiorno", "cleaning", "error"),
         ("media_player.tv_soggiorno", "playing", "standby"),
-        ("media_player.tv_soggiorno", "playing", "paused"),
     ]
     for i, (soggetto, acceso, riposo) in enumerate(casi):
         archivio.annota(quando_ts=ts(i, 0), fonte="entita",
@@ -584,6 +588,51 @@ def test_gli_altri_riposi_dei_domini_nuovi_chiudono_anche_loro(archivio):
     oggetti = archivio.oggetti(giorno=G)
     assert len(oggetti) == len(casi)
     assert all(o["fine_ts"] is not None for o in oggetti)
+
+
+# -- Giro di pulizia (26 agosto), punto 3: 'paused' non e' un riposo -------
+#
+# Deciso contro il mandato precedente che l'aveva dettato: un film in pausa
+# cinque minuti non e' finito, e' SOSPESO. Prima di questa correzione
+# 'paused' chiudeva l'episodio come 'off'/'docked'/'idle', e la ripresa ne
+# apriva un secondo -- un film in pausa cinque minuti diventava due oggetti,
+# e una pulizia interrotta e ripresa diventava due pulizie. Riposo e' «ha
+# finito»; sospensione e' «non ha finito».
+
+def test_un_film_in_pausa_resta_un_solo_oggetto(archivio):
+    """La prova diretta del punto 3: un film messo in pausa in mezzo alla
+    visione, e ripreso, e' UN episodio solo -- spezzarlo lo renderebbe
+    illeggibile (criterio di accettazione, spec §1). Mutazione: rimettere
+    'paused' in `_SPENTO` -- l'oggetto si chiuderebbe alle 21:40 e la
+    ripresa alle 21:45 ne aprirebbe un secondo, portando il conteggio a 2
+    invece di 1."""
+    archivio.annota(quando_ts=ts(21, 0), fonte="entita",
+                    soggetto="media_player.tv_soggiorno", da="idle", a="playing")
+    archivio.annota(quando_ts=ts(21, 40), fonte="entita",
+                    soggetto="media_player.tv_soggiorno", da="playing", a="paused")
+    archivio.annota(quando_ts=ts(21, 45), fonte="entita",
+                    soggetto="media_player.tv_soggiorno", da="paused", a="playing")
+    archivio.annota(quando_ts=ts(23, 10), fonte="entita",
+                    soggetto="media_player.tv_soggiorno", da="playing", a="idle")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["inizio_ts"] == ts(21, 0)
+    assert o["fine_ts"] == ts(23, 10)
+
+
+def test_un_apparecchio_lasciato_in_pausa_a_fine_giornata_resta_aperto(archivio):
+    """La verita' dichiarata dal mandato: un apparecchio lasciato in pausa
+    non ha finito, quindi il suo oggetto resta APERTO (`fine_ts: None`), non
+    chiuso come se il riposo fosse arrivato. Mutazione: rimettere 'paused'
+    in `_SPENTO` -- l'oggetto si chiuderebbe alle 22:00 invece di restare
+    aperto."""
+    archivio.annota(quando_ts=ts(22, 0), fonte="entita",
+                    soggetto="vacuum.robot_soggiorno", da="docked", a="cleaning")
+    archivio.annota(quando_ts=ts(22, 30), fonte="entita",
+                    soggetto="vacuum.robot_soggiorno", da="cleaning", a="paused")
+    assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["fine_ts"] is None
 
 
 def test_una_valvola_che_si_apre_o_chiude_non_genera_falsi_riposi(archivio):
@@ -617,9 +666,17 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
     'non lo sappiamo'. Un riscaldamento acceso alle 15:30, un riavvio che
     lo fa passare per 'unavailable' alle 18:00 e tornare 'heat' alle 18:05,
     spento alle 20:00: deve nascere UN oggetto dalle 15:30 alle 20:00, non
-    due. Mutazione: rimettere 'unavailable' in `_SPENTO` -- l'oggetto si
-    chiuderebbe alle 18:00 e "heat" alle 18:05 ne aprirebbe un secondo,
-    contando 2 oggetti invece di 1."""
+    due.
+
+    Mutazione ESEGUITA e verificata rossa (giro di pulizia, punto 2): NON
+    basta rimettere 'unavailable' in `_SPENTO` da sola -- provato dal vivo,
+    resta verde, perche' il filtro `_IGNOTO` in cima ad `aggrega_giorno`
+    toglie la riga PRIMA che arrivi a controllare `_SPENTO`, ed e' esattamente
+    cio' che rende quella mutazione, da sola, inerte contro il codice
+    consegnato. Serve la coppia: rimettere 'unavailable'/'unknown' dentro
+    `_SPENTO` **e** togliere il filtro `_IGNOTO` in cima (lo stato
+    pre-correzione, prima che le due difese esistessero) -- solo insieme
+    riproducono il difetto originale, e il conteggio torna 2 invece di 1."""
     archivio.annota(quando_ts=ts(15, 30), fonte="entita",
                     soggetto="climate.camera_t", da="off", a="heat")
     archivio.annota(quando_ts=ts(18, 0), fonte="entita",
@@ -637,9 +694,14 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
 def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
     """Stesso difetto, ramo sicurezza: la casa lasciata disarmata e' la
     cosa NOTEVOLE (vedi il punto 3b), e un riavvio a meta' non deve
-    spezzarla in due. Mutazione: rimettere 'unavailable' in `_SPENTO` --
-    l'oggetto si chiuderebbe alle 5:00 e "disarmed" alle 5:05 ne aprirebbe
-    un secondo."""
+    spezzarla in due.
+
+    Stessa mutazione del test gemello, ESEGUITA e verificata rossa (giro di
+    pulizia, punto 2): rimettere 'unavailable' in `_SPENTO` da sola resta
+    verde, schermata dal filtro `_IGNOTO` in cima. Serve la coppia --
+    rimettere 'unavailable'/'unknown' dentro `_SPENTO` **e** togliere il
+    filtro in cima -- e solo cosi' l'oggetto si chiude alle 5:00 e
+    "disarmed" alle 5:05 ne apre un secondo, portando il conteggio a 2."""
     archivio.annota(quando_ts=ts(1, 0), fonte="entita",
                     soggetto="alarm_control_panel.casa", da="armed_home",
                     a="disarmed")
@@ -729,6 +791,93 @@ def test_il_limite_superiore_rispetta_il_protagonista_non_ignora_gli_altri(archi
     assert primo["inizio_ts"] == ts(9, 0)
     assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
         "da": "19.5", "a": "19.5"}
+
+
+# -- Giro di pulizia (26 agosto), punto 1: il PROSSIMO episodio non e' -----
+# -- l'ULTIMO -- sesta occorrenza della stessa forma in questa fetta: un
+# -- parametro che nessun test distingueva da un altro possibile.
+
+def test_il_limite_superiore_e_il_prossimo_episodio_non_l_ultimo(archivio):
+    """Nessun test, finora, aveva TRE episodi dello stesso protagonista:
+    con solo due, `min(successivi)` e `max(successivi)` tornano lo stesso
+    valore, e niente distingue "il prossimo" da "l'ultimo". Con tre
+    accensioni del riscaldamento, il limite superiore delle misure del
+    PRIMO episodio deve fermarsi al SECONDO (il prossimo), non sconfinare
+    fino al TERZO. Mutazione: `min` -> `max` in `limite_superiore` -- la
+    misura delle 13:00, che sta nella finestra del secondo episodio (non
+    dentro la sua durata, ma prima del terzo), finirebbe attribuita anche al
+    primo, e "a" diventerebbe "22.0" invece di "20.0"."""
+    archivio.annota(quando_ts=ts(9, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(9, 15), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="20.0")
+    archivio.annota(quando_ts=ts(9, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(12, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(12, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(13, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="22.0")
+    archivio.annota(quando_ts=ts(15, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=lambda s: (["sensor.camera_temperatura"]
+                                         if s == "climate.camera_t" else []))
+    oggetti = sorted(archivio.oggetti(giorno=G), key=lambda o: o["inizio_ts"])
+    assert len(oggetti) == 3
+    primo = oggetti[0]
+    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "20.0", "a": "20.0"}
+
+
+# -- Giro di pulizia (26 agosto), punto 4: i confini delle misure ----------
+
+def test_il_confine_inferiore_delle_misure_include_l_istante_di_inizio_dell_oggetto(archivio):
+    """Una misura presa nello STESSO istante in cui l'oggetto comincia e' il
+    caso FREQUENTE: e' lo stesso istante dell'evento che apre l'episodio.
+    Deve starci nel corpo. Mutazione: `<=` -> `<` sul limite inferiore --
+    la misura delle 15:30 sparirebbe dal corpo (nessun punto in
+    [15:30, 17:05))."""
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="18.2")
+    archivio.annota(quando_ts=ts(17, 5), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=lambda s: ["sensor.camera_temperatura"])
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "18.2", "a": "18.2"}
+
+
+def test_il_confine_superiore_delle_misure_esclude_l_inizio_del_prossimo_episodio(archivio):
+    """Una misura esattamente all'inizio del PROSSIMO episodio non appartiene
+    a QUESTO oggetto: e' gia' il clima del prossimo. Mutazione: `<` -> `<=`
+    sul limite superiore -- la misura delle 12:00 finirebbe attribuita anche
+    al primo episodio, e "a" diventerebbe "99.9" invece di "20.0"."""
+    archivio.annota(quando_ts=ts(9, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(9, 15), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="20.0")
+    archivio.annota(quando_ts=ts(9, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    archivio.annota(quando_ts=ts(12, 0), fonte="entita",
+                    soggetto="sensor.camera_temperatura", da=None, a="99.9")
+    archivio.annota(quando_ts=ts(12, 0), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(12, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   comprimari=lambda s: (["sensor.camera_temperatura"]
+                                         if s == "climate.camera_t" else []))
+    oggetti = sorted(archivio.oggetti(giorno=G), key=lambda o: o["inizio_ts"])
+    primo = oggetti[0]
+    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
+        "da": "20.0", "a": "20.0"}
 
 
 # -- Punto 6, pulizia 2: una sola lettura non sa dire la differenza --------

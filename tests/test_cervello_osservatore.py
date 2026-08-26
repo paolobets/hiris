@@ -101,6 +101,26 @@ def test_guarda_cambio_scrive_none_quando_le_classi_mancano(coppia):
     assert riga["source_type"] is None
 
 
+# -- Giro di pulizia (26 agosto), punto 6: due residui dell'osservatore ----
+
+def test_guarda_cambio_scrive_none_per_attributi_non_testuali(coppia):
+    """`_testo_o_none` promette che un tipo inatteso -- numero, lista, dict,
+    stringa di soli spazi -- diventi `None`, non un `str(valore)` che
+    scriverebbe testo spazzatura nella colonna. Nessun test lo mandava
+    finora: un intero finirebbe scritto in una colonna di testo. Mutazione:
+    togliere il controllo `isinstance(valore, str)` da `_testo_o_none` --
+    tornerebbe il valore grezzo cosi' com'e', invece di `None`."""
+    archivio, osservatore = coppia
+    ev = _evento("climate.camera_t", "off", "heat",
+                 {"device_class": 42, "state_class": ["misura"],
+                  "source_type": "   "})
+    assert osservatore.guarda_cambio(ev) is True
+    riga = archivio.annotati[0]
+    assert riga["device_class"] is None
+    assert riga["state_class"] is None
+    assert riga["source_type"] is None
+
+
 def test_una_cosa_fuori_dal_pavimento_NON_si_annota(coppia):
     archivio, osservatore = coppia
     assert osservatore.guarda_cambio(_evento("light.lampadario", "on", "off")) is False
@@ -222,6 +242,22 @@ def test_una_integrazione_in_setup_non_e_un_guasto(coppia):
         problemi=[],
         integrazioni=[{"entry_id": "abc", "domain": "fritz",
                        "state": "setup_in_progress"}])
+    assert scritti == 0
+    assert archivio.annotati == []
+
+
+def test_una_integrazione_in_unload_non_e_un_guasto(coppia):
+    """'unload_in_progress' e' l'altro stato transitorio del boot, gemello
+    di 'setup_in_progress': nasce e sparisce da solo in pochi secondi.
+    Nessun test lo mandava finora -- toglierlo da
+    `_STATI_INTEGRAZIONE_TRANSITORI` restava verde. Mutazione: togliere
+    'unload_in_progress' dall'insieme -- scriverebbe un guasto di rumore
+    per ogni integrazione in fase di ricarica."""
+    archivio, osservatore = coppia
+    scritti = osservatore.guarda_sistema(
+        problemi=[],
+        integrazioni=[{"entry_id": "abc", "domain": "fritz",
+                       "state": "unload_in_progress"}])
     assert scritti == 0
     assert archivio.annotati == []
 
