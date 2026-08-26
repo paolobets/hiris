@@ -349,10 +349,10 @@ window.HirisOsservatoreRoute = (function () {
     testa.appendChild(el('span', 'agent-badge badge-off', ETICHETTA_GENERE[o.genere] || o.genere));
     // Identificatore: monospaziato, piccolo, attenuato -- il riferimento, non
     // il contenuto. `.text-mono`/`.field-hint` portano gia' `overflow-wrap:
-    // anywhere` (hiris-config.css) e lo span e' figlio diretto di una riga
-    // flex, protetto da `.section-card [style*="display:flex"] > span`
-    // (rilievo 1: un identificatore da 93 caratteri non deve sfondare lo
-    // schermo di un telefono).
+    // anywhere` (hiris-config.css) e lo span e' protetto da `.section-card
+    // span { min-width: 0 }` (hiris-config.css, rilievo 1): senza, un
+    // identificatore da 93 caratteri dentro questa riga flessibile
+    // sfonderebbe lo schermo di un telefono.
     testa.appendChild(el('span', 'text-mono field-hint', nomeProtagonista(o)));
     box.appendChild(testa);
 
