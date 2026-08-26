@@ -69,31 +69,46 @@ _FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan",
 # sull'elenco scritto a mano di un mandato, che e' precisamente il modo in
 # cui questo difetto e' nato due volte:
 # - `vacuum`: "docked" (in base, eventualmente in carica), "idle" (fermo,
-#   non in carica ne' in errore), "paused" (in pausa senza essere tornato
-#   alla base), "returning" (sta rientrando, non sta piu' pulendo), "error".
-#   Solo "cleaning" e' acceso.
-# - `media_player`: "idle" (acceso ma non riproduce nulla), "paused",
-#   "standby" (deprecato verso "off"/"idle" dalla 2026.8, ma ancora prodotto
-#   da alcune integrazioni -- questa casa ce l'ha). "on" resta acceso
-#   (nessun dettaglio sullo stato: trattato come gli altri domini semplici
-#   on/off) e cosi' "buffering" (sta per riprodurre, non e' un riposo).
+#   non in carica ne' in errore), "returning" (sta rientrando, non sta piu'
+#   pulendo), "error". Solo "cleaning" e' acceso.
+# - `media_player`: "idle" (acceso ma non riproduce nulla), "standby"
+#   (deprecato verso "off"/"idle" dalla 2026.8, ma ancora prodotto da alcune
+#   integrazioni -- questa casa ce l'ha). "on" resta acceso (nessun
+#   dettaglio sullo stato: trattato come gli altri domini semplici on/off)
+#   e cosi' "buffering" (sta per riprodurre, non e' un riposo).
 # - `humidifier`: solo "on"/"off", nessuno stato intermedio -- gia' coperto,
 #   nessuna aggiunta.
 # - `valve`: "open", "opening", "closing" sono TUTTI attivi, come per
 #   "cover" (con cui condivide "closed" come unico riposo) -- una valvola a
 #   meta' apertura non e' ferma, e "opening"/"closing" qui chiuderebbe
 #   l'oggetto a meta' transizione. Nessuna aggiunta.
+#
+# **"paused" NON e' qui, ne' per il vacuum ne' per il media_player** (giro
+# di pulizia del 26 agosto, punto 3 -- deciso ADESSO, contro il mandato
+# precedente che l'aveva messo fra i riposi). Un riposo e' «ha finito»: il
+# robot e' tornato alla base, la TV non riproduce piu' nulla. Una pausa e'
+# un'attivita' SOSPESA, non finita -- il film torna dove si era fermato, la
+# pulizia riprende da dove si era interrotta. Trattarla come un riposo
+# spezzava un episodio solo in due: un film in pausa cinque minuti diventava
+# due oggetti, una pulizia interrotta e ripresa diventava due pulizie -- e
+# la spec (§1) giudica gli oggetti da quanto si leggono, non solo da cosa
+# fa il codice. Un apparecchio lasciato in pausa a fine giornata produce
+# ora un oggetto ancora APERTO (`fine_ts: None`): e' la verita', non ha
+# finito.
+#
 # Un solo insieme, non due che si sovrappongono: `_SPENTO` e' usato da piu'
-# rami (funzionamento e sicurezza), e i valori qui sotto sono esclusivi per
-# dominio (nessuna ambiguita' fra "locked"/"armed_home" e gli stati di
-# `_FUNZIONANO`). **"unavailable"/"unknown" NON stanno qui** (vedi `_IGNOTO`
-# sotto, e la correzione del punto 2): non sono un riposo, sono «non lo
-# sappiamo» -- trattarli come riposo li faceva CHIUDERE un episodio in
-# corso, e il ritorno dello stato vero ne apriva un secondo.
+# rami (funzionamento e sicurezza). Non e' piu' un insieme esclusivo per
+# dominio in senso stretto -- "idle" chiude sia il vacuum sia il
+# media_player -- ma resta senza ambiguita': ogni valore ha lo stesso
+# significato («questo episodio e' finito») in qualunque dominio compaia.
+# **"unavailable"/"unknown" NON stanno qui** (vedi `_IGNOTO` sotto, e la
+# correzione del punto 2): non sono un riposo, sono «non lo sappiamo» --
+# trattarli come riposo li faceva CHIUDERE un episodio in corso, e il
+# ritorno dello stato vero ne apriva un secondo.
 _SPENTO = frozenset({"off", "closed", "none", "",
                      "locked", "armed_home", "armed_away", "armed_night",
                      "armed_vacation", "armed_custom_bypass",
-                     "docked", "paused", "returning", "error",
+                     "docked", "returning", "error",
                      "idle", "standby"})
 
 # Stati "non lo so", non stati della casa. Un riavvio di Home Assistant fa
