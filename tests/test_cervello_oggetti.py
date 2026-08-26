@@ -35,7 +35,7 @@ def test_il_genere_discende_dalla_natura():
     assert genere_di("climate.camera_t", "comfort") == "funzionamento"
     assert genere_di("cover.tapparella", "dispersione") == "funzionamento"
     assert genere_di("person.marta", "chi c'e'") == "presenza"
-    assert genere_di("sensor.presa_energia", "consumo") == "consumo"
+    assert genere_di("sensor.presa_energia", "energia") == "energia"
     assert genere_di("problema:sonos.x", None) == "guasto"
     assert genere_di("sensor.camera_temperatura", "comfort") is None
     for g in GENERI:
@@ -259,7 +259,7 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
 # Prima di questa correzione, `_gamba_del_cambio` chiamava `pavimento.gamba`
 # SENZA attributi: per `sensor`/`binary_sensor` (che decidono la gamba dalla
 # classe, non dal dominio) la gamba tornava sempre `None`. Conseguenza
-# misurata: il genere `consumo` non nasceva MAI, e nemmeno un solo oggetto
+# misurata: il genere `energia` non nasceva MAI, e nemmeno un solo oggetto
 # per fumo, gas, monossido, allagamento, manomissione -- la gamba "sicurezza"
 # restava raggiungibile solo per serrature, sirene e pannello dell'allarme.
 
@@ -277,15 +277,15 @@ def test_un_binary_sensor_di_fumo_diventa_un_oggetto_di_sicurezza(archivio):
     assert o["protagonista"] == "binary_sensor.fumo_cucina"
 
 
-def test_un_sensor_di_energia_diventa_un_oggetto_di_consumo(archivio):
-    """Il genere `consumo` non nasceva mai (punto 0 del mandato): stessa
+def test_un_sensor_di_energia_diventa_un_oggetto_di_energia(archivio):
+    """Il genere `energia` non nasceva mai (punto 0 del mandato): stessa
     mutazione del test gemello sul fumo, sul dominio `sensor`."""
     archivio.annota(quando_ts=ts(2, 0), fonte="entita",
                     soggetto="sensor.energia_casa", da=None, a="1234.5",
                     device_class="energy")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
     o = archivio.oggetti(giorno=G)[0]
-    assert o["genere"] == "consumo"
+    assert o["genere"] == "energia"
     assert o["protagonista"] == "sensor.energia_casa"
 
 
@@ -404,9 +404,9 @@ def test_le_misure_non_includono_letture_precedenti_all_inizio_dell_oggetto(arch
         "da": "18.2", "a": "18.2"}
 
 
-# -- Punto 6: un consumo si CHIUDE e porta iniziale/finale/differenza ------
+# -- Punto 6: un'energia si CHIUDE e porta iniziale/finale/differenza ------
 
-def test_un_consumo_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
+def test_un_energia_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
     """Prima di questa correzione un contatore apriva un oggetto al primo
     cambio e non lo chiudeva MAI dentro la giornata: un oggetto
     perennemente aperto, con dentro solo la prima lettura, per ognuno dei
@@ -424,7 +424,7 @@ def test_un_consumo_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
                     device_class="energy")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 1
     o = archivio.oggetti(giorno=G)[0]
-    assert o["genere"] == "consumo"
+    assert o["genere"] == "energia"
     assert o["inizio_ts"] == ts(1)
     assert o["fine_ts"] == ts(23)
     assert o["corpo"]["valore_iniziale"] == "100.0"
@@ -503,7 +503,7 @@ def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte(archivio):
 
 def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
     """La trappola che il pavimento tiene separata per dominio: `sensor`
-    classe `gas` e' un CONTATORE (consumo), `binary_sensor` classe `gas` e'
+    classe `gas` e' un CONTATORE (energia), `binary_sensor` classe `gas` e'
     un RILEVATORE di fuga (sicurezza). Se qualcuno fondesse i due rami per
     sola classe, questo test arrossisce: coppia provata fianco a fianco,
     nello stesso test."""
@@ -518,7 +518,7 @@ def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
                     device_class="gas")
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 2
     oggetti = {o["protagonista"]: o for o in archivio.oggetti(giorno=G)}
-    assert oggetti["sensor.gas_contatore"]["genere"] == "consumo"
+    assert oggetti["sensor.gas_contatore"]["genere"] == "energia"
     assert oggetti["binary_sensor.gas_cucina"]["genere"] == "sicurezza"
 
 
@@ -549,7 +549,7 @@ def test_domini_aggiunti_a_funzionano_producono_un_funzionamento():
 # -- Punto 1: i domini nuovi hanno portato stati di riposo che nessuno
 # -- conosceva -- `_FUNZIONANO` era stato allargato senza guardare
 # -- `_SPENTO` a fianco. Terza occorrenza della stessa famiglia di difetto
-# -- in questa fetta (l'allarme rovesciato, il consumo che non chiudeva).
+# -- in questa fetta (l'allarme rovesciato, l'energia che non chiudeva).
 
 def test_un_robot_che_torna_alla_base_chiude_il_suo_oggetto(archivio):
     """'docked' e' il riposo del vacuum -- verificato sulla documentazione
@@ -714,7 +714,7 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
       assorbimento del guardiano, non perche' la difesa regga qui.
       **Questa meta', pero', e' sorvegliata altrove**: da
       `test_un_riavvio_di_ha_non_apre_un_oggetto_di_presenza` e da
-      `test_il_riepilogo_del_consumo_salta_le_letture_unavailable`, dove
+      `test_il_riepilogo_dell_energia_salta_le_letture_unavailable`, dove
       l'episodio NON e' ancora aperto quando arriva 'unavailable' e il
       filtro e' l'unica cosa che impedisce un oggetto spurio o una
       lettura contaminata -- provato dal vivo: entrambi arrossiscono
@@ -784,10 +784,10 @@ def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
     assert o["fine_ts"] == ts(9, 0)
 
 
-# -- Punto 3: il riepilogo del consumo non deve ingerire un 'unavailable' --
+# -- Punto 3: il riepilogo dell'energia non deve ingerire un 'unavailable' -
 # -- da riavvio a bordo giornata.
 
-def test_il_riepilogo_del_consumo_salta_le_letture_unavailable(archivio):
+def test_il_riepilogo_dell_energia_salta_le_letture_unavailable(archivio):
     """Un riavvio di Home Assistant a bordo giornata scrive 'unavailable'
     come prima o ultima lettura del contatore: il riepilogo deve ignorarla
     e usare la prima/ultima lettura VERA, non uscire con
@@ -946,13 +946,13 @@ def test_il_confine_superiore_delle_misure_esclude_l_inizio_del_prossimo_episodi
 
 # -- Punto 6, pulizia 2: una sola lettura non sa dire la differenza --------
 
-def test_un_consumo_con_una_sola_lettura_non_sa_dire_la_differenza(archivio):
-    """Una sola lettura nel giorno non permette di sapere quanto si e'
-    consumato: la verita' e' 'non lo sappiamo', non 'zero' -- la stessa
+def test_un_energia_con_una_sola_lettura_non_sa_dire_la_differenza(archivio):
+    """Una sola lettura nel giorno non permette di sapere quanto e'
+    cambiato: la verita' e' 'non lo sappiamo', non 'zero' -- la stessa
     distinzione del punto 2, e il codice altrove la fa gia' restituendo
     `None` quando il valore non si legge come numero (`_differenza`). Con
     una sola lettura, iniziale e finale sono la STESSA riga: il conto
-    tornerebbe 0.0, che direbbe il fatto falso "non ha consumato niente".
+    tornerebbe 0.0, che direbbe il fatto falso "non e' cambiato niente".
     Mutazione: calcolare comunque `_differenza(iniziale, finale)` anche con
     un solo punto -- `differenza` tornerebbe 0.0 invece di `None`."""
     archivio.annota(quando_ts=ts(12), fonte="entita",

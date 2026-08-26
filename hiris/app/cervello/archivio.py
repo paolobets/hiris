@@ -45,7 +45,7 @@ def _migrazione_2(conn) -> None:
     """v1 -> v2: il grezzo porta anche `device_class`, `state_class` e
     `source_type` -- le tre classi che il pavimento legge per decidere la
     gamba di `sensor` e `binary_sensor` (Task 3 del giro di correzioni:
-    prima non c'erano, e mezzo pavimento -- consumo, i rilevatori della
+    prima non c'erano, e mezzo pavimento -- energia, i rilevatori della
     sesta gamba -- non produceva mai un oggetto).
 
     Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano
