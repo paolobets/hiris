@@ -149,6 +149,26 @@ def test_sostituisci_giorno_sostituisce_non_accoda(archivio):
     assert righe[0]["protagonista"] == "nuovo"
 
 
+def test_sostituisci_giorno_NON_tocca_gli_altri_giorni(archivio):
+    """La cancellazione dentro `sostituisci_giorno` deve essere circoscritta
+    al giorno che si rifa'.
+
+    Senza questo test una DELETE allargata per errore spazzerebbe via TUTTI
+    gli oggetti -- mesi di comprensione, che oltre la ritenzione del grezzo non
+    si rifanno piu' -- e la suite resterebbe verde. L'invariante gemello e'
+    gia' sorvegliato per `dimentica_oggetti`; la via nuova non lo era.
+    """
+    archivio.sostituisci_giorno("2026-08-23", [
+        {"genere": "funzionamento", "protagonista": "l-altro-giorno",
+         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
+    ])
+    archivio.sostituisci_giorno("2026-08-24", [
+        {"genere": "funzionamento", "protagonista": "il-giorno-rifatto",
+         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
+    ])
+    assert [o["protagonista"] for o in archivio.oggetti(giorno="2026-08-23")]         == ["l-altro-giorno"]
+
+
 def test_sostituisci_giorno_fallito_a_meta_non_lascia_il_giorno_mezzo_scritto(archivio):
     """Se l'inserimento fallisce a meta' (un oggetto che rompe davvero
     l'INSERT: `genere` NOT NULL violato), il giorno deve restare quello di
@@ -174,3 +194,18 @@ def test_fonte_invalida_solleva(archivio):
     entrare in silenzio: l'aggregazione lo perderebbe senza dirlo."""
     with pytest.raises(sqlite3.IntegrityError):
         archivio.annota(quando_ts=ADESSO, fonte="sistemi", soggetto="x", da=None, a="1")
+
+
+def test_ENTRAMBE_le_fonti_ammesse_entrano(archivio):
+    """Il CHECK ha due valori: se un test prova solo che un terzo e' rifiutato,
+    meta' dell'elenco resta non provata ammissibile.
+
+    `sistema` e' la fonte delle condizioni di Home Assistant, e nessun altro
+    test la scrive: un restringimento del CHECK resterebbe verde in suite e
+    l'osservatore comincerebbe a sollevare dal vivo, in silenzio fino alla casa.
+    """
+    archivio.annota(quando_ts=ADESSO, fonte="entita",
+                    soggetto="climate.camera", da="off", a="heat")
+    archivio.annota(quando_ts=ADESSO + 1, fonte="sistema",
+                    soggetto="problema:sonos.subscriptions_failed", da=None, a="aperto")
+    assert [r["fonte"] for r in archivio.cambi(da_ts=0.0, a_ts=ADESSO + 2)]         == ["entita", "sistema"]
