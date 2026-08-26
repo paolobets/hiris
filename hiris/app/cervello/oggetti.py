@@ -27,7 +27,7 @@ from .pavimento import gamba
 # chiamata a `legami` dentro il ciclo farebbe migliaia di richieste per una
 # giornata. Renderla `async` "per il futuro" sarebbe generalita' speculativa.
 
-GENERI = ("funzionamento", "presenza", "consumo", "guasto")
+GENERI = ("funzionamento", "presenza", "consumo", "guasto", "sicurezza")
 
 # I domini che «funzionano»: si accendono e si spengono, si aprono e si
 # chiudono. Sono i protagonisti degli oggetti di funzionamento.
@@ -50,14 +50,18 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     generassero, una giornata ne produrrebbe migliaia e nessuno sarebbe
     leggibile.
 
-    **La sesta gamba (sicurezza) e' un guasto, non un buco.** Serrature,
-    pannello dell'allarme, sirene, e i sensori di fumo/gas/monossido/
-    allagamento/manomissione/guasto/calore/gelo sono una minaccia, non un
-    funzionamento normale: hanno la stessa forma di una condizione di
-    sistema -- nascono, durano, finiscono o restano aperti. La review del
-    primo task ha gia' trovato una volta il buco di dimenticarli (spec §4);
-    qui il criterio e' `gamba_ == "sicurezza"`, qualunque sia il dominio, cosi'
-    non serve ripetere l'elenco dei domini/classi che il pavimento gia' tiene.
+    **La sesta gamba (sicurezza) ha un genere proprio, non un buco.**
+    Serrature, pannello dell'allarme, sirene, e i sensori di fumo/gas/
+    monossido/allagamento/manomissione/guasto/calore/gelo sono una minaccia,
+    non un funzionamento normale: hanno la stessa FORMA di una condizione di
+    sistema -- nascono, durano, finiscono o restano aperti -- ma non sono la
+    STESSA cosa. Una porta aperta con la chiave e un'integrazione Sonos rotta
+    non sono lo stesso genere di fatto, e l'analista le trattera' in modo
+    diverso: `"guasto"` resta per le condizioni di sistema (`problema:`,
+    `integrazione:`, un confine netto e facile da spiegare), `"sicurezza"` per
+    tutta la gamba omonima. Qui il criterio e' `gamba_ == "sicurezza"`,
+    qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
+    classi che il pavimento gia' tiene.
     """
     if soggetto.startswith(("problema:", "integrazione:")):
         return "guasto"
@@ -69,28 +73,33 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     if dominio == "sensor" and gamba_ == "consumo":
         return "consumo"
     if gamba_ == "sicurezza":
-        return "guasto"
+        return "sicurezza"
     return None
 
 
-def _gamba_del_cambio(soggetto: str) -> str | None:
-    """La gamba del soggetto, per quanto si puo' saperne qui.
+def _gamba_del_cambio(soggetto: str, riga: dict) -> str | None:
+    """La gamba del soggetto, ricostruita dal grezzo.
 
-    Il grezzo non porta gli attributi dell'entita' (§3 della spec: «non porta
-    il contesto attorno»), quindi `pavimento.gamba` viene chiamato SENZA
-    attributi -- funziona per i domini che si risolvono dal solo nome (person,
-    lock/alarm_control_panel/siren, climate, cover), non per quelli che
-    dipendono da `device_class` (sensor, binary_sensor): la gamba VERA di quei
-    domini e' nota solo al momento della scrittura (`osservatore.py`,
-    `self._viste`) e non arriva fin qui. **E' un limite noto e dichiarato, non
-    un difetto silenzioso**: `consumo` e i rilevatori di sicurezza per classe
-    (fumo, gas, CO, ...) restano percio' non raggiungibili da questa funzione
-    oggi -- si correggera' quando la classe entrera' nel grezzo, non
-    indovinandola qui.
+    Il grezzo non porta il CONTESTO attorno (§3 della spec: temperatura,
+    presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
+    correzione, le tre classi che Home Assistant dichiara sull'entita' --
+    `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
+    definizione, non un giudizio nostro: e' cio' che `pavimento.gamba()`
+    legge per decidere la gamba di `sensor` e `binary_sensor`.
+
+    **Non si salva la gamba gia' calcolata.** Sarebbe piu' comodo, ed e' la
+    scelta sbagliata: la gamba e' un giudizio, e il giudizio sta tutto qui,
+    nell'aggregazione, precisamente perche' i 22 giorni di grezzo permettano
+    di rifarlo. Congelarlo in scrittura toglierebbe quella possibilita' il
+    giorno in cui il pavimento cambiasse.
     """
     if soggetto.startswith(("problema:", "integrazione:")):
         return None
-    return gamba(soggetto, {})
+    return gamba(soggetto, {
+        "device_class": riga.get("device_class"),
+        "state_class": riga.get("state_class"),
+        "source_type": riga.get("source_type"),
+    })
 
 
 def _confini(giorno: str, fuso: str | None) -> tuple[float, float]:
@@ -169,27 +178,28 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
 
     for r in righe:
         soggetto = r["soggetto"]
-        genere = genere_di(soggetto, _gamba_del_cambio(soggetto))
+        genere = genere_di(soggetto, _gamba_del_cambio(soggetto, r))
         if genere is None:
             continue
         if genere == "guasto":
-            if soggetto.startswith(("problema:", "integrazione:")):
-                # Convenzione di sistema (`osservatore.guarda_sistema`):
-                # "aperto" nasce, "chiuso" e nient'altro finisce.
-                if r["a"] == "aperto":
-                    aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
-                                        "stato": "aperto"}
-                else:
-                    chiudi(soggetto, r["quando_ts"])
+            # Solo condizioni di sistema arrivano qui (vedi `genere_di`):
+            # convenzione di `osservatore.guarda_sistema` -- "aperto" nasce,
+            # "chiuso" e nient'altro finisce.
+            if r["a"] == "aperto":
+                aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                                    "stato": "aperto"}
             else:
-                # Sesta gamba, entita' vera: stessa logica acceso/spento del
-                # funzionamento -- il genere e' diverso, la forma no.
-                if _acceso(r["a"]):
-                    if soggetto not in aperti:
-                        aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
-                                            "stato": r["a"]}
-                else:
-                    chiudi(soggetto, r["quando_ts"])
+                chiudi(soggetto, r["quando_ts"])
+            continue
+        if genere == "sicurezza":
+            # Sesta gamba, entita' vera: stessa logica acceso/spento del
+            # funzionamento -- il genere e' diverso, la forma no.
+            if _acceso(r["a"]):
+                if soggetto not in aperti:
+                    aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                                        "stato": r["a"]}
+            else:
+                chiudi(soggetto, r["quando_ts"])
             continue
         if genere == "presenza":
             # «home» e' il riposo, come «off» lo e' per un funzionamento:

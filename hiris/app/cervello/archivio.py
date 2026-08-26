@@ -40,6 +40,25 @@ from ..storage import connect, init_schema
 # entrare il fuso orario nell'archivio.
 CONSERVAZIONE_CAMBI_S = 22 * 86400
 
+
+def _migrazione_2(conn) -> None:
+    """v1 -> v2: il grezzo porta anche `device_class`, `state_class` e
+    `source_type` -- le tre classi che il pavimento legge per decidere la
+    gamba di `sensor` e `binary_sensor` (Task 3 del giro di correzioni:
+    prima non c'erano, e mezzo pavimento -- consumo, i rilevatori della
+    sesta gamba -- non produceva mai un oggetto).
+
+    Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano
+    esattamente com'erano e diventano NULL sulle tre, che e' cio' che sono
+    -- grezzo scritto prima che queste colonne esistessero. Una migrazione
+    che ricostruisse la tabella per tre colonne rischierebbe di perdere
+    settimane di osservazione per un guadagno estetico.
+    """
+    esistenti = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
+    for colonna in ("device_class", "state_class", "source_type"):
+        if colonna not in esistenti:
+            conn.execute(f"ALTER TABLE cambi ADD COLUMN {colonna} TEXT")
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +66,10 @@ CREATE TABLE IF NOT EXISTS cambi (
     fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),
     soggetto TEXT NOT NULL,
     da TEXT,
-    a TEXT
+    a TEXT,
+    device_class TEXT,
+    state_class TEXT,
+    source_type TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
@@ -67,7 +89,9 @@ CREATE INDEX IF NOT EXISTS idx_oggetti_giorno ON oggetti(giorno, inizio_ts);
 
 def _riga_cambio(r) -> dict:
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
-            "soggetto": r["soggetto"], "da": r["da"], "a": r["a"]}
+            "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
+            "device_class": r["device_class"], "state_class": r["state_class"],
+            "source_type": r["source_type"]}
 
 
 def _riga_oggetto(r) -> dict:
@@ -84,7 +108,7 @@ class ArchivioOsservazioni:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrazione_2})
 
     def close(self) -> None:
         with self._lock:
@@ -93,22 +117,35 @@ class ArchivioOsservazioni:
     # -- i cambi -------------------------------------------------------
 
     def annota(self, *, quando_ts: float, fonte: str, soggetto: str,
-               da, a) -> None:
+               da, a, device_class: str | None = None,
+               state_class: str | None = None,
+               source_type: str | None = None) -> None:
         """Un cambio, cosi' com'e'. **Nessun giudizio in scrittura**: e' la
         condizione da cui dipende tutto il resto -- una decisione presa qui non
         si corregge piu', una presa in aggregazione si'.
 
         `fonte` e' vincolata a `'entita'` o `'sistema'` (CHECK di schema): un
-        refuso dello scrittore futuro non deve entrare in silenzio."""
+        refuso dello scrittore futuro non deve entrare in silenzio.
+
+        `device_class`, `state_class` e `source_type` sono le tre classi che
+        Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
+        un giudizio nostro: e' cio' che serve a `pavimento.gamba()` per
+        decidere la gamba di `sensor` e `binary_sensor` quando l'aggregazione
+        rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
+        annullabili: le condizioni di sistema non li portano, e una riga
+        scritta prima che queste colonne esistessero li rilegge come `None`.
+        """
         with self._lock:
             self._conn.execute(
-                "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a) VALUES(?,?,?,?,?)",
+                "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
+                "state_class,source_type) VALUES(?,?,?,?,?,?,?,?)",
                 (float(quando_ts), fonte, soggetto,
-                 None if da is None else str(da), None if a is None else str(a)))
+                 None if da is None else str(da), None if a is None else str(a),
+                 device_class, state_class, source_type))
             self._conn.commit()
 
     def cambi(self, *, da_ts: float, a_ts: float, soggetto: str | None = None,
-              limite: int = 200_000) -> list[dict]:
+              fonte: str | None = None, limite: int = 200_000) -> list[dict]:
         """I cambi di una finestra, **dal piu' vecchio**.
 
         Al contrario della cronaca degli atti, che torna dal piu' recente:
@@ -120,6 +157,12 @@ class ArchivioOsservazioni:
         senza sovrapporli: con due estremi inclusivi, un cambio esattamente a
         mezzanotte finirebbe contato in entrambi i giorni che lo interrogano.
 
+        `fonte`, se dato, filtra **nella query SQL**, non dopo la lettura: chi
+        chiede solo le condizioni di sistema (poche centinaia su 22 giorni,
+        contro le ~320.000 di entita') non deve ne' pagarne il costo ne'
+        rischiare che il `LIMIT` tagli via proprio le righe di sistema piu'
+        recenti, seppellite dal volume delle altre.
+
         Il tetto e' alto apposta: misurato sulla casa vera, una giornata fa
         ~14.600 cambi, e l'aggregazione deve vederla intera.
         """
@@ -128,6 +171,9 @@ class ArchivioOsservazioni:
         if soggetto is not None:
             sql += " AND soggetto = ?"
             args.append(soggetto)
+        if fonte is not None:
+            sql += " AND fonte = ?"
+            args.append(fonte)
         sql += " ORDER BY quando_ts ASC, id ASC LIMIT ?"
         args.append(int(max(1, limite)))
         with self._lock:
