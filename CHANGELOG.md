@@ -1,5 +1,31 @@
 # HIRIS — Changelog
 
+## [3.13.1] — L'impianto solare non consuma, produce (2026-08-26)
+
+**Trovato usandolo, poche ore dopo la 3.13.0.** L'impianto fotovoltaico con accumulo di casa
+produce diciassette sensori; il pavimento ne cattura sedici — energia e potenza **prodotta**,
+**esportata**, **importata**, **autoconsumata**, **consumata**, e **carica**/**scarica** della
+batteria — ed è giusto: sono il dato più importante che una casa produce per capire se è efficiente.
+
+Ma li etichettava tutti **«consumo»**. «Energia *prodotta* oggi: 24 kWh» archiviata sotto *consumo*
+non è un'imprecisione di etichetta: è una frase falsa nel dato, e l'efficienza di una casa è
+esattamente la differenza fra ciò che produce e ciò che consuma.
+
+**La gamba e il genere si chiamano «energia»**, che è vero di tutti e sedici.
+
+**Perché non si è corretto meglio, e dove sta la strada.** La tentazione era leggere i nomi —
+«prodotta», «esportata» — e sarebbe stato indovinare: funziona su questo inverter e si rompe sul
+prossimo. Home Assistant *sa* quale sensore è produzione, quale è scambio con la rete e quale è
+batteria, e lo dichiara nella configurazione della **dashboard Energia** (`energy/get_prefs`).
+**Su questa casa quella dashboard è vuota — misurato, non supposto.** Finché non sarà configurata la
+distinzione non è conoscibile, e il prodotto smette di affermarla invece di inventarla. Il grezzo
+conserva `device_class` e `state_class`: il giorno che la dashboard ci sarà, le tre settimane di
+osservazioni si riaggregano con la distinzione giusta senza perdere niente.
+
+**E una regola nuova**, che questo difetto ha pagato: su ogni integrazione o lettura da Home
+Assistant **non si ipotizza** — prima la documentazione ufficiale, poi le API di HA vere, e si scrive
+nel codice cosa è stato misurato e quando.
+
 ## [3.13.0] — L'osservatore (fetta «l'osservatore») (2026-08-26)
 
 **HIRIS si costruisce un archivio proprio di ciò che vede.** Fino a ieri conosceva la casa solo attraverso Home
