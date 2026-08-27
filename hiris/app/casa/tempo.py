@@ -16,6 +16,7 @@ prodotto ha gia' fra `casa/domande.py` (puro) e chi gli passa lo stato.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
         numero = float(grezzo)
     except Exception:
         return default
-    if numero != numero:  # NaN: non confrontabile, vale come assente
+    if math.isnan(numero):  # NaN: non confrontabile, vale come assente
         return default
     return min(float(tetto), max(1.0, numero))
 

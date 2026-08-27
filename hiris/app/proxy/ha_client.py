@@ -3,7 +3,7 @@ import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import quote
 
 import aiohttp
@@ -1470,7 +1470,7 @@ class HAClient:
     # un altro inverter nessuna di queste chiavi comparira' mai, e non deve
     # rompere niente -- `direzioni_energia`, sotto, lo tratta come «non
     # trovato», non come un guasto.
-    _DIREZIONE_DA_TRANSLATION_KEY = {
+    _DIREZIONE_DA_TRANSLATION_KEY: ClassVar[dict[str, str]] = {
         "energy_generating_today": "produzione", "power_generating": "produzione",
         "energy_importing_today": "prelievo", "power_importing": "prelievo",
         "energy_exporting_today": "immissione", "power_exporting": "immissione",

@@ -125,7 +125,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from ..memoria.archivio import ArchivioMemoria
 from ..memoria.cache_indice import CacheIndice
@@ -943,7 +943,7 @@ class DispatcherStrumenti:
         # risposta -- che e' una degradazione, non un guasto.
         self._cronaca = cronaca
 
-    _ARCHIVIO_PER_STRUMENTO = {
+    _ARCHIVIO_PER_STRUMENTO: ClassVar[dict[str, tuple[str, ...]]] = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
         "legami": ("ha",),
         "ricorda": ("casa", "memoria"), "richiama": ("memoria",),

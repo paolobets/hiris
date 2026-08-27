@@ -1,6 +1,7 @@
 """I tre strumenti delle promesse, e le verifiche che fanno ALLA NASCITA."""
 import os
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
 import pytest
 
@@ -427,7 +428,9 @@ class _RegistroFinto:
     gestore di `DispatcherStrumenti` li chiama, e tenerli avrebbe continuato
     a dare l'illusione di un doppio completo senza che nulla li provasse.
     """
-    _SERVIZI = {("light", "turn_on"): {}, ("notify", "mobile_app_x"): {}}
+    _SERVIZI: ClassVar[dict[tuple[str, str], dict]] = {
+        ("light", "turn_on"): {}, ("notify", "mobile_app_x"): {},
+    }
 
     def domini(self):
         return ["light", "notify"]

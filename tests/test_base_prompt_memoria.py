@@ -21,6 +21,7 @@ ever renamed again, this pin moves with it instead of silently going stale.
 """
 from __future__ import annotations
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -97,7 +98,7 @@ async def test_openai_compat_runner_system_prompt_carries_memory_rule(tmp_path):
 
     class _FakeResponse:
         usage = None
-        choices = [_FakeChoice()]
+        choices: ClassVar[list] = [_FakeChoice()]
 
     runner._client = MagicMock()
     runner._client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
@@ -135,7 +136,7 @@ async def test_openai_compat_runner_chat_stream_carries_memory_rule(tmp_path):
 
     class _FakeStreamResponse:
         """Represents a single chunk from the stream."""
-        choices = [_FakeStreamChoice()]
+        choices: ClassVar[list] = [_FakeStreamChoice()]
 
     async def _fake_stream():
         """Async generator simulating the stream response."""

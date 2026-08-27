@@ -9,6 +9,8 @@ produrre quella differenza non la puo' provare.
 """
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
@@ -42,7 +44,7 @@ class _BloccoTesto:
 
 class _RispostaClaude:
     usage = _UsoClaude()
-    content = [_BloccoTesto()]
+    content: ClassVar[list] = [_BloccoTesto()]
     stop_reason = "end_turn"
 
 

@@ -31,6 +31,7 @@ compone gia' BASE -> persona -> modificatori -> guida -> contesto, e i tre
 composer del prodotto devono mettere le stesse cose nello stesso posto o
 divergono in silenzio -- che e' esattamente cio' che era successo.
 """
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -58,7 +59,7 @@ def _fake_openai_client():
 
     class _FakeResponse:
         usage = None
-        choices = [_FakeChoice()]
+        choices: ClassVar[list] = [_FakeChoice()]
 
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=_FakeResponse())
