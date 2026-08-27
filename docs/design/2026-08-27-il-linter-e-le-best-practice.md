@@ -346,6 +346,35 @@ hook exit=0
 L'URL del remoto e' **finto di proposito**: l'hook non contatta nessuno, e la prova non ha mai
 toccato il remoto vero.
 
+### Il reperto che solo il CI poteva dare, 27/08/2026
+
+Questa fetta misurava **zero** rilievi in locale su Windows. Dopo il push, il CI ha girato per la
+prima volta su Linux e il job `lint` e' diventato rosso con **5 rilievi in piu'**, tutti `EXE001`
+("shebang is present but file is not executable") su `scripts/_comune.py`, `censimento.py`,
+`doppioni.py`, `release.py`, `verifica_componenti.py`.
+
+**La causa**: `EXE001` dipende dal bit di esecuzione POSIX. Windows non ce l'ha, quindi `ruff` non
+puo' verificarlo e **salta la regola** in locale; su Linux il bit esiste ed e' assente su tutti e
+cinque i file, quindi la regola si applica e trova il difetto vero.
+
+**La conseguenza generale, che e' la cosa che vale**: il conteggio locale e quello del CI possono
+divergere per ragioni di piattaforma, e **il CI e' quello che comanda**. Chi vedra' in futuro «All
+checks passed!» sulla propria macchina Windows deve sapere che non e' la parola definitiva — e'
+solo cio' che quella piattaforma e' in grado di controllare.
+
+**La cura non e' uguale per i cinque file**, perche' non sono uguali: `censimento.py`, `doppioni.py`,
+`release.py` e `verifica_componenti.py` hanno tutti un blocco `if __name__ == "__main__":` — sono
+punti d'ingresso, e il loro shebang e' una promessa vera che oggi non e' mantenuta. La cura e'
+marcarli eseguibili nell'indice di git (`git update-index --chmod=+x`, che funziona anche da
+Windows perche' agisce sull'indice e non sul filesystem), cosi' la promessa diventa vera anche su
+Linux. `_comune.py` invece e' un modulo: viene importato da `doppioni.py` e non ha nessun blocco
+`__main__`, quindi non si esegue mai da solo. Il suo shebang non era una promessa mantenibile, era
+un residuo copiato dagli altri file: la cura e' toglierlo, non fingerlo vero con un bit +x che
+nessuno usera' mai.
+
+Non e' stato disattivato `EXE001` in `pyproject.toml`: la regola ha trovato una cosa vera, e
+spegnerla avrebbe nascosto il reperto invece di sanarlo.
+
 ## 8. Cosa resta fuori, dichiarato
 
 - **`ruff format`** — dopo la rinomina in inglese (§3.1).
