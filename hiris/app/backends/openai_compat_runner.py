@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from contextlib import suppress
 from typing import Any
 
 import httpx as _httpx
@@ -62,12 +63,13 @@ def _is_conn_error(exc: Exception) -> bool:
     «irraggiungibile», che è il punto: due sarebbero libere di divergere.
     """
     for modulo in ("openai", "anthropic"):
-        try:
+        # (ImportError se l'SDK non e' installata, AttributeError se una
+        # versione vecchia non ha ancora questi due nomi): tacere e' voluto,
+        # si prova semplicemente l'SDK successiva.
+        with suppress(ImportError, AttributeError):
             sdk = __import__(modulo)
             if isinstance(exc, (sdk.APIConnectionError, sdk.APITimeoutError)):
                 return True
-        except Exception:
-            pass
     return isinstance(exc, (_httpx.ConnectError, _httpx.ConnectTimeout, ConnectionError))
 
 logger = logging.getLogger(__name__)

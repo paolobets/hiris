@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 from urllib.parse import quote
@@ -438,12 +439,10 @@ class HAClient:
         valore di prodotto della spec §2.5. Se il corpo non e' leggibile resta
         il codice, che e' comunque piu' di «non posso».
         """
-        try:
+        with suppress(aiohttp.ContentTypeError, ValueError):
             corpo = await resp.json()
             if isinstance(corpo, dict) and corpo.get("message"):
                 return str(corpo["message"])
-        except Exception:
-            pass
         try:
             testo = (await resp.text()) or ""
         except Exception:
@@ -1847,20 +1846,20 @@ class HAClient:
                     for cb in self._servizi_listeners:
                         try:
                             cb("riconnessione")
-                        except Exception as cb_exc:
-                            logger.exception("servizi_listener callback raised: %s", cb_exc)
+                        except Exception:
+                            logger.exception("servizi_listener callback raised")
                     for cb in self._anagrafe_listeners:
                         try:
                             cb("riconnessione")
-                        except Exception as cb_exc:
-                            logger.exception("anagrafe_listener callback raised: %s", cb_exc)
+                        except Exception:
+                            logger.exception("anagrafe_listener callback raised")
                     # Stessa logica per le plance: una disconnessione perde per
                     # sempre un eventuale EVENTO_PLANCE emesso nel frattempo.
                     for cb in self._plance_listeners:
                         try:
                             cb({})
-                        except Exception as cb_exc:
-                            logger.exception("plance_listener callback raised: %s", cb_exc)
+                        except Exception:
+                            logger.exception("plance_listener callback raised")
 
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -1873,8 +1872,8 @@ class HAClient:
                                 for cb in self._state_listeners:
                                     try:
                                         cb(event["data"])
-                                    except Exception as cb_exc:
-                                        logger.exception("state_listener callback raised: %s", cb_exc)
+                                    except Exception:
+                                        logger.exception("state_listener callback raised")
                             elif event_type == EVENTO_PLANCE:
                                 # Il percorso della plancia cambiata sta in
                                 # event["data"], ma non lo si usa per filtrare:
@@ -1883,15 +1882,14 @@ class HAClient:
                                 for cb in self._plance_listeners:
                                     try:
                                         cb(event.get("data", {}))
-                                    except Exception as cb_exc:
-                                        logger.exception("plance_listener callback raised: %s", cb_exc)
+                                    except Exception:
+                                        logger.exception("plance_listener callback raised")
                             if event_type in EVENTI_SERVIZI:
                                 for cb in self._servizi_listeners:
                                     try:
                                         cb(event_type)
-                                    except Exception as cb_exc:
-                                        logger.exception(
-                                            "servizi_listener callback raised: %s", cb_exc)
+                                    except Exception:
+                                        logger.exception("servizi_listener callback raised")
                             if event_type in EVENTI_ANAGRAFE:
                                 # La casa e' cambiata (create/update/move/remove, su
                                 # qualsiasi registro): l'anagrafe va rifatta. Nessun
@@ -1900,8 +1898,8 @@ class HAClient:
                                 for cb in self._anagrafe_listeners:
                                     try:
                                         cb(event_type)
-                                    except Exception as cb_exc:
-                                        logger.exception("anagrafe_listener callback raised: %s", cb_exc)
+                                    except Exception:
+                                        logger.exception("anagrafe_listener callback raised")
             except asyncio.CancelledError:
                 return
             except Exception as exc:

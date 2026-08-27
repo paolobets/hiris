@@ -15,6 +15,7 @@ non tocca piu' Home Assistant.
 from __future__ import annotations
 
 import inspect
+from contextlib import suppress
 
 import pytest
 
@@ -48,10 +49,8 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
     senza che l'utente riavvii nulla."""
     cache = EntityCache()
     ha_giu = _HA(giu=True)
-    try:
+    with suppress(RuntimeError):
         await cache.load(ha_giu)
-    except Exception:
-        pass
     assert cache.loaded is False
 
     ha = _HA()

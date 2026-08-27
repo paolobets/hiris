@@ -11,6 +11,8 @@ archivio: vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §1.
 from __future__ import annotations
 
 import json
+import sqlite3
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
@@ -167,10 +169,8 @@ def _migrazione_2_motivo_integrazione(conn) -> None:
     transizione 1 -> 2. Il `try` copre il caso di un archivio gia' ritoccato a
     mano, dove la colonna c'e' gia'.
     """
-    try:
+    with suppress(sqlite3.OperationalError):
         conn.execute("ALTER TABLE integrazioni ADD COLUMN motivo TEXT")
-    except Exception:
-        pass
 
 
 def _migrazione_3_entita_di_riferimento_dell_area(conn) -> None:
@@ -182,10 +182,8 @@ def _migrazione_3_entita_di_riferimento_dell_area(conn) -> None:
     silenzio.
     """
     for colonna in ("entita_temperatura", "entita_umidita"):
-        try:
+        with suppress(sqlite3.OperationalError):
             conn.execute(f"ALTER TABLE aree ADD COLUMN {colonna} TEXT")
-        except Exception:
-            pass
 
 
 def _migrazione_4_categorie_delle_entita(conn) -> None:
@@ -200,10 +198,8 @@ def _migrazione_4_categorie_delle_entita(conn) -> None:
     una lista (vedi `_dizionario`). Una riga vecchia che non ha mai visto le
     categorie dice cosi' «nessuna categoria», che e' vero.
     """
-    try:
+    with suppress(sqlite3.OperationalError):
         conn.execute("ALTER TABLE entita ADD COLUMN categorie TEXT NOT NULL DEFAULT '{}'")
-    except Exception:
-        pass
 
 
 def _migrazione_5_identita_della_categoria(conn) -> None:
@@ -219,7 +215,7 @@ def _migrazione_5_identita_della_categoria(conn) -> None:
     NULL in SQLite, quindi lasciarlo nullabile dentro una chiave primaria
     avrebbe rimesso in piedi il buco che la chiave serve a chiudere.
     """
-    try:
+    with suppress(sqlite3.OperationalError):
         conn.executescript(
             "CREATE TABLE categorie_nuova ("
             " id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',"
@@ -228,8 +224,6 @@ def _migrazione_5_identita_della_categoria(conn) -> None:
             " SELECT id, nome, COALESCE(ambito, '') FROM categorie;"
             "DROP TABLE categorie;"
             "ALTER TABLE categorie_nuova RENAME TO categorie;")
-    except Exception:
-        pass
 
 
 _MIGRAZIONI = {
