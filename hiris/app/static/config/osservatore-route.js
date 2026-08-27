@@ -494,12 +494,31 @@ window.HirisOsservatoreRoute = (function () {
      funzioni, come il resto del file distingue i formati che arrivano da
      fonti diverse. Il fuso di resa e' quello del BROWSER (`new Date`
      converte da soli) -- stessa scelta gia' fatta da `periodo()`/
-     `fmtOrario` per il resto della pagina. */
-  function fmtOraIso(iso) {
+     `fmtOrario` per il resto della pagina.
+
+     Punto 4 del brief-dodicesima (nota minore): il parsing e la validazione
+     di questi ISO erano duplicati fra questa funzione e un secondo
+     `oraLocaleDalPunto` usato solo dal ciclo di `rendiCurvaBilancio` sotto
+     -- e ogni barra della curva costruiva DUE oggetti `Date` dalla STESSA
+     stringa (uno per il piazzamento, uno per l'etichetta). `dataLocaleDalPunto`
+     fa l'analisi e la validazione una volta sola: `fmtOraIso` la usa qui
+     sotto per i momenti, e `rendiCurvaBilancio` la chiama UNA sola volta per
+     punto, derivando sia l'ora (piazzamento) sia il testo (etichetta) dalla
+     stessa `Date` -- il secondo `oraLocaleDalPunto` non serve piu' ed e'
+     stato tolto (nessun doppione morto in giro). */
+  function dataLocaleDalPunto(iso) {
     if (!iso) return null;
     var d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function formattaOraDaData(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  function fmtOraIso(iso) {
+    var d = dataLocaleDalPunto(iso);
+    return d ? formattaOraDaData(d) : null;
   }
 
   /* Punto 1 del brief, "in ordine di importanza": la riga che risponde a
@@ -570,15 +589,23 @@ window.HirisOsservatoreRoute = (function () {
      essere invisibilmente compattati vicino al punto precedente. Un punto
      senza `ora` leggibile non si disegna affatto: **mai un'ora inventata**,
      la stessa disciplina di `_differenza` (Python) per un valore che non si
-     puo' calcolare. */
-  function oraLocaleDalPunto(iso) {
-    if (!iso) return null;
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    var h = d.getHours();
-    return (h >= 0 && h <= 23) ? h : null;
-  }
+     puo' calcolare.
 
+     -- Il dubbio aperto sul fuso (brief-dodicesima.md, punto 3, misurato dal
+     revisore, non dedotto da questo commento) --
+     Ogni etichetta resta VERA (nessuna frase falsa: la pagina non chiama mai
+     questo orario "ora della casa", ed e' dichiarato che e' quello del
+     BROWSER). Ma con un browser in un fuso diverso da quello della casa la
+     giornata non SLITTA: **SI AVVOLGE**. Un punto delle 01:00 di casa,
+     guardato da un fuso avanti di 18 ore o piu' (es. New York rispetto
+     all'Italia), cade nello slot delle 19 di QUESTA pagina -- dopo
+     mezzogiorno, non vicino alla mezzanotte com'era in casa: **la forma
+     della giornata si rimescola**, non solo si sposta, ed e' peggio di uno
+     scostamento per un grafico il cui unico scopo e' mostrare la forma. Nel
+     caso reale (casa e chi guarda nello stesso fuso) l'errore e' zero, a
+     qualunque ora. Non si corregge qui: la cura vera e' che la rotta mandi
+     il fuso della CASA e che questa pagina lo usi OVUNQUE (qui e in
+     `fmtOraIso` sopra) al posto di quello del browser -- una fetta a se'. */
   var ORE_DEL_GIORNO = 24;
 
   function rendiCurvaBilancio(box, forma, haiMomenti) {
@@ -626,8 +653,12 @@ window.HirisOsservatoreRoute = (function () {
       s.punti.forEach(function (p) {
         var v = p.valore;
         if (v == null || v <= 0) return;
-        var ora = oraLocaleDalPunto(p.ora);
-        if (ora == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
+        // Un solo parsing per punto (punto 4 del brief-dodicesima): il
+        // piazzamento (`ora`) e l'etichetta (`formattaOraDaData`) derivano
+        // dalla STESSA `Date`, non da due `new Date(p.ora)` separate.
+        var d = dataLocaleDalPunto(p.ora);
+        if (d == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
+        var ora = d.getHours();
         var h = (v / massimo) * (base - 6);
         var x = sinistra + ora * passo + si * larghezzaBarra;
         var y = base - h;
@@ -637,7 +668,7 @@ window.HirisOsservatoreRoute = (function () {
           fill: s.colore
         });
         var titoloBarra = document.createElementNS(SVG_NS, 'title');
-        titoloBarra.textContent = s.etichetta + ' — ' + fmtOraIso(p.ora) + ': ' + fmtKwh(v);
+        titoloBarra.textContent = s.etichetta + ' — ' + formattaOraDaData(d) + ': ' + fmtKwh(v);
         rect.appendChild(titoloBarra);
         svg.appendChild(rect);
       });
@@ -661,10 +692,21 @@ window.HirisOsservatoreRoute = (function () {
      curva, non come frasi.» -- una lista etichetta/valore (`.bil-momenti`,
      hiris-config.css), non un paragrafo discorsivo. Ogni momento e'
      opzionale (spec, "mai una chiave con un valore fittizio") e compare solo
-     se c'e'. */
-  function rendiMomentiBilancio(box, momenti) {
-    if (!momenti) return;
+     se c'e'.
+
+     Punto 4 del brief-dodicesima (nota minore): estratta da `rendiMomentiBilancio`
+     perche' la frase accessibile della curva (sotto, in `rendiCurvaBilancio`)
+     doveva sapere se questa sezione avrebbe reso QUALCOSA -- prima lo
+     decideva da sola guardando solo `!!momenti` (il campo c'e'), mentre QUI
+     si rende solo per le chiavi note sotto: oggi i due insiemi coincidono
+     (l'aggregazione non scrive mai un `momenti` con tutte le chiavi note
+     assenti), ma una chiave nota nuova, aggiunta domani solo qui e non li',
+     tornerebbe a rendere la frase orfana (lo stesso difetto del punto 3 del
+     brief-pagina, chiuso sopra per la frase "gli stessi numeri"). Un solo
+     elenco di chiavi note, letto da entrambi. */
+  function vociMomenti(momenti) {
     var voci = [];
+    if (!momenti) return voci;
     if (momenti.prima_ora_produzione) {
       voci.push(['Prima ora di produzione', fmtOraIso(momenti.prima_ora_produzione)]);
     }
@@ -684,6 +726,11 @@ window.HirisOsservatoreRoute = (function () {
     if (momenti.quota_autosufficienza != null) {
       voci.push(['Quota di autosufficienza', fmtPercento(momenti.quota_autosufficienza)]);
     }
+    return voci;
+  }
+
+  function rendiMomentiBilancio(box, momenti) {
+    var voci = vociMomenti(momenti);
     if (!voci.length) return;
 
     var dl = el('dl', 'bil-momenti');
@@ -746,7 +793,11 @@ window.HirisOsservatoreRoute = (function () {
     box.appendChild(titolo);
 
     rendiTotaliBilancio(box, c.totali);
-    rendiCurvaBilancio(box, c.forma, !!c.momenti);
+    // `vociMomenti(c.momenti).length` (non `!!c.momenti`): la frase
+    // accessibile della curva deve sapere se la sezione dei momenti
+    // renderà davvero qualcosa, non solo se il campo esiste (punto 4 del
+    // brief-dodicesima, vedi il commento sopra `vociMomenti`).
+    rendiCurvaBilancio(box, c.forma, vociMomenti(c.momenti).length > 0);
     rendiMomentiBilancio(box, c.momenti);
 
     // Difensivo: l'invariante di scrittura garantisce sempre almeno un
