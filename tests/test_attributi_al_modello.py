@@ -99,7 +99,7 @@ def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
     qui -- serve leggere `hvac_action` davvero, non solo dichiararne uno."""
     raw = {**_RAW_TERMOSTATO,
            "attributes": {**_RAW_TERMOSTATO["attributes"], "hvac_action": "heating"}}
-    stato, nomi, unita, classi, da_quando, attributi = specchio_vivo([_to_minimal(raw)])
+    stato, _nomi, _unita, _classi, _da_quando, attributi = specchio_vivo([_to_minimal(raw)])
     dettaglio = guarda(_CASA, [], [], stato, "entita", "climate.matrimoniale",
                        attributi_vivi=attributi)
     assert "sta scaldando" in dettaglio["stato_leggibile"]
@@ -122,7 +122,7 @@ def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
     mettere tutti gli attributi di ognuna dentro quell'elenco gonfierebbe la
     risposta di un dato che nessuno ha chiesto per la singola cosa. Il
     dettaglio di UNA entita' (`_guarda_entita`) e' l'unico posto dove esce."""
-    stato, nomi, unita, classi, da_quando, attributi = _specchio_del_termostato()
+    stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
     dettaglio = guarda(_CASA, [], [], stato, "area", "camera", attributi_vivi=attributi)
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita, (
@@ -135,7 +135,7 @@ def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
     domanda (Camera: il termostato sta scaldando?) non puo' avere due
     risposte diverse a seconda che si chiami `guarda('area', ...)` o
     `guarda('entita', ...)` (fondamenta 3)."""
-    stato, nomi, unita, classi, da_quando, attributi = _specchio_del_termostato()
+    stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
     dettaglio = guarda(_CASA, [], [], stato, "area", "camera", attributi_vivi=attributi)
     entita = dettaglio["entita"][0]
     assert entita["stato_leggibile"] == "impostato su riscaldamento, fermo"
@@ -149,7 +149,7 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
                     "area_id": None, "dispositivo_id": "dev_t", "classe": None,
                     "disabilitata": False}],
     }
-    stato, nomi, unita, classi, da_quando, attributi = _specchio_del_termostato()
+    stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
     dettaglio = guarda(casa, [], [], stato, "dispositivo", "dev_t", attributi_vivi=attributi)
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita

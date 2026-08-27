@@ -201,16 +201,16 @@ def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
       a consumo senza dirlo.
     """
     if ponte_attivo and not token_presente:
-        return ["Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
+        return [("Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
                 "vuoto: nessun messaggio arriva al Piano Claude Max, e ogni turno "
                 "passa alla catena -- dal forfait al consumo. Incolla il token, "
-                "oppure spegni il ponte dalla pagina Modelli di HIRIS."]
+                "oppure spegni il ponte dalla pagina Modelli di HIRIS.")]
     if token_presente and not ponte_attivo:
-        return ["Hai il token del Piano Claude Max, ma il ponte e' spento: le "
+        return [("Hai il token del Piano Claude Max, ma il ponte e' spento: le "
                 "risposte passano dalla catena, a consumo. Il ponte non si accende "
                 "piu' da un'opzione dell'add-on -- si accende nella pagina Modelli "
                 "di HIRIS, col bottone accanto alla riga «Il Piano Claude Max ha il "
-                "token, lo paghi, ed e' fuori dalla catena»."]
+                "token, lo paghi, ed e' fuori dalla catena».")]
     return []
 
 

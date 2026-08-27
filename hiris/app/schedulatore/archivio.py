@@ -51,11 +51,11 @@ CREATE TABLE IF NOT EXISTS promesse (
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
 
-_CONCLUSI = ",".join("'%s'" % s for s in STATI_CONCLUSI)
+_CONCLUSI = ",".join(f"'{s}'" for s in STATI_CONCLUSI)
 # Stessa forma di `_CONCLUSI` qui sopra, per lo stesso motivo: composta UNA
 # volta dal vocabolario di `promessa.py`, mai riscritta a mano nelle due
 # query sotto (review finale, rilievo ②).
-_SOSPESI = ",".join("'%s'" % s for s in STATI_SOSPESO)
+_SOSPESI = ",".join(f"'{s}'" for s in STATI_SOSPESO)
 
 
 def _json(valore) -> str | None:
@@ -81,7 +81,7 @@ class ArchivioPromesse:
         with self._lock:
             self._pota(adesso)
             in_sospeso = self._conn.execute(
-                "SELECT count(*) FROM promesse WHERE stato IN (%s)" % _SOSPESI
+                f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
             if in_sospeso >= TETTO_IN_SOSPESO:
                 return {"errore": ("ho gia' %d promesse in sospeso, che e' il tetto "
@@ -118,7 +118,7 @@ class ArchivioPromesse:
                  motivo: str | None = None, esecuzione_id: str | None = None,
                  testo: str | None = None, avvisare: bool | None = None) -> None:
         if stato not in STATI_CONCLUSI:
-            raise ValueError("«%s» non e' uno stato conclusivo" % stato)
+            raise ValueError(f"«{stato}» non e' uno stato conclusivo")
         with self._lock:
             self._conn.execute(
                 "UPDATE promesse SET stato=?, motivo=?, esecuzione_id=?, testo=?, "
@@ -150,8 +150,7 @@ class ArchivioPromesse:
         riga = self.leggi(promessa_id)
         if riga is None:
             return {"errore": "non ho nessuna promessa con quell'identificatore."}
-        return {"errore": "quella promessa e' gia' %s: non si disdice, si legge."
-                          % riga["stato"]}
+        return {"errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(riga["stato"])}
 
     def risana(self, *, adesso: float) -> int:
         """Le prese a meta' al riavvio: `fallita`, col motivo, e non ripartono.
@@ -211,8 +210,8 @@ class ArchivioPromesse:
         with self._lock:
             if solo_in_sospeso:
                 righe = self._conn.execute(
-                    "SELECT * FROM promesse WHERE stato IN (%s) "
-                    "ORDER BY quando_ts ASC LIMIT ?" % _SOSPESI,
+                    f"SELECT * FROM promesse WHERE stato IN ({_SOSPESI}) "
+                    "ORDER BY quando_ts ASC LIMIT ?",
                     (int(limite),)).fetchall()
             else:
                 righe = self._conn.execute(
@@ -252,5 +251,4 @@ class ArchivioPromesse:
         Chiamata con il lock gia' preso.
         """
         self._conn.execute(
-            "DELETE FROM promesse WHERE stato IN (%s) AND risvegliata_ts < ?"
-            % _CONCLUSI, (adesso - CONSERVAZIONE_S,))
+            f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) AND risvegliata_ts < ?", (adesso - CONSERVAZIONE_S,))

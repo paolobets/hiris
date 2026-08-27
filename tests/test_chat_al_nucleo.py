@@ -623,7 +623,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 
     resp = await client.post("/api/chat", json={"message": frase})
     assert resp.status == 200
-    body = await resp.json()
+    await resp.json()
     assert "ricorda" in _strumenti_loggati(caplog)
 
     # La prova vera: NON il testo della risposta (che qui il modello finto
@@ -714,7 +714,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
 
     resp = await client.post("/api/chat", json={"message": "spegni la luce della cucina"})
     assert resp.status == 200
-    body = await resp.json()
+    await resp.json()
 
     # (1) il catalogo offerto e' quello unico, `esegui` compreso -- e nessuno
     # dei trentaquattro e' rientrato.

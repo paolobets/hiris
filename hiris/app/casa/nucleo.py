@@ -490,7 +490,7 @@ def _riga_adesso(sistema: dict | None, adesso: float | None) -> str:
     except (ZoneInfoNotFoundError, ValueError):
         fuso, etichetta = UTC, "UTC"
     quando = datetime.fromtimestamp(adesso, fuso)
-    return "Adesso sono le %s del %s (fuso %s)." % (
+    return "Adesso sono le {} del {} (fuso {}).".format(
         quando.strftime("%H:%M"), quando.strftime("%d/%m/%Y"), etichetta)
 
 
@@ -716,9 +716,9 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
     sotto non confermano piu'."""
     if stato_inaffidabile:
         return ([
-            "Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
+            ("Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
             "questo momento c'e' qualcosa di notevole -- non e' lo stesso di "
-            "'niente di notevole'."
+            "'niente di notevole'.")
         ], [1], False)
     area_per_entita = _area_di_ogni_entita(piani)
     # La classe viene dallo SPECCHIO: il registro delle entita' non la manda

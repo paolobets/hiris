@@ -82,7 +82,7 @@ def test_due_automazioni_con_lo_stesso_id_non_diventano_un_corpo_certo():
     stati = [{"entity_id": "automation.sveglia", "state": "on",
               "attributes": {"id": "1700", "friendly_name": "Sveglia"}}]
     voci, problemi = componi(automazioni, {}, stati)
-    voce = [v for v in voci if v["id"] == "automation.sveglia"][0]
+    voce = next(v for v in voci if v["id"] == "automation.sveglia")
     assert voce["origine"] == "ambiguo"
     assert voce["corpo"] is None
     assert any("1700" in p for p in problemi)

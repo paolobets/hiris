@@ -113,7 +113,7 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
     for nome, dati in sorted(letti["tetti"].items()):
         reg = registri.get("pypi", {}).get(nome, {})
         if reg.get("errore"):
-            scarti.append(Scarto("%s (tetto)" % nome,
+            scarti.append(Scarto(f"{nome} (tetto)",
                                  "<%d.0.0" % dati["major_escluso"], "",
                                  dati["dove"], reg["errore"]))
             continue
@@ -135,7 +135,7 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
             continue
         if piu_vecchia(installato, dati["minimo"]):
             scarti.append(Scarto(
-                "%s installato sotto il pavimento dichiarato" % nome,
+                f"{nome} installato sotto il pavimento dichiarato",
                 installato, dati["minimo"], "ambiente di questo interprete"))
 
     return scarti
@@ -167,9 +167,9 @@ def leggi_i_file() -> dict:
     trovata = _RE_CLI.search(dockerfile.read_text(encoding="utf-8"))
     if not trovata:
         raise SystemExit(
-            "Non trovo la riga del pin della CLI in %s. Se la forma e' "
+            f"Non trovo la riga del pin della CLI in {dockerfile}. Se la forma e' "
             "cambiata, aggiorna `_RE_CLI`: senza, questo controllo tacerebbe "
-            "invece di rompersi." % dockerfile)
+            "invece di rompersi.")
     cli = {"versione": trovata.group(1), "dove": "hiris/Dockerfile"}
 
     azioni: dict = {}
@@ -181,7 +181,7 @@ def leggi_i_file() -> dict:
             azioni[nome] = {"major": int(major),
                             "dove": ".github/workflows/tests.yml"}
     if not azioni:
-        raise SystemExit("Nessun `uses:` trovato in %s." % workflow)
+        raise SystemExit(f"Nessun `uses:` trovato in {workflow}.")
 
     tetti: dict = {}
     pavimenti: dict = {}
@@ -222,14 +222,14 @@ def interroga_i_registri(letti: dict) -> dict:
     fuori: dict = {"cli": {}, "azioni": {}, "pypi": {}}
     try:
         fuori["cli"] = {"versione": _json(
-            "https://registry.npmjs.org/%s/latest" % PACCHETTO_CLI)["version"]}
+            f"https://registry.npmjs.org/{PACCHETTO_CLI}/latest")["version"]}
     except Exception as exc:
         fuori["cli"] = {"errore": str(exc)}
 
     for nome in letti["azioni"]:
         try:
             tag = _json(
-                "https://api.github.com/repos/%s/releases/latest" % nome)["tag_name"]
+                f"https://api.github.com/repos/{nome}/releases/latest")["tag_name"]
             fuori["azioni"][nome] = {"major": int(re.findall(r"\d+", tag)[0])}
         except Exception as exc:
             fuori["azioni"][nome] = {"errore": str(exc)}
@@ -237,7 +237,7 @@ def interroga_i_registri(letti: dict) -> dict:
     for nome in letti["tetti"]:
         try:
             fuori["pypi"][nome] = {"versione": _json(
-                "https://pypi.org/pypi/%s/json" % nome)["info"]["version"]}
+                f"https://pypi.org/pypi/{nome}/json")["info"]["version"]}
         except Exception as exc:
             fuori["pypi"][nome] = {"errore": str(exc)}
     return fuori
@@ -297,8 +297,8 @@ def aggiorna_cli(letti: dict, registri: dict):
     percorso = RADICE / "hiris" / "Dockerfile"
     testo = percorso.read_text(encoding="utf-8")
     percorso.write_text(
-        testo.replace("%s@%s" % (PACCHETTO_CLI, letti["cli"]["versione"]),
-                      "%s@%s" % (PACCHETTO_CLI, reg["versione"])),
+        testo.replace("{}@{}".format(PACCHETTO_CLI, letti["cli"]["versione"]),
+                      "{}@{}".format(PACCHETTO_CLI, reg["versione"])),
         encoding="utf-8")
     return reg["versione"]
 
@@ -337,7 +337,7 @@ def main(argv=None) -> int:
         if toccati:
             print("Azioni CI portate all'ultimo major: " + ", ".join(toccati))
         if nuova:
-            print("CLI del ponte portata a %s in hiris/Dockerfile" % nuova)
+            print(f"CLI del ponte portata a {nuova} in hiris/Dockerfile")
         if not toccati and not nuova:
             print("Niente da aggiornare qui.")
         else:

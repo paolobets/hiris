@@ -423,7 +423,7 @@ def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
         # questa guardia `quanti - 1` diventerebbe zero al denominatore.
         return [punti[-1]]
     passo = (len(punti) - 1) / (quanti - 1)
-    scelti = [punti[int(round(i * passo))] for i in range(quanti)]
+    scelti = [punti[round(i * passo)] for i in range(quanti)]
     scelti[-1] = punti[-1]
     return scelti
 

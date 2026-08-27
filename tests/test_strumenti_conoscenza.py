@@ -452,7 +452,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, unita, classi, da_quando, attributi, letto = d._specchio()
+    stato, nomi, unita, _classi, _da_quando, _attributi, letto = d._specchio()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}

@@ -677,7 +677,7 @@ def _safe_subprocess_env() -> dict:
     for k, v in os.environ.items():
         if k in _SUBPROCESS_ENV_DENYLIST:
             continue
-        if k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"):
+        if k.startswith(("ANTHROPIC_", "CLAUDE_")):
             env[k] = v
     return env
 
@@ -1142,7 +1142,7 @@ def modello_del_turno(esito: EsitoFlusso) -> str:
     if isinstance(vero, str) and vero.strip():
         return vero.strip()
     alias = (esito.usage or {}).get("model") or ""
-    return ("%s (alias)" % alias) if alias else "sonnet (alias)"
+    return (f"{alias} (alias)") if alias else "sonnet (alias)"
 
 
 def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",

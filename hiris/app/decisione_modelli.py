@@ -270,7 +270,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # Quante volte HIRIS abbia chiesto un modello che non esiste non
         # aggiunge niente: il fatto è che non esiste. Il conteggio serve dove
         # distingue l'incidente dallo stato, non dove lo stato è ovvio.
-        return "il modello non esiste più%s, %s" % (fra_parentesi, eta)
+        return f"il modello non esiste più{fra_parentesi}, {eta}"
     if famiglia == "scaduto":
         # Il Piano Claude Max, e per ora solo lui: e' l'unico anello che non
         # risponde in linea -- il turno passa da una coda, e un worker altrove
@@ -281,7 +281,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # l'incidente dallo stato, che e' la ragione per cui esiste in questo
         # modulo: due scadenze di fila su un piano acceso vogliono dire che il
         # worker non gira, e la pagina lo fa vedere senza dirlo.
-        return "non ha risposto in tempo — %s, %s" % (
+        return "non ha risposto in tempo — {}, {}".format(
             _quante(esito["da_quante"]), eta)
     if famiglia == "irraggiungibile":
         # Nessun codice, perché non c'è stata nessuna risposta da cui prenderlo:
@@ -303,9 +303,9 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # nata la regola». Valeva per un ramo e non per l'altro.
         causa = _CAUSA_CREDENZIALE.get(codice if isinstance(codice, int) else 0)
         if causa is None:
-            return "ha rifiutato %s%s, %s" % (
+            return "ha rifiutato {}{}, {}".format(
                 _quante(esito["da_quante"]), fra_parentesi, eta)
-        return "ha rifiutato %s — %s%s, %s" % (
+        return "ha rifiutato {} — {}{}, {}".format(
             _quante(esito["da_quante"]), causa, fra_parentesi, eta)
     # `altro`: il ramo di ciò che NON si è saputo classificare. Riporta il
     # numero e si ferma lì. Inventare una causa qui sarebbe rifare l'errore da
@@ -315,7 +315,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
     if fra_parentesi:
         return "ha rifiutato %s — errore %d, %s" % (
             _quante(esito["da_quante"]), codice, eta)
-    return "ha rifiutato %s, %s" % (_quante(esito["da_quante"]), eta)
+    return "ha rifiutato {}, {}".format(_quante(esito["da_quante"]), eta)
 
 
 # ── La nota del ripiego: una riga che dice cosa e' successo, non perche' ──

@@ -91,7 +91,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
                            "quando_ts": 3601.0, "domanda": "?"},
                           adesso=1.0)["promessa"]["id"]
 
-    primo = await client.delete("/api/promesse/%s" % ident)
+    primo = await client.delete(f"/api/promesse/{ident}")
     assert primo.status == 200
     # Il corpo del 200 deve portare la promessa vera, non un `{}`: e' il
     # corpo che la pagina usera' per aggiornarsi senza una seconda GET.
@@ -100,7 +100,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     assert corpo["promessa"]["stato"] == "disdetta"
     assert archivio.leggi(ident)["stato"] == "disdetta"
 
-    secondo = await client.delete("/api/promesse/%s" % ident)
+    secondo = await client.delete(f"/api/promesse/{ident}")
     assert secondo.status == 409
     assert "errore" in await secondo.json()
 
@@ -121,7 +121,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
                            "quando_ts": 3601.0, "domanda": "?"},
                           adesso=1.0)["promessa"]["id"]
 
-    risposta = await client.delete("/api/promesse/%s" % ident)
+    risposta = await client.delete(f"/api/promesse/{ident}")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     assert archivio.leggi(ident)["stato"] == "in_attesa"
@@ -134,7 +134,7 @@ async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, 
                            "quando_ts": 3601.0, "domanda": "?"},
                           adesso=1.0)["promessa"]["id"]
 
-    risposta = await client.delete("/api/promesse/%s" % ident,
+    risposta = await client.delete(f"/api/promesse/{ident}",
                                    headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.leggi(ident)["stato"] == "disdetta"
@@ -172,7 +172,7 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
         origine="schedulatore", servizio="light.turn_on", entita=["light.studio"],
         eseguito=True, cambiato=["light.studio"], adesso=1_755_600_000.0)
 
-    risposta = await client.get("/api/esecuzioni/%s" % ident)
+    risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200
     corpo = await risposta.json()
     # Nessun dizionario nuovo: la forma e' esattamente quella di
@@ -222,5 +222,5 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     cronaca = client.app["cronaca"]
     ident = cronaca.registra(origine="chat", servizio="a.b", entita=[],
                              eseguito=True, adesso=1.0)
-    risposta = await client.get("/api/esecuzioni/%s" % ident)
+    risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200

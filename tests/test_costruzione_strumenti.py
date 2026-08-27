@@ -67,7 +67,7 @@ async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
     officina = FintaOfficina()
     d = _dispatcher(officina=officina, turno="t7")
     await d.dispatch("conferma", {"proposta_id": "p1"})
-    verbo, proposta_id, origine, turno = officina.chiamate[0]
+    verbo, proposta_id, _origine, turno = officina.chiamate[0]
     assert verbo == "applica"
     assert proposta_id == "p1"
     assert turno == "t7"

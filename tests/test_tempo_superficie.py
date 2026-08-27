@@ -68,7 +68,7 @@ def test_senza_fuso_noto_si_resta_in_utc_e_non_si_inventa():
 
 
 def test_un_fuso_che_non_esiste_non_solleva():
-    da, a = finestra(ore=2, adesso_ts=1787572800.0, fuso="Marte/Olympus")
+    _da, a = finestra(ore=2, adesso_ts=1787572800.0, fuso="Marte/Olympus")
     assert a.endswith("+00:00")
 
 

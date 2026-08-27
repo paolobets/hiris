@@ -126,7 +126,7 @@ class FastEmbedEmbedder:
         return self._model
 
     def _embed_sync(self, text: str) -> list[float]:
-        return list(self._get_model().embed([text]))[0].tolist()
+        return next(iter(self._get_model().embed([text]))).tolist()
 
     async def embed(self, text: str) -> list[float]:
         import asyncio

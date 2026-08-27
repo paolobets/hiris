@@ -130,7 +130,7 @@ def test_una_cosa_fuori_dal_pavimento_NON_si_annota(coppia):
 def test_il_tracker_del_router_non_entra_dal_rubinetto(coppia):
     """La misura del 26/08: e' la classe piu' numerosa fra quelle escluse, e
     passa proprio da qui."""
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     assert osservatore.guarda_cambio(
         _evento("device_tracker.nvr", "home", "not_home",
                 {"source_type": "router"})) is False
@@ -165,12 +165,12 @@ def test_senza_last_changed_si_usa_l_orologio(coppia, caplog):
 def test_un_evento_senza_stato_nuovo_non_solleva(coppia):
     """Un'entita' rimossa manda `new_state: None`. L'osservatore gira per
     sempre: un'eccezione qui lo fermerebbe su un evento solo."""
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     assert osservatore.guarda_cambio(_evento("climate.camera_t", "heat", None)) is False
 
 
 def test_un_evento_malformato_non_solleva(coppia):
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     for ev in [{}, {"entity_id": None}, {"entity_id": "climate.x"}, None]:
         assert osservatore.guarda_cambio(ev) is False
 
@@ -266,7 +266,7 @@ def test_osservate_dice_cosa_guarda_e_PERCHE(coppia):
     """La pagina deve poter distinguere cio' che e' nel pavimento (e non si
     toglie) da cio' che l'obiettivo ha aggiunto (e si toglie). Un elenco che
     non li distingue non si puo' usare per decidere."""
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     osservatore.guarda_cambio(_evento("climate.camera_t", "off", "heat"))
     osservatore.guarda_cambio(_evento("person.marta", "home", "not_home"))
     v = {o["soggetto"]: o for o in osservatore.osservate()}
@@ -278,7 +278,7 @@ def test_osservate_dice_cosa_guarda_e_PERCHE(coppia):
 # -- Correzione 5: `_viste` e `_condizioni` sono UNA fonte sola per fatto ---
 
 def test_osservate_mostra_una_condizione_dopo_guarda_sistema(coppia):
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.guarda_sistema(problemi=p, integrazioni=[])
     v = {o["soggetto"]: o for o in osservatore.osservate()}
@@ -288,7 +288,7 @@ def test_osservate_mostra_una_condizione_dopo_guarda_sistema(coppia):
 def test_osservate_non_mostra_piu_una_condizione_chiusa(coppia):
     """All'opposto del difetto gemello: una condizione chiusa non deve
     restare per sempre in cio' che `osservate()` mostra."""
-    archivio, osservatore = coppia
+    _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.guarda_sistema(problemi=p, integrazioni=[])
     osservatore.guarda_sistema(problemi=[], integrazioni=[])  # si chiude

@@ -16,11 +16,11 @@ def archivio(tmp_path):
 
 
 def _proponi(a, **kw):
-    base = dict(gesto="crea", dominio="automation", chiave="1771", origine="chat",
-                turno="t1", frase="apri le tapparelle all'alba", prima=None,
-                dopo={"id": "1771", "alias": "Tapparelle"}, helper=[],
-                anteprima="Creo un'automazione che apre le tapparelle all'alba.",
-                adesso=ADESSO)
+    base = {"gesto": "crea", "dominio": "automation", "chiave": "1771", "origine": "chat",
+                "turno": "t1", "frase": "apri le tapparelle all'alba", "prima": None,
+                "dopo": {"id": "1771", "alias": "Tapparelle"}, "helper": [],
+                "anteprima": "Creo un'automazione che apre le tapparelle all'alba.",
+                "adesso": ADESSO}
     base.update(kw)
     return a.proponi(**base)
 

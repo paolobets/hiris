@@ -70,7 +70,7 @@ def valida(dati: dict, *, adesso: float) -> str | None:
     specie = dati.get("specie")
     if specie not in SPECIE:
         return ("una promessa e' «fai» (un'azione) o «chiedi» (una domanda a cui "
-                "rispondere piu' tardi): «%s» non e' ne' l'una ne' l'altra." % specie)
+                f"rispondere piu' tardi): «{specie}» non e' ne' l'una ne' l'altra.")
 
     frase = dati.get("frase")
     if not isinstance(frase, str) or not frase.strip():

@@ -113,7 +113,7 @@ def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
     ok, motivo = verifica_init(esito, per_promessa=True)
     assert ok is True, motivo
 
-    ok_chat, motivo_chat = verifica_init(esito, per_promessa=False)
+    ok_chat, _motivo_chat = verifica_init(esito, per_promessa=False)
     n_promessa = len(esito.init["tools"])
     assert ok_chat is False, (
         f"col catalogo della chat quegli stessi {n_promessa} strumenti del turno "

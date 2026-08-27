@@ -1755,9 +1755,9 @@ class DispatcherStrumenti:
             return self._specchio_cieco_rifiuto()
         sconosciuti = [str(e) for e in entita if e not in stati]
         if sconosciuti:
-            return ("non posso prometterlo: %s non esiste in questa casa. "
+            return ("non posso prometterlo: {} non esiste in questa casa. "
                      "Usa «cerca» per trovare l'id esatto e ripeti la "
-                     "richiesta." % ", ".join(sconosciuti))
+                     "richiesta.".format(", ".join(sconosciuti)))
         return None
 
     def _registro_non_pronto(self) -> bool:
@@ -1790,11 +1790,11 @@ class DispatcherStrumenti:
                     "cosa questa casa sa fare, perche' il registro dei "
                     "servizi non e' pronto. Riprova fra un momento.")
         if "." not in servizio:
-            return "«%s» non e' un servizio: serve «notify.qualcosa»." % servizio
+            return f"«{servizio}» non e' un servizio: serve «notify.qualcosa»."
         dominio, nome = servizio.split(".", 1)
         if self._registro.servizio(dominio, nome) is None:
-            return ("«%s» non esiste in questa casa: cerca un servizio notify "
-                    "vero prima di promettere di usarlo." % servizio)
+            return (f"«{servizio}» non esiste in questa casa: cerca un servizio notify "
+                    "vero prima di promettere di usarlo.")
         return None
 
     def _istantanea(self, entita: list) -> list[dict]:

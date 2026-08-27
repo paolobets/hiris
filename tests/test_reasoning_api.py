@@ -17,7 +17,7 @@ def _app(tmp_path):
 
 @pytest.mark.asyncio
 async def test_claim_returns_null_when_empty(aiohttp_client, tmp_path):
-    app, q = _app(tmp_path)
+    app, _q = _app(tmp_path)
     client = await aiohttp_client(app)
     r = await client.post("/api/reasoning/claim")
     assert (await r.json())["job"] is None

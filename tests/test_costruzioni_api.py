@@ -230,7 +230,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
         dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
         adesso=ADESSO_HTTP)["id"]
 
-    risposta = await client.post("/api/costruzioni/%s/conferma" % ident)
+    risposta = await client.post(f"/api/costruzioni/{ident}/conferma")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
@@ -248,7 +248,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
         dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
         adesso=ADESSO_HTTP)["id"]
 
-    risposta = await client.post("/api/costruzioni/%s/conferma" % ident,
+    risposta = await client.post(f"/api/costruzioni/{ident}/conferma",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.leggi(ident)["stato"] == "applicata"
@@ -265,7 +265,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
         anteprima="anteprima", adesso=ADESSO_HTTP)["id"]
     archivio.segna_applicata(ident, adesso=ADESSO_HTTP, esecuzione_id="e-test")
 
-    risposta = await client.post("/api/costruzioni/%s/ripristina" % ident)
+    risposta = await client.post(f"/api/costruzioni/{ident}/ripristina")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     assert client.app["_ha_finta"].salvate == []
@@ -284,7 +284,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(c
         anteprima="anteprima", adesso=ADESSO_HTTP)["id"]
     archivio.segna_applicata(ident, adesso=ADESSO_HTTP, esecuzione_id="e-test")
 
-    risposta = await client.post("/api/costruzioni/%s/ripristina" % ident,
+    risposta = await client.post(f"/api/costruzioni/{ident}/ripristina",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert client.app["_ha_finta"].salvate
@@ -303,7 +303,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
         dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
         adesso=ADESSO_HTTP)["id"]
 
-    risposta = await client.post("/api/costruzioni/%s/rifiuta" % ident)
+    risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: sul 403 la proposta resta `in_attesa`.
@@ -319,7 +319,7 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
         dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
         adesso=ADESSO_HTTP)["id"]
 
-    risposta = await client.post("/api/costruzioni/%s/rifiuta" % ident,
+    risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.leggi(ident)["stato"] == "disdetta"

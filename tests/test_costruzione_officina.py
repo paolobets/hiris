@@ -209,7 +209,7 @@ async def test_senza_identita_di_turno_non_si_applica_dalla_chat(banco):
 @pytest.mark.asyncio
 async def test_dalla_pagina_si_applica_sempre(banco):
     """L'origine `pagina` E' un umano che ha cliccato: nessun turno da distinguere."""
-    officina, ha, _, _ = banco
+    officina, _ha, _, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     esito = await officina.applica(p["proposta_id"], origine="pagina", turno=None,
                                    adesso=ADESSO + 60)
@@ -320,7 +320,7 @@ async def test_una_struttura_gestita_a_mano_non_diventa_un_guasto(banco):
 
 @pytest.mark.asyncio
 async def test_ripristinare_rimette_il_prima_passando_dalla_stessa_officina(banco):
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
                                origine="chat", turno="t1", adesso=ADESSO)
     await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
@@ -335,7 +335,7 @@ async def test_ripristinare_rimette_il_prima_passando_dalla_stessa_officina(banc
 async def test_una_scena_con_due_stati_sulla_stessa_entita_si_rifiuta(banco):
     """Le scene non passano da `validate_config`: se il doppione non lo prende
     l'officina, non lo prende piu' nessuno e uno dei due stati sparisce."""
-    officina, ha, archivio, _ = banco
+    officina, _ha, archivio, _ = banco
     esito = await officina.proponi(
         _intento(dominio="scene", innesco=[], azioni=[], richiesto="scena",
                  stati=[{"entity_id": "light.salotto", "state": "on"},
@@ -407,7 +407,7 @@ async def test_una_proposta_senza_turno_non_si_conferma_da_un_turno_qualsiasi(ba
 async def test_l_origine_umana_che_scavalca_il_cancello_lascia_una_traccia(banco, caplog):
     """IMPORTANT 1: se il Task 8 sbagliasse a inoltrare un'origine scelta dal
     modello come `pagina`, deve restarne una traccia -- non il silenzio."""
-    officina, ha, _, _ = banco
+    officina, _ha, _, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     with caplog.at_level("INFO", logger="hiris.app.azione.costruzione.officina"):
         await officina.applica(p["proposta_id"], origine="pagina", turno=None,
@@ -420,7 +420,7 @@ async def test_l_origine_umana_che_scavalca_il_cancello_lascia_una_traccia(banco
 async def test_la_disfatta_dell_helper_e_dichiarata_nel_motivo(banco):
     """IMPORTANT 2: oggi l'utente non sa che un helper e' nato ed e' stato
     tolto. Il motivo del rifiuto deve dirlo."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
@@ -435,7 +435,7 @@ async def test_se_la_disfatta_fallisce_lo_dice_invece_di_tacere(banco):
     """IMPORTANT 2: se anche `cancella_helper` fallisce, l'archivio non deve
     dire «non e' successo niente» mentre in casa resta un helper orfano che
     nessuno pulira' piu'."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
@@ -452,7 +452,7 @@ async def test_un_helper_senza_id_restituito_viene_dichiarato(banco):
     """IMPORTANT 2: un helper la cui creazione non restituisce un id non
     entra in `nati` e quindi non e' mai disfabile -- deve essere dichiarato,
     non perso in silenzio."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
     ha._override["crea_helper"] = {"helper": {}}  # nessun id
@@ -537,7 +537,7 @@ async def test_ripristinare_dalla_chat_e_un_giro_in_due_tempi(banco):
     ad `applica` con lo stesso `turno`, che il cancello rifiutava SEMPRE --
     e la riga restava `in_attesa` a bruciare un posto del tetto per sette
     giorni. Ora, dalla chat, e' un giro in due tempi come tutto il resto."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
                                origine="chat", turno="t1", adesso=ADESSO)
     await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
@@ -558,7 +558,7 @@ async def test_un_alias_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     """IMPORTANT 6: un `alias` a forma di dizionario solleverebbe `TypeError:
     unhashable type` da `_seme_da`. Il chiamante e' uno strumento riempito da
     un modello: si rifiuta con un motivo leggibile."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(alias={"non": "testo"}), origine="chat",
                                    turno="t1", adesso=ADESSO)
     assert "errore" in esito
@@ -570,7 +570,7 @@ async def test_un_alias_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
 async def test_un_helper_che_non_e_un_dizionario_si_rifiuta_invece_di_esplodere(banco):
     """IMPORTANT 6: una lista `helper` di stringhe solleverebbe `AttributeError`
     su `helper.get("dominio")`."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(helper=["non un dizionario"]), origine="chat",
                                    turno="t1", adesso=ADESSO)
     assert "errore" in esito
@@ -587,7 +587,7 @@ async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     `TypeError`. La finta ora e' fedele su questo punto (vedi
     `FintoHA.leggi_configurazione`), quindi questo test misura il codice
     vero, non un fake troppo permissivo."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(gesto="modifica", chiave=1771),
                                    origine="chat", turno="t1", adesso=ADESSO)
     assert "errore" in esito
@@ -599,7 +599,7 @@ async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
 async def test_dei_campi_che_non_sono_un_dizionario_si_rifiuta_invece_di_esplodere(banco):
     """IMPORTANT 6 (round 3): `forme.componi_script` fa `dict(campi)` --
     `dict("abc")` solleva `ValueError`, `dict(5)` solleva `TypeError`."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(dominio="script", campi="abc"),
                                    origine="chat", turno="t1", adesso=ADESSO)
     assert "errore" in esito
@@ -610,7 +610,7 @@ async def test_dei_campi_che_non_sono_un_dizionario_si_rifiuta_invece_di_esplode
 @pytest.mark.asyncio
 async def test_cancellare_chiama_cancella_configurazione_con_la_chiave_giusta(banco):
     """IMPORTANT 7: nessun test esercitava il gesto distruttivo."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="cancella", chiave="1771"),
                                origine="chat", turno="t1", adesso=ADESSO)
     esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
@@ -624,7 +624,7 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
     """IMPORTANT 7: ripristinare una CREAZIONE e' cio' che trasforma un
     ripristino in una cancellazione da Home Assistant -- nessun test lo
     esercitava."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
     chiave_nata = ha.salvate[0][1]
@@ -640,7 +640,7 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
 async def test_lo_stato_in_corso_non_esce_come_token_grezzo(banco):
     """Minore 1: «in_corso» e' un token interno (snake_case), non una parola
     italiana da mostrare dentro una frase all'utente."""
-    officina, ha, archivio, _ = banco
+    officina, _ha, archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     archivio.rivendica(p["proposta_id"], adesso=ADESSO + 1)
     esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
@@ -684,7 +684,7 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
     """Punto 7 (terza pulizia): `_agisci` (handlers_costruzioni.py) deve poter
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
     per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     ha._solleva.add("salva_configurazione")
 
@@ -799,7 +799,7 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
     turno, la proposta appena creata non sara' MAI confermabile da un'origine
     non umana (IMPORTANT 1, round 2) -- e l'anteprima restituita deve dirlo,
     come gia' fa il messaggio del cancello in `applica`."""
-    officina, ha, archivio, _ = banco
+    officina, _ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
                                origine="chat", turno="t1", adesso=ADESSO)
     await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
@@ -933,7 +933,7 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
     porta come 8404 o un IP che la contiene basta a far uscire "queste
     automazioni sono gestite a mano...": una spiegazione architetturale
     falsa, detta con sicurezza, per un guasto che e' semplicemente di rete."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
 
     async def _guasto_con_404(dominio, chiave, corpo):
@@ -958,7 +958,7 @@ async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
     """Senza tipo ne' traceback un `TypeError` nostro (un difetto del codice)
     e' indistinguibile, in log, da un guasto di rete vero: il difetto nascosto
     due volte."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     ha._solleva.add("salva_configurazione")
 
@@ -982,7 +982,7 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
     (`costruzioni.motivo`/`errore` nella cronaca in SQLite): la cattura larga
     toglie la garanzia che sia sempre una riga breve di trasporto -- e'
     quella di QUALUNQUE eccezione."""
-    officina, ha, archivio, _ = banco
+    officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
     lunghissimo = "x" * 1000
 

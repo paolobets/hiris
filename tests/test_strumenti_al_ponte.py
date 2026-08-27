@@ -1326,7 +1326,7 @@ def test_il_motivo_del_silenzio_2_nomina_lo_stato_e_i_nomi_mancanti(caplog):
     intorno. Il motivo deve portare lo stato dei server e i nomi che la CLI non
     ha risolto: sono le due sole informazioni da cui, davanti al log di un
     utente UAT, si capisce da che parte guardare."""
-    mancante = sorted(runner.nomi_mcp())[0]
+    mancante = min(runner.nomi_mcp())
     nomi = [n for n in runner.nomi_mcp() if n != mancante]
     cli = _CliFinta(_proc(0, _riga_init(nomi=nomi) + "\n" + _RIGA_RESULT + "\n"),
                     _ProcFelice())

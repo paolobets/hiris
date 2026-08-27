@@ -394,7 +394,7 @@ def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
     nomi = set()
 
     def raccogli(albero):
-        for chiave, voce in albero.items():
+        for voce in albero.values():
             if isinstance(voce, dict):
                 if isinstance(voce.get("name"), str):
                     nomi.add(voce["name"])

@@ -772,9 +772,9 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
         ieri_str = ieri.strftime("%Y-%m-%d")
         oggetti = archivio.oggetti(giorno=ieri_str)
         assert {o["protagonista"] for o in oggetti} == {"light.buono", "light.rotto"}
-        rotto = [o for o in oggetti if o["protagonista"] == "light.rotto"][0]
+        rotto = next(o for o in oggetti if o["protagonista"] == "light.rotto")
         assert rotto["corpo"]["comprimari"] == []
-        buono = [o for o in oggetti if o["protagonista"] == "light.buono"][0]
+        buono = next(o for o in oggetti if o["protagonista"] == "light.buono")
         assert buono["corpo"]["comprimari"] == ["sensor.buono"]
     finally:
         archivio.close()

@@ -145,7 +145,7 @@ async def test_un_id_di_promessa_NON_in_corso_non_vale(rotta):
     """L'intestazione dice quale turno parla; non e' un'autenticazione, e non
     deve diventare un modo per farsi dare un catalogo diverso mostrando un id
     qualunque."""
-    client, promesse, _ = rotta
+    client, _promesse, _ = rotta
     inventato = "questo-id-non-esiste"
 
     risposta = await _jsonrpc(
@@ -247,7 +247,7 @@ async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
     """Il guardiano rifiuta e la promessa resta in corso: chiudere su un
     `concludi` malformato scriverebbe in pagina un testo che il modello non
     ha mai composto."""
-    client, promesse, porta = rotta
+    client, promesse, _porta = rotta
     ident = _crea_in_corso(promesse)
 
     risposta = await _jsonrpc(client, {

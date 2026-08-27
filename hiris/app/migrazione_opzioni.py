@@ -280,6 +280,6 @@ def semina_modello_del_piano(archivio: dict, alias_di_oggi: str,
         "cambiare il modello di Claude API non lo tocca piu'.%s",
         alias_di_oggi,
         "" if precedente in (None, alias_di_oggi)
-        else " Il predefinito %r e' stato sostituito." % precedente,
+        else f" Il predefinito {precedente!r} e' stato sostituito.",
     )
     return archivio, True

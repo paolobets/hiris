@@ -50,7 +50,7 @@ def test_guarda_un_area_da_le_sue_entita_con_lo_stato():
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
     ids = {e["id"] for e in dettaglio["entita"]}
     assert ids == {"light.cucina_1", "light.cucina_2", "sensor.cucina_t"}
-    assert [e for e in dettaglio["entita"] if e["id"] == "light.cucina_1"][0]["stato"] == "on"
+    assert next(e for e in dettaglio["entita"] if e["id"] == "light.cucina_1")["stato"] == "on"
 
 
 def test_guarda_un_automazione_da_il_corpo():

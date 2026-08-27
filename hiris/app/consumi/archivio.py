@@ -164,15 +164,15 @@ class ArchivioConsumi:
         if da_ancora:
             da = self._giorno_ancora() or da
         dove, arg = self._dove(da)
-        somme = ", ".join("SUM(%s) AS %s" % (c, c) for c in CAMPI)
+        somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
             righe = self._conn.execute(
-                "SELECT provider, modello, %s, SUM(costo_usd) AS costo_usd, "
+                f"SELECT provider, modello, {somme}, SUM(costo_usd) AS costo_usd, "
                 "MIN(costo_stato) AS uno_stato, "
                 "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti, "
                 "MIN(giorno) AS primo_uso, MAX(giorno) AS ultimo_uso "
-                "FROM consumo_giorno %s GROUP BY provider, modello "
-                "ORDER BY provider, modello" % (somme, dove), arg).fetchall()
+                f"FROM consumo_giorno {dove} GROUP BY provider, modello "
+                "ORDER BY provider, modello", arg).fetchall()
 
         per_provider: dict[str, dict] = {}
         for r in righe:
@@ -223,13 +223,12 @@ class ArchivioConsumi:
 
     def storia(self, *, da: str, a: str) -> list[dict]:
         """Un secchiello per giorno e provider, per il grafico."""
-        somme = ", ".join("SUM(%s) AS %s" % (c, c) for c in CAMPI)
+        somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
             righe = self._conn.execute(
-                "SELECT giorno, provider, %s, SUM(costo_usd) AS costo_usd "
+                f"SELECT giorno, provider, {somme}, SUM(costo_usd) AS costo_usd "
                 "FROM consumo_giorno WHERE giorno >= ? AND giorno <= ? "
-                "GROUP BY giorno, provider ORDER BY giorno, provider"
-                % somme, (da, a)).fetchall()
+                "GROUP BY giorno, provider ORDER BY giorno, provider", (da, a)).fetchall()
         giorni: dict[str, dict] = {}
         for r in righe:
             g = giorni.setdefault(r["giorno"],
@@ -270,9 +269,9 @@ class ArchivioConsumi:
         with self._lock:
             self._conn.execute("DELETE FROM ancora_saldo")
             self._conn.execute(
-                "INSERT INTO ancora_saldo (provider, modello, %s, costo_usd) "
-                "SELECT provider, modello, %s, costo_usd "
-                "FROM consumo_giorno WHERE giorno = ?" % (colonne, colonne),
+                f"INSERT INTO ancora_saldo (provider, modello, {colonne}, costo_usd) "
+                f"SELECT provider, modello, {colonne}, costo_usd "
+                "FROM consumo_giorno WHERE giorno = ?",
                 (giorno,))
             self._conn.execute(
                 "INSERT INTO ancora (id, da_ts, da_giorno) VALUES (1, ?, ?) "
@@ -351,7 +350,7 @@ class ArchivioConsumi:
             quando = adesso
             try:
                 quando = datetime.fromisoformat(
-                    (dati.get("last_reset") or "").replace("Z", "+00:00")).timestamp()
+                    dati.get("last_reset") or "").timestamp()
             except (TypeError, ValueError):
                 pass
             self.registra(

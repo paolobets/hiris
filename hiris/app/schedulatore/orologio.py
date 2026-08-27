@@ -53,8 +53,7 @@ class Orologio:
                                promessa["id"], type(errore).__name__, errore)
                 self._archivio.concludi(
                     promessa["id"], stato="fallita", adesso=adesso,
-                    motivo="guasto imprevisto mentre la mantenevo (%s: %s)."
-                           % (type(errore).__name__, errore))
+                    motivo=f"guasto imprevisto mentre la mantenevo ({type(errore).__name__}: {errore}).")
 
     async def _mantieni(self, promessa: dict, adesso: float) -> None:
         if promessa["specie"] == "fai":
@@ -134,7 +133,7 @@ class Orologio:
         # non smette di essere vero perche' e' arrivato il secondo.
         nota = risposta.get("nota") or ""
         if nota:
-            motivo = ("%s %s" % (motivo, nota)) if motivo else nota
+            motivo = (f"{motivo} {nota}") if motivo else nota
 
         self._archivio.concludi(promessa["id"], stato="mantenuta", adesso=adesso,
                                 motivo=motivo, testo=testo, avvisare=avvisare,

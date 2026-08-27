@@ -80,7 +80,7 @@ async def test_una_plancia_illeggibile_si_dichiara():
     })
     with patch.object(HAClient, "_ws_batch", finto):
         plance, non_disponibili = await _client().leggi_plance()
-    cucina = [p for p in plance if p["url_path"] == "cucina"][0]
+    cucina = next(p for p in plance if p["url_path"] == "cucina")
     assert cucina["config"] is None
     assert "cucina" in non_disponibili
 
@@ -184,7 +184,7 @@ async def test_una_plancia_con_percorso_vuoto_non_sparisce():
         plance, non_disponibili = await _client().leggi_plance()
     percorsi = [p["url_path"] for p in plance]
     assert "" in percorsi
-    vuota = [p for p in plance if p["url_path"] == ""][0]
+    vuota = next(p for p in plance if p["url_path"] == "")
     assert vuota["config"] == _CONFIG_CUCINA
     assert non_disponibili == []
 

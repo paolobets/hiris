@@ -118,7 +118,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -154,7 +154,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #     ponte (regole-fetta.md), sono della fetta B.
     # Questo e' il test che impedisce a un task futuro di aggiungerne meta'
     # in silenzio, e quello che dice a chi verra' dopo dove guardare.
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -169,7 +169,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=False)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -181,7 +181,7 @@ async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
 
 @pytest.mark.asyncio
 async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -226,7 +226,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_path):
     """Sanity check: the hoisted check must not block turns that are still
     under the limit -- the subscription path must remain reachable."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     impostazioni.max_chat_turns = 5
     from hiris.app.chat_store import append_messages
     append_messages([
@@ -249,7 +249,7 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
 
 @pytest.mark.asyncio
 async def test_user_message_persisted_before_enqueue(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
@@ -260,7 +260,7 @@ async def test_user_message_persisted_before_enqueue(tmp_path):
 
 @pytest.mark.asyncio
 async def test_job_context_history_includes_current_user_turn(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "prima domanda"})
         body = await resp.json()
@@ -285,7 +285,7 @@ async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_pa
 
     from hiris.app.chat_store import _get_store
 
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     impostazioni.giorni_conservazione = 5
 
     store = _get_store(data_dir)
@@ -317,7 +317,7 @@ async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_pa
 
 @pytest.mark.asyncio
 async def test_poll_route_pending_then_done(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -340,7 +340,7 @@ async def test_poll_route_pending_then_done(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_unknown_job_id_404(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/chat/reply/does-not-exist")
         assert resp.status == 404
@@ -355,7 +355,7 @@ async def test_poll_route_unknown_job_id_404(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -374,7 +374,7 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -399,7 +399,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
     """Mirrors Task 1's chat_reply_skipped outcome: the job reached
     'decided' but the decision carries no truthy 'reply' (e.g. the runner's
     decision was empty/garbage). The UI must stop polling, not spin forever."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -419,7 +419,7 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
 async def test_poll_route_pending_job_still_returns_pending(tmp_path):
     """Sanity check: a genuinely in-flight job (not yet claimed) still polls
     as pending -- the terminal-state handling must not regress this."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -433,7 +433,7 @@ async def test_poll_route_pending_job_still_returns_pending(tmp_path):
 async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
     """A job claimed by the external runner but not yet submitted is still
     in-flight -- must poll as pending, not error."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -465,7 +465,7 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # chiave: «X non c'e'» lascia rientrare X sotto un altro nome.
 @pytest.mark.asyncio
 async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ricordati che la caldaia perde"})
         job_id = (await resp.json())["job_id"]
@@ -512,7 +512,7 @@ async def test_poll_route_decision_senza_tools_called_non_porta_debug(tmp_path):
     # un `debug` vuoto -- resta esattamente come prima di questo task
     # (`test_poll_route_pending_then_done`, sopra, lo pinna gia' su questo
     # stesso ramo: qui si pinna che il comportamento non e' cambiato).
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         job_id = (await resp.json())["job_id"]
@@ -534,7 +534,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
     # chiave (quella e' il caso del test sopra). La chiave deve comparire lo
     # stesso, con la lista vuota dentro: e' cosi' che la E5 distingue "il
     # ponte ha girato e non ha chiamato nulla" da "questa decision non lo sa".
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "che ore sono?"})
         job_id = (await resp.json())["job_id"]
@@ -855,7 +855,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.casa.archivio import ArchivioCasa
     from hiris.app.memoria.archivio import ArchivioMemoria
 
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, q, _runner, _impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
 
     archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
@@ -909,7 +909,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     esteso: la CLI di Claude Code non ha un budget per richiesta da ricevere.
     Fino al fix round 1 non c'era una riga da nessuna parte -- l'impostazione
     risultava salvata e non faceva niente, in silenzio."""
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
     app["impostazioni_chat"] = ImpostazioniChat(
         nome="test-agent", system_prompt="You are a helpful assistant.",
@@ -932,7 +932,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
 async def test_il_ponte_non_dice_niente_con_thinking_budget_a_zero(tmp_path, caplog):
     """A 0 (il default) non c'e' niente da dichiarare: un warning a ogni turno
     su ogni installazione sarebbe rumore che insegna a ignorare i log."""
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
     with caplog.at_level("WARNING"):
         async with TestClient(TestServer(app)) as client:
@@ -952,7 +952,7 @@ async def test_il_turno_sincrono_chiede_sempre_auto_e_quindi_sempre_la_catena(tm
     provider da solo (`LLMRouter._route`), saltava la catena e annullava il
     ripiego -- e la pagina Modelli non lo nominava mai. Il campo è uscito: da
     qui in poi il turno chiede sempre `auto`, cioè sempre la catena."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -971,7 +971,7 @@ async def test_il_ponte_prende_il_modello_dal_campo_del_piano_e_non_da_claude_ap
     LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su haiku.
     Con la regola vecchia il job porterebbe `haiku`. Metterli uguali renderebbe
     questo test incapace di distinguere le due implementazioni."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True)
     app["models_config"] = {
         "provider_models": {"claude": "claude-haiku-4-5-20251001"},
         "ponte": {"modello": "opus"},
@@ -1000,7 +1000,7 @@ async def test_il_ponte_prende_il_modello_dal_campo_del_piano_e_non_da_claude_ap
 async def test_la_scadenza_del_turno_viene_dall_archivio_non_dall_ambiente(
         tmp_path, monkeypatch):
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
-    app, q, runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["models_config"] = {"ponte": {"scadenza_min": 9}}
 
     prima = time.time()
@@ -1022,7 +1022,7 @@ async def test_senza_archivio_la_scadenza_resta_il_predefinito_di_sempre(tmp_pat
     """`_on_startup` puo' non essere girato (ogni fixture lo azzera) e un turno
     puo' comunque arrivare: cinque minuti, come il predefinito dell'archivio e
     dell'opzione da cui e' stato seminato."""
-    app, q, runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     assert "models_config" not in app
 
     prima = time.time()
@@ -1076,7 +1076,7 @@ async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_pat
 
 @pytest.mark.asyncio
 async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tmp_path):
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -1113,7 +1113,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
     from hiris.app.instradamento import _piano_puo_rispondere
 
-    app, q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
 
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     puo, motivo = _piano_puo_rispondere(app)
@@ -1158,7 +1158,7 @@ async def test_il_ripiego_a_monte_si_annuncia_e_dice_chi_ha_risposto(tmp_path, m
     VOLTA, perche' un passaggio silenzioso dal forfait al consumo si scopre a
     fine mese."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     _con_registro(app, catena=["claude", "openrouter"], chi_ha_risposto="openrouter")
     async with TestClient(TestServer(app)) as client:
         body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
@@ -1180,7 +1180,7 @@ async def test_la_nota_nomina_CHI_HA_RISPOSTO_non_il_primo_della_catena(tmp_path
     provider sbagliato afferma piu' di quanto il sistema sa -- e per giunta sui
     soldi, che e' la meta' per cui la nota esiste."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["claude", "openrouter"])
     registro.fallimento("claude", famiglia="credenziale", codice=400,
                         messaggio="credit balance too low", durata_s=0.3)
@@ -1196,7 +1196,7 @@ async def test_senza_sapere_chi_ha_risposto_la_nota_non_si_scrive(tmp_path, monk
     """Meglio nessuna nota che una che nomina il provider sbagliato: la nota
     parla di soldi, e una nota falsa sui soldi e' peggio del silenzio."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["registro_esiti"] = None
     app["catena_modelli"] = []
     async with TestClient(TestServer(app)) as client:
@@ -1211,7 +1211,7 @@ async def test_un_turno_che_NON_ha_ripiegato_non_porta_nessuna_nota(tmp_path):
     ponte spento non c'e' stato nessun ripiego da annunciare, e il registro
     porta un successo -- cioe' tutto quello che serve per scriverla per
     sbaglio."""
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
+    app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
     _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
     async with TestClient(TestServer(app)) as client:
         body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
@@ -1237,7 +1237,7 @@ def _accoda_scaduto(q, *, ora=None, history=None, **contesto):
 
 @pytest.mark.asyncio
 async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sullo_stesso_job(tmp_path):
-    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, runner, _, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q, system_prompt="p", contesto="c",
                           restrict_to_home=False, response_mode="auto",
                           model="sonnet")
@@ -1262,7 +1262,7 @@ async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sul
 async def test_il_ripiego_non_duplica_il_turno_dell_utente(tmp_path):
     """Il messaggio e' gia' in cronologia da prima dell'accodamento
     (`_enqueue_chat_job` lo scrive PRIMA di accodare)."""
-    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     append_messages([{"role": "user", "content": "ciao"}], data_dir)
     jid = _accoda_scaduto(q)
     async with TestClient(TestServer(app)) as client:
@@ -1301,7 +1301,7 @@ async def test_un_job_non_ancora_scaduto_continua_ad_aspettare_il_piano(tmp_path
 
 @pytest.mark.asyncio
 async def test_senza_nessun_provider_in_catena_il_ripiego_lo_dice_invece_di_tacere(tmp_path):
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["llm_router"] = None
     app["claude_runner"] = None
     jid = _accoda_scaduto(q)
@@ -1318,7 +1318,7 @@ async def test_il_ripiego_a_valle_si_annuncia_e_la_nota_resta_sul_job(tmp_path):
     """La nota vive nel JOB, non nella richiesta che per caso lo ha raccolto:
     un poll successivo, o un ricaricamento della pagina, la ritrova
     invariata. Esattamente come `tools_called`, e per lo stesso motivo."""
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     _con_registro(app, catena=["claude", "openrouter"], chi_ha_risposto="openrouter")
     jid = _accoda_scaduto(q)
     async with TestClient(TestServer(app)) as client:
@@ -1336,7 +1336,7 @@ async def test_la_nota_non_finisce_in_cronologia(tmp_path):
     dopo, e su cui ragiona. E' la stessa famiglia del difetto dichiarato su
     «Errore temporaneo del servizio AI», che in cronologia ci finisce e non
     dovrebbe."""
-    app, q, runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
     append_messages([{"role": "user", "content": "ciao"}], data_dir)
     jid = _accoda_scaduto(q)
@@ -1359,7 +1359,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     ha risposto."""
     from hiris.app.decisione_modelli import frase_esito
 
-    app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
     ora = time.time()
     jid = _accoda_scaduto(q, ora=ora)

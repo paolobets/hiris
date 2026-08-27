@@ -492,4 +492,4 @@ def test_ogni_runner_riceve_la_lettura_del_SUO_provider():
                                   ("openrouter", "openrouter_runner = OpenRouterRunner(")):
         i = src.index(costruttore)
         blocco = src[i:src.index("        )", i)]
-        assert 'leggi_modello=_modello_di("%s")' % provider in blocco, blocco
+        assert f'leggi_modello=_modello_di("{provider}")' in blocco, blocco

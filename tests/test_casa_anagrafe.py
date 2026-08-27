@@ -94,14 +94,14 @@ def test_l_entita_eredita_l_area_dal_proprio_dispositivo(archivio):
 def test_l_area_dell_entita_vince_su_quella_del_dispositivo(archivio):
     archivio.sostituisci(_REGISTRI)
     piani = gerarchia(archivio.leggi())
-    solaio = [a for p in piani for a in p["aree"] if a["nome"] == "Solaio"][0]
+    solaio = next(a for p in piani for a in p["aree"] if a["nome"] == "Solaio")
     assert [e["id"] for e in solaio["entita"]] == ["light.faretto"]
 
 
 def test_le_aree_senza_piano_stanno_in_un_piano_senza_nome(archivio):
     archivio.sostituisci(_REGISTRI)
     piani = gerarchia(archivio.leggi())
-    senza = [p for p in piani if p["id"] == "__senza_piano__"][0]
+    senza = next(p for p in piani if p["id"] == "__senza_piano__")
     assert [a["nome"] for a in senza["aree"]] == ["Solaio"]
 
 
@@ -184,8 +184,8 @@ def test_le_entita_nascoste_finiscono_in_una_chiave_a_parte(archivio):
         {"entity_id": "light.lampadario_nascosto", "device_id": "d1", "area_id": None,
          "hidden_by": "user"}])
     archivio.sostituisci(registri)
-    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
-             if a["nome"] == "Cucina"][0]
+    cucina = next(a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina")
     assert "light.lampadario_nascosto" not in [e["id"] for e in cucina["entita"]]
     assert [e["id"] for e in cucina["entita_nascoste"]] == ["light.lampadario_nascosto"]
 
@@ -195,8 +195,8 @@ def test_un_area_senza_nascoste_ha_la_chiave_vuota(archivio):
     `domande.guarda`, che la omette quando e' vuota): e' una struttura
     interna, non la risposta finale al modello."""
     archivio.sostituisci(_REGISTRI)
-    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
-             if a["nome"] == "Cucina"][0]
+    cucina = next(a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina")
     assert cucina["entita_nascoste"] == []
 
 
@@ -208,8 +208,8 @@ def test_una_entita_disabilitata_e_nascosta_resta_fra_le_disabilitate(archivio):
         {"entity_id": "light.morta_e_nascosta", "device_id": "d1", "area_id": None,
          "disabled_by": "user", "hidden_by": "user"}])
     archivio.sostituisci(registri)
-    cucina = [a for p in gerarchia(archivio.leggi()) for a in p["aree"]
-             if a["nome"] == "Cucina"][0]
+    cucina = next(a for p in gerarchia(archivio.leggi()) for a in p["aree"]
+             if a["nome"] == "Cucina")
     assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita_nascoste"]]
     assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita"]]
     assert "light.morta_e_nascosta" in [e["id"] for e in cucina["entita_disabilitate"]]

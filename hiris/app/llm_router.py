@@ -25,7 +25,7 @@ def _is_openrouter_model(model: str) -> bool:
     Accepts both 'openrouter:provider/model' and 'openrouter/provider/model'
     so users coming from LiteLLM-style naming feel at home.
     """
-    return model.startswith("openrouter:") or model.startswith("openrouter/")
+    return model.startswith(("openrouter:", "openrouter/"))
 
 
 # `backend_is_cloud` e' USCITO (censimento del 17/08/2026, zero chiamanti di

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # pendenti ne' smettere di contare contro il tetto nella finestra fra
 # `rivendica` e la transizione finale (`applicata`/`rifiutata`).
 STATI_SOSPESO = ("in_attesa", "in_corso")
-_SOSPESI_SQL = ",".join("'%s'" % s for s in STATI_SOSPESO)
+_SOSPESI_SQL = ",".join(f"'{s}'" for s in STATI_SOSPESO)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
@@ -122,8 +122,7 @@ class ArchivioCostruzioni:
             # numero vero di proposte in volo oltre il tetto nella finestra
             # fra `rivendica` e la transizione finale.
             aperte = self._conn.execute(
-                "SELECT count(*) FROM costruzioni WHERE stato IN (%s)"
-                % _SOSPESI_SQL).fetchone()[0]
+                f"SELECT count(*) FROM costruzioni WHERE stato IN ({_SOSPESI_SQL})").fetchone()[0]
             if aperte >= self.MAX_IN_ATTESA:
                 return {"errore": (f"ci sono gia' {aperte} proposte in attesa (il tetto e' "
                                    f"{self.MAX_IN_ATTESA}): decidi quelle prima di farne altre.")}
@@ -151,7 +150,7 @@ class ArchivioCostruzioni:
         nella finestra fra `rivendica` e la transizione finale."""
         sql = "SELECT * FROM costruzioni"
         if solo_in_attesa:
-            sql += " WHERE stato IN (%s)" % _SOSPESI_SQL
+            sql += f" WHERE stato IN ({_SOSPESI_SQL})"
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             righe = self._conn.execute(sql, (int(limite),)).fetchall()

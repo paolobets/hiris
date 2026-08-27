@@ -161,5 +161,5 @@ def test_ogni_stato_concluso_ha_una_voce_in_stato_label_e_stato_badge():
     chiavi_label = set(re.findall(r"(\w+):", label.group(1)))
     chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
     for stato in STATI_CONCLUSI:
-        assert stato in chiavi_label, "STATO_LABEL non conosce «%s»" % stato
-        assert stato in chiavi_badge, "STATO_BADGE non conosce «%s»" % stato
+        assert stato in chiavi_label, f"STATO_LABEL non conosce «{stato}»"
+        assert stato in chiavi_badge, f"STATO_BADGE non conosce «{stato}»"

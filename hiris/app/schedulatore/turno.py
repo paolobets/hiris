@@ -111,10 +111,10 @@ class DispatcherPromessa:
             self.conclusione = {"avvisare": avvisare, "testo": testo}
             return {"concluso": True}
         if nome not in SOLA_LETTURA:
-            return {"errore": ("«%s» non e' disponibile mentre mantengo una "
+            return {"errore": (f"«{nome}» non e' disponibile mentre mantengo una "
                                "promessa: qui posso guardare e rispondere, non "
                                "toccare la casa. Se serve un'azione, dilla nel "
-                               "testo e decidera' la persona." % nome)}
+                               "testo e decidera' la persona.")}
         return await self._sotto.dispatch(nome, argomenti)
 
 
@@ -171,7 +171,7 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
     except Exception as errore:
         logger.warning("turno della promessa %s fallito (%s: %s)",
                        promessa["id"], type(errore).__name__, errore)
-        return {"errore": "il modello non ha risposto (%s)." % type(errore).__name__}
+        return {"errore": f"il modello non ha risposto ({type(errore).__name__})."}
 
     if dispatcher.conclusione is None:
         logger.warning("promessa %s: il turno non ha chiamato «concludi»; "
@@ -212,7 +212,7 @@ def _senza_conclusione(risposta) -> str:
         return "il turno non ha concluso: non so cosa dirti."
     if len(detto) > _TETTO_RIPORTO:
         detto = detto[:_TETTO_RIPORTO].rstrip() + "…"
-    return "il turno non ha concluso. Aveva risposto a parole: «%s»" % detto
+    return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
 
 
 def _nota_del_ripiego(motivo: str) -> str:
@@ -233,8 +233,8 @@ def _nota_del_ripiego(motivo: str) -> str:
     fatto = _MOTIVI_RIPIEGO.get(motivo)
     if not fatto:
         return ""
-    return ("Il Piano Claude Max %s: questo turno l'ha mantenuto la catena, "
-            "a consumo." % fatto)
+    return (f"Il Piano Claude Max {fatto}: questo turno l'ha mantenuto la catena, "
+            "a consumo.")
 
 
 def _accoda_al_ponte(app, promessa: dict) -> dict:
@@ -331,11 +331,10 @@ def _domanda(promessa: dict) -> str:
     L'istantanea porta valore, unita' e istante della misura: senza, «e'
     aumentata» non ha un termine di paragone e il modello se lo inventerebbe.
     """
-    righe = ["Me l'hai chiesto cosi': «%s»." % promessa["frase"],
-             "Quello che devi guardare: %s" % promessa["domanda"]]
+    righe = ["Me l'hai chiesto cosi': «{}».".format(promessa["frase"]),
+             "Quello che devi guardare: {}".format(promessa["domanda"])]
     for misura in promessa.get("istantanea") or []:
         righe.append(
-            "Quando me l'hai chiesto, %s era %s%s (misurato allora, non adesso)."
-            % (misura.get("entita"), misura.get("valore"),
+            "Quando me l'hai chiesto, {} era {}{} (misurato allora, non adesso).".format(misura.get("entita"), misura.get("valore"),
                (" " + misura["unita"]) if misura.get("unita") else ""))
     return "\n".join(righe)

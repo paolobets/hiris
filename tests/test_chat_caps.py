@@ -186,7 +186,7 @@ def test_conta_turni_oggi_counts_regardless_of_status(tmp_path):
 
 @pytest.mark.asyncio
 async def test_second_enqueue_same_conversation_returns_409(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
@@ -212,7 +212,7 @@ async def test_second_enqueue_same_conversation_returns_409(tmp_path):
 # davvero contro il codice nuovo (vedi il comando nel report).
 @pytest.mark.asyncio
 async def test_409_guard_e_ora_globale_un_chatbot_id_diverso_non_lo_evita(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path)
 
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima", "chatbot_id": "a"})
@@ -224,7 +224,7 @@ async def test_409_guard_e_ora_globale_un_chatbot_id_diverso_non_lo_evita(tmp_pa
 
 @pytest.mark.asyncio
 async def test_409_guard_clears_once_first_job_resolved(tmp_path):
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         job_id = (await first.json())["job_id"]
@@ -250,7 +250,7 @@ async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tm
     (i test della nota stanno in test_chat_subscription_path.py). Senza quella
     riga questo cambio sarebbe un prelievo silenzioso -- dal forfait al
     consumo, senza che nessuno lo abbia chiesto."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=1)
+    app, q, runner, _impostazioni, _data_dir = _make_app(tmp_path, tetto_giornaliero=1)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202
@@ -273,7 +273,7 @@ async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
     # ricadere su un predefinito sensato (50), non su 0/None -- che
     # ripiegherebbe sulla catena a ogni turno, cioe' spegnerebbe il ponte in
     # silenzio.
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=None)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, tetto_giornaliero=None)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -283,7 +283,7 @@ async def test_daily_cap_default_is_generous_enough_for_normal_use(tmp_path):
 async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
     """Con il ponte SPENTO, handle_chat deve usare il percorso sincrono
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, q, runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=False, tetto_giornaliero=0)
     # Pre-seed a "pending" chat job on the queue -- fetta E4 Task 5:
     # has_pending_chat() is unconditional now (no id to key it by) -- if the
@@ -305,7 +305,7 @@ async def test_chat_accepts_new_chatbot_id_key(tmp_path):
     Chatbot (l'entita' e' uscita) -- viene accettato e ignorato. Quello che
     resta da verificare e' che mandarlo non rompa nulla: la chat risponde
     comunque sul percorso sincrono."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": "qualunque-id"})
         assert resp.status == 200
@@ -318,7 +318,7 @@ async def test_chat_still_accepts_legacy_agent_id_key(tmp_path):
     """Retro-compat: older clients / Lovelace card configs sending "agent_id"
     must keep working unchanged after the chat-wire rename to "chatbot_id" --
     stesso discorso di sopra, anche questo id non seleziona piu' niente."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=False)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao", "agent_id": "qualunque-id"})
         assert resp.status == 200
@@ -343,7 +343,7 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     )
     runner.last_tool_calls = []
     runner.last_thinking_blocks = []
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, _q, runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=False, tetto_giornaliero=0, runner=runner)
 
     async with TestClient(TestServer(app)) as client:
@@ -358,7 +358,7 @@ async def test_bridge_off_falls_back_to_sync_guards_do_not_apply(tmp_path):
     """ponte_attivo on but bridge not wired (no reasoning_queue) ->
     existing Task 2 fallback to sync path; the new guards must not blow up
     without a queue to query."""
-    app, q, runner, impostazioni, data_dir = _make_app(
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=False, tetto_giornaliero=0)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -379,7 +379,7 @@ async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
     sulla stessa conversazione, che e' esattamente cio' che questa guardia
     esiste per impedire: la seconda arriverebbe in una cronologia che la prima
     sta per riscrivere."""
-    app, q, runner, impostazioni, data_dir = _make_app(tmp_path, tetto_giornaliero=1)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, tetto_giornaliero=1)
     async with TestClient(TestServer(app)) as client:
         first = await client.post("/api/chat", json={"message": "prima"})
         assert first.status == 202

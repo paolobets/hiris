@@ -19,7 +19,6 @@ _SCHEMA_V1 = "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEX
 
 def test_fresh_db_stamps_version_no_migration(tmp_path):
     conn = connect(str(tmp_path / "fresh.db"))
-    called = []
     init_schema(conn, _SCHEMA_V1, version=1, migrations={})
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
     conn.close()

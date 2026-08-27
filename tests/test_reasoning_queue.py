@@ -8,8 +8,8 @@ def q(tmp_path):
     x = ReasoningQueue(str(tmp_path / "r.db")); yield x; x.close()
 
 def test_enqueue_claim_oldest_first(q):
-    a = q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 1}}, deadline_ts=100.0, job_id="A", now=1.0)
-    b = q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 2}}, deadline_ts=100.0, job_id="B", now=2.0)
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 1}}, deadline_ts=100.0, job_id="A", now=1.0)
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 2}}, deadline_ts=100.0, job_id="B", now=2.0)
     c = q.claim(now=10.0)
     assert c["job_id"] == "A" and c["nonce"] and c["context"]["snapshot"]["x"] == 1
     c2 = q.claim(now=10.0)

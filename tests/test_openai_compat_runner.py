@@ -203,7 +203,6 @@ def test_detect_leaked_tool_call_mistral_pattern():
 
 def test_detect_leaked_tool_call_vietnamese_separator():
     """Variant from logs: tool name + Vietnamese 'lớ' separator."""
-    leaked = "get_ha_health lớ{\"sections\": [\"all\"]}"
     # Note: a leading space breaks the strict-start match, but the original
     # transcript shows no space between name and separator — verify both.
     leaked_no_space = "get_ha_healthớ{\"sections\": [\"all\"]}"

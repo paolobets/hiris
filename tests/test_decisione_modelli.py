@@ -39,8 +39,8 @@ def test_col_ponte_acceso_il_piano_prova_per_primo_e_la_catena_lo_segue():
     assert d["frase"] == "Il prossimo messaggio va a Piano Claude Max, con opus, nel piano."
     testi = [x["testo"] for x in d["diagnosi"]]
     assert testi == [
-        "Il ponte è acceso: il Piano Claude Max prova per primo, e se non "
-        "risponde entro 5 minuti il turno passa al successivo della catena."
+        ("Il ponte è acceso: il Piano Claude Max prova per primo, e se non "
+        "risponde entro 5 minuti il turno passa al successivo della catena.")
     ], testi
     assert not any("non viene consultata" in t for t in testi), testi
 
@@ -82,7 +82,7 @@ def test_lo_spreco_del_piano_porta_il_gesto_che_lo_ripara():
         modelli={"claude": "claude-opus-4-7"},
         ponte_attivo=False,
     )
-    spreco = [x for x in d["diagnosi"] if x["gravita"] == "spreco"][0]
+    spreco = next(x for x in d["diagnosi"] if x["gravita"] == "spreco")
     assert spreco["azione"] == {
         "etichetta": "Mettilo primo",
         "dove": ["ponte", "attivo"],
@@ -105,7 +105,7 @@ def test_col_ponte_acceso_il_gesto_e_quello_INVERSO():
         modelli={"claude": "claude-opus-4-7"},
         ponte_attivo=True,
     )
-    fatto = [x for x in d["diagnosi"] if x["gravita"] == "fatto"][0]
+    fatto = next(x for x in d["diagnosi"] if x["gravita"] == "fatto")
     assert fatto["azione"] == {
         "etichetta": "Togli il piano dalla catena",
         "dove": ["ponte", "attivo"],

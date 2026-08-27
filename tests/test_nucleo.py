@@ -103,7 +103,7 @@ def test_cio_che_non_si_conosce_si_dichiara():
     testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
     assert "Buonanotte" in testo
     # la voce senza corpo e' marcata in qualche modo leggibile
-    riga = [r for r in testo.splitlines() if "Buonanotte" in r][0]
+    riga = next(r for r in testo.splitlines() if "Buonanotte" in r)
     assert riga != "- Buonanotte"
 
 
@@ -423,7 +423,7 @@ def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
          "corpo": {"trigger": []}, "origine": "file"}
         for i in range(40)
     ]
-    testo, riepilogo = componi(casa, comportamento, [], stato)
+    testo, _riepilogo = componi(casa, comportamento, [], stato)
 
     sezione_casa = testo.split("## Notevole adesso")[0]
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
@@ -562,7 +562,7 @@ def test_taglio_dei_notevoli_raggruppati_conta_elementi_non_righe():
     e' peggio di non dichiararlo: sembra onesto e non lo e'."""
     casa = _casa_grande(30, 5)
     stato = {e["id"]: "on" for e in casa["entita"]}
-    testo, riepilogo = componi(casa, [], [], stato, tetto=1500)
+    _testo, riepilogo = componi(casa, [], [], stato, tetto=1500)
     assert riepilogo["troncato"] is True
     avviso = next(a for a in riepilogo["avvisi"] if "elementi notevoli non inclusi" in a
                   or "elemento notevole non incluso" in a)
@@ -594,8 +594,8 @@ def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi()
          "corpo": {"trigger": []}, "origine": "file"}
         for i in range(40)
     ]
-    ricordi = [dict(id=i, testo=f"ricordo numero {i} " + "x" * 200,
-                    detto_da="paolo", ancore=[], condizioni=[], forza="preferenza")
+    ricordi = [{"id": i, "testo": f"ricordo numero {i} " + "x" * 200,
+                    "detto_da": "paolo", "ancore": [], "condizioni": [], "forza": "preferenza"}
                for i in range(200)]
     testo, riepilogo = componi(casa, comportamento, ricordi, stato)  # tetto di default
     assert riepilogo["troncato"] is True
@@ -619,8 +619,8 @@ def test_taglio_non_lascia_intestazioni_di_piano_orfane():
          "corpo": {"trigger": []}, "origine": "file"}
         for i in range(80)
     ]
-    ricordi = [dict(id=i, testo=f"ricordo numero {i} " + "x" * 100,
-                    detto_da="paolo", ancore=[], condizioni=[], forza="preferenza")
+    ricordi = [{"id": i, "testo": f"ricordo numero {i} " + "x" * 100,
+                    "detto_da": "paolo", "ancore": [], "condizioni": [], "forza": "preferenza"}
                for i in range(50)]
     for tetto_prova in (500, 800, 1200, 2000, 3000, 6000):
         testo, _ = componi(casa, comportamento, ricordi, stato, tetto=tetto_prova)

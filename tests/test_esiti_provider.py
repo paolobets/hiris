@@ -28,7 +28,7 @@ def test_senza_osservazioni_non_si_afferma_niente():
 
 
 def test_un_successo_e_un_fatto_con_una_data():
-    r, t = _registro()
+    r, _t = _registro()
     r.successo("openrouter")
     e = r.esito("openrouter")
     assert e["tipo"] == "risposto" and e["quando"] == 1000.0 and e["da_quante"] == 1
@@ -47,7 +47,7 @@ def test_i_fallimenti_consecutivi_si_contano():
 
 
 def test_un_successo_azzera_il_conto_dei_rifiuti():
-    r, t = _registro()
+    r, _t = _registro()
     r.fallimento("claude", famiglia="credenziale", codice=400, messaggio="x", durata_s=0.1)
     r.fallimento("claude", famiglia="credenziale", codice=400, messaggio="x", durata_s=0.1)
     r.successo("claude")
