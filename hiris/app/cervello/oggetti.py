@@ -373,13 +373,35 @@ def _quota(numeratore, denominatore) -> float | None:
     manca o e' zero: zero produzione non significa «zero autoconsumo», e'
     «non lo so» (mandato, «cosa NON si salva» -- mai uno zero al posto di un
     dato che non si puo' calcolare).
+
+    **Mai negativa** (correzione ALTO della review, mandato «il bilancio
+    dell'energia», punto 3, 27/08/2026): il nome e il docstring
+    promettevano gia' «fra 0 e 1», ma nessun codice lo garantiva. Il caso
+    misurato e' `quota_autosufficienza` (`_momenti_bilancio` sotto),
+    calcolata come `(consumo - prelievo) / consumo`: il prelievo PUO'
+    superare il consumo di casa quando la batteria si carica dalla rete --
+    quell'energia importata va a caricare, non e' consumo della casa, e la
+    sottrazione va sotto zero. Oggi su questa casa il prelievo e' minimo e
+    il caso non si vede; d'inverno, o con una tariffa che carica di notte,
+    si'.
+
+    **Non si CLAMPA a zero**: zero affermerebbe «zero autosufficienza», e
+    non lo sappiamo -- l'eccedenza del prelievo (andata a caricare) puo'
+    convivere con un'ottima autoproduzione nel resto della giornata, che
+    quei due numeri soli non dicono. Quando il rapporto uscirebbe negativo,
+    si torna `None`: «non lo so», non un numero inventato su nessuno dei
+    due lati -- ne' quello sbagliato di prima ne' un floor che affermerebbe
+    il contrario.
     """
     if not denominatore:
         return None
     try:
-        return round(float(numeratore) / float(denominatore), 3)
+        valore = float(numeratore) / float(denominatore)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
+    if valore < 0:
+        return None
+    return round(valore, 3)
 
 
 def _punti_dimensione(serie: dict[str, list[dict]], soggetto: str | None) -> list[dict]:
@@ -475,9 +497,9 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
 
     Ritorna `{"totali": {dimensione: {"valore","provenienza"}}, "forma":
     {dimensione: [{"ora","valore"}, ...]}, "momenti": {...},
-    ["batteria_percentuale_oraria": [24 % o None]]}` -- ogni chiave presente
-    solo se c'e' almeno un fatto da dirla (dizionario vuoto altrimenti, mai
-    una chiave con un valore fittizio).
+    ["batteria_percentuale_oraria": [{"ora","valore"}, ...]]}` -- ogni
+    chiave presente solo se c'e' almeno un fatto da dirla (dizionario vuoto
+    altrimenti, mai una chiave con un valore fittizio).
 
     **`forma[dimensione]` porta l'ORA di ogni punto, non solo il valore**
     (correzione MEDIA della review, mandato «il bilancio dell'energia»,
@@ -495,6 +517,16 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
     raddoppiare il payload per dirla a ogni punto non permetterebbe nessuna
     frase in piu' (spec §1, «se un dato non serve a nessuna frase in piu',
     non va salvato»).
+
+    **`batteria_percentuale_oraria` ha la STESSA forma di `forma[dimensione]`,
+    per la STESSA ragione** (correzione MEDIA della review, mandato «il
+    bilancio dell'energia», punto 2, 27/08/2026 -- «cerca i fratelli»: la
+    correzione precedente aveva sistemato solo `forma`, e questo campo
+    accanto e' rimasto una lista NUDA con lo stesso difetto). Con un buco
+    del recorder gli indici non sono le ore, e la curva della batteria si
+    disallineava in silenzio mentre quella dell'energia, accanto, era gia'
+    giusta. Il docstring di questo campo prometteva anche «24 valori»: su
+    una giornata bucata la lista non ne ha 24 -- frase falsa, tolta.
     """
     totali: dict[str, dict] = {}
     forma: dict[str, list] = {}
@@ -520,9 +552,16 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
         corpo["momenti"] = momenti
 
     if entita_batteria is not None:
-        punti_batteria = serie.get(entita_batteria) or []
-        valori_batteria = [_percento((p or {}).get("media")) for p in punti_batteria]
-        if any(v is not None for v in valori_batteria):
+        # Stessa forma di `forma[dimensione]` sopra, stessa ragione: `ora`
+        # e' l'istante GIA' letto e tradotto (`inizio` del punto), non un
+        # indice di posizione -- un buco del recorder non deve disallineare
+        # la curva della batteria mentre quella dell'energia, accanto, resta
+        # giusta (correzione punto 2 del mandato, «cerca i fratelli»).
+        punti_batteria = [p for p in (serie.get(entita_batteria) or [])
+                          if isinstance(p, dict)]
+        valori_batteria = [{"ora": p.get("inizio"), "valore": _percento(p.get("media"))}
+                           for p in punti_batteria]
+        if any(v["valore"] is not None for v in valori_batteria):
             corpo["batteria_percentuale_oraria"] = valori_batteria
 
     return corpo
@@ -611,10 +650,19 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     nessuna delle sue dimensioni) NON sopprime niente e non si scrive: e'
     la stessa regola di `direzioni`, mai un oggetto vuoto al posto di
     quello che c'era. Le entita' di energia FUORI da ogni bilancio (nessun
-    dispositivo, o un dispositivo la cui unica direzione e' "consumo", che
-    non basta a costruirne uno -- vedi `DIREZIONI_BILANCIO`) continuano a
-    produrre il loro episodio come prima: **e' il genere a decidere la
-    forma**, e un'entita' senza un bilancio da entrare non ha nessuna forma
+    dispositivo, o un dispositivo di cui NESSUNA entita' ha una direzione
+    riconosciuta fra `DIREZIONI_BILANCIO`) continuano a produrre il loro
+    episodio come prima. **Non piu' "un dispositivo la cui unica direzione
+    e' 'consumo' non basta a costruirne uno"** (frase corretta dal mandato
+    «il bilancio dell'energia», punto 4, 27/08/2026: era gia' falsa da
+    quando "consumo" e' entrata in `DIREZIONI_BILANCIO` come settimo totale
+    -- vedi il commento sopra la costante -- ed era contraddetta da un test
+    dello stesso giro, `test_server_bilanci.py::
+    test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato`: un
+    dispositivo con la sola direzione "consumo" e' gia' un candidato
+    valido, e produce un bilancio, non piu' il suo episodio individuale).
+    **E' il genere a decidere la forma**, e un'entita' senza un bilancio da
+    entrare non ha nessuna forma
     migliore di quella che gia' aveva.
     """
     da_ts, a_ts = confini_giorno(giorno, fuso)

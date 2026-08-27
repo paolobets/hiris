@@ -134,6 +134,22 @@ cumulato che gestisce gli azzeramenti). Verificato sull'impianto vero.
    del router — era archiviato come energia. Non è restringere il pavimento: è **smettere di
    derivare una cosa che HA non dichiara**.
 5. **I numeri si arrotondano.** Oggi la pagina mostra `+0.010000000000000009`.
+6. **Un dispositivo la cui unica direzione utile è il consumo diventa candidato a un bilancio da
+   solo** (conseguenza recepita dalla review, mandato «il bilancio dell'energia», punto 5,
+   27/08/2026). Rendere il consumo una direzione a pieno titolo (punto 3 dell'appendice sopra) ha
+   questo effetto collaterale voluto: un dispositivo che non produce, non preleva, non immette, non
+   carica né scarica — ma la cui integrazione dichiara comunque un consumo — ora basta da solo a
+   costruire un bilancio (vedi `hiris/app/cervello/oggetti.py`, `DIREZIONI_BILANCIO`, e il test
+   `test_server_bilanci.py::test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato`). **Misurato il
+   27/08/2026: oggi non succede su questa casa** — le prese intelligenti hanno un `translation_key`
+   che la tabella delle direzioni dedotte non riconosce, quindi non ricevono nessuna direzione e
+   nessun bilancio nasce da loro. **Ma è desiderabile che succeda**, con l'argomento della spec
+   stessa (§3): una lavatrice sotto presa è una quantità con una forma, non un episodio, e la sua
+   curva oraria è precisamente ciò che serve per dire «spostala all'una». Il giorno in cui si
+   leggessero i consumi per dispositivo della dashboard Energia (oggi la dashboard ne dichiara solo
+   tre sorgenti — `grid`, `solar`, `battery`, misurate in `pavimento.py`, non i dispositivi collegati
+   alle prese), la popolazione degli oggetti bilancio cambierebbe di conseguenza: nessun numero finto
+   oggi, solo l'assenza del prelievo del dispositivo.
 
 ## 6. Le domande lasciate aperte, con la loro ragione
 
