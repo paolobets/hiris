@@ -150,11 +150,19 @@ due file tracciati (377 righe, 6 rilievi) e quindi entra.
 Con la configurazione definitiva il conto e' **798** (comprende i 137 `E501` che nascono con
 `line-length = 100`). Poi:
 
-- **798 → 564** applicando i **fix sicuri**
-- **564 → 241** applicando i **fix «unsafe»** (323 correzioni, quasi tutte i **178 `RUF059`** dei
+- **798 → 494** applicando i **fix sicuri**
+- **494 → 241** applicando i **fix «unsafe»** (323 correzioni, quasi tutte i **178 `RUF059`** dei
   test: prefisso `_` su variabili spacchettate e mai usate, **zero in produzione**), con 2.836 test
   a fare da prova
 - **241 = 157 righe lunghe + 84 rilievi a mano**
+
+**La riga di `ruff --fix` inganna, ed e' costata un giro.** `--fix` e' **iterativo**: corregge,
+ricontrolla, e ogni correzione puo' rivelarne altre. Sulla passata sicura stampa
+`Found 858 errors (364 fixed, 494 remaining)` — dove **858 non e' il punto di partenza** (che era
+798) ma il cumulativo di tutto il giro. Il solo conteggio che vale e' quello di una `ruff check`
+**senza** `--fix`. La prima stesura di questa spec aveva letto quel numero come stato iniziale e
+dichiarava 564 dove il vero valore e' **494**; l'errore e' emerso perche' l'implementer si e'
+fermato invece di piegare la configurazione per far tornare il conto.
 
 **`E501` sale da 137 a 157 durante il sanamento**, e non e' un errore di conto: accorpare import e
 convertire in f-string **allunga le righe**. E' la prova misurata che la tipografia va **per ultima**.
@@ -181,8 +189,8 @@ il primo giorno. La suite dev'essere verde a ogni passo.
 |---|---|---|---|
 | **0** | `test` + `fix(tests)` | **Il doppione vero**, per primo: via la ridefinizione a `tests/test_claude_runner.py:323`. | **Prima della configurazione, non dopo.** `per-file-ignores` su `tests/**` spegnera' `F811`, e quel caso vero verrebbe silenziato insieme ai 55 falsi positivi che lo giustificano. Chi lo sana dopo non lo trova piu'. |
 | 1 | `chore(lint)` | `pyproject.toml`, `ruff` appuntato, `oxlint` + `npm run lint`. **Nessuno sbarramento ancora.** | La configurazione e' il documento: nasce leggibile e da sola. |
-| 2 | `chore(lint)` | **I fix sicuri** (798 → 564), sola macchina. Suite verde. | Rischio nullo, diff grande: dev'essere leggibile senza nient'altro dentro. |
-| 3 | `chore(lint)` | **I 323 fix «unsafe»** (564 → 241), quasi tutti `RUF059` nei test. Suite verde. | Classe di rischio diversa dal #2: un `git revert` deve poter tornare indietro **solo** su questi. |
+| 2 | `chore(lint)` | **I fix sicuri** (798 → 494), sola macchina. Suite verde. | Rischio nullo, diff grande: dev'essere leggibile senza nient'altro dentro. |
+| 3 | `chore(lint)` | **I 323 fix «unsafe»** (494 → 241), quasi tutti `RUF059` nei test. Suite verde. | Classe di rischio diversa dal #2: un `git revert` deve poter tornare indietro **solo** su questi. |
 | 4..n | uno **per famiglia** | Gli **84 a mano**: `SIM117`, `UP031`, `RUF012`, `S110`, `TRY401`, `PLW1510`, `SIM115`, `SIM102`, `PLR0124`, `ASYNC230`. | Una famiglia = una decisione = un commit leggibile nel log fra sei mesi. Non per file. |
 | — | `test` + `fix` **rosso → verde** | **I difetti veri**: `B017` x 5, `DTZ006` x 2. Il test che li dimostra viene **prima** della correzione. | Sono cambi di comportamento, non igiene. La finta deve saper **produrre** il difetto. |
 | — | `chore(lint)` | **Le 157 righe** oltre 100 colonne. Sola tipografia, **per ultima**. | Se il diff contiene una riga di logica, non e' questo commit. E vanno per ultime perche' i fix automatici ne creano venti di nuove. |
