@@ -34,8 +34,12 @@
    stringhe letterali IDENTICHE a `pavimento.GAMBE`, apostrofo compreso
    («chi c'e'»).
 
-   -- I cinque generi di EPISODIO (`cervello/oggetti.py::GENERI`) --
-   funzionamento, presenza, energia, guasto, sicurezza. Ogni genere porta un
+   -- I SEI generi (`cervello/oggetti.py::GENERI`, contati nel sorgente
+      Python, non ricopiati -- correzione del giro «la pagina del bilancio»,
+      punto 7, 27/08/2026: questa riga diceva "cinque", e da quando
+      `bilancio` e' entrato in GENERI sono sei) --
+   Cinque sono EPISODIO: funzionamento, presenza, energia, guasto, sicurezza.
+   Ogni genere di episodio porta un
    `corpo` di forma diversa (`aggrega_giorno`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
    energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
@@ -64,20 +68,23 @@
    che il giro dei dati ha appena tolto dall'archivio (undici frammenti di
    energia per lo stesso dispositivo). Il suo `corpo` (`costruisci_corpo_
    bilancio` in cervello/oggetti.py) non ha ne' `stato` ne' `valore_iniziale`/
-   `valore_finale`: ha `totali` (sei dimensioni al massimo, ognuna
-   `{valore,provenienza}`), `forma` (le stesse dimensioni, un valore per
-   punto -- **AVVISO segnalato da una review il 27/08/2026, dopo la prima
-   implementazione**: oggi e' una lista POSIZIONALE NUDA, senza l'istante di
-   ciascun punto, e HA OMETTE le ore senza dati -- l'indice NON e' l'ora del
-   giorno. Vedi l'avviso esteso sopra `rendiCurvaBilancio`, che e' l'unico
-   consumatore di `forma`), `momenti` (fatti derivati -- QUESTI portano
-   l'istante VERO di ciascun fatto, `HAClient._istante_da_ha`, e non
-   soffrono del difetto sopra: prima/ultima ora di produzione, il picco, le
-   quote), piu' `dispositivo` (nome leggibile) ed `entita` (i sensori che lo
-   compongono, aggiunti da `aggrega_giorno`). `rigaBilancio` sotto lo rende
-   per conto suo, SENZA passare da `frasePrincipale`/`periodo()`: sono
-   funzioni che presuppongono la forma dell'episodio, e usarle per un
-   bilancio le forzerebbe fuori dal loro contratto.
+   `valore_finale`: ha `totali` (SETTE dimensioni al massimo -- il consumo e'
+   la settima, LETTA non dedotta: correzione ALTA della review, mandato «la
+   pagina del bilancio», punto 1, 27/08/2026, vedi il commento sopra
+   `DIREZIONI_BILANCIO` nel sorgente Python -- ognuna `{valore,provenienza}`),
+   `forma` (le stesse dimensioni, un elenco di `{"ora","valore"}` per punto --
+   **l'asse orario e' ARRIVATO il 27/08/2026** (mandato «la pagina del
+   bilancio», punto 6): prima di questa correzione era una lista POSIZIONALE
+   NUDA (l'indice non era l'ora, perche' HA omette le ore senza dati); ora
+   ogni punto porta la SUA ora, `ora` e' lo stesso nome gia' usato da
+   `picco_produzione` sotto -- vedi il contratto completo nel docstring di
+   `costruisci_corpo_bilancio`, cervello/oggetti.py), `momenti` (fatti
+   derivati -- prima/ultima ora di produzione, il picco, le quote, tutti con
+   l'istante VERO), piu' `dispositivo` (nome leggibile) ed `entita` (i
+   sensori che lo compongono, aggiunti da `aggrega_giorno`). `rigaBilancio`
+   sotto lo rende per conto suo, SENZA passare da `frasePrincipale`/
+   `periodo()`: sono funzioni che presuppongono la forma dell'episodio, e
+   usarle per un bilancio le forzerebbe fuori dal loro contratto.
 
    -- Il giorno di default (mandato Task 7, verifiche dal vivo #1) --
    L'aggregazione notturna scrive «ieri» alle 00:20 (`server.py::
@@ -140,16 +147,22 @@ window.HirisOsservatoreRoute = (function () {
     autoconsumo: 'Autoconsumo (prodotto e consumato sul posto)'
   };
 
-  /* Le sei dimensioni di un bilancio, in quest'ordine -- letterale, identico
-     a `DIREZIONI_BILANCIO` in `cervello/oggetti.py` (mandato «il bilancio
-     dell'energia», 27/08/2026): NON sette, "consumo" e' ridondante con
-     autoconsumo+prelievo e non e' una dimensione del bilancio (vedi il
-     commento sopra `DIREZIONI_BILANCIO` nel sorgente Python). Stessa
-     etichetta di `ETICHETTA_DIREZIONE` sopra: e' lo stesso vocabolario di
-     "immesso in rete"/"prelevato dalla rete" gia' usato dagli episodi di
-     energia -- il mandato chiede di riusare le stesse parole, non
-     inventarne di nuove. */
-  var ORDINE_DIREZIONI_BILANCIO = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica'];
+  /* Le SETTE dimensioni di un bilancio, in quest'ordine -- letterale,
+     identico a `DIREZIONI_BILANCIO` in `cervello/oggetti.py` (contato nel
+     sorgente Python, non ricopiato). **Correzione ALTA della review**
+     (mandato «la pagina del bilancio», punto 1, 27/08/2026): questa lista
+     diceva "NON sette, consumo e' ridondante con autoconsumo+prelievo" --
+     un'ASSUNZIONE, non un fatto misurato, e su questa integrazione e'
+     FALSA (autoconsumata esclude la batteria: la somma perde la scarica,
+     vedi il commento sopra `DIREZIONI_BILANCIO` nel sorgente Python). Il
+     consumo e' la settima dimensione, LETTA non dedotta -- senza di lui
+     `quota_autosufficienza` (in `_momenti_bilancio`) non si scrive affatto,
+     mai un numero dedotto al posto di uno letto. Stessa etichetta di
+     `ETICHETTA_DIREZIONE` sopra: e' lo stesso vocabolario di "immesso in
+     rete"/"prelevato dalla rete"/"consumo della casa" gia' usato dagli
+     episodi di energia -- il mandato chiede di riusare le stesse parole,
+     non inventarne di nuove. */
+  var ORDINE_DIREZIONI_BILANCIO = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica', 'consumo'];
 
   function el(tag, cls, testo) {
     var e = document.createElement(tag);
@@ -498,7 +511,9 @@ window.HirisOsservatoreRoute = (function () {
      salva" -- niente batteria, niente "carica"/"scarica"). L'ordine e'
      `ORDINE_DIREZIONI_BILANCIO`: produzione/autoconsumo/immissione/prelievo
      -- le quattro del punto 1 -- vengono prima di carica/scarica, che
-     compaiono solo per un dispositivo con batteria. */
+     compaiono solo per un dispositivo con batteria; il consumo (settima
+     dimensione, letta non dedotta -- correzione ALTA della review, mandato
+     «la pagina del bilancio», punto 1, 27/08/2026) chiude l'elenco. */
   function rendiTotaliBilancio(box, totali) {
     if (!totali) return;
     var presenti = ORDINE_DIREZIONI_BILANCIO.filter(function (d) { return totali[d]; });
@@ -524,84 +539,97 @@ window.HirisOsservatoreRoute = (function () {
     box.appendChild(grid);
   }
 
-  /* Punto 2 del brief: «Ventiquattro valori per piu' serie non si leggono
-     come tabella. Serve una curva.» -- SVG scritto a mano, STESSO schema di
-     `svgBarre` in usage-route.js (nessuna libreria nuova, verificato: il
-     prodotto non ne porta nessuna). Le serie che «contano insieme» sono
-     produzione e prelievo (brief, punto 2: «e' il loro scarto ... che
-     racconta l'efficienza») -- se ci sono entrambe si sovrappongono in
-     barre affiancate, in ORDINE CRONOLOGICO; se ce n'e' una sola si disegna
+  /* Punto 2 del brief-pagina: «Ventiquattro valori per piu' serie non si
+     leggono come tabella. Serve una curva.» -- SVG scritto a mano, STESSO
+     schema di `svgBarre` in usage-route.js (nessuna libreria nuova,
+     verificato: il prodotto non ne porta nessuna). Le serie che «contano
+     insieme» sono produzione e prelievo (brief-pagina, punto 2: «e' il loro
+     scarto ... che racconta l'efficienza») -- se ci sono entrambe si
+     sovrappongono in barre affiancate; se ce n'e' una sola si disegna
      quella sola. Nessun `innerHTML`: `createElementNS` + `setAttribute`, la
      stessa disciplina "textContent/createElement ovunque" di tutto il resto
      della pagina (vedi il commento di sicurezza in testa al file) -- qui
      estesa all'SVG, che non e' un'eccezione.
 
-     **AVVISO dichiarato (segnalato da una review il 27/08/2026, DOPO la
-     prima implementazione di questa fetta -- vedi il rapporto del giro):
-     `corpo.forma` oggi e' una lista POSIZIONALE NUDA (`forma[dimensione] =
-     [numeri]`, senza l'istante di ciascun punto), e Home Assistant OMETTE
-     le ore senza dati -- non le manda a zero, non le manda affatto. Questo
-     significa che L'INDICE NELLA LISTA NON E' L'ORA DEL GIORNO: una
-     produzione che comincia alle 7 ha il suo primo valore in posizione 0,
-     non in posizione 7. Il backend guadagnera' un asse esplicito delle ore
-     per punto (chiave non ancora nota; NON toccare Python per questa
-     fetta). Questo grafico, PER ORA, non puo' far altro che disegnare le
-     barre in ordine di arrivo -- per questo il titolo/aria-label sotto dice
-     "in ordine cronologico" e MAI "ora per ora": affermare un'ora
-     specifica sarebbe un fatto falso travestito da dato, la stessa cosa che
-     `_differenza` (sopra, Python) rifiuta di fare per un valore che non si
-     puo' calcolare. `etichettaPuntoCurva` e' l'UNICO punto che traduce un
-     indice in un'etichetta: quando il payload guadagnera' l'ora vera, la
-     correzione e' UNA riga li', non cinque sparse nel rendering. */
-  function etichettaPuntoCurva(indice) {
-    return 'punto ' + (indice + 1);
+     **L'asse orario e' ARRIVATO (mandato «la pagina del bilancio -- le
+     correzioni», punto 6, 27/08/2026, che riapre e RENDE PIU' SEVERO il
+     punto 1: «la pagina non deve mai affermare un'ora falsa», e prima
+     nessun test lo sorvegliava).** Prima di questa correzione `corpo.forma`
+     era una lista POSIZIONALE NUDA: l'indice non era l'ora (HA omette le
+     ore senza dati), e questa funzione disegnava le barre "in ordine di
+     arrivo", mai un orario specifico -- l'unico modo onesto di non mentire
+     con un dato che non c'era. **Ora ogni punto porta la SUA ora**
+     (`{"ora","valore"}`, la stessa chiave gia' usata da `picco_produzione`
+     -- vedi il docstring di `costruisci_corpo_bilancio` in cervello/
+     oggetti.py, letto per intero prima di questa correzione): le barre si
+     posizionano sull'ORA VERA di ciascun punto, in 24 posizioni fisse (una
+     per ora del giorno, fuso del BROWSER come `fmtOraIso` sotto) invece che
+     in ordine di arrivo -- cosi' **un'ora senza dato resta uno spazio
+     vuoto, non una barra spostata**: i buchi (l'impianto fermo, HA che non
+     manda niente per quell'ora) si vedono per quello che sono, invece di
+     essere invisibilmente compattati vicino al punto precedente. Un punto
+     senza `ora` leggibile non si disegna affatto: **mai un'ora inventata**,
+     la stessa disciplina di `_differenza` (Python) per un valore che non si
+     puo' calcolare. */
+  function oraLocaleDalPunto(iso) {
+    if (!iso) return null;
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    var h = d.getHours();
+    return (h >= 0 && h <= 23) ? h : null;
   }
 
-  function rendiCurvaBilancio(box, forma) {
+  var ORE_DEL_GIORNO = 24;
+
+  function rendiCurvaBilancio(box, forma, haiMomenti) {
     if (!forma) return;
     var serie = [];
     if (forma.produzione) {
-      serie.push({ valori: forma.produzione, colore: 'var(--bilancio-produzione)', etichetta: ETICHETTA_DIREZIONE.produzione });
+      serie.push({ punti: forma.produzione, colore: 'var(--bilancio-produzione)', etichetta: ETICHETTA_DIREZIONE.produzione });
     }
     if (forma.prelievo) {
-      serie.push({ valori: forma.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: ETICHETTA_DIREZIONE.prelievo });
+      serie.push({ punti: forma.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: ETICHETTA_DIREZIONE.prelievo });
     }
     if (!serie.length) return;
+    var haPunti = serie.some(function (s) { return s.punti && s.punti.length; });
+    if (!haPunti) return;
 
-    var n = 0;
-    serie.forEach(function (s) { if (s.valori.length > n) n = s.valori.length; });
-    if (!n) return;
     var massimo = 0;
     serie.forEach(function (s) {
-      s.valori.forEach(function (v) { if (v != null && v > massimo) massimo = v; });
+      s.punti.forEach(function (p) { if (p.valore != null && p.valore > massimo) massimo = p.valore; });
     });
     if (massimo <= 0) massimo = 0.000001; // niente divisione per zero: un giorno tutto a zero resta piatto, non rotto
 
     var L = 640, A = 140, base = A - 20, sinistra = 4;
-    var passo = (L - sinistra * 2) / n;
+    var passo = (L - sinistra * 2) / ORE_DEL_GIORNO;
     var larghezzaBarra = Math.max(1, (passo - 2) / serie.length);
 
     var svg = svgEl('svg', {
       class: 'bil-grafico', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
-      'aria-label': 'Produzione e prelievo, in ordine cronologico'
+      'aria-label': 'Produzione e prelievo, ora per ora'
     });
     var titolo = document.createElementNS(SVG_NS, 'title');
-    titolo.textContent = 'Produzione e prelievo, in ordine cronologico';
+    titolo.textContent = 'Produzione e prelievo, ora per ora';
     svg.appendChild(titolo);
     var descrizione = document.createElementNS(SVG_NS, 'desc');
-    // "in ordine cronologico", non "ora per ora": vedi l'AVVISO sopra
-    // `rendiCurvaBilancio` -- l'asse orizzontale non e' ancora ancorato a
-    // un'ora del giorno.
-    descrizione.textContent = 'Barre in ordine cronologico, una per punto disponibile. ' +
-      'Gli stessi numeri, con la loro ora vera, sono nei momenti qui sotto.';
+    // Punto 3 del brief-pagina: la vecchia frase ("gli stessi numeri, con la
+    // loro ora vera, sono nei momenti qui sotto") era falsa nel caso
+    // generale -- i momenti portano orari e percentuali, non gli stessi
+    // kWh della curva -- e orfana quando i momenti mancano. Si dice il
+    // vero (un'ora senza barra e' un'ora senza dato), e la frase sui
+    // momenti compare SOLO quando i momenti ci sono.
+    descrizione.textContent = 'Barre allineate all’ora del giorno: un’ora senza barra è un’ora senza dato, non uno zero.' +
+      (haiMomenti ? ' Il picco e gli altri momenti notevoli sono qui sotto, con la loro ora vera.' : '');
     svg.appendChild(descrizione);
 
-    for (var i = 0; i < n; i++) {
-      serie.forEach(function (s, si) {
-        var v = s.valori[i];
+    serie.forEach(function (s, si) {
+      s.punti.forEach(function (p) {
+        var v = p.valore;
         if (v == null || v <= 0) return;
+        var ora = oraLocaleDalPunto(p.ora);
+        if (ora == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
         var h = (v / massimo) * (base - 6);
-        var x = sinistra + i * passo + si * larghezzaBarra;
+        var x = sinistra + ora * passo + si * larghezzaBarra;
         var y = base - h;
         var rect = svgEl('rect', {
           x: x.toFixed(1), y: y.toFixed(1),
@@ -609,11 +637,11 @@ window.HirisOsservatoreRoute = (function () {
           fill: s.colore
         });
         var titoloBarra = document.createElementNS(SVG_NS, 'title');
-        titoloBarra.textContent = s.etichetta + ' — ' + etichettaPuntoCurva(i) + ': ' + fmtKwh(v);
+        titoloBarra.textContent = s.etichetta + ' — ' + fmtOraIso(p.ora) + ': ' + fmtKwh(v);
         rect.appendChild(titoloBarra);
         svg.appendChild(rect);
       });
-    }
+    });
     svg.appendChild(svgEl('line', { x1: 0, y1: base, x2: L, y2: base, stroke: 'var(--border)' }));
     box.appendChild(svg);
 
@@ -660,8 +688,21 @@ window.HirisOsservatoreRoute = (function () {
 
     var dl = el('dl', 'bil-momenti');
     voci.forEach(function (v) {
-      dl.appendChild(el('dt', null, v[0]));
-      dl.appendChild(el('dd', null, v[1]));
+      // Punto 2 del brief-pagina (MEDIO): dt e dd erano celle INDIPENDENTI
+      // della griglia -- a 1200px `auto-fit` puo' calcolare un numero
+      // DISPARI di colonne, e con dt/dd alternati piatti una coppia si
+      // spezza a fine riga (misurato dal revisore: «Picco di produzione»
+      // chiudeva una riga, il suo valore ne apriva un'altra accanto a
+      // «Fine scarica della batteria»). Un `<div>` che raggruppa dt+dd e'
+      // contenuto valido dentro un `<dl>` (HTML5: i gruppi nome/valore
+      // possono stare avvolti in un div) e diventa l'UNICO elemento di
+      // griglia per quella coppia -- una coppia non puo' piu' spezzarsi, a
+      // nessuna larghezza (verificato dal vivo a 1200px con Playwright,
+      // vedi il rapporto). `.bil-momento` in hiris-config.css.
+      var coppia = el('div', 'bil-momento');
+      coppia.appendChild(el('dt', null, v[0]));
+      coppia.appendChild(el('dd', null, v[1]));
+      dl.appendChild(coppia);
     });
     box.appendChild(dl);
   }
@@ -705,7 +746,7 @@ window.HirisOsservatoreRoute = (function () {
     box.appendChild(titolo);
 
     rendiTotaliBilancio(box, c.totali);
-    rendiCurvaBilancio(box, c.forma);
+    rendiCurvaBilancio(box, c.forma, !!c.momenti);
     rendiMomentiBilancio(box, c.momenti);
 
     // Difensivo: l'invariante di scrittura garantisce sempre almeno un

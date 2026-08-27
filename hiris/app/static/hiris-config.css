@@ -1054,10 +1054,16 @@
      `.agent-badge` e' `white-space: nowrap` apposta altrove (badge brevi),
      quindi senza questo `minmax` la colonna si allarga quanto serve per non
      spezzare quel testo, e trascina l'intera griglia -- e con lei la pagina
-     -- fuori dai 390px. E' la terza recidiva della stessa famiglia di bug
-     (vedi il commento «Terza recidiva» piu' sotto, sugli span in riga
-     flessibile): qui la si chiude alla radice, nel componente CONDIVISO
-     (Consumi + l'osservatore), non con una toppa in una sola pagina. */
+     -- fuori dai 390px. **E' la QUARTA recidiva della stessa famiglia di
+     bug** (correzione BASSA della review, mandato «la pagina del bilancio»,
+     punto 5, 27/08/2026: questo commento diceva "terza", ma quel titolo e'
+     gia' del bug del 26/08 sugli span in riga flessibile -- vedi il
+     commento «Terza recidiva» piu' sotto, che resta la terza): qui la si
+     chiude alla radice, nel componente CONDIVISO -- **tre chiamanti**, non
+     due (stesso punto 5: questo commento diceva "Consumi + l'osservatore"
+     e dimenticava la Dashboard, che lo usa in DUE punti di `dashboard.js`,
+     la griglia dei KPI e quella delle metriche -- contato nel sorgente, non
+     ricopiato), non con una toppa in una sola pagina. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--sp-4);
   margin-bottom: var(--sp-6);
@@ -1838,6 +1844,16 @@
   display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--sp-2) var(--sp-4); margin: 4px 0;
 }
+/* Punto 2 della correzione (MEDIO, mandato «la pagina del bilancio»,
+   27/08/2026): dt e dd erano celle INDIPENDENTI di questa griglia --
+   `auto-fit` puo' calcolare un numero DISPARI di colonne a certe larghezze
+   (misurato dal revisore: 1200px), e con dt/dd alternati piatti questo
+   separa un'etichetta dal suo valore, che finisce affiancato all'etichetta
+   SUCCESSIVA invece che alla propria. `.bil-momento` (osservatore-route.js,
+   `rendiMomentiBilancio`) raggruppa ogni coppia in un div: e' LUI l'unico
+   elemento di griglia, non i suoi due figli -- una coppia non puo' piu'
+   spezzarsi, a nessuna larghezza. Verificato dal vivo a 1200px. */
+.bil-momento { min-width: 0; }
 .bil-momenti dt { font-size: var(--fs-12); color: var(--text-3); }
 .bil-momenti dd {
   font-size: var(--fs-13); color: var(--text); margin: 0 0 6px 0;

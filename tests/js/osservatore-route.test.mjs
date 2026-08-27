@@ -826,6 +826,37 @@ test('seam _rendiOggetti: due punti lontani nel tempo restano distanti nel grafi
     scartoRavvicinato + ' vs ' + scartoLontano);
 });
 
+test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date), mai le cifre grezze della stringa ISO', () => {
+  // `ora` arriva in UTC (`HAClient._istante_da_ha`): mostrare le prime
+  // cifre della stringa ("13" da "...T13:00:00Z") sarebbe il difetto in
+  // forma peggiore -- non più "non so l'ora", ma "affermo l'ora sbagliata"
+  // (fino a due ore, con l'ora legale). Un fuso ESPLICITO e lontano da UTC
+  // rende la prova indipendente dal fuso di chi fa girare il test: se la
+  // resa leggesse le cifre grezze mostrerebbe "13:00" anche qui; la resa
+  // corretta converte con `new Date(iso)`, come fa già `fmtOraIso` per i
+  // momenti -- la STESSA strada, non una nuova.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const isoConFusoEsplicito = '2026-08-23T13:00:00+05:00';
+  const d = new Date(isoConFusoEsplicito);
+  const pad2 = (n) => (n < 10 ? '0' + n : String(n));
+  const oraLocaleAttesa = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [{ ora: isoConFusoEsplicito, valore: 2.5 }] },
+    }),
+  })], null);
+
+  const titoloBarra = corpo.querySelector('svg rect > title').textContent;
+  assert.ok(titoloBarra.indexOf(oraLocaleAttesa) !== -1,
+    'la barra deve mostrare l\'ora LOCALE vera (' + oraLocaleAttesa + ', convertita con Date): ' + titoloBarra);
+  if (oraLocaleAttesa !== '13:00') {
+    assert.ok(titoloBarra.indexOf('13:00') === -1,
+      'non deve mostrare la cifra GREZZA "13:00" letta dalla stringa ISO quando l\'ora locale vera è diversa: ' + titoloBarra);
+  }
+});
+
 test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'ora inventata)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
