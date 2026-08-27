@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cio' che gli strumenti di lettura del progetto condividono.
 
 Esiste per una ragione sola, ed e' la stessa che ha fatto nascere
