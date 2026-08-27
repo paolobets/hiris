@@ -139,36 +139,45 @@ mano: si deriva da ciò che Home Assistant **dichiara già** su ogni entità.
 | buono stato | le condizioni di sistema (§6) e i sensori di batteria |
 | sicurezza | **serrature, pannello dell'allarme, sirene, e i sensori di fumo, gas, monossido, allagamento, manomissione, guasto, calore, gelo e incolumità (classe generica `safety`)** |
 
-**Debito dichiarato: produzione e consumo non sono oggi distinguibili** (correzione del 26 agosto,
-dal difetto trovato usando la fetta sulla casa vera — un giorno dopo il rilascio). Questa gamba si
-chiamava «consumo» e archiviava **anche l'energia prodotta** da un impianto fotovoltaico sotto
-quel nome: «energia prodotta oggi: 24 kWh» etichettata «consumo» è una frase falsa nel dato, non
-un'imprecisione — ed è esattamente la differenza fra ciò che si produce e ciò che si consuma che
-misura l'efficienza di una casa.
+**La gamba resta un'unica «energia».** Questa gamba si chiamava «consumo» e archiviava **anche
+l'energia prodotta** da un impianto fotovoltaico sotto quel nome: «energia prodotta oggi: 24 kWh»
+etichettata «consumo» era una frase falsa nel dato, non un'imprecisione — corretta il 26 agosto
+rinominando la gamba, vera per tutti i 15 sensori dell'inverter che vi finiscono (prodotta,
+esportata, importata, autoconsumata, consumata, carica e scarica; la percentuale di carica è
+`battery` e va in «buono stato»), produzione compresa. **Non si sdoppia**: il mandato del 27 agosto
+lo vieta esplicitamente — la direzione vive nell'EPISODIO, non è una gamba nuova (vedi sotto).
 
-**Non si corregge indovinando dai nomi.** Home Assistant dichiara `device_class: energy` (e
-`power`) sia per l'energia **prodotta** sia per quella **prelevata dalla rete**: la classe da sola
-non separa le due direzioni, e leggerla dal nome del sensore («prodotta», «esportata») funziona su
-questo inverter e si rompe sul prossimo. **La fonte onesta esiste**: la configurazione della
-dashboard Energia di Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
-dichiara quale sensore è produzione, quale è scambio con la rete e quale è batteria. **Interrogata
-sul vivo il 26 agosto 2026: su questa casa è CONFIGURATA**, con tre sorgenti — `grid` (importata /
-esportata), `solar` (prodotta) e `battery` (carica / scarica) — tutte sull'inverter di casa.
+**Debito dichiarato il 26 agosto, chiuso a livello di episodio il 27 agosto** (mandato «le
+direzioni dell'energia», misurato sulla casa vera). Home Assistant dichiara `device_class: energy`
+(e `power`) sia per l'energia **prodotta** sia per quella **prelevata dalla rete**: la classe da
+sola non separa le due direzioni, e leggerla dal nome del sensore («prodotta», «esportata»)
+funziona su questo inverter e si rompe sul prossimo. **Non si corregge indovinando dai nomi**: la
+distinzione vera vive in due fonti che Home Assistant dichiara già, entrambe lette da
+`HAClient.direzioni_energia()` sulla stessa connessione WebSocket:
 
-> **Una trappola di forma, misurata lo stesso giorno e a nostre spese.** La sorgente `grid` porta i
-> due sensori in campi **scalari** (`stat_energy_from` / `stat_energy_to`), non in liste di flussi.
-> Il primo script che ha interrogato quella fonte si aspettava liste, non le ha trovate, e ha
-> concluso che **la dashboard fosse vuota**. Era piena. È la regola «su Home Assistant non si
-> ipotizza» applicata a chi l'aveva appena scritta: non basta interrogare la fonte vera — bisogna
-> anche non presumere la forma della risposta.
+- **la dashboard Energia** (`energy/get_prefs`, campo `energy_sources`) — **dichiarata**
+  dall'utente, vince sempre. Interrogata sul vivo (26 e 27 agosto 2026): su questa casa è
+  CONFIGURATA, con tre sorgenti — `grid` (importata / esportata), `solar` (prodotta, energia E
+  potenza), `battery` (carica / scarica) — tutte sull'inverter di casa. Copre **6 delle 17 entità**
+  dell'inverter.
 
-La correzione di questa fetta resta comunque **smettere di affermare il falso**, non inventare la
-verità: la gamba diventa un'unica `"energia"` — vera per tutti e 15 i sensori dell'inverter che vi
-finiscono (prodotta, esportata, importata, autoconsumata, consumata, carica e scarica; la
-percentuale di carica è `battery` e va in «buono stato»), produzione compresa. **Prossimo passo
-dichiarato, non fatto in questa fetta**: leggere `energy/get_prefs` e separare produzione, scambio
-con la rete e batteria. La fonte c'è ed è verificabile sul vivo, quindi il passo è pronto — non è
-stato fatto qui solo per non allargare una correzione di parole a un cambio di comportamento.
+  > **Una trappola di forma, misurata il 26 agosto e riconfermata il 27.** La sorgente `grid` porta
+  > i due sensori in campi **scalari** (`stat_energy_from` / `stat_energy_to`), non in liste di
+  > flussi. Il primo script che ha interrogato quella fonte si aspettava liste, non le ha trovate, e
+  > ha concluso che **la dashboard fosse vuota**. Era piena. È la regola «su Home Assistant non si
+  > ipotizza» applicata a chi l'aveva appena scritta: non basta interrogare la fonte vera — bisogna
+  > anche non presumere la forma della risposta.
+
+- **il registro entità, campo `translation_key`** — **dedotta**, scritta dall'integrazione
+  (`zcsazzurro`, su questa casa). Vera ma di un'integrazione sola: un altro inverter userà chiavi
+  sue. Si applica **solo dove la dichiarata tace**, e copre tutte e 14 le entità direzionali
+  dell'integrazione (sette direzioni, la coppia energia/potenza per ciascuna — tabella esplicita,
+  misurata il 27 agosto, non una regex sui nomi).
+
+Un episodio senza `direzione` resta possibile — nessuna delle due fonti la sa dire per quel
+sensore: il campo non c'è, non una «sconosciuta» travestita da dato. Spec di dettaglio:
+`cervello/oggetti.py::aggrega_giorno` (parametro `direzioni`) e `hiris/app/proxy/ha_client.py`
+(`direzioni_energia`).
 
 **Il prompt allarga e dà priorità sopra il pavimento; non restringe mai sotto.**
 
@@ -334,11 +343,13 @@ o è scattato tutto in un'ora. Quella forma (a bucket orari, o i punti intermedi
 scelta è onesta finché lo dice anche qui, non solo nel commento di un giro di correzioni che fra un mese
 non legge più nessuno.
 
-**Debito diverso da quello dichiarato al §4** (produzione e consumo non distinguibili oggi): quello
-riguarda la GAMBA — cosa può diventare protagonista di un oggetto di energia — questo riguarda cosa
-dice il CORPO dell'oggetto una volta che lo è. Nessuno dei due si corregge indovinando: entrambi
-aspettano la stessa fonte, `energy/get_prefs` — che su questa casa **è configurata** e che questa
-fetta non legge ancora.
+**Debito diverso da quello dichiarato al §4, e quello sì ancora aperto.** Il debito del §4
+(produzione e consumo non distinguibili) riguardava la GAMBA — cosa può diventare protagonista di
+un oggetto di energia — ed è **chiuso il 27 agosto** («le direzioni dell'energia»): il corpo di un
+episodio di energia porta ora `direzione`/`provenienza` quando le due fonti (`energy/get_prefs` e
+`translation_key`) le sanno dire. Questo debito qui è un altro: **come distribuito nel tempo**, non
+quale direzione. Nessuna delle due fonti dichiarative risponde a questa domanda — servirebbe una
+forma diversa (bucket orari, o i punti intermedi), non ancora costruita. Resta aperto.
 
 ### Chi sta insieme a chi
 
@@ -444,7 +455,7 @@ cambi al giorno da sola. Un sensore di temperatura ne fa 935. **Se un giorno ser
 che si guadagna** — ma non si ottimizza adesso: il numero è sostenibile e ridurre significherebbe
 decidere in scrittura, che è la cosa che questa fetta non fa.
 
-### ③ Le statistiche di HA NON sostituiscono questa memoria
+### ③ Le statistiche di HA NON sostituiscono questa memoria — vero per la presenza, falso per l'energia
 
 Sembrava una scorciatoia: le entità con `state_class` hanno statistiche orarie, quindi l'osservatore
 potrebbe non conservarle. **Misurato: le statistiche di questa casa partono dal 13 agosto** — tredici
@@ -453,6 +464,18 @@ giorni, non mesi. Il database del recorder è evidentemente nato allora.
 E l'argomento che vale più della misura: **se è già successo una volta che quel database ripartisse
 da zero, può succedere ancora.** La copia dell'osservatore non duplica le statistiche — è l'unica che
 non dipende da quel file.
+
+**Correzione (mandato «il bilancio dell'energia», punto 7, 27/08/2026): questo paragrafo, senza
+eccezioni, non è più vero.** Resta vero per la presenza — tre giorni di storico non bastano, ed è il
+motivo per cui l'osservatore esiste per quella gamba. Per l'energia è **falso**: le statistiche orarie
+di HA coprono la stessa finestra (oltre i 13 giorni misurati qui, e oltre i 21 giorni del grezzo
+dell'osservatore), sono corrette per gli azzeramenti dei contatori (il grezzo no: la prima notte ha
+sbagliato l'azzeramento, `da 6,0 a 5,99` su un contatore che sale), e il bilancio dell'energia
+(`docs/design/2026-08-27-il-bilancio-dell-energia.md`, §4) le legge invece di ricostruirle dal
+grezzo. Il rischio del database ripartito da zero resta vero in astratto, ma non è più un argomento
+per duplicare: è la ragione per cui il grezzo dell'energia non si toglie ancora (vedi la spec del
+bilancio, §6, «le domande lasciate aperte»), non per continuare a fingere che le statistiche non
+bastino.
 
 ### ④ Le superfici di salute: due funzionano, una no
 

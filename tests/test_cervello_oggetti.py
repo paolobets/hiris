@@ -51,7 +51,13 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     assert genere_di("problema:sonos.x", None) == "guasto"
     assert genere_di("integrazione:abc", None) == "guasto"
     assert "sicurezza" in GENERI
-    assert len(GENERI) == 5
+    # Sei generi, non cinque (27/08/2026, mandato «il bilancio
+    # dell'energia»): "bilancio" e' nato in GENERI, ma non lo produce
+    # `genere_di()` -- non nasce da un soggetto/gamba come gli altri
+    # cinque, arriva gia' costruito da fuori (`aggrega_giorno(bilanci=...)`,
+    # vedi `test_cervello_bilancio.py`).
+    assert len(GENERI) == 6
+    assert "bilancio" in GENERI
 
 
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):
@@ -963,3 +969,107 @@ def test_un_energia_con_una_sola_lettura_non_sa_dire_la_differenza(archivio):
     assert o["corpo"]["valore_iniziale"] == "100.0"
     assert o["corpo"]["valore_finale"] == "100.0"
     assert o["corpo"]["differenza"] is None
+
+
+# -- Le direzioni dell'energia: come i comprimari, mai nel grezzo -----------
+#
+# `aggrega_giorno` riceve `direzioni(soggetto) -> dict | None` dal chiamante,
+# esattamente come riceve `comprimari(soggetto) -> list[str]` (mandato
+# "le direzioni dell'energia", punto 2). Non si scrive nel grezzo: la
+# direzione e' una CONFIGURAZIONE (la dashboard Energia dell'utente puo'
+# cambiare), e congelarla in scrittura la renderebbe irrecuperabile per i 21
+# giorni in cui il grezzo permette di rifare il giudizio -- la stessa
+# ragione per cui non si salva la gamba gia' calcolata.
+
+def test_un_episodio_di_energia_porta_direzione_e_provenienza_quando_note(archivio):
+    """Il caso base: `direzioni()` sa dire la direzione del protagonista, e il
+    corpo dell'episodio di energia la porta per intero -- `direzione` E
+    `provenienza`, non solo una delle due."""
+    archivio.annota(quando_ts=ts(1), fonte="entita",
+                    soggetto="sensor.energia_prodotta", da=None, a="10.0",
+                    device_class="energy")
+    archivio.annota(quando_ts=ts(20), fonte="entita",
+                    soggetto="sensor.energia_prodotta", da=None, a="25.0",
+                    device_class="energy")
+    aggrega_giorno(
+        archivio=archivio, giorno=G, fuso="Europe/Rome",
+        direzioni=lambda s: {"direzione": "produzione", "provenienza": "dichiarata"}
+        if s == "sensor.energia_prodotta" else None)
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["corpo"]["direzione"] == "produzione"
+    assert o["corpo"]["provenienza"] == "dichiarata"
+
+
+def test_senza_direzioni_il_campo_non_c_e_mai_una_sconosciuta_travestita(archivio):
+    """Mandato: «quando la direzione non si conosce, il campo non c'e' -- non
+    un "sconosciuta" travestito da dato.» Senza passare `direzioni` affatto
+    (come ogni test precedente in questo file, che non lo conoscevano ancora),
+    il corpo di un episodio di energia non deve avere NESSUNA delle due
+    chiavi."""
+    archivio.annota(quando_ts=ts(2), fonte="entita",
+                    soggetto="sensor.energia_casa", da=None, a="5.0",
+                    device_class="energy")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome")
+    o = archivio.oggetti(giorno=G)[0]
+    assert "direzione" not in o["corpo"]
+    assert "provenienza" not in o["corpo"]
+
+
+def test_direzioni_passata_ma_ignota_per_questo_soggetto_non_scrive_niente(archivio):
+    """`direzioni` c'e' (non e' `None`) ma torna `None` per QUESTO soggetto --
+    la dashboard Energia non lo copre e nessun `translation_key` lo riconosce.
+    Il campo resta assente, non una stringa vuota o "sconosciuta".
+    Mutazione ESEGUITA: `if info:` sostituito con `if True:` nel corpo di
+    `aggrega_giorno` -- arrossisce, perche' `corpo["direzione"]` diventerebbe
+    la chiave di un dizionario `None` (`TypeError`) o (con una guardia diversa)
+    scriverebbe `None` come valore invece di omettere la chiave. Ripristinato
+    subito dopo."""
+    archivio.annota(quando_ts=ts(2), fonte="entita",
+                    soggetto="sensor.energia_senza_fonte", da=None, a="5.0",
+                    device_class="energy")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   direzioni=lambda s: None)
+    o = archivio.oggetti(giorno=G)[0]
+    assert "direzione" not in o["corpo"]
+    assert "provenienza" not in o["corpo"]
+
+
+def test_la_direzione_non_finisce_su_un_genere_che_non_e_energia(archivio):
+    """Difesa contro un `direzioni` troppo permissivo, o un refuso nel ramo
+    che lo applica: un `funzionamento` non deve MAI portare `direzione`,
+    anche se il chiamante (per errore, o per un `lambda` scritto troppo
+    largo) risponderebbe per qualunque soggetto."""
+    archivio.annota(quando_ts=ts(15, 30), fonte="entita",
+                    soggetto="climate.camera_t", da="off", a="heat")
+    archivio.annota(quando_ts=ts(17, 5), fonte="entita",
+                    soggetto="climate.camera_t", da="heat", a="off")
+    aggrega_giorno(
+        archivio=archivio, giorno=G, fuso="Europe/Rome",
+        direzioni=lambda s: {"direzione": "produzione", "provenienza": "dichiarata"})
+    o = archivio.oggetti(giorno=G)[0]
+    assert o["genere"] == "funzionamento"
+    assert "direzione" not in o["corpo"]
+    assert "provenienza" not in o["corpo"]
+
+
+def test_direzioni_si_chiede_una_volta_per_protagonista_non_per_riga_del_grezzo(archivio):
+    """Come i comprimari (docstring di `aggrega_giorno`, Task 6): la mappa
+    delle direzioni si costruisce una volta per giro di aggregazione da chi
+    chiama, ma QUI dentro -- nel ciclo che costruisce il corpo -- si chiede
+    UNA volta per episodio, non per ogni riga del grezzo che ha contribuito
+    alla lettura iniziale/finale. Con tre letture per lo stesso contatore
+    (un solo episodio di energia), la lambda deve essere invocata una sola
+    volta per quel protagonista."""
+    chiesti = []
+
+    def direzioni(soggetto):
+        chiesti.append(soggetto)
+        return {"direzione": "prelievo", "provenienza": "dichiarata"}
+
+    for ora, valore in ((1, "10.0"), (12, "20.0"), (23, "30.0")):
+        archivio.annota(quando_ts=ts(ora), fonte="entita",
+                        soggetto="sensor.energia_prelievo", da=None, a=valore,
+                        device_class="energy")
+    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
+                   direzioni=direzioni)
+    assert chiesti == ["sensor.energia_prelievo"]

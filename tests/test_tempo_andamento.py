@@ -328,3 +328,23 @@ async def test_anche_le_fasce_escono_nel_fuso_della_casa():
                             ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
     assert esito["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
     assert esito["finestra_coperta"]["da"] == esito["punti"][0]["inizio"]
+
+
+@pytest.mark.asyncio
+async def test_la_fine_di_una_fascia_esce_nello_STESSO_fuso_dell_inizio():
+    """Punto 5 del mandato «il bilancio dell'energia» (BASSO, 27/08/2026):
+    la traduzione unificata (`HAClient._richiedi_statistiche`) ha aggiunto
+    la chiave `fine` a ogni fascia, ma `andamento` riscriveva nel fuso della
+    casa SOLO `inizio` -- lo stesso punto usciva con `inizio` a +02:00 e
+    `fine` ancora a +00:00, due fusi nella stessa risposta (fondamenta 3
+    rotta dentro un dizionario solo, gli stessi commenti di questo modulo la
+    denunciano per `finestra_coperta`/`punti` e non se ne accorgevano per
+    `fine`)."""
+    ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
+        {"inizio": "2026-08-23T13:00:00+00:00", "fine": "2026-08-23T14:00:00+00:00",
+         "minimo": 25.9, "massimo": 27.1, "media": 26.5},
+    ]}})
+    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
+                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
+    assert esito["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
+    assert esito["punti"][0]["fine"] == "2026-08-23T16:00:00+02:00"

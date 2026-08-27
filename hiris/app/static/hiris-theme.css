@@ -80,6 +80,23 @@
   --consumo-ollama:     oklch(0.66 0.11 160);
   --consumo-ponte:      oklch(0.58 0.09 60);
 
+  /* Le due serie sovrapposte del bilancio dell'energia (mandato «il bilancio
+     dell'energia», 27/08/2026, brief-pagina.md §2): produzione e prelievo,
+     l'unico confronto che il brief chiede in un grafico solo. Estranee a
+     --ok/--warn/--err (il prelievo dalla rete non e' un allarme).
+     **Contrasto MISURATO** (correzione BASSA della review, mandato «la
+     pagina del bilancio», punto 4, 27/08/2026), non promesso: con canvas in
+     Chromium (`fillStyle` + `getImageData`, luminanza relativa WCAG 2.1) su
+     questo fondo chiaro (`--surface`, bianco) -- la produzione a L 0.68
+     stava a 2,855:1, SOTTO la soglia 3:1 per gli oggetti grafici che il
+     vecchio commento invocava ("stessa disciplina dei --consumo-*") senza
+     averla verificata: due difetti, il contrasto e il commento che
+     dichiarava una disciplina che il colore non rispettava. Scurita a
+     L 0.64: 3,340:1, rimisurata con lo stesso metodo. Il prelievo era gia'
+     a 3,696:1, non toccato. Sul tema scuro (sotto) restano sopra soglia. */
+  --bilancio-produzione: oklch(0.64 0.15 100);
+  --bilancio-prelievo:   oklch(0.62 0.15 260);
+
   /* I tre colori semantici sopra sono nati per PALLINI e RIEMPIMENTI, e su
      fondo chiaro stanno a 2.04:1 (warn), 2.49:1 (ok), 4.05:1 (err): sotto AA
      tutti e tre. Finche' colorano un `.dot` o un bordo non importa; quando
@@ -135,6 +152,8 @@
   --consumo-openrouter: oklch(0.76 0.14 330);
   --consumo-ollama:     oklch(0.78 0.11 160);
   --consumo-ponte:      oklch(0.72 0.10 60);
+  --bilancio-produzione: oklch(0.80 0.13 100);
+  --bilancio-prelievo:   oklch(0.74 0.15 260);
 
   --accent:        oklch(0.78 0.17 280);
   --accent-ink:    oklch(0.86 0.14 280);
@@ -183,6 +202,8 @@
   --consumo-openrouter: oklch(0.76 0.14 330);
   --consumo-ollama:     oklch(0.78 0.11 160);
   --consumo-ponte:      oklch(0.72 0.10 60);
+  --bilancio-produzione: oklch(0.80 0.13 100);
+  --bilancio-prelievo:   oklch(0.74 0.15 260);
     --accent:        oklch(0.78 0.17 280);
     --accent-ink:    oklch(0.86 0.14 280);
     --accent-tint:   oklch(0.30 0.10 280);

@@ -1,9 +1,14 @@
 """Cosa l'osservatore guarda comunque, qualunque cosa dica l'obiettivo.
 
 **Il pavimento non e' una lista scritta a mano.** Si deriva da cio' che Home
-Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo,
-classe dello stato -- perche' una lista a mano invecchia col primo dispositivo
-nuovo e nessuno se ne accorge.
+Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo
+(`device_class`), `source_type` -- perche' una lista a mano invecchia col
+primo dispositivo nuovo e nessuno se ne accorge. **Non `state_class`**
+(correzione di parole della review, mandato «il bilancio dell'energia»,
+punto 7, 27/08/2026): dopo la correzione del 27/08 (vedi il docstring di
+`gamba` sotto), questa funzione non la legge piu' per decidere nessuna
+gamba -- resta grezzo conservato nell'archivio (`cervello/archivio.py`),
+non un criterio del pavimento.
 
 **Perche' esiste un pavimento.** Il prompt dell'obiettivo decide cosa entra
 nelle osservazioni, quindi e' un punto singolo che puo' ACCECARE l'osservatore
@@ -31,42 +36,48 @@ _QUALITA_ARIA = frozenset({
 })
 _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 
-# DEBITO DICHIARATO (misurato il 26/08/2026, sulla casa vera -- vedi
-# `CLAUDE.md`, «Su Home Assistant non si ipotizza mai»): produzione e
-# consumo NON sono oggi distinguibili. Home Assistant usa `device_class:
-# energy` (e `power`) sia per l'energia PRODOTTA da un impianto
-# fotovoltaico sia per quella PRELEVATA dalla rete -- la classe da sola non
-# separa le due direzioni, e indovinarle dal NOME del sensore ("prodotta",
-# "esportata") si romperebbe sul prossimo inverter. Su questa casa
-# l'inverter con accumulo ha 17 entita': il pavimento ne cattura 16, di cui
-# **15 finiscono in questa gamba** (energia e potenza prodotta, esportata,
-# importata, autoconsumata, consumata, carica e scarica) perche' sono tutte
-# `energy`/`power`; la sedicesima e' la percentuale di carica (`battery`) e
-# va in "buono stato". Prima questa gamba si chiamava "consumo", e
-# "consumo" archiviava anche la PRODUZIONE: una frase falsa nel dato.
+# DEBITO DICHIARATO il 26/08/2026, CHIUSO A LIVELLO DI EPISODIO il
+# 27/08/2026 (mandato «le direzioni dell'energia» -- misurato sulla casa
+# vera, vedi `CLAUDE.md`, «Su Home Assistant non si ipotizza mai»): Home
+# Assistant usa `device_class: energy` (e `power`) sia per l'energia
+# PRODOTTA da un impianto fotovoltaico sia per quella PRELEVATA dalla rete
+# -- la classe da sola non separa le due direzioni, e indovinarle dal NOME
+# del sensore ("prodotta", "esportata") si romperebbe sul prossimo
+# inverter. Su questa casa l'inverter con accumulo ha 17 entita': il
+# pavimento ne cattura 16, di cui **15 finiscono in questa gamba** (energia
+# e potenza prodotta, esportata, importata, autoconsumata, consumata,
+# carica e scarica) perche' sono tutte `energy`/`power`; la sedicesima e'
+# la percentuale di carica (`battery`) e va in "buono stato".
 #
-# **La fonte onesta esiste**: la configurazione della dashboard Energia di
-# Home Assistant (WebSocket `energy/get_prefs`, campo `energy_sources`)
-# dichiara quale sensore e' produzione solare, quale e' scambio con la
-# rete e quale e' batteria. **Interrogata sul vivo il 26/08/2026: su
-# questa casa E' CONFIGURATA**, con tre sorgenti --
-#   grid    -> `stat_energy_from` = ..._energia_importata_oggi
-#              `stat_energy_to`   = ..._energia_esportata_oggi
-#   solar   -> `stat_energy_from` = ..._energia_prodotta_oggi
-#   battery -> `stat_energy_from` = ..._energia_scarica_oggi (scarica)
-#              `stat_energy_to`   = ..._energia_carica_oggi  (carica)
-# **Trappola di forma, misurata:** la sorgente `grid` porta i due sensori in
-# campi SCALARI (`stat_energy_from`/`stat_energy_to`), non in liste di
-# flussi -- uno script che si aspetta liste legge una configurazione piena
-# come se fosse vuota. E' successo qui, il 26/08/2026, alla prima misura.
+# **Questa GAMBA resta un'unica "energia"** -- vera per tutti e 15 i
+# sensori, produzione compresa, e il mandato vieta esplicitamente di
+# sdoppiarla («la direzione e' DENTRO l'episodio, non e' una gamba nuova»).
+# La distinzione vera vive ora un livello sopra, nel CORPO di ogni episodio
+# di energia (`cervello/oggetti.py::aggrega_giorno`, parametro `direzioni`):
+# `HAClient.direzioni_energia()` legge due fonti, sulla stessa connessione
+# --
 #
-# **Prossimo passo dichiarato, non fatto in questa fetta**: leggere
-# `energy/get_prefs` e separare produzione, scambio con la rete e batteria.
-# La fonte c'e' ed e' verificabile sul vivo, quindi il passo e' pronto: non
-# e' stato fatto qui solo per non allargare una correzione di parole a un
-# cambio di comportamento. Finche' non c'e', questa gamba resta un'unica
-# "energia" che copre onestamente tutte le direzioni invece di affermarne
-# una sola.
+# - **dichiarata** (`energy/get_prefs`, la dashboard Energia dell'utente):
+#   vince sempre. Forma misurata sul vivo il 27/08/2026, tre sorgenti --
+#     grid    -> `stat_energy_from` = ..._energia_importata_oggi -> prelievo
+#                `stat_energy_to`   = ..._energia_esportata_oggi -> immissione
+#     solar   -> `stat_energy_from` = ..._energia_prodotta_oggi  -> produzione
+#                `stat_rate`        = ..._potenza_prodotta        -> produzione
+#     battery -> `stat_energy_from` = ..._energia_scarica_oggi   -> scarica
+#                `stat_energy_to`   = ..._energia_carica_oggi    -> carica
+#   **Trappola di forma, misurata il 26/08 e ri-confermata il 27/08:** la
+#   sorgente `grid` porta i suoi due sensori in campi SCALARI
+#   (`stat_energy_from`/`stat_energy_to`), non in liste di flussi -- uno
+#   script che si aspetta liste legge una configurazione piena come vuota.
+#   Copre 6 delle 17 entita' di questa casa.
+# - **dedotta** (`translation_key` del registro entita'): si applica SOLO
+#   dove la dichiarata tace. Vera ma specifica dell'integrazione
+#   (`zcsazzurro`, su questa casa) -- un altro inverter usera' chiavi sue.
+#   Copre tutte le 14 entita' direzionali di questa integrazione.
+#
+# Un episodio senza `direzione` resta possibile (nessuna delle due fonti la
+# sa dire per quel sensore): il campo non c'e' -- non una "sconosciuta"
+# travestita da dato.
 
 # La sesta gamba, aggiunta il 26/08/2026 dalla review del primo task: la
 # prima stesura non conteneva gli allarmi -- ne' fumo, ne' gas, ne'
@@ -120,11 +131,23 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
     stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
     affermerebbe il contrario per una buona meta' dei 15 sensori che un
     impianto fotovoltaico con accumulo porta in questa gamba.
+
+    **`state_class: total_increasing` da solo NON basta piu' per "energia"**
+    (correzione del 27/08/2026, mandato «il bilancio dell'energia», punto 5
+    -- misurato sulla casa vera lo stesso giorno). Prima di questa correzione
+    un contatore sempre-crescente qualunque finiva qui: `sensor.
+    betarena_gb_inviati`/`_gb_ricevuti` -- i gigabyte del router, `device_
+    class: data_size` -- erano archiviati come energia e producevano un
+    episodio di energia ogni notte. Non e' restringere il pavimento (che il
+    prompt non puo' fare): e' smettere di DERIVARE una classe che Home
+    Assistant non dichiara. Un contatore che aumenta e basta non e' energia:
+    e' la forma di molte cose (dati di rete, litri, richieste HTTP...), e
+    solo `_ENERGIA` sopra -- classi dichiarate -- dice quali di quelle sono
+    davvero energia.
     """
     attributi = attributi if isinstance(attributi, dict) else {}
     dominio = str(entity_id).split(".")[0]
     classe = _testo(attributi.get("device_class"))
-    classe_stato = _testo(attributi.get("state_class"))
 
     if dominio == "person":
         return "chi c'e'"
@@ -160,7 +183,7 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
             # 1226 in questa casa. Il filtro e' per CLASSE, non per categoria:
             # escludere `diagnostic` in blocco toglierebbe «buono stato».
             return "buono stato"
-        if classe in _ENERGIA or classe_stato == "total_increasing":
+        if classe in _ENERGIA:
             return "energia"
     return None
 

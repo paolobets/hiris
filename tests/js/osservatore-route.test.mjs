@@ -483,7 +483,7 @@ test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il conte
 });
 
 // ---------------------------------------------------------------------------
-// Seam _rendiOggetti: i cinque generi, i comprimari, le misure — senza rete
+// Seam _rendiOggetti: i sei generi, i comprimari, le misure — senza rete
 // (rilievo 9: la resa era priva di qualunque test)
 // ---------------------------------------------------------------------------
 
@@ -509,6 +509,61 @@ test('seam _rendiOggetti: un oggetto di energia con differenza non calcolabile l
   }], null);
   assert.match(corpo.textContent, /non calcolabile/);
   assert.doesNotMatch(corpo.textContent, /NaN/);
+});
+
+test('seam _rendiOggetti: un episodio di energia con direzione DICHIARATA la mostra in italiano e distingue la provenienza', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.energia_prodotta',
+    inizio_ts: 1755270600, fine_ts: 1755277500,
+    corpo: { valore_iniziale: 10, valore_finale: 25, differenza: 15,
+            direzione: 'produzione', provenienza: 'dichiarata' },
+  }], null);
+  assert.match(corpo.textContent, /[Pp]roduzione/,
+    'la direzione va mostrata in italiano leggibile, non il valore grezzo');
+  assert.match(corpo.textContent, /[Dd]ichiarat/,
+    'la provenienza "dichiarata" deve comparire nel testo');
+});
+
+test('seam _rendiOggetti: un episodio di energia con direzione DEDOTTA si distingue visibilmente dalla dichiarata', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const dichiarato = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(dichiarato, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.a',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
+            direzione: 'prelievo', provenienza: 'dichiarata' },
+  }], null);
+  const dedotto = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(dedotto, [{
+    id: 2, genere: 'energia', protagonista: 'sensor.b',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
+            direzione: 'prelievo', provenienza: 'dedotta' },
+  }], null);
+  assert.match(dedotto.textContent, /[Dd]edott/);
+  // Le due provenienze non devono rendersi con lo stesso badge: e' il
+  // requisito del mandato, «distingue visibilmente le due provenienze».
+  const badgeDichiarato = Array.from(dichiarato.querySelectorAll('.agent-badge')).pop();
+  const badgeDedotto = Array.from(dedotto.querySelectorAll('.agent-badge')).pop();
+  assert.ok(badgeDichiarato && badgeDedotto, 'entrambi gli episodi devono avere un badge di provenienza');
+  assert.notEqual(badgeDichiarato.className, badgeDedotto.className,
+    'la classe del badge deve differire fra dichiarata e dedotta');
+});
+
+test('seam _rendiOggetti: un episodio di energia SENZA direzione nota non mostra nessun badge di provenienza in piu', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.energia_ignota',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1 },
+  }], null);
+  // Un solo badge: quello del genere ("Energia"). Nessun secondo badge di
+  // provenienza quando il campo `direzione` non c'e' affatto -- il mandato
+  // vieta esplicitamente una "sconosciuta" travestita da dato.
+  assert.equal(corpo.querySelectorAll('.agent-badge').length, 1);
 });
 
 test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () => {
@@ -570,6 +625,452 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
     inizio_ts: 1, fine_ts: 2, corpo: { stato: 'a casa' },
   }], null);
   assert.equal(corpo.querySelectorAll('button').length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026):
+// un oggetto al giorno per dispositivo, una QUANTITA' CON UNA FORMA, non un
+// episodio. La forma reale del corpo è quella di `costruisci_corpo_bilancio`
+// (hiris/app/cervello/oggetti.py): {totali:{dimensione:{valore,provenienza}},
+// forma:{dimensione:[{ora,valore}...]}, momenti:{...}}, più `dispositivo`/`entita`
+// aggiunti da `aggrega_giorno`. Prima di questa fetta il genere "bilancio"
+// cadeva nel ramo di default di `frasePrincipale` e mostrava «(nessun
+// dettaglio)» — questi test bloccano quella regressione E vietano lo stampo
+// dell'episodio («da X a Y», la freccia di `periodo()`).
+// ---------------------------------------------------------------------------
+
+// `forma[dimensione]` porta l'ORA VERA di ogni punto dal 27/08/2026 (mandato
+// «la pagina del bilancio -- le correzioni», punto 6): non piu' una lista
+// posizionale nuda, ma `[{"ora","valore"}, ...]` -- vedi `costruisci_corpo_
+// bilancio` in `hiris/app/cervello/oggetti.py`. Questo helper costruisce un
+// ISO alla stessa ora LOCALE di questa macchina (stesso principio TZ-agnostico
+// di `giornoFa` sopra): `new Date(iso).getHours()`, nel codice sotto test,
+// torna esattamente `h`, qualunque sia il fuso di chi fa girare il test.
+function oraIsoLocale(h, m) {
+  var d = new Date();
+  d.setHours(h, m || 0, 0, 0);
+  return d.toISOString();
+}
+
+function puntoOra(h, valore) { return { ora: oraIsoLocale(h), valore: valore }; }
+
+function bilancioFixture(extra) {
+  return Object.assign({
+    id: 1, genere: 'bilancio', protagonista: 'a1b2c3d4e5f6',
+    inizio_ts: 1755990000, fine_ts: 1756076400,
+    corpo: {
+      totali: {
+        produzione: { valore: 24.5, provenienza: null },
+        autoconsumo: { valore: 14.2, provenienza: null },
+        immissione: { valore: 10.3, provenienza: 'dichiarata' },
+        prelievo: { valore: 3.1, provenienza: 'dedotta' },
+      },
+      forma: {
+        produzione: [4, 5, 6, 7, 8, 9, 10, 11].map((h, i) =>
+          puntoOra(h, [0, 0, 1.2, 2.3, 4.8, 3.1, 0.4, 0][i])),
+        prelievo: [4, 5, 6, 7, 8, 9, 10, 11].map((h, i) =>
+          puntoOra(h, [0.5, 0.4, 0.2, 0.1, 0, 0, 0.3, 0.6][i])),
+      },
+      momenti: {
+        prima_ora_produzione: '2026-08-23T04:00:00+00:00',
+        ultima_ora_produzione: '2026-08-23T18:00:00+00:00',
+        picco_produzione: { valore: 4.8, ora: '2026-08-23T11:00:00+00:00' },
+        quota_autoconsumo: 0.712,
+      },
+      dispositivo: 'Inverter con accumulo',
+      entita: ['sensor.energia_prodotta_oggi', 'sensor.energia_immessa_oggi'],
+    },
+  }, extra || {});
+}
+
+test('seam _rendiOggetti: un bilancio mostra i totali in kWh, non «(nessun dettaglio)»', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /nessun dettaglio/);
+  assert.match(corpo.textContent, /24,5\s*kWh/, 'il totale di produzione deve leggersi in kWh, virgola italiana');
+  assert.match(corpo.textContent, /Inverter con accumulo/, 'il nome leggibile del dispositivo deve comparire');
+  const badgeGenere = corpo.querySelector('.agent-badge');
+  assert.equal(badgeGenere.textContent, 'Bilancio');
+});
+
+test('seam _rendiOggetti: un bilancio NON si legge come un episodio (niente "da X a Y", niente freccia di periodo)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /→/,
+    'un bilancio è una quantità con una forma, non un "da → a": niente freccia di periodo()');
+  assert.doesNotMatch(corpo.textContent, /\bda 24[,.]5\b/,
+    'il totale non deve essere presentato come "da X a Y" (lo stampo dell\'episodio)');
+});
+
+test('seam _rendiOggetti: la provenienza di un totale riusa lo stesso badge dichiarata/dedotta degli episodi di energia', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.match(corpo.textContent, /[Dd]ichiarat/, 'la provenienza "dichiarata" (immissione) deve comparire');
+  assert.match(corpo.textContent, /[Dd]edott/, 'la provenienza "dedotta" (prelievo) deve comparire');
+
+  const badgeDichiarato = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .find((b) => /[Dd]ichiarat/.test(b.textContent));
+  const badgeDedotto = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .find((b) => /[Dd]edott/.test(b.textContent));
+  assert.ok(badgeDichiarato && badgeDedotto, 'entrambi i badge di provenienza devono esserci');
+  assert.notEqual(badgeDichiarato.className, badgeDedotto.className,
+    'le due provenienze devono distinguersi visibilmente, come per gli episodi di energia');
+});
+
+test('seam _rendiOggetti: un totale senza provenienza nota (produzione) non porta un badge di provenienza in più', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  // Un solo badge non porta ne' "dichiarat" ne' "dedott": e' il genere ("Bilancio").
+  const badgeGenerici = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .filter((b) => !/[Dd]ichiarat|[Dd]edott/.test(b.textContent));
+  assert.equal(badgeGenerici.length, 1, 'un solo badge senza provenienza: quello del genere');
+});
+
+test('seam _rendiOggetti: una dimensione assente (es. batteria) non compare come totale a zero', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /[Cc]arica della batteria/,
+    'nessuna entità batteria in questa fixture: "carica" non deve comparire');
+  assert.doesNotMatch(corpo.textContent, /[Ss]carica della batteria/);
+  assert.doesNotMatch(corpo.textContent, /\b0\s*kWh\b/,
+    'mai uno zero inventato per una dimensione senza dati (mandato, "cosa NON si salva")');
+});
+
+test('seam _rendiOggetti: la curva mostra produzione e prelievo sovrapposti, come barre SVG', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const svg = corpo.querySelector('svg');
+  assert.ok(svg, 'deve esserci un grafico SVG per la forma della giornata');
+  const rects = svg.querySelectorAll('rect');
+  assert.ok(rects.length > 0, 'il grafico deve avere almeno una barra');
+  const riempimenti = new Set(Array.from(rects).map((r) => r.getAttribute('fill')));
+  assert.ok(riempimenti.size >= 2, 'produzione e prelievo devono avere un colore diverso l\'una dall\'altra');
+});
+
+test('seam _rendiOggetti: senza `forma` non compare nessun grafico', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  delete fx.corpo.forma;
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  assert.equal(corpo.querySelectorAll('svg').length, 0,
+    'senza la forma della giornata non c\'è niente da disegnare');
+});
+
+// ---------------------------------------------------------------------------
+// Punto 1 (ALTO) del brief-correzioni, riaperto e reso PIÙ severo dal punto 6:
+// «la pagina non deve mai affermare un'ora falsa». Prima della correzione del
+// 27/08 (mandato punto 6) la forma era un segnaposto posizionale ("punto N"),
+// e il vecchio test si limitava a VIETARE qualunque HH:MM nell'SVG. Ora che
+// il Python porta l'ora vera per ogni punto (`forma[dimensione] = [{"ora",
+// "valore"}, ...]`), vietare non basta più: il test deve PRETENDERE l'ora
+// giusta, e arrossire se la resa tornasse a leggere la POSIZIONE nell'array
+// al posto della chiave `ora` (la mutazione che il mandato chiede di
+// eseguire, non dedurre).
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOggetti: la curva del bilancio porta l\'ORA VERA di ogni barra, non la posizione nell\'array', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      // Le due ore sono deliberatamente NON in posizione 0/1 e distanti fra
+      // loro: una resa che leggesse la posizione nell'array (0, 1, ...)
+      // invece della chiave `ora` produrrebbe un'etichetta diversa dalla
+      // vera per ENTRAMBI i punti, e questo test la coglierebbe.
+      forma: { produzione: [puntoOra(7, 1.2), puntoOra(13, 4.8)] },
+    }),
+  })], null);
+
+  const svg = corpo.querySelector('svg');
+  assert.ok(svg, 'deve esserci il grafico');
+  const titoliBarre = Array.from(svg.querySelectorAll('rect > title')).map((t) => t.textContent);
+
+  assert.ok(titoliBarre.some((t) => /\b07:00\b/.test(t)),
+    'la barra da 1,2 kWh deve portare la SUA ora vera (07:00): ' + titoliBarre.join(' | '));
+  assert.ok(titoliBarre.some((t) => /\b13:00\b/.test(t)),
+    'la barra da 4,8 kWh deve portare la SUA ora vera (13:00): ' + titoliBarre.join(' | '));
+  assert.ok(!titoliBarre.some((t) => /\bpunto\s*\d/.test(t)),
+    'nessun segnaposto posizionale ("punto N") deve restare nel testo delle barre: ' + titoliBarre.join(' | '));
+});
+
+test('seam _rendiOggetti: due punti lontani nel tempo restano distanti nel grafico -- i buchi si vedono', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [puntoOra(4, 1), puntoOra(5, 1), puntoOra(18, 1)] },
+    }),
+  })], null);
+
+  const rects = Array.from(corpo.querySelectorAll('svg rect'));
+  assert.equal(rects.length, 3);
+  const xs = rects.map((r) => parseFloat(r.getAttribute('x'))).sort((a, b) => a - b);
+  const scartoRavvicinato = xs[1] - xs[0]; // 4:00 -> 5:00, un'ora
+  const scartoLontano = xs[2] - xs[1]; // 5:00 -> 18:00, tredici ore
+  assert.ok(scartoLontano > scartoRavvicinato * 5,
+    'un buco di 13 ore deve restare visibilmente più largo di uno di 1 ora: ' +
+    scartoRavvicinato + ' vs ' + scartoLontano);
+});
+
+test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date), mai le cifre grezze della stringa ISO', () => {
+  // `ora` arriva in UTC (`HAClient._istante_da_ha`): mostrare le prime
+  // cifre della stringa ("13" da "...T13:00:00Z") sarebbe il difetto in
+  // forma peggiore -- non più "non so l'ora", ma "affermo l'ora sbagliata"
+  // (fino a due ore, con l'ora legale). Un fuso ESPLICITO e lontano da UTC
+  // rende la prova indipendente dal fuso di chi fa girare il test: se la
+  // resa leggesse le cifre grezze mostrerebbe "13:00" anche qui; la resa
+  // corretta converte con `new Date(iso)`, come fa già `fmtOraIso` per i
+  // momenti -- la STESSA strada, non una nuova.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const isoConFusoEsplicito = '2026-08-23T13:00:00+05:00';
+  const d = new Date(isoConFusoEsplicito);
+  const pad2 = (n) => (n < 10 ? '0' + n : String(n));
+  const oraLocaleAttesa = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [{ ora: isoConFusoEsplicito, valore: 2.5 }] },
+    }),
+  })], null);
+
+  const titoloBarra = corpo.querySelector('svg rect > title').textContent;
+  assert.ok(titoloBarra.indexOf(oraLocaleAttesa) !== -1,
+    'la barra deve mostrare l\'ora LOCALE vera (' + oraLocaleAttesa + ', convertita con Date): ' + titoloBarra);
+  if (oraLocaleAttesa !== '13:00') {
+    assert.ok(titoloBarra.indexOf('13:00') === -1,
+      'non deve mostrare la cifra GREZZA "13:00" letta dalla stringa ISO quando l\'ora locale vera è diversa: ' + titoloBarra);
+  }
+});
+
+test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'ora inventata)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [{ ora: null, valore: 9.9 }] },
+    }),
+  })], null);
+
+  const rects = corpo.querySelectorAll('svg rect');
+  assert.equal(rects.length, 0, 'un punto senza ora non deve produrre una barra posizionata a caso');
+});
+
+// La dodicesima (brief-dodicesima.md, punto 1 -- MEDIO, "il cuore"): nessun
+// test qui sopra lega la POSIZIONE della barra all'ora che dichiara. Un test
+// guarda le distanze RELATIVE fra le barre ("i buchi si vedono", sopra), un
+// altro guarda l'ETICHETTA (il titolo del `<title>`, sopra) -- nessuno lega
+// le due cose. Mutazione ESEGUITA dal revisore per provarlo: spostare OGNI
+// barra di un'ora nel solo piazzamento (x), lasciando l'etichetta corretta
+// -> i 56 test allora esistenti restavano tutti verdi. Il riquadro al
+// passaggio del mouse direbbe «le 13», e la barra starebbe alle 14 -- e la
+// POSIZIONE e' cio' che si guarda per decidere, non l'etichetta.
+// Serve un ancoraggio ASSOLUTO: la coordinata x attesa, calcolata dalla SUA
+// ora con lo stesso contratto geometrico di `rendiCurvaBilancio`
+// (osservatore-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
+// -- `L`/`sinistra`/`ORE_DEL_GIORNO` nel sorgente, non ricopiati per caso:
+// e' lo stesso disegno che la pagina dichiara nel suo `viewBox`, verificato
+// sotto). Una sola serie (produzione) rende l'indice di serie ininfluente
+// (`si * larghezzaBarra` = 0), cosi' la formula attesa non dipende da un
+// dettaglio che non e' oggetto di questo test.
+test('seam _rendiOggetti: la barra sta alla coordinata ASSOLUTA della sua ora, non solo in un ordine relativo alle altre (mutazione: un piazzamento spostato di un\'ora resta verde per tutti gli altri test)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [puntoOra(13, 4.8)] },
+    }),
+  })], null);
+
+  const svg = corpo.querySelector('svg');
+  assert.ok(svg, 'deve esserci il grafico');
+  // Precondizione: il viewBox deve davvero essere 640x140 (altrimenti la
+  // formula sotto misurerebbe il contratto sbagliato).
+  assert.equal(svg.getAttribute('viewBox'), '0 0 640 140',
+    'il viewBox del grafico non è più 640x140: aggiorna la costante di questo test insieme al sorgente');
+
+  const rect = svg.querySelector('rect');
+  assert.ok(rect, 'deve esserci la barra delle 13');
+
+  const L = 640, sinistra = 4, ORE_DEL_GIORNO = 24;
+  const passo = (L - sinistra * 2) / ORE_DEL_GIORNO;
+  const xAttesa = sinistra + 13 * passo; // ora=13, una sola serie -> nessuno scarto di serie
+  const xReale = parseFloat(rect.getAttribute('x'));
+  assert.ok(Math.abs(xReale - xAttesa) < 0.15,
+    'la barra delle 13 deve stare alla coordinata assoluta x=' + xAttesa.toFixed(1) +
+    ' (sinistra + ora*passo), non a x=' + xReale +
+    ' -- una traslazione uniforme del solo piazzamento (la mutazione del brief) sposta questo numero');
+});
+
+// ---------------------------------------------------------------------------
+// Punto 3 (MEDIO): la descrizione dell'SVG non deve affermare «gli stessi
+// numeri» -- falso nel caso generale (i momenti portano orari e percentuali,
+// non gli stessi kWh della curva) -- e deve sparire quando i momenti mancano.
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOggetti: la descrizione dell\'SVG non dichiara "gli stessi numeri" dei momenti', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const desc = corpo.querySelector('svg desc').textContent;
+  assert.doesNotMatch(desc, /stessi numeri/i,
+    'i momenti non ripetono "gli stessi numeri" della curva (percentuali, orari): falso nel caso generale');
+});
+
+test('seam _rendiOggetti: senza `momenti`, la descrizione dell\'SVG non rimanda a una sezione che non c\'è', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  delete fx.corpo.momenti;
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  const desc = corpo.querySelector('svg desc').textContent;
+  assert.doesNotMatch(desc, /momenti/, 'orfana se i momenti mancano: la frase non deve più nominarli');
+});
+
+test('seam _rendiOggetti: i momenti si leggono come dati secchi (orario HH:MM, percentuale con la virgola)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  // Sul NODO giusto (rilievo 2 del brief «css-morto»: un assert sul testo di
+  // TUTTA la pagina/riga può essere soddisfatto da un'altra sezione).
+  // `<dt>`/`<dd>` non hanno separatore visivo nel textContent concatenato,
+  // quindi si legge la coppia esatta, non l'intera riga.
+  const momenti = corpo.querySelector('.bil-momenti');
+  assert.ok(momenti, 'deve esserci la sezione dei momenti derivati');
+  const etichette = Array.from(momenti.querySelectorAll('dt')).map((n) => n.textContent);
+  const valori = Array.from(momenti.querySelectorAll('dd')).map((n) => n.textContent);
+  assert.ok(etichette.includes('Prima ora di produzione'));
+
+  const primaOra = valori[etichette.indexOf('Prima ora di produzione')];
+  assert.match(primaOra, /^\d{2}:\d{2}$/, 'l\'orario si legge HH:MM, non un timestamp ISO grezzo: ' + primaOra);
+  assert.doesNotMatch(corpo.textContent, /2026-08-23T/, 'nessun ISO grezzo in pagina');
+
+  const quota = valori[etichette.indexOf('Quota di autoconsumo')];
+  assert.match(quota, /^71,2\s*%$/, 'la quota di autoconsumo è una percentuale con la virgola italiana: ' + quota);
+
+  const picco = valori[etichette.indexOf('Picco di produzione')];
+  assert.match(picco, /4,8\s*kWh/, 'il picco di produzione porta il suo valore in kWh: ' + picco);
+  assert.match(picco, /\d{2}:\d{2}/, 'il picco di produzione porta anche l\'ora: ' + picco);
+});
+
+test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti derivati', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  delete fx.corpo.momenti;
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  assert.doesNotMatch(corpo.textContent, /Prima ora di produzione/);
+  assert.doesNotMatch(corpo.textContent, /Quota di autoconsumo/);
+});
+
+// ---------------------------------------------------------------------------
+// Punto 2 (MEDIO): a 1200px `.bil-momenti` (auto-fit) può calcolare un numero
+// DISPARI di colonne -- dt e dd, celle indipendenti della griglia, si
+// spezzano a fine riga (misurato dal revisore: «Picco di produzione» chiude
+// una riga, il suo valore ne apre un'altra accanto a un'altra etichetta).
+// jsdom non fa layout, quindi non può riprodurre lo sfondamento a 1200px --
+// ma può verificare la precondizione strutturale della correzione: ogni
+// dt/dd deve condividere un contenitore proprio (`.bil-momento`), MAI essere
+// figlio diretto di `.bil-momenti`, perché solo così un motore vero non può
+// più spezzare la coppia a nessuna larghezza (verificato dal vivo, vedi il
+// rapporto).
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOggetti: ogni momento (dt+dd) è una coppia atomica, mai due celle indipendenti della griglia', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const momenti = corpo.querySelector('.bil-momenti');
+  const dts = Array.from(momenti.querySelectorAll('dt'));
+  assert.ok(dts.length > 1, 'servono almeno due momenti per verificare che non si spezzino (fixture insufficiente?)');
+  dts.forEach((dt) => {
+    assert.notEqual(dt.parentElement, momenti,
+      'dt non deve essere figlio diretto di `.bil-momenti`: a certe larghezze un motore vero lo separa dal suo dd (rilievo 2)');
+    const dd = dt.nextElementSibling;
+    assert.ok(dd && dd.tagName === 'DD', 'ogni dt deve avere il suo dd come fratello immediato: ' + dt.textContent);
+    assert.equal(dt.parentElement, dd.parentElement,
+      'dt e dd devono condividere lo stesso contenitore (coppia atomica)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Il consumo, settima direzione del bilancio (LETTA, non dedotta -- vedi il
+// commento sopra DIREZIONI_BILANCIO in cervello/oggetti.py, mandato «il
+// bilancio dell'energia», punto 1, 27/08/2026): la pagina deve poterlo
+// mostrare come le altre sei, con la stessa etichetta già usata dagli
+// episodi di energia.
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOggetti: il totale "consumo" (settima direzione) si mostra come le altre sei', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  fx.corpo.totali.consumo = { valore: 17.3, provenienza: null };
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  assert.match(corpo.textContent, /Consumo della casa/);
+  assert.match(corpo.textContent, /17,3\s*kWh/);
+});
+
+test('seam _rendiOggetti: le entità del bilancio stanno dietro un rivelatore sincrono, chiuso di default', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  document.body.appendChild(corpo);
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
+  assert.ok(btn, 'deve esserci un rivelatore per le entità del bilancio');
+  const pannello = btn.nextElementSibling;
+  // Chiuso via `hidden` (attributo DOM, non solo un display CSS), come il
+  // rivelatore di comprimari/misure sopra: `textContent` include SEMPRE il
+  // testo dei nodi `hidden` (in jsdom come in un motore vero), quindi non è
+  // il segnale giusto per "non ancora visibile" -- lo è l'attributo.
+  assert.equal(pannello.hidden, true, 'il pannello nasce chiuso');
+
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.equal(pannello.hidden, false, 'il click deve aprire il pannello');
+  assert.match(pannello.textContent, /sensor\.energia_prodotta_oggi/);
+  assert.match(pannello.textContent, /sensor\.energia_immessa_oggi/);
+});
+
+test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore di entità', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture({ corpo: Object.assign({}, bilancioFixture().corpo, { entita: [] }) });
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
+  assert.equal(btn, undefined);
+});
+
+test('mount: un bilancio nella lista di "cosa è successo" si legge, non resta "(nessun dettaglio)"', async () => {
+  const { window, document } = montaConServer({ oggetti: { oggetti: [bilancioFixture()] } });
+  window.HirisOsservatoreRoute.mount();
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.doesNotMatch(testo, /nessun dettaglio/);
+  assert.match(testo, /kWh/);
+  assert.match(testo, /Inverter con accumulo/);
 });
 
 // ---------------------------------------------------------------------------

@@ -1045,16 +1045,40 @@
    ──────────────────────────────────────────────────────────── */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* `minmax(0, 1fr)`, non `1fr` nudo (correzione di questo giro, verificata
+     dal vivo a 390px con Playwright): una colonna `1fr` porta comunque un
+     minimo IMPLICITO di `auto`, cioe' il min-content del contenuto piu'
+     largo -- e il bilancio dell'energia (osservatore-route.js) mette dentro
+     una tessera un badge di provenienza ("Dichiarata — dalla dashboard
+     Energia") che nessun'altra consumatrice di `.stat-grid` porta.
+     `.agent-badge` e' `white-space: nowrap` apposta altrove (badge brevi),
+     quindi senza questo `minmax` la colonna si allarga quanto serve per non
+     spezzare quel testo, e trascina l'intera griglia -- e con lei la pagina
+     -- fuori dai 390px. **E' la QUARTA recidiva della stessa famiglia di
+     bug** (correzione BASSA della review, mandato «la pagina del bilancio»,
+     punto 5, 27/08/2026: questo commento diceva "terza", ma quel titolo e'
+     gia' del bug del 26/08 sugli span in riga flessibile -- vedi il
+     commento «Terza recidiva» piu' sopra, che resta la terza): qui la si
+     chiude alla radice, nel componente CONDIVISO -- **tre chiamanti**, non
+     due (stesso punto 5: questo commento diceva "Consumi + l'osservatore"
+     e dimenticava la Dashboard, che lo usa in DUE punti di `dashboard.js`,
+     la griglia dei KPI e quella delle metriche -- contato nel sorgente, non
+     ricopiato), non con una toppa in una sola pagina. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--sp-4);
   margin-bottom: var(--sp-6);
 }
-@media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stat-tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: var(--sp-4) var(--sp-5);
+  /* Gemello della `minmax(0, 1fr)` sopra: un elemento di griglia porta un
+     min-width IMPLICITO di `auto` a prescindere dalla sua traccia -- senza
+     questo, la tessera stessa (non solo la colonna) resta larga quanto il
+     suo contenuto piu' largo. */
+  min-width: 0;
 }
 .stat-tile .st-label {
   font-size: var(--fs-12); color: var(--text-3);
@@ -1073,6 +1097,14 @@
 }
 .stat-tile .st-delta.up { color: var(--ok); }
 .stat-tile .st-delta.down { color: var(--err); }
+/* Il badge di provenienza dentro una tessera (bilancio dell'energia): a
+   differenza di un badge isolato in una riga flessibile (dove `flex-wrap`
+   gli lascia andare a capo INTERO), qui non c'e' un fratello dopo cui
+   avvolgersi -- e' solo lui dentro una tessera stretta. `white-space:
+   normal` in piu' (l'`.agent-badge` di base resta `nowrap` per i badge
+   brevi altrove) lascia che il SUO testo vada a capo internamente invece di
+   spingere la tessera oltre la sua larghezza. */
+.stat-tile .agent-badge { white-space: normal; }
 
 /* Two-col dashboard */
 .dash-cols {
@@ -1775,6 +1807,56 @@
 .usage-tabella { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .usage-tabella th, .usage-tabella td {
   text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026,
+   osservatore-route.js): STESSO grafico SVG a mano di .usage-grafico/
+   .usage-legenda qui sopra -- niente libreria, nessuna dipendenza nuova --
+   ma un prefisso proprio (`bil-`, come `umr-`/`usec-` sopra sono il
+   prefisso di "Consumi"): sono classi di UNA pagina diversa, e questo
+   file le tiene distinte come tiene distinti tutti gli altri prefissi.
+   `width:100%;height:auto` e' cio' che rende la curva (fino a 24 punti --
+   meno se Home Assistant ne ha omessi alcuni, vedi l'avviso su
+   `rendiCurvaBilancio` in osservatore-route.js) responsive: lo stesso
+   schema di .usage-grafico, la stessa ragione per cui non scorre in
+   orizzontale a 390px. */
+.bil-grafico { width: 100%; height: auto; display: block; }
+.bil-legenda {
+  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px;
+  font-size: 12px; color: var(--text-2);
+}
+.bil-legenda .ulg { display: inline-flex; align-items: center; gap: 6px; }
+.bil-legenda i {
+  width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+}
+
+/* I momenti derivati (spec §2, "cio' su cui si ragiona invece di rileggere
+   la curva"): DATI SECCHI (brief-pagina.md §3), non frasi -- una griglia di
+   etichetta/valore, non un paragrafo discorsivo. `auto-fit`/`minmax` invece
+   di `repeat(N, 1fr)`: il numero di momenti presenti varia (un bilancio
+   senza batteria non ha "fine scarica"), e una colonna vuota sarebbe uno
+   spazio bianco senza motivo. `minmax(160px, 1fr)` non sfonda mai i 390px
+   del mandato: anche un solo momento (min 160px) sta dentro qualunque
+   telefono, e piu' momenti si accodano in righe, mai in colonne che
+   allargano il contenitore. */
+.bil-momenti {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-2) var(--sp-4); margin: 4px 0;
+}
+/* Punto 2 della correzione (MEDIO, mandato «la pagina del bilancio»,
+   27/08/2026): dt e dd erano celle INDIPENDENTI di questa griglia --
+   `auto-fit` puo' calcolare un numero DISPARI di colonne a certe larghezze
+   (misurato dal revisore: 1200px), e con dt/dd alternati piatti questo
+   separa un'etichetta dal suo valore, che finisce affiancato all'etichetta
+   SUCCESSIVA invece che alla propria. `.bil-momento` (osservatore-route.js,
+   `rendiMomentiBilancio`) raggruppa ogni coppia in un div: e' LUI l'unico
+   elemento di griglia, non i suoi due figli -- una coppia non puo' piu'
+   spezzarsi, a nessuna larghezza. Verificato dal vivo a 1200px. */
+.bil-momento { min-width: 0; }
+.bil-momenti dt { font-size: var(--fs-12); color: var(--text-3); }
+.bil-momenti dd {
+  font-size: var(--fs-13); color: var(--text); margin: 0 0 6px 0;
   font-variant-numeric: tabular-nums;
 }
 
