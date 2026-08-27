@@ -723,7 +723,7 @@ function componiComposer(window, document, testo, evento) {
 test('Maiusc+Invio va a capo e NON invia', (t) => {
   const { window, document } = setupChat(t);
   const inviati = [];
-  window.fetch = async (url, opts) => {
+  window.fetch = async (url, _opts) => {
     inviati.push(String(url));
     return { ok: true, status: 200, json: async () => ({ response: 'ok' }) };
   };

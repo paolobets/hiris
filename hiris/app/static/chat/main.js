@@ -49,7 +49,7 @@
          api/health a 200. */
       try {
         if (window.HirisBuildCheck) window.HirisBuildCheck.verifica(d.build);
-      } catch (e) { /* limite gia' dichiarato di B8: un guscio vecchio non ha il controllo */ }
+      } catch { /* limite gia' dichiarato di B8: un guscio vecchio non ha il controllo */ }
     }).catch(function() {
       if (state.els.connDot) {
         state.els.connDot.classList.add('offline');

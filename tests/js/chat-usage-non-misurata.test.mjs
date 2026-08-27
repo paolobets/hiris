@@ -119,7 +119,9 @@ async function avviaChat(rispostaUsage) {
   globalThis.clearInterval = (id) => { fermati.push(id); };
   try {
     // eval indiretto nel realm host, come fa loadScripts: main.js è un IIFE
-    // che chiama boot() al load, quindi caricarlo È farlo partire.
+    // che chiama boot() al load, quindi caricarlo È farlo partire. E' il
+    // meccanismo del test, non una svista.
+    // eslint-disable-next-line no-eval -- vedi commento sopra
     (0, eval)(readFileSync(MAIN, 'utf8'));
     await tick(0);
     await tick(0);

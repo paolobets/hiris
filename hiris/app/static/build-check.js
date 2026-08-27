@@ -96,7 +96,7 @@
       if (sessionStorage.getItem(GUARD_KEY) === locale) return 'gia-tentato';
       sessionStorage.setItem(GUARD_KEY, locale);
       return sessionStorage.getItem(GUARD_KEY) === locale ? 'scritta' : 'non-verificabile';
-    } catch (e) {
+    } catch {
       return 'non-verificabile';
     }
   }
@@ -120,7 +120,7 @@
   function verifica(remoto) {
     var locale = letturaLocale();
     if (!locale || !remoto || locale === remoto) {
-      try { sessionStorage.removeItem(GUARD_KEY); } catch (e) {}
+      try { sessionStorage.removeItem(GUARD_KEY); } catch {}
       return;
     }
     if (guardiaVerificata(locale) === 'scritta') {

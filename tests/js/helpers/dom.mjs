@@ -46,7 +46,7 @@ export function copiaIstantanea(sorgente) {
 
 process.on('exit', () => {
   for (const dir of _cartelleDaRimuovere) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch (e) { /* pulizia a fine processo, best-effort */ }
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* pulizia a fine processo, best-effort */ }
   }
 });
 
@@ -61,7 +61,11 @@ export function staticSnapshotDir() {
 
 // Indirect eval: forces evaluation against the *global* scope of whatever
 // realm is calling it, instead of the caller's local lexical scope (the
-// classic `(0, eval)(code)` trick) — same as loading a plain <script>.
+// classic `(0, eval)(code)` trick) — same as loading a plain <script>. La finta
+// carica il sorgente vero del modulo (script classico con globali bare/IIFE, non
+// un modulo ES) per provarlo nel realm host: e' il meccanismo del test (vedi
+// anche il commento di loadScripts() piu' sotto), non una svista.
+// eslint-disable-next-line no-eval -- vedi commento sopra
 const globalEval = (0, eval);
 
 /**
@@ -121,7 +125,7 @@ let previousMirroredKeys = null;
 
 function cleanupKeys(keys) {
   for (const key of keys) {
-    try { delete globalThis[key]; } catch (e) { /* proprietà non configurabile del global host, ignora */ }
+    try { delete globalThis[key]; } catch { /* proprietà non configurabile del global host, ignora */ }
   }
 }
 
@@ -142,7 +146,7 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
     set(target, prop, value) {
       target[prop] = value;
       if (typeof prop === 'string') {
-        try { globalThis[prop] = value; mirroredKeys.add(prop); } catch (e) { /* proprietà read-only del global host, ignora */ }
+        try { globalThis[prop] = value; mirroredKeys.add(prop); } catch { /* proprietà read-only del global host, ignora */ }
       }
       return true;
     },

@@ -81,7 +81,7 @@ async function avvia(t, { buildLocale, buildRemoto }) {
   });
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
-  try { ctx.window.sessionStorage.clear(); } catch (e) {}
+  try { ctx.window.sessionStorage.clear(); } catch {}
   ctx.window.fetch = async (url) => {
     const u = String(url);
     if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: buildRemoto });
@@ -91,6 +91,9 @@ async function avvia(t, { buildLocale, buildRemoto }) {
   const veroSet = globalThis.setInterval;
   globalThis.setInterval = () => 0; // non serve osservare i timer qui, solo evitare che restino pendenti
   try {
+    // eval indiretto del file vero (vedi il commento in testa al file): e' il
+    // meccanismo del test, non una svista.
+    // eslint-disable-next-line no-eval -- vedi commento sopra
     (0, eval)(readFileSync(MAIN, 'utf8'));
     await tick(0);
     await tick(0);
@@ -166,6 +169,9 @@ test('boot della chat: HirisBuildCheck presente ma verifica() solleva dentro -- 
   try {
     assert.equal(typeof ctx.window.HirisBuildCheck, 'object',
       'precondizione del test: HirisBuildCheck E\' caricato (a differenza del test del guscio vecchio sotto)');
+    // eval indiretto del file vero (vedi il commento in testa al file): e' il
+    // meccanismo del test, non una svista.
+    // eslint-disable-next-line no-eval -- vedi commento sopra
     (0, eval)(readFileSync(MAIN, 'utf8'));
     await tick(0);
     await tick(0);
@@ -201,6 +207,9 @@ test('boot della chat: guscio precedente a B8 (senza build-check.js) -- il palli
   try {
     assert.equal(typeof ctx.window.HirisBuildCheck, 'undefined',
       'precondizione del test: il guscio vecchio non carica build-check.js');
+    // eval indiretto del file vero (vedi il commento in testa al file): e' il
+    // meccanismo del test, non una svista.
+    // eslint-disable-next-line no-eval -- vedi commento sopra
     (0, eval)(readFileSync(MAIN, 'utf8'));
     await tick(0);
     await tick(0);

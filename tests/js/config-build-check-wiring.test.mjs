@@ -27,7 +27,7 @@ function avvia(buildLocale, buildRemoto) {
   const ctx = loadScripts(MODULI, { html: HTML(buildLocale) });
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
-  try { ctx.window.sessionStorage.clear(); } catch (e) {}
+  try { ctx.window.sessionStorage.clear(); } catch {}
   stubFetch(ctx.window, { 'api/health': { status: 'ok', version: '3.0.0', build: buildRemoto } });
   return { ...ctx, reloadCalls };
 }

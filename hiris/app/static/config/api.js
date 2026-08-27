@@ -1,12 +1,12 @@
 /* HIRIS - utilita' condivise dalle due pagine (chat e configurazione).
    Carica per prima: definisce globali bare, non un modulo. */
 
+// global bare (nessun modulo): chiamata da chat/messages.js::formatContent(), non da
+// questo file. Verificato con grep sull'intero repo (task-13); il contratto e' pinnato
+// da tests/test_chat_page.py.
+// eslint-disable-next-line no-unused-vars -- vedi commento sopra
 function esc(t) {
   return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function escHtml(s) {
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 /* Le tre funzioni qui sotto sono LA grammatica dei numeri di HIRIS, per tutte
@@ -55,9 +55,13 @@ function fmtDataOra(v) {
 }
 
 /* Theme: localStorage > server config > system. */
+// global bare (nessun modulo): chiamata da chat/theme.js::init(), non da questo file.
+// Verificato con grep sull'intero repo (task-13); il contratto e' pinnato da
+// tests/test_chat_page.py.
+// eslint-disable-next-line no-unused-vars -- vedi commento sopra
 async function applyTheme() {
   var local = null;
-  try { local = localStorage.getItem('hiris-theme'); } catch(e) {}
+  try { local = localStorage.getItem('hiris-theme'); } catch {}
   if (local === 'light' || local === 'dark') {
     document.documentElement.setAttribute('data-theme', local);
     return;
@@ -71,7 +75,7 @@ async function applyTheme() {
     } else {
       document.documentElement.removeAttribute('data-theme');
     }
-  } catch(e) {}
+  } catch {}
 }
 
 /* Scrive il testo in `id` solo se l'elemento esiste in questa pagina.
@@ -114,6 +118,10 @@ function _mostraRigheConsumi(visibili) {
    dire niente all'utente. In ogni altro caso (numeri veri, errore HTTP,
    rete caduta) restituisce `true`: quelli si' che possono cambiare al giro
    dopo. */
+// global bare (nessun modulo): chiamata da chat/main.js::aggiornaConsumi(), non da
+// questo file. Verificato con grep sull'intero repo (task-13); il contratto e' pinnato
+// da tests/test_chat_page.py.
+// eslint-disable-next-line no-unused-vars -- vedi commento sopra
 async function loadUsage() {
   try {
     var r = await fetch('api/usage');

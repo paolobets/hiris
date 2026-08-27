@@ -32,7 +32,7 @@ function avvia(buildMeta) {
   const ctx = loadScripts(['build-check.js'], { html: fixtureHtml(buildMeta) });
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
-  try { ctx.window.sessionStorage.clear(); } catch (e) {}
+  try { ctx.window.sessionStorage.clear(); } catch {}
   return { ...ctx, reloadCalls };
 }
 

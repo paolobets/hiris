@@ -45,7 +45,7 @@
     var sun = document.getElementById('ic-sun');
     function paint(t) {
       document.documentElement.setAttribute('data-theme', t);
-      try { localStorage.setItem('hiris-theme', t); } catch(e) {}
+      try { localStorage.setItem('hiris-theme', t); } catch {}
       /* v0.10.4: usa visibility (non display) per evitare FOUC.
          Template inizia con entrambe icone hidden via style="visibility:hidden". */
       if (moon) moon.style.visibility = t === 'dark' ? 'hidden' : 'visible';

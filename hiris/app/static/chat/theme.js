@@ -29,7 +29,7 @@
       if (!btn) return;
       var next = currentTheme() === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
-      try { localStorage.setItem('hiris-theme', next); } catch (e) {}
+      try { localStorage.setItem('hiris-theme', next); } catch {}
       paint();
     });
   }

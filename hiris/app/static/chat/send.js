@@ -73,7 +73,7 @@
           }
           /* status === 'pending' (or unexpected 404/503 body without a status)
            * -- keep polling until CHAT_POLL_MAX_MS is reached. */
-        } catch (e) {
+        } catch {
           /* Transient network hiccup while polling -- keep retrying until the
            * overall timeout above gives up. */
         }
@@ -181,7 +181,7 @@
       state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();
-    } catch (e) {
+    } catch {
       window.HirisChatMessages.updateBubble(attesa, 'Errore di connessione. Riprova tra poco.');
     } finally {
       if (!handedOff) {

@@ -155,7 +155,7 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
-  dom.window.fetch = async (url, opzioni) => {
+  dom.window.fetch = async (url, _opzioni) => {
     if (String(url).indexOf('/conferma') !== -1) return new Promise(() => {});
     return { ok: true, status: 200, json: async () => ({ costruzioni: [
       { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
