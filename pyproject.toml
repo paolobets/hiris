@@ -57,11 +57,32 @@ ignore = [
 # F811 — 56 casi, 55 FALSI POSITIVI: sono i parametri-fixture di pytest che
 #        ombreggiano il nome della fixture. L'unico caso vero (un test scritto
 #        due volte) e' stato sanato PRIMA di scrivere questa riga.
-# S101  — 5.884 `assert`: e' il modo in cui un test asserisce.
-# S102  — 21 `exec`: usati per caricare moduli nelle finte.
-# S105/S106 — segreti nei test: sono finti per costruzione.
-# S108  — percorsi temporanei nei test.
-# S107 NON e' spenta: nella misura non e' servito spegnerla.
-"tests/**" = ["F811", "S101", "S102", "S105", "S106", "S108"]
-"scripts/**" = ["S101"]
-".smoke-test/**" = ["S101"]
+# S102  — 21 `exec`: usati per caricare moduli nelle finte. E' l'UNICA regola
+#        di flake8-bandit che il set di default di ruff 0.16.4 accende ed e'
+#        rilevante nei test (verificato con
+#        `ruff check --isolated --show-settings`: di bandit sono accese solo
+#        S102, S110, S112).
+#
+# Di conseguenza le righe che spegnevano anche S101/S105/S106/S108 nei test e
+# S101 in scripts/** e .smoke-test/** sono state tolte: quelle regole erano
+# GIA' spente di loro (non fanno parte del default), quindi spegnerle qui non
+# aveva nessun effetto — erano rumore che raccontava una decisione mai presa.
+# Per lo stesso motivo la vecchia nota «S107 NON e' spenta: nella misura non
+# e' servito spegnerla» era fuorviante: S107 e' spenta di suo, non per merito
+# di questo file.
+#
+# Il vero costo e' un altro: di flake8-bandit, questo cancello sorveglia SOLO
+# S102/S110/S112. Tutto il resto — segreti scritti nel codice (S105/S106/
+# S107), SQL concatenato (S608), hash deboli (S324), `verify=False`, TLS non
+# verificato, `shell=True`/subprocess non sicuro (S603/S607), `yaml.load` non
+# sicuro (S506), bind su tutte le interfacce (S104), apertura URL sospetta
+# (S310) — NON e' sorvegliato. Misurato il 27/08/2026: accendere tutto `S`
+# (`extend-select = [..., "S"]`) su `hiris scripts tests conftest.py
+# .smoke-test` produce 26 rilievi: S608 10, S324 3, S603 3, S105 2, S107 2,
+# S310 2, S101 1, S104 1, S506 1, S607 1. Di questi, S506 e' un FALSO
+# POSITIVO gia' verificato: hiris/app/casa/lettura_yaml.py:56 chiama
+# `yaml.load` con `_CaricatoreHA`, che eredita da `yaml.SafeLoader` — ruff non
+# risale la gerarchia delle classi e non lo vede. Il codice lo spiega gia' in
+# un commento e un test lo dimostra. Gli altri 25 restano da valutare uno per
+# uno: non sono ne' accesi ne' esclusi, sono semplicemente non ancora guardati.
+"tests/**" = ["F811", "S102"]
