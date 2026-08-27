@@ -322,6 +322,30 @@ repository dopo il commit.
 
 ---
 
+### La terza classe, provata anche attraverso l'hook (aggiunta dopo la review)
+
+La prova della classe «riga lunga» mostrava l'`exit=1` di `ruff` invocato direttamente, non quello
+dell'**hook**. Colmata:
+
+```
+$ python -c "...aggiunge una riga a 134 colonne a hiris/app/casa/tempo.py..."
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null
+E501 Line too long (134 > 100)
+   --> hirispp\casa	empo.py:548:101
+Found 1 error.
+HIRIS: il linter ha trovato dei rilievi. Si sanano, non si aggirano.
+       Per vederli:  python -m ruff check hiris scripts tests conftest.py .smoke-test
+hook exit=1
+
+$ git checkout -- hiris/app/casa/tempo.py
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null
+All checks passed!
+hook exit=0
+```
+
+L'URL del remoto e' **finto di proposito**: l'hook non contatta nessuno, e la prova non ha mai
+toccato il remoto vero.
+
 ## 8. Cosa resta fuori, dichiarato
 
 - **`ruff format`** — dopo la rinomina in inglese (§3.1).
