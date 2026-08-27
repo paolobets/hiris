@@ -38,7 +38,10 @@ test('isolamento harness (test A): state.js definisce HirisState su globalThis',
 
 test('isolamento harness (test B): un loadScripts() con una lista DIVERSA non deve vedere il global lasciato dal test precedente', () => {
   // Lista diversa da quella del test A: api.js espone solo funzioni bare
-  // (esc/escHtml/fmtNum/...), non tocca mai HirisState.
+  // (esc/fmtNum/fmtEuro/fmtDataOra/...), non tocca mai HirisState. `escHtml`
+  // non esiste piu': cancellata da api.js in questa stessa fetta (M-6,
+  // review finale «il linter e le best practice» -- il vecchio commento
+  // continuava a nominarla).
   loadScripts(['config/api.js']);
   assert.equal(
     typeof globalThis.HirisState,
