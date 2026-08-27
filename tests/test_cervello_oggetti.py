@@ -51,7 +51,13 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     assert genere_di("problema:sonos.x", None) == "guasto"
     assert genere_di("integrazione:abc", None) == "guasto"
     assert "sicurezza" in GENERI
-    assert len(GENERI) == 5
+    # Sei generi, non cinque (27/08/2026, mandato «il bilancio
+    # dell'energia»): "bilancio" e' nato in GENERI, ma non lo produce
+    # `genere_di()` -- non nasce da un soggetto/gamba come gli altri
+    # cinque, arriva gia' costruito da fuori (`aggrega_giorno(bilanci=...)`,
+    # vedi `test_cervello_bilancio.py`).
+    assert len(GENERI) == 6
+    assert "bilancio" in GENERI
 
 
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):

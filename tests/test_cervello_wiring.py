@@ -404,6 +404,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "timedelta": server.timedelta, "zona_casa": server.zona_casa,
         "confini_giorno": server.confini_giorno,
         "costruisci_comprimari": server.costruisci_comprimari,
+        "costruisci_bilanci": server.costruisci_bilanci,
         "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
     })
 
@@ -762,6 +763,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "timedelta": server.timedelta, "zona_casa": server.zona_casa,
             "confini_giorno": server.confini_giorno,
             "costruisci_comprimari": server.costruisci_comprimari,
+            "costruisci_bilanci": server.costruisci_bilanci,
             "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
         })
 
@@ -1090,6 +1092,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
             "timedelta": server.timedelta, "zona_casa": server.zona_casa,
             "confini_giorno": server.confini_giorno,
             "costruisci_comprimari": server.costruisci_comprimari,
+            "costruisci_bilanci": server.costruisci_bilanci,
             "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
         })
 
@@ -1132,6 +1135,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
             "timedelta": server.timedelta, "zona_casa": server.zona_casa,
             "confini_giorno": server.confini_giorno,
             "costruisci_comprimari": server.costruisci_comprimari,
+            "costruisci_bilanci": server.costruisci_bilanci,
             "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
         })
 
@@ -1250,6 +1254,215 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
         assert cliente.direzioni_chieste == 1
     finally:
         archivio.close()
+
+
+# --------------------------------------------------------------------------
+# Il bilancio dell'energia (mandato 27/08/2026): un dispositivo con una
+# direzione utile diventa UN oggetto di genere "bilancio" e la sua entita'
+# smette di produrre l'episodio individuale -- e la STESSA asimmetria gia'
+# decisa per comprimari e direzioni: la notte tollera, la riparazione no.
+# --------------------------------------------------------------------------
+
+def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
+    """Un `ArchivioCasa` reale con un dispositivo e una sua entita' di
+    energia -- il minimo che `costruisci_bilanci` ha bisogno di leggere dal
+    registro (fedele al contratto vero, non una finta a parte)."""
+    from hiris.app.casa.archivio import ArchivioCasa
+
+    casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    casa.sostituisci(
+        {"dispositivi": [{"id": "dev1", "name": "Inverter"}],
+         "entita": [{"entity_id": "sensor.energia_prodotta_oggi",
+                    "device_id": "dev1", "device_class": "energy"}]},
+        [], sistema_di_riferimento={"fuso": fuso})
+    return casa
+
+
+def _punto_bilancio(cambio):
+    return {"inizio": "x", "fine": "y", "minimo": None, "massimo": None,
+            "media": None, "cambio": cambio}
+
+
+def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
+    """`_aggrega_ieri` chiama `costruisci_bilanci` e passa il risultato ad
+    `aggrega_giorno`: l'entita' del dispositivo smette di produrre il suo
+    episodio individuale, e nasce un oggetto di genere "bilancio"."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        adesso_reale = datetime.now(timezone.utc)
+        ieri = adesso_reale - timedelta(days=1)
+        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                        device_class="energy")
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche={"sensor.energia_prodotta_oggi": [
+                _punto_bilancio(1.0), _punto_bilancio(2.0)]})
+        logger_test = logging.getLogger("test_aggrega_ieri_bilancio")
+        job = _carica_funzione_innestata("_aggrega_ieri", {
+            "app": {"archivio_casa": casa, "osservazioni": archivio},
+            "ha_client": cliente, "logger": logger_test,
+            "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
+            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "confini_giorno": server.confini_giorno,
+            "costruisci_comprimari": server.costruisci_comprimari,
+            "costruisci_bilanci": server.costruisci_bilanci,
+            "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
+        })
+
+        asyncio.run(job())
+
+        ieri_str = ieri.strftime("%Y-%m-%d")
+        oggetti = archivio.oggetti(giorno=ieri_str)
+        assert {o["genere"] for o in oggetti} == {"bilancio"}
+        [bilancio] = oggetti
+        assert bilancio["protagonista"] == "dev1"
+        assert bilancio["corpo"]["dispositivo"] == "Inverter"
+        assert bilancio["corpo"]["totali"]["produzione"]["valore"] == 3.0
+    finally:
+        archivio.close()
+        casa.chiudi()
+
+
+def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_falliscono(tmp_path):
+    """**Chi costruisce dal nulla tollera il parziale**, identica alla
+    regola gia' presa per comprimari e direzioni: un guasto di
+    `statistiche_orarie()` non deve fermare la notte -- l'entita' torna
+    semplicemente a produrre il suo episodio individuale, come se questa
+    fetta non esistesse."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        adesso_reale = datetime.now(timezone.utc)
+        ieri = adesso_reale - timedelta(days=1)
+        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                        device_class="energy")
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche_errore="Home Assistant non ha risposto")
+        logger_test = logging.getLogger("test_aggrega_ieri_bilancio_guasto")
+        job = _carica_funzione_innestata("_aggrega_ieri", {
+            "app": {"archivio_casa": casa, "osservazioni": archivio},
+            "ha_client": cliente, "logger": logger_test,
+            "aggrega_giorno": server.aggrega_giorno, "datetime": server.datetime,
+            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "confini_giorno": server.confini_giorno,
+            "costruisci_comprimari": server.costruisci_comprimari,
+            "costruisci_bilanci": server.costruisci_bilanci,
+            "_fuso_da_archivio_casa": server._fuso_da_archivio_casa,
+        })
+
+        asyncio.run(job())  # non deve sollevare
+
+        ieri_str = ieri.strftime("%Y-%m-%d")
+        oggetti = archivio.oggetti(giorno=ieri_str)
+        assert {o["genere"] for o in oggetti} == {"energia"}
+        assert oggetti[0]["protagonista"] == "sensor.energia_prodotta_oggi"
+    finally:
+        archivio.close()
+        casa.chiudi()
+
+
+def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
+    """Simmetrico al test dei comprimari e delle direzioni: quando le
+    statistiche si leggono, la riparazione scrive il bilancio."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                        soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                        device_class="energy")
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche={"sensor.energia_prodotta_oggi": [_punto_bilancio(4.0)]})
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        oggetti = archivio.oggetti(giorno=ieri)
+        assert {o["genere"] for o in oggetti} == {"bilancio"}
+        assert oggetti[0]["corpo"]["totali"]["produzione"]["valore"] == 4.0
+    finally:
+        archivio.close()
+        casa.chiudi()
+
+
+def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_falliscono(tmp_path):
+    """**Il test che conta, gemello di quelli su comprimari e direzioni**:
+    qui comprimari E direzioni si leggono benissimo, ma le statistiche del
+    bilancio no. La riparazione SOSTITUISCE -- e un giorno riscritto SENZA
+    bilancio sopra un giorno che la notte aveva gia' costruito CON un
+    bilancio sarebbe un impoverimento puro. Deve fermarsi lo stesso, per
+    ENTRAMBI i giorni bersaglio (non solo quello che la mutazione tocca).
+
+    Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, il
+    controllo `if bilanci_falliti:` nel ciclo dei bilanci sostituito con
+    `if False:` (ignorare il guasto) -- arrossisce: l'oggetto ricco (col
+    bilancio) viene sostituito da uno senza (l'episodio individuale torna)
+    -- `dopo != prima`. Ripristinato subito dopo."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                            device_class="energy")
+
+        # Il "gia' fatto dalla notte": un bilancio, per entrambi i giorni.
+        ricco = [{"genere": "bilancio", "protagonista": "dev1",
+                  "inizio_ts": 0.0, "fine_ts": 1.0,
+                  "corpo": {"dispositivo": "Inverter", "entita": ["sensor.energia_prodotta_oggi"],
+                           "totali": {"produzione": {"valore": 9.9, "provenienza": "dichiarata"}}}}]
+        archivio.sostituisci_giorno(l_altro_ieri, ricco)
+        archivio.sostituisci_giorno(ieri, ricco)
+        prima = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche_errore="Home Assistant non ha risposto")
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+        assert dopo == prima
+    finally:
+        archivio.close()
+        casa.chiudi()
 
 
 # --------------------------------------------------------------------------

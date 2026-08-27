@@ -90,13 +90,25 @@ class _ClienteLegami:
 
     def __init__(self, mappa: dict[str, dict] | None = None, *, default=None,
                 direzioni: dict[str, dict] | None = None,
-                direzioni_errore: str | None = None):
+                direzioni_errore: str | None = None,
+                statistiche: dict[str, list[dict]] | None = None,
+                statistiche_errore: str | None = None):
         self._mappa = mappa or {}
         self._default = {} if default is None else default
         self._direzioni = direzioni or {}
         self._direzioni_errore = direzioni_errore
+        # `statistiche` -- **cresciuta il 27/08/2026 (mandato «il bilancio
+        # dell'energia») per fingere anche `statistiche_orarie()`**, stessa
+        # disciplina "una sola finta" del paragrafo sopra: `{statistic_id:
+        # [punto, ...]}` gia' nella forma TRADOTTA (chiavi italiane, come le
+        # manda `HAClient._richiedi_statistiche` per davvero) -- fedele al
+        # contratto vero: `costruisci_bilanci` (server.py) legge SOLO il
+        # ritorno di `statistiche_orarie`, mai la richiesta grezza a HA.
+        self._statistiche = statistiche or {}
+        self._statistiche_errore = statistiche_errore
         self.chiesti = []
         self.direzioni_chieste = 0
+        self.statistiche_chieste: list[tuple[list[str], str, str]] = []
 
     async def legami(self, tipo, identificatore):
         self.chiesti.append((tipo, identificatore))
@@ -109,6 +121,12 @@ class _ClienteLegami:
         if self._direzioni_errore is not None:
             return {"errore": self._direzioni_errore}
         return dict(self._direzioni)
+
+    async def statistiche_orarie(self, identificatori, da_iso, a_iso):
+        self.statistiche_chieste.append((list(identificatori), da_iso, a_iso))
+        if self._statistiche_errore is not None:
+            return {"errore": self._statistiche_errore}
+        return {"serie": {k: v for k, v in self._statistiche.items() if k in identificatori}}
 
 
 @pytest.mark.asyncio

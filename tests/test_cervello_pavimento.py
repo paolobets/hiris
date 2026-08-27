@@ -19,7 +19,6 @@ from hiris.app.cervello.pavimento import GAMBE, gamba, nel_pavimento
     ("binary_sensor.porta_ingresso", {"device_class": "door"}, "dispersione"),
     ("cover.tapparella_studio", {}, "dispersione"),
     ("sensor.presa_energia", {"device_class": "energy"}, "energia"),
-    ("sensor.contatore", {"state_class": "total_increasing"}, "energia"),
     ("sensor.iphone_batteria", {"device_class": "battery"}, "buono stato"),
     ("lock.porta_ingresso", {}, "sicurezza"),
     ("alarm_control_panel.centrale", {}, "sicurezza"),
@@ -136,6 +135,32 @@ def test_la_qualita_dell_aria_entra_in_comfort(classe):
     assert gamba("sensor.aria_soggiorno", {"device_class": classe}) == "comfort"
 
 
+def test_total_increasing_da_solo_non_basta_piu_per_energia():
+    """Mandato «il bilancio dell'energia», 27/08/2026, punto 5 -- misurato
+    sulla casa vera lo stesso giorno: `sensor.betarena_gb_inviati` (i
+    gigabyte inviati dal router) porta `device_class: data_size` e
+    `state_class: total_increasing`, ed era archiviato come energia --
+    producendo un episodio di energia ogni notte per un dato che non lo e'.
+
+    Non e' restringere il pavimento: `state_class: total_increasing` da solo
+    non e' una classe di energia DICHIARATA, e un contatore che sale e basta
+    non e' automaticamente energia (potrebbe essere litri, richieste HTTP,
+    qualunque cosa che HA conta). Un contatore che porta ANCHE una classe di
+    `_ENERGIA` (sopra) resta energia -- vedi `sensor.presa_energia` nella
+    parametrizzazione qui sopra.
+
+    Mutazione ESEGUITA durante l'implementazione: ripristinato `or
+    classe_stato == "total_increasing"` nel ramo `sensor` di `gamba()` --
+    questo test arrossisce (`'energia' == None` fallisce), perche' torna a
+    classificare il traffico di rete come energia. Ripristinata la
+    correzione subito dopo."""
+    assert gamba("sensor.betarena_gb_inviati",
+                 {"device_class": "data_size", "state_class": "total_increasing",
+                  "unit_of_measurement": "GB"}) is None
+    assert gamba("sensor.betarena_gb_ricevuti",
+                 {"device_class": "data_size", "state_class": "total_increasing"}) is None
+
+
 def test_nel_pavimento_e_la_stessa_domanda_di_gamba():
     """Due funzioni che rispondono alla stessa domanda devono non poter
     divergere: la seconda si deriva dalla prima. La divergenza puo' nascere
@@ -161,8 +186,10 @@ def test_nel_pavimento_e_la_stessa_domanda_di_gamba():
     assert nel_pavimento("sensor.energia", {"device_class": "energy"}) is True
     assert nel_pavimento("sensor.uptime", {"device_class": "timestamp"}) is False
 
-    # Ramo deciso da `state_class` su `sensor` (senza `device_class`).
-    assert nel_pavimento("sensor.contatore", {"state_class": "total_increasing"}) is True
+    # Un `total_increasing` SENZA una classe di energia dichiarata resta
+    # fuori (27/08/2026, mandato «il bilancio dell'energia» punto 5): vedi
+    # `test_total_increasing_da_solo_non_basta_piu_per_energia` qui sotto.
+    assert nel_pavimento("sensor.contatore", {"state_class": "total_increasing"}) is False
     assert nel_pavimento("sensor.istantaneo", {"state_class": "measurement"}) is False
 
     # Rami decisi da `source_type` su `device_tracker`.
