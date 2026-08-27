@@ -4,7 +4,7 @@ import json
 import secrets
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..casa.tempo import zona_casa
 from ..storage import connect, init_schema
@@ -317,8 +317,17 @@ class ReasoningQueue:
         inventa mai)."""
         ts = time.time() if now is None else now
         dt = datetime.fromtimestamp(ts, zona_casa(self._leggi_fuso()))
-        day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        day_end = day_start + 86400
+        # M-3 (review finale «il linter e le best practice»): NON
+        # `day_start + 86400`. Un giorno locale non dura sempre 86400
+        # secondi -- due volte l'anno a Roma dura 23 o 25 ore (l'ora legale
+        # scatta/finisce nel mezzo). Sommare secondi all'epoch sforerebbe (o
+        # si fermerebbe prima) della mezzanotte vera in quei due giorni.
+        # Aggiungere un giorno al DATETIME consapevole del fuso lascia
+        # all'aritmetica del calendario, non a un conteggio di secondi, il
+        # compito di trovare la mezzanotte successiva.
+        giorno_start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = giorno_start.timestamp()
+        day_end = (giorno_start + timedelta(days=1)).timestamp()
         with self._lock:
             r = self._conn.execute(
                 "SELECT COUNT(*) AS c FROM reasoning_jobs "

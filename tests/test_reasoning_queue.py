@@ -267,3 +267,33 @@ def test_il_giorno_del_tetto_finisce_a_mezzanotte_DI_CASA(tmp_path):
 
     # Due turni accodati, ma uno solo appartiene a «oggi» nel fuso della casa.
     assert coda.count_turni_oggi(now=mezzanotte_e_mezza_roma) == 1
+
+
+def test_il_giorno_del_tetto_non_sfora_di_un_ora_al_cambio_ora(tmp_path):
+    """M-3 (review finale «il linter e le best practice»): prima del fix
+    `day_end` si calcolava come `day_start + 86400`, un numero di secondi
+    esatto SOLO quando il giorno locale dura davvero 24 ore. Il 29/03/2026
+    l'ora legale a Roma scatta alle 02:00 e quel giorno dura 23 ore: sommare
+    86400 secondi all'epoch di mezzanotte del 29 sfora nella mezzanotte del
+    30 e arriva all'01:00 del 30 -- un'ora DENTRO il giorno sbagliato.
+
+    Il timestamp e' scelto apposta perche' un fuso sbagliato produca il
+    GIORNO sbagliato e non solo l'ora: 00:30 del 30/03 e' gia' inequivocabilmente
+    domani per chiunque guardi l'orologio, ma cadrebbe ancora dentro
+    `[day_start, day_start + 86400)` se il confine restasse un conteggio di
+    secondi invece che il calendario del fuso -- quindi il test non puo'
+    passare per caso, solo se il conto usa davvero la mezzanotte locale del
+    giorno SUCCESSIVO."""
+    coda = ReasoningQueue(str(tmp_path / "r.db"), leggi_fuso=lambda: "Europe/Rome")
+
+    mattina_29 = 1774771200.0     # 29/03/2026 10:00 CET (fuso ancora +01:00)
+    notte_30_oltre_confine = 1774823400.0  # 30/03/2026 00:30 CEST -- gia' domani
+
+    coda.enqueue("chat", {}, {}, deadline_ts=mattina_29 + 600, now=mattina_29)
+    coda.enqueue("chat", {}, {}, deadline_ts=notte_30_oltre_confine + 600,
+                 now=notte_30_oltre_confine)
+
+    assert coda.count_turni_oggi(now=mattina_29) == 1, (
+        "il turno delle 00:30 del 30/03 appartiene a domani: un day_end "
+        "calcolato come day_start + 86400 secondi lo conterebbe ancora "
+        "dentro il 29/03, un giorno che quell'anno dura solo 23 ore")
