@@ -758,11 +758,26 @@ test('seam _rendiOggetti: i momenti si leggono come dati secchi (orario HH:MM, p
   const corpo = document.createElement('div');
   window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
-  assert.match(corpo.textContent, /Prima ora di produzione/);
-  assert.match(corpo.textContent, /\b\d{2}:\d{2}\b/, 'l\'orario si legge HH:MM, non un timestamp ISO grezzo');
+  // Sul NODO giusto (rilievo 2 del brief «css-morto»: un assert sul testo di
+  // TUTTA la pagina/riga può essere soddisfatto da un'altra sezione).
+  // `<dt>`/`<dd>` non hanno separatore visivo nel textContent concatenato,
+  // quindi si legge la coppia esatta, non l'intera riga.
+  const momenti = corpo.querySelector('.bil-momenti');
+  assert.ok(momenti, 'deve esserci la sezione dei momenti derivati');
+  const etichette = Array.from(momenti.querySelectorAll('dt')).map((n) => n.textContent);
+  const valori = Array.from(momenti.querySelectorAll('dd')).map((n) => n.textContent);
+  assert.ok(etichette.includes('Prima ora di produzione'));
+
+  const primaOra = valori[etichette.indexOf('Prima ora di produzione')];
+  assert.match(primaOra, /^\d{2}:\d{2}$/, 'l\'orario si legge HH:MM, non un timestamp ISO grezzo: ' + primaOra);
   assert.doesNotMatch(corpo.textContent, /2026-08-23T/, 'nessun ISO grezzo in pagina');
-  assert.match(corpo.textContent, /71,2\s*%/, 'la quota di autoconsumo è una percentuale con la virgola italiana');
-  assert.match(corpo.textContent, /4,8\s*kWh/, 'il picco di produzione porta il suo valore in kWh');
+
+  const quota = valori[etichette.indexOf('Quota di autoconsumo')];
+  assert.match(quota, /^71,2\s*%$/, 'la quota di autoconsumo è una percentuale con la virgola italiana: ' + quota);
+
+  const picco = valori[etichette.indexOf('Picco di produzione')];
+  assert.match(picco, /4,8\s*kWh/, 'il picco di produzione porta il suo valore in kWh: ' + picco);
+  assert.match(picco, /\d{2}:\d{2}/, 'il picco di produzione porta anche l\'ora: ' + picco);
 });
 
 test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti derivati', () => {
@@ -785,14 +800,16 @@ test('seam _rendiOggetti: le entità del bilancio stanno dietro un rivelatore si
   const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
   assert.ok(btn, 'deve esserci un rivelatore per le entità del bilancio');
   const pannello = btn.nextElementSibling;
+  // Chiuso via `hidden` (attributo DOM, non solo un display CSS), come il
+  // rivelatore di comprimari/misure sopra: `textContent` include SEMPRE il
+  // testo dei nodi `hidden` (in jsdom come in un motore vero), quindi non è
+  // il segnale giusto per "non ancora visibile" -- lo è l'attributo.
   assert.equal(pannello.hidden, true, 'il pannello nasce chiuso');
-  assert.doesNotMatch(corpo.textContent, /sensor\.energia_prodotta_oggi/,
-    'l\'entità non deve essere visibile prima del click');
 
   btn.dispatchEvent(new window.Event('click', { bubbles: true }));
-  assert.equal(pannello.hidden, false);
-  assert.match(corpo.textContent, /sensor\.energia_prodotta_oggi/);
-  assert.match(corpo.textContent, /sensor\.energia_immessa_oggi/);
+  assert.equal(pannello.hidden, false, 'il click deve aprire il pannello');
+  assert.match(pannello.textContent, /sensor\.energia_prodotta_oggi/);
+  assert.match(pannello.textContent, /sensor\.energia_immessa_oggi/);
 });
 
 test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore di entità', () => {

@@ -34,7 +34,7 @@
    stringhe letterali IDENTICHE a `pavimento.GAMBE`, apostrofo compreso
    («chi c'e'»).
 
-   -- I cinque generi di oggetto (`cervello/oggetti.py::GENERI`) --
+   -- I cinque generi di EPISODIO (`cervello/oggetti.py::GENERI`) --
    funzionamento, presenza, energia, guasto, sicurezza. Ogni genere porta un
    `corpo` di forma diversa (`aggrega_giorno`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
@@ -54,6 +54,30 @@
    durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
    costruzioni-route.js §3: sono gia' nel payload, nasconderli dietro un
    fetch sarebbe la trappola che la guida delle Promesse vieta).
+
+   -- Il SESTO genere, `bilancio`, e' un'ALTRA FORMA (mandato «il bilancio
+      dell'energia», 27/08/2026 -- docs/design/2026-08-27-il-bilancio-dell-
+      energia.md §3, .superpowers/sdd/2026-08-27-il-bilancio/brief-pagina.md) --
+   un bilancio non e' una cosa accaduta fra due istanti, e' una QUANTITA' CON
+   UNA FORMA, un giorno intero: renderlo con lo stampo dell'episodio («da X a
+   Y», la freccia di `periodo()`) rifarebbe in pagina esattamente l'errore
+   che il giro dei dati ha appena tolto dall'archivio (undici frammenti di
+   energia per lo stesso dispositivo). Il suo `corpo` (`costruisci_corpo_
+   bilancio` in cervello/oggetti.py) non ha ne' `stato` ne' `valore_iniziale`/
+   `valore_finale`: ha `totali` (sei dimensioni al massimo, ognuna
+   `{valore,provenienza}`), `forma` (le stesse dimensioni, un valore per
+   punto -- **AVVISO segnalato da una review il 27/08/2026, dopo la prima
+   implementazione**: oggi e' una lista POSIZIONALE NUDA, senza l'istante di
+   ciascun punto, e HA OMETTE le ore senza dati -- l'indice NON e' l'ora del
+   giorno. Vedi l'avviso esteso sopra `rendiCurvaBilancio`, che e' l'unico
+   consumatore di `forma`), `momenti` (fatti derivati -- QUESTI portano
+   l'istante VERO di ciascun fatto, `HAClient._istante_da_ha`, e non
+   soffrono del difetto sopra: prima/ultima ora di produzione, il picco, le
+   quote), piu' `dispositivo` (nome leggibile) ed `entita` (i sensori che lo
+   compongono, aggiunti da `aggrega_giorno`). `rigaBilancio` sotto lo rende
+   per conto suo, SENZA passare da `frasePrincipale`/`periodo()`: sono
+   funzioni che presuppongono la forma dell'episodio, e usarle per un
+   bilancio le forzerebbe fuori dal loro contratto.
 
    -- Il giorno di default (mandato Task 7, verifiche dal vivo #1) --
    L'aggregazione notturna scrive «ieri» alle 00:20 (`server.py::
@@ -99,7 +123,8 @@ window.HirisOsservatoreRoute = (function () {
 
   var ETICHETTA_GENERE = {
     funzionamento: 'Funzionamento', presenza: 'Presenza / assenza',
-    energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza'
+    energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza',
+    bilancio: 'Bilancio'
   };
 
   /* Le sette direzioni dell'energia (mandato «le direzioni dell'energia»,
@@ -114,6 +139,17 @@ window.HirisOsservatoreRoute = (function () {
     scarica: 'Scarica della batteria', consumo: 'Consumo della casa',
     autoconsumo: 'Autoconsumo (prodotto e consumato sul posto)'
   };
+
+  /* Le sei dimensioni di un bilancio, in quest'ordine -- letterale, identico
+     a `DIREZIONI_BILANCIO` in `cervello/oggetti.py` (mandato «il bilancio
+     dell'energia», 27/08/2026): NON sette, "consumo" e' ridondante con
+     autoconsumo+prelievo e non e' una dimensione del bilancio (vedi il
+     commento sopra `DIREZIONI_BILANCIO` nel sorgente Python). Stessa
+     etichetta di `ETICHETTA_DIREZIONE` sopra: e' lo stesso vocabolario di
+     "immesso in rete"/"prelevato dalla rete" gia' usato dagli episodi di
+     energia -- il mandato chiede di riusare le stesse parole, non
+     inventarne di nuove. */
+  var ORDINE_DIREZIONI_BILANCIO = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica'];
 
   function el(tag, cls, testo) {
     var e = document.createElement(tag);
@@ -354,19 +390,16 @@ window.HirisOsservatoreRoute = (function () {
     return s;
   }
 
-  function rivelatoreDettagli(o) {
-    var comprimari = (o.corpo && o.corpo.comprimari) || [];
-    var misure = (o.corpo && o.corpo.misure) || {};
-    var chiaviMisure = Object.keys(misure);
-    if (!comprimari.length && !chiaviMisure.length) return null;
-
+  /* Il rivelatore sincrono, estratto (correzione di questo giro): era
+     duplicato letterale fra `rivelatoreDettagli` (comprimari/misure) e il
+     rivelatore delle entita' di un bilancio, sotto -- STESSO bottone,
+     STESSA logica open/close, STESSA disciplina "chiuso di default, i dati
+     sono gia' nel payload" (mandato Task 7). Un secondo copia-incolla qui
+     sarebbe il doppione che le fondamenta di questo prodotto vietano.
+     `riempiPannello(pannello)` scrive il contenuto specifico di ogni
+     chiamante dentro il pannello gia' creato, chiuso, con lo stile giusto. */
+  function creaRivelatore(testoChiuso, testoAperto, riempiPannello) {
     var wrap = el('div', 'field-group');
-    var testoChiuso = 'Chi c’era intorno';
-    /* Rilievo 8c: «Nascondi» da solo perde il referente quando piu' righe
-       sono aperte insieme -- lo stesso principio di "Nascondi i dettagli
-       tecnici" in costruzioni-route.js e "Nascondi il dettaglio" in
-       promesse-route.js. */
-    var testoAperto = 'Nascondi chi c’era intorno';
     var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
@@ -374,13 +407,7 @@ window.HirisOsservatoreRoute = (function () {
     var pannello = el('div');
     pannello.hidden = true;
     pannello.style.cssText = 'margin-top:6px';
-    if (comprimari.length) {
-      riga(pannello, 'Insieme a: ' + comprimari.join(', '), 'font-size:var(--fs-12);' + TONO_QUIETO);
-    }
-    chiaviMisure.forEach(function (k) {
-      var m = misure[k];
-      riga(pannello, k + ': da ' + m.da + ' a ' + m.a, 'font-size:var(--fs-12);' + TONO_QUIETO);
-    });
+    riempiPannello(pannello);
 
     btn.addEventListener('click', function () {
       var aperto = btn.getAttribute('aria-expanded') === 'true';
@@ -394,12 +421,319 @@ window.HirisOsservatoreRoute = (function () {
     return wrap;
   }
 
+  function rivelatoreDettagli(o) {
+    var comprimari = (o.corpo && o.corpo.comprimari) || [];
+    var misure = (o.corpo && o.corpo.misure) || {};
+    var chiaviMisure = Object.keys(misure);
+    if (!comprimari.length && !chiaviMisure.length) return null;
+
+    /* Rilievo 8c: «Nascondi» da solo perde il referente quando piu' righe
+       sono aperte insieme -- lo stesso principio di "Nascondi i dettagli
+       tecnici" in costruzioni-route.js e "Nascondi il dettaglio" in
+       promesse-route.js. */
+    return creaRivelatore('Chi c’era intorno', 'Nascondi chi c’era intorno', function (pannello) {
+      if (comprimari.length) {
+        riga(pannello, 'Insieme a: ' + comprimari.join(', '), 'font-size:var(--fs-12);' + TONO_QUIETO);
+      }
+      chiaviMisure.forEach(function (k) {
+        var m = misure[k];
+        riga(pannello, k + ': da ' + m.da + ' a ' + m.a, 'font-size:var(--fs-12);' + TONO_QUIETO);
+      });
+    });
+  }
+
+  /* ----------------------------------------------------- «il bilancio dell'energia»
+     Mandato «il bilancio dell'energia», 27/08/2026. Vedi il commento di
+     testa del file per il perche' (una quantita' con una forma, non un
+     episodio) e per il contratto esatto del corpo. */
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function svgEl(tag, attrs) {
+    var e = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    return e;
+  }
+
+  /* Un valore della gamba energia -> "24,5 kWh", virgola italiana. Il
+     backend ha gia' arrotondato a 2 decimali (`costruisci_corpo_bilancio`,
+     mandato punto 6, il difetto misurato `+0.010000000000000009`): qui si
+     FORMATTA, non si arrotonda una seconda volta -- `maximumFractionDigits:
+     2` e' un tetto che non taglia nessuna cifra vera, `minimumFractionDigits:
+     1` evita "24" secco per un numero che e' comunque una misura continua. */
+  function fmtKwh(v) {
+    if (v == null) return null;
+    return v.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' kWh';
+  }
+
+  /* Una quota 0..1 (`_quota`, 3 decimali nel backend) -> percentuale con un
+     decimale e virgola italiana: "71,2%". */
+  function fmtPercento(v) {
+    if (v == null) return null;
+    return (v * 100).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + '%';
+  }
+
+  /* Gli istanti dentro `corpo.momenti`/`corpo.forma` sono ISO-8601 CON FUSO
+     (`HAClient._istante_da_ha`: sempre UTC, mai un timestamp UNIX) --
+     un'origine DIVERSA da `inizio_ts`/`fine_ts` dell'oggetto (quelli sono
+     secondi UNIX, letti da `fmtOrario` con `* 1000`). Confonderli
+     produrrebbe un `Invalid Date` o una data nel 1970: due formati, due
+     funzioni, come il resto del file distingue i formati che arrivano da
+     fonti diverse. Il fuso di resa e' quello del BROWSER (`new Date`
+     converte da soli) -- stessa scelta gia' fatta da `periodo()`/
+     `fmtOrario` per il resto della pagina. */
+  function fmtOraIso(iso) {
+    if (!iso) return null;
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /* Punto 1 del brief, "in ordine di importanza": la riga che risponde a
+     «com'e' andata ieri», leggibile senza aprire niente. Riusa `.stat-grid`/
+     `.stat-tile` (sorelle: e' lo stesso componente della pagina Consumi,
+     "il metro sono le pagine sorelle" -- brief §"le regole imparate a caro
+     prezzo"). Una sola tessera per DIMENSIONE PRESENTE: mai una tessera a
+     zero per una dimensione che il dispositivo non ha (mandato, "cosa NON si
+     salva" -- niente batteria, niente "carica"/"scarica"). L'ordine e'
+     `ORDINE_DIREZIONI_BILANCIO`: produzione/autoconsumo/immissione/prelievo
+     -- le quattro del punto 1 -- vengono prima di carica/scarica, che
+     compaiono solo per un dispositivo con batteria. */
+  function rendiTotaliBilancio(box, totali) {
+    if (!totali) return;
+    var presenti = ORDINE_DIREZIONI_BILANCIO.filter(function (d) { return totali[d]; });
+    if (!presenti.length) return;
+
+    var grid = el('div', 'stat-grid');
+    presenti.forEach(function (d) {
+      var t = totali[d];
+      var tile = el('div', 'stat-tile');
+      tile.appendChild(el('div', 'st-label', ETICHETTA_DIREZIONE[d] || d));
+      tile.appendChild(el('div', 'st-value', fmtKwh(t.valore)));
+      // Punto 4 del brief: la provenienza della direzione, STESSO meccanismo
+      // gia' usato dagli episodi di energia -- niente badge quando non si
+      // conosce (mai una "sconosciuta" travestita da dato).
+      if (t.provenienza) {
+        var badge = badgeProvenienzaDirezione(t.provenienza);
+        var delta = el('div', 'st-delta');
+        delta.appendChild(el('span', 'agent-badge ' + badge.cls, badge.testo));
+        tile.appendChild(delta);
+      }
+      grid.appendChild(tile);
+    });
+    box.appendChild(grid);
+  }
+
+  /* Punto 2 del brief: «Ventiquattro valori per piu' serie non si leggono
+     come tabella. Serve una curva.» -- SVG scritto a mano, STESSO schema di
+     `svgBarre` in usage-route.js (nessuna libreria nuova, verificato: il
+     prodotto non ne porta nessuna). Le serie che «contano insieme» sono
+     produzione e prelievo (brief, punto 2: «e' il loro scarto ... che
+     racconta l'efficienza») -- se ci sono entrambe si sovrappongono in
+     barre affiancate, in ORDINE CRONOLOGICO; se ce n'e' una sola si disegna
+     quella sola. Nessun `innerHTML`: `createElementNS` + `setAttribute`, la
+     stessa disciplina "textContent/createElement ovunque" di tutto il resto
+     della pagina (vedi il commento di sicurezza in testa al file) -- qui
+     estesa all'SVG, che non e' un'eccezione.
+
+     **AVVISO dichiarato (segnalato da una review il 27/08/2026, DOPO la
+     prima implementazione di questa fetta -- vedi il rapporto del giro):
+     `corpo.forma` oggi e' una lista POSIZIONALE NUDA (`forma[dimensione] =
+     [numeri]`, senza l'istante di ciascun punto), e Home Assistant OMETTE
+     le ore senza dati -- non le manda a zero, non le manda affatto. Questo
+     significa che L'INDICE NELLA LISTA NON E' L'ORA DEL GIORNO: una
+     produzione che comincia alle 7 ha il suo primo valore in posizione 0,
+     non in posizione 7. Il backend guadagnera' un asse esplicito delle ore
+     per punto (chiave non ancora nota; NON toccare Python per questa
+     fetta). Questo grafico, PER ORA, non puo' far altro che disegnare le
+     barre in ordine di arrivo -- per questo il titolo/aria-label sotto dice
+     "in ordine cronologico" e MAI "ora per ora": affermare un'ora
+     specifica sarebbe un fatto falso travestito da dato, la stessa cosa che
+     `_differenza` (sopra, Python) rifiuta di fare per un valore che non si
+     puo' calcolare. `etichettaPuntoCurva` e' l'UNICO punto che traduce un
+     indice in un'etichetta: quando il payload guadagnera' l'ora vera, la
+     correzione e' UNA riga li', non cinque sparse nel rendering. */
+  function etichettaPuntoCurva(indice) {
+    return 'punto ' + (indice + 1);
+  }
+
+  function rendiCurvaBilancio(box, forma) {
+    if (!forma) return;
+    var serie = [];
+    if (forma.produzione) {
+      serie.push({ valori: forma.produzione, colore: 'var(--bilancio-produzione)', etichetta: ETICHETTA_DIREZIONE.produzione });
+    }
+    if (forma.prelievo) {
+      serie.push({ valori: forma.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: ETICHETTA_DIREZIONE.prelievo });
+    }
+    if (!serie.length) return;
+
+    var n = 0;
+    serie.forEach(function (s) { if (s.valori.length > n) n = s.valori.length; });
+    if (!n) return;
+    var massimo = 0;
+    serie.forEach(function (s) {
+      s.valori.forEach(function (v) { if (v != null && v > massimo) massimo = v; });
+    });
+    if (massimo <= 0) massimo = 0.000001; // niente divisione per zero: un giorno tutto a zero resta piatto, non rotto
+
+    var L = 640, A = 140, base = A - 20, sinistra = 4;
+    var passo = (L - sinistra * 2) / n;
+    var larghezzaBarra = Math.max(1, (passo - 2) / serie.length);
+
+    var svg = svgEl('svg', {
+      class: 'bil-grafico', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
+      'aria-label': 'Produzione e prelievo, in ordine cronologico'
+    });
+    var titolo = document.createElementNS(SVG_NS, 'title');
+    titolo.textContent = 'Produzione e prelievo, in ordine cronologico';
+    svg.appendChild(titolo);
+    var descrizione = document.createElementNS(SVG_NS, 'desc');
+    // "in ordine cronologico", non "ora per ora": vedi l'AVVISO sopra
+    // `rendiCurvaBilancio` -- l'asse orizzontale non e' ancora ancorato a
+    // un'ora del giorno.
+    descrizione.textContent = 'Barre in ordine cronologico, una per punto disponibile. ' +
+      'Gli stessi numeri, con la loro ora vera, sono nei momenti qui sotto.';
+    svg.appendChild(descrizione);
+
+    for (var i = 0; i < n; i++) {
+      serie.forEach(function (s, si) {
+        var v = s.valori[i];
+        if (v == null || v <= 0) return;
+        var h = (v / massimo) * (base - 6);
+        var x = sinistra + i * passo + si * larghezzaBarra;
+        var y = base - h;
+        var rect = svgEl('rect', {
+          x: x.toFixed(1), y: y.toFixed(1),
+          width: larghezzaBarra.toFixed(1), height: h.toFixed(1),
+          fill: s.colore
+        });
+        var titoloBarra = document.createElementNS(SVG_NS, 'title');
+        titoloBarra.textContent = s.etichetta + ' — ' + etichettaPuntoCurva(i) + ': ' + fmtKwh(v);
+        rect.appendChild(titoloBarra);
+        svg.appendChild(rect);
+      });
+    }
+    svg.appendChild(svgEl('line', { x1: 0, y1: base, x2: L, y2: base, stroke: 'var(--border)' }));
+    box.appendChild(svg);
+
+    var legenda = el('div', 'bil-legenda');
+    serie.forEach(function (s) {
+      var voce = el('span', 'ulg');
+      var pallino = el('i');
+      pallino.style.background = s.colore;
+      voce.appendChild(pallino);
+      voce.appendChild(document.createTextNode(s.etichetta));
+      legenda.appendChild(voce);
+    });
+    box.appendChild(legenda);
+  }
+
+  /* Punto 3 del brief: «I momenti derivati ... come dati secchi accanto alla
+     curva, non come frasi.» -- una lista etichetta/valore (`.bil-momenti`,
+     hiris-config.css), non un paragrafo discorsivo. Ogni momento e'
+     opzionale (spec, "mai una chiave con un valore fittizio") e compare solo
+     se c'e'. */
+  function rendiMomentiBilancio(box, momenti) {
+    if (!momenti) return;
+    var voci = [];
+    if (momenti.prima_ora_produzione) {
+      voci.push(['Prima ora di produzione', fmtOraIso(momenti.prima_ora_produzione)]);
+    }
+    if (momenti.ultima_ora_produzione) {
+      voci.push(['Ultima ora di produzione', fmtOraIso(momenti.ultima_ora_produzione)]);
+    }
+    if (momenti.picco_produzione) {
+      voci.push(['Picco di produzione',
+        fmtKwh(momenti.picco_produzione.valore) + ' alle ' + fmtOraIso(momenti.picco_produzione.ora)]);
+    }
+    if (momenti.fine_scarica_batteria) {
+      voci.push(['Fine scarica della batteria', fmtOraIso(momenti.fine_scarica_batteria)]);
+    }
+    if (momenti.quota_autoconsumo != null) {
+      voci.push(['Quota di autoconsumo', fmtPercento(momenti.quota_autoconsumo)]);
+    }
+    if (momenti.quota_autosufficienza != null) {
+      voci.push(['Quota di autosufficienza', fmtPercento(momenti.quota_autosufficienza)]);
+    }
+    if (!voci.length) return;
+
+    var dl = el('dl', 'bil-momenti');
+    voci.forEach(function (v) {
+      dl.appendChild(el('dt', null, v[0]));
+      dl.appendChild(el('dd', null, v[1]));
+    });
+    box.appendChild(dl);
+  }
+
+  /* Le entita' che compongono il bilancio (trasparenza, spec §7): STESSO
+     rivelatore sincrono di `rivelatoreDettagli`, riusato via `creaRivelatore`
+     -- non un secondo componente. */
+  function rivelatoreEntitaBilancio(entita) {
+    if (!entita || !entita.length) return null;
+    return creaRivelatore('Quali sensori', 'Nascondi quali sensori', function (pannello) {
+      riga(pannello, entita.join(', '), 'font-size:var(--fs-12);' + TONO_QUIETO);
+    });
+  }
+
+  /* Il bilancio NON passa da `periodo()`/`frasePrincipale()`: quelle due
+     funzioni presuppongono la forma dell'episodio (un `inizio_ts`/`fine_ts`
+     che apre e chiude una cosa accaduta, un `corpo.stato`), e il bilancio non
+     ce l'ha -- e' il punto per cui questa fetta esiste (vedi il commento di
+     testa del file). `inizio_ts`/`fine_ts` restano i confini del GIORNO
+     (sempre chiuso, mai `fine_ts: None`: `aggrega_giorno`), non l'apertura e
+     la chiusura di un evento: mostrarli con la freccia di `periodo()`
+     rifarebbe esattamente lo stampo sbagliato che il mandato vieta. */
+  function rigaBilancio(o) {
+    var c = o.corpo || {};
+    var box = el('div');
+    box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
+      'display:flex;flex-direction:column;gap:8px';
+
+    var testa = el('div');
+    testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    testa.appendChild(el('span', 'agent-badge badge-off', ETICHETTA_GENERE.bilancio));
+    testa.appendChild(el('span', 'text-mono field-hint', o.protagonista || ''));
+    box.appendChild(testa);
+
+    // Il nome leggibile del dispositivo (`corpo.dispositivo`) e' il
+    // CONTENUTO, non l'identificatore tecnico (`protagonista`, il
+    // `dispositivo_id` opaco di HA, gia' nel monospazio sopra) -- stessa
+    // gerarchia contenuto/riferimento del rilievo 7 (vedi `rigaOggetto`).
+    var titolo = el('p', null, c.dispositivo || nomeProtagonista(o));
+    titolo.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
+    box.appendChild(titolo);
+
+    rendiTotaliBilancio(box, c.totali);
+    rendiCurvaBilancio(box, c.forma);
+    rendiMomentiBilancio(box, c.momenti);
+
+    // Difensivo: l'invariante di scrittura garantisce sempre almeno un
+    // totale (`aggrega_giorno`: "un bilancio senza nemmeno un totale ...
+    // NON si scrive"), ma un payload malformato non deve tornare a
+    // "(nessun dettaglio)" -- lo stesso buco che questa fetta chiude.
+    if (!c.totali && !c.forma && !c.momenti) {
+      riga(box, '(nessun dato per questo bilancio)', TONO_QUIETO);
+    }
+
+    var entitaRivelatore = rivelatoreEntitaBilancio(c.entita);
+    if (entitaRivelatore) box.appendChild(entitaRivelatore);
+
+    return box;
+  }
+
   /* Rilievo 7 della review: la gerarchia era rovesciata -- l'identificatore
      era il testo piu' in evidenza, il fatto («25/08 15:30 → 17:05 · da 18,2
      a 21,0») stava nella classe delle note a margine. L'occhio cerca il
      contrario: il COSA E' SUCCESSO e' il contenuto, l'identificatore e' il
      riferimento -- stessa gerarchia gia' in albero-route.js, il metro. */
   function rigaOggetto(o) {
+    // Il bilancio e' un genere a parte, con una forma diversa dall'episodio
+    // (vedi il commento di testa del file): esce subito verso `rigaBilancio`,
+    // che NON riusa `periodo()`/`frasePrincipale()` -- quelle presuppongono
+    // un "da → a" che il bilancio non ha.
+    if (o.genere === 'bilancio') return rigaBilancio(o);
+
     var box = el('div');
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
       'display:flex;flex-direction:column;gap:4px';
