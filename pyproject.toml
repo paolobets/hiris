@@ -33,12 +33,23 @@ extend-select = ["E501"]  # le righe lunghe non sono nel default
 
 ignore = [
     # BLE001 (blind-except) — 103 casi, 99 in produzione.
-    # In questo prodotto `except Exception` e' una DIFESA DELIBERATA, e la
-    # maggioranza dei blocchi ha gia' il perche' scritto nel commento accanto
-    # («una difesa che solleva non e' una difesa»). Il difetto che BLE001 vuole
-    # prendere e' la difesa MUTA: quella la prende S110 (try-except-pass), che
-    # resta accesa. Non si perde copertura, si sposta su una regola che dice la
-    # cosa giusta.
+    # In questo prodotto `except Exception` e' spesso una DIFESA DELIBERATA, e
+    # la maggioranza dei blocchi ha gia' il perche' scritto nel commento
+    # accanto («una difesa che solleva non e' una difesa»). Spegnerla ha pero'
+    # un COSTO DI COPERTURA vero, non nullo: BLE001 vede ogni `except
+    # Exception`/`except BaseException`, qualunque sia la sua forma. S110
+    # (try-except-pass), che resta accesa, vede SOLO la forma sintattica
+    # `try: ... except ...: pass`. Non vede `with contextlib.suppress(...)`,
+    # e non vede un `except Exception:` che assorbe l'errore e continua con un
+    # valore neutro invece di rilanciare — due forme che questa stessa fetta
+    # ha usato (i sette S110 convertiti in `suppress(...)`, es.
+    # hiris/app/backends/openai_compat_runner.py:73). Oggi quelle difese mute
+    # non sono sorvegliate da nessuna regola accesa. La accettiamo lo stesso
+    # perche' l'alternativa — tenere BLE001 accesa — costerebbe 99 `# noqa` in
+    # produzione su un pattern che qui e' la norma, non l'eccezione: rumore
+    # che nasconderebbe i pochi casi genuinamente muti invece di segnalarli.
+    # E' una scelta di rumore-vs-copertura, non un'equivalenza: non sostenerla
+    # come tale.
     "BLE001",
 ]
 
