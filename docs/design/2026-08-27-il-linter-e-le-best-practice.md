@@ -115,8 +115,13 @@ provata. Rischio misurato e assente: la suite e' **verde su 3.14.3**, quindi su 
 - **`ruff` appuntato** in `hiris/requirements.txt` (`ruff>=0.16.4,<0.17.0`), con lo stesso
   ragionamento dei «pavimenti» gia' scritto in quel file: un linter che cambia da solo trasforma un
   CI verde in rosso senza che nessuno abbia toccato una riga.
-- **`oxlint` appuntato** in `package.json` come `devDependency`, invocato da `npm run lint`. Nessun
-  `eslint` con la sua catena di plugin: qui ci sono 22 file JS, non un ecosistema.
+- **`oxlint` appuntato** in `package.json` come `devDependency` (`~1.80.0`), invocato da
+  `npm run lint`. Nessun `eslint` con la sua catena di plugin: qui ci sono 22 file JS, non un
+  ecosistema.
+- **`oxlint` va invocato con `--deny-warnings`.** Misurato il 27/08: senza quel flag **esce con
+  codice 0 pur avendo segnalato 27 rilievi**. Segnalerebbe e lascerebbe passare — la meta' JS del
+  cancello sarebbe decorativa, e nessuno se ne accorgerebbe perche' l'output sembra giusto. `ruff`
+  esce 1 correttamente e non ha bisogno di niente.
 - **`target-version = "py311"`** — il piu' basso che il CI dichiara di supportare.
 
 ---
@@ -137,17 +142,25 @@ simplify, perflint, ruff, isort). Sopra, quattro decisioni **misurate il 27/08/2
 
 Non stimato: i fix sono stati applicati su una copia usa-e-getta del codice e il resto contato.
 
-Il conto parte da **836** (set di default, nessuna esclusione) e scende a **657** una volta applicate
-le quattro decisioni qui sopra — che e' il numero da cui parte il sanamento:
+Il perimetro esatto e' `hiris scripts tests conftest.py .smoke-test` — cinque bersagli **nominati**,
+mai `.`: le cartelle non tracciate (`Testbook`, `Nuova grafica`, `.mockups`) esistono in locale e non
+sul CI, e un cancello che guarda cose diverse nei due posti non e' un cancello. `.smoke-test` sono
+due file tracciati (377 righe, 6 rilievi) e quindi entra.
 
-- **357 fix sicuri** a macchina
-- **+ 323 fix «unsafe»** — quasi tutti i **178 `RUF059`** dei test (prefisso `_` su variabili
-  spacchettate e mai usate; **zero in produzione**), con 2.836 test a fare da prova
-- **= 87 rilievi a mano**, di cui **38 in produzione** e 49 fra test e script
-- **+ 128 righe** oltre le 100 colonne
+Con la configurazione definitiva il conto e' **798** (comprende i 137 `E501` che nascono con
+`line-length = 100`). Poi:
 
-Gli 87, per famiglia: `SIM117` 25 · `UP031` 20 · `RUF012` 7 · `S110` 7 · `TRY401` 7 · `B017` 5 ·
-`PLW1510` 5 · `SIM115` 5 · `ASYNC230` 2 · `DTZ006` 2 · `PLR0124` 1 · `SIM102` 1.
+- **798 → 564** applicando i **fix sicuri**
+- **564 → 241** applicando i **fix «unsafe»** (323 correzioni, quasi tutte i **178 `RUF059`** dei
+  test: prefisso `_` su variabili spacchettate e mai usate, **zero in produzione**), con 2.836 test
+  a fare da prova
+- **241 = 157 righe lunghe + 84 rilievi a mano**
+
+**`E501` sale da 137 a 157 durante il sanamento**, e non e' un errore di conto: accorpare import e
+convertire in f-string **allunga le righe**. E' la prova misurata che la tipografia va **per ultima**.
+
+Gli 84, per famiglia: `SIM117` 21 · `UP031` 20 · `RUF012` 7 · `S110` 7 · `TRY401` 7 · `B017` 5 ·
+`PLW1510` 5 · `SIM115` 5 · `ASYNC230` 3 · `DTZ006` 2 · `PLR0124` 1 · `SIM102` 1.
 
 **Due precisazioni fatte guardando il codice, non il conteggio:**
 
@@ -166,13 +179,13 @@ il primo giorno. La suite dev'essere verde a ogni passo.
 
 | # | Commit | Cosa | Perche' a se' |
 |---|---|---|---|
-| 0 | `chore(lint)` | `pyproject.toml`, `ruff` appuntato, `oxlint` + `npm run lint`. **Nessuno sbarramento ancora.** | La configurazione e' il documento: nasce leggibile e da sola. |
-| 1 | `test` + `fix(tests)` | **Il doppione vero**: via la ridefinizione a `tests/test_claude_runner.py:323`. | Va sanato **prima** di spegnere `F811` nei test, o si spegne insieme al caso che lo giustificava. |
-| 2 | `chore(lint)` | **I 357 fix sicuri**, sola macchina. Suite verde. | Rischio nullo, diff grande: dev'essere leggibile senza nient'altro dentro. |
-| 3 | `chore(lint)` | **I 323 fix «unsafe»**, quasi tutti `RUF059` nei test. Suite verde. | Classe di rischio diversa dal #2: un `git revert` deve poter tornare indietro **solo** su questi. |
-| 4..n | uno **per famiglia** | Gli **87 a mano**: `SIM117`, `UP031`, `RUF012`, `S110`, `TRY401`, `PLW1510`, `SIM115`, `SIM102`, `PLR0124`, `ASYNC230`. | Una famiglia = una decisione = un commit leggibile nel log fra sei mesi. Non per file. |
+| **0** | `test` + `fix(tests)` | **Il doppione vero**, per primo: via la ridefinizione a `tests/test_claude_runner.py:323`. | **Prima della configurazione, non dopo.** `per-file-ignores` su `tests/**` spegnera' `F811`, e quel caso vero verrebbe silenziato insieme ai 55 falsi positivi che lo giustificano. Chi lo sana dopo non lo trova piu'. |
+| 1 | `chore(lint)` | `pyproject.toml`, `ruff` appuntato, `oxlint` + `npm run lint`. **Nessuno sbarramento ancora.** | La configurazione e' il documento: nasce leggibile e da sola. |
+| 2 | `chore(lint)` | **I fix sicuri** (798 → 564), sola macchina. Suite verde. | Rischio nullo, diff grande: dev'essere leggibile senza nient'altro dentro. |
+| 3 | `chore(lint)` | **I 323 fix «unsafe»** (564 → 241), quasi tutti `RUF059` nei test. Suite verde. | Classe di rischio diversa dal #2: un `git revert` deve poter tornare indietro **solo** su questi. |
+| 4..n | uno **per famiglia** | Gli **84 a mano**: `SIM117`, `UP031`, `RUF012`, `S110`, `TRY401`, `PLW1510`, `SIM115`, `SIM102`, `PLR0124`, `ASYNC230`. | Una famiglia = una decisione = un commit leggibile nel log fra sei mesi. Non per file. |
 | — | `test` + `fix` **rosso → verde** | **I difetti veri**: `B017` x 5, `DTZ006` x 2. Il test che li dimostra viene **prima** della correzione. | Sono cambi di comportamento, non igiene. La finta deve saper **produrre** il difetto. |
-| — | `chore(lint)` | **Le 128 righe** oltre 100 colonne. Sola tipografia. | Se il diff contiene una riga di logica, non e' questo commit. |
+| — | `chore(lint)` | **Le 157 righe** oltre 100 colonne. Sola tipografia, **per ultima**. | Se il diff contiene una riga di logica, non e' questo commit. E vanno per ultime perche' i fix automatici ne creano venti di nuove. |
 | — | `chore(lint)` + `fix(frontend)` | **I 27 rilievi JS**, dentro cui il **codice morto** di `config/api.js`. | Ogni fetta e' anche pulizia: cancellare cio' che il linter ha trovato morto e' parte della fetta, non un extra. |
 | **ultimo** | `chore(ci)` | **Il cancello si chiude**: job `lint`, `branches: [master, "2.0"]`, `"3.13"` in matrice, `pre-push` su ogni push, commento dell'hook riscritto. | Si chiude solo su verde, mai prima. |
 
