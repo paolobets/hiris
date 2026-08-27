@@ -52,6 +52,15 @@ Tutte e quattro hanno bisogno delle stesse tre cose, e di nient'altro.
 | **La forma** | gli stessi valori **ora per ora** | è l'unica cosa che permette di dire **quando** spostare qualcosa |
 | **I momenti** | prima e ultima ora di produzione; il picco e a che ora; quando la batteria ha finito di scaricare; quota di autoconsumo e di autosufficienza | è ciò su cui si ragiona, invece di rileggere la curva |
 
+**Correzione della review (punto 1, 27/08/2026): sono SETTE, non sei.** La stesura originale escludeva
+`consumo` come «ridondante con autoconsumo+prelievo» — un'assunzione, non un fatto misurato, e su
+questa casa è falsa (§0 di questa correzione ha i numeri: `autoconsumata` esclude la batteria, quindi
+autoconsumo+prelievo perde la scarica, oltre metà del consumo vero). Il consumo è un dato MISURATO che
+l'integrazione porta già (`energia_consumata_oggi`): buttarlo via per dedurlo da una somma che non
+torna produceva un numero falso ogni notte su `quota_autosufficienza`. Il consumo è il settimo totale,
+letto e non derivato, e le quote si calcolano su quello — vedi `hiris/app/cervello/oggetti.py`,
+`DIREZIONI_BILANCIO` e `_momenti_bilancio`.
+
 **La grana è l'ora**, e per due ragioni che coincidono:
 
 1. **è la grana delle decisioni** — il consiglio utile è «nel primo pomeriggio», non «alle 13:47»;

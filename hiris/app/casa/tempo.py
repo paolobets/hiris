@@ -272,7 +272,7 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
                 # Stesso motivo del ramo dettaglio: le statistiche tornano in
                 # UTC e la finestra nasce nel fuso della casa. Due offset nella
                 # stessa risposta sono la fondamenta 3 rotta in un dizionario.
-                "punti": _nel_fuso(ridotte, "inizio", a_iso), "nota": nota}
+                "punti": _nel_fuso(ridotte, ("inizio", "fine"), a_iso), "nota": nota}
 
     esito = await ha.storico([entita], da_iso, a_iso)
     if "serie" not in esito:
@@ -317,7 +317,7 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
             # persona) puo' concluderne che i dati cominciano due ore dopo
             # l'apertura della finestra. E' la fondamenta 3 dentro una sola
             # risposta, e costa una riscrittura.
-            "punti": _nel_fuso(ridotti, "quando", a_iso), "nota": nota}
+            "punti": _nel_fuso(ridotti, ("quando",), a_iso), "nota": nota}
 
 
 def epoch_istante(grezzo) -> float | None:
@@ -341,12 +341,24 @@ def epoch_istante(grezzo) -> float | None:
     return None if momento.tzinfo is None else momento.timestamp()
 
 
-def _nel_fuso(punti: list[dict], chiave: str, a_iso: str) -> list[dict]:
-    """Gli istanti di `punti` riscritti nel fuso di `a_iso`.
+def _nel_fuso(punti: list[dict], chiavi: tuple[str, ...], a_iso: str) -> list[dict]:
+    """Le chiavi temporali di `punti` (`chiavi`) riscritte nel fuso di `a_iso`.
 
     Lo storico di Home Assistant torna in UTC, la finestra nasce nel fuso
     della casa: senza questa riscrittura la stessa risposta porta due offset
     e chi legge deve fare i conti da solo -- o non li fa.
+
+    **Ogni chiave temporale del punto, non solo la prima** (correzione
+    BASSA della review, mandato «il bilancio dell'energia», punto 5,
+    27/08/2026): la traduzione unificata ha aggiunto la chiave `fine` a
+    ogni fascia delle statistiche, ma questa funzione riscriveva solo
+    `inizio` -- lo stesso punto usciva con `inizio` a +02:00 e `fine`
+    ancora a +00:00, due fusi nella stessa risposta. E' la rottura della
+    consistenza fra le porte dentro un modulo i cui stessi commenti la
+    denunciano per `finestra_coperta`/`punti` (vedi `andamento` sopra) e
+    non se ne accorgevano per `fine`. Il ramo del dettaglio passa una sola
+    chiave (`("quando",)`): le sue righe non portano `fine`, quindi il
+    ciclo sotto e' un no-op su quella chiave, non un ramo diverso.
 
     Cio' che non si sa leggere resta com'e': meglio un istante nel fuso
     sbagliato che uno inventato, e la coppia `finestra_coperta` lo dichiara
@@ -359,11 +371,12 @@ def _nel_fuso(punti: list[dict], chiave: str, a_iso: str) -> list[dict]:
         return list(punti)
     riscritti = []
     for p in punti:
-        quando = epoch_istante(p.get(chiave))
-        if quando is None:
-            riscritti.append(p)
-            continue
-        riscritti.append({**p, chiave: datetime.fromtimestamp(quando, tz=zona).isoformat()})
+        nuovo = dict(p)
+        for chiave in chiavi:
+            quando = epoch_istante(p.get(chiave))
+            if quando is not None:
+                nuovo[chiave] = datetime.fromtimestamp(quando, tz=zona).isoformat()
+        riscritti.append(nuovo)
     return riscritti
 
 

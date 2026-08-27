@@ -932,11 +932,25 @@ async def costruisci_bilanci(
     comprimari e le direzioni sono una connessione sola per il giro): tutti
     gli `entity_id` utili -- le dimensioni scelte piu' l'eventuale entita'
     batteria di ogni dispositivo -- finiscono in UNA chiamata a
-    `HAClient.statistiche_orarie()`. Se quella chiamata fallisce, FALLISCONO
-    TUTTI i dispositivi candidati insieme (`bilanci` vuota, `falliti =
-    len(candidati)`): non c'e' un fallimento parziale possibile con una
-    connessione sola, a differenza dei comprimari (una `legami` per
-    soggetto).
+    `HAClient.statistiche_orarie()`. Se quella chiamata fallisce (un
+    `{"errore": ...}` vero, es. il websocket giu'), FALLISCONO TUTTI i
+    dispositivi candidati insieme (`bilanci` vuota, `falliti =
+    len(candidati)`).
+
+    **Due guasti diversi, entrambi contano** (secondo guasto corretto dalla
+    review, mandato punto 3, 27/08/2026). La richiesta puo' anche RIUSCIRE
+    e tornare comunque vuota per UN candidato -- identificatori rinominati,
+    recorder ripartito (misurato: il database del recorder e' gia' rinato
+    una volta, il 13 agosto). Prima di questa correzione questo caso non
+    contava come fallito: un `corpo` senza nessun totale veniva scritto
+    comunque, e la riparazione all'avvio (che SOSTITUISCE) lo avrebbe usato
+    per rimpiazzare un giorno che aveva gia' un bilancio -- gli undici
+    frammenti tornano, un impoverimento puro. Ora **un candidato la cui
+    serie non porta nessun totale conta come fallito** (`falliti` cresce di
+    uno, quel dispositivo non entra in `bilanci`), indipendentemente dagli
+    altri candidati della stessa connessione: qui il fallimento PUO' essere
+    parziale (un dispositivo su due, es.), a differenza del guasto di rete
+    sopra che li prende tutti insieme.
 
     Nessun dispositivo candidato -> nessuna chiamata di rete: se questa
     casa non ha nessuna direzione nota (o `archivio_casa` non c'e' ancora),
@@ -957,6 +971,19 @@ async def costruisci_bilanci(
 
     membri_per_dispositivo: dict[str, set[str]] = {}
     for soggetto in soggetti_energia:
+        # **Correzione BASSA della review (mandato, punto 6, 27/08/2026):
+        # solo i soggetti che hanno DAVVERO una direzione entrano fra i
+        # "membri" candidati.** `soggetti_energia` nella vita vera porta
+        # TUTTI i soggetti osservati quel giorno (`server.py::_aggrega_ieri`
+        # e `riaggrega_gli_ultimi_due_giorni` passano `sorted(soggetti)`,
+        # senza filtro) -- prima di questa correzione un interruttore o un
+        # sensore diagnostico dello STESSO dispositivo dell'inverter finiva
+        # elencato come «dentro il bilancio» pur continuando a produrre il
+        # proprio episodio. Innocuo su questa casa (l'inverter ha solo
+        # energia, potenza e batteria), falso su un dispositivo misto.
+        info = direzioni.get(soggetto) if direzioni else None
+        if not info or not info.get("direzione"):
+            continue
         voce = entita_per_id.get(soggetto)
         dispositivo_id = voce.get("dispositivo_id") if voce else None
         if dispositivo_id:
@@ -1012,15 +1039,34 @@ async def costruisci_bilanci(
         return [], len(candidati)
 
     serie = esito["serie"]
-    bilanci = [
-        {"dispositivo_id": dispositivo_id, "nome": c["nome"], "entita": c["entita"],
-         "corpo": costruisci_corpo_bilancio(
-             serie=serie, entita_per_dimensione=c["entita_per_dimensione"],
-             provenienza_per_dimensione=c["provenienza_per_dimensione"],
-             entita_batteria=c["entita_batteria"])}
-        for dispositivo_id, c in candidati.items()
-    ]
-    return bilanci, 0
+    bilanci: list[dict] = []
+    falliti = 0
+    for dispositivo_id, c in candidati.items():
+        corpo = costruisci_corpo_bilancio(
+            serie=serie, entita_per_dimensione=c["entita_per_dimensione"],
+            provenienza_per_dimensione=c["provenienza_per_dimensione"],
+            entita_batteria=c["entita_batteria"])
+        if not corpo.get("totali"):
+            # **Correzione MEDIA della review (mandato, punto 3,
+            # 27/08/2026): una serie vuota dove ci si aspettava un bilancio
+            # CONTA come fallimento**, anche se `ha_client.statistiche_
+            # orarie()` non ha sollevato nessun `errore` -- identificatori
+            # rinominati, recorder ripartito (misurato: il database del
+            # recorder e' gia' rinato una volta, il 13 agosto -- vedi la
+            # spec dell'osservatore, §9③). Un bilancio senza nemmeno un
+            # totale non e' un fatto onesto su questo dispositivo, e'
+            # un'assenza indistinguibile da «non ho letto niente»: la
+            # riparazione (`riaggrega_gli_ultimi_due_giorni`, che
+            # SOSTITUISCE) deve fermarsi su questo `falliti`, o sostituisce
+            # un giorno che aveva gia' un bilancio con uno senza -- gli
+            # undici frammenti tornano. La notte (`_aggrega_ieri`, che
+            # COSTRUISCE da zero) ignora `falliti` apposta: resta
+            # tollerabile, non peggiora niente che gia' esisteva.
+            falliti += 1
+            continue
+        bilanci.append({"dispositivo_id": dispositivo_id, "nome": c["nome"],
+                        "entita": c["entita"], "corpo": corpo})
+    return bilanci, falliti
 
 
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:

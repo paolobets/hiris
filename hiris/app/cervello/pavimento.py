@@ -1,9 +1,14 @@
 """Cosa l'osservatore guarda comunque, qualunque cosa dica l'obiettivo.
 
 **Il pavimento non e' una lista scritta a mano.** Si deriva da cio' che Home
-Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo,
-classe dello stato -- perche' una lista a mano invecchia col primo dispositivo
-nuovo e nessuno se ne accorge.
+Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo
+(`device_class`), `source_type` -- perche' una lista a mano invecchia col
+primo dispositivo nuovo e nessuno se ne accorge. **Non `state_class`**
+(correzione di parole della review, mandato «il bilancio dell'energia»,
+punto 7, 27/08/2026): dopo la correzione del 27/08 (vedi il docstring di
+`gamba` sotto), questa funzione non la legge piu' per decidere nessuna
+gamba -- resta grezzo conservato nell'archivio (`cervello/archivio.py`),
+non un criterio del pavimento.
 
 **Perche' esiste un pavimento.** Il prompt dell'obiettivo decide cosa entra
 nelle osservazioni, quindi e' un punto singolo che puo' ACCECARE l'osservatore

@@ -455,7 +455,7 @@ cambi al giorno da sola. Un sensore di temperatura ne fa 935. **Se un giorno ser
 che si guadagna** — ma non si ottimizza adesso: il numero è sostenibile e ridurre significherebbe
 decidere in scrittura, che è la cosa che questa fetta non fa.
 
-### ③ Le statistiche di HA NON sostituiscono questa memoria
+### ③ Le statistiche di HA NON sostituiscono questa memoria — vero per la presenza, falso per l'energia
 
 Sembrava una scorciatoia: le entità con `state_class` hanno statistiche orarie, quindi l'osservatore
 potrebbe non conservarle. **Misurato: le statistiche di questa casa partono dal 13 agosto** — tredici
@@ -464,6 +464,18 @@ giorni, non mesi. Il database del recorder è evidentemente nato allora.
 E l'argomento che vale più della misura: **se è già successo una volta che quel database ripartisse
 da zero, può succedere ancora.** La copia dell'osservatore non duplica le statistiche — è l'unica che
 non dipende da quel file.
+
+**Correzione (mandato «il bilancio dell'energia», punto 7, 27/08/2026): questo paragrafo, senza
+eccezioni, non è più vero.** Resta vero per la presenza — tre giorni di storico non bastano, ed è il
+motivo per cui l'osservatore esiste per quella gamba. Per l'energia è **falso**: le statistiche orarie
+di HA coprono la stessa finestra (oltre i 13 giorni misurati qui, e oltre i 21 giorni del grezzo
+dell'osservatore), sono corrette per gli azzeramenti dei contatori (il grezzo no: la prima notte ha
+sbagliato l'azzeramento, `da 6,0 a 5,99` su un contatore che sale), e il bilancio dell'energia
+(`docs/design/2026-08-27-il-bilancio-dell-energia.md`, §4) le legge invece di ricostruirle dal
+grezzo. Il rischio del database ripartito da zero resta vero in astratto, ma non è più un argomento
+per duplicare: è la ragione per cui il grezzo dell'energia non si toglie ancora (vedi la spec del
+bilancio, §6, «le domande lasciate aperte»), non per continuare a fingere che le statistiche non
+bastino.
 
 ### ④ Le superfici di salute: due funzionano, una no
 

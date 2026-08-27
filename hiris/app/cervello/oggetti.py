@@ -14,7 +14,10 @@ si corregge piu'.
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
 esce.** La prima non e' una lista scritta a mano: il pavimento (`pavimento.
 gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
-dominio, `device_class`, `state_class`. **La seconda, invece, SI'**
+dominio, `device_class`, `source_type` (**non `state_class`**: correzione
+di parole della review, mandato «il bilancio dell'energia», punto 7,
+27/08/2026 -- dopo la correzione del 27/08, `pavimento.gamba` non lo legge
+piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece, SI'**
 (correzione del giro di review, punto 9): `_FUNZIONANO` qui sotto e' una
 lista scritta a mano dei domini che si accendono e si spengono. Non c'e' modo
 di derivarla: Home Assistant non dichiara da nessuna parte «questo dominio
@@ -40,15 +43,33 @@ from .pavimento import gamba
 
 GENERI = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilancio")
 
-# Le sei dimensioni che il bilancio riporta -- **non sette**: `direzioni_
-# energia()` (HAClient) conosce anche "consumo" (energia_consumata_oggi),
-# ma quel totale e' RIDONDANTE con autoconsumo+prelievo (§1 della spec: «se
-# un dato non serve a nessuna frase in piu', non va salvato») -- l'entita'
-# che lo porta e' comunque DENTRO il bilancio del suo dispositivo (smette di
-# produrre un episodio proprio, vedi `bilanci` in `aggrega_giorno`), solo
-# non compare come settimo totale.
+# Le SETTE dimensioni che il bilancio riporta. **Il consumo e' la settima**
+# (correzione ALTO della review, mandato «il bilancio dell'energia», punto
+# 1, 27/08/2026): prima di questa correzione erano sei, e "consumo" era
+# dichiaratamente escluso come "RIDONDANTE con autoconsumo+prelievo" -- una
+# frase che era un'ASSUNZIONE, non un fatto misurato, e su questa casa e'
+# FALSA. `_momenti_bilancio` sotto usava quell'identita' per calcolare
+# `quota_autosufficienza` come `autoconsumo/(autoconsumo+prelievo)`: su
+# questa integrazione «autoconsumata» ESCLUDE la batteria (verificato:
+# e' esattamente prodotta-esportata-carica), quindi la somma mancava la
+# scarica -- oltre meta' del consumo vero della casa. Misurato il
+# 26/08/2026: consumata 14,72 kWh contro autoconsumata+prelievo 6,21 (la
+# differenza, 8,51, e' esattamente la scarica della batteria quel giorno).
+# Il bilancio avrebbe scritto ogni notte un numero FALSO sull'autosufficienza
+# (0,964 invece di 0,985 -- e con piu' ciclo di batteria la forbice esplode:
+# 0,167 invece di 0,41).
+#
+# **La correzione non aggiusta la formula aggiungendo la scarica**: sarebbe
+# di nuovo DEDURRE, e la relazione fra autoconsumo e batteria e' semantica
+# di QUESTA integrazione -- un altro inverter potrebbe includere la batteria
+# gia' dentro "autoconsumata". Il consumo e' un dato MISURATO che gia'
+# avevamo (`energia_consumata_oggi`, la direzione "consumo" nella mappa
+# delle direzioni) e lo si buttava via in nome di una derivazione sbagliata:
+# ora si SMETTE di derivarlo, si legge, e le quote si calcolano su quello
+# (vedi `_momenti_bilancio`). Dove il sensore del consumo non esiste, la
+# quota non si scrive -- campo assente, mai un numero inventato.
 DIREZIONI_BILANCIO = ("produzione", "autoconsumo", "immissione",
-                      "prelievo", "carica", "scarica")
+                      "prelievo", "carica", "scarica", "consumo")
 
 # I domini che «funzionano»: si accendono e si spengono, si aprono e si
 # chiudono. Sono i protagonisti degli oggetti di funzionamento. **Lista
@@ -205,8 +226,17 @@ def _gamba_del_cambio(soggetto: str, riga: dict) -> str | None:
     presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
     correzione, le tre classi che Home Assistant dichiara sull'entita' --
     `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
-    definizione, non un giudizio nostro: e' cio' che `pavimento.gamba()`
-    legge per decidere la gamba di `sensor` e `binary_sensor`.
+    definizione, non un giudizio nostro. **`pavimento.gamba()` legge solo
+    `device_class` e `source_type`** per decidere la gamba di `sensor` e
+    `binary_sensor` (correzione di parole della review, mandato «il
+    bilancio dell'energia», punto 7, 27/08/2026: prima di questa
+    correzione questo docstring diceva che le leggeva tutte e tre --
+    `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
+    traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
+    grezzo, non e' tolta dallo schema: e' `pavimento.gamba()` che non la
+    legge, non `archivio.py` che smette di conservarla -- i 22 giorni di
+    grezzo permettono di rifare il giudizio anche se un domani tornasse a
+    servire.
 
     **Non si salva la gamba gia' calcolata.** Sarebbe piu' comodo, ed e' la
     scelta sbagliata: la gamba e' un giudizio, e il giudizio sta tutto qui,
@@ -394,10 +424,24 @@ def _momenti_bilancio(punti_per_dimensione: dict[str, list[dict]],
     if quota_autoconsumo is not None:
         momenti["quota_autoconsumo"] = quota_autoconsumo
 
-    autoconsumo = totali.get("autoconsumo", {}).get("valore")
+    # **Correzione ALTO della review (mandato «il bilancio dell'energia»,
+    # punto 1, 27/08/2026): NON PIU' `autoconsumo/(autoconsumo+prelievo)`.**
+    # Quella formula ASSUMEVA che il consumo della casa fosse la somma di
+    # autoconsumo e prelievo -- un'identita' falsa su questa integrazione
+    # (vedi il commento sopra `DIREZIONI_BILANCIO`: «autoconsumata» esclude
+    # la batteria, quindi la somma perde la scarica, oltre meta' del
+    # consumo vero). La correzione non aggiunge la scarica alla somma --
+    # sarebbe di nuovo DEDURRE un'identita' specifica di questa
+    # integrazione. Si legge il consumo MISURATO (il settimo totale, vedi
+    # sopra) e si calcola quanta parte NON viene dalla rete:
+    # `(consumo - prelievo) / consumo`. Misurato il 26/08/2026: consumo
+    # 14,72, prelievo 0,22 -> 0,985 (il numero vero; la vecchia formula
+    # diceva 0,964). Senza il consumo misurato, niente quota: mai un
+    # numero dedotto al posto di uno letto.
+    consumo = totali.get("consumo", {}).get("valore")
     prelievo = totali.get("prelievo", {}).get("valore")
-    if autoconsumo is not None and prelievo is not None:
-        quota_autosufficienza = _quota(autoconsumo, autoconsumo + prelievo)
+    if consumo is not None and prelievo is not None:
+        quota_autosufficienza = _quota(consumo - prelievo, consumo)
         if quota_autosufficienza is not None:
             momenti["quota_autosufficienza"] = quota_autosufficienza
 
@@ -430,10 +474,27 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
     presa da `_differenza` per una sola lettura nel giorno.
 
     Ritorna `{"totali": {dimensione: {"valore","provenienza"}}, "forma":
-    {dimensione: [24 kWh o None]}, "momenti": {...},
+    {dimensione: [{"ora","valore"}, ...]}, "momenti": {...},
     ["batteria_percentuale_oraria": [24 % o None]]}` -- ogni chiave presente
     solo se c'e' almeno un fatto da dirla (dizionario vuoto altrimenti, mai
     una chiave con un valore fittizio).
+
+    **`forma[dimensione]` porta l'ORA di ogni punto, non solo il valore**
+    (correzione MEDIA della review, mandato «il bilancio dell'energia»,
+    punto 2, 27/08/2026): prima di questa correzione era una lista NUDA di
+    valori (`[1.0, 2.0, ...]`), e Home Assistant OMETTE le ore senza dati --
+    quindi l'indice non era l'ora, e una giornata che comincia alle 7 aveva
+    il primo valore in posizione zero. L'oggetto salvato, da solo, non
+    sapeva piu' dire «alle 13», che e' l'unica ragione per cui la forma
+    esiste (spec §1, §3). **La chiave nuova e' `ora`** (lo stesso nome gia'
+    usato da `picco_produzione` in `_momenti_bilancio` -- fondamenta 3,
+    consistenza), un ISO-8601 con fuso preso da `inizio` dello stesso punto
+    -- l'istante GIA' letto e tradotto da `HAClient.statistiche_orarie()`,
+    non ricalcolato. Non porta anche `fine`: la grana e' fissa a un'ora
+    (`period="hour"`, l'unico chiamante), la durata e' sempre la stessa, e
+    raddoppiare il payload per dirla a ogni punto non permetterebbe nessuna
+    frase in piu' (spec §1, «se un dato non serve a nessuna frase in piu',
+    non va salvato»).
     """
     totali: dict[str, dict] = {}
     forma: dict[str, list] = {}
@@ -445,7 +506,7 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
         if not conosciuti:
             continue
         punti_per_dimensione[dimensione] = punti
-        forma[dimensione] = [p["valore"] for p in punti]
+        forma[dimensione] = [{"ora": p["inizio"], "valore": p["valore"]} for p in punti]
         totali[dimensione] = {"valore": round(sum(conosciuti), 2),
                               "provenienza": provenienza_per_dimensione.get(dimensione)}
 
