@@ -483,7 +483,7 @@ test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il conte
 });
 
 // ---------------------------------------------------------------------------
-// Seam _rendiOggetti: i cinque generi, i comprimari, le misure — senza rete
+// Seam _rendiOggetti: i sei generi, i comprimari, le misure — senza rete
 // (rilievo 9: la resa era priva di qualunque test)
 // ---------------------------------------------------------------------------
 
@@ -632,7 +632,7 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
 // un oggetto al giorno per dispositivo, una QUANTITA' CON UNA FORMA, non un
 // episodio. La forma reale del corpo è quella di `costruisci_corpo_bilancio`
 // (hiris/app/cervello/oggetti.py): {totali:{dimensione:{valore,provenienza}},
-// forma:{dimensione:[kWh...]}, momenti:{...}}, più `dispositivo`/`entita`
+// forma:{dimensione:[{ora,valore}...]}, momenti:{...}}, più `dispositivo`/`entita`
 // aggiunti da `aggrega_giorno`. Prima di questa fetta il genere "bilancio"
 // cadeva nel ramo di default di `frasePrincipale` e mostrava «(nessun
 // dettaglio)» — questi test bloccano quella regressione E vietano lo stampo
@@ -868,6 +868,52 @@ test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'or
 
   const rects = corpo.querySelectorAll('svg rect');
   assert.equal(rects.length, 0, 'un punto senza ora non deve produrre una barra posizionata a caso');
+});
+
+// La dodicesima (brief-dodicesima.md, punto 1 -- MEDIO, "il cuore"): nessun
+// test qui sopra lega la POSIZIONE della barra all'ora che dichiara. Un test
+// guarda le distanze RELATIVE fra le barre ("i buchi si vedono", sopra), un
+// altro guarda l'ETICHETTA (il titolo del `<title>`, sopra) -- nessuno lega
+// le due cose. Mutazione ESEGUITA dal revisore per provarlo: spostare OGNI
+// barra di un'ora nel solo piazzamento (x), lasciando l'etichetta corretta
+// -> i 56 test allora esistenti restavano tutti verdi. Il riquadro al
+// passaggio del mouse direbbe «le 13», e la barra starebbe alle 14 -- e la
+// POSIZIONE e' cio' che si guarda per decidere, non l'etichetta.
+// Serve un ancoraggio ASSOLUTO: la coordinata x attesa, calcolata dalla SUA
+// ora con lo stesso contratto geometrico di `rendiCurvaBilancio`
+// (osservatore-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
+// -- `L`/`sinistra`/`ORE_DEL_GIORNO` nel sorgente, non ricopiati per caso:
+// e' lo stesso disegno che la pagina dichiara nel suo `viewBox`, verificato
+// sotto). Una sola serie (produzione) rende l'indice di serie ininfluente
+// (`si * larghezzaBarra` = 0), cosi' la formula attesa non dipende da un
+// dettaglio che non e' oggetto di questo test.
+test('seam _rendiOggetti: la barra sta alla coordinata ASSOLUTA della sua ora, non solo in un ordine relativo alle altre (mutazione: un piazzamento spostato di un\'ora resta verde per tutti gli altri test)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+    corpo: Object.assign({}, bilancioFixture().corpo, {
+      forma: { produzione: [puntoOra(13, 4.8)] },
+    }),
+  })], null);
+
+  const svg = corpo.querySelector('svg');
+  assert.ok(svg, 'deve esserci il grafico');
+  // Precondizione: il viewBox deve davvero essere 640x140 (altrimenti la
+  // formula sotto misurerebbe il contratto sbagliato).
+  assert.equal(svg.getAttribute('viewBox'), '0 0 640 140',
+    'il viewBox del grafico non è più 640x140: aggiorna la costante di questo test insieme al sorgente');
+
+  const rect = svg.querySelector('rect');
+  assert.ok(rect, 'deve esserci la barra delle 13');
+
+  const L = 640, sinistra = 4, ORE_DEL_GIORNO = 24;
+  const passo = (L - sinistra * 2) / ORE_DEL_GIORNO;
+  const xAttesa = sinistra + 13 * passo; // ora=13, una sola serie -> nessuno scarto di serie
+  const xReale = parseFloat(rect.getAttribute('x'));
+  assert.ok(Math.abs(xReale - xAttesa) < 0.15,
+    'la barra delle 13 deve stare alla coordinata assoluta x=' + xAttesa.toFixed(1) +
+    ' (sinistra + ora*passo), non a x=' + xReale +
+    ' -- una traslazione uniforme del solo piazzamento (la mutazione del brief) sposta questo numero');
 });
 
 // ---------------------------------------------------------------------------
