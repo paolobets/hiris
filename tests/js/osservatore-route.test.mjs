@@ -628,6 +628,195 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
 });
 
 // ---------------------------------------------------------------------------
+// Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026):
+// un oggetto al giorno per dispositivo, una QUANTITA' CON UNA FORMA, non un
+// episodio. La forma reale del corpo è quella di `costruisci_corpo_bilancio`
+// (hiris/app/cervello/oggetti.py): {totali:{dimensione:{valore,provenienza}},
+// forma:{dimensione:[kWh...]}, momenti:{...}}, più `dispositivo`/`entita`
+// aggiunti da `aggrega_giorno`. Prima di questa fetta il genere "bilancio"
+// cadeva nel ramo di default di `frasePrincipale` e mostrava «(nessun
+// dettaglio)» — questi test bloccano quella regressione E vietano lo stampo
+// dell'episodio («da X a Y», la freccia di `periodo()`).
+// ---------------------------------------------------------------------------
+
+function bilancioFixture(extra) {
+  return Object.assign({
+    id: 1, genere: 'bilancio', protagonista: 'a1b2c3d4e5f6',
+    inizio_ts: 1755990000, fine_ts: 1756076400,
+    corpo: {
+      totali: {
+        produzione: { valore: 24.5, provenienza: null },
+        autoconsumo: { valore: 14.2, provenienza: null },
+        immissione: { valore: 10.3, provenienza: 'dichiarata' },
+        prelievo: { valore: 3.1, provenienza: 'dedotta' },
+      },
+      forma: {
+        produzione: [0, 0, 1.2, 2.3, 4.8, 3.1, 0.4, 0],
+        prelievo: [0.5, 0.4, 0.2, 0.1, 0, 0, 0.3, 0.6],
+      },
+      momenti: {
+        prima_ora_produzione: '2026-08-23T04:00:00+00:00',
+        ultima_ora_produzione: '2026-08-23T18:00:00+00:00',
+        picco_produzione: { valore: 4.8, ora: '2026-08-23T11:00:00+00:00' },
+        quota_autoconsumo: 0.712,
+      },
+      dispositivo: 'Inverter con accumulo',
+      entita: ['sensor.energia_prodotta_oggi', 'sensor.energia_immessa_oggi'],
+    },
+  }, extra || {});
+}
+
+test('seam _rendiOggetti: un bilancio mostra i totali in kWh, non «(nessun dettaglio)»', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /nessun dettaglio/);
+  assert.match(corpo.textContent, /24,5\s*kWh/, 'il totale di produzione deve leggersi in kWh, virgola italiana');
+  assert.match(corpo.textContent, /Inverter con accumulo/, 'il nome leggibile del dispositivo deve comparire');
+  const badgeGenere = corpo.querySelector('.agent-badge');
+  assert.equal(badgeGenere.textContent, 'Bilancio');
+});
+
+test('seam _rendiOggetti: un bilancio NON si legge come un episodio (niente "da X a Y", niente freccia di periodo)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /→/,
+    'un bilancio è una quantità con una forma, non un "da → a": niente freccia di periodo()');
+  assert.doesNotMatch(corpo.textContent, /\bda 24[,.]5\b/,
+    'il totale non deve essere presentato come "da X a Y" (lo stampo dell\'episodio)');
+});
+
+test('seam _rendiOggetti: la provenienza di un totale riusa lo stesso badge dichiarata/dedotta degli episodi di energia', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.match(corpo.textContent, /[Dd]ichiarat/, 'la provenienza "dichiarata" (immissione) deve comparire');
+  assert.match(corpo.textContent, /[Dd]edott/, 'la provenienza "dedotta" (prelievo) deve comparire');
+
+  const badgeDichiarato = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .find((b) => /[Dd]ichiarat/.test(b.textContent));
+  const badgeDedotto = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .find((b) => /[Dd]edott/.test(b.textContent));
+  assert.ok(badgeDichiarato && badgeDedotto, 'entrambi i badge di provenienza devono esserci');
+  assert.notEqual(badgeDichiarato.className, badgeDedotto.className,
+    'le due provenienze devono distinguersi visibilmente, come per gli episodi di energia');
+});
+
+test('seam _rendiOggetti: un totale senza provenienza nota (produzione) non porta un badge di provenienza in più', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  // Un solo badge non porta ne' "dichiarat" ne' "dedott": e' il genere ("Bilancio").
+  const badgeGenerici = Array.from(corpo.querySelectorAll('.agent-badge'))
+    .filter((b) => !/[Dd]ichiarat|[Dd]edott/.test(b.textContent));
+  assert.equal(badgeGenerici.length, 1, 'un solo badge senza provenienza: quello del genere');
+});
+
+test('seam _rendiOggetti: una dimensione assente (es. batteria) non compare come totale a zero', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.doesNotMatch(corpo.textContent, /[Cc]arica della batteria/,
+    'nessuna entità batteria in questa fixture: "carica" non deve comparire');
+  assert.doesNotMatch(corpo.textContent, /[Ss]carica della batteria/);
+  assert.doesNotMatch(corpo.textContent, /\b0\s*kWh\b/,
+    'mai uno zero inventato per una dimensione senza dati (mandato, "cosa NON si salva")');
+});
+
+test('seam _rendiOggetti: la curva mostra produzione e prelievo sovrapposti, come barre SVG', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const svg = corpo.querySelector('svg');
+  assert.ok(svg, 'deve esserci un grafico SVG per la forma della giornata');
+  const rects = svg.querySelectorAll('rect');
+  assert.ok(rects.length > 0, 'il grafico deve avere almeno una barra');
+  const riempimenti = new Set(Array.from(rects).map((r) => r.getAttribute('fill')));
+  assert.ok(riempimenti.size >= 2, 'produzione e prelievo devono avere un colore diverso l\'una dall\'altra');
+});
+
+test('seam _rendiOggetti: senza `forma` non compare nessun grafico', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  delete fx.corpo.forma;
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  assert.equal(corpo.querySelectorAll('svg').length, 0,
+    'senza la forma della giornata non c\'è niente da disegnare');
+});
+
+test('seam _rendiOggetti: i momenti si leggono come dati secchi (orario HH:MM, percentuale con la virgola)', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  assert.match(corpo.textContent, /Prima ora di produzione/);
+  assert.match(corpo.textContent, /\b\d{2}:\d{2}\b/, 'l\'orario si legge HH:MM, non un timestamp ISO grezzo');
+  assert.doesNotMatch(corpo.textContent, /2026-08-23T/, 'nessun ISO grezzo in pagina');
+  assert.match(corpo.textContent, /71,2\s*%/, 'la quota di autoconsumo è una percentuale con la virgola italiana');
+  assert.match(corpo.textContent, /4,8\s*kWh/, 'il picco di produzione porta il suo valore in kWh');
+});
+
+test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti derivati', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture();
+  delete fx.corpo.momenti;
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  assert.doesNotMatch(corpo.textContent, /Prima ora di produzione/);
+  assert.doesNotMatch(corpo.textContent, /Quota di autoconsumo/);
+});
+
+test('seam _rendiOggetti: le entità del bilancio stanno dietro un rivelatore sincrono, chiuso di default', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  document.body.appendChild(corpo);
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+
+  const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
+  assert.ok(btn, 'deve esserci un rivelatore per le entità del bilancio');
+  const pannello = btn.nextElementSibling;
+  assert.equal(pannello.hidden, true, 'il pannello nasce chiuso');
+  assert.doesNotMatch(corpo.textContent, /sensor\.energia_prodotta_oggi/,
+    'l\'entità non deve essere visibile prima del click');
+
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.equal(pannello.hidden, false);
+  assert.match(corpo.textContent, /sensor\.energia_prodotta_oggi/);
+  assert.match(corpo.textContent, /sensor\.energia_immessa_oggi/);
+});
+
+test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore di entità', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  const fx = bilancioFixture({ corpo: Object.assign({}, bilancioFixture().corpo, { entita: [] }) });
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+
+  const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
+  assert.equal(btn, undefined);
+});
+
+test('mount: un bilancio nella lista di "cosa è successo" si legge, non resta "(nessun dettaglio)"', async () => {
+  const { window, document } = montaConServer({ oggetti: { oggetti: [bilancioFixture()] } });
+  window.HirisOsservatoreRoute.mount();
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.doesNotMatch(testo, /nessun dettaglio/);
+  assert.match(testo, /kWh/);
+  assert.match(testo, /Inverter con accumulo/);
+});
+
+// ---------------------------------------------------------------------------
 // Corsa sul cambio giorno (rilievo 8b): un contatore di generazione
 // ---------------------------------------------------------------------------
 
