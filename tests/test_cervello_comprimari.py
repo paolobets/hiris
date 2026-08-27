@@ -92,7 +92,8 @@ class _ClienteLegami:
                 direzioni: dict[str, dict] | None = None,
                 direzioni_errore: str | None = None,
                 statistiche: dict[str, list[dict]] | None = None,
-                statistiche_errore: str | None = None):
+                statistiche_errore: str | None = None,
+                statistiche_per_finestra: dict[str, dict[str, list[dict]]] | None = None):
         self._mappa = mappa or {}
         self._default = {} if default is None else default
         self._direzioni = direzioni or {}
@@ -106,6 +107,19 @@ class _ClienteLegami:
         # ritorno di `statistiche_orarie`, mai la richiesta grezza a HA.
         self._statistiche = statistiche or {}
         self._statistiche_errore = statistiche_errore
+        # `statistiche_per_finestra` -- **la decima finta corretta per
+        # mutazione (mandato, punto 4, 27/08/2026)**: prima di questa
+        # correzione `statistiche_orarie` REGISTRAVA `da_iso`/`a_iso` in
+        # `statistiche_chieste` (sotto) ma li IGNORAVA nel calcolo della
+        # risposta -- tornava sempre `self._statistiche`, qualunque fosse la
+        # finestra chiesta. Mutazione ESEGUITA dal revisore: far leggere alla
+        # riparazione le statistiche del PRIMO giorno per ENTRAMBI i giorni
+        # -> archivio byte-identico a quello corretto, nessun test se ne
+        # accorgeva. `statistiche_per_finestra` (chiave: `da_iso`, opzionale)
+        # SELEZIONA DAVVERO per finestra -- se non c'e' una voce per quella
+        # finestra ricade su `self._statistiche` (il comportamento di
+        # sempre, per i test a cui la finestra non interessa).
+        self._statistiche_per_finestra = statistiche_per_finestra or {}
         self.chiesti = []
         self.direzioni_chieste = 0
         self.statistiche_chieste: list[tuple[list[str], str, str]] = []
@@ -126,7 +140,8 @@ class _ClienteLegami:
         self.statistiche_chieste.append((list(identificatori), da_iso, a_iso))
         if self._statistiche_errore is not None:
             return {"errore": self._statistiche_errore}
-        return {"serie": {k: v for k, v in self._statistiche.items() if k in identificatori}}
+        fonte = self._statistiche_per_finestra.get(da_iso, self._statistiche)
+        return {"serie": {k: v for k, v in fonte.items() if k in identificatori}}
 
 
 @pytest.mark.asyncio

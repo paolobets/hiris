@@ -1465,6 +1465,107 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
         casa.chiudi()
 
 
+def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_errore(tmp_path):
+    """**Gemello del test sopra per il punto 3 del mandato (MEDIO,
+    27/08/2026)**: qui `HAClient.statistiche_orarie()` NON solleva nessun
+    `errore` -- la richiesta riesce, ma la serie torna vuota per il
+    dispositivo candidato (identificatori rinominati, recorder ripartito).
+    Prima di questa correzione `bilanci_falliti` restava a zero e la
+    riparazione avrebbe sostituito il bilancio della notte con undici
+    frammenti individuali -- l'esatto impoverimento misurato dalla review."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                            device_class="energy")
+
+        ricco = [{"genere": "bilancio", "protagonista": "dev1",
+                  "inizio_ts": 0.0, "fine_ts": 1.0,
+                  "corpo": {"dispositivo": "Inverter", "entita": ["sensor.energia_prodotta_oggi"],
+                           "totali": {"produzione": {"valore": 9.9, "provenienza": "dichiarata"}}}}]
+        archivio.sostituisci_giorno(l_altro_ieri, ricco)
+        archivio.sostituisci_giorno(ieri, ricco)
+        prima = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche={})  # riesce, ma non c'e' niente -- nessun `errore`
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        dopo = {g: archivio.oggetti(giorno=g) for g in (l_altro_ieri, ieri)}
+        assert dopo == prima
+    finally:
+        archivio.close()
+        casa.chiudi()
+
+
+def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path):
+    """**Punto 4 del mandato (MEDIO, 27/08/2026), provato per mutazione**:
+    `_ClienteLegami.statistiche_orarie` accettava la finestra `da_iso`/
+    `a_iso` e la ignorava -- la registrava soltanto. Nessun test di
+    cablaggio rileggeva la finestra per i due giorni della riparazione, e
+    la mutazione "leggi sempre il primo giorno per entrambi" produceva un
+    archivio byte-identico a quello corretto.
+
+    Qui i due giorni hanno statistiche DIVERSE (`statistiche_per_finestra`,
+    chiave = `da_iso` del giorno) -- se la riparazione leggesse la finestra
+    sbagliata (es. sempre quella dell'altro ieri), i due bilanci
+    coinciderebbero, e non devono."""
+    from datetime import datetime, timedelta, timezone
+
+    from hiris.app.cervello.archivio import ArchivioOsservazioni
+    from hiris.app.cervello.oggetti import confini_giorno
+
+    archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
+    casa = _casa_con_un_dispositivo(tmp_path)
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
+        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
+        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
+                            soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
+                            device_class="energy")
+
+        def _da_iso(giorno):
+            da_ts, _ = confini_giorno(giorno, "Europe/Rome")
+            return datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat()
+
+        cliente = _ClienteLegami(
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}},
+            statistiche_per_finestra={
+                _da_iso(l_altro_ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]},
+                _da_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
+            })
+        asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
+            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            adesso=lambda tz: oggi.astimezone(tz)))
+
+        [b_altro_ieri] = [o for o in archivio.oggetti(giorno=l_altro_ieri)
+                          if o["genere"] == "bilancio"]
+        [b_ieri] = [o for o in archivio.oggetti(giorno=ieri) if o["genere"] == "bilancio"]
+        assert b_altro_ieri["corpo"]["totali"]["produzione"]["valore"] == 3.0
+        assert b_ieri["corpo"]["totali"]["produzione"]["valore"] == 7.0
+    finally:
+        archivio.close()
+        casa.chiudi()
+
+
 # --------------------------------------------------------------------------
 # Punto 5 del mandato: il doppione con `hiris_problemi_ha` (`repairs/
 # list_issues` letto due volte, per conto proprio) NON si unifica -- ma

@@ -96,23 +96,50 @@ async def test_un_dispositivo_con_una_direzione_utile_diventa_un_bilancio(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_senza_nessuna_direzione_utile_niente_bilancio_niente_rete(tmp_path):
-    """Un dispositivo la cui unica entita' NON ha nessuna direzione fra le
-    sei del bilancio -- "consumo" non e' fra `DIREZIONI_BILANCIO` -- non
-    diventa un candidato: nessuna chiamata di rete, le sue entita' restano
-    fuori da ogni bilancio."""
+async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
+    """**Correzione ALTO della review (mandato «il bilancio dell'energia»,
+    punto 1, 27/08/2026): "consumo" e' entrato in `DIREZIONI_BILANCIO`
+    come settimo totale, letto e non piu' derivato.** Un dispositivo la cui
+    UNICA direzione utile e' "consumo" ora diventa un candidato come gli
+    altri sei -- prima di questa correzione non lo era (il totale veniva
+    buttato via in nome di un'identita' che su questa integrazione e'
+    falsa: vedi `test_cervello_bilancio.py`)."""
     casa = _casa(
         tmp_path,
         dispositivi=[{"id": "dev1", "name": "Inverter"}],
         entita=[{"entity_id": "sensor.energia_consumata_oggi", "device_id": "dev1",
                 "device_class": "energy"}])
     try:
-        cliente = _ClienteLegami()
+        cliente = _ClienteLegami(statistiche={
+            "sensor.energia_consumata_oggi": [_punto(14.72)]})
         bilanci, falliti = await costruisci_bilanci(
             cliente, casa, giorno=G, fuso="Europe/Rome",
             soggetti_energia=["sensor.energia_consumata_oggi"],
             direzioni={"sensor.energia_consumata_oggi":
                       {"direzione": "consumo", "provenienza": "dedotta"}})
+        assert falliti == 0
+        [b] = bilanci
+        assert b["corpo"]["totali"]["consumo"]["valore"] == 14.72
+    finally:
+        casa.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_senza_nessuna_direzione_utile_niente_bilancio_niente_rete(tmp_path):
+    """Un dispositivo la cui unica entita' non ha NESSUNA direzione nota
+    (assente da `direzioni`) non diventa un candidato: nessuna chiamata di
+    rete, le sue entita' restano fuori da ogni bilancio."""
+    casa = _casa(
+        tmp_path,
+        dispositivi=[{"id": "dev1", "name": "Inverter"}],
+        entita=[{"entity_id": "sensor.temperatura_inverter", "device_id": "dev1",
+                "device_class": "energy"}])
+    try:
+        cliente = _ClienteLegami()
+        bilanci, falliti = await costruisci_bilanci(
+            cliente, casa, giorno=G, fuso="Europe/Rome",
+            soggetti_energia=["sensor.temperatura_inverter"],
+            direzioni={})
         assert bilanci == []
         assert falliti == 0
         assert cliente.statistiche_chieste == []
@@ -220,6 +247,71 @@ async def test_due_dispositivi_candidati_una_connessione_sola(tmp_path):
         assert falliti == 0
         assert {b["dispositivo_id"] for b in bilanci} == {"dev1", "dev2"}
         assert len(cliente.statistiche_chieste) == 1  # UNA connessione per ENTRAMBI
+    finally:
+        casa.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_una_serie_vuota_per_un_candidato_conta_come_fallimento(tmp_path):
+    """**Punto 3 del mandato (MEDIO, 27/08/2026)**: la richiesta RIESCE
+    (nessun `errore`), ma la serie torna vuota per questo dispositivo --
+    identificatori rinominati, recorder ripartito (misurato: il database
+    del recorder e' gia' rinato una volta, il 13 agosto). Prima di questa
+    correzione `falliti` restava a zero: la riparazione all'avvio
+    (`riaggrega_gli_ultimi_due_giorni`, che SOSTITUISCE) avrebbe scritto
+    sopra un giorno che aveva gia' un bilancio uno senza -- gli undici
+    frammenti tornano. Ora conta come fallito anche senza nessun `errore`
+    da Home Assistant."""
+    casa = _casa(
+        tmp_path,
+        dispositivi=[{"id": "dev1", "name": "Inverter"}],
+        entita=[{"entity_id": "sensor.energia_prodotta_oggi", "device_id": "dev1",
+                "device_class": "energy"}])
+    try:
+        cliente = _ClienteLegami(statistiche={})  # riesce, ma non c'e' niente
+        bilanci, falliti = await costruisci_bilanci(
+            cliente, casa, giorno=G, fuso="Europe/Rome",
+            soggetti_energia=["sensor.energia_prodotta_oggi"],
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}})
+        assert bilanci == []
+        assert falliti == 1
+    finally:
+        casa.chiudi()
+
+
+@pytest.mark.asyncio
+async def test_i_membri_del_bilancio_sono_solo_i_soggetti_con_una_direzione_vera(tmp_path):
+    """**Punto 6 del mandato (BASSO, 27/08/2026)**: nella vita vera
+    `soggetti_energia` porta TUTTI i soggetti osservati quel giorno, non
+    solo quelli di energia (`server.py::_aggrega_ieri`/`riaggrega_gli_
+    ultimi_due_giorni` passano `sorted(soggetti)`, senza filtro). Prima di
+    questa correzione un interruttore o un sensore diagnostico dello STESSO
+    dispositivo finiva elencato in `entita` come «dentro il bilancio», pur
+    continuando a produrre il proprio episodio -- falso su un dispositivo
+    misto. Qui il dispositivo ha due entita': una con una direzione vera
+    (produzione) e una senza (nessuna voce in `direzioni`) -- `entita` deve
+    contenere solo la prima."""
+    casa = _casa(
+        tmp_path,
+        dispositivi=[{"id": "dev1", "name": "Inverter"}],
+        entita=[
+            {"entity_id": "sensor.energia_prodotta_oggi", "device_id": "dev1",
+             "device_class": "energy"},
+            {"entity_id": "switch.inverter_relay", "device_id": "dev1",
+             "device_class": None},
+        ])
+    try:
+        cliente = _ClienteLegami(statistiche={
+            "sensor.energia_prodotta_oggi": [_punto(1.0)]})
+        bilanci, falliti = await costruisci_bilanci(
+            cliente, casa, giorno=G, fuso="Europe/Rome",
+            soggetti_energia=["sensor.energia_prodotta_oggi", "switch.inverter_relay"],
+            direzioni={"sensor.energia_prodotta_oggi":
+                      {"direzione": "produzione", "provenienza": "dichiarata"}})
+        assert falliti == 0
+        [b] = bilanci
+        assert b["entita"] == ["sensor.energia_prodotta_oggi"]
     finally:
         casa.chiudi()
 

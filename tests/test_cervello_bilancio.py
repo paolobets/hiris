@@ -42,7 +42,16 @@ def _punto(ora, cambio, media=None):
 # `costruisci_corpo_bilancio` -- pura.
 # --------------------------------------------------------------------------
 
-def test_le_sei_dimensioni_note_diventano_totali_e_forma():
+def test_le_sette_dimensioni_note_diventano_totali_e_forma():
+    """**Sette, non sei** (correzione ALTO della review, mandato «il
+    bilancio dell'energia», punto 1, 27/08/2026): "consumo" e' entrato in
+    `DIREZIONI_BILANCIO` come settimo totale, letto e non piu' derivato
+    (vedi `test_cervello_bilancio.py::test_quota_autosufficienza_...`
+    sotto per la ragione).
+
+    **`forma[d]` porta l'ORA di ogni punto** (correzione MEDIA, punto 2 del
+    mandato): non piu' `[1.0, 2.0]`, ma `[{"ora","valore"}, ...]` -- la
+    chiave nuova che la pagina deve conoscere e' `ora`."""
     serie = {f"sensor.{d}": [_punto(6, 1.0), _punto(7, 2.0)] for d in DIREZIONI_BILANCIO}
     entita = {d: f"sensor.{d}" for d in DIREZIONI_BILANCIO}
     provenienza = {d: "dichiarata" for d in DIREZIONI_BILANCIO}
@@ -50,17 +59,22 @@ def test_le_sei_dimensioni_note_diventano_totali_e_forma():
     corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
                                       provenienza_per_dimensione=provenienza)
 
-    assert set(corpo["totali"]) == set(DIREZIONI_BILANCIO)
+    assert set(corpo["totali"]) == set(DIREZIONI_BILANCIO) == {
+        "produzione", "autoconsumo", "immissione", "prelievo", "carica",
+        "scarica", "consumo"}
     for d in DIREZIONI_BILANCIO:
         assert corpo["totali"][d] == {"valore": 3.0, "provenienza": "dichiarata"}
-        assert corpo["forma"][d] == [1.0, 2.0]
+        assert corpo["forma"][d] == [
+            {"ora": "2026-08-24T06:00:00+00:00", "valore": 1.0},
+            {"ora": "2026-08-24T07:00:00+00:00", "valore": 2.0},
+        ]
 
 
 def test_una_dimensione_senza_entita_non_compare():
-    """"consumo" non e' fra le `DIREZIONI_BILANCIO`: anche se il chiamante
-    la conoscesse, `entita_per_dimensione` non la porta mai qui dentro. Una
-    dimensione VOLUTA ma senza entita' del dispositivo (es. "scarica" su un
-    inverter senza batteria) semplicemente non compare."""
+    """Una dimensione VOLUTA (fra le `DIREZIONI_BILANCIO`) ma senza entita'
+    del dispositivo (es. "scarica" su un inverter senza batteria)
+    semplicemente non compare -- il chiamante non ha messo niente in
+    `entita_per_dimensione` per quella dimensione."""
     serie = {"sensor.produzione": [_punto(6, 5.0)]}
     corpo = costruisci_corpo_bilancio(
         serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
@@ -95,7 +109,11 @@ def test_un_ora_mancante_non_azzera_il_totale():
         provenienza_per_dimensione={"produzione": "dichiarata"})
 
     assert corpo["totali"]["produzione"]["valore"] == 4.0
-    assert corpo["forma"]["produzione"] == [1.0, None, 3.0]
+    assert corpo["forma"]["produzione"] == [
+        {"ora": "2026-08-24T06:00:00+00:00", "valore": 1.0},
+        {"ora": "2026-08-24T07:00:00+00:00", "valore": None},
+        {"ora": "2026-08-24T08:00:00+00:00", "valore": 3.0},
+    ]
 
 
 def test_i_momenti_prima_ultima_ora_e_picco_di_produzione():
@@ -133,22 +151,74 @@ def test_scarica_mai_attiva_non_produce_il_momento():
     assert "fine_scarica_batteria" not in corpo.get("momenti", {})
 
 
-def test_quota_autoconsumo_e_autosufficienza():
+def test_quota_autoconsumo_da_produzione_e_autoconsumo():
+    """Invariata dalla correzione del punto 1: `quota_autoconsumo` non
+    assume nessuna identita' fra dimensioni diverse, resta autoconsumo/
+    produzione."""
     serie = {
         "sensor.produzione": [_punto(6, 10.0)],
         "sensor.autoconsumo": [_punto(6, 6.0)],
-        "sensor.prelievo": [_punto(6, 2.0)],
     }
-    entita = {"produzione": "sensor.produzione", "autoconsumo": "sensor.autoconsumo",
-              "prelievo": "sensor.prelievo"}
+    entita = {"produzione": "sensor.produzione", "autoconsumo": "sensor.autoconsumo"}
     provenienza = {d: "dichiarata" for d in entita}
 
     corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
                                       provenienza_per_dimensione=provenienza)
 
-    # 6/10 = 0.6 di autoconsumo; 6/(6+2) = 0.75 di autosufficienza.
     assert corpo["momenti"]["quota_autoconsumo"] == 0.6
-    assert corpo["momenti"]["quota_autosufficienza"] == 0.75
+    assert "quota_autosufficienza" not in corpo["momenti"]
+
+
+def test_quota_autosufficienza_si_calcola_sul_consumo_MISURATO_non_dedotto():
+    """**Il difetto ALTO della review, mandato «il bilancio dell'energia»,
+    punto 1 (27/08/2026), riprodotto coi numeri misurati sulla casa vera.**
+
+    La vecchia formula era `autoconsumo / (autoconsumo + prelievo)`:
+    un'IDENTITA' che assume che il consumo della casa sia autoconsumo piu'
+    prelievo. Su questa integrazione e' falsa -- "autoconsumata" ESCLUDE la
+    batteria -- e con un ciclo di batteria vero la forbice esplode:
+    autoconsumo 2, prelievo 10, scarica 5 -- la vecchia formula direbbe
+    2/12 = **0,167**. Il consumo VERO (misurato, il settimo totale) e' 17;
+    la quota vera e' `(consumo - prelievo) / consumo` = 7/17 = **0,412**.
+
+    Se qualcuno reintroducesse la vecchia identita' (sommando autoconsumo e
+    prelievo invece di leggere il consumo), questo test la becca: i due
+    numeri non si somigliano nemmeno lontanamente."""
+    serie = {
+        "sensor.autoconsumo": [_punto(6, 2.0)],
+        "sensor.prelievo": [_punto(6, 10.0)],
+        "sensor.scarica": [_punto(6, 5.0)],
+        "sensor.consumo": [_punto(6, 17.0)],
+    }
+    entita = {"autoconsumo": "sensor.autoconsumo", "prelievo": "sensor.prelievo",
+              "scarica": "sensor.scarica", "consumo": "sensor.consumo"}
+    provenienza = {d: "dichiarata" for d in entita}
+
+    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
+                                      provenienza_per_dimensione=provenienza)
+
+    assert corpo["totali"]["consumo"]["valore"] == 17.0
+    assert corpo["momenti"]["quota_autosufficienza"] == 0.412
+    assert corpo["momenti"]["quota_autosufficienza"] != 0.167
+
+
+def test_quota_autosufficienza_assente_senza_il_consumo_misurato():
+    """**Il cuore della correzione**: anche con autoconsumo E prelievo
+    presenti, senza il sensore del consumo la quota NON si scrive -- mai
+    dedotta da una somma che su questa integrazione puo' essere falsa.
+    Prima della correzione questo stesso caso produceva un numero (0.75,
+    dedotto): ora il campo e' assente, non un numero inventato."""
+    serie = {
+        "sensor.autoconsumo": [_punto(6, 6.0)],
+        "sensor.prelievo": [_punto(6, 2.0)],
+    }
+    entita = {"autoconsumo": "sensor.autoconsumo", "prelievo": "sensor.prelievo"}
+    provenienza = {d: "dichiarata" for d in entita}
+
+    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
+                                      provenienza_per_dimensione=provenienza)
+
+    assert "quota_autosufficienza" not in corpo.get("momenti", {})
 
 
 def test_quota_assente_se_il_denominatore_manca():
