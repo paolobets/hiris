@@ -45,7 +45,8 @@ from .casa.domande import TIPO_LEGAME_HA
 from .casa.domande import legami as _legami_leggibili
 from .casa.tempo import zona_casa
 from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
-from .cervello.oggetti import aggrega_giorno, confini_giorno
+from .cervello.oggetti import (aggrega_giorno, confini_giorno,
+                               costruisci_corpo_bilancio, DIREZIONI_BILANCIO)
 from .cervello.osservatore import Osservatore
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
@@ -900,6 +901,128 @@ async def costruisci_comprimari(
     return mappa, falliti
 
 
+async def costruisci_bilanci(
+        ha_client, archivio_casa, *, giorno: str, fuso: str | None,
+        soggetti_energia: list[str], direzioni: dict) -> tuple[list[dict], int]:
+    """I bilanci del giorno, uno per dispositivo -- mandato «il bilancio
+    dell'energia», 27/08/2026. Torna `(bilanci, falliti)`: stessa forma di
+    `costruisci_comprimari` sopra, per la stessa ragione -- il chiamante
+    deve poter distinguere «non ho trovato niente da riassumere» (`falliti
+    == 0`, `bilanci` magari vuota) da «ho trovato dispositivi ma non sono
+    riuscito a leggerne le statistiche» (`falliti > 0`).
+
+    **Il raggruppamento per dispositivo non costa nessuna rete**: il legame
+    entita'->dispositivo lo dichiara HA nel registro delle entita', gia'
+    replicato in `archivio_casa` (`leggi_registri()` lo alimenta da tempo --
+    fondamenta 2, nessun doppione: interrogare di nuovo `config/entity_
+    registry/list` qui sarebbe una seconda porta per un fatto che ne ha gia'
+    una). **Non si congela il dispositivo nel grezzo** (mandato, punto 3):
+    si rilegge a ogni giro, come i comprimari e le direzioni -- un'entita'
+    si puo' spostare, e il nome di un dispositivo lo puo' cambiare l'utente.
+
+    Un dispositivo diventa un CANDIDATO solo se almeno una delle sue entita'
+    di energia ha una direzione fra `DIREZIONI_BILANCIO` **e** la classe
+    `energy` (non `power`: il bilancio riporta kWh del giorno, non W
+    istantanei -- vedi il docstring di `costruisci_corpo_bilancio`). Un
+    dispositivo senza nessuna direzione utile non diventa un bilancio: le
+    sue entita' continuano a produrre il loro episodio individuale, come
+    prima di questa fetta.
+
+    **Una connessione sola per TUTTI i dispositivi candidati** (come i
+    comprimari e le direzioni sono una connessione sola per il giro): tutti
+    gli `entity_id` utili -- le dimensioni scelte piu' l'eventuale entita'
+    batteria di ogni dispositivo -- finiscono in UNA chiamata a
+    `HAClient.statistiche_orarie()`. Se quella chiamata fallisce, FALLISCONO
+    TUTTI i dispositivi candidati insieme (`bilanci` vuota, `falliti =
+    len(candidati)`): non c'e' un fallimento parziale possibile con una
+    connessione sola, a differenza dei comprimari (una `legami` per
+    soggetto).
+
+    Nessun dispositivo candidato -> nessuna chiamata di rete: se questa
+    casa non ha nessuna direzione nota (o `archivio_casa` non c'e' ancora),
+    tornare `([], 0)` non costa niente.
+    """
+    if archivio_casa is None or not soggetti_energia:
+        return [], 0
+
+    casa = archivio_casa.leggi()
+    entita_per_id = {e.get("id"): e for e in casa.get("entita", []) if e.get("id")}
+    nome_dispositivo = {d.get("id"): d.get("nome") or d.get("id")
+                        for d in casa.get("dispositivi", []) if d.get("id")}
+    entita_del_dispositivo: dict[str, list[dict]] = {}
+    for e in casa.get("entita", []):
+        did = e.get("dispositivo_id")
+        if did:
+            entita_del_dispositivo.setdefault(did, []).append(e)
+
+    membri_per_dispositivo: dict[str, set[str]] = {}
+    for soggetto in soggetti_energia:
+        voce = entita_per_id.get(soggetto)
+        dispositivo_id = voce.get("dispositivo_id") if voce else None
+        if dispositivo_id:
+            membri_per_dispositivo.setdefault(dispositivo_id, set()).add(soggetto)
+
+    candidati: dict[str, dict] = {}
+    for dispositivo_id, membri in membri_per_dispositivo.items():
+        entita_per_dimensione: dict[str, str] = {}
+        provenienza_per_dimensione: dict[str, str] = {}
+        for soggetto in sorted(membri):
+            info = direzioni.get(soggetto) if direzioni else None
+            if not info or info.get("direzione") not in DIREZIONI_BILANCIO:
+                continue
+            voce = entita_per_id.get(soggetto) or {}
+            if voce.get("classe") != "energy":
+                continue
+            dimensione = info["direzione"]
+            if dimensione in entita_per_dimensione:
+                continue  # la prima trovata (ordine alfabetico) vince, deterministico
+            entita_per_dimensione[dimensione] = soggetto
+            provenienza_per_dimensione[dimensione] = info["provenienza"]
+        if not entita_per_dimensione:
+            continue  # nessuna direzione utile: niente bilancio per questo dispositivo
+
+        entita_batteria = next(
+            (e.get("id") for e in sorted(entita_del_dispositivo.get(dispositivo_id, []),
+                                         key=lambda e: e.get("id") or "")
+             if e.get("classe") == "battery"), None)
+
+        candidati[dispositivo_id] = {
+            "nome": nome_dispositivo.get(dispositivo_id, dispositivo_id),
+            "entita": sorted(membri),
+            "entita_per_dimensione": entita_per_dimensione,
+            "provenienza_per_dimensione": provenienza_per_dimensione,
+            "entita_batteria": entita_batteria,
+        }
+
+    if not candidati:
+        return [], 0
+
+    ids_da_leggere = sorted(
+        {soggetto for c in candidati.values() for soggetto in c["entita_per_dimensione"].values()}
+        | {c["entita_batteria"] for c in candidati.values() if c["entita_batteria"]})
+
+    da_ts, a_ts = confini_giorno(giorno, fuso)
+    da_iso = datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat()
+    a_iso = datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat()
+    esito = await ha_client.statistiche_orarie(ids_da_leggere, da_iso, a_iso)
+    if "errore" in esito:
+        logger.warning(
+            "cervello: statistiche del bilancio non lette per %d dispositivi -- "
+            "nessun bilancio per questo giro (%s)", len(candidati), esito["errore"])
+        return [], len(candidati)
+
+    serie = esito["serie"]
+    bilanci = [
+        {"dispositivo_id": dispositivo_id, "nome": c["nome"], "entita": c["entita"],
+         "corpo": costruisci_corpo_bilancio(
+             serie=serie, entita_per_dimensione=c["entita_per_dimensione"],
+             provenienza_per_dimensione=c["provenienza_per_dimensione"],
+             entita_batteria=c["entita_batteria"])}
+        for dispositivo_id, c in candidati.items()
+    ]
+    return bilanci, 0
+
+
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     """Il fuso della casa, letto da `sistema_di_riferimento()` -- `None` se
     `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
@@ -1127,11 +1250,48 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
             "(%s)", mappa_direzioni["errore"])
         return
 
+    # I bilanci -- **l'asimmetria dichiarata dal mandato**: «chi costruisce
+    # dal nulla tollera il parziale; chi sostituisce no». La notte
+    # (`_aggrega_ieri`) costruisce da zero e ignora `falliti`; QUESTA
+    # funzione sostituisce, quindi UN SOLO dispositivo le cui statistiche
+    # non si leggono ferma l'intera riparazione -- per ENTRAMBI i giorni,
+    # non solo per quello colpito: si calcolano prima i bilanci di tutti e
+    # due i giorni bersaglio, e solo se ENTRAMBI riescono si scrive
+    # (`aggrega_giorno`, sotto). Altrimenti la notte precedente potrebbe
+    # aver gia' scritto un bilancio che questa riparazione sostituirebbe con
+    # undici frammenti tornati individuali -- l'esatto impoverimento che
+    # l'asimmetria esiste per impedire.
+    try:
+        bilanci_per_giorno: dict[str, list[dict]] = {}
+        for giorno in giorni:
+            bilanci, bilanci_falliti = await costruisci_bilanci(
+                ha_client, app.get("archivio_casa"), giorno=giorno, fuso=fuso,
+                soggetti_energia=sorted(soggetti), direzioni=mappa_direzioni)
+            if bilanci_falliti:
+                logger.warning(
+                    "cervello: statistiche del bilancio non lette per %s "
+                    "(%d dispositivi), riparazione all'avvio saltata per "
+                    "intero -- si riprova al prossimo riavvio",
+                    giorno, bilanci_falliti)
+                return
+            bilanci_per_giorno[giorno] = bilanci
+    except Exception as errore:
+        # Difesa in profondita', stessa ragione del blocco comprimari sopra:
+        # `archivio_casa.leggi()` e' una lettura SQLite locale che non ci si
+        # aspetta sollevi, ma se lo fa non deve poter scrivere oggetti
+        # poveri sopra oggetti ricchi.
+        logger.warning(
+            "cervello: bilanci non costruiti, riparazione all'avvio "
+            "saltata -- si riprova al prossimo riavvio (%s: %s)",
+            type(errore).__name__, errore)
+        return
+
     for giorno in giorni:
         quanti = aggrega_giorno(
             archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
             comprimari=lambda s, mappa=mappa: mappa.get(s, []),
-            direzioni=lambda s, m=mappa_direzioni: m.get(s))
+            direzioni=lambda s, m=mappa_direzioni: m.get(s),
+            bilanci=bilanci_per_giorno[giorno])
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             quanti, giorno)
@@ -2449,10 +2609,23 @@ async def _on_startup(app: web.Application) -> None:
             mappa_direzioni = await ha_client.direzioni_energia()
             if "errore" in mappa_direzioni:
                 mappa_direzioni = {}
+            # I bilanci, stessa disciplina (mandato «il bilancio
+            # dell'energia», 27/08/2026): questo giro COSTRUISCE il giorno
+            # da zero, quindi tollera un guasto delle statistiche -- `_`
+            # ignora `falliti` apposta, come per i comprimari sopra. Un
+            # dispositivo senza bilancio stanotte non e' un buco: le sue
+            # entita' tornano semplicemente a produrre il loro episodio
+            # individuale, esattamente come prima di questa fetta. La
+            # riparazione all'avvio, che SOSTITUISCE, non tollera invece
+            # nessun guasto (vedi il suo docstring).
+            bilanci, _ = await costruisci_bilanci(
+                ha_client, app.get("archivio_casa"), giorno=ieri, fuso=fuso,
+                soggetti_energia=soggetti, direzioni=mappa_direzioni)
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
                 comprimari=lambda s: mappa.get(s, []),
-                direzioni=lambda s: mappa_direzioni.get(s))
+                direzioni=lambda s: mappa_direzioni.get(s),
+                bilanci=bilanci)
             logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
         except Exception as errore:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

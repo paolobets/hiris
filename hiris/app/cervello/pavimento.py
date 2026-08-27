@@ -126,11 +126,23 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
     stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
     affermerebbe il contrario per una buona meta' dei 15 sensori che un
     impianto fotovoltaico con accumulo porta in questa gamba.
+
+    **`state_class: total_increasing` da solo NON basta piu' per "energia"**
+    (correzione del 27/08/2026, mandato «il bilancio dell'energia», punto 5
+    -- misurato sulla casa vera lo stesso giorno). Prima di questa correzione
+    un contatore sempre-crescente qualunque finiva qui: `sensor.
+    betarena_gb_inviati`/`_gb_ricevuti` -- i gigabyte del router, `device_
+    class: data_size` -- erano archiviati come energia e producevano un
+    episodio di energia ogni notte. Non e' restringere il pavimento (che il
+    prompt non puo' fare): e' smettere di DERIVARE una classe che Home
+    Assistant non dichiara. Un contatore che aumenta e basta non e' energia:
+    e' la forma di molte cose (dati di rete, litri, richieste HTTP...), e
+    solo `_ENERGIA` sopra -- classi dichiarate -- dice quali di quelle sono
+    davvero energia.
     """
     attributi = attributi if isinstance(attributi, dict) else {}
     dominio = str(entity_id).split(".")[0]
     classe = _testo(attributi.get("device_class"))
-    classe_stato = _testo(attributi.get("state_class"))
 
     if dominio == "person":
         return "chi c'e'"
@@ -166,7 +178,7 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
             # 1226 in questa casa. Il filtro e' per CLASSE, non per categoria:
             # escludere `diagnostic` in blocco toglierebbe «buono stato».
             return "buono stato"
-        if classe in _ENERGIA or classe_stato == "total_increasing":
+        if classe in _ENERGIA:
             return "energia"
     return None
 

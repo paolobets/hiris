@@ -138,6 +138,47 @@ def _istante_da_ha(grezzo):
         return grezzo
 
 
+def _traduci_statistiche(grezzo: dict) -> dict[str, list[dict]]:
+    """`{statistic_id: [fascia HA, ...]}` -> lo stesso, in italiano.
+
+    **L'UNICO punto che traduce le chiavi di `recorder/statistics_during_
+    period`** (`HAClient._richiedi_statistiche`, l'UNICO chiamante):
+    `statistiche()` e `statistiche_orarie()` condividono questa funzione
+    invece di avere ciascuna la propria copia -- una seconda tabella di
+    traduzione sarebbe il doppione che questo progetto ha gia' pagato altrove
+    (fondamenta 2).
+
+    `stato`/`cambio` (mandato «il bilancio dell'energia», 27/08/2026): prima
+    di questa correzione il traduttore leggeva solo `min`/`max`/`mean`/`sum`
+    -- **`state` era gia' nella risposta di HA** (misurato: senza `types`
+    esplicito HA manda tutto cio' che sa calcolare) e veniva scartato in
+    silenzio. Stessa regola di `somma`: si omette quando HA non lo manda
+    (una misura senza contatore, es. la potenza istantanea), non si mette a
+    `None`.
+    """
+    serie: dict[str, list[dict]] = {}
+    for ident, fasce in grezzo.items():
+        if not isinstance(fasce, list):
+            continue
+        tradotte = []
+        for f in fasce:
+            if not isinstance(f, dict):
+                continue
+            voce = {"inizio": _istante_da_ha(f.get("start")),
+                    "fine": _istante_da_ha(f.get("end")),
+                    "minimo": f.get("min"),
+                    "massimo": f.get("max"), "media": f.get("mean")}
+            if f.get("sum") is not None:
+                voce["somma"] = f.get("sum")
+            if f.get("state") is not None:
+                voce["stato"] = f.get("state")
+            if f.get("change") is not None:
+                voce["cambio"] = f.get("change")
+            tradotte.append(voce)
+        serie[ident] = tradotte
+    return serie
+
+
 # M1 (audit-2026-08-25, minori): `_truncate` used to be defined here,
 # duplicating `_sanitize.py`'s clamp algorithm and marker constant
 # (`_TRUNC_MARK = " [troncato]"`) line for line. This module already imports
@@ -1228,48 +1269,100 @@ class HAClient:
 
     async def statistiche(self, identificatori: list[str], periodo: str,
                           giorni: int) -> dict:
-        """Le statistiche a lungo termine: min/max/media per fascia.
+        """Le statistiche a lungo termine, N giorni indietro da adesso.
 
-        `periodo`: "5minute" | "hour" | "day" | "week" | "month".
-        Ritorna `{"serie": {statistic_id: [{"inizio","minimo","massimo",
-        "media","somma"}]}}`, oppure `{"errore": str}` -- mai `{}`, che
-        direbbe «non ci sono statistiche» anche quando il websocket e' giu'.
+        `periodo`: "5minute" | "hour" | "day" | "week" | "month". Comoda per
+        una domanda umana ("l'ultima settimana") -- per una finestra
+        ESPLICITA, un giorno preciso sul fuso della casa, vedi la sorella
+        `statistiche_orarie` qui sotto (nata per il bilancio dell'energia,
+        mandato 27/08/2026).
 
-        Le chiavi si traducono qui, all'unico confine con Home Assistant:
-        `start`/`min`/`max`/`mean`/`sum` sono il vocabolario di HA, e lasciarle
-        passare significherebbe farle affiorare fino al modello mescolate a
-        chiavi italiane. `somma` c'e' solo per i contatori: si omette quando HA
-        non la manda, invece di metterla a `None` (una somma nulla e una somma
-        assente non sono la stessa cosa).
-
-        **Mai girata in produzione** (spec §7.1): la forma della risposta e'
-        quella documentata, non quella misurata.
+        Costruisce la richiesta e traduce la risposta con `_richiedi_
+        statistiche`: vedi il SUO docstring per la forma esatta, misurata, e
+        per la ragione per cui la traduzione vive in un posto solo.
         """
         start = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+        return await self._richiedi_statistiche(
+            identificatori, {"start_time": start, "period": periodo})
+
+    async def statistiche_orarie(self, identificatori: list[str],
+                                 da_iso: str, a_iso: str) -> dict:
+        """Le statistiche ORARIE di una finestra ESPLICITA -- nata per il
+        bilancio dell'energia (mandato 27/08/2026), che ha bisogno di UN
+        giorno preciso, gia' chiuso, e non di «N giorni indietro da adesso»
+        (`statistiche` sopra).
+
+        `da_iso`/`a_iso` sono istanti ISO gia' calcolati dal chiamante --
+        stesso contratto di `storico()` qui sopra: il fuso della casa e il
+        confine di un «giorno» sono decisioni di CHI CHIAMA (`cervello/
+        oggetti.py::confini_giorno`), non di questo client, che parla solo
+        di istanti espliciti.
+
+        `period="hour"` fisso: e' la grana su cui si costruisce il bilancio
+        (spec, §2 -- «e' la grana delle decisioni... e' la grana che HA gia'
+        calcola»), e renderlo un parametro per un solo chiamante sarebbe
+        generalita' speculativa.
+
+        Stessa richiesta+traduzione di `statistiche` sopra (`_richiedi_
+        statistiche`, l'UNICO confine): stesso contratto, `{"serie": ...}`
+        o `{"errore": ...}`.
+        """
+        return await self._richiedi_statistiche(
+            identificatori, {"start_time": da_iso, "end_time": a_iso, "period": "hour"})
+
+    async def _richiedi_statistiche(self, identificatori: list[str],
+                                    finestra: dict) -> dict:
+        """`recorder/statistics_during_period` -> `{"serie": ...}` o
+        `{"errore": ...}`. L'UNICO punto che parla con questo comando WS e
+        l'UNICO che traduce la sua risposta: `statistiche` e `statistiche_
+        orarie` differiscono solo nella FINESTRA che passano qui (`start_
+        time`/`end_time`/`period`) -- non duplicano ne' la richiesta ne' la
+        traduzione delle chiavi (fondamenta 2, nessun doppione).
+
+        Nessun `types` esplicito nella richiesta: **misurato il 27/08/2026
+        sulla casa vera** che, senza restringerlo, Home Assistant risponde
+        con TUTTI i campi che sa calcolare per quello `statistic_id` --
+        `state`/`sum`/`change` per un contatore (`state_class: total_
+        increasing`/`total`), `mean`/`min`/`max` per una misura istantanea
+        (`state_class: measurement`, es. la percentuale di batteria) --
+        cosi' una sola chiamata serve entrambe le forme senza dover sapere
+        in anticipo di quale delle due si tratta.
+
+        Le chiavi si traducono qui, all'unico confine con Home Assistant:
+        `start`/`end`/`min`/`max`/`mean`/`sum`/`state`/`change` sono il
+        vocabolario di HA, e lasciarle passare significherebbe farle
+        affiorare fino al modello (o al bilancio) mescolate a chiavi
+        italiane. `somma`/`stato`/`cambio` ci sono solo quando HA li manda
+        DAVVERO -- si omettono, invece di metterli a `None`: un valore nullo
+        e un campo assente non sono lo stesso fatto (una somma nulla
+        direbbe "azzerata", non "non richiesta a questo `statistic_id`").
+
+        **La forma esatta, misurata il 27/08/2026** (mandato «il bilancio
+        dell'energia», che corregge il debito dichiarato in `statistiche`:
+        «mai girata in produzione», misurato prima solo sulla documentazione).
+        Su `sensor.ze1es030n5e528_energia_prodotta_oggi` (un contatore
+        `total_increasing` che si azzera ogni notte), l'ora 07-08 di una
+        giornata vera:
+        `{"start": 1787724000000, "end": 1787727600000, "sum": 173.77,
+        "state": 0.27, "change": 0.27}`. `change` e' il delta di QUELL'ora,
+        calcolato da HA e GIA' corretto per gli azzeramenti (la somma dei
+        `change` di un giorno intero, provata sullo stesso sensore, torna
+        identica a `ultimo.somma - primo.somma`): e' il numero giusto per
+        «la forma ora per ora» del bilancio, senza doverlo ricostruire
+        sottraendo `somma` a mano.
+
+        Ritorna `{"serie": {statistic_id: [{"inizio","fine","minimo",
+        "massimo","media",["somma"],["stato"],["cambio"]}]}}`, oppure
+        `{"errore": str}` -- mai `{}`, che direbbe «non ci sono statistiche»
+        anche quando il websocket e' giu'.
+        """
         grezzo = await self._ws_request(
             "recorder/statistics_during_period",
-            extra={"start_time": start,
-                   "statistic_ids": list(identificatori),
-                   "period": periodo},
+            extra={"statistic_ids": list(identificatori), **finestra},
         )
         if not isinstance(grezzo, dict):
             return {"errore": "Home Assistant non ha risposto alla richiesta di statistiche"}
-        serie: dict[str, list[dict]] = {}
-        for ident, fasce in grezzo.items():
-            if not isinstance(fasce, list):
-                continue
-            tradotte = []
-            for f in fasce:
-                if not isinstance(f, dict):
-                    continue
-                voce = {"inizio": _istante_da_ha(f.get("start")),
-                        "minimo": f.get("min"),
-                        "massimo": f.get("max"), "media": f.get("mean")}
-                if f.get("sum") is not None:
-                    voce["somma"] = f.get("sum")
-                tradotte.append(voce)
-            serie[ident] = tradotte
-        return {"serie": serie}
+        return {"serie": _traduci_statistiche(grezzo)}
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
     # (`components/search/__init__.py`), non coi nomi delle costanti.
