@@ -130,7 +130,8 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     # due META' -- e un simbolo importato solo perche' un test lo guarda non
     # e' una fonte condivisa, e' un orfano col suo guardiano. I due assert
     # qui sopra sono quelli che contano: sono i simboli che il ponte compone.
-    sorgente = open(prompts.__file__, encoding="utf-8").read()
+    with open(prompts.__file__, encoding="utf-8") as f:
+        sorgente = f.read()
     # Task 3 ("i modificatori smettono di essere quattro copie"): l'import
     # e' diventato multilinea per aggiungere RESTRICT_PROMPT/COMPACT_PROMPT/
     # MINIMAL_PROMPT -- si cerca il blocco intero (fino alla parentesi
@@ -597,7 +598,8 @@ def test_i_modificatori_sono_importati_non_ricopiati():
     sarebbe la "funzione doppia" vietata da CLAUDE.md -- e la quarta copia in
     assoluto (le prime tre, gia' unificate al Task 3 Step 1, erano
     `claude_runner.py` e i due punti di `backends/openai_compat_runner.py`)."""
-    sorgente = open(prompts.__file__, encoding="utf-8").read()
+    with open(prompts.__file__, encoding="utf-8") as f:
+        sorgente = f.read()
     assert "from ..claude_runner import" in sorgente
     assert "RESTRICT_PROMPT" in sorgente
     assert "COMPACT_PROMPT" in sorgente

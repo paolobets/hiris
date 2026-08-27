@@ -118,9 +118,12 @@ def check_changelog(version: str) -> None:
 # ---------------------------------------------------------------------------
 
 def check_git_clean() -> None:
+    # check=True esplicito: qui sotto si legge solo `result.stdout` -- nessuno
+    # guarda `returncode` -- quindi un `git status` fallito passerebbe
+    # inosservato e lo script proseguirebbe convinto che l'albero sia pulito.
     result = subprocess.run(
         ["git", "status", "--porcelain"],
-        capture_output=True, text=True, cwd=ROOT,
+        capture_output=True, text=True, cwd=ROOT, check=True,
     )
     # git status --porcelain format: "XY PATH" or "XY OLD_PATH -> NEW_PATH"
     # Allow only the exact relative paths for our release files
@@ -162,9 +165,12 @@ def check_git_clean() -> None:
 
 def run_tests() -> None:
     _info("Running pytest…")
+    # check=False esplicito: il fallimento e' atteso e gestito subito sotto
+    # leggendo `returncode` -- un check=True solleverebbe qui invece di
+    # lasciar parlare `_fail` con il suo messaggio.
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--tb=short", "-q"],
-        cwd=ROOT,
+        cwd=ROOT, check=False,
     )
     if result.returncode != 0:
         _fail("Tests failed — fix before releasing")
@@ -190,7 +196,10 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         if dry_run:
             _info(f"[dry-run] {' '.join(cmd)}")
             continue
-        result = subprocess.run(cmd, cwd=ROOT)
+        # check=False esplicito: il returncode si legge subito dopo e si
+        # decide da soli come fallire (`_fail` con il comando per esteso) --
+        # un check=True solleverebbe un'eccezione generica al suo posto.
+        result = subprocess.run(cmd, cwd=ROOT, check=False)
         if result.returncode != 0:
             _fail(f"Command failed: {' '.join(cmd)}")
     if not dry_run:
@@ -224,7 +233,10 @@ def create_github_release(version: str, notes: str, dry_run: bool) -> None:
         _info(f"[dry-run] gh release create v{version}")
         _info(f"Release notes preview:\n{notes[:400]}")
         return
-    result = subprocess.run(cmd, cwd=ROOT)
+    # check=False esplicito: il returncode si legge subito dopo per dare un
+    # messaggio di recupero puntuale (il link alla release manuale) -- un
+    # check=True solleverebbe prima che quel messaggio possa comparire.
+    result = subprocess.run(cmd, cwd=ROOT, check=False)
     if result.returncode != 0:
         _fail(
             f"gh release create failed.\n"

@@ -72,7 +72,8 @@ def test_campo_vuoto_genera_scrive_e_pubblica(tmp_path, monkeypatch, caplog):
     assert len(token) >= 40, f"segreto troppo corto per 256 bit: {len(token)} caratteri"
     percorso = percorso_token(str(tmp_path))
     assert os.path.exists(percorso), "il token deve essere SCRITTO, non solo tenuto in memoria"
-    assert open(percorso, encoding="utf-8").read().strip() == token
+    with open(percorso, encoding="utf-8") as f:
+        assert f.read().strip() == token
     # Il requisito 4: chi legge dall'ambiente al momento della chiamata (il
     # worker del ponte) deve vederlo.
     assert os.environ["INTERNAL_TOKEN"] == token
@@ -157,8 +158,9 @@ def test_token_configurato_vince_anche_su_un_file_gia_scritto(tmp_path, monkeypa
     token = prepara_token_interno(str(tmp_path))
 
     assert token == "quello-dell-utente"
-    assert open(percorso_token(str(tmp_path)), encoding="utf-8").read().strip() == generato, \
-        "il file su disco non va toccato quando vince il token dell'utente"
+    with open(percorso_token(str(tmp_path)), encoding="utf-8") as f:
+        assert f.read().strip() == generato, \
+            "il file su disco non va toccato quando vince il token dell'utente"
 
 
 def test_token_configurato_con_spazi_viene_normalizzato(tmp_path, monkeypatch):
@@ -497,7 +499,8 @@ def test_il_token_riletto_da_disco_e_validato_come_quello_configurato(
 
     assert token == ""
     # e NON lo si e' sovrascritto con uno nuovo: invaliderebbe i lavori in coda
-    assert open(percorso, encoding="utf-8").read().strip() == "meta\x00SEGRETO"
+    with open(percorso, encoding="utf-8") as f:
+        assert f.read().strip() == "meta\x00SEGRETO"
     testo = caplog.text
     assert "NUL" in testo and "modificato a mano" in testo
     assert "SEGRETO" not in testo

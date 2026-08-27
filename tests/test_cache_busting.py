@@ -44,10 +44,11 @@ async def client(aiohttp_client, tmp_path):
     app.on_startup.clear()
     app.on_cleanup.clear()
 
-    static_dir = os.path.join(os.path.dirname(server.__file__), "static")
-    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
-        with open(os.path.join(static_dir, fname), encoding="utf-8") as f:
-            app[key] = f.read()
+    # Stessa lettura di `_on_startup` (sincrona di proposito, vedi
+    # `server._leggi_statici`): riusarla qui evita un secondo posto che
+    # legge gli stessi due file e potrebbe divergere da come li legge l'app
+    # vera.
+    server._leggi_statici(app)
 
     return await aiohttp_client(app)
 

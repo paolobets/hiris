@@ -1685,6 +1685,22 @@ def _ricalcola_catena(app) -> None:
         ollama.applica_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
 
 
+def _leggi_statici(app) -> None:
+    """Sincrona di proposito: gira una volta sola all'avvio, prima che l'app
+    serva qualcosa. Sta fuori dalla coroutine perche' `open()` dentro una
+    funzione async e' un difetto anche quando qui non lo e' -- e una regola
+    con un'eccezione «tanto lo so io» e' una regola che non vale piu'."""
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
+        path = os.path.join(static_dir, fname)
+        try:
+            with open(path, encoding="utf-8") as f:
+                app[key] = f.read()
+        except FileNotFoundError:
+            logger.error("Static %s missing at %s", fname, path)
+            app[key] = ""
+
+
 async def _on_startup(app: web.Application) -> None:
     # fetta E3 Task 7: `import time as _time` viveva fra gli import della
     # Sentinella (cancellati con lei), ma serve ancora qui sotto a
@@ -1697,15 +1713,7 @@ async def _on_startup(app: web.Application) -> None:
     # Pre-load static HTML so request handlers don't do sync open().read()
     # per request (would block the event loop). Cache invalidation happens via
     # _inject_version() on every render anyway.
-    static_dir = os.path.join(os.path.dirname(__file__), "static")
-    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
-        path = os.path.join(static_dir, fname)
-        try:
-            with open(path, encoding="utf-8") as f:
-                app[key] = f.read()
-        except FileNotFoundError:
-            logger.error("Static %s missing at %s", fname, path)
-            app[key] = ""
+    _leggi_statici(app)
 
     # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
     # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste

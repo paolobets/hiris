@@ -3,6 +3,7 @@ Mini proxy che inietta X-Ingress-Path header per testare HIRIS reale.
 Bind 127.0.0.1:8765 → forward 192.168.1.95:8099 con header Ingress.
 Serve /static/* dal disco locale (override file modificati senza rebuild addon).
 """
+import asyncio
 import mimetypes
 import os
 
@@ -12,6 +13,14 @@ from aiohttp import web
 UPSTREAM = "http://192.168.1.95:8099"
 INGRESS_HEADER = {"X-Ingress-Path": "/api/hassio_ingress/test_token_debug/"}
 STATIC_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "hiris", "app", "static"))
+
+
+def _leggi_file(fs_path: str) -> bytes:
+    """Sincrona di proposito: gira dentro `asyncio.to_thread`, non nella
+    coroutine, cosi' l'`open()` bloccante non tocca l'event loop -- qui, a
+    differenza di `_on_startup`, gira a ogni richiesta e non solo all'avvio."""
+    with open(fs_path, "rb") as f:
+        return f.read()
 
 
 async def static_override(req: web.Request) -> web.Response | None:
@@ -27,8 +36,7 @@ async def static_override(req: web.Request) -> web.Response | None:
     if not os.path.isfile(fs_path):
         return None
     mt, _ = mimetypes.guess_type(fs_path)
-    with open(fs_path, "rb") as f:
-        body = f.read()
+    body = await asyncio.to_thread(_leggi_file, fs_path)
     return web.Response(status=200, body=body, headers={
         "Content-Type": mt or "application/octet-stream",
         "Cache-Control": "no-store",

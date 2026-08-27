@@ -1372,8 +1372,14 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                                  mcp_config=mcp_config,
                                  per_promessa=bool(id_promessa))
         try:
+            # check=False esplicito: `proc.returncode` viaggia intatto dentro
+            # `Invocazione.rc` e lo leggono i chiamanti (compreso il ramo di
+            # verifica dell'`init` qui sotto, che tratta un rc!=0 come causa
+            # plausibile e non come eccezione) -- un check=True solleverebbe
+            # proprio dove oggi la gestione dell'esito funziona.
             proc = subprocess.run(argv, capture_output=True, text=True,
-                                  timeout=300, env=_safe_subprocess_env())
+                                  timeout=300, env=_safe_subprocess_env(),
+                                  check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
             log.warning("claude non eseguibile: %s", type(exc).__name__)
             return None
