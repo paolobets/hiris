@@ -1,14 +1,14 @@
 # tests/test_release_script.py
 """Unit tests for scripts/release.py — the HIRIS mechanical release script."""
 import sys
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Import release.py from scripts/ directory (not a package)
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-import release as rel  # noqa: E402
-
+import release as rel
 
 # ---------------------------------------------------------------------------
 # validate_semver
@@ -47,16 +47,14 @@ def test_version_match_passes(tmp_path):
 def test_version_mismatch_aborts(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text('version: "0.5.0"\n')
-    with patch.object(rel, "CONFIG", cfg):
-        with pytest.raises(SystemExit):
-            rel.check_config_version("9.9.9")
+    with patch.object(rel, "CONFIG", cfg), pytest.raises(SystemExit):
+        rel.check_config_version("9.9.9")
 
 
 def test_config_file_not_found_aborts(tmp_path):
     missing = tmp_path / "nonexistent.yaml"
-    with patch.object(rel, "CONFIG", missing):
-        with pytest.raises(SystemExit):
-            rel.check_config_version("0.6.0")
+    with patch.object(rel, "CONFIG", missing), pytest.raises(SystemExit):
+        rel.check_config_version("0.6.0")
 
 
 # ---------------------------------------------------------------------------
@@ -73,9 +71,8 @@ def test_changelog_section_present_passes(tmp_path):
 def test_missing_changelog_section_aborts(tmp_path):
     cl = tmp_path / "CHANGELOG.md"
     cl.write_text("# Changelog\n\n## [0.5.0] — 2026-04-20\n")
-    with patch.object(rel, "CHANGELOG", cl):
-        with pytest.raises(SystemExit):
-            rel.check_changelog("0.6.0")
+    with patch.object(rel, "CHANGELOG", cl), pytest.raises(SystemExit):
+        rel.check_changelog("0.6.0")
 
 
 # ---------------------------------------------------------------------------

@@ -41,12 +41,15 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_casa import costruisci_nucleo, handle_get_casa
-from hiris.app.casa.anagrafe import (aree_dell_albero, confronta_con_home_assistant,
-                                     gerarchia, scegli_campione)
+from hiris.app.casa.anagrafe import (
+    aree_dell_albero,
+    confronta_con_home_assistant,
+    gerarchia,
+    scegli_campione,
+)
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.nucleo import componi
 from hiris.app.server import giro_di_confronto_albero
-
 
 # --------------------------------------------------------------------------
 # I finti: l'anagrafe da una parte, cio' che Home Assistant risponde dall'altra

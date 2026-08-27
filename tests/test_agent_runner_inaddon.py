@@ -2,9 +2,11 @@ import asyncio
 import logging
 import subprocess
 import time
-import pytest
 from unittest.mock import patch
-from hiris.app.agent import runner, prompts
+
+import pytest
+
+from hiris.app.agent import prompts, runner
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI
 
@@ -281,10 +283,10 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch):
             ticks += 1
 
     loop_task = asyncio.create_task(
-        runner.run_loop("http://127.0.0.1:8099", lambda: {}, "live", 0))
+        runner.run_loop("http://127.0.0.1:8099", dict, "live", 0))
     try:
         await asyncio.wait_for(ticker(), timeout=0.25)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pytest.fail(
             "ticker did not complete within budget -- run_loop appears to be "
             "blocking the event loop instead of offloading run_once"

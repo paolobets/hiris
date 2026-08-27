@@ -10,7 +10,10 @@ scritto per non commettere -- e nella pagina Consumi lo commetteva davvero:
 import pytest
 
 from hiris.app.consumi.vocabolario import (
-    STATI, giorno_locale, piu_debole, stato_e_costo,
+    STATI,
+    giorno_locale,
+    piu_debole,
+    stato_e_costo,
 )
 
 

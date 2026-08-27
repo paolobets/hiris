@@ -79,9 +79,9 @@ from collections import OrderedDict
 from aiohttp import web
 
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..schedulatore.turno import DispatcherPromessa, strumenti_promessa
 from ..version import read_version
 from .handlers_chat import costruisci_dispatcher_strumenti
-from ..schedulatore.turno import DispatcherPromessa, strumenti_promessa
 
 logger = logging.getLogger(__name__)
 

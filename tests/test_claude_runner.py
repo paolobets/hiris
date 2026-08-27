@@ -61,10 +61,12 @@ every kwarg.
 """
 import asyncio
 import logging
-import pytest
-import anthropic
 from unittest.mock import AsyncMock, MagicMock, patch
-from hiris.app.claude_runner import ClaudeRunner, RESTRICT_PROMPT, resolve_model, AUTO_MODEL_MAP
+
+import anthropic
+import pytest
+
+from hiris.app.claude_runner import AUTO_MODEL_MAP, RESTRICT_PROMPT, ClaudeRunner, resolve_model
 
 
 def _sys_text(system) -> str:
@@ -827,10 +829,9 @@ async def test_anthropic_irraggiungibile_non_porta_un_codice_inventato(runner):
     («non risponde all'indirizzo») invece di stampare un numero che nessuno ha
     ricevuto."""
     import anthropic
+    import httpx
 
     from hiris.app.claude_runner import RunnerBackendError
-
-    import httpx
 
     giu = anthropic.APIConnectionError(
         request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))

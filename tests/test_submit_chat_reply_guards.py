@@ -34,7 +34,12 @@ import textwrap
 import pytest
 
 from hiris.app import server
-from hiris.app.chat_store import _is_toxic_assistant, append_messages, close_all_stores, load_history
+from hiris.app.chat_store import (
+    _is_toxic_assistant,
+    append_messages,
+    close_all_stores,
+    load_history,
+)
 
 
 @pytest.fixture(autouse=True)

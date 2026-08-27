@@ -1,5 +1,7 @@
 import pytest
+
 from hiris.app.reasoning.queue import ReasoningQueue
+
 
 @pytest.fixture
 def q(tmp_path):

@@ -11,7 +11,8 @@ import sqlite3
 import pytest
 
 from hiris.app.cervello.archivio import (
-    CONSERVAZIONE_CAMBI_S, ArchivioOsservazioni,
+    CONSERVAZIONE_CAMBI_S,
+    ArchivioOsservazioni,
 )
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC

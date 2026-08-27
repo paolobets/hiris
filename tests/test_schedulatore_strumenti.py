@@ -1,6 +1,6 @@
 """I tre strumenti delle promesse, e le verifiche che fanno ALLA NASCITA."""
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -31,7 +31,7 @@ def _fra(minuti: int) -> str:
     che il test voleva provare). `_fra()` calcola sempre relativo ad ADESSO,
     quindi la promessa nasce a prescindere da quando gira la suite.
     """
-    return (datetime.now(timezone.utc) + timedelta(minutes=minuti)).isoformat()
+    return (datetime.now(UTC) + timedelta(minutes=minuti)).isoformat()
 
 
 @pytest.fixture()

@@ -27,7 +27,6 @@ Il rimedio non costa nessuna chiamata: `device_class` e' gia' in RAM, in ogni
 voce dello specchio dello stato (`entity_cache._to_minimal`). E' anche la fonte
 che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
 """
-import pytest
 
 from hiris.app.casa.anagrafe import classe_effettiva, specchio_vivo
 from hiris.app.casa.domande import guarda

@@ -1,5 +1,6 @@
 from aiohttp import web
-from ..chat_store import load_history, clear_history
+
+from ..chat_store import clear_history, load_history
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET/DELETE
 # /api/chat/cronologia` (server.py) -- nessun identificatore nel percorso,

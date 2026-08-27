@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 def test_models_route_js_exists_and_exposes_mount():
@@ -112,8 +113,8 @@ def _codice_senza_commenti(js: str) -> str:
     ed e' deliberato»): un test che le cercasse nel testo intero non potrebbe
     mai passare, e uno che le cercasse riga per riga cadrebbe sulle righe
     interne di un commento di blocco."""
-    senza = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", senza, flags=re.M)
+    senza = re.sub(r"/\*.*?\*/", "", js, flags=re.DOTALL)
+    return re.sub(r"^\s*//.*$", "", senza, flags=re.MULTILINE)
 
 
 def test_la_pagina_non_conosce_il_caso_del_piano_ma_obbedisce_a_un_campo():

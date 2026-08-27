@@ -4,12 +4,11 @@ Security regression tests — run on every PR.
 These tests validate that the security fixes applied post-audit hold and
 do not regress. They are deliberately narrow (fast, no real network calls).
 """
-import re
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from aiohttp.test_utils import TestClient, TestServer
-from aiohttp import web
+from unittest.mock import AsyncMock, patch
 
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -141,8 +140,9 @@ def test_config_yaml_no_direct_port():
     nel registro. Il meccanismo che questo test sorveglia e' sempre stato
     `ports:`, e non e' cambiato.
     """
-    import yaml
     import os
+
+    import yaml
     config_path = os.path.join(
         os.path.dirname(__file__), "..", "hiris", "config.yaml"
     )
@@ -279,6 +279,7 @@ def _make_csrf_app_with_token(token="srv-secret"):
     """CSRF app that also carries an internal_token, to exercise the
     server-to-server exemption."""
     from aiohttp import web
+
     from hiris.app.api.middleware_csrf import csrf_middleware
     app = web.Application(middlewares=[csrf_middleware])
     app["internal_token"] = token

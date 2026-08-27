@@ -1,9 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from hiris.app.backends.base import LLMBackend
 from hiris.app.backends.ollama import OllamaBackend
+from hiris.app.claude_runner import (
+    RunnerBackendError,
+    _current_thinking_blocks,
+    _current_tool_calls,
+)
 from hiris.app.llm_router import LLMRouter
-from hiris.app.claude_runner import _current_tool_calls, _current_thinking_blocks, RunnerBackendError
 
 
 def test_llm_backend_is_abstract():
@@ -252,7 +258,7 @@ def test_router_strategy_includes_openrouter_in_chain():
 
 
 def test_openrouter_runner_strips_prefix_in_resolve_model():
-    from hiris.app.backends.openrouter_runner import OpenRouterRunner, _strip_openrouter_prefix
+    from hiris.app.backends.openrouter_runner import _strip_openrouter_prefix
     assert _strip_openrouter_prefix("openrouter:foo/bar:free") == "foo/bar:free"
     assert _strip_openrouter_prefix("openrouter/foo/bar") == "foo/bar"
     assert _strip_openrouter_prefix("anthropic/claude-sonnet-4-6") == "anthropic/claude-sonnet-4-6"

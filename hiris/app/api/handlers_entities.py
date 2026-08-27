@@ -1,8 +1,9 @@
 from __future__ import annotations
+
 from aiohttp import web
 
-from ..proxy.entity_cache import inventario_non_leggibile
 from ..casa.anagrafe import dominio_di
+from ..proxy.entity_cache import inventario_non_leggibile
 
 
 def _csv(v: str | None):

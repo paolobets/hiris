@@ -6,18 +6,18 @@ Tutti i metodi sono di sola lettura e degradano senza sollevare: `diario`
 distingue pero' il vuoto dal guasto, vedi tests/test_ha_client_tempo.py.
 """
 
-from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit, parse_qs, unquote
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app.proxy.ha_client import (
-    HAClient,
-    MAX_DIARIO_VOCI,
     MAX_DIARIO_ORE,
+    MAX_DIARIO_VOCI,
     MAX_TEMPLATE_LEN,
     MAX_TEMPLATE_RESPONSE_LEN,
+    HAClient,
     _truncate,
 )
 
@@ -59,7 +59,7 @@ def _start_ore_indietro(url: str) -> float:
     """Quante ore indietro rispetto ad adesso punta lo start ISO nel path."""
     parsed = urlsplit(url)
     start = datetime.fromisoformat(unquote(parsed.path.split("/api/logbook/")[1]))
-    return (datetime.now(timezone.utc) - start).total_seconds() / 3600
+    return (datetime.now(UTC) - start).total_seconds() / 3600
 
 
 # --------------------------------------------------------------------------
@@ -150,13 +150,13 @@ async def test_diario_builds_url_without_entity(client):
     parsed = urlsplit(url)
     assert parsed.path.startswith("/core/api/logbook/")
     start = datetime.fromisoformat(unquote(parsed.path.split("/api/logbook/")[1]))
-    atteso = datetime.now(timezone.utc) - timedelta(hours=6)
+    atteso = datetime.now(UTC) - timedelta(hours=6)
     assert abs((start - atteso).total_seconds()) < 60
 
     qs = parse_qs(parsed.query)
     assert "entity" not in qs
     end = datetime.fromisoformat(qs["end_time"][0])
-    assert abs((end - datetime.now(timezone.utc)).total_seconds()) < 60
+    assert abs((end - datetime.now(UTC)).total_seconds()) < 60
 
 
 @pytest.mark.asyncio
@@ -358,8 +358,7 @@ def test_truncate_e_la_stessa_funzione_di_sanitize():
     `_truncate` E' `_sanitize.truncate_with_marker` -- non solo si comporta
     allo stesso modo, e' letteralmente lo stesso oggetto funzione, come il
     test di identita' introdotto per N1 in FIX1-report.md."""
-    from hiris.app.proxy import _sanitize
-    from hiris.app.proxy import ha_client
+    from hiris.app.proxy import _sanitize, ha_client
     assert ha_client._truncate is _sanitize.truncate_with_marker
 
 

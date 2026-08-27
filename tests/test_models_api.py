@@ -14,7 +14,7 @@ _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollam
 
 
 @pytest.fixture
-def claude_con_elenco(client):  # noqa: F811
+def claude_con_elenco(client):
     """Claude API con una chiave, e la lettura MOCKATA.
 
     Dalla fetta «il modello del piano» Claude API si comporta come gli altri

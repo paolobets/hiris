@@ -4,7 +4,7 @@ import re
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from .storage import connect, init_schema
 
@@ -233,7 +233,7 @@ class ChatStore:
     # ------------------------------------------------------------------
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).strftime(_TS_FMT)
+        return datetime.now(UTC).strftime(_TS_FMT)
 
     def _fresh_session_id(self) -> str | None:
         """Return the open session_id only if within the gap window — no side effects."""
@@ -244,10 +244,10 @@ class ChatStore:
         if not row:
             return None
         try:
-            last = datetime.strptime(row["last_msg_at"], _TS_FMT).replace(tzinfo=timezone.utc)
+            last = datetime.strptime(row["last_msg_at"], _TS_FMT).replace(tzinfo=UTC)
         except ValueError:
             return row["session_id"]
-        if (datetime.now(timezone.utc) - last).total_seconds() < SESSION_GAP_HOURS * 3600:
+        if (datetime.now(UTC) - last).total_seconds() < SESSION_GAP_HOURS * 3600:
             return row["session_id"]
         return None
 
@@ -345,7 +345,7 @@ class ChatStore:
                 return []
             if giorni > 0:
                 cutoff = (
-                    datetime.now(timezone.utc) - timedelta(days=giorni)
+                    datetime.now(UTC) - timedelta(days=giorni)
                 ).strftime(_TS_FMT)
                 rows = self._conn.execute(
                     "SELECT role, content FROM chat_messages "
@@ -401,7 +401,7 @@ class ChatStore:
         if retention_days <= 0:
             return 0
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=retention_days)
+            datetime.now(UTC) - timedelta(days=retention_days)
         ).strftime(_TS_FMT)
         with self._mu:
             cur = self._conn.execute(

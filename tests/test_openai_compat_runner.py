@@ -189,8 +189,8 @@ def test_openrouter_runner_accepts_thinking_budget_kwarg(tmp_path):
 # ---------------------------------------------------------------------------
 
 from hiris.app.backends.openai_compat_runner import (
-    detect_leaked_tool_call,
     TOOL_LEAK_USER_MSG,
+    detect_leaked_tool_call,
 )
 
 
@@ -877,8 +877,9 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
     """A connection-class failure inside chat()'s agentic loop must trip the
     same breaker simple_chat() uses -- today it only logs a generic API
     error and never calls _record_conn_failure()."""
-    from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     import openai as _openai
+
+    from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
         locale=True, leggi_modello=lambda: "llama3.1:8b",

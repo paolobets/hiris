@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import logging
 from urllib.parse import urlparse
+
 import aiohttp
+
 from .base import LLMBackend
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,5 @@
-import re, pathlib
+import pathlib
+import re
 
 RUN_SH = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "run.sh"
 

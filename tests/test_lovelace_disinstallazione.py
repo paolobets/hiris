@@ -19,16 +19,16 @@ Cosa difendono i test nuovi -- le tre regole di
      o rifiuta, la funzione torna dichiarando nel log l'URL da togliere a mano.
 """
 import asyncio
+import contextlib
 import inspect
 import os
 import textwrap
 import time
-import contextlib
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from hiris.app import server
+import pytest
 
+from hiris.app import server
 
 SLUG = "hiris"
 TOKEN = "test-token"

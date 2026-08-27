@@ -1,5 +1,4 @@
-from hiris.app.claude_runner import _max_tokens_message, _TRUNCATION_NOTICE, CHAT_MAX_TOKENS
-
+from hiris.app.claude_runner import _TRUNCATION_NOTICE, _max_tokens_message
 
 # --- Part 1: max_tokens cap (persistence-time, at create/update) ---
 # Retired (fetta E4 Task 3, "un bot solo"): test_cap_allows_up_to_16000,

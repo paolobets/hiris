@@ -62,8 +62,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _comune import (APP, GIALLO, GRIGIO, RESET, TESTS, VERDE, Reperto,  # noqa: E402
-                     commenti_di, file_js, file_py, leggi, rel, riga_di)
+from _comune import (
+    APP,
+    GIALLO,
+    GRIGIO,
+    RESET,
+    TESTS,
+    VERDE,
+    Reperto,
+    commenti_di,
+    file_js,
+    file_py,
+    leggi,
+    rel,
+    riga_di,
+)
 
 MARCATORE = "DOPPIONE DICHIARATO"
 
@@ -100,7 +113,7 @@ def _dichiarato(p: Path, riga: int, cache: dict[Path, set[int]]) -> bool:
 
 # ── 1. Espressioni regolari ripetute ────────────────────────────────────────
 
-_RE_COMPILE = re.compile(r"re\.compile\(\s*r?(['\"])(.+?)\1", re.S)
+_RE_COMPILE = re.compile(r"re\.compile\(\s*r?(['\"])(.+?)\1", re.DOTALL)
 
 
 def cerca_regex(files: list[Path]) -> list[Reperto]:
@@ -149,7 +162,7 @@ class _Anonimizzatore(ast.NodeTransformer):
     def __init__(self) -> None:
         self._mappa: dict[str, str] = {}
 
-    def visit_Name(self, nodo: ast.Name):  # noqa: N802
+    def visit_Name(self, nodo: ast.Name):
         if nodo.id not in self._mappa:
             self._mappa[nodo.id] = f"v{len(self._mappa)}"
         return ast.copy_location(

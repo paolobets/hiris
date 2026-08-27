@@ -1,4 +1,3 @@
-import sqlite3
 from hiris.app.storage import connect, init_schema
 
 

@@ -1,16 +1,20 @@
 import json
 import logging
-import os
 import secrets
 import time
 
 from aiohttp import web
 
+from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 from ..casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from ..chat_store import (
-    load_history, append_messages, get_past_summaries, count_user_turns,
     _is_toxic_assistant,
+    append_messages,
+    count_user_turns,
+    get_past_summaries,
+    load_history,
 )
+
 # `modello_cli` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
 # `provider_models["claude"]`, e adesso quel modello e' un campo che si legge.
@@ -19,7 +23,6 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 from ..decisione_modelli import nota_ripiego
 from ..instradamento import chi_risponde
 from .handlers_casa import costruisci_nucleo

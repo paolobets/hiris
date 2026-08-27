@@ -3,7 +3,7 @@ nessuna lettura di rete, il registro e' gia' replicato in `archivio_casa`) e
 UNA connessione sola per tutti i dispositivi candidati (`HAClient.
 statistiche_orarie`).
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -27,8 +27,8 @@ def _casa(tmp_path, *, entita, dispositivi):
 
 def _iso_giorno(giorno=G, fuso="Europe/Rome"):
     da_ts, a_ts = confini_giorno(giorno, fuso)
-    return (datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat(),
-            datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat())
+    return (datetime.fromtimestamp(da_ts, tz=UTC).isoformat(),
+            datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
 
 
 def _punto(cambio, ora=6):

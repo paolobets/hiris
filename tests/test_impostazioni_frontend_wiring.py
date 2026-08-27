@@ -36,12 +36,12 @@ def _senza_commenti_js(testo: str) -> str:
     da un commento di riga. Un `assert` qui sotto lo pinna, cosi' il limite si
     accorge da solo di essere stato superato.
     """
-    return re.sub(r"/\*.*?\*/", " ", testo, flags=re.S)
+    return re.sub(r"/\*.*?\*/", " ", testo, flags=re.DOTALL)
 
 
 def _senza_commenti_html(testo: str) -> str:
     """L'HTML coi commenti sostituiti da spazi, stessa ragione di sopra."""
-    return re.sub(r"<!--.*?-->", " ", testo, flags=re.S)
+    return re.sub(r"<!--.*?-->", " ", testo, flags=re.DOTALL)
 
 
 HTML = _senza_commenti_html((BASE / "config.html").read_text(encoding="utf-8"))
@@ -81,7 +81,7 @@ def test_la_voce_di_menu_esiste_e_punta_alla_route():
     # etichette spariscono: senza quei due attributi restano sei icone senza
     # nome). Il soggetto del test resta lo stesso: che la voce esista, che
     # punti a quella route e che porti quel testo.
-    voce = re.search(r'<a class="nav-item"[^>]*href="#/impostazioni"[^>]*>.*?</a>', HTML, re.S)
+    voce = re.search(r'<a class="nav-item"[^>]*href="#/impostazioni"[^>]*>.*?</a>', HTML, re.DOTALL)
     assert voce, "senza voce di nav la pagina esisterebbe e nessuno la troverebbe"
     assert 'data-route="impostazioni"' in voce.group(0)
     assert "Impostazioni chat" in voce.group(0)

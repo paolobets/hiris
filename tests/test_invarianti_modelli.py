@@ -32,7 +32,7 @@ def _righe_vive_js(p: Path) -> str:
     file intero renderebbe il test impossibile da soddisfare senza cancellare
     la memoria del difetto."""
     testo = p.read_text(encoding="utf-8")
-    testo = re.sub(r"/\*.*?\*/", "", testo, flags=re.S)
+    testo = re.sub(r"/\*.*?\*/", "", testo, flags=re.DOTALL)
     return "\n".join(r for r in testo.splitlines() if not r.lstrip().startswith("//"))
 
 
@@ -276,7 +276,7 @@ def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
     css = re.sub(
         r"/\*.*?\*/", "",
         "\n".join(f.read_text(encoding="utf-8") for f in _fogli_della_pagina_config()),
-        flags=re.S,
+        flags=re.DOTALL,
     )
     orfane = sorted(
         c for c in _classi_disegnate_dalla_pagina()
@@ -382,7 +382,7 @@ def test_il_messaggio_di_primo_avvio_nomina_campi_che_esistono_davvero():
 
     testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
     blocco = re.search(
-        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.S)
+        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.DOTALL)
     assert blocco, "il messaggio di primo avvio non si trova piu': testo cambiato"
     # Le stringhe adiacenti del sorgente Python si concatenano: qui si toglie
     # solo cio' che le separa, per leggere la frase come la legge l'utente.
@@ -432,7 +432,7 @@ def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
 
     testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
     blocco = re.search(
-        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.S)
+        r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.DOTALL)
     frase = re.sub(r'"\s*\n\s*"', "", blocco.group(0))
     citate = re.findall(r"«([^»]+)»", frase)
     assert AZIONE_METTI_IL_PIANO_IN_TESTA["etichetta"] in citate, (

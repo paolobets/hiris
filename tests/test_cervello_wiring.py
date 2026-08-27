@@ -17,12 +17,12 @@ import inspect
 import logging
 import re
 import textwrap
+from datetime import UTC
 
 from hiris.app import server
 from hiris.app.cervello.archivio import CONSERVAZIONE_CAMBI_S
 from hiris.app.server import guarda_condizioni_di_sistema
 from tests.test_cervello_comprimari import _ClienteLegami
-
 
 # --------------------------------------------------------------------------
 # Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1)
@@ -444,13 +444,13 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     file: se la funzione non esistesse ancora, l'errore deve fermare SOLO
     questo test (AttributeError a questa riga), non far fallire la
     collection dell'intero file -- la lezione del giro precedente."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         for delta, soggetto in ((3, "vecchio"), (2, "l_altro_ieri"),
                                 (1, "ieri"), (0, "oggi")):
             quando = (oggi - timedelta(days=delta)).replace(hour=10)
@@ -487,13 +487,13 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
     che legge `mappa`, nel corpo di `riaggrega_gli_ultimi_due_giorni`.
     Arrossisce: `corpo["comprimari"]` di `light.principale` torna `[]`
     invece di `["light.secondario"]`."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                         soggetto="light.principale", da="off", a="on")
@@ -541,13 +541,13 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
     vengono sostituiti da oggetti senza comprimari -- `dopo != prima` --
     esattamente il peggioramento che il mandato descrive. Ripristinato
     subito dopo."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -602,13 +602,13 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
     Arrossisce su entrambi gli assert: l'oggetto ricco viene sostituito da un
     oggetto senza comprimari (`dopo != prima`), e il messaggio atteso non
     compare piu' nel log. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -651,13 +651,13 @@ def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
     l'altro riesce -- ma quel soggetto verrebbe comunque riscritto con `[]`
     mentre la notte l'aveva letto. La riparazione deve fermarsi lo stesso,
     non solo sul guasto totale provato sopra."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         for soggetto in ("light.buono", "light.rotto"):
@@ -699,13 +699,13 @@ def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
     le parole "per intero" dal testo del warning nel ramo `if falliti:`.
     Arrossisce: nessun record col testo atteso in `caplog`. Ripristinato
     subito dopo."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                         soggetto="light.rotto", da="off", a="on")
@@ -738,13 +738,13 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
     `_aggrega_ieri` legge `datetime.now()` per davvero (non e' iniettabile
     come `adesso` di `riaggrega_gli_ultimi_due_giorni`): il grezzo si semina
     per "ieri" vero, rispetto all'orologio reale del test."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        adesso_reale = datetime.now(timezone.utc)
+        adesso_reale = datetime.now(UTC)
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         for soggetto in ("light.buono", "light.rotto"):
@@ -1068,13 +1068,13 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
     """`_aggrega_ieri` chiama `ha_client.direzioni_energia()` -- una volta
     sola per il giro, non per soggetto -- e la usa per gli episodi di
     energia del giorno."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        adesso_reale = datetime.now(timezone.utc)
+        adesso_reale = datetime.now(UTC)
         ieri = adesso_reale - timedelta(days=1)
         for ora, valore in ((1, "10.0"), (20, "25.0")):
             quando = ieri.replace(hour=ora, minute=0, second=0, microsecond=0)
@@ -1113,13 +1113,13 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
     di `direzioni_energia()` non deve fermare la notte. L'episodio nasce
     comunque, senza `direzione`/`provenienza` -- non un oggetto in meno,
     solo un oggetto piu' povero."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        adesso_reale = datetime.now(timezone.utc)
+        adesso_reale = datetime.now(UTC)
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
@@ -1154,13 +1154,13 @@ def test_la_riparazione_all_avvio_applica_le_direzioni(tmp_path):
     """Simmetrico al test dei comprimari (`test_la_riparazione_all_avvio_
     costruisce_i_comprimari`): quando la lettura riesce, gli episodi di
     energia riscritti dalla riparazione portano `direzione`/`provenienza`."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                         soggetto="sensor.energia_prelievo", da=None, a="12.0",
@@ -1193,13 +1193,13 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
     controllo sull'esito di `direzioni_energia()` sostituito con un `pass`
     (ignorare il guasto). Arrossisce: l'oggetto ricco (con `direzione`) viene
     sostituito da uno senza -- `dopo != prima`. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -1233,13 +1233,13 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
 def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path):
     """Come i comprimari (Task 6): una connessione sola per l'intero giro
     della riparazione, non una per giorno."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         for delta in (2, 1):
             quando = (oggi - timedelta(days=delta)).replace(hour=10)
             archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
@@ -1296,14 +1296,14 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
     """`_aggrega_ieri` chiama `costruisci_bilanci` e passa il risultato ad
     `aggrega_giorno`: l'entita' del dispositivo smette di produrre il suo
     episodio individuale, e nasce un oggetto di genere "bilancio"."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        adesso_reale = datetime.now(timezone.utc)
+        adesso_reale = datetime.now(UTC)
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
@@ -1347,14 +1347,14 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
     `statistiche_orarie()` non deve fermare la notte -- l'entita' torna
     semplicemente a produrre il suo episodio individuale, come se questa
     fetta non esistesse."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        adesso_reale = datetime.now(timezone.utc)
+        adesso_reale = datetime.now(UTC)
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
@@ -1391,14 +1391,14 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
 def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
     """Simmetrico al test dei comprimari e delle direzioni: quando le
     statistiche si leggono, la riparazione scrive il bilancio."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         archivio.annota(quando_ts=quando.timestamp(), fonte="entita",
                         soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
@@ -1434,14 +1434,14 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
     `if False:` (ignorare il guasto) -- arrossisce: l'oggetto ricco (col
     bilancio) viene sostituito da uno senza (l'episodio individuale torna)
     -- `dopo != prima`. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -1482,14 +1482,14 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
     Prima di questa correzione `bilanci_falliti` restava a zero e la
     riparazione avrebbe sostituito il bilancio della notte con undici
     frammenti individuali -- l'esatto impoverimento misurato dalla review."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
 
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -1533,7 +1533,7 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
     chiave = `(da_iso, a_iso)` del giorno) -- se la riparazione leggesse la
     finestra sbagliata (es. sempre quella dell'altro ieri), i due bilanci
     coinciderebbero, e non devono."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from hiris.app.cervello.archivio import ArchivioOsservazioni
     from hiris.app.cervello.oggetti import confini_giorno
@@ -1541,7 +1541,7 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
     archivio = ArchivioOsservazioni(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        oggi = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
         l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
         for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
@@ -1552,8 +1552,8 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
 
         def _finestra_iso(giorno):
             da_ts, a_ts = confini_giorno(giorno, "Europe/Rome")
-            return (datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat(),
-                    datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat())
+            return (datetime.fromtimestamp(da_ts, tz=UTC).isoformat(),
+                    datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
 
         cliente = _ClienteLegami(
             direzioni={"sensor.energia_prodotta_oggi":

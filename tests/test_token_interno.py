@@ -22,14 +22,14 @@ import asyncio
 import inspect
 import logging
 import os
+import secrets as secrets_stdlib
 import textwrap
 import time
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 import pytest_asyncio
-import secrets as secrets_stdlib
-from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app import server, token_interno
 from hiris.app.agent import runner as agent_runner
@@ -388,11 +388,10 @@ async def test_senza_token_pubblicato_il_giro_del_ponte_fallisce_come_prima(
     coda.enqueue("chat", {}, {"history": [], "system_prompt": ""}, adesso + 300, now=adesso)
 
     base_url = f"http://127.0.0.1:{client.server.port}"
-    with httpx.Client(timeout=30) as http:
-        with pytest.raises(httpx.HTTPStatusError) as errore:
-            await asyncio.to_thread(
-                agent_runner.run_once, http, base_url, agent_runner.build_headers(), "mock"
-            )
+    with httpx.Client(timeout=30) as http, pytest.raises(httpx.HTTPStatusError) as errore:
+        await asyncio.to_thread(
+            agent_runner.run_once, http, base_url, agent_runner.build_headers(), "mock"
+        )
     assert errore.value.response.status_code == 401
 
 
@@ -521,8 +520,8 @@ def test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_cl
 
     Se un giorno la validazione sparisse, questo test diventa rosso e dice
     che il docstring della sonda e' tornato falso."""
-    import socketserver
     import http.server
+    import socketserver
     import threading
 
     class _H(http.server.BaseHTTPRequestHandler):

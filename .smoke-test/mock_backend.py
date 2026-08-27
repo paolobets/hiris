@@ -3,9 +3,8 @@ HIRIS mock backend per smoke test Playwright.
 Serve static files da hiris/app/static/ + endpoint mock con fixture JSON.
 Bind 127.0.0.1:8765.
 """
-import json
-import os
 from pathlib import Path
+
 from aiohttp import web
 
 ROOT = Path(__file__).resolve().parent.parent / "hiris" / "app" / "static"

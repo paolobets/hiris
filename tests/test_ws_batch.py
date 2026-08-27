@@ -3,7 +3,6 @@
 Il finto WebSocket registra quante volte si e' connesso: e' la cosa che questi
 test difendono davvero, perche' prima ogni lettura ne apriva una nuova.
 """
-import asyncio
 from unittest.mock import patch
 
 import pytest

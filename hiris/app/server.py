@@ -1,61 +1,74 @@
 # hiris/app/server.py
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
 import hashlib
 import logging
 import os
 import re
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
 import aiohttp
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_entities import handle_list_entities
+from .api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from .api.handlers_config import handle_config
-from .api.handlers_usage import (handle_usage, handle_reset_usage,
-                                 handle_storia_usage)
-from .api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
-from .api.handlers_models import (
-    handle_list_models, handle_get_models_config, handle_save_models_config,
-)
+from .api.handlers_entities import handle_list_entities
 from .api.handlers_impostazioni import (
-    handle_get_impostazioni, handle_save_impostazioni,
+    handle_get_impostazioni,
+    handle_save_impostazioni,
 )
-from .decisione_modelli import piano_ha_il_token
-from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
-from .version import read_version
-from .proxy.ha_client import HAClient
-from .azione.registro import RegistroServizi
-from .azione.porta import PortaAzione
-from .azione.cronaca import Cronaca
+from .api.handlers_models import (
+    handle_get_models_config,
+    handle_list_models,
+    handle_save_models_config,
+)
+from .api.handlers_usage import handle_reset_usage, handle_storia_usage, handle_usage
+from .api.middleware_csrf import csrf_middleware
+from .api.middleware_internal_auth import internal_auth_middleware
 from .azione.costruzione.officina import Officina
 from .azione.costruzione.versioni import ArchivioCostruzioni
+from .azione.cronaca import Cronaca
+from .azione.porta import PortaAzione
+from .azione.registro import RegistroServizi
+from .backends.embeddings import build_embedding_provider
+from .casa.anagrafe import (
+    AREE_PER_GIRO,
+    aree_dell_albero,
+    confronta_con_home_assistant,
+    gerarchia,
+    ricostruisci,
+    scegli_campione,
+)
 from .casa.archivio import ArchivioCasa
-from .casa.anagrafe import (AREE_PER_GIRO, aree_dell_albero,
-                           confronta_con_home_assistant, gerarchia,
-                           ricostruisci, scegli_campione)
-from .memoria.archivio import ArchivioMemoria
-from .schedulatore.archivio import ArchivioPromesse
-from .schedulatore.orologio import Orologio
-from .schedulatore.turno import interpreta_promessa
 from .casa.comportamento import rileggi, rileggi_plance
 from .casa.domande import TIPO_LEGAME_HA
 from .casa.domande import legami as _legami_leggibili
 from .casa.tempo import zona_casa
-from .cervello.archivio import ArchivioOsservazioni, CONSERVAZIONE_CAMBI_S
-from .cervello.oggetti import (aggrega_giorno, confini_giorno,
-                               costruisci_corpo_bilancio, DIREZIONI_BILANCIO)
+from .cervello.archivio import CONSERVAZIONE_CAMBI_S, ArchivioOsservazioni
+from .cervello.oggetti import (
+    DIREZIONI_BILANCIO,
+    aggrega_giorno,
+    confini_giorno,
+    costruisci_corpo_bilancio,
+)
 from .cervello.osservatore import Osservatore
+from .decisione_modelli import piano_ha_il_token
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
-from .token_interno import prepara_token_interno
-from .proxy.entity_cache import EntityCache
+from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
+from .memoria.archivio import ArchivioMemoria
 from .memoria.cache_indice import CacheIndice
-from .backends.embeddings import build_embedding_provider
-from .api.middleware_internal_auth import internal_auth_middleware
-from .api.middleware_csrf import csrf_middleware
+from .proxy.entity_cache import EntityCache
+from .proxy.ha_client import HAClient
+from .schedulatore.archivio import ArchivioPromesse
+from .schedulatore.orologio import Orologio
+from .schedulatore.turno import interpreta_promessa
+from .token_interno import prepara_token_interno
+from .version import read_version
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +292,7 @@ async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
     while True:
         remaining = deadline - loop.time()
         if remaining <= 0:
-            raise asyncio.TimeoutError(f"Timeout waiting for WS message id={msg_id}")
+            raise TimeoutError(f"Timeout waiting for WS message id={msg_id}")
         msg = await asyncio.wait_for(ws.receive_json(), timeout=remaining)
         if msg.get("id") == msg_id:
             return msg
@@ -777,7 +790,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         # confrontabile con se stessa. Serve a chi disegna l'albero
         # (`/api/casa`) per dire quanto e' fresco il verdetto che sta
         # mostrando.
-        esito["letto_il"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        esito["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
         app["confronto_albero"] = esito
         divergenti = sum(1 for g in esito["guardate"] if g.get("mancanti") or g.get("in_piu")
                          or g.get("assente_in_ha"))
@@ -1029,8 +1042,8 @@ async def costruisci_bilanci(
         | {c["entita_batteria"] for c in candidati.values() if c["entita_batteria"]})
 
     da_ts, a_ts = confini_giorno(giorno, fuso)
-    da_iso = datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat()
-    a_iso = datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat()
+    da_iso = datetime.fromtimestamp(da_ts, tz=UTC).isoformat()
+    a_iso = datetime.fromtimestamp(a_ts, tz=UTC).isoformat()
     esito = await ha_client.statistiche_orarie(ids_da_leggere, da_iso, a_iso)
     if "errore" in esito:
         logger.warning(
@@ -1673,12 +1686,13 @@ def _ricalcola_catena(app) -> None:
 
 
 async def _on_startup(app: web.Application) -> None:
-    from .claude_runner import ClaudeRunner
-    from .llm_router import LLMRouter
     # fetta E3 Task 7: `import time as _time` viveva fra gli import della
     # Sentinella (cancellati con lei), ma serve ancora qui sotto a
     # `_reasoning_sweep` (ponte push, vivo) -- spostato invece di perso.
     import time as _time
+
+    from .claude_runner import ClaudeRunner
+    from .llm_router import LLMRouter
 
     # Pre-load static HTML so request handlers don't do sync open().read()
     # per request (would block the event loop). Cache invalidation happens via
@@ -2908,8 +2922,8 @@ async def _on_startup(app: web.Application) -> None:
     # the house. fetta E4 Task 5 ("un bot solo"): chat_store ha smesso di
     # avere un concetto di id (o di "conversation_id") -- c'e' UNA
     # cronologia, quindi non c'e' piu' nulla da instradare per chiave.
-    from .chat_store import append_messages as _append_chat_messages
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
+    from .chat_store import append_messages as _append_chat_messages
 
     async def _submit_chat_reply(reply_text: str) -> None:
         if not reply_text:
@@ -3193,24 +3207,23 @@ async def _on_startup(app: web.Application) -> None:
         # Quick reachability check — warn but don't abort startup.
         try:
             import aiohttp as _aiohttp
-            async with _aiohttp.ClientSession() as _sess:
-                async with _sess.get(
-                    local_model_url.rstrip("/") + "/api/tags",
-                    timeout=_aiohttp.ClientTimeout(total=5),
-                ) as _r:
-                    if _r.status == 200:
-                        _tags = await _r.json()
-                        _names = [m.get("name", "") for m in _tags.get("models", [])]
-                        if _modello_ollama in _names:
-                            logger.info("Ollama OK — modello '%s' pronto", _modello_ollama)
-                        else:
-                            logger.warning(
-                                "Ollama raggiungibile ma il modello '%s' non è nella lista %s — "
-                                "pull potrebbe essere necessario",
-                                _modello_ollama, _names,
-                            )
+            async with _aiohttp.ClientSession() as _sess, _sess.get(
+                local_model_url.rstrip("/") + "/api/tags",
+                timeout=_aiohttp.ClientTimeout(total=5),
+            ) as _r:
+                if _r.status == 200:
+                    _tags = await _r.json()
+                    _names = [m.get("name", "") for m in _tags.get("models", [])]
+                    if _modello_ollama in _names:
+                        logger.info("Ollama OK — modello '%s' pronto", _modello_ollama)
                     else:
-                        logger.warning("Ollama /api/tags ha risposto con status %s", _r.status)
+                        logger.warning(
+                            "Ollama raggiungibile ma il modello '%s' non è nella lista %s — "
+                            "pull potrebbe essere necessario",
+                            _modello_ollama, _names,
+                        )
+                else:
+                    logger.warning("Ollama /api/tags ha risposto con status %s", _r.status)
         except Exception as _exc:
             logger.warning(
                 "Ollama non raggiungibile a %s (%s) — le richieste al modello locale falliranno",
@@ -3632,7 +3645,9 @@ def create_app() -> web.Application:
     # del progetto della memoria. Nessun frontend in questo task: si guarda
     # dal browser come /api/casa.
     from .api.handlers_memoria import (
-        handle_get_memoria, handle_patch_memoria, handle_delete_memoria,
+        handle_delete_memoria,
+        handle_get_memoria,
+        handle_patch_memoria,
     )
     app.router.add_get("/api/memoria", handle_get_memoria)
     app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
@@ -3646,7 +3661,9 @@ def create_app() -> web.Application:
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
     from .api.handlers_promesse import (
-        handle_delete_promessa, handle_get_esecuzione, handle_get_promesse,
+        handle_delete_promessa,
+        handle_get_esecuzione,
+        handle_get_promesse,
     )
     app.router.add_get("/api/promesse", handle_get_promesse)
     app.router.add_delete("/api/promesse/{id}", handle_delete_promessa)
@@ -3665,9 +3682,12 @@ def create_app() -> web.Application:
     # rotte scritto a mano: non c'e' niente da aggiungere altrove perche'
     # queste due non saltino la protezione.
     from .api.handlers_costruzioni import (
-        handle_conferma_costruzione, handle_get_costruzione,
-        handle_get_costruzioni, handle_rifiuta_costruzione,
-        handle_ripristina_costruzione)
+        handle_conferma_costruzione,
+        handle_get_costruzione,
+        handle_get_costruzioni,
+        handle_rifiuta_costruzione,
+        handle_ripristina_costruzione,
+    )
     app.router.add_get("/api/costruzioni", handle_get_costruzioni)
     app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)
     app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)

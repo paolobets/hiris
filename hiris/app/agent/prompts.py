@@ -32,9 +32,9 @@ Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 from ..claude_runner import (
     BASE_IDENTITA,
     BASE_REGOLE_STRUMENTI,
-    RESTRICT_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
+    RESTRICT_PROMPT,
 )
 
 # Review finale fetta E3, difetto I-1/I-2 dal lato abbonamento: la versione

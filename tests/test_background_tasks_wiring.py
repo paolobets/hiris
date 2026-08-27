@@ -35,7 +35,6 @@ import pytest
 
 from hiris.app import server
 
-
 # ── 1. _spawn() behavior ───────────────────────────────────────────────────
 
 

@@ -33,7 +33,7 @@ ricordi veri dell'utente dopo novanta giorni. Qui la memoria non evapora.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..storage import connect, init_schema
 
@@ -105,7 +105,7 @@ class ArchivioMemoria:
                 "INSERT INTO ricordi "
                 "(testo, detto_da, detto_il, forza, grandezza, minimo, massimo, unita) "
                 "VALUES (?,?,?,?,?,?,?,?)",
-                (testo, detto_da, datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                (testo, detto_da, datetime.now(UTC).isoformat(timespec="seconds"),
                  forza, grandezza, minimo, massimo, unita))
             ricordo_id = cursore.lastrowid
             self._scrivi_ancore(ricordo_id, ancore)

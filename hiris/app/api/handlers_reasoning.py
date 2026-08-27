@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import logging
 import time
+
 from aiohttp import web
 
 logger = logging.getLogger(__name__)

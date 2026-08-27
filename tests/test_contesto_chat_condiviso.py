@@ -15,12 +15,12 @@ spostamento non ha cambiato nulla per il ramo sincrono). Qui si verifica la
 funzione condivisa in se', cosi' che il Task 2 possa fidarsene senza dover
 rifare il giro HTTP.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from hiris.app.api.handlers_chat import componi_contesto_chat
-from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
+from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from tests.test_chat_al_nucleo import _semina_casa
 
 
@@ -33,7 +33,7 @@ def _close_chat_stores_after_each_test():
 def _semina_sessione_chiusa(data_dir: str, riepilogo: str) -> None:
     """Stesso pattern di test_chat_al_nucleo.py: una sessione GIA' chiusa
     (summary non nullo) inserita direttamente nella ChatStore del data_dir."""
-    ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(data_dir)
     store._conn.execute(
         "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "

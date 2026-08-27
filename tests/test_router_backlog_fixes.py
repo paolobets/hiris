@@ -19,10 +19,8 @@ Real APIs verified before writing this test:
 - ``hiris/app/llm_router.py``'s ``_norm_policy(policy, strategy)`` and
   ``_STRATEGY_ORDER`` module-level dict.
 """
-import pytest
 
-from hiris.app.llm_router import _norm_policy, _STRATEGY_ORDER
-
+from hiris.app.llm_router import _STRATEGY_ORDER, _norm_policy
 
 # ---------------------------------------------------------------------------
 # (b) _norm_policy: all-invalid non-empty list falls back to strategy order

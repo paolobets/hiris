@@ -10,7 +10,7 @@ vera, anche `claude-opus-4-8`, che in `pricing.py` non c'e'.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..backends.pricing import prezzo_noto
@@ -83,7 +83,7 @@ def giorno_locale(adesso: float, fuso: str = "") -> str:
     invece di far passare un giorno spostato per un giorno.
     """
     try:
-        tz = ZoneInfo(fuso) if fuso else timezone.utc
+        tz = ZoneInfo(fuso) if fuso else UTC
     except (ZoneInfoNotFoundError, ValueError):
-        tz = timezone.utc
+        tz = UTC
     return datetime.fromtimestamp(adesso, tz).strftime("%Y-%m-%d")

@@ -20,7 +20,7 @@ BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 def _blocco_inline(nome: str) -> str:
     html = (BASE / nome).read_text(encoding="utf-8")
-    m = re.search(r"\(function\(\) \{.*?\}\)\(\);", html, re.S)
+    m = re.search(r"\(function\(\) \{.*?\}\)\(\);", html, re.DOTALL)
     assert m, f"lo script inline del tema non si trova in {nome}"
     return re.sub(r"\s+", " ", m.group(0)).strip()
 

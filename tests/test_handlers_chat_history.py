@@ -1,8 +1,10 @@
 import json
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from aiohttp.test_utils import make_mocked_request
-from hiris.app.api.handlers_chat_history import handle_get_chat_history, handle_clear_chat_history
+
+from hiris.app.api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from hiris.app.chat_store import close_all_stores
 
 

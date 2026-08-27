@@ -1,4 +1,5 @@
 import pytest
+
 from hiris.app.proxy.ha_client import HAClient
 
 

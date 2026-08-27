@@ -1,4 +1,3 @@
-import pytest
 from hiris.app.proxy.entity_cache import _to_minimal
 
 

@@ -33,22 +33,22 @@ Cosa difende ciascun gruppo di test:
 """
 import logging
 import os
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from unittest.mock import AsyncMock, patch
 
 from hiris.app.agent import prompts, runner
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.api.handlers_chat import handle_chat
+from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.claude_runner import (
     BASE_IDENTITA,
     BASE_REGOLE_STRUMENTI,
     BASE_SYSTEM_PROMPT,
-    RESTRICT_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
+    RESTRICT_PROMPT,
 )
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue

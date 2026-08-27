@@ -107,16 +107,28 @@ promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
 se) resta della persona che ha promesso; il MOMENTO in cui accade no --
 vedi `README.md`, sezione «What HIRIS 2.0 is», per la stessa distinzione
 scritta per l'utente."""
-import asyncio, json, logging, os, secrets, subprocess, time
+import asyncio
+import json
+import logging
+import os
+import secrets
+import subprocess
+import time
 from dataclasses import dataclass, field
+
 import httpx
-from . import prompts
+
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
-from ..schedulatore.turno import strumenti_promessa
+from ..chat_store import (
+    PREFISSO_ERRORE_RUNNER,
+    SENTINELLA_FLUSSO_INCOMPLETO,
+    SENTINELLA_MOCK,
+    SENTINELLA_RUNNER_ASSENTE,
+    SENTINELLA_VUOTO,
+)
 from ..decisione_modelli import ALIAS_DEL_PIANO
-from ..chat_store import (PREFISSO_ERRORE_RUNNER, SENTINELLA_FLUSSO_INCOMPLETO,
-                          SENTINELLA_MOCK, SENTINELLA_RUNNER_ASSENTE,
-                          SENTINELLA_VUOTO)
+from ..schedulatore.turno import strumenti_promessa
+from . import prompts
 
 log = logging.getLogger("hiris.agent")
 

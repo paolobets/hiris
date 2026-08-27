@@ -8,7 +8,6 @@ from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import programma_ricostruzione_anagrafe, programma_rilettura_comportamento
 
-
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
 # della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che

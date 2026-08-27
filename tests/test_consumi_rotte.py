@@ -15,7 +15,9 @@ import json
 import pytest
 
 from hiris.app.api.handlers_usage import (
-    handle_reset_usage, handle_storia_usage, handle_usage,
+    handle_reset_usage,
+    handle_storia_usage,
+    handle_usage,
 )
 from hiris.app.consumi.archivio import ArchivioConsumi
 

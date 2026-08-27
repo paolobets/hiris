@@ -1,12 +1,14 @@
+import pathlib
+import re
+from datetime import UTC
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 import pytest_asyncio
-import re
-import pathlib
-from unittest.mock import AsyncMock, MagicMock
-from aiohttp.test_utils import TestClient
-from hiris.app.server import create_app
-from hiris.app.impostazioni_chat import ImpostazioniChat
+
 from hiris.app.chat_store import close_all_stores
+from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.server import create_app
 
 
 def _cfg_version() -> str:
@@ -346,7 +348,8 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     DIMENTICARE PRIMA. Un messaggio piu' vecchio della soglia scelta nelle
     impostazioni non deve arrivare al runner, anche se e' ancora nella
     sessione attiva (last_msg_at recente) e ancora sul disco."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from hiris.app.chat_store import _get_store
 
     data_dir = client.app["data_dir"]
@@ -355,8 +358,8 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     runner.chat = AsyncMock(return_value="ok")
 
     store = _get_store(data_dir)
-    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ora_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    vecchio_ts = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ora_ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = store._conn
     conn.execute(
         "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
@@ -406,8 +409,8 @@ async def test_chat_does_not_persist_toxic_response(client):
 async def test_chat_does_not_persist_leaked_tool_call_response(client):
     """Same protection for the TOOL_LEAK_USER_MSG sentinel returned by the
     runner when a model emits a tool call as raw text content."""
-    from hiris.app.chat_store import load_history
     from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG
+    from hiris.app.chat_store import load_history
     data_dir = client.app["data_dir"]
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value=TOOL_LEAK_USER_MSG)

@@ -2,9 +2,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa, _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_ARCHIVIO
+from hiris.app.casa.archivio import _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_ARCHIVIO
+from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.comportamento import rileggi_plance
-from hiris.app.proxy.ha_client import HAClient, _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_HA_CLIENT
+from hiris.app.proxy.ha_client import _CHIAVE_PLANCIA_PRINCIPALE as _CHIAVE_HA_CLIENT
+from hiris.app.proxy.ha_client import HAClient
 
 
 def _client():

@@ -1,6 +1,7 @@
 import pytest
 from aiohttp import web
-from hiris.app.api.handlers_entities import handle_list_entities, filter_entities
+
+from hiris.app.api.handlers_entities import filter_entities, handle_list_entities
 
 
 def _states():

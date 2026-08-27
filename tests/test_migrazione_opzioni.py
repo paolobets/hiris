@@ -154,8 +154,9 @@ def test_un_valore_non_numerico_non_fa_saltare_l_avvio():
 def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
     import json
     import logging
+
     from hiris.app.api.handlers_models import load_models_config, save_models_config
-    from hiris.app.migrazione_opzioni import semina, semina_catena
+    from hiris.app.migrazione_opzioni import semina
 
     archivio, _ = semina(load_models_config(str(tmp_path)),
                          {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))

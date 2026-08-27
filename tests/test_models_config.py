@@ -1,4 +1,5 @@
 import os
+
 from hiris.app.api.handlers_models import load_models_config, save_models_config
 
 
@@ -103,7 +104,7 @@ def test_provider_models_defaults_empty(tmp_path):
 
 
 def test_provider_models_roundtrip_and_sanitizes(tmp_path):
-    from hiris.app.api.handlers_models import save_models_config, load_models_config
+    from hiris.app.api.handlers_models import load_models_config, save_models_config
     saved = save_models_config(str(tmp_path), {"provider_models": {
         "claude": "claude-opus-4-7", "openai": 123, "bogus": "x"}})
     assert saved["provider_models"]["claude"] == "claude-opus-4-7"

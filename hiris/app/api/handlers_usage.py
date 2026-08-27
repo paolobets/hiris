@@ -33,7 +33,7 @@ niente, sposta un'ancora, e un'ancora c'e' sempre.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from aiohttp import web
 
@@ -86,7 +86,7 @@ def _non_misurata() -> dict:
 
 
 def _iso(ts: float) -> str | None:
-    return datetime.fromtimestamp(ts, timezone.utc).isoformat() if ts else None
+    return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
 
 
 def _modello_fuori(m: dict) -> dict:
@@ -185,10 +185,10 @@ async def handle_storia_usage(request: web.Request) -> web.Response:
     if archivio is None:
         return web.json_response({"giorni": [], "da": "", "a": ""})
 
-    oggi = datetime.fromtimestamp(time.time(), timezone.utc)
+    oggi = datetime.fromtimestamp(time.time(), UTC)
     a = request.query.get("a") or oggi.strftime("%Y-%m-%d")
     da = request.query.get("da") or (
-        datetime.fromtimestamp(time.time() - _GIORNI_STORIA * 86400, timezone.utc)
+        datetime.fromtimestamp(time.time() - _GIORNI_STORIA * 86400, UTC)
         .strftime("%Y-%m-%d"))
 
     giorni = []

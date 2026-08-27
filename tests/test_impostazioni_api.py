@@ -14,7 +14,9 @@ import pytest_asyncio
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_impostazioni import (
-    CAMPI, MAX_CARATTERI_PROMPT, MODI_RISPOSTA,
+    CAMPI,
+    MAX_CARATTERI_PROMPT,
+    MODI_RISPOSTA,
 )
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat

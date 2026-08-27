@@ -14,8 +14,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from doppioni import (cerca_funzioni_gemelle, cerca_predefiniti,  # noqa: E402
-                      cerca_regex, cerca_vocabolari_paralleli)
+from doppioni import (
+    cerca_funzioni_gemelle,
+    cerca_predefiniti,
+    cerca_regex,
+    cerca_vocabolari_paralleli,
+)
 
 
 def _scrivi(cartella: Path, nome: str, testo: str) -> Path:

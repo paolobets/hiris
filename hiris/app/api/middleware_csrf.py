@@ -16,6 +16,7 @@ definition not a forged cross-site request.
 import hmac
 import logging
 import os
+
 from aiohttp import web
 
 logger = logging.getLogger(__name__)

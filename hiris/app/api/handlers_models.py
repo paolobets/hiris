@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import os
@@ -8,10 +9,14 @@ import time
 import aiohttp
 from aiohttp import web
 
+from ..decisione_modelli import (
+    FINE_CATENA,
+    componi_adesso,
+    componi_pannello,
+    componi_topologia,
+    piano_ha_il_token,
+)
 from ..migrazione_opzioni import _PREDEFINITI as _PREDEFINITI_SEMINA
-from ..decisione_modelli import (FINE_CATENA, componi_adesso, componi_pannello,
-                                 piano_ha_il_token,
-                                 componi_topologia)
 
 logger = logging.getLogger(__name__)
 
@@ -683,14 +688,13 @@ async def _fetch_claude_models(api_key: str) -> tuple[list[str], str]:
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
     timeout = aiohttp.ClientTimeout(total=5)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(
-                    "https://api.anthropic.com/v1/models?limit=100",
-                    headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning("Anthropic models list returned %s", resp.status)
-                    return _CLAUDE_MODELS, "riserva"
-                data = await resp.json()
+        async with aiohttp.ClientSession(timeout=timeout) as session, session.get(
+                "https://api.anthropic.com/v1/models?limit=100",
+                headers=headers) as resp:
+            if resp.status != 200:
+                logger.warning("Anthropic models list returned %s", resp.status)
+                return _CLAUDE_MODELS, "riserva"
+            data = await resp.json()
         # NESSUNA CURATELA e nessun riordino: a differenza di OpenAI qui non
         # c'è rumore da filtrare (niente embedding, niente audio, niente
         # legacy-instruct), e l'ordine È un'informazione -- i più recenti per

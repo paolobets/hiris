@@ -11,9 +11,9 @@ archivio: vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §1.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from ..proxy._sanitize import sanitize_ha_value, sanitize_ha_free_text
+from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -370,7 +370,7 @@ class ArchivioCasa:
                            _motivo(i.get("reason") or i.get("error_reason_translation_key"))))
 
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
-                      (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+                      (datetime.now(UTC).isoformat(timespec="seconds"),))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('non_disponibili', ?)", (_lista(list(non_disponibili or [])),))
             if sistema_di_riferimento:
@@ -463,7 +463,7 @@ class ArchivioCasa:
                            v.get("origine", "file")))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('comportamento_letto_il', ?)",
-                      (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+                      (datetime.now(UTC).isoformat(timespec="seconds"),))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('comportamento_problemi', ?)",
                       (json.dumps(list(problemi or []), ensure_ascii=False),))
@@ -563,7 +563,7 @@ class ArchivioCasa:
                      _lista(v.get("entita"))))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('plance_lette_il', ?)",
-                      (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
+                      (datetime.now(UTC).isoformat(timespec="seconds"),))
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
                       "VALUES ('plance_non_disponibili', ?)",
                       (json.dumps(list(non_disponibili or []), ensure_ascii=False),))

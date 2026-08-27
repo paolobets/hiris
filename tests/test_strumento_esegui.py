@@ -16,6 +16,7 @@ test. Qui si pinnano tre cose che nessun altro test copre:
 import inspect
 
 import pytest
+
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 
 

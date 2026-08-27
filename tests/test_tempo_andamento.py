@@ -12,12 +12,15 @@ con sicurezza -- ed e' cio' che il prodotto diceva prima di questa fetta.
 La finta sa produrre TUTTE queste forme. Una finta che risponde sempre bene
 non prova nessuno dei quattro.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from hiris.app.casa.tempo import (
-    MAX_PUNTI_IN_RISPOSTA, _coperta, andamento, epoch_istante,
+    MAX_PUNTI_IN_RISPOSTA,
+    _coperta,
+    andamento,
+    epoch_istante,
 )
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
@@ -189,7 +192,7 @@ async def test_le_fasce_oltre_il_massimo_si_campionano_come_il_dettaglio():
     in UTC (`+00:00`) mentre `finestra_coperta` e' riscritta nel fuso della
     casa (`+02:00`) -- stesso istante, offset diverso, stessa fondamenta 3
     del test precedente."""
-    base = datetime(2026, 8, 15, 9, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 8, 15, 9, 0, 0, tzinfo=UTC)
     fasce = [{"inizio": (base + timedelta(hours=i)).isoformat(),
               "minimo": 20.0, "massimo": 21.0, "media": 20.5}
              for i in range(200)]

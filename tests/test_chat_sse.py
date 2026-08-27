@@ -1,9 +1,11 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
-from hiris.app.server import create_app
-from hiris.app.impostazioni_chat import ImpostazioniChat
+
 from hiris.app.chat_store import close_all_stores
+from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.server import create_app
 
 
 @pytest.fixture(autouse=True)

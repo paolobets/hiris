@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import os
 
-
 # LA MISURA DELLA CREDENZIALE DEL PIANO, in un posto solo.
 #
 # «Il piano ha un token?» era scritta quattro volte, in quattro moduli, e
@@ -368,8 +367,7 @@ def nota_ripiego(*, motivo: str, chi_ha_risposto: str) -> str:
     quale_natura = natura(chi_ha_risposto)
     if not fatto or not quale_natura:
         return ""
-    return "Il Piano Claude Max {}: ha risposto {}, {}.".format(
-        fatto, nome(chi_ha_risposto), quale_natura)
+    return f"Il Piano Claude Max {fatto}: ha risposto {nome(chi_ha_risposto)}, {quale_natura}."
 
 
 def componi_adesso(
@@ -464,9 +462,9 @@ def componi_adesso(
             diagnosi.append({
                 "gravita": "fatto",
                 "testo": ("Il ponte è acceso: il Piano Claude Max prova per "
-                          "primo, e se non risponde entro {} minuti il turno "
+                          f"primo, e se non risponde entro {int(scadenza_ponte_min)} minuti il turno "
                           "passa al successivo della catena."
-                          .format(int(scadenza_ponte_min))),
+                          ),
                 # Il gesto INVERSO di «Mettilo primo», e l'unico che resta per
                 # spegnere il ponte da quando `ponte.attivo` non e' piu'
                 # un'opzione dell'add-on (versione B). Sta su una riga che non
@@ -479,9 +477,9 @@ def componi_adesso(
             diagnosi.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
-                          "c'è nessun altro: se non risponde entro {} minuti, "
+                          f"c'è nessun altro: se non risponde entro {int(scadenza_ponte_min)} minuti, "
                           "il turno non ha dove andare."
-                          .format(int(scadenza_ponte_min))),
+                          ),
                 "azione": None,
             })
     elif ponte_muto:
@@ -689,9 +687,9 @@ def componi_topologia(
             # un vicolo cieco senza che nessuno tocchi il frontend. Diceva «il
             # ponte non ripiega: se non risponde entro N min il messaggio va
             # perso», e finché è stato vero è stato giusto dirlo.
-            return "se non risponde entro {} min".format(int(scadenza_ponte_min))
+            return f"se non risponde entro {int(scadenza_ponte_min)} min"
         if pid == "ollama":
-            return "se non risponde entro {} s".format(int(timeout_ollama_s))
+            return f"se non risponde entro {int(timeout_ollama_s)} s"
         return "se rifiuta, subito"
 
     def connettore_nota(pid: str) -> str:
@@ -886,7 +884,7 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
         # nascondere è comodo per chi capisce e crudele per chi non capisce
         # perché una cosa è sparita. La parola è la stessa della riga
         # (`MANCANZE`), perché è lo stesso fatto detto nello stesso vocabolario.
-        return "Non c'è nessun elenco da leggere: {}.".format(manca(provider_id))
+        return f"Non c'è nessun elenco da leggere: {manca(provider_id)}."
     if fonte == "fissa":
         # Il piano. Non è un ripiego e non si chiama così: i tre alias non
         # possono invecchiare, perché non descrivono il catalogo di qualcun
@@ -908,12 +906,12 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
     ospite = _OSPITI.get(provider_id) or indirizzo or nome(provider_id)
     if fonte == "viva":
         if provider_id == "ollama":
-            return "Scaricati su {} — letti adesso.".format(ospite)
-        return "Letti da {} adesso.".format(ospite)
+            return f"Scaricati su {ospite} — letti adesso."
+        return f"Letti da {ospite} adesso."
     causa = ("spento? indirizzo sbagliato?" if provider_id == "ollama"
              else "chiave rifiutata? rete?")
-    riga = ("Elenco di riserva: non ho potuto leggere {} ({}). Quello che vedi "
-            "qui potrebbe non esistere più.".format(ospite, causa))
+    riga = (f"Elenco di riserva: non ho potuto leggere {ospite} ({causa}). Quello che vedi "
+            "qui potrebbe non esistere più.")
     if avviso_gratuiti:
         # Il difetto gemello, DICHIARATO invece che nascosto: quando la lettura
         # fallisce il ripiego restituisce i preset non filtrati, quindi i

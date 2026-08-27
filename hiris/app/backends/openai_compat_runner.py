@@ -1,25 +1,25 @@
 from __future__ import annotations
-import asyncio
+
 import json
 import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
+
 import httpx as _httpx
 
+from ..chat_store import RE_NOME_STRUMENTO_TRAPELATO
 from ..claude_runner import (
+    _MAX_ITERATIONS_NOTICE,
     BASE_SYSTEM_PROMPT,
-    RESTRICT_PROMPT,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
+    RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
     _PerCallList,
-    _MAX_ITERATIONS_NOTICE,
 )
-from ..chat_store import RE_NOME_STRUMENTO_TRAPELATO
 from ..esiti_provider import famiglia_errore
 from .pricing import get_price as _prezzo
 
@@ -156,7 +156,7 @@ TOOL_LEAK_USER_MSG = (
 )
 
 
-def detect_leaked_tool_call(content: str, tool_names) -> Optional[str]:
+def detect_leaked_tool_call(content: str, tool_names) -> str | None:
     """Return the matched tool name if `content` is a leaked tool call, else None.
 
     The identifier must exactly match one of the runner's currently-available
@@ -184,7 +184,7 @@ def detect_leaked_tool_call(content: str, tool_names) -> Optional[str]:
 _AFFORD_RE = re.compile(r"can only afford (\d+)", re.IGNORECASE)
 
 
-def parse_afford_limit(exc: Any) -> Optional[int]:
+def parse_afford_limit(exc: Any) -> int | None:
     """If `exc` carries an OpenRouter 402 'afford X tokens' message, return X
     reduced by a small safety margin. Returns ``None`` if the message does
     not match — caller falls back to generic error handling.
@@ -213,7 +213,7 @@ _UPSTREAM_RATELIMIT_RE = re.compile(
 )
 
 
-def parse_upstream_rate_limit(exc: Any) -> Optional[str]:
+def parse_upstream_rate_limit(exc: Any) -> str | None:
     """Detect free-tier upstream rate limit and return an actionable Italian
     message. Returns ``None`` if the exception is not this specific case.
     """
@@ -544,7 +544,7 @@ class OpenAICompatRunner:
         user_message: str,
         system_prompt: str = "",
         context_str: str = "",
-        conversation_history: Optional[list[dict]] = None,
+        conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = 4096,
         agent_type: str = "chat",
@@ -864,7 +864,7 @@ class OpenAICompatRunner:
         user_message: str,
         system_prompt: str = "",
         context_str: str = "",
-        conversation_history: Optional[list[dict]] = None,
+        conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = 4096,
         agent_type: str = "chat",
@@ -1018,7 +1018,7 @@ class OpenAICompatRunner:
 
                 self._record_success()
                 collected_text = ""
-                finish_reason: Optional[str] = None
+                finish_reason: str | None = None
                 # {index: {id, name, args}} — assembla i frammenti tool-call dallo stream
                 tc_fragments: dict[int, dict] = {}
 

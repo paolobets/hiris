@@ -49,9 +49,17 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from ..proxy._sanitize import sanitize_text
-from .anagrafe import (categorie_con_nome, classe_effettiva, dominio_di,
-                       etichette_con_id, gerarchia, nomi_delle_categorie,
-                       nomi_delle_etichette, traduci_stato, unita_effettiva)
+from .anagrafe import (
+    categorie_con_nome,
+    classe_effettiva,
+    dominio_di,
+    etichette_con_id,
+    gerarchia,
+    nomi_delle_categorie,
+    nomi_delle_etichette,
+    traduci_stato,
+    unita_effettiva,
+)
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco

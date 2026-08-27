@@ -43,12 +43,18 @@ cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .anagrafe import (_SIGNIFICATO_CLASSE, _TRADUZIONE_STATO, SEVERITA_PROBLEMA,
-                       classe_effettiva, dominio_di, e_pseudo_area, gerarchia,
-                       nome_con_id, traduci_stato)
+from .anagrafe import (
+    SEVERITA_PROBLEMA,
+    classe_effettiva,
+    dominio_di,
+    e_pseudo_area,
+    gerarchia,
+    nome_con_id,
+    traduci_stato,
+)
 from .domande import ricordi_sanificati
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
@@ -480,9 +486,9 @@ def _riga_adesso(sistema: dict | None, adesso: float | None) -> str:
         return ""
     nome = (sistema or {}).get("fuso") or ""
     try:
-        fuso, etichetta = (ZoneInfo(nome), nome) if nome else (timezone.utc, "UTC")
+        fuso, etichetta = (ZoneInfo(nome), nome) if nome else (UTC, "UTC")
     except (ZoneInfoNotFoundError, ValueError):
-        fuso, etichetta = timezone.utc, "UTC"
+        fuso, etichetta = UTC, "UTC"
     quando = datetime.fromtimestamp(adesso, fuso)
     return "Adesso sono le %s del %s (fuso %s)." % (
         quando.strftime("%H:%M"), quando.strftime("%d/%m/%Y"), etichetta)

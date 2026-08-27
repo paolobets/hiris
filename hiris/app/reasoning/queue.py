@@ -1,7 +1,11 @@
 from __future__ import annotations
-import json, secrets, threading, time
+
+import json
+import secrets
+import threading
+import time
 from datetime import datetime
-from typing import Optional
+
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -44,7 +48,7 @@ class ReasoningQueue:
             self._conn.close()
 
     def enqueue(self, kind: str, wake: dict, context: dict, deadline_ts: float,
-                *, job_id: Optional[str] = None, now: float) -> str:
+                *, job_id: str | None = None, now: float) -> str:
         jid = job_id or secrets.token_urlsafe(12)
         with self._lock:
             self._conn.execute(
@@ -54,7 +58,7 @@ class ReasoningQueue:
             self._conn.commit()
         return jid
 
-    def claim(self, now: float) -> Optional[dict]:
+    def claim(self, now: float) -> dict | None:
         with self._lock:
             r = self._conn.execute(
                 "SELECT * FROM reasoning_jobs WHERE status='pending' AND deadline_ts > ? "
@@ -150,7 +154,7 @@ class ReasoningQueue:
     # quindi in volo per sempre, ed e' `fallisci_ripieghi_bloccati` -- chiamata
     # dallo sweep di `server.py` -- a raccoglierlo.
 
-    def reclama_scaduto(self, job_id: str, now: float) -> Optional[dict]:
+    def reclama_scaduto(self, job_id: str, now: float) -> dict | None:
         """Prende in carico un job di chat scaduto, per ripiegarlo sulla catena.
 
         Atomico: due poll concorrenti (il browser ne fa uno ogni 3,5 s, e due
@@ -226,7 +230,7 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount
 
-    def get(self, job_id: str) -> Optional[dict]:
+    def get(self, job_id: str) -> dict | None:
         with self._lock:
             r = self._conn.execute("SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)).fetchone()
         if r is None:
@@ -235,7 +239,7 @@ class ReasoningQueue:
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
 
-    def has_pending_chat(self, now: Optional[float] = None) -> bool:
+    def has_pending_chat(self, now: float | None = None) -> bool:
         """True if ANY kind="chat" job is still in flight (status 'pending'
         or 'claimed') AND its deadline hasn't passed yet. Slice 4b Task 3 --
         "one answer in flight per conversation" guard on the async
@@ -277,7 +281,7 @@ class ReasoningQueue:
                 (ts,)).fetchone()
         return row is not None
 
-    def count_turni_oggi(self, now: Optional[float] = None) -> int:
+    def count_turni_oggi(self, now: float | None = None) -> int:
         """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.
 
         Fino al 22/08/2026 si chiamava `count_chat_today` e filtrava

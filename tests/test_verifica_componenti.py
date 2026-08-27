@@ -188,7 +188,7 @@ def test_legge_tetti_e_pavimenti_da_requirements():
     # il docstring dice gia' corretto per il pavimento -- si rompe a ogni
     # bump legittimo del major (misurato: passato da 1 a 2 quando il
     # pavimento e' salito a 1.0.0, con la riga sotto ancora ferma a `== 1`).
-    atteso = _re.search(r"^anthropic>=([\d.]+),<(\d+)\.0\.0", testo, _re.M)
+    atteso = _re.search(r"^anthropic>=([\d.]+),<(\d+)\.0\.0", testo, _re.MULTILINE)
     assert atteso, "anthropic non ha piu' un pavimento/tetto in requirements.txt"
 
     letti = vc.leggi_i_file()

@@ -1,4 +1,4 @@
-from hiris.app.proxy._sanitize import sanitize_text, sanitize_ha_value, sanitize_ha_free_text
+from hiris.app.proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value, sanitize_text
 
 
 def test_sanitize_text_filters_injection_and_clamps_long_text():

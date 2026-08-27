@@ -17,8 +17,7 @@ import asyncio
 
 import pytest
 
-from hiris.app.server import (_governa_lavoratore_del_ponte,
-                              should_start_agent_worker)
+from hiris.app.server import _governa_lavoratore_del_ponte, should_start_agent_worker
 
 
 def test_worker_off_by_default(monkeypatch):

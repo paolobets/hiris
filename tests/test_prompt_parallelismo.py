@@ -146,8 +146,10 @@ def test_il_tetto_ollama_resta_proporzionato():
     la proporzione -- non il valore assoluto -- e' cio' che il brief chiedeva
     di mantenere: 25 su 50."""
     from hiris.app.backends.openai_compat_runner import (
-        MAX_TOOL_ITERATIONS as _sincrono,
         _OLLAMA_MAX_TOOL_ITERATIONS as _ollama,
+    )
+    from hiris.app.backends.openai_compat_runner import (
+        MAX_TOOL_ITERATIONS as _sincrono,
     )
     assert _sincrono == 50
     assert _ollama == 25

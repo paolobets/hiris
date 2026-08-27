@@ -9,6 +9,7 @@ instead of the dead code's flat array ({id, name, state, domain}).
 """
 import pytest
 from aiohttp import web
+
 from hiris.app.api.handlers_entities import handle_list_entities
 
 

@@ -1,14 +1,17 @@
 import asyncio
 import logging
+import re
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.parse import quote
+
+import aiohttp
 
 from ..casa.anagrafe import SEVERITA_PROBLEMA
 from ..casa.tempo import normalizza_ore
-from ._sanitize import sanitize_ha_value, sanitize_ha_free_text, truncate_with_marker as _truncate
-import re
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Optional
-from urllib.parse import quote
-import aiohttp
+from ._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ._sanitize import truncate_with_marker as _truncate
 
 # Review finale fetta E3, Important #3: `_IDENTIFIER_RE` serviva solo a
 # `call_service`, uscita qui sotto -- vedi il commento sopra `class HAClient`.
@@ -133,7 +136,7 @@ def _istante_da_ha(grezzo):
         return grezzo
     secondi = grezzo / 1000.0 if abs(grezzo) > 1e11 else float(grezzo)
     try:
-        return datetime.fromtimestamp(secondi, tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(secondi, tz=UTC).isoformat()
     except (OverflowError, OSError, ValueError):
         return grezzo
 
@@ -308,8 +311,8 @@ class HAClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._ws_task: Optional[asyncio.Task] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._ws_task: asyncio.Task | None = None
         self._state_listeners: list[Callable[[dict], None]] = []
         self._anagrafe_listeners: list[Callable[[str], None]] = []
         self._plance_listeners: list[Callable[[dict], None]] = []
@@ -1084,7 +1087,7 @@ class HAClient:
             return {"errore": _truncate(f"entita' non valida: {entita!r}", 200)}
         finestra = int(normalizza_ore(ore, tetto=MAX_DIARIO_ORE,
                                       default=DEFAULT_DIARIO_ORE))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         start = (now - timedelta(hours=finestra)).isoformat()
         # start sta nel path (come /api/history/period); end_time ed entity
         # stanno nella query, dove il "+" del fuso orario va percent-encoded
@@ -1281,7 +1284,7 @@ class HAClient:
         statistiche`: vedi il SUO docstring per la forma esatta, misurata, e
         per la ragione per cui la traduzione vive in un posto solo.
         """
-        start = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+        start = (datetime.now(UTC) - timedelta(days=giorni)).isoformat()
         return await self._richiedi_statistiche(
             identificatori, {"start_time": start, "period": periodo})
 

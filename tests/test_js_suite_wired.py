@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Review finale pre-1.0, finding m10: questo file verificava solo che

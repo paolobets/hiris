@@ -21,16 +21,18 @@ import pytest
 from hiris.app.api import handlers_models
 from hiris.app.decisione_modelli import provenienza
 
+# La fixture `client` (app vera via `create_app()`), la stessa che
+# `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.
+from tests.test_api import client  # noqa: F401
+
 # Le due finte vivono gia' in `test_handlers_models_openrouter.py`: si riusano
 # invece di riscriverne di nuove. Due finte che fingono la stessa cosa sono la
 # seconda rappresentazione in miniatura, e divergono come tutte le seconde
 # rappresentazioni.
-from tests.test_handlers_models_openrouter import (  # noqa: E402
-    _mock_che_solleva, _mock_openrouter_response,
+from tests.test_handlers_models_openrouter import (
+    _mock_che_solleva,
+    _mock_openrouter_response,
 )
-# La fixture `client` (app vera via `create_app()`), la stessa che
-# `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.
-from tests.test_api import client  # noqa: F401,E402
 
 
 def _mock_risposta_con_stato(stato: int):
@@ -155,4 +157,4 @@ def test_la_frase_falsa_su_anthropic_non_si_dice_piu_da_nessuna_parte():
         # quello, altrimenti la normalizzazione degli spazi non basta.
         testo = testo.replace("# ", "")
         for frase in vietate:
-            assert frase not in testo, "{}: {!r}".format(sorgente, frase)
+            assert frase not in testo, f"{sorgente}: {frase!r}"

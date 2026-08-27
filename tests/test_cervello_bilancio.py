@@ -12,8 +12,7 @@ import os
 import pytest
 
 from hiris.app.cervello.archivio import ArchivioOsservazioni
-from hiris.app.cervello.oggetti import (DIREZIONI_BILANCIO, aggrega_giorno,
-                                         costruisci_corpo_bilancio)
+from hiris.app.cervello.oggetti import DIREZIONI_BILANCIO, aggrega_giorno, costruisci_corpo_bilancio
 
 G = "2026-08-24"
 MEZZANOTTE = 1787522400.0   # 2026-08-23T22:00:00+00:00 = 24/08 00:00 +02:00 Roma

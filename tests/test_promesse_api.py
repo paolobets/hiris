@@ -26,6 +26,7 @@ from hiris.app.azione.cronaca import Cronaca
 from hiris.app.chat_store import close_all_stores
 from hiris.app.schedulatore.archivio import ArchivioPromesse
 from hiris.app.server import create_app
+
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),
 # senza niente di specifico alle impostazioni: stesso riuso cross-file gia'
 # praticato dal progetto per `client` (vedi `test_elenco_anthropic.py`,

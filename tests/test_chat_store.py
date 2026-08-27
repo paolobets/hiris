@@ -1,7 +1,5 @@
-import logging
-import os
 import sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -91,8 +89,8 @@ def test_clear_history_noop_when_empty(tmp_path):
 
 def test_load_filters_messages_older_than_30_days(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    old_ts = (datetime.now(timezone.utc) - timedelta(days=31)).strftime(_TS_FMT)
-    new_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    old_ts = (datetime.now(UTC) - timedelta(days=31)).strftime(_TS_FMT)
+    new_ts = datetime.now(UTC).strftime(_TS_FMT)
     # Inject a session and old+new messages directly
     session_id = "sess-old"
     conn = store._conn
@@ -126,8 +124,8 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
     disco: e' la prova gemella di `test_zero_giorni_non_cancella_mai_niente`
     sotto, sullo stesso dato."""
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=2)).strftime(_TS_FMT)
-    ora_ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    vecchio_ts = (datetime.now(UTC) - timedelta(days=2)).strftime(_TS_FMT)
+    ora_ts = datetime.now(UTC).strftime(_TS_FMT)
     session_id = "sess-mista"
     conn = store._conn
     conn.execute(
@@ -159,7 +157,7 @@ def test_zero_giorni_non_cancella_mai_niente(tmp_path):
     subito», il contrario di cio' che chiunque si aspetta da una
     "conservazione" messa a zero."""
     data_dir = str(tmp_path)
-    vecchissimo_ts = (datetime.now(timezone.utc) - timedelta(days=3650)).strftime(_TS_FMT)
+    vecchissimo_ts = (datetime.now(UTC) - timedelta(days=3650)).strftime(_TS_FMT)
     store = ChatStore(str(tmp_path / "chat_history.db"))
     conn = store._conn
     conn.execute(
@@ -192,7 +190,7 @@ def test_zero_giorni_non_cancella_mai_niente(tmp_path):
 def test_new_session_after_gap(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
     # Create a first session with a timestamp > 2h ago
-    old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime(_TS_FMT)
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime(_TS_FMT)
     sid1 = "sess-stale"
     conn = store._conn
     conn.execute(
@@ -236,7 +234,7 @@ def test_active_session_reused_within_gap(tmp_path):
 def test_load_context_returns_empty_for_stale_session(tmp_path):
     """load_context must return [] if the session gap has elapsed (read path)."""
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    old_ts = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime(_TS_FMT)
+    old_ts = (datetime.now(UTC) - timedelta(hours=3)).strftime(_TS_FMT)
     sid = "stale-read"
     conn = store._conn
     conn.execute(
@@ -265,7 +263,7 @@ def test_load_context_returns_empty_for_stale_session(tmp_path):
 
 def test_get_past_summaries_returns_closed_sessions(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    ts = datetime.now(UTC).strftime(_TS_FMT)
     for i in range(4):
         sid = f"closed-{i}"
         store._conn.execute(
@@ -316,7 +314,7 @@ def test_count_user_turns_zero_when_empty(tmp_path):
 def test_summary_truncated_to_200_chars(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
     long_text = "x" * 300
-    ts_old = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime(_TS_FMT)
+    ts_old = (datetime.now(UTC) - timedelta(hours=3)).strftime(_TS_FMT)
     sid = "sess-long"
     conn = store._conn
     conn.execute(
@@ -346,7 +344,7 @@ def test_summary_truncated_to_200_chars(tmp_path):
 # them so existing users recover automatically without manual cleanup.
 # ---------------------------------------------------------------------------
 
-from hiris.app.chat_store import _purge_toxic_turns, _is_toxic_assistant
+from hiris.app.chat_store import _is_toxic_assistant, _purge_toxic_turns
 
 
 def test_is_toxic_detects_mistral_leak_pattern():

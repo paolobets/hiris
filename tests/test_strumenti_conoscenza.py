@@ -1,8 +1,12 @@
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.casa.strumenti import (CERCA_TOOL_DEF, ESEGUI_TOOL_DEF,
-                                      STRUMENTI_CONOSCENZA, DispatcherStrumenti)
+from hiris.app.casa.strumenti import (
+    CERCA_TOOL_DEF,
+    ESEGUI_TOOL_DEF,
+    STRUMENTI_CONOSCENZA,
+    DispatcherStrumenti,
+)
 from hiris.app.memoria.archivio import ArchivioMemoria
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
@@ -838,9 +842,9 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 # Ogni test qui sotto dichiara quale mutazione lo fa cadere: il difetto
 # numero uno di questa campagna e' un test che non puo' fallire.
 
-from hiris.app.memoria.cache_indice import CacheIndice
 import hiris.app.casa.strumenti as _modulo_strumenti
 import hiris.app.memoria.cache_indice as _cache_indice_modulo
+from hiris.app.memoria.cache_indice import CacheIndice
 
 
 def _conta_costruzioni(monkeypatch):

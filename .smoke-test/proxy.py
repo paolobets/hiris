@@ -3,9 +3,9 @@ Mini proxy che inietta X-Ingress-Path header per testare HIRIS reale.
 Bind 127.0.0.1:8765 → forward 192.168.1.95:8099 con header Ingress.
 Serve /static/* dal disco locale (override file modificati senza rebuild addon).
 """
-import asyncio
-import os
 import mimetypes
+import os
+
 import aiohttp
 from aiohttp import web
 

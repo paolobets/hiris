@@ -16,8 +16,8 @@ import logging
 import re
 from pathlib import Path
 
-from .lettura_yaml import carica_file
 from .anagrafe import dominio_di
+from .lettura_yaml import carica_file
 
 logger = logging.getLogger(__name__)
 

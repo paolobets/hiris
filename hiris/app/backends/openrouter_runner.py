@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from .openai_compat_runner import OpenAICompatRunner
 
-
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Il modello che questo runner usa quando nessuno ne ha scelto uno: pagante ma

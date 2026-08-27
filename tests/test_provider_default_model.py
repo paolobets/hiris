@@ -18,8 +18,8 @@ import textwrap
 
 import pytest
 
-from hiris.app.backends.openai_compat_runner import (AUTO_MODEL_MAP as AUTO_COMPAT,
-                                                     OpenAICompatRunner)
+from hiris.app.backends.openai_compat_runner import AUTO_MODEL_MAP as AUTO_COMPAT
+from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.backends.openrouter_runner import AUTO_OPENROUTER, OpenRouterRunner
 from hiris.app.claude_runner import AUTO_MODEL_MAP, ClaudeRunner, resolve_model
 

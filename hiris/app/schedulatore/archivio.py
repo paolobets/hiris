@@ -18,8 +18,12 @@ import threading
 
 from ..storage import connect, init_schema
 from .promessa import (
-    CONSERVAZIONE_S, STATI_CONCLUSI, STATI_SOSPESO, TETTO_IN_SOSPESO,
-    serializza, valida,
+    CONSERVAZIONE_S,
+    STATI_CONCLUSI,
+    STATI_SOSPESO,
+    TETTO_IN_SOSPESO,
+    serializza,
+    valida,
 )
 
 logger = logging.getLogger(__name__)

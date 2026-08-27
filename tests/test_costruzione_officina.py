@@ -1013,6 +1013,6 @@ def test_il_troncatore_dell_officina_e_lo_stesso_oggetto_di_sanitize():
     come gia' verificato fra `ha_client` e `_sanitize`
     (test_ha_client_diagnostics.py::test_truncate_e_la_stessa_funzione_di_
     sanitize)."""
-    from hiris.app.proxy import _sanitize
     from hiris.app.azione.costruzione import officina as officina_modulo
+    from hiris.app.proxy import _sanitize
     assert officina_modulo._truncate is _sanitize.truncate_with_marker

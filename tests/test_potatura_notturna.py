@@ -21,6 +21,7 @@ fine della funzione), isolato dal resto del boot (Supervisor/scheduler/
 websocket)."""
 import inspect
 import textwrap
+from datetime import UTC
 
 from hiris.app import server
 from hiris.app.impostazioni_chat import ImpostazioniChat
@@ -50,8 +51,9 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     """Il PUT che cambia `giorni_conservazione` a caldo riassegna
     `app["impostazioni_chat"]` (handlers_impostazioni.py): la potatura di
     stanotte deve vedere QUEL valore, non uno catturato all'avvio."""
+    from datetime import datetime, timedelta
+
     from hiris.app.chat_store import append_messages, close_all_stores, load_history
-    from datetime import datetime, timezone, timedelta
 
     close_all_stores()
     data_dir = str(tmp_path)
@@ -62,7 +64,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     # potare quando i giorni configurati sono pochi.
     from hiris.app.chat_store import _get_store
     store = _get_store(data_dir)
-    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    vecchio_ts = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store._conn.execute("UPDATE chat_messages SET timestamp = ?", (vecchio_ts,))
     store._conn.commit()
 
@@ -79,7 +81,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     # deve vederlo, non un 5 catturato alla costruzione della chiusura.
     append_messages([{"role": "user", "content": "recente"}], data_dir)
     store2 = _get_store(data_dir)
-    vecchio_ts2 = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    vecchio_ts2 = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store2._conn.execute(
         "UPDATE chat_messages SET timestamp = ? WHERE content = ?",
         (vecchio_ts2, "recente"),

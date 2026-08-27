@@ -30,6 +30,7 @@ consegna davvero al runner.
 """
 import json
 
+
 def _strumenti_loggati(caplog):
     """I nomi degli strumenti dalla riga di log a livello debug che ha
     sostituito le targhette in chat (`api/handlers_chat.py`).
@@ -44,15 +45,16 @@ def _strumenti_loggati(caplog):
     return " | ".join(righe)
 
 
-import pytest
-import pytest_asyncio
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
-from hiris.app.chat_store import _get_store, _TS_FMT, close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import ArchivioMemoria
 from hiris.app.server import create_app
 from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento
@@ -338,7 +340,7 @@ async def test_un_archivio_guasto_non_fa_rispondere_500_alla_chat(aiohttp_client
 
 @pytest.mark.asyncio
 async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     archivio_casa = _semina_casa(tmp_path)
     client, mock_runner = await _build_chat_client(
@@ -350,7 +352,7 @@ async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
     # stessa ChatStore che `handle_chat` legge per questo `data_dir`. fetta E4
     # Task 5 ("un bot solo"): chat_sessions non ha piu' una colonna chatbot_id
     # -- c'e' UNA cronologia, non serve piu' un id per riga.
-    ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
         "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
@@ -375,11 +377,11 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
     """Le due fonti sono indipendenti: una chat senza archivi (nucleo
     degradato) deve comunque mostrare la cronologia delle sessioni chiuse --
     non e' il nucleo a deciderne la presenza."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
 
-    ts = datetime.now(timezone.utc).strftime(_TS_FMT)
+    ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
         "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "

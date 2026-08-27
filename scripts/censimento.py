@@ -153,7 +153,7 @@ def _senza_docstring(testo: str) -> str:
     return "".join(righe)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _leggi_pulito(p: Path) -> str:
     """Il testo di un file Python senza i commenti, letto una volta sola.
 
@@ -225,7 +225,7 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
 
 # ── Opzioni e variabili d'ambiente ──────────────────────────────────────────
 
-_RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.M)
+_RE_EXPORT = re.compile(r"^\s*export\s+([A-Z_][A-Z0-9_]*)=", re.MULTILINE)
 _RE_ENV = re.compile(
     r"""(?:os\.environ\.get\(|os\.getenv\(|os\.environ\[|env_bool\()"""
     r"""\s*["']([A-Z_][A-Z0-9_]*)["']"""

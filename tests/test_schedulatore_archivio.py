@@ -5,7 +5,8 @@ import pytest
 
 from hiris.app.schedulatore.archivio import ArchivioPromesse
 from hiris.app.schedulatore.promessa import (
-    CONSERVAZIONE_S, TETTO_IN_SOSPESO,
+    CONSERVAZIONE_S,
+    TETTO_IN_SOSPESO,
 )
 
 ADESSO = 1_755_600_000.0

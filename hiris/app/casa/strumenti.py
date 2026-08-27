@@ -127,6 +127,12 @@ import inspect
 import logging
 from typing import Any
 
+from ..memoria.archivio import ArchivioMemoria
+from ..memoria.cache_indice import CacheIndice
+from ..memoria.interpretazione import VOCABOLARIO, valida
+from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
+from ..proxy.entity_cache import inventario_leggibile
+from . import tempo
 from .anagrafe import specchio_vivo
 from .archivio import ArchivioCasa
 from .domande import TIPO_LEGAME_HA
@@ -134,12 +140,6 @@ from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
 from .domande import legami as _legami_leggibili
 from .domande import ricordi_sanificati as _ricordi_sanificati
-from . import tempo
-from ..memoria.archivio import ArchivioMemoria
-from ..proxy.entity_cache import inventario_leggibile
-from ..memoria.cache_indice import CacheIndice
-from ..memoria.interpretazione import VOCABOLARIO, valida
-from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
 # `memoria/interpretazione.VOCABOLARIO["ancore"]` -- la fonte vera, non

@@ -8,8 +8,13 @@ conosca la politica di conservazione del recorder di QUESTA casa.
 import pytest
 
 from hiris.app.casa.tempo import (
-    DEFAULT_ORE, MAX_FINESTRA_ORE, SOGLIA_GRANA_ORE, finestra, normalizza_ore,
-    produce_statistiche, scegli_superficie,
+    DEFAULT_ORE,
+    MAX_FINESTRA_ORE,
+    SOGLIA_GRANA_ORE,
+    finestra,
+    normalizza_ore,
+    produce_statistiche,
+    scegli_superficie,
 )
 
 

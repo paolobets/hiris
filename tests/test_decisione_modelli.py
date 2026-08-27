@@ -323,10 +323,13 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 # riquadro «Adesso» lo applica alla frase.
 # ---------------------------------------------------------------------------
 
-from hiris.app.decisione_modelli import (componi_pannello,  # noqa: E402
-                                         e_alias, provenienza, spiegazione)
-from hiris.app.decisione_modelli import \
-    componi_topologia as _componi_topologia  # noqa: E402
+from hiris.app.decisione_modelli import (
+    componi_pannello,
+    e_alias,
+    provenienza,
+    spiegazione,
+)
+from hiris.app.decisione_modelli import componi_topologia as _componi_topologia
 
 
 def componi_topologia(**kw):
@@ -943,7 +946,7 @@ def test_i_due_parametri_nuovi_sono_obbligatori():
 # ogni volta (decisione del proprietario, 13 agosto), e cio' che la riga dice
 # e' l'unica cosa che l'utente vedra' mai di tutta questa fetta.
 
-from hiris.app.decisione_modelli import nota_ripiego  # noqa: E402
+from hiris.app.decisione_modelli import nota_ripiego
 
 
 def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():

@@ -3,8 +3,15 @@ import re
 from pathlib import Path
 
 from hiris.app.schedulatore.promessa import (
-    CONSERVAZIONE_S, ORIZZONTE_S, STATI_CONCLUSI, STATI_SOSPESO,
-    TETTO_IN_SOSPESO, TOLLERANZA_S, motivo_ritardo, serializza, valida,
+    CONSERVAZIONE_S,
+    ORIZZONTE_S,
+    STATI_CONCLUSI,
+    STATI_SOSPESO,
+    TETTO_IN_SOSPESO,
+    TOLLERANZA_S,
+    motivo_ritardo,
+    serializza,
+    valida,
 )
 
 BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"

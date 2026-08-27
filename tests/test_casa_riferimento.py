@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.casa.anagrafe import sistema_di_riferimento, ricostruisci
+from hiris.app.casa.anagrafe import ricostruisci, sistema_di_riferimento
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.nucleo import componi
 from hiris.app.casa.strumenti import DispatcherStrumenti

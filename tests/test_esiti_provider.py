@@ -14,8 +14,7 @@ regalare una freschezza che la produzione non ha.
 import pytest
 
 from hiris.app.decisione_modelli import frase_esito
-from hiris.app.esiti_provider import (FAMIGLIE, RegistroEsiti, famiglia_da_codice,
-                                      famiglia_errore)
+from hiris.app.esiti_provider import FAMIGLIE, RegistroEsiti, famiglia_da_codice, famiglia_errore
 
 
 def _registro(t0=1000.0):

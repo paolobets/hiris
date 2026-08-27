@@ -3,7 +3,9 @@ import pytest
 
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.schedulatore.turno import (
-    SOLA_LETTURA, DispatcherPromessa, strumenti_promessa,
+    SOLA_LETTURA,
+    DispatcherPromessa,
+    strumenti_promessa,
 )
 
 # Marcatore applicato ai singoli test asincroni sotto, non al modulo: un

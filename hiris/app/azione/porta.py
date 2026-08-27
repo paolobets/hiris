@@ -426,7 +426,7 @@ class _AscoltoStati:
             return True
         try:
             await asyncio.wait_for(self._sveglia.wait(), scadenza)
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             return False
         return True
 

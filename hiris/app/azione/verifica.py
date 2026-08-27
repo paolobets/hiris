@@ -86,6 +86,7 @@ momento senza la stessa cautela. Restringersi ai recapiti e' la famiglia che
 serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 """
 from dataclasses import dataclass, field
+
 from ..casa.anagrafe import dominio_di
 
 # I servizi di questo dominio si applicano a QUALUNQUE dominio di entita'

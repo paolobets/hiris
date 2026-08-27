@@ -32,11 +32,12 @@ Real APIs verified before writing this test (matches Task 1's report):
 """
 import os
 import time
+from datetime import UTC
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from unittest.mock import AsyncMock
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -280,15 +281,16 @@ async def test_job_context_history_includes_current_user_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_path):
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from hiris.app.chat_store import _get_store
 
     app, q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     impostazioni.giorni_conservazione = 5
 
     store = _get_store(data_dir)
-    vecchio_ts = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ora_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    vecchio_ts = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ora_ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = store._conn
     conn.execute(
         "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
@@ -367,7 +369,7 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
         assert poll.status == 200
         body = await poll.json()
         assert body["status"] == "error"
-        assert "message" in body and body["message"]
+        assert body.get("message")
 
 
 @pytest.mark.asyncio
@@ -1108,8 +1110,8 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
-    from hiris.app.instradamento import _piano_puo_rispondere
     from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
+    from hiris.app.instradamento import _piano_puo_rispondere
 
     app, q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
 

@@ -39,7 +39,6 @@ from hiris.app.schedulatore.archivio import ArchivioPromesse
 from hiris.app.schedulatore.orologio import Orologio
 from hiris.app.schedulatore.turno import interpreta_promessa
 
-
 # ── Estrazione 1: cronaca + promesse + porta (con cronaca) ──────────────────
 
 

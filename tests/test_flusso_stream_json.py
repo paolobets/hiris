@@ -18,7 +18,6 @@ from unittest.mock import patch
 from hiris.app.agent import runner
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 
-
 # ── i mattoni dei flussi finti ───────────────────────────────────────────────
 
 def _init(mcp_servers=None, tools=None, **extra):

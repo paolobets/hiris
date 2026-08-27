@@ -1,7 +1,13 @@
 """Le forme: si compongono dai PARAMETRI, mai inoltrando lo YAML del modello."""
 from hiris.app.azione.costruzione.forme import (
-    componi_automazione, componi_scena, componi_script, nuovo_id,
-    parti_da_validare, problemi_stati, slug_libero)
+    componi_automazione,
+    componi_scena,
+    componi_script,
+    nuovo_id,
+    parti_da_validare,
+    problemi_stati,
+    slug_libero,
+)
 
 
 def test_l_automazione_porta_lo_schema_moderno_al_plurale():

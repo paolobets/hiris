@@ -6,13 +6,18 @@ import pytest_asyncio
 from aiohttp import web
 
 from hiris.app.api.handlers_costruzioni import (
-    handle_conferma_costruzione, handle_get_costruzione, handle_get_costruzioni,
-    handle_ripristina_costruzione, handle_rifiuta_costruzione)
+    handle_conferma_costruzione,
+    handle_get_costruzione,
+    handle_get_costruzioni,
+    handle_rifiuta_costruzione,
+    handle_ripristina_costruzione,
+)
 from hiris.app.azione.costruzione.officina import Officina
 from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
 from hiris.app.azione.cronaca import Cronaca
 from hiris.app.server import create_app
 from tests.test_costruzione_officina import FintoHA
+
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite), senza niente di specifico alle impostazioni:
 # stesso riuso cross-file gia' praticato da `test_promesse_api.py`.

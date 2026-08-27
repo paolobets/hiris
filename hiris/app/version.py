@@ -5,8 +5,8 @@ Reads the version field from hiris/config.yaml at import time using a
 lightweight regex — no YAML parser dependency required.
 """
 import logging
-import re
 import pathlib
+import re
 
 logger = logging.getLogger(__name__)
 

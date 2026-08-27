@@ -41,9 +41,9 @@ il websocket, la stessa identica prova che il Task 1 aveva scritto.
 """
 import inspect
 import textwrap
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from hiris.app import server
 

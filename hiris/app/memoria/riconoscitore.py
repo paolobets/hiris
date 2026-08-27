@@ -30,11 +30,15 @@ ricerca approssimata che ne dipendesse degraderebbe in silenzio.
 """
 from __future__ import annotations
 
-from ..casa.anagrafe import (categorie_con_nome, etichette_con_nome,
-                            nomi_delle_categorie, nomi_delle_etichette)
-
 import re
 import unicodedata
+
+from ..casa.anagrafe import (
+    categorie_con_nome,
+    etichette_con_nome,
+    nomi_delle_categorie,
+    nomi_delle_etichette,
+)
 
 # Tipi che l'indice riconosce, nello spazio di nomi di verifica(): stessa
 # forma dei termini che il modello vede quando la casa gli e' data in

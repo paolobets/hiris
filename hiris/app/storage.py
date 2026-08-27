@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from typing import Callable, Optional
+from collections.abc import Callable
 
 # Migration callable: receives the connection, transforms schema from version k-1 to k.
 Migration = Callable[[sqlite3.Connection], None]
@@ -34,7 +34,7 @@ def connect(db_path: str) -> sqlite3.Connection:
 
 
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
-                migrations: Optional[dict[int, Migration]] = None) -> int:
+                migrations: dict[int, Migration] | None = None) -> int:
     """Ensure the schema exists and is at `version`, migrating idempotently.
 
     Detection (before creating tables): a DB with NO user tables is 'fresh' and

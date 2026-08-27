@@ -36,8 +36,8 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..memoria.interpretazione import deduci_unita, valida
 from ..casa.anagrafe import specchio_vivo
+from ..memoria.interpretazione import deduci_unita, valida
 from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
 
 # Gli stessi campi scalari che ArchivioMemoria.correggi() accetta

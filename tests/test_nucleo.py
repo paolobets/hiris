@@ -1,7 +1,5 @@
 import re
 
-import pytest
-
 from hiris.app.casa import nucleo
 from hiris.app.casa.nucleo import componi
 
@@ -106,7 +104,7 @@ def test_cio_che_non_si_conosce_si_dichiara():
     assert "Buonanotte" in testo
     # la voce senza corpo e' marcata in qualche modo leggibile
     riga = [r for r in testo.splitlines() if "Buonanotte" in r][0]
-    assert riga != f"- Buonanotte"
+    assert riga != "- Buonanotte"
 
 
 def test_il_taglio_non_e_mai_silenzioso():

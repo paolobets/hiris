@@ -360,8 +360,13 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     from hiris.app.azione.porta import PortaAzione
     from hiris.app.azione.registro import RegistroServizi
     from tests.test_azione_porta import (
-        ANNUNCIA_IL_SALOTTO_SPENTO, FintaCache, FintoClient, SALOTTO_ACCESO,
-        SALOTTO_SPENTO, SPEGNI_IL_SALOTTO, _casa,
+        ANNUNCIA_IL_SALOTTO_SPENTO,
+        SALOTTO_ACCESO,
+        SALOTTO_SPENTO,
+        SPEGNI_IL_SALOTTO,
+        FintaCache,
+        FintoClient,
+        _casa,
     )
 
     monkeypatch.setattr(porta_modulo, "ATTESA_STATO_S", 0.05)

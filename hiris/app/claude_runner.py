@@ -2,11 +2,11 @@ import asyncio
 import contextvars
 import json
 import logging
-import os
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
+
 import anthropic
+
 # fetta E3 Task 8 ("esce l'ultimo catalogo"): la E2 aveva lasciato vive le 18
 # definizioni sotto (`EVALUATION_ONLY_TOOLS`/`EVALUATION_TOOL_DEFS`) perche'
 # erano l'unico catalogo che la Sentinella usava, via `run_with_actions` --
@@ -411,7 +411,7 @@ _THINKING_CAPABLE_PATTERNS = ("sonnet-4-5", "sonnet-4-6", "sonnet-4-7", "opus-4"
 
 def _build_thinking_param(
     thinking_budget: int, effective_model: str, max_tokens: int
-) -> Optional[dict]:
+) -> dict | None:
     """Build the `thinking` kwarg for Anthropic messages.create, or None.
 
     Returns None when thinking is disabled / unsupported by the model.
@@ -579,10 +579,10 @@ MINIMAL_PROMPT = (
 # non-empty list" (the old LLMRouter property — that scan could return a
 # totally different caller's tool calls than the one that just ran through
 # the router, amplifying the same race).
-_current_tool_calls: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+_current_tool_calls: "contextvars.ContextVar[list | None]" = contextvars.ContextVar(
     "hiris_current_tool_calls", default=None
 )
-_current_thinking_blocks: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+_current_thinking_blocks: "contextvars.ContextVar[list | None]" = contextvars.ContextVar(
     "hiris_current_thinking_blocks", default=None
 )
 # Fetta "esce il documentale": qui viveva `_current_pseudonym_map`, la
@@ -601,7 +601,7 @@ class _PerCallList:
     module comment above for the full isolation rationale.
     """
 
-    def __init__(self, var: "contextvars.ContextVar[Optional[list]]") -> None:
+    def __init__(self, var: "contextvars.ContextVar[list | None]") -> None:
         self._var = var
 
     def __get__(self, obj, objtype=None):
@@ -772,7 +772,7 @@ class ClaudeRunner:
         user_message: str,
         system_prompt: str = "",
         context_str: str = "",
-        conversation_history: Optional[list[dict]] = None,
+        conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",
@@ -982,7 +982,7 @@ class ClaudeRunner:
         user_message: str,
         system_prompt: str = "",
         context_str: str = "",
-        conversation_history: Optional[list[dict]] = None,
+        conversation_history: list[dict] | None = None,
         model: str = "auto",
         max_tokens: int = MAX_TOKENS,
         agent_type: str = "chat",

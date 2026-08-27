@@ -944,13 +944,12 @@ def _con_strumenti_e_processo(proc, caplog, token=_TOKEN_URLSAFE):
         argv_visti.append(argv)
         return proc
 
-    with caplog.at_level(logging.DEBUG):
-        with patch.object(runner.subprocess, "run", _run):
-            esito = runner._reason_chat(
-                job, "live",
-                client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
-                base_url="http://127.0.0.1:8099",
-                headers={"X-HIRIS-Internal-Token": token})
+    with caplog.at_level(logging.DEBUG), patch.object(runner.subprocess, "run", _run):
+        esito = runner._reason_chat(
+            job, "live",
+            client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
+            base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": token})
     # La premessa del test, asserita e non assunta: senza il token nell'argv non
     # si starebbe provando niente. Si usa l'oracolo forte perche' per il token
     # che rompe la forma nell'argv NON e' quella grezza -- ed e' precisamente

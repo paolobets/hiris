@@ -12,8 +12,7 @@ import os
 import pytest
 
 from hiris.app.cervello.archivio import ArchivioOsservazioni
-from hiris.app.cervello.oggetti import (GENERI, aggrega_giorno, confini_giorno,
-                                         genere_di)
+from hiris.app.cervello.oggetti import GENERI, aggrega_giorno, confini_giorno, genere_di
 
 # 24 agosto 2026: mezzanotte a Roma e' 22:00 UTC del 23.
 G = "2026-08-24"
@@ -148,7 +147,7 @@ def test_i_sensori_da_soli_NON_generano_oggetti(archivio):
     """«La temperatura e' salita» da sola non e' una cosa compiuta: e' il
     CONTESTO di qualcosa che e' successo. Se generasse oggetti, una giornata
     ne produrrebbe migliaia e nessuno sarebbe leggibile."""
-    for ora in range(0, 20):
+    for ora in range(20):
         archivio.annota(quando_ts=ts(ora), fonte="entita",
                         soggetto="sensor.camera_temperatura", da=None, a=str(18 + ora))
     assert aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome") == 0

@@ -26,8 +26,8 @@ import os
 import sqlite3
 
 import pytest
-from aiohttp.test_utils import TestClient, TestServer
 from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.reasoning.queue import ReasoningQueue
 
@@ -168,9 +168,9 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 # ---------------------------------------------------------------------------
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
+from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
-from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.memoria.archivio import ArchivioMemoria
 
 

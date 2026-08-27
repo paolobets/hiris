@@ -7,7 +7,9 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_memoria import (
-    handle_get_memoria, handle_patch_memoria, handle_delete_memoria,
+    handle_delete_memoria,
+    handle_get_memoria,
+    handle_patch_memoria,
 )
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.memoria.archivio import ArchivioMemoria

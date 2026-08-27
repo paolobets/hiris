@@ -16,7 +16,7 @@ prodotto ha gia' fra `casa/domande.py` (puro) e chi gli passa lo stato.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -134,14 +134,14 @@ def zona_casa(fuso: str | None):
     il nome privato o riscrive il calcolo.
     """
     if not fuso:
-        return timezone.utc
+        return UTC
     try:
         from zoneinfo import ZoneInfo
 
         return ZoneInfo(fuso)
     except Exception:
         logger.warning("fuso della casa non riconosciuto (%r): finestra in UTC", fuso)
-        return timezone.utc
+        return UTC
 
 
 def finestra(*, ore: float, adesso_ts: float, fuso: str | None) -> tuple[str, str]:

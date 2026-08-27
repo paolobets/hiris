@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import re
@@ -7,8 +8,8 @@ from typing import Any
 
 from .claude_runner import (
     RunnerBackendError,
-    _current_tool_calls,
     _current_thinking_blocks,
+    _current_tool_calls,
 )
 
 logger = logging.getLogger(__name__)

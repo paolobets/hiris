@@ -4,10 +4,10 @@ These cover happy-path 200 + the 503/404 fallback when dependencies are
 missing, just enough to prevent silent regressions in v0.9.2.
 """
 import json
-import pytest
 from unittest.mock import MagicMock
-from aiohttp.test_utils import make_mocked_request
 
+import pytest
+from aiohttp.test_utils import make_mocked_request
 
 # ---------------------------------------------------------------------------
 # handle_status -- fetta E4 Task 4 ("un bot solo"): test_handle_status_
