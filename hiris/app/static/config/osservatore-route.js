@@ -39,10 +39,16 @@
    `corpo` di forma diversa (`aggrega_giorno`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
    energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
-   VARIAZIONE fra due letture, mai presentata come un consumo: il genere
-   copre anche l'energia PRODOTTA da un impianto fotovoltaico, e oggi HA
-   non dichiara la direzione (debito misurato il 26/08/2026, vedi
-   `cervello/pavimento.py::_ENERGIA`). Tutti e
+   VARIAZIONE fra due letture, mai presentata come un consumo da sola: il
+   genere copre anche l'energia PRODOTTA da un impianto fotovoltaico.
+   **Dal 27/08/2026 (mandato «le direzioni dell'energia») un episodio di
+   energia porta anche `direzione`/`provenienza`, QUANDO si conoscono**
+   (`HAClient.direzioni_energia`, `energy/get_prefs` + `translation_key`):
+   il campo manca del tutto se non si conosce, mai una "sconosciuta"
+   travestita da dato -- `frasePrincipale`/`badgeProvenienzaDirezione` sotto
+   lo mostrano solo quando c'e'. La gamba resta "energia" (vedi
+   `cervello/pavimento.py::_ENERGIA`): la direzione vive nell'EPISODIO, non
+   e' una gamba nuova. Tutti e
    cinque portano `comprimari` (chi altro c'era, dal caso del lampadario) e
    `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
    durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
@@ -94,6 +100,19 @@ window.HirisOsservatoreRoute = (function () {
   var ETICHETTA_GENERE = {
     funzionamento: 'Funzionamento', presenza: 'Presenza / assenza',
     energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza'
+  };
+
+  /* Le sette direzioni dell'energia (mandato «le direzioni dell'energia»,
+     27/08/2026) -- letterali, identiche a quelle che
+     `HAClient.direzioni_energia()` scrive in `corpo.direzione`. Una
+     direzione non in questa mappa (un genere futuro che il backend sapesse
+     dire e questa pagina non ancora) mostra comunque la sua parola grezza,
+     mai "undefined" -- stessa regola di `ETICHETTA_GAMBA`/`ETICHETTA_GENERE`. */
+  var ETICHETTA_DIREZIONE = {
+    produzione: 'Produzione', prelievo: 'Prelievo dalla rete',
+    immissione: 'Immissione in rete', carica: 'Carica della batteria',
+    scarica: 'Scarica della batteria', consumo: 'Consumo della casa',
+    autoconsumo: 'Autoconsumo (prodotto e consumato sul posto)'
   };
 
   function el(tag, cls, testo) {
@@ -284,16 +303,45 @@ window.HirisOsservatoreRoute = (function () {
   function frasePrincipale(o) {
     var c = o.corpo || {};
     if (o.genere === 'energia') {
+      var base;
       if (c.differenza == null) {
-        return 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (non calcolabile: una sola lettura, o un valore non numerico)';
+        base = 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (non calcolabile: una sola lettura, o un valore non numerico)';
+      } else {
+        var segno = c.differenza >= 0 ? '+' : '';
+        base = 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (' + segno + c.differenza + ')';
       }
-      var segno = c.differenza >= 0 ? '+' : '';
-      return 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (' + segno + c.differenza + ')';
+      /* La direzione (mandato «le direzioni dell'energia», 27/08/2026): il
+         campo non c'e' affatto quando non si conosce (ne' la dichiarata ne'
+         la dedotta la sanno dire) -- niente "sconosciuta" nel testo. */
+      if (c.direzione) {
+        base += ' · ' + (ETICHETTA_DIREZIONE[c.direzione] || c.direzione);
+      }
+      return base;
     }
     if (o.genere === 'guasto') {
       return c.stato === 'aperto' ? 'ancora aperto' : 'stato: ' + (c.stato || '?');
     }
     return c.stato != null ? 'stato: ' + c.stato : '(nessun dettaglio)';
+  }
+
+  /* La provenienza della direzione -- non e' la stessa domanda della
+     provenienza di «cosa sto guardando» (`badgeProvenienza`, sezione 01:
+     pavimento/obiettivo). Qui i due valori possibili sono "dichiarata" (la
+     dashboard Energia dell'utente, che vince sempre) e "dedotta"
+     (`translation_key` dell'integrazione, un arricchimento specifico).
+     **Le due provenienze si distinguono visibilmente apposta** (mandato,
+     punto 4): il giorno in cui una dedotta sbagliasse, saperlo e' la
+     differenza fra un dubbio e una caccia. Stessi due stili di badge gia'
+     usati da `badgeProvenienza` (`badge-off` per l'autorevole, `badge-warn`
+     per l'arricchimento) -- non un componente nuovo. */
+  function badgeProvenienzaDirezione(provenienza) {
+    if (provenienza === 'dichiarata') {
+      return { cls: 'badge-off', testo: 'Dichiarata — dalla dashboard Energia' };
+    }
+    if (provenienza === 'dedotta') {
+      return { cls: 'badge-warn', testo: 'Dedotta — dall’integrazione' };
+    }
+    return { cls: 'badge-warn', testo: provenienza || 'provenienza sconosciuta' };
   }
 
   /* `problema:dominio.id` / `integrazione:entry_id` -> un nome leggibile.
@@ -359,6 +407,14 @@ window.HirisOsservatoreRoute = (function () {
     var testa = el('div');
     testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
     testa.appendChild(el('span', 'agent-badge badge-off', ETICHETTA_GENERE[o.genere] || o.genere));
+    // La provenienza della direzione (mandato, punto 4): un secondo badge,
+    // SOLO quando `corpo.direzione` c'e' -- niente badge per un episodio di
+    // energia la cui direzione non si conosce, che e' l'esito onesto, non
+    // un guasto della resa.
+    if (o.genere === 'energia' && o.corpo && o.corpo.direzione) {
+      var badgeDirezione = badgeProvenienzaDirezione(o.corpo.provenienza);
+      testa.appendChild(el('span', 'agent-badge ' + badgeDirezione.cls, badgeDirezione.testo));
+    }
     // Identificatore: monospaziato, piccolo, attenuato -- il riferimento, non
     // il contenuto. `.text-mono`/`.field-hint` portano gia' `overflow-wrap:
     // anywhere` (hiris-config.css) e lo span e' protetto da `.section-card

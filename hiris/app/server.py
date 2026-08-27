@@ -1081,6 +1081,14 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
                         in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts))
     try:
         mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
+        # Le direzioni dell'energia si leggono UNA volta per i due giorni
+        # insieme, come i comprimari qui sopra (mandato «le direzioni
+        # dell'energia», 27/08/2026): una connessione sola, non una per
+        # giorno. `HAClient.direzioni_energia()` non solleva mai per un
+        # guasto di rete (stesso contratto di `legami`/`problemi`: torna
+        # `{"errore": ...}`) -- il `try` resta comunque, difesa in
+        # profondita', per lo stesso motivo del commento sotto.
+        mappa_direzioni = await ha_client.direzioni_energia()
     except Exception as errore:
         # Difesa in profondita': un guasto di RETE o di Home Assistant e'
         # gia' contenuto dentro `costruisci_comprimari` (mette `[]`, conta un
@@ -1108,11 +1116,22 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
             "all'avvio saltata per intero -- si riprova al prossimo riavvio",
             falliti)
         return
+    if "errore" in mappa_direzioni:
+        # STESSA regola dei comprimari, e per la STESSA ragione (mandato,
+        # punto 3): la notte prima puo' aver gia' scritto episodi di energia
+        # CON `direzione`. Sostituirli con episodi senza -- perche' questa
+        # lettura e' fallita -- sarebbe un impoverimento, non una riparazione.
+        logger.warning(
+            "cervello: direzioni dell'energia non lette, riparazione "
+            "all'avvio saltata per intero -- si riprova al prossimo riavvio "
+            "(%s)", mappa_direzioni["errore"])
+        return
 
     for giorno in giorni:
         quanti = aggrega_giorno(
             archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
-            comprimari=lambda s, mappa=mappa: mappa.get(s, []))
+            comprimari=lambda s, mappa=mappa: mappa.get(s, []),
+            direzioni=lambda s, m=mappa_direzioni: m.get(s))
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             quanti, giorno)
@@ -2421,9 +2440,19 @@ async def _on_startup(app: web.Application) -> None:
             # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
             # il parziale, come dice il docstring di `costruisci_comprimari`.
             mappa, _ = await costruisci_comprimari(ha_client, soggetti)
+            # Le direzioni dell'energia, stessa disciplina (mandato «le
+            # direzioni dell'energia», 27/08/2026): questo giro costruisce
+            # da zero, quindi tollera anche un `{"errore": ...}` -- un
+            # episodio senza `direzione` e' comunque meglio di nessun
+            # episodio. La riparazione all'avvio, che SOSTITUISCE, non
+            # tollera invece nessun guasto (vedi il suo docstring).
+            mappa_direzioni = await ha_client.direzioni_energia()
+            if "errore" in mappa_direzioni:
+                mappa_direzioni = {}
             quanti = aggrega_giorno(
                 archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
-                comprimari=lambda s: mappa.get(s, []))
+                comprimari=lambda s: mappa.get(s, []),
+                direzioni=lambda s: mappa_direzioni.get(s))
             logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
         except Exception as errore:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

@@ -256,7 +256,7 @@ def _differenza(iniziale, finale) -> float | None:
 
 
 def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
-                         comprimari=None) -> int:
+                         comprimari=None, direzioni=None) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
@@ -272,6 +272,20 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     (una chiamata di rete) e nei test no. **Non si indovina dal nome**: e' il
     caso misurato del lampadario, dove tre lampade, il loro gruppo e
     l'interruttore fisico sono un sistema solo.
+
+    `direzioni(soggetto) -> dict | None` dice la direzione di un contatore di
+    energia -- `{"direzione": ..., "provenienza": "dichiarata" | "dedotta"}`,
+    o `None` se non si conosce. **Stessa forma di `comprimari`, stessa
+    ragione**: nella vita vera lo chiede a `HAClient.direzioni_energia()`
+    (due letture di rete, `energy/get_prefs` + il registro entita'), nei
+    test no. **Non si scrive nel grezzo** (mandato «le direzioni
+    dell'energia», 27/08/2026, punto 2): la direzione e' una CONFIGURAZIONE
+    -- la dashboard Energia dell'utente puo' cambiare -- e congelarla in
+    scrittura la renderebbe irrecuperabile per i 21 giorni in cui il grezzo
+    permette di rifare il giudizio, la stessa ragione per cui il grezzo
+    porta `device_class` e non la gamba gia' calcolata (vedi il docstring
+    del modulo). **Quando la direzione non si conosce, il campo non c'e'**
+    nel corpo -- non una `"sconosciuta"` travestita da dato.
 
     **L'energia e' un genere a parte** (correzione del giro di review,
     punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
@@ -290,15 +304,20 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     finche' lo dice qui, non solo nel rapporto di un giro di correzioni che
     fra un mese non legge piu' nessuno.
 
-    **Secondo debito dichiarato** (26/08/2026, misurato sulla casa vera --
-    vedi `pavimento.py::_ENERGIA` per la fonte completa): il riepilogo qui
-    sotto e' lo STESSO per un contatore che PRODUCE e uno che PRELEVA --
-    entrambi `device_class: energy`/`power`, e la distinzione vera vive
-    nella dashboard Energia di HA (`energy/get_prefs`) -- che su questa casa
-    **e' configurata** (misurato il 26/08/2026) e che questa fetta **non
-    legge ancora**. Il genere si chiama "energia", non "consumo" o
-    "produzione", precisamente perche' qui dentro non sa dire quale delle
-    due sia.
+    **Secondo debito, dichiarato il 26/08/2026, CHIUSO il 27/08/2026**
+    (mandato «le direzioni dell'energia» -- vedi `pavimento.py::_ENERGIA`
+    per la storia): il riepilogo qui sotto era lo STESSO per un contatore
+    che PRODUCE e uno che PRELEVA, entrambi `device_class: energy`/`power`.
+    La GAMBA resta "energia" (non si sdoppia: e' vera per tutti e 17 i
+    sensori dell'inverter, produzione compresa -- `pavimento.py`), ma il
+    CORPO di un episodio di energia ora porta `direzione`/`provenienza`
+    quando `direzioni()`, sopra, le sa dire -- lette da `energy/get_prefs`
+    (la dashboard Energia, dichiarata) e da `translation_key` (dedotta
+    dall'integrazione, dove la dichiarata tace). Non e' un debito chiuso
+    del tutto: la dichiarata copre 6 delle 17 entita' di questa casa, la
+    dedotta le copre tutte ma solo su questa integrazione (`zcsazzurro`) --
+    un episodio senza `direzione` resta possibile, ed e' un fatto onesto
+    («non lo sappiamo»), non un buco silenzioso.
     """
     da_ts, a_ts = confini_giorno(giorno, fuso)
     righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
@@ -454,6 +473,15 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     for e in episodi:
         alto = limite_superiore(e["protagonista"], e["inizio"])
         corpo = {**e["corpo_base"], "comprimari": [], "misure": {}}
+        if e["genere"] == "energia":
+            # Solo l'energia porta una direzione (mandato, punto 2): un
+            # `direzioni` troppo largo, o un refuso nel confronto del
+            # genere, non deve poter far comparire `direzione` su un
+            # funzionamento o una presenza.
+            info = direzioni(e["protagonista"]) if direzioni else None
+            if info:
+                corpo["direzione"] = info["direzione"]
+                corpo["provenienza"] = info["provenienza"]
         for altro in (comprimari(e["protagonista"]) if comprimari else []):
             # Il limite INFERIORE e' l'inizio dell'oggetto: una misura presa
             # PRIMA che l'episodio cominciasse non e' cio' che si sapeva

@@ -1362,6 +1362,108 @@ class HAClient:
         return {"problemi": [p for p in risultato["issues"]
                              if isinstance(p, dict) and not p.get("ignored")]}
 
+    # Le sette direzioni, dedotte da `translation_key` -- tabella ESPLICITA,
+    # non una regex sui nomi. Misurata sulla casa vera il 27/08/2026,
+    # sull'integrazione `zcsazzurro`: quattordici chiavi, sette direzioni,
+    # ciascuna con la coppia energia/potenza. **Nessun suffisso `_today` sul
+    # gemello di potenza** -- trappola misurata, non dedotta dal pattern
+    # dell'energia (`power_generating`, non `power_generating_today`). E'
+    # un ARRICCHIMENTO specifico di questa integrazione: su un impianto con
+    # un altro inverter nessuna di queste chiavi comparira' mai, e non deve
+    # rompere niente -- `direzioni_energia`, sotto, lo tratta come «non
+    # trovato», non come un guasto.
+    _DIREZIONE_DA_TRANSLATION_KEY = {
+        "energy_generating_today": "produzione", "power_generating": "produzione",
+        "energy_importing_today": "prelievo", "power_importing": "prelievo",
+        "energy_exporting_today": "immissione", "power_exporting": "immissione",
+        "energy_charging_today": "carica", "power_charging": "carica",
+        "energy_discharging_today": "scarica", "power_discharging": "scarica",
+        "energy_consuming_today": "consumo", "power_consuming": "consumo",
+        "energy_autoconsuming_today": "autoconsumo", "power_autoconsuming": "autoconsumo",
+    }
+
+    async def direzioni_energia(self) -> dict:
+        """Le direzioni dell'energia: chi produce, chi preleva, chi immette,
+        chi carica, chi scarica -- lette da dove Home Assistant le dichiara,
+        mai indovinate dal nome del sensore (`CLAUDE.md`, «su Home Assistant
+        non si ipotizza mai»).
+
+        Due fonti, sulla STESSA connessione (`_ws_batch` con due comandi):
+
+        - **`energy/get_prefs`** (la dashboard Energia): **dichiarata**
+          dall'utente, vale per qualunque integrazione. Copre, su questa
+          casa, 6 delle 17 entita' dell'inverter -- **vince sempre**.
+        - **`config/entity_registry/list`**, campo `translation_key`:
+          **dedotta**, scritta dall'integrazione (`_DIREZIONE_DA_TRANSLATION_
+          KEY` sopra). Copre tutte le direzioni, ma solo su questa
+          integrazione (`zcsazzurro`) -- un altro inverter usera' chiavi sue.
+          Si applica SOLO dove la dichiarata tace.
+
+        Torna `entity_id -> {"direzione": ..., "provenienza": "dichiarata" |
+        "dedotta"}`.
+
+        **Trappola di forma, misurata il 27/08/2026 sulla casa vera** (gia'
+        pagata una volta, il 26/08, da un altro script): la sorgente `grid`
+        di `energy_sources` porta i suoi due sensori in campi SCALARI
+        (`stat_energy_from`/`stat_energy_to`), non in una lista di flussi
+        come `solar`/`battery`. Un lettore che si aspettasse liste ovunque
+        leggerebbe una configurazione piena come se fosse vuota. La sorgente
+        `solar` porta anche `stat_rate` (la POTENZA prodotta, non solo
+        l'energia): stessa direzione, entita' diversa.
+
+        `{"errore": ...}` su guasto, per la stessa ragione di `legami` e
+        `problemi`: un dizionario vuoto significherebbe «nessuna direzione
+        esiste», non «non ho potuto leggere».
+        """
+        try:
+            msg_prefs, msg_registro = await self._ws_batch(
+                [("energy/get_prefs", None), ("config/entity_registry/list", None)])
+        except Exception as e:
+            logger.debug("direzioni dell'energia non lette: %s", e)
+            return {"errore": "Home Assistant non ha risposto"}
+        if msg_prefs is None or msg_registro is None:
+            return {"errore": "Home Assistant non ha risposto"}
+        for msg in (msg_prefs, msg_registro):
+            if msg.get("error"):
+                errore = msg["error"]
+                return {"errore": errore.get("message") or errore.get("code") or "rifiutato"}
+        prefs = msg_prefs.get("result")
+        registro = msg_registro.get("result")
+        if not isinstance(prefs, dict) or not isinstance(registro, list):
+            return {"errore": "risposta in forma inattesa"}
+
+        mappa: dict[str, dict] = {}
+
+        def _dichiara(entity_id, direzione: str) -> None:
+            if isinstance(entity_id, str) and entity_id:
+                mappa[entity_id] = {"direzione": direzione, "provenienza": "dichiarata"}
+
+        for sorgente in prefs.get("energy_sources") or []:
+            if not isinstance(sorgente, dict):
+                continue
+            tipo = sorgente.get("type")
+            if tipo == "grid":
+                _dichiara(sorgente.get("stat_energy_from"), "prelievo")
+                _dichiara(sorgente.get("stat_energy_to"), "immissione")
+            elif tipo == "solar":
+                _dichiara(sorgente.get("stat_energy_from"), "produzione")
+                _dichiara(sorgente.get("stat_rate"), "produzione")
+            elif tipo == "battery":
+                _dichiara(sorgente.get("stat_energy_from"), "scarica")
+                _dichiara(sorgente.get("stat_energy_to"), "carica")
+
+        for riga in registro:
+            if not isinstance(riga, dict):
+                continue
+            eid = riga.get("entity_id")
+            if not isinstance(eid, str) or eid in mappa:
+                continue  # la dichiarata vince sempre: la dedotta tace qui
+            direzione = self._DIREZIONE_DA_TRANSLATION_KEY.get(riga.get("translation_key"))
+            if direzione:
+                mappa[eid] = {"direzione": direzione, "provenienza": "dedotta"}
+
+        return mappa
+
     async def get_config(self) -> dict:
         """Il sistema di riferimento della casa, da `get_config` di HA.
 

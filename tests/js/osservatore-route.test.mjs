@@ -545,8 +545,8 @@ test('seam _rendiOggetti: un episodio di energia con direzione DEDOTTA si distin
   assert.match(dedotto.textContent, /[Dd]edott/);
   // Le due provenienze non devono rendersi con lo stesso badge: e' il
   // requisito del mandato, «distingue visibilmente le due provenienze».
-  const badgeDichiarato = dichiarato.querySelector('.agent-badge:last-of-type');
-  const badgeDedotto = dedotto.querySelector('.agent-badge:last-of-type');
+  const badgeDichiarato = Array.from(dichiarato.querySelectorAll('.agent-badge')).pop();
+  const badgeDedotto = Array.from(dedotto.querySelectorAll('.agent-badge')).pop();
   assert.ok(badgeDichiarato && badgeDedotto, 'entrambi gli episodi devono avere un badge di provenienza');
   assert.notEqual(badgeDichiarato.className, badgeDedotto.className,
     'la classe del badge deve differire fra dichiarata e dedotta');
