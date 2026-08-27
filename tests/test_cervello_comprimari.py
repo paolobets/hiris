@@ -76,18 +76,39 @@ class _ClienteLegami:
       `costruisci_comprimari`) non e' contenuta -- es. `{"entity": 5}`, un
       intero al posto della lista che Home Assistant vero manda sempre. E'
       l'innesco del punto 1 (difesa-profondita-brief.md): fa uscire un
-      `TypeError` vero dalla catena vera, senza monkeypatch."""
+      `TypeError` vero dalla catena vera, senza monkeypatch.
 
-    def __init__(self, mappa: dict[str, dict] | None = None, *, default=None):
+    **Cresciuta il 27/08/2026 (mandato "le direzioni dell'energia") per
+    fingere anche `direzioni_energia()`**, non una seconda finta a fianco:
+    e' la stessa disciplina "una sola finta per `HAClient`" del paragrafo
+    sopra, e i due lavori dell'aggregazione (`_aggrega_ieri`,
+    `riaggrega_gli_ultimi_due_giorni`) chiamano ORA entrambi i metodi sullo
+    STESSO client. `direzioni` e' la mappa che `direzioni_energia()` torna
+    (default vuota: nessuna direzione nota, non un guasto); `direzioni_errore`
+    -- se dato -- la fa rispondere `{"errore": ...}`, fedele al contratto
+    vero (mai un dizionario vuoto travestito da «non ho potuto leggere»)."""
+
+    def __init__(self, mappa: dict[str, dict] | None = None, *, default=None,
+                direzioni: dict[str, dict] | None = None,
+                direzioni_errore: str | None = None):
         self._mappa = mappa or {}
         self._default = {} if default is None else default
+        self._direzioni = direzioni or {}
+        self._direzioni_errore = direzioni_errore
         self.chiesti = []
+        self.direzioni_chieste = 0
 
     async def legami(self, tipo, identificatore):
         self.chiesti.append((tipo, identificatore))
         if tipo not in HAClient.TIPI_LEGAME:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
         return self._mappa.get(identificatore, self._default)
+
+    async def direzioni_energia(self):
+        self.direzioni_chieste += 1
+        if self._direzioni_errore is not None:
+            return {"errore": self._direzioni_errore}
+        return dict(self._direzioni)
 
 
 @pytest.mark.asyncio

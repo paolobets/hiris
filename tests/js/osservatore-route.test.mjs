@@ -511,6 +511,61 @@ test('seam _rendiOggetti: un oggetto di energia con differenza non calcolabile l
   assert.doesNotMatch(corpo.textContent, /NaN/);
 });
 
+test('seam _rendiOggetti: un episodio di energia con direzione DICHIARATA la mostra in italiano e distingue la provenienza', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.energia_prodotta',
+    inizio_ts: 1755270600, fine_ts: 1755277500,
+    corpo: { valore_iniziale: 10, valore_finale: 25, differenza: 15,
+            direzione: 'produzione', provenienza: 'dichiarata' },
+  }], null);
+  assert.match(corpo.textContent, /[Pp]roduzione/,
+    'la direzione va mostrata in italiano leggibile, non il valore grezzo');
+  assert.match(corpo.textContent, /[Dd]ichiarat/,
+    'la provenienza "dichiarata" deve comparire nel testo');
+});
+
+test('seam _rendiOggetti: un episodio di energia con direzione DEDOTTA si distingue visibilmente dalla dichiarata', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const dichiarato = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(dichiarato, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.a',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
+            direzione: 'prelievo', provenienza: 'dichiarata' },
+  }], null);
+  const dedotto = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(dedotto, [{
+    id: 2, genere: 'energia', protagonista: 'sensor.b',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
+            direzione: 'prelievo', provenienza: 'dedotta' },
+  }], null);
+  assert.match(dedotto.textContent, /[Dd]edott/);
+  // Le due provenienze non devono rendersi con lo stesso badge: e' il
+  // requisito del mandato, «distingue visibilmente le due provenienze».
+  const badgeDichiarato = dichiarato.querySelector('.agent-badge:last-of-type');
+  const badgeDedotto = dedotto.querySelector('.agent-badge:last-of-type');
+  assert.ok(badgeDichiarato && badgeDedotto, 'entrambi gli episodi devono avere un badge di provenienza');
+  assert.notEqual(badgeDichiarato.className, badgeDedotto.className,
+    'la classe del badge deve differire fra dichiarata e dedotta');
+});
+
+test('seam _rendiOggetti: un episodio di energia SENZA direzione nota non mostra nessun badge di provenienza in piu', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'energia', protagonista: 'sensor.energia_ignota',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1 },
+  }], null);
+  // Un solo badge: quello del genere ("Energia"). Nessun secondo badge di
+  // provenienza quando il campo `direzione` non c'e' affatto -- il mandato
+  // vieta esplicitamente una "sconosciuta" travestita da dato.
+  assert.equal(corpo.querySelectorAll('.agent-badge').length, 1);
+});
+
 test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
