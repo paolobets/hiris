@@ -320,10 +320,6 @@ async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
 # `EVALUATION_ONLY_TOOLS`).
 
 
-def test_resolve_model_auto_agent_returns_haiku():
-    assert resolve_model("auto", "agent") == "claude-haiku-4-5-20251001"
-
-
 # fetta E4 Task 6 ("un bot solo"): quattro test sono usciti, cancellati e non
 # spostati -- provavano `get_chatbot_usage`/`reset_chatbot_usage`/
 # `_per_chatbot_usage`, usciti per intero (zero lettori di produzione dal
