@@ -28,6 +28,24 @@
 # I bersagli sono NOMINATI, mai `.`: `Testbook/`, `Nuova grafica/` e
 # `.mockups/` esistono in locale e non sul CI, e un cancello che guarda cose
 # diverse nei due posti non e' un cancello.
+#
+# M-4 (review finale «il linter e le best practice»): un clone senza
+# `pip install -r hiris/requirements.txt` non ha ruff, e riceveva lo stesso
+# messaggio di un push con rilievi veri («si sanano, non si aggirano») --
+# falso, perche' il linter non e' nemmeno girato. Si distingue PRIMA di
+# lanciarlo, cosi' il messaggio nomina la causa vera.
+#
+# A differenza di oxlint (sotto), qui si resta FAIL-CLOSED anche quando
+# manca lo strumento: Python e' il cuore del prodotto (89.453 righe contro
+# il frontend), e il CI lo ricontrolla comunque -- ma un push locale da un
+# clone non attrezzato e' meglio fermarlo con un'istruzione chiara che
+# lasciarlo passare senza che nessuno l'abbia mai controllato.
+if ! python -c "import ruff" >/dev/null 2>&1; then
+    echo "HIRIS: ruff non e' installato in questo Python -- il linter non e' girato."
+    echo "       Per installarlo:  pip install -r hiris/requirements.txt"
+    exit 1
+fi
+
 python -m ruff check hiris scripts tests conftest.py .smoke-test || {
     echo "HIRIS: il linter ha trovato dei rilievi. Si sanano, non si aggirano."
     echo "       Per vederli:  python -m ruff check hiris scripts tests conftest.py .smoke-test"
