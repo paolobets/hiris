@@ -51,8 +51,14 @@ ambiente usa-e-getta, sul codice del commit `28b0874`.
   da uno strumento invece che da una review.
 - **`DTZ006` x 2** — `datetime.fromtimestamp()` senza fuso (`officina.py:733`, `queue.py:298`):
   parente diretto del difetto del fuso gia' annotato sulla pagina dell'osservatore.
-- **Codice morto nel frontend** — `hiris/app/static/config/api.js` dichiara quattro funzioni che
-  nessuno chiama: `esc`, `escHtml`, `applyTheme`, `loadUsage`.
+- **Codice morto nel frontend** — `hiris/app/static/config/api.js` sembrava dichiarare quattro
+  funzioni mai chiamate: `esc`, `escHtml`, `applyTheme`, `loadUsage`.
+  **Smentito in fase di esecuzione, il 27/08: ne era morta UNA sola, `escHtml`.** Le altre tre sono
+  vive e chiamate come **globali «nude» da altri file** (`chat/messages.js:14`, `chat/theme.js:38`,
+  `chat/main.js:73`) — un uso che `oxlint` non vede, perche' analizza **un file per volta**.
+  Cancellarle avrebbe rotto la chat in produzione. **La lezione vale oltre questo caso: un linter
+  che guarda un file per volta non puo' dire «morto», puo' dire solo «non usato qui».** Prima di
+  cancellare si cerca in tutto il prodotto, HTML e template compresi.
 - **Il CI non gira sul ramo dove si lavora**: `tests.yml` si attiva su `push`/`pull_request` verso
   **`master`**, ma la 2.0 vive sul ramo `2.0`. Un linter messo li' dentro nascerebbe addormentato.
 - **L'add-on gira su Python 3.13** (`build.yaml`: `base-python:3.13-alpine3.21`), **il CI prova 3.11
