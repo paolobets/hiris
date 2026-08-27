@@ -84,9 +84,9 @@ class ArchivioPromesse:
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
             if in_sospeso >= TETTO_IN_SOSPESO:
-                return {"errore": ("ho gia' %d promesse in sospeso, che e' il tetto "
+                return {"errore": (f"ho gia' {TETTO_IN_SOSPESO} promesse in sospeso, che e' il tetto "
                                    "che HIRIS si e' dato: disdicine una prima di "
-                                   "farne un'altra." % TETTO_IN_SOSPESO)}
+                                   "farne un'altra.")}
             ident = secrets.token_urlsafe(9)
             self._conn.execute(
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"

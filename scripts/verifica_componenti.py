@@ -97,11 +97,11 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
     for nome, dati in sorted(letti["azioni"].items()):
         reg = registri.get("azioni", {}).get(nome, {})
         if reg.get("errore"):
-            scarti.append(Scarto(nome, "v%d" % dati["major"], "", dati["dove"],
+            scarti.append(Scarto(nome, f"v{dati['major']}", "", dati["dove"],
                                  reg["errore"]))
         elif dati["major"] < reg["major"]:
-            scarti.append(Scarto(nome, "v%d" % dati["major"],
-                                 "v%d" % reg["major"], dati["dove"]))
+            scarti.append(Scarto(nome, f"v{dati['major']}",
+                                 f"v{reg['major']}", dati["dove"]))
 
     # ── I TETTI Python, e NON i pavimenti ──────────────────────────────────
     # Un pavimento sta per definizione sotto l'ultima uscita: confrontarlo
@@ -114,15 +114,14 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
         reg = registri.get("pypi", {}).get(nome, {})
         if reg.get("errore"):
             scarti.append(Scarto(f"{nome} (tetto)",
-                                 "<%d.0.0" % dati["major_escluso"], "",
+                                 f"<{dati['major_escluso']}.0.0", "",
                                  dati["dove"], reg["errore"]))
             continue
         major_uscito = int(re.findall(r"\d+", reg["versione"])[0])
         if major_uscito >= dati["major_escluso"]:
             scarti.append(Scarto(
-                "%s (il tetto <%d.0.0 esclude il major %d)"
-                % (nome, dati["major_escluso"], major_uscito),
-                "<%d.0.0" % dati["major_escluso"], reg["versione"],
+                f"{nome} (il tetto <{dati['major_escluso']}.0.0 esclude il major {major_uscito})",
+                f"<{dati['major_escluso']}.0.0", reg["versione"],
                 dati["dove"]))
 
     # ── I pavimenti contro cio' che e' INSTALLATO ──────────────────────────
@@ -280,8 +279,8 @@ def aggiorna_azioni(letti: dict, registri: dict) -> list:
         reg = registri.get("azioni", {}).get(nome, {})
         if reg.get("errore") or dati["major"] >= reg["major"]:
             continue
-        testo = testo.replace("%s@v%d" % (nome, dati["major"]),
-                              "%s@v%d" % (nome, reg["major"]))
+        testo = testo.replace(f"{nome}@v{dati['major']}",
+                              f"{nome}@v{reg['major']}")
         toccati.append(nome)
     if toccati:
         percorso.write_text(testo, encoding="utf-8")
@@ -307,11 +306,9 @@ def stampa(scarti: list) -> None:
     larghezza = max((len(s.componente) for s in scarti), default=0)
     for s in scarti:
         if s.motivo:
-            print("  %-*s  non ho potuto controllare: %s"
-                  % (larghezza, s.componente, s.motivo))
+            print(f"  {s.componente:<{larghezza}}  non ho potuto controllare: {s.motivo}")
         else:
-            print("  %-*s  %s -> %s   (%s)"
-                  % (larghezza, s.componente, s.scritto, s.disponibile, s.dove))
+            print(f"  {s.componente:<{larghezza}}  {s.scritto} -> {s.disponibile}   ({s.dove})")
 
 
 def main(argv=None) -> int:
@@ -351,7 +348,7 @@ def main(argv=None) -> int:
     if not scarti:
         return 0
 
-    print("\nIl rilascio si e' fermato: %d componenti da guardare.\n" % len(scarti))
+    print(f"\nIl rilascio si e' fermato: {len(scarti)} componenti da guardare.\n")
     stampa(scarti)
     print("\nSe hai deciso di rilasciare cosi' com'e':")
     print("    HIRIS_COMPONENTI_OK=1 git push ...")

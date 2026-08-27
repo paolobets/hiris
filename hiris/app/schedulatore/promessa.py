@@ -146,5 +146,4 @@ def motivo_ritardo(ritardo_s: float) -> str:
     minuti = int(ritardo_s // 60)
     if minuti < 1:
         return "scaduta da meno di un minuto quando l'orologio l'ha vista -- non eseguita."
-    return ("scaduta da %d minuti quando l'orologio l'ha vista -- non eseguita."
-            % minuti)
+    return f"scaduta da {minuti} minuti quando l'orologio l'ha vista -- non eseguita."

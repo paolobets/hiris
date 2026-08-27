@@ -121,8 +121,8 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
         "scadenza_min", 5))
     archivio.concludi(
         ident, stato="fallita", adesso=time.time(),
-        motivo=("ho aspettato il Piano Claude Max per %d minuti e non ha "
-                "risposto: non so cosa dirti." % minuti))
+        motivo=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
+                "risposto: non so cosa dirti."))
     logger.warning(
         "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
         ident, minuti)

@@ -201,12 +201,12 @@ def _eta(secondi: float) -> str:
     if s < 60:
         return "poco fa"
     if s < 3600:
-        return "%d min fa" % int(s // 60)
+        return f"{int(s // 60)} min fa"
     if s < 86400:
-        return "%d h fa" % int(s // 3600)
+        return f"{int(s // 3600)} h fa"
     if s < 172800:
         return "ieri"
-    return "%d giorni fa" % int(s // 86400)
+    return f"{int(s // 86400)} giorni fa"
 
 
 def _quante(da_quante: int) -> str:
@@ -218,7 +218,7 @@ def _quante(da_quante: int) -> str:
     un errore» e «ah, sto buttando via una chiamata a messaggio da settimane».
     """
     return "l'ultima richiesta" if int(da_quante) <= 1 else (
-        "le ultime %d richieste" % int(da_quante))
+        f"le ultime {int(da_quante)} richieste")
 
 
 # La causa in parole, per la famiglia `credenziale`. Quattro codici, due azioni
@@ -264,7 +264,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
 
     famiglia = esito.get("famiglia") or "altro"
     codice = esito.get("codice")
-    fra_parentesi = " (%d)" % codice if isinstance(codice, int) else ""
+    fra_parentesi = f" ({codice})" if isinstance(codice, int) else ""
 
     if famiglia == "modello":
         # Quante volte HIRIS abbia chiesto un modello che non esiste non
@@ -313,8 +313,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
     # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
     # cercarlo.
     if fra_parentesi:
-        return "ha rifiutato %s — errore %d, %s" % (
-            _quante(esito["da_quante"]), codice, eta)
+        return f"ha rifiutato {_quante(esito['da_quante'])} — errore {codice}, {eta}"
     return "ha rifiutato {}, {}".format(_quante(esito["da_quante"]), eta)
 
 
