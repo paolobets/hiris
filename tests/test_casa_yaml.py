@@ -44,7 +44,7 @@ def test_un_tag_che_costruisce_oggetti_python_viene_rifiutato():
 def test_un_yaml_malformato_solleva_invece_di_tacere():
     """Restituire una lista vuota sarebbe indistinguibile da «nessuna
     automazione»: chi chiama deve poter distinguere il guasto dal vuoto."""
-    with pytest.raises(yaml.parser.ParserError):
+    with pytest.raises(yaml.YAMLError):
         carica_yaml("- id: '1'\n   alias: male indentato\n  altro: x\n")
 
 
