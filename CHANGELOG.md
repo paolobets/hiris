@@ -1,5 +1,47 @@
 # HIRIS — Changelog
 
+## [3.14.0] — Il bilancio dell'energia: undici frammenti diventano un fatto (2026-08-27)
+
+**La prima notte di memoria di HIRIS ha prodotto 24 episodi, e undici venivano dallo stesso
+apparecchio** — l'inverter con accumulo — ognuno con una frazione priva di senso da sola:
+«potenza prodotta: da 20 a 20», «energia importata: da 0,21 a 0,22». Undici cose compiute che messe
+in fila non raccontavano niente. Il fatto vero era **uno**: com'è andata l'energia della casa.
+
+Da questa versione è **un oggetto solo**: sei totali più il consumo misurato, la curva della giornata
+**ora per ora**, e i momenti che contano — prima e ultima ora di produzione, il picco e quando, la
+quota di autoconsumo e di autosufficienza.
+
+**Due principi nuovi, che valgono oltre l'energia.**
+
+*È il **genere** a decidere la forma, e la forma decide chi è il protagonista.* Un episodio ha un
+inizio e una fine — perfetto per il riscaldamento acceso dalle 15:30 alle 17:05. La produzione non
+accade fra due istanti: **è una quantità con una forma**, e forzarla nello stampo dell'episodio è
+precisamente ciò che aveva prodotto gli undici frammenti. Un funzionamento è di un'entità, una
+presenza è di una persona, un bilancio è di un **dispositivo**.
+
+*Ogni genere porta con sé la sua fonte*, e la domanda va fatta per ciascuno: **«Home Assistant questa
+cosa la tiene già meglio di noi?»**. Per la presenza no — tre giorni. Per i guasti no. **Per l'energia
+sì**: statistiche orarie, conservate oltre le nostre tre settimane, e con l'azzeramento dei contatori
+già gestito correttamente — cosa che il nostro grezzo aveva sbagliato la prima notte. Quindi la
+leggiamo, non la ricostruiamo.
+
+**Le direzioni.** Produzione, prelievo, immissione, carica, scarica, consumo e autoconsumo non si
+indovinano dai nomi dei sensori: si leggono dalla **dashboard Energia** di Home Assistant, dove le
+hai dichiarate tu. Dove la dashboard tace, si deducono dall'integrazione — e la pagina **distingue le
+due provenienze**, perché un dato dichiarato e uno dedotto non hanno la stessa forza.
+
+**Il traffico di rete esce dall'energia.** I gigabyte del router erano archiviati come consumo:
+`total_increasing` da solo non basta più, serve una classe di energia dichiarata.
+
+**Una regola nuova, pagata tre volte in due giorni:** su ogni integrazione o lettura da Home Assistant
+**non si ipotizza** — prima la documentazione, poi le API vere, e nel codice si scrive cosa è stato
+misurato e quando. Applicata subito a chi l'ha scritta: la prima misura della dashboard Energia la
+dichiarava vuota, ed era piena.
+
+*Difetti trovati usando il prodotto e chiusi prima del rilascio: l'energia prodotta archiviata come
+consumo; un numero falso sull'autosufficienza (mancava oltre metà dei consumi, perché «autoconsumata»
+esclude la batteria); una curva che non sapeva a che ora, perché HA omette le ore senza dati.*
+
 ## [3.13.1] — L'impianto solare non consuma, produce (2026-08-26)
 
 **Trovato usandolo, poche ore dopo la 3.13.0.** L'impianto fotovoltaico con accumulo di casa

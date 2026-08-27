@@ -582,7 +582,7 @@ window.HirisOsservatoreRoute = (function () {
      -- vedi il docstring di `costruisci_corpo_bilancio` in cervello/
      oggetti.py, letto per intero prima di questa correzione): le barre si
      posizionano sull'ORA VERA di ciascun punto, in 24 posizioni fisse (una
-     per ora del giorno, fuso del BROWSER come `fmtOraIso` sotto) invece che
+     per ora del giorno, fuso del BROWSER come `fmtOraIso` sopra) invece che
      in ordine di arrivo -- cosi' **un'ora senza dato resta uno spazio
      vuoto, non una barra spostata**: i buchi (l'impianto fermo, HA che non
      manda niente per quell'ora) si vedono per quello che sono, invece di
