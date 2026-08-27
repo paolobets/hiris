@@ -22,3 +22,9 @@ httpx>=0.28.1,<1.0.0
 openai>=3.1.0,<4.0.0
 model2vec>=0.9.0
 pyyaml>=6.0.3,<7.0
+
+# Il linter e' parte del cancello, non un accessorio: sta qui perche' il CI lo
+# installa con tutto il resto. Il TETTO al minor successivo e' la difesa vera —
+# ruff cambia il proprio set di default fra minor, e senza tetto un CI verde
+# diventerebbe rosso senza che nessuno abbia toccato una riga.
+ruff>=0.16.4,<0.17.0

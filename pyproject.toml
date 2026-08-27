@@ -1,0 +1,56 @@
+# HIRIS — il cancello delle best practice.
+#
+# «Seguire le buone pratiche» senza uno strumento che le verifichi non e' una
+# regola, e' un auspicio. Valgono solo quelle controllate automaticamente, e
+# cio' che non e' controllato non si pretende.
+#
+# Il rovescio della stessa regola: **una regola esclusa non e' silenzio, e' una
+# decisione scritta.** Ogni `ignore` qui sotto porta il suo perche' e il numero
+# che l'ha motivata, misurato il 27/08/2026 sul commit 28b0874.
+#
+# Questo file NON e' un file di packaging: HIRIS e' un add-on, non un pacchetto.
+# Contiene `[tool.ruff]` e nient'altro.
+#
+# Spec: docs/design/2026-08-27-il-linter-e-le-best-practice.md
+
+[tool.ruff]
+# Il piu' basso che il CI dichiara di supportare: e' quello che il codice deve
+# saper girare, non quello su cui gira in casa (l'add-on e' su 3.13).
+target-version = "py311"
+
+# Il codice e' GIA' scritto a ~90 colonne: p95=80, p99=91. 100 e' il numero
+# tondo appena sopra la realta' misurata. Il default di ruff (88) costerebbe
+# 1298 riformattazioni e sarebbe uno stile importato invece che il proprio.
+# E' anche la soglia che `ruff format` erediterA', quando entrera' (dopo la
+# rinomina in inglese, mai insieme).
+line-length = 100
+
+[tool.ruff.lint]
+# Base: il set di default della versione appuntata in hiris/requirements.txt.
+# Il pin `<0.17.0` esiste per questo: un linter che cambia da solo il proprio
+# default trasforma un CI verde in rosso senza che nessuno abbia toccato una riga.
+extend-select = ["E501"]  # le righe lunghe non sono nel default
+
+ignore = [
+    # BLE001 (blind-except) — 103 casi, 99 in produzione.
+    # In questo prodotto `except Exception` e' una DIFESA DELIBERATA, e la
+    # maggioranza dei blocchi ha gia' il perche' scritto nel commento accanto
+    # («una difesa che solleva non e' una difesa»). Il difetto che BLE001 vuole
+    # prendere e' la difesa MUTA: quella la prende S110 (try-except-pass), che
+    # resta accesa. Non si perde copertura, si sposta su una regola che dice la
+    # cosa giusta.
+    "BLE001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# F811 — 56 casi, 55 FALSI POSITIVI: sono i parametri-fixture di pytest che
+#        ombreggiano il nome della fixture. L'unico caso vero (un test scritto
+#        due volte) e' stato sanato PRIMA di scrivere questa riga.
+# S101  — 5.884 `assert`: e' il modo in cui un test asserisce.
+# S102  — 21 `exec`: usati per caricare moduli nelle finte.
+# S105/S106 — segreti nei test: sono finti per costruzione.
+# S108  — percorsi temporanei nei test.
+# S107 NON e' spenta: nella misura non e' servito spegnerla.
+"tests/**" = ["F811", "S101", "S102", "S105", "S106", "S108"]
+"scripts/**" = ["S101"]
+".smoke-test/**" = ["S101"]
