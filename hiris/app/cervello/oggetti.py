@@ -768,19 +768,18 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             else:
                 chiudi(soggetto, r["quando_ts"])
             continue
-        if genere == "energia":
-            # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
-            # contatore visto oggi. Il riepilogo (prima lettura, ultima,
-            # differenza) si costruisce dopo il ciclo, da `misure`, che gia'
-            # tiene ogni lettura del giorno in ordine cronologico.
-            #
-            # **Un soggetto dentro un bilancio VALIDO non produce il suo
-            # episodio individuale** (mandato «il bilancio dell'energia»,
-            # punto principale + punto 4): il bilancio lo sostituisce. Senza
-            # questo salto avremmo undici frammenti PIU' l'oggetto -- peggio
-            # di adesso, non meglio.
-            if soggetto not in entita_in_bilancio:
-                energia_soggetti.add(soggetto)
+        # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
+        # contatore visto oggi. Il riepilogo (prima lettura, ultima,
+        # differenza) si costruisce dopo il ciclo, da `misure`, che gia'
+        # tiene ogni lettura del giorno in ordine cronologico.
+        #
+        # **Un soggetto dentro un bilancio VALIDO non produce il suo
+        # episodio individuale** (mandato «il bilancio dell'energia»,
+        # punto principale + punto 4): il bilancio lo sostituisce. Senza
+        # questo salto avremmo undici frammenti PIU' l'oggetto -- peggio
+        # di adesso, non meglio.
+        if genere == "energia" and soggetto not in entita_in_bilancio:
+            energia_soggetti.add(soggetto)
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».

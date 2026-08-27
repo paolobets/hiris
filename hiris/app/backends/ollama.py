@@ -43,11 +43,13 @@ class OllamaBackend(LLMBackend):
         payload = {"model": self._model, "messages": msgs, "stream": False}
         timeout = aiohttp.ClientTimeout(total=30, connect=5)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(f"{self._url}/api/chat", json=payload) as resp:
-                    resp.raise_for_status()
-                    data = await resp.json()
-                    return data.get("message", {}).get("content", "")
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.post(f"{self._url}/api/chat", json=payload) as resp,
+            ):
+                resp.raise_for_status()
+                data = await resp.json()
+                return data.get("message", {}).get("content", "")
         except Exception as exc:
             logger.warning("OllamaBackend simple_chat failed: %s", exc)
             raise

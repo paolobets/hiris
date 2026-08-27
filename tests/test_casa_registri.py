@@ -124,9 +124,11 @@ async def test_registro_rifiutato_il_log_porta_il_motivo_di_ha(caplog):
     """HA risponde ma rifiuta il comando: c'e' un `error` vero. Il log deve
     portare il motivo di HA, non il nome del comando che gia' sapevamo."""
     risposte = [_msg_errore("not_found", "Unknown command.")] + [_msg([]) for _ in range(9)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        with caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"):
-            _, non_disponibili = await _client().leggi_registri()
+    with (
+        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
+    ):
+        _, non_disponibili = await _client().leggi_registri()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("Unknown command." in r for r in righe), caplog.text
@@ -137,9 +139,11 @@ async def test_registro_forma_inattesa_il_log_lo_dice(caplog):
     """HA risponde, non c'e' nessun `error`, ma `result` non e' una lista:
     guasto diverso dal rifiuto, e il log deve dirlo in modo diverso."""
     risposte = [_msg("non-sono-una-lista")] + [_msg([]) for _ in range(9)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        with caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"):
-            _, non_disponibili = await _client().leggi_registri()
+    with (
+        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
+    ):
+        _, non_disponibili = await _client().leggi_registri()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("non-sono-una-lista" in r for r in righe), caplog.text
@@ -152,9 +156,11 @@ async def test_registro_mai_partito_il_log_lo_dice(caplog):
     restituisce `None` per il comando. Terzo guasto, terza dicitura -- non
     quella del rifiuto, non quella della forma inattesa."""
     risposte = [None] + [_msg([]) for _ in range(9)]
-    with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        with caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"):
-            _, non_disponibili = await _client().leggi_registri()
+    with (
+        patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
+        caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
+    ):
+        _, non_disponibili = await _client().leggi_registri()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("nessuna risposta" in r for r in righe), caplog.text

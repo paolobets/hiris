@@ -286,12 +286,14 @@ async def test_rate_limit_exhausts_retries_raises(runner, rifiuti):
             body={},
         )
 
-    with patch.object(runner._client.messages, "create", side_effect=always_rate_limit), \
-         patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock):
-        with pytest.raises(anthropic.APIStatusError):
-            await runner._call_api(
-                model="claude-sonnet-4-6", max_tokens=100, messages=[]
-            )
+    with (
+        patch.object(runner._client.messages, "create", side_effect=always_rate_limit),
+        patch("hiris.app.claude_runner.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(anthropic.APIStatusError),
+    ):
+        await runner._call_api(
+            model="claude-sonnet-4-6", max_tokens=100, messages=[]
+        )
 
     assert len(rifiuti) == MAX_RETRIES, (
         "ogni tentativo rifiutato si conta, come prima: solo, adesso si sa "
@@ -788,9 +790,11 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
             Exception.__init__(self, "credit balance too low")
             self.status_code = 400
 
-    with patch.object(runner, "_call_api", AsyncMock(side_effect=_Credito())):
-        with pytest.raises(RunnerBackendError) as info:
-            await runner.chat("Ciao")
+    with (
+        patch.object(runner, "_call_api", AsyncMock(side_effect=_Credito())),
+        pytest.raises(RunnerBackendError) as info,
+    ):
+        await runner.chat("Ciao")
 
     assert info.value.famiglia == "credenziale"
     assert info.value.codice == 400
@@ -815,9 +819,11 @@ async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
             Exception.__init__(self, "model not found")
             self.status_code = 404
 
-    with patch.object(runner, "_call_api", AsyncMock(side_effect=_Sparito())):
-        with pytest.raises(RunnerBackendError) as info:
-            await runner.chat("Ciao")
+    with (
+        patch.object(runner, "_call_api", AsyncMock(side_effect=_Sparito())),
+        pytest.raises(RunnerBackendError) as info,
+    ):
+        await runner.chat("Ciao")
 
     assert info.value.famiglia == "modello" and info.value.codice == 404
 
@@ -836,8 +842,10 @@ async def test_anthropic_irraggiungibile_non_porta_un_codice_inventato(runner):
     giu = anthropic.APIConnectionError(
         request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
 
-    with patch.object(runner, "_call_api", AsyncMock(side_effect=giu)):
-        with pytest.raises(RunnerBackendError) as info:
-            await runner.chat("Ciao")
+    with (
+        patch.object(runner, "_call_api", AsyncMock(side_effect=giu)),
+        pytest.raises(RunnerBackendError) as info,
+    ):
+        await runner.chat("Ciao")
 
     assert info.value.famiglia == "irraggiungibile" and info.value.codice is None

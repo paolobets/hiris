@@ -60,11 +60,13 @@ async def test_chat_accepts_message_at_4000_chars():
     runner.chat = AsyncMock(return_value="ok")
     runner.last_tool_calls = []
     app = _make_app_with_runner(runner)
-    with patch("hiris.app.api.handlers_chat.load_history", return_value=[]):
-        with patch("hiris.app.api.handlers_chat.append_messages"):
-            async with TestClient(TestServer(app)) as client:
-                resp = await client.post("/api/chat", json={"message": "x" * 4000})
-                assert resp.status == 200
+    with (
+        patch("hiris.app.api.handlers_chat.load_history", return_value=[]),
+        patch("hiris.app.api.handlers_chat.append_messages"),
+    ):
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/chat", json={"message": "x" * 4000})
+            assert resp.status == 200
 
 
 # ---------------------------------------------------------------------------
@@ -90,13 +92,15 @@ async def test_security_headers_present():
     runner.chat = AsyncMock(return_value="ok")
     runner.last_tool_calls = []
     app = _make_app_with_runner(runner)
-    with patch("hiris.app.api.handlers_chat.load_history", return_value=[]):
-        with patch("hiris.app.api.handlers_chat.append_messages"):
-            async with TestClient(TestServer(app)) as client:
-                resp = await client.post("/api/chat", json={"message": "ciao"})
-                assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-                assert "X-Frame-Options" not in resp.headers  # HA Ingress richiede iframe
-                assert resp.headers.get("Referrer-Policy") == "no-referrer"
+    with (
+        patch("hiris.app.api.handlers_chat.load_history", return_value=[]),
+        patch("hiris.app.api.handlers_chat.append_messages"),
+    ):
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/chat", json={"message": "ciao"})
+            assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+            assert "X-Frame-Options" not in resp.headers  # HA Ingress richiede iframe
+            assert resp.headers.get("Referrer-Policy") == "no-referrer"
 
 
 # SEC-010 — domain/service regex in ha_client: usciva con `call_service`

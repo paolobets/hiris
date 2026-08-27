@@ -153,14 +153,16 @@ class OllamaEmbedder:
     async def embed(self, text: str) -> list[float]:
         url = f"{self._base_url}/api/embeddings"
         timeout = aiohttp.ClientTimeout(total=30, connect=5)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json={"model": self._model, "prompt": text}) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-                vec: list[float] = data.get("embedding", [])
-                if vec and self._dims == 0:
-                    self._dims = len(vec)
-                return vec
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.post(url, json={"model": self._model, "prompt": text}) as resp,
+        ):
+            resp.raise_for_status()
+            data = await resp.json()
+            vec: list[float] = data.get("embedding", [])
+            if vec and self._dims == 0:
+                self._dims = len(vec)
+            return vec
 
     @property
     def dimensions(self) -> int:

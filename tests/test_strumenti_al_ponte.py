@@ -402,12 +402,14 @@ def test_il_token_non_compare_nel_log_del_turno_degradato(caplog):
     job = {"kind": "chat", "job_id": "J-3",
            "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
 
-    with caplog.at_level(logging.DEBUG):
-        with patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()):
-            esito = runner._reason_chat(
-                job, "live", client=_ClientFinto(_Risposta({}, 401)),
-                base_url="http://127.0.0.1:8099",
-                headers={"X-HIRIS-Internal-Token": segreto})
+    with (
+        caplog.at_level(logging.DEBUG),
+        patch.object(runner.subprocess, "run", lambda *a, **k: _Proc()),
+    ):
+        esito = runner._reason_chat(
+            job, "live", client=_ClientFinto(_Risposta({}, 401)),
+            base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": segreto})
 
     assert segreto not in json.dumps(esito)
     for record in caplog.records:
@@ -601,10 +603,12 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                                                          "tipo": "area"})
             return _ProcFelice()
 
-        with patch.object(runner.subprocess, "run", _finta_cli):
-            with httpx.Client(timeout=30) as http:
-                esito = await asyncio.to_thread(
-                    runner.run_once, http, base, runner.build_headers(), "live")
+        with (
+            patch.object(runner.subprocess, "run", _finta_cli),
+            httpx.Client(timeout=30) as http,
+        ):
+            esito = await asyncio.to_thread(
+                runner.run_once, http, base, runner.build_headers(), "live")
 
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
@@ -698,13 +702,15 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
            "context": {"history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": "## La casa\nx"}}
 
-    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        with patch.object(runner.subprocess, "run", lambda *a, **k: _ProcFelice()):
-            esito = runner._reason_chat(
-                job, "live",
-                client=_ClientFinto(_Risposta({"error": "unauthorized"}, 401)),
-                base_url="http://127.0.0.1:8099",
-                headers={"X-HIRIS-Internal-Token": "TOK"})
+    with (
+        caplog.at_level(logging.WARNING, logger="hiris.agent"),
+        patch.object(runner.subprocess, "run", lambda *a, **k: _ProcFelice()),
+    ):
+        esito = runner._reason_chat(
+            job, "live",
+            client=_ClientFinto(_Risposta({"error": "unauthorized"}, 401)),
+            base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": "TOK"})
 
     reply = esito["reply"]
     assert reply.startswith(runner.AVVISO_STRUMENTI_ASSENTI)
@@ -730,13 +736,15 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
         catturato["argv"] = argv
         return _ProcFelice()
 
-    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        with patch.object(runner.subprocess, "run", _run):
-            esito = runner._reason_chat(
-                job, "live",
-                client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
-                base_url="http://127.0.0.1:8099",
-                headers={"X-HIRIS-Internal-Token": "TOK"})
+    with (
+        caplog.at_level(logging.WARNING, logger="hiris.agent"),
+        patch.object(runner.subprocess, "run", _run),
+    ):
+        esito = runner._reason_chat(
+            job, "live",
+            client=_ClientFinto(_Risposta(_tools_list(sorted(_NOMI_NUDI)), 200)),
+            base_url="http://127.0.0.1:8099",
+            headers={"X-HIRIS-Internal-Token": "TOK"})
 
     assert esito["reply"] == "in cucina una luce e' accesa"
     assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
@@ -756,9 +764,11 @@ def test_senza_client_non_c_e_degrado_da_dichiarare(caplog):
     job = {"kind": "chat", "job_id": "J-locale",
            "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
 
-    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        with patch.object(runner.subprocess, "run", lambda *a, **k: _ProcFelice()):
-            esito = runner._reason_chat(job, "live")
+    with (
+        caplog.at_level(logging.WARNING, logger="hiris.agent"),
+        patch.object(runner.subprocess, "run", lambda *a, **k: _ProcFelice()),
+    ):
+        esito = runner._reason_chat(job, "live")
 
     assert esito["reply"] == "in cucina una luce e' accesa"
     assert not [r for r in caplog.records if r.name == "hiris.agent"]
@@ -1368,9 +1378,11 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     job = {"kind": "chat", "job_id": "J-nessun-cliente",
            "context": {"history": [], "system_prompt": "Sei HIRIS.", "contesto": "x"}}
 
-    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        with patch.object(runner.subprocess, "run", cli):
-            esito = runner._reason_chat(job, "live")
+    with (
+        caplog.at_level(logging.WARNING, logger="hiris.agent"),
+        patch.object(runner.subprocess, "run", cli),
+    ):
+        esito = runner._reason_chat(job, "live")
 
     assert cli.invocazioni == 1
     assert esito["reply"] == "in cucina una luce e' accesa"

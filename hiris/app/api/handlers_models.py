@@ -647,12 +647,14 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get("https://api.openai.com/v1/models", headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning("OpenAI models list returned %s", resp.status)
-                    return _OPENAI_FALLBACK, "riserva"
-                data = await resp.json()
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.get("https://api.openai.com/v1/models", headers=headers) as resp,
+        ):
+            if resp.status != 200:
+                logger.warning("OpenAI models list returned %s", resp.status)
+                return _OPENAI_FALLBACK, "riserva"
+            data = await resp.json()
         models = [
             m["id"] for m in data.get("data", [])
             if _OPENAI_KEEP.match(m["id"]) and not _OPENAI_SKIP.search(m["id"])
@@ -727,12 +729,14 @@ async def _fetch_ollama_models(local_model_url: str,
     base = local_model_url.rstrip("/")
     timeout = aiohttp.ClientTimeout(total=5)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(f"{base}/api/tags") as resp:
-                if resp.status != 200:
-                    logger.warning("Ollama /api/tags returned %s", resp.status)
-                    return riserva, "riserva"
-                data = await resp.json()
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.get(f"{base}/api/tags") as resp,
+        ):
+            if resp.status != 200:
+                logger.warning("Ollama /api/tags returned %s", resp.status)
+                return riserva, "riserva"
+            data = await resp.json()
         return [m["name"] for m in data.get("models", [])], "viva"
     except Exception as exc:
         logger.warning("Could not fetch Ollama models: %s", exc)
@@ -808,12 +812,14 @@ async def _fetch_openrouter_models(api_key: str,
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get("https://openrouter.ai/api/v1/models", headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning("OpenRouter models list returned %s", resp.status)
-                    return _OPENROUTER_PRESETS, "riserva"
-                data = await resp.json()
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.get("https://openrouter.ai/api/v1/models", headers=headers) as resp,
+        ):
+            if resp.status != 200:
+                logger.warning("OpenRouter models list returned %s", resp.status)
+                return _OPENROUTER_PRESETS, "riserva"
+            data = await resp.json()
 
         # Build live capability index. Tool support is required because every
         # HIRIS agent ships with the standard tool schema in the chat request;

@@ -1227,27 +1227,29 @@ class HAClient:
         token = self._headers["Authorization"].removeprefix("Bearer ")
         tipi = [t for t, _ in comandi]
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(ws_url) as ws:
-                    handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    if handshake.get("type") == "auth_required":
-                        await ws.send_json({"type": "auth", "access_token": token})
-                        auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        if auth.get("type") != "auth_ok":
-                            logger.warning("HA WS auth failed in _ws_batch(%s)", tipi)
-                            return risposte
-                    for numero, (msg_type, extra) in enumerate(comandi, start=1):
-                        payload = {"id": numero, "type": msg_type}
-                        if extra:
-                            payload.update(extra)
-                        await ws.send_json(payload)
-                    attesi = set(range(1, len(comandi) + 1))
-                    while attesi:
-                        msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                        numero = msg.get("id")
-                        if numero in attesi:
-                            risposte[numero - 1] = msg
-                            attesi.discard(numero)
+            async with (
+                aiohttp.ClientSession() as session,
+                session.ws_connect(ws_url) as ws,
+            ):
+                handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                if handshake.get("type") == "auth_required":
+                    await ws.send_json({"type": "auth", "access_token": token})
+                    auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                    if auth.get("type") != "auth_ok":
+                        logger.warning("HA WS auth failed in _ws_batch(%s)", tipi)
+                        return risposte
+                for numero, (msg_type, extra) in enumerate(comandi, start=1):
+                    payload = {"id": numero, "type": msg_type}
+                    if extra:
+                        payload.update(extra)
+                    await ws.send_json(payload)
+                attesi = set(range(1, len(comandi) + 1))
+                while attesi:
+                    msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+                    numero = msg.get("id")
+                    if numero in attesi:
+                        risposte[numero - 1] = msg
+                        attesi.discard(numero)
         except Exception as exc:
             logger.debug("_ws_batch(%s) failed: %s", tipi, exc)
         return risposte
