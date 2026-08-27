@@ -254,7 +254,11 @@ def test_lo_sweep_non_ruba_il_lavoro_al_poll(q):
 def test_il_giorno_del_tetto_finisce_a_mezzanotte_DI_CASA(tmp_path):
     """Un turno accodato alle 00:30 di Roma appartiene al giorno NUOVO. Se il
     confine fosse in UTC quelle sarebbero le 22:30 del giorno prima, e il tetto
-    giornaliero si azzererebbe alle due di notte invece che a mezzanotte."""
+    giornaliero si azzererebbe alle due di notte invece che a mezzanotte.
+
+    Il timestamp e' scelto apposta perche' un fuso sbagliato produca il
+    GIORNO sbagliato (22:30 del 26, non solo un'ora diversa nello stesso
+    26/08) e non solo l'ora: cosi' il test non puo' passare per caso."""
     coda = ReasoningQueue(str(tmp_path / "r.db"), leggi_fuso=lambda: "Europe/Rome")
 
     mezzanotte_e_mezza_roma = 1787783400.0  # 26/08 22:30Z = 27/08 00:30 a Roma

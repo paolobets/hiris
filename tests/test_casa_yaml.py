@@ -34,6 +34,9 @@ def test_un_tag_che_costruisce_oggetti_python_viene_rifiutato():
     Il file lo scrive Home Assistant in una cartella su cui HIRIS ha gia'
     accesso in scrittura, quindi la minaccia e' remota — ma una difesa che
     dipende dall'attenzione di chi legge non e' una difesa."""
+    # FOGLIA (ConstructorError), non ramo: sono test di SICUREZZA, e devono
+    # provare che il caricatore ha rifiutato IL TAG -- il ramo (YAMLError)
+    # passerebbe anche se il file fosse solo illeggibile per un altro motivo.
     with pytest.raises(yaml.constructor.ConstructorError):
         carica_yaml("!!python/object/apply:os.system ['echo ciao']")
 
@@ -44,6 +47,9 @@ def test_un_tag_che_costruisce_oggetti_python_viene_rifiutato():
 def test_un_yaml_malformato_solleva_invece_di_tacere():
     """Restituire una lista vuota sarebbe indistinguibile da «nessuna
     automazione»: chi chiama deve poter distinguere il guasto dal vuoto."""
+    # RAMO (YAMLError), non foglia: qui il soggetto e' "che sollevi", non
+    # quale sottoclasse -- malformazioni diverse producono sorelle diverse
+    # (ScannerError, ComposerError, ReaderError).
     with pytest.raises(yaml.YAMLError):
         carica_yaml("- id: '1'\n   alias: male indentato\n  altro: x\n")
 
