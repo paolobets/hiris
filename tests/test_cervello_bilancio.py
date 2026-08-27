@@ -116,6 +116,37 @@ def test_un_ora_mancante_non_azzera_il_totale():
     ]
 
 
+def test_forma_porta_l_ora_vera_anche_su_una_giornata_bucata():
+    """**L'undicesima correzione (mandato «il bilancio dell'energia»,
+    punto 1, 27/08/2026): il caso che ha generato il difetto non era nella
+    suite.** La curva porta l'ora vera su ogni punto -- difetto gia' chiuso
+    -- ma un revisore ha rimesso lo STESSO difetto ricostruendo `ora` come
+    "primo istante + indice" (l'indice travestito da ora), e 80 test su 80
+    restavano verdi: OGNI giornata finta di questo file era CONTIGUA (ore
+    6,7 oppure 6,7,8,9,10), e con un indice contiguo "indice == ora" e
+    "ora vera" coincidono per caso.
+
+    Qui non coincidono: Home Assistant OMETTE le ore senza dati, quindi
+    questa giornata salta le 10 e le 11 (7, 8, 9, poi 12, 13). Se `ora`
+    fosse ricostruita dall'indice, il quarto punto (indice 3) diventerebbe
+    "10:00" invece della vera "12:00" -- questo test lo becca, quello
+    contiguo sopra no."""
+    serie = {"sensor.produzione": [
+        _punto(7, 1.0), _punto(8, 2.0), _punto(9, 3.0),
+        _punto(12, 4.0), _punto(13, 5.0)]}
+    corpo = costruisci_corpo_bilancio(
+        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
+        provenienza_per_dimensione={"produzione": "dichiarata"})
+
+    assert corpo["forma"]["produzione"] == [
+        {"ora": "2026-08-24T07:00:00+00:00", "valore": 1.0},
+        {"ora": "2026-08-24T08:00:00+00:00", "valore": 2.0},
+        {"ora": "2026-08-24T09:00:00+00:00", "valore": 3.0},
+        {"ora": "2026-08-24T12:00:00+00:00", "valore": 4.0},
+        {"ora": "2026-08-24T13:00:00+00:00", "valore": 5.0},
+    ]
+
+
 def test_i_momenti_prima_ultima_ora_e_picco_di_produzione():
     serie = {"sensor.produzione": [
         _punto(6, 0.0), _punto(7, 1.0), _punto(8, 5.0), _punto(9, 2.0), _punto(10, 0.0)]}
@@ -221,6 +252,49 @@ def test_quota_autosufficienza_assente_senza_il_consumo_misurato():
     assert "quota_autosufficienza" not in corpo.get("momenti", {})
 
 
+def test_quota_autosufficienza_non_esce_negativa_quando_il_prelievo_supera_il_consumo():
+    """**Punto 3 del mandato (27/08/2026): `_quota` promette nel nome e nel
+    docstring un valore fra 0 e 1, e non lo garantiva.** Il caso non e'
+    teorico: il prelievo puo' superare il consumo di casa quando la
+    batteria si carica dalla rete -- quell'energia importata serve a
+    caricare, non e' consumo della casa. Consumo 10, prelievo 15 (5 kWh sono
+    andati alla carica): la vecchia formula scriverebbe `(10-15)/10 =
+    -0,5`, un fatto impossibile travestito da dato.
+
+    **Non si scrive nemmeno uno zero**: zero affermerebbe "zero
+    autosufficienza", e non lo sappiamo -- i 5 kWh in piu' di prelievo
+    potrebbero convivere con un'ottima autoproduzione nel resto della
+    giornata. Quando la premessa non regge, il campo non compare."""
+    serie = {
+        "sensor.consumo": [_punto(6, 10.0)],
+        "sensor.prelievo": [_punto(6, 15.0)],
+    }
+    entita = {"consumo": "sensor.consumo", "prelievo": "sensor.prelievo"}
+    provenienza = {d: "dichiarata" for d in entita}
+
+    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
+                                      provenienza_per_dimensione=provenienza)
+
+    assert "quota_autosufficienza" not in corpo.get("momenti", {})
+
+
+def test_quota_autosufficienza_al_confine_prelievo_uguale_consumo():
+    """Il confine resta valido: `prelievo == consumo` non e' il caso rotto
+    (nessuna energia e' andata a caricare oltre il consumo), e la quota
+    torna zero -- un fatto vero, non omesso per prudenza eccessiva."""
+    serie = {
+        "sensor.consumo": [_punto(6, 10.0)],
+        "sensor.prelievo": [_punto(6, 10.0)],
+    }
+    entita = {"consumo": "sensor.consumo", "prelievo": "sensor.prelievo"}
+    provenienza = {d: "dichiarata" for d in entita}
+
+    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
+                                      provenienza_per_dimensione=provenienza)
+
+    assert corpo["momenti"]["quota_autosufficienza"] == 0.0
+
+
 def test_quota_assente_se_il_denominatore_manca():
     """Zero produzione conosciuta non e' "zero autoconsumo": e' "non lo so"
     -- la quota non compare, non diventa 0.0 ne' un'eccezione."""
@@ -233,6 +307,15 @@ def test_quota_assente_se_il_denominatore_manca():
 
 
 def test_batteria_percentuale_oraria_arrotondata_a_un_decimale():
+    """**`batteria_percentuale_oraria` porta l'ORA di ogni punto, come
+    `forma`** (correzione MEDIA della review, mandato «il bilancio
+    dell'energia», punto 2, 27/08/2026): prima di questa correzione era
+    rimasta una lista NUDA di percentuali (`[56.6, 84.2]`) -- **lo stesso
+    difetto di `forma` prima della sua correzione**, un campo piu' in la':
+    con un buco del recorder gli indici non sono le ore, e la curva della
+    batteria si disallineava in silenzio mentre quella dell'energia,
+    accanto, era gia' giusta. La chiave e' `ora`, come per `forma`
+    (fondamenta 3, consistenza)."""
     serie = {
         "sensor.produzione": [_punto(6, 1.0)],
         "sensor.batteria": [_punto(6, None, media=56.5833), _punto(7, None, media=84.2)],
@@ -241,7 +324,29 @@ def test_batteria_percentuale_oraria_arrotondata_a_un_decimale():
         serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
         provenienza_per_dimensione={"produzione": "dichiarata"},
         entita_batteria="sensor.batteria")
-    assert corpo["batteria_percentuale_oraria"] == [56.6, 84.2]
+    assert corpo["batteria_percentuale_oraria"] == [
+        {"ora": "2026-08-24T06:00:00+00:00", "valore": 56.6},
+        {"ora": "2026-08-24T07:00:00+00:00", "valore": 84.2},
+    ]
+
+
+def test_batteria_percentuale_oraria_su_una_giornata_bucata():
+    """Il gemello del test di `forma` sopra, sullo stesso campo (punto 2 del
+    mandato -- "cerca i fratelli"): batteria vista alle 6 e poi, dopo un
+    buco (7 e 8 mancanti), di nuovo alle 9. Un indice posizionale metterebbe
+    "07:00" al secondo valore invece della vera "09:00"."""
+    serie = {
+        "sensor.produzione": [_punto(6, 1.0)],
+        "sensor.batteria": [_punto(6, None, media=50.0), _punto(9, None, media=80.0)],
+    }
+    corpo = costruisci_corpo_bilancio(
+        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
+        provenienza_per_dimensione={"produzione": "dichiarata"},
+        entita_batteria="sensor.batteria")
+    assert corpo["batteria_percentuale_oraria"] == [
+        {"ora": "2026-08-24T06:00:00+00:00", "valore": 50.0},
+        {"ora": "2026-08-24T09:00:00+00:00", "valore": 80.0},
+    ]
 
 
 def test_batteria_assente_dal_corpo_se_non_ha_nessun_dato():

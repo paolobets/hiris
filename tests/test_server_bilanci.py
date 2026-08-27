@@ -31,9 +31,15 @@ def _iso_giorno(giorno=G, fuso="Europe/Rome"):
             datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat())
 
 
-def _punto(cambio):
-    return {"inizio": "x", "fine": "y", "minimo": None, "massimo": None,
-            "media": None, "cambio": cambio}
+def _punto(cambio, ora=6):
+    """Un punto orario tradotto, con istanti VERI -- non `"x"`/`"y"`
+    (correzione del mandato «il bilancio dell'energia», punto 1, secondo
+    paragrafo, 27/08/2026): una stringa segnaposto non sa nemmeno
+    RAPPRESENTARE un istante, e a quel livello il contenuto della curva
+    resta strutturalmente non verificabile."""
+    return {"inizio": f"2026-08-24T{ora:02d}:00:00+00:00",
+            "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
+            "minimo": None, "massimo": None, "media": None, "cambio": cambio}
 
 
 @pytest.mark.asyncio
@@ -185,7 +191,8 @@ async def test_la_batteria_dello_stesso_dispositivo_entra_nella_lettura(tmp_path
     try:
         cliente = _ClienteLegami(statistiche={
             "sensor.energia_prodotta_oggi": [_punto(1.0)],
-            "sensor.batteria": [{"inizio": "x", "fine": "y", "minimo": None,
+            "sensor.batteria": [{"inizio": "2026-08-24T06:00:00+00:00",
+                                 "fine": "2026-08-24T07:00:00+00:00", "minimo": None,
                                  "massimo": None, "media": 55.0, "cambio": None}],
         })
         bilanci, falliti = await costruisci_bilanci(
@@ -196,7 +203,11 @@ async def test_la_batteria_dello_stesso_dispositivo_entra_nella_lettura(tmp_path
 
         assert falliti == 0
         [b] = bilanci
-        assert b["corpo"]["batteria_percentuale_oraria"] == [55.0]
+        # `batteria_percentuale_oraria` porta l'ORA di ogni punto, come
+        # `forma` (correzione del mandato, punto 2, 27/08/2026): non piu'
+        # una lista nuda di percentuali.
+        assert b["corpo"]["batteria_percentuale_oraria"] == [
+            {"ora": "2026-08-24T06:00:00+00:00", "valore": 55.0}]
         ids, _, _ = cliente.statistiche_chieste[0]
         assert set(ids) == {"sensor.energia_prodotta_oggi", "sensor.batteria"}
     finally:

@@ -1278,9 +1278,18 @@ def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     return casa
 
 
-def _punto_bilancio(cambio):
-    return {"inizio": "x", "fine": "y", "minimo": None, "massimo": None,
-            "media": None, "cambio": cambio}
+def _punto_bilancio(cambio, ora=6):
+    """Un punto orario tradotto, con istanti VERI -- non `"x"`/`"y"`
+    (correzione del mandato «il bilancio dell'energia», punto 1, secondo
+    paragrafo, 27/08/2026): una stringa segnaposto non sa nemmeno
+    RAPPRESENTARE un istante, e a quel livello il contenuto della curva
+    resta strutturalmente non verificabile. Questi test di cablaggio non
+    leggono ancora `forma`/`ora` (la verifica del contenuto vive in
+    `test_cervello_bilancio.py`, pura), ma la finta deve poter reggere quel
+    controllo il giorno in cui un test qui lo chiedesse."""
+    return {"inizio": f"2026-08-24T{ora:02d}:00:00+00:00",
+            "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
+            "minimo": None, "massimo": None, "media": None, "cambio": cambio}
 
 
 def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
@@ -1521,8 +1530,8 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
     archivio byte-identico a quello corretto.
 
     Qui i due giorni hanno statistiche DIVERSE (`statistiche_per_finestra`,
-    chiave = `da_iso` del giorno) -- se la riparazione leggesse la finestra
-    sbagliata (es. sempre quella dell'altro ieri), i due bilanci
+    chiave = `(da_iso, a_iso)` del giorno) -- se la riparazione leggesse la
+    finestra sbagliata (es. sempre quella dell'altro ieri), i due bilanci
     coinciderebbero, e non devono."""
     from datetime import datetime, timedelta, timezone
 
@@ -1541,16 +1550,17 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
                             soggetto="sensor.energia_prodotta_oggi", da=None, a="5.0",
                             device_class="energy")
 
-        def _da_iso(giorno):
-            da_ts, _ = confini_giorno(giorno, "Europe/Rome")
-            return datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat()
+        def _finestra_iso(giorno):
+            da_ts, a_ts = confini_giorno(giorno, "Europe/Rome")
+            return (datetime.fromtimestamp(da_ts, tz=timezone.utc).isoformat(),
+                    datetime.fromtimestamp(a_ts, tz=timezone.utc).isoformat())
 
         cliente = _ClienteLegami(
             direzioni={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche_per_finestra={
-                _da_iso(l_altro_ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]},
-                _da_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
+                _finestra_iso(l_altro_ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]},
+                _finestra_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
             })
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(
             {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,

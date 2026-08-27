@@ -93,7 +93,7 @@ class _ClienteLegami:
                 direzioni_errore: str | None = None,
                 statistiche: dict[str, list[dict]] | None = None,
                 statistiche_errore: str | None = None,
-                statistiche_per_finestra: dict[str, dict[str, list[dict]]] | None = None):
+                statistiche_per_finestra: dict[tuple[str, str], dict[str, list[dict]]] | None = None):
         self._mappa = mappa or {}
         self._default = {} if default is None else default
         self._direzioni = direzioni or {}
@@ -115,10 +115,19 @@ class _ClienteLegami:
         # finestra chiesta. Mutazione ESEGUITA dal revisore: far leggere alla
         # riparazione le statistiche del PRIMO giorno per ENTRAMBI i giorni
         # -> archivio byte-identico a quello corretto, nessun test se ne
-        # accorgeva. `statistiche_per_finestra` (chiave: `da_iso`, opzionale)
-        # SELEZIONA DAVVERO per finestra -- se non c'e' una voce per quella
-        # finestra ricade su `self._statistiche` (il comportamento di
-        # sempre, per i test a cui la finestra non interessa).
+        # accorgeva. `statistiche_per_finestra` SELEZIONA DAVVERO per
+        # finestra -- se non c'e' una voce per quella finestra ricade su
+        # `self._statistiche` (il comportamento di sempre, per i test a cui
+        # la finestra non interessa).
+        #
+        # **Chiave `(da_iso, a_iso)`, non piu' solo `da_iso`** (residuo
+        # minore del mandato, punto 6, 27/08/2026): selezionare solo
+        # sull'inizio lasciava una `a_iso` sbagliata passare inosservata --
+        # stessa famiglia del difetto n.1 (una finta che accetta un
+        # parametro e non lo verifica davvero), gravita' minima perche' nella
+        # vita vera `confini_giorno` non produce mai lo stesso `da_iso` per
+        # due giorni diversi. Chiuso perche' costava poco: una tupla al
+        # posto di una stringa come chiave.
         self._statistiche_per_finestra = statistiche_per_finestra or {}
         self.chiesti = []
         self.direzioni_chieste = 0
@@ -140,7 +149,7 @@ class _ClienteLegami:
         self.statistiche_chieste.append((list(identificatori), da_iso, a_iso))
         if self._statistiche_errore is not None:
             return {"errore": self._statistiche_errore}
-        fonte = self._statistiche_per_finestra.get(da_iso, self._statistiche)
+        fonte = self._statistiche_per_finestra.get((da_iso, a_iso), self._statistiche)
         return {"serie": {k: v for k, v in fonte.items() if k in identificatori}}
 
 
