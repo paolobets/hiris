@@ -63,10 +63,14 @@ def _is_conn_error(exc: Exception) -> bool:
     «irraggiungibile», che è il punto: due sarebbero libere di divergere.
     """
     for modulo in ("openai", "anthropic"):
-        # (ImportError se l'SDK non e' installata, AttributeError se una
-        # versione vecchia non ha ancora questi due nomi): tacere e' voluto,
-        # si prova semplicemente l'SDK successiva.
-        with suppress(ImportError, AttributeError):
+        # `Exception` e non le sole ImportError/AttributeError: questo blocco SONDA quali
+        # SDK sono installate, e gira dentro un `except` gia' in corso. Una libreria
+        # presente ma rotta a basso livello (conflitto ABI di una sua dipendenza) puo'
+        # sollevare qualunque cosa all'import: farla risalire da qui salterebbe la
+        # costruzione del RunnerBackendError, cioe' romperebbe la gestione dell'errore
+        # proprio mentre la si sta facendo. Il silenzio qui e' totale e voluto --
+        # dichiararlo con `suppress` e' cio' che lo distingue da un `except: pass`.
+        with suppress(Exception):
             sdk = __import__(modulo)
             if isinstance(exc, (sdk.APIConnectionError, sdk.APITimeoutError)):
                 return True
