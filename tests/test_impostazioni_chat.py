@@ -169,7 +169,9 @@ def test_salva_non_lascia_il_temporaneo_se_la_scrittura_fallisce(tmp_path, monke
     assert not (tmp_path / "impostazioni_chat.json.tmp").exists()
 
 
-def test_salva_non_pubblica_un_file_su_un_errore_e_lascia_intatto_il_precedente(tmp_path, monkeypatch):
+def test_salva_non_pubblica_un_file_su_un_errore_e_lascia_intatto_il_precedente(
+    tmp_path, monkeypatch
+):
     """Il caso vero: c'e' gia' un file buono e il salvataggio successivo
     fallisce. Il precedente deve restare leggibile e invariato -- e' cio' che
     l'add-on rileggera' al prossimo avvio."""

@@ -1559,7 +1559,9 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
             direzioni={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche_per_finestra={
-                _finestra_iso(l_altro_ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]},
+                _finestra_iso(l_altro_ieri): {
+                    "sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]
+                },
                 _finestra_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
             })
         asyncio.run(server.riaggrega_gli_ultimi_due_giorni(

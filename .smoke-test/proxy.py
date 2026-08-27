@@ -12,7 +12,8 @@ from aiohttp import web
 
 UPSTREAM = "http://192.168.1.95:8099"
 INGRESS_HEADER = {"X-Ingress-Path": "/api/hassio_ingress/test_token_debug/"}
-STATIC_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "hiris", "app", "static"))
+STATIC_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "hiris", "app", "static"))
 
 
 def _leggi_file(fs_path: str) -> bytes:
@@ -58,7 +59,9 @@ async def proxy(req: web.Request) -> web.Response:
     timeout = aiohttp.ClientTimeout(total=605)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
-            async with session.request(req.method, url, headers=headers, data=body, allow_redirects=False) as resp:
+            async with session.request(
+                req.method, url, headers=headers, data=body, allow_redirects=False,
+            ) as resp:
                 # Stream body
                 content = await resp.read()
                 # Filter hop-by-hop headers

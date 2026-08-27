@@ -13,7 +13,8 @@ _CASA = {
          "classe": None, "unita": None, "disabilitata": 0},
         {"id": "light.cucina_2", "nome": "Tavolo", "area_id": "cucina", "dispositivo_id": None,
          "classe": None, "unita": None, "disabilitata": 0},
-        {"id": "sensor.cucina_t", "nome": "Temperatura", "area_id": "cucina", "dispositivo_id": None,
+        {"id": "sensor.cucina_t", "nome": "Temperatura", "area_id": "cucina",
+         "dispositivo_id": None,
          "classe": "temperature", "unita": "°C", "disabilitata": 0},
         {"id": "binary_sensor.porta", "nome": "Porta", "area_id": "sala", "dispositivo_id": None,
          "classe": "door", "unita": None, "disabilitata": 0},
@@ -888,5 +889,7 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
                            {"id": "dev_irr", "nome": None},
                            {"id": "dev_tenda", "nome": "Tenda esterna"}]
     testo, _ = componi(casa, [], [], {})
-    assert _riga_area(testo, "Esterno") == \
-        "  - Esterno (id: esterno): 2 tapparelle (Tenda esterna), 1 sensore, 4 valvole (id: dev_irr)"
+    assert _riga_area(testo, "Esterno") == (
+        "  - Esterno (id: esterno): 2 tapparelle (Tenda esterna), "
+        "1 sensore, 4 valvole (id: dev_irr)"
+    )

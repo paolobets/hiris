@@ -1807,8 +1807,13 @@ class HAClient:
                             logger.error("HA WebSocket auth failed")
                             return
 
-                    await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
-                    await ws.send_json({"id": 2, "type": "subscribe_events", "event_type": "entity_registry_updated"})
+                    await ws.send_json(
+                        {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
+                    )
+                    await ws.send_json(
+                        {"id": 2, "type": "subscribe_events",
+                         "event_type": "entity_registry_updated"}
+                    )
                     # Gli altri registri dell'anagrafe (Task 5): entity_registry_updated
                     # e' gia' sottoscritto sopra (id 2) e va verso add_anagrafe_listener,
                     # che copre anche rinomini, spostamenti, disabilitazioni e cancellazioni
@@ -1816,13 +1821,19 @@ class HAClient:
                     # verso add_registry_listener, uscito con la context map che lo chiamava
                     # -- fetta E3 Task 2, 2.0).
                     numero = 2
-                    for tipo_evento in (t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"):
+                    for tipo_evento in (
+                        t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"
+                    ):
                         numero += 1
-                        await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": tipo_evento})
+                        await ws.send_json(
+                            {"id": numero, "type": "subscribe_events", "event_type": tipo_evento}
+                        )
                     # Task 5: le plance hanno un ascoltatore proprio, separato
                     # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
                     numero += 1
-                    await ws.send_json({"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE})
+                    await ws.send_json(
+                        {"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE}
+                    )
                     for tipo_evento in EVENTI_SERVIZI:
                         numero += 1
                         await ws.send_json({"id": numero, "type": "subscribe_events",

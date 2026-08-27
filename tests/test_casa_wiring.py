@@ -222,7 +222,9 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
     # "riconnessione" tocca l'ascoltatore dell'anagrafe qui.
     assert anagrafe_chiamate == ["riconnessione"]
 
-    tipi_sottoscritti = {c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"}
+    tipi_sottoscritti = {
+        c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"
+    }
     assert "lovelace_updated" in tipi_sottoscritti
 
 

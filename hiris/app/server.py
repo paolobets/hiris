@@ -1752,7 +1752,9 @@ async def _on_startup(app: web.Application) -> None:
     # grep che nessun modulo vivo li importa piu' (vedi il report del task).
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
-        logger.warning("HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url)
+        logger.warning(
+            "HA_BASE_URL is %r — expected http://supervisor/core in production", ha_base_url
+        )
     ha_client = HAClient(
         base_url=ha_base_url,
         token=os.environ.get("SUPERVISOR_TOKEN", ""),
@@ -3065,7 +3067,8 @@ async def _on_startup(app: web.Application) -> None:
                 continue
             if job.get("kind") != "chat":
                 logger.warning(
-                    "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, fetta E3 Task 4), scartato",
+                    "reasoning sweep: job %s di tipo %r orfano (ponte olistico rimosso, "
+                    "fetta E3 Task 4), scartato",
                     job.get("job_id"), job.get("kind"))
         # fetta «la catena diventa l'unica verita'», Task 14. Lo sweep NON ruba
         # il lavoro al poll: `sweep_expired` guarda solo 'pending'/'claimed' e
@@ -3474,7 +3477,9 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
     )
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")

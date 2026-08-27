@@ -20,7 +20,13 @@ def test_llm_backend_is_abstract():
 @pytest.mark.asyncio
 async def test_ollama_backend_simple_chat():
     backend = OllamaBackend(url="http://localhost:11434", model="llama3.2")
-    mock_resp_data = {"message": {"content": '{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}'}}
+    mock_resp_data = {
+        "message": {
+            "content": (
+                '{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}'
+            )
+        }
+    }
     with patch("aiohttp.ClientSession") as MockSession:
         ctx = AsyncMock()
         ctx.__aenter__ = AsyncMock(return_value=ctx)
@@ -42,7 +48,9 @@ async def test_ollama_backend_simple_chat():
 def mock_runner():
     runner = MagicMock()
     runner.chat = AsyncMock(return_value="response text")
-    runner.simple_chat = AsyncMock(return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}')
+    runner.simple_chat = AsyncMock(
+        return_value='{"sensor.test": {"role": "energy_meter", "label": "Test", "confidence": 0.9}}'
+    )
     runner.last_tool_calls = []
     runner.total_input_tokens = 10
     runner.total_output_tokens = 5

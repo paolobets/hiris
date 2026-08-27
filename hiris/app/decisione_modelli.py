@@ -461,7 +461,8 @@ def componi_adesso(
             diagnosi.append({
                 "gravita": "fatto",
                 "testo": ("Il ponte è acceso: il Piano Claude Max prova per "
-                          f"primo, e se non risponde entro {int(scadenza_ponte_min)} minuti il turno "
+                          f"primo, e se non risponde entro {int(scadenza_ponte_min)} minuti "
+                          "il turno "
                           "passa al successivo della catena."
                           ),
                 # Il gesto INVERSO di «Mettilo primo», e l'unico che resta per
@@ -476,7 +477,8 @@ def componi_adesso(
             diagnosi.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
-                          f"c'è nessun altro: se non risponde entro {int(scadenza_ponte_min)} minuti, "
+                          "c'è nessun altro: "
+                          f"se non risponde entro {int(scadenza_ponte_min)} minuti, "
                           "il turno non ha dove andare."
                           ),
                 "azione": None,

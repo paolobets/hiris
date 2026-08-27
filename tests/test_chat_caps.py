@@ -307,7 +307,9 @@ async def test_chat_accepts_new_chatbot_id_key(tmp_path):
     comunque sul percorso sincrono."""
     app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False)
     async with TestClient(TestServer(app)) as client:
-        resp = await client.post("/api/chat", json={"message": "ciao", "chatbot_id": "qualunque-id"})
+        resp = await client.post(
+            "/api/chat", json={"message": "ciao", "chatbot_id": "qualunque-id"}
+        )
         assert resp.status == 200
         body = await resp.json()
         assert body["response"] == "sync reply"

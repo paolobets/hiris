@@ -148,7 +148,9 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
 
 
 @pytest.mark.asyncio
-async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_senza_registro(promesse):
+async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_senza_registro(
+    promesse,
+):
     """Il caso limite che il cablaggio del Task 7 rende raggiungibile per la
     prima volta: all'avvio `server.py` costruisce SEMPRE `RegistroServizi()`
     (mai `None`), ma vuoto -- si carica al primo uso, non all'avvio. Senza la
@@ -235,7 +237,10 @@ async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
 
 
 @pytest.mark.asyncio
-async def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(promesse):
+async \
+def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(
+    promesse,
+):
     """Il gemello del test sopra su `_verifica_ora` (review Task 7, Rilievo
     1): prima del fix, un `_RegistroVuoto` (presente, `domini()` vuoto)
     faceva rispondere `servizio(dominio, nome)` con `None` per QUALUNQUE
@@ -359,7 +364,9 @@ async def test_un_chiedi_senza_da_confrontare_resta_legittimo_anche_senza_specch
 
 
 @pytest.mark.asyncio
-async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verificato_in_silenzio(promesse):
+async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verificato_in_silenzio(
+    promesse,
+):
     """Requisito 3: stessa domanda di `_verifica_ora` sullo specchio cieco
     (`test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio`), qui
     per `da_confrontare` -- riusa la STESSA forma, non ne inventa una terza:

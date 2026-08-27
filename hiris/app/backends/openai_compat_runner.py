@@ -697,12 +697,17 @@ class OpenAICompatRunner:
                     )
                 response = await self._client.chat.completions.create(**kwargs)
                 if self._locale:
-                    _content = (response.choices[0].message.content or "") if response.choices else ""
+                    _content = (
+                        (response.choices[0].message.content or "") if response.choices else ""
+                    )
                     logger.info(
                         "Ollama response: finish=%s content_len=%d tools=%d",
                         response.choices[0].finish_reason if response.choices else "?",
                         len(_content),
-                        len(response.choices[0].message.tool_calls or []) if response.choices else 0,
+                        (
+                            len(response.choices[0].message.tool_calls or [])
+                            if response.choices else 0
+                        ),
                     )
             except _openai.RateLimitError as exc:
                 self._scrivi_rifiuto(effective_model)
@@ -791,7 +796,10 @@ class OpenAICompatRunner:
                         {
                             "id": tc.id,
                             "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
                         }
                         for tc in tool_calls
                     ]
@@ -1019,7 +1027,11 @@ class OpenAICompatRunner:
                         if _is_conn_error(exc):
                             self._record_conn_failure()
                         logger.error("OpenAI/Ollama API error (stream): %s", exc)
-                        yield f'data: {json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}\n\n'
+                        yield (
+                "data: "
+                f'{json.dumps({"type": "error", "message": "Errore temporaneo del servizio AI."})}'
+                "\n\n"
+                        )
                         return
 
                 self._record_success()
@@ -1069,7 +1081,11 @@ class OpenAICompatRunner:
                             effective_model, leaked, collected_text[:160],
                         )
                         yield f'data: {json.dumps({"type": "discard_collected"})}\n\n'
-                        yield f'data: {json.dumps({"type": "error", "message": TOOL_LEAK_USER_MSG})}\n\n'
+                        yield (
+                            "data: "
+                            f'{json.dumps({"type": "error", "message": TOOL_LEAK_USER_MSG})}'
+                            "\n\n"
+                        )
                         return
                     if finish_reason == "length":
                         # review M3/#1: chat() surfaces _TRUNCATION_NOTICE
@@ -1156,7 +1172,11 @@ class OpenAICompatRunner:
                     "strumenti chiamati: %s",
                     max_iter, [c["tool"] for c in self.last_tool_calls],
                 )
-                yield f'data: {json.dumps({"type": "error", "message": _MAX_ITERATIONS_NOTICE})}\n\n'
+                yield (
+                    "data: "
+                    f'{json.dumps({"type": "error", "message": _MAX_ITERATIONS_NOTICE})}'
+                    "\n\n"
+                )
                 return
 
         except Exception as exc:

@@ -358,7 +358,8 @@ async def test_il_giro_vero_del_ponte_si_chiude_claim_piu_submit(
     client, coda, _app = ponte_con_configurazione_predefinita
     adesso = time.time()
     coda.enqueue(
-        "chat", {}, {"history": [{"role": "user", "content": "ciao"}], "system_prompt": "sei HIRIS"},
+        "chat", {},
+        {"history": [{"role": "user", "content": "ciao"}], "system_prompt": "sei HIRIS"},
         adesso + 300, now=adesso,
     )
 

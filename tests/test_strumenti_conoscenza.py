@@ -40,7 +40,9 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
             (entita["id"], entita.get("nome"), entita.get("area_id"),
              entita.get("dispositivo_id"), entita.get("classe"), entita.get("unita"),
              1 if entita.get("disabilitata") else 0, "[]", "[]"))
-    conn.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', '2026-01-01')")
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', '2026-01-01')"
+    )
     conn.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('non_disponibili', '[]')")
     conn.commit()
     if comportamento:
@@ -593,7 +595,9 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
 
 
 @pytest.mark.asyncio
-async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(archivio_casa, memoria):
+async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
+    archivio_casa, memoria
+):
     """I3 (review finale), invariante 4: `_cecita` (Task B3) dichiarava solo
     la cecita' TOTALE (registri caduti, o specchio illeggibile). Qui lo
     specchio E' leggibile -- restituisce un friendly_name per un'ALTRA
@@ -702,7 +706,9 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
 
 
 @pytest.mark.asyncio
-async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(archivio_casa, memoria):
+async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
+    archivio_casa, memoria
+):
     """Mutazione uccisa: contare fra le «senza nome» anche le entita'
     disabilitate. Una disabilitata senza nome non e' cercabile per scelta
     dell'utente, non per un limite di HIRIS -- non deve produrre una scusa."""
@@ -986,7 +992,9 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
 
 
 @pytest.mark.asyncio
-async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(archivio_casa, memoria, monkeypatch):
+async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
+    archivio_casa, memoria, monkeypatch
+):
     """Rilievo Importante della review indipendente: `_ricorda` chiamava
     SEMPRE `ArchivioCasa.leggi()` prima di sapere se la cache avrebbe dato un
     colpo a segno -- su un hit quella lettura (SQL vero + json.loads per
@@ -1008,7 +1016,9 @@ async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(archivio_casa, m
     await d.dispatch("ricorda", {"testo": "prima chiamata, miss: deve leggere"})
     assert len(chiamate_leggi) == 1
 
-    await d.dispatch("ricorda", {"testo": "seconda chiamata, stato invariato: hit, NON deve leggere"})
+    await d.dispatch(
+        "ricorda", {"testo": "seconda chiamata, stato invariato: hit, NON deve leggere"}
+    )
     assert len(chiamate_leggi) == 1  # invariato: la seconda non ha letto di nuovo
 
 

@@ -45,7 +45,9 @@ def test_trova_un_area_per_nome(indice):
     trovate = indice.trova("d'inverno la sala da pranzo sta bene a 19 gradi")
     assert len(trovate) == 1
     assert trovate[0]["ambiguo"] is False
-    assert [(c["tipo"], c["riferimento"]) for c in trovate[0]["candidati"]] == [("area", "sala_pranzo")]
+    assert [(c["tipo"], c["riferimento"]) for c in trovate[0]["candidati"]] == [
+        ("area", "sala_pranzo")
+    ]
     assert trovate[0]["nome_visto"] == "sala da pranzo"
 
 

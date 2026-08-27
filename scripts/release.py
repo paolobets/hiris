@@ -185,7 +185,14 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
     # Always push HEAD to master regardless of the working branch/worktree.
     # "HEAD:master" is a refspec that fast-forwards remote master to the
     # current commit without requiring a local checkout of master.
-    extra = [p for p in ["hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt", "hiris/translations/en.yaml", "hiris/translations/it.yaml", "hiris/app/backends/embeddings.py", "hiris/app/static/index.html", "README.md", "scripts/release.py"] if (ROOT / p).exists()]
+    extra = [
+        p for p in [
+            "hiris/run.sh", "hiris/Dockerfile", "hiris/requirements.txt",
+            "hiris/translations/en.yaml", "hiris/translations/it.yaml",
+            "hiris/app/backends/embeddings.py", "hiris/app/static/index.html",
+            "README.md", "scripts/release.py",
+        ] if (ROOT / p).exists()
+    ]
     cmds = [
         ["git", "add", "hiris/config.yaml", "CHANGELOG.md", *extra],
         ["git", "commit", "-m", f"chore: release v{version}"],
@@ -279,7 +286,10 @@ def main() -> None:
     notes = extract_changelog_section(args.version)  # step 9
     create_github_release(args.version, notes, args.dry_run)  # step 10
 
-    print(f"\n{_GREEN}{'[DRY RUN] ' if args.dry_run else ''}Release v{args.version} completato ✓{_RESET}")
+    print(
+        f"\n{_GREEN}{'[DRY RUN] ' if args.dry_run else ''}Release v{args.version} completato "
+        f"✓{_RESET}"
+    )
     if not args.dry_run:
         print("HA Supervisor rileverà l'aggiornamento al prossimo check (ogni ~24h).")
 

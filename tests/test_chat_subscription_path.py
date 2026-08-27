@@ -118,7 +118,9 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
-    app, q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -154,7 +156,9 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #     ponte (regole-fetta.md), sono della fetta B.
     # Questo e' il test che impedisce a un task futuro di aggiungerne meta'
     # in silenzio, e quello che dice a chi verra' dopo dove guardare.
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -169,7 +173,9 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
 
 @pytest.mark.asyncio
 async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
-    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=False)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=False
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -181,7 +187,9 @@ async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
 
 @pytest.mark.asyncio
 async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
-    app, _q, runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=False, with_queue=True)
+    app, _q, runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=False, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -226,7 +234,9 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
 async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_path):
     """Sanity check: the hoisted check must not block turns that are still
     under the limit -- the subscription path must remain reachable."""
-    app, _q, runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, runner, impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     impostazioni.max_chat_turns = 5
     from hiris.app.chat_store import append_messages
     append_messages([
@@ -249,7 +259,9 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
 
 @pytest.mark.asyncio
 async def test_user_message_persisted_before_enqueue(tmp_path):
-    app, _q, _runner, _impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
@@ -260,7 +272,9 @@ async def test_user_message_persisted_before_enqueue(tmp_path):
 
 @pytest.mark.asyncio
 async def test_job_context_history_includes_current_user_turn(tmp_path):
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "prima domanda"})
         body = await resp.json()
@@ -285,7 +299,9 @@ async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_pa
 
     from hiris.app.chat_store import _get_store
 
-    app, q, _runner, impostazioni, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     impostazioni.giorni_conservazione = 5
 
     store = _get_store(data_dir)
@@ -317,7 +333,9 @@ async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_pa
 
 @pytest.mark.asyncio
 async def test_poll_route_pending_then_done(tmp_path):
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -340,7 +358,9 @@ async def test_poll_route_pending_then_done(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_unknown_job_id_404(tmp_path):
-    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/api/chat/reply/does-not-exist")
         assert resp.status == 404
@@ -355,7 +375,9 @@ async def test_poll_route_unknown_job_id_404(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -374,7 +396,9 @@ async def test_poll_route_expired_job_returns_error_not_pending(tmp_path):
 
 @pytest.mark.asyncio
 async def test_poll_route_failed_job_returns_error_not_pending(tmp_path):
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -399,7 +423,9 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
     """Mirrors Task 1's chat_reply_skipped outcome: the job reached
     'decided' but the decision carries no truthy 'reply' (e.g. the runner's
     decision was empty/garbage). The UI must stop polling, not spin forever."""
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -419,7 +445,9 @@ async def test_poll_route_decided_without_usable_reply_returns_error(tmp_path):
 async def test_poll_route_pending_job_still_returns_pending(tmp_path):
     """Sanity check: a genuinely in-flight job (not yet claimed) still polls
     as pending -- the terminal-state handling must not regress this."""
-    app, _q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, _q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -433,7 +461,9 @@ async def test_poll_route_pending_job_still_returns_pending(tmp_path):
 async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
     """A job claimed by the external runner but not yet submitted is still
     in-flight -- must poll as pending, not error."""
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "domanda"})
         job_id = (await resp.json())["job_id"]
@@ -464,8 +494,12 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # I test qui sotto pinnano l'INSIEME ESATTO del payload, non l'assenza di una
 # chiave: «X non c'e'» lascia rientrare X sotto un altro nome.
 @pytest.mark.asyncio
-async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(tmp_path):
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_forma_del_sincrono(
+    tmp_path,
+):
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ricordati che la caldaia perde"})
         job_id = (await resp.json())["job_id"]
@@ -512,7 +546,9 @@ async def test_poll_route_decision_senza_tools_called_non_porta_debug(tmp_path):
     # un `debug` vuoto -- resta esattamente come prima di questo task
     # (`test_poll_route_pending_then_done`, sopra, lo pinna gia' su questo
     # stesso ramo: qui si pinna che il comportamento non e' cambiato).
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         job_id = (await resp.json())["job_id"]
@@ -534,7 +570,9 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
     # chiave (quella e' il caso del test sopra). La chiave deve comparire lo
     # stesso, con la lista vuota dentro: e' cosi' che la E5 distingue "il
     # ponte ha girato e non ha chiamato nulla" da "questa decision non lo sa".
-    app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
+    app, q, _runner, _impostazioni, _data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True
+    )
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "che ore sono?"})
         job_id = (await resp.json())["job_id"]
@@ -1236,7 +1274,9 @@ def _accoda_scaduto(q, *, ora=None, history=None, **contesto):
 
 
 @pytest.mark.asyncio
-async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sullo_stesso_job(tmp_path):
+async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sullo_stesso_job(
+    tmp_path,
+):
     app, q, runner, _, _data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q, system_prompt="p", contesto="c",
                           restrict_to_home=False, response_mode="auto",

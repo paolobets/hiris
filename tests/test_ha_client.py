@@ -15,7 +15,9 @@ async def test_get_states_returns_list(client):
     mock_resp = AsyncMock()
     mock_resp.status = 200
     mock_resp.raise_for_status = MagicMock()
-    mock_resp.json = AsyncMock(return_value=[{"entity_id": "light.living", "state": "on", "attributes": {}}])
+    mock_resp.json = AsyncMock(
+        return_value=[{"entity_id": "light.living", "state": "on", "attributes": {}}]
+    )
     mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
     mock_resp.__aexit__ = AsyncMock(return_value=False)
 

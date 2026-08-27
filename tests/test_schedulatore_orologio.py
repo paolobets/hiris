@@ -230,8 +230,10 @@ async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
 async def test_avvisare_senza_recapito_non_inventa_un_canale_e_lo_dichiara(archivio):
     ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito=None)
     porta = PortaFinta()
-    await Orologio(archivio, esegui=porta,
-                   interpreta=TurnoFinto({"avvisare": True, "testo": "fa caldo"})).batti(ADESSO + 11)
+    await Orologio(
+        archivio, esegui=porta,
+        interpreta=TurnoFinto({"avvisare": True, "testo": "fa caldo"}),
+    ).batti(ADESSO + 11)
 
     assert porta.chiamate == []
     p = archivio.leggi(ident)

@@ -100,7 +100,10 @@ def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
-        leggi_modello=lambda: (archivio.get("models_config") or {}).get("ollama", {}).get("modello", ""))
+        leggi_modello=lambda: (
+            (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
+        ),
+    )
     assert runner._resolve_modello_corrente() == "llama3.1:8b"
     assert runner._resolve_model("gpt-4o", "chat") == "llama3.1:8b"
 
@@ -277,7 +280,10 @@ async def test_la_chiamata_a_ollama_parte_col_modello_LETTO_ADESSO(tmp_path):
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
-        leggi_modello=lambda: (archivio.get("models_config") or {}).get("ollama", {}).get("modello", ""))
+        leggi_modello=lambda: (
+            (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
+        ),
+    )
     m = MagicMock()
     m.content = "ok"
     m.tool_calls = None

@@ -133,7 +133,9 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
     )
 
     ha_client.start_websocket.assert_awaited_once()
-    assert "impostazioni_chat" in app, "il blocco estratto deve comunque valorizzare le impostazioni"
+    assert "impostazioni_chat" in app, (
+        "il blocco estratto deve comunque valorizzare le impostazioni"
+    )
     assert "scheduler" in app, "il blocco estratto deve comunque avviare lo scheduler"
     # Il punto del pin: il websocket parte una volta, e PRIMA di qualunque
     # altra cosa nel blocco che potrebbe dipenderne (oggi: lo scheduler) --

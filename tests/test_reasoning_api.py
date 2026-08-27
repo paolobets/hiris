@@ -35,7 +35,9 @@ async def test_claim_returns_null_when_empty(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_submit_without_execute_decision_wired_records_and_logs(aiohttp_client, tmp_path, caplog):
+async def test_submit_without_execute_decision_wired_records_and_logs(
+    aiohttp_client, tmp_path, caplog
+):
     """fetta E3 Task 4: server.py smise di wirare app["execute_decision"] --
     la ronda/revisione olistica che lo attuava era uscita, e con lei l'unico
     produttore di job non-"chat". fetta E3 Task 9: l'hook stesso e' uscito
@@ -59,8 +61,12 @@ async def test_submit_without_execute_decision_wired_records_and_logs(aiohttp_cl
     assert c["job"]["job_id"] == "J"
 
     with caplog.at_level("WARNING", logger="hiris.app.api.handlers_reasoning"):
-        r = await client.post("/api/reasoning/submit", json={"job_id": "J", "nonce": c["job"]["nonce"],
-            "decision": {"verdict": "anomalia", "severity": "info", "message": "ok", "action": None}})
+        r = await client.post("/api/reasoning/submit", json={
+            "job_id": "J", "nonce": c["job"]["nonce"],
+            "decision": {
+                "verdict": "anomalia", "severity": "info", "message": "ok", "action": None,
+            },
+        })
     body = await r.json()
     assert body["ok"] is True and body["outcome"] == "recorded"
     assert any("execute_decision" in rec.message and "J" in rec.message for rec in caplog.records)
@@ -101,5 +107,7 @@ async def test_submit_bad_nonce_409(aiohttp_client, tmp_path):
     q.enqueue("holistic", {}, {}, deadline_ts=100.0, job_id="J", now=1.0)
     await q.claim(now=10.0) if False else q.claim(now=10.0)
     client = await aiohttp_client(app)
-    r = await client.post("/api/reasoning/submit", json={"job_id": "J", "nonce": "bad", "decision": {}})
+    r = await client.post(
+        "/api/reasoning/submit", json={"job_id": "J", "nonce": "bad", "decision": {}}
+    )
     assert r.status == 409 and (await r.json())["ok"] is False

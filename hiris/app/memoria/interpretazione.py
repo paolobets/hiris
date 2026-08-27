@@ -154,7 +154,9 @@ def _valida_intervallo(minimo, massimo, problemi: list[str],
         # quando ne correggeva meta': lo stesso intervallo mandato intero
         # veniva raddrizzato e accettato.
         correzioni.append(
-            f"minimo ({minimo}) maggiore di massimo ({massimo}): intervallo invertito -- raddrizzato")
+            f"minimo ({minimo}) maggiore di massimo ({massimo}): "
+            "intervallo invertito -- raddrizzato"
+        )
         minimo, massimo = massimo, minimo
     return minimo, massimo
 

@@ -57,18 +57,24 @@ def test_all_chat_js_files_exist_and_are_declared_in_html():
     html = INDEX.read_text(encoding="utf-8")
     for fname in EXPECTED_CHAT_FILES:
         assert (CHAT / fname).is_file(), f"static/chat/{fname} deve esistere"
-        assert f'src="static/chat/{fname}"' in html, f"static/chat/{fname} deve essere un <script src> in index.html"
+        assert f'src="static/chat/{fname}"' in html, (
+            f"static/chat/{fname} deve essere un <script src> in index.html"
+        )
 
 
 def test_shared_api_js_is_reused_not_forked():
     html = INDEX.read_text(encoding="utf-8")
-    assert 'src="static/config/api.js"' in html, "la pagina chat deve caricare config/api.js (esc/applyTheme/loadUsage condivisi)"
+    assert 'src="static/config/api.js"' in html, (
+        "la pagina chat deve caricare config/api.js (esc/applyTheme/loadUsage condivisi)"
+    )
 
     chat_src = "\n".join((CHAT / f).read_text(encoding="utf-8") for f in EXPECTED_CHAT_FILES)
     # The page's private forks must be gone: no local `function esc(`,
     # `function applyTheme(` or `function loadUsage(` redeclared anywhere
     # under static/chat/.
-    assert "function esc(" not in chat_src, "esc() deve venire da config/api.js, non da una copia privata"
+    assert "function esc(" not in chat_src, (
+        "esc() deve venire da config/api.js, non da una copia privata"
+    )
     assert "function applyTheme(" not in chat_src, "applyTheme() deve venire da config/api.js"
     assert "function loadUsage(" not in chat_src, "loadUsage() deve venire da config/api.js"
 
@@ -87,7 +93,9 @@ def test_chat_wire_non_manda_piu_chatbot_id():
 
 def test_no_inline_onclick_attributes_left():
     html = INDEX.read_text(encoding="utf-8")
-    assert "onclick=" not in html, "gli onclick= inline devono essere sostituiti da addEventListener"
+    assert "onclick=" not in html, (
+        "gli onclick= inline devono essere sostituiti da addEventListener"
+    )
 
 
 def test_only_one_poll_chat_reply_implementation_on_this_surface():

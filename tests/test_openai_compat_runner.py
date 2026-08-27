@@ -272,8 +272,10 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
     finti_tool_def = [
-        {"name": "get_ha_health", "description": "finto", "input_schema": {"type": "object", "properties": {}}},
-        {"name": "get_home_status", "description": "finto", "input_schema": {"type": "object", "properties": {}}},
+        {"name": "get_ha_health", "description": "finto",
+         "input_schema": {"type": "object", "properties": {}}},
+        {"name": "get_home_status", "description": "finto",
+         "input_schema": {"type": "object", "properties": {}}},
     ]
     out = await runner.chat(
         user_message="check health",
@@ -781,7 +783,9 @@ def _stream_chunk_tool(tc_deltas, finish_reason=None):
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(tmp_path, caplog, monkeypatch):
+async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(
+    tmp_path, caplog, monkeypatch
+):
     """Deve poter fallire (mutazioni eseguite a mano, task-6-report.md): (c)
     togliendo il `for...else` (tornando al solo `yield` "done" finale di
     prima) lo stream torna muto e il primo assert cade."""
@@ -941,7 +945,9 @@ def test_thinking_budget_ignorato_lo_dice_nel_log(caplog):
     with caplog.at_level("WARNING"):
         avvisa_thinking_ignorato("Il backend locale", 8000)
     detto = " ".join(r.getMessage() for r in caplog.records)
-    assert "thinking_budget=8000" in detto, "il valore scartato va detto, non genericamente 'ignorato'"
+    assert "thinking_budget=8000" in detto, (
+        "il valore scartato va detto, non genericamente 'ignorato'"
+    )
     assert "NON viene applicato" in detto
     assert "Il backend locale" in detto
     assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"

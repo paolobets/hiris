@@ -60,7 +60,9 @@ def test_init_schema_idempotent(tmp_path):
     p = str(tmp_path / "idem.db")
     conn = connect(p)
     calls = []
-    init_schema(conn, _SCHEMA_V1, version=2, migrations={2: lambda c: calls.append(1) or c.execute("ALTER TABLE items ADD COLUMN tag TEXT")})
+    init_schema(conn, _SCHEMA_V1, version=2, migrations={
+        2: lambda c: calls.append(1) or c.execute("ALTER TABLE items ADD COLUMN tag TEXT")
+    })
     # second open at same version: migration must NOT run again
     init_schema(conn, _SCHEMA_V1, version=2, migrations={2: lambda c: calls.append(1)})
     assert calls == []  # fresh DB at v2 never runs the migration (schema already latest)

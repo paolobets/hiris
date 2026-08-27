@@ -268,7 +268,9 @@ def test_chatbots_json_silent_when_both_files_absent(tmp_path, caplog):
     )
     with caplog.at_level("INFO"):
         check(str(tmp_path), __import__("os"), logging.getLogger("test_chatbots_json_silence"))
-    assert not caplog.records, "ne' chatbots.json ne' agents.json sul disco -- nessun log deve uscire"
+    assert not caplog.records, (
+        "ne' chatbots.json ne' agents.json sul disco -- nessun log deve uscire"
+    )
 
 
 # ── fetta "esce il documentale" ─────────────────────────────────────────────

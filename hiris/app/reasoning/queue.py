@@ -58,7 +58,8 @@ class ReasoningQueue:
         jid = job_id or secrets.token_urlsafe(12)
         with self._lock:
             self._conn.execute(
-                "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,status,deadline_ts,created_ts) "
+                "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,"
+                "status,deadline_ts,created_ts) "
                 "VALUES(?,?,?,?, 'pending', ?, ?)",
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now))
             self._conn.commit()
@@ -106,7 +107,9 @@ class ReasoningQueue:
     # da un job che non ha mai portato un contesto).
     def submit(self, job_id: str, nonce: str, decision: dict, now: float) -> bool:
         with self._lock:
-            r = self._conn.execute("SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)).fetchone()
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
             if (r is None or r["status"] != "claimed" or r["nonce"] != nonce
                     or r["deadline_ts"] <= now):
                 return False
@@ -134,7 +137,8 @@ class ReasoningQueue:
         # dopo, come dimostra `get(job_id)` chiamato di nuovo.
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM reasoning_jobs WHERE status IN ('pending','claimed') AND deadline_ts <= ?",
+                "SELECT * FROM reasoning_jobs WHERE status IN ('pending','claimed') "
+                "AND deadline_ts <= ?",
                 (now,)).fetchall()
             for r in rows:
                 self._conn.execute(
@@ -238,7 +242,9 @@ class ReasoningQueue:
 
     def get(self, job_id: str) -> dict | None:
         with self._lock:
-            r = self._conn.execute("SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)).fetchone()
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
         if r is None:
             return None
         out = _row(r)
@@ -323,7 +329,8 @@ class ReasoningQueue:
     def prune(self, before_ts: float) -> int:
         with self._lock:
             cur = self._conn.execute(
-                "DELETE FROM reasoning_jobs WHERE status IN ('decided','expired','failed') AND created_ts < ?",
+                "DELETE FROM reasoning_jobs WHERE status IN ('decided','expired','failed') "
+                "AND created_ts < ?",
                 (before_ts,))
             self._conn.commit()
             return cur.rowcount

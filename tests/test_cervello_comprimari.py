@@ -93,7 +93,10 @@ class _ClienteLegami:
                 direzioni_errore: str | None = None,
                 statistiche: dict[str, list[dict]] | None = None,
                 statistiche_errore: str | None = None,
-                statistiche_per_finestra: dict[tuple[str, str], dict[str, list[dict]]] | None = None):
+                statistiche_per_finestra: (
+                    dict[tuple[str, str], dict[str, list[dict]]] | None
+                ) = None,
+                ):
         self._mappa = mappa or {}
         self._default = {} if default is None else default
         self._direzioni = direzioni or {}

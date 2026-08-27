@@ -259,7 +259,8 @@ class EntityCache:
     # resta.
 
     def all_states(self) -> list[dict]:
-        """Return all cached entity states as a list (read-only access for the entity inventory API)."""
+        """Return all cached entity states as a list (read-only access for the entity
+        inventory API)."""
         return list(self._states.values())
 
 

@@ -84,9 +84,11 @@ class ArchivioPromesse:
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
             if in_sospeso >= TETTO_IN_SOSPESO:
-                return {"errore": (f"ho gia' {TETTO_IN_SOSPESO} promesse in sospeso, che e' il tetto "
-                                   "che HIRIS si e' dato: disdicine una prima di "
-                                   "farne un'altra.")}
+                return {"errore": (
+                    f"ho gia' {TETTO_IN_SOSPESO} promesse in sospeso, che e' il tetto "
+                    "che HIRIS si e' dato: disdicine una prima di "
+                    "farne un'altra."
+                )}
             ident = secrets.token_urlsafe(9)
             self._conn.execute(
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
@@ -150,7 +152,9 @@ class ArchivioPromesse:
         riga = self.leggi(promessa_id)
         if riga is None:
             return {"errore": "non ho nessuna promessa con quell'identificatore."}
-        return {"errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(riga["stato"])}
+        return {
+            "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(riga["stato"])
+        }
 
     def risana(self, *, adesso: float) -> int:
         """Le prese a meta' al riavvio: `fallita`, col motivo, e non ripartono.
@@ -251,4 +255,6 @@ class ArchivioPromesse:
         Chiamata con il lock gia' preso.
         """
         self._conn.execute(
-            f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) AND risvegliata_ts < ?", (adesso - CONSERVAZIONE_S,))
+            f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) AND risvegliata_ts < ?",
+            (adesso - CONSERVAZIONE_S,),
+        )

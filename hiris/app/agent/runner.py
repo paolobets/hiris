@@ -142,7 +142,9 @@ log = logging.getLogger("hiris.agent")
 # IRRAGGIUNGIBILI -- il modo peggiore di non averli, perche' il prompt li
 # afferma e la chiamata non arriva mai. E' esattamente il genere di stringa che
 # qualcuno "completa" leggendo l'elenco: non si completa.
-_LOCAL_TOOLS_DENY = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
+_LOCAL_TOOLS_DENY = (
+    "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
+)
 
 
 # -- fetta "il ponte riceve gli strumenti" (parita' B, Task 3): L'INTERRUTTORE -
@@ -472,7 +474,8 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     strumenti promessi e non serviti.
 
     Restituisce `True` **solo** se la risposta porta TUTTI i nomi attesi --
-    quelli di `nomi_mcp()`, quindi il catalogo intero, `esegui` compreso. Il 200 non basta, e non e' un dettaglio: la rotta risponde 200 anche
+    quelli di `nomi_mcp()`, quindi il catalogo intero, `esegui` compreso. Il 200
+    non basta, e non e' un dettaglio: la rotta risponde 200 anche
     con gli archivi assenti (l'errore sta DENTRO il risultato della singola
     chiamata, non nello stato HTTP), quindi una sonda che si accontentasse del
     codice non proverebbe niente di cio' che dice di provare.

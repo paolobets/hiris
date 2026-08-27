@@ -53,7 +53,11 @@ class Orologio:
                                promessa["id"], type(errore).__name__, errore)
                 self._archivio.concludi(
                     promessa["id"], stato="fallita", adesso=adesso,
-                    motivo=f"guasto imprevisto mentre la mantenevo ({type(errore).__name__}: {errore}).")
+                    motivo=(
+                        f"guasto imprevisto mentre la mantenevo "
+                        f"({type(errore).__name__}: {errore})."
+                    ),
+                )
 
     async def _mantieni(self, promessa: dict, adesso: float) -> None:
         if promessa["specie"] == "fai":

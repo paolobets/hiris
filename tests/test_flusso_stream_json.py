@@ -531,7 +531,9 @@ def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
     assert "is_error" not in riuscita  # la forma resta identica al ramo sincrono
     assert fallita["tool"] == "mcp__hiris__ricorda"
     assert fallita["is_error"] is True
-    assert fallita != riuscita, "una chiamata fallita non deve avere la STESSA forma di una riuscita"
+    assert fallita != riuscita, (
+        "una chiamata fallita non deve avere la STESSA forma di una riuscita"
+    )
 
 
 def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():

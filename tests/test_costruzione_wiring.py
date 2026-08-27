@@ -38,7 +38,8 @@ def test_l_officina_nasce_dopo_la_cronaca_che_le_serve():
     """La cronaca e' un ingresso dell'officina: se nascesse dopo, ogni atto
     resterebbe senza riga di registro -- in silenzio."""
     sorgente = inspect.getsource(server)
-    assert sorgente.index('app["cronaca"] = Cronaca(') < sorgente.index('app["officina"] = Officina(')
+    assert sorgente.index('app["cronaca"] = Cronaca(') < sorgente.index(
+        'app["officina"] = Officina(')
 
 
 def test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento():

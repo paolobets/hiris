@@ -756,12 +756,16 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
         if str(valore).lower() == "unavailable":
             irraggiungibili += 1
             continue
-        if not _e_un_evento(dominio_di(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore):
+        if not _e_un_evento(
+            dominio_di(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore,
+        ):
             continue
         voci.append({
             "area_nome": area_per_entita.get(entity_id),
             "dominio": dominio_di(entity_id),
-            "stato_leggibile": traduci_stato(valore, classe_effettiva(e.get("classe"), vive.get(entity_id))),
+            "stato_leggibile": traduci_stato(
+                valore, classe_effettiva(e.get("classe"), vive.get(entity_id)),
+            ),
             "nome": e.get("nome") or entity_id,
         })
     # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle

@@ -8,8 +8,10 @@ def q(tmp_path):
     x = ReasoningQueue(str(tmp_path / "r.db")); yield x; x.close()
 
 def test_enqueue_claim_oldest_first(q):
-    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 1}}, deadline_ts=100.0, job_id="A", now=1.0)
-    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 2}}, deadline_ts=100.0, job_id="B", now=2.0)
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 1}},
+              deadline_ts=100.0, job_id="A", now=1.0)
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {"x": 2}},
+              deadline_ts=100.0, job_id="B", now=2.0)
     c = q.claim(now=10.0)
     assert c["job_id"] == "A" and c["nonce"] and c["context"]["snapshot"]["x"] == 1
     c2 = q.claim(now=10.0)
@@ -35,7 +37,8 @@ def test_submit_expired_rejected(q):
     assert q.submit("J", c["nonce"], {"verdict": "anomalia"}, now=25.0) is False  # scaduto
 
 def test_sweep_expired_marks_and_returns(q):
-    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {}}, deadline_ts=5.0, job_id="E", now=1.0)
+    q.enqueue("holistic", {"signal_kind": "holistic"}, {"snapshot": {}},
+              deadline_ts=5.0, job_id="E", now=1.0)
     q.enqueue("holistic", {}, {}, deadline_ts=100.0, job_id="LIVE", now=1.0)
     swept = q.sweep_expired(now=10.0)
     assert [s["job_id"] for s in swept] == ["E"]

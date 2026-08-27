@@ -36,9 +36,9 @@ parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
 `**grezzo`, quindi la chiave sopravvive intera, `None` compreso -- perche' qui
 serve il dato grezzo, non una sua interpretazione: e' `azione/verifica.py` a
 decidere cosa significhi «un servizio senza `target`» (vedi
-`verifica._dichiara_bersaglio`), non questo modulo. `servizio("light", "turn_on") == {"target": {}}` (con) e `servizio("light",
-"toggle") == {}` (senza -- la chiave non compare affatto) sono ENTRAMBI casi
-gia' pinnati da un test (`tests/test_azione_registro.py::
+`verifica._dichiara_bersaglio`), non questo modulo. `servizio("light", "turn_on") ==
+{"target": {}}` (con) e `servizio("light", "toggle") == {}` (senza -- la chiave non
+compare affatto) sono ENTRAMBI casi gia' pinnati da un test (`tests/test_azione_registro.py::
 test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 """
 import logging

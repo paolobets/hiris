@@ -181,12 +181,18 @@ def build_embedding_provider(
 ) -> EmbeddingProvider:
     if provider == "openai":
         if not openai_api_key:
-            logger.warning("memory_embedding_provider=openai but openai_api_key empty — using NullEmbedder")
+            logger.warning(
+                "memory_embedding_provider=openai but openai_api_key empty — using "
+                "NullEmbedder"
+            )
             return NullEmbedder()
         return OpenAIEmbedder(api_key=openai_api_key, model=model or "text-embedding-3-small")
     if provider == "ollama":
         if not local_model_url:
-            logger.warning("memory_embedding_provider=ollama but local_model_url empty — using NullEmbedder")
+            logger.warning(
+                "memory_embedding_provider=ollama but local_model_url empty — using "
+                "NullEmbedder"
+            )
             return NullEmbedder()
         return OllamaEmbedder(base_url=local_model_url, model=model or "nomic-embed-text")
     if provider == "model2vec":
@@ -196,8 +202,10 @@ def build_embedding_provider(
             import fastembed  # noqa: F401 — check availability at startup, not on first embed
         except ImportError:
             logger.warning(
-                "fastembed is not installed on this platform (Alpine/musl lacks onnxruntime wheels) "
-                "— falling back to NullEmbedder. Use 'openai' or 'ollama' as embedding_provider instead."
+                "fastembed is not installed on this platform (Alpine/musl lacks onnxruntime "
+                "wheels) "
+                "— falling back to NullEmbedder. Use 'openai' or 'ollama' as embedding_provider "
+                "instead."
             )
             return NullEmbedder()
         return FastEmbedEmbedder(model=model or FastEmbedEmbedder._DEFAULT_MODEL)

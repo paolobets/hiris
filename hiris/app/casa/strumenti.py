@@ -275,7 +275,10 @@ GUARDA_TOOL_DEF = {
         "properties": {
             "tipo": {
                 "type": "string",
-                "description": "'area', 'entita', 'dispositivo', 'automazione', 'script' o 'ricordo'.",
+                "description": (
+                    "'area', 'entita', 'dispositivo', "
+                    "'automazione', 'script' o 'ricordo'."
+                ),
             },
             "riferimento": {
                 "type": ["string", "integer"],
@@ -375,7 +378,10 @@ RICORDA_TOOL_DEF = {
         "properties": {
             "testo": {
                 "type": "string",
-                "description": "La frase cosi' come l'ha detta la persona -- non riassunta, non riscritta.",
+                "description": (
+                    "La frase cosi' come l'ha detta la persona -- "
+                    "non riassunta, non riscritta."
+                ),
             },
             "detto_da": {
                 "type": "string",
@@ -383,7 +389,10 @@ RICORDA_TOOL_DEF = {
             },
             "forza": {
                 "type": "string",
-                "description": "Una di: preferenza, divieto, fatto, regola. Ometti se non e' chiaro.",
+                "description": (
+                    "Una di: preferenza, divieto, fatto, regola. "
+                    "Ometti se non e' chiaro."
+                ),
             },
             "grandezza": {
                 "type": "string",
@@ -393,16 +402,31 @@ RICORDA_TOOL_DEF = {
                     "'humidity'). Ometti se il ricordo non parla di un valore misurabile."
                 ),
             },
-            "minimo": {"type": "number", "description": "Il valore, o l'estremo minimo di un intervallo."},
-            "massimo": {"type": "number", "description": "L'estremo massimo di un intervallo, se ce n'e' uno."},
+            "minimo": {
+                "type": "number",
+                "description": "Il valore, o l'estremo minimo di un intervallo.",
+            },
+            "massimo": {
+                "type": "number",
+                "description": "L'estremo massimo di un intervallo, se ce n'e' uno.",
+            },
             "condizioni": {
                 "type": "array",
                 "description": "Quando vale questo ricordo. Ometti se vale sempre.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "tipo": {"type": "string", "description": "ora, giorno, presenza, sole, meteo o stagione."},
-                        "valore": {"type": "string", "description": "Il valore di quella condizione, nel linguaggio di Home Assistant."},
+                        "tipo": {
+                            "type": "string",
+                            "description": "ora, giorno, presenza, sole, meteo o stagione.",
+                        },
+                        "valore": {
+                            "type": "string",
+                            "description": (
+                                "Il valore di quella condizione, "
+                                "nel linguaggio di Home Assistant."
+                            ),
+                        },
                     },
                     "required": ["tipo", "valore"],
                 },
@@ -419,11 +443,17 @@ RICORDA_TOOL_DEF = {
                         "tipo": {"type": "string", "description": "area, entita o dispositivo."},
                         "riferimento": {
                             "type": "string",
-                            "description": "L'identificatore esatto (usa `cerca` per trovarlo, non inventarlo).",
+                            "description": (
+                                "L'identificatore esatto (usa `cerca` per trovarlo, "
+                                "non inventarlo)."
+                            ),
                         },
                         "nome_visto": {
                             "type": "string",
-                            "description": "Il nome con cui la persona l'ha nominata nella frase, se diverso.",
+                            "description": (
+                                "Il nome con cui la persona l'ha nominata nella frase, "
+                                "se diverso."
+                            ),
                         },
                     },
                     "required": ["tipo", "riferimento"],
@@ -597,7 +627,10 @@ PROMETTI_TOOL_DEF = {
             },
             "chiamata": {
                 "type": "object",
-                "description": "Solo per «fai»: `servizio`, `bersaglio` e `dati`, come in «esegui».",
+                "description": (
+                    "Solo per «fai»: `servizio`, `bersaglio` e `dati`, "
+                    "come in «esegui»."
+                ),
             },
             "domanda": {
                 "type": "string",
@@ -634,7 +667,10 @@ PROMESSE_TOOL_DEF = {
         "properties": {
             "tutte": {
                 "type": "boolean",
-                "description": "Vero per vedere anche quelle gia' concluse. Ometti per le sole in sospeso.",
+                "description": (
+                    "Vero per vedere anche quelle gia' concluse. "
+                    "Ometti per le sole in sospeso."
+                ),
             },
         },
     },
@@ -776,7 +812,10 @@ ANDAMENTO_TOOL_DEF = {
         "properties": {
             "entita": {
                 "type": "string",
-                "description": "L'identificatore esatto dell'entita' (es. 'sensor.camera_temperatura').",
+                "description": (
+                    "L'identificatore esatto dell'entita' (es. "
+                    "'sensor.camera_temperatura')."
+                ),
             },
             "ore": {
                 "type": "number",
@@ -827,11 +866,17 @@ ACCADUTO_TOOL_DEF = {
         "properties": {
             "entita": {
                 "type": "string",
-                "description": "Facoltativa: l'identificatore esatto su cui restringere. Senza, tutta la casa.",
+                "description": (
+                    "Facoltativa: l'identificatore esatto su cui restringere. "
+                    "Senza, tutta la casa."
+                ),
             },
             "ore": {
                 "type": "number",
-                "description": "Quante ore all'indietro guardare. Il diario copre al piu' 168 ore (7 giorni).",
+                "description": (
+                    "Quante ore all'indietro guardare. Il diario copre al piu' 168 "
+                    "ore (7 giorni)."
+                ),
             },
         },
         "required": ["ore"],

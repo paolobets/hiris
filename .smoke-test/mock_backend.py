@@ -83,7 +83,10 @@ AGENTS = [
         "allowed_entities": [],
         "allowed_services": [],
         "execution_log": [],
-        "usage": {"requests": 247, "input_tokens": 412300, "output_tokens": 89200, "cost_eur": 0.84},
+        "usage": {
+            "requests": 247, "input_tokens": 412300,
+            "output_tokens": 89200, "cost_eur": 0.84,
+        },
     },
     {
         "id": "monitor-energia-001",
@@ -95,7 +98,8 @@ AGENTS = [
         "triggers": [{"type": "schedule", "interval_minutes": 5}],
         "execution_log": [
             {"timestamp": "2026-05-07T14:00:00Z", "success": True, "eval_status": "OK",
-             "result_summary": "Consumo 2.3 kWh, sotto soglia.", "input_tokens": 1100, "output_tokens": 220},
+             "result_summary": "Consumo 2.3 kWh, sotto soglia.",
+             "input_tokens": 1100, "output_tokens": 220},
         ],
     },
     {
@@ -122,16 +126,19 @@ PROPOSALS = [
 ]
 
 TASKS = [
-    {"id": "task-001", "label": "Open valve nord", "agent_id": "f020edde-8550-4f97-9523-157ecac980e6",
+    {"id": "task-001", "label": "Open valve nord",
+     "agent_id": "f020edde-8550-4f97-9523-157ecac980e6",
      "created_at": "2026-05-07T05:00:00Z", "trigger": {"type": "delay", "minutes": 0},
      "actions": [{"type": "call_service", "domain": "valve", "service": "open_valve"}],
      "status": "executed", "executed_at": "2026-05-07T05:00:02Z", "one_shot": True},
-    {"id": "task-002", "label": "Close valve nord", "agent_id": "f020edde-8550-4f97-9523-157ecac980e6",
+    {"id": "task-002", "label": "Close valve nord",
+     "agent_id": "f020edde-8550-4f97-9523-157ecac980e6",
      "created_at": "2026-05-07T05:00:00Z", "trigger": {"type": "delay", "minutes": 25},
      "actions": [{"type": "call_service", "domain": "valve", "service": "close_valve"}],
      "status": "pending", "one_shot": True},
     {"id": "task-003", "label": "Failed example", "agent_id": "monitor-energia-001",
-     "created_at": "2026-05-06T22:14:00Z", "trigger": {"type": "absolute_time", "iso": "2026-05-07T05:00:00Z"},
+     "created_at": "2026-05-06T22:14:00Z",
+     "trigger": {"type": "absolute_time", "iso": "2026-05-07T05:00:00Z"},
      "actions": [], "status": "failed", "error": "Service call failed: timeout", "one_shot": True},
 ]
 
@@ -207,7 +214,8 @@ MODELS = {
 }
 
 USAGE = {"total_requests": 294, "total_input_tokens": 496530, "total_output_tokens": 108120,
-         "total_cost_eur": 1.15, "executions_24h": 23, "tokens_today": 12400, "cost_eur_month": 1.15}
+         "total_cost_eur": 1.15, "executions_24h": 23, "tokens_today": 12400,
+         "cost_eur_month": 1.15}
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -259,7 +267,8 @@ async def get_entities(req):
 async def run_agent(req):
     aid = req.match_info["id"]
     return web.json_response({
-        "result": f"[Mock run for {aid}]\n✓ Simulazione test run completata\nValutazione: OK\nTokens: 1234↓ / 567↑",
+        "result": (f"[Mock run for {aid}]\n✓ Simulazione test run completata\n"
+                   "Valutazione: OK\nTokens: 1234↓ / 567↑"),
         "eval_status": "OK",
     })
 

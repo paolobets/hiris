@@ -324,7 +324,11 @@ async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
     sessione.__aexit__ = AsyncMock(return_value=False)
 
     inizio = time.monotonic()
-    with patch("hiris.app.server.aiohttp.ClientSession", return_value=sessione),          patch("hiris.app.server._ATTESA_CONNESSIONE_WS", 0.05),          caplog.at_level("WARNING"):
+    with (
+        patch("hiris.app.server.aiohttp.ClientSession", return_value=sessione),
+        patch("hiris.app.server._ATTESA_CONNESSIONE_WS", 0.05),
+        caplog.at_level("WARNING"),
+    ):
         from hiris.app.server import _deregistra_risorsa_card
         assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
     trascorso = time.monotonic() - inizio

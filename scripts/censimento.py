@@ -562,7 +562,8 @@ def stampa(reperti: list[Reperto]) -> None:
         ingressi = COPERTURA_SIMBOLI.get("ingressi", 0)
         illeggibili = COPERTURA_SIMBOLI.get("illeggibili", 0)
         print(f"\n{_GRIGIO}Copertura dei simboli: {esaminati} nomi esaminati, {ambigui} saltati"
-              f" perche' definiti in piu'\n  punti, {ingressi} punto{'i' if ingressi != 1 else ''} d'ingresso, "
+              f" perche' definiti in piu'\n  punti, "
+              f"{ingressi} punto{'i' if ingressi != 1 else ''} d'ingresso, "
               f"{illeggibili} file illeggibili.{_RESET}")
 
     print(f"\n{_GRIGIO}I limiti di questo strumento, dichiarati:")

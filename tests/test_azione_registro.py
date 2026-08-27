@@ -286,7 +286,8 @@ async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
     import logging
     registro = RegistroServizi()
     with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
-        await registro.aggiorna(FintoClient({"light": {"turn_on": {}}}))  # un dizionario, non una lista
+        # un dizionario, non una lista
+        await registro.aggiorna(FintoClient({"light": {"turn_on": {}}}))
     assert registro.domini() == []
     assert any("non e' quella attesa" in r.getMessage() for r in caplog.records), caplog.text
 

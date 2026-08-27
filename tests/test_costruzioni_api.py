@@ -275,7 +275,9 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
 
 
 @pytest.mark.asyncio
-async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(client, csrf_stretto):
+async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
+    client, csrf_stretto
+):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
         gesto="modifica", dominio="automation", chiave="tapparelle_rip_ok",

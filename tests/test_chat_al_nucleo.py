@@ -586,7 +586,9 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     assert corpo_ricevuto_dal_modello["esiste"] is True
     assert corpo_ricevuto_dal_modello["corpo"] == {"trigger": []}
 
-    assert body["response"] == "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero."
+    assert body["response"] == (
+        "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero."
+    )
 
     archivio_casa.chiudi()
     archivio_memoria.chiudi()

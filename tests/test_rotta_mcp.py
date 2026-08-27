@@ -399,7 +399,9 @@ async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
     quante = handlers_mcp._MAX_TURNI_TRACCIATI * 3
 
     for i in range(quante):
-        await _chiama_cerca(client, i, {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"turno-usa-getta-{i}"})
+        await _chiama_cerca(
+            client, i, {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"turno-usa-getta-{i}"}
+        )
 
     contatori = client.app["mcp_giri_per_turno"]
     assert len(contatori) <= handlers_mcp._MAX_TURNI_TRACCIATI

@@ -127,7 +127,9 @@ class _Client:
         self.sondata = []
     def post(self, url, headers=None, json=None, **kwargs):
         if url.endswith("/api/reasoning/claim"): return _Resp(self.claim_body)
-        if url.endswith("/api/reasoning/submit"): self.submitted.append(json); return _Resp({"ok": True})
+        if url.endswith("/api/reasoning/submit"):
+            self.submitted.append(json)
+            return _Resp({"ok": True})
         if url.endswith("/api/mcp"):
             self.sondata.append({"headers": headers, "corpo": json})
             if not self.mcp:
@@ -177,7 +179,8 @@ def test_run_once_chat_reasons_and_submits():
     `reply` che torna alla reasoning API e' la risposta del modello e basta --
     nessuna riga di degrado, perche' non c'e' nessun degrado da dichiarare."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.", "history": [{"role": "user", "content": "che luci?"}]}}
+           "context": {"system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job})
     catturato = {}
 
@@ -218,7 +221,8 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
     sentinella del ponte -- quelli sostituiscono la risposta, questa la
     precede."""
     job = {"job_id": "J", "nonce": "N", "kind": "chat",
-           "context": {"system_prompt": "Sei HIRIS.", "history": [{"role": "user", "content": "che luci?"}]}}
+           "context": {"system_prompt": "Sei HIRIS.",
+                       "history": [{"role": "user", "content": "che luci?"}]}}
     c = _Client({"job": job}, mcp=False)
     catturato = {}
 

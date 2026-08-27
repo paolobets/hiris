@@ -187,7 +187,9 @@ async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
         return m
 
     restricted_runner._client.messages.create = capture
-    await restricted_runner.chat("Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True)
+    await restricted_runner.chat(
+        "Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True
+    )
     system_text = _sys_text(captured[0]["system"])
     assert "agente energia" in system_text
     assert RESTRICT_PROMPT in system_text
@@ -533,7 +535,9 @@ async def test_chat_populates_last_tool_calls_single_call(runner):
     runner._ha.get_states = AsyncMock(return_value=[])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     await runner.chat("ciao")
-    assert runner.last_tool_calls == [{"tool": "get_entity_states", "input": {"ids": ["light.living"]}}]
+    assert runner.last_tool_calls == [
+        {"tool": "get_entity_states", "input": {"ids": ["light.living"]}}
+    ]
 
 
 @pytest.mark.asyncio

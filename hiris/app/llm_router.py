@@ -259,7 +259,11 @@ class LLMRouter:
         else:
             runner = self._route(model)
         if runner is None:
-            yield f'data: {json.dumps({"type": "error", "message": "Provider AI non configurato"})}\n\n'
+            yield (
+                "data: "
+                f'{json.dumps({"type": "error", "message": "Provider AI non configurato"})}'
+                "\n\n"
+            )
             return
         async for chunk in runner.chat_stream(**kwargs):
             yield chunk

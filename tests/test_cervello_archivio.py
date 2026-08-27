@@ -189,7 +189,8 @@ def test_sostituisci_giorno_NON_tocca_gli_altri_giorni(archivio):
         {"genere": "funzionamento", "protagonista": "il-giorno-rifatto",
          "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
     ])
-    assert [o["protagonista"] for o in archivio.oggetti(giorno="2026-08-23")]         == ["l-altro-giorno"]
+    assert ([o["protagonista"] for o in archivio.oggetti(giorno="2026-08-23")]
+            == ["l-altro-giorno"])
 
 
 def test_sostituisci_giorno_fallito_a_meta_non_lascia_il_giorno_mezzo_scritto(archivio):
@@ -231,7 +232,8 @@ def test_ENTRAMBE_le_fonti_ammesse_entrano(archivio):
                     soggetto="climate.camera", da="off", a="heat")
     archivio.annota(quando_ts=ADESSO + 1, fonte="sistema",
                     soggetto="problema:sonos.subscriptions_failed", da=None, a="aperto")
-    assert [r["fonte"] for r in archivio.cambi(da_ts=0.0, a_ts=ADESSO + 2)]         == ["entita", "sistema"]
+    assert ([r["fonte"] for r in archivio.cambi(da_ts=0.0, a_ts=ADESSO + 2)]
+            == ["entita", "sistema"])
 
 
 # -- D1: il filtro per fonte deve entrare nella query SQL -------------------

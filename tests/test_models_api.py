@@ -802,7 +802,9 @@ async def test_un_pannello_chiesto_risponde_SEMPRE_anche_senza_credenziale(clien
         "un elenco dichiarato inesistente e disegnato lo stesso sarebbe la "
         "pagina che si contraddice in due righe"
     )
-    assert p["provenienza"] == "Non c'e' nessun elenco da leggere: manca la chiave.".replace("c'e'", "c'è")
+    assert p["provenienza"] == (
+        "Non c'e' nessun elenco da leggere: manca la chiave.".replace("c'e'", "c'è")
+    )
     assert p["dove"] == ["provider_models", "openrouter"], (
         "resta scrivibile: preparare un provider prima di usarlo e' un uso "
         "legittimo, e il campo di testo del pannello e' l'unico modo di farlo"
