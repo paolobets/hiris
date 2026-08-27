@@ -23,7 +23,7 @@ Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
 """
 import pytest
 
-from hiris.app.casa import nucleo
+from hiris.app.casa import anagrafe, nucleo
 from hiris.app.casa.nucleo import componi
 
 # Le finte vivono gia' in `test_nucleo.py`: si riusano invece di riscriverle.
@@ -103,8 +103,9 @@ def test_ogni_classe_di_allarme_entra_nel_digesto_e_si_legge_in_parole(classe, p
 def test_ogni_classe_di_evento_ha_anche_un_significato():
     """Le due tabelle non possono divergere: una classe che entra nel digesto e
     non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
-    il difetto che questa fetta chiude, su una riga sola."""
-    senza = sorted(nucleo._CLASSI_EVENTO - set(nucleo._SIGNIFICATO_CLASSE))
+    il difetto che questa fetta chiude, su una riga sola. `_CLASSI_EVENTO` vive
+    in `nucleo`, `_SIGNIFICATO_CLASSE` nella sua unica casa, `anagrafe`."""
+    senza = sorted(nucleo._CLASSI_EVENTO - set(anagrafe._SIGNIFICATO_CLASSE))
     assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
 
