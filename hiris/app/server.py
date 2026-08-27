@@ -1878,7 +1878,9 @@ async def _on_startup(app: web.Application) -> None:
     # non chiama mai un servizio.
     app["costruzioni"] = ArchivioCostruzioni(
         os.path.join(data_dir, "costruzioni.db"))
-    app["officina"] = Officina(ha_client, app["costruzioni"], app["cronaca"])
+    app["officina"] = Officina(
+        ha_client, app["costruzioni"], app["cronaca"],
+        leggi_fuso=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
@@ -2922,7 +2924,9 @@ async def _on_startup(app: web.Application) -> None:
     # trova piu' nulla in `app["execute_decision"]` -- vedi il commento li'.
     from .reasoning.queue import ReasoningQueue
 
-    reasoning_queue = ReasoningQueue(os.path.join(data_dir, "reasoning.db"))
+    reasoning_queue = ReasoningQueue(
+        os.path.join(data_dir, "reasoning.db"),
+        leggi_fuso=lambda: _fuso_da_archivio_casa(archivio_casa))
     app["reasoning_queue"] = reasoning_queue
 
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"

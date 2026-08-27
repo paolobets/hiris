@@ -1016,3 +1016,18 @@ def test_il_troncatore_dell_officina_e_lo_stesso_oggetto_di_sanitize():
     from hiris.app.azione.costruzione import officina as officina_modulo
     from hiris.app.proxy import _sanitize
     assert officina_modulo._truncate is _sanitize.truncate_with_marker
+
+
+# ---------------------------------------------------------------------------
+# Task 11 (il linter e le best practice) -- il fuso della casa, non del
+# container, nella data mostrata nell'anteprima del ripristino.
+# ---------------------------------------------------------------------------
+
+def test_la_data_del_ripristino_e_nel_fuso_della_casa():
+    """Un'ora mostrata nel fuso del container e' un'ora sbagliata per chi
+    legge: l'add-on gira in UTC, la casa no. Il timestamp scelto e' le 23:30
+    UTC del 26 agosto, che a Roma sono l'1:30 del 27: se la data uscisse in
+    UTC, sarebbe il GIORNO sbagliato, non solo l'ora sbagliata."""
+    ts = 1787787000.0  # 2026-08-26T23:30:00Z == 27/08/2026 01:30 a Roma
+    officina = Officina(None, None, None, leggi_fuso=lambda: "Europe/Rome")
+    assert officina._data(ts) == "27/08/2026 01:30"

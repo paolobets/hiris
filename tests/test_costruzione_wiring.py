@@ -17,13 +17,21 @@ def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
     non solo il suo prefisso: un domani in cui qualcuno aggiungesse
     `app["porta_azione"]` come quarto argomento (il difetto che il brief
     nomina per nome) farebbe arrossire questo test, non uno che si accontenta
-    di vedere 'Officina(' da qualche parte."""
+    di vedere 'Officina(' da qualche parte.
+
+    Dal Task 11 la chiamata porta anche `leggi_fuso` (il fuso della casa,
+    non del container, nella data dell'anteprima di ripristino): l'assert
+    resta sull'intera chiamata, ora su piu' righe."""
     sorgente = inspect.getsource(server)
-    assert ('app["officina"] = Officina(ha_client, app["costruzioni"], '
-            'app["cronaca"])') in sorgente
-    riga = next(r for r in sorgente.splitlines()
-                if 'app["officina"] = Officina(' in r)
-    assert "porta_azione" not in riga
+    inizio = sorgente.index('app["officina"] = Officina(')
+    fine = sorgente.index(")\n", inizio) + 1
+    chiamata = sorgente[inizio:fine]
+    assert chiamata == (
+        'app["officina"] = Officina(\n'
+        '        ha_client, app["costruzioni"], app["cronaca"],\n'
+        '        leggi_fuso=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))'
+    )
+    assert "porta_azione" not in chiamata
 
 
 def test_l_officina_nasce_dopo_la_cronaca_che_le_serve():

@@ -246,3 +246,21 @@ def test_lo_sweep_non_ruba_il_lavoro_al_poll(q):
     q.reclama_scaduto(jid, now=200.0)
     assert q.sweep_expired(now=10_000.0) == []
     assert q.get(jid)["status"] == "ripiego"
+
+
+def test_il_giorno_del_tetto_finisce_a_mezzanotte_DI_CASA(tmp_path):
+    """Un turno accodato alle 00:30 di Roma appartiene al giorno NUOVO. Se il
+    confine fosse in UTC quelle sarebbero le 22:30 del giorno prima, e il tetto
+    giornaliero si azzererebbe alle due di notte invece che a mezzanotte."""
+    coda = ReasoningQueue(str(tmp_path / "r.db"), leggi_fuso=lambda: "Europe/Rome")
+
+    mezzanotte_e_mezza_roma = 1787783400.0  # 26/08 22:30Z = 27/08 00:30 a Roma
+    ieri_sera_roma = 1787778600.0           # 26/08 21:10Z = 26/08 23:10 a Roma
+
+    coda.enqueue("chat", {}, {}, deadline_ts=mezzanotte_e_mezza_roma + 600,
+                 now=mezzanotte_e_mezza_roma)
+    coda.enqueue("chat", {}, {}, deadline_ts=ieri_sera_roma + 600,
+                 now=ieri_sera_roma)
+
+    # Due turni accodati, ma uno solo appartiene a «oggi» nel fuso della casa.
+    assert coda.count_turni_oggi(now=mezzanotte_e_mezza_roma) == 1

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 
+from ...casa.tempo import zona_casa
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import forme
 from .mestiere import consiglia
@@ -106,11 +107,25 @@ _CAP_ERRORE_RETE = 300
 
 
 class Officina:
-    def __init__(self, ha, archivio, cronaca) -> None:
+    def __init__(self, ha, archivio, cronaca, *, leggi_fuso=None) -> None:
         self._ha = ha
         self._archivio = archivio
         self._cronaca = cronaca
         self._label_id: str | None = None
+        # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
+        # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
+        # gia' usato per ArchivioConsumi (server.py, costruzione di
+        # `app["consumi"]`).
+        self._leggi_fuso = leggi_fuso or (lambda: None)
+
+    def _data(self, ts: float) -> str:
+        """La data nel fuso della CASA. Senza, l'ora mostrata e' quella del
+        container -- tipicamente UTC su un add-on, cioe' sbagliata per chi
+        legge. `zona_casa` ricade su UTC quando il fuso non si sa, e non lo
+        inventa mai."""
+        import datetime
+        return datetime.datetime.fromtimestamp(
+            ts, zona_casa(self._leggi_fuso())).strftime("%d/%m/%Y %H:%M")
 
     # ---- proporre -------------------------------------------------------
 
@@ -638,7 +653,7 @@ class Officina:
             if motivo is not None:
                 return {"errore": f"non posso rimettere com'era: {motivo}"}
         anteprima = (f"Rimetto l'oggetto {dominio}.{chiave} com'era prima "
-                     f"del {_data(riga['creata_ts'])}.")
+                     f"del {self._data(riga['creata_ts'])}.")
         proposta = self._archivio.proponi(
             gesto=intento_gesto, dominio=dominio, chiave=chiave, origine=origine,
             turno=turno, frase=f"ripristino di {costruzione_id}", prima=riga["dopo"],
@@ -726,11 +741,6 @@ def _compatta(corpo: dict | None) -> str:
         if corpo.get(chiave):
             pezzi.append(f"{chiave}: {len(corpo[chiave])}")
     return " · ".join(pezzi) if pezzi else "(vuoto)"
-
-
-def _data(ts: float) -> str:
-    import datetime
-    return datetime.datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M")
 
 
 def _traduci_rifiuto(errore: str, dominio: str) -> str:

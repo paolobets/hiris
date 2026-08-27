@@ -6,6 +6,7 @@ import threading
 import time
 from datetime import datetime
 
+from ..casa.tempo import zona_casa
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -38,10 +39,15 @@ def _row(r) -> dict:
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"]}
 
 class ReasoningQueue:
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, leggi_fuso=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=1)
+        # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
+        # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
+        # gia' usato per ArchivioConsumi (server.py, costruzione di
+        # `app["consumi"]`).
+        self._leggi_fuso = leggi_fuso or (lambda: None)
 
     def close(self) -> None:
         with self._lock:
@@ -297,9 +303,14 @@ class ReasoningQueue:
         Takes an explicit `now`, like every other method on this class
         (enqueue/claim/submit/sweep_expired), defaulting to time.time() only
         when the caller (production code) doesn't pass one -- tests can pin
-        an exact day boundary instead of depending on wall clock."""
+        an exact day boundary instead of depending on wall clock.
+
+        Il confine e' mezzanotte della CASA, non del container: senza fuso
+        il tetto si azzererebbe alle due di notte invece che a mezzanotte
+        (`zona_casa` ricade su UTC quando il fuso non si sa, e non lo
+        inventa mai)."""
         ts = time.time() if now is None else now
-        dt = datetime.fromtimestamp(ts)
+        dt = datetime.fromtimestamp(ts, zona_casa(self._leggi_fuso()))
         day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         day_end = day_start + 86400
         with self._lock:
