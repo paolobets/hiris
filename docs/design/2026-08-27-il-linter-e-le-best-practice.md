@@ -230,6 +230,96 @@ Il cancello si prova **per mutazione**, e la prova va registrata qui sotto col s
 - **Non** si aggiunge un test pytest che invoca `ruff`: sarebbe un **terzo** innesco per una regola
   che ha gia' una casa sola (`pyproject.toml`) e due inneschi. Un doppione ai sensi delle fondamenta.
 
+### Esito della prova, 27/08/2026
+
+Eseguita a mano, senza alcun `git push` (nemmeno `--dry-run`): l'hook e' stato invocato direttamente
+con un URL di remoto finto (`https://esempio.invalido/hiris.git`), che l'hook non contatta mai.
+
+**Albero pulito, il cancello lascia passare:**
+
+```
+$ git config core.hooksPath .githooks
+$ python -m ruff check hiris scripts tests conftest.py .smoke-test && npm run lint && echo "PULITO: exit 0"
+All checks passed!
+
+> lint
+> oxlint --deny-warnings hiris/app/static tests/js
+
+PULITO: exit 0
+
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null; echo "hook su albero pulito: exit=$?"
+All checks passed!
+hook su albero pulito: exit=0
+```
+
+**Mutazione (a) — import morto in `hiris/app/casa/tempo.py`:**
+
+```
+$ python -m ruff check hiris scripts tests conftest.py .smoke-test; echo "ruff exit=$?"
+F401 [*] `json` imported but unused
+   --> hiris/app/casa/tempo.py:548:8
+Found 1 error.
+ruff exit=1
+
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null; echo "hook exit=$?"
+HIRIS: il linter ha trovato dei rilievi. Si sanano, non si aggirano.
+       Per vederli:  python -m ruff check hiris scripts tests conftest.py .smoke-test
+hook exit=1
+```
+
+**Mutazione (b) — riga a 134 colonne in `hiris/app/casa/tempo.py`:**
+
+```
+$ python -m ruff check --select E501 hiris scripts tests conftest.py .smoke-test; echo "ruff exit=$?"
+E501 Line too long (134 > 100)
+   --> hiris/app/casa/tempo.py:548:101
+Found 1 error.
+ruff exit=1
+```
+
+**Mutazione (c) — variabile mai usata in `hiris/app/static/config/api.js`:**
+
+```
+$ npm run lint; echo "oxlint exit=$?"
+hiris/app/static/config/api.js:153:7: warning eslint(no-unused-vars): Variable 'mutazione' is
+declared but never used. Unused variables should start with a '_'.
+oxlint exit=1
+
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null; echo "hook exit=$?"
+All checks passed!
+hiris/app/static/config/api.js:153:7: warning eslint(no-unused-vars): Variable 'mutazione' is
+declared but never used.
+HIRIS: oxlint ha trovato dei rilievi nel frontend.
+       Per vederli:  npm run lint
+hook exit=1
+```
+
+Dopo ogni mutazione, `git checkout -- <file>` ha riportato l'albero pulito (`git status --short`
+verificato senza residui) prima di procedere alla successiva.
+
+**Ritorno al verde, tolte tutte le mutazioni:**
+
+```
+$ python -m ruff check hiris scripts tests conftest.py .smoke-test; echo "ruff exit=$?"
+All checks passed!
+ruff exit=0
+
+$ npm run lint; echo "oxlint exit=$?"
+> lint
+> oxlint --deny-warnings hiris/app/static tests/js
+oxlint exit=0
+
+$ sh .githooks/pre-push origin https://esempio.invalido/hiris.git < /dev/null; echo "hook exit=$?"
+All checks passed!
+hook exit=0
+```
+
+Le tre classi di violazione sono tutte bloccate (`exit=1`), l'albero pulito passa (`exit=0`) e il
+ritorno al verde e' confermato. **Non eseguito qui**: la prova sul job CI reale (Step 10 del brief —
+push su un ramo usa-e-getta e verifica che `lint` diventi rosso su GitHub) e nessun `git push`, anche
+in forma `--dry-run` — per vincolo esplicito di questo task, gestita a parte dal proprietario del
+repository dopo il commit.
+
 ---
 
 ## 8. Cosa resta fuori, dichiarato

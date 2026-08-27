@@ -1,11 +1,15 @@
 #!/bin/sh
-# HIRIS — il cancello del rilascio.
+# HIRIS — due cancelli in un solo hook.
 #
-# Si sveglia SOLO se il push contiene un cambio del campo `version` di
-# hiris/config.yaml: riconosce il rilascio dal CONTENUTO, non dalle intenzioni,
-# non da un flag e non dal nome del ramo. Sui push ordinari dorme -- e deve
-# dormire davvero: un cancello che blocca sempre e' un cancello che verra'
-# disattivato, e allora non protegge piu' niente.
+# 1. Il linter (ruff + oxlint) gira su OGNI push, senza eccezioni: costa
+#    frazioni di secondo su tutto il repo, e non dorme mai.
+# 2. La verifica dei componenti si sveglia SOLO se il push contiene un cambio
+#    del campo `version` di hiris/config.yaml: riconosce il rilascio dal
+#    CONTENUTO, non dalle intenzioni, non da un flag e non dal nome del ramo.
+#    Questo blocco si', dorme sui push ordinari -- e deve dormire davvero: un
+#    cancello che blocca sempre e' un cancello che verra' disattivato, e
+#    allora non protegge piu' niente. Il linter non corre questo rischio:
+#    costa troppo poco perche' qualcuno lo disattivi.
 #
 # NON FA DOMANDE. Durante pre-push git usa lo stdin per passare i ref, e i push
 # di questo progetto partono anche da una sessione senza terminale: un prompt
@@ -19,6 +23,27 @@
 # Attivazione (una volta per clone):  git config core.hooksPath .githooks
 #
 # Spec: docs/design/2026-08-15-verifica-dei-componenti.md
+#       docs/design/2026-08-27-il-linter-e-le-best-practice.md
+
+# I bersagli sono NOMINATI, mai `.`: `Testbook/`, `Nuova grafica/` e
+# `.mockups/` esistono in locale e non sul CI, e un cancello che guarda cose
+# diverse nei due posti non e' un cancello.
+python -m ruff check hiris scripts tests conftest.py .smoke-test || {
+    echo "HIRIS: il linter ha trovato dei rilievi. Si sanano, non si aggirano."
+    echo "       Per vederli:  python -m ruff check hiris scripts tests conftest.py .smoke-test"
+    exit 1
+}
+
+# Un clone senza `npm install` non ha oxlint: non lo si blocca per uno
+# strumento che non ha. Il CI e' il cancello vero su questo strato, questo e'
+# la comodita' veloce.
+if [ -d node_modules ]; then
+    npm run --silent lint || {
+        echo "HIRIS: oxlint ha trovato dei rilievi nel frontend."
+        echo "       Per vederli:  npm run lint"
+        exit 1
+    }
+fi
 
 VUOTO=0000000000000000000000000000000000000000
 
