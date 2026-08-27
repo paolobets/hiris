@@ -148,7 +148,7 @@ def test_per_ancora_distingue_il_tipo(memoria):
 
 def test_un_salvataggio_a_meta_non_lascia_un_ricordo_monco(memoria):
     memoria.ricorda("prima frase", detto_da="paolo")
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         memoria.ricorda("seconda", detto_da="paolo",
                         ancore=[{"tipo": "area"}])       # manca `riferimento`
     assert [r["testo"] for r in memoria.richiama()] == ["prima frase"]

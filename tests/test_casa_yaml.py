@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from hiris.app.casa.lettura_yaml import carica_file, carica_yaml
 
@@ -33,17 +34,17 @@ def test_un_tag_che_costruisce_oggetti_python_viene_rifiutato():
     Il file lo scrive Home Assistant in una cartella su cui HIRIS ha gia'
     accesso in scrittura, quindi la minaccia e' remota — ma una difesa che
     dipende dall'attenzione di chi legge non e' una difesa."""
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.constructor.ConstructorError):
         carica_yaml("!!python/object/apply:os.system ['echo ciao']")
 
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.constructor.ConstructorError):
         carica_yaml("- !!python/object:os.system {}\n")
 
 
 def test_un_yaml_malformato_solleva_invece_di_tacere():
     """Restituire una lista vuota sarebbe indistinguibile da «nessuna
     automazione»: chi chiama deve poter distinguere il guasto dal vuoto."""
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.parser.ParserError):
         carica_yaml("- id: '1'\n   alias: male indentato\n  altro: x\n")
 
 

@@ -71,7 +71,7 @@ def test_sostituisci_non_accumula(archivio):
 
 def test_una_sostituzione_fallita_non_lascia_la_casa_a_meta(archivio):
     archivio.sostituisci(_REGISTRI)
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         archivio.sostituisci(dict(_REGISTRI, entita=[{"nessun_entity_id": True}]))
     casa = archivio.leggi()
     assert [a["nome"] for a in casa["aree"]] == ["Cucina"]   # la vecchia e' intatta
