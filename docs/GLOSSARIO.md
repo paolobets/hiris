@@ -154,19 +154,160 @@ Equivalenti diretti, che non perdono niente nella conversione. Nessun giudizio d
 prova del lettore nuovo: vanno in una tabella di conversione decisa una volta e applicata
 meccanicamente.
 
+**Aggiornato durante l'esecuzione del Task 2: l'estrazione e' stata allargata.** Il Task 1
+estraeva da nomi di modulo e di classe, e le parole ordinarie non vivono li': vivono nei nomi di
+**funzione e parametro**. Un secondo giro di estrazione su `hiris/app/**/*.py` (funzioni e
+parametri, non piu' moduli e classi) ha fatto uscire 206 parole candidate usate 3 o piu' volte
+(209 nella misura del coordinatore, presa qualche riga prima di quest'ultima; la differenza sono
+poche parole gia' fissate nel frattempo da questo stesso task, quindi tolte a monte dal filtro).
+Di queste, **112 sono ordinarie** e sono nella tabella qui sotto (piu' le 6 che c'erano gia').
+Il resto e' rumore da tre famiglie (vedi il report del Task 2) o un concetto travestito, dichiarato
+al Task 6 invece che deciso qui.
+
 | italiano | inglese |
 |---|---|
-| adesso |  |
-| consumi |  |
-| guarda |  |
-| interno |  |
-| modelli |  |
-| opzioni |  |
+| adesso | now |
+| aggiornato | updated |
+| aggiungi | add |
+| albero | tree |
+| ambiente | environment |
+| anteprima | preview |
+| area | area |
+| argomento | argument |
+| attesa | pending |
+| attivo | active |
+| attributo | attribute |
+| avviso | notice |
+| cambio | change |
+| campo | field |
+| carica | load |
+| cartella | folder |
+| categoria | category |
+| chiamata | call |
+| chiave | key |
+| chiudi | close |
+| classe | class |
+| codice | code |
+| configurazione | configuration |
+| confronto | comparison |
+| consumi | usage |
+| conta | count |
+| corpo | body |
+| corrente | current |
+| costo | cost |
+| crea | create |
+| credenziale | credential |
+| dati | data |
+| dettaglio | detail |
+| dimensione | dimension |
+| disponibile | available |
+| dispositivo | device |
+| dominio | domain |
+| effettivo | actual |
+| elenca | list |
+| elenco | list |
+| entita | entity |
+| errore | error |
+| esecuzione | execution |
+| eta | age |
+| etichetta | label |
+| evento | event |
+| fonte | source |
+| frase | phrase |
+| giorno | day |
+| giro | round |
+| gratuito | free |
+| guarda | look |
+| identificatore | identifier |
+| impronta | fingerprint |
+| innesca | trigger |
+| integrazione | integration |
+| interno | internal |
+| inventario | inventory |
+| leggi | read |
+| leggibile | readable |
+| letto | read |
+| limite | limit |
+| locale | local |
+| mantieni | keep |
+| massimo | maximum |
+| minimo | minimum |
+| modelli | models |
+| modello | model |
+| motivo | reason |
+| nome | name |
+| normalizza | normalize |
+| nota | note |
+| oggi | today |
+| opzioni | options |
+| ora | hour |
+| ottieni | get |
+| percorso | path |
+| posizione | position |
+| pota | prune |
+| predefinito | default |
+| problema | problem |
+| programma | schedule |
+| proposta | proposal |
+| pulisci | clean |
+| punto | point |
+| quante | count |
+| registra | log |
+| richiesta | request |
+| riga | row |
+| rileggi | reread |
+| risolto | resolved |
+| risolvi | resolve |
+| risposta | answer |
+| ritardo | delay |
+| scadenza | deadline |
+| scelto | chosen |
+| scrivi | write |
+| secondo | second |
+| segna | mark |
+| semina | seed |
+| servizio | service |
+| sezione | section |
+| sistema | system |
+| soggetto | subject |
+| sostituisci | replace |
+| statistiche | statistics |
+| stato | state |
+| termine | term |
+| testo | text |
+| tipo | type |
+| traduci | translate |
+| trova | find |
+| unita | unit |
+| valida | validate |
+| valore | value |
+| verificabile | verifiable |
+| voce | entry |
+| vuoto | empty |
 
 > **`guarda`** compare **anche** fra i «Nomi degli strumenti» (sotto). Qui e' una parola ordinaria
 > (o un nome di funzione qualunque); li' e' il nome di uno strumento esposto al modello — la stessa
 > grafia, per due ragioni diverse, nella stessa lingua di partenza. Non e' un errore di copia:
 > sono due voci a se', e ciascuna avra' la propria decisione.
+
+> **`riga`: la stessa parola, due significati.** Negli archivi SQLite (`cervello/archivio.py`,
+> `memoria/archivio.py`, `casa/archivio.py`, `azione/cronaca.py`, `schedulatore/promessa.py`,
+> `decisione_modelli.py`) `riga`/`righe` e' una riga di tabella: `row` e' corretto e non perde
+> niente. Ma in `casa/nucleo.py` (`_riga_adesso`, `_righe_sistema`, `_righe_casa`,
+> `_righe_notevole`, `_righe_comportamento`, `_righe_ricordi`, `_righe_lacune`, `righe_pool` —
+> i costruttori del prompt di sistema) `riga` e' una riga di **testo**, non di tabella: la' la
+> parola giusta e' `line`, non `row`. La tabella sopra fissa l'equivalente di default (`row`,
+> il senso maggioritario e quello dato per obbligato dal brief); chi rinomina in `casa/nucleo.py`
+> deve leggere il contesto e usare `line`, non applicare `row` alla cieca.
+
+**La coda lunga (le parole usate una o due volte) non si decide riga per riga: si applica una
+regola sola.** Al momento della rinomina si usa l'equivalente inglese piu' ovvio della parola
+italiana, verificando solo che non collida con un nome inglese gia' assegnato altrove nello stesso
+modulo — senza aprire una voce di glossario per ciascuna. Se durante la rinomina una di queste
+parole si rivela un concetto travestito (la stessa identica domanda del Task 6: per spiegarla
+serve raccontare come funziona HIRIS), si sposta fra i concetti anche se e' stata usata una sola
+volta — la soglia dei 3 usi separa cio' che vale la pena estrarre in automatico da cio' che si
+guarda a mano, non cio' che e' ordinario da cio' che e' un concetto.
 
 ## I nomi degli strumenti
 
