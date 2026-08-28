@@ -1,5 +1,35 @@
 # HIRIS — Changelog
 
+## [3.14.2] — Quello che gira davvero: il ponte si lascia interrogare (2026-08-28)
+
+**Il pin della CLI del ponte sale da 2.1.241 a 2.1.251** — otto uscite, tutte patch. Ma la cosa che
+vale in questa versione non e' il numero.
+
+**Il problema.** Due fatti su cio' che gira davvero non si possono ricavare da nessun file del
+repository. Il `Dockerfile` dice quale CLI e' stata *chiesta*, non quale e' *arrivata* nel
+container — e un'immagine piu' vecchia di quella che si crede e' esattamente il caso che il pin non
+puo' smascherare da solo. Il secondo fatto e' ancora piu' delicato: `apiKeySource` e' l'**unica prova
+a runtime** che il ponte stia parlando con l'abbonamento e non con una chiave a consumo.
+
+Entrambi vivevano dentro **una riga di log**, leggibile solo nell'istante in cui un turno passava.
+
+**Quanto e' costato.** Il 24 agosto il pin e' stato alzato a 2.1.241 e la verifica rimandata «al
+prossimo giro». Cinque giorni dopo non era stata fatta — e non per pigrizia: richiedeva di essere
+nel posto giusto al momento giusto. *Un fatto che si puo' osservare solo di sfuggita e' un fatto che
+prima o poi nessuno osserva.* Il commento nel `Dockerfile` lo diceva gia', con una franchezza che
+merita di essere ripetuta: **il pin garantisce la riproducibilita', non che la versione funzioni.**
+
+**La cura.** `GET /api/health` porta ora un oggetto `ponte` con `cli`, `apiKeySource` e l'istante in
+cui sono stati visti. Verificare che il pin sia arrivato fino al container e' una domanda sola, e si
+puo' rifare quando si vuole.
+
+Un dettaglio che non e' un dettaglio: finche' nessun turno e' passato il campo vale `null`, e
+significa **«non ancora visto»**, non «assente». Sono due fatti diversi, e confonderli farebbe
+leggere un container appena riavviato come un container guasto.
+
+**La rete di sicurezza resta scritta**: se la 2.1.251 dovesse dare problemi si torna alla 2.1.234,
+l'ultima provata sul serio — e resta tale finche' `ponte.cli` non dice altro su una casa vera.
+
 ## [3.14.1] — Il cancello e il vocabolario: due fette che non si vedono (2026-08-28)
 
 **Questa versione non aggiunge niente che si possa vedere usando HIRIS.** Sono due fette di
