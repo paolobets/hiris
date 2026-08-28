@@ -178,7 +178,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ✓ arriva |
 | famiglia | raggruppa il fallimento di un provider del modello in una delle cinque cause riconosciute -- credenziale, modello, irraggiungibile, scaduto, altro -- cosi' che due rifiuti della stessa causa vengano trattati come lo stesso evento invece che come due guasti diversi | family | ~ parziale |
 | flusso | la sequenza di righe NDJSON che il processo del CLI del modello scrive in uscita mentre lavora, letta una volta sola e ridotta a un esito unico -- riuscito, troncato, senza risultato -- mai riletta una seconda volta con una logica diversa | stream | ✓ arriva |
-| forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | shapes | ✗ non arriva |
+| forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | composer | ✓ arriva |
 | forza | quale delle quattro nature chiuse porta una lettura ricordata -- preferenza, divieto, fatto o regola -- mai un numero su una scala libera | modality | ~ parziale |
 | fuso | l'informazione con cui si interpreta correttamente ogni istante letto o scritto nella casa -- senza di essa "le 8" o "ieri" non hanno un significato univoco -- letta dallo stesso campo che Home Assistant espone per la propria installazione | timezone | ✓ arriva |
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
@@ -575,15 +575,18 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 >
 > Nessuna delle 32 e' scesa a `✗`.
 >
-> **`forme` (shapes) resta `✗`, e non per la stessa pressione delle altre 32: l'argomento e'
-> indipendente e regge da solo.** Non e' un caso di "manca un dettaglio" (il difetto delle 32
-> corrette sopra): **entrambi** i lettori indipendenti, al primo giro e alla ri-prova, hanno
-> incluso un senso "visivo/geometrico" (*"forme geometriche"*, *"qualcosa di visuale"*) per un
-> modulo che compone corpi JSON di automazioni/script/scene e non genera nulla di visivo -- non e'
-> "famiglia giusta, forma generica", e' "atterra anche su un dominio che la riga non e'", la stessa
-> definizione di `✗` del criterio nuovo. Non va all'arbitrato (un solo candidato provato finora):
-> il secondo candidato, `composer`, e' preparato in
-> `.superpowers/sdd/2026-08-28-il-glossario/task-7-lotti.md`, non ancora dispacciato.
+> **`forme`: `shapes` scartato dalla prova, sostituito da `composer` -- chiuso.** `shapes` e'
+> caduto per un motivo indipendente dalla sovracorrezione, e l'argomento regge tal quale: non e'
+> un caso di "manca un dettaglio" (il difetto delle 32 corrette sopra), e' che **entrambi** i
+> lettori indipendenti, al primo giro e alla ri-prova, hanno incluso un senso "visivo/geometrico"
+> (*"forme geometriche"*, *"qualcosa di visuale"*) per un modulo che compone corpi JSON di
+> automazioni/script/scene e non genera nulla di visivo -- "atterra anche su un dominio che la
+> riga non e'", la definizione stessa di `✗`. Secondo candidato -- gia' segnalato nel report del
+> Task 4 come riserva pulita -- **`composer`**, provato in un lotto mescolato con altri sette nomi
+> gia' testati e lontani, senza contesto: *"Una cosa che assembla, orchestra, mette insieme parti
+> in un tutto coeso"* -- nessuna traccia del senso visivo/geometrico che aveva affossato `shapes`
+> in entrambe le letture, ed e' esattamente cio' che `forme` fa (compone corpi pronti da scrivere
+> per ciascun tipo di oggetto). `✓ arriva`. Chiuso in due giri, come da vincolo.
 >
 > **Due limiti della prova, perche' la prossima taratura non ricaschi negli stessi errori:**
 >
