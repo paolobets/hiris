@@ -61,30 +61,30 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
-| anagrafe |  |  |  |
+| anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | directory |  |
 | archivio |  |  |  |
 | ascolto |  |  |  |
 | azione |  |  |  |
 | caricatore |  |  |  |
-| casa |  |  |  |
+| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home |  |
 | catena |  |  |  |
-| cervello |  |  |  |
-| comportamento |  |  |  |
+| cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind |  |
+| comportamento | l'elenco di automazioni e script gia' in esecuzione da soli, ottenuto incrociando cio' che i file dichiarano con cio' che lo stato conferma esistere davvero, cosicche' HIRIS non riproponga qualcosa gia' fatto | behavior |  |
 | comprimari |  |  |  |
 | costruzione |  |  |  |
 | cronaca |  |  |  |
 | decisione |  |  |  |
 | direzione |  |  |  |
 | dispatcher |  |  |  |
-| domande |  |  |  |
+| domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries |  |
 | esito |  |  |  |
 | famiglia |  |  |  |
 | flusso |  |  |  |
 | forme |  |  |  |
-| gamba |  |  |  |
+| gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect |  |
 | genere |  |  |  |
 | gesto |  |  |  |
-| grezzo |  |  |  |
+| grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | raw |  |
 | impostazioni |  |  |  |
 | indice |  |  |  |
 | instradamento |  |  |  |
@@ -94,15 +94,15 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | memoria |  |  |  |
 | mestiere |  |  |  |
 | migrazione |  |  |  |
-| notevole |  |  |  |
-| nucleo |  |  |  |
+| notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight |  |
+| nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing |  |
 | officina |  |  |  |
-| oggetti |  |  |  |
+| oggetti | un fatto compiuto della casa -- cominciato, durato, finito -- con dentro chi lo ha causato e cosa c'era intorno mentre succedeva, ricavato aggregando una giornata di cambiamenti | episode |  |
 | origine |  |  |  |
 | orologio |  |  |  |
-| osservatore |  |  |  |
-| osservazioni |  |  |  |
-| pavimento |  |  |  |
+| osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher |  |
+| osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations |  |
+| pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline |  |
 | ponte |  |  |  |
 | porta |  |  |  |
 | promessa |  |  |  |
