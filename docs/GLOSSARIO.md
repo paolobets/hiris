@@ -300,6 +300,50 @@ al Task 6 invece che deciso qui.
 > il senso maggioritario e quello dato per obbligato dal brief); chi rinomina in `casa/nucleo.py`
 > deve leggere il contesto e usare `line`, non applicare `row` alla cieca.
 
+> **`stato`: tre significati, non uno.** La tabella sopra lo marca confine → `state`: e' giusto
+> per il senso principale, lo stato di un'entita' di Home Assistant (`casa/domande.py`,
+> `casa/nucleo.py`, e la colonna `stato` di `costruzioni`/`promesse` che tiene i valori di
+> `STATI_SOSPESO`/`STATI_CONCLUSI` — quello e' ancora «lo stato di qualcosa», `state` non mente).
+> Ma **non e' l'unico senso**: in `api/handlers_mcp.py:207` (`def _errore(..., *, stato: int =
+> 200)`, passato a `web.json_response(..., status=stato)`, e usato con `stato=400` alle righe 540,
+> 548, 568) `stato` e' uno **status HTTP**, un intero, non lo stato di un'entita' — `state: int =
+> 200` sarebbe un nome che mente. E in `costo_stato` (`agent/runner.py:1123`,
+> `backends/openai_compat_runner.py:394,408`, `claude_runner.py:741,755`,
+> `consumi/archivio.py` — colonna e funzioni, alimentato da `consumi/vocabolario.py:
+> stato_e_costo()`) `stato` e' una **classificazione del costo di una chiamata** (`compreso`,
+> `gratuito`, `reale`, `misurato`, `non_noto`), non uno stato nel senso HA ne' un codice HTTP.
+> La tabella sopra fissa `state` come equivalente di default per il caso principale; chi rinomina
+> `api/handlers_mcp.py:207` e i dintorni di `stato=400/540/548/568` deve usare `status` (il nome
+> che HTTP e aiohttp usano gia'), e chi rinomina `costo_stato` deve usare qualcosa come
+> `cost_status`/`cost_state` **deciso insieme al resto del vocabolario dei costi**, non `state`
+> applicato alla cieca.
+>
+> **Il metodo con cui e' stata cercata la terza famiglia di errori (parole generiche con piu' di
+> un senso):** oltre a `stato`, sono state riesaminate le altre parole generiche e frequenti della
+> tabella — `valore`, `voce`, `tipo`, `campo`, `chiave`, `nome`, `motivo`, `testo` (`origine` no:
+> e' gia' un concetto, non e' in questa tabella) — guardando per ciascuna in quali sottosistemi
+> compare e con che tipo di parametro. Nessuna delle otto ha mostrato la stessa spaccatura di
+> `stato`: `tipo` ha un caso vicino (classificatore di dominio in `proxy/ha_client.py: legami` vs.
+> nome di tipo dato in `api/handlers_impostazioni.py: _tipo`), ma in entrambi i casi l'inglese
+> «type» resta corretto senza perdere informazione — a differenza di «state» per uno status HTTP.
+> Le altre sette (`valore`, `voce`, `campo`, `chiave`, `nome`, `motivo`, `testo`) sono risultate
+> genuinamente uniformi in ogni sottosistema in cui compaiono.
+
+> **Quattro forme flesse non compaiono ne' qui ne' in «I concetti», di proposito.**
+> L'estrazione allargata ha fatto uscire `vivi` (masch. plur. — `casa/domande.py:209,437,464,543,
+> 603,764` `attributi_vivi`, `casa/strumenti.py:1158` `nomi_vivi`), `direzioni` (plur. —
+> `server.py:917`, `cervello/oggetti.py:570`, `proxy/ha_client.py:1482` `direzioni_energia`),
+> `registri` (plur. — `casa/archivio.py:245`, `proxy/ha_client.py:1620,1678`) e `interpreta`
+> (verbo — `server.py:2773` `_interpreta`, `schedulatore/orologio.py:27`,
+> `schedulatore/turno.py:121` `interpreta_promessa`): la stessa radice di quattro voci gia' in
+> «I concetti» (`vive`, `direzione`, `registro`, `interpretazione`). Non le ho aggiunte qui come
+> ordinarie ne' come nuove voci in «I concetti»: dare un secondo inglese alla stessa radice
+> violerebbe la fondamenta n.3 (stessa cosa, stessa forma) — ed e' esattamente il difetto che
+> questa fetta esiste per chiudere. **Chi decidera' l'inglese di `vive`, `direzione`, `registro`
+> e `interpretazione` in «I concetti» deve usare lo stesso identico inglese anche per queste
+> quattro forme flesse**, nei file e alle righe elencati sopra: non e' una seconda decisione, e'
+> la stessa applicata a un'altra forma grammaticale.
+
 **La coda lunga (le parole usate una o due volte) non si decide riga per riga: si applica una
 regola sola.** Al momento della rinomina si usa l'equivalente inglese piu' ovvio della parola
 italiana, verificando solo che non collida con un nome inglese gia' assegnato altrove nello stesso
