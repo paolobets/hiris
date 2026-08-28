@@ -111,6 +111,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | archivio |  |  |  |
 | ascolto |  |  |  |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action |  |
+| cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw |  |
 | caricatore |  |  |  |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home |  |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain |  |
@@ -145,7 +146,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop |  |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact |  |
 | origine |  |  |  |
-| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite | clock |  |
+| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | heartbeat |  |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher |  |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations |  |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline |  |
@@ -161,7 +162,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | segno |  |  |  |
 | semaforo |  |  |  |
 | servizi |  |  |  |
-| spazio | l'etichetta che distingue, dentro la cache in memoria dell'indice, a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota per la migrazione:** questo stesso nome vive gia' come valore di una colonna persistita (`memoria/cache_indice.py:27`); rinominare il concetto qui non rinomina da solo quella colonna, sono due decisioni distinte | slot |  |
+| spazio | l'etichetta che distingue, dentro una cache **puramente in memoria di processo** (nessuna tabella, nessun SQL -- `CacheIndice` muore col riavvio), a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota corretta in fix round 1:** non e' una colonna persistita (il brief originale lo affermava per errore, propagato dalla spec); e' una chiave di dizionario in `memoria/cache_indice.py:27,65,175,179` (`self._voci[spazio] = ...`), con valori che sono nomi di strumento (`"cerca"`, `"ricorda"`). Chi rinomina non trovera' nessuna tabella da migrare per questo -- solo il parametro e le due stringhe | slot |  |
 | specie |  |  |  |
 | stati |  |  |  |
 | strumenti |  |  |  |
@@ -226,6 +227,33 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > ma chi rinominera' il concetto anche lato JavaScript dovra' scegliere una variabile locale che
 > non si chiami `promise` a cuor leggero nello stesso file in cui gira gia' `new Promise(...)`:
 > l'ombra sarebbe legale in JS (scoping locale) ma illeggibile.
+
+> **`cambi` → `raw`: non e' un secondo inglese per lo stesso lemma, e' lo stesso concetto di
+> `grezzo` sotto un altro sostantivo italiano.** Aggiunta in fix round 1 (rilievo del
+> coordinatore): la tabella `CREATE TABLE cambi` (`cervello/archivio.py`) e' esattamente cio' che
+> la riga `grezzo` descrive -- *«un cambiamento di stato registrato esattamente come Home
+> Assistant lo riporta ... prima che qualunque giudizio lo trasformi in un fatto interpretato»* --
+> e i commenti del sottosistema lo confermano chiamandolo "il grezzo" anche quando parlano della
+> tabella nel suo insieme (`cervello/oggetti.py`: *«finche' il grezzo esiste (22 giorni)»*).
+> Riusare `raw` per `cambi` non viola "nessun inglese due volte per due concetti diversi" --
+> non sono due concetti diversi, sono lo stesso, con due nomi italiani. Il rischio che questa nota
+> chiude: applicare alla cieca `cambio → change` (parola ordinaria gia' in tabella) avrebbe
+> prodotto `changes`, un secondo nome inglese per una cosa che ogni commento del sottosistema gia'
+> chiama `raw` -- la stessa incoerenza che questa fetta esiste per chiudere, ricreata al contrario.
+
+> **`ancora` e' un OMONIMO fra due sottosistemi, non ancora deciso -- nota per il Task 6, non una
+> decisione presa qui.** Aggiunta in fix round 1 (rilievo del coordinatore). Il Task 2 aveva messo
+> `ancora`/`ancore` in coda al Task 6 citando solo `memoria/archivio.py` (il meccanismo con cui un
+> ricordo si lega a un'entita', un'area o un dispositivo: `CREATE TABLE ancore`, colonne `tipo`,
+> `riferimento`, `nome_visto`). **Esiste una seconda `ancora`, completamente diversa, in
+> `consumi/archivio.py`**: una riga singleton (`CREATE TABLE ancora (id, da_ts, da_giorno)`) che
+> e' il punto di riferimento temporale da cui si contano i consumi correnti, con `ancora_saldo`
+> (il saldo per provider/modello congelato in quell'istante, `sposta_ancora()`) -- nessuna
+> estrazione automatica aveva visto questa seconda voce. Le due `ancora` non sono la stessa cosa
+> (una lega un ricordo a un pezzo di casa, l'altra e' uno zero mobile per un contatore) e per la
+> fondamenta n.3 **richiedono due inglesi diversi**, non uno scelto guardando solo la memoria e
+> applicato per abitudine anche ai consumi. Il Task 6 decidera' quali; questa nota esiste perche'
+> chi ci arriva lo trovi scritto invece di scoprirlo a meta' rinomina.
 
 ## Le parole ordinarie
 
