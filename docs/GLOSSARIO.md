@@ -97,7 +97,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight |  |
 | nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing |  |
 | officina |  |  |  |
-| oggetti | un fatto compiuto della casa -- cominciato, durato, finito -- con dentro chi lo ha causato e cosa c'era intorno mentre succedeva, ricavato aggregando una giornata di cambiamenti | episode |  |
+| oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact |  |
 | origine |  |  |  |
 | orologio |  |  |  |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher |  |
