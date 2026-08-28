@@ -41,10 +41,23 @@ difetto per cui questa fetta esiste, spostato dal glossario al codice.
    strumento, con un valore di dominio?
 2. cercalo anche **in `hiris/`** con un grep sul sorgente vero — collide con un identificatore, un
    commento, un valore di stringa gia' scritto dal codice?
-3. **confrontalo anche con le parole ITALIANE ancora senza inglese** — quelle gia' in tabella con
-   la colonna vuota, e quelle dei lotti futuri elencate nella spec — non solo con quelle gia'
-   decise. Se il candidato e' il nome ovvio per una di quelle, si lascia a lei: non vince chi lo
-   sceglie prima.
+3. **confrontalo anche con le parole italiane ancora senza inglese** — le righe di «I concetti»
+   con la colonna «inglese» vuota, punto: nessun altro posto. Se il candidato e' il nome ovvio per
+   una di quelle, si lascia a lei: non vince chi lo sceglie prima.
+
+```bash
+python - <<'PY'
+import pathlib,sys
+t=pathlib.Path('docs/GLOSSARIO.md').read_text(encoding='utf-8').split(chr(10))
+sez=None
+for r in t:
+    if r.startswith('## '): sez=r[3:].strip()
+    elif sez=='I concetti' and r.startswith('| '):
+        c=[x.strip() for x in r.split('|')]
+        if len(c)>4 and c[1] and c[1]!='italiano' and not set(c[1])<=set('- ') and not c[3]:
+            sys.stdout.write(c[1]+chr(10))
+PY
+```
 
 **Corretto in fix round 1 del Task 6 (rilievo del reviewer): il controllo, cosi' come scritto nei
 passi 1 e 2, guardava il glossario gia' deciso e il codice, ma non le parole ancora da decidere.**
@@ -56,13 +69,24 @@ precedenti, anche quando il nome ovvio per una parola non ancora arrivata era pr
 caso vero, dal Task 6: `specie` (`SPECIE`, `fai`/`chiedi`) stava per diventare `intent`, il nome
 piu' naturale in inglese per «scopo, intenzione» — ma `intent` e' anche il nome ovvio di `intento`
 (`azione/costruzione/mestiere.py:20-32`, la struttura con `innesco`/`passi`/`stati`/`parametri`
-che descrive lo scopo di una costruzione), una parola che a quel punto non aveva ancora una riga
-propria in questo documento. Se `specie` si fosse tenuto `intent`, il dispaccio che decide
-`intento` avrebbe trovato il suo nome piu' ovvio gia' occupato da un concetto diverso e piu'
-piccolo. Corretto scegliendo `verb` per `specie` (vedi la nota dedicata, sotto la tabella «I
-concetti») e aggiungendo questo passo 3, perche' il passo 2 da solo — cercare `intent` nel codice —
-non lo avrebbe MAI trovato: `intento` non e' ancora scritto in inglese da nessuna parte, ne' nel
-glossario ne' nel codice. Solo guardare l'elenco delle parole ancora da decidere lo rivela.
+che descrive lo scopo di una costruzione). Corretto scegliendo `verb` per `specie` (vedi la nota
+dedicata, sotto la tabella «I concetti») e aggiungendo questo passo 3, perche' il passo 2 da solo
+— cercare `intent` nel codice — non lo avrebbe MAI trovato: `intento` non e' scritto in inglese da
+nessuna parte, ne' nel glossario ne' nel codice.
+
+**Corretto una seconda volta (fix round 2, rilievo del reviewer): la prima stesura di questo passo
+diceva di confrontare anche con "le parole dei lotti futuri elencate nella spec" — riferimento
+falso, perche' `docs/design/2026-08-28-il-glossario.md` non elenca quelle parole per nome
+(anzi dichiara che l'elenco si chiude nel primo passo del piano); l'unico posto dove le 12 parole
+ancora assenti sono elencate e' un file di processo destinato a sparire, che il glossario non
+cita.** Corretto: l'unico posto valido e' la tabella stessa, colonna «inglese» vuota. **Nota
+onesta, perche' questo passo non sia ovvio da saltare:** quando e' stato scritto (fix round 1),
+`intento` era una delle parole senza riga -- il passo, cosi' com'e' oggi, non l'avrebbe ancora
+potuto trovare da solo: la scoperta e' venuta da una lettura manuale durante la review, non
+dall'eseguire questo comando. Il passo diventa meccanicamente sufficiente solo dal momento in cui
+un dispaccio successivo aggiunge le 12 righe mancanti (vuote) a «I concetti»: da li' in poi, e non
+prima, il documento e' l'unica casa delle parole non ancora decise e la colonna vuota le copre
+tutte.
 
 **Non ogni collisione col codice conta allo stesso modo — e si decide guardando DOVE cade il
 match, non giudicando quanto la parola «conti» come nome.** Corretto una seconda volta dopo la
