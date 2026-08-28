@@ -136,6 +136,18 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > bianca di sicurezza). Non e' un doppione mancato ne' un dedup fatto a meta': sono deliberatamente
 > due voci, con due grafie diverse perche' cosi' sono nel codice.
 
+> **`origine` e `segno`: perche' sono qui e non fra le parole ordinarie, e perche' il glossario
+> vince sulla spec.** Il §4② di `docs/design/2026-08-28-il-glossario.md` elenca `origine` come
+> esempio di parola ordinaria ("non entra"). Quella `origine` non e' questa: l'esempio della spec
+> era un elenco a campione scritto prima di guardare il codice, mentre la voce qui viene
+> dall'estrazione vera di `ORIGINI_UMANE` (vedi «I valori di dominio», in fondo) — non e' il
+> sostantivo generico "origine di qualcosa", e' la parola che classifica un valore persistito (se
+> un'azione l'ha fatta un umano), e per questo porta un significato costruito da HIRIS, non un
+> equivalente diretto. Una regola ribaltata e' comunque una decisione scritta: questa nota lo e'.
+> Stesso ragionamento, dedotto con lo stesso criterio, per `segno` (da `_SEGNI_MIGRAZIONE`): i
+> valori che classifica (`seminato`, `catena_seminata`, `piano_seminato`) sono marcatori specifici
+> del progetto, non un sostantivo generico.
+
 ## Le parole ordinarie
 
 Equivalenti diretti, che non perdono niente nella conversione. Nessun giudizio da fare, nessuna
