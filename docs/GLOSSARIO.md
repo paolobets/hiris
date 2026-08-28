@@ -571,16 +571,46 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > incapace di fallire. Tutti i dispacci (primo giro: 8 lotti, un lettore ciascuno; secondo giro: 1
 > lotto, due lettori indipendenti su modelli diversi) hanno avuto `tool_uses: 0`.
 >
-> **Dubbio residuo aperto sul Lotto 7 (primo giro): `watcher` + `observations` + `baseline` sono
-> finite insieme nello stesso lotto finale**, tutte e tre dal sottosistema `cervello`
-> (`osservatore.py`, `osservazioni`, `pavimento.py`) e semanticamente affini (vocabolario di
-> monitoraggio). Il cluster di sei parole "da cruscotto" era stato rotto in fase di preparazione
-> (vedi il report del Task 7), ma questa terzina piu' piccola e' rimasta insieme per costruzione:
-> le tre risposte potrebbero essersi rinforzate a vicenda invece di reggere ciascuna sul proprio
-> nome nudo. Non e' una bocciatura: e' un dubbio aperto, da chiudere con una ri-prova mirata (le
-> tre parole mescolate con nomi gia' provati di sottosistemi lontani, in un lotto nuovo) --
-> preparata in `.superpowers/sdd/2026-08-28-il-glossario/task-7-lotti.md`, sezione «Ri-prova —
-> Lotto 7 residuo», non ancora dispacciata.
+> **Dubbio residuo sul Lotto 7 (primo giro), chiuso con una misura: `watcher` + `observations` +
+> `baseline` reggono anche lontane dal loro cluster.** Erano finite insieme nel lotto finale del
+> primo giro, tutte e tre dal sottosistema `cervello` (`osservatore.py`, `osservazioni`,
+> `pavimento.py`) e semanticamente affini (vocabolario di monitoraggio) -- il dubbio era che le tre
+> risposte si fossero rinforzate a vicenda invece di reggere ciascuna sul proprio nome nudo.
+> Ri-provate mescolate a 7 nomi gia' testati e lontani (`chain`, `vocabulary`, `memory`, `promise`,
+> `target`, `shapes`, `settings` -- nessuno da `cervello`/`casa`): le tre risposte sono coerenti con
+> quelle del primo giro (`watcher`: *"un osservatore che monitora cambiamenti e reagisce quando
+> accadono"*; `observations`: *"dati raccolti o fatti registrati durante l'esecuzione del
+> sistema"*; `baseline`: *"un valore di riferimento iniziale o di comparazione, per misurare
+> scostamenti"*) -- nessun cambio di esito (`watcher` e `observations` restano `✓`, `baseline`
+> resta `~`, coerente con la lettura gia' registrata: coglie "riferimento per confronto" ma non
+> "soglia fissa che si allarga e mai si restringe"). Il dubbio e' chiuso da una misura, non da
+> un'opinione.
+>
+> **La ri-prova ha pero' prodotto un reperto non cercato: `shapes` (forme), fra i sette nomi di
+> contorno, ha ricevuto una seconda lettura indipendente che diverge da quella del primo giro.**
+> Primo giro: *"forme geometriche, template, o configurazioni predefinite di qualcosa"*. Ri-prova
+> (lettore diverso, indipendente): *"non mi dice niente di preciso -- potrebbe essere
+> formato/struttura dati, o qualcosa di visuale, o una famiglia di tipi."* Stesso schema con cui
+> `house` e' stato bocciato: due letture indipendenti che divergono sullo stesso nome nudo.
+>
+> **Giudicato con lo stesso metro di `house`, ma con esito diverso: resta `~`, non scende a `✗`.**
+> La differenza non e' cosmetica -- e' nel contenuto della divergenza. Per `house`, un lettore
+> diceva *"potrebbe essere QUASI QUALUNQUE COSA"* (incertezza illimitata) e l'esempio piu' estremo
+> era *"un edificio in un gioco"* -- un dominio senza nessuna relazione con la funzione reale
+> (una rappresentazione fisica a quattro livelli), e NESSUNA delle due letture toccava quella
+> funzione nemmeno alla lontana. Per `shapes`, il lettore elenca esattamente tre sensi concreti
+> (non "qualunque cosa"), e in ENTRAMBE le letture -- prima e seconda -- compare un senso che
+> corrisponde davvero alla funzione (*"template/configurazioni predefinite"* nel primo giro,
+> *"formato/struttura dati"* nella ri-prova sono la stessa idea: uno schema/struttura pronta da
+> riempire, che e' esattamente "compone la struttura pronta da scrivere per ciascun tipo di
+> oggetto"). L'unico elemento fuori da questo schema (*"una famiglia di tipi"*) resta comunque nel
+> vocabolario del software/dei tipi, non un dominio bizzarro come "un edificio in un gioco". La
+> divergenza qui e' fra due sensi legittimi e noti della parola inglese "shape(s)" (visivo/
+> geometrico contro strutturale/schema) con il senso corretto presente in entrambe le liste --
+> non l'incoerenza totale vista su `house`, dove nessuna delle due letture si avvicinava alla
+> funzione. Resta un nome debole (era gia' `~` dal primo giro, per lo stesso motivo: generico,
+> serve comunque verificare nel codice), ma non e' lo stesso livello di fallimento -- non va
+> all'arbitrato.
 
 ## Le parole ordinarie
 
