@@ -841,27 +841,125 @@ guarda a mano, non cio' che e' ordinario da cio' che e' un concetto.
 
 ## I nomi degli strumenti
 
-**Non sono identificatori: sono dati.** Vivono come stringhe nella lista bianca di sicurezza
-(`schedulatore/turno.py:38`), nell'etichetta `spazio` persistita nell'indice della memoria
-(`memoria/cache_indice.py:27`) e nel testo del prompt (`casa/domande.py:386`,
-`memoria/interpretazione.py:198`). Il nome si decide qui; **si applica in una fetta a se'**, con la
-migrazione dei dati.
+**Non sono identificatori qualunque: sono la parte di codice che un modello linguistico legge per
+decidere cosa chiamare.** Per questo il criterio qui e' piu' stretto che altrove: non basta che il
+nome si capisca, deve anche **non confondersi con un altro dei tredici**. Il prodotto ha gia' due
+coppie a rischio in italiano -- `cerca`/`richiama` e `ricorda`/`richiama` -- e il compito di questo
+lotto e' non farle restare vicine in inglese.
 
-| italiano | che cosa fa | inglese |
-|---|---|---|
-| cerca |  |  |
-| guarda |  |  |
-| legami |  |  |
-| ricorda |  |  |
-| richiama |  |  |
-| esegui |  |  |
-| prometti |  |  |
-| promesse |  |  |
-| disdici |  |  |
-| costruisci |  |  |
-| conferma |  |  |
-| andamento |  |  |
-| accaduto |  |  |
+**Corretto durante il Task 8: due delle tre ragioni con cui questa nota giustificava
+l'applicazione differita erano imprecise; una era proprio falsa.** Le ragioni vere, verificate sul
+codice:
+
+- **Sono una lista bianca di sicurezza, indicizzata per nome.** `schedulatore/turno.py:38`:
+  `SOLA_LETTURA = ("cerca", "guarda", "legami", "richiama", "andamento", "accaduto")` -- i sei nomi
+  che un turno risvegliato da una promessa "chiedi" puo' invocare, e nient'altro. E' controllata a
+  `schedulatore/turno.py:81-82` (il catalogo esposto al turno e' filtrato su questa tupla) e
+  `schedulatore/turno.py:113` (`if nome not in SOLA_LETTURA`, il rifiuto quando il modello prova a
+  chiamare uno strumento di scrittura). Rinominare uno dei tredici senza toccare in sincrono questa
+  tupla apre o chiude la lista bianca per errore -- un difetto di sicurezza, non solo di lettura.
+- **Il testo del prompt nomina gli strumenti al modello, in chiaro.** `casa/domande.py:393-394`
+  istruisce il modello a chiamare *"«cerca» per trovare il nome giusto... poi ripeti «guarda»"* --
+  il messaggio che risponde quando un riferimento sembra un nome anziche' un id.
+  `memoria/interpretazione.py:203-204` fa lo stesso per la coppia *"chiama «cerca»... e ripeti
+  «ricorda»"*. Sono frasi generate a runtime che nominano lo strumento **per iscritto**, non un
+  identificatore che un editor possa rinominare ovunque in un colpo solo.
+- **La ragione piu' forte: questi nomi li legge il modello per scegliere, quindi cambiarli e' un
+  cambio di comportamento, non solo di testo.** Un `grep`+`sed` su un identificatore Python non
+  puo' dire se il modello, davanti al nuovo nome, continuera' a chiamare lo strumento giusto nello
+  stesso punto della conversazione: questo si prova eseguendo dei turni veri, non leggendo un diff.
+  E' la ragione per cui il Task 8 decide il nome ma non lo applica: l'applicazione e' una fetta con
+  la sua verifica dal vivo, non un'estensione meccanica di questa.
+
+**Le due ragioni corrette (non erano vere come scritte prima di questo task):**
+
+- ~~`spazio` persistita nell'indice della memoria~~ -- **falso: non c'e' nessuna colonna
+  persistita.** `CacheIndice` (`memoria/cache_indice.py:112`, `self._voci: dict[str, tuple[tuple,
+  Indice]] = {}` a riga 122) e' una cache **puramente in memoria di processo**: nessuna tabella,
+  nessun SQL, muore al riavvio (gia' corretto nella riga `spazio` di «I concetti», sopra, ma non
+  ancora in questa nota). `spazio` e' solo la chiave di quel dizionario in memoria
+  (`memoria/cache_indice.py:27,65,175,179`), e i suoi VALORI capitano a essere due dei tredici nomi
+  (`"cerca"`, `"ricorda"`) -- ma non c'e' niente da migrare in un database perche' non c'e' un
+  database.
+- ~~i nomi vivono in un database, nel `chiamata_json` delle promesse~~ -- **falso: quel campo non
+  contiene un nome di strumento.** `schedulatore/archivio.py:39` (`chiamata_json TEXT`) persiste
+  cio' che `schedulatore/promessa.py:124` rilegge come `chiamata`: una **chiamata di servizio di
+  Home Assistant** (`dominio.servizio` + bersaglio), la stessa forma richiesta da `esegui`, passata
+  a `azione/porta.py:607` (`async def esegui(self, chiamata: dict, *, origine: str)`) e verificata
+  contro il registro dei servizi a `azione/porta.py:634` (`verifica(chiamata, self._registro,
+  stati_prima)`). E' il bersaglio DI un'esecuzione, non il nome DELLO strumento che l'ha proposta:
+  in nessun archivio persistito compare uno dei tredici nomi come dato scritto.
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+| cerca | Trova nella casa aree, entita', dispositivi, piani, automazioni, script o etichette a partire da un nome o alias in linguaggio naturale, restituendo la lista COMPLETA dei candidati quando piu' di uno corrisponde allo stesso nome | search |  |
+| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | show |  |
+| legami | Chi tocca una cosa della casa secondo Home Assistant -- quali automazioni, script, scene, gruppi o persone la nominano, e dove sta -- calcolato da Home Assistant su tutto cio' che ha caricato, non solo sui file che HIRIS legge da solo | related |  |
+| ricorda | Salva per sempre qualcosa che una persona ha detto sulla casa -- una preferenza, un divieto, un fatto, una regola -- col testo esatto sempre conservato e un'interpretazione strutturata facoltativa | remember |  |
+| richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch |  |
+| esegui | Chiama un servizio di Home Assistant per far succedere qualcosa nella casa -- accendere, spegnere, impostare -- su un bersaglio di entita' esatte oppure aree, piani, etichette o dispositivi | execute |  |
+| prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | promise |  |
+| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | promises |  |
+| disdici | Annulla una promessa non ancora mantenuta, dato il suo identificatore | cancel |  |
+| costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose |  |
+| conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm |  |
+| andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend |  |
+| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca | logbook |  |
+
+> **Perche' `legami` -> `related` e non un sinonimo inventato (`links`, `relations`):** e' il
+> confine, non un'invenzione. `legami` chiama, sotto, il comando nativo di Home Assistant
+> `search/related` (`proxy/ha_client.py:1406`, `TIPI_LEGAME` a riga 1371-1373 coi VALORI di
+> `ItemType` di `homeassistant/components/search/__init__.py`) -- HA ha gia' un nome per "chi tocca
+> questa cosa", ed e' quello, non un sinonimo che questa fetta esiste per non inventare.
+>
+> **Perche' `accaduto` -> `logbook` e non `history`:** stessa logica, ma con un secondo passo che
+> vale la pena raccontare perche' e' il controllo di collisione a fare il lavoro. `accaduto` legge
+> `ha_client.diario()` (`proxy/ha_client.py:1060`, `GET /api/logbook/<ISO start>` a riga 1094) --
+> il nome nativo di Home Assistant per questa funzione e' `logbook`, non `history`. `history` era
+> il primo candidato (e' anche il nome dell'API usata da `andamento`, sotto), ma **collide nel
+> codice**: `history` e' gia' una chiave/parametro non-prosa usata ovunque per la cronologia dei
+> MESSAGGI di chat (`agent/prompts.py:365` `build_chat_messages(system_prompt, history, ...)`,
+> `agent/runner.py:1172` `history = context.get("history")`, `api/handlers_chat.py:354`
+> `"history": sanitized_history`, oltre al vecchio `history.db` uscito dal prodotto) -- un
+> significato completamente diverso (i turni della conversazione, non il diario della casa). Il
+> passo 2 del controllo di collisione (grep su `hiris/`, non solo sul glossario) blocca `history`
+> qui esattamente come ha bloccato `gateway` e `build` nella review del Task 4.
+>
+> **Perche' `andamento` -> `trend` e non `history`, nonostante `andamento` usi davvero le API
+> `/api/history/period` e `recorder/statistics_during_period` di Home Assistant
+> (`proxy/ha_client.py:965,1274,1292`):** il nome di confine sarebbe `history`, ma e' lo stesso
+> nome gia' bloccato sopra per `accaduto` -- e usarlo qui aggraverebbe esattamente la collisione con
+> la cronologia di chat appena descritta, oltre a rendere `andamento` e `accaduto` indistinguibili
+> fra loro (il rischio che questo lotto esiste per evitare). Scelto un nome funzionale che descrive
+> UNA serie numerica nel tempo invece del registro di eventi -- pulito su `hiris/` (nessuna
+> occorrenza come identificatore).
+>
+> **Verificato ma NON trattato come collisione bloccante:** `search` (`cerca`), `execute` (`esegui`)
+> e `cancel` (`disdici`) compaiono in `hiris/app` solo come chiamate a metodi di libreria standard
+> gia' esistenti -- `re.search()`, `sqlite3.Connection.execute()`, `asyncio.Task.cancel()` -- mai
+> come un identificatore che QUESTO progetto ha scelto per nominare un proprio concetto diverso. E'
+> lo stesso principio che tollera `construction` nei commenti (sopra): il match non cade su una
+> parola che il progetto usa per dire un'altra cosa, cade su un'API esterna che userebbe la stessa
+> parola comunque, in qualunque progetto Python. Segnalato qui perche' due persone potrebbero
+> leggere la regola meccanica in modo diverso su questo caso, e non deve restare implicito quale
+> lettura ho applicato.
+>
+> **`promessa` (il concetto) = `promise`; `promesse` (lo strumento) = `promises`; `prometti` (lo
+> strumento) = `promise`.** Non e' un doppione: e' la stessa radice applicata a tre forme
+> grammaticali diverse della stessa cosa -- esattamente come richiesto dalla nota sulle forme
+> flesse (sopra, «I valori di dominio»/`vive`-`vivi`). `costruisci` -> `propose` e' inoltre
+> coerente con `proposta` (concetto, gia' `proposal`) e col metodo Python che gia' implementa
+> l'azione, `azione/costruzione/officina.py:132` (`async def proponi(...)`) -- tre indizi
+> indipendenti che convergono sullo stesso inglese.
+>
+> **Dubbio aperto, non richiuso qui:** il metodo interno dietro `conferma` si chiama `applica`
+> (`azione/costruzione/officina.py:328`, `async def applica(...)`), che suggererebbe `apply` invece
+> di `confirm`. Ho tenuto `confirm` perche' la descrizione dello strumento insiste sul cancello
+> **"solo dopo che l'utente ha detto di procedere, in un turno successivo"** -- e' quel consenso
+> esplicito, non il meccanismo di scrittura, la ragione per cui questo strumento esiste separato da
+> `costruisci`; `apply` lo dice meno di `confirm`. Ma e' un giudizio, non una misura: se la prova
+> del lettore nuovo mostra che `confirm` si confonde con qualcos'altro, `apply` resta il secondo
+> candidato pronto, non ancora provato.
 
 ## I valori di dominio
 
