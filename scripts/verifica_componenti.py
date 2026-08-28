@@ -114,14 +114,15 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
         reg = registri.get("pypi", {}).get(nome, {})
         if reg.get("errore"):
             scarti.append(Scarto(f"{nome} (tetto)",
-                                 f"<{dati['major_escluso']}.0.0", "",
+                                 f"<{dati['tetto']}", "",
                                  dati["dove"], reg["errore"]))
             continue
-        major_uscito = int(re.findall(r"\d+", reg["versione"])[0])
-        if major_uscito >= dati["major_escluso"]:
+        # «uscita >= tetto» detto con l'unico confronto di versioni che il file
+        # gia' possiede: non ne serve un secondo.
+        if not piu_vecchia(reg["versione"], dati["tetto"]):
             scarti.append(Scarto(
-                f"{nome} (il tetto <{dati['major_escluso']}.0.0 esclude il major {major_uscito})",
-                f"<{dati['major_escluso']}.0.0", reg["versione"],
+                f"{nome} (il tetto <{dati['tetto']} esclude la {reg['versione']})",
+                f"<{dati['tetto']}", reg["versione"],
                 dati["dove"]))
 
     # ── I pavimenti contro cio' che e' INSTALLATO ──────────────────────────
@@ -190,14 +191,19 @@ def leggi_i_file() -> dict:
             continue
         nome = re.split(r"[><=!\s]", riga, maxsplit=1)[0]
         minimo = re.search(r">=\s*([\d.]+)", riga)
-        massimo = re.search(r"<\s*(\d+)\.", riga)
+        # Il tetto si legge INTERO, non solo il major. Un pacchetto 0.x non ha
+        # ancora un major, quindi il suo tetto sano sta sul minor (`<0.17.0`):
+        # leggendo le sole cifre prima del primo punto si otteneva 0, e ogni
+        # uscita 0.x lo violava. E' lo scarto permanente su una riga sana che il
+        # commento qui sotto voleva evitare -- il caso 0.x era sfuggito.
+        massimo = re.search(r"<\s*([\d.]+)", riga)
         if minimo:
             pavimenti[nome] = {"minimo": minimo.group(1),
                                "installato": _versione_installata(nome)}
         # Nessun tetto -> nessun major da escludere. Inventarne uno
         # produrrebbe uno scarto permanente su una riga sana.
         if massimo:
-            tetti[nome] = {"major_escluso": int(massimo.group(1)),
+            tetti[nome] = {"tetto": massimo.group(1),
                            "dove": "hiris/requirements.txt"}
     return {"cli": cli, "azioni": azioni, "tetti": tetti, "pavimenti": pavimenti}
 

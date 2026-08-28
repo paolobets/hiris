@@ -51,7 +51,7 @@ def _letti(**sovrascritture):
         "cli": {"versione": "2.1.233", "dove": "hiris/Dockerfile"},
         "azioni": {"actions/setup-node": {"major": 7,
                                           "dove": ".github/workflows/tests.yml"}},
-        "tetti": {"anthropic": {"major_escluso": 1,
+        "tetti": {"anthropic": {"tetto": "1.0.0",
                                 "dove": "hiris/requirements.txt"}},
         "pavimenti": {"anthropic": {"minimo": "0.87.0", "installato": "0.122.0"}},
     }
@@ -183,20 +183,57 @@ def test_legge_tetti_e_pavimenti_da_requirements():
     """
     import re as _re
     testo = (vc.RADICE / "hiris" / "requirements.txt").read_text(encoding="utf-8")
-    # Il tetto (`major_escluso`) va letto dalla riga esattamente come il
-    # pavimento: pinnarlo a un numero incollato qui e' lo stesso difetto che
-    # il docstring dice gia' corretto per il pavimento -- si rompe a ogni
-    # bump legittimo del major (misurato: passato da 1 a 2 quando il
-    # pavimento e' salito a 1.0.0, con la riga sotto ancora ferma a `== 1`).
-    atteso = _re.search(r"^anthropic>=([\d.]+),<(\d+)\.0\.0", testo, _re.MULTILINE)
+    # Il tetto va letto dalla riga esattamente come il pavimento: pinnarlo a un
+    # numero incollato qui e' lo stesso difetto che il docstring dice gia'
+    # corretto per il pavimento -- si rompe a ogni bump legittimo (misurato:
+    # passato da 1 a 2 quando il pavimento e' salito a 1.0.0, con la riga sotto
+    # ancora ferma a `== 1`). E si legge INTERO: un tetto su un pacchetto 0.x
+    # sta sul minor, e leggerne il solo major lo appiattirebbe a zero.
+    atteso = _re.search(r"^anthropic>=([\d.]+),<([\d.]+)", testo, _re.MULTILINE)
     assert atteso, "anthropic non ha piu' un pavimento/tetto in requirements.txt"
 
     letti = vc.leggi_i_file()
-    assert letti["tetti"]["anthropic"]["major_escluso"] == int(atteso.group(2))
+    assert letti["tetti"]["anthropic"]["tetto"] == atteso.group(2)
     assert letti["pavimenti"]["anthropic"]["minimo"] == atteso.group(1)
     # `installato` puo' essere None (pacchetto assente): e' un fatto, non un
     # errore, e a valle si salta invece di inventare uno scarto.
     assert "installato" in letti["pavimenti"]["anthropic"]
+
+
+def test_un_tetto_sul_minor_di_un_pacchetto_0x_non_e_uno_scarto():
+    """IL DIFETTO CHE HA FERMATO IL RILASCIO DELLA 3.14.1, il 28/08/2026.
+
+    Un pacchetto 0.x non ha ancora un major, quindi il suo tetto sano sta sul
+    MINOR: `ruff>=0.16.4,<0.17.0`. Il lettore prendeva pero' le sole cifre
+    prima del primo punto, ricavando `major_escluso = 0`; e siccome ogni uscita
+    0.x ha major 0, il confronto `0 >= 0` era vero **sempre**. Risultato: uno
+    scarto permanente su una riga sana -- esattamente cio' che il test qui
+    sotto dichiara inaccettabile, sfuggito perche' nessuna dipendenza 0.x aveva
+    ancora un tetto quando quel test e' stato scritto.
+
+    Questa prova sa PRODURRE il difetto: col lettore vecchio fallisce, perche'
+    `0.16.5` sta sotto `0.17.0` e non deve produrre niente.
+    """
+    scarti = vc.componi_scarti(
+        _letti(tetti={"ruff": {"tetto": "0.17.0",
+                               "dove": "hiris/requirements.txt"}},
+               pavimenti={}),
+        _registri(pypi={"ruff": {"versione": "0.16.5"}}))
+    assert scarti == []
+
+
+def test_un_minor_sopra_il_tetto_di_un_pacchetto_0x_resta_uno_scarto():
+    """La cura non deve spegnere il controllo: `0.17.0` uscita col tetto a
+    `<0.17.0` congela `ruff` in silenzio, ed e' il caso per cui il tetto
+    esiste."""
+    scarti = vc.componi_scarti(
+        _letti(tetti={"ruff": {"tetto": "0.17.0",
+                               "dove": "hiris/requirements.txt"}},
+               pavimenti={}),
+        _registri(pypi={"ruff": {"versione": "0.17.0"}}))
+    assert len(scarti) == 1
+    assert "ruff" in scarti[0].componente
+    assert scarti[0].disponibile == "0.17.0"
 
 
 def test_una_dipendenza_senza_tetto_non_finisce_fra_i_tetti():
