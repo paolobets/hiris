@@ -153,7 +153,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
-| anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | directory | ✗ non arriva |
+| anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
 | ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede | anchor | ~ parziale |
 | ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto | tether | ~ parziale |
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
@@ -162,7 +162,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
 | cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw | ✓ arriva |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
-| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home | ✗ non arriva |
+| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant |  | ✗ non arriva — arbitrato del proprietario |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain | ~ parziale |
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind | ~ parziale |
 | componi | assembla, a partire dai pezzi gia' pronti che riceve, la struttura finale che serve a un chiamante -- il corpo di un'automazione, il testo dato al modello a inizio turno, il pannello di una decisione -- sempre nello stesso punto per ogni caso, cosicche' nessun chiamante ricalchi da solo la stessa regola di assemblaggio | compose | ✓ arriva |
@@ -175,7 +175,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato | direction | ✓ arriva |
 | dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
-| esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | disposition | ✗ non arriva |
+| esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ✓ arriva |
 | famiglia | raggruppa il fallimento di un provider del modello in una delle cinque cause riconosciute -- credenziale, modello, irraggiungibile, scaduto, altro -- cosi' che due rifiuti della stessa causa vengano trattati come lo stesso evento invece che come due guasti diversi | family | ✓ arriva |
 | flusso | la sequenza di righe NDJSON che il processo del CLI del modello scrive in uscita mentre lavora, letta una volta sola e ridotta a un esito unico -- riuscito, troncato, senza risultato -- mai riletta una seconda volta con una logica diversa | stream | ✓ arriva |
 | forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | shapes | ~ parziale |
@@ -200,7 +200,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop | ~ parziale |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact | ✓ arriva |
 | origine | classifica chi ha richiesto un'operazione di costruzione -- un umano che ha appena cliccato sulla pagina, oppure il modello durante un turno -- e decide se un controllo pensato per trattenere il modello si applica o si scavalca | actor | ~ parziale |
-| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | heartbeat | ✗ non arriva |
+| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) |  | ✗ non arriva — arbitrato del proprietario |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
@@ -225,7 +225,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, ciascuna gia' scritta come un verbo all'imperativo, con un valore fuori da queste due rifiutato subito | verb | ~ parziale |
 | stati | un insieme chiuso di valori specifici che condividono una proprieta' -- quali contano come conclusi e quali come ancora in sospeso per un impegno o una proposta di costruzione, quali come attivi per un'entita', quali come guasti o transitori per un'integrazione -- usato per verificare se un valore singolo vi appartiene, mai un valore da solo | states | ~ parziale |
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools | ~ parziale |
-| tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | span | ✗ non arriva |
+| tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio |  | ✗ non arriva — arbitrato del proprietario |
 | tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ✓ arriva |
 | turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange | ~ parziale |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
@@ -457,6 +457,73 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > costante Python da cui questo task possa citare la posizione nello stesso formato delle altre
 > undici righe di quella tabella. Chi migrera' i valori di `status` deve scrivere `downgrade` al
 > posto di `'ripiego'`, con lo stesso significato deciso qui.
+
+> **La prova del lettore nuovo (Task 7): due righe cambiano inglese dopo il primo giro, tre
+> restano aperte e vanno all'arbitrato del proprietario.** Metodo: il solo nome nudo dato a un
+> agente senza contesto del progetto (nessuno strumento, nessun accesso al repository), che scrive
+> in una frase che cosa si aspetta che quella cosa faccia. Esito confrontato con la colonna «che
+> cosa fa»: `✓ arriva` (la funzione principale si vede, anche con parole diverse), `~ parziale`
+> (campo giusto ma generico o incompleto), `✗ non arriva` (un'altra cosa, o «non mi dice niente»).
+> Conteggio sulle 80 righe dopo il primo giro: 41 `✓`, 34 `~`, 5 `✗`. Dei 5 `✗`, il secondo giro ne
+> ha risolti 2 (un nuovo inglese ciascuno) e ne ha lasciati 3 bocciati due volte su due. Conteggio
+> finale: **42 `✓`, 35 `~`, 3 `✗` in arbitrato** (`casa`, `orologio`, `tempo`).
+>
+> **`anagrafe`: `directory` bocciato, sostituito da `topology`.** Il lettore nuovo ha letto
+> `directory` come cartella di filesystem — *«un catalogo organizzato di elementi, in informatica
+> una cartella con contenuti»* — non come il modulo che assembla quattro registri in una
+> gerarchia. Al secondo giro, due lettori indipendenti su `topology` hanno risposto in modo
+> sovrapponibile citando esplicitamente «dispositivi» e «nodi collegati/disposti» — vicino alla
+> funzione reale ma ancora generico (potrebbe descrivere una rete o un grafo qualunque, non
+> specificamente l'assemblaggio di piani/aree/dispositivi/entita' in un'unica gerarchia): `~
+> parziale`, non `✓`, ma non piu' un `✗` — resta deciso qui, non va all'arbitrato.
+>
+> **`esito`: `disposition` bocciato, sostituito da `occurrence`.** Il lettore nuovo ha risposto
+> *«Non mi dice niente di preciso nel contesto di programmazione»* — bocciatura netta, gia'
+> segnalata come rischio nel report del Task 5 (*"e' un inglese piu' colto/amministrativo del
+> semplice outcome che la lettura del codice avrebbe suggerito"*). Al secondo giro, `occurrence`
+> ha ricevuto da due lettori indipendenti risposte convergenti sul nucleo della frase — *«un'istanza
+> singola di un evento... in un momento specifico»* / *«una singola istanza/verificarsi di un
+> evento, spesso con timestamp»* — che nominano "il fatto di cio' che e' davvero successo": `✓
+> arriva`.
+>
+> **`casa`, `orologio`, `tempo`: due candidati bocciati su due, vanno all'arbitrato del
+> proprietario — non un terzo giro, per il vincolo "massimo due giri per parola".** Per ciascuno,
+> la frase «che cosa fa» (gia' in tabella sopra), i due inglesi provati e la risposta testuale del
+> lettore che li ha bocciati:
+>
+> - **`casa`** — *"la rappresentazione strutturata a quattro livelli (piano, area, dispositivo,
+>   entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home
+>   Assistant."* Primo giro, `home`: *«il punto di partenza principale di un'applicazione, la
+>   schermata iniziale»* — ha letto *homepage*, non "la casa". Secondo giro, `house`, dato a due
+>   lettori indipendenti: sono **divergenti** — uno risponde *«un contenitore/raggruppamento
+>   principale di organizzazione (come una categoria padre o un'area logica)»*, l'altro *«non mi
+>   dice niente di preciso — potrebbe essere quasi qualunque cosa (contenitore, entita' di
+>   dominio, edificio in un gioco)»*. Due letture cosi' distanti sullo stesso nome sono gia' un
+>   esito: il nome non porta il concetto in modo affidabile.
+> - **`orologio`** — *"il battito che, ricevuto un istante dall'esterno, scorre le promesse
+>   scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola."* Primo
+>   giro, `heartbeat`: *«un segnale periodico che attesta il funzionamento e lo stato vitale di
+>   qualcosa»* — legge un ping di liveness/health-check, non un lavoratore attivo che processa le
+>   promesse scadute. Secondo giro, `pulse`, due lettori indipendenti concordi ma sulla stessa
+>   lettura sbagliata: *«un segnale periodico che batte/ripete a intervalli regolari, o lo stato
+>   di vitalita' di un sistema»* e — piu' netto — *«qualcosa legato a un segnale periodico o
+>   **heartbeat** — un check di attivita'/salute del sistema»*: il secondo lettore usa
+>   letteralmente la parola gia' bocciata. Non e' un nome nuovo, e' lo stesso equivoco con
+>   un'altra grafia.
+> - **`tempo`** — *"il modulo che decide, per una domanda su un periodo passato, quale superficie
+>   viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e'
+>   letto — senza conservare nulla in proprio."* Primo giro, `span`: *«un intervallo o
+>   un'estensione delimitata (di tempo, di dati, di contesto)»* — un intervallo passivo, vicino al
+>   senso di `period` in Home Assistant, non il modulo attivo che decide e compone. Secondo giro,
+>   `timeframe`, due lettori indipendenti convergenti sullo stesso equivoco: *«una finestra di
+>   tempo definita entro cui qualcosa accade o e' valido»* e *«un intervallo temporale (data/ora
+>   di inizio e fine) usato per **filtrare o delimitare** dei dati»* — di nuovo un valore/parametro
+>   di tempo, non il modulo che decide la fonte e la grana e compone la risposta.
+>
+> Le tre righe restano con la colonna «inglese» vuota (non ancora deciso, non dimenticato) finche'
+> il proprietario non arbitra. Dettaglio completo del dispaccio e delle due letture indipendenti in
+> `.superpowers/sdd/2026-08-28-il-glossario/task-7-risposte.md` e `task-7-report.md` (non
+> tracciati, cartella di processo).
 
 ## Le parole ordinarie
 
