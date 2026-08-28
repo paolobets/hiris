@@ -966,6 +966,29 @@ def _strumenti_risolti(esito: EsitoFlusso) -> set:
     return {v for v in voci if isinstance(v, str)}
 
 
+# L'ultimo `init` del ponte che sia davvero passato di qui. Vive quanto il
+# processo, ed e' giusto cosi': descrive il container che sta girando ADESSO.
+#
+# Perche' esiste. I due campi qui sotto sono prove che non si possono ricavare
+# da nessun file del repository -- il `Dockerfile` dice cosa e' stato chiesto,
+# non cosa e' arrivato -- e fino a oggi vivevano SOLO dentro una riga di log,
+# leggibile nel momento in cui un turno passava. E' il motivo per cui la
+# verifica del pin 2.1.241 e' stata rimandata il 24 agosto e poi dimenticata
+# per settimane: richiedeva di essere nel posto giusto al momento giusto.
+# Conservarli qui la trasforma in una lettura ripetibile.
+_ULTIMO_INIT: dict = {}
+
+
+def ultimo_init_del_ponte() -> dict | None:
+    """L'ultimo `init` osservato, o `None` se nessun turno e' ancora passato.
+
+    `None` significa **non ancora visto**, non «assente»: sono due fatti
+    diversi, e un chiamante che li confondesse leggerebbe un container appena
+    riavviato come un container guasto.
+    """
+    return dict(_ULTIMO_INIT) if _ULTIMO_INIT else None
+
+
 def _logga_init(esito: EsitoFlusso, job_id) -> None:
     """L'`init` letto e loggato. Dal Task 4 ci si DECIDE anche sopra:
     `verifica_init` qui sotto e' la difesa (2) del progetto, e questa riga
@@ -1010,6 +1033,15 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
             "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
     strumenti = esito.init.get("tools")
+    # Si conserva PRIMA di loggare: la riga di log e' la misura di questo
+    # turno, questo e' lo stato leggibile dopo. Le chiavi restano quelle della
+    # CLI (`claude_code_version`, `apiKeySource`): e' un confine, e rinominarle
+    # qui creerebbe la traduzione che non serve a nessuno.
+    _ULTIMO_INIT.update({
+        "cli": esito.init.get("claude_code_version"),
+        "apiKeySource": esito.init.get("apiKeySource"),
+        "visto_ts": time.time(),
+    })
     log.info(
         "init del ponte (job_id=%s): cli=%s, apiKeySource=%s, mcp_servers=%s, "
         "strumenti risolti=%d",

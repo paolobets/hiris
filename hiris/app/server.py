@@ -3851,5 +3851,12 @@ async def _serve_config(request: web.Request) -> web.Response:
 
 
 async def _handle_health(request: web.Request) -> web.Response:
+    # `ponte` porta i due fatti che nessun file del repository puo' dire: quale
+    # CLI e' arrivata DAVVERO nel container (il `Dockerfile` dice cosa e' stato
+    # chiesto, non cosa gira) e se il ponte parli con l'abbonamento invece che
+    # con una chiave a consumo (`apiKeySource: none` = abbonamento). E' `null`
+    # finche' nessun turno e' passato: «non ancora visto» non e' «assente».
+    from .agent.runner import ultimo_init_del_ponte
     return web.json_response({"status": "ok", "version": read_version(),
-                              "build": request.app.get("build_stamp", "")})
+                              "build": request.app.get("build_stamp", ""),
+                              "ponte": ultimo_init_del_ponte()})
