@@ -26,6 +26,44 @@ Il criterio che separa gli insiemi qui sotto e' **la natura della parola, non qu
 concetto raro (`comprimari`) richiede tutto il giudizio che una parola frequente (`giorno`) non
 richiede affatto.
 
+## Il controllo di collisione si fa sul codice, non solo sul glossario
+
+**Corretto durante la review del Task 4, dopo che due nomi ci sono passati sotto: un grep sul solo
+`docs/GLOSSARIO.md` non basta.** Il documento non e' l'unico posto dove l'inglese gia' esiste:
+`hiris/` ne e' pieno, in sottosistemi in inglese (`reasoning/`, `backends/`, `proxy/`) e in commenti
+e identificatori sparsi ovunque. Un nome scelto guardando solo le righe gia' decise qui puo' ancora
+collidere con una parola che il codice usa gia' per dire un'altra cosa — ed e' lo stesso identico
+difetto per cui questa fetta esiste, spostato dal glossario al codice.
+
+**Prima di fissare un candidato in tabella:**
+
+1. cercalo nel glossario (come gia' si faceva) — collide con un'altra voce decisa, con un nome di
+   strumento, con un valore di dominio?
+2. cercalo anche **in `hiris/`** con un grep sul sorgente vero — collide con un identificatore, un
+   commento, un valore di stringa gia' scritto dal codice?
+
+**Non ogni collisione col codice conta allo stesso modo.** Una parola inglese che compare in
+`hiris/` come **prosa generica** — usata nel suo senso comune, senza nominare un concetto proprio
+del prodotto — non blocca la scelta: l'inglese e' pieno di parole comuni, ed evitarle tutte
+renderebbe impossibile nominare qualunque cosa. Blocca invece la scelta una parola che nel codice e'
+gia' **il nome di un concetto** — qualcosa che qualcuno ha deciso di chiamare cosi', con un
+identificatore, una chiave, una stringa che si ripete con intenzione.
+
+Due casi veri, trovati nella review del Task 4:
+
+- **`gateway` per `porta`** (poi corretto in `actuator`): 16 occorrenze in `hiris/app`, tutte per
+  **il gateway MCP esterno** — un componente vero e nominato (`agent/runner.py:3`: *«Porta
+  in-addon del runner del gateway esterno»*). Non e' prosa: e' lo stesso nome inglese per due cose
+  diverse nello stesso prodotto — la trappola che questa fetta chiude, vista al contrario.
+- **`build` per `costruzione`** (poi corretto in `construction`): 44 occorrenze, e non solo il
+  verbo comune (`build_chat_messages`) — un **sostantivo con un significato concorrente gia' in
+  uso**, il sistema delle versioni distribuite (`app["build_stamp"]`, `_compute_build_stamp`, il
+  meta tag `hiris-build`, i commenti «QUALE build gira davvero» in `server.py`). Anche qui un
+  concetto nominato, non prosa.
+- **Per contrasto, un caso tollerato:** `construction` compare gia' 3 volte in `hiris/`, ma come
+  prosa generica («at store construction», «numeric by construction») — nessun concetto proprio del
+  prodotto si chiama cosi'. La collisione non blocca la scelta.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -71,7 +109,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind |  |
 | comportamento | l'elenco di automazioni e script gia' in esecuzione da soli, ottenuto incrociando cio' che i file dichiarano con cio' che lo stato conferma esistere davvero, cosicche' HIRIS non riproponga qualcosa gia' fatto | behavior |  |
 | comprimari |  |  |  |
-| costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | build |  |
+| costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction |  |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal |  |
 | decisione |  |  |  |
 | direzione |  |  |  |
@@ -104,7 +142,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations |  |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline |  |
 | ponte |  |  |  |
-| porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | gateway |  |
+| porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator |  |
 | promessa |  |  |  |
 | registro | lo specchio aggiornato di cosa Home Assistant sa fare in questa casa, servizio per servizio e con i relativi parametri -- non un catalogo scritto da HIRIS, ma la copia di cio' che Home Assistant stesso dichiara di poter eseguire | registry |  |
 | riconoscitore |  |  |  |
