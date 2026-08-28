@@ -156,10 +156,10 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
 | ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede | anchor | ~ parziale |
 | ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto | tether | ~ parziale |
-| archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ~ parziale |
+| archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
-| azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ~ parziale |
-| bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ~ parziale |
+| azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
+| bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
 | cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw | ✓ arriva |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant |  | ✗ non arriva — arbitrato del proprietario |
@@ -168,45 +168,45 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | componi | assembla, a partire dai pezzi gia' pronti che riceve, la struttura finale che serve a un chiamante -- il corpo di un'automazione, il testo dato al modello a inizio turno, il pannello di una decisione -- sempre nello stesso punto per ogni caso, cosicche' nessun chiamante ricalchi da solo la stessa regola di assemblaggio | compose | ✓ arriva |
 | comportamento | l'elenco di automazioni e script gia' in esecuzione da soli, ottenuto incrociando cio' che i file dichiarano con cio' che lo stato conferma esistere davvero, cosicche' HIRIS non riproponga qualcosa gia' fatto | behavior | ~ parziale |
 | comprimari | per un soggetto osservato, le altre cose della casa -- entita', automazioni, scene, script -- che agiscono su di lui o lo misurano, lette una sola volta per l'intera giornata e riusate per ogni fatto compiuto che ne nasce | companions | ~ parziale |
-| condizioni | quando una lettura ricordata o un'automazione vale, nello stesso vocabolario che Home Assistant gia' usa per i propri inneschi e le proprie regole -- ora, giorno, presenza, sole, meteo -- con una sola voce aggiunta da HIRIS perche' Home Assistant non ce l'ha | conditions | ~ parziale |
+| condizioni | quando una lettura ricordata o un'automazione vale, nello stesso vocabolario che Home Assistant gia' usa per i propri inneschi e le proprie regole -- ora, giorno, presenza, sole, meteo -- con una sola voce aggiunta da HIRIS perche' Home Assistant non ce l'ha | conditions | ✓ arriva |
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction | ~ parziale |
-| cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ~ parziale |
+| cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
-| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato | direction | ~ parziale |
-| dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ~ parziale |
+| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato | direction | ✓ arriva |
+| dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
-| esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ~ parziale |
+| esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ✓ arriva |
 | famiglia | raggruppa il fallimento di un provider del modello in una delle cinque cause riconosciute -- credenziale, modello, irraggiungibile, scaduto, altro -- cosi' che due rifiuti della stessa causa vengano trattati come lo stesso evento invece che come due guasti diversi | family | ~ parziale |
-| flusso | la sequenza di righe NDJSON che il processo del CLI del modello scrive in uscita mentre lavora, letta una volta sola e ridotta a un esito unico -- riuscito, troncato, senza risultato -- mai riletta una seconda volta con una logica diversa | stream | ~ parziale |
+| flusso | la sequenza di righe NDJSON che il processo del CLI del modello scrive in uscita mentre lavora, letta una volta sola e ridotta a un esito unico -- riuscito, troncato, senza risultato -- mai riletta una seconda volta con una logica diversa | stream | ✓ arriva |
 | forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | shapes | ✗ non arriva |
 | forza | quale delle quattro nature chiuse porta una lettura ricordata -- preferenza, divieto, fatto o regola -- mai un numero su una scala libera | modality | ~ parziale |
 | fuso | l'informazione con cui si interpreta correttamente ogni istante letto o scritto nella casa -- senza di essa "le 8" o "ieri" non hanno un significato univoco -- letta dallo stesso campo che Home Assistant espone per la propria installazione | timezone | ✓ arriva |
-| gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ~ parziale |
+| gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
 | grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | raw | ✓ arriva |
-| impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ~ parziale |
-| indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ~ parziale |
-| instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ~ parziale |
-| intento | la struttura con cui una richiesta di nuova costruzione descrive se stessa -- che cosa la fa scattare, quali passi compie, quali stati verifica, quali parametri porta, se va riusata o si ripete, se e' stata chiesta esplicitamente -- da cui si decide quale oggetto serve davvero | intent | ~ parziale |
+| impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
+| indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
+| instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ✓ arriva |
+| intento | la struttura con cui una richiesta di nuova costruzione descrive se stessa -- che cosa la fa scattare, quali passi compie, quali stati verifica, quali parametri porta, se va riusata o si ripete, se e' stata chiesta esplicitamente -- da cui si decide quale oggetto serve davvero | intent | ✓ arriva |
 | interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation | ~ parziale |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation | ~ parziale |
 | lettura | trasforma il testo di un file di configurazione di Home Assistant nella struttura che rappresenta, sollevando quando il testo e' davvero malformato invece di restituire un risultato vuoto indistinguibile da un file senza contenuto | parse | ✓ arriva |
 | memoria | il sottosistema che conserva per sempre le frasi esatte che una persona ha detto sulla sua casa insieme a come HIRIS le ha interpretate, correggibile senza toccare le parole originali, senza anonimizzazione e senza scadenza | memory | ~ parziale |
-| mestiere | la funzione pura che, davanti a una richiesta, decide se serve un'automazione, uno script, una scena o una combinazione delle tre, e dice anche perche' -- consigliando senza mai bloccare chi insiste per un'altra scelta | advisor | ~ parziale |
+| mestiere | la funzione pura che, davanti a una richiesta, decide se serve un'automazione, uno script, una scena o una combinazione delle tre, e dice anche perche' -- consigliando senza mai bloccare chi insiste per un'altra scelta | advisor | ✓ arriva |
 | migrazione | la copia, fatta una volta sola e segnata perche' non si ripeta, di un valore che viveva nello schema delle opzioni dell'add-on verso l'archivio proprio di HIRIS, cosi' che togliere l'opzione dallo schema in un rilascio successivo non ne faccia sparire il valore in silenzio | migration | ~ parziale |
-| notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight | ~ parziale |
-| nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing | ~ parziale |
+| notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight | ✓ arriva |
+| nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing | ✓ arriva |
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop | ~ parziale |
-| oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact | ~ parziale |
+| oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact | ✓ arriva |
 | origine | classifica chi ha richiesto un'operazione di costruzione -- un umano che ha appena cliccato sulla pagina, oppure il modello durante un turno -- e decide se un controllo pensato per trattenere il modello si applica o si scavalca | actor | ~ parziale |
 | orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) |  | ✗ non arriva — arbitrato del proprietario |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
-| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log | subscription | ~ parziale |
+| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log | subscription | ✓ arriva |
 | piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i piani di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
-| plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ~ parziale |
+| plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ✓ arriva |
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator | ~ parziale |
 | promessa | l'impegno per un momento futuro che l'utente ha chiesto -- fare qualcosa, oppure controllare qualcosa e riferire -- con la sua scadenza, la sua tolleranza al ritardo, e lo stato con cui si conclude | promise | ✓ arriva |
@@ -214,25 +214,25 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | riconoscitore | il modulo che decide a quale parte della casa si riferisce una frase scritta, confrontandola con nomi e alias dichiarati e restringendo poi cio' che il modello propone a cio' che esiste davvero nell'anagrafe | resolver | ✓ arriva |
 | ricordi | le frasi esatte, cosi' come sono state dette, che una persona ha affidato a HIRIS -- la verita' che non si tocca mai, nemmeno quando la sua lettura viene corretta | memories | ~ parziale |
 | riferimento | l'insieme dei dati con cui si interpreta ogni altra misura della casa -- unita', ora locale, valuta, lingua, paese, versione dell'installazione -- distillato una volta e mai cancellato da una lettura vuota, perche' quello di ieri resta quello giusto finche' non arriva un valore nuovo | frame | ~ parziale |
-| rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection | ~ parziale |
-| ripiego | il passaggio, dichiarato sempre e mai silenzioso, con cui un turno che non ha potuto essere servito dal canale a forfait viene rifatto da capo su quello a consumo -- uno stato non definitivo di un lavoro in coda, distinto da uno riuscito, scaduto o fallito, perche' resta da chiudere finche' non arriva una risposta | downgrade | ~ parziale |
+| rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection | ✓ arriva |
+| ripiego | il passaggio, dichiarato sempre e mai silenzioso, con cui un turno che non ha potuto essere servito dal canale a forfait viene rifatto da capo su quello a consumo -- uno stato non definitivo di un lavoro in coda, distinto da uno riuscito, scaduto o fallito, perche' resta da chiudere finche' non arriva una risposta | downgrade | ✓ arriva |
 | schedulatore | il sottosistema che tiene le promesse fatte per un momento futuro: le risveglia quando arriva l'ora, ne porta a termine il compito o la domanda, e registra sempre come e' andata | keeper | ~ parziale |
-| segno | il valore persistito che ricorda se un passo di migrazione e' gia' avvenuto, scritto anche quando non c'era nulla da copiare, cosi' che un'installazione nuova non lo cerchi piu' una volta che quel passo e' definitivamente chiuso | flag | ~ parziale |
-| semaforo | la classificazione a tre livelli, per singola azione, che decideva se procedere senza chiedere nulla, se serviva una conferma umana, oppure se l'azione era negata a prescindere -- uscita dal prodotto insieme ai suoi ultimi lettori, ma ancora nominata nei commenti che raccontano perche' non c'e' piu' | clearance | ~ parziale |
+| segno | il valore persistito che ricorda se un passo di migrazione e' gia' avvenuto, scritto anche quando non c'era nulla da copiare, cosi' che un'installazione nuova non lo cerchi piu' una volta che quel passo e' definitivamente chiuso | flag | ✓ arriva |
+| semaforo | la classificazione a tre livelli, per singola azione, che decideva se procedere senza chiedere nulla, se serviva una conferma umana, oppure se l'azione era negata a prescindere -- uscita dal prodotto insieme ai suoi ultimi lettori, ma ancora nominata nei commenti che raccontano perche' non c'e' piu' | clearance | ✓ arriva |
 | servizi | un'operazione che un dominio di Home Assistant dichiara di saper eseguire, identificata da un nome e dai propri parametri -- non un catalogo scritto da HIRIS, ma cio' che l'installazione stessa dichiara di poter fare | services | ~ parziale |
 | spazio | l'etichetta che distingue, dentro una cache **puramente in memoria di processo** (nessuna tabella, nessun SQL -- `CacheIndice` muore col riavvio), a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota corretta in fix round 1:** non e' una colonna persistita (il brief originale lo affermava per errore, propagato dalla spec); e' una chiave di dizionario in `memoria/cache_indice.py:27,65,175,179` (`self._voci[spazio] = ...`), con valori che sono nomi di strumento (`"cerca"`, `"ricorda"`). Chi rinomina non trovera' nessuna tabella da migrare per questo -- solo il parametro e le due stringhe | slot | ~ parziale |
-| specchio | la proiezione, calcolata una volta sola per ogni chiamante a partire dalle righe della cache di stato, in sei dizionari pronti all'uso -- valore corrente, nome, unita', classe, istante dell'ultimo cambiamento, attributi -- tenuta distinta da cio' che i quattro registri di Home Assistant dichiarano in modo statico, cosi' che le due fonti possano essere confrontate quando non coincidono | mirror | ~ parziale |
+| specchio | la proiezione, calcolata una volta sola per ogni chiamante a partire dalle righe della cache di stato, in sei dizionari pronti all'uso -- valore corrente, nome, unita', classe, istante dell'ultimo cambiamento, attributi -- tenuta distinta da cio' che i quattro registri di Home Assistant dichiarano in modo statico, cosi' che le due fonti possano essere confrontate quando non coincidono | mirror | ✓ arriva |
 | specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, ciascuna gia' scritta come un verbo all'imperativo, con un valore fuori da queste due rifiutato subito | verb | ~ parziale |
 | stati | un insieme chiuso di valori specifici che condividono una proprieta' -- quali contano come conclusi e quali come ancora in sospeso per un impegno o una proposta di costruzione, quali come attivi per un'entita', quali come guasti o transitori per un'integrazione -- usato per verificare se un valore singolo vi appartiene, mai un valore da solo | states | ~ parziale |
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools | ~ parziale |
 | tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio |  | ✗ non arriva — arbitrato del proprietario |
-| tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ~ parziale |
+| tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ✓ arriva |
 | turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange | ~ parziale |
-| verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ~ parziale |
-| verifica | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio | verification | ~ parziale |
+| verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
+| verifica | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio | verification | ✓ arriva |
 | versioni | l'archivio che tiene lo stato di ogni proposta di scrittura -- in attesa, in corso, applicata, rifiutata, scaduta -- insieme al corpo di prima e a quello di dopo, e conserva per sempre l'ultima copia precedente di ogni oggetto scritto perche' e' l'unica esistente al mondo e permette di tornare indietro | revisions | ✓ arriva |
-| vive | il valore che Home Assistant sta dichiarando in questo momento per un'entita' -- la sua unita', la sua classe, l'istante dell'ultimo cambiamento -- letto dallo specchio dello stato invece che dal registro statico, per i casi in cui i due possono non coincidere | reported | ~ parziale |
-| vocabolario | il modulo che tiene in un posto solo le parole con cui i consumi vengono raccontati -- i cinque livelli di affidabilita' di un costo dal piu' debole al piu' forte, e le etichette con cui ogni provider viene mostrato -- cosi' che nessun'altra pagina le reinventi a modo suo | vocabulary | ~ parziale |
+| vive | il valore che Home Assistant sta dichiarando in questo momento per un'entita' -- la sua unita', la sua classe, l'istante dell'ultimo cambiamento -- letto dallo specchio dello stato invece che dal registro statico, per i casi in cui i due possono non coincidere | reported | ✓ arriva |
+| vocabolario | il modulo che tiene in un posto solo le parole con cui i consumi vengono raccontati -- i cinque livelli di affidabilita' di un costo dal piu' debole al piu' forte, e le etichette con cui ogni provider viene mostrato -- cosi' che nessun'altra pagina le reinventi a modo suo | vocabulary | ✓ arriva |
 
 > **`promessa`** (qui) e **`promesse`** (nei «Nomi degli strumenti», sotto) sono **due cose
 > diverse**: la prima e' il concetto/modulo Python (il significato di «una promessa nel ponte»), la
@@ -525,52 +525,96 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > `.superpowers/sdd/2026-08-28-il-glossario/task-7-risposte.md` e `task-7-report.md` (non
 > tracciati, cartella di processo).
 
-> **Ricalibratura dei `✓` dopo una review indipendente (Task 7): 12 righe passano da `✓` a
-> `~`.** Il criterio applicato al primo passaggio ("la funzione principale arriva anche con parole
-> diverse") si e' rivelato troppo permissivo su una parte del campione: una review ha rigiudicato
-> un campione di 15 righe `✓` con un criterio piu' affilato --
+> **Ricalibratura del confronto (Task 7): il primo criterio di misura convergeva a zero, ed e'
+> stato sostituito.** Una prima verifica indipendente aveva confrontato ogni risposta con
+> "varrebbe identica per qualunque altro software esistente?" -- un insieme infinito, contro cui
+> nessun nome tecnico puo' differenziarsi: applicato fino in fondo, quel criterio non ammette
+> **nessun** `✓` (`watcher` e' la definizione da manuale dell'Observer, `parse` e' la definizione
+> di parsing, `revisions` e' git -- eppure erano risposte corrette). Due passate con quel criterio
+> avevano declassato 32 righe da `✓` a `~` (e una, `forme`, da `~` a `✗`); una review indipendente
+> ha giudicato che la seconda passata aveva sovracorretto, e le 32 righe sono state riesaminate da
+> capo con un criterio diverso.
 >
-> **la risposta del lettore descrive il tratto DISTINTIVO che la frase "che cosa fa" segnala,
-> oppure solo la CATEGORIA abbastanza larga da contenerlo?**
+> **Il criterio corretto confronta ogni risposta con le altre 79 righe di QUESTO glossario, non
+> con l'universo del software:**
 >
-> -- e ha dissentito su 9. In tutte e 9 la risposta era la definizione da dizionario della parola
-> inglese, indistinguibile da quella che il lettore darebbe per QUALUNQUE altra istanza dello
-> stesso pattern: *"archivio persistente dove si salvano dati"* per `store` non dice niente di
-> "mai una connessione condivisa fra sottosistemi", che e' il punto della riga; *"operazione che
-> produce un effetto"* per `action` e' la definizione di qualunque comando in qualunque software;
-> *"variabile booleana o marcatore"* per `flag` e' la definizione piu' generica possibile e non
-> tocca il passo di migrazione gia' avvenuto; *"replica sincronizzata"* per `mirror` manca la
-> ragione d'essere del concetto (essere confrontato col registro statico quando divergono);
-> *"qualcosa di segnalato"* per `reported` e' quasi circolare. Riapplicando lo stesso criterio a
-> **tutte** le righe `✓` rimaste (non solo al campione), altre 3 sono cadute per lo stesso motivo
-> -- risposte tautologiche/circolari che ripetono la parola inglese senza toccare nessun dettaglio
-> specifico della riga: `direction` ("un orientamento... verso cui qualcosa tende" non nomina le
-> sette categorie del bilancio energetico), `aspect` ("un aspetto, una dimensione... di qualcosa"
-> e' circolare sulla parola stessa, non nomina le sei dimensioni fisse dell'osservatore), `ceiling`
-> ("un valore massimo... a qualcosa" e' circolare, non tocca "mai superato in silenzio, il taglio
-> si dichiara"). Le altre righe rigiudicate (comprese quelle non nel campione originale) hanno
-> retto: la risposta nomina un meccanismo specifico -- non solo la categoria -- anche quando la
-> forma resta generica (es. `compose`: "combinare piu' componenti in un'unita' coerente" nomina
-> l'assemblaggio molti-a-uno, non solo "fa qualcosa").
+> - **`✗` non arriva** -- il lettore atterra su un'altra cosa o su niente: nomina un dominio o un
+>   meccanismo che la riga non e' (`home`->homepage, `directory`->cartella, `heartbeat`->ping di
+>   liveness), dice "non mi dice niente", o due lettori indipendenti divergono senza condividere
+>   il senso corretto.
+> - **`~` parziale** -- il lettore atterra nella famiglia giusta ma sulla forma sbagliata (nomina
+>   l'input al posto del processore, il dato al posto del modulo, un numero al posto di un
+>   insieme), oppure la stessa risposta descriverebbe altrettanto bene un'ALTRA riga di questa
+>   stessa tabella.
+> - **`✓` arriva** -- la risposta, sovrapposta alla riga, nomina la stessa cosa con parole diverse.
+>   **Gli invarianti non bloccano il `✓`**: ogni *sempre/mai/solo/unico*, ogni elenco di campi,
+>   ogni scelta di persistenza o caching, ogni percorso di file sono dettagli d'implementazione --
+>   vanno nel docstring quando si scrivera' il codice, non nel nome.
 >
-> **Le 12 righe passate da `✓` a `~`:** `archivio`, `azione`, `bersaglio`, `direzione`, `famiglia`,
-> `flusso`, `gamba`, `segno`, `servizi`, `specchio`, `tetto`, `vive`. Nessuna e' scesa a `✗`: la
-> risposta resta nel campo giusto, e' solo troppo generica per contare come "il nome regge senza
-> riserve" -- esattamente cio' che la fondamenta del Task 7 intende quando dice che un `~` "e' un
-> nome che chi legge il codice dovra' comunque andare a verificare".
+> **La prova che il criterio nuovo discrimina davvero, non solo che e' piu' permissivo:** il
+> gruppo `store`/`registry`/`journal`/`revisions` era stato co-lottizzato apposta per vedere se
+> collassavano sulla stessa risposta -- e il lettore li ha separati tutti e quattro, ciascuno con
+> un pattern specifico e diverso (archivio persistente generico / mappa chiave-valore / log di
+> audit / cronologia con ripristino). Quell'esperimento e' la misura vera di questo gruppo: le due
+> passate precedenti lo avevano ignorato, declassando `store` (e in un giro `journal`) sulla sola
+> base del confronto con "qualunque altro software".
 >
-> **Conteggio finale sulle 80 righe, dopo la ricalibratura: 30 `✓`, 47 `~`, 3 `✗` in arbitrato**
-> (`casa`, `orologio`, `tempo`). Il numero e' piu' basso del primo conteggio (42 `✓`) di proposito:
-> comunica al proprietario quanti nomi reggono SENZA riserve, non quanti "assomigliano abbastanza".
+> **Riapplicato il criterio a tutte e 32 le righe declassate (nessun'altra riga toccata): 30
+> tornano `✓`, 2 restano `~` per una ragione specifica e diversa dalla precedente:**
 >
-> **Nota sulla conduzione della prova, per chi la ripetera':** al prompt preparato
-> dall'implementer (vedi sopra, identico per tutti i lotti) il controller ha aggiunto una riga
-> unica, presente in ogni dispaccio: *"Rispondi senza usare strumenti: e' una domanda di sola
-> opinione."* Non rivela nulla del dominio; serve solo a impedire che un agente vada a cercare
-> contesto (repository, spec) invece di rispondere dal solo nome, il che avrebbe reso la prova
-> incapace di fallire. Tutti i dispacci (primo giro: 8 lotti, un lettore ciascuno; secondo giro: 1
-> lotto, due lettori indipendenti su modelli diversi) hanno avuto `tool_uses: 0`.
+> - **`famiglia` (family)** -- *"una collezione o categoria di entita' che condividono proprieta'
+>   comuni"* descriverebbe altrettanto bene la riga `stati` (*"un insieme chiuso di valori che
+>   condividono una proprieta'... usato per verificare l'appartenenza"*): stessa forma testuale,
+>   due righe diverse. Non e' un'invenzione di questa nota: il glossario stesso avverte, nella nota
+>   su `genere`/`specie`/`famiglia` sotto la tabella, che questi tre nomi rischiano proprio questo.
+> - **`servizi` (services)** -- *"interfaccia o raccolta di operazioni disponibili che il sistema
+>   mette a disposizione"* nomina il CONTENITORE (il catalogo), non il singolo elemento che la riga
+>   descrive (*"un'operazione che un dominio... dichiara di saper eseguire"*) -- la stessa
+>   confusione grana-diversa gia' documentata per la coppia `registro`/`servizi` nella nota sotto
+>   la tabella, ma qui e' la RISPOSTA a cadere dal lato sbagliato della distinzione, non il nome.
 >
+> Nessuna delle 32 e' scesa a `✗`.
+>
+> **`forme` (shapes) resta `✗`, e non per la stessa pressione delle altre 32: l'argomento e'
+> indipendente e regge da solo.** Non e' un caso di "manca un dettaglio" (il difetto delle 32
+> corrette sopra): **entrambi** i lettori indipendenti, al primo giro e alla ri-prova, hanno
+> incluso un senso "visivo/geometrico" (*"forme geometriche"*, *"qualcosa di visuale"*) per un
+> modulo che compone corpi JSON di automazioni/script/scene e non genera nulla di visivo -- non e'
+> "famiglia giusta, forma generica", e' "atterra anche su un dominio che la riga non e'", la stessa
+> definizione di `✗` del criterio nuovo. Non va all'arbitrato (un solo candidato provato finora):
+> il secondo candidato, `composer`, e' preparato in
+> `.superpowers/sdd/2026-08-28-il-glossario/task-7-lotti.md`, non ancora dispacciato.
+>
+> **Due limiti della prova, perche' la prossima taratura non ricaschi negli stessi errori:**
+>
+> 1. **Il nome nudo sottostima ogni nome, in modo sistematico.** Chi incontra `vocabulary` nel
+>    codice lo incontra come `consumi/vocabolario.py`; chi incontra `flag` lo incontra come
+>    `migrazione/segno.py`. La prova toglie apposta il percorso -- cioe' toglie il dominio -- per
+>    non regalare un indizio; ma questo significa che una riga puo' sembrare debole nella prova
+>    per una ragione che sparisce nel momento in cui il nome vive nel file giusto. E' un limite
+>    della prova, non un difetto automatico dei nomi.
+> 2. **Il metro e' questo glossario, non l'universo del software.** Un nome tecnico il cui
+>    significato standard coincide con la funzione della riga (`dispatcher`, `parse`, `resolver`)
+>    non e' un fallimento della prova: e' esattamente il risultato che una buona scelta di nome
+>    dovrebbe produrre. Il confronto giusto e' "si confonde con un'altra riga di questa tabella?",
+>    non "esiste gia' altrove con questo significato?" -- la seconda domanda, applicata sul serio,
+>    boccia ogni nome tecnico riuscito.
+>
+> **Cosa comporta ciascun esito -- l'azione che ne segue, perche' un `~` che non decide niente non
+> e' una misura:**
+>
+> - **`✗`** -> si prepara un secondo candidato (se non ancora tentato) o si passa all'arbitrato del
+>   proprietario (se gia' al secondo giro). Cosi' come per `casa`, `orologio`, `tempo`, `forme`.
+> - **`~` per forma sbagliata o collisione con un'altra riga** (es. `famiglia`, `servizi`, sopra)
+>   -> il nome resta quello scritto in tabella, ma la riga porta l'annotazione del rischio
+>   specifico, cosi' che chi rinomina sappia perche' verificare due volte prima di usarlo alla
+>   cieca.
+> - **`~` per sola genericita' o dettagli mancanti** (la maggioranza delle righe `~` di questo
+>   documento) -> nessuna azione: il nome va bene, descrive la riga giusta, semplicemente un
+>   lettore nudo senza il codice davanti non recupera ogni sfumatura -- cosa vera per quasi
+>   qualunque nome di una riga con una frase "che cosa fa" lunga.
+> - **`✓`** -> nessuna azione, il nome regge senza riserve.
+
 > **Dubbio residuo sul Lotto 7 (primo giro), chiuso con una misura: `watcher` + `observations` +
 > `baseline` reggono anche lontane dal loro cluster.** Erano finite insieme nel lotto finale del
 > primo giro, tutte e tre dal sottosistema `cervello` (`osservatore.py`, `osservazioni`,
@@ -584,87 +628,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > scostamenti"*) -- nessun cambio di esito (`watcher` e `observations` restano `✓`, `baseline`
 > resta `~`, coerente con la lettura gia' registrata: coglie "riferimento per confronto" ma non
 > "soglia fissa che si allarga e mai si restringe"). Il dubbio e' chiuso da una misura, non da
-> un'opinione.
->
-> **La ri-prova ha pero' prodotto un reperto non cercato: `shapes` (forme), fra i sette nomi di
-> contorno, ha ricevuto una seconda lettura indipendente che diverge da quella del primo giro.**
-> Primo giro: *"forme geometriche, template, o configurazioni predefinite di qualcosa"*. Ri-prova
-> (lettore diverso, indipendente): *"non mi dice niente di preciso -- potrebbe essere
-> formato/struttura dati, o qualcosa di visuale, o una famiglia di tipi."* Stesso schema con cui
-> `house` e' stato bocciato: due letture indipendenti che divergono sullo stesso nome nudo.
->
-> **Giudicato con lo stesso metro di `house`, ma con esito diverso: resta `~`, non scende a `✗`.**
-> La differenza non e' cosmetica -- e' nel contenuto della divergenza. Per `house`, un lettore
-> diceva *"potrebbe essere QUASI QUALUNQUE COSA"* (incertezza illimitata) e l'esempio piu' estremo
-> era *"un edificio in un gioco"* -- un dominio senza nessuna relazione con la funzione reale
-> (una rappresentazione fisica a quattro livelli), e NESSUNA delle due letture toccava quella
-> funzione nemmeno alla lontana. Per `shapes`, il lettore elenca esattamente tre sensi concreti
-> (non "qualunque cosa"), e in ENTRAMBE le letture -- prima e seconda -- compare un senso che
-> corrisponde davvero alla funzione (*"template/configurazioni predefinite"* nel primo giro,
-> *"formato/struttura dati"* nella ri-prova sono la stessa idea: uno schema/struttura pronta da
-> riempire, che e' esattamente "compone la struttura pronta da scrivere per ciascun tipo di
-> oggetto"). L'unico elemento fuori da questo schema (*"una famiglia di tipi"*) resta comunque nel
-> vocabolario del software/dei tipi, non un dominio bizzarro come "un edificio in un gioco".
->
-> **Riconsiderato dopo un confronto piu' onesto col caso `house` (rilievo del coordinatore): la
-> distinzione sopra non regge fino in fondo, e l'esito cambia.** Il rilievo: `"formato/struttura
-> dati"` e' generico tanto quanto `"contenitore/raggruppamento"` era per `house` -- non nomina
-> niente di specifico su `forme`, e la mia lettura "cluster coerente di sensi" pesava piu' la
-> coincidenza lessicale della parola "struttura" che il contenuto reale della risposta. Riesaminato
-> con questo dubbio in mente: **entrambi i lettori, indipendentemente, includono "qualcosa di
-> visivo/geometrico" fra le loro letture** (*"forme geometriche"* al primo giro, *"qualcosa di
-> visuale"* alla ri-prova) -- ed e' un senso **sbagliato** per questo modulo, che non genera nulla
-> di visivo ma compone corpi JSON di automazioni/script/scene. Non e' un dettaglio isolato di un
-> solo lettore: e' la lettura piu' immediata della parola "shapes", condivisa da entrambi, e punta
-> nella direzione sbagliata. Il senso corretto (`template`/`formato-struttura`) resta presente in
-> entrambe le liste, ma **accanto**, non al posto, del senso sbagliato -- non e' la lettura
-> dominante, e' un'ipotesi fra le altre. Con questo, la divergenza su `shapes` e' piu' vicina a
-> quella di `house` di quanto avessi scritto: **cambio l'esito da `~` a `✗`.**
->
-> **Non e' pero' identica a `house` sul piano procedurale: qui e' stato provato un solo candidato
-> (`shapes`), non due.** Il vincolo "massimo due giri per parola" del brief riguarda i candidati,
-> non le letture dello stesso candidato -- quindi `forme` non va all'arbitrato: va al **secondo
-> giro**, con un secondo candidato. Il report del Task 4 aveva gia' scartato `composer` una volta
-> per genericita', segnalandolo pero' come "l'alternativa piu' vicina" se la prova avesse bocciato
-> `shapes` -- e' il secondo candidato, preparato per un lotto nuovo in
-> `.superpowers/sdd/2026-08-28-il-glossario/task-7-lotti.md`, non ancora dispacciato.
-
-> **Seconda ricalibratura (Task 7): il criterio non era stato applicato con lo stesso rigore ai
-> 30 sopravvissuti alla prima.** Un secondo passaggio del reviewer ha rigiudicato un nuovo campione
-> di 8 righe `✓` e dissentito su 5: `dispatcher`, `verdict`, `conditions`, `advisor`, `settings` --
-> stessa identica forma dei 12 gia' corretti: la risposta e' la definizione da dizionario della
-> parola inglese, che varrebbe IDENTICA per un `dispatcher`/`verdict`/`conditions`/`advisor`/
-> `settings` di qualunque altro software. Esempio guida: *"un orchestratore che smista richieste
-> verso i loro destinatari"* per `dispatcher` non tocca "un solo punto d'ingresso che non solleva
-> mai un'eccezione" -- lo stesso identico buco per cui `store` era gia' caduto.
->
-> **Riapplicato il criterio a tutte e 30 le righe, non solo alle 8 del campione, usando
-> `dispatcher` come metro: se la risposta varrebbe identica per il dispatcher/store/eccetera di
-> QUALUNQUE altro software, e' `~`.** Tenuta ferma la cautela gia' scritta sopra -- "manca un
-> dettaglio secondario" non e' "non dice niente di specifico": `resolver` resta `✓` perche' nomina
-> esplicitamente "ambiguita'" (il meccanismo preciso della riga), `parse` e `compose` restano `✓`
-> perche' "trasforma in struttura"/"combina in un'unita' coerente" **e'** il punto della riga, non
-> un'aggiunta. Con lo stesso criterio restano `✓` anche `raw`, `timezone`, `watcher`,
-> `observations`, `promise`, `revisions` (le risposte nominano un meccanismo specifico -- "prima di
-> ogni giudizio", "mappa istanti nel tempo", "notifica quando cambia", "sia misurazioni sia fatti",
-> "impegno futuro richiesto", "traccia e ripristina" -- non solo la categoria).
->
-> **Le altre 20 righe rigiudicate cadono per lo stesso motivo:** oltre alle 5 del campione,
-> `journal` (segnalato dal reviewer come dubbio, confermato qui: "log per audit/recovery" non
-> tocca "registro UNICO... a prescindere da chi ha agito"), `occurrence`, `lookup`, `steering`,
-> `intent`, `highlight`, `briefing`, `fact`, `subscription`, `dashboards`, `rejection`,
-> `downgrade`, `clearance`, `verification`, `vocabulary`. In ciascuna, la risposta si ferma alla
-> categoria generica del nome inglese e non tocca il vincolo "mai/sempre/solo/unico" che la frase
-> «che cosa fa» segnala come tratto specifico della riga (es. `verification`: "un processo di
-> validazione" non dice "mai i valori dei parametri, mai le capacita' di un dispositivo, solo
-> dominio/servizio/bersaglio"; `subscription`: "un meccanismo di iscrizione a pagamento" non dice
-> "riconosciuto SOLO dalla presenza della credenziale, MAI dal suo valore, per non stamparla in un
-> log per sbaglio").
->
-> **Conteggio finale sulle 80 righe, dopo la seconda ricalibratura: 10 `✓`, 66 `~`, 4 `✗`** (i tre
-> gia' in arbitrato piu' `forme`, il cui `✗` va pero' a un secondo giro con `composer` e non
-> all'arbitrato -- vedi la nota su `shapes`, sopra). Il numero scende ancora, di nuovo di proposito:
-> un secondo giro di indulgenza sarebbe stato lo stesso errore del primo, solo piu' piccolo.
+> un'opinione. (E' in questo stesso lotto di ri-prova che e' emerso il reperto su `shapes`,
+> discusso sopra.)
 
 ## Le parole ordinarie
 
