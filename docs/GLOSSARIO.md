@@ -32,6 +32,18 @@ richiede affatto.
 
 ## Il controllo di collisione si fa sul codice, non solo sul glossario
 
+**Istruzione mancante, aggiunta durante la re-review mirata: quando nasce un concetto, la riga
+entra con l'inglese vuoto, e l'inglese si decide in un passaggio successivo -- mai nello stesso
+passaggio.** Il passo 3 del controllo, sotto, scatta solo se questo gesto avviene per primo:
+qualcuno scrive la riga italiana con la colonna «inglese» vuota, e SOLO DOPO qualcun altro (o lo
+stesso, in un secondo momento) sceglie un candidato. Nessuna riga di questo documento, prima
+d'ora, lo prescriveva: il comportamento naturale — scrivere la riga e il suo inglese nello stesso
+istante, perche' e' cosi' che viene da lavorare — salterebbe il presupposto senza che nessuno se ne
+accorga, e il passo 3 non scatterebbe mai per il concetto appena nato. Non e' un dettaglio di
+stile: e' la differenza fra un controllo che protegge le parole non ancora decise (il suo scopo
+dichiarato, vedi il caso `intent`/`intento` sotto) e un controllo che non ha mai l'occasione di
+proteggere nessuno perche' il momento in cui servirebbe non viene mai creato.
+
 **Corretto durante la review del Task 4, dopo che due nomi ci sono passati sotto: un grep sul solo
 `docs/GLOSSARIO.md` non basta.** Il documento non e' l'unico posto dove l'inglese gia' esiste:
 `hiris/` ne e' pieno, in sottosistemi in inglese (`reasoning/`, `backends/`, `proxy/`) e in commenti
@@ -387,11 +399,22 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > preciso concetto).
 >
 > **Primo candidato, `sample`, bocciato dalla prova -- e la lezione vale oltre questa riga:
-> correggere un difetto non garantisce di non introdurne un altro.** `sample` era pulito sulla
-> collisione (zero occorrenze in `hiris/`, zero nel glossario) ma non era mai stato **provato**
-> come tutti gli altri candidati di questo documento, ed e' stato marcato onestamente
-> `~ non ri-provato` invece di `✓`. Ri-provato dal coordinatore, due lettori indipendenti, nome
-> nudo: entrambi lontani. A: *«un esempio, un campione, un pezzo rappresentativo... insomma una
+> correggere un difetto non garantisce di non introdurne un altro.** `sample` era stato dichiarato
+> pulito sulla collisione ("zero occorrenze in `hiris/`, zero nel glossario"), ma non era mai
+> stato **provato** come tutti gli altri candidati di questo documento, ed e' stato marcato
+> onestamente `~ non ri-provato` invece di `✓`. **Corretto durante la re-review mirata: la
+> dichiarazione "zero occorrenze" era falsa.** Ce ne sono **tre**, tutte in log:
+> `backends/openai_compat_runner.py:780,860,1080`, tutte `"Sample: %r"`. Il grep di verifica era
+> **case-sensitive** e ha cercato solo la forma minuscola, non anche quella con la maiuscola, quindi
+> le ha mancate. **La conclusione regge lo stesso** (sono stringhe di formato dentro un log, prosa
+> pura -- non un identificatore, una chiave o un nome di file: la regola non blocca), ma la frase
+> era imprecisa e va corretta, non solo la conclusione. **La trappola da scrivere, perche' e' la
+> terza volta che questa fetta la incontra:** il controllo di collisione va fatto
+> **case-insensitive**. `Sample`, `RAW`, `View` sono lo stesso nome per un lettore umano (e per il
+> modello che sceglie uno strumento dal suo nome) quanto `sample`, `raw`, `view` — un grep
+> case-sensitive puo' dichiarare pulito un candidato che in realta' collide, semplicemente perche'
+> la maiuscola iniziale di un log o di un nome di classe lo nasconde a un pattern che cerca solo la forma minuscola.
+> Ri-provato dal coordinatore, due lettori indipendenti, nome nudo: entrambi lontani. A: *«un esempio, un campione, un pezzo rappresentativo... insomma una
 > dimostrazione di come funziona il resto»*. B: *«un campione: un piccolo sottoinsieme di dati
 > estratto da un insieme piu' grande, usato per test, anteprima o rappresentazione statistica»*. La
 > riga dice *«un cambiamento di stato registrato esattamente come HA lo riporta, prima che
@@ -436,6 +459,23 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > campionato, non un evento di cambiamento). Non e' un `✓`: la natura evento-driven di `grezzo`, la
 > ragione per cui questa riga e' un concetto a se' e non un sinonimo di "misura periodica", non e'
 > arrivata a nessuno dei due lettori.
+>
+> **`reading` sta accanto a un `read` gia' assegnato -- stessa famiglia di rischio di
+> `promise`/`promises` e `stati`/`states`, nota aggiunta durante la re-review mirata.** «Le parole
+> ordinarie» da' gia' `read` sia a `leggi` sia a `letto` (sopra): `reading` e' la forma in *-ing*
+> di quello stesso `read`, ma per un concetto diverso -- non "l'atto di leggere un file o un
+> campo", il dato stesso, una misura di un sensore con il suo istante. Lo script di controllo
+> duplicati (sotto, «Controlli di completezza») confronta token esatti e non lo vede: `reading` e
+> `read` non sono la stessa stringa, quindi non compaiono insieme nel suo output, anche se dopo la
+> rinomina degli identificatori si otterrebbero funzioni/variabili `read_*` (da `leggi`/`letto`) e
+> una tabella o classe `Reading`/`reading` nello stesso sottosistema (`cervello/`) -- lo stesso
+> tipo di vicinanza visiva e concettuale che ha fatto scartare `raw` (radice condivisa con
+> "read" solo per assonanza, non e' questo il punto) e che rende `promise`/`promises` un rischio
+> anche quando la radice e' voluta. Non e' un'istruzione a cambiare nome: `reading` resta, la nota
+> serve a chi rinomina davvero il codice, perche' verifichi che un `read_qualcosa` (da `leggi`) e
+> una `Reading` (da `grezzo`/`cambi`) nello stesso file o modulo restino leggibili come cose
+> diverse, non due varianti della stessa radice lette distrattamente come sinonimi.
+
 
 > **`ancora` era un OMONIMO fra due sottosistemi, oggi risolto -- fusa qui in una nota sola**
 > (la review finale ha trovato tre note in sequenza a raccontare la stessa vicenda in tre stadi --
@@ -613,15 +653,32 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > dello script -- rilancia con `PYTHONIOENCODING=utf-8` davanti al comando.)
 >
 > **Eseguito oggi: 39 `✓`, 39 `~`, 2 arbitrato (senza misura, `orologio`/`tempo`) su 80 righe.**
-> Il movimento rispetto al 42/35/3 scritto sopra: -1 arbitrato (Task 9 ha deciso `casa`, sebbene
-> con esito `~` dopo il rilievo B1, non `✓`) e -2 `✓`/+2 `~` (`grezzo`/`cambi`, scese da `✓` per la
-> collisione di `raw` col rilievo A2; il candidato di sostituzione e' passato da `sample`
-> -- bocciato dalla prova -- a `reading`, confermato ma anch'esso a `~`, non a `✓`: vedi la nota
-> sotto la tabella «I concetti». Il totale non si e' mosso una seconda volta perche' l'esito era
-> gia' `~` prima e dopo quel cambio di candidato). Nessuna delle due cifre precedenti (42/35/3
-> ne' 41/37/2) era falsa quando scritta: erano entrambe esatte al proprio commit, e sono diventate
-> stantie quando il documento e' cambiato sotto di loro senza che il numero venisse riallineato --
-> la ragione per cui questa nota ora spiega COME ricavarlo, non solo QUANTO fa oggi.
+>
+> **Corretto durante la re-review mirata: la riconciliazione precedente non tornava a conti fatti,
+> e una sua frase era falsa.** L'aritmetica giusta, verificata sui commit veri (`git show
+> <hash>:docs/GLOSSARIO.md`, non a memoria):
+>
+> - **`a5735c1` = 42 `✓` / 35 `~` / 3 arbitrato.** Il "conteggio finale" del primo giro, sopra.
+> - **`fc1adfd` = 42 `✓` / 36 `~` / 2 arbitrato.** Quattro righe si sono mosse fra i due commit, non
+>   una sola: `famiglia` (`✓`→`~`), `servizi` (`✓`→`~`), `forme` (`~`→`✓`, `shapes` sostituito da
+>   `composer`), `casa` (arbitrato→`✓` **direttamente**, non passando da `~` -- il Task 9 l'ha
+>   decisa e misurata subito a `✓`, prima che il rilievo B1 la correggesse). Netto: `✓` invariato
+>   (42, due escono e due entrano), `~` +1 (35→36), arbitrato -1 (3→2, `casa` decisa) — torna.
+> - **Oggi = 39 `✓` / 39 `~` / 2 arbitrato.** Da `fc1adfd`, altre tre righe scendono da `✓` a `~`,
+>   nessuna in altra direzione: `casa` (`✓`→`~`, rilievo B1 -- il criterio per un lettore che
+>   nomina prima la homepage e' `~`, non `✓`), `grezzo` e `cambi` (`✓`→`~`, rilievo A2 -- la
+>   collisione di `raw` ha imposto un cambio di candidato, prima `sample` poi `reading`, e il
+>   nuovo esito misurato e' `~`, non `✓`). Netto: `✓` -3 (42→39), `~` +3 (36→39), arbitrato
+>   invariato — torna.
+>
+> **Una frase della riconciliazione precedente era falsa, e non per un typo:** diceva *«nessuna
+> delle due cifre precedenti (42/35/3 ne' 41/37/2) era falsa quando scritta: erano entrambe esatte
+> al proprio commit»*. **`41/37/2` non e' mai stato lo stato di nessun commit.** Era una proiezione
+> aritmetica scritta in un brief del coordinatore (il calcolo di "cosa dovrebbe dare B1 da solo"),
+> presa per un fatto storico invece che per l'ipotesi che era. Corretto qui: le uniche due cifre
+> che sono davvero esistite come stato di un commit sono `42/35/3` (`a5735c1`) e `42/36/2`
+> (`fc1adfd`), sopra -- entrambe verificate ora, non solo scritte a un certo punto e mai piu'
+> ricontrollate.
 >
 > **`anagrafe`: `directory` bocciato, sostituito da `topology`.** Il lettore nuovo ha letto
 > `directory` come cartella di filesystem — *«un catalogo organizzato di elementi, in informatica
@@ -1313,10 +1370,15 @@ codice:
 > confermato da quattro letture indipendenti su un compito piu' pertinente.
 >
 > **`fetch` resta cosi' com'e' -- decisione scritta ora, mancava, durante la review finale del
-> ramo.** `fetch(...)` e' la funzione globale del browser per le chiamate HTTP dalla pagina, e
-> compare **oltre 50 volte** in `hiris/app/static/**/*.js` (`chat/agents.js:79,140,157`,
-> `chat/main.js:18`, `chat/send.js:43`, e nel resto del frontend) — non un'invenzione di HIRIS, la
-> stessa API che ogni pagina web userebbe per parlare col proprio backend. Stesso ragionamento gia'
+> ramo.** `fetch(...)` e' la funzione globale del browser per le chiamate HTTP dalla pagina.
+> **Corretto durante la re-review mirata: la cifra "oltre 50 volte" contava il TOKEN `fetch`, non
+> le chiamate** -- il brief da cui veniva ereditava un numero senza dire quale delle due cose
+> stesse contando, e non l'ho ri-misurato. Le chiamate vere, `fetch(`, sono **26** in
+> `hiris/app/static/**/*.js` (`chat/agents.js:79,140,157`, `chat/main.js:18`, `chat/send.js:43`, e
+> nel resto del frontend); il token nudo `fetch` arriva a 57 perche' conta anche occorrenze non di
+> chiamata, come la stringa `'X-Requested-With': 'fetch'` (`chat/agents.js:79`). Il numero che
+> conta per il ragionamento sotto e' 26 (le chiamate reali): non un'invenzione di HIRIS, la stessa
+> API che ogni pagina web userebbe per parlare col proprio backend. Stesso ragionamento gia'
 > scritto per `search`/`execute`/`cancel` contro `re.search()`/`sqlite3.execute()`/
 > `asyncio.Task.cancel()` (sopra, «I nomi degli strumenti»): il match non cade su un identificatore
 > che QUESTO progetto ha scelto per nominare un proprio concetto diverso, cade su un'API di
@@ -1545,16 +1607,26 @@ l'unica eccezione, ed e' dichiarata qui, non lasciata a un lettore che deve acco
 guardando una tabella con una colonna intera bianca. **Nota per la cronaca: nel dispaccio al
 proprietario si era riferito "zero righe senza nome" -- era falso proprio per questa tabella, e la
 correzione e' qui.**
-Le ragioni del rinvio: (1) questi sono **dati persistiti** (`genere TEXT NOT NULL`,
-`specie TEXT NOT NULL`, ...), non identificatori — tradurli richiede una migrazione delle righe
-gia' scritte, la stessa classe di fetta separata gia' dichiarata per i 13 nomi degli strumenti
-sopra, non un'estensione della rinomina degli identificatori; (2) tradurre ~40 valori enum-like
-col rigore che le altre ~80 righe di questo documento hanno gia' ricevuto (controllo di collisione
-a tre passi PIU' la prova del lettore nuovo dove serve) e' un lavoro della stessa taglia di un
-intero task di questa fetta, non una riga da riempire di corsa dentro un giro di correzioni; farlo
-senza quel rigore produrrebbe 40 opinioni etichettate come misure — esattamente il difetto che
-questo documento esiste per non fare. **Decisione: rinviato a un dispaccio dedicato**, con lo
-stesso metodo gia' usato per gli altri lotti di questa fetta — non deciso qui, non dimenticato.
+**Corretto durante la re-review mirata: la prima ragione scritta qui era una scelta di parole
+sbagliata, e citava un precedente che dimostra il contrario di cio' per cui veniva invocato.** La
+prima stesura diceva "questi sono dati persistiti, non identificatori: tradurli richiede una
+migrazione, quindi il NOME si rinvia" -- ma il paragrafo appena sopra, per i 13 nomi degli
+strumenti, dice esattamente l'opposto: *«Sono dati... il nome si decide qui, si applica in una
+fetta che sa gestire la migrazione»*. Per quei 13 l'essere dati persistiti e' la ragione per cui
+si rinvia l'APPLICAZIONE, non la ragione per rinviare la decisione -- la colonna «inglese» dei 13
+strumenti infatti e' piena. Essere un dato persistito, da solo, non giustifica un rinvio della
+decisione qui: il nome **si potrebbe** decidere anche per questi ~40 valori, cosi' come e' stato
+deciso per i 13 strumenti.
+La ragione vera, e basta da sola: tradurre ~40 valori enum-like col rigore che le altre ~80 righe
+di questo documento hanno gia' ricevuto (controllo di collisione a tre passi PIU' la prova del
+lettore nuovo dove serve) e' un lavoro della stessa taglia di un intero task di questa fetta, non
+una riga da riempire di corsa dentro un giro di correzioni; farlo senza quel rigore produrrebbe 40
+opinioni etichettate come misure — esattamente il difetto che questo documento esiste per non
+fare. **Decisione: rinviato a un dispaccio dedicato**, con lo stesso metodo gia' usato per gli
+altri lotti di questa fetta — non deciso qui, non dimenticato. (La migrazione dei dati gia'
+scritti, quando i valori saranno decisi, restera' comunque un passo a se', come per i 13 nomi
+degli strumenti — quella parte della ragione originale non era falsa, era solo il posto sbagliato
+per usarla.)
 
 | costante | valori | dove vive | valori — inglese |
 |---|---|---|---|
