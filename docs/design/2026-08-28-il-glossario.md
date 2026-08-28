@@ -135,12 +135,22 @@ romperebbe in silenzio:
 - `schedulatore/turno.py:38` — `SOLA_LETTURA = ("cerca", "guarda", "legami", …)`: una **lista
   bianca di sicurezza**, indicizzata per nome;
 - `memoria/cache_indice.py:27` — l'etichetta `spazio` che identifica il chiamante (`"cerca"`,
-  `"ricorda"`) e' **persistita nell'indice**;
+  `"ricorda"`). **CORRETTO il 28/08 durante l'esecuzione: NON e' persistita.** `CacheIndice` e'
+  puramente in memoria — nessun `CREATE TABLE`, nessuna connessione, e il suo docstring dice
+  *«vive quanto il processo»*. L'errore era in questa spec e si e' propagato al piano e a due brief
+  prima che una review lo prendesse leggendo il sorgente invece del documento;
 - il testo del prompt dice al modello *«Usa "cerca" per trovare il nome giusto»*, in due punti
   (`casa/domande.py:386`, `memoria/interpretazione.py:198`).
 
-Rinominarli e' **un cambio di prodotto con migrazione dati**. Il loro nome si decide qui; si applica
-nella fetta che sa gestire la migrazione.
+**Verificato il 28/08: i nomi degli strumenti NON finiscono in nessuna colonna di database.**
+`chiamata_json` nella tabella `promesse` contiene una chiamata di **servizio** di Home Assistant
+(`servizio`, `bersaglio`, `dati`), non un nome di strumento.
+
+Rinominarli resta comunque **una fetta a se'**, ma per una ragione diversa e piu' forte di una
+migrazione: **quei nomi li legge il modello**, e li usa per scegliere quale strumento chiamare.
+Cambiarli e' un **cambio di comportamento**, non una rinomina meccanica — e va fatto guardando che
+due strumenti non finiscano con nomi che un modello puo' confondere. Il loro nome si decide qui; si
+applica in una fetta che sappia provarlo sul comportamento.
 
 ### ④ I valori di dominio — entrano nel glossario, non nella rinomina
 
