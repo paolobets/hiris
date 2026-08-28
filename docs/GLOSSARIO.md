@@ -847,6 +847,20 @@ nome si capisca, deve anche **non confondersi con un altro dei tredici**. Il pro
 coppie a rischio in italiano -- `cerca`/`richiama` e `ricorda`/`richiama` -- e il compito di questo
 lotto e' non farle restare vicine in inglese.
 
+**Lo standard che regge questa sezione, prima ancora del controllo di collisione sul codice: se un
+lettore che non conosce il progetto confonde due strumenti, li confondera' anche il modello.** Il
+modello sceglie lo strumento dal nome che vede nel catalogo -- e' esattamente la posizione del
+lettore nuovo, senza contesto, senza descrizione del programma. Per questo la prova del lettore
+nuovo non e' opzionale su questo lotto: e' la stessa identica misura richiesta per gli altri 80
+concetti, applicata alla parte del glossario dove sbagliare costa di piu'.
+
+**La prova e' stata eseguita** (`.superpowers/sdd/2026-08-28-il-glossario/task-8-risposte.md`): due
+lettori indipendenti, su **modelli diversi**, lotto unico dei tredici nomi (corretto tenerli
+insieme: un modello li vede sempre tutti nello stesso catalogo, separarli avrebbe falsato la prova
+al ribasso), nessun contesto di dominio, `tool_uses: 0` per entrambi. Sulla prima domanda («cosa fa
+ciascuno») le due letture sono quasi sovrapponibili e i nomi reggono. E' la seconda domanda («quali
+confonderesti») ad aver prodotto il reperto che segue.
+
 **Corretto durante il Task 8: due delle tre ragioni con cui questa nota giustificava
 l'applicazione differita erano imprecise; una era proprio falsa.** Le ragioni vere, verificate sul
 codice:
@@ -892,19 +906,90 @@ codice:
 
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
-| cerca | Trova nella casa aree, entita', dispositivi, piani, automazioni, script o etichette a partire da un nome o alias in linguaggio naturale, restituendo la lista COMPLETA dei candidati quando piu' di uno corrisponde allo stesso nome | search |  |
-| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | show |  |
-| legami | Chi tocca una cosa della casa secondo Home Assistant -- quali automazioni, script, scene, gruppi o persone la nominano, e dove sta -- calcolato da Home Assistant su tutto cio' che ha caricato, non solo sui file che HIRIS legge da solo | related |  |
-| ricorda | Salva per sempre qualcosa che una persona ha detto sulla casa -- una preferenza, un divieto, un fatto, una regola -- col testo esatto sempre conservato e un'interpretazione strutturata facoltativa | remember |  |
-| richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch |  |
-| esegui | Chiama un servizio di Home Assistant per far succedere qualcosa nella casa -- accendere, spegnere, impostare -- su un bersaglio di entita' esatte oppure aree, piani, etichette o dispositivi | execute |  |
-| prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | promise |  |
-| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | promises |  |
-| disdici | Annulla una promessa non ancora mantenuta, dato il suo identificatore | cancel |  |
-| costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose |  |
-| conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm |  |
-| andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend |  |
-| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca | logbook |  |
+| cerca | Trova nella casa aree, entita', dispositivi, piani, automazioni, script o etichette a partire da un nome o alias in linguaggio naturale, restituendo la lista COMPLETA dei candidati quando piu' di uno corrisponde allo stesso nome | search | ~ parziale |
+| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | view | ~ non ri-provato |
+| legami | Chi tocca una cosa della casa secondo Home Assistant -- quali automazioni, script, scene, gruppi o persone la nominano, e dove sta -- calcolato da Home Assistant su tutto cio' che ha caricato, non solo sui file che HIRIS legge da solo | related | ~ parziale |
+| ricorda | Salva per sempre qualcosa che una persona ha detto sulla casa -- una preferenza, un divieto, un fatto, una regola -- col testo esatto sempre conservato e un'interpretazione strutturata facoltativa | remember | ✓ arriva |
+| richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch | ~ parziale |
+| esegui | Chiama un servizio di Home Assistant per far succedere qualcosa nella casa -- accendere, spegnere, impostare -- su un bersaglio di entita' esatte oppure aree, piani, etichette o dispositivi | execute | ✓ arriva |
+| prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | defer | ~ non ri-provato |
+| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | agenda | ~ non ri-provato |
+| disdici | Annulla una promessa non ancora mantenuta, dato il suo identificatore | cancel | ~ parziale |
+| costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose | ~ parziale |
+| conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
+| andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend | ~ parziale |
+| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca | logbook | ~ parziale |
+
+> **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
+> «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
+> collisione con un'altra riga lascia il nome ma porta l'annotazione del rischio specifico, cosi'
+> che chi rinomina sappia cosa verificare due volte. **In piu', qui, un terzo stato non scritto
+> altrove: `~ non ri-provato`** -- per un nome sostituito DOPO che il primo candidato ha fallito la
+> prova (sotto), verificato solo sul controllo di collisione a tre passi e non ancora rimesso
+> davanti a un lettore nuovo. E' un `~` piu' onesto di un `✓` non misurato: il documento vieta di
+> scrivere un esito che non e' stato provato (vedi i vincoli globali della fetta), e qui il rename
+> e' successivo alla prova gia' fatta, non coperto da essa.
+
+> **`promise`/`promises` -- il reperto principale della prova, sanato.** Entrambi i lettori indipendenti
+> hanno segnalato questa coppia come il rischio numero uno, per la quasi-omografia (*«differiscono
+> solo per una "s"»*, *«facilissimo scambiarli»*) prima ancora che per sovrapposizione di
+> significato. **Non e' un difetto introdotto da questa scelta di inglese: esiste gia' in italiano**
+> -- `prometti`/`promesse` sono la stessa identica coppia, con la stessa identica differenza di una
+> sola lettera. La traduzione l'ha ereditato invece di risolverlo, scegliendo la via piu' pigra
+> (aggiungere una "s" per il plurale) esattamente come l'italiano aveva fatto. Corretto rinominando
+> per la **differenza di funzione**, non per il numero grammaticale: `prometti` SCRIVE un nuovo
+> impegno (un'azione o una domanda differita, verificata subito se e' un'azione) -> **`defer`**;
+> `promesse` LEGGE quelli gia' scritti, in sospeso o conclusi -> **`agenda`**. Controllo di
+> collisione a tre passi su entrambi: (1) nessuna riga del glossario usa gia' `defer` o `agenda`
+> per un concetto diverso; (2) `grep -rn '\bdefer\b\|\bagenda\b' hiris/app --include=*.py` a zero
+> occorrenze, ne' in prosa ne' come identificatore; (3) nessuna delle parole italiane ancora senza
+> inglese (`casa`, `orologio`, `tempo`) e' "defer" o "agenda" nel senso ovvio. **Non ri-provato**:
+> la scelta e' verificata sulla collisione, non ancora rimessa davanti a un lettore nuovo -- vedi la
+> nota sugli esiti, sopra. Nota per chi decidesse di riprovarla: non accoppiare `defer` e `agenda`
+> con `promise`/`promessa` nello stesso lotto, o la loro somiglianza grafica con la coppia appena
+> bocciata inquinerebbe la lettura.
+>
+> Questo NON tocca la riga `promessa` di «I concetti» (sopra, gia' `promise`, `✓ arriva`): quella e'
+> il concetto/dato Python (`schedulatore/promessa.py`), questa e' la stringa che il modello legge
+> come nome di strumento -- **due decisioni distinte**, gia' documentato nella nota sotto la tabella
+> «I concetti». Cambiare l'inglese dello strumento non cambia l'inglese del concetto.
+
+> **`show` -> `view`: cambiato dopo la prova, non per capriccio.** Entrambi i lettori hanno accoppiato
+> `show`/`fetch` (*«entrambi recuperano dato un riferimento»*): `guarda` (dettaglio di UNA cosa dato
+> un id esatto) e `richiama` (i ricordi salvati per un id esatto) restituiscono davvero forme
+> simili di dati a partire da un riferimento gia' risolto, e il nome da solo non separava le due
+> operazioni. `related` e `logbook` sono nomi di confine (sotto) e non si toccano; fra `show` e
+> `fetch` invece nessuno dei due e' un nome che Home Assistant impone, quindi la scelta era aperta:
+> ho cambiato `show`, tenendo `fetch` (che non era il termine sospetto principale -- il rischio
+> numero uno della prova era `promise`/`promises`, sopra). Controllo di collisione su `view`: (1)
+> nessuna riga del glossario lo usa gia'; (2) `grep -rn '\bview\b' hiris/app --include=*.py` trova
+> solo prosa (commenti su "multi-view dashboard" e sul modulo di Home Assistant
+> `components/config/view.py`, mai un identificatore che questo progetto ha scelto per un proprio
+> concetto) -- tollerato con lo stesso criterio gia' applicato a `construction` (sopra); **scartato
+> invece `inspect`**, il primo candidato: collide davvero, `casa/strumenti.py:126` fa
+> `import inspect` e lo usa a riga 1096 (`inspect.isawaitable(...)`) -- lo stesso file che definisce
+> i 13 strumenti avrebbe un modulo importato e uno strumento con lo stesso nome. **Non ri-provato**
+> sul lettore nuovo, per lo stesso motivo di `defer`/`agenda`.
+>
+> **`fetch` resta cosi' com'e'.** Un lettore soltanto (non entrambi) l'ha accoppiato anche a
+> `search` (*«entrambi recuperano dati, la linea sfuma»*) -- un rischio piu' debole, annotato ma
+> senza azione: e' la stessa soglia gia' usata altrove nel documento fra un esito che richiede una
+> seconda scelta e uno che si limita ad avvertire chi rinomina.
+
+> **`search`/`related`: entrambi i lettori li hanno accoppiati** (*"entrambi restituiscono
+> liste"*), ma qui il nome non si tocca, perche' `related` e' un nome di confine (`legami` chiama
+> letteralmente `search/related` di Home Assistant, vedi sotto) e il confine vince sempre su un
+> sinonimo inventato -- anche quando la prova segnala un rischio vero. **L'azione qui non e'
+> rinominare: e' scrivere che la disambiguazione deve stare nella description dello strumento, non
+> nel nome**, cosa che le description italiane gia' fanno oggi e che chi tradurra' NON deve perdere:
+> `cerca` parte da un **testo libero e ambiguo** (un nome o alias scritto dall'utente) e puo'
+> restituire piu' di un candidato quando non sa quale sia quello giusto (`casa/strumenti.py:169-180`,
+> `«ambiguo»` a riga 179); `legami` parte invece da un **identificatore gia' risolto** (`riferimento`,
+> l'id esatto -- `casa/strumenti.py:313-314`, `"usa cerca se hai solo un nome"`) e restituisce chi
+> lo tocca, non candidati su cosa potrebbe essere. La differenza da rendere esplicita, per chi
+> scrivera' la description in inglese: **testo ambiguo -> candidati** (`search`) contro
+> **id esatto -> collegamenti** (`related`). Se una futura traduzione della description perde questo
+> contrasto, il nome da solo non basta a recuperarlo -- la prova lo dimostra.
 
 > **Perche' `legami` -> `related` e non un sinonimo inventato (`links`, `relations`):** e' il
 > confine, non un'invenzione. `legami` chiama, sotto, il comando nativo di Home Assistant
@@ -934,6 +1019,15 @@ codice:
 > UNA serie numerica nel tempo invece del registro di eventi -- pulito su `hiris/` (nessuna
 > occorrenza come identificatore).
 >
+> **`trend`/`logbook`: rischio previsto dall'implementer e confermato da un lettore su due**
+> (*«entrambi guardano al passato; per "fammi vedere cosa e' successo" potrei esitare»*). Non c'e'
+> un terzo nome piu' pulito disponibile: `history`, il candidato di confine per entrambi, e' bloccato
+> per collisione col codice (sopra) per tutti e due, quindi sostituirne uno solo con `history`
+> aggraverebbe la collisione invece di scioglierla. Resta un rischio annotato (`~ parziale`), non
+> chiuso: la differenza reale -- una serie numerica di UNA entita' contro un registro di eventi
+> discreti dell'intera casa -- va portata nella description quando questi nomi si applicano, con lo
+> stesso principio appena scritto per `search`/`related`.
+
 > **Verificato ma NON trattato come collisione bloccante:** `search` (`cerca`), `execute` (`esegui`)
 > e `cancel` (`disdici`) compaiono in `hiris/app` solo come chiamate a metodi di libreria standard
 > gia' esistenti -- `re.search()`, `sqlite3.Connection.execute()`, `asyncio.Task.cancel()` -- mai
@@ -943,23 +1037,37 @@ codice:
 > parola comunque, in qualunque progetto Python. Segnalato qui perche' due persone potrebbero
 > leggere la regola meccanica in modo diverso su questo caso, e non deve restare implicito quale
 > lettura ho applicato.
+
+> **`costruisci` -> `propose` e' coerente con `proposta` (concetto, gia' `proposal`) e col metodo
+> Python che gia' implementa l'azione**, `azione/costruzione/officina.py:132`
+> (`async def proponi(...)`) -- due indizi indipendenti che convergono sullo stesso inglese.
 >
-> **`promessa` (il concetto) = `promise`; `promesse` (lo strumento) = `promises`; `prometti` (lo
-> strumento) = `promise`.** Non e' un doppione: e' la stessa radice applicata a tre forme
-> grammaticali diverse della stessa cosa -- esattamente come richiesto dalla nota sulle forme
-> flesse (sopra, «I valori di dominio»/`vive`-`vivi`). `costruisci` -> `propose` e' inoltre
-> coerente con `proposta` (concetto, gia' `proposal`) e col metodo Python che gia' implementa
-> l'azione, `azione/costruzione/officina.py:132` (`async def proponi(...)`) -- tre indizi
-> indipendenti che convergono sullo stesso inglese.
+> **`propose`/`confirm`: la vicinanza e' voluta, non un difetto.** Il lettore B li ha accoppiati, ma
+> l'ha dichiarato lui stesso un accoppiamento debole, ed e' la lettura giusta: sono **i due poli
+> dello stesso flusso** (proponi, poi conferma solo in un turno successivo e solo dopo il si'
+> esplicito dell'utente) -- un lettore che li riconosce come sequenza, non come sinonimi, sta
+> descrivendo esattamente come funzionano insieme. **Scritto qui perche' nessuno li "sani" per
+> errore in futuro cambiando uno dei due nomi**: la coppia va lasciata cosi'. Lo stesso lettore ha
+> anche accoppiato debolmente `cancel`/`propose`: stessa soglia di `fetch`/`search` sopra, annotato,
+> nessuna azione.
 >
 > **Dubbio aperto, non richiuso qui:** il metodo interno dietro `conferma` si chiama `applica`
 > (`azione/costruzione/officina.py:328`, `async def applica(...)`), che suggererebbe `apply` invece
 > di `confirm`. Ho tenuto `confirm` perche' la descrizione dello strumento insiste sul cancello
 > **"solo dopo che l'utente ha detto di procedere, in un turno successivo"** -- e' quel consenso
 > esplicito, non il meccanismo di scrittura, la ragione per cui questo strumento esiste separato da
-> `costruisci`; `apply` lo dice meno di `confirm`. Ma e' un giudizio, non una misura: se la prova
-> del lettore nuovo mostra che `confirm` si confonde con qualcos'altro, `apply` resta il secondo
-> candidato pronto, non ancora provato.
+> `costruisci`; `apply` lo dice meno di `confirm`. Ma e' un giudizio, non una misura: se una prova
+> futura mostra che `confirm` si confonde con qualcos'altro, `apply` resta il secondo candidato
+> pronto.
+>
+> **`execute` e `remember`: gli unici due che entrambi i lettori hanno dichiarato chiaramente
+> distinti** dal resto -- `execute` come l'unico con effetti concreti immediati sulla casa,
+> `remember` come l'unico verbo di scrittura in memoria senza ambiguita' di direzione. Confermano,
+> per contrasto, che la separazione lessicale scelta per la coppia a rischio originale
+> (`ricorda`/`richiama` -> `remember`/`fetch`, non `remember`/`recall`) ha funzionato: nessuno dei
+> due lettori ha accoppiato `remember` con `fetch`. Un solo lettore (A) ha comunque affiancato
+> `remember` a `logbook` (*«entrambi archiviano»*) -- rischio isolato e generico, la stessa soglia di
+> `fetch`/`search`, nessuna azione.
 
 ## I valori di dominio
 
