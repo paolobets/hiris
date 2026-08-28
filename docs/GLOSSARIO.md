@@ -229,7 +229,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
 | bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
-| cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | sample | ~ non ri-provato |
+| cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | reading | ~ parziale |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home_space | ~ parziale |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain | ~ parziale |
@@ -253,7 +253,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
-| grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | sample | ~ non ri-provato |
+| grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | reading | ~ parziale |
 | impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
 | instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ✓ arriva |
@@ -384,13 +384,58 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > esempio da non ripetere, applicato al contrario -- due pesi per la stessa regola, uno strumento
 > con 44 occorrenze e uno con una sola bloccati, uno con ~24 no, senza un motivo di confine a
 > giustificarlo (a differenza di `target` o `related`: nessun sistema esterno chiama "raw" questo
-> preciso concetto). **Nuovo inglese: `sample`.** Zero occorrenze in `hiris/` (verificato con
-> `grep -rn '\bsample\b' hiris/app --include=*.py`), zero nel glossario, non e' il nome ovvio di
-> nessuna parola italiana ancora senza inglese (non ce ne sono piu', vedi A3 -- nessuna, oggi).
-> Coerente col contrasto gia' scritto in questa riga: un `sample` grezzo, non ancora giudicato,
-> contro un `fact` (`oggetti`, sopra) che e' cio' che se ne e' capito. **Non ri-provato**: la
-> collisione e' verificata, il nome no -- non e' stato rimesso davanti a un lettore nuovo, quindi
-> l'esito in tabella scende da `✓ arriva` a `~ non ri-provato` su entrambe le righe.
+> preciso concetto).
+>
+> **Primo candidato, `sample`, bocciato dalla prova -- e la lezione vale oltre questa riga:
+> correggere un difetto non garantisce di non introdurne un altro.** `sample` era pulito sulla
+> collisione (zero occorrenze in `hiris/`, zero nel glossario) ma non era mai stato **provato**
+> come tutti gli altri candidati di questo documento, ed e' stato marcato onestamente
+> `~ non ri-provato` invece di `✓`. Ri-provato dal coordinatore, due lettori indipendenti, nome
+> nudo: entrambi lontani. A: *«un esempio, un campione, un pezzo rappresentativo... insomma una
+> dimostrazione di come funziona il resto»*. B: *«un campione: un piccolo sottoinsieme di dati
+> estratto da un insieme piu' grande, usato per test, anteprima o rappresentazione statistica»*. La
+> riga dice *«un cambiamento di stato registrato esattamente come HA lo riporta, prima che
+> qualunque giudizio lo trasformi in un fatto interpretato»* -- niente a che vedere con
+> un'anteprima, una demo o un sottoinsieme a scopo statistico. **`✗ non arriva`, e aggravato**: in
+> software `sample` significa convenzionalmente *esempio/demo* (sample app, sample data) -- il
+> nome non e' muto, **svia** verso un senso concreto e sbagliato. Risolvere la collisione di `raw`
+> aveva solo spostato il problema da "collide" a "non dice niente, anzi dice la cosa sbagliata": un
+> nome scelto per uscire da una collisione resta un candidato come tutti gli altri, e va provato
+> come tutti gli altri, non solo controllato sul codice.
+>
+> **Secondo candidato, `readout`, bocciato.** A: *«il risultato visibile o esportato di una
+> lettura... cio' che il software legge e restituisce all'utente»*. B, piu' netto: *«un riepilogo o
+> resoconto... un rapporto sintetico presentato a fine processo, piuttosto che un dato grezzo
+> continuo»* -- il lettore esclude esplicitamente proprio il senso che serve: un dato grezzo
+> continuo e' esattamente cio' che questa riga e' comunque, e `readout` lo dice, comunque, per
+> escluderlo.
+>
+> **Terzo candidato, `reading`, confermato -- i due lettori convergono su tre punti che contano.**
+> A: *«un valore o una misura catturata da una fonte (sensore, database, configurazione) in un
+> determinato momento»*. B: *«una singola lettura/misurazione acquisita in un dato istante -- il
+> valore letto da un sensore, uno strumento o una fonte esterna (es. temperatura, consumo,
+> timestamp incluso), spesso come elemento di una serie storica»*. Combacia su: valore singolo
+> preso da una fonte; in un istante preciso; come elemento di una serie -- letteralmente la
+> finestra di 22 giorni di `cambi`. B nomina "temperatura" e "consumo", cio' che l'osservatore
+> registra davvero. Controllo di collisione a tre passi: `reading` ha **zero occorrenze non-prosa**
+> in `hiris/app` (`.py` e `.js` — l'unica occorrenza e' un gerundio inglese in un commento,
+> `claude_runner.py:575`, *«handlers_chat.py reading `runner.last_tool_calls`»*, prosa pura), zero
+> nel glossario, non e' il nome ovvio di nessuna parola italiana ancora senza inglese (non ce ne
+> sono, vedi A3). **Nuovo inglese: `reading`, per entrambe le righe** (stessa ragione di `sample`:
+> non e' un secondo lemma, e' la stessa cosa con due nomi italiani).
+>
+> **Esito: `~ parziale`, non `✓` -- la tensione fra "cambiamento" e "misura" e' reale e non si
+> chiude fingendo che non ci sia.** `grezzo` e' un **cambiamento** di stato: HA lo registra perche'
+> qualcosa e' diventato diverso da prima (un evento, innescato da una transizione), non perche' un
+> orologio ha chiesto "quanto vale adesso" a intervalli fissi. Entrambi i lettori descrivono invece
+> una **misura/lettura catturata in un istante** -- un valore letto, non un cambiamento accertato:
+> nessuno dei due nomina una transizione, un "prima" e un "dopo", o il fatto che la riga esiste
+> SOLO quando qualcosa e' cambiato, non a ogni tick. E' esattamente il criterio scritto sopra per
+> `~`: i lettori atterrano nella famiglia giusta (un dato puntuale, con istante, elemento di una
+> serie storica di un sensore -- "temperatura", "consumo") ma sulla forma sbagliata (un valore
+> campionato, non un evento di cambiamento). Non e' un `✓`: la natura evento-driven di `grezzo`, la
+> ragione per cui questa riga e' un concetto a se' e non un sinonimo di "misura periodica", non e'
+> arrivata a nessuno dei due lettori.
 
 > **`ancora` era un OMONIMO fra due sottosistemi, oggi risolto -- fusa qui in una nota sola**
 > (la review finale ha trovato tre note in sequenza a raccontare la stessa vicenda in tre stadi --
@@ -569,8 +614,11 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 >
 > **Eseguito oggi: 39 `✓`, 39 `~`, 2 arbitrato (senza misura, `orologio`/`tempo`) su 80 righe.**
 > Il movimento rispetto al 42/35/3 scritto sopra: -1 arbitrato (Task 9 ha deciso `casa`, sebbene
-> con esito `~` dopo il rilievo B1, non `✓`) e -2 `✓`/+2 `~` (`grezzo`/`cambi`, sanati da `raw` a
-> `sample` dopo il rilievo A2, non ancora ri-provati). Nessuna delle due cifre precedenti (42/35/3
+> con esito `~` dopo il rilievo B1, non `✓`) e -2 `✓`/+2 `~` (`grezzo`/`cambi`, scese da `✓` per la
+> collisione di `raw` col rilievo A2; il candidato di sostituzione e' passato da `sample`
+> -- bocciato dalla prova -- a `reading`, confermato ma anch'esso a `~`, non a `✓`: vedi la nota
+> sotto la tabella «I concetti». Il totale non si e' mosso una seconda volta perche' l'esito era
+> gia' `~` prima e dopo quel cambio di candidato). Nessuna delle due cifre precedenti (42/35/3
 > ne' 41/37/2) era falsa quando scritta: erano entrambe esatte al proprio commit, e sono diventate
 > stantie quando il documento e' cambiato sotto di loro senza che il numero venisse riallineato --
 > la ragione per cui questa nota ora spiega COME ricavarlo, non solo QUANTO fa oggi.
@@ -1593,9 +1641,10 @@ PY
 ```
 
 **Risultato atteso, eseguito ora: cinque casi, tutti gia' documentati altrove nel documento.**
-`sample` (`cambi`/`grezzo`): non e' cambiato con la rinomina del rilievo A2, e' lo stesso caso che
-prima si chiamava `raw` con la stessa identica giustificazione — un solo concetto, due nomi
-italiani, gia' spiegato nella nota sotto la tabella «I concetti». `count` (`conta`/`quante`),
+`reading` (`cambi`/`grezzo`): non cambia con la rinomina del rilievo A2 (ne' col candidato
+intermedio bocciato, `sample` -- vedi la nota sotto la tabella «I concetti»), e' lo stesso caso
+che prima si chiamava `raw` con la stessa identica giustificazione — un solo concetto, due nomi
+italiani. `count` (`conta`/`quante`),
 `list` (`elenco`/`elenca`) e `read` (`letto`/`leggi`) sono forme flesse della stessa parola
 ordinaria. `promise` compare sia come concetto (`promessa`) sia come nome di strumento
 (`prometti`): **non e' una svista**, e' lo stesso concetto visto dai due lati che questa fetta
