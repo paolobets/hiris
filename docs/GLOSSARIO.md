@@ -41,6 +41,28 @@ difetto per cui questa fetta esiste, spostato dal glossario al codice.
    strumento, con un valore di dominio?
 2. cercalo anche **in `hiris/`** con un grep sul sorgente vero — collide con un identificatore, un
    commento, un valore di stringa gia' scritto dal codice?
+3. **confrontalo anche con le parole ITALIANE ancora senza inglese** — quelle gia' in tabella con
+   la colonna vuota, e quelle dei lotti futuri elencate nella spec — non solo con quelle gia'
+   decise. Se il candidato e' il nome ovvio per una di quelle, si lascia a lei: non vince chi lo
+   sceglie prima.
+
+**Corretto in fix round 1 del Task 6 (rilievo del reviewer): il controllo, cosi' come scritto nei
+passi 1 e 2, guardava il glossario gia' deciso e il codice, ma non le parole ancora da decidere.**
+La conseguenza e' un difetto di processo della fetta, non di chi esegue un singolo task: l'ordine
+dei lotti diventa un arbitro silenzioso. Chi decide un lotto prima si prende l'inglese piu' ovvio
+per una parola qualunque, e l'ultimo lotto — che per costruzione contiene le parole rimaste, cioe'
+quelle su cui nessuno si e' ancora dovuto misurare — eredita un vocabolario gia' eroso dai lotti
+precedenti, anche quando il nome ovvio per una parola non ancora arrivata era proprio quello. Il
+caso vero, dal Task 6: `specie` (`SPECIE`, `fai`/`chiedi`) stava per diventare `intent`, il nome
+piu' naturale in inglese per «scopo, intenzione» — ma `intent` e' anche il nome ovvio di `intento`
+(`azione/costruzione/mestiere.py:20-32`, la struttura con `innesco`/`passi`/`stati`/`parametri`
+che descrive lo scopo di una costruzione), una parola che a quel punto non aveva ancora una riga
+propria in questo documento. Se `specie` si fosse tenuto `intent`, il dispaccio che decide
+`intento` avrebbe trovato il suo nome piu' ovvio gia' occupato da un concetto diverso e piu'
+piccolo. Corretto scegliendo `verb` per `specie` (vedi la nota dedicata, sotto la tabella «I
+concetti») e aggiungendo questo passo 3, perche' il passo 2 da solo — cercare `intent` nel codice —
+non lo avrebbe MAI trovato: `intento` non e' ancora scritto in inglese da nessuna parte, ne' nel
+glossario ne' nel codice. Solo guardare l'elenco delle parole ancora da decidere lo rivela.
 
 **Non ogni collisione col codice conta allo stesso modo — e si decide guardando DOVE cade il
 match, non giudicando quanto la parola «conti» come nome.** Corretto una seconda volta dopo la
@@ -163,7 +185,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | semaforo | la classificazione a tre livelli, per singola azione, che decideva se procedere senza chiedere nulla, se serviva una conferma umana, oppure se l'azione era negata a prescindere -- uscita dal prodotto insieme ai suoi ultimi lettori, ma ancora nominata nei commenti che raccontano perche' non c'e' piu' | clearance |  |
 | servizi | un'operazione che un dominio di Home Assistant dichiara di saper eseguire, identificata da un nome e dai propri parametri -- non un catalogo scritto da HIRIS, ma cio' che l'installazione stessa dichiara di poter fare | services |  |
 | spazio | l'etichetta che distingue, dentro una cache **puramente in memoria di processo** (nessuna tabella, nessun SQL -- `CacheIndice` muore col riavvio), a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota corretta in fix round 1:** non e' una colonna persistita (il brief originale lo affermava per errore, propagato dalla spec); e' una chiave di dizionario in `memoria/cache_indice.py:27,65,175,179` (`self._voci[spazio] = ...`), con valori che sono nomi di strumento (`"cerca"`, `"ricorda"`). Chi rinomina non trovera' nessuna tabella da migrare per questo -- solo il parametro e le due stringhe | slot |  |
-| specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, con un valore fuori da queste due rifiutato subito | intent |  |
+| specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, ciascuna gia' scritta come un verbo all'imperativo, con un valore fuori da queste due rifiutato subito | verb |  |
 | stati | un insieme chiuso di valori specifici che condividono una proprieta' -- quali contano come conclusi e quali come ancora in sospeso per un impegno o una proposta di costruzione, quali come attivi per un'entita', quali come guasti o transitori per un'integrazione -- usato per verificare se un valore singolo vi appartiene, mai un valore da solo | states |  |
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools |  |
 | tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | span |  |
@@ -264,6 +286,28 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > la riga qui. Chi apre il prossimo dispaccio deve sapere che l'omonimia fra le due `ancora`
 > (memoria e consumi) resta da decidere per intero, comprese le due inglesi.
 
+> **`piano` e' un secondo OMONIMO fra due sottosistemi, trovato dalla review di questo task --
+> stessa natura di `ancora` sopra, non deciso qui.** `piano` non e' una riga di «I concetti»: e'
+> un altro dei 12 concetti ancora assenti dal documento. Ma il codice gia' lo usa per DUE cose
+> senza relazione, e chi lo decidera' deve saperlo prima di scegliere un solo inglese per abitudine:
+> 1. **il livello della casa** -- la gerarchia piani → aree → dispositivi → entita' letta dal
+>    `floor_registry` di Home Assistant (`casa/archivio.py:22`, tabella `piani`, colonna
+>    `livello`; `casa/anagrafe.py`, che la assembla dai quattro registri grezzi);
+> 2. **il Piano dell'abbonamento Claude** -- l'abbonamento a forfait che alimenta il ponte
+>    (`decisione_modelli.py`: `VARIABILE_TOKEN_DEL_PIANO`, `piano_ha_il_token()`; anche
+>    `instradamento.py:70-77`, `ponte.tetto_giornaliero` letto per "il piano").
+>
+> Per la fondamenta n.3 servono **due inglesi diversi**, mai uno scelto guardando un sottosistema
+> e applicato per abitudine anche all'altro -- lo stesso principio gia' scritto per `ancora`. Il
+> dispaccio che decidera' `piano` deve anche sapere questo, prima di scegliere l'inglese del senso
+> 2 -- rilievo della review di questo task: l'`ancora` dei consumi (sopra, "il punto temporale da
+> cui si contano i consumi correnti") e' semanticamente vicinissima a **`baseline`**, gia' presa da
+> `pavimento` ("l'insieme fisso di classi che entra comunque", riga «I concetti»). Non e' una
+> collisione meccanica sul codice (nessun identificatore condiviso), ma una vicinanza di
+> SIGNIFICATO che un lettore nuovo potrebbe confondere se le due finissero per suonare uguali:
+> chi decide l'`ancora` dei consumi deve verificarlo prima di fissare il candidato, non scoprirlo
+> dopo aver gia' scritto la riga.
+
 > **Verdetto su `archivio` (`ArchivioCasa`, `ArchivioMemoria`, `ArchivioConsumi`,
 > `ArchivioCostruzioni`, `ArchivioOsservazioni`, `ArchivioPromesse`) contro `ChatStore`
 > (`chat_store.py`): fanno la stessa cosa, e il nome e' uno solo.** Lette per intero
@@ -292,7 +336,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > italiano formino la stessa terna tassonomica (genere/specie/famiglia, come in biologia).** Il
 > mandato di questo task avverte che tre nomi che si somigliano impedirebbero a chi legge di capire
 > quale e' quale. `genere` (`GENERI`, sei ambiti di un fatto compiuto della casa) e' diventato
-> `genre`; `specie` (`SPECIE`, fai/chiedi di un impegno) e' diventato `intent`; `famiglia`
+> `genre`; `specie` (`SPECIE`, fai/chiedi di un impegno) e' diventato `verb`; `famiglia`
 > (`FAMIGLIE`, le cinque cause di un fallimento del provider) e' diventato `family`. Una traduzione
 > letterale in terna biologica (genus/species/family) avrebbe ricreato in inglese la stessa
 > somiglianza superficiale che le tre parole hanno gia' in italiano, nonostante classifichino tre
@@ -307,6 +351,22 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > distingue l'esecuzione `"live"` da quella `"mock"` in `agent/runner.py:1151` e dintorni, un'altra
 > cosa).
 
+> **Correzione (fix round 1, rilievo del reviewer): `specie` NON e' diventato `intent`.**
+> La prima stesura di questa nota assegnava `intent` a `specie`, ma `intent` e' il nome ovvio di
+> `intento` (`azione/costruzione/mestiere.py:20-32`, il dizionario con `innesco`/`passi`/`stati`/
+> `parametri` che descrive lo SCOPO di una costruzione richiesta) -- una delle 12 parole ancora
+> senza riga in questo documento, non ancora decisa da nessun task. `specie` e `intento` sono due
+> concetti diversi: `SPECIE` e' una classificazione binaria (`fai`/`chiedi`), `intento` e' una
+> struttura a piu' campi. Assegnare `intent` a `specie` per primo avrebbe tolto a `intento` il suo
+> nome piu' naturale quando arrivera' il dispaccio che lo decide -- vedi il terzo passo aggiunto
+> alla sezione «Il controllo di collisione», sotto, che esiste apposta per questo caso. L'inglese
+> corretto di `specie` e' **`verb`**: `fai` e `chiedi` sono gia' scritti come due verbi
+> all'imperativo, non due categorie astratte. Zero occorrenze di `verb` in `hiris/` come
+> identificatore (le uniche tre righe trovate sono prosa non correlata in `proxy/_sanitize.py:124-
+> 157`, su una grammatica inglese generica). Scartato anche `mood`: `fai` e `chiedi` sono lo stesso
+> modo grammaticale (l'imperativo), non due modi diversi -- "mood" avrebbe descritto una
+> distinzione che qui non esiste.
+
 > **`servizi` e `registro` vengono dalla stessa classe (`RegistroServizi`,
 > `azione/registro.py:110`), ma restano due voci distinte apposta.** L'estrazione ha spezzato il
 > nome composto in due parole: `registro` (gia' deciso, `registry`) e' lo specchio -- la struttura
@@ -316,6 +376,22 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > stessa dichiara e non un'invenzione di HIRIS. Non e' un doppione mancato: sono il contenitore e
 > il contenuto, stessa distinzione gia' in uso fra `memoria`/`ricordi` e fra `schedulatore`/
 > `promessa`.
+
+> **`stati` riusa lo stesso lemma inglese di `stato` (`state`/`states`), e non e' una violazione
+> della regola "un solo inglese per concetto" -- e' la stessa relazione grana-diversa gia' scritta
+> qui sopra per `servizi`/`registro`, applicata alla coppia `stato`/`stati`.** `stato` (gia' deciso,
+> `state`, con le tre accezioni gia' documentate nella nota sulle parole ordinarie) e' il singolo
+> valore che una entita', una promessa o una proposta di costruzione porta in un dato momento;
+> `stati` (`states`, qui) e' il PATTERN con cui il codice nomina un insieme chiuso di quei valori
+> che condividono una proprieta' -- `STATI_CONCLUSI`/`STATI_SOSPESO`
+> (`schedulatore/promessa.py:22,34`, `azione/costruzione/versioni.py:36`), ma anche
+> `_STATI_ATTIVI` (`casa/nucleo.py:182`) e `_STATI_INTEGRAZIONE_ROTTA`/
+> `_STATI_INTEGRAZIONE_TRANSITORI` (`casa/nucleo.py:821`, `cervello/osservatore.py:31`), tutte
+> dello stesso schema `STATI_X = (valore, valore, ...)` usato per testare appartenenza, mai per
+> leggere un valore da solo. Non e' un secondo significato di `stato` (le tre accezioni gia' viste
+> restano tre), e' lo stesso concetto raccolto in insiemi con nome -- coerente con come il
+> documento tratta gia' `registri`/`registro` come forme flesse dello stesso concetto nella nota
+> sulle parole ordinarie.
 
 > **`ripiego` e' anche un valore persistito, non solo un concetto -- fuori dallo scopo di questo
 > task, segnalato per chi verra' dopo.** `reasoning/queue.py:161` scrive `status='ripiego'` come
