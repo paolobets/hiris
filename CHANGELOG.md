@@ -1,5 +1,81 @@
 # HIRIS — Changelog
 
+## [3.14.1] — Il cancello e il vocabolario: due fette che non si vedono (2026-08-28)
+
+**Questa versione non aggiunge niente che si possa vedere usando HIRIS.** Sono due fette di
+manutenzione, e vale la pena dire subito le sole due cose che un utente puo' notare — entrambe
+correzioni:
+
+- **Il tetto giornaliero dei turni non sfora piu' al cambio d'ora.** Contava il giorno come
+  «adesso piu' 86.400 secondi»: nei due giorni dell'anno in cui il giorno dura 23 o 25 ore, la
+  finestra scivolava e il tetto poteva lasciar passare un turno in piu' o troncarne uno legittimo.
+- **Il fuso della casa arriva fin dove si decide che ora e'.** Due punti — la coda dei turni e
+  l'officina delle costruzioni — leggevano l'ora senza sapere in che fuso vive la casa.
+
+Il secondo difetto e' stato **trovato dal cancello**; il primo e' stato introdotto *dalla correzione
+del secondo* e trovato dai test subito dopo. Vale la pena dirlo com'e' andata: un difetto di fuso
+corretto male ne genera un altro, e senza qualcosa che guardi non se ne accorge nessuno.
+
+**La prima fetta: il cancello.** La codebase non aveva un linter. Ora ne ha due — `ruff` sul Python,
+`oxlint` sul JavaScript — e girano **nel CI e prima di ogni push**, non come consiglio ma come
+blocco. Il punto di partenza misurato era **798 rilievi Python e 27 JavaScript**; oggi sono **zero**,
+e la suite e' passata da 2.836 a 2.839 test.
+
+Le esclusioni sono **quattro, scritte e motivate** nel `pyproject.toml`: una regola esclusa non e'
+silenzio, e' una decisione che qualcuno deve poter contestare.
+
+**Cosa ha trovato il cancello, oltre alle due correzioni sopra:** un test scritto due volte, di cui
+il primo non era mai stato eseguito; cinque test che si accontentavano di `Exception` invece di dire
+quale eccezione dovevano davvero prendere; un cablaggio del fuso senza test; e una funzione morta nel
+frontend.
+
+**E un difetto nel cancello stesso.** Per quattordici passaggi di lavoro il linter ha misurato zero
+su Windows. Il primo giro vero del CI su Linux ha trovato **cinque violazioni** che Windows non
+poteva vedere: Windows non ha il bit di esecuzione POSIX, quindi la regola che controlla la coerenza
+fra shebang e permesso del file **veniva saltata in silenzio**. Lo zero misurato in locale non e' lo
+zero: comanda il CI.
+
+**La seconda fetta: il vocabolario.** La codebase mescola italiano e inglese in modo strutturale —
+interi sottosistemi in una lingua, interi sottosistemi nell'altra — e tredici concetti vivono in
+due lingue contemporaneamente: `ArchivioMemoria` e `ChatStore` sono la stessa cosa con due nomi.
+
+`docs/GLOSSARIO.md` decide **come si chiamano le cose**, prima che qualcuno le rinomini: 80 concetti,
+i 13 nomi degli strumenti, le parole ordinarie, e 13 costanti di dominio lasciate **volutamente non
+decise, col rinvio motivato**. Nessuna riga di codice e' stata toccata.
+
+La regola che lo governa non e' la traduzione: **si rinomina per funzione**. E ogni nome e' passato
+per una prova che poteva bocciarlo — si da' il solo nome inglese, nudo, a un lettore che non conosce
+il progetto e gli si chiede che cosa faccia una cosa che si chiama cosi'. Ha bocciato undici
+candidati.
+
+**Due reperti che valgono oltre i nomi.** Gli strumenti `prometti` e `promesse` erano confondibili
+gia' in italiano — due nomi che differiscono di una lettera, in un catalogo da cui il modello
+sceglie; ora sono `promise` e `agenda`. E un lettore ha segnalato, primo fra tutti i rischi, non
+un'esitazione fra due parole ma la possibilita' di **scavalcare il cancello di approvazione**
+chiamando `execute` invece di passare per `propose` e `confirm`: e' una segnalazione sulle
+descrizioni degli strumenti, ed e' scritta.
+
+**E una terza correzione, trovata dal cancello di rilascio nel momento stesso in cui provava a
+rilasciare questa versione.** Il controllore dei componenti legge i tetti delle dipendenze per
+accorgersi quando ne esce una **sopra** il tetto — il caso in cui la dipendenza resta congelata in
+silenzio, con il CI verde. Ma leggeva il tetto prendendo le cifre prima del primo punto: su
+`ruff>=0.16.4,<0.17.0` ne ricavava «esclude il major 0», e siccome ogni uscita 0.x ha major 0, la
+condizione era vera **sempre**.
+
+Un pacchetto 0.x non ha ancora un major, quindi il suo tetto sano sta sul minor — e il vincolo che
+lo espone l'ha introdotto la fetta del linter, poche ore prima. Da quel momento il cancello
+segnalava uno scarto permanente su una riga sana: cioe' **l'allarme che suona sempre**, che il file
+stesso dichiarava inaccettabile in un test scritto mesi fa. Era sfuggito perche' nessuna dipendenza
+0.x aveva ancora un tetto.
+
+*Un cancello che grida al lupo si impara a scavalcarlo*, ed e' il motivo per cui questa correzione
+non e' stata rimandata.
+
+**La rinomina vera non e' in questa versione**, ed e' bene che sia cosi': gli identificatori sono
+meccanici, i nomi degli strumenti cambiano il comportamento del modello, e i valori di dominio sono
+scritti nel database. Sono tre lavori con rischi diversi, e ora hanno il vocabolario per essere
+fatti.
+
 ## [3.14.0] — Il bilancio dell'energia: undici frammenti diventano un fatto (2026-08-27)
 
 **La prima notte di memoria di HIRIS ha prodotto 24 episodi, e undici venivano dallo stesso
