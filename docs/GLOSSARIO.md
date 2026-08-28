@@ -42,27 +42,35 @@ difetto per cui questa fetta esiste, spostato dal glossario al codice.
 2. cercalo anche **in `hiris/`** con un grep sul sorgente vero — collide con un identificatore, un
    commento, un valore di stringa gia' scritto dal codice?
 
-**Non ogni collisione col codice conta allo stesso modo.** Una parola inglese che compare in
-`hiris/` come **prosa generica** — usata nel suo senso comune, senza nominare un concetto proprio
-del prodotto — non blocca la scelta: l'inglese e' pieno di parole comuni, ed evitarle tutte
-renderebbe impossibile nominare qualunque cosa. Blocca invece la scelta una parola che nel codice e'
-gia' **il nome di un concetto** — qualcosa che qualcuno ha deciso di chiamare cosi', con un
-identificatore, una chiave, una stringa che si ripete con intenzione.
+**Non ogni collisione col codice conta allo stesso modo — e si decide guardando DOVE cade il
+match, non giudicando quanto la parola «conti» come nome.** Corretto una seconda volta dopo la
+review del fix round 1: la prima formulazione («un concetto che qualcuno ha deciso di chiamare
+cosi'») era un giudizio, non un test, e due persone diverse l'avrebbero applicata in modo opposto
+sullo stesso caso — proprio il rischio che questa regola esiste per chiudere, per i lotti 5 e 6 che
+la useranno senza che nessuno gliela rispieghi. La regola e' un test meccanico:
+
+- **Blocca** se la parola compare in `hiris/` in un **contesto sintattico non-prosa**: un
+  identificatore (nome di funzione, classe, variabile, costante), una chiave di dizionario o di
+  JSON, un segmento di rotta, un nome di file o di modulo.
+- **Tollera** se compare **soltanto dentro frasi in linguaggio naturale** — commenti, docstring,
+  messaggi di log o di errore — **anche se ripetuta molte volte**.
+
+Un grep piu' un'occhiata a dove cade ogni riga trovata: non serve altro.
 
 Due casi veri, trovati nella review del Task 4:
 
-- **`gateway` per `porta`** (poi corretto in `actuator`): 16 occorrenze in `hiris/app`, tutte per
-  **il gateway MCP esterno** — un componente vero e nominato (`agent/runner.py:3`: *«Porta
-  in-addon del runner del gateway esterno»*). Non e' prosa: e' lo stesso nome inglese per due cose
-  diverse nello stesso prodotto — la trappola che questa fetta chiude, vista al contrario.
-- **`build` per `costruzione`** (poi corretto in `construction`): 44 occorrenze, e non solo il
-  verbo comune (`build_chat_messages`) — un **sostantivo con un significato concorrente gia' in
-  uso**, il sistema delle versioni distribuite (`app["build_stamp"]`, `_compute_build_stamp`, il
-  meta tag `hiris-build`, i commenti «QUALE build gira davvero» in `server.py`). Anche qui un
-  concetto nominato, non prosa.
-- **Per contrasto, un caso tollerato:** `construction` compare gia' 3 volte in `hiris/`, ma come
-  prosa generica («at store construction», «numeric by construction») — nessun concetto proprio del
-  prodotto si chiama cosi'. La collisione non blocca la scelta.
+- **`gateway` per `porta`** (poi corretto in `actuator`): 16 occorrenze in `hiris/app`. Cade su un
+  **nome di file** (`api/handlers_gateway_policy.py`) e su un **segmento di rotta**
+  (`/api/gateway/policy`, `server.py:3598`) — entrambi contesti non-prosa: blocca. (Compare anche in
+  prosa, `agent/runner.py:3`: *«Porta in-addon del runner del gateway esterno»* — ma basta un solo
+  match non-prosa per bloccare.)
+- **`build` per `costruzione`** (poi corretto in `construction`): 44 occorrenze. Cade su
+  **identificatori** — `app["build_stamp"]` (chiave di dizionario) e `_compute_build_stamp` (nome
+  di funzione), entrambi in `server.py` — contesto non-prosa: blocca.
+- **Per contrasto, il caso tollerato:** `construction` compare 3 volte in `hiris/`, e cade **solo**
+  dentro frasi in linguaggio naturale — commenti come «dead by construction», «at store
+  construction», «numeric by construction» — mai come identificatore, chiave o nome di file:
+  tollera.
 
 ## Parole scartate durante l'estrazione
 
