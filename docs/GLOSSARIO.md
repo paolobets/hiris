@@ -108,71 +108,71 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | directory |  |
-| archivio |  |  |  |
-| ascolto |  |  |  |
+| archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store |  |
+| ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen |  |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action |  |
 | cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw |  |
-| caricatore |  |  |  |
+| caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader |  |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home |  |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain |  |
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind |  |
 | comportamento | l'elenco di automazioni e script gia' in esecuzione da soli, ottenuto incrociando cio' che i file dichiarano con cio' che lo stato conferma esistere davvero, cosicche' HIRIS non riproponga qualcosa gia' fatto | behavior |  |
-| comprimari |  |  |  |
+| comprimari | per un soggetto osservato, le altre cose della casa -- entita', automazioni, scene, script -- che agiscono su di lui o lo misurano, lette una sola volta per l'intera giornata e riusate per ogni fatto compiuto che ne nasce | companions |  |
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction |  |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal |  |
-| decisione |  |  |  |
-| direzione |  |  |  |
-| dispatcher |  |  |  |
+| decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution |  |
+| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato | direction |  |
+| dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher |  |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries |  |
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | disposition |  |
-| famiglia |  |  |  |
-| flusso |  |  |  |
+| famiglia | raggruppa il fallimento di un provider del modello in una delle cinque cause riconosciute -- credenziale, modello, irraggiungibile, scaduto, altro -- cosi' che due rifiuti della stessa causa vengano trattati come lo stesso evento invece che come due guasti diversi | family |  |
+| flusso | la sequenza di righe NDJSON che il processo del CLI del modello scrive in uscita mentre lavora, letta una volta sola e ridotta a un esito unico -- riuscito, troncato, senza risultato -- mai riletta una seconda volta con una logica diversa | stream |  |
 | forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | shapes |  |
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect |  |
-| genere |  |  |  |
-| gesto |  |  |  |
+| genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre |  |
+| gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation |  |
 | grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | raw |  |
-| impostazioni |  |  |  |
+| impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings |  |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup |  |
-| instradamento |  |  |  |
+| instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering |  |
 | interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation |  |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation |  |
-| lettura |  |  |  |
+| lettura | trasforma il testo di un file di configurazione di Home Assistant nella struttura che rappresenta, sollevando quando il testo e' davvero malformato invece di restituire un risultato vuoto indistinguibile da un file senza contenuto | parse |  |
 | memoria | il sottosistema che conserva per sempre le frasi esatte che una persona ha detto sulla sua casa insieme a come HIRIS le ha interpretate, correggibile senza toccare le parole originali, senza anonimizzazione e senza scadenza | memory |  |
 | mestiere | la funzione pura che, davanti a una richiesta, decide se serve un'automazione, uno script, una scena o una combinazione delle tre, e dice anche perche' -- consigliando senza mai bloccare chi insiste per un'altra scelta | advisor |  |
-| migrazione |  |  |  |
+| migrazione | la copia, fatta una volta sola e segnata perche' non si ripeta, di un valore che viveva nello schema delle opzioni dell'add-on verso l'archivio proprio di HIRIS, cosi' che togliere l'opzione dallo schema in un rilascio successivo non ne faccia sparire il valore in silenzio | migration |  |
 | notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight |  |
 | nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing |  |
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop |  |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact |  |
-| origine |  |  |  |
+| origine | classifica chi ha richiesto un'operazione di costruzione -- un umano che ha appena cliccato sulla pagina, oppure il modello durante un turno -- e decide se un controllo pensato per trattenere il modello si applica o si scavalca | actor |  |
 | orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | heartbeat |  |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher |  |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations |  |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline |  |
-| ponte |  |  |  |
+| ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge |  |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator |  |
 | promessa | l'impegno per un momento futuro che l'utente ha chiesto -- fare qualcosa, oppure controllare qualcosa e riferire -- con la sua scadenza, la sua tolleranza al ritardo, e lo stato con cui si conclude | promise |  |
 | registro | lo specchio aggiornato di cosa Home Assistant sa fare in questa casa, servizio per servizio e con i relativi parametri -- non un catalogo scritto da HIRIS, ma la copia di cio' che Home Assistant stesso dichiara di poter eseguire | registry |  |
 | riconoscitore | il modulo che decide a quale parte della casa si riferisce una frase scritta, confrontandola con nomi e alias dichiarati e restringendo poi cio' che il modello propone a cio' che esiste davvero nell'anagrafe | resolver |  |
 | ricordi | le frasi esatte, cosi' come sono state dette, che una persona ha affidato a HIRIS -- la verita' che non si tocca mai, nemmeno quando la sua lettura viene corretta | memories |  |
 | rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection |  |
-| ripiego |  |  |  |
+| ripiego | il passaggio, dichiarato sempre e mai silenzioso, con cui un turno che non ha potuto essere servito dal canale a forfait viene rifatto da capo su quello a consumo -- uno stato non definitivo di un lavoro in coda, distinto da uno riuscito, scaduto o fallito, perche' resta da chiudere finche' non arriva una risposta | downgrade |  |
 | schedulatore | il sottosistema che tiene le promesse fatte per un momento futuro: le risveglia quando arriva l'ora, ne porta a termine il compito o la domanda, e registra sempre come e' andata | keeper |  |
-| segno |  |  |  |
-| semaforo |  |  |  |
-| servizi |  |  |  |
+| segno | il valore persistito che ricorda se un passo di migrazione e' gia' avvenuto, scritto anche quando non c'era nulla da copiare, cosi' che un'installazione nuova non lo cerchi piu' una volta che quel passo e' definitivamente chiuso | flag |  |
+| semaforo | la classificazione a tre livelli, per singola azione, che decideva se procedere senza chiedere nulla, se serviva una conferma umana, oppure se l'azione era negata a prescindere -- uscita dal prodotto insieme ai suoi ultimi lettori, ma ancora nominata nei commenti che raccontano perche' non c'e' piu' | clearance |  |
+| servizi | un'operazione che un dominio di Home Assistant dichiara di saper eseguire, identificata da un nome e dai propri parametri -- non un catalogo scritto da HIRIS, ma cio' che l'installazione stessa dichiara di poter fare | services |  |
 | spazio | l'etichetta che distingue, dentro una cache **puramente in memoria di processo** (nessuna tabella, nessun SQL -- `CacheIndice` muore col riavvio), a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota corretta in fix round 1:** non e' una colonna persistita (il brief originale lo affermava per errore, propagato dalla spec); e' una chiave di dizionario in `memoria/cache_indice.py:27,65,175,179` (`self._voci[spazio] = ...`), con valori che sono nomi di strumento (`"cerca"`, `"ricorda"`). Chi rinomina non trovera' nessuna tabella da migrare per questo -- solo il parametro e le due stringhe | slot |  |
-| specie |  |  |  |
-| stati |  |  |  |
-| strumenti |  |  |  |
+| specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, con un valore fuori da queste due rifiutato subito | intent |  |
+| stati | un insieme chiuso di valori specifici che condividono una proprieta' -- quali contano come conclusi e quali come ancora in sospeso per un impegno o una proposta di costruzione, quali come attivi per un'entita', quali come guasti o transitori per un'integrazione -- usato per verificare se un valore singolo vi appartiene, mai un valore da solo | states |  |
+| strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools |  |
 | tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | span |  |
 | turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange |  |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict |  |
 | verifica | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio | verification |  |
 | versioni | l'archivio che tiene lo stato di ogni proposta di scrittura -- in attesa, in corso, applicata, rifiutata, scaduta -- insieme al corpo di prima e a quello di dopo, e conserva per sempre l'ultima copia precedente di ogni oggetto scritto perche' e' l'unica esistente al mondo e permette di tornare indietro | revisions |  |
-| vive |  |  |  |
-| vocabolario |  |  |  |
+| vive | il valore che Home Assistant sta dichiarando in questo momento per un'entita' -- la sua unita', la sua classe, l'istante dell'ultimo cambiamento -- letto dallo specchio dello stato invece che dal registro statico, per i casi in cui i due possono non coincidere | reported |  |
+| vocabolario | il modulo che tiene in un posto solo le parole con cui i consumi vengono raccontati -- i cinque livelli di affidabilita' di un costo dal piu' debole al piu' forte, e le etichette con cui ogni provider viene mostrato -- cosi' che nessun'altra pagina le reinventi a modo suo | vocabulary |  |
 
 > **`promessa`** (qui) e **`promesse`** (nei «Nomi degli strumenti», sotto) sono **due cose
 > diverse**: la prima e' il concetto/modulo Python (il significato di «una promessa nel ponte»), la
@@ -254,6 +254,79 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > fondamenta n.3 **richiedono due inglesi diversi**, non uno scelto guardando solo la memoria e
 > applicato per abitudine anche ai consumi. Il Task 6 decidera' quali; questa nota esiste perche'
 > chi ci arriva lo trovi scritto invece di scoprirlo a meta' rinomina.
+
+> **`ancora` NON e' stato deciso da questo task, nonostante la nota qui sopra lo assegnasse al
+> Task 6.** Verificato all'inizio di questo task: `ancora` non e' una riga di «I concetti» -- non
+> compariva ne' vuota ne' piena -- ed e' invece uno dei 12 concetti che il brief dichiara ancora
+> assenti dal documento, la cui aggiunta e decisione spetta a un dispaccio successivo. La nota di
+> fix round 1 aveva scritto un'assegnazione che la struttura del documento non rispecchiava: il
+> vincolo di questo task ("nessuna riga nuova") impedisce di correggere l'incongruenza aggiungendo
+> la riga qui. Chi apre il prossimo dispaccio deve sapere che l'omonimia fra le due `ancora`
+> (memoria e consumi) resta da decidere per intero, comprese le due inglesi.
+
+> **Verdetto su `archivio` (`ArchivioCasa`, `ArchivioMemoria`, `ArchivioConsumi`,
+> `ArchivioCostruzioni`, `ArchivioOsservazioni`, `ArchivioPromesse`) contro `ChatStore`
+> (`chat_store.py`): fanno la stessa cosa, e il nome e' uno solo.** Lette per intero
+> `memoria/archivio.py` e `casa/archivio.py`, e per intero `chat_store.py`: tutti e sette seguono
+> la stessa forma, byte per byte nella struttura anche se non nel contenuto -- una classe che apre
+> la propria connessione SQLite nel costruttore (`connect()`), applica uno schema con eventuali
+> migrazioni versionate (`init_schema(..., version=N, migrations={...})`), e offre metodi propri
+> per scrivere e rileggere lo stato di UN sottosistema, mai condivisi con un altro. `ChatStore`
+> aggiunge una gestione di sessioni (finestre di conversazione) che nessun `Archivio*` ha, ma e'
+> un dettaglio del SUO sottosistema (la chat ha sessioni, la memoria no), non una differenza di
+> ruolo: e' la stessa distinzione per cui `ArchivioCasa` e `ArchivioPromesse` hanno metodi diversi
+> fra loro pur essendo entrambi `Archivio*`. La riprova che il nome giusto era gia' nel codice:
+> `hiris/app/storage.py` (`connect()`/`init_schema()`, importato da OGNI classe qui sopra E da
+> `ChatStore`) dice nel proprio docstring *"Every HIRIS **store** should open its connection via
+> connect()"* -- l'infrastruttura condivisa da tutti e sette gia' li chiama cosi'. Per questo
+> l'inglese scelto per `archivio` e' `store`, non `archive`: un archivio in inglese implica
+> permanenza, e `casa/archivio.py` dichiara nel proprio docstring di essere l'opposto -- "Non
+> contiene niente di irripetibile: si cancella e si ricostruisce da HA in pochi secondi" --
+> mentre `memoria/archivio.py` e' l'esatto contrario ("l'unica cosa di HIRIS che non si
+> ricostruisce"). Un solo inglese per sette classi con politiche di persistenza opposte e' corretto
+> solo se descrive il RUOLO (una classe-store per-sottosistema) e non la durata dei suoi dati --
+> motivo per cui la colonna «che cosa fa» di `archivio`, sopra, non menziona quanto a lungo i dati
+> restano.
+
+> **`genere`, `specie`, `famiglia`: tre inglesi deliberatamente non imparentati, nonostante in
+> italiano formino la stessa terna tassonomica (genere/specie/famiglia, come in biologia).** Il
+> mandato di questo task avverte che tre nomi che si somigliano impedirebbero a chi legge di capire
+> quale e' quale. `genere` (`GENERI`, sei ambiti di un fatto compiuto della casa) e' diventato
+> `genre`; `specie` (`SPECIE`, fai/chiedi di un impegno) e' diventato `intent`; `famiglia`
+> (`FAMIGLIE`, le cinque cause di un fallimento del provider) e' diventato `family`. Una traduzione
+> letterale in terna biologica (genus/species/family) avrebbe ricreato in inglese la stessa
+> somiglianza superficiale che le tre parole hanno gia' in italiano, nonostante classifichino tre
+> cose senza relazione (un fatto osservato, un impegno futuro, un errore di rete): scartata di
+> proposito. Scartati anche, durante la ricerca, candidati che collidevano con codice gia'
+> scritto per un concetto DIVERSO: `kind` (blocca -- e' gia' la chiave `job.get("kind")` che
+> distingue `"chat"`/`"promessa"`/`"holistic"` in `agent/runner.py:1575` e dintorni, un job della
+> coda di ragionamento, non un genere di fatto), `type`/`class`/`category`/`nature` (bloccano --
+> gia' assegnati rispettivamente a `tipo` [parola ordinaria], usati come parola chiave del
+> linguaggio, assegnati a `categoria` [parola ordinaria], e gia' identificatore `NATURE` in
+> `decisione_modelli.py:85`), `mode` (blocca per `specie` -- e' gia' il parametro `mode: str` che
+> distingue l'esecuzione `"live"` da quella `"mock"` in `agent/runner.py:1151` e dintorni, un'altra
+> cosa).
+
+> **`servizi` e `registro` vengono dalla stessa classe (`RegistroServizi`,
+> `azione/registro.py:110`), ma restano due voci distinte apposta.** L'estrazione ha spezzato il
+> nome composto in due parole: `registro` (gia' deciso, `registry`) e' lo specchio -- la struttura
+> che HIRIS tiene aggiornata e interroga; `servizi` (`services`, qui) e' cio' che lo specchio
+> contiene -- la singola operazione che un dominio di Home Assistant dichiara di saper eseguire
+> (`RegistroServizi.servizio(dominio, nome)`, `.servizi_di(dominio)`), un fatto che l'installazione
+> stessa dichiara e non un'invenzione di HIRIS. Non e' un doppione mancato: sono il contenitore e
+> il contenuto, stessa distinzione gia' in uso fra `memoria`/`ricordi` e fra `schedulatore`/
+> `promessa`.
+
+> **`ripiego` e' anche un valore persistito, non solo un concetto -- fuori dallo scopo di questo
+> task, segnalato per chi verra' dopo.** `reasoning/queue.py:161` scrive `status='ripiego'` come
+> quinto stato letterale della coda (accanto a `pending`/`claimed`/`decided`/`expired`/`failed`),
+> non attraverso una costante nominata come `GENERI` o `SPECIE`: e' una stringa scritta a mano
+> nell'SQL. Questo task decide la parola-concetto (`ripiego` → `downgrade`) come tutte le altre 25
+> righe, ma non aggiunge una riga a «I valori di dominio» per quello stato -- il divieto di questo
+> task e' non aggiungere righe, e la colonna `status` in `reasoning_jobs` non ha un nome di
+> costante Python da cui questo task possa citare la posizione nello stesso formato delle altre
+> undici righe di quella tabella. Chi migrera' i valori di `status` deve scrivere `downgrade` al
+> posto di `'ripiego'`, con lo stesso significato deciso qui.
 
 ## Le parole ordinarie
 
