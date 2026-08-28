@@ -161,13 +161,20 @@ del dominio, dichiarate come costanti e **persistite nei database**:
 | `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | gli esiti dei provider |
 | `_GESTI` | crea · modifica · cancella | le costruzioni |
 | `_TIPI_COMPORTAMENTO` | automazione · script | il comportamento della casa |
+| `STATI_SOSPESO` | in_attesa · in_corso | promesse ancora aperte |
+| `ORIGINI_UMANE` | pagina | chi ha originato un gesto |
+| `_SEGNI_MIGRAZIONE` | seminato · catena_seminata · piano_seminato | le migrazioni delle opzioni |
+| `_LEGAMI_COMPRIMARI` | entita · automazione · scena · script | i comprimari di un soggetto |
+
+**Sono dodici**, non otto: l'elenco qui sopra e' stato completato durante l'esecuzione del Task 1,
+che le ha estratte tutte invece di fidarsi di questa spec.
 
 **Sono dati, esattamente come i 13 nomi degli strumenti** (③): stanno dentro colonne
 `TEXT NOT NULL`, e cambiarli significa migrare quello che c'è già scritto. Stesso trattamento:
 **il nome si decide qui, si applica in una fetta che sa gestire la migrazione.**
 
-**Ma i nomi delle costanti sono un'altra cosa.** `genere`, `specie`, `famiglia`, `gesto`,
-`direzione`, `stato` sono **identificatori** e **concetti**: vanno nell'insieme ①, si decidono col
+**Ma i nomi delle costanti sono un'altra cosa.** `genere`, `specie`, `famiglia`, `gesto`, `direzione`, `segno`, `origine` sono **identificatori**
+e **concetti**: vanno nell'insieme ①, si decidono col
 metodo del §5, e si rinominano con tutto il resto. Il valore `'funzionamento'` è un dato; la parola
 `genere` che lo classifica è un concetto. Sono due decisioni distinte sulla stessa riga di codice.
 
