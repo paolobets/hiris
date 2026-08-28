@@ -142,6 +142,37 @@ romperebbe in silenzio:
 Rinominarli e' **un cambio di prodotto con migrazione dati**. Il loro nome si decide qui; si applica
 nella fetta che sa gestire la migrazione.
 
+### ④ I valori di dominio — entrano nel glossario, non nella rinomina
+
+**Aggiunto il 28/08 durante l'esecuzione: la spec non li aveva visti.** Emersi dalla review del
+Task 1, che ha trovato `genere` — un concetto vero, assente dal glossario perché non è mai nome di
+modulo né di classe.
+
+Esiste uno strato di vocabolario che vive **come valore**, non come identificatore. Le tassonomie
+del dominio, dichiarate come costanti e **persistite nei database**:
+
+| costante | valori | dove vive |
+|---|---|---|
+| `GENERI` | funzionamento · presenza · energia · guasto · sicurezza · bilancio | colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |
+| `GAMBE` | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | il pavimento dell'osservatore |
+| `SPECIE` | fai · chiedi | colonna `specie` in `schedulatore/archivio.py:34` |
+| `STATI_CONCLUSI` | mantenuta · saltata · disdetta · fallita | stato delle promesse |
+| `DIREZIONI_BILANCIO` | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | i bilanci dell'energia |
+| `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | gli esiti dei provider |
+| `_GESTI` | crea · modifica · cancella | le costruzioni |
+| `_TIPI_COMPORTAMENTO` | automazione · script | il comportamento della casa |
+
+**Sono dati, esattamente come i 13 nomi degli strumenti** (③): stanno dentro colonne
+`TEXT NOT NULL`, e cambiarli significa migrare quello che c'è già scritto. Stesso trattamento:
+**il nome si decide qui, si applica in una fetta che sa gestire la migrazione.**
+
+**Ma i nomi delle costanti sono un'altra cosa.** `genere`, `specie`, `famiglia`, `gesto`,
+`direzione`, `stato` sono **identificatori** e **concetti**: vanno nell'insieme ①, si decidono col
+metodo del §5, e si rinominano con tutto il resto. Il valore `'funzionamento'` è un dato; la parola
+`genere` che lo classifica è un concetto. Sono due decisioni distinte sulla stessa riga di codice.
+
+---
+
 ---
 
 ## 5. Il metodo — come si decide una parola
