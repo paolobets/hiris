@@ -113,7 +113,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action |  |
 | caricatore |  |  |  |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home |  |
-| catena |  |  |  |
+| catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain |  |
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind |  |
 | comportamento | l'elenco di automazioni e script gia' in esecuzione da soli, ottenuto incrociando cio' che i file dichiarano con cio' che lo stato conferma esistere davvero, cosicche' HIRIS non riproponga qualcosa gia' fatto | behavior |  |
 | comprimari |  |  |  |
@@ -123,7 +123,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | direzione |  |  |  |
 | dispatcher |  |  |  |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries |  |
-| esito |  |  |  |
+| esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | disposition |  |
 | famiglia |  |  |  |
 | flusso |  |  |  |
 | forme | il modulo puro che, a partire dai parametri portati dal modello, compone la struttura pronta da scrivere per ciascun tipo di oggetto -- automazione, script, scena -- generando anche un identificatore che in questa casa non esiste ancora | shapes |  |
@@ -132,12 +132,12 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | gesto |  |  |  |
 | grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | raw |  |
 | impostazioni |  |  |  |
-| indice |  |  |  |
+| indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup |  |
 | instradamento |  |  |  |
-| interpretazione |  |  |  |
+| interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation |  |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation |  |
 | lettura |  |  |  |
-| memoria |  |  |  |
+| memoria | il sottosistema che conserva per sempre le frasi esatte che una persona ha detto sulla sua casa insieme a come HIRIS le ha interpretate, correggibile senza toccare le parole originali, senza anonimizzazione e senza scadenza | memory |  |
 | mestiere | la funzione pura che, davanti a una richiesta, decide se serve un'automazione, uno script, una scena o una combinazione delle tre, e dice anche perche' -- consigliando senza mai bloccare chi insiste per un'altra scelta | advisor |  |
 | migrazione |  |  |  |
 | notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight |  |
@@ -145,27 +145,28 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop |  |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact |  |
 | origine |  |  |  |
-| orologio |  |  |  |
+| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite | clock |  |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher |  |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations |  |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline |  |
 | ponte |  |  |  |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator |  |
-| promessa |  |  |  |
+| promessa | l'impegno per un momento futuro che l'utente ha chiesto -- fare qualcosa, oppure controllare qualcosa e riferire -- con la sua scadenza, la sua tolleranza al ritardo, e lo stato con cui si conclude | promise |  |
 | registro | lo specchio aggiornato di cosa Home Assistant sa fare in questa casa, servizio per servizio e con i relativi parametri -- non un catalogo scritto da HIRIS, ma la copia di cio' che Home Assistant stesso dichiara di poter eseguire | registry |  |
-| riconoscitore |  |  |  |
+| riconoscitore | il modulo che decide a quale parte della casa si riferisce una frase scritta, confrontandola con nomi e alias dichiarati e restringendo poi cio' che il modello propone a cio' che esiste davvero nell'anagrafe | resolver |  |
+| ricordi | le frasi esatte, cosi' come sono state dette, che una persona ha affidato a HIRIS -- la verita' che non si tocca mai, nemmeno quando la sua lettura viene corretta | memories |  |
 | rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection |  |
 | ripiego |  |  |  |
-| schedulatore |  |  |  |
+| schedulatore | il sottosistema che tiene le promesse fatte per un momento futuro: le risveglia quando arriva l'ora, ne porta a termine il compito o la domanda, e registra sempre come e' andata | keeper |  |
 | segno |  |  |  |
 | semaforo |  |  |  |
 | servizi |  |  |  |
-| spazio |  |  |  |
+| spazio | l'etichetta che distingue, dentro la cache in memoria dell'indice, a quale chiamante appartiene una voce, cosi' che due strumenti sulla stessa casa non si sovrascrivano il risultato a vicenda -- **nota per la migrazione:** questo stesso nome vive gia' come valore di una colonna persistita (`memoria/cache_indice.py:27`); rinominare il concetto qui non rinomina da solo quella colonna, sono due decisioni distinte | slot |  |
 | specie |  |  |  |
 | stati |  |  |  |
 | strumenti |  |  |  |
-| tempo |  |  |  |
-| turno |  |  |  |
+| tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | span |  |
+| turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange |  |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict |  |
 | verifica | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio | verification |  |
 | versioni | l'archivio che tiene lo stato di ogni proposta di scrittura -- in attesa, in corso, applicata, rifiutata, scaduta -- insieme al corpo di prima e a quello di dopo, e conserva per sempre l'ultima copia precedente di ogni oggetto scritto perche' e' l'unica esistente al mondo e permette di tornare indietro | revisions |  |
@@ -193,6 +194,38 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > Stesso ragionamento, dedotto con lo stesso criterio, per `segno` (da `_SEGNI_MIGRAZIONE`): i
 > valori che classifica (`seminato`, `catena_seminata`, `piano_seminato`) sono marcatori specifici
 > del progetto, non un sostantivo generico.
+
+> **`ricordi` non c'era: la riga e' stata aggiunta da questo task, non solo riempita.** Ne'
+> l'estrazione di Task 1 (moduli e classi) ne' quella allargata di Task 2 (funzioni e parametri)
+> lo avevano fatto uscire, pur essendo un parametro ricorrente (`casa/nucleo.py::_righe_ricordi`,
+> `componi`) e una tabella vera (`CREATE TABLE ricordi`, `memoria/archivio.py`). E' un concetto,
+> non un rumore: per spiegarlo serve raccontare come funziona la memoria di HIRIS. Stesso principio
+> gia' applicato a `origine`/`segno` sopra -- il glossario vince sull'estrazione automatica quando
+> il codice mostra un buco che lo script non poteva vedere.
+
+> **Verdetto su `turno` (`schedulatore/turno.py`) contro `ReasoningQueue`
+> (`reasoning/queue.py`): NON sono la stessa cosa, e la differenza e' voluta.** `turno` e' lo
+> scambio applicativo -- una chiamata al modello con un catalogo di strumenti ristretto ai soli
+> lettori, che deve chiudersi chiamando `concludi` o e' un errore dichiarato. `ReasoningQueue` e'
+> l'infrastruttura di persistenza -- una coda SQLite generica con `claim`/`submit`/`sweep_expired`/
+> `reclama_scaduto`, usata **sia** dai turni di chat **sia** dalle promesse instradate sul ponte,
+> quando la risposta deve attraversare un confine di processo e non si puo' aspettare in linea.
+> `turno._accoda_al_ponte()` e' l'unico punto in cui i due si toccano: quando la promessa va al
+> ponte, il turno smette di essere uno scambio sincrono e diventa un job accodato in
+> `ReasoningQueue`, chiuso altrove (`api/handlers_mcp`) o mai chiuso (`sweep_expired`). Due
+> concetti a livelli diversi -- un episodio di conversazione, e il magazzino che lo fa
+> sopravvivere a un riavvio del chiamante -- non la stessa cosa con due nomi: se lo fossero
+> davvero, l'inglese di `turno` sarebbe stato `queue`, e non lo e'.
+
+> **`promessa` → `promise`: un rischio per chi rinominera' il lato JavaScript, non per il modulo
+> Python.** Il confronto sul codice trova `Promise` (maiuscolo) come identificatore non-prosa in
+> piu' file di `hiris/app/static/` (`new Promise(...)`, `Promise.all(...)`, `Promise.resolve(...)`
+> -- `chat/send.js:30`, `config/dashboard.js:410`, `config/models-route.js:165`, altri): e' il
+> costruttore nativo di JavaScript per il controllo asincrono, non un nome che HIRIS ha scelto.
+> Non blocca `promise` per il modulo Python (`schedulatore/promessa.py` non vede quel costruttore),
+> ma chi rinominera' il concetto anche lato JavaScript dovra' scegliere una variabile locale che
+> non si chiami `promise` a cuor leggero nello stesso file in cui gira gia' `new Promise(...)`:
+> l'ombra sarebbe legale in JS (scoping locale) ma illeggibile.
 
 ## Le parole ordinarie
 
