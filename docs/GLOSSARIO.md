@@ -6,10 +6,14 @@ Questo documento non e' storia: e' la **regola**. Si consulta ogni volta che nas
 aggiorna quando nasce un concetto. Non porta una data di redazione perche' non e' la fotografia di
 un giorno: e' vivo, e cambia quando cambia il codice.
 
-**Stato di questo documento: l'elenco e' completo, nessuna colonna e' decisa.** Le colonne «che
-cosa fa», «inglese» e «prova del lettore nuovo» sono lasciate vuote di proposito — le riempiono i
-task successivi della stessa fetta. Una riga con la colonna vuota significa «non ancora deciso», non
-«dimenticato».
+**Stato di questo documento (corretto durante la review finale del ramo: la frase precedente
+diceva il contrario e nessuno l'aveva piu' aggiornata dopo il Task 9): l'elenco e' completo E le
+colonne sono decise.** «I concetti», «Le parole ordinarie» e «I nomi degli strumenti» hanno tutte
+e tre le colonne piene su ogni riga -- nessuna vuota per dimenticanza, nessuna in sospeso. Fa
+eccezione, dichiarata e non silenziosa, «I valori di dominio»: vedi la nota di rinvio in quella
+sezione, in fondo al documento. Una riga di una qualunque tabella con una cella vuota, se mai ne
+ricomparira' una in futuro, significa «non ancora deciso», non «dimenticato» -- ma oggi, salvo
+quella sezione, non ce n'e' nessuna.
 
 **Aggiornato il 28/08 durante l'esecuzione, dopo una review:** la prima stesura aveva tre insiemi.
 La review ha trovato un quarto insieme che la spec non aveva visto (`genere` e altre parole che
@@ -88,6 +92,27 @@ un dispaccio successivo aggiunge le 12 righe mancanti (vuote) a «I concetti»: 
 prima, il documento e' l'unica casa delle parole non ancora decise e la colonna vuota le copre
 tutte.
 
+**Corretto durante la review finale del ramo: il comando qui sopra restituisce zero righe --
+verificato eseguendolo davvero, non leggendo la tabella a occhio.** Non e' un test che non puo'
+fallire per un difetto di scrittura: e' che oggi non c'e' piu' nessuna parola italiana di «I
+concetti» con la colonna «inglese» vuota, punto -- verificato anche in modo indipendente per
+l'intero documento, non solo per questa sezione (vedi i controlli di completezza del Task 9). Le
+dodici parole che il Task 2 aveva segnalato come concetti senza riga (`riferimento`, `bersaglio`,
+`fuso`, `componi`, `condizioni`, `piano`, `ancora`, `specchio`, `intento`, `forza`, `tetto`,
+`plance`) sono **tutte e dodici** righe decise oggi: il Task 6 ne ha decise la maggior parte (fra
+cui `intento`, l'esempio citato sopra), il Task 6bis ha chiuso le ultime due, `ancora` e `piano`,
+sdoppiate in quattro righe per l'omonimia gia' raccontata sopra. Nessuna delle dodici e' rimasta
+indietro, nonostante nessun singolo task si fosse mai preso esplicitamente il compito di
+"aggiungere le righe vuote residue" per tutte insieme.
+**Il passo non e' morto, e' inerte per il motivo giusto**: protegge le parole italiane non ancora
+decise da un candidato che le collida per primo, e oggi non ce ne sono perche' il vocabolario
+di questo giro e' chiuso -- non perche' la difesa non sappia scattare. Resta scritto, non
+cancellato, perche' il documento e' dichiaratamente vivo («si aggiorna quando nasce un concetto»,
+in testa): il giorno in cui un nuovo concetto italiano entrera' in «I concetti» ancora senza
+inglese (anche solo come riga vuota), questo stesso comando tornera' a trovarlo e a farlo valere
+prima che un candidato successivo lo scavalchi. Cancellarlo ora, per il solo fatto che restituisce
+zero oggi, toglierebbe la protezione proprio nel momento in cui tornera' a servire.
+
 **Non ogni collisione col codice conta allo stesso modo — e si decide guardando DOVE cade il
 match, non giudicando quanto la parola «conti» come nome.** Corretto una seconda volta dopo la
 review del fix round 1: la prima formulazione («un concetto che qualcuno ha deciso di chiamare
@@ -103,20 +128,51 @@ la useranno senza che nessuno gliela rispieghi. La regola e' un test meccanico:
 
 Un grep piu' un'occhiata a dove cade ogni riga trovata: non serve altro.
 
+**Eccezione, e va scritta qui perche' la regola sopra non la contiene: il confine batte la
+collisione.** Corretto durante la review finale del ramo — il documento gia' applicava questa
+eccezione in almeno tre punti (`target` per `bersaglio`, sotto; `related` per `legami` e
+`logbook` per `accaduto`, «I nomi degli strumenti») ma non l'aveva mai scritta nella sezione della
+regola, cosi' come scritta oggi: un lotto futuro che applicasse la regola alla lettera bloccherebbe
+`target` (identificatore per un altro concetto, `storage.py:56`, `for target in range(...)`) e
+sceglierebbe un sinonimo inventato al posto del nome che Home Assistant o un provider LLM usano
+gia' per la stessa cosa — esattamente la traduzione-travestita-da-rinomina che questa fetta esiste
+per impedire. **Ordine di applicazione: prima si controlla se il candidato e' un nome di confine
+(HA o un provider lo usano gia' per QUESTA identica cosa); se lo e', vince e la collisione con un
+significato diverso altrove nel codice non lo scarta. Solo se non e' un nome di confine, la
+collisione blocca come sopra.**
+
 Due casi veri, trovati nella review del Task 4:
 
-- **`gateway` per `porta`** (poi corretto in `actuator`): 16 occorrenze in `hiris/app`. Cade su un
-  **nome di file** (`api/handlers_gateway_policy.py`) e su un **segmento di rotta**
-  (`/api/gateway/policy`, `server.py:3598`) — entrambi contesti non-prosa: blocca. (Compare anche in
-  prosa, `agent/runner.py:3`: *«Porta in-addon del runner del gateway esterno»* — ma basta un solo
-  match non-prosa per bloccare.)
+- **`history` per `accaduto`** (poi corretto in `logbook`, «I nomi degli strumenti», sotto --
+  corretto qui il 28/08 durante la review finale del ramo: l'esempio precedente, `gateway` per
+  `porta`, citava un file cancellato, sotto). 50 occorrenze in `hiris/app`. Cade su **chiavi di
+  dizionario e parametri di funzione** non-prosa usati per la cronologia dei messaggi di chat --
+  `agent/prompts.py:365` (`build_chat_messages(system_prompt, history, ...)`),
+  `agent/runner.py:1172` (`history = context.get("history")`), `api/handlers_chat.py:354`
+  (`"history": sanitized_history`) -- un significato completamente diverso da «cosa e' successo in
+  casa»: blocca.
 - **`build` per `costruzione`** (poi corretto in `construction`): 44 occorrenze. Cade su
-  **identificatori** — `app["build_stamp"]` (chiave di dizionario) e `_compute_build_stamp` (nome
-  di funzione), entrambi in `server.py` — contesto non-prosa: blocca.
+  **identificatori** — `app["build_stamp"]` (chiave di dizionario, `server.py:3502`) e
+  `_compute_build_stamp` (nome di funzione, `server.py:3777`), piu' il file
+  `static/build-check.js` — contesto non-prosa: blocca.
 - **Per contrasto, il caso tollerato:** `construction` compare 3 volte in `hiris/`, e cade **solo**
   dentro frasi in linguaggio naturale — commenti come «dead by construction», «at store
   construction», «numeric by construction» — mai come identificatore, chiave o nome di file:
   tollera.
+
+**Corretto durante la review finale del ramo: l'esempio con cui questa regola viene INSEGNATA era
+falso, e non e' un refuso -- e' l'esempio da cui i lotti futuri imparano la regola, quindi l'errore
+si sarebbe propagato.** L'esempio citava `gateway` per `porta`: *«Cade su un nome di file
+(`api/handlers_gateway_policy.py`) e su un segmento di rotta (`/api/gateway/policy`,
+`server.py:3598`)»*. **Verificato: `api/handlers_gateway_policy.py` non esiste piu'** — cancellato
+per intero nella fetta E3 Task 7, e sopravvive solo dentro commenti che ne annunciano la
+cancellazione (`server.py:1749,2897,2994,3598-3604`, tutti in prosa). `server.py:3598` non e' una
+rotta viva, e' una riga di commento. Applicando la regola COSI' COME SCRITTA sopra — non-prosa
+contro prosa — ogni occorrenza rimasta di `gateway` in `hiris/app` cade oggi in prosa (commenti, un
+docstring): la regola vera **tollera** `gateway`, non lo blocca. Il paragrafo chiudeva con *«Un
+grep piu' un'occhiata a dove cade ogni riga trovata: non serve altro»* — l'occhiata, per questo
+esempio, non era mai stata rifatta dopo che il codice era cambiato. Sostituito con `history`
+(sopra), un caso verificato di persona su questo stesso codice, oggi.
 
 ## Parole scartate durante l'estrazione
 
@@ -126,9 +182,22 @@ gia' nella lingua di destinazione o sono una sigla, e sono state tolte a mano da
 
 | parola uscita dallo script | perche' e' stata scartata |
 |---|---|
-| `backend` | e' gia' inglese — frammento del nome di un file dentro `backends/` (il modulo plurale e' gia' filtrato, il singolare sfugge come pezzo di un altro nome di file) |
+| `backend` | e' gia' inglese -- corretto durante la review finale del ramo, la ragione precedente citava un file che non esiste (nessun file si chiama `backend*.py`, solo la cartella `backends/`): il singolare vive come identificatore vero, per esempio `nome_backend` (`api/handlers_chat.py:302,303,305`), oltre che in prosa ovunque nel sottosistema |
 | `sanitize` | e' gia' inglese, usata cosi' com'e' nel codice |
 | `yaml` | e' una sigla di formato, non si traduce |
+
+**`dispatcher` NON e' in questa lista, e va scritto perche' fa eccezione -- corretto durante la
+review finale del ramo, che ha trovato una riga completa in «I concetti» per una parola gia'
+inglese, lo stesso criterio con cui `backend`/`sanitize`/`yaml` sono stati tolti sopra, applicato
+al contrario.** La differenza: `backend`, `sanitize` e `yaml` sono parole di dizionario, prive di
+un significato che HIRIS abbia inventato — non c'e' niente da spiegare oltre al loro senso
+ordinario. `dispatcher` invece porta un **contratto comportamentale specifico di HIRIS**, non
+ovvio dal nome da solo: la riga in «I concetti» (sotto) descrive che `DispatcherStrumenti` non
+solleva MAI, e trasforma un nome sconosciuto, argomenti mancanti o un guasto imprevisto in un
+dizionario leggibile invece che in un'eccezione che interrompe il turno — un impegno che il
+progetto rispetta ovunque, non deducibile dalla sola parola inglese. E' la stessa ragione per cui
+`archivio` ha una riga (→ `store`, gia' un inglese comune) pur non inventando la parola: il
+glossario cataloga il **contratto**, non solo il vocabolario che manca.
 
 Lo script ha anche fatto uscire tre coppie singolare/plurale della stessa parola. Nel glossario
 resta **un solo lemma per coppia** — la forma scelta e' quella data dalla spec come esempio certo
@@ -160,9 +229,9 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
 | bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
-| cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw | ✓ arriva |
+| cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | sample | ~ non ri-provato |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
-| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home_space | ✓ arriva |
+| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home_space | ~ parziale |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain | ~ parziale |
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind | ~ parziale |
 | componi | assembla, a partire dai pezzi gia' pronti che riceve, la struttura finale che serve a un chiamante -- il corpo di un'automazione, il testo dato al modello a inizio turno, il pannello di una decisione -- sempre nello stesso punto per ogni caso, cosicche' nessun chiamante ricalchi da solo la stessa regola di assemblaggio | compose | ✓ arriva |
@@ -184,7 +253,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
-| grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | raw | ✓ arriva |
+| grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | sample | ~ non ri-provato |
 | impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
 | instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ✓ arriva |
@@ -205,7 +274,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
 | piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log | subscription | ✓ arriva |
-| piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i piani di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
+| piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i livelli verticali di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
 | plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ✓ arriva |
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator | ~ parziale |
@@ -288,79 +357,72 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > non si chiami `promise` a cuor leggero nello stesso file in cui gira gia' `new Promise(...)`:
 > l'ombra sarebbe legale in JS (scoping locale) ma illeggibile.
 
-> **`cambi` → `raw`: non e' un secondo inglese per lo stesso lemma, e' lo stesso concetto di
-> `grezzo` sotto un altro sostantivo italiano.** Aggiunta in fix round 1 (rilievo del
-> coordinatore): la tabella `CREATE TABLE cambi` (`cervello/archivio.py`) e' esattamente cio' che
-> la riga `grezzo` descrive -- *«un cambiamento di stato registrato esattamente come Home
-> Assistant lo riporta ... prima che qualunque giudizio lo trasformi in un fatto interpretato»* --
-> e i commenti del sottosistema lo confermano chiamandolo "il grezzo" anche quando parlano della
-> tabella nel suo insieme (`cervello/oggetti.py`: *«finche' il grezzo esiste (22 giorni)»*).
-> Riusare `raw` per `cambi` non viola "nessun inglese due volte per due concetti diversi" --
-> non sono due concetti diversi, sono lo stesso, con due nomi italiani. Il rischio che questa nota
-> chiude: applicare alla cieca `cambio → change` (parola ordinaria gia' in tabella) avrebbe
-> prodotto `changes`, un secondo nome inglese per una cosa che ogni commento del sottosistema gia'
-> chiama `raw` -- la stessa incoerenza che questa fetta esiste per chiudere, ricreata al contrario.
+> **`cambi` e `grezzo` sono un solo concetto, non due: stesso inglese per entrambi, e non e' un
+> doppione.** Aggiunta in fix round 1 (rilievo del coordinatore): `cervello/archivio.py:74`
+> (`CREATE TABLE IF NOT EXISTS cambi`) e' esattamente cio' che la riga `grezzo` descrive -- *«un
+> cambiamento di stato registrato esattamente come Home Assistant lo riporta ... prima che
+> qualunque giudizio lo trasformi in un fatto interpretato»*. **Prova migliore, trovata dalla
+> review finale, sostituita a quella precedente:** il codice stesso usa le due parole attaccate,
+> `cervello/archivio.py:3`, *«I **cambi grezzi** vivono 22 giorni»* -- dimostra la fusione meglio
+> di una citazione di schema, perche' non e' un'inferenza di chi scrive il glossario, e' il
+> sottosistema che chiama la sua stessa tabella cosi'. Dare un secondo inglese a `cambi` (per
+> esempio applicando alla cieca `cambio → change`, parola ordinaria gia' in tabella) produrrebbe
+> `changes`, un secondo nome per una cosa che il codice chiama gia' con la stessa coppia di parole
+> italiane -- la stessa incoerenza che questa fetta esiste per chiudere, ricreata al contrario.
+>
+> **Corretto durante la review finale del ramo: l'inglese era `raw`, e collideva -- la collisione
+> non era mai stata cercata.** `raw` e' gia' un identificatore vivo in `hiris/app` per un concetto
+> **diverso**, "il valore non ancora decodificato di un input": `raw = getattr(runner,
+> "last_tool_calls", None)` (`api/handlers_chat.py:1045`), `def _clean_provider_models(raw)`
+> (`api/handlers_models.py:37`), `def _pulisci_ponte(raw)` (`api/handlers_models.py:139`), piu'
+> occorrenze non-prosa in `env_util.py`, `impostazioni_chat.py`, `claude_runner.py` -- **circa 24
+> righe non-prosa su 6 file**. Per la regola meccanica del documento (sopra, «Il controllo di
+> collisione...») questo blocca **esattamente come ha bloccato `build`** (44 occorrenze, scartato
+> per `costruzione`) e **come ha fatto cambiare `clock`** (una sola chiave di dizionario,
+> `request.app.get("_clock")`, nessuna eccezione concessa nonostante fosse un solo match). Non ho
+> scritto un'eccezione per `raw`: sarebbe stato lo stesso difetto che questa nota gia' cita come
+> esempio da non ripetere, applicato al contrario -- due pesi per la stessa regola, uno strumento
+> con 44 occorrenze e uno con una sola bloccati, uno con ~24 no, senza un motivo di confine a
+> giustificarlo (a differenza di `target` o `related`: nessun sistema esterno chiama "raw" questo
+> preciso concetto). **Nuovo inglese: `sample`.** Zero occorrenze in `hiris/` (verificato con
+> `grep -rn '\bsample\b' hiris/app --include=*.py`), zero nel glossario, non e' il nome ovvio di
+> nessuna parola italiana ancora senza inglese (non ce ne sono piu', vedi A3 -- nessuna, oggi).
+> Coerente col contrasto gia' scritto in questa riga: un `sample` grezzo, non ancora giudicato,
+> contro un `fact` (`oggetti`, sopra) che e' cio' che se ne e' capito. **Non ri-provato**: la
+> collisione e' verificata, il nome no -- non e' stato rimesso davanti a un lettore nuovo, quindi
+> l'esito in tabella scende da `✓ arriva` a `~ non ri-provato` su entrambe le righe.
 
-> **`ancora` e' un OMONIMO fra due sottosistemi, non ancora deciso -- nota per il Task 6, non una
-> decisione presa qui.** Aggiunta in fix round 1 (rilievo del coordinatore). Il Task 2 aveva messo
-> `ancora`/`ancore` in coda al Task 6 citando solo `memoria/archivio.py` (il meccanismo con cui un
-> ricordo si lega a un'entita', un'area o un dispositivo: `CREATE TABLE ancore`, colonne `tipo`,
-> `riferimento`, `nome_visto`). **Esiste una seconda `ancora`, completamente diversa, in
-> `consumi/archivio.py`**: una riga singleton (`CREATE TABLE ancora (id, da_ts, da_giorno)`) che
-> e' il punto di riferimento temporale da cui si contano i consumi correnti, con `ancora_saldo`
-> (il saldo per provider/modello congelato in quell'istante, `sposta_ancora()`) -- nessuna
-> estrazione automatica aveva visto questa seconda voce. Le due `ancora` non sono la stessa cosa
-> (una lega un ricordo a un pezzo di casa, l'altra e' uno zero mobile per un contatore) e per la
-> fondamenta n.3 **richiedono due inglesi diversi**, non uno scelto guardando solo la memoria e
-> applicato per abitudine anche ai consumi. Il Task 6 decidera' quali; questa nota esiste perche'
-> chi ci arriva lo trovi scritto invece di scoprirlo a meta' rinomina.
+> **`ancora` era un OMONIMO fra due sottosistemi, oggi risolto -- fusa qui in una nota sola**
+> (la review finale ha trovato tre note in sequenza a raccontare la stessa vicenda in tre stadi --
+> bozza, correzione, decisione -- la seconda stantia non appena la terza e' arrivata: un fatto ha
+> una sola casa). `memoria/archivio.py` usa `ancora` per il legame, di tipo dichiarato, fra un
+> ricordo e l'area/dispositivo/entita' a cui si riferisce (`CREATE TABLE ancore`, colonne `tipo`,
+> `riferimento`, `nome_visto`). `consumi/archivio.py` usa lo stesso nome per una riga singleton
+> completamente diversa (`CREATE TABLE ancora (id, da_ts, da_giorno)`): il punto di riferimento
+> temporale da cui si contano i consumi correnti, con `ancora_saldo` (il saldo per provider/modello
+> congelato in quell'istante, `sposta_ancora()`). Non sono la stessa cosa -- una lega un ricordo a
+> un pezzo di casa, l'altra e' uno zero mobile per un contatore -- e per la fondamenta n.3
+> servivano due inglesi diversi. **Deciso dal Task 6bis, ora in «I concetti»:** l'ancora della
+> memoria e' `tether`, l'ancora dei consumi e' `anchor` -- non `baseline`, nonostante la vicinanza
+> di significato segnalata come rischio da verificare (gia' presa da `pavimento`, «l'insieme fisso
+> di classi che entra comunque»): il rischio e' stato evitato, `baseline` resta solo di `pavimento`.
 
-> **`ancora` NON e' stato deciso da questo task, nonostante la nota qui sopra lo assegnasse al
-> Task 6.** Verificato all'inizio di questo task: `ancora` non e' una riga di «I concetti» -- non
-> compariva ne' vuota ne' piena -- ed e' invece uno dei 12 concetti che il brief dichiara ancora
-> assenti dal documento, la cui aggiunta e decisione spetta a un dispaccio successivo. La nota di
-> fix round 1 aveva scritto un'assegnazione che la struttura del documento non rispecchiava: il
-> vincolo di questo task ("nessuna riga nuova") impedisce di correggere l'incongruenza aggiungendo
-> la riga qui. Chi apre il prossimo dispaccio deve sapere che l'omonimia fra le due `ancora`
-> (memoria e consumi) resta da decidere per intero, comprese le due inglesi.
-
-> **Deciso dal Task 6bis: le due righe `ancora (memoria)` e `ancora (consumi)` sono ora in «I
-> concetti».** L'ancora della memoria (il legame ricordo -- area/dispositivo/entita') e' diventata
-> `tether`; l'ancora dei consumi (il punto temporale da cui si conta, spostato da
-> `sposta_ancora()`) e' diventata `anchor`, non `baseline` -- vedi la nota successiva, che avvertiva
-> proprio di questo rischio, per il motivo dello scarto.
-
-> **`piano` e' un secondo OMONIMO fra due sottosistemi, trovato dalla review di questo task --
-> stessa natura di `ancora` sopra, non deciso qui.** `piano` non e' una riga di «I concetti»: e'
-> un altro dei 12 concetti ancora assenti dal documento. Ma il codice gia' lo usa per DUE cose
-> senza relazione, e chi lo decidera' deve saperlo prima di scegliere un solo inglese per abitudine:
-> 1. **il livello della casa** -- la gerarchia piani → aree → dispositivi → entita' letta dal
+> **`piano` era un secondo OMONIMO fra due sottosistemi, oggi risolto -- fusa qui in una nota sola
+> per lo stesso motivo di `ancora` sopra.** Il codice lo usava per due cose senza relazione:
+> 1. **il livello della casa** -- la gerarchia piani -> aree -> dispositivi -> entita' letta dal
 >    `floor_registry` di Home Assistant (`casa/archivio.py:22`, tabella `piani`, colonna
 >    `livello`; `casa/anagrafe.py`, che la assembla dai quattro registri grezzi);
 > 2. **il Piano dell'abbonamento Claude** -- l'abbonamento a forfait che alimenta il ponte
 >    (`decisione_modelli.py`: `VARIABILE_TOKEN_DEL_PIANO`, `piano_ha_il_token()`; anche
 >    `instradamento.py:70-77`, `ponte.tetto_giornaliero` letto per "il piano").
 >
-> Per la fondamenta n.3 servono **due inglesi diversi**, mai uno scelto guardando un sottosistema
-> e applicato per abitudine anche all'altro -- lo stesso principio gia' scritto per `ancora`. Il
-> dispaccio che decidera' `piano` deve anche sapere questo, prima di scegliere l'inglese del senso
-> 2 -- rilievo della review di questo task: l'`ancora` dei consumi (sopra, "il punto temporale da
-> cui si contano i consumi correnti") e' semanticamente vicinissima a **`baseline`**, gia' presa da
-> `pavimento` ("l'insieme fisso di classi che entra comunque", riga «I concetti»). Non e' una
-> collisione meccanica sul codice (nessun identificatore condiviso), ma una vicinanza di
-> SIGNIFICATO che un lettore nuovo potrebbe confondere se le due finissero per suonare uguali:
-> chi decide l'`ancora` dei consumi deve verificarlo prima di fissare il candidato, non scoprirlo
-> dopo aver gia' scritto la riga.
-
-> **Deciso dal Task 6bis: le due righe `piano (casa)` e `piano (abbonamento)` sono ora in «I
-> concetti».** Il livello della casa e' diventato `floor` -- il confine vince: e' il nome che lo
-> stesso `floor_registry` di Home Assistant usa gia' (`casa/domande.py:98`, `"floor": "piano"`;
-> `proxy/ha_client.py:1374`). Il Piano dell'abbonamento Claude e' diventato `subscription` -- non
-> una scelta nuova ma il nome che il codice usa gia' per lui: `_credenziali["subscription"]` e
+> Per la fondamenta n.3 servivano due inglesi diversi. **Deciso dal Task 6bis, ora in «I
+> concetti»:** il livello della casa e' `floor` -- il confine vince, e' il nome che lo stesso
+> `floor_registry` di Home Assistant usa gia' (`casa/domande.py:98`, `"floor": "piano"`;
+> `proxy/ha_client.py:1374`); il Piano dell'abbonamento e' `subscription` -- non una scelta nuova
+> ma il nome che il codice usa gia' per lui: `_credenziali["subscription"]` e
 > `NOMI["subscription"] = "Piano Claude Max"` in `decisione_modelli.py`,
-> `_CONFIG_PROVIDER_IDS = ("subscription", ...)` in `api/handlers_models.py`. Il rischio segnalato
-> sopra (`ancora` dei consumi vicina a `baseline`) e' stato evitato: l'ancora dei consumi e'
-> `anchor`, non `baseline` -- `baseline` resta solo di `pavimento`.
+> `_CONFIG_PROVIDER_IDS = ("subscription", ...)` in `api/handlers_models.py`.
 
 > **Verdetto su `archivio` (`ArchivioCasa`, `ArchivioMemoria`, `ArchivioConsumi`,
 > `ArchivioCostruzioni`, `ArchivioOsservazioni`, `ArchivioPromesse`) contro `ChatStore`
@@ -443,15 +505,22 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > `_STATI_INTEGRAZIONE_TRANSITORI` (`casa/nucleo.py:821`, `cervello/osservatore.py:31`), tutte
 > dello stesso schema `STATI_X = (valore, valore, ...)` usato per testare appartenenza, mai per
 > leggere un valore da solo. Non e' un secondo significato di `stato` (le tre accezioni gia' viste
-> restano tre), e' lo stesso concetto raccolto in insiemi con nome -- coerente con come il
-> documento tratta gia' `registri`/`registro` come forme flesse dello stesso concetto nella nota
-> sulle parole ordinarie.
+> restano tre), e' lo stesso concetto raccolto in insiemi con nome -- lo stesso schema gia' visto
+> in «I valori di dominio», sotto, dove il singolare classifica (`genere`, `specie`, `famiglia`) e
+> il plurale maiuscolo nomina l'insieme dei valori ammessi (`GENERI`, `SPECIE`, `FAMIGLIE`).
+> **Corretto durante la review finale del ramo: questa nota citava `registri`/`registro` come
+> esempio dello stesso fenomeno -- e' sbagliato, sono un OMONIMO fra due sottosistemi diversi, non
+> lo stesso concetto a grana diversa (vedi la nota su `registri`/`interpreta`, sotto «Le parole
+> ordinarie»); rimosso da qui, non era l'esempio giusto.**
 
 > **`ripiego` e' anche un valore persistito, non solo un concetto -- fuori dallo scopo di questo
-> task, segnalato per chi verra' dopo.** `reasoning/queue.py:161` scrive `status='ripiego'` come
-> quinto stato letterale della coda (accanto a `pending`/`claimed`/`decided`/`expired`/`failed`),
-> non attraverso una costante nominata come `GENERI` o `SPECIE`: e' una stringa scritta a mano
-> nell'SQL. Questo task decide la parola-concetto (`ripiego` → `downgrade`) come tutte le altre 25
+> task, segnalato per chi verra' dopo.** **Citazione corretta durante la review finale del ramo:
+> `reasoning/queue.py:161` e' un commento** (*«Lo stato nuovo si chiama 'ripiego'...»*), non la
+> SQL vera -- che e' a `reasoning/queue.py:200` (`"UPDATE reasoning_jobs SET status='ripiego', ...`).
+> La sostanza restava vera, il puntatore no. `status='ripiego'` e' il quinto stato letterale della
+> coda (accanto a `pending`/`claimed`/`decided`/`expired`/`failed`), non attraverso una costante
+> nominata come `GENERI` o `SPECIE`: e' una stringa scritta a mano nell'SQL.
+> Questo task decide la parola-concetto (`ripiego` → `downgrade`) come tutte le altre 25
 > righe, ma non aggiunge una riga a «I valori di dominio» per quello stato -- il divieto di questo
 > task e' non aggiungere righe, e la colonna `status` in `reasoning_jobs` non ha un nome di
 > costante Python da cui questo task possa citare la posizione nello stesso formato delle altre
@@ -465,8 +534,46 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > cosa fa»: `✓ arriva` (la funzione principale si vede, anche con parole diverse), `~ parziale`
 > (campo giusto ma generico o incompleto), `✗ non arriva` (un'altra cosa, o «non mi dice niente»).
 > Conteggio sulle 80 righe dopo il primo giro: 41 `✓`, 34 `~`, 5 `✗`. Dei 5 `✗`, il secondo giro ne
-> ha risolti 2 (un nuovo inglese ciascuno) e ne ha lasciati 3 bocciati due volte su due. Conteggio
-> finale: **42 `✓`, 35 `~`, 3 `✗` in arbitrato** (`casa`, `orologio`, `tempo`).
+> ha risolti 2 (un nuovo inglese ciascuno) e ne ha lasciati 3 bocciati due volte su due, andati
+> all'arbitrato del proprietario (`casa`, `orologio`, `tempo`).
+>
+> **Il conteggio "finale" scritto qui era stantio -- corretto durante la review finale del ramo,
+> perche' anteriore a due ricalibrature che il documento stesso racconta pochi paragrafi sotto
+> (Task 8bis e Task 9), non solo al secondo giro appena citato.** Il numero giusto **oggi** si
+> ricava rieseguendo lo stesso conteggio sulla tabella corrente, non fidandosi di una cifra scritta
+> in un giorno che non c'e' piu':
+>
+> ```bash
+> python - <<'PY'
+> import pathlib
+> from collections import Counter
+> t = pathlib.Path('docs/GLOSSARIO.md').read_text(encoding='utf-8').split(chr(10))
+> sez, c = None, Counter()
+> for r in t:
+>     if r.startswith('## '): sez = r[3:].strip(); continue
+>     if sez == 'I concetti' and r.startswith('| '):
+>         cols = [x.strip() for x in r.strip('|').split('|')]
+>         if cols[0] == 'italiano' or set(cols[0]) <= set('- '): continue
+>         esito = cols[3]
+>         if 'arbitrato' in esito: chiave = 'arbitrato'
+>         elif esito.startswith('~'): chiave = 'tilde'
+>         else: chiave = 'check'
+>         c[chiave] += 1
+> print(dict(c), sum(c.values()))
+> PY
+> ```
+>
+> (Nota per chi lo rilancia su un terminale Windows in code page non-UTF8: se il glifo `✓` nel
+> file dovesse mai far fallire la stampa con `UnicodeEncodeError`, e' un limite del terminale, non
+> dello script -- rilancia con `PYTHONIOENCODING=utf-8` davanti al comando.)
+>
+> **Eseguito oggi: 39 `✓`, 39 `~`, 2 arbitrato (senza misura, `orologio`/`tempo`) su 80 righe.**
+> Il movimento rispetto al 42/35/3 scritto sopra: -1 arbitrato (Task 9 ha deciso `casa`, sebbene
+> con esito `~` dopo il rilievo B1, non `✓`) e -2 `✓`/+2 `~` (`grezzo`/`cambi`, sanati da `raw` a
+> `sample` dopo il rilievo A2, non ancora ri-provati). Nessuna delle due cifre precedenti (42/35/3
+> ne' 41/37/2) era falsa quando scritta: erano entrambe esatte al proprio commit, e sono diventate
+> stantie quando il documento e' cambiato sotto di loro senza che il numero venisse riallineato --
+> la ragione per cui questa nota ora spiega COME ricavarlo, non solo QUANTO fa oggi.
 >
 > **`anagrafe`: `directory` bocciato, sostituito da `topology`.** Il lettore nuovo ha letto
 > `directory` come cartella di filesystem — *«un catalogo organizzato di elementi, in informatica
@@ -486,6 +593,19 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > evento, spesso con timestamp»* — che nominano "il fatto di cio' che e' davvero successo": `✓
 > arriva`.
 >
+> **Perche' `outcome`, citato qui sopra come il piu' ovvio, non e' mai stato provato come
+> candidato -- decisione mancante, scritta durante la review finale del ramo.** `outcome` e' gia'
+> un identificatore vivo in `hiris/app`, non-prosa: variabile locale in `agent/runner.py:1645,
+> 1647-1648,1669-1671` (`outcome = ...`, confrontato con `"idle"`) e in
+> `api/handlers_reasoning.py:34,60,65` (`outcome = "recorded"`, `"promessa_sconosciuta"`,
+> `"promessa_gia_conclusa"`) -- in entrambi i casi una classificazione locale del risultato di UNA
+> chiamata o iterazione specifica, non il concetto generale che `esito` descrive (*«il fatto
+> osservabile su cio' che e' davvero successo in un tentativo... mai un'ipotesi sul perche'»*).
+> Vicino ma non lo stesso: usarlo per `esito` avrebbe messo lo stesso inglese su un concetto
+> generale del glossario e su una variabile locale che gia' significa qualcosa di piu' stretto in
+> due punti del codice — la stessa classe di rischio per cui `raw` e' stato scartato sopra, solo
+> con un peso minore (2 file, non 6). Non blocca con la stessa forza di `raw`/`history`, ma basta a
+> spiegare perche' il secondo giro sia partito da `occurrence` invece che dalla parola piu' ovvia.
 > **`casa`, `orologio`, `tempo`: due candidati bocciati su due, vanno all'arbitrato del
 > proprietario — non un terzo giro, per il vincolo "massimo due giri per parola".** Per ciascuno,
 > la frase «che cosa fa» (gia' in tabella sopra), i due inglesi provati e la risposta testuale del
@@ -535,19 +655,28 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 >
 > - **`home_space`** e' stato comunque **misurato**, non solo arbitrato: due lettori indipendenti,
 >   nudo, come per ogni altra riga. Lettore A: *«gestisce gli spazi o le zone fisiche della casa
->   (stanze, ambienti, aree)»* -- centro pieno, `✓ arriva` senza riserve. Lettore B: *«un componente
->   che rappresenta lo spazio di un'abitazione... il concetto di ambiente domestico (una casa, con
->   le sue stanze/dispositivi) in un sistema di domotica»* -- nomina prima la homepage, poi atterra
->   sul concetto giusto: arriva, ma con un passaggio in piu' di A. L'esito in tabella (`✓ arriva`) e'
->   quello di A; la lettura di B e' onesta da riportare perche' non e' un `✓` immediato quanto A, pur
->   restando un arrivo. **Cura il difetto di `home`** (letto SOLO come homepage, bocciato al primo
->   giro) **senza cadere in quello di `house`** (che a un lettore non diceva niente): ne' la
->   componente domestica-generica di `home` da sola, ne' il vuoto semantico di `house` da solo --
->   la coppia `home`+`space` porta entrambi i lettori sul concetto a quattro livelli (piano, area,
->   dispositivo, entita') invece che su un contenitore generico o una pagina web. **Fatto onesto da
->   scrivere:** il candidato del proprietario ha misurato meglio dei candidati che questa fetta
->   aveva gia' tentato e bocciato per questa stessa riga (`home`, `house`, sopra) -- due giri, due
->   bocciature, e la proposta arbitrata supera entrambe alla stessa identica prova.
+>   (stanze, ambienti, aree)»* -- centro pieno. Lettore B: *«un componente che rappresenta lo
+>   spazio di un'abitazione... il concetto di ambiente domestico (una casa, con le sue
+>   stanze/dispositivi) in un sistema di domotica»* -- nomina prima la homepage, poi atterra sul
+>   concetto giusto.
+>
+>   **Corretto durante la review finale del ramo: l'esito era stato scritto `✓ arriva` prendendo la
+>   lettura migliore (A), quando il criterio del documento stesso dice `~` quando "il lettore
+>   atterra nella famiglia giusta ma sulla forma sbagliata" -- ed e' esattamente cio' che fa B.**
+>   Per `house` (sopra, bocciato) la divergenza fra due lettori era stata di per se' l'esito
+>   (*«due letture cosi' distanti sullo stesso nome sono gia' un esito»*); qui la stessa divergenza
+>   era stata invece risolta scegliendo la lettura migliore, e succedeva sull'unica riga il cui
+>   candidato viene dal proprietario. Non era un arbitrato spacciato per misura -- peggio: era una
+>   prova che, solo su quella riga, non poteva fallire. **Il metro non cambia in base a chi propone
+>   il nome.** Esito corretto: **`~ parziale`** (A pieno, B parziale -- nomina prima la homepage).
+>   Il **nome resta**: `home_space` **cura comunque il difetto di `home`** (letto SOLO come
+>   homepage, bocciato al primo giro) **senza cadere in quello di `house`** (che a un lettore non
+>   diceva niente) -- la coppia `home`+`space` porta entrambi i lettori sul concetto a quattro
+>   livelli (piano, area, dispositivo, entita') invece che su un contenitore generico o una pagina
+>   web, e resta la lettura migliore misurata su questa riga finora. **Fatto onesto da scrivere:**
+>   il candidato del proprietario ha misurato meglio dei candidati che questa fetta aveva gia'
+>   tentato e bocciato per questa stessa riga (`home`, `house`, sopra) -- due giri, due bocciature,
+>   e la proposta arbitrata supera entrambe, anche con l'esito corretto a `~`.
 > - **`sweeper`** non e' stato ri-provato (istruzione esplicita: e' un arbitrato, non una misura, e
 >   va segnato come tale in colonna prova -- `arbitrato del proprietario`, non `✓ arriva`).
 >   Ragionamento del proprietario, registrato qui: `heartbeat` e `pulse` erano stati bocciati
@@ -672,6 +801,40 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > "soglia fissa che si allarga e mai si restringe"). Il dubbio e' chiuso da una misura, non da
 > un'opinione. (E' in questo stesso lotto di ri-prova che e' emerso il reperto su `shapes`,
 > discusso sopra.)
+
+> **Quattro coppie che la frase «che cosa fa» non distingueva bene, segnalate dalla review finale
+> del ramo: rilievo giusto, rimedio no.** Il revisore proponeva di declassare quattro `✓` a `~`
+> (`costruzione`/`officina`, `casa`/`anagrafe`, `schedulatore`/`orologio`, `indice`/
+> `riconoscitore`). Il metro `✓`/`~` e' gia' stato riscritto tre volte su queste stesse 80 righe
+> (12 righe declassate, poi altre 20, poi 30 restituite, sopra: la ricalibratura del confronto e
+> le due passate sul criterio nuovo) senza mai cambiare un solo nome inglese: una quarta
+> ricalibratura ripeterebbe lo stesso errore invece di correggerlo. Cio' che il criterio chiede
+> davvero — e che le altre coppie vicine hanno gia' avuto (`registro`/`servizi`, `memoria`/
+> `ricordi`, `turno`/`ReasoningQueue`, `promessa`/`promesse`) — e' la **nota di distinzione**: una
+> riga che dice cosa fa l'una che l'altra non fa. Scritta qui per tutte e quattro; se la frase
+> distingue dopo la nota, l'esito `✓` regge e non si tocca:
+>
+> - **`costruzione` / `officina`**: `costruzione` e' il **sottosistema** — la capacita' generale
+>   di comporre e scrivere nuova configurazione con un ciclo proposta/approvazione/scrittura e
+>   annullamento; `officina` e' il **modulo concreto** che quella capacita' la implementa per
+>   automazioni/script/scene, gemello di `azione`/`porta` per i servizi. Uno nomina il dominio,
+>   l'altro nomina il file che lo fa succedere.
+> - **`casa` / `anagrafe`**: `casa` e' la **struttura dati risultante** — la gerarchia a quattro
+>   livelli su cui HIRIS ragiona; `anagrafe` e' il **modulo che la produce**, leggendo e
+>   assemblando i quattro registri grezzi di Home Assistant. Uno e' il dato, l'altro e' il
+>   processo che lo costruisce.
+> - **`schedulatore` / `orologio`**: `schedulatore` e' il **sottosistema che tiene le promesse**
+>   per l'intero ciclo di vita — le risveglia, ne porta a termine il compito, **registra come e'
+>   andata**; `orologio` e' il **meccanismo di battito** che, ricevuto un tick esterno, scorre le
+>   sole promesse scadute in QUEL giro e non si ferma se una fallisce, cosi' che le altre dello
+>   stesso giro vengano comunque servite. Uno tiene lo stato e la memoria dell'esito, l'altro e' la
+>   resilienza di un singolo passaggio.
+> - **`indice` / `riconoscitore`**: `indice` e' la **struttura di lookup** — costruita una sola
+>   volta, interrogata da altri chiamanti per trovare candidati o confermare un identificatore;
+>   `riconoscitore` e' il **modulo che la costruisce e la usa** per un compito piu' specifico,
+>   decidere a quale parte della casa si riferisce una FRASE scritta dal modello, restringendo le
+>   proposte a cio' che esiste davvero. Uno e' il dato interrogabile, l'altro e' il processo che lo
+>   fabbrica e lo applica a un testo libero.
 
 ## Le parole ordinarie
 
@@ -815,6 +978,24 @@ al Task 6 invece che deciso qui.
 > grafia, per due ragioni diverse, nella stessa lingua di partenza. Non e' un errore di copia:
 > sono due voci a se', e ciascuna avra' la propria decisione.
 
+> **`carica → load` e' sbagliato in un senso su due -- nota di scissione aggiunta durante la
+> review finale del ramo, con lo stesso metodo gia' usato per `stato` e `riga`, sotto.** Il senso
+> maggioritario e' generico e `load` e' corretto: `casa/lettura_yaml.py:49,59`
+> (`def carica_yaml(...)`, `def carica_file(...)`) e `impostazioni_chat.py:280`
+> (`ImpostazioniChat.carica()`, chiamato da `server.py:2085`) caricano un file o una
+> configurazione, esattamente "load". Ma `carica`/`scarica` sono anche **due dei sette valori di
+> `DIREZIONI_BILANCIO`** («I valori di dominio», in fondo): li' significano carica **di batteria**,
+> non caricamento di un file -- `casa/anagrafe.py:469` (`"battery_charging": ("in carica", "non in
+> carica")`) e `cervello/oggetti.py:439` (`attive_scarica`, `fine_scarica_batteria`). In quel
+> contesto `load` mentirebbe: l'inglese giusto e' `charge`/`discharge`, non una forma di `load`.
+> La tabella sopra fissa `load` come equivalente di default (il senso maggioritario); chi traduce
+> i valori di `DIREZIONI_BILANCIO` deve usare `charge`/`discharge`, non applicare `load` alla
+> cieca. **Aggravante da scrivere:** la caccia alla terza famiglia di errori (parole generiche con
+> piu' di un senso, sotto) ha esaminato otto parole frequenti e concluso che nessuna mostrava la
+> spaccatura di `stato` -- vero per quelle otto, ma la parola davvero spaccata (`carica`) non era
+> fra le otto esaminate: era gia' elencata da questo stesso documento due sezioni piu' sotto, come
+> valore di `DIREZIONI_BILANCIO`, un posto che quella caccia non ha guardato.
+
 > **`riga`: la stessa parola, due significati.** Negli archivi SQLite (`cervello/archivio.py`,
 > `memoria/archivio.py`, `casa/archivio.py`, `azione/cronaca.py`, `schedulatore/promessa.py`,
 > `decisione_modelli.py`) `riga`/`righe` e' una riga di tabella: `row` e' corretto e non perde
@@ -842,7 +1023,44 @@ al Task 6 invece che deciso qui.
 > che HTTP e aiohttp usano gia'), e chi rinomina `costo_stato` deve usare qualcosa come
 > `cost_status`/`cost_state` **deciso insieme al resto del vocabolario dei costi**, non `state`
 > applicato alla cieca.
->
+
+> **`stati` → `states`: nota di rischio, aggiunta durante la review finale del ramo -- secondo
+> caso di confine preso con un significato diverso, questa volta senza cambiare il nome.** Home
+> Assistant chiama gia' `/api/states` l'elenco degli stati vivi di tutte le entita', e il codice
+> lo rispecchia: `api/handlers_entities.py:13` (`def filter_entities(states: list[dict], ...)`),
+> `proxy/ha_client.py:332` (`f"{self._base_url}/api/states"`). La riga `stati` (sopra) e' una cosa
+> diversa: *«un insieme chiuso di valori... usato per verificare se un valore singolo vi
+> appartiene»* -- `STATI_SOSPESO`, `STATI_CONCLUSI` e simili, non l'elenco delle entita' vive.
+> `state` per `stato` (nota sopra) resta corretto perche' li' i due sensi COINCIDONO (lo stato di
+> un'entita' e' ancora "lo stato di qualcosa"); qui invece il plurale del confine (`states`, "gli
+> stati vivi delle entita'") e il plurale del concetto (`states`, "l'insieme chiuso di valori
+> ammessi") sono **due cose diverse che suonerebbero uguali**. Non ho cambiato il nome -- le due
+> occorrenze del confine sono poche (un parametro, un URL) rispetto ai casi che questa review ha
+> fatto cambiare (`raw`, sopra: ~24 righe su 6 file; `history`: 50 occorrenze), e `stati` vive quasi
+> sempre in composizione (`STATI_SOSPESO`, `STATI_CONCLUSI`), mai da solo, il che riduce il rischio
+> di uno scambio diretto. **Chi decidera' l'inglese delle costanti `STATI_SOSPESO`/`STATI_CONCLUSI`
+> in «I valori di dominio» (sotto, oggi senza inglese -- vedi C7) deve verificare questo rischio
+> prima di comporre `..._STATES` alla cieca**: se il contesto in cui la costante compare puo'
+> confondersi con l'elenco vivo delle entita' di Home Assistant, la forma composta va preferita a
+> `states` nudo, o va usato un suffisso diverso (`*_VALUES`, `*_SET`).
+
+> **`spazio` → `slot`: un disallineamento apparente, verificato durante la review finale del ramo
+> e non azionato -- decisione scritta, non un silenzio.** La frase «che cosa fa» descrive
+> un'**etichetta che identifica il chiamante** (*«a quale chiamante appartiene una voce»*), che
+> suonerebbe piu' vicina a "namespace" che a "slot" (una posizione). Verificato pero' cosa fa
+> davvero il codice: `memoria/cache_indice.py:122` (`self._voci: dict[str, tuple[tuple, Indice]]
+> = {}`) tiene **un dizionario con una voce per spazio**, e `spazio` e' la chiave con cui si scrive
+> e si legge quella voce (`self._voci[spazio] = ...`). In questo senso `slot` non nomina "una
+> posizione" in astratto: nomina **il comparto della cache identificato da quella chiave** -- lo
+> stesso uso comune di "slot" in un dizionario/cache con chiave (una cache a `hash slot`, un
+> comparto per chiave). Non ho rinominato: due alternative piu' letterali collidono col confine
+> peggio del disallineamento che risolverebbero -- `namespace` e' generico ma `scope` e' gia' un
+> parametro non-prosa di Home Assistant per un concetto diverso (`{"scope": ambito}` in
+> `proxy/ha_client.py:1616,1644,1671`, l'ambito area/dispositivo/entita' del registro delle
+> categorie/etichette) -- e sostituire un disallineamento lieve con una collisione di confine vera
+> sarebbe un peggioramento, non una correzione. Resta `slot`, con questa nota a spiegare perche'
+> regge nonostante la lettura letterale della frase.
+
 > **Il metodo con cui e' stata cercata la terza famiglia di errori (parole generiche con piu' di
 > un senso):** oltre a `stato`, sono state riesaminate le altre parole generiche e frequenti della
 > tabella — `valore`, `voce`, `tipo`, `campo`, `chiave`, `nome`, `motivo`, `testo` (`origine` no:
@@ -853,21 +1071,54 @@ al Task 6 invece che deciso qui.
 > «type» resta corretto senza perdere informazione — a differenza di «state» per uno status HTTP.
 > Le altre sette (`valore`, `voce`, `campo`, `chiave`, `nome`, `motivo`, `testo`) sono risultate
 > genuinamente uniformi in ogni sottosistema in cui compaiono.
+>
+> **Corretto durante la review finale del ramo: questa caccia era vera ma incompleta -- ha guardato
+> solo dentro «Le parole ordinarie», non nelle altre tabelle del documento.** `carica` (nota sopra)
+> ha la stessa spaccatura di `stato` -- un senso maggioritario e uno di dominio che lo smentisce --
+> ma non era fra le otto parole riesaminate qui: viveva gia' come valore di `DIREZIONI_BILANCIO`,
+> in «I valori di dominio», una tabella che questo metodo non ha guardato. La caccia era limitata
+> al posto sbagliato, non alle parole sbagliate.
 
-> **Quattro forme flesse non compaiono ne' qui ne' in «I concetti», di proposito.**
-> L'estrazione allargata ha fatto uscire `vivi` (masch. plur. — `casa/domande.py:209,437,464,543,
-> 603,764` `attributi_vivi`, `casa/strumenti.py:1158` `nomi_vivi`), `direzioni` (plur. —
-> `server.py:917`, `cervello/oggetti.py:570`, `proxy/ha_client.py:1482` `direzioni_energia`),
-> `registri` (plur. — `casa/archivio.py:245`, `proxy/ha_client.py:1620,1678`) e `interpreta`
-> (verbo — `server.py:2773` `_interpreta`, `schedulatore/orologio.py:27`,
-> `schedulatore/turno.py:121` `interpreta_promessa`): la stessa radice di quattro voci gia' in
-> «I concetti» (`vive`, `direzione`, `registro`, `interpretazione`). Non le ho aggiunte qui come
-> ordinarie ne' come nuove voci in «I concetti»: dare un secondo inglese alla stessa radice
-> violerebbe la fondamenta n.3 (stessa cosa, stessa forma) — ed e' esattamente il difetto che
-> questa fetta esiste per chiudere. **Chi decidera' l'inglese di `vive`, `direzione`, `registro`
-> e `interpretazione` in «I concetti» deve usare lo stesso identico inglese anche per queste
-> quattro forme flesse**, nei file e alle righe elencati sopra: non e' una seconda decisione, e'
-> la stessa applicata a un'altra forma grammaticale.
+> **Due forme flesse vere, `vivi` e `direzioni` — non compaiono ne' qui ne' in «I concetti», di
+> proposito.** L'estrazione allargata ha fatto uscire `vivi` (masch. plur. — `casa/domande.py:209,
+> 437,464,543,603,764` `attributi_vivi`, `casa/strumenti.py:1158` `nomi_vivi`) e `direzioni`
+> (plur. — `server.py:917`, `cervello/oggetti.py:570`, `proxy/ha_client.py:1482`
+> `direzioni_energia`): la stessa radice, la stessa cosa, di due voci gia' in «I concetti» (`vive`,
+> `direzione`). Non le ho aggiunte qui come ordinarie ne' come nuove voci in «I concetti»: dare un
+> secondo inglese alla stessa radice violerebbe la fondamenta n.3 (stessa cosa, stessa forma) — ed
+> e' esattamente il difetto che questa fetta esiste per chiudere. **Chi decidera' l'inglese di
+> `vive` e `direzione` in «I concetti» deve usare lo stesso identico inglese anche per queste due
+> forme flesse**, nei file e alle righe elencati sopra: non e' una seconda decisione, e' la stessa
+> applicata a un'altra forma grammaticale.
+>
+> **`registri` e `interpreta` NON sono forme flesse: sono OMONIMI, tolti da questa nota durante
+> la review finale del ramo dopo che una prima stesura li aveva fusi per errore con `registro` e
+> `interpretazione` -- lo stesso fenomeno gia' trattato per `ancora` e `piano`, sopra.**
+> `registri` (plur. — `casa/archivio.py:245` `sostituisci(self, registri: dict[...], ...)`,
+> `proxy/ha_client.py:1618-1622` `leggi_registri()`, *«Tutti i registri della casa»*,
+> `proxy/ha_client.py:1676-1680` `config/entity_registry/list`) sono **i quattro registri di
+> Home Assistant** -- piani, aree, dispositivi, entita' -- esattamente cio' che la riga `anagrafe`
+> (sopra, `topology`) descrive: *«il modulo che legge i quattro registri grezzi di Home Assistant
+> ... e li assembla in un'unica gerarchia coerente»*. La riga `registro` (sotto, `registry`) e'
+> invece un concetto diverso, `azione/registro.py`: *«lo specchio aggiornato di cosa Home Assistant
+> sa fare in questa casa»*, il riflesso di `/api/services`. Applicare l'istruzione "stesso inglese
+> della radice" a `registri` avrebbe prodotto **un solo inglese per due concetti diversi** -- il
+> difetto che questa fetta esiste per chiudere, nel modo peggiore: `registry` e' anche la parola
+> con cui Home Assistant stesso chiama i SUOI registri (`floor_registry`, `entity_registry`,
+> `device_registry` — gia' citati sopra, nota su `piano (casa)`), quindi finirebbe naturalmente
+> addosso al senso di `anagrafe`/`registri`, non a quello di `registro` che l'ha gia' presa: un
+> conflitto di confine, non solo interno al glossario. **Chi decidera' l'inglese di `registri` deve
+> scegliere guardando `anagrafe`, non `registro`, e verificare la collisione con `registry` prima
+> di riusarla.**
+> `interpreta` (verbo — `schedulatore/orologio.py:27` `Orologio.__init__(self, archivio, *,
+> esegui, interpreta, ...)`, `schedulatore/turno.py:121` `async def interpreta_promessa(app,
+> promessa)`) e' il callback che risveglia il modello per una promessa "chiedi" e ne interpreta la
+> risposta -- un concetto del sottosistema `schedulatore`, non di `memoria`. La riga
+> `interpretazione` (sotto, `interpretation`) e' invece `memoria/interpretazione.py`: *«il
+> linguaggio chiuso a quattro caselle ... con cui il modello propone una lettura strutturata di
+> una frase ricordata»*. Due funzioni diverse che condividono un verbo italiano generico
+> ("interpretare"), non la stessa cosa vista da un'altra forma grammaticale: over-merge dello
+> stesso tipo di `registri`, corretto per lo stesso motivo.
 
 **La coda lunga (le parole usate una o due volte) non si decide riga per riga: si applica una
 regola sola.** Al momento della rinomina si usa l'equivalente inglese piu' ovvio della parola
@@ -952,7 +1203,7 @@ codice:
 | richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch | ~ parziale |
 | esegui | Chiama un servizio di Home Assistant per far succedere qualcosa nella casa -- accendere, spegnere, impostare -- su un bersaglio di entita' esatte oppure aree, piani, etichette o dispositivi | execute | ✓ arriva |
 | prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | promise | ✓ arriva |
-| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | agenda | ✓ arriva |
+| promesse | Gli impegni futuri che HIRIS tiene in carico -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelli gia' conclusi | agenda | ✓ arriva |
 | disdici | Annulla una promessa non ancora mantenuta, dato il suo identificatore | cancel | ~ parziale |
 | costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose | ~ parziale |
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
@@ -982,18 +1233,51 @@ codice:
 > la collisione con `import inspect` (`casa/strumenti.py:126,1096`, lo stesso file che definisce i
 > 13 strumenti) resta la scelta giusta, confermata dalla prova.
 >
-> **Un sospetto verificato e scartato, registrato come decisione scritta e non lasciato in
-> silenzio:** prima di chiudere `view`, ho controllato che non fosse un secondo caso di confine
-> mancato -- in Home Assistant una *view* e' anche una scheda di plancia (dashboard). Letto il
-> codice: `proxy/ha_client.py:411,499` cita `components/config/view.py` come il **modulo di rotta**
-> con cui Home Assistant serve `/api/config/...`, non il concetto di scheda-plancia; le plance
-> vive (creazione, salvataggio) passano da un canale diverso, `lovelace/config/save`
-> (vedi anche `plance` = `dashboards` in «I concetti», sopra, che descrive proprio quel percorso).
-> In piu' nessuno dei quattro lettori della prova ha letto "plancia" o "scheda". Il sospetto non
-> ha trovato riscontro ne' nel codice ne' nella prova: scartato, non sovrascrivendo una misura con
-> un'intuizione non confermata.
+> **Il sospetto sul confine era stato chiuso su un'evidenza sbagliata -- corretto durante la review
+> finale del ramo, e riaperto onestamente.** Prima di chiudere `view`, era stato controllato se
+> fosse un secondo caso di confine mancato -- in Home Assistant una *view* e' anche una scheda di
+> plancia (dashboard). La chiusura precedente citava `proxy/ha_client.py:411,499`
+> (`components/config/view.py`, il modulo di rotta con cui Home Assistant serve `/api/config/...`)
+> come prova che il sospetto non reggeva -- **era il file sbagliato: quell'evidenza non c'entra ne'
+> in un senso ne' nell'altro.**
 >
-> **`fetch` resta cosi' com'e'.**
+> **L'evidenza vera va nel senso opposto, e il documento la contiene gia'.** La riga `plance`
+> (sopra, `dashboards`) dice che le dashboard hanno *«percorso, titolo, modalita' e **viste**
+> proprie»*, e il codice usa "viste" nel senso di Home Assistant, non a caso: `casa/anagrafe.py:
+> 730-732` (*«Le entita' NASCOSTE (`hidden_by` non nullo: l'utente le ha tolte dalle **proprie
+> viste** in Home Assistant)»*) e `:979-981` (*«sono entita' vere, che l'utente ha solo tolto dalle
+> **proprie viste**»*) -- entrambi parlano delle schede di una dashboard, non di "guardare il
+> dettaglio di una cosa". La frase precedente, *«il sospetto non ha trovato riscontro ne' nel
+> codice ne' nella prova»*, e' **falsa sul codice**: un riscontro c'e', ed e' proprio nella parte
+> del prodotto (le dashboard) che questa fetta gia' rinomina altrove.
+>
+> **Riaperto e richiuso di nuovo, questa volta sull'evidenza giusta: il rischio si accetta,
+> dichiarato per iscritto, non si scarta per mancanza di prove.** Due fatti restano veri insieme:
+> (1) Home Assistant chiama "view" le schede di una dashboard, un senso reale e diverso da quello
+> di questo strumento; (2) **nessuno dei quattro lettori della ri-prova a due cataloghi (Task 8,
+> `view` testato nudo dentro un catalogo di 13 nomi di strumenti) ha letto "plancia", "scheda" o
+> "dashboard"** -- tutti e quattro hanno letto *«il dettaglio completo di un elemento gia'
+> identificato, per id»*. La prova che conta per una decisione di naming e' quella che riproduce la
+> condizione vera in cui il modello incontra il nome (dentro un catalogo di 13 strumenti, non contro
+> l'intero vocabolario di Home Assistant preso da solo), e su quella prova specifica il rischio non
+> si e' materializzato. Tenuto `view`: il rischio di confine con le dashboard di HA e' reale e
+> resta scritto qui, non silenziato -- ma non ha superato la soglia per cambiare un nome gia'
+> confermato da quattro letture indipendenti su un compito piu' pertinente.
+>
+> **`fetch` resta cosi' com'e' -- decisione scritta ora, mancava, durante la review finale del
+> ramo.** `fetch(...)` e' la funzione globale del browser per le chiamate HTTP dalla pagina, e
+> compare **oltre 50 volte** in `hiris/app/static/**/*.js` (`chat/agents.js:79,140,157`,
+> `chat/main.js:18`, `chat/send.js:43`, e nel resto del frontend) — non un'invenzione di HIRIS, la
+> stessa API che ogni pagina web userebbe per parlare col proprio backend. Stesso ragionamento gia'
+> scritto per `search`/`execute`/`cancel` contro `re.search()`/`sqlite3.execute()`/
+> `asyncio.Task.cancel()` (sopra, «I nomi degli strumenti»): il match non cade su un identificatore
+> che QUESTO progetto ha scelto per nominare un proprio concetto diverso, cade su un'API di
+> piattaforma che qualunque pagina JavaScript chiamerebbe comunque cosi'. `richiama` (lo strumento
+> che usa `fetch`) e il `fetch()` del browser vivono in due mondi separati -- Python lato server,
+> JavaScript lato client -- e non c'e' un file dove un lettore vedrebbe le due cose fianco a fianco
+> confondendole, a differenza del rischio reale gia' scritto per `promise` contro `new
+> Promise(...)` (sopra), dove invece un rename lato JavaScript potrebbe far collidere le due cose
+> nello stesso file.
 
 > **`promise`/`promises` -- il reperto principale della prima prova, sanato con una parola sola,
 > non con due nuove.** Nel catalogo con `promise`/`promises` la coppia era il rischio numero uno
@@ -1205,6 +1489,25 @@ La parola che classifica ciascuna costante (`genere`, `specie`, `famiglia`, `ges
 `segno`, `origine`) e' un'altra cosa — un **identificatore**, quindi un concetto: e' gia' in «I
 concetti», sopra.
 
+**Il rinvio dei ~40 valori (12 costanti) e' una decisione scritta, non un silenzio -- corretto
+durante la review finale del ramo, che ha trovato la colonna «valori — inglese» vuota su ogni
+riga senza che nessuna nota lo dichiarasse.** La spec dice *«il glossario decide TUTTO»*, e la
+testata del documento (in cima) oggi dichiara giustamente che l'elenco e' completo: questa e'
+l'unica eccezione, ed e' dichiarata qui, non lasciata a un lettore che deve accorgersene da solo
+guardando una tabella con una colonna intera bianca. **Nota per la cronaca: nel dispaccio al
+proprietario si era riferito "zero righe senza nome" -- era falso proprio per questa tabella, e la
+correzione e' qui.**
+Le ragioni del rinvio: (1) questi sono **dati persistiti** (`genere TEXT NOT NULL`,
+`specie TEXT NOT NULL`, ...), non identificatori — tradurli richiede una migrazione delle righe
+gia' scritte, la stessa classe di fetta separata gia' dichiarata per i 13 nomi degli strumenti
+sopra, non un'estensione della rinomina degli identificatori; (2) tradurre ~40 valori enum-like
+col rigore che le altre ~80 righe di questo documento hanno gia' ricevuto (controllo di collisione
+a tre passi PIU' la prova del lettore nuovo dove serve) e' un lavoro della stessa taglia di un
+intero task di questa fetta, non una riga da riempire di corsa dentro un giro di correzioni; farlo
+senza quel rigore produrrebbe 40 opinioni etichettate come misure — esattamente il difetto che
+questo documento esiste per non fare. **Decisione: rinviato a un dispaccio dedicato**, con lo
+stesso metodo gia' usato per gli altri lotti di questa fetta — non deciso qui, non dimenticato.
+
 | costante | valori | dove vive | valori — inglese |
 |---|---|---|---|
 | `GENERI` | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `cervello/oggetti.py:44`; colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |  |
@@ -1226,3 +1529,83 @@ concetti», sopra.
 > aggiungere. Perche' `legame`/`comprimari` non generano una nuova voce per `_LEGAMI_COMPRIMARI`: la
 > costante enumera **tipi di comprimari**, e sia `legami` (nomi degli strumenti) sia `comprimari`
 > (concetti) sono gia' voci a se' — non serve una terza parola.
+
+## Controlli di completezza
+
+**Aggiunta durante la review finale del ramo: due note del documento rimandavano qui prima che
+questa sezione esistesse (righe ~99 e ~1256) -- corretto scrivendola, non togliendo il rimando,
+perche' i controlli sono reali e vale la pena poterli rifare invece di fidarsi.** Tre controlli
+meccanici, eseguibili da chiunque:
+
+**1. Nessuna cella vuota, in nessuna tabella del documento** (salvo l'eccezione dichiarata in
+«I valori di dominio», sopra):
+
+```bash
+python - <<'PY'
+import pathlib
+t = pathlib.Path('docs/GLOSSARIO.md').read_text(encoding='utf-8').split(chr(10))
+header, vuote = None, []
+for r in t:
+    if r.startswith('## '): header = None; continue
+    if r.startswith('| ') and '---' not in r:
+        cols = [c.strip() for c in r.strip('|').split('|')]
+        if cols[0] in ('italiano', 'costante', 'parola uscita dallo script',
+                       'forma uscita dallo script'):
+            header = cols; continue
+        if header is None: continue
+        for i, val in enumerate(cols):
+            if not val:
+                vuote.append((cols[0], header[i]))
+print(vuote or "nessuna riga vuota")
+PY
+```
+
+Eseguito ora: 12 righe vuote, tutte in «I valori di dominio», colonna «valori — inglese» -- **e
+non un'altra**. E' esattamente l'eccezione dichiarata in cima a quella sezione: se questo comando
+restituisse anche una sola riga vuota FUORI da quella tabella, sarebbe una riga dimenticata da
+decidere, non l'eccezione nota.
+
+**2. Nessun inglese usato due volte per due concetti diversi.** Confronta ogni parola inglese
+decisa contro l'italiano di provenienza, su tutte le tabelle:
+
+```bash
+python - <<'PY'
+import re, pathlib
+from collections import defaultdict
+t = pathlib.Path('docs/GLOSSARIO.md').read_text(encoding='utf-8').split(chr(10))
+header, sez, byword = None, None, defaultdict(set)
+for r in t:
+    if r.startswith('## '): sez = r[3:].strip(); header = None; continue
+    if r.startswith('| ') and '---' not in r:
+        cols = [c.strip() for c in r.strip('|').split('|')]
+        if cols[0] in ('italiano', 'costante'):
+            header = cols; continue
+        if header is None: continue
+        try: idx = header.index('inglese')
+        except ValueError: continue
+        for w in re.findall(r'`([a-zA-Z_]+)`', cols[idx]) or ([cols[idx]] if cols[idx] else []):
+            byword[w].add((sez, cols[0]))
+for w, s in byword.items():
+    itas = set(x[1] for x in s)
+    if len(itas) > 1:
+        print(w, '->', s)
+PY
+```
+
+**Risultato atteso, eseguito ora: cinque casi, tutti gia' documentati altrove nel documento.**
+`sample` (`cambi`/`grezzo`): non e' cambiato con la rinomina del rilievo A2, e' lo stesso caso che
+prima si chiamava `raw` con la stessa identica giustificazione — un solo concetto, due nomi
+italiani, gia' spiegato nella nota sotto la tabella «I concetti». `count` (`conta`/`quante`),
+`list` (`elenco`/`elenca`) e `read` (`letto`/`leggi`) sono forme flesse della stessa parola
+ordinaria. `promise` compare sia come concetto (`promessa`) sia come nome di strumento
+(`prometti`): **non e' una svista**, e' lo stesso concetto visto dai due lati che questa fetta
+separa ovunque -- il dato e lo strumento che lo scrive -- documentato per esteso nella nota sotto
+la tabella dei 13 nomi degli strumenti. Se questo comando restituisse un sesto caso non elencato
+qui, sarebbe una collisione vera da correggere, non da spiegare.
+
+**3. Nessun file di codice toccato, e il linter resta verde:**
+
+```bash
+git status --porcelain   # deve mostrare solo docs/GLOSSARIO.md
+python -m ruff check     # deve dire "All checks passed!"
+```
