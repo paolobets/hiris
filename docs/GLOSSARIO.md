@@ -162,7 +162,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
 | cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | raw | ✓ arriva |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
-| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant |  | ✗ non arriva — arbitrato del proprietario |
+| casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home_space | ✓ arriva |
 | catena | l'ordine di ripiego fra i provider del modello: se il primo non risponde si passa al successivo, ed e' la sola fonte di verita' sulla priorita' -- non un ingrediente che ogni pagina ricostruisce a modo suo | chain | ~ parziale |
 | cervello | il sottosistema che osserva nel tempo cio' che succede e ne impara i pattern per dedurre correzioni utili, con una memoria e un obiettivo propri, distinto dal resto del prodotto | mind | ~ parziale |
 | componi | assembla, a partire dai pezzi gia' pronti che riceve, la struttura finale che serve a un chiamante -- il corpo di un'automazione, il testo dato al modello a inizio turno, il pannello di una decisione -- sempre nello stesso punto per ogni caso, cosicche' nessun chiamante ricalchi da solo la stessa regola di assemblaggio | compose | ✓ arriva |
@@ -200,7 +200,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop | ~ parziale |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact | ✓ arriva |
 | origine | classifica chi ha richiesto un'operazione di costruzione -- un umano che ha appena cliccato sulla pagina, oppure il modello durante un turno -- e decide se un controllo pensato per trattenere il modello si applica o si scavalca | actor | ~ parziale |
-| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) |  | ✗ non arriva — arbitrato del proprietario |
+| orologio | il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | sweeper | arbitrato del proprietario |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
@@ -225,7 +225,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | specie | classifica se un impegno per il futuro e' un fare qualcosa o un chiedere qualcosa da riferire -- le due sole forme ammesse, ciascuna gia' scritta come un verbo all'imperativo, con un valore fuori da queste due rifiutato subito | verb | ~ parziale |
 | stati | un insieme chiuso di valori specifici che condividono una proprieta' -- quali contano come conclusi e quali come ancora in sospeso per un impegno o una proposta di costruzione, quali come attivi per un'entita', quali come guasti o transitori per un'integrazione -- usato per verificare se un valore singolo vi appartiene, mai un valore da solo | states | ~ parziale |
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools | ~ parziale |
-| tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio |  | ✗ non arriva — arbitrato del proprietario |
+| tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | historian | arbitrato del proprietario |
 | tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ✓ arriva |
 | turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange | ~ parziale |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
@@ -520,10 +520,49 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 >   di inizio e fine) usato per **filtrare o delimitare** dei dati»* — di nuovo un valore/parametro
 >   di tempo, non il modulo che decide la fonte e la grana e compone la risposta.
 >
-> Le tre righe restano con la colonna «inglese» vuota (non ancora deciso, non dimenticato) finche'
-> il proprietario non arbitra. Dettaglio completo del dispaccio e delle due letture indipendenti in
+> Dettaglio completo del dispaccio e delle due letture indipendenti in
 > `.superpowers/sdd/2026-08-28-il-glossario/task-7-risposte.md` e `task-7-report.md` (non
 > tracciati, cartella di processo).
+
+> **Task 9 -- il proprietario ha arbitrato le tre parole.** `casa` -> **`home_space`**,
+> `orologio` -> **`sweeper`**, `tempo` -> **`historian`**. Le tre proposte vengono dal proprietario,
+> non da un terzo giro dell'implementer (vietato dal limite "massimo due giri per parola" appena
+> sopra): sono un arbitrato, non una misura. Cio' non le esenta dal controllo di collisione a tre
+> passi, che e' stato rifatto su tutte e tre (glossario, `grep -rn` su `hiris/app`, parole ancora
+> indecise): **zero occorrenze in `hiris/` per `home_space`, `sweeper` e `historian`**, nessuna
+> riga del glossario le usa gia', nessuna e' il nome ovvio di una parola italiana ancora senza
+> inglese.
+>
+> - **`home_space`** e' stato comunque **misurato**, non solo arbitrato: due lettori indipendenti,
+>   nudo, come per ogni altra riga. Lettore A: *«gestisce gli spazi o le zone fisiche della casa
+>   (stanze, ambienti, aree)»* -- centro pieno, `✓ arriva` senza riserve. Lettore B: *«un componente
+>   che rappresenta lo spazio di un'abitazione... il concetto di ambiente domestico (una casa, con
+>   le sue stanze/dispositivi) in un sistema di domotica»* -- nomina prima la homepage, poi atterra
+>   sul concetto giusto: arriva, ma con un passaggio in piu' di A. L'esito in tabella (`✓ arriva`) e'
+>   quello di A; la lettura di B e' onesta da riportare perche' non e' un `✓` immediato quanto A, pur
+>   restando un arrivo. **Cura il difetto di `home`** (letto SOLO come homepage, bocciato al primo
+>   giro) **senza cadere in quello di `house`** (che a un lettore non diceva niente): ne' la
+>   componente domestica-generica di `home` da sola, ne' il vuoto semantico di `house` da solo --
+>   la coppia `home`+`space` porta entrambi i lettori sul concetto a quattro livelli (piano, area,
+>   dispositivo, entita') invece che su un contenitore generico o una pagina web. **Fatto onesto da
+>   scrivere:** il candidato del proprietario ha misurato meglio dei candidati che questa fetta
+>   aveva gia' tentato e bocciato per questa stessa riga (`home`, `house`, sopra) -- due giri, due
+>   bocciature, e la proposta arbitrata supera entrambe alla stessa identica prova.
+> - **`sweeper`** non e' stato ri-provato (istruzione esplicita: e' un arbitrato, non una misura, e
+>   va segnato come tale in colonna prova -- `arbitrato del proprietario`, non `✓ arriva`).
+>   Ragionamento del proprietario, registrato qui: `heartbeat` e `pulse` erano stati bocciati
+>   entrambi per la stessa lettura -- un segnale di liveness/salute, passivo -- mentre `orologio`
+>   **lavora**: scorre le promesse scadute e le porta a termine una per una, senza fermarsi per il
+>   guasto di una singola. `sweeper` nomina l'azione (ripulire cio' che e' scaduto) che ne'
+>   `heartbeat` ne' `pulse` nominavano, entrambi fermi al segnale che precede l'azione.
+> - **`historian`** stessa cura: non ri-provato, segnato `arbitrato del proprietario`. `span` e
+>   `timeframe` erano stati bocciati entrambi per la stessa lettura -- un valore passivo (un
+>   intervallo, una finestra) -- mentre `tempo` e' un **modulo che decide**: quale superficie di
+>   Home Assistant interrogare, con quale grana, e come dire cio' che ha letto. `historian` e' un
+>   nome di mestiere (chi fa qualcosa con la storia), non di misura (un pezzo di storia): cura lo
+>   stesso difetto comune ai due bocciati. Non collide con `history` (gia' bloccato altrove in
+>   questo documento, sopra, per la cronologia dei messaggi di chat): sono due token diversi,
+>   nessun grep su `history` puo' far scattare per errore su `historian` o viceversa.
 
 > **Ricalibratura del confronto (Task 7): il primo criterio di misura convergeva a zero, ed e'
 > stato sostituito.** Una prima verifica indipendente aveva confrontato ogni risposta con
@@ -907,13 +946,13 @@ codice:
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
 | cerca | Trova nella casa aree, entita', dispositivi, piani, automazioni, script o etichette a partire da un nome o alias in linguaggio naturale, restituendo la lista COMPLETA dei candidati quando piu' di uno corrisponde allo stesso nome | search | ~ parziale |
-| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | view | ~ non ri-provato |
+| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | view | ✓ arriva |
 | legami | Chi tocca una cosa della casa secondo Home Assistant -- quali automazioni, script, scene, gruppi o persone la nominano, e dove sta -- calcolato da Home Assistant su tutto cio' che ha caricato, non solo sui file che HIRIS legge da solo | related | ~ parziale |
 | ricorda | Salva per sempre qualcosa che una persona ha detto sulla casa -- una preferenza, un divieto, un fatto, una regola -- col testo esatto sempre conservato e un'interpretazione strutturata facoltativa | remember | ✓ arriva |
 | richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch | ~ parziale |
 | esegui | Chiama un servizio di Home Assistant per far succedere qualcosa nella casa -- accendere, spegnere, impostare -- su un bersaglio di entita' esatte oppure aree, piani, etichette o dispositivi | execute | ✓ arriva |
-| prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | defer | ~ non ri-provato |
-| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | agenda | ~ non ri-provato |
+| prometti | Mette da parte un'azione o una domanda da eseguire piu' tardi -- un'azione viene verificata subito contro l'installazione, una domanda viene guardata all'ora detta | promise | ✓ arriva |
+| promesse | Cosa HIRIS ha promesso -- cio' che e' ancora in sospeso e, su richiesta, come sono andate a finire quelle gia' concluse | agenda | ✓ arriva |
 | disdici | Annulla una promessa non ancora mantenuta, dato il suo identificatore | cancel | ~ parziale |
 | costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose | ~ parziale |
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
@@ -923,58 +962,92 @@ codice:
 > **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
 > «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
 > collisione con un'altra riga lascia il nome ma porta l'annotazione del rischio specifico, cosi'
-> che chi rinomina sappia cosa verificare due volte. **In piu', qui, un terzo stato non scritto
-> altrove: `~ non ri-provato`** -- per un nome sostituito DOPO che il primo candidato ha fallito la
-> prova (sotto), verificato solo sul controllo di collisione a tre passi e non ancora rimesso
-> davanti a un lettore nuovo. E' un `~` piu' onesto di un `✓` non misurato: il documento vieta di
-> scrivere un esito che non e' stato provato (vedi i vincoli globali della fetta), e qui il rename
-> e' successivo alla prova gia' fatta, non coperto da essa.
+> che chi rinomina sappia cosa verificare due volte.
 
-> **`promise`/`promises` -- il reperto principale della prova, sanato.** Entrambi i lettori indipendenti
-> hanno segnalato questa coppia come il rischio numero uno, per la quasi-omografia (*«differiscono
-> solo per una "s"»*, *«facilissimo scambiarli»*) prima ancora che per sovrapposizione di
-> significato. **Non e' un difetto introdotto da questa scelta di inglese: esiste gia' in italiano**
-> -- `prometti`/`promesse` sono la stessa identica coppia, con la stessa identica differenza di una
-> sola lettera. La traduzione l'ha ereditato invece di risolverlo, scegliendo la via piu' pigra
-> (aggiungere una "s" per il plurale) esattamente come l'italiano aveva fatto. Corretto rinominando
-> per la **differenza di funzione**, non per il numero grammaticale: `prometti` SCRIVE un nuovo
-> impegno (un'azione o una domanda differita, verificata subito se e' un'azione) -> **`defer`**;
-> `promesse` LEGGE quelli gia' scritti, in sospeso o conclusi -> **`agenda`**. Controllo di
-> collisione a tre passi su entrambi: (1) nessuna riga del glossario usa gia' `defer` o `agenda`
-> per un concetto diverso; (2) `grep -rn '\bdefer\b\|\bagenda\b' hiris/app --include=*.py` a zero
-> occorrenze, ne' in prosa ne' come identificatore; (3) nessuna delle parole italiane ancora senza
-> inglese (`casa`, `orologio`, `tempo`) e' "defer" o "agenda" nel senso ovvio. **Non ri-provato**:
-> la scelta e' verificata sulla collisione, non ancora rimessa davanti a un lettore nuovo -- vedi la
-> nota sugli esiti, sopra. Nota per chi decidesse di riprovarla: non accoppiare `defer` e `agenda`
-> con `promise`/`promessa` nello stesso lotto, o la loro somiglianza grafica con la coppia appena
-> bocciata inquinerebbe la lettura.
+> **Secondo giro di prova (dopo il commit 857eb6e): `view`, `defer`, `agenda` erano marcati
+> `~ non ri-provato`** -- cambiati dopo la prima prova, verificati solo sulla collisione col
+> codice. La legge della fetta -- *«una riga senza l'esito della prova non e' decisa: e'
+> un'opinione»* -- vieta di lasciarli cosi'. **Disegno della ri-prova**
+> (`.superpowers/sdd/2026-08-28-il-glossario/task-8bis-risposte.md`): due cataloghi da 13 nomi,
+> identici tranne una parola (`defer` contro `promise` al posto di `prometti`), quattro lettori --
+> due per catalogo, su modelli diversi -- nessuno a conoscenza dell'altro catalogo, tutti
+> `tool_uses: 0`. Il catalogo resta unico e non mescolato con esche di altri sottosistemi, per lo
+> stesso motivo del primo giro: e' cosi' che un modello li vede davvero. Risultato per riga, sotto.
+
+> **`view` confermato, `✓ arriva`.** Tutti e quattro i lettori, con parole quasi identiche:
+> *«il dettaglio completo di un elemento gia' identificato, per id»*, *«dato un id, ne recupera il
+> contenuto/stato completo»* -- combacia con la riga del glossario senza bisogno di interpretarla.
+> `view`/`fetch`, la coppia che aveva bocciato `show`, scende a coppia debole e ultima per chi la
+> nomina ancora (*«confusione minore, il contesto disambigua da solo»*): lo scarto di `inspect` per
+> la collisione con `import inspect` (`casa/strumenti.py:126,1096`, lo stesso file che definisce i
+> 13 strumenti) resta la scelta giusta, confermata dalla prova.
+>
+> **Un sospetto verificato e scartato, registrato come decisione scritta e non lasciato in
+> silenzio:** prima di chiudere `view`, ho controllato che non fosse un secondo caso di confine
+> mancato -- in Home Assistant una *view* e' anche una scheda di plancia (dashboard). Letto il
+> codice: `proxy/ha_client.py:411,499` cita `components/config/view.py` come il **modulo di rotta**
+> con cui Home Assistant serve `/api/config/...`, non il concetto di scheda-plancia; le plance
+> vive (creazione, salvataggio) passano da un canale diverso, `lovelace/config/save`
+> (vedi anche `plance` = `dashboards` in «I concetti», sopra, che descrive proprio quel percorso).
+> In piu' nessuno dei quattro lettori della prova ha letto "plancia" o "scheda". Il sospetto non
+> ha trovato riscontro ne' nel codice ne' nella prova: scartato, non sovrascrivendo una misura con
+> un'intuizione non confermata.
+>
+> **`fetch` resta cosi' com'e'.**
+
+> **`promise`/`promises` -- il reperto principale della prima prova, sanato con una parola sola,
+> non con due nuove.** Nel catalogo con `promise`/`promises` la coppia era il rischio numero uno
+> per entrambi i lettori, per la quasi-omografia (*«differiscono solo per una "s"»*,
+> *«facilissimo scambiarli»*) prima ancora che per sovrapposizione di significato. **Non e' un
+> difetto introdotto da questa scelta di inglese: esiste gia' in italiano** -- `prometti`/
+> `promesse` sono la stessa identica coppia, con la stessa identica differenza di una lettera. La
+> prima traduzione l'aveva ereditato invece di risolverlo, aggiungendo una "s" per il plurale
+> esattamente come l'italiano.
+>
+> **Primo tentativo di cura, `defer`, bocciato dalla ri-prova -- non per confondibilita', per la
+> domanda che decide (la prima: "che cosa fa").** Entrambi i lettori del catalogo `defer` lo
+> leggono come *«rimanda/posticipa un'azione a dopo... senza eliminarla»*: presumono una cosa che
+> **esiste gia'** e viene spostata. Lo strumento invece la **crea** (un impegno nuovo, non uno
+> spostato). E' un errore di funzione, non di stile, e genera un difetto nuovo che prima non
+> c'era: la coppia `defer`/`cancel` (*«il rischio e' scegliere `cancel` quando si intendeva solo
+> posticipare -- perdita di un'azione»*), che nasce esattamente da quella lettura sbagliata
+> (`defer` suona come "sposta una cosa che c'e' gia'", quindi si avvicina a `cancel`, che su una
+> cosa che c'e' gia' opera davvero).
+>
+> **Scelto `promise` al posto di `defer`, per tre ragioni convergenti:**
+>
+> 1. **La prova.** Nel catalogo con `promise`, entrambi i lettori lo leggono su domanda 1 come
+>    *«crea/registra un impegno futuro a fare qualcosa»* -- combacia con la riga del glossario, non
+>    la deforma.
+> 2. **La fondamenta n.3 ("la stessa cosa ha la stessa forma da tutte le porte").** La riga
+>    `promessa` di «I concetti» (sopra) e' gia' `promise`, `✓ arriva`: lo strumento che CONIA una
+>    promessa deve portare il nome di cio' che conia, o il catalogo (cosa dice il modello) e il
+>    dominio (cosa e' la cosa) divergono sulla stessa entita'.
+> 3. **Il difetto misurato era la coppia, non una delle due meta'.** Cambiare `prometti` in un
+>    terzo termine indipendente da `promesse`/`agenda` avrebbe rotto l'ortografia comune, ma senza
+>    ancorare `prometti` al concetto che produce -- una cura piu' debole di quella che riallinea lo
+>    strumento al dominio.
+>
+> **Quindi: `prometti` -> `promise`, `promesse` -> `agenda`.** Il difetto ortografico e' morto lo
+> stesso: nel catalogo finale nessuna delle coppie residue e' ortografica (differenza di una
+> lettera o quasi-omografia), sono **tutte semantiche** (sovrapposizione di significato o di
+> funzione). **Ed e' proprio questo che rende la sanatoria definitiva: una confusione semantica la
+> cura la descrizione dello strumento (si legge la frase intera, non solo il nome); una
+> confusione ortografica no (il nome nudo e' l'unica cosa che il modello confronta quando deve
+> scegliere in fretta, e "cerca"/"c" di differenza non lascia nulla da leggere).** E' il motivo per
+> cui questa sanatoria chiude il problema mentre le note sotto (`search`/`related`,
+> `remember`/`logbook`, il trio `propose`/`confirm`/`execute`) restano aperte come rischio
+> annotato invece che come difetto da correggere con un nome: sono tutte semantiche, quindi la
+> cura e' nella description, non in un quarto giro di sinonimi.
 >
 > Questo NON tocca la riga `promessa` di «I concetti» (sopra, gia' `promise`, `✓ arriva`): quella e'
 > il concetto/dato Python (`schedulatore/promessa.py`), questa e' la stringa che il modello legge
 > come nome di strumento -- **due decisioni distinte**, gia' documentato nella nota sotto la tabella
-> «I concetti». Cambiare l'inglese dello strumento non cambia l'inglese del concetto.
-
-> **`show` -> `view`: cambiato dopo la prova, non per capriccio.** Entrambi i lettori hanno accoppiato
-> `show`/`fetch` (*«entrambi recuperano dato un riferimento»*): `guarda` (dettaglio di UNA cosa dato
-> un id esatto) e `richiama` (i ricordi salvati per un id esatto) restituiscono davvero forme
-> simili di dati a partire da un riferimento gia' risolto, e il nome da solo non separava le due
-> operazioni. `related` e `logbook` sono nomi di confine (sotto) e non si toccano; fra `show` e
-> `fetch` invece nessuno dei due e' un nome che Home Assistant impone, quindi la scelta era aperta:
-> ho cambiato `show`, tenendo `fetch` (che non era il termine sospetto principale -- il rischio
-> numero uno della prova era `promise`/`promises`, sopra). Controllo di collisione su `view`: (1)
-> nessuna riga del glossario lo usa gia'; (2) `grep -rn '\bview\b' hiris/app --include=*.py` trova
-> solo prosa (commenti su "multi-view dashboard" e sul modulo di Home Assistant
-> `components/config/view.py`, mai un identificatore che questo progetto ha scelto per un proprio
-> concetto) -- tollerato con lo stesso criterio gia' applicato a `construction` (sopra); **scartato
-> invece `inspect`**, il primo candidato: collide davvero, `casa/strumenti.py:126` fa
-> `import inspect` e lo usa a riga 1096 (`inspect.isawaitable(...)`) -- lo stesso file che definisce
-> i 13 strumenti avrebbe un modulo importato e uno strumento con lo stesso nome. **Non ri-provato**
-> sul lettore nuovo, per lo stesso motivo di `defer`/`agenda`.
->
-> **`fetch` resta cosi' com'e'.** Un lettore soltanto (non entrambi) l'ha accoppiato anche a
-> `search` (*«entrambi recuperano dati, la linea sfuma»*) -- un rischio piu' debole, annotato ma
-> senza azione: e' la stessa soglia gia' usata altrove nel documento fra un esito che richiede una
-> seconda scelta e uno che si limita ad avvertire chi rinomina.
+> «I concetti». Che oggi coincidano (`promise` per entrambe) non e' una svista ne' un doppione: e'
+> lo stesso concetto visto dalle due facce che questa fetta separa ovunque -- il dato e lo
+> strumento che lo scrive -- ed e' esattamente il caso in cui coincidere e' corretto (ragione 2,
+> sopra). Il controllo "nessun inglese usato due volte per due concetti diversi" (vedi i controlli
+> di completezza, in fondo al documento) non si applica qui perche' non sono due concetti diversi.
 
 > **`search`/`related`: entrambi i lettori li hanno accoppiati** (*"entrambi restituiscono
 > liste"*), ma qui il nome non si tocca, perche' `related` e' un nome di confine (`legami` chiama
@@ -990,6 +1063,23 @@ codice:
 > scrivera' la description in inglese: **testo ambiguo -> candidati** (`search`) contro
 > **id esatto -> collegamenti** (`related`). Se una futura traduzione della description perde questo
 > contrasto, il nome da solo non basta a recuperarlo -- la prova lo dimostra.
+
+> **`remember`/`logbook`: tre lettori su quattro nella ri-prova, coppia non affrontata nel primo
+> giro.** *«Entrambi conservano informazioni, ma uno e' una memoria dichiarata e intenzionale,
+> l'altro un registro automatico»*; piu' netto: *«si potrebbe usare `remember` per loggare un
+> evento, o cercare in `logbook` qualcosa che era stato salvato con `remember`»*. Stessa cura di
+> `search`/`related`, per lo stesso motivo: `logbook` e' un nome di confine (`accaduto` chiama
+> letteralmente `/api/logbook` di Home Assistant, sotto) e non si tocca, anche con un rischio
+> confermato da tre lettori su quattro. **L'azione e' di nuovo nella description, non nel nome**:
+> `ricorda` scrive una frase che una PERSONA ha detto, con la sua interpretazione facoltativa
+> (`casa/strumenti.py:357-364`) -- una memoria **dichiarata**, mai generata da sola; `accaduto`
+> legge il diario che Home Assistant tiene **da solo**, per ogni cambiamento di stato, senza che
+> nessuno lo dichiari (`casa/strumenti.py:833-855`, `ha_client.diario()`). La differenza da rendere
+> esplicita in inglese: **dichiarata da una persona** (`remember`) contro **registrata in
+> automatico dal sistema** (`logbook`). E' salita da un rischio isolato (un lettore su due, primo
+> giro) a un rischio maggioritario (tre su quattro, secondo giro): la ri-prova non l'ha solo
+> confermata, l'ha aggravata, e la nota va aggiornata di conseguenza -- non e' piu' un'annotazione
+> marginale.
 
 > **Perche' `legami` -> `related` e non un sinonimo inventato (`links`, `relations`):** e' il
 > confine, non un'invenzione. `legami` chiama, sotto, il comando nativo di Home Assistant
@@ -1042,14 +1132,38 @@ codice:
 > Python che gia' implementa l'azione**, `azione/costruzione/officina.py:132`
 > (`async def proponi(...)`) -- due indizi indipendenti che convergono sullo stesso inglese.
 >
-> **`propose`/`confirm`: la vicinanza e' voluta, non un difetto.** Il lettore B li ha accoppiati, ma
-> l'ha dichiarato lui stesso un accoppiamento debole, ed e' la lettura giusta: sono **i due poli
+> **`propose`/`confirm`: la vicinanza dei NOMI e' voluta, non un difetto -- ma il rischio vero,
+> trovato dalla ri-prova, non e' di naming.** Nel primo giro il lettore B aveva accoppiato
+> `propose`/`confirm` come un accoppiamento debole, e la lettura restava giusta: sono **i due poli
 > dello stesso flusso** (proponi, poi conferma solo in un turno successivo e solo dopo il si'
-> esplicito dell'utente) -- un lettore che li riconosce come sequenza, non come sinonimi, sta
-> descrivendo esattamente come funzionano insieme. **Scritto qui perche' nessuno li "sani" per
-> errore in futuro cambiando uno dei due nomi**: la coppia va lasciata cosi'. Lo stesso lettore ha
-> anche accoppiato debolmente `cancel`/`propose`: stessa soglia di `fetch`/`search` sopra, annotato,
-> nessuna azione.
+> esplicito dell'utente), non due sinonimi. **La ri-prova a quattro lettori pero' ha trovato
+> qualcosa di piu' serio, sullo stesso terzetto piu' `execute`:** un lettore lo mette **al primo
+> posto per rischio in tutte e due le varianti del catalogo**, e la ragione dichiarata non e'
+> l'esitazione fra due nomi:
+>
+> > *«non e' solo semantica ma tocca il flusso di autorizzazione: se voglio "far succedere una
+> > cosa", non e' chiaro se devo chiamare `execute` direttamente o passare per `propose` e poi
+> > `confirm`. Sbagliare qui significa potenzialmente **bypassare un gate di approvazione**
+> > (eseguire senza che nessuno abbia confermato).»*
+>
+> E, nella nota d'insieme dello stesso lettore: *«il gruppo piu' rischioso e' quello del ciclo di
+> vita di un'azione differita -- `promise`, `agenda`, `propose`, `confirm`, `cancel`, `execute` --
+> sei verbi che sembrano coprire fasi diverse dello stesso processo, e senza documentazione e'
+> facile sovrapporli o invocarli nell'ordine sbagliato.»*
+>
+> **Non si cura rinominando** (i nomi presi singolarmente restano corretti, vedi la nota su
+> `costruisci` -> `propose` appena sopra). **Si cura nella description**, e la richiesta e' piu'
+> precisa di "spiega cosa fa ciascuno": la description
+> di `execute` deve dire esplicitamente quando si puo' chiamare diretto (un servizio che tocca la
+> casa adesso, senza bisogno di anteprima) e quando invece il gate `propose`+`confirm` e'
+> obbligatorio (creare, modificare o cancellare configurazione), e le description di `propose`/
+> `confirm` devono nominarsi a vicenda come le due meta' di un unico gate, non come strumenti
+> indipendenti. Lo stesso principio richiesto sopra per `search`/`related` e `remember`/`logbook`,
+> qui applicato a un rischio piu' grave perche' non e' "che cosa restituisce" ma "chi ha autorizzato
+> questo cambiamento" -- il tipo di errore che questa fetta intera esiste per prevenire.
+>
+> Il lettore ha anche accoppiato debolmente `cancel`/`propose` (stessa soglia di `fetch`/`search`,
+> annotato, nessuna azione oltre a quanto gia' coperto dalla nota sul ciclo di sei verbi sopra).
 >
 > **Dubbio aperto, non richiuso qui:** il metodo interno dietro `conferma` si chiama `applica`
 > (`azione/costruzione/officina.py:328`, `async def applica(...)`), che suggererebbe `apply` invece
@@ -1060,14 +1174,19 @@ codice:
 > futura mostra che `confirm` si confonde con qualcos'altro, `apply` resta il secondo candidato
 > pronto.
 >
-> **`execute` e `remember`: gli unici due che entrambi i lettori hanno dichiarato chiaramente
-> distinti** dal resto -- `execute` come l'unico con effetti concreti immediati sulla casa,
-> `remember` come l'unico verbo di scrittura in memoria senza ambiguita' di direzione. Confermano,
-> per contrasto, che la separazione lessicale scelta per la coppia a rischio originale
-> (`ricorda`/`richiama` -> `remember`/`fetch`, non `remember`/`recall`) ha funzionato: nessuno dei
-> due lettori ha accoppiato `remember` con `fetch`. Un solo lettore (A) ha comunque affiancato
-> `remember` a `logbook` (*«entrambi archiviano»*) -- rischio isolato e generico, la stessa soglia di
-> `fetch`/`search`, nessuna azione.
+> **`execute`: non piu' "chiaramente distinto" dopo la ri-prova.** Il primo giro l'aveva dichiarato,
+> insieme a `remember`, l'unico strumento che nessun lettore confondeva. La ri-prova lo smentisce:
+> `execute` e' proprio il terzo vertice del rischio "gate di autorizzazione" appena descritto. La
+> nota va corretta di conseguenza -- non e' un naming pulito che basta a se stesso, e' un naming
+> pulito che da solo non comunica un vincolo di sequenza, e quel vincolo va scritto altrove
+> (description, non nome).
+>
+> **`remember` resta il piu' solido dei tredici**, ma non per la ragione scritta nel primo giro
+> (che l'accoppiava anche a `execute`): nella ri-prova nessuno dei quattro lettori ha accoppiato
+> `remember` con `fetch` (confermando che la separazione lessicale scelta per la coppia a rischio
+> originale, `ricorda`/`richiama` -> `remember`/`fetch` e non `remember`/`recall`, ha tenuto), ma
+> tre lettori su quattro l'hanno accoppiato con `logbook` -- vedi la nota dedicata sopra, che
+> sostituisce la vecchia annotazione "isolata e generica" con l'azione richiesta sulla description.
 
 ## I valori di dominio
 
