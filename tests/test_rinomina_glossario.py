@@ -99,3 +99,46 @@ def test_un_nome_senza_nessuna_parola_del_glossario_resta_fermo(g):
 def test_una_parola_scartata_resta_ferma(g):
     for p in list(g.scartate)[:1]:
         assert rinomina.classifica(p, g, "casa") is None
+
+
+def test_i_veri_scarti_restano_scartate(g):
+    """`backend`, `sanitize`, `yaml`: parole gia' inglesi o sigle, che il
+    glossario ha escluso di proposito da ogni decisione di rinomina."""
+    for parola in ("backend", "sanitize", "yaml"):
+        assert parola in g.scartate
+
+
+def test_le_forme_plurali_alias_NON_sono_scartate(g):
+    """`costruzioni`, `esiti`, `gambe` sono la seconda tabella della sezione
+    -- forme plurali gia' ricondotte a un lemma singolare (`costruzione`,
+    `esito`, `gamba`), non parole che il glossario ha rifiutato di decidere.
+    Trattarle da scarti le lascerebbe per sempre in italiano."""
+    for parola in ("costruzioni", "esiti", "gambe"):
+        assert parola not in g.scartate
+
+
+def test_una_forma_alias_si_propone_con_l_inglese_del_lemma(g):
+    """`costruzioni` e' il plurale di `costruzione` (-> `construction`), ma
+    l'inflessione inglese non e' sempre «+s»: lo strumento non indovina
+    `constructions`, propone `construction` e si ferma -- lo stesso
+    principio dei composti, applicato a un alias invece che a un pezzo."""
+    esito = rinomina.classifica("costruzioni", g, "casa")
+    assert isinstance(esito, rinomina.Proposta)
+    assert esito.nome == "costruzioni"
+    assert esito.suggerito == "construction"
+
+
+def test_se_l_intestazione_della_tabella_alias_cambia_il_lettore_se_ne_accorge(tmp_path):
+    """Legare la lettura all'intestazione, non alla posizione: se il titolo
+    della tabella degli alias cambiasse silenziosamente, l'alternativa
+    sarebbe leggerne le righe come scarti -- il contrario del vero (le
+    parole raggiunte per alias andrebbero perse in italiano per sempre,
+    scambiate per scarti intoccabili). Meglio fermarsi rumorosamente."""
+    testo = rinomina.leggi(rinomina.GLOSSARIO)
+    intestazione = "| forma uscita dallo script | lemma nel glossario |"
+    assert intestazione in testo, "l'intestazione attesa non e' nel glossario vero"
+    modificato = testo.replace(intestazione, "| forma uscita dallo script | ALTRO |")
+    percorso = tmp_path / "glossario_modificato.md"
+    percorso.write_text(modificato, encoding="utf-8")
+    with pytest.raises(ValueError):
+        rinomina.leggi_glossario(percorso)

@@ -36,12 +36,24 @@ _TABELLE = (
 )
 _SCARTATE = "## Parole scartate durante l'estrazione"
 
+# La sezione «Parole scartate» porta DUE tabelle, e sono l'opposto l'una
+# dell'altra: la prima sono parole che restano italiane per sempre, la
+# seconda sono forme (singolare/plurale) gia' ricondotte a un lemma che HA
+# una riga vera nel glossario. Il confine fra le due si legge
+# dall'INTESTAZIONE, non dalla posizione ne' dal conteggio delle tabelle:
+# se l'intestazione degli alias cambiasse e il lettore continuasse a cercare
+# solo «dov'e' la seconda tabella», le sue righe finirebbero silenziosamente
+# fra gli scarti -- il contrario del vero.
+_INTESTAZIONE_SCARTI = "| parola uscita dallo script | perche' e' stata scartata |"
+_INTESTAZIONE_ALIAS = "| forma uscita dallo script | lemma nel glossario |"
+
 
 @dataclass
 class Glossario:
     mappa: dict[str, str] = field(default_factory=dict)
     omonimi: dict[str, dict[str, str]] = field(default_factory=dict)
     scartate: set[str] = field(default_factory=set)
+    alias: dict[str, str] = field(default_factory=dict)
 
     def per(self, parola: str, ambito: str) -> str | None:
         """L'inglese di una parola nel sottosistema dato.
@@ -64,14 +76,37 @@ def _sezione(testo: str, titolo: str) -> str:
     return resto if j < 0 else resto[:j]
 
 
+def _scarti_e_alias(sezione: str) -> tuple[set[str], dict[str, str]]:
+    """Le due tabelle della sezione «Parole scartate», tenute distinte
+    dall'intestazione: se l'intestazione degli alias non si trova piu',
+    `str.index` solleva `ValueError` invece di lasciar scivolare le sue
+    righe nella tabella degli scarti veri -- fermarsi rumorosamente e'
+    la stessa legge di `Glossario.per`, applicata alla lettura.
+    """
+    i_scarti = sezione.index(_INTESTAZIONE_SCARTI)
+    i_alias = sezione.index(_INTESTAZIONE_ALIAS)
+    blocco_scarti = sezione[i_scarti:i_alias]
+    blocco_alias = sezione[i_alias:]
+
+    scartate = set()
+    for riga in blocco_scarti.splitlines():
+        m = re.match(r"\| `?([a-z][a-z_']*)`? \|", riga)
+        if m:
+            scartate.add(m.group(1))
+
+    alias = {}
+    for riga in blocco_alias.splitlines():
+        m = re.match(r"\| `([a-z][a-z_']*)` \| `([a-z][a-z_']*)` \|", riga)
+        if m:
+            alias[m.group(1)] = m.group(2)
+    return scartate, alias
+
+
 def leggi_glossario(percorso: Path | None = None) -> Glossario:
     testo = leggi(percorso or GLOSSARIO)
     g = Glossario()
 
-    for riga in _sezione(testo, _SCARTATE).splitlines():
-        m = re.match(r"\| `?([a-z][a-z_']*)`? \|", riga)
-        if m:
-            g.scartate.add(m.group(1))
+    g.scartate, g.alias = _scarti_e_alias(_sezione(testo, _SCARTATE))
 
     for titolo, colonna in _TABELLE:
         for riga in _sezione(testo, titolo).splitlines():
@@ -116,10 +151,19 @@ def spezza(nome: str) -> list[str]:
 def classifica(nome: str, g: Glossario, ambito: str):
     """`str` da applicare, `Proposta` da confermare, o `None` da lasciar stare."""
     pezzi = spezza(nome)
-    tradotti = [g.per(p.lower(), ambito) for p in pezzi]
+    per_alias = False
+    tradotti = []
+    for p in pezzi:
+        chiave = p.lower()
+        lemma = g.alias.get(chiave)
+        if lemma is not None:
+            per_alias = True
+            tradotti.append(g.per(lemma, ambito))
+        else:
+            tradotti.append(g.per(chiave, ambito))
     if not any(tradotti):
         return None
-    if len(pezzi) == 1:
+    if len(pezzi) == 1 and not per_alias:
         en = tradotti[0]
         if en is None:
             return None
@@ -128,7 +172,10 @@ def classifica(nome: str, g: Glossario, ambito: str):
         # la convenzione di Python piu' silenziosamente di quanto sembri.
         return en.capitalize() if nome[:1].isupper() else en
     # Un composto in cui almeno un pezzo non e' deciso resta una proposta lo
-    # stesso: il pezzo ignoto va guardato, non saltato.
+    # stesso: il pezzo ignoto va guardato, non saltato. Una forma raggiunta
+    # per alias (`costruzioni` -> lemma `costruzione` -> `construction`)
+    # resta una proposta anche da sola: l'inglese del lemma non e' detto
+    # abbia la stessa inflessione della forma originale (non e' sempre «+s»).
     suggerito = "_".join(t or p.lower() for t, p in zip(tradotti, pezzi))
     return Proposta(nome=nome, pezzi=[p.lower() for p in pezzi], suggerito=suggerito)
 
