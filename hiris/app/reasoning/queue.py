@@ -45,7 +45,7 @@ class ReasoningQueue:
         init_schema(self._conn, _SCHEMA, version=1)
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
-        # gia' usato per ArchivioConsumi (server.py, costruzione di
+        # gia' usato per UsageStore (server.py, costruzione di
         # `app["consumi"]`).
         self._leggi_fuso = leggi_fuso or (lambda: None)
 

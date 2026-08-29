@@ -1097,8 +1097,8 @@ def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     volta riparta da questo elenco, verificato con una ricerca su tutto
     `hiris/`, non da un ricordo:
 
-    - `_aggrega_ieri` e la costruzione di `ArchivioConsumi` (il `lambda`
-      passato a `leggi_fuso`) leggono il fuso DAVVERO dentro `_on_startup`
+    - `_aggrega_ieri` e la costruzione di `UsageStore` (il `lambda`
+      passato a `read_timezone`) leggono il fuso DAVVERO dentro `_on_startup`
       -- sono scritte li', a livello di codice, non solo chiamate da li';
     - `riaggrega_gli_ultimi_due_giorni`, qui sotto, e' una funzione a se':
       solo la sua CHIAMATA sta dentro `_on_startup`, il corpo che legge il
@@ -1596,7 +1596,7 @@ def _governa_lavoratore_del_ponte(app) -> None:
             # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
             # processo separato (`main()`) `/data` non e' di quel processo, e
             # li' il registro resta `None` -- dichiarato, non dimenticato.
-            _agent_runner.imposta_registro_consumi(app["consumi"].registra)
+            _agent_runner.imposta_registro_consumi(app["consumi"].log)
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
@@ -1952,7 +1952,7 @@ async def _on_startup(app: web.Application) -> None:
     # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
     # (`tests/test_cervello_wiring.py`).
     #
-    # Nasce PRIMA di `ArchivioConsumi` qui sotto e prima di `ricostruisci`
+    # Nasce PRIMA di `UsageStore` qui sotto e prima di `ricostruisci`
     # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
     # `sistema_di_riferimento()` legge il fuso GIA' PERSISTITO su disco dalle
     # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
@@ -1981,11 +1981,11 @@ async def _on_startup(app: web.Application) -> None:
     # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
     # scrittura, non alla costruzione: la casa puo' cambiarlo
     # (`core_config_updated`), e un fuso cotto qui sarebbe quello dell'avvio.
-    from .consumi.archivio import ArchivioConsumi
+    from .consumi.store import UsageStore
 
-    app["consumi"] = ArchivioConsumi(
+    app["consumi"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
-        leggi_fuso=lambda: _fuso_da_archivio_casa(archivio_casa))
+        read_timezone=lambda: _fuso_da_archivio_casa(archivio_casa))
     try:
         await ricostruisci(ha_client, archivio_casa)
     except Exception as exc:
@@ -3170,7 +3170,7 @@ async def _on_startup(app: web.Application) -> None:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             leggi_modello=_modello_di("claude"),
-            registra_consumo=app["consumi"].registra,
+            registra_consumo=app["consumi"].log,
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
@@ -3185,7 +3185,7 @@ async def _on_startup(app: web.Application) -> None:
         f"{_usage_base}_openai{_usage_ext}",
         f"{_usage_base}_openrouter{_usage_ext}",
         f"{_usage_base}_ollama{_usage_ext}",
-    ], adesso=time.time())
+    ], now=time.time())
 
     openai_runner = None
     if openai_api_key and _credenziali["openai"]:
@@ -3193,7 +3193,7 @@ async def _on_startup(app: web.Application) -> None:
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
             leggi_modello=_modello_di("openai"),
-            registra_consumo=app["consumi"].registra,
+            registra_consumo=app["consumi"].log,
         )
 
     ollama_runner = None
@@ -3216,7 +3216,7 @@ async def _on_startup(app: web.Application) -> None:
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
             leggi_modello=_modello_locale,
-            registra_consumo=app["consumi"].registra,
+            registra_consumo=app["consumi"].log,
         )
     if _risponde["ollama"]:
         # Quick reachability check — warn but don't abort startup.
@@ -3250,7 +3250,7 @@ async def _on_startup(app: web.Application) -> None:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             leggi_modello=_modello_di("openrouter"),
-            registra_consumo=app["consumi"].registra,
+            registra_consumo=app["consumi"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 

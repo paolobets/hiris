@@ -19,7 +19,7 @@ from hiris.app.api.handlers_usage import (
     handle_storia_usage,
     handle_usage,
 )
-from hiris.app.consumi.archivio import ArchivioConsumi
+from hiris.app.consumi.store import UsageStore
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00
@@ -42,8 +42,8 @@ class _ArchivioCasaFinto:
     progetto chiama «chi lo riempie?». La strada vera passa da
     `archivio_casa`, come ogni altra lettura del fuso nel prodotto."""
 
-    def __init__(self, fuso):
-        self._fuso = fuso
+    def __init__(self, timezone):
+        self._fuso = timezone
 
     def sistema_di_riferimento(self):
         return {"fuso": self._fuso}
@@ -59,12 +59,12 @@ def _chiama(handler, app, query=None):
 
 @pytest.fixture
 def app(tmp_path):
-    archivio = ArchivioConsumi(str(tmp_path / "consumi.db"), leggi_fuso=lambda: ROMA)
-    archivio.registra("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
-                      cache_lettura=40, cache_scrittura=20, costo_usd=1.0,
-                      costo_stato="misurato", adesso=T21)
-    archivio.registra("openrouter", "un/modello", token_in=50, token_out=5,
-                      costo_usd=None, costo_stato="non_noto", adesso=T22)
+    archivio = UsageStore(str(tmp_path / "consumi.db"), read_timezone=lambda: ROMA)
+    archivio.log("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
+                      cache_read=40, cache_scrittura=20, cost_usd=1.0,
+                      cost_state="misurato", now=T21)
+    archivio.log("openrouter", "un/modello", token_in=50, token_out=5,
+                      cost_usd=None, cost_state="non_noto", now=T22)
     try:
         yield {"consumi": archivio, "llm_router": object(),
               "archivio_casa": _ArchivioCasaFinto(ROMA)}
@@ -110,17 +110,17 @@ def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     assert sezione["etichetta"] == "API Anthropic"
     assert sezione["nota"]
     assert sezione["cost_eur"] > 0
-    modello = sezione["modelli"][0]
-    assert modello["modello"] == "claude-sonnet-4-6"
-    assert modello["costo_stato"] == "misurato"
-    assert modello["primo_uso"] == "2026-08-21"
+    model = sezione["modelli"][0]
+    assert model["modello"] == "claude-sonnet-4-6"
+    assert model["costo_stato"] == "misurato"
+    assert model["primo_uso"] == "2026-08-21"
 
 
 def test_un_modello_senza_prezzo_esce_con_costo_NULLO(app):
     openrouter = _corpo(_chiama(handle_usage, app))["sezioni"][1]
-    modello = openrouter["modelli"][0]
-    assert modello["costo_stato"] == "non_noto"
-    assert modello["cost_eur"] is None, (
+    model = openrouter["modelli"][0]
+    assert model["costo_stato"] == "non_noto"
+    assert model["cost_eur"] is None, (
         "0.0 direbbe «misurato, e non e' costato niente»: e' la bugia che "
         "l'intera fetta esiste per togliere")
 
@@ -137,28 +137,28 @@ def test_senza_provider_e_senza_righe_si_dichiara_che_non_si_misura(tmp_path):
     """L'unico caso rimasto: non e' mai stato usato niente e non c'e' niente
     che possa rispondere. Il ramo «abbonamento» ESCE -- l'abbonamento adesso
     si misura, e ha una sezione sua."""
-    vuoto = ArchivioConsumi(str(tmp_path / "v.db"))
+    empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"consumi": vuoto}))
+        corpo = _corpo(_chiama(handle_usage, {"consumi": empty}))
         assert corpo["misurata"] is False
         assert corpo["motivo"] == "nessun_provider"
         assert "provider" in corpo["messaggio"].lower()
         for campo in ("total_requests", "input_tokens", "cost_eur"):
             assert corpo[campo] is None, "0 direbbe «misurato, e non hai consumato»"
     finally:
-        vuoto.close()
+        empty.close()
 
 
 def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
     """Il ponte c'e' e puo' rispondere: zero e' un fatto misurato, non
     un'assenza di misura."""
-    vuoto = ArchivioConsumi(str(tmp_path / "v.db"))
+    empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"consumi": vuoto, "ponte_attivo": True}))
+        corpo = _corpo(_chiama(handle_usage, {"consumi": empty, "ponte_attivo": True}))
         assert corpo["misurata"] is True
         assert corpo["total_requests"] == 0
     finally:
-        vuoto.close()
+        empty.close()
 
 
 # ── la storia ───────────────────────────────────────────────────────────────
@@ -193,21 +193,21 @@ def test_azzerare_sposta_l_ancora_e_NON_cancella(app):
 def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
     """Il 409 diceva «non c'e' niente da azzerare». Con l'archivio c'e'
     sempre un'ancora da spostare."""
-    vuoto = ArchivioConsumi(str(tmp_path / "v.db"))
+    empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        assert _chiama(handle_reset_usage, {"consumi": vuoto}).status == 200
+        assert _chiama(handle_reset_usage, {"consumi": empty}).status == 200
     finally:
-        vuoto.close()
+        empty.close()
 
 
 def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
     """La pagina ha un interruttore «da ultimo azzeramento / da sempre». Se il
     server ignorasse il parametro sarebbe un pulsante che non fa niente --
     difetto trovato rileggendo il proprio codice, non da un test caduto."""
-    app["consumi"].sposta_ancora(T22 + 3600)
+    app["consumi"].sposta_anchor(T22 + 3600)
 
-    da_ancora = _corpo(_chiama(handle_usage, app))
+    da_anchor = _corpo(_chiama(handle_usage, app))
     da_sempre = _corpo(_chiama(handle_usage, app, {"da": "sempre"}))
 
-    assert da_ancora["total_requests"] == 0, "dopo l'ancora non si e' consumato niente"
+    assert da_anchor["total_requests"] == 0, "dopo l'ancora non si e' consumato niente"
     assert da_sempre["total_requests"] == 2, "la storia intera c'e' ancora"

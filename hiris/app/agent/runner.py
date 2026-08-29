@@ -1150,9 +1150,9 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
         richieste=1,
         token_in=int(uso.get("input_tokens") or 0),
         token_out=int(uso.get("output_tokens") or 0),
-        cache_lettura=int(uso.get("cache_read_input_tokens") or 0),
+        cache_read=int(uso.get("cache_read_input_tokens") or 0),
         cache_scrittura=int(uso.get("cache_creation_input_tokens") or 0),
-        costo_usd=None, costo_stato="compreso", adesso=time.time())
+        cost_usd=None, cost_state="compreso", now=time.time())
 
 
 def modello_del_turno(esito: EsitoFlusso) -> str:

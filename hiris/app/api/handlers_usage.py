@@ -109,7 +109,7 @@ def _modello_fuori(m: dict) -> dict:
 
 async def handle_usage(request: web.Request) -> web.Response:
     archivio = request.app.get("consumi")
-    if archivio is None or (archivio.vuoto() and not _puo_rispondere(request.app)):
+    if archivio is None or (archivio.empty() and not _puo_rispondere(request.app)):
         return web.json_response(_non_misurata())
 
     # `?da=sempre` chiede la storia intera; senza parametro si conta
@@ -117,8 +117,8 @@ async def handle_usage(request: web.Request) -> web.Response:
     # esiste perche' l'interruttore «da ultimo azzeramento / da sempre» possa
     # davvero cambiare qualcosa: senza, sarebbe un pulsante che non fa niente.
     da_ancora = request.query.get("da") != "sempre"
-    sezioni = archivio.sezioni(da_ancora=da_ancora)
-    totali = archivio.totali(da_ancora=da_ancora)
+    sezioni = archivio.sezioni(da_anchor=da_ancora)
+    totali = archivio.totali(da_anchor=da_ancora)
 
     # `input_tokens` in cima e' INCLUSIVO della cache: e' la stessa quantita'
     # che la pagina e il riquadro della chat mostravano prima di questa fetta.
@@ -150,7 +150,7 @@ async def handle_usage(request: web.Request) -> web.Response:
         # e' un pavimento, e la pagina lo scrive con un «>=».
         "costo_parziale": totali["costo_parziale"],
         "rate_limit_errors": totali["errori_rate_limit"],
-        "last_reset": _iso(archivio.ancora()),
+        "last_reset": _iso(archivio.anchor()),
         "fuso": fuso or "UTC",
         "fuso_noto": bool(fuso),
         "sezioni": [{
@@ -215,5 +215,5 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
         corpo = _non_misurata()
         corpo["cancellato"] = False
         return web.json_response(corpo, status=409)
-    quando = archivio.sposta_ancora(time.time())
+    quando = archivio.sposta_anchor(time.time())
     return web.json_response({"last_reset": _iso(quando), "cancellato": False})

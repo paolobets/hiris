@@ -1,7 +1,7 @@
 """Cosa l'archivio sa rispondere: i totali, le sezioni, la storia."""
 import pytest
 
-from hiris.app.consumi.archivio import ArchivioConsumi
+from hiris.app.consumi.store import UsageStore
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00
@@ -10,13 +10,13 @@ T22 = 1787410800.0   # 22/08/2026 17:00
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = ArchivioConsumi(str(tmp_path / "consumi.db"), leggi_fuso=lambda: ROMA)
-    a.registra("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
-               cache_lettura=40, costo_usd=1.0, costo_stato="misurato", adesso=T21)
-    a.registra("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
-               costo_usd=1.0, costo_stato="misurato", adesso=T22)
-    a.registra("openrouter", "un/modello", token_in=50, token_out=5,
-               costo_usd=None, costo_stato="non_noto", adesso=T22)
+    a = UsageStore(str(tmp_path / "consumi.db"), read_timezone=lambda: ROMA)
+    a.log("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
+               cache_read=40, cost_usd=1.0, cost_state="misurato", now=T21)
+    a.log("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
+               cost_usd=1.0, cost_state="misurato", now=T22)
+    a.log("openrouter", "un/modello", token_in=50, token_out=5,
+               cost_usd=None, cost_state="non_noto", now=T22)
     yield a
     a.close()
 
@@ -31,9 +31,9 @@ def test_i_totali_sommano_tutto_e_dichiarano_di_essere_un_pavimento(archivio):
 
 
 def test_senza_righe_non_note_il_totale_non_e_parziale(tmp_path):
-    a = ArchivioConsumi(str(tmp_path / "c.db"), leggi_fuso=lambda: ROMA)
+    a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
     try:
-        a.registra("claude", "m", costo_usd=1.0, costo_stato="misurato", adesso=T21)
+        a.log("claude", "m", cost_usd=1.0, cost_state="misurato", now=T21)
         assert a.totali()["costo_parziale"] is False
     finally:
         a.close()
@@ -88,10 +88,10 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
     aveva tolto. La pagina lo nascondeva trattando il ponte a parte, il che
     rende il difetto peggiore e non migliore: l'API lo affermava lo stesso, a
     chiunque altro lo leggesse."""
-    a = ArchivioConsumi(str(tmp_path / "c.db"), leggi_fuso=lambda: ROMA)
+    a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
     try:
-        a.registra("ponte", "claude-haiku-4-5", token_in=80, token_out=9,
-                   costo_usd=None, costo_stato="compreso", adesso=T21)
+        a.log("ponte", "claude-haiku-4-5", token_in=80, token_out=9,
+                   cost_usd=None, cost_state="compreso", now=T21)
 
         sezione = a.sezioni()[0]
         assert sezione["costo_usd"] is None, (
@@ -105,12 +105,12 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
 
 def test_una_sezione_con_un_costo_noto_e_uno_ignoto_somma_quello_noto(tmp_path):
     """Il pavimento a scala di sezione: «questo l'ho pagato di sicuro»."""
-    a = ArchivioConsumi(str(tmp_path / "c.db"), leggi_fuso=lambda: ROMA)
+    a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
     try:
-        a.registra("openrouter", "a/pagante", costo_usd=1.5,
-                   costo_stato="reale", adesso=T21)
-        a.registra("openrouter", "b/ignoto", costo_usd=None,
-                   costo_stato="non_noto", adesso=T21)
+        a.log("openrouter", "a/pagante", cost_usd=1.5,
+                   cost_state="reale", now=T21)
+        a.log("openrouter", "b/ignoto", cost_usd=None,
+                   cost_state="non_noto", now=T21)
 
         sezione = a.sezioni()[0]
         assert sezione["costo_usd"] == 1.5

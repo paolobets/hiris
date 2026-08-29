@@ -17,9 +17,9 @@ from ..backends.pricing import prezzo_noto
 
 # Dal piu' DEBOLE al piu' forte. `reale` sta sopra `misurato` perche' e' un
 # fatto -- quanto e' stato addebitato -- e non una stima da listino.
-STATI: tuple[str, ...] = ("non_noto", "compreso", "gratuito", "misurato", "reale")
+STATES: tuple[str, ...] = ("non_noto", "compreso", "gratuito", "misurato", "reale")
 
-ETICHETTA: dict[str, str] = {
+LABEL: dict[str, str] = {
     "claude": "API Anthropic",
     "openai": "API OpenAI",
     "openrouter": "OpenRouter",
@@ -30,7 +30,7 @@ ETICHETTA: dict[str, str] = {
 # La differenza fra `misurato` e `reale` si dichiara UNA VOLTA per sezione, non
 # riga per riga: i due stati non convivono mai nella stessa sezione, perche' e'
 # il provider a determinarli.
-NOTA: dict[str, str] = {
+NOTE: dict[str, str] = {
     "claude": "Costo calcolato sul listino Anthropic.",
     "openai": "Costo calcolato sul listino OpenAI.",
     "openrouter": ("Costo dichiarato da OpenRouter: e' quanto e' stato "
@@ -48,12 +48,12 @@ def piu_debole(a: str, b: str) -> str:
     se in uno stesso giorno lo stesso modello produce una chiamata col costo
     dichiarato e una senza, la riga dice `non_noto`, non `reale`.
     """
-    return min(a, b, key=lambda s: STATI.index(s) if s in STATI else 0)
+    return min(a, b, key=lambda s: STATES.index(s) if s in STATES else 0)
 
 
-def stato_e_costo(provider: str, modello: str, *,
-                  costo_dichiarato: float | None,
-                  costo_da_listino: float | None) -> tuple[str, float | None]:
+def state_e_cost(provider: str, model: str, *,
+                  cost_dichiarato: float | None,
+                  cost_da_listino: float | None) -> tuple[str, float | None]:
     """Lo stato del costo di UNA chiamata, e il costo che le corrisponde.
 
     `costo_dichiarato` e' quello che il provider ha detto di aver addebitato --
@@ -64,16 +64,16 @@ def stato_e_costo(provider: str, modello: str, *,
     """
     if provider == "ponte":
         return "compreso", None
-    if provider == "ollama" or modello.endswith(":free"):
+    if provider == "ollama" or model.endswith(":free"):
         return "gratuito", 0.0
-    if costo_dichiarato is not None:
-        return "reale", float(costo_dichiarato)
-    if prezzo_noto(modello):
-        return "misurato", float(costo_da_listino or 0.0)
+    if cost_dichiarato is not None:
+        return "reale", float(cost_dichiarato)
+    if prezzo_noto(model):
+        return "misurato", float(cost_da_listino or 0.0)
     return "non_noto", None
 
 
-def giorno_locale(adesso: float, fuso: str = "") -> str:
+def local_day(now: float, timezone: str = "") -> str:
     """Il giorno in cui cade questo istante, nel fuso della casa.
 
     In UTC le 00:30 del 22 agosto a Roma sono ancora il 21: un secchiello
@@ -83,7 +83,7 @@ def giorno_locale(adesso: float, fuso: str = "") -> str:
     invece di far passare un giorno spostato per un giorno.
     """
     try:
-        tz = ZoneInfo(fuso) if fuso else UTC
+        tz = ZoneInfo(timezone) if timezone else UTC
     except (ZoneInfoNotFoundError, ValueError):
         tz = UTC
-    return datetime.fromtimestamp(adesso, tz).strftime("%Y-%m-%d")
+    return datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")

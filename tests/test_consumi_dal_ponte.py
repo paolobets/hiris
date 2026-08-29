@@ -15,7 +15,7 @@ from hiris.app.agent import runner as ponte
 def registro():
     scritte: list[tuple] = []
     ponte.imposta_registro_consumi(
-        lambda provider, modello, **kw: scritte.append((provider, modello, kw)))
+        lambda provider, model, **kw: scritte.append((provider, model, kw)))
     try:
         yield scritte
     finally:
@@ -39,9 +39,9 @@ def test_il_ponte_registra_i_token_col_costo_COMPRESO(registro):
     provider, _modello, kw = registro[0]
     assert provider == "ponte"
     assert kw["token_in"] == 2100 and kw["token_out"] == 94
-    assert kw["cache_lettura"] == 1400 and kw["cache_scrittura"] == 210
-    assert kw["costo_stato"] == "compreso"
-    assert kw["costo_usd"] is None, (
+    assert kw["cache_read"] == 1400 and kw["cache_scrittura"] == 210
+    assert kw["cost_state"] == "compreso"
+    assert kw["cost_usd"] is None, (
         "l'abbonamento non espone il prezzo del turno: 0,00 direbbe «gratis»")
 
 

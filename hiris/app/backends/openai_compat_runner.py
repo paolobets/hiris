@@ -381,17 +381,17 @@ class OpenAICompatRunner:
         # il difetto da cui nasce l'intera fetta.
         if self._registra_consumo is None:
             return
-        from ..consumi.vocabolario import stato_e_costo
+        from ..consumi.vocabulary import state_e_cost
 
         dichiarato = getattr(usage, "cost", None)
-        stato, costo = stato_e_costo(self.provider_nome, model,
-                                     costo_dichiarato=dichiarato,
-                                     costo_da_listino=cost)
+        stato, costo = state_e_cost(self.provider_nome, model,
+                                     cost_dichiarato=dichiarato,
+                                     cost_da_listino=cost)
         self._registra_consumo(
             self.provider_nome, model, token_in=inp, token_out=out,
-            cache_lettura=getattr(usage, "cached_tokens", 0) or 0,
+            cache_read=getattr(usage, "cached_tokens", 0) or 0,
             cache_scrittura=getattr(usage, "cache_write_tokens", 0) or 0,
-            costo_usd=costo, costo_stato=stato, adesso=time.time())
+            cost_usd=costo, cost_state=stato, now=time.time())
 
     def _scrivi_rifiuto(self, modello: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
@@ -405,7 +405,7 @@ class OpenAICompatRunner:
             return
         self._registra_consumo(
             self.provider_nome, modello, richieste=0, errori_rate_limit=1,
-            costo_usd=None, costo_stato="non_noto", adesso=time.time())
+            cost_usd=None, cost_state="non_noto", now=time.time())
 
     # ------------------------------------------------------------------
     # Model resolution

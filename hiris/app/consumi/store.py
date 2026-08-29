@@ -16,7 +16,7 @@ import logging
 import threading
 
 from ..storage import connect, init_schema
-from .vocabolario import giorno_locale, piu_debole
+from .vocabulary import local_day, piu_debole
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,9 @@ CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 
 
-class ArchivioConsumi:
-    def __init__(self, db_path: str, *, leggi_fuso=None) -> None:
-        self._leggi_fuso = leggi_fuso
+class UsageStore:
+    def __init__(self, db_path: str, *, read_timezone=None) -> None:
+        self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=1)
@@ -71,7 +71,7 @@ class ArchivioConsumi:
         with self._lock:
             self._conn.close()
 
-    def _fuso(self) -> str:
+    def timezone(self) -> str:
         """Il fuso della casa, o «» se non si puo' sapere.
 
         Non solleva mai: un consumo non si perde perche' l'anagrafe non e'
@@ -79,56 +79,56 @@ class ArchivioConsumi:
         disciplina del nucleo, che tace sul fuso invece di inventarne uno.
         """
         try:
-            return (self._leggi_fuso() if self._leggi_fuso else "") or ""
+            return (self._read_timezone() if self._read_timezone else "") or ""
         except Exception as exc:
             logger.warning("fuso della casa non leggibile, si conta in UTC: %s", exc)
             return ""
 
-    def vuoto(self) -> bool:
+    def empty(self) -> bool:
         with self._lock:
             return self._conn.execute(
                 "SELECT 1 FROM consumo_giorno LIMIT 1").fetchone() is None
 
-    def registra(self, provider: str, modello: str, *, richieste: int = 1,
+    def log(self, provider: str, model: str, *, richieste: int = 1,
                  token_in: int = 0, token_out: int = 0,
-                 cache_lettura: int = 0, cache_scrittura: int = 0,
-                 costo_usd: float | None = None, costo_stato: str,
-                 errori_rate_limit: int = 0, adesso: float) -> None:
+                 cache_read: int = 0, cache_scrittura: int = 0,
+                 cost_usd: float | None = None, cost_state: str,
+                 errori_rate_limit: int = 0, now: float) -> None:
         """Una chiamata entra nel secchiello del suo giorno.
 
         `richieste=0` e' il caso del rifiuto (429): si conta chi ha rifiutato,
         sulla riga del modello che l'ha preso, senza contarla come una
         richiesta servita.
         """
-        giorno = giorno_locale(adesso, self._fuso())
+        day = local_day(now, self.timezone())
         with self._lock:
-            riga = self._conn.execute(
+            row = self._conn.execute(
                 "SELECT costo_usd, costo_stato FROM consumo_giorno "
                 "WHERE giorno=? AND provider=? AND modello=?",
-                (giorno, provider, modello)).fetchone()
-            if riga is None:
+                (day, provider, model)).fetchone()
+            if row is None:
                 self._conn.execute(
                     "INSERT INTO consumo_giorno (giorno, provider, modello, "
                     "richieste, token_in, token_out, cache_lettura, "
                     "cache_scrittura, costo_usd, costo_stato, "
                     "errori_rate_limit, primo_ts, ultimo_ts) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (giorno, provider, modello, richieste, token_in, token_out,
-                     cache_lettura, cache_scrittura, costo_usd, costo_stato,
-                     errori_rate_limit, adesso, adesso))
+                    (day, provider, model, richieste, token_in, token_out,
+                     cache_read, cache_scrittura, cost_usd, cost_state,
+                     errori_rate_limit, now, now))
             else:
-                stato = piu_debole(riga["costo_stato"], costo_stato)
-                if stato != riga["costo_stato"]:
+                state = piu_debole(row["costo_stato"], cost_state)
+                if state != row["costo_stato"]:
                     logger.info(
                         "consumi: %s/%s del %s degrada da «%s» a «%s» -- il "
                         "provider ha cambiato comportamento",
-                        provider, modello, giorno, riga["costo_stato"], stato)
+                        provider, model, day, row["costo_stato"], state)
                 # I costi si sommano solo fra quelli NOTI. Una riga degradata
                 # tiene cio' che ha gia' pagato e diventa un pavimento -- lo
                 # stesso concetto del totale in cima alla pagina, a una scala
                 # piu' piccola. Buttarlo direbbe «non ho speso niente», che e'
                 # falso quanto lo zero da cui nasce la fetta.
-                noti = [c for c in (riga["costo_usd"], costo_usd) if c is not None]
+                noti = [c for c in (row["costo_usd"], cost_usd) if c is not None]
                 self._conn.execute(
                     "UPDATE consumo_giorno SET richieste=richieste+?, "
                     "token_in=token_in+?, token_out=token_out+?, "
@@ -137,10 +137,10 @@ class ArchivioConsumi:
                     "errori_rate_limit=errori_rate_limit+?, "
                     "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
                     "WHERE giorno=? AND provider=? AND modello=?",
-                    (richieste, token_in, token_out, cache_lettura,
-                     cache_scrittura, sum(noti) if noti else None, stato,
-                     errori_rate_limit, adesso, adesso,
-                     giorno, provider, modello))
+                    (richieste, token_in, token_out, cache_read,
+                     cache_scrittura, sum(noti) if noti else None, state,
+                     errori_rate_limit, now, now,
+                     day, provider, model))
             self._conn.commit()
 
     # -- leggere -------------------------------------------------------
@@ -153,16 +153,16 @@ class ArchivioConsumi:
     def _dove(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
 
-    def sezioni(self, *, da: str = "", da_ancora: bool = False) -> list[dict]:
+    def sezioni(self, *, da: str = "", da_anchor: bool = False) -> list[dict]:
         """Una voce per provider USATO, coi suoi modelli dentro.
 
         I provider mai usati non compaiono: e' un'ASSENZA, non uno zero -- ed
         e' il «al primo utilizzo si attiva» che il proprietario ha chiesto.
         """
-        from .vocabolario import ETICHETTA, NOTA
+        from .vocabulary import LABEL, NOTE
 
-        if da_ancora:
-            da = self._giorno_ancora() or da
+        if da_anchor:
+            da = self._anchor_day() or da
         dove, arg = self._dove(da)
         somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
@@ -176,10 +176,10 @@ class ArchivioConsumi:
 
         per_provider: dict[str, dict] = {}
         for r in righe:
-            sezione = per_provider.setdefault(r["provider"], {
+            section = per_provider.setdefault(r["provider"], {
                 "provider": r["provider"],
-                "etichetta": ETICHETTA.get(r["provider"], r["provider"]),
-                "nota": NOTA.get(r["provider"], ""),
+                "etichetta": LABEL.get(r["provider"], r["provider"]),
+                "nota": NOTE.get(r["provider"], ""),
                 # `None`, non `0.0`: una sezione i cui modelli non hanno NESSUN
                 # costo noto -- l'abbonamento, per dirne una -- affermerebbe
                 # «zero euro» per una cosa che un costo non ce l'ha. E' lo zero
@@ -193,11 +193,11 @@ class ArchivioConsumi:
                 **{c: 0 for c in CAMPI},
             })
             for c in CAMPI:
-                sezione[c] += r[c] or 0
+                section[c] += r[c] or 0
             if r["costo_usd"] is not None:
-                sezione["costo_usd"] = (sezione["costo_usd"] or 0.0) + r["costo_usd"]
-            sezione["costo_parziale"] = sezione["costo_parziale"] or bool(r["ignoti"])
-            sezione["modelli"].append({
+                section["costo_usd"] = (section["costo_usd"] or 0.0) + r["costo_usd"]
+            section["costo_parziale"] = section["costo_parziale"] or bool(r["ignoti"])
+            section["modelli"].append({
                 "modello": r["modello"],
                 "costo_usd": r["costo_usd"],
                 # `MIN(costo_stato)` e' alfabetico e non significa niente: se
@@ -208,12 +208,12 @@ class ArchivioConsumi:
                 "ultimo_uso": r["ultimo_uso"],
                 **{c: r[c] or 0 for c in CAMPI},
             })
-        if da_ancora:
+        if da_anchor:
             self._sottrai_saldo(per_provider)
         return list(per_provider.values())
 
-    def totali(self, *, da: str = "", da_ancora: bool = False) -> dict:
-        sezioni = self.sezioni(da=da, da_ancora=da_ancora)
+    def totali(self, *, da: str = "", da_anchor: bool = False) -> dict:
+        sezioni = self.sezioni(da=da, da_anchor=da_anchor)
         fuori = {c: sum(s[c] for s in sezioni) for c in CAMPI}
         fuori["costo_usd"] = sum(s["costo_usd"] or 0.0 for s in sezioni)
         # Se anche un solo modello e' senza prezzo, il totale non e' il costo:
@@ -241,18 +241,18 @@ class ArchivioConsumi:
 
     # -- l'ancora: azzerare senza cancellare ---------------------------
 
-    def ancora(self) -> float:
+    def anchor(self) -> float:
         """L'istante da cui si conta, o `0.0` se non e' mai stata spostata."""
         with self._lock:
             r = self._conn.execute("SELECT da_ts FROM ancora WHERE id=1").fetchone()
         return r["da_ts"] if r else 0.0
 
-    def _giorno_ancora(self) -> str:
+    def _anchor_day(self) -> str:
         with self._lock:
             r = self._conn.execute("SELECT da_giorno FROM ancora WHERE id=1").fetchone()
         return r["da_giorno"] if r else ""
 
-    def sposta_ancora(self, adesso: float) -> float:
+    def sposta_anchor(self, now: float) -> float:
         """«Riparti da adesso»: fissa il punto da cui contare. Non cancella nulla.
 
         Fotografa i contatori del giorno CORRENTE in `ancora_saldo`. Senza
@@ -264,7 +264,7 @@ class ArchivioConsumi:
         POSIZIONE dell'ancora, espressa nelle uniche coordinate che l'archivio
         possiede. Nessun altro posto la sa.
         """
-        giorno = giorno_locale(adesso, self._fuso())
+        day = local_day(now, self.timezone())
         colonne = ", ".join(CAMPI)
         with self._lock:
             self._conn.execute("DELETE FROM ancora_saldo")
@@ -272,13 +272,13 @@ class ArchivioConsumi:
                 f"INSERT INTO ancora_saldo (provider, modello, {colonne}, costo_usd) "
                 f"SELECT provider, modello, {colonne}, costo_usd "
                 "FROM consumo_giorno WHERE giorno = ?",
-                (giorno,))
+                (day,))
             self._conn.execute(
                 "INSERT INTO ancora (id, da_ts, da_giorno) VALUES (1, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET da_ts=excluded.da_ts, "
-                "da_giorno=excluded.da_giorno", (adesso, giorno))
+                "da_giorno=excluded.da_giorno", (now, day))
             self._conn.commit()
-        return adesso
+        return now
 
     def _sottrai_saldo(self, per_provider: dict) -> None:
         """Toglie da ogni riga il valore che aveva all'istante dell'ancora.
@@ -290,27 +290,27 @@ class ArchivioConsumi:
         with self._lock:
             saldi = self._conn.execute("SELECT * FROM ancora_saldo").fetchall()
         for s in saldi:
-            sezione = per_provider.get(s["provider"])
-            if sezione is None:
+            section = per_provider.get(s["provider"])
+            if section is None:
                 continue
-            for modello in sezione["modelli"]:
-                if modello["modello"] != s["modello"]:
+            for model in section["modelli"]:
+                if model["modello"] != s["modello"]:
                     continue
                 for c in CAMPI:
-                    modello[c] = max(0, modello[c] - (s[c] or 0))
-                if modello["costo_usd"] is not None and s["costo_usd"] is not None:
-                    modello["costo_usd"] = max(0.0, modello["costo_usd"] - s["costo_usd"])
+                    model[c] = max(0, model[c] - (s[c] or 0))
+                if model["costo_usd"] is not None and s["costo_usd"] is not None:
+                    model["costo_usd"] = max(0.0, model["costo_usd"] - s["costo_usd"])
         # I totali di sezione si RICALCOLANO dai modelli, non si correggono a
         # parte: due strade per lo stesso numero divergono al primo caso limite.
-        for sezione in per_provider.values():
+        for section in per_provider.values():
             for c in CAMPI:
-                sezione[c] = sum(m[c] for m in sezione["modelli"])
-            sezione["costo_usd"] = sum(m["costo_usd"] or 0.0
-                                       for m in sezione["modelli"])
+                section[c] = sum(m[c] for m in section["modelli"])
+            section["costo_usd"] = sum(m["costo_usd"] or 0.0
+                                       for m in section["modelli"])
 
     # -- i file di prima -----------------------------------------------
 
-    def importa_legacy(self, percorsi: list[str], *, adesso: float) -> int:
+    def importa_legacy(self, percorsi: list[str], *, now: float) -> int:
         """I quattro `usage_*.json` entrano UNA volta, come una riga sola.
 
         Il totale ereditato non si puo' attribuire a un modello: nessuno lo ha
@@ -325,49 +325,49 @@ class ArchivioConsumi:
         import os
         from datetime import datetime
 
-        _DAL_NOME = {"_openai": "openai", "_openrouter": "openrouter",
+        _DAL_NAME = {"_openai": "openai", "_openrouter": "openrouter",
                      "_ollama": "ollama"}
         importati = 0
-        for percorso in percorsi:
-            if not os.path.exists(percorso):
+        for path in percorsi:
+            if not os.path.exists(path):
                 continue
             with self._lock:
                 gia = self._conn.execute(
                     "SELECT 1 FROM legacy_importati WHERE percorso=?",
-                    (percorso,)).fetchone()
+                    (path,)).fetchone()
             if gia:
                 continue
             try:
-                with open(percorso, encoding="utf-8") as f:
-                    dati = _json.load(f)
+                with open(path, encoding="utf-8") as f:
+                    data = _json.load(f)
             except Exception as exc:
                 logger.warning("usage.json illeggibile (%s): %s -- saltato, e "
-                               "il file resta dov'e'", percorso, exc)
+                               "il file resta dov'e'", path, exc)
                 continue
-            base = os.path.splitext(os.path.basename(percorso))[0]
-            provider = next((p for suff, p in _DAL_NOME.items()
+            base = os.path.splitext(os.path.basename(path))[0]
+            provider = next((p for suff, p in _DAL_NAME.items()
                              if base.endswith(suff)), "claude")
-            quando = adesso
+            quando = now
             try:
                 quando = datetime.fromisoformat(
-                    dati.get("last_reset") or "").timestamp()
+                    data.get("last_reset") or "").timestamp()
             except (TypeError, ValueError):
                 pass
-            self.registra(
+            self.log(
                 provider, "(prima del dettaglio)",
-                richieste=int(dati.get("total_requests") or 0),
-                token_in=int(dati.get("total_input_tokens") or 0),
-                token_out=int(dati.get("total_output_tokens") or 0),
-                costo_usd=float(dati.get("total_cost_usd") or 0.0),
-                costo_stato="misurato",
-                errori_rate_limit=int(dati.get("total_rate_limit_errors") or 0),
-                adesso=quando)
+                richieste=int(data.get("total_requests") or 0),
+                token_in=int(data.get("total_input_tokens") or 0),
+                token_out=int(data.get("total_output_tokens") or 0),
+                cost_usd=float(data.get("total_cost_usd") or 0.0),
+                cost_state="misurato",
+                errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
+                now=quando)
             with self._lock:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO legacy_importati (percorso) VALUES (?)",
-                    (percorso,))
+                    (path,))
                 self._conn.commit()
             importati += 1
             logger.info("consumi: importato %s come «(prima del dettaglio)» "
-                        "sul provider %s", percorso, provider)
+                        "sul provider %s", path, provider)
         return importati

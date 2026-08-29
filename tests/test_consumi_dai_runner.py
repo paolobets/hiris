@@ -19,13 +19,13 @@ from hiris.app.claude_runner import ClaudeRunner
 
 
 class Registro:
-    """Il doppio della callback `ArchivioConsumi.registra`."""
+    """Il doppio della callback `UsageStore.log`."""
 
     def __init__(self) -> None:
         self.scritte: list[dict] = []
 
-    def __call__(self, provider, modello, **kw):
-        self.scritte.append({"provider": provider, "modello": modello, **kw})
+    def __call__(self, provider, model, **kw):
+        self.scritte.append({"provider": provider, "model": model, **kw})
 
 
 # ── Claude ──────────────────────────────────────────────────────────────────
@@ -63,12 +63,12 @@ async def test_claude_scrive_il_modello_i_token_e_la_cache(monkeypatch):
     assert len(registro.scritte) == 1
     s = registro.scritte[0]
     assert s["provider"] == "claude"
-    assert s["modello"] == "claude-sonnet-4-6"
+    assert s["model"] == "claude-sonnet-4-6"
     assert s["token_in"] == 100, "i token d'ingresso PURI, senza la cache dentro"
-    assert s["cache_scrittura"] == 30 and s["cache_lettura"] == 40
+    assert s["cache_scrittura"] == 30 and s["cache_read"] == 40
     assert s["token_out"] == 20
-    assert s["costo_stato"] == "misurato"
-    assert s["costo_usd"] > 0
+    assert s["cost_state"] == "misurato"
+    assert s["cost_usd"] > 0
 
 
 @pytest.mark.asyncio
@@ -86,8 +86,8 @@ async def test_un_modello_claude_fuori_listino_esce_non_noto(monkeypatch):
     monkeypatch.setattr(runner, "_call_api", _finta)
     await runner.chat(user_message="ciao")
 
-    assert registro.scritte[0]["costo_stato"] == "non_noto"
-    assert registro.scritte[0]["costo_usd"] is None
+    assert registro.scritte[0]["cost_state"] == "non_noto"
+    assert registro.scritte[0]["cost_usd"] is None
 
 
 @pytest.mark.asyncio
@@ -128,8 +128,8 @@ def test_openrouter_scrive_il_costo_REALE_dichiarato_dalla_risposta():
 
     s = registro.scritte[0]
     assert s["provider"] == "openrouter", "non «openai»: e' una sottoclasse"
-    assert s["costo_stato"] == "reale"
-    assert s["costo_usd"] == 0.0031
+    assert s["cost_state"] == "reale"
+    assert s["cost_usd"] == 0.0031
 
 
 def test_openrouter_senza_cost_dichiara_non_noto_e_non_zero():
@@ -138,8 +138,8 @@ def test_openrouter_senza_cost_dichiara_non_noto_e_non_zero():
 
     runner._track_usage(_Risposta(_Uso()), "un/modello-mai-visto")
 
-    assert registro.scritte[0]["costo_stato"] == "non_noto"
-    assert registro.scritte[0]["costo_usd"] is None
+    assert registro.scritte[0]["cost_state"] == "non_noto"
+    assert registro.scritte[0]["cost_usd"] is None
 
 
 def test_openai_resta_openai():
@@ -150,7 +150,7 @@ def test_openai_resta_openai():
     runner._track_usage(_Risposta(_Uso()), "gpt-4o")
 
     assert registro.scritte[0]["provider"] == "openai"
-    assert registro.scritte[0]["costo_stato"] == "misurato"
+    assert registro.scritte[0]["cost_state"] == "misurato"
 
 
 def test_ollama_dichiara_lo_zero_invece_di_calcolarlo():
@@ -162,8 +162,8 @@ def test_ollama_dichiara_lo_zero_invece_di_calcolarlo():
     runner._track_usage(_Risposta(_Uso()), "qwen2.5:7b")
 
     assert registro.scritte[0]["provider"] == "ollama"
-    assert registro.scritte[0]["costo_stato"] == "gratuito"
-    assert registro.scritte[0]["costo_usd"] == 0.0
+    assert registro.scritte[0]["cost_state"] == "gratuito"
+    assert registro.scritte[0]["cost_usd"] == 0.0
 
 
 def test_una_risposta_senza_usage_non_scrive_niente():

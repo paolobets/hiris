@@ -731,14 +731,14 @@ class ClaudeRunner:
         """
         if self._registra_consumo is None:
             return
-        from .consumi.vocabolario import stato_e_costo
+        from .consumi.vocabulary import state_e_cost
 
-        stato, costo_usd = stato_e_costo(
-            "claude", modello, costo_dichiarato=None, costo_da_listino=costo)
+        stato, costo_usd = state_e_cost(
+            "claude", modello, cost_dichiarato=None, cost_da_listino=costo)
         self._registra_consumo(
             "claude", modello, token_in=inp, token_out=out,
-            cache_lettura=cache_lettura, cache_scrittura=cache_scrittura,
-            costo_usd=costo_usd, costo_stato=stato, adesso=time.time())
+            cache_read=cache_lettura, cache_scrittura=cache_scrittura,
+            cost_usd=costo_usd, cost_state=stato, now=time.time())
 
     def _scrivi_rifiuto(self, modello: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
@@ -752,7 +752,7 @@ class ClaudeRunner:
             return
         self._registra_consumo(
             "claude", modello, richieste=0, errori_rate_limit=1,
-            costo_usd=None, costo_stato="non_noto", adesso=time.time())
+            cost_usd=None, cost_state="non_noto", now=time.time())
 
     # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
     # `reset_chatbot_usage` sono usciti -- zero lettori di produzione (le
