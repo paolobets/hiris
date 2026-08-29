@@ -1,5 +1,35 @@
 # HIRIS — Changelog
 
+## [3.14.4] — Il cancello aveva quattro ante e ne guardavo due (2026-08-29)
+
+**Riparazione: la 3.14.3 e' uscita con il CI rosso.** Solo test, nessun codice di prodotto — l'add-on
+che gira in casa non cambia comportamento. Ma un cancello rosso e' un cancello che si impara a
+ignorare, e questa versione lo rimette verde.
+
+**Tre guasti, tutti della stessa specie: qualcosa che in locale non si vede.**
+
+1. **Due test dello strumento di rinomina** usavano `tokenize.FSTRING_MIDDLE` e `TSTRING_MIDDLE`, che
+   esistono rispettivamente da Python 3.12 e 3.14. L'ambiente di sviluppo e' 3.14 — **il CI gira anche
+   3.11 e 3.12**. Ora ogni caso si salta da solo quando il tipo di token non esiste, con la ragione
+   leggibile invece di un salto muto, e dove il token esiste il test gira davvero.
+
+2. **Un test JavaScript leggeva un file Python per percorso**: `schedulatore/promessa.py`, rinominato
+   in `promise.py` dalla fetta in corso. Il messaggio d'errore che quel test stampa diceva, testuale,
+   *«promessa.py e' cambiato sotto questo test?»* — aveva previsto esattamente questo scenario.
+   Nessun altro test JS apre un file Python: verificato, e annotato per i tre sottosistemi rimanenti.
+
+3. **`EXE001`**: `scripts/rinomina.py` nasceva con lo shebang e senza il bit di esecuzione. **E' lo
+   stesso identico reperto che ha chiuso la fetta del linter due giorni fa**, sugli stessi quattro
+   entry point: Windows non ha il bit POSIX, quindi la regola viene **saltata in silenzio** in locale.
+   La lezione era gia' scritta — *«lo zero misurato in locale non e' lo zero, comanda il CI»* — e non
+   e' bastata. Una regola scritta non e' una regola applicata: e' servito che un file nuovo la
+   riproponesse tale e quale.
+
+**La causa vera, che vale piu' dei tre guasti.** I vincoli dati a chi lavorava alla rinomina
+chiedevano due cancelli, `ruff` e `pytest`. Ne mancavano due: **`npm test`** — quello che avrebbe
+trovato il guasto 2 — e **`oxlint`**. Chi ha lavorato ha eseguito cio' che era scritto. Il cancello di
+questo progetto ha quattro ante, e ne venivano guardate due.
+
 ## [3.14.3] — Tre sottosistemi passano all'inglese (2026-08-29)
 
 **Non cambia niente che si possa vedere usando HIRIS.** E' la prima parte della rinomina: gli
