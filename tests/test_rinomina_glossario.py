@@ -107,6 +107,19 @@ def test_un_prefisso_privato_si_conserva(g):
     assert rinomina.classifica("_fuso", g, "consumi") == "_timezone"
 
 
+def test_un_trattino_basso_finale_si_conserva(g):
+    """Convenzione Python per evitare di ombreggiare una parola riservata
+    (`tipo_` invece di `tipo`, che coprirebbe il builtin `type`): il
+    trattino basso finale non e' una parola da tradurre, va conservato come
+    quello iniziale. Trovato cercando di proposito una quarta variante di
+    forma non coperta, dopo maiuscole, costanti TUTTE MAIUSCOLE e prefisso
+    privato: `gamba_` (`hiris/app/cervello/oggetti.py`, evita di ombreggiare
+    `gamba`) sarebbe diventato `aspect`, non `aspect_`."""
+    assert rinomina.classifica("tipo_", g, "casa") == "type_"
+    assert rinomina.classifica("gamba_", g, "cervello") == "aspect_"
+    assert rinomina.classifica("_archivio_", g, "memoria") == "_store_"
+
+
 def test_un_composto_si_classifica_come_PROPOSTA_non_come_nome(g):
     """IL CUORE DELLO STRUMENTO. `unita_vive` non e' `unit_reported`: e'
     `reported_units`. L'italiano mette l'aggettivo dopo, l'inglese prima, e

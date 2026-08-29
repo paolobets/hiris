@@ -180,30 +180,36 @@ def classifica(nome: str, g: Glossario, ambito: str):
         en = tradotti[0]
         if en is None:
             return None
-        # Il trattino basso iniziale e' la convenzione Python per «privato»,
-        # non una parola da tradurre: si toglie prima di guardare le
-        # maiuscole e si rimette identico alla fine. Senza, `_fuso` (un
-        # aiutante privato) diventava `timezone` (interfaccia pubblica) senza
-        # che nessuno lo decidesse -- misurato su `consumi/store.py` (Task 4,
-        # `_fuso` -> `timezone` invece di `_timezone`).
-        senza_prefisso = nome.lstrip("_")
-        prefisso = nome[:len(nome) - len(senza_prefisso)]
+        # I trattini bassi iniziali E finali sono convenzione Python
+        # (privato; oppure evitare di ombreggiare una parola riservata, come
+        # `tipo_`/`gamba_`): non parole da tradurre, si tolgono prima di
+        # guardare le maiuscole e si rimettono identici alla fine. Senza,
+        # `_fuso` (un aiutante privato) diventava `timezone` (interfaccia
+        # pubblica) -- misurato su `consumi/store.py` (Task 4). Stessa
+        # famiglia sul lato finale: `gamba_` (`cervello/oggetti.py`, evita
+        # di ombreggiare la parola `gamba`) sarebbe diventato `aspect`,
+        # perdendo il trattino che lo distingue dalla parola che ombreggia
+        # -- trovato guardando se restasse una quarta variante di forma non
+        # coperta, dopo maiuscole (round 1), costanti TUTTE MAIUSCOLE
+        # (round 1) e prefisso privato (round 2).
+        nucleo = nome.strip("_")
+        prefisso = nome[:len(nome) - len(nome.lstrip("_"))]
+        suffisso = nome[len(nome.rstrip("_")):]
         # La forma del nome originale si conserva: `Archivio` -> `Store`,
         # `archivio` -> `store`. Rinominare una classe in minuscolo romperebbe
         # la convenzione di Python piu' silenziosamente di quanto sembri.
         #
-        # Ma `senza_prefisso[:1].isupper()` da solo confonde una classe
-        # (`Archivio`, PascalCase) con una costante di modulo (`ETICHETTA`,
-        # TUTTA maiuscola): entrambe iniziano con una lettera maiuscola.
-        # Misurato puntando lo strumento su `consumi/vocabolario.py` (Task 4):
-        # senza `senza_prefisso.isupper()`, `ETICHETTA` diventava `Label`
-        # invece di `LABEL`, rompendo la convenzione delle costanti in
-        # silenzio.
-        if senza_prefisso[:1].isupper():
-            parola = en.upper() if senza_prefisso.isupper() else en.capitalize()
+        # Ma `nucleo[:1].isupper()` da solo confonde una classe (`Archivio`,
+        # PascalCase) con una costante di modulo (`ETICHETTA`, TUTTA
+        # maiuscola): entrambe iniziano con una lettera maiuscola. Misurato
+        # puntando lo strumento su `consumi/vocabolario.py` (Task 4): senza
+        # `nucleo.isupper()`, `ETICHETTA` diventava `Label` invece di
+        # `LABEL`, rompendo la convenzione delle costanti in silenzio.
+        if nucleo[:1].isupper():
+            parola = en.upper() if nucleo.isupper() else en.capitalize()
         else:
             parola = en
-        return prefisso + parola
+        return prefisso + parola + suffisso
     # Un composto in cui almeno un pezzo non e' deciso resta una proposta lo
     # stesso: il pezzo ignoto va guardato, non saltato. Una forma raggiunta
     # per alias (`costruzioni` -> lemma `costruzione` -> `construction`)

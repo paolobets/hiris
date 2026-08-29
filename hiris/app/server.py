@@ -2287,7 +2287,7 @@ async def _on_startup(app: web.Application) -> None:
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     # Serve solo all'importazione una-tantum dei contatori di prima
-    # (`consumi/archivio.importa_legacy`): i runner non scrivono piu' su
+    # (`consumi/store.importa_legacy`): i runner non scrivono piu' su
     # questi file, e i file restano dov'erano.
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
