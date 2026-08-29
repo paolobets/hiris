@@ -292,3 +292,24 @@ def test_l_idempotenza_si_misura_riapplicando_ad_albero_gia_convertito(tmp_path)
         assert dopo == prima, (
             f"riapplicare lo strumento a {cartella}/ (gia' convertito) ha "
             "cambiato qualcosa: non e' idempotente")
+
+
+def test_un_import_nudo_non_azzera_il_riconoscimento_del_resto_del_file():
+    """Difetto trovato durante lo sviluppo del fix sopra (il test di
+    idempotenza, su un albero GIA' convertito, non lo fa mordere: li' "salta
+    tutto" e "non cambia niente" producono lo stesso risultato atteso, sono
+    indistinguibili -- serve un sorgente NON convertito). Un `import` nudo
+    (senza `from`, senza `as`) lasciava `modo` bloccato su
+    "percorso_import" per il resto del file, perche' nessun token lo
+    richiudeva da solo (a differenza di `from ... import`, che si chiude
+    incontrando il proprio `import`): ogni identificatore successivo veniva
+    scambiato per un segmento di percorso e saltato in silenzio -- zero
+    cambi, zero proposte, nessun errore. Riprodotto dal vivo durante la
+    review: `resolver.py`, che ha `import re` in cima, smetteva di essere
+    visto per intero."""
+    gf = rinomina.Glossario(mappa={"origine": "actor"})
+    dentro = "import re\n\norigine = 1\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "import re\n\nactor = 1\n", (
+        "un import nudo non deve spegnere il riconoscimento del resto del file")
+    assert proposte == []

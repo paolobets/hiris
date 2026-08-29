@@ -186,6 +186,42 @@ grep piu' un'occhiata a dove cade ogni riga trovata: non serve altro»* — l'oc
 esempio, non era mai stata rifatta dopo che il codice era cambiato. Sostituito con `history`
 (sopra), un caso verificato di persona su questo stesso codice, oggi.
 
+## Il limite della qualificazione per ambito
+
+**Aggiunto durante la re-review di Task 5 (fix round 2): un limite del meccanismo, incontrato due
+volte, va scritto qui invece di essere riscoperto una terza.** La qualificazione per ambito
+(`parola (ambito)`, nelle tabelle sotto) risolve l'omonimia fra sottosistemi diversi -- la stessa
+parola italiana, un significato per sottosistema. Ma presuppone esattamente questo: **un senso per
+ambito**. `Glossario.per(parola, ambito)` restituisce un solo inglese per quella coppia, non uno
+per occorrenza -- non sa esprimere due sensi DENTRO lo stesso ambito.
+
+Incontrato due volte, in due forme diverse:
+
+- **`spazio` dentro `memoria/`** (Task 5, prima review): `spazio (memoria)` → `slot` e' il concetto
+  di cache (`cache_indice.py`, «a quale chiamante appartiene una voce»). Ma `spazio_precedente`,
+  una variabile locale di `resolver.py::_normalize_con_mappa`, non parla affatto di quel concetto:
+  e' il carattere di spaziatura che precede un token durante una normalizzazione di stringa. Stessa
+  parola, stesso ambito, due significati senza nulla in comune. Risolto senza una seconda riga
+  ambito-qualificata (qui non avrebbe nemmeno senso: non c'e' un secondo ambito da nominare, e' la
+  stessa funzione) -- deciso a mano, il singolo residuo, guardando il codice invece di applicare
+  `slot` alla cieca.
+- **`riferimento` dentro `casa/`** (questo fix round, vedi la riga in «I concetti», sotto): il senso
+  *frame* (`sistema_di_riferimento` e i suoi due composti imparentati) e il senso *reference* (l'id
+  a cui punta un'ancora -- lo stesso di `riferimento (memoria)`) convivono nello stesso ambito, a
+  volte nello stesso file. Qui va meglio che con `spazio` **solo perche' i due sensi hanno forme
+  lessicali diverse**: uno vive *sempre* dentro un composto (mai nudo da solo), l'altro vive
+  *sempre* nudo (mai come pezzo di un composto piu' lungo). Lo strumento propone sempre i composti
+  invece di applicarli da solo, quindi il senso sbagliato non passa mai dall'automatismo su quella
+  forma -- ma e' una fortuna della forma di questo caso, non una capacita' del meccanismo: se le due
+  forme coincidessero (due sensi entrambi nudi, o entrambi dentro lo stesso composto), la
+  qualificazione per ambito non li distinguerebbe, e servirebbe di nuovo una decisione a mano riga
+  per riga.
+
+**Il segnale a cui guardare, per chi convertira' `azione/` o il resto di `casa/`:** una parola gia'
+qualificata per ambito che, dentro QUEL sottosistema, compare sia nuda sia dentro composti con
+significati diversi. Non basta chiedersi «che ambito e'»: bisogna chiedersi anche «che forma ha,
+qui, in questa occorrenza» prima di fidarsi del valore della riga.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -296,8 +332,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | registro | lo specchio aggiornato di cosa Home Assistant sa fare in questa casa, servizio per servizio e con i relativi parametri -- non un catalogo scritto da HIRIS, ma la copia di cio' che Home Assistant stesso dichiara di poter eseguire | registry | ~ parziale |
 | riconoscitore | il modulo che decide a quale parte della casa si riferisce una frase scritta, confrontandola con nomi e alias dichiarati e restringendo poi cio' che il modello propone a cio' che esiste davvero nell'anagrafe | resolver | ✓ arriva |
 | ricordi | le frasi esatte, cosi' come sono state dette, che una persona ha affidato a HIRIS -- la verita' che non si tocca mai, nemmeno quando la sua lettura viene corretta | memories | ~ parziale |
-| riferimento (casa) | l'insieme dei dati con cui si interpreta ogni altra misura della casa -- unita', ora locale, valuta, lingua, paese, versione dell'installazione -- distillato una volta e mai cancellato da una lettura vuota, perche' quello di ieri resta quello giusto finche' non arriva un valore nuovo (`casa/anagrafe.py::sistema_di_riferimento`) | frame | ✓ arriva |
-| riferimento (memoria) | l'identificatore a cui punta un'ancora -- un'area, un'entita', un dispositivo -- un significato generico, distinto dal "sistema di riferimento" per interpretare le misure (riga sopra). Scoperto rinominando `memoria/` (Task 5, review): applicare alla cieca `frame` avrebbe prodotto `lookup.verify(tipo, frame)`, un nome che allude a un sistema di unita'/locale per qualcosa che e' solo l'id referenziato. La stessa parola, con lo stesso significato di memoria, vive gia' anche in `casa/domande.py` (non ancora convertito, almeno 8 punti: `_trova_area`, `_guarda_area`, `_guarda_entita`, ecc.) -- quando quell'ambito verra' convertito andra' quasi certamente qualificata anche li' | reference | ✓ arriva |
+| riferimento (casa) | l'insieme dei dati con cui si interpreta ogni altra misura della casa -- unita', ora locale, valuta, lingua, paese, versione dell'installazione -- distillato una volta e mai cancellato da una lettura vuota, perche' quello di ieri resta quello giusto finche' non arriva un valore nuovo (`casa/anagrafe.py::sistema_di_riferimento`) -- **corretto in fix round 2 (rilievo del reviewer): l'inglese era `frame`, sbagliato.** Misurato con token reali (`tokenize.NAME`, non un grep sul file intero: prosa e stringhe escluse) su ogni file di `casa/`: il senso *frame* qui descritto vive **solo dentro composti** -- `sistema_di_riferimento` (10 occorrenze, in `anagrafe.py`/`archivio.py`/`nucleo.py`/`strumenti.py`) e `_CAMPI_RIFERIMENTO`/`_migrazione_3_entita_di_riferimento_dell_area` (4, in `anagrafe.py`/`archivio.py`) -- mentre `riferimento` **nudo** (53: 39 in `domande.py`, 14 in `strumenti.py`) porta il senso opposto, quello di `riferimento (memoria)` sotto (l'id a cui punta un'ancora). Lo strumento propone sempre i composti invece di applicarli da solo, quindi il senso sbagliato non passa mai dall'automatismo su quella forma -- ma la parola nuda si', e vince per numero (53 contro 14): l'inglese di questa riga e' quello del senso nudo, `reference`, non `frame`. **Chi convertira' `casa/` non trovera' un suggerimento pronto per i tre composti**: lo strumento comporra' `sistema_di_reference` pezzo per pezzo, che e' sbagliato -- serve una decisione umana esplicita (`system_frame` o simile), proprio perche' quei tre nomi portano l'altro senso. Vedi «Il limite della qualificazione per ambito» per il limite di fondo che questo caso rivela | reference | ✓ arriva |
+| riferimento (memoria) | l'identificatore a cui punta un'ancora -- un'area, un'entita', un dispositivo -- un significato generico, distinto dal "sistema di riferimento" per interpretare le misure (riga sopra). Scoperto rinominando `memoria/` (Task 5, review): applicare alla cieca `frame` -- l'inglese di `riferimento (casa)` al momento di questa scoperta -- avrebbe prodotto `lookup.verify(tipo, frame)`, un nome che allude a un sistema di unita'/locale per qualcosa che e' solo l'id referenziato. La stessa parola, con lo stesso significato di memoria, vive gia' anche in `casa/domande.py` (non ancora convertito): misurata con token reali in fix round 2, sono 39 occorrenze nude (piu' 14 in `casa/strumenti.py`, vedi la misura completa in `riferimento (casa)`, sopra) -- non piu' "almeno 8 punti" come stimato qui in origine. **Corretto in fix round 2: `riferimento (casa)` e' stato a sua volta corretto in `reference`** (lo stesso di questa riga), proprio perche' il senso nudo -- quello di questa riga -- domina numericamente in `casa/`; quando quell'ambito verra' convertito, il senso nudo non avra' quindi bisogno di una qualificazione diversa da questa, ma i tre composti che portano ancora il senso *frame* (`sistema_di_riferimento` e affini) sì -- vedi «Il limite della qualificazione per ambito» | reference | ✓ arriva |
 | rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection | ✓ arriva |
 | ripiego | il passaggio, dichiarato sempre e mai silenzioso, con cui un turno che non ha potuto essere servito dal canale a forfait viene rifatto da capo su quello a consumo -- uno stato non definitivo di un lavoro in coda, distinto da uno riuscito, scaduto o fallito, perche' resta da chiudere finche' non arriva una risposta | downgrade | ✓ arriva |
 | schedulatore | il sottosistema che tiene le promesse fatte per un momento futuro: le risveglia quando arriva l'ora, ne porta a termine il compito o la domanda, e registra sempre come e' andata | keeper | ~ parziale |
