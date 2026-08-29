@@ -1,30 +1,30 @@
 """La cache dell'INDICE (Task B7) -- vive quanto il processo, non quanto la
 chiamata.
 
-Perche' un file suo, e non dentro `riconoscitore.py`: `costruisci_indice()` e'
+Perche' un file suo, e non dentro `resolver.py`: `costruisci_indice()` e'
 dichiarata PURA nel suo stesso docstring -- stessi argomenti, stesso
 risultato, nessuno stato che sopravvive alla chiamata -- ed e' la proprieta'
 su cui poggiano i test di B3/B4/B5. Una cache e' l'opposto per natura: STATO
 che sopravvive fra le chiamate e puo' mentire se la chiave sbaglia. Tenerle
 nello stesso file avrebbe reso "`costruisci_indice` e' ancora pura?" una
 domanda che richiede di leggere anche una classe stateful per rispondere. Qui
-`CacheIndice` CHIAMA `costruisci_indice()`, non la sostituisce e non la
-modifica: nessuna riga di questo file cambia cosa contiene un `Indice`.
+`LookupCache` CHIAMA `costruisci_indice()`, non la sostituisce e non la
+modifica: nessuna riga di questo file cambia cosa contiene un `Lookup`.
 
 `DispatcherStrumenti` nasce a OGNI turno (`handlers_chat.py:76`, per design:
 senza un dispatcher per-chiamata i runner degradano ogni tool a un errore
 "non disponibile"). Una cache sull'istanza del dispatcher aiuterebbe solo
 DENTRO un turno -- il caso vero misurato (`cerca` chiamato quattro volte per
-le abat-jour) e' esattamente questo, ma non basta: `CacheIndice` e' pensata
+le abat-jour) e' esattamente questo, ma non basta: `LookupCache` e' pensata
 per essere costruita UNA VOLTA, accanto a `entity_cache`
 (`hiris/app/server.py`), e passata al dispatcher come dipendenza a ogni
 turno -- cosi' il riuso vale anche FRA i turni, non solo dentro uno.
 
 ## La chiave
 
-Chi chiama `ottieni()` porta tre cose:
+Chi chiama `get()` porta tre cose:
 
-- `spazio`: un'etichetta che identifica IL CHIAMANTE (`"cerca"`, `"ricorda"`),
+- `slot`: un'etichetta che identifica IL CHIAMANTE (`"cerca"`, `"ricorda"`),
   non il contenuto. `_cerca` passa `nomi_di_ripiego`, `_ricorda` no: sulla
   stessa identica casa i due indici hanno contenuti diversi, quindi devono
   restare due voci -- e usare il chiamante come discriminante, invece di
@@ -43,10 +43,10 @@ Chi chiama `ottieni()` porta tre cose:
   cambiato in Home Assistant). La chiave non usa la LORO LUNGHEZZA -- due
   dizionari diversi possono avere lo stesso numero di voci, e una chiave che
   non li distingue servirebbe un indice vecchio: il difetto esatto per cui
-  questo task esiste. Usa un'impronta del CONTENUTO (`_impronta_nomi`).
-- `comportamento_letto_il` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
+  questo task esiste. Usa un'impronta del CONTENUTO (`_fingerprint_nomi`).
+- `behavior_loaded_il` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
   la data dell'ultima rilettura di automazioni/script
-  (`ArchivioCasa.comportamento_letto_il()`), o `None` quando non e' mai stata
+  (`ArchivioCasa.behavior_loaded_il()`), o `None` quando non e' mai stata
   letta. Da quando `costruisci_indice()` indicizza anche il comportamento
   (parametro `comportamento`), la chiave non puo' piu' bastarsi con
   `aggiornata_il`: quella data e' dell'ANAGRAFE (aree, entita', dispositivi,
@@ -62,8 +62,8 @@ Chi chiama `ottieni()` porta tre cose:
 Una sola casella condivisa rimbalzerebbe fra `_cerca` e `_ricorda` -- due
 chiamanti diversi nello stesso turno la ricostruirebbero a vicenda, e il
 guadagno sparirebbe senza che un test che guarda solo i risultati se ne
-accorga. `_voci` e' un dizionario per `spazio`: ogni spazio tiene la SUA
-ultima voce (chiave di frescura + `Indice`), sovrascritta quando la chiave
+accorga. `_voci` e' un dizionario per `slot`: ogni spazio tiene la SUA
+ultima voce (chiave di frescura + `Lookup`), sovrascritta quando la chiave
 cambia. Non c'e' scadenza a tempo: l'unico motivo di ricostruzione e' che la
 chiave sia cambiata, e la dimensione resta comunque limitata al numero di
 spazi distinti che esistono nel codice (oggi due), non alla storia di quante
@@ -74,10 +74,10 @@ volte l'anagrafe e' cambiata durante l'uptime del processo.
 Il processo e' asincrono a thread singolo; il lavoratore del ponte gira
 in-processo sullo stesso event loop (nessun `threading.Thread` ne'
 `ThreadPoolExecutor` fra `DispatcherStrumenti` e il ponte -- verificato con
-grep su `hiris/app/`). `ottieni()` non contiene nessun `await`: legge e
+grep su `hiris/app/`). `get()` non contiene nessun `await`: legge e
 scrive `_voci` in un'unica porzione di codice sincrona, quindi non puo' mai
 essere interrotta a meta' da un'altra coroutine. Il caso peggiore e'
-costruire lo stesso indice due volte (due `ottieni()` con la stessa chiave
+costruire lo stesso indice due volte (due `get()` con la stessa chiave
 schedulate senza mai cedere il controllo fra l'una e l'altra non possono
 comunque accadere in un ciclo a thread singolo prima che la prima abbia
 scritto `_voci`) -- MAI servirne uno mezzo fatto. Se un giorno un `await`
@@ -89,10 +89,10 @@ from __future__ import annotations
 
 import hashlib
 
-from .riconoscitore import Indice, costruisci_indice
+from .resolver import Lookup, costruisci_indice
 
 
-def _impronta_nomi(nomi: dict[str, str] | None) -> str:
+def _fingerprint_nomi(nomi: dict[str, str] | None) -> str:
     """Un'impronta del CONTENUTO di `nomi` (entity_id -> friendly_name), non
     della sua lunghezza -- vedi il docstring del modulo. `None` e `{}` danno
     la stessa impronta, coerente con `costruisci_indice`, che tratta
@@ -109,8 +109,8 @@ def _impronta_nomi(nomi: dict[str, str] | None) -> str:
     return hashlib.sha256(materiale.encode("utf-8")).hexdigest()
 
 
-class CacheIndice:
-    """Un `Indice` per spazio, riusato finche' la sua chiave non cambia.
+class LookupCache:
+    """Un `Lookup` per spazio, riusato finche' la sua chiave non cambia.
 
     Si costruisce una volta (accanto a `entity_cache`, in
     `hiris/app/server.py`) e si passa a `DispatcherStrumenti` come
@@ -119,14 +119,14 @@ class CacheIndice:
     """
 
     def __init__(self) -> None:
-        self._voci: dict[str, tuple[tuple, Indice]] = {}
+        self._voci: dict[str, tuple[tuple, Lookup]] = {}
 
-    def ottieni(self, spazio: str, casa: dict,
+    def get(self, slot: str, home_space: dict,
                aggiornata_il: str | None,
                nomi_di_ripiego: dict[str, str] | None = None,
-               comportamento: list[dict] | None = None,
-               comportamento_letto_il: str | None = None) -> Indice:
-        """L'`Indice` per questo `spazio`, ricostruito solo se la chiave e'
+               behavior: list[dict] | None = None,
+               behavior_loaded_il: str | None = None) -> Lookup:
+        """Il `Lookup` per questo `slot`, ricostruito solo se la chiave e'
         cambiata rispetto all'ultima voce salvata per questo stesso spazio.
 
         `costruisci_indice()` non e' chiamata affatto quando la voce e'
@@ -136,21 +136,21 @@ class CacheIndice:
         Vuole `casa` gia' letta: usalo quando il chiamante ha comunque
         bisogno del valore anche fuori dall'indice (`_cerca`, per
         `_cecita()`) -- li' non c'e' niente da rimandare. Se invece la
-        lettura serve SOLO a costruire l'indice, vedi `ottieni_pigro()`.
+        lettura serve SOLO a costruire l'indice, vedi `get_lazy()`.
 
-        `comportamento`/`comportamento_letto_il` (T7, R2): automazioni e
+        `comportamento`/`behavior_loaded_il` (T7, R2): automazioni e
         script da indicizzare, e la data della loro ultima lettura -- vedi
         "## La chiave" sopra per perche' la seconda non e' opzionale quando
         si passa la prima."""
-        return self.ottieni_pigro(spazio, lambda: casa, aggiornata_il, nomi_di_ripiego,
-                                  comportamento, comportamento_letto_il)
+        return self.get_lazy(slot, lambda: home_space, aggiornata_il, nomi_di_ripiego,
+                                  behavior, behavior_loaded_il)
 
-    def ottieni_pigro(self, spazio: str, costruisci_casa,
+    def get_lazy(self, slot: str, costruisci_casa,
                       aggiornata_il: str | None,
                       nomi_di_ripiego: dict[str, str] | None = None,
-                      comportamento: list[dict] | None = None,
-                      comportamento_letto_il: str | None = None) -> Indice:
-        """Come `ottieni()`, ma la casa si legge SOLO su un miss.
+                      behavior: list[dict] | None = None,
+                      behavior_loaded_il: str | None = None) -> Lookup:
+        """Come `get()`, ma la casa si legge SOLO su un miss.
 
         Fix della review indipendente del Task B7: `_ricorda` non ha bisogno
         di `ArchivioCasa.leggi()` per decidere se il colpo va a segno -- la
@@ -168,13 +168,13 @@ class CacheIndice:
         letto, passato dal chiamante (`_cerca`, che lo legge comunque per
         indicizzarlo). Solo `_ricorda` non lo passa affatto (`None`, il
         comportamento non e' un tipo di ancora -- vedi
-        `memoria/interpretazione.VOCABOLARIO`), e su quello spazio la sua
+        `memoria/interpretazione.VOCABULARY`), e su quello spazio la sua
         assenza dalla chiave non cambia nulla: non essendo mai indicizzato,
         non puo' mai andare stantio."""
-        chiave = (aggiornata_il, comportamento_letto_il, _impronta_nomi(nomi_di_ripiego))
-        voce = self._voci.get(spazio)
-        if voce is not None and voce[0] == chiave:
-            return voce[1]
-        indice = costruisci_indice(costruisci_casa(), nomi_di_ripiego, comportamento)
-        self._voci[spazio] = (chiave, indice)
-        return indice
+        key = (aggiornata_il, behavior_loaded_il, _fingerprint_nomi(nomi_di_ripiego))
+        entry = self._voci.get(slot)
+        if entry is not None and entry[0] == key:
+            return entry[1]
+        lookup = costruisci_indice(costruisci_casa(), nomi_di_ripiego, behavior)
+        self._voci[slot] = (key, lookup)
+        return lookup

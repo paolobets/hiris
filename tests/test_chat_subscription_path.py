@@ -891,7 +891,7 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
 async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.api.handlers_chat import componi_contesto_chat
     from hiris.app.casa.archivio import ArchivioCasa
-    from hiris.app.memoria.archivio import ArchivioMemoria
+    from hiris.app.memoria.archivio import MemoryStore
 
     app, q, _runner, _impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
@@ -905,8 +905,8 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
                     "area_id": "cucina"}],
         "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
-    archivio_memoria.ricorda("La cucina ha i faretti dimmerabili", "paolo")
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    archivio_memoria.remember("La cucina ha i faretti dimmerabili", "paolo")
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
 
@@ -931,7 +931,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         assert contesto == componi_contesto_chat(app, data_dir)
     finally:
         archivio_casa.chiudi()
-        archivio_memoria.chiudi()
+        archivio_memoria.close()
 
 
 # ---------------------------------------------------------------------------

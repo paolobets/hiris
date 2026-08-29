@@ -31,7 +31,7 @@ import pytest
 from hiris.app.casa.anagrafe import nomi_delle_categorie
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.domande import guarda
-from hiris.app.memoria.riconoscitore import costruisci_indice
+from hiris.app.memoria.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
 # `ha_client.leggi_registri`, che chiede il registro una volta per ambito e
@@ -187,7 +187,7 @@ def test_si_cerca_per_nome_di_categoria(casa):
     una stringa che nessuno pronuncera' mai.
     """
     indice = costruisci_indice(casa)
-    candidati = [c for t in indice.trova("luci esterne") for c in t["candidati"]]
+    candidati = [c for t in indice.find("luci esterne") for c in t["candidati"]]
     assert {"tipo": "entita", "riferimento": "automation.luci_giardino"} in candidati
     assert {"tipo": "entita", "riferimento": "switch.pompa"} in candidati
 
@@ -196,7 +196,7 @@ def test_l_identificativo_non_diventa_un_termine_di_ricerca(casa):
     """Il contrario della prova sopra, e serve quanto quella: indicizzare gli
     id avrebbe fatto passare l'altra senza che i nomi entrassero mai."""
     indice = costruisci_indice(casa)
-    assert indice.trova("01luci") == []
+    assert indice.find("01luci") == []
 
 
 def test_la_categoria_non_diventa_il_nome_di_niente(casa):

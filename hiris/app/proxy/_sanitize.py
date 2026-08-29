@@ -66,7 +66,7 @@ can enter the model's context calls one of the two functions below:
   permanent backdoor). ONE shared function, called from `casa/nucleo.py::
   _righe_ricordi` (the always-on channel), `casa/domande.py::guarda` (by id
   or anchored to an area/entity/device), AND `casa/strumenti.py::_richiama`
-  (`ArchivioMemoria.per_ancora`, a THIRD read path the first pass missed --
+  (`MemoryStore.per_tether`, a THIRD read path the first pass missed --
   it does not go through `guarda`, so the same memory came out filtered from
   one door and raw from another). A single shared function, not three copies
   of the same line, is what makes a fourth door impossible to forget: import

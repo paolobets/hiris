@@ -271,7 +271,7 @@ def nomi_delle_etichette(casa: dict) -> dict[str, str]:
     continuerebbe a dire il vecchio nome per sempre.
 
     Qui, e non in `domande.py`, perche' la stessa unione serve anche
-    all'indice di `cerca` (`memoria/riconoscitore.py`): scritta due volte
+    all'indice di `cerca` (`memoria/resolver.py`): scritta due volte
     sarebbe una ricerca che trova per un nome e una risposta che ne mostra un
     altro.
     """
@@ -297,7 +297,7 @@ def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
     """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
 
     SOLO nomi, MAI l'id nel testo: alimenta anche l'indice di `cerca`
-    (`memoria/riconoscitore.py::costruisci_indice`), che indicizza questi
+    (`memoria/resolver.py::costruisci_indice`), che indicizza questi
     stessi nomi come TERMINI di ricerca -- un `label_id` mescolato nel
     testo renderebbe "da controllare" irriconoscibile, perche' il termine
     indicizzato sarebbe "da controllare (id: da_controllare)" e nessuno lo
@@ -349,7 +349,7 @@ def nomi_delle_categorie(casa: dict) -> dict[tuple[str, str], str]:
 
     Qui, e non in `domande.py`, per la stessa ragione di
     `nomi_delle_etichette`: la stessa unione serve all'indice di `cerca`
-    (`memoria/riconoscitore.py`), e scritta due volte sarebbe una ricerca che
+    (`memoria/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
     """
     nomi: dict[tuple[str, str], str] = {}
@@ -583,7 +583,7 @@ def area_effettiva(entita: dict, area_del_dispositivo: dict[str, str | None]) ->
 
     Esiste come funzione per la stessa ragione di `unita_effettiva`: la
     prendono due posti diversi. `gerarchia()` la usa per costruire l'albero, e
-    `memoria.interpretazione.deduci_unita` per capire quale entita' di
+    `memoria.interpretazione.deduci_unit` per capire quale entita' di
     un'area puo' dare l'unita' a un ricordo. Scritta due volte lo era gia': il
     secondo confrontava il solo `area_id` proprio, quindi su una casa vera non
     trovava mai niente e archiviava «in cucina non sotto i 20» come «da 20»
@@ -652,7 +652,7 @@ def unita_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
     Esiste come funzione, e non come due righe scritte dove servono, perche'
     questa decisione la prendono DUE posti diversi: cosa mostrare
     (`domande._con_nome_dedotto`) e cosa dedurre
-    (`memoria.interpretazione.deduci_unita`). Scritta due volte sarebbe la
+    (`memoria.interpretazione.deduci_unit`). Scritta due volte sarebbe la
     stessa forma di difetto che ha reso la pagina Modelli vera riga per riga e
     falsa nel complesso: due copie di una regola che nessuno tiene allineate.
 

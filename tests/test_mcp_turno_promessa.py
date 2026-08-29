@@ -23,7 +23,7 @@ import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.impostazioni_chat import ImpostazioniChat
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.schedulatore.sweeper import Sweeper
 from tests.test_strumenti_conoscenza import _semina_casa
@@ -65,7 +65,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     app["internal_token"] = TOKEN
 
     casa = _semina_casa(tmp_path)
-    memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
     porta = PortaFinta()
     app["archivio_casa"] = casa
@@ -87,7 +87,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         yield client, promesse, porta
     finally:
         promesse.close()
-        memoria.chiudi()
+        memoria.close()
         casa.chiudi()
 
 

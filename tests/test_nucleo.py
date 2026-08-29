@@ -369,7 +369,7 @@ def test_allarme_scattato_e_notevole_armato_no():
 
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
     """MINOR ④: se il chiamante li passasse in un ordine diverso da quello
-    di `ArchivioMemoria.richiama()` (che oggi e' gia' "il piu' recente
+    di `MemoryStore.richiama()` (che oggi e' gia' "il piu' recente
     prima" per coincidenza, `ORDER BY id DESC`), il taglio deve comunque
     scartare il PIU' VECCHIO, non l'ultimo della lista che gli e' arrivata."""
     ricordi_in_ordine_sbagliato = [

@@ -38,7 +38,7 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
             "entity_id": eid,
             # `name or None`, MAI `name or eid`: un id tecnico non e' un nome,
             # ne' tale e quale ne' ingentilito. E' la stessa disciplina che
-            # `memoria/riconoscitore.costruisci_indice` dichiara e rispetta --
+            # `memoria/resolver.costruisci_indice` dichiara e rispetta --
             # qui si faceva l'opposto, e chi legge non aveva modo di sapere se
             # «sensor.abc» fosse un nome vero o un ripiego. L'`entity_id` e'
             # nella stessa riga: chi vuole ripiegare lo fa sapendo cosa sta

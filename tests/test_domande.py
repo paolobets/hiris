@@ -1,7 +1,7 @@
 import pytest
 
 from hiris.app.casa.domande import cerca, guarda
-from hiris.app.memoria.riconoscitore import costruisci_indice
+from hiris.app.memoria.resolver import costruisci_indice
 from tests.test_nucleo import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 # _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_nucleo.py,
@@ -16,7 +16,7 @@ def indice():
 @pytest.fixture
 def indice_ambiguo():
     """Due «Bagno» su piani diversi -- la stessa ambiguita' che ha gia'
-    costato un fix a Indice.trova() (riconoscitore.py)."""
+    costato un fix a Lookup.find() (resolver.py)."""
     casa = {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0},
                   {"id": "primo", "nome": "Primo piano", "livello": 1}],
@@ -38,7 +38,7 @@ def test_cerca_trova_per_nome_e_alias(indice):
 
 
 def test_cerca_non_appiattisce_l_ambiguita(indice_ambiguo):
-    """Due «Bagno» su piani diversi: il contratto di Indice.trova e'
+    """Due «Bagno» su piani diversi: il contratto di Lookup.find e'
     `candidati` sempre lista + `ambiguo`. Appiattirlo qui rifarebbe il difetto
     che e' gia' costato un fix."""
     trovate = cerca(indice_ambiguo, "il bagno")
@@ -509,11 +509,11 @@ def test_il_nome_dichiarato_vince_sul_dedotto_quando_ci_sono_entrambi():
     la garanzia che `cerca()` non deleghi la propria correttezza a
     un'invariante di un modulo diverso."""
     class _IndiceFinto:
-        def trova(self, testo):
+        def find(self, testo):
             return [{"nome_visto": testo, "ambiguo": False,
                      "candidati": [{"tipo": "entita", "riferimento": "light.a"}]}]
 
-        def verifica(self, tipo, riferimento):
+        def verify(self, tipo, riferimento):
             return {"nome": "Abat-jour", "nome_dedotto": "Luce salotto"}
 
     candidato = cerca(_IndiceFinto(), "abat-jour")[0]["candidati"][0]

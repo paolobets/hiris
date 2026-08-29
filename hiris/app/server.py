@@ -60,8 +60,8 @@ from .decisione_modelli import piano_ha_il_token
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
 from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
-from .memoria.archivio import ArchivioMemoria
-from .memoria.cache_indice import CacheIndice
+from .memoria.archivio import MemoryStore
+from .memoria.cache_indice import LookupCache
 from .proxy.entity_cache import EntityCache
 from .proxy.ha_client import HAClient
 from .schedulatore.archivio import AgendaStore
@@ -1801,16 +1801,16 @@ async def _on_startup(app: web.Application) -> None:
     # quanto il boot.
     await rileggi_problemi_ha(app, ha_client)
 
-    # Task B7: la cache dell'Indice (`memoria/cache_indice.py`), di vita
+    # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
     # `DispatcherStrumenti` che la riceve (`costruisci_dispatcher_strumenti`
     # in `api/handlers_chat.py`). Prima di questo task `_cerca`/`_ricorda`
-    # ricostruivano un `Indice` da zero A OGNI chiamata e lo buttavano
+    # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
     # subito: si ripagava ogni volta la lettura dell'anagrafe E la
     # compilazione di un'espressione regolare per termine (misurato: la
     # compilazione domina il costo, non la lettura -- vedi il rapporto del
     # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
-    app["cache_indice_strumenti"] = CacheIndice()
+    app["cache_indice_strumenti"] = LookupCache()
 
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
@@ -2061,7 +2061,7 @@ async def _on_startup(app: web.Application) -> None:
     # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi
     # memoria/archivio.py). Nessuna lettura iniziale da fare qui: a
     # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
-    archivio_memoria = ArchivioMemoria(os.path.join(data_dir, "memoria.db"))
+    archivio_memoria = MemoryStore(os.path.join(data_dir, "memoria.db"))
     app["archivio_memoria"] = archivio_memoria
 
     # Task 1 fetta E4: il WebSocket verso HA parte qui -- non e' mai stato
@@ -3414,7 +3414,7 @@ async def _on_cleanup(app: web.Application) -> None:
     if "archivio_casa" in app:
         app["archivio_casa"].chiudi()
     if "archivio_memoria" in app:
-        app["archivio_memoria"].chiudi()
+        app["archivio_memoria"].close()
     # I due archivi del Task 7 (schedulatore): stessa disciplina dei due qui
     # sopra -- senza chiuderli un riavvio lascerebbe il file sqlite bloccato.
     if "promesse" in app:

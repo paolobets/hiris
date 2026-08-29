@@ -55,7 +55,7 @@ def _le_due_guide() -> dict[str, str]:
 
 def test_entrambe_le_guide_insegnano_il_batch_di_cerca():
     """"Piu' nomi -> UNA chiamata cerca col testo intero" (R8: la capacita'
-    c'e' gia' in `Indice.trova`, misurata 8 su 8 in una chiamata -- nessun
+    c'e' gia' in `Lookup.find`, misurata 8 su 8 in una chiamata -- nessun
     prompt lo diceva)."""
     for percorso, testo in _le_due_guide().items():
         basso = testo.lower()

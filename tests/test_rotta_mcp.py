@@ -31,7 +31,7 @@ from hiris.app import server
 from hiris.app.api import handlers_mcp
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
 from hiris.app.impostazioni_chat import ImpostazioniChat
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
 # Il token dell'add-on per questi test: un valore qualunque, purche' quello che
@@ -70,7 +70,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
 
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
-    memoria = ArchivioMemoria(memoria_db)
+    memoria = MemoryStore(memoria_db)
     app["archivio_casa"] = casa
     app["archivio_memoria"] = memoria
     app.on_startup.clear()
@@ -80,7 +80,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     try:
         yield client, memoria_db
     finally:
-        memoria.chiudi()
+        memoria.close()
         casa.chiudi()
 
 

@@ -171,7 +171,7 @@ from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 
 
 @pytest.fixture(autouse=True)
@@ -215,9 +215,9 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
         "entita": [{"entity_id": "light.cucina", "name": "Faretti", "area_id": "cucina"}],
         "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     ricordo_segreto = "Il codice del cancello e' 1974, non dirlo a nessuno"
-    archivio_memoria.ricorda(ricordo_segreto, "paolo")
+    archivio_memoria.remember(ricordo_segreto, "paolo")
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
 
@@ -279,5 +279,5 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
             assert ricordo_segreto not in json.dumps(corpo, ensure_ascii=False)
     finally:
         archivio_casa.chiudi()
-        archivio_memoria.chiudi()
+        archivio_memoria.close()
         reasoning_queue.close()

@@ -47,7 +47,7 @@ import pytest
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
 # La fixture della configurazione PREDEFINITA dell'add-on, con le due valvole
@@ -435,7 +435,7 @@ def _semina_gli_archivi(app, tmp_path):
     ne vedono due diverse. Un'affermazione del genere si prova, non si cita."""
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
-    memoria = ArchivioMemoria(memoria_db)
+    memoria = MemoryStore(memoria_db)
     app["archivio_casa"] = casa
     app["archivio_memoria"] = memoria
     app["entity_cache"] = _CacheViva({"light.cucina_1": "on",
@@ -641,7 +641,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert [r["testo"] for r in visto["richiama"]["ricordi"]] == [
             "in cucina si cena alle 20"]
     finally:
-        memoria.chiudi()
+        memoria.close()
         casa.chiudi()
 
 

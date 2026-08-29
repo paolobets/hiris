@@ -12,7 +12,7 @@ si puo' ricordare subito solo se poi si puo' guardare e correggere.
 Tre cose, non di piu':
 
 1. GET mostra la frase E cosa HIRIS ha capito -- le ancore col nome che
-   l'anagrafe conosce OGGI (`Indice.verifica`), non l'identificatore nudo: e'
+   l'anagrafe conosce OGGI (`Lookup.verify`), non l'identificatore nudo: e'
    il motivo per cui si ancora a un identificatore invece che a una parola.
    Se l'identificatore non esiste piu' nell'anagrafe, questa vista lo dice
    (`esiste: false`), non lo tace ne' fa finta che l'ancora non ci sia. Se
@@ -21,7 +21,7 @@ Tre cose, non di piu':
    non c'e'" sono due fatti diversi, e confonderli fa sparire ancore vive
    ogni volta che Home Assistant non era pronto all'avvio.
 2. PATCH corregge l'interpretazione, mai il testo (memoria/archivio.py,
-   regola 2): usa `valida()` -- lo stesso CANCELLO che gia' protegge
+   regola 2): usa `validate()` -- lo stesso CANCELLO che gia' protegge
    l'ingresso dal modello (interpretazione.py) -- cosi' un'ancora senza
    riscontro nell'anagrafe viene RIFIUTATA con la ragione, non accettata a
    meta' come farebbe l'ingestione normale (che scarta e prosegue). Un
@@ -37,10 +37,10 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..casa.anagrafe import specchio_vivo
-from ..memoria.interpretazione import deduci_unita, valida
-from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
+from ..memoria.interpretazione import deduci_unit, validate
+from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 
-# Gli stessi campi scalari che ArchivioMemoria.correggi() accetta
+# Gli stessi campi scalari che MemoryStore.correggi() accetta
 # (memoria/archivio.py, `_CAMPI_MODIFICABILI`) piu' le due liste che quel
 # metodo sostituisce per intero (`ancore`, `condizioni`). Duplicato qui
 # apposta invece di importare il nome con l'underscore da un altro modulo:
@@ -108,9 +108,9 @@ def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str
     registro: gli altri restano verificabili normalmente.
     """
     if not anagrafe_letta:
-        return frozenset(CHIAVE_ARCHIVIO_PER_TIPO)
+        return frozenset(STORE_KEY_PER_TYPE)
     chiavi_non_disponibili = set(casa_archivio.non_disponibili())
-    return frozenset(tipo for tipo, chiave in CHIAVE_ARCHIVIO_PER_TIPO.items()
+    return frozenset(tipo for tipo, chiave in STORE_KEY_PER_TYPE.items()
                       if chiave in chiavi_non_disponibili)
 
 
@@ -127,7 +127,7 @@ def _risolvi_ancora(ancora: dict, indice, non_verificabili: frozenset[str]) -> d
     """
     if indice is None or ancora["tipo"] in non_verificabili:
         return {**ancora, "nome_attuale": None, "esiste": None}
-    voce = indice.verifica(ancora["tipo"], ancora["riferimento"])
+    voce = indice.verify(ancora["tipo"], ancora["riferimento"])
     return {**ancora, "nome_attuale": voce.get("nome") if voce else None,
             "esiste": voce is not None}
 
@@ -154,7 +154,7 @@ async def handle_get_memoria(request: web.Request) -> web.Response:
               if anagrafe_letta else None)
     non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
 
-    ricordi = archivio.richiama(limite=_LIMITE_RICORDI_MOSTRATI)
+    ricordi = archivio.fetch(limit=_LIMITE_RICORDI_MOSTRATI)
     for r in ricordi:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
         r["ancore"] = [_risolvi_ancora(a, indice, non_verificabili) for a in r["ancore"]]
@@ -166,7 +166,7 @@ async def handle_get_memoria(request: web.Request) -> web.Response:
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
         # memoria non evapora (memoria/archivio.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
-        "totale": archivio.conta(),
+        "totale": archivio.count(),
         "mostrati": len(ricordi),
     })
 
@@ -184,7 +184,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # Verificato PRIMA di validare il corpo: un ricordo cancellato da
     # un'altra scheda (o mai esistito) non e' un problema del corpo della
     # richiesta, e' l'assenza del ricordo stesso -- 404, non 400.
-    esistente = archivio.ottieni(id_ricordo)
+    esistente = archivio.get(id_ricordo)
     if esistente is None:
         return web.json_response(
             {"errore": f"nessun ricordo con id {id_ricordo}"}, status=404)
@@ -236,7 +236,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     minimo_richiesto = campi.get("minimo") if "minimo" in campi else esistente["minimo"]
     massimo_richiesto = campi.get("massimo") if "massimo" in campi else esistente["massimo"]
 
-    # `valida()` e' il CANCELLO gia' scritto per l'interpretazione del
+    # `validate()` e' il CANCELLO gia' scritto per l'interpretazione del
     # modello (interpretazione.py): qui si riusa per la correzione umana,
     # con la STESSA regola sulle ancore. I campi assenti dalla richiesta si
     # passano "neutri" (None/[]): non generano problemi propri (vedi
@@ -252,11 +252,11 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         "ancore": campi.get("ancore") or [],
         "condizioni": campi.get("condizioni") or [],
     }
-    pulita, problemi, correzioni = valida(
+    pulita, problemi, correzioni = validate(
         interpretazione, indice, tipi_non_verificabili, unita_vive)
     if problemi:
         # Rifiutata con la ragione, non accettata a meta' (regola 2 di
-        # ArchivioMemoria): nessuna delle correzioni si scrive, il ricordo
+        # MemoryStore): nessuna delle correzioni si scrive, il ricordo
         # resta esattamente com'era.
         #
         # Solo i PROBLEMI rifiutano. Una CORREZIONE -- un intervallo
@@ -283,10 +283,10 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         aggiornamenti["minimo"] = pulita["minimo"]
         aggiornamenti["massimo"] = pulita["massimo"]
     if "unita" in campi:
-        # `valida()` non prende `unita` in input: la deduce sempre da ancora
-        # + grandezza (interpretazione.deduci_unita), perche' quel percorso
+        # `validate()` non prende `unita` in input: la deduce sempre da ancora
+        # + grandezza (interpretazione.deduci_unit), perche' quel percorso
         # e' per il modello ("l'unita' non si chiede, si deduce"). Qui invece
-        # e' una correzione umana diretta a un campo che ArchivioMemoria.
+        # e' una correzione umana diretta a un campo che MemoryStore.
         # correggi() gia' accetta -- passa cosi' com'e', senza dedurla.
         aggiornamenti["unita"] = campi["unita"]
     elif "grandezza" in campi or "ancore" in campi:
@@ -298,7 +298,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         ancore_per_deduzione = pulita["ancore"] if "ancore" in campi else esistente["ancore"]
         grandezza_per_deduzione = pulita["grandezza"] if "grandezza" in campi \
             else esistente["grandezza"]
-        aggiornamenti["unita"] = deduci_unita(
+        aggiornamenti["unita"] = deduci_unit(
             ancore_per_deduzione, grandezza_per_deduzione, indice, unita_vive)
     if "ancore" in campi:
         aggiornamenti["ancore"] = pulita["ancore"]

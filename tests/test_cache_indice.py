@@ -1,12 +1,12 @@
-"""La cache dell'Indice (Task B7) -- un oggetto di vita lunga separato da
+"""La cache del Lookup (Task B7) -- un oggetto di vita lunga separato da
 `costruisci_indice()`, che resta pura.
 
 Ogni test qui sotto esiste per una mutazione plausibile dichiarata nel brief
 (`.superpowers/sdd/conoscenza/task-B7-brief.md`, sezione "Come si prova che i
 test valgono"): il commento sopra ogni test dice quale.
 """
-from hiris.app.memoria.cache_indice import CacheIndice
-from hiris.app.memoria.riconoscitore import Indice
+from hiris.app.memoria.cache_indice import LookupCache
+from hiris.app.memoria.resolver import Lookup
 
 
 def _casa(entita=()):
@@ -35,10 +35,10 @@ def test_due_richieste_identiche_costruiscono_un_solo_indice(monkeypatch):
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa([_entita("light.a", "Luce A")])
-    i1 = cache.ottieni("cerca", casa, "2026-01-01", {})
-    i2 = cache.ottieni("cerca", casa, "2026-01-01", {})
+    i1 = cache.get("cerca", casa, "2026-01-01", {})
+    i2 = cache.get("cerca", casa, "2026-01-01", {})
     assert len(chiamate) == 1
     assert i1 is i2
 
@@ -57,16 +57,16 @@ def test_cambia_aggiornata_il_ricostruisce(monkeypatch):
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
-    cache = CacheIndice()
+    cache = LookupCache()
     casa_v1 = _casa([_entita("light.a", "Luce A")])
     casa_v2 = _casa([_entita("light.a", "Luce A"), _entita("light.b", "Luce B")])
-    i1 = cache.ottieni("cerca", casa_v1, "2026-01-01", {})
-    i2 = cache.ottieni("cerca", casa_v2, "2026-01-02", {})
+    i1 = cache.get("cerca", casa_v1, "2026-01-01", {})
+    i2 = cache.get("cerca", casa_v2, "2026-01-02", {})
     assert len(chiamate) == 2
     assert i1 is not i2
     # il contenuto e' davvero quello nuovo, non solo un oggetto diverso
-    assert i2.verifica("entita", "light.b") is not None
-    assert i1.verifica("entita", "light.b") is None
+    assert i2.verify("entita", "light.b") is not None
+    assert i1.verify("entita", "light.b") is None
 
 
 # -- i nomi vivi cambiano -> ricostruito, per CONTENUTO ---------------------
@@ -75,16 +75,16 @@ def test_cambia_aggiornata_il_ricostruisce(monkeypatch):
 # contenuto diverso: una chiave basata sulla lunghezza li confonderebbe.
 
 def test_stesso_numero_di_nomi_ma_contenuto_diverso_ricostruisce():
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa([_entita("light.a", None)])  # senza nome nel registro
     nomi_v1 = {"light.a": "Abat-jour"}
     nomi_v2 = {"light.a": "Lampada"}  # stessa lunghezza (1 voce), nome diverso
-    i1 = cache.ottieni("cerca", casa, "2026-01-01", nomi_v1)
-    i2 = cache.ottieni("cerca", casa, "2026-01-01", nomi_v2)
+    i1 = cache.get("cerca", casa, "2026-01-01", nomi_v1)
+    i2 = cache.get("cerca", casa, "2026-01-01", nomi_v2)
     assert i1 is not i2
-    assert i1.trova("abat-jour")[0]["candidati"][0]["riferimento"] == "light.a"
-    assert i2.trova("abat-jour") == []
-    assert i2.trova("lampada")[0]["candidati"][0]["riferimento"] == "light.a"
+    assert i1.find("abat-jour")[0]["candidati"][0]["riferimento"] == "light.a"
+    assert i2.find("abat-jour") == []
+    assert i2.find("lampada")[0]["candidati"][0]["riferimento"] == "light.a"
 
 
 # -- la cache non e' eterna --------------------------------------------------
@@ -93,14 +93,14 @@ def test_stesso_numero_di_nomi_ma_contenuto_diverso_ricostruisce():
 # primo indice.
 
 def test_non_e_eterna_cambia_e_si_accorge():
-    cache = CacheIndice()
+    cache = LookupCache()
     casa_v1 = _casa([_entita("light.a", "Luce A")])
     casa_v2 = _casa([_entita("light.c", "Luce C")])
-    i1 = cache.ottieni("cerca", casa_v1, "t1", {})
-    i2 = cache.ottieni("cerca", casa_v2, "t2", {"x": "y"})
+    i1 = cache.get("cerca", casa_v1, "t1", {})
+    i2 = cache.get("cerca", casa_v2, "t2", {"x": "y"})
     assert i1 is not i2
-    assert i2.verifica("entita", "light.a") is None
-    assert i2.verifica("entita", "light.c") is not None
+    assert i2.verify("entita", "light.a") is None
+    assert i2.verify("entita", "light.c") is not None
 
 
 # -- il comportamento cambia -> ricostruito (T7, R2) ------------------------
@@ -122,29 +122,29 @@ def test_cambia_comportamento_letto_il_ricostruisce(monkeypatch):
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa()
     comportamento_v1 = [{"id": "automation.x", "tipo": "automazione", "nome": "Vecchio nome"}]
     comportamento_v2 = [{"id": "automation.x", "tipo": "automazione", "nome": "Nuovo nome"}]
-    i1 = cache.ottieni("cerca", casa, "t1", {}, comportamento_v1, "c1")
-    i2 = cache.ottieni("cerca", casa, "t1", {}, comportamento_v2, "c2")
+    i1 = cache.get("cerca", casa, "t1", {}, comportamento_v1, "c1")
+    i2 = cache.get("cerca", casa, "t1", {}, comportamento_v2, "c2")
     assert len(chiamate) == 2
     assert i1 is not i2
     # il contenuto e' davvero quello nuovo, non solo un oggetto diverso
-    assert i1.trova("vecchio nome") != []
-    assert i2.trova("vecchio nome") == []
-    assert i2.trova("nuovo nome") != []
+    assert i1.find("vecchio nome") != []
+    assert i2.find("vecchio nome") == []
+    assert i2.find("nuovo nome") != []
 
 
 def test_stesso_comportamento_letto_il_riusa_lindice():
     """Il rovescio: se NE' l'anagrafe NE' il comportamento sono cambiati, si
     riusa -- il guadagno della cache non deve sparire perche' ora la chiave
     ha un componente in piu'."""
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa()
     comportamento = [{"id": "automation.x", "tipo": "automazione", "nome": "Sveglia"}]
-    i1 = cache.ottieni("cerca", casa, "t1", {}, comportamento, "c1")
-    i2 = cache.ottieni("cerca", casa, "t1", {}, comportamento, "c1")
+    i1 = cache.get("cerca", casa, "t1", {}, comportamento, "c1")
+    i2 = cache.get("cerca", casa, "t1", {}, comportamento, "c1")
     assert i1 is i2
 
 
@@ -154,10 +154,10 @@ def test_stesso_comportamento_letto_il_riusa_lindice():
 # dare lo stesso indice, anche passando la stessa identica `casa={}`.
 
 def test_anagrafe_non_letta_non_si_confonde_con_anagrafe_vuota_letta_davvero():
-    cache = CacheIndice()
+    cache = LookupCache()
     vuota = _casa([])
-    i_non_letta = cache.ottieni("ricorda", vuota, None)
-    i_letta_vuota = cache.ottieni("ricorda", vuota, "2026-01-01")
+    i_non_letta = cache.get("ricorda", vuota, None)
+    i_letta_vuota = cache.get("ricorda", vuota, "2026-01-01")
     assert i_non_letta is not i_letta_vuota
 
 
@@ -167,15 +167,15 @@ def test_anagrafe_non_letta_non_si_confonde_con_anagrafe_vuota_letta_davvero():
 # differenza e' lo `spazio` e i nomi di ripiego -- devono restare due voci.
 
 def test_cerca_e_ricorda_non_condividono_lo_stesso_indice():
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa([_entita("light.a", None)])
     nomi_vivi = {"light.a": "Abat-jour"}
-    i_cerca = cache.ottieni("cerca", casa, "2026-01-01", nomi_vivi)
-    i_ricorda = cache.ottieni("ricorda", casa, "2026-01-01")
+    i_cerca = cache.get("cerca", casa, "2026-01-01", nomi_vivi)
+    i_ricorda = cache.get("ricorda", casa, "2026-01-01")
     assert i_cerca is not i_ricorda
     # e il contenuto e' davvero diverso: solo "cerca" vede l'abat-jour
-    assert i_cerca.trova("abat-jour") != []
-    assert i_ricorda.trova("abat-jour") == []
+    assert i_cerca.find("abat-jour") != []
+    assert i_ricorda.find("abat-jour") == []
 
 
 # -- una voce per chiave, non una sola casella -------------------------------
@@ -195,18 +195,18 @@ def test_alternare_cerca_e_ricorda_non_fa_rimbalzare_la_cache(monkeypatch):
 
     monkeypatch.setattr(modulo, "costruisci_indice", spia)
 
-    cache = CacheIndice()
+    cache = LookupCache()
     casa = _casa([_entita("light.a", "Luce A")])
-    a1 = cache.ottieni("cerca", casa, "t1", {})
-    r1 = cache.ottieni("ricorda", casa, "t1")
-    a2 = cache.ottieni("cerca", casa, "t1", {})
-    r2 = cache.ottieni("ricorda", casa, "t1")
+    a1 = cache.get("cerca", casa, "t1", {})
+    r1 = cache.get("ricorda", casa, "t1")
+    a2 = cache.get("cerca", casa, "t1", {})
+    r2 = cache.get("ricorda", casa, "t1")
     assert len(chiamate) == 2  # una per spazio, non quattro
     assert a1 is a2
     assert r1 is r2
 
 
 def test_e_davvero_un_oggetto_indice():
-    cache = CacheIndice()
-    esito = cache.ottieni("cerca", _casa(), "t1", {})
-    assert isinstance(esito, Indice)
+    cache = LookupCache()
+    esito = cache.get("cerca", _casa(), "t1", {})
+    assert isinstance(esito, Lookup)

@@ -13,7 +13,7 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 - `etichette`: la tassonomia che l'utente ha scritto a mano in Home Assistant
   -- il significato piu' dichiarato che esista in quella casa. Letta, salvata,
   messa perfino nell'albero da `gerarchia()`, e mai in una risposta.
-- l'unita' delle entita' in `deduci_unita`: la legge dal REGISTRO, che non la
+- l'unita' delle entita' in `deduci_unit`: la legge dal REGISTRO, che non la
   manda -- `config/entity_registry/list` risponde con `as_partial_dict`, dove
   ne' l'unita' ne' la classe ne' gli alias compaiono (verificato sul sorgente
   di HA). La funzione non ha quindi mai dedotto niente in produzione, e non
@@ -24,8 +24,8 @@ import pytest
 from hiris.app.casa.anagrafe import unita_effettiva
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.domande import guarda
-from hiris.app.memoria.interpretazione import deduci_unita
-from hiris.app.memoria.riconoscitore import costruisci_indice
+from hiris.app.memoria.interpretazione import deduci_unit
+from hiris.app.memoria.resolver import costruisci_indice
 
 _REGISTRI = {
     # `labels` porta i label_id (slug), MAI i nomi: e' cosi' che Home Assistant
@@ -128,7 +128,7 @@ def test_si_cerca_per_etichetta(casa):
     quello significa che la ricerca funziona solo per le etichette di una
     parola sola senza maiuscole."""
     indice = costruisci_indice(casa)
-    trovati = indice.trova("da controllare")
+    trovati = indice.find("da controllare")
     candidati = [c for t in trovati for c in t["candidati"]]
     assert {"tipo": "entita", "riferimento": "sensor.frigo_temp"} in candidati
 
@@ -154,9 +154,9 @@ def test_deduci_unita_usa_la_fonte_viva(casa):
     taceva invece di dirlo."""
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "entita", "riferimento": "sensor.frigo_temp"}]
-    assert deduci_unita(ancore, "temperature", indice) is None, (
+    assert deduci_unit(ancore, "temperature", indice) is None, (
         "senza fonte viva non c'e' niente da dedurre: e' il caso di oggi")
-    assert deduci_unita(ancore, "temperature", indice,
+    assert deduci_unit(ancore, "temperature", indice,
                         {"sensor.frigo_temp": "C"}) == "C"
 
 
@@ -175,7 +175,7 @@ def test_deduci_unita_da_un_area_vede_l_area_EREDITATA_dal_dispositivo(casa):
     """
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "area", "riferimento": "cucina"}]
-    assert deduci_unita(ancore, "temperature", indice,
+    assert deduci_unit(ancore, "temperature", indice,
                         {"sensor.frigo_temp": "C"}) == "C"
 
 
@@ -185,7 +185,7 @@ def test_deduci_unita_da_un_area_usa_la_fonte_viva(casa):
     la stessa domanda ha due risposte diverse a seconda dell'ancora."""
     indice = costruisci_indice(casa)
     ancore = [{"tipo": "area", "riferimento": "cucina"}]
-    assert deduci_unita(ancore, "temperature", indice,
+    assert deduci_unit(ancore, "temperature", indice,
                         {"sensor.frigo_temp": "C"}) == "C"
 
 
@@ -214,15 +214,15 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     from aiohttp import web
 
     from hiris.app.api.handlers_memoria import handle_patch_memoria
-    from hiris.app.memoria.archivio import ArchivioMemoria
+    from hiris.app.memoria.archivio import MemoryStore
 
     casa_archivio = ArchivioCasa(str(tmp_path / "casa.db"))
     casa_archivio.sostituisci(_REGISTRI, [])
-    memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
-    id_ricordo = memoria.ricorda(
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    id_ricordo = memoria.remember(
         "il frigo lo tengo fra 3 e 5", detto_da="paolo",
         ancore=[{"tipo": "entita", "riferimento": "sensor.frigo_temp"}],
-        grandezza=None, minimo=3.0, massimo=5.0)
+        grandezza=None, minimum=3.0, maximum=5.0)
 
     app = web.Application()
     app["archivio_memoria"] = memoria
@@ -234,7 +234,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     resp = await client.patch(f"/api/memoria/{id_ricordo}",
                               json={"grandezza": "temperature"})
     assert resp.status == 200, await resp.text()
-    salvato = next(r for r in memoria.richiama() if r["id"] == id_ricordo)
+    salvato = next(r for r in memoria.fetch() if r["id"] == id_ricordo)
     assert salvato["unita"] == "C", (
         "la pagina deve dedurre l'unita' dalla stessa fonte viva della chat")
 

@@ -75,18 +75,18 @@ CREATE INDEX IF NOT EXISTS idx_condizioni_ricordo ON condizioni(ricordo_id);
 _CAMPI_MODIFICABILI = {"detto_da", "forza", "grandezza", "minimo", "massimo", "unita"}
 
 
-class ArchivioMemoria:
+class MemoryStore:
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=1)
 
-    def chiudi(self) -> None:
+    def close(self) -> None:
         self._conn.close()
 
-    def ricorda(self, testo: str, detto_da: str | None, ancore=(), condizioni=(),
-                forza: str | None = None, grandezza: str | None = None,
-                minimo: float | None = None, massimo: float | None = None,
-                unita: str | None = None) -> int:
+    def remember(self, text: str, detto_da: str | None, ancore=(), conditions=(),
+                modality: str | None = None, grandezza: str | None = None,
+                minimum: float | None = None, maximum: float | None = None,
+                unit: str | None = None) -> int:
         """Archivia un ricordo nuovo, con le sue ancore e condizioni.
 
         Un ricordo nudo (nessuna ancora, nessuna condizione, nessuna forza)
@@ -105,30 +105,30 @@ class ArchivioMemoria:
                 "INSERT INTO ricordi "
                 "(testo, detto_da, detto_il, forza, grandezza, minimo, massimo, unita) "
                 "VALUES (?,?,?,?,?,?,?,?)",
-                (testo, detto_da, datetime.now(UTC).isoformat(timespec="seconds"),
-                 forza, grandezza, minimo, massimo, unita))
+                (text, detto_da, datetime.now(UTC).isoformat(timespec="seconds"),
+                 modality, grandezza, minimum, maximum, unit))
             ricordo_id = cursore.lastrowid
-            self._scrivi_ancore(ricordo_id, ancore)
-            self._scrivi_condizioni(ricordo_id, condizioni)
+            self._write_ancore(ricordo_id, ancore)
+            self._write_conditions(ricordo_id, conditions)
             c.commit()
             return ricordo_id
         except Exception:
             c.rollback()
             raise
 
-    def richiama(self, limite: int = 20) -> list[dict]:
+    def fetch(self, limit: int = 20) -> list[dict]:
         """Gli ultimi `limite` ricordi, i piu' recenti prima, con ancore e
         condizioni gia' risolte."""
         righe = self._conn.execute(
-            "SELECT * FROM ricordi ORDER BY id DESC LIMIT ?", (limite,)).fetchall()
-        return [self._componi(dict(r)) for r in righe]
+            "SELECT * FROM ricordi ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._compose(dict(r)) for r in righe]
 
-    def per_ancora(self, tipo: str, riferimento: str) -> list[dict]:
+    def per_tether(self, type: str, reference: str) -> list[dict]:
         """I ricordi ancorati a `riferimento` con quel `tipo` (un'area,
         un'entita', un dispositivo), i piu' recenti prima.
 
         Il contratto di un'ancora e' la COPPIA tipo+riferimento (stessa
-        forma di `Indice.verifica()` in riconoscitore.py): un `riferimento`
+        forma di `Lookup.verify()` in resolver.py): un `riferimento`
         da solo non basta, o un'entita' e un'area con lo stesso id
         letterale (capita raramente, ma capita) si mescolerebbero.
 
@@ -140,10 +140,10 @@ class ArchivioMemoria:
             "SELECT DISTINCT r.* FROM ricordi r "
             "JOIN ancore a ON a.ricordo_id = r.id "
             "WHERE a.tipo = ? AND a.riferimento = ? ORDER BY r.id DESC",
-            (tipo, riferimento)).fetchall()
-        return [self._componi(dict(r)) for r in righe]
+            (type, reference)).fetchall()
+        return [self._compose(dict(r)) for r in righe]
 
-    def ottieni(self, id: int) -> dict | None:
+    def get(self, id: int) -> dict | None:
         """Un ricordo per id, con ancore e condizioni gia' risolte, o
         `None` se non esiste.
 
@@ -152,17 +152,17 @@ class ArchivioMemoria:
         un intervallo (minimo/massimo) contro il valore gia' archiviato
         quando la richiesta ne tocca solo meta', non contro `None`.
         """
-        riga = self._conn.execute("SELECT * FROM ricordi WHERE id = ?", (id,)).fetchone()
-        return self._componi(dict(riga)) if riga else None
+        row = self._conn.execute("SELECT * FROM ricordi WHERE id = ?", (id,)).fetchone()
+        return self._compose(dict(row)) if row else None
 
-    def conta(self) -> int:
+    def count(self) -> int:
         """Quanti ricordi ci sono in tutto -- non solo i `limite` che
         `richiama()` restituisce. La memoria non evapora (regola del
         modulo): oltre `limite` voci restano vere e proprio invisibili
         senza questo numero, e un ricordo invisibile e' indistinguibile
         da uno cancellato."""
-        riga = self._conn.execute("SELECT COUNT(*) AS n FROM ricordi").fetchone()
-        return riga["n"]
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM ricordi").fetchone()
+        return row["n"]
 
     def correggi(self, id: int, **campi) -> bool:
         """Corregge l'interpretazione di un ricordo -- mai il testo.
@@ -188,7 +188,7 @@ class ArchivioMemoria:
         pulito -- controllare qui prima evita anche quello.
         """
         ancore = campi.pop("ancore", None)
-        condizioni = campi.pop("condizioni", None)
+        conditions = campi.pop("condizioni", None)
         ignoti = set(campi) - _CAMPI_MODIFICABILI
         if ignoti:
             raise ValueError(f"correggi(): campi non modificabili: {sorted(ignoti)}")
@@ -208,10 +208,10 @@ class ArchivioMemoria:
                 return False
             if ancore is not None:
                 c.execute("DELETE FROM ancore WHERE ricordo_id = ?", (id,))
-                self._scrivi_ancore(id, ancore)
-            if condizioni is not None:
+                self._write_ancore(id, ancore)
+            if conditions is not None:
                 c.execute("DELETE FROM condizioni WHERE ricordo_id = ?", (id,))
-                self._scrivi_condizioni(id, condizioni)
+                self._write_conditions(id, conditions)
             c.commit()
             return True
         except Exception:
@@ -238,28 +238,28 @@ class ArchivioMemoria:
             c.rollback()
             raise
 
-    def _scrivi_ancore(self, ricordo_id: int, ancore) -> None:
+    def _write_ancore(self, ricordo_id: int, ancore) -> None:
         for a in ancore:
             self._conn.execute(
                 "INSERT INTO ancore (ricordo_id, tipo, riferimento, nome_visto) "
                 "VALUES (?,?,?,?)",
                 (ricordo_id, a["tipo"], a["riferimento"], a.get("nome_visto")))
 
-    def _scrivi_condizioni(self, ricordo_id: int, condizioni) -> None:
-        for cond in condizioni:
+    def _write_conditions(self, ricordo_id: int, conditions) -> None:
+        for cond in conditions:
             self._conn.execute(
                 "INSERT INTO condizioni (ricordo_id, tipo, valore) VALUES (?,?,?)",
                 (ricordo_id, cond["tipo"], cond["valore"]))
 
-    def _componi(self, riga: dict) -> dict:
+    def _compose(self, row: dict) -> dict:
         """Un ricordo con le sue ancore e condizioni gia' sciolte -- stessa
         idea di `ArchivioCasa._sciogli`, ma qui la lista viene da tabelle
         proprie, non da una colonna JSON."""
-        ricordo_id = riga["id"]
-        riga["ancore"] = [dict(a) for a in self._conn.execute(
+        ricordo_id = row["id"]
+        row["ancore"] = [dict(a) for a in self._conn.execute(
             "SELECT tipo, riferimento, nome_visto FROM ancore WHERE ricordo_id = ? "
             "ORDER BY rowid", (ricordo_id,)).fetchall()]
-        riga["condizioni"] = [dict(c) for c in self._conn.execute(
+        row["condizioni"] = [dict(c) for c in self._conn.execute(
             "SELECT tipo, valore FROM condizioni WHERE ricordo_id = ? ORDER BY rowid",
             (ricordo_id,)).fetchall()]
-        return riga
+        return row

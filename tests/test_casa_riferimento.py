@@ -21,7 +21,7 @@ from hiris.app.casa.anagrafe import ricostruisci, sistema_di_riferimento
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.nucleo import componi
 from hiris.app.casa.strumenti import DispatcherStrumenti
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che
@@ -252,7 +252,7 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
     sull'unita' della casa quando `unita_vive` non ne ha una.
     """
     archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
     try:
         archivio.sostituisci(
             {"aree": [{"area_id": "cucina", "name": "Cucina"}],
@@ -284,4 +284,4 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             "della casa")
     finally:
         archivio.chiudi()
-        memoria.chiudi()
+        memoria.close()

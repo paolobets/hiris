@@ -7,7 +7,7 @@ liberi: ha esattamente quattro caselle, e il vocabolario di ognuna viene da
 qualcosa che esiste gia', non da un elenco inventato qui:
 
 - **a chi si riferisce** (`ancore`): area, entita', dispositivo. Il
-  vocabolario e' l'ANAGRAFE -- `Indice.verifica()` (riconoscitore.py). Un
+  vocabolario e' l'ANAGRAFE -- `Lookup.verify()` (resolver.py). Un
   ancora senza riscontro non si scrive: e' la stessa regola per cui il
   modello propone e il codice restringe.
 - **cosa chiede** (`grandezza`/`minimo`/`massimo`): una grandezza e' quello
@@ -24,7 +24,7 @@ qualcosa che esiste gia', non da un elenco inventato qui:
 - **che forza ha** (`forza`): preferenza, divieto, fatto, regola. Quattro
   parole, chiuse: non "importanza" su scala libera, non testo.
 
-`VOCABOLARIO` e' l'unico posto in cui questo si legge -- non sparso nel
+`VOCABULARY` e' l'unico posto in cui questo si legge -- non sparso nel
 codice -- e `test_il_vocabolario_e_chiuso` lo tiene esattamente a queste
 tre caselle e questi valori: se domani ne serve una quinta, quel test cade
 apposta, perche' aggiungerne una in silenzio e' la stessa deriva che ha
@@ -32,7 +32,7 @@ reso ingestibili i campi liberi della 1.x.
 
 **Il principio di validazione** (docs/design/2026-08-05, gia' pagato dodici
 volte su questo ramo): un silenzio non dichiarato e' indistinguibile da
-un'assenza di problemi. Quindi `valida()` non inventa, non lascia passare
+un'assenza di problemi. Quindi `validate()` non inventa, non lascia passare
 in silenzio e non butta via senza dirlo: cio' che non riconosce lo SCARTA e
 lo DICHIARA in un problema leggibile da una persona.
 
@@ -51,16 +51,16 @@ from ..casa.anagrafe import area_effettiva, unita_effettiva
 # Assistant (device_class), non uno nostro -- vedi la docstring del
 # modulo. "quando vale" aggiunge "stagione" alle condizioni che HA gia'
 # conosce.
-VOCABOLARIO: dict[str, frozenset[str]] = {
+VOCABULARY: dict[str, frozenset[str]] = {
     "forza": frozenset({"preferenza", "divieto", "fatto", "regola"}),
     "condizioni": frozenset({"ora", "giorno", "presenza", "sole", "meteo", "stagione"}),
     "ancore": frozenset({"area", "entita", "dispositivo"}),
 }
 
 
-def valida(interpretazione: dict, indice,
+def validate(interpretation: dict, lookup,
            tipi_non_verificabili: frozenset[str] = frozenset(),
-           unita_vive: dict[str, str] | None = None
+           reported_unit: dict[str, str] | None = None
            ) -> tuple[dict, list[str], list[str]]:
     """Ripulisce un'interpretazione proposta dal modello, contro il
     vocabolario chiuso e l'anagrafe di `indice`.
@@ -95,44 +95,44 @@ def valida(interpretazione: dict, indice,
     problemi: list[str] = []
     correzioni: list[str] = []
 
-    forza = _valida_forza(interpretazione.get("forza"), problemi)
-    grandezza = interpretazione.get("grandezza")
-    minimo, massimo = _valida_intervallo(
-        interpretazione.get("minimo"), interpretazione.get("massimo"),
+    modality = _validate_modality(interpretation.get("forza"), problemi)
+    grandezza = interpretation.get("grandezza")
+    minimum, maximum = _validate_intervallo(
+        interpretation.get("minimo"), interpretation.get("massimo"),
         problemi, correzioni)
-    ancore = _valida_ancore(interpretazione.get("ancore") or [], indice,
+    ancore = _validate_ancore(interpretation.get("ancore") or [], lookup,
                              tipi_non_verificabili, problemi)
-    condizioni = _valida_condizioni(interpretazione.get("condizioni") or [], problemi)
-    unita = deduci_unita(ancore, grandezza, indice, unita_vive)
+    conditions = _validate_conditions(interpretation.get("condizioni") or [], problemi)
+    unit = deduci_unit(ancore, grandezza, lookup, reported_unit)
 
     pulita = {
-        "forza": forza,
+        "forza": modality,
         "grandezza": grandezza,
-        "minimo": minimo,
-        "massimo": massimo,
-        "unita": unita,
+        "minimo": minimum,
+        "massimo": maximum,
+        "unita": unit,
         "ancore": ancore,
-        "condizioni": condizioni,
+        "condizioni": conditions,
     }
     return pulita, problemi, correzioni
 
 
-def _valida_forza(forza, problemi: list[str]):
+def _validate_modality(modality, problemi: list[str]):
     """`forza` e' opzionale: non fornita non e' un problema, fornita ma
     fuori vocabolario si' -- e si dichiara con la parola che il modello
     aveva scritto, cosi' chi legge il problema capisce cosa e' stato
     scartato."""
-    if forza is None:
+    if modality is None:
         return None
-    if forza not in VOCABOLARIO["forza"]:
+    if modality not in VOCABULARY["forza"]:
         problemi.append(
-            f"forza «{forza}» non e' nel vocabolario "
-            f"({', '.join(sorted(VOCABOLARIO['forza']))}) -- scartata")
+            f"forza «{modality}» non e' nel vocabolario "
+            f"({', '.join(sorted(VOCABULARY['forza']))}) -- scartata")
         return None
-    return forza
+    return modality
 
 
-def _valida_intervallo(minimo, massimo, problemi: list[str],
+def _validate_intervallo(minimum, maximum, problemi: list[str],
                        correzioni: list[str]) -> tuple[float | None, float | None]:
     """Un valore o un intervallo, mai un testo: qui si converte a numero e
     si raddrizza un intervallo scritto al contrario, che e' un errore di
@@ -140,28 +140,28 @@ def _valida_intervallo(minimo, massimo, problemi: list[str],
     dichiara comunque, perche' un raddrizzamento silenzioso e' comunque
     un silenzio non dichiarato."""
     try:
-        minimo = None if minimo is None else float(minimo)
-        massimo = None if massimo is None else float(massimo)
+        minimum = None if minimum is None else float(minimum)
+        maximum = None if maximum is None else float(maximum)
     except (TypeError, ValueError):
         problemi.append(
-            f"intervallo non numerico (minimo={minimo!r}, massimo={massimo!r}) -- scartato")
+            f"intervallo non numerico (minimo={minimum!r}, massimo={maximum!r}) -- scartato")
         return None, None
 
-    if minimo is not None and massimo is not None and minimo > massimo:
+    if minimum is not None and maximum is not None and minimum > maximum:
         # CORREZIONE, non problema: il dato c'e' ed e' stato riparato. Metterlo
         # fra i problemi faceva rifiutare l'intera richiesta -- cioe' punire
         # l'utente per un refuso che avevamo gia' sistemato, e per giunta solo
         # quando ne correggeva meta': lo stesso intervallo mandato intero
         # veniva raddrizzato e accettato.
         correzioni.append(
-            f"minimo ({minimo}) maggiore di massimo ({massimo}): "
+            f"minimo ({minimum}) maggiore di massimo ({maximum}): "
             "intervallo invertito -- raddrizzato"
         )
-        minimo, massimo = massimo, minimo
-    return minimo, massimo
+        minimum, maximum = maximum, minimum
+    return minimum, maximum
 
 
-def _valida_ancore(ancore, indice, tipi_non_verificabili: frozenset[str],
+def _validate_ancore(ancore, lookup, tipi_non_verificabili: frozenset[str],
                     problemi: list[str]) -> list[dict]:
     """Ogni ancora deve avere un tipo del vocabolario ED esistere
     nell'anagrafe -- le due condizioni sono indipendenti e vengono
@@ -174,23 +174,23 @@ def _valida_ancore(ancore, indice, tipi_non_verificabili: frozenset[str],
     (fail-closed), ma dirlo come "non esiste" sarebbe falso: si dice "non
     si puo' verificare"."""
     pulite: list[dict] = []
-    for ancora in ancore:
-        tipo = ancora.get("tipo")
-        riferimento = ancora.get("riferimento")
-        etichetta = ancora.get("nome_visto") or riferimento or "?"
+    for tether in ancore:
+        type = tether.get("tipo")
+        reference = tether.get("riferimento")
+        label = tether.get("nome_visto") or reference or "?"
 
-        if tipo not in VOCABOLARIO["ancore"]:
+        if type not in VOCABULARY["ancore"]:
             problemi.append(
-                f"ancora «{etichetta}» ha un tipo («{tipo}») fuori dal vocabolario "
-                f"({', '.join(sorted(VOCABOLARIO['ancore']))}) -- scartata")
+                f"ancora «{label}» ha un tipo («{type}») fuori dal vocabolario "
+                f"({', '.join(sorted(VOCABULARY['ancore']))}) -- scartata")
             continue
-        if tipo in tipi_non_verificabili:
+        if type in tipi_non_verificabili:
             problemi.append(
-                f"ancora {tipo} «{etichetta}» non si puo' verificare: l'anagrafe della casa "
+                f"ancora {type} «{label}» non si puo' verificare: l'anagrafe della casa "
                 f"non e' disponibile -- scartata (un'ancora che non si puo' controllare "
                 f"non si scrive)")
             continue
-        if riferimento is None or indice.verifica(tipo, riferimento) is None:
+        if reference is None or lookup.verify(type, reference) is None:
             # R5: si scarta comunque (il ricordo si salva, il testo resta
             # la verita' -- decisione del proprietario), ma il problema deve
             # INSEGNARE la correzione, non solo dichiarare lo scarto: stesso
@@ -198,17 +198,17 @@ def _valida_ancore(ancore, indice, tipi_non_verificabili: frozenset[str],
             # risolto («Usa "cerca" per trovare il nome giusto e ripeti il
             # comando»), esteso qui a `ricorda`.
             problemi.append(
-                f"ancora {tipo} «{etichetta}» non esiste nell'anagrafe -- scartata "
-                f"(un'ancora senza riscontro non si scrive). Se «{etichetta}» e' un "
+                f"ancora {type} «{label}» non esiste nell'anagrafe -- scartata "
+                f"(un'ancora senza riscontro non si scrive). Se «{label}» e' un "
                 f"nome (non un id), chiama «cerca» per trovare l'id giusto e ripeti "
                 f"«ricorda» con quello.")
             continue
-        pulite.append({"tipo": tipo, "riferimento": riferimento,
-                        "nome_visto": ancora.get("nome_visto")})
+        pulite.append({"tipo": type, "riferimento": reference,
+                        "nome_visto": tether.get("nome_visto")})
     return pulite
 
 
-def _valida_condizioni(condizioni, problemi: list[str]) -> list[dict]:
+def _validate_conditions(conditions, problemi: list[str]) -> list[dict]:
     """`valore` non ha un vocabolario chiuso qui: e' il modello che lo
     riempie con cio' che Home Assistant intende per quella condizione
     (es. `sole: tramontato`), e la traduzione in automazione verifica il
@@ -219,23 +219,23 @@ def _valida_condizioni(condizioni, problemi: list[str]) -> list[dict]:
     `IntegrityError` invece di essere scartata e dichiarata qui -- ed e'
     esattamente il silenzio che questo cancello esiste per evitare."""
     pulite: list[dict] = []
-    for condizione in condizioni:
-        tipo = condizione.get("tipo")
-        valore = condizione.get("valore")
-        if tipo not in VOCABOLARIO["condizioni"]:
+    for condizione in conditions:
+        type = condizione.get("tipo")
+        value = condizione.get("valore")
+        if type not in VOCABULARY["condizioni"]:
             problemi.append(
-                f"condizione «{tipo}» non e' nel vocabolario "
-                f"({', '.join(sorted(VOCABOLARIO['condizioni']))}) -- scartata")
+                f"condizione «{type}» non e' nel vocabolario "
+                f"({', '.join(sorted(VOCABULARY['condizioni']))}) -- scartata")
             continue
-        if valore is None:
-            problemi.append(f"condizione «{tipo}» senza valore -- scartata")
+        if value is None:
+            problemi.append(f"condizione «{type}» senza valore -- scartata")
             continue
-        pulite.append({"tipo": tipo, "valore": valore})
+        pulite.append({"tipo": type, "valore": value})
     return pulite
 
 
-def deduci_unita(ancore: list[dict], grandezza, indice,
-                 unita_vive: dict[str, str] | None = None) -> str | None:
+def deduci_unit(ancore: list[dict], grandezza, lookup,
+                 reported_unit: dict[str, str] | None = None) -> str | None:
     """L'unita' non si chiede al modello, si deduce da cio' che l'anagrafe
     gia' sa:
 
@@ -246,36 +246,36 @@ def deduci_unita(ancore: list[dict], grandezza, indice,
       di quell'area, quella la cui `classe` (il `device_class` di HA)
       combacia con la `grandezza` proposta, e si prende la sua unita'.
 
-    Si usa solo la superficie pubblica di `Indice`: `verifica()` per la ricerca
-    per identificatore, `tutti()` per l'enumerazione. Leggere `_per_tipo`
+    Si usa solo la superficie pubblica di `Lookup`: `verify()` per la ricerca
+    per identificatore, `tutti()` per l'enumerazione. Leggere `_per_type`
     funzionava, ma accoppiava a un dettaglio interno -- e un accoppiamento del
     genere si propaga in silenzio al modulo successivo.
 
     Se non si trova nulla, resta `None`: **non si inventa**.
     """
-    vive = unita_vive or {}
-    for ancora in ancore:
-        if ancora["tipo"] == "entita":
-            entita = indice.verifica("entita", ancora["riferimento"])
-            if entita:
-                unita = unita_effettiva(entita.get("unita"), vive.get(entita.get("id")))
-                if unita is not None:
-                    return unita
-        elif ancora["tipo"] == "area" and grandezza is not None:
-            area_id = ancora["riferimento"]
+    reported = reported_unit or {}
+    for tether in ancore:
+        if tether["tipo"] == "entita":
+            entity = lookup.verify("entita", tether["riferimento"])
+            if entity:
+                unit = unita_effettiva(entity.get("unita"), reported.get(entity.get("id")))
+                if unit is not None:
+                    return unit
+        elif tether["tipo"] == "area" and grandezza is not None:
+            area_id = tether["riferimento"]
             # L'area EREDITATA dal dispositivo conta quanto quella propria --
             # anzi, di piu': in una casa vera e' il caso normale. La regola sta
             # in `casa.anagrafe.area_effettiva`, la stessa che usa `gerarchia()`
             # per costruire l'albero: qui prima si confrontava il solo
             # `area_id` proprio, e su una casa vera non si trovava mai niente.
-            area_del_dispositivo = {d["id"]: d.get("area_id")
-                                    for d in indice.tutti("dispositivo") if d.get("id")}
-            for entita in indice.tutti("entita"):
-                if entita.get("classe") != grandezza:
+            area_del_device = {d["id"]: d.get("area_id")
+                                    for d in lookup.tutti("dispositivo") if d.get("id")}
+            for entity in lookup.tutti("entita"):
+                if entity.get("classe") != grandezza:
                     continue
-                if area_effettiva(entita, area_del_dispositivo) != area_id:
+                if area_effettiva(entity, area_del_device) != area_id:
                     continue
-                unita = unita_effettiva(entita.get("unita"), vive.get(entita.get("id")))
-                if unita is not None:
-                    return unita
+                unit = unita_effettiva(entity.get("unita"), reported.get(entity.get("id")))
+                if unit is not None:
+                    return unit
     return None

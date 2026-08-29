@@ -55,7 +55,7 @@ from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.impostazioni_chat import ImpostazioniChat
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.server import create_app
 from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento
 
@@ -411,7 +411,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # proverebbe niente -- e' il difetto che la prova di mutazione ha gia'
 # trovato sette volte su questo ramo.
 #
-# `DispatcherStrumenti`, gli archivi (`ArchivioCasa`, `ArchivioMemoria`) e
+# `DispatcherStrumenti`, gli archivi (`ArchivioCasa`, `MemoryStore`) e
 # `handle_chat` restano codice di produzione vero, esattamente come nella
 # chat reale -- solo la rete verso Anthropic e' finta.
 # ---------------------------------------------------------------------------
@@ -542,7 +542,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     # `_on_startup` (server.py) lo cabla sempre insieme a `archivio_casa`,
     # mai l'uno senza l'altro -- qui si replica lo stesso accoppiamento,
     # non se ne fa a meno.
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria_conversazione_2.db"))
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria_conversazione_2.db"))
     client, runner = await _build_chat_client_runner_reale(
         aiohttp_client, tmp_path, archivio_casa=archivio_casa, archivio_memoria=archivio_memoria,
     )
@@ -591,7 +591,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     )
 
     archivio_casa.chiudi()
-    archivio_memoria.chiudi()
+    archivio_memoria.close()
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +607,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     aiohttp_client, tmp_path, caplog):
     caplog.set_level("DEBUG", logger="hiris.app.api.handlers_chat")
     archivio_casa = _semina_casa_con_comportamento(tmp_path)
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria_reale.db"))
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria_reale.db"))
     client, runner = await _build_chat_client_runner_reale(
         aiohttp_client, tmp_path, archivio_casa=archivio_casa, archivio_memoria=archivio_memoria,
     )
@@ -641,7 +641,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     )
 
     archivio_casa.chiudi()
-    archivio_memoria.chiudi()
+    archivio_memoria.close()
 
 
 # ---------------------------------------------------------------------------

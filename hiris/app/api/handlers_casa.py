@@ -199,7 +199,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     comunque chiamarla.
 
     Il resto del ragionamento -- perche' `non_disponibili` va propagato,
-    perche' `ArchivioMemoria.richiama(limite=conta())` e non il default,
+    perche' `MemoryStore.fetch(limit=count())` e non il default,
     perche' `stato_affidabile` richiede ENTRAMBI l'archivio e un inventario
     vivo pronto -- e' invariato da prima di questo refactor: vedi i
     commenti storici in git blame su questa funzione (era il corpo di
@@ -240,7 +240,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         # sapere in che scala e "alle 8" senza sapere in che fuso.
         sistema_di_riferimento = archivio_casa.sistema_di_riferimento()
 
-    # CRITICAL ①: il default di `ArchivioMemoria.richiama()` e' `limite=20`.
+    # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
     # Con `conta()` (scritto apposta per dichiarare questa differenza) si
     # richiamano TUTTI i ricordi, e si lascia decidere al taglio di
     # `componi()` -- che dichiara sempre, nel nucleo stesso, quanti ne
@@ -249,7 +249,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # e il riepilogo giurava "ricordi_esclusi: 0" su una casa con 200
     # ricordi veri e solo 20 nel nucleo.
     if archivio_memoria is not None:
-        ricordi = archivio_memoria.richiama(limite=archivio_memoria.conta())
+        ricordi = archivio_memoria.fetch(limit=archivio_memoria.count())
     else:
         ricordi = []
 

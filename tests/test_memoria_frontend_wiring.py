@@ -22,20 +22,20 @@ def _js() -> str:
 
 
 def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
-    from hiris.app.memoria.interpretazione import VOCABOLARIO
+    from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
     inizio = js.index("var FORZA_LABELS")
     blocco = js[inizio:js.index("};", inizio)]
-    mancanti = sorted(f for f in VOCABOLARIO["forza"] if f + ":" not in blocco)
+    mancanti = sorted(f for f in VOCABULARY["forza"] if f + ":" not in blocco)
     assert mancanti == [], f"forze senza etichetta in memoria-route.js: {mancanti}"
 
 
 def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
-    from hiris.app.memoria.interpretazione import VOCABOLARIO
+    from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
     inizio = js.index("var FORZA_OPZIONI")
     blocco = js[inizio:js.index("];", inizio)]
-    mancanti = sorted(f for f in VOCABOLARIO["forza"] if "'" + f + "'" not in blocco)
+    mancanti = sorted(f for f in VOCABULARY["forza"] if "'" + f + "'" not in blocco)
     assert mancanti == [], f"forze non scegliibili in memoria-route.js: {mancanti}"
 
 
@@ -45,13 +45,13 @@ def test_la_pagina_non_offre_forze_che_il_vocabolario_non_ammette():
     andare a buon fine."""
     import re
 
-    from hiris.app.memoria.interpretazione import VOCABOLARIO
+    from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
     inizio = js.index("var FORZA_OPZIONI")
     blocco = js[inizio:js.index("];", inizio)]
     offerte = {v for v in re.findall(r"\['([a-z_]*)'", blocco) if v}
-    assert offerte <= VOCABOLARIO["forza"], (
-        f"la pagina offre forze fuori vocabolario: {sorted(offerte - VOCABOLARIO['forza'])}")
+    assert offerte <= VOCABULARY["forza"], (
+        f"la pagina offre forze fuori vocabolario: {sorted(offerte - VOCABULARY['forza'])}")
 
 
 def test_una_forza_sconosciuta_non_si_perde_in_silenzio():

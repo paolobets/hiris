@@ -82,7 +82,7 @@ async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
     """La prova che conta: dall'anagrafe fino a `cerca`. Senza, l'alias
     sarebbe letto e salvato e non porterebbe a niente -- la fondamenta 4."""
     from hiris.app.casa.archivio import ArchivioCasa
-    from hiris.app.memoria.riconoscitore import costruisci_indice
+    from hiris.app.memoria.resolver import costruisci_indice
 
     a = ArchivioCasa(str(tmp_path / "casa.db"))
     try:
@@ -91,7 +91,7 @@ async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
              "aliases": ["lampada della nonna"]},
         ]}, [])
         indice = costruisci_indice(a.leggi())
-        trovati = indice.trova("lampada della nonna")
+        trovati = indice.find("lampada della nonna")
         candidati = [c for t in trovati for c in t["candidati"]]
         assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
     finally:
@@ -136,13 +136,13 @@ def test_l_indice_sopravvive_a_un_archivio_gia_avvelenato():
     un'installazione gia' avvelenata tiene `[null]` in archivio finche'
     l'anagrafe non si ricostruisce. Un indice che muore sul dato vecchio
     lascia `cerca` e `ricorda` rotti fino al riavvio successivo."""
-    from hiris.app.memoria.riconoscitore import costruisci_indice
+    from hiris.app.memoria.resolver import costruisci_indice
 
     casa = {"entita": [
         {"id": "light.salotto", "nome": "Piantana", "alias": [None, "nonna"]},
     ]}
     indice = costruisci_indice(casa)
-    trovati = indice.trova("nonna")
+    trovati = indice.find("nonna")
     candidati = [c for t in trovati for c in t["candidati"]]
     assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
-    assert indice.trova("piantana"), "il nome vero deve restare cercabile"
+    assert indice.find("piantana"), "il nome vero deve restare cercabile"

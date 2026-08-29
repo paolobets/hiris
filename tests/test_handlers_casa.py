@@ -11,7 +11,7 @@ from aiohttp import web
 
 from hiris.app.api.handlers_casa import handle_get_casa, handle_get_nucleo
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 
 
 class _CacheFinta:
@@ -163,8 +163,8 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
         "entita": [{"entity_id": "light.cucina", "name": "Faretti", "area_id": "cucina"}],
         "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
-    archivio_memoria.ricorda("d'inverno la sala la preferisco fra 19 e 20 gradi", "paolo")
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    archivio_memoria.remember("d'inverno la sala la preferisco fra 19 e 20 gradi", "paolo")
     app = web.Application()
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
@@ -185,7 +185,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     assert riepilogo["troncato"] is False
     assert riepilogo["ricordi_esclusi"] == 0
     archivio_casa.chiudi()
-    archivio_memoria.chiudi()
+    archivio_memoria.close()
 
 
 @pytest.mark.asyncio
@@ -243,7 +243,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
 
 @pytest.mark.asyncio
 async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_client, tmp_path):
-    """CRITICAL ①: il default di `ArchivioMemoria.richiama()` e' `limite=20`.
+    """CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
     Con 200 ricordi veri, il vecchio handler ne passava a `componi()` solo
     20 -- il primo ricordo ("d'inverno la sala...") spariva PRIMA ancora di
     arrivare al taglio, e il riepilogo giurava `ricordi_esclusi: 0` su una
@@ -256,11 +256,11 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     primo_ricordo = "d'inverno la sala la preferisco fra 19 e 20 gradi"
-    archivio_memoria.ricorda(primo_ricordo, "paolo")  # il PIU' VECCHIO (id piu' basso)
+    archivio_memoria.remember(primo_ricordo, "paolo")  # il PIU' VECCHIO (id piu' basso)
     for i in range(200):
-        archivio_memoria.ricorda(f"ricordo numero {i}: qualcosa che qualcuno ha detto", "paolo")
+        archivio_memoria.remember(f"ricordo numero {i}: qualcosa che qualcuno ha detto", "paolo")
     app = web.Application()
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
@@ -281,7 +281,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     # regola "il piu' vecchio prima" -- ma la sua assenza deve essere
     # CONTATA in ricordi_esclusi, mai un'invisibilita' gratuita come prima.
     archivio_casa.chiudi()
-    archivio_memoria.chiudi()
+    archivio_memoria.close()
 
 
 @pytest.mark.asyncio

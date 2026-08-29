@@ -157,7 +157,7 @@ def test_un_vocabolario_gia_legato_da_una_prova_non_si_segnala(tmp_path):
 
 
 def test_una_prova_che_NON_legge_il_javascript_non_basta(tmp_path):
-    """`test_memoria_interpretazione.py` nominava gia' `VOCABOLARIO` e pinnava
+    """`test_memoria_interpretazione.py` nominava gia' `VOCABULARY` e pinnava
     la sola versione Python: non avrebbe visto nessuna divergenza. Serve che la
     prova legga entrambi i lati, o non e' un legame."""
     py = _scrivi(tmp_path, "a.py", 'VOCI = ("alfa", "beta", "gamma")\n')
@@ -213,7 +213,7 @@ def test_lo_strumento_gira_sul_progetto_e_non_solleva():
 
 def test_scende_dentro_un_dizionario_di_insiemi(tmp_path):
     """Il caso VERO, non una sua semplificazione: le quattro forze di un
-    ricordo non erano una costante a se', erano `VOCABOLARIO["forza"]` --
+    ricordo non erano una costante a se', erano `VOCABULARY["forza"]` --
     un insieme dentro un dizionario di insiemi.
 
     Leggendo solo il primo livello il rilevatore vedeva `{"forza",
@@ -235,7 +235,7 @@ def test_scende_dentro_un_dizionario_di_insiemi(tmp_path):
 
 def test_una_costante_solo_NOMINATA_in_una_docstring_non_e_un_legame(tmp_path):
     """Ci sono cascato subito: le prove di questo stesso strumento citano
-    `VOCABOLARIO` a parole, e tanto bastava a farlo passare per legato -- cioe'
+    `VOCABULARY` a parole, e tanto bastava a farlo passare per legato -- cioe'
     a spegnere il rilevatore proprio sul difetto per cui e' nato. I nomi si
     leggono dal CODICE."""
     py = _scrivi(tmp_path, "a.py", 'VOCI = ("alfa", "beta", "gamma")\n')

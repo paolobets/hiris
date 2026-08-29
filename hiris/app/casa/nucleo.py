@@ -1206,10 +1206,10 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     al "conta, non elencare" (vedi docstring del modulo).
 
     Ordinati QUI, esplicitamente, dal piu' recente al piu' vecchio (per
-    `id`, che in `ArchivioMemoria` e' AUTOINCREMENT: monotono con l'ordine
+    `id`, che in `MemoryStore` e' AUTOINCREMENT: monotono con l'ordine
     di scrittura). Il taglio in `componi()` toglie dalla coda dichiarando
     "il piu' vecchio prima" -- una promessa che oggi e' vera solo perche'
-    `ArchivioMemoria.richiama()` fa gia' `ORDER BY id DESC`: se un
+    `MemoryStore.fetch()` fa gia' `ORDER BY id DESC`: se un
     chiamante futuro passasse i ricordi in un altro ordine, si
     scarterebbero i piu' recenti mentre l'avviso continuerebbe ad
     affermare il contrario. Ordinando qui, la promessa la mantiene il

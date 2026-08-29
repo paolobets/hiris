@@ -10,7 +10,7 @@ contesto, e' quello che capisce che "in salotto fa freddo" parla dell'area
 il principio della specifica -- il modello propone l'ancora nominando il suo
 identificatore, e questo modulo restringe:
 
-- `Indice.trova(frase)` e' la RETE: confronto letterale su nomi e alias
+- `Lookup.find(frase)` e' la RETE: confronto letterale su nomi e alias
   DICHIARATI dall'utente in Home Assistant (sinonimi dati, non indovinati).
   Prende cio' che il modello si dimentica, e funziona anche senza modello.
   Due voci diverse possono normalizzarsi allo stesso testo (due aree
@@ -20,7 +20,7 @@ identificatore, e questo modulo restringe:
   non uno scelto a caso. Scegliere spetta al modello, che ha la casa in
   contesto, o all'utente, che puo' correggere dalla pagina: questo modulo
   non sceglie per loro, si limita a non mentire.
-- `Indice.verifica(tipo, riferimento)` e' il CANCELLO: controlla che
+- `Lookup.verify(tipo, riferimento)` e' il CANCELLO: controlla che
   l'identificatore che il modello ha nominato esista davvero, con quel
   tipo, nell'anagrafe. Se non esiste, l'ancora non si scrive.
 
@@ -62,9 +62,9 @@ from ..casa.anagrafe import (
 # automazioni sia gli script, a differenza di `_ARCHIVI` dove ogni chiave
 # e' UN tipo solo. Mescolarli qui avrebbe fatto sembrare "automazione" un
 # registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
-# che non fa mai -- e avrebbe allargato `CHIAVE_ARCHIVIO_PER_TIPO` (e con
+# che non fa mai -- e avrebbe allargato `STORE_KEY_PER_TYPE` (e con
 # lei `_TIPI_ANCORA` in casa/strumenti.py) a tipi che la memoria non puo'
-# mai scrivere come ancora (`memoria/interpretazione.VOCABOLARIO`),
+# mai scrivere come ancora (`memoria/interpretazione.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
 # `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
 # dei candidati, fonte e ciclo di vita diversi.
@@ -76,22 +76,22 @@ _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo
 # deve sapere se QUEL registro specifico ha risposto all'ultima lettura
 # (`ArchivioCasa.non_disponibili()`), non solo se l'anagrafe intera e' stata
 # letta -- vedi handlers_memoria.py.
-CHIAVE_ARCHIVIO_PER_TIPO: dict[str, str] = {tipo: chiave for chiave, tipo in _ARCHIVI}
+STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 
 
-def _normalizza(testo: str) -> str:
+def _normalize(text: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
 
     E' l'unica forma di "somiglianza" che questo modulo si concede: non e'
     ricerca approssimata, e' la stessa parola scritta in modo diverso.
     """
-    testo = testo.lower()
-    decomposto = unicodedata.normalize("NFKD", testo)
+    text = text.lower()
+    decomposto = unicodedata.normalize("NFKD", text)
     senza_accenti = "".join(c for c in decomposto if not unicodedata.combining(c))
     return re.sub(r"\s+", " ", senza_accenti).strip()
 
 
-def _normalizza_con_mappa(testo: str) -> tuple[str, list[int]]:
+def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     """Come `_normalizza`, ma restituisce anche la mappa posizione
     normalizzata -> posizione originale.
 
@@ -106,31 +106,31 @@ def _normalizza_con_mappa(testo: str) -> tuple[str, list[int]]:
     sempre 1:1; la compressione degli spazi multipli invece sposta le
     posizioni, quindi va tracciata esplicitamente invece di essere assunta.
     """
-    minuscolo = testo.lower()
-    grezzo: list[str] = []
+    minuscolo = text.lower()
+    reading: list[str] = []
     mappa_grezza: list[int] = []
-    for indice_originale, carattere in enumerate(minuscolo):
+    for original_index, carattere in enumerate(minuscolo):
         decomposto = unicodedata.normalize("NFKD", carattere)
         for c in decomposto:
             if unicodedata.combining(c):
                 continue
-            grezzo.append(c)
-            mappa_grezza.append(indice_originale)
+            reading.append(c)
+            mappa_grezza.append(original_index)
 
     normalizzato: list[str] = []
     mappa: list[int] = []
     spazio_precedente = True  # tronca anche gli spazi iniziali, come .strip()
-    for c, indice_originale in zip(grezzo, mappa_grezza):
+    for c, original_index in zip(reading, mappa_grezza):
         if re.match(r"\s", c):
             if spazio_precedente:
                 continue
             spazio_precedente = True
             normalizzato.append(" ")
-            mappa.append(indice_originale)
+            mappa.append(original_index)
         else:
             spazio_precedente = False
             normalizzato.append(c)
-            mappa.append(indice_originale)
+            mappa.append(original_index)
     while normalizzato and normalizzato[-1] == " ":
         normalizzato.pop()
         mappa.pop()
@@ -141,7 +141,7 @@ def _e_carattere_di_parola(carattere: str) -> bool:
     return re.match(r"\w", carattere) is not None
 
 
-def _compila(termine: str) -> re.Pattern[str]:
+def _compila(term: str) -> re.Pattern[str]:
     """Compila il pattern di un termine una volta sola: farlo a ogni
     chiamata di trova() si appoggia alla cache implicita di `re`, che ha un
     tetto fisso di 512 pattern condiviso con tutto il processo -- oltre
@@ -154,17 +154,17 @@ def _compila(termine: str) -> re.Pattern[str]:
     linguaggio naturale dopo/prima di quel bordo viene uno spazio, un altro
     segno di punteggiatura o la fine della frase. Il confine si mette solo
     dove il bordo e' un carattere di parola."""
-    prefisso = r"(?<!\w)" if _e_carattere_di_parola(termine[0]) else ""
-    suffisso = r"(?!\w)" if _e_carattere_di_parola(termine[-1]) else ""
-    return re.compile(prefisso + re.escape(termine) + suffisso)
+    prefisso = r"(?<!\w)" if _e_carattere_di_parola(term[0]) else ""
+    suffisso = r"(?!\w)" if _e_carattere_di_parola(term[-1]) else ""
+    return re.compile(prefisso + re.escape(term) + suffisso)
 
 
-class Indice:
+class Lookup:
     """L'indice dei nomi e alias di una casa, pronto per riconoscere e
     verificare. Si costruisce con `costruisci_indice()`, non direttamente."""
 
     def __init__(self, termini: dict[str, list[tuple[str, str]]],
-                 per_tipo: dict[str, dict[str, dict]]) -> None:
+                 per_type: dict[str, dict[str, dict]]) -> None:
         # I termini piu' lunghi vincono e consumano il testo, cosi' "sala da
         # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola,
         # non a ogni chiamata di trova(). Un testo normalizzato che piu'
@@ -178,19 +178,19 @@ class Indice:
         # Compilare un pattern per termine per una richiesta che non chiama
         # mai trova() e' lavoro morto (misurato: 16,8 ms a 380 voci). Si
         # compila pigri, alla prima trova(), e resta cache per la vita di
-        # questo Indice.
+        # questo Lookup.
         self._termini_grezzi = sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
         self._termini_compilati: list[tuple[list[tuple[str, str]], re.Pattern[str]]] | None = None
-        self._per_tipo = per_tipo
+        self._per_type = per_type
 
     def _termini(self) -> list[tuple[list[tuple[str, str]], re.Pattern[str]]]:
         if self._termini_compilati is None:
             self._termini_compilati = [
-                (candidati, _compila(termine)) for termine, candidati in self._termini_grezzi
+                (candidati, _compila(term)) for term, candidati in self._termini_grezzi
             ]
         return self._termini_compilati
 
-    def trova(self, frase: str) -> list[dict]:
+    def find(self, phrase: str) -> list[dict]:
         """I riferimenti riconosciuti in `frase`, sui confini di parola.
 
         Nessun risultato non e' un errore: e' la regola (3) della struttura
@@ -210,7 +210,7 @@ class Indice:
         vale anche per il frammento riconosciuto, non solo per la frase
         intera.
         """
-        normalizzata, mappa = _normalizza_con_mappa(frase)
+        normalizzata, mappa = _normalize_con_mappa(phrase)
         if not normalizzata:
             return []
 
@@ -225,16 +225,16 @@ class Indice:
                 inizio_originale = mappa[inizio]
                 fine_originale = mappa[fine - 1] + 1
                 trovate.append((inizio, {
-                    "nome_visto": frase[inizio_originale:fine_originale],
-                    "candidati": [{"tipo": tipo, "riferimento": riferimento}
-                                  for tipo, riferimento in candidati],
+                    "nome_visto": phrase[inizio_originale:fine_originale],
+                    "candidati": [{"tipo": type, "riferimento": reference}
+                                  for type, reference in candidati],
                     "ambiguo": len(candidati) > 1,
                 }))
 
         trovate.sort(key=lambda t: t[0])
-        return [voce for _, voce in trovate]
+        return [entry for _, entry in trovate]
 
-    def verifica(self, tipo: str, riferimento: str) -> dict | None:
+    def verify(self, type: str, reference: str) -> dict | None:
         """L'oggetto dell'anagrafe se `riferimento` esiste con quel `tipo`,
         altrimenti None.
 
@@ -243,24 +243,24 @@ class Indice:
         Nessuna somiglianza qui -- tipi diversi sono spazi di nomi diversi,
         e un id di entita' passato come area non deve passare.
         """
-        return self._per_tipo.get(tipo, {}).get(riferimento)
+        return self._per_type.get(type, {}).get(reference)
 
-    def tutti(self, tipo: str) -> list[dict]:
+    def tutti(self, type: str) -> list[dict]:
         """Tutte le voci dell'anagrafe di un tipo — aree, entita' o dispositivi.
 
         Serve a chi deve DEDURRE qualcosa dalla casa invece che verificarla:
         per esempio l'unita' di misura di un'area, che si ricava dall'entita'
         di quell'area la cui classe combacia con la grandezza. E' pubblico
-        perche' altrimenti chi ne ha bisogno finisce a leggere `_per_tipo`, e
+        perche' altrimenti chi ne ha bisogno finisce a leggere `_per_type`, e
         un accoppiamento a un dettaglio interno si propaga in silenzio.
         """
-        return list(self._per_tipo.get(tipo, {}).values())
+        return list(self._per_type.get(type, {}).values())
 
 
-def _registra(termini: dict[str, list[tuple[str, str]]], termine_originale,
+def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
               candidato: tuple[str, str]) -> None:
     """Aggiunge `candidato` (tipo, riferimento) al termine che
-    `termine_originale` normalizza a -- il cuore di `costruisci_indice()`,
+    `term_originale` normalizza a -- il cuore di `costruisci_indice()`,
     estratto perche' anagrafe e comportamento (sotto) lo condividono: due
     copie della stessa regola di dedup/ambiguita' sarebbero due posti in
     cui la stessa correzione si dimentica di un posto.
@@ -268,19 +268,19 @@ def _registra(termini: dict[str, list[tuple[str, str]]], termine_originale,
     Un termine che non e' una stringa non e' un termine (vedi il commento
     dentro il ciclo principale, sugli alias `[null]` di un'anagrafe gia'
     avvelenata) -- difesa in profondita', non ridondanza."""
-    if not isinstance(termine_originale, str):
+    if not isinstance(term_originale, str):
         return
-    termine_normalizzato = _normalizza(termine_originale)
-    if not termine_normalizzato:
+    term_normalizzato = _normalize(term_originale)
+    if not term_normalizzato:
         return
-    candidati = termini.setdefault(termine_normalizzato, [])
+    candidati = termini.setdefault(term_normalizzato, [])
     if candidato not in candidati:
         candidati.append(candidato)
 
 
 def costruisci_indice(casa: dict,
                       nomi_di_ripiego: dict[str, str] | None = None,
-                      comportamento: list[dict] | None = None) -> Indice:
+                      comportamento: list[dict] | None = None) -> Lookup:
     """Costruisce l'indice di una casa: nome e alias di aree, entita',
     dispositivi e piani, PIU' automazioni e script (`comportamento`, T7),
     normalizzati e pronti per trova()/verifica().
@@ -348,30 +348,30 @@ def costruisci_indice(casa: dict,
     per costruzione.
     """
     termini: dict[str, list[tuple[str, str]]] = {}
-    per_tipo: dict[str, dict[str, dict]] = {}
+    per_type: dict[str, dict[str, dict]] = {}
     ripiego = nomi_di_ripiego or {}
     nomi_etichette = nomi_delle_etichette(casa)
     nomi_categorie = nomi_delle_categorie(casa)
 
-    for chiave_archivio, tipo in _ARCHIVI:
-        registro = per_tipo.setdefault(tipo, {})
-        for voce in casa.get(chiave_archivio) or []:
-            riferimento = voce.get("id")
-            if riferimento is None:
+    for store_key, type in _ARCHIVI:
+        registry = per_type.setdefault(type, {})
+        for entry in casa.get(store_key) or []:
+            reference = entry.get("id")
+            if reference is None:
                 continue
 
-            nome = voce.get("nome") or ""
+            name = entry.get("nome") or ""
             dedotto = ""
-            if not nome.strip() and tipo == "entita":
-                dedotto = (ripiego.get(riferimento) or "").strip()
+            if not name.strip() and type == "entita":
+                dedotto = (ripiego.get(reference) or "").strip()
             if dedotto:
                 # Copia, non mutazione in place: `voce` e' il dizionario che
                 # `ArchivioCasa.leggi()` ha appena costruito per il
                 # chiamante, e marcarlo li' accoppierebbe l'indice al ciclo
                 # di vita di una struttura che non gli appartiene.
-                voce = dict(voce)
-                voce["nome_dedotto"] = dedotto
-            registro[riferimento] = voce
+                entry = dict(entry)
+                entry["nome_dedotto"] = dedotto
+            registry[reference] = entry
 
             # Nome, alias E ETICHETTE. Le etichette sono parole che l'utente
             # ha scritto lui in Home Assistant («inverno», «da controllare»):
@@ -403,11 +403,11 @@ def costruisci_indice(casa: dict,
             # l'ARCHIVIO -- che su un'installazione gia' avvelenata
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
             # Un rilevatore che muore sul dato vecchio lascia `cerca` e
-            # `ricorda` rotti fino al riavvio successivo. Vedi `_registra`.
-            for termine_originale in [dedotto or nome, *(voce.get("alias") or []),
-                                      *etichette_con_nome(voce, nomi_etichette),
-                                      *categorie_con_nome(voce, nomi_categorie).values()]:
-                _registra(termini, termine_originale, (tipo, riferimento))
+            # `ricorda` rotti fino al riavvio successivo. Vedi `_log`.
+            for term_originale in [dedotto or name, *(entry.get("alias") or []),
+                                      *etichette_con_nome(entry, nomi_etichette),
+                                      *categorie_con_nome(entry, nomi_categorie).values()]:
+                _log(termini, term_originale, (type, reference))
 
     # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
     # vedi il commento su `_ARCHIVI` e il docstring qui sopra. `tipo` viene
@@ -416,17 +416,17 @@ def costruisci_indice(casa: dict,
     # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
     # una voce di comportamento valida: si scarta invece di indicizzarla
     # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.
-    for voce in comportamento or []:
-        tipo_voce = voce.get("tipo")
-        riferimento = voce.get("id")
-        if tipo_voce not in ("automazione", "script") or riferimento is None:
+    for entry in comportamento or []:
+        entry_type = entry.get("tipo")
+        reference = entry.get("id")
+        if entry_type not in ("automazione", "script") or reference is None:
             continue
-        registro = per_tipo.setdefault(tipo_voce, {})
-        registro[riferimento] = voce
-        for termine_originale in [voce.get("nome") or "", *(voce.get("alias") or []),
-                                  *etichette_con_nome(voce, nomi_etichette),
-                                  *categorie_con_nome(voce, nomi_categorie).values()]:
-            _registra(termini, termine_originale, (tipo_voce, riferimento))
+        registry = per_type.setdefault(entry_type, {})
+        registry[reference] = entry
+        for term_originale in [entry.get("nome") or "", *(entry.get("alias") or []),
+                                  *etichette_con_nome(entry, nomi_etichette),
+                                  *categorie_con_nome(entry, nomi_categorie).values()]:
+            _log(termini, term_originale, (entry_type, reference))
 
     # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md
     # §2): fin qui sopra un'etichetta entrava nell'indice SOLO come termine
@@ -448,13 +448,13 @@ def costruisci_indice(casa: dict,
     # gia' l'unione id->nome (`nomi_delle_etichette`, sopra). Un nome vuoto o
     # un id assente non e' un'etichetta indicizzabile: si scarta invece di
     # registrare un termine muto o un candidato senza riferimento.
-    registro_etichette = per_tipo.setdefault("etichetta", {})
+    label_registry = per_type.setdefault("etichetta", {})
     for e in casa.get("etichette") or []:
         label_id = e.get("id")
         if label_id is None:
             continue
-        nome_etichetta = (e.get("nome") or "").strip() or str(label_id)
-        registro_etichette[label_id] = {"id": label_id, "nome": nome_etichetta}
-        _registra(termini, nome_etichetta, ("etichetta", label_id))
+        label_name = (e.get("nome") or "").strip() or str(label_id)
+        label_registry[label_id] = {"id": label_id, "nome": label_name}
+        _log(termini, label_name, ("etichetta", label_id))
 
-    return Indice(termini, per_tipo)
+    return Lookup(termini, per_type)

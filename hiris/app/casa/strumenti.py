@@ -106,13 +106,13 @@ parte.
 `ricorda` e' il motivo per cui questo modulo esiste: l'utente aveva scritto
 in chat *"d'inverno il soggiorno ideale e' 19.5"*, e HIRIS aveva risposto
 "preso nota" -- SENZA salvare niente, perche' il vecchio dispatcher non
-chiamava mai `ArchivioMemoria.ricorda()`. Qui sotto, `ricorda` salva davvero
+chiamava mai `MemoryStore.remember()`. Qui sotto, `ricorda` salva davvero
 (vedi `DispatcherStrumenti._ricorda`).
 
 Le due funzioni pure che fanno il lavoro vero -- `cerca()` e `guarda()` --
 vivono gia' in `domande.py`, e non si riscrivono qui: `DispatcherStrumenti`
 e' solo il punto che le collega agli archivi (`casa/archivio.py`,
-`memoria/archivio.py`) e all'indice (`memoria/riconoscitore.py`), nella
+`memoria/archivio.py`) e all'indice (`memoria/resolver.py`), nella
 forma che il modello puo' chiamare.
 
 `dispatch()` non solleva MAI: restituisce sempre un dizionario, e in caso di
@@ -127,10 +127,10 @@ import inspect
 import logging
 from typing import Any, ClassVar
 
-from ..memoria.archivio import ArchivioMemoria
-from ..memoria.cache_indice import CacheIndice
-from ..memoria.interpretazione import VOCABOLARIO, valida
-from ..memoria.riconoscitore import CHIAVE_ARCHIVIO_PER_TIPO, costruisci_indice
+from ..memoria.archivio import MemoryStore
+from ..memoria.cache_indice import LookupCache
+from ..memoria.interpretazione import VOCABULARY, validate
+from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..proxy.entity_cache import inventario_leggibile
 from . import tempo
 from .anagrafe import specchio_vivo
@@ -142,15 +142,15 @@ from .domande import legami as _legami_leggibili
 from .domande import ricordi_sanificati as _ricordi_sanificati
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
-# `memoria/interpretazione.VOCABOLARIO["ancore"]` -- la fonte vera, non
-# `CHIAVE_ARCHIVIO_PER_TIPO`. Ordinati (come fa gia' `interpretazione.py`
+# `memoria/interpretazione.VOCABULARY["ancore"]` -- la fonte vera, non
+# `STORE_KEY_PER_TYPE`. Ordinati (come fa gia' `interpretazione.py`
 # per il proprio messaggio d'errore) perche' un frozenset non promette un
 # ordine stabile fra due letture, ed e' l'ordine in cui `richiama` cerca
 # quando il modello non specifica un `tipo` -- vedi `_richiama`.
 #
 # T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
 # (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
-# derivare da `CHIAVE_ARCHIVIO_PER_TIPO` sembrava innocuo. Da quando
+# derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Da quando
 # `_ARCHIVI` include anche "piano" -- un registro dell'anagrafe vero, ma
 # NON un tipo di ancora che `ricorda` possa mai scrivere -- le due cose
 # sono tornate a essere quello che sono sempre state: due vocabolari
@@ -159,7 +159,7 @@ from .domande import ricordi_sanificati as _ricordi_sanificati
 # una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
 # puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
 # stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
-_TIPI_ANCORA = tuple(sorted(VOCABOLARIO["ancore"]))
+_TIPI_ANCORA = tuple(sorted(VOCABULARY["ancore"]))
 
 logger = logging.getLogger(__name__)
 
@@ -916,8 +916,8 @@ class DispatcherStrumenti:
     modello -- mai un'eccezione che gli spezza il turno.
     """
 
-    def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: ArchivioMemoria,
-                 cache=None, porta=None, cache_indice: CacheIndice | None = None,
+    def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: MemoryStore,
+                 cache=None, porta=None, cache_indice: LookupCache | None = None,
                  ha=None, registro=None, promesse=None, officina=None,
                  turno: str | None = None, cronaca=None) -> None:
         self._casa = archivio_casa
@@ -936,7 +936,7 @@ class DispatcherStrumenti:
         # (contratto della classe), e senza porta `esegui` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
         self._porta = porta
-        # Task B7: la cache dell'Indice (`memoria/cache_indice.py`), di vita
+        # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::costruisci_dispatcher_strumenti`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
@@ -1133,7 +1133,7 @@ class DispatcherStrumenti:
         # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_ricorda` no,
         # e sulla stessa casa i due indici hanno contenuti diversi.
         if self._cache_indice is not None:
-            indice = self._cache_indice.ottieni(
+            indice = self._cache_indice.get(
                 "cerca", casa, self._casa.aggiornata_il(), nomi_vivi,
                 comportamento, self._casa.comportamento_letto_il())
         else:
@@ -1178,17 +1178,17 @@ class DispatcherStrumenti:
         rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
         spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
         motivi: list[str] = []
-        # Fix finale ① (2026-08-20): `CHIAVE_ARCHIVIO_PER_TIPO` e' apposta
+        # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
-        # `_ARCHIVI` in memoria/riconoscitore.py -- allargarla rifarebbe il
+        # `_ARCHIVI` in memoria/resolver.py -- allargarla rifarebbe il
         # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
         # una tabella vera di `_TABELLE` (casa/archivio.py) che PUO' cadere
         # in `non_disponibili()`, e da T8 (R2) `cerca` indicizza le
         # etichette stesse come candidati: un registro etichette caduto
-        # merita lo stesso motivo dei registri di `CHIAVE_ARCHIVIO_PER_TIPO`,
+        # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
         # aggiunta qui invece che nella mappa che serve a un altro scopo.
         caduti = sorted(set(self._casa.non_disponibili())
-                        & (set(CHIAVE_ARCHIVIO_PER_TIPO.values()) | {"etichette"}))
+                        & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
         if caduti:
             motivi.append(
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
@@ -1251,7 +1251,7 @@ class DispatcherStrumenti:
         riferimento = argomenti.get("riferimento")
         if not tipo or riferimento is None:
             return {"errore": "«guarda» richiede «tipo» e «riferimento»."}
-        # I ricordi hanno un id numerico (ArchivioMemoria, AUTOINCREMENT):
+        # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT):
         # il modello puo' passarlo come stringa (i JSON tool-call spesso lo
         # fanno). Un riferimento non convertibile non e' un errore da
         # sollevare -- e' lo stesso "non l'ho trovato" degli altri tipi.
@@ -1266,10 +1266,10 @@ class DispatcherStrumenti:
         comportamento = self._casa.comportamento()
         file_non_letti = self._casa.file_non_letti()
         # Tutti i ricordi, non solo gli ultimi venti (il default di
-        # `richiama()`): un ricordo vecchio ancorato a QUESTA cosa non deve
+        # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_casa.handle_get_nucleo`.
-        ricordi = self._memoria.richiama(limite=self._memoria.conta())
+        ricordi = self._memoria.fetch(limit=self._memoria.count())
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
@@ -1410,7 +1410,7 @@ class DispatcherStrumenti:
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
         # della casa piena non si confondono mai (memoria/cache_indice.py).
         if self._cache_indice is not None:
-            indice = self._cache_indice.ottieni_pigro("ricorda", _casa_per_indice, aggiornata_il)
+            indice = self._cache_indice.get_lazy("ricorda", _casa_per_indice, aggiornata_il)
         else:
             indice = costruisci_indice(_casa_per_indice())
         if not anagrafe_letta:
@@ -1421,7 +1421,7 @@ class DispatcherStrumenti:
         else:
             caduti = set(self._casa.non_disponibili())
             tipi_non_verificabili = frozenset(
-                tipo for tipo, chiave in CHIAVE_ARCHIVIO_PER_TIPO.items() if chiave in caduti)
+                tipo for tipo, chiave in STORE_KEY_PER_TYPE.items() if chiave in caduti)
 
         interpretazione = {
             "forza": argomenti.get("forza"),
@@ -1445,14 +1445,14 @@ class DispatcherStrumenti:
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
         _stato, _nomi, unita_vive, _classi, _da_quando, _attributi, _letto = self._specchio()
-        pulita, problemi, correzioni = valida(
+        pulita, problemi, correzioni = validate(
             interpretazione, indice, tipi_non_verificabili, unita_vive)
 
-        id_ricordo = self._memoria.ricorda(
+        id_ricordo = self._memoria.remember(
             testo, detto_da=argomenti.get("detto_da"),
-            ancore=pulita["ancore"], condizioni=pulita["condizioni"],
-            forza=pulita["forza"], grandezza=pulita["grandezza"],
-            minimo=pulita["minimo"], massimo=pulita["massimo"], unita=pulita["unita"],
+            ancore=pulita["ancore"], conditions=pulita["condizioni"],
+            modality=pulita["forza"], grandezza=pulita["grandezza"],
+            minimum=pulita["minimo"], maximum=pulita["massimo"], unit=pulita["unita"],
         )
         return {"salvato": True, "id": id_ricordo, "problemi": problemi, "correzioni": correzioni}
 
@@ -1487,7 +1487,7 @@ class DispatcherStrumenti:
         visti: set[int] = set()
         ricordi: list[dict] = []
         for t in tipi:
-            for ricordo in self._memoria.per_ancora(t, riferimento):
+            for ricordo in self._memoria.per_tether(t, riferimento):
                 if ricordo["id"] in visti:
                     continue
                 visti.add(ricordo["id"])

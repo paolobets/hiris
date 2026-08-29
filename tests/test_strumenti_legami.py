@@ -25,7 +25,7 @@ import pytest
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.domande import NOME_LEGAME, guarda, legami
 from hiris.app.casa.strumenti import DispatcherStrumenti
-from hiris.app.memoria.archivio import ArchivioMemoria
+from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests.test_cervello_comprimari import _ClienteLegami
 
@@ -51,9 +51,9 @@ class _FintaPorta:
 
 @pytest.fixture
 def memoria(tmp_path):
-    m = ArchivioMemoria(str(tmp_path / "memoria.db"))
+    m = MemoryStore(str(tmp_path / "memoria.db"))
     yield m
-    m.chiudi()
+    m.close()
 
 
 @pytest.fixture

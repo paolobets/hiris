@@ -5,7 +5,7 @@ funzioni qui sotto danno il DETTAGLIO, quando il modello (o l'utente dalla
 pagina) lo chiede esplicitamente:
 
 - `cerca(indice, testo)` -- trovare qualcosa per nome o alias. E' un guscio
-  sottile attorno a `Indice.trova()` (memoria/riconoscitore.py): il
+  sottile attorno a `Lookup.find()` (memoria/resolver.py): il
   contratto -- `candidati` sempre una lista, `ambiguo` dichiarato -- e' gia'
   li', e riscriverlo qui vorrebbe dire poterlo rompere in due punti invece
   che in uno. Due voci che si normalizzano uguali (due «Bagno» su piani
@@ -112,7 +112,7 @@ TIPO_LEGAME_HA = {nostro: loro for loro, nostro in NOME_LEGAME.items()}
 def cerca(indice, testo: str) -> list[dict]:
     """Trova `testo` per nome o alias, con l'ambiguita' dichiarata.
 
-    E' `Indice.trova()` PIU' cio' che serve a non sbagliare cosa si e'
+    E' `Lookup.find()` PIU' cio' che serve a non sbagliare cosa si e'
     trovato. Scegliere UN candidato qui -- il primo, il piu' probabile --
     rifarebbe il difetto che e' gia' costato un fix: due «Bagno» su piani
     diversi vincevano in silenzio in base all'ordine di raccolta. Questa
@@ -130,7 +130,7 @@ def cerca(indice, testo: str) -> list[dict]:
     - `nome_dedotto`, presente (col nome dedotto, come STRINGA -- mai un
       booleano: I2, review finale) quando il nome non e' dichiarato nel
       registro ma ricavato dal `friendly_name` dello specchio dello stato
-      (vedi `memoria/riconoscitore.costruisci_indice`). Un nome dedotto e'
+      (vedi `memoria/resolver.costruisci_indice`). Un nome dedotto e'
       un fatto diverso da un nome scelto dall'utente e non va spacciato per
       tale -- stessa forma di `nome_dedotto` in `guarda()`/`_guarda_entita`;
     - `nascosta` (solo per le entita', e solo quando e' vera), fetta
@@ -145,12 +145,12 @@ def cerca(indice, testo: str) -> list[dict]:
       da 1226 entita' sarebbe rumore in ogni risposta -- stessa disciplina
       di `unita`/`categorie` in `guarda()`.
 
-    `verifica()` e' un accesso a dizionario, non una ricerca: farlo per
+    `verify()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
-    risultati = indice.trova(testo)
+    risultati = indice.find(testo)
     for voce in risultati:
         for candidato in voce["candidati"]:
-            oggetto = indice.verifica(candidato["tipo"], candidato["riferimento"]) or {}
+            oggetto = indice.verify(candidato["tipo"], candidato["riferimento"]) or {}
             dedotto = (oggetto.get("nome_dedotto") or "").strip()
             candidato["nome"] = (oggetto.get("nome") or "").strip() or dedotto
             if dedotto:
@@ -171,7 +171,7 @@ def cerca(indice, testo: str) -> list[dict]:
 
 def _ricordi_ancorati(ricordi: list[dict], tipo: str, riferimento) -> list[dict]:
     """I ricordi di `ricordi` che portano un'ancora (tipo, riferimento)
-    uguale a quella cercata -- stessa chiave di `ArchivioMemoria.per_ancora`
+    uguale a quella cercata -- stessa chiave di `MemoryStore.per_tether`
     (memoria/archivio.py), ma su una lista gia' in memoria: `guarda` e'
     pura, non interroga l'archivio da sola.
 
@@ -358,7 +358,7 @@ def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) 
     solo perche' l'id serve, non al posto del nome. L'unione la fa
     `anagrafe.nomi_delle_etichette`, la stessa che usa l'indice di `cerca` --
     che da T8 conosce anche le etichette stesse come candidati
-    (`memoria/riconoscitore.py::costruisci_indice`), per chi sa solo il nome
+    (`memoria/resolver.py::costruisci_indice`), per chi sa solo il nome
     e non ha ancora nessuna cosa che la porti.
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
@@ -421,7 +421,7 @@ def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dic
     del Task 3 (review indipendente, confermata), perche' allora `cerca`
     non indicizzava automazioni/script: suggerire "chiama cerca" sarebbe
     stato un invito a una strada cieca. Da quando `cerca` li indicizza
-    (`memoria/riconoscitore.py::costruisci_indice`), quella ragione non
+    (`memoria/resolver.py::costruisci_indice`), quella ragione non
     vale piu', e il confine si sposta: `_guarda_comportamento` chiama
     questa funzione come gli altri tre rami, invece di duplicarne la
     logica con un `file_non_letti` scambiato per `registro_caduto`.
@@ -748,7 +748,7 @@ def ricordi_sanificati(ricordi: list[dict] | None) -> list[dict]:
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
     versione di questa correzione sanificava il testo dentro `guarda()` ma
-    non dentro `strumenti.py::_richiama` (che legge `ArchivioMemoria.per_ancora`
+    non dentro `strumenti.py::_richiama` (che legge `MemoryStore.per_tether`
     direttamente, senza passare da qui) -- lo stesso ricordo usciva filtrato
     da una porta e grezzo dall'altra: la fondamenta 3 (consistenza fra porte)
     rotta dentro la correzione che doveva chiuderla. Un punto SOLO, importato
@@ -811,7 +811,7 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     Task 3, review indipendente): `cerca` non li indicizzava ancora, e
     suggerirlo sarebbe stato un invito a una strada che non portava da
     nessuna parte. Da quando `cerca` li indicizza
-    (`memoria/riconoscitore.py::costruisci_indice`), quella ragione e'
+    (`memoria/resolver.py::costruisci_indice`), quella ragione e'
     caduta, e il confine si e' spostato con lei: vedi il docstring di
     `_dettaglio_non_trovato`, che ora e' anche la porta di
     `_guarda_comportamento`.
@@ -878,7 +878,7 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
       solo li'.
 
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
-    dal chiamante (`ArchivioCasa`, `ArchivioMemoria`, lo stato vivo di Home
+    dal chiamante (`ArchivioCasa`, `MemoryStore`, lo stato vivo di Home
     Assistant), non apre archivi ne' chiama la rete.
 
     C-2 (L1-sicurezza.md): il testo di un ricordo passa dal sanitizzatore
