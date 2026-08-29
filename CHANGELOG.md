@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [3.14.3] — Tre sottosistemi passano all'inglese (2026-08-29)
+
+**Non cambia niente che si possa vedere usando HIRIS.** E' la prima parte della rinomina: gli
+identificatori di `consumi/`, `schedulatore/` e `memoria/` parlano inglese. Nessun comportamento
+diverso, nessuna rotta cambiata, nessun campo JSON diverso, e **il database e' intatto** — verificato
+per mutazione: rinominando un nome di colonna dentro le query, undici test diventano rossi.
+
+**Dentro c'e' il caso che ha generato tutta questa storia.** `ArchivioMemoria` e `ChatStore` erano
+**la stessa cosa con due nomi in due lingue** — la violazione piu' netta della regola «la stessa cosa
+ha la stessa forma da tutte le porte». Da questa versione sono un nome solo: `MemoryStore`.
+
+**Commenti, docstring e le frasi che HIRIS dice a chi vive in casa restano in italiano**, e non per
+dimenticanza: e' il perimetro deciso dal proprietario. Lo strumento che fa la rinomina lavora sui
+soli token di tipo nome, quindi la prosa e' **fuori portata per costruzione**, non per prudenza. Sono
+state ricontrollate 263 righe di commento cambiate, una per una: zero parole italiane tradotte.
+
+**Cosa e' costato, ed e' la parte che vale la pena raccontare.** Lo strumento ha avuto **sei difetti**,
+e nessuno era visibile leggendo il codice: sono usciti tutti puntandolo su codice vero.
+
+Quattro erano la stessa famiglia — il nome veniva *ricostruito* invece che conservato nella sua forma:
+una costante TUTTA MAIUSCOLA diventava `Pascalcase`, un aiutante privato `_fuso` perdeva il trattino e
+diventava interfaccia pubblica, un `gamba_` perdeva quello finale. Due di questi **non avrebbero rotto
+niente**: sarebbero stati semplicemente sbagliati, in silenzio.
+
+Gli altri due erano peggiori. Lo strumento riscriveva i **percorsi di import** — `from ..casa.strumenti`
+sarebbe diventato `from ..home_space.tools`, che non esiste — e **non era idempotente**: rieseguirlo
+rompeva il build dei sottosistemi appena convertiti. Erano stati corretti a mano, sui file invece che
+sulla causa; adesso l'idempotenza e' un test che gira davvero, non una frase in un rapporto.
+
+**E una guardia nuova ha trovato un difetto del glossario prima che facesse danno.** Se due nomi
+diversi finirebbero sulla stessa parola inglese nello stesso file, lo strumento **non applica: lo
+dice e si ferma**. Ha cosi' scoperto che `leggi` e `letto` puntavano entrambi a `read` — ma sono
+l'atto e il risultato, due cose diverse — **due sottosistemi prima** del file dove avrebbero fatto il
+danno. Senza, sarebbero diventati lo stesso identificatore: codice che compila, cancello muto, test
+verdi.
+
+**Cosa NON e' in questa versione:** i tre sottosistemi rimanenti (`cervello/`, `azione/`, `casa/`),
+le rotte HTTP, i 13 nomi degli strumenti, e i nomi delle funzioni di test — che sono frasi italiane
+di dieci parole, non identificatori, e restano tali.
+
 ## [3.14.2] — Quello che gira davvero: il ponte si lascia interrogare (2026-08-28)
 
 **Il pin della CLI del ponte sale da 2.1.241 a 2.1.251** — otto uscite, tutte patch. Ma la cosa che
