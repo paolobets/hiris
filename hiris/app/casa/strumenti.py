@@ -1466,7 +1466,7 @@ class DispatcherStrumenti:
         # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
         # o "entita'" con l'accento -- plausibilissimo per un modello
         # italiano che non lo sta copiando da uno schema) finiva silenzioso
-        # in `per_ancora(tipo, riferimento)`, che semplicemente non trova
+        # in `per_tether(tipo, riferimento)`, che semplicemente non trova
         # mai nulla per un tipo che nessuna ancora usa: il risultato era
         # `{"ricordi": []}`, indistinguibile da "nessun ricordo riguarda
         # questa cosa" -- proprio quando invece il ricordo esiste. `guarda`
@@ -1493,7 +1493,7 @@ class DispatcherStrumenti:
                 visti.add(ricordo["id"])
                 ricordi.append(ricordo)
         ricordi.sort(key=lambda r: r["id"], reverse=True)
-        # C-2/I1 (review indipendente 25/08/2026): `per_ancora` legge
+        # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
         # l'archivio direttamente, non passa da `domande.guarda` -- senza
         # questa riga il testo usciva filtrato da `guarda` e grezzo da
         # `richiama`, la fondamenta 3 rotta dentro la correzione che doveva

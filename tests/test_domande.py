@@ -394,7 +394,7 @@ def test_cerca_poi_guarda_un_automazione_end_to_end():
     che `cerca` ora produce -- non solo un id che il modello sapeva gia'.
     Qui si parte da un nome, si passa da `cerca`, e si chiude il giro con
     `guarda` sul candidato restituito."""
-    indice = costruisci_indice(_CASA, comportamento=_COMPORTAMENTO)
+    indice = costruisci_indice(_CASA, behavior=_COMPORTAMENTO)
     trovati = cerca(indice, "spegni la sveglia")
     candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "automazione")
     assert candidato["riferimento"] == "automation.sveglia"

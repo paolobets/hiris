@@ -436,7 +436,7 @@ def test_senza_comportamento_nessuna_automazione_si_indicizza():
 def test_trova_un_automazione_per_nome():
     behavior = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
                       "corpo": {"trigger": []}, "origine": "file"}]
-    trovate = costruisci_indice(_HOME_SPACE, comportamento=behavior).find("spegni la sveglia")
+    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("spegni la sveglia")
     assert len(trovate) == 1
     assert trovate[0]["candidati"] == [{"tipo": "automazione", "riferimento": "automation.sveglia"}]
 
@@ -444,7 +444,7 @@ def test_trova_un_automazione_per_nome():
 def test_trova_uno_script_per_nome():
     behavior = [{"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte",
                       "corpo": None, "origine": "solo_stato"}]
-    trovate = costruisci_indice(_HOME_SPACE, comportamento=behavior).find("lancia buonanotte")
+    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("lancia buonanotte")
     assert len(trovate) == 1
     assert _riferimenti(trovate[0]) == {"script.buonanotte"}
     assert trovate[0]["candidati"][0]["tipo"] == "script"
@@ -455,7 +455,7 @@ def test_verifica_un_automazione_e_uno_script():
         {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia", "corpo": {}},
         {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
     ]
-    lookup = costruisci_indice(_HOME_SPACE, comportamento=behavior)
+    lookup = costruisci_indice(_HOME_SPACE, behavior=behavior)
     assert lookup.verify("automazione", "automation.sveglia")["nome"] == "Sveglia"
     assert lookup.verify("script", "script.buonanotte")["nome"] == "Buonanotte"
     # Spazi di nomi diversi: un id di script non deve passare per un'automazione.
@@ -467,7 +467,7 @@ def test_automazione_e_script_con_lo_stesso_nome_sono_ambigui():
         {"id": "automation.buonanotte", "tipo": "automazione", "nome": "Buonanotte", "corpo": {}},
         {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
     ]
-    trovate = costruisci_indice(_HOME_SPACE, comportamento=behavior).find("buonanotte")
+    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("buonanotte")
     assert len(trovate) == 1
     assert trovate[0]["ambiguo"] is True
     assert _riferimenti(trovate[0]) == {"automation.buonanotte", "script.buonanotte"}
@@ -479,7 +479,7 @@ def test_una_voce_di_comportamento_con_tipo_ignoto_non_si_indicizza():
     inventare un terzo tipo che ne' `guarda` ne' `verifica()` conoscono."""
     behavior = [{"id": "scene.arrivo", "tipo": "scena", "nome": "Arrivo"},
                      {"id": None, "tipo": "automazione", "nome": "Senza id"}]
-    lookup = costruisci_indice(_HOME_SPACE, comportamento=behavior)
+    lookup = costruisci_indice(_HOME_SPACE, behavior=behavior)
     assert lookup.find("arrivo") == []
     assert lookup.find("senza id") == []
 
@@ -488,7 +488,7 @@ def test_gli_alias_e_le_etichette_valgono_anche_per_il_comportamento():
     """Stessa disciplina degli altri tre archivi: non solo il nome."""
     behavior = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
                       "alias": ["buongiorno"]}]
-    trovate = costruisci_indice(_HOME_SPACE, comportamento=behavior).find("attiva buongiorno")
+    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("attiva buongiorno")
     assert _riferimenti(trovate[0]) == {"automation.sveglia"}
 
 

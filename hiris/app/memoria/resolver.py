@@ -119,16 +119,16 @@ def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
 
     normalizzato: list[str] = []
     mappa: list[int] = []
-    spazio_precedente = True  # tronca anche gli spazi iniziali, come .strip()
+    previous_space = True  # tronca anche gli spazi iniziali, come .strip()
     for c, original_index in zip(reading, mappa_grezza):
         if re.match(r"\s", c):
-            if spazio_precedente:
+            if previous_space:
                 continue
-            spazio_precedente = True
+            previous_space = True
             normalizzato.append(" ")
             mappa.append(original_index)
         else:
-            spazio_precedente = False
+            previous_space = False
             normalizzato.append(c)
             mappa.append(original_index)
     while normalizzato and normalizzato[-1] == " ":
@@ -278,9 +278,9 @@ def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
         candidati.append(candidato)
 
 
-def costruisci_indice(casa: dict,
+def costruisci_indice(home_space: dict,
                       nomi_di_ripiego: dict[str, str] | None = None,
-                      comportamento: list[dict] | None = None) -> Lookup:
+                      behavior: list[dict] | None = None) -> Lookup:
     """Costruisce l'indice di una casa: nome e alias di aree, entita',
     dispositivi e piani, PIU' automazioni e script (`comportamento`, T7),
     normalizzati e pronti per trova()/verifica().
@@ -349,13 +349,13 @@ def costruisci_indice(casa: dict,
     """
     termini: dict[str, list[tuple[str, str]]] = {}
     per_type: dict[str, dict[str, dict]] = {}
-    ripiego = nomi_di_ripiego or {}
-    nomi_etichette = nomi_delle_etichette(casa)
-    nomi_categorie = nomi_delle_categorie(casa)
+    downgrade = nomi_di_ripiego or {}
+    nomi_etichette = nomi_delle_etichette(home_space)
+    nomi_categorie = nomi_delle_categorie(home_space)
 
     for store_key, type in _ARCHIVI:
         registry = per_type.setdefault(type, {})
-        for entry in casa.get(store_key) or []:
+        for entry in home_space.get(store_key) or []:
             reference = entry.get("id")
             if reference is None:
                 continue
@@ -363,7 +363,7 @@ def costruisci_indice(casa: dict,
             name = entry.get("nome") or ""
             dedotto = ""
             if not name.strip() and type == "entita":
-                dedotto = (ripiego.get(reference) or "").strip()
+                dedotto = (downgrade.get(reference) or "").strip()
             if dedotto:
                 # Copia, non mutazione in place: `voce` e' il dizionario che
                 # `ArchivioCasa.leggi()` ha appena costruito per il
@@ -416,7 +416,7 @@ def costruisci_indice(casa: dict,
     # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
     # una voce di comportamento valida: si scarta invece di indicizzarla
     # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.
-    for entry in comportamento or []:
+    for entry in behavior or []:
         entry_type = entry.get("tipo")
         reference = entry.get("id")
         if entry_type not in ("automazione", "script") or reference is None:
@@ -449,7 +449,7 @@ def costruisci_indice(casa: dict,
     # un id assente non e' un'etichetta indicizzabile: si scarta invece di
     # registrare un termine muto o un candidato senza riferimento.
     label_registry = per_type.setdefault("etichetta", {})
-    for e in casa.get("etichette") or []:
+    for e in home_space.get("etichette") or []:
         label_id = e.get("id")
         if label_id is None:
             continue

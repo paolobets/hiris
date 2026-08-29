@@ -227,6 +227,109 @@ import tokenize
 from _comune import file_py, rel
 
 
+def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]]:
+    """Due insiemi di INDICI nella lista `tokens`: quelli che sono un
+    segmento di un percorso di IMPORT, e quelli che sono il nome di una
+    PAROLA CHIAVE (keyword argument) in una chiamata.
+
+    Un percorso di import (`from ..casa.anagrafe import X`, `import
+    hiris.app.memoria.archivio`) e' un indirizzo verso UN ALTRO modulo, mai
+    un identificatore del proprio ambito -- vale anche quando punta al
+    proprio stesso sottosistema (il file, se deciso, si rinomina con
+    `git mv`, non riscrivendo la stringa dell'import). Riconosciuto per
+    posizione: il primo `from`/`import` di una riga logica apre il
+    percorso, e il primo `import` che lo richiude (nella forma `from ...
+    import`), oppure `as`/una virgola (nella forma `import ...` da solo),
+    lo richiude. **Non un elenco di percorsi noti**: una lista andrebbe
+    aggiornata a ogni nuovo import, e sarebbe silenziosamente incompleta
+    per costruzione -- qui e' la SINTASSI dell'istruzione a deciderlo,
+    indipendentemente da quali parole contenga.
+
+    Una parola chiave in una chiamata (`f(origine="x")`) e' un nome che lo
+    strumento non puo' verificare: potrebbe risolvere verso una funzione di
+    un ambito non ancora convertito (`azione/porta.py::esegui(*, origine)`),
+    e rinominarla romperebbe la chiamata in un modo che nessun test di
+    QUESTO file puo' vedere. Riconosciuta per struttura: un NAME seguito da
+    un singolo `=` (mai `==`), dentro una parentesi aperta da un NAME (o da
+    `)`/`]`, per le chiamate incatenate) che non sia essa stessa una
+    `def` -- una parentesi di raggruppamento o di definizione lascia il
+    nome cosi' com'e' (e' la propria firma, o non e' affatto una chiamata).
+    """
+    percorso: set[int] = set()
+    parola_chiave: set[int] = set()
+
+    modo = None  # None | "percorso_from" | "percorso_import" | "alias_in_arrivo"
+    inizio_riga = True
+    pila_parentesi: list[str] = []
+    precedente = None
+    precedente_precedente = None
+
+    for i, t in enumerate(tokens):
+        if t.type == tokenize.OP and t.string == "(":
+            if precedente is not None and precedente.type == tokenize.NAME:
+                e_def = (precedente_precedente is not None
+                         and precedente_precedente.type == tokenize.NAME
+                         and precedente_precedente.string == "def")
+                pila_parentesi.append("def" if e_def else "chiamata")
+            elif precedente is not None and precedente.type == tokenize.OP \
+                    and precedente.string in (")", "]"):
+                pila_parentesi.append("chiamata")
+            else:
+                pila_parentesi.append("altro")
+        elif t.type == tokenize.OP and t.string in ("[", "{"):
+            pila_parentesi.append("altro")
+        elif t.type == tokenize.OP and t.string in (")", "]", "}") and pila_parentesi:
+            pila_parentesi.pop()
+
+        if t.type == tokenize.NAME:
+            if modo == "percorso_from":
+                percorso.add(i)
+                if t.string == "import":
+                    modo = None
+            elif modo == "percorso_import":
+                if t.string == "as":
+                    modo = "alias_in_arrivo"
+                else:
+                    percorso.add(i)
+            elif modo == "alias_in_arrivo":
+                modo = "percorso_import"  # dopo l'alias potrebbe seguirne un altro (virgola)
+            elif inizio_riga and t.string == "from":
+                percorso.add(i)
+                modo = "percorso_from"
+            elif inizio_riga and t.string == "import":
+                percorso.add(i)
+                modo = "percorso_import"
+            elif (pila_parentesi and pila_parentesi[-1] == "chiamata"
+                    and i not in percorso
+                    and i + 1 < len(tokens)
+                    and tokens[i + 1].type == tokenize.OP
+                    and tokens[i + 1].string == "="):
+                parola_chiave.add(i)
+
+        if t.type == tokenize.NEWLINE:
+            # Fine della riga LOGICA: `percorso_from` si chiude sempre da
+            # solo (incontra il proprio `import`), ma un `import a, b` o
+            # `import a as x` non ha nessun token che lo richiuda -- senza
+            # questo reset, `modo` restava "percorso_import" per il resto
+            # del file dopo il primo `import semplice`, e ogni nome
+            # successivo veniva scambiato per un segmento di percorso.
+            # Misurato: senza questa riga, un solo `import re` in cima a un
+            # file azzerava i composti rilevati in tutto il resto del file.
+            modo = None
+            inizio_riga = True
+        elif t.type in (tokenize.INDENT, tokenize.DEDENT):
+            inizio_riga = True
+        elif t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING):
+            inizio_riga = False
+
+        if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                          tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+            precedente_precedente = precedente
+            precedente = t
+
+    return percorso, parola_chiave
+
+
 def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta | Collisione]]:
     """Il sorgente coi soli token NAME rinominati, piu' i composti (e le
     collisioni) da decidere.
@@ -245,10 +348,17 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
         riga, col = pos
         return inizi[riga - 1] + col
 
+    tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+    percorso, parola_chiave = _righe_di_percorso_e_parola_chiave(tokens)
+
     grezzi, proposte = [], []
     visti = set()
-    for t in tokenize.generate_tokens(io.StringIO(sorgente).readline):
+    for i, t in enumerate(tokens):
         if t.type != tokenize.NAME:
+            continue
+        if i in percorso:
+            # Un indirizzo verso un altro modulo, mai un identificatore del
+            # proprio ambito -- vedi `_righe_di_percorso_e_parola_chiave`.
             continue
         esito = classifica(t.string, g, ambito)
         if esito is None:
@@ -257,6 +367,17 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
             if esito.nome not in visti:
                 visti.add(esito.nome)
                 proposte.append(esito)
+            continue
+        if i in parola_chiave:
+            # Una parola chiave in una chiamata: lo strumento non puo'
+            # sapere se punta a una funzione gia' convertita. Si segnala
+            # come una proposta -- non indovina, chiede -- invece di
+            # applicarla e rischiare di rompere una firma altrui in
+            # silenzio (`origine=` verso `azione/porta.py::esegui`, misurato).
+            proposta = Proposta(nome=t.string, pezzi=[t.string.lower()], suggerito=esito)
+            if proposta.nome not in visti:
+                visti.add(proposta.nome)
+                proposte.append(proposta)
             continue
         grezzi.append((offset(t.start), offset(t.end), t.string, esito))
 

@@ -102,7 +102,7 @@ tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
 `chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promise`
 -> `chi_risponde` -> `_accoda_al_ponte`, quando il ponte e' la via) tanto
 quanto un turno di chat vero: il battito dello schedulatore
-(`schedulatore/orologio.py`, ogni 15 s) lo sveglia da solo, ore dopo la
+(`schedulatore/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
 promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
 se) resta della persona che ha promesso; il MOMENTO in cui accade no --
 vedi `README.md`, sezione «What HIRIS 2.0 is», per la stessa distinzione

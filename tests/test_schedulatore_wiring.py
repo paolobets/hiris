@@ -270,9 +270,37 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     """Un'app di test che non li ha montati (i tanti test esistenti che
     costruiscono l'app a mano, vedi `tests/test_api.py::client`) non deve
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
-    `archivio_memoria` qui sopra."""
+    `archivio_memoria` qui sotto."""
     app = {"ha_client": AsyncMock(stop=AsyncMock())}
     await server._on_cleanup(app)  # non deve sollevare
+
+
+@pytest.mark.asyncio
+async def test_il_cleanup_chiude_casa_e_memoria_col_metodo_giusto_ciascuno():
+    """`app["archivio_casa"]` (`ArchivioCasa`, ambito `casa`, non convertito)
+    espone ancora `.chiudi()`; `app["archivio_memoria"]` (`MemoryStore`,
+    Task 5) espone `.close()` -- due nomi diversi per la stessa azione,
+    perche' i due sottosistemi sono a meta' del passaggio all'inglese in due
+    momenti diversi. Trovato dalla review del Task 5 per mutazione: rimettere
+    `.chiudi()` su `archivio_memoria` lasciava la suite verde (nessun altro
+    test lo copriva), e HIRIS sarebbe uscito verde di cancello e di suite per
+    poi sollevare `AttributeError` allo SPEGNIMENTO, lasciando il file
+    sqlite bloccato -- esattamente il guasto che il commento sopra
+    `if "archivio_memoria" in app` descrive."""
+    archivio_casa_finto = MagicMock()
+    archivio_memoria_finto = MagicMock()
+    app = {
+        "ha_client": AsyncMock(stop=AsyncMock()),
+        "archivio_casa": archivio_casa_finto,
+        "archivio_memoria": archivio_memoria_finto,
+    }
+
+    await server._on_cleanup(app)
+
+    archivio_casa_finto.chiudi.assert_called_once()
+    archivio_memoria_finto.close.assert_called_once()
+    archivio_casa_finto.close.assert_not_called()
+    archivio_memoria_finto.chiudi.assert_not_called()
 
 
 # ── Il dispatcher riceve DUE parametri nuovi, non uno ────────────────────────

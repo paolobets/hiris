@@ -199,7 +199,7 @@ async def test_richiama_da_i_ricordi_di_una_parte_della_casa(dispatcher, memoria
     assert len(esito["ricordi"]) == 1
 
 
-# --- I1 (review indipendente 25/08/2026): `richiama` legge `per_ancora` -----
+# --- I1 (review indipendente 25/08/2026): `richiama` legge `per_tether` -----
 # direttamente, non passa da `domande.guarda` -- lo stesso ricordo usciva
 # filtrato da una porta e grezzo dall'altra.
 
@@ -726,7 +726,7 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
     """Fix finale ①: `etichette` e' una tabella vera di `_TABELLE` che puo'
     comparire in `non_disponibili()` (T8, R2 -- `cerca` indicizza le
     etichette stesse come candidati), ma `_cecita` filtrava i registri
-    caduti con `CHIAVE_ARCHIVIO_PER_TIPO.values()`, che non la contiene
+    caduti con `STORE_KEY_PER_TYPE.values()`, che non la contiene
     (deliberatamente: non e' un tipo di ancora, vedi il commento su
     `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
     nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
@@ -799,7 +799,7 @@ async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
 
 @pytest.mark.asyncio
 async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
-    """T7 (R2), regressione da non fare: `_ARCHIVI` (memoria/riconoscitore.py)
+    """T7 (R2), regressione da non fare: `_ARCHIVI` (memoria/resolver.py)
     ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
     `ricorda` possa mai scrivere (`memoria/interpretazione.VOCABULARY`) --
     la memoria continua a conoscere solo area/entita'/dispositivo. Se

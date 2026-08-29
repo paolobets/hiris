@@ -493,7 +493,7 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
 # due costanti con parentela dichiarata (il pattern usato quando due strati
 # NON possono importare l'uno dall'altro senza invertire la gerarchia, come
 # azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
-# schedulatore/promessa.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
+# schedulatore/promise.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
 # verso solo -- backends/openai_compat_runner.py importa GIA' da questo
 # modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_
 # PROMPT), mai il contrario -- quindi definirla due volte sarebbe il

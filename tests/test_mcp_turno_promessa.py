@@ -196,7 +196,7 @@ async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
 async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(rotta):
     """Il secondo tempo di `mantieni`, raggiunto dall'altra strada.
 
-    Sul ramo sincrono la conclusione torna a `interpreta_promessa` e
+    Sul ramo sincrono la conclusione torna a `interpreta_promise` e
     l'orologio chiude. Sul ponte non torna niente a nessuno: `concludi` e'
     una `tools/call` come le altre, e se questa rotta si limitasse a
     registrarla nel dispatcher la promessa resterebbe `in_corso` per

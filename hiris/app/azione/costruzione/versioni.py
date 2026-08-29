@@ -29,7 +29,7 @@ from ...storage import connect, init_schema
 logger = logging.getLogger(__name__)
 
 # L'insieme «in sospeso» -- stessa forma di `STATI_SOSPESO` in
-# `schedulatore/promessa.py`, per lo stesso motivo: una proposta rivendicata
+# `schedulatore/promise.py`, per lo stesso motivo: una proposta rivendicata
 # (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
 # pendenti ne' smettere di contare contro il tetto nella finestra fra
 # `rivendica` e la transizione finale (`applicata`/`rifiutata`).

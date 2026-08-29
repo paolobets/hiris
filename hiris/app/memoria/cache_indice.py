@@ -46,7 +46,7 @@ Chi chiama `get()` porta tre cose:
   questo task esiste. Usa un'impronta del CONTENUTO (`_fingerprint_nomi`).
 - `behavior_loaded_il` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
   la data dell'ultima rilettura di automazioni/script
-  (`ArchivioCasa.behavior_loaded_il()`), o `None` quando non e' mai stata
+  (`ArchivioCasa.comportamento_letto_il()`), o `None` quando non e' mai stata
   letta. Da quando `costruisci_indice()` indicizza anche il comportamento
   (parametro `comportamento`), la chiave non puo' piu' bastarsi con
   `aggiornata_il`: quella data e' dell'ANAGRAFE (aree, entita', dispositivi,
@@ -145,7 +145,7 @@ class LookupCache:
         return self.get_lazy(slot, lambda: home_space, aggiornata_il, nomi_di_ripiego,
                                   behavior, behavior_loaded_il)
 
-    def get_lazy(self, slot: str, costruisci_casa,
+    def get_lazy(self, slot: str, build_home_space,
                       aggiornata_il: str | None,
                       nomi_di_ripiego: dict[str, str] | None = None,
                       behavior: list[dict] | None = None,
@@ -160,11 +160,11 @@ class LookupCache:
         (piu' un `json.loads` per riga) veniva fatta e buttata -- uno dei DUE
         costi che il brief del task nominava esplicitamente (lettura
         dell'archivio E compilazione), di cui questo spazio ne eliminava solo
-        uno. `costruisci_casa` (un callable a zero argomenti, non un valore
+        uno. `build_home_space` (un callable a zero argomenti, non un valore
         gia' letto) si invoca solo quando la voce salvata non e' piu' valida:
         su un hit non viene MAI chiamato, e la lettura non si paga.
 
-        `comportamento` NON e' pigro come `costruisci_casa`: e' un valore gia'
+        `comportamento` NON e' pigro come `build_home_space`: e' un valore gia'
         letto, passato dal chiamante (`_cerca`, che lo legge comunque per
         indicizzarlo). Solo `_ricorda` non lo passa affatto (`None`, il
         comportamento non e' un tipo di ancora -- vedi
@@ -175,6 +175,6 @@ class LookupCache:
         entry = self._voci.get(slot)
         if entry is not None and entry[0] == key:
             return entry[1]
-        lookup = costruisci_indice(costruisci_casa(), nomi_di_ripiego, behavior)
+        lookup = costruisci_indice(build_home_space(), nomi_di_ripiego, behavior)
         self._voci[slot] = (key, lookup)
         return lookup

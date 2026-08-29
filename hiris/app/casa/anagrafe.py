@@ -141,7 +141,7 @@ _ID_FUORI_DALLE_AREE = "__fuori_dalle_aree__"
 # Le pseudo-aree che una vista di dettaglio (`domande.guarda("area", ...)`)
 # sa raggiungere per ID -- MAI per nome: "Senza area" e' un nome che due case
 # diverse possono condividere (e' generico, non dichiarato dall'utente), e
-# `cerca()`/l'indice (riconoscitore.py) non lo indicizzano perche' non
+# `cerca()`/l'indice (resolver.py) non lo indicizzano perche' non
 # esistono nell'anagrafe grezza di Home Assistant, solo nell'albero che
 # `gerarchia()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
 # un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.

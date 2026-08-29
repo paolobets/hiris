@@ -186,3 +186,109 @@ def test_applica_su_un_file_singolo(g, tmp_path):
     f.write_text("archivio = 1\n", encoding="utf-8")
     rinomina.applica(f, "memoria")
     assert f.read_text(encoding="utf-8") == "store = 1\n"
+
+
+def test_un_percorso_di_import_non_si_tocca_anche_se_la_parola_e_decisa():
+    """`from ..casa.archivio import X`: `casa` e `archivio` sono un
+    indirizzo verso un altro modulo, non identificatori del proprio
+    ambito -- anche quando entrambi hanno una riga nel glossario finto.
+    Misurato dal vivo (review del Task 5): senza questa guardia lo
+    strumento riscriveva `from ..casa.anagrafe import ...` in
+    `from ..home_space.topology import ...`, un `ModuleNotFoundError`
+    certo perche' `casa/` non viene rinominata da questo task."""
+    gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
+    dentro = "from ..casa.archivio import ArchivioCasa\narchivio = 1\n"
+    fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert "from ..casa.archivio import ArchivioCasa" in fuori, (
+        "il percorso dell'import non deve cambiare")
+    assert "store = 1" in fuori, (
+        "un identificatore VERO, fuori dall'import, deve continuare a tradursi")
+
+
+def test_un_percorso_di_import_semplice_senza_from_non_si_tocca():
+    """`import casa.archivio`: stessa guardia, forma senza `from`."""
+    gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
+    dentro = "import casa.archivio\n"
+    fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro
+
+
+def test_un_percorso_che_punta_al_proprio_ambito_non_si_tocca():
+    """Vale anche per un import RELATIVO che punta al proprio stesso
+    sottosistema: il file, se deciso, si rinomina con `git mv`, mai
+    riscrivendo la stringa dell'import (misurato: `from .archivio import
+    X` non deve diventare `from .store import X` solo perche' `archivio`
+    e' deciso -- quella e' una scelta a parte, con le sue conseguenze su
+    ogni altro chiamante)."""
+    gf = rinomina.Glossario(mappa={"archivio": "store"})
+    dentro = "from .archivio import ArchivioMemoria\n"
+    fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro
+
+
+def test_l_alias_di_un_import_semplice_resta_un_identificatore_vero():
+    """Dopo `as`, il nome e' un legame locale scelto da chi scrive il
+    codice -- non un segmento di percorso -- e resta soggetto alla
+    classificazione normale."""
+    gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
+    dentro = "import casa.archivio as archivio\n"
+    fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "import casa.archivio as store\n"
+
+
+def test_una_parola_chiave_in_una_chiamata_non_si_applica_da_sola():
+    """`f(origine=\"x\")`: una parola chiave in una chiamata potrebbe
+    puntare a una funzione di un ambito non ancora convertito -- lo
+    strumento non puo' saperlo, quindi non indovina: propone e si ferma,
+    come un composto. Misurato dal vivo (review del Task 5): senza questa
+    guardia, `origine=\"schedulatore\"` (verso
+    `azione/porta.py::esegui(*, origine)`, non convertito) diventava
+    `actor=\"schedulatore\"` e rompeva la chiamata."""
+    gf = rinomina.Glossario(mappa={"origine": "actor"})
+    dentro = 'esito = f(chiamata, origine="x")\n'
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro, "la parola chiave non si applica da sola"
+    assert [p.nome for p in proposte] == ["origine"]
+    assert proposte[0].suggerito == "actor"
+
+
+def test_un_parametro_di_default_in_una_funzione_si_applica_ancora():
+    """La stessa parola, ma come PARAMETRO di una `def` (non una chiamata),
+    e' la propria firma: si applica come sempre. La guardia distingue una
+    definizione da una chiamata guardando se il NAME che precede la
+    parentesi e' preceduto da `def`."""
+    gf = rinomina.Glossario(mappa={"origine": "actor"})
+    dentro = "def f(origine=None):\n    return origine\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "def f(actor=None):\n    return actor\n"
+    assert proposte == []
+
+
+def test_una_parola_chiave_ripetuta_produce_una_sola_proposta():
+    gf = rinomina.Glossario(mappa={"origine": "actor"})
+    dentro = 'f(a, origine="x")\ng(b, origine="y")\n'
+    _, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert len(proposte) == 1
+
+
+def test_l_idempotenza_si_misura_riapplicando_ad_albero_gia_convertito(tmp_path):
+    """L'idempotenza non si dichiara, si misura: si applica lo strumento a
+    una COPIA di un sottosistema gia' convertito e si controlla che non
+    cambi un solo byte. Qui sui due sottosistemi veri del Task 5, cosi'
+    che una regressione futura (in questo script o nel glossario) si veda
+    subito, invece di scoprirsi al prossimo ambito."""
+    import shutil
+
+    from _comune import ROOT
+    for cartella, ambito in (("schedulatore", "schedulatore"), ("memoria", "memoria")):
+        origine = ROOT / "hiris" / "app" / cartella
+        copia = tmp_path / cartella
+        shutil.copytree(origine, copia, ignore=shutil.ignore_patterns("__pycache__"))
+        prima = {f.relative_to(copia): f.read_bytes()
+                for f in copia.rglob("*.py")}
+        rinomina.applica(copia, ambito, scrivi=True)
+        dopo = {f.relative_to(copia): f.read_bytes()
+               for f in copia.rglob("*.py")}
+        assert dopo == prima, (
+            f"riapplicare lo strumento a {cartella}/ (gia' convertito) ha "
+            "cambiato qualcosa: non e' idempotente")

@@ -232,7 +232,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # <= massimo) si verifica contro il valore GIA' ARCHIVIATO dell'altro
     # capo, non contro `None` -- altrimenti "fra 19 e 20" corretto con
     # `{"minimo": 25}` (refuso per 15) si archivierebbe come (25.0, 20.0)
-    # senza che `_valida_intervallo` lo veda mai.
+    # senza che `_validate_intervallo` lo veda mai.
     minimo_richiesto = campi.get("minimo") if "minimo" in campi else esistente["minimo"]
     massimo_richiesto = campi.get("massimo") if "massimo" in campi else esistente["massimo"]
 
@@ -240,8 +240,8 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # modello (interpretazione.py): qui si riusa per la correzione umana,
     # con la STESSA regola sulle ancore. I campi assenti dalla richiesta si
     # passano "neutri" (None/[]): non generano problemi propri (vedi
-    # `_valida_forza`/`_valida_intervallo`/`_valida_ancore`/
-    # `_valida_condizioni`), cosi' ogni problema dichiarato viene sempre da
+    # `_validate_modality`/`_validate_intervallo`/`_validate_ancore`/
+    # `_validate_conditions`), cosi' ogni problema dichiarato viene sempre da
     # un campo che l'utente ha davvero toccato in questa richiesta (le
     # eccezioni sono `minimo`/`massimo`, sopra, apposta).
     interpretazione = {
@@ -278,7 +278,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     if "minimo" in campi or "massimo" in campi:
         # Si scrivono ENTRAMBI i capi, anche quando la richiesta ne
         # toccava uno solo: e' la coppia (gia' raddrizzata/dichiarata da
-        # `_valida_intervallo` se serviva) che va archiviata, non il campo
+        # `_validate_intervallo` se serviva) che va archiviata, non il campo
         # isolato -- altrimenti un raddrizzamento sarebbe scritto a meta'.
         aggiornamenti["minimo"] = pulita["minimo"]
         aggiornamenti["massimo"] = pulita["massimo"]

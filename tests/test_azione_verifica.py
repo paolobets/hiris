@@ -281,7 +281,7 @@ async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
 # Review finale, rilievo CRITICO ①. Fino a questa passata un bersaglio vuoto
 # era SEMPRE un rifiuto -- anche per un servizio come `notify.*` che non
 # accetta un `target` -- e questo significava che una promessa «chiedi» non
-# poteva MAI notificare: `schedulatore/orologio.py::_mantieni_chiedi`
+# poteva MAI notificare: `schedulatore/sweeper.py::_keep_chiedi`
 # costruisce la sua chiamata con `"bersaglio": {}`, e questa funzione la
 # rifiutava incondizionatamente, prima ancora di guardare il servizio.
 #
@@ -378,7 +378,7 @@ async def test_un_servizio_senza_target_verifica_comunque_i_parametri():
 @pytest.mark.asyncio
 async def test_la_chiamata_dello_schedulatore_per_una_notifica_e_accettata():
     """La giuntura che nessuna review per-task attraversava (CRITICO). La
-    forma esatta che `schedulatore/orologio.py::_mantieni_chiedi` costruisce
+    forma esatta che `schedulatore/sweeper.py::_keep_chiedi` costruisce
     per notificare -- bersaglio vuoto, servizio `notify.*` -- passata alla
     verifica VERA con un registro che contiene un `notify.*` vero: deve
     risultare accettata. Se qualcuno domani rimettesse il rifiuto
