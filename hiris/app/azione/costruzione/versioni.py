@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # `schedulatore/promise.py`, per lo stesso motivo: una proposta rivendicata
 # (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
 # pendenti ne' smettere di contare contro il tetto nella finestra fra
-# `rivendica` e la transizione finale (`applicata`/`rifiutata`).
+# `claim` e la transizione finale (`applicata`/`rifiutata`).
 STATES_SOSPESO = ("in_attesa", "in_corso")
 _SOSPESI_SQL = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 
@@ -103,7 +103,7 @@ class ConstructionStore:
         with self._lock:
             self._conn.close()
 
-    def proponi(self, *, operation: str, domain: str, key: str, actor: str,
+    def propose(self, *, operation: str, domain: str, key: str, actor: str,
                 exchange: str | None, phrase: str | None, prima: dict | None,
                 dopo: dict | None, helper: list, preview: str,
                 now: float) -> dict:
@@ -118,9 +118,9 @@ class ConstructionStore:
             # `stato IN (STATES_SOSPESO)`, non solo `in_attesa`: una proposta
             # rivendicata (`in_corso`) e' ancora in sospeso, e deve continuare
             # a occupare un posto sotto il tetto -- se contasse solo
-            # `in_attesa`, due `applica` in corsa potrebbero far salire il
+            # `in_attesa`, due `apply` in corsa potrebbero far salire il
             # numero vero di proposte in volo oltre il tetto nella finestra
-            # fra `rivendica` e la transizione finale.
+            # fra `claim` e la transizione finale.
             aperte = self._conn.execute(
                 f"SELECT count(*) FROM costruzioni WHERE stato IN ({_SOSPESI_SQL})").fetchone()[0]
             if aperte >= self.MAX_PENDING:
@@ -147,7 +147,7 @@ class ConstructionStore:
         """`pending_only=True` elenca le pendenti -- `stato IN
         (STATES_SOSPESO)`, non solo `in_attesa`: una proposta rivendicata
         (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco
-        nella finestra fra `rivendica` e la transizione finale."""
+        nella finestra fra `claim` e la transizione finale."""
         sql = "SELECT * FROM costruzioni"
         if pending_only:
             sql += f" WHERE stato IN ({_SOSPESI_SQL})"
@@ -156,7 +156,7 @@ class ConstructionStore:
             righe = self._conn.execute(sql, (int(limit),)).fetchall()
         return [_row(r) for r in righe]
 
-    def rivendica(self, ident: str, *, now: float) -> dict:
+    def claim(self, ident: str, *, now: float) -> dict:
         """Prende in carico una proposta PRIMA di scrivere su Home Assistant
         (spec §7).
 
@@ -185,14 +185,14 @@ class ConstructionStore:
 
         Stessa forma di `AgendaStore.risana` (`schedulatore/archivio.py`):
         una riga `in_corso` all'avvio significa una cosa sola, l'add-on si e'
-        fermato fra `rivendica` e la transizione finale (`applica` non ha
+        fermato fra `claim` e la transizione finale (`apply` non ha
         fatto in tempo a chiamare `mark_applied` o `mark_rejected`).
 
         **Senza questa chiusura la riga resterebbe un fantasma per sempre**:
-        con `rivendica` a farla uscire da `in_attesa`, nessun altro percorso
+        con `claim` a farla uscire da `in_attesa`, nessun altro percorso
         del modulo la riporta a uno stato terminale -- non `_scadi` (filtra
-        su `stato='in_attesa'`), non un secondo `rivendica` (la sua UPDATE e'
-        anch'essa `WHERE stato='in_attesa'`), non l'utente (ogni `applica`
+        su `stato='in_attesa'`), non un secondo `claim` (la sua UPDATE e'
+        anch'essa `WHERE stato='in_attesa'`), non l'utente (ogni `apply`
         successiva la troverebbe gia' "in corso" e rifiuterebbe). Invisibile
         a `list(pending_only=True)` PRIMA di questa correzione, non piu'
         adesso che quella query legge `STATES_SOSPESO` -- ma restare `in_corso`
@@ -207,7 +207,7 @@ class ConstructionStore:
         sarebbe peggio che dirlo. Si dichiara **l'incertezza**, non un esito.
 
         Va chiamata all'avvio (dal Task 8, che monta l'officina), PRIMA che
-        una nuova `applica` possa rivendicare qualcosa.
+        una nuova `apply` possa rivendicare qualcosa.
 
         Restituisce quante righe ha chiuso.
         """
@@ -245,7 +245,7 @@ class ConstructionStore:
 
         **Transita SOLO da `in_attesa`** -- una `WHERE` dedicata, non quella
         (`IN ('in_attesa','in_corso')`) condivisa da `_change_state` (ondata
-        finale, punto 2). L'invariante della potatura (`_pota`, sopra) fu
+        finale, punto 2). L'invariante della potatura (`_prune`, sopra) fu
         dimostrato quando la transizione `in_attesa -> applicata` era a senso
         unico: aggiungere `disdetta` sopra la `WHERE` di `_change_state`
         l'ha rotto in silenzio. La corsa che apriva: una conferma dalla chat
@@ -276,9 +276,9 @@ class ConstructionStore:
                       execution_id: str | None, reason: str | None) -> dict:
         with self._lock:
             # `IN ('in_attesa','in_corso')`: la transizione finale arriva
-            # quasi sempre da `in_corso` (dopo `rivendica`), ma resta valida
+            # quasi sempre da `in_corso` (dopo `claim`), ma resta valida
             # anche direttamente da `in_attesa` -- i chiamanti che non passano
-            # da `rivendica` (i test di questo modulo, per esempio) devono
+            # da `claim` (i test di questo modulo, per esempio) devono
             # continuare a funzionare esattamente come prima. La UPDATE resta
             # atomica: e' cosi' che due conferme simultanee non applicano due
             # volte la stessa proposta. Stessa forma della presa in carico di
@@ -302,7 +302,7 @@ class ConstructionStore:
             return self._scadi(now)
 
     def _scadi(self, now: float) -> int:
-        """Il corpo, **senza lock**: lo chiama `proponi`, che il lock ce l'ha
+        """Il corpo, **senza lock**: lo chiama `propose`, che il lock ce l'ha
         gia' in mano. `threading.Lock` non e' rientrante -- prenderlo due volte
         bloccherebbe il processo, non solleverebbe."""
         cur = self._conn.execute(

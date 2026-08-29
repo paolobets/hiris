@@ -292,12 +292,12 @@ def _cosa_non_esiste(resolved: dict) -> str:
     meta' della risposta di Home Assistant che dice una cosa DIVERSA dalle
     entita': «quell'area non c'e'» non e' «quell'area e' vuota».
     """
-    parti = []
+    parts = []
     for key, name in _MANCANTI:
         entries = [v for v in resolved.get(key) or [] if isinstance(v, str)]
         if entries:
-            parti.append(f"{name} {_list(entries)}")
-    return "; ".join(parti)
+            parts.append(f"{name} {_list(entries)}")
+    return "; ".join(parts)
 
 
 def _list(entries, count: int = 12) -> str:
@@ -400,7 +400,7 @@ def verification(call: dict, registry, states: dict[str, dict],
         # Ci si arriva SOLO se il controllo sopra ha gia' lasciato passare
         # perche' il servizio non dichiara un target ED e' un recapito: un
         # bersaglio vuoto e' la forma giusta per chiamarlo, non un errore
-        # (review indipendente, punto ①). Vedi `Verdetto.no_target`.
+        # (review indipendente, punto ①). Vedi `Verdict.no_target`.
         return Verdict(ok=True, domain=domain, service=name,
                         entity=(), target={}, no_target=True)
 

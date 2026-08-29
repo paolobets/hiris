@@ -22,7 +22,7 @@ def _proponi(a, **kw):
                 "preview": "Creo un'automazione che apre le tapparelle all'alba.",
                 "now": ADESSO}
     base.update(kw)
-    return a.proponi(**base)
+    return a.propose(**base)
 
 
 def test_una_proposta_nasce_in_attesa_e_si_rilegge_intera(archivio):
@@ -78,7 +78,7 @@ def test_una_proposta_applicata_non_scade(archivio):
 
 
 def test_proporre_fa_scadere_le_vecchie_da_solo(archivio):
-    """Nessuno chiama `scadi` in produzione se non lo fa `proponi`: senza questa
+    """Nessuno chiama `scadi` in produzione se non lo fa `propose`: senza questa
     prova la scadenza sarebbe una regola scritta e mai eseguita."""
     for n in range(ConstructionStore.MAX_PENDING):
         _proponi(archivio, key=f"k{n}")
@@ -136,31 +136,31 @@ def test_rivendicare_prende_in_carico_una_sola_volta(archivio):
     """La stessa guardia usata dalle promesse in schedulatore/archivio.py:
     chi rivendica per primo vince, il secondo trova la porta chiusa."""
     ident = _proponi(archivio)["id"]
-    prima = archivio.rivendica(ident, now=ADESSO + 1)
+    prima = archivio.claim(ident, now=ADESSO + 1)
     assert "errore" not in prima
     assert archivio.read(ident)["stato"] == "in_corso"
-    seconda = archivio.rivendica(ident, now=ADESSO + 2)
+    seconda = archivio.claim(ident, now=ADESSO + 2)
     assert "errore" in seconda
 
 
 def test_segna_applicata_transita_anche_da_in_corso(archivio):
-    """Dopo `rivendica` la riga e' `in_corso`, non piu' `in_attesa`: la
+    """Dopo `claim` la riga e' `in_corso`, non piu' `in_attesa`: la
     transizione finale deve continuare a funzionare da li'."""
     ident = _proponi(archivio)["id"]
-    archivio.rivendica(ident, now=ADESSO + 1)
+    archivio.claim(ident, now=ADESSO + 1)
     esito = archivio.mark_applied(ident, now=ADESSO + 2, execution_id="e1")
     assert "errore" not in esito
     assert archivio.read(ident)["stato"] == "applicata"
 
 
 def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
-    """Se l'add-on muore fra `rivendica` e la transizione finale, la riga
+    """Se l'add-on muore fra `claim` e la transizione finale, la riga
     resterebbe `in_corso` per sempre -- un fantasma senza via d'uscita
     (mai scaduta, mai piu' rivendicabile). `risana()` la chiude dichiarando
     l'incertezza, non un esito: dopo un riavvio a meta' non si sa se Home
     Assistant abbia gia' ricevuto la scrittura."""
     ident = _proponi(archivio)["id"]
-    archivio.rivendica(ident, now=ADESSO + 1)
+    archivio.claim(ident, now=ADESSO + 1)
 
     quante = archivio.risana(now=ADESSO + 100)
 
@@ -169,7 +169,7 @@ def test_una_rivendicata_al_riavvio_si_risana_e_non_riparte(archivio):
     assert riga["stato"] == "rifiutata"
     assert "riavviato" in riga["motivo"]
     # Non riparte: dopo `risana` non e' piu' rivendicabile ne' scaduta.
-    assert "errore" in archivio.rivendica(ident, now=ADESSO + 200)
+    assert "errore" in archivio.claim(ident, now=ADESSO + 200)
 
 
 def test_il_no_del_proprietario_e_uno_stato_suo_non_un_fallimento(archivio):
@@ -205,7 +205,7 @@ def test_non_si_disdice_una_riga_gia_rivendicata(archivio):
     90 giorni. Impedendo la transizione da `in_corso`, chi ha vinto la
     rivendicazione e' l'unico che puo' portare la riga a uno stato finale."""
     ident = _proponi(archivio)["id"]
-    rivendicata = archivio.rivendica(ident, now=ADESSO + 1)
+    rivendicata = archivio.claim(ident, now=ADESSO + 1)
     assert "errore" not in rivendicata
     assert archivio.read(ident)["stato"] == "in_corso"
 
@@ -226,11 +226,11 @@ def test_una_proposta_disdetta_libera_il_posto_sotto_il_tetto(archivio):
 def test_una_proposta_in_corso_compare_fra_le_pendenti_e_conta_contro_il_tetto(archivio):
     """Una proposta rivendicata (`in_corso`) e' ancora in sospeso, non
     conclusa: non deve sparire dall'elenco delle pendenti ne' smettere di
-    occupare un posto sotto il tetto nella finestra fra `rivendica` e la
-    transizione finale -- altrimenti due `applica` in corsa potrebbero far
+    occupare un posto sotto il tetto nella finestra fra `claim` e la
+    transizione finale -- altrimenti due `apply` in corsa potrebbero far
     salire il numero vero di proposte in volo oltre il tetto dichiarato."""
     ident = _proponi(archivio)["id"]
-    archivio.rivendica(ident, now=ADESSO + 1)
+    archivio.claim(ident, now=ADESSO + 1)
 
     pendenti = [r["id"] for r in archivio.list(pending_only=True)]
     assert pendenti == [ident]

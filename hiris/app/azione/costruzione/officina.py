@@ -17,19 +17,19 @@ suoi chiamanti sono uno strumento che parla a un modello e una rotta HTTP.
 `cancella_configurazione`) sollevano quello che rompe il trasporto -- e'
 scritto nel loro stesso docstring, e resta vero: quella frase non cambia.
 La guardia vive QUI, all'unico chiamante (`_rete`, sotto): un
-`ClientConnectorError` o un timeout durante un'`applica` diventano
+`ClientConnectorError` o un timeout durante un'`apply` diventano
 `{"errore": "Home Assistant non ha risposto: ...", "guasto_rete": True}`,
 trattati esattamente come un rifiuto di Home Assistant -- gli helper appena
 nati si disfano, la proposta non resta bloccata `in_corso`. Sono le due
 frasi -- «solleva solo il trasporto» la' e «non solleva mai» qui -- che con
-Home Assistant irraggiungibile durante un'`applica` non potevano restare
+Home Assistant irraggiungibile durante un'`apply` non potevano restare
 vere insieme finche' nessuno metteva la rete da nessuna delle due parti.
 
-**Il giro, e perche' e' in due tempi.** `proponi` compone, valida contro
-questa casa e ARCHIVIA una proposta: non tocca niente. `applica` scrive. In
+**Il giro, e perche' e' in due tempi.** `propose` compone, valida contro
+questa casa e ARCHIVIA una proposta: non tocca niente. `apply` scrive. In
 mezzo ci deve stare un umano -- e il modo in cui questo modulo lo sa e' il
 `turno`: una proposta non si conferma nel turno che l'ha creata. Se il turno
-non e' identificabile, `applica` **rifiuta** invece di lasciar passare: un
+non e' identificabile, `apply` **rifiuta** invece di lasciar passare: un
 cancello che non sa dire chi sta passando non e' un cancello.
 """
 from __future__ import annotations
@@ -129,7 +129,7 @@ class Workshop:
 
     # ---- proporre -------------------------------------------------------
 
-    async def proponi(self, intent: dict, *, actor: str, exchange: str | None,
+    async def propose(self, intent: dict, *, actor: str, exchange: str | None,
                       now: float) -> dict:
         operation = intent.get("gesto")
         domain = intent.get("dominio")
@@ -198,7 +198,7 @@ class Workshop:
 
         preview = self._preview(operation, domain, key, intent, prima, dopo,
                                     consiglio)
-        occurrence = self._store.proponi(
+        occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
             helper=list(intent.get("helper") or []), preview=preview,
@@ -223,9 +223,9 @@ class Workshop:
         alias = intent.get("alias") or ""
         occupate: set[str] = set()
         if domain == "script":
-            candidata = composer.slug_libero(alias, occupate)
+            candidata = composer.available_slug(alias, occupate)
         else:
-            candidata = composer.nuovo_id(occupate, seme=_seme_da(intent))
+            candidata = composer.new_id(occupate, seme=_seme_da(intent))
         for _ in range(5):
             loaded = await self._rete(self._ha.leggi_configurazione(domain, candidata))
             if loaded.get("assente"):
@@ -235,9 +235,9 @@ class Workshop:
                                    f"libero: {loaded['errore']}. Non scrivo alla cieca.")}
             occupate.add(candidata)
             if domain == "script":
-                candidata = composer.slug_libero(alias, occupate)
+                candidata = composer.available_slug(alias, occupate)
             else:
-                candidata = composer.nuovo_id(occupate, seme=int(candidata) + 1)
+                candidata = composer.new_id(occupate, seme=int(candidata) + 1)
         return {"errore": "non sono riuscito a trovare un identificatore libero."}
 
     def _compose(self, intent: dict, key: str | None) -> dict:
@@ -247,35 +247,35 @@ class Workshop:
         if not alias:
             return {"errore": "serve un nome per l'oggetto da costruire."}
         if domain == "automation":
-            ident = key or composer.nuovo_id(set(), seme=_seme_da(intent))
+            ident = key or composer.new_id(set(), seme=_seme_da(intent))
             return {"chiave": ident, "corpo": composer.compose_automation(
                 id_=ident, alias=alias, descrizione=descrizione,
                 innesco=intent.get("innesco") or [],
                 conditions=intent.get("condizioni") or [],
                 actions=intent.get("azioni") or [])}
         if domain == "script":
-            slug = key or composer.slug_libero(alias, set())
+            slug = key or composer.available_slug(alias, set())
             return {"chiave": slug, "corpo": composer.compose_script(
                 alias=alias, descrizione=descrizione,
                 passi=intent.get("azioni") or [],
                 fields=intent.get("campi"))}
         # Una scena e' l'unico dominio che a valle NON viene validato da Home
-        # Assistant (`parti_da_validare` restituisce {} di proposito): se uno
+        # Assistant (`parts_to_validate` restituisce {} di proposito): se uno
         # stato e' malformato o ripetuto, QUESTO e' l'ultimo posto in cui
         # qualcuno puo' accorgersene. `compose_scene` scarterebbe in silenzio.
         guai = composer.state_problems(intent.get("stati") or [])
         if guai:
             return {"errore": "non posso comporre la scena -- " + "; ".join(guai)}
-        ident = key or composer.nuovo_id(set(), seme=_seme_da(intent))
+        ident = key or composer.new_id(set(), seme=_seme_da(intent))
         return {"chiave": ident, "corpo": composer.compose_scene(
             id_=ident, alias=alias, states=intent.get("stati") or [])}
 
     async def _validate(self, domain: str, body: dict) -> str | None:
         """`None` se va bene, altrimenti il motivo -- quello di Home Assistant."""
-        parti = composer.parti_da_validare(domain, body)
-        if not parti:
+        parts = composer.parts_to_validate(domain, body)
+        if not parts:
             return None
-        occurrence = await self._ha.valida_config(**parti)
+        occurrence = await self._ha.valida_config(**parts)
         if "errore" in occurrence:
             return f"non ho potuto far validare la configurazione: {occurrence['errore']}"
         guasti = [f"{key}: {entry.get('error')}"
@@ -325,7 +325,7 @@ class Workshop:
 
     # ---- applicare ------------------------------------------------------
 
-    async def applica(self, proposal_id: str, *, actor: str, exchange: str | None,
+    async def apply(self, proposal_id: str, *, actor: str, exchange: str | None,
                       now: float) -> dict:
         proposal = self._store.read(proposal_id)
         if proposal is None:
@@ -340,10 +340,10 @@ class Workshop:
         # letto qui sopra non basta -- e' una lettura che una richiesta
         # concorrente (doppio clic sulla pagina, o pagina e chat insieme) puo'
         # gia' aver superato prima che questa arrivi a scrivere. La UPDATE
-        # atomica `WHERE stato='in_attesa'` di `ConstructionStore.rivendica`
+        # atomica `WHERE stato='in_attesa'` di `ConstructionStore.claim`
         # e' l'unico punto in cui chi arriva prima puo' davvero vincere.
-        rivendicata = self._store.rivendica(proposal_id, now=now)
-        if "errore" in rivendicata:
+        claimed = self._store.claim(proposal_id, now=now)
+        if "errore" in claimed:
             return {"errore": "quella proposta e' gia' stata presa in carico da "
                               "un'altra richiesta."}
 
@@ -407,7 +407,7 @@ class Workshop:
         # indipendentemente dal gesto sul dominio principale: una
         # `modifica` puo' portarsi dietro un helper nuovo tanto quanto un
         # `crea`. Spec §5, testuale: l'etichetta si applica «all'entita'
-        # nata, helper compresi». Senza questa riga `_rileggi` (sopra)
+        # nata, helper compresi». Senza questa riga `_reread` (sopra)
         # filtra per `{dominio}.`, quindi un `input_boolean` nato da HIRIS
         # non riceveva mai l'etichetta -- e poiche' la paternita' vive nel
         # registro di Home Assistant e non in una tabella nostra (fondamenta
@@ -418,7 +418,7 @@ class Workshop:
 
         execution_id = self._journal.log_construction(
             actor=actor, operation=operation, domain=domain, key=key,
-            entity=entity, eseguito=True, now=now, notice=notice)
+            entity=entity, executed=True, now=now, notice=notice)
         occurrence_state = self._store.mark_applied(proposal_id, now=now,
                                                       execution_id=execution_id)
         if "errore" in occurrence_state:
@@ -435,7 +435,7 @@ class Workshop:
     def _cancello(self, proposal: dict, actor: str, exchange: str | None) -> str | None:
         """Il sì dell'umano, reso una guardia deterministica (spec §7).
 
-        Il modello propone e il codice restringe: se `applica` fosse solo
+        Il modello propone e il codice restringe: se `apply` fosse solo
         un'altra chiamata, il modello potrebbe concatenarla nello stesso turno
         e il sì dell'utente sparirebbe senza che nessuno se ne accorga.
         """
@@ -471,7 +471,7 @@ class Workshop:
         `cancella_configurazione` sollevano quello che rompe il trasporto --
         e' scritto nel loro docstring (`proxy/ha_client.py`), e resta cosi':
         la guardia vive qui, all'unico chiamante, non li'. Senza di lei, un
-        Home Assistant irraggiungibile durante un'`applica` salterebbe
+        Home Assistant irraggiungibile durante un'`apply` salterebbe
         `_disfa` (spazzatura in casa dell'utente, spec §3.1), lascerebbe la
         riga bloccata `in_corso` fino al riavvio, e farebbe uscire un 500
         grezzo dalla pagina invece del contratto 404/409/503 dichiarato da
@@ -542,7 +542,7 @@ class Workshop:
                 guasto_rete: bool = False) -> dict:
         execution_id = self._journal.log_construction(
             actor=actor, operation=proposal["gesto"], domain=proposal["dominio"],
-            key=proposal["chiave"], entity=[], eseguito=False, now=now,
+            key=proposal["chiave"], entity=[], executed=False, now=now,
             error=reason)
         occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
                                                       reason=reason)
@@ -628,7 +628,7 @@ class Workshop:
 
     # ---- ripristinare ---------------------------------------------------
 
-    async def ripristina(self, construction_id: str, *, actor: str,
+    async def restore(self, construction_id: str, *, actor: str,
                          exchange: str | None, now: float) -> dict:
         """Rimettere il «prima» e' un'ALTRA costruzione, e passa di qui.
 
@@ -654,14 +654,14 @@ class Workshop:
                 return {"errore": f"non posso rimettere com'era: {reason}"}
         preview = (f"Rimetto l'oggetto {domain}.{key} com'era prima "
                      f"del {self._data(row['creata_ts'])}.")
-        proposal = self._store.proponi(
+        proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=f"ripristino di {construction_id}", prima=row["dopo"],
             dopo=dopo, helper=[], preview=preview, now=now)
         if "errore" in proposal:
             return proposal
         if actor in HUMAN_ACTORS:
-            return await self.applica(proposal["id"], actor=actor, exchange=exchange,
+            return await self.apply(proposal["id"], actor=actor, exchange=exchange,
                                       now=now)
         # Dalla chat il ripristino e' un giro in due tempi come tutto il
         # resto (spec §7): applicarlo subito con lo STESSO `turno` che ha
@@ -673,7 +673,7 @@ class Workshop:
             # Senza un turno riconoscibile questa proposta non sara' MAI
             # confermabile da un'origine non umana (`_cancello`, IMPORTANT 1
             # del round 2): l'unica strada e' la pagina, e l'anteprima
-            # restituita deve dirlo -- lo stesso messaggio che `applica` da'
+            # restituita deve dirlo -- lo stesso messaggio che `apply` da'
             # gia' in quel caso, non un'anteprima muta su un vicolo cieco.
             preview += ("\nSenza un turno riconoscibile non potro' confermare da "
                          "qui: apri la pagina Costruzioni e conferma di la'.")
@@ -723,7 +723,7 @@ def _seme_da(intent: dict) -> int:
     `hash()` su una tupla di stringhe e' salato per processo in Python (non
     e' la lunghezza del testo a determinarlo): lo stesso intento produce semi
     diversi fra un riavvio e l'altro, e non e' un problema, perche' la
-    verifica di unicita' VERA la fa `forme.nuovo_id` contro gli id esistenti
+    verifica di unicita' VERA la fa `composer.new_id` contro gli id esistenti
     in QUESTA casa, e Home Assistant rifiuterebbe comunque un duplicato.
     """
     base = 1_700_000_000_000

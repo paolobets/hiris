@@ -89,11 +89,11 @@ async def _agisci(request: web.Request, verbo: str) -> web.Response:
 
 
 async def handle_conferma_costruzione(request: web.Request) -> web.Response:
-    return await _agisci(request, "applica")
+    return await _agisci(request, "apply")
 
 
 async def handle_ripristina_costruzione(request: web.Request) -> web.Response:
-    return await _agisci(request, "ripristina")
+    return await _agisci(request, "restore")
 
 
 async def handle_rifiuta_costruzione(request: web.Request) -> web.Response:

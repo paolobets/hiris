@@ -1303,7 +1303,15 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        adesso_reale = datetime.now(UTC)
+        # `_aggrega_ieri` calcola "ieri" nel fuso della CASA
+        # (`zona_casa(fuso)`, Europe/Rome qui), non in UTC: usare UTC per
+        # seminare il dato produce un giorno diverso da quello che il job
+        # interroga davvero nella finestra (tipicamente due ore, DST) in
+        # cui Roma e' gia' nel giorno successivo mentre l'UTC no --
+        # trovato dal vivo (review indipendente, fetta «la rinomina»,
+        # Task 7): un test che dipende dall'orologio reale non deve
+        # dipendere da un FUSO diverso da quello che il codice usa.
+        adesso_reale = datetime.now(server.zona_casa("Europe/Rome"))
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.record(quando_ts=quando.timestamp(), source="entita",
@@ -1354,7 +1362,9 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
-        adesso_reale = datetime.now(UTC)
+        # Stessa correzione del test gemello sopra: "ieri" nel fuso
+        # della casa, non in UTC (vedi la nota li').
+        adesso_reale = datetime.now(server.zona_casa("Europe/Rome"))
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.record(quando_ts=quando.timestamp(), source="entita",

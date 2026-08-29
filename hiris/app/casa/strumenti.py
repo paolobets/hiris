@@ -1518,7 +1518,7 @@ class DispatcherStrumenti:
         """Scalda il registro dei servizi prima di verificare, se puo'.
 
         Stessa forma di `azione/porta.py::ActionActuator.execute` (righe ~598-604): un
-        `try/except` attorno a `assicura_fresco`, perche' il registro si
+        `try/except` attorno a `ensure_fresh`, perche' il registro si
         carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
         nessuna azione arriva qui con un registro presente ma VUOTO, e senza
@@ -1551,7 +1551,7 @@ class DispatcherStrumenti:
         if canale is None:
             return
         try:
-            await self._registro.assicura_fresco(canale)
+            await self._registro.ensure_fresh(canale)
         except Exception as errore:
             logger.warning(
                 "prometti: rinfresco del registro servizi fallito (%s: %s), "
@@ -1656,8 +1656,8 @@ class DispatcherStrumenti:
             "helper": argomenti.get("helper") or [],
             "frase": argomenti.get("frase"),
         }
-        return await self._officina.proponi(
-            intento, origine="chat", turno=self._turno, adesso=_time.time())
+        return await self._officina.propose(
+            intento, actor="chat", exchange=self._turno, now=_time.time())
 
     async def _conferma(self, argomenti: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `costruisci`. La guardia del
@@ -1668,8 +1668,8 @@ class DispatcherStrumenti:
         proposta_id = (argomenti or {}).get("proposta_id")
         if not isinstance(proposta_id, str) or not proposta_id.strip():
             return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
-        esito = await self._officina.applica(
-            proposta_id.strip(), origine="chat", turno=self._turno, adesso=_time.time())
+        esito = await self._officina.apply(
+            proposta_id.strip(), actor="chat", exchange=self._turno, now=_time.time())
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_costruzioni.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal

@@ -16,6 +16,7 @@ import pytest
 
 from hiris.app.azione.registro import ServiceRegistry
 from hiris.app.azione.verifica import verification
+from tests._contratti import assert_stessa_firma
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
@@ -67,7 +68,7 @@ class FintoClient:
 # dipende dalla versione di pytest-asyncio installata.
 async def _registro_pronto(risposta=None) -> ServiceRegistry:
     r = ServiceRegistry()
-    await r.aggiorna(FintoClient(risposta))
+    await r.refresh(FintoClient(risposta))
     return r
 
 
@@ -256,6 +257,13 @@ def test_un_fields_illeggibile_non_solleva_nemmeno_saltando_il_registro():
         def domains(self): return ["light"]
         def services_for(self, d): return ["turn_on"]
         def service(self, d, n): return {"fields": [{"name": "brightness_pct"}]}
+
+    # Se `ServiceRegistry` cambia firma, questa riga cade invece di
+    # lasciare che il finto imiti un contratto che non esiste piu'.
+    assert_stessa_firma(ServiceRegistry.domains, RegistroACaso.domains, nome="domains")
+    assert_stessa_firma(ServiceRegistry.services_for, RegistroACaso.services_for,
+                        nome="services_for")
+    assert_stessa_firma(ServiceRegistry.service, RegistroACaso.service, nome="service")
 
     v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},

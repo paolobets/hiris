@@ -1,11 +1,11 @@
 """Le forme: si compongono dai PARAMETRI, mai inoltrando lo YAML del modello."""
 from hiris.app.azione.costruzione.composer import (
+    available_slug,
     compose_automation,
     compose_scene,
     compose_script,
-    nuovo_id,
-    parti_da_validare,
-    slug_libero,
+    new_id,
+    parts_to_validate,
     state_problems,
 )
 
@@ -61,49 +61,49 @@ def test_la_scena_ha_nome_ed_entita():
 
 def test_un_id_nuovo_non_collide_mai_con_quelli_gia_in_casa():
     existing = {"1000", "1001", "1002"}
-    ident = nuovo_id(existing, seme=1000)
+    ident = new_id(existing, seme=1000)
     assert ident not in existing
 
 
 def test_uno_slug_occupato_diventa_un_altro_slug():
-    assert slug_libero("Buonanotte", {"buonanotte"}) == "buonanotte_2"
-    assert slug_libero("Buona notte!", set()) == "buona_notte"
+    assert available_slug("Buonanotte", {"buonanotte"}) == "buonanotte_2"
+    assert available_slug("Buona notte!", set()) == "buona_notte"
 
 
 def test_uno_slug_che_si_svuota_non_diventa_stringa_vuota():
     """Un alias fatto solo di punteggiatura non puo' produrre una chiave vuota:
     finirebbe in un URL come `/api/config/script/config/` -- un'altra rotta."""
-    assert slug_libero("!!!", set()) != ""
+    assert available_slug("!!!", set()) != ""
 
 
 def test_da_validare_manda_i_tre_pezzi_dell_automazione():
     corpo = compose_automation(id_="1", alias="X", descrizione="d",
                                 innesco=[{"trigger": "state"}], conditions=[{"condition": "sun"}],
                                 actions=[{"action": "a.b"}])
-    parti = parti_da_validare("automation", corpo)
+    parti = parts_to_validate("automation", corpo)
     assert set(parti) == {"triggers", "conditions", "actions"}
 
 
 def test_da_validare_di_uno_script_manda_solo_le_azioni():
     corpo = compose_script(alias="X", descrizione="d", passi=[{"action": "a.b"}])
-    assert parti_da_validare("script", corpo) == {"actions": [{"action": "a.b"}]}
+    assert parts_to_validate("script", corpo) == {"actions": [{"action": "a.b"}]}
 
 
 def test_da_validare_di_una_scena_non_manda_niente():
     """Una scena non ha ne' inneschi ne' azioni: `validate_config` non la copre,
     e chiedergli di validare liste vuote tornerebbe «valido» su nulla."""
     corpo = compose_scene(id_="1", alias="X", states=[{"entity_id": "light.x", "state": "on"}])
-    assert parti_da_validare("scene", corpo) == {}
+    assert parts_to_validate("scene", corpo) == {}
 
 
 def test_lo_slug_traslittera_gli_accenti_e():
     """Un alias con accenti non perde lettere: «perché» → «perche», non «perch»."""
-    assert "perche" in slug_libero("Buonanotte perché", set())
+    assert "perche" in available_slug("Buonanotte perché", set())
 
 
 def test_lo_slug_traslittera_gli_accenti_a():
     """Un alias con accenti non perde lettere: «città» → «citta», non «citt»."""
-    assert "citta" in slug_libero("Luci città", set())
+    assert "citta" in available_slug("Luci città", set())
 
 
 def test_problemi_stati_lista_vuota_ok():

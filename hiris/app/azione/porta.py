@@ -340,7 +340,7 @@ def _fingerprint_from_ha_state(reading) -> dict | None:
     return _fingerprint(entry)
 
 
-def _reported_fingerprints(cambiati) -> dict[str, dict]:
+def _reported_fingerprints(changed) -> dict[str, dict]:
     """Le impronte degli stati che Home Assistant dichiara cambiati.
 
     Ingresso: il ritorno di `HAClient.call_service`, cioe' una lista di stati
@@ -352,7 +352,7 @@ def _reported_fingerprints(cambiati) -> dict[str, dict]:
     non si aspetta.
     """
     fingerprints: dict[str, dict] = {}
-    for reading in cambiati or []:
+    for reading in changed or []:
         fingerprint = _fingerprint_from_ha_state(reading)
         if fingerprint is not None:
             fingerprints[reading["entity_id"]] = fingerprint
@@ -518,8 +518,8 @@ class ActionActuator:
         meno, invece di rifiutare un comando legittimo.
         """
         add = getattr(self._ha, "add_state_listener", None)
-        togli = getattr(self._ha, "remove_state_listener", None)
-        if not callable(add) or not callable(togli):
+        remove = getattr(self._ha, "remove_state_listener", None)
+        if not callable(add) or not callable(remove):
             logger.warning("questo client di Home Assistant non annuncia i "
                            "cambiamenti di stato: l'esito potra' dire solo cio' "
                            "che la chiamata ha riportato")
@@ -586,7 +586,7 @@ class ActionActuator:
             messaggio = f"Home Assistant ha rifiutato la chiamata: {error}"
             execution_id = self._record(
                 actor=actor, service=service, entity=[],
-                eseguito=False, error=messaggio)
+                executed=False, error=messaggio)
             occurrence = {"eseguito": False, "errore": messaggio}
             if execution_id is not None:
                 occurrence["esecuzione_id"] = execution_id
@@ -599,14 +599,14 @@ class ActionActuator:
                  "avviso": _NO_STATE_TO_REREAD}
         execution_id = self._record(
             actor=actor, service=service, entity=[],
-            eseguito=True, cambiato=[], notice=occurrence["avviso"])
+            executed=True, changed=[], notice=occurrence["avviso"])
         if execution_id is not None:
             occurrence["esecuzione_id"] = execution_id
         return occurrence
 
     async def execute(self, call: dict, *, actor: str) -> dict:
         try:
-            await self._registry.assicura_fresco(self._ha)
+            await self._registry.ensure_fresh(self._ha)
         except Exception as error:
             return {"eseguito": False,
                     "errore": f"non riesco a leggere cosa Home Assistant sa fare "
@@ -693,7 +693,7 @@ class ActionActuator:
                 execution_id = self._record(
                     actor=actor,
                     service=f"{verdict.domain}.{verdict.service}",
-                    entity=list(verdict.entity), eseguito=False, error=messaggio)
+                    entity=list(verdict.entity), executed=False, error=messaggio)
                 occurrence = {"eseguito": False, "errore": messaggio}
                 if execution_id is not None:
                     occurrence["esecuzione_id"] = execution_id
@@ -739,7 +739,7 @@ class ActionActuator:
         # `cambiato` -- contarla direbbe che TUTTO e' cambiato, cioe'
         # inventare -- e produce l'avviso che lo dichiara.
         non_viste = [e for e in verdict.entity if dopo[e] is None]
-        cambiato = [e for e in verdict.entity
+        changed = [e for e in verdict.entity
                     if dopo[e] is not None and prima.get(e) != dopo[e]]
         # Le entita' di cui Home Assistant ha detto qualcosa, da una bocca o
         # dall'altra: e' la differenza fra «non ha detto niente» e «ha detto
@@ -750,12 +750,12 @@ class ActionActuator:
         occurrence = {"eseguito": True,
                  "servizio": f"{verdict.domain}.{verdict.service}",
                  "entita": list(verdict.entity),
-                 "prima": prima, "dopo": dopo, "cambiato": cambiato}
+                 "prima": prima, "dopo": dopo, "cambiato": changed}
         if preview is not None:
             occurrence["bersaglio"] = preview
         if non_viste:
             occurrence["avviso"] = _not_seen(pending)
-        elif cambiato:
+        elif changed:
             pass  # il caso normale: c'e' una differenza, e `prima`/`dopo` la mostrano
         elif annunciate or riportate_qui:
             # HA dice che qualcosa e' cambiato e l'impronta non lo mostra:
@@ -773,11 +773,11 @@ class ActionActuator:
         logger.info("azione eseguita [origine=%s] %s su %s -- cambiati: %s "
                     "(annunciati %d, riportati dalla chiamata %d, attesi fino a %ss)",
                     actor, occurrence["servizio"], list(verdict.entity),
-                    cambiato or ("sconosciuto" if non_viste else "nessuno"),
+                    changed or ("sconosciuto" if non_viste else "nessuno"),
                     len(annunciate), len(riportate_qui), _seconds(pending))
         execution_id = self._record(
             actor=actor, service=occurrence["servizio"], entity=list(verdict.entity),
-            eseguito=True, cambiato=cambiato, notice=occurrence.get("avviso"))
+            executed=True, changed=changed, notice=occurrence.get("avviso"))
         if execution_id is not None:
             occurrence["esecuzione_id"] = execution_id
         return occurrence

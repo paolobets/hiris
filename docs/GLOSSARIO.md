@@ -1003,6 +1003,7 @@ al Task 6 invece che deciso qui.
 | italiano | inglese |
 |---|---|
 | adesso | now |
+| aggiorna | refresh |
 | aggiornato | updated |
 | aggiungi | add |
 | albero | tree |
@@ -1011,13 +1012,16 @@ al Task 6 invece che deciso qui.
 | annota | record |
 | anteprima | preview |
 | aperto | open |
+| applica | apply |
 | area | area |
 | argomento | argument |
+| assicura | ensure |
 | attesa | pending |
 | attivo | active |
 | attributo | attribute |
 | automazione | automation |
 | avviso | notice |
+| cambiato | changed |
 | cambio | change |
 | campo | field |
 | carica | load |
@@ -1056,6 +1060,7 @@ al Task 6 invece che deciso qui.
 | episodio | episode |
 | errore | error |
 | esecuzione | execution |
+| eseguito | executed |
 | esistente | existing |
 | eta | age |
 | etichetta | label |
@@ -1064,6 +1069,7 @@ al Task 6 invece che deciso qui.
 | fonte | source |
 | forma | form |
 | frase | phrase |
+| fresco | fresh |
 | giorno | day |
 | giro | round |
 | gratuito | free |
@@ -1073,6 +1079,7 @@ al Task 6 invece che deciso qui.
 | innesca | trigger |
 | integrazione | integration |
 | interno | internal |
+| invalida | invalidate |
 | inventario | inventory |
 | leggi | read |
 | leggibile | readable |
@@ -1090,10 +1097,12 @@ al Task 6 invece che deciso qui.
 | normalizza | normalize |
 | nota | note |
 | numeratore | numerator |
+| nuovo | new |
 | oggi | today |
 | opzioni | options |
 | ora | hour |
 | ottieni | get |
+| parte | part |
 | percorso | path |
 | picco | peak |
 | posizione | position |
@@ -1101,6 +1110,7 @@ al Task 6 invece che deciso qui.
 | predefinito | default |
 | problema | problem |
 | programma | schedule |
+| proponi | propose |
 | proposta | proposal |
 | protagonista | protagonist |
 | pulisci | clean |
@@ -1112,10 +1122,12 @@ al Task 6 invece che deciso qui.
 | richiesta | request |
 | riga | row |
 | rileggi | reread |
+| ripristina | restore |
 | risolto | resolved |
 | risolvi | resolve |
 | risposta | answer |
 | ritardo | delay |
+| rivendica | claim |
 | scadenza | deadline |
 | scelto | chosen |
 | scena | scene |
@@ -1317,6 +1329,21 @@ parole si rivela un concetto travestito (la stessa identica domanda del Task 6: 
 serve raccontare come funziona HIRIS), si sposta fra i concetti anche se e' stata usata una sola
 volta — la soglia dei 3 usi separa cio' che vale la pena estrarre in automatico da cio' che si
 guarda a mano, non cio' che e' ordinario da cio' che e' un concetto.
+
+**Una firma pubblica non puo' avere alcuni parametri tradotti e altri no per il solo motivo che
+il glossario non li aveva ancora decisi -- aggiunta durante la review indipendente del Task 7
+(`azione/`).** `Journal.log`/`Journal.log_construction` (`azione/cronaca.py`) traducevano gia'
+`origine→actor`, `servizio→service`, `entita→entity`, `errore→error`, `avviso→notice`, ma
+lasciavano `eseguito`/`cambiato` in italiano — non perche' rispecchiassero le colonne del
+database (`eseguito`/`cambiato_json`: quella e' la ragione giusta per le COLONNE, che restano
+italiane per costruzione, non per i PARAMETRI Python della funzione che le scrive), ma solo
+perche' `eseguito`/`cambiato` non erano ancora righe di questo glossario. Il criterio per un
+parametro di funzione e' lo stesso di ogni altro identificatore: si traduce se il glossario ha
+deciso la parola, resta italiano se non l'ha ancora decisa — **mai** "resta italiano perche'
+rispecchia una colonna", che confonderebbe il livello Python con quello SQL. Decise qui
+`eseguito → executed` e `cambiato → changed` (righe sopra, «Le parole ordinarie») e applicate a
+entrambi i metodi: la firma di `Journal.log` ora traduce OGNI suo parametro, le colonne del
+database (`eseguito`, `cambiato_json`) restano quelle di sempre.
 
 ## I nomi degli strumenti
 
@@ -1643,14 +1670,20 @@ codice:
 > Il lettore ha anche accoppiato debolmente `cancel`/`propose` (stessa soglia di `fetch`/`search`,
 > annotato, nessuna azione oltre a quanto gia' coperto dalla nota sul ciclo di sei verbi sopra).
 >
-> **Dubbio aperto, non richiuso qui:** il metodo interno dietro `conferma` si chiama `applica`
-> (`azione/costruzione/officina.py:328`, `async def applica(...)`), che suggererebbe `apply` invece
-> di `confirm`. Ho tenuto `confirm` perche' la descrizione dello strumento insiste sul cancello
-> **"solo dopo che l'utente ha detto di procedere, in un turno successivo"** -- e' quel consenso
-> esplicito, non il meccanismo di scrittura, la ragione per cui questo strumento esiste separato da
-> `costruisci`; `apply` lo dice meno di `confirm`. Ma e' un giudizio, non una misura: se una prova
-> futura mostra che `confirm` si confonde con qualcos'altro, `apply` resta il secondo candidato
-> pronto.
+> **Dubbio chiuso durante la review indipendente del Task 7 (`azione/`): il metodo interno dietro
+> `conferma` diventa `apply`, non piu' `applica`.** Il dubbio era se questo confondesse `apply` col
+> nome dello STRUMENTO (`confirm`) -- non lo confonde, perche' sono due livelli diversi: `confirm`
+> resta il nome che il modello invoca (il consenso esplicito, la ragione scritta sopra per cui
+> resta `confirm` e non `apply`), `apply` e' solo l'implementazione Python dietro quel nome, mai
+> esposta al modello. Aggiunta la riga ordinaria `applica -> apply` (sopra, «Le parole ordinarie»);
+> `Workshop.applica` (`azione/costruzione/officina.py:328`) e' ora `Workshop.apply`. Stessa
+> famiglia, stesso giro: `Workshop.proponi`/`ConstructionStore.proponi` -> `propose` (riga
+> ordinaria `proponi -> propose`, coerente con la nota qui sopra su `costruisci -> propose`, che
+> gia' citava questo stesso metodo come indizio), `Workshop.ripristina` -> `restore` (riga
+> ordinaria `ripristina -> restore`, sotto), `ConstructionStore.rivendica` -> `claim` (riga
+> ordinaria `rivendica -> claim`, sopra) — le interfacce pubbliche di `ConstructionStore`/`Workshop`
+> non avevano piu' nessuna ragione per restare a meta' tradotte, con alcuni verbi in inglese
+> (`read`, `list`) e altri no.
 >
 > **`execute`: non piu' "chiaramente distinto" dopo la ri-prova.** Il primo giro l'aveva dichiarato,
 > insieme a `remember`, l'unico strumento che nessun lettore confondeva. La ri-prova lo smentisce:
@@ -1825,8 +1858,15 @@ strumento (`prometti`): **non e' una svista**, e' lo stesso concetto visto dai d
 fetta separa ovunque -- il dato e lo strumento che lo scrive -- documentato per esteso nella nota
 sotto la tabella dei 13 nomi degli strumenti. `reference` (`riferimento (casa)`/`riferimento
 (memoria)`) e' un omonimo per ambito, non una forma flessa -- documentato per esteso nella nota
-«Il limite della qualificazione per ambito». Se questo comando restituisse un OTTAVO caso non
-elencato qui, sarebbe una collisione vera da correggere, non da spiegare.
+«Il limite della qualificazione per ambito».
+
+**Aggiornato durante la review indipendente del Task 7 (`azione/`): l'ottavo caso e' arrivato, ed
+e' spiegato, non una collisione vera.** `propose` (`proponi`/`costruisci`) e' la STESSA coppia
+concetto/nome-di-strumento gia' vista per `promise` sopra -- `proponi` e' il metodo Python che
+implementa l'azione, `costruisci` e' il nome che il modello invoca per chiamarla -- documentato per
+esteso nella nota su `costruisci -> propose`, sotto la tabella dei 13 nomi degli strumenti. Se
+questo comando restituisse un NONO caso non elencato qui, sarebbe quello a essere una collisione
+vera da correggere, non da spiegare.
 
 **3. Nessun file di codice toccato, e il linter resta verde:**
 

@@ -112,7 +112,7 @@ class Journal:
             self._conn.close()
 
     def log(self, *, actor: str, service: str, entity: list[str],
-                 eseguito: bool, now: float, cambiato: list[str] | None = None,
+                 executed: bool, now: float, changed: list[str] | None = None,
                  error: str | None = None, notice: str | None = None) -> str:
         ident = secrets.token_urlsafe(9)
         with self._lock:
@@ -124,14 +124,14 @@ class Journal:
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
                 "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL)",
                 (ident, now, actor, service, json.dumps(list(entity)),
-                 int(bool(eseguito)),
-                 None if cambiato is None else json.dumps(list(cambiato)),
+                 int(bool(executed)),
+                 None if changed is None else json.dumps(list(changed)),
                  error, notice))
             self._conn.commit()
         return ident
 
     def log_construction(self, *, actor: str, operation: str, domain: str,
-                             key: str, entity: list[str], eseguito: bool,
+                             key: str, entity: list[str], executed: bool,
                              now: float, error: str | None = None,
                              notice: str | None = None) -> str:
         """Un atto di costruzione, nella STESSA tabella dei comandi.
@@ -157,7 +157,7 @@ class Journal:
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
                 "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?)",
                 (ident, now, actor, f"{domain}.{operation}",
-                 json.dumps(list(entity)), int(bool(eseguito)), error, notice,
+                 json.dumps(list(entity)), int(bool(executed)), error, notice,
                  f"{domain}.{key}"))
             self._conn.commit()
         return ident

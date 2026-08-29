@@ -16,6 +16,7 @@ from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.azione.costruzione.versioni import ConstructionStore
 from hiris.app.azione.cronaca import Journal
 from hiris.app.server import create_app
+from tests._contratti import assert_stessa_firma
 from tests.test_costruzione_officina import FintoHA
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
@@ -56,13 +57,26 @@ class FintaOfficina:
         self.esito = esito
         self.chiamate = []
 
-    async def applica(self, proposta_id, *, actor, exchange, now):
-        self.chiamate.append(("applica", proposta_id, actor, exchange))
+    async def apply(self, proposta_id, *, actor, exchange, now):
+        self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self.esito
 
-    async def ripristina(self, costruzione_id, *, actor, exchange, now):
-        self.chiamate.append(("ripristina", costruzione_id, actor, exchange))
+    async def restore(self, costruzione_id, *, actor, exchange, now):
+        self.chiamate.append(("restore", costruzione_id, actor, exchange))
         return self.esito
+
+
+def test_i_finti_combaciano_con_la_firma_vera():
+    """Se `ConstructionStore`/`Workshop` cambiano firma, questo test cade
+    invece di lasciare che i finti imitino un contratto che non esiste
+    piu'."""
+    assert_stessa_firma(ConstructionStore.list, FintoArchivio.list, nome="list")
+    assert_stessa_firma(ConstructionStore.read, FintoArchivio.read, nome="read")
+    assert_stessa_firma(ConstructionStore.scadi, FintoArchivio.scadi, nome="scadi")
+    assert_stessa_firma(ConstructionStore.mark_cancelled, FintoArchivio.mark_cancelled,
+                        nome="mark_cancelled")
+    assert_stessa_firma(Workshop.apply, FintaOfficina.apply, nome="apply")
+    assert_stessa_firma(Workshop.restore, FintaOfficina.restore, nome="restore")
 
 
 def _app(archivio=None, officina=None):
@@ -148,7 +162,7 @@ async def test_ripristinare_passa_dall_officina():
     app = _app(FintoArchivio([{"id": "c1", "stato": "applicata"}]), officina)
     risposta = await handle_ripristina_costruzione(FintaRichiesta(app, ident="c1"))
     assert risposta.status == 200
-    assert officina.chiamate[0][0] == "ripristina"
+    assert officina.chiamate[0][0] == "restore"
 
 
 @pytest.mark.asyncio
@@ -224,7 +238,7 @@ async def client(aiohttp_client, tmp_path):
 @pytest.mark.asyncio
 async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
@@ -242,7 +256,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
 @pytest.mark.asyncio
 async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client, csrf_stretto):
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
@@ -258,7 +272,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
 @pytest.mark.asyncio
 async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
@@ -279,7 +293,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     client, csrf_stretto
 ):
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip_ok",
         actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
@@ -299,7 +313,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
     Non tocca Home Assistant (vedi `handlers_costruzioni.py`), quindi la meta'
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
@@ -315,7 +329,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
 @pytest.mark.asyncio
 async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client, csrf_stretto):
     archivio = client.app["costruzioni"]
-    ident = archivio.proponi(
+    ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",

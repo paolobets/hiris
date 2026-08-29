@@ -1763,7 +1763,7 @@ async def _on_startup(app: web.Application) -> None:
     app["ha_client"] = ha_client
 
     # Cosa Home Assistant sa fare, in questa casa. Costruito vuoto: si carica
-    # al primo uso (`assicura_fresco`), non all'avvio -- un caricamento qui
+    # al primo uso (`ensure_fresh`), non all'avvio -- un caricamento qui
     # allungherebbe il boot per una cosa che potrebbe non servire in questa
     # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
     app["registro_servizi"] = ServiceRegistry()
@@ -2049,12 +2049,12 @@ async def _on_startup(app: web.Application) -> None:
     # di un'integrazione appena installata dicendo «non esiste in questa casa»:
     # una frase FALSA detta con sicurezza, che e' peggio di un «non lo so».
     #
-    # Si INVALIDA e basta -- la rilettura la fa `assicura_fresco` al prossimo
+    # Si INVALIDA e basta -- la rilettura la fa `ensure_fresh` al prossimo
     # comando. Installare un'integrazione emette una raffica di eventi, e una
     # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
     # qualcuno chiede di agire.
     _registro_servizi = app["registro_servizi"]
-    ha_client.add_servizi_listener(lambda _tipo: _registro_servizi.invalida())
+    ha_client.add_servizi_listener(lambda _tipo: _registro_servizi.invalidate())
 
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
     # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
@@ -2758,7 +2758,7 @@ async def _on_startup(app: web.Application) -> None:
     # Fetta «costruire»: le proposte rimaste `in_corso` da un riavvio a meta'.
     # Come per le promesse, si chiude PRIMA che qualcuno possa applicarne una
     # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
-    # nessuna `applica`, e resterebbe un fantasma fino alla potatura.
+    # nessuna `apply`, e resterebbe un fantasma fino alla potatura.
     try:
         app["costruzioni"].risana(adesso=_time.time())
     except Exception as exc:

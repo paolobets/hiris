@@ -12,7 +12,9 @@ paga piu' caro di ogni altro.
 """
 import pytest
 
+from hiris.app.azione.cronaca import Journal
 from hiris.app.casa.tempo import accaduto
+from tests._contratti import assert_stessa_firma
 
 ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC
 
@@ -30,9 +32,20 @@ class _FintaCronaca:
         self._righe = righe
         self.chiamate = []
 
-    def elenca(self, *, da_ts, a_ts, entita=None, limite=200):
-        self.chiamate.append((da_ts, a_ts, entita))
+    def list(self, *, da_ts, a_ts, entity=None, limit=200):
+        self.chiamate.append((da_ts, a_ts, entity))
         return list(self._righe)
+
+
+def test_la_finta_cronaca_combacia_con_la_firma_vera():
+    """Se `Journal.list` cambia firma, questo test cade invece di
+    lasciare che il finto imiti un contratto che non esiste piu'
+    (review indipendente, fetta «la rinomina»: `entita=`/`limite=` erano
+    rimasti qui mentre `casa/tempo.py::accaduto` chiamava gia' `.list(...
+    entity=...)`)."""
+    assert_stessa_firma(Journal.list, _FintaCronaca.list, nome="list")
+    assert_stessa_firma(Journal.list, _FintaCronacaCheSolleva.list,
+                        nome="list (che solleva)")
 
 
 def _voce(quando, messaggio="acceso", entita="light.cucina"):
@@ -156,7 +169,7 @@ class _FintaCronacaCheSolleva:
     """Un archivio che non risponde: l'attribuzione e' un di piu', non deve
     togliere all'utente la risposta sulla casa."""
 
-    def elenca(self, *, da_ts, a_ts, entita=None, limite=200):
+    def list(self, *, da_ts, a_ts, entity=None, limit=200):
         raise RuntimeError("database della cronaca non raggiungibile")
 
 

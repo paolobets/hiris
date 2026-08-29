@@ -481,8 +481,8 @@ async def accaduto(*, ha, cronaca, entita: str | None, ore,
         logger.debug("accaduto: nessuna cronaca disponibile, attribuzione persa")
     else:
         try:
-            atti = cronaca.elenca(da_ts=adesso_ts - ore_vere * 3600,
-                                  a_ts=adesso_ts, entita=entita)
+            atti = cronaca.list(da_ts=adesso_ts - ore_vere * 3600,
+                                  a_ts=adesso_ts, entity=entita)
             cronaca_letta = True
         except Exception as errore:
             # L'attribuzione e' un di piu': un archivio che non risponde non

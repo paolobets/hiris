@@ -22,7 +22,7 @@ import unicodedata
 _NON_SLUG = re.compile(r"[^a-z0-9_]+")
 
 
-def nuovo_id(existing: set[str], seme: int) -> str:
+def new_id(existing: set[str], seme: int) -> str:
     """Un id di automazione o scena che in questa casa non esiste.
 
     Home Assistant usa timestamp in millisecondi come id nei file scritti
@@ -42,7 +42,7 @@ def nuovo_id(existing: set[str], seme: int) -> str:
     return candidato
 
 
-def slug_libero(base: str, existing: set[str]) -> str:
+def available_slug(base: str, existing: set[str]) -> str:
     """Una chiave di script che non collide. `cv.slug` la valida lato HA."""
     # Traslittera gli accenti prima di applicare la regex, altrimenti
     # "perché" → "perch" invece di "perche".
@@ -78,7 +78,7 @@ def compose_automation(*, id_: str, alias: str, descrizione: str, innesco: list,
 def compose_script(*, alias: str, descrizione: str, passi: list,
                    fields: dict | None = None, modo: str = "single") -> dict:
     """Il corpo di uno script. La CHIAVE (lo slug) non sta dentro il corpo:
-    la porta l'URL, ed e' `slug_libero` a produrla."""
+    la porta l'URL, ed e' `available_slug` a produrla."""
     body = {
         "alias": alias,
         "description": descrizione,
@@ -100,7 +100,7 @@ def compose_scene(*, id_: str, alias: str, states: list[dict]) -> dict:
 
     **Precondizione**: gli stati sono gia' controllati con `state_problems`.
     Una scena e' l'unico dominio che a valle non viene validato da Home
-    Assistant (`parti_da_validare` restituisce {}): uno stato perso qui non
+    Assistant (`parts_to_validate` restituisce {}): uno stato perso qui non
     lo intercetta piu' nessuno.
     """
     entity: dict[str, dict] = {}
@@ -123,7 +123,7 @@ def state_problems(states: list) -> list[str]:
     gia' separa cio' che ha costruito da cio' che non ha potuto concludere.
 
     Serve perche' una scena e' l'unico dominio che a valle non viene
-    validato da Home Assistant (`parti_da_validare` restituisce {}): uno
+    validato da Home Assistant (`parts_to_validate` restituisce {}): uno
     stato perso qui non lo intercetta piu' nessuno.
     """
     problems: list[str] = []
@@ -146,7 +146,7 @@ def state_problems(states: list) -> list[str]:
     return problems
 
 
-def parti_da_validare(domain: str, body: dict) -> dict:
+def parts_to_validate(domain: str, body: dict) -> dict:
     """I kwarg da passare a `HAClient.valida_config` per questo corpo.
 
     Una **scena non si valida**: non ha inneschi ne' azioni, e chiedere a

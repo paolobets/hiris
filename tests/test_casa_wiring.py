@@ -275,7 +275,7 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 
 @pytest.mark.asyncio
 async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
-    """Il cuore della fetta. Senza `invalida()`, `assicura_fresco` guarda solo
+    """Il cuore della fetta. Senza `invalidate()`, `ensure_fresh` guarda solo
     l'eta' e torna subito: l'evento non servirebbe a niente."""
     from hiris.app.azione.registro import ServiceRegistry
 
@@ -289,37 +289,37 @@ async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
 
     ha = _Ha()
     r = ServiceRegistry()
-    await r.assicura_fresco(ha)
+    await r.ensure_fresh(ha)
     assert ha.letture == 1
 
     # Senza invalidare: nessuna seconda lettura, l'eta' e' minima.
-    await r.assicura_fresco(ha)
+    await r.ensure_fresh(ha)
     assert ha.letture == 1
 
-    r.invalida()
-    await r.assicura_fresco(ha)
+    r.invalidate()
+    await r.ensure_fresh(ha)
     assert ha.letture == 2, (
         "dopo un `service_registered` il registro deve rileggere, altrimenti "
         "HIRIS continua a dire «non esiste in questa casa» per 5 minuti")
 
 
 def test_invalidare_non_svuota_cio_che_si_sapeva():
-    """`invalida()` dice «rileggi appena serve», non «dimentica». Se svuotasse,
+    """`invalidate()` dice «rileggi appena serve», non «dimentica». Se svuotasse,
     fra l'evento e la rilettura HIRIS non potrebbe verificare NIENTE -- e un
     registro assente e' peggio di uno vecchio (e' la ragione scritta in
-    `assicura_fresco`)."""
+    `ensure_fresh`)."""
     from hiris.app.azione.registro import ServiceRegistry
 
     r = ServiceRegistry()
     r._per_domain = {"light": {"turn_on": {}}}
     r._caricato_a = 1.0
-    r.invalida()
+    r.invalidate()
     assert r.service("light", "turn_on") is not None
     assert not r.empty()
 
 
 def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
-    """Senza questa prova, `invalida()` e la famiglia di eventi sarebbero un
+    """Senza questa prova, `invalidate()` e la famiglia di eventi sarebbero un
     meccanismo che nessuno collega -- e in produzione il registro continuerebbe
     a rinfrescarsi solo a scadenza, con la suite tutta verde.
 
@@ -334,5 +334,5 @@ def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
     assert "add_servizi_listener" in src, (
         "nessuno registra l'ascoltatore dei servizi: gli eventi arrivano e "
         "non invalidano niente")
-    assert ".invalida()" in src, (
+    assert ".invalidate()" in src, (
         "l'ascoltatore c'e' ma non invalida: il registro resta vecchio")

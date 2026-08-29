@@ -375,14 +375,14 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     # giro 1: lo stato cambia davvero -> `prima`/`dopo`/`cambiato`, niente avviso
     client, cache = _casa(SALOTTO_ACCESO, annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
     registro = ServiceRegistry()
-    await registro.aggiorna(client)
+    await registro.refresh(client)
     porta = ActionActuator(client, registro, cache)
     chiavi |= set(await porta.execute(SPEGNI_IL_SALOTTO, actor="test"))
 
     # giro 2: la chiamata riesce e non cambia niente -> compare `avviso`
     client2 = FintoClient()
     registro2 = ServiceRegistry()
-    await registro2.aggiorna(client2)
+    await registro2.refresh(client2)
     porta2 = ActionActuator(client2, registro2, FintaCache(SALOTTO_SPENTO))
     chiavi |= set(await porta2.execute(SPEGNI_IL_SALOTTO, actor="test"))
 

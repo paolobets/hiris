@@ -2,8 +2,10 @@
 import pytest
 
 from hiris.app.agent.runner import nomi_mcp
+from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.schedulatore.turno import tools_promise
+from tests._contratti import assert_stessa_firma
 
 
 class FintaOfficina:
@@ -13,13 +15,22 @@ class FintaOfficina:
         self._applica = esito_applica or {"applicata": True, "esecuzione_id": "e1",
                                           "entita": ["automation.x"], "avviso": None}
 
-    async def proponi(self, intento, *, origine, turno, adesso):
-        self.chiamate.append(("proponi", intento, origine, turno))
+    async def propose(self, intento, *, actor, exchange, now):
+        self.chiamate.append(("propose", intento, actor, exchange))
         return self._proponi
 
-    async def applica(self, proposta_id, *, origine, turno, adesso):
-        self.chiamate.append(("applica", proposta_id, origine, turno))
+    async def apply(self, proposta_id, *, actor, exchange, now):
+        self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self._applica
+
+
+def test_la_finta_officina_combacia_con_la_firma_vera():
+    """Se `Workshop.propose`/`apply` cambia firma, questo test cade
+    invece di lasciare che il finto imiti un contratto che non esiste
+    piu' (review indipendente, fetta «la rinomina»: `origine`/`turno`/
+    `adesso` erano rimasti su ENTRAMBI i lati, chiamante vero compreso)."""
+    assert_stessa_firma(Workshop.propose, FintaOfficina.propose, nome="propose")
+    assert_stessa_firma(Workshop.apply, FintaOfficina.apply, nome="apply")
 
 
 def _dispatcher(**kw):
@@ -55,7 +66,7 @@ async def test_costruisci_passa_l_intento_e_il_turno_all_officina():
         "descrizione": "d", "innesco": [{"trigger": "sun"}],
         "azioni": [{"action": "cover.open_cover"}]})
     verbo, intento, origine, turno = officina.chiamate[0]
-    assert verbo == "proponi"
+    assert verbo == "propose"
     assert intento["dominio"] == "automation"
     assert origine == "chat"
     assert turno == "t7"
@@ -68,7 +79,7 @@ async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
     d = _dispatcher(officina=officina, turno="t7")
     await d.dispatch("conferma", {"proposta_id": "p1"})
     verbo, proposta_id, _origine, turno = officina.chiamate[0]
-    assert verbo == "applica"
+    assert verbo == "apply"
     assert proposta_id == "p1"
     assert turno == "t7"
 
@@ -115,7 +126,7 @@ async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
     (`handlers_costruzioni.py`), e sul percorso HTTP lo e' davvero -- quella
     rotta lo legge per scegliere 503 invece di 409 e poi lo toglie dal corpo.
     Sul percorso chat, prima di questa correzione, lo strumento restituiva il
-    dizionario di `applica` tale e quale: il flag usciva integro verso il
+    dizionario di `apply` tale e quale: il flag usciva integro verso il
     modello. O e' interno da entrambe le porte, o il commento mente su una."""
     officina = FintaOfficina(esito_applica={
         "errore": "Home Assistant non ha risposto: timeout", "guasto_rete": True})

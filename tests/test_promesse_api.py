@@ -170,7 +170,7 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
     cronaca = client.app["cronaca"]
     ident = cronaca.log(
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
-        eseguito=True, cambiato=["light.studio"], now=1_755_600_000.0)
+        executed=True, changed=["light.studio"], now=1_755_600_000.0)
 
     risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200
@@ -221,6 +221,6 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
     cronaca = client.app["cronaca"]
     ident = cronaca.log(actor="chat", service="a.b", entity=[],
-                             eseguito=True, now=1.0)
+                             executed=True, now=1.0)
     risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200

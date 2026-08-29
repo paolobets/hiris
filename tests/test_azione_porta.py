@@ -285,7 +285,7 @@ HA_RIPORTA_LA_CAMERA_A_19_5 = [
 
 async def _registro_pronto(client):
     registro = ServiceRegistry()
-    await registro.aggiorna(client)
+    await registro.refresh(client)
     return registro
 
 
@@ -1065,7 +1065,7 @@ async def test_senza_cronaca_la_porta_si_comporta_come_prima():
 
 @pytest.mark.asyncio
 async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_path):
-    """Il ramo `eseguito=False` CON cronaca presente, mai esercitato prima
+    """Il ramo `executed=False` CON cronaca presente, mai esercitato prima
     della review finale (rilievo minore): la chiamata SUPERA la verifica ma
     Home Assistant la rifiuta -- e' un tentativo che e' successo, non un
     errore del modello, quindi deve finire in cronaca (a differenza del

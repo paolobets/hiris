@@ -50,6 +50,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from hiris.app.azione.porta import ActionActuator
 from hiris.app.casa.archivio import ArchivioCasa
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
@@ -57,6 +58,7 @@ from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.server import create_app
+from tests._contratti import assert_stessa_firma
 from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento
 
 
@@ -694,6 +696,10 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
                     "prima": {"light.cucina_1": "on"},
                     "dopo": {"light.cucina_1": "off"},
                     "cambiato": ["light.cucina_1"]}
+
+    # Se `ActionActuator.execute` cambia firma, questa riga cade invece di
+    # lasciare che il finto imiti un contratto che non esiste piu'.
+    assert_stessa_firma(ActionActuator.execute, _PortaFinta.execute, nome="execute")
 
     porta = _PortaFinta()
     client, runner = await _build_chat_client_runner_reale(

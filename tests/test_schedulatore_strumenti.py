@@ -9,6 +9,7 @@ from hiris.app.azione.registro import ServiceRegistry
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.schedulatore.archivio import AgendaStore
+from tests._contratti import assert_stessa_firma
 
 # NON un `pytestmark` di modulo: a differenza di `test_schedulatore_orologio.py`
 # (dove ogni test e' async), qui un test e' sincrono
@@ -292,7 +293,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
 @pytest.mark.asyncio
 async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promesse):
     """Il gemello del test sopra (punto 3 del task): senza un canale HA vivo
-    il registro non si puo' caricare (`assicura_fresco` vuole un client), e
+    il registro non si puo' caricare (`ensure_fresh` vuole un client), e
     deve restare il rifiuto onesto di sempre -- MAI tentare comunque.
 
     `_RegistroTracciaScaldamento.assicura_fresco` solleva se viene chiamato:
@@ -463,6 +464,19 @@ class _RegistroVuoto:
         return []
 
 
+def test_i_registri_finti_combaciano_con_la_firma_vera():
+    """Se `ServiceRegistry` cambia firma, questo test cade invece di
+    lasciare che i finti imitino un contratto che non esiste piu'."""
+    assert_stessa_firma(ServiceRegistry.domains, _RegistroFinto.domains, nome="domains")
+    assert_stessa_firma(ServiceRegistry.service, _RegistroFinto.service, nome="service")
+    assert_stessa_firma(ServiceRegistry.services_for, _RegistroFinto.services_for,
+                        nome="services_for")
+    assert_stessa_firma(ServiceRegistry.domains, _RegistroVuoto.domains,
+                        nome="domains (vuoto)")
+    assert_stessa_firma(ServiceRegistry.ensure_fresh,
+                        _RegistroTracciaScaldamento.ensure_fresh, nome="ensure_fresh")
+
+
 class _HaConServizi:
     """Il doppio del canale HA che risponde a `get_services()` per davvero
     -- quello che `ServiceRegistry.assicura_fresco` chiama per scaldarsi.
@@ -471,7 +485,7 @@ class _HaConServizi:
     servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
     (`tests/test_azione_porta.py`) -- una lista vuota o un'eccezione
     lascerebbe il registro vuoto comunque, e nasconderebbe che
-    `assicura_fresco` non e' mai stata chiamata invece di provarlo.
+    `ensure_fresh` non e' mai stata chiamata invece di provarlo.
     """
 
     def __init__(self):
@@ -503,10 +517,10 @@ class _RegistroTracciaScaldamento:
     def domains(self):
         return []
 
-    async def assicura_fresco(self, ha_client):
+    async def ensure_fresh(self, ha_client):
         self.chiamato = True
         raise AssertionError(
-            "assicura_fresco non doveva essere chiamato senza un canale HA")
+            "ensure_fresh non doveva essere chiamato senza un canale HA")
 
 
 class _CacheFinta:

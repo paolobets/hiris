@@ -17,7 +17,9 @@ import inspect
 
 import pytest
 
+from hiris.app.azione.porta import ActionActuator
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from tests._contratti import assert_stessa_firma
 
 
 class FintaPorta:
@@ -29,6 +31,12 @@ class FintaPorta:
     async def execute(self, chiamata, *, actor):
         self.chiamate.append((chiamata, actor))
         return self.esito
+
+
+def test_la_finta_porta_combacia_con_la_firma_vera():
+    """Se `ActionActuator.execute` cambia firma, questo test cade invece
+    di lasciare che il finto imiti un contratto che non esiste piu'."""
+    assert_stessa_firma(ActionActuator.execute, FintaPorta.execute, nome="execute")
 
 
 def test_esegui_e_nel_catalogo_unico():

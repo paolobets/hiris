@@ -3,9 +3,11 @@ import os
 
 import pytest
 
+from hiris.app.azione.porta import ActionActuator
 from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.schedulatore.promise import TOLLERANZA_S
 from hiris.app.schedulatore.sweeper import Sweeper
+from tests._contratti import assert_stessa_firma
 
 ADESSO = 1_755_600_000.0
 pytestmark = pytest.mark.asyncio
@@ -23,6 +25,12 @@ class PortaFinta:
     async def __call__(self, chiamata, *, actor):
         self.chiamate.append((chiamata, actor))
         return self._occurrence
+
+
+def test_la_porta_finta_combacia_con_la_firma_vera():
+    """Se `ActionActuator.execute` cambia firma, questo test cade invece
+    di lasciare che il finto imiti un contratto che non esiste piu'."""
+    assert_stessa_firma(ActionActuator.execute, PortaFinta.__call__, nome="execute")
 
 
 class TurnoFinto:
@@ -308,7 +316,7 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
     ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
     client = _ClientSoloNotifica()
     registro = ServiceRegistry()
-    await registro.aggiorna(client)
+    await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
 

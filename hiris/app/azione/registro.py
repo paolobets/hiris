@@ -4,7 +4,7 @@ Non e' un catalogo scritto da noi -- e' lo specchio di `/api/services`. Per
 questo copre le integrazioni installate dopo, senza che nessuno tocchi HIRIS:
 e' l'invariante «verificare, non insegnare» della spec dell'azione.
 
-Non solleva mai (tranne al primissimo caricamento, vedi `assicura_fresco`): un
+Non solleva mai (tranne al primissimo caricamento, vedi `ensure_fresh`): un
 registro mai caricato, o caricato da una risposta malformata, risponde `None` a
 chi lo interroga. Chi decide cosa dire all'utente e' la verifica, non questo
 modulo.
@@ -32,7 +32,7 @@ parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
 
 **`target` non viene toccato, ed e' voluto** (review finale, rilievo CRITICO
 ①). A differenza di `fields`, che va appiattito per essere letto,
-`_dettaglio()` lo lascia esattamente come Home Assistant lo manda -- spreads
+`_detail()` lo lascia esattamente come Home Assistant lo manda -- spreads
 `**grezzo`, quindi la chiave sopravvive intera, `None` compreso -- perche' qui
 serve il dato grezzo, non una sua interpretazione: e' `azione/verifica.py` a
 decidere cosa significhi «un servizio senza `target`» (vedi
@@ -112,15 +112,15 @@ class ServiceRegistry:
         self._per_domain: dict[str, dict[str, dict]] = {}
         self._caricato_a: float | None = None
         self._max_age_s = max_age_s
-        # Il segno di «rileggi appena serve», messo da `invalida()`. E' un
+        # Il segno di «rileggi appena serve», messo da `invalidate()`. E' un
         # campo SUO e non un azzeramento di `_caricato_a`: quello significa
         # «mai letto» (vedi `empty()`), e fingerlo farebbe SOLLEVARE
-        # `assicura_fresco` al primo rinfresco fallito invece di tenere il
+        # `ensure_fresh` al primo rinfresco fallito invece di tenere il
         # registro vecchio -- cioe' il contrario esatto di cio' che quel
         # metodo dichiara di volere.
         self._da_rileggere = False
 
-    async def aggiorna(self, ha_client) -> None:
+    async def refresh(self, ha_client) -> None:
         """Rilegge `/api/services` e **sostituisce** cio' che sapevamo.
 
         Sostituisce, non fonde: un'integrazione disinstallata deve sparire
@@ -156,7 +156,7 @@ class ServiceRegistry:
                            "forma non e' quella attesa (lista di {domain, services})",
                            len(reading) if isinstance(reading, list) else "?")
 
-    async def assicura_fresco(self, ha_client) -> None:
+    async def ensure_fresh(self, ha_client) -> None:
         """Ricarica se serve. Un guasto NON svuota cio' che sapevamo.
 
         Un registro vecchio e' meno peggio di un registro assente: col primo
@@ -174,7 +174,7 @@ class ServiceRegistry:
         if age is not None and age < self._max_age_s and not self._da_rileggere:
             return
         try:
-            await self.aggiorna(ha_client)
+            await self.refresh(ha_client)
         except Exception as error:
             if self.empty():
                 raise
@@ -182,13 +182,13 @@ class ServiceRegistry:
                            "tengo quello di %.0fs fa",
                            type(error).__name__, error, age or 0.0)
 
-    def invalida(self) -> None:
+    def invalidate(self) -> None:
         """«Rileggi appena serve», non «dimentica».
 
         Lo chiama chi ascolta `service_registered`/`service_removed`. Azzera
         solo l'ETA', non il contenuto: fra l'evento e la rilettura HIRIS deve
         poter ancora verificare qualcosa, e un registro assente e' peggio di
-        uno vecchio -- la stessa ragione scritta in `assicura_fresco`, applicata
+        uno vecchio -- la stessa ragione scritta in `ensure_fresh`, applicata
         al caso opposto.
 
         E non rilegge da se': installare un'integrazione emette una raffica di

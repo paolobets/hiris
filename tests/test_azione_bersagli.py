@@ -72,7 +72,7 @@ class FintoRegistroClient:
 
 async def _registro_pronto() -> ServiceRegistry:
     r = ServiceRegistry()
-    await r.aggiorna(FintoRegistroClient())
+    await r.refresh(FintoRegistroClient())
     return r
 
 
@@ -499,7 +499,7 @@ class FintaCache:
 
 async def _porta(client) -> ActionActuator:
     registro = ServiceRegistry()
-    await registro.aggiorna(FintoRegistroClient())
+    await registro.refresh(FintoRegistroClient())
     return ActionActuator(client, registro, FintaCache(STATI_CUCINA))
 
 
