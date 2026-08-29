@@ -226,6 +226,32 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
     return fuori, proposte
 
 
+def _leggi_grezzo(f: Path) -> str:
+    """Il sorgente coi SUOI fine-riga, non quelli di `leggi()` (`_comune.py`).
+
+    `leggi()` legge in universal newlines implicito: va bene per chi la
+    usa solo in lettura (`censimento.py`, `doppioni.py`), sbagliato qui, dove
+    il testo si RISCRIVE sul disco. Non si tocca `_comune.py` per questo:
+    e' condiviso con quei due strumenti, e a loro il comportamento attuale
+    va bene -- leggere diversamente quando serve una garanzia che lui non
+    da' non e' il doppione che il vincolo vieta.
+
+    `newline=""` lascia intatti i fine-riga che ci sono, qualunque essi
+    siano; senza, la scrittura successiva li tradurrebbe (su Windows, LF
+    diventa CRLF) e cambierebbe OGNI riga del file, non solo quella
+    dell'identificatore rinominato -- il contrario della prima guardia (un
+    diff che contiene una cosa sola).
+    """
+    with open(f, encoding="utf-8-sig", errors="replace", newline="") as fh:
+        return fh.read()
+
+
+def _scrivi_grezzo(f: Path, testo: str) -> None:
+    """Scrive senza tradurre i fine-riga: il gemello di `_leggi_grezzo`."""
+    with open(f, "w", encoding="utf-8", newline="") as fh:
+        fh.write(testo)
+
+
 def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
     """Tutto il sottosistema, oppure un file solo. Un file illeggibile si
     riporta e si va avanti.
@@ -239,7 +265,7 @@ def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
     file = [base] if base.is_file() else file_py(base)
     tutte: list[Proposta] = []
     for f in file:
-        sorgente = leggi(f)
+        sorgente = _leggi_grezzo(f)
         try:
             fuori, proposte = riscrivi(sorgente, g_corrente(), ambito)
         except (tokenize.TokenError, IndentationError, SyntaxError) as exc:
@@ -247,7 +273,7 @@ def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
             continue
         tutte.extend(proposte)
         if scrivi and fuori != sorgente:
-            f.write_text(fuori, encoding="utf-8")
+            _scrivi_grezzo(f, fuori)
     return tutte
 
 

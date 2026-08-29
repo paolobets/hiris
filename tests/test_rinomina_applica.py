@@ -1,5 +1,7 @@
 """L'applicazione ai file: cosa si tocca, cosa no, e le guardie."""
+import io
 import sys
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -74,20 +76,77 @@ def test_un_file_che_non_si_puo_leggere_non_ferma_il_giro(g, tmp_path):
     assert (tmp_path / "rotto.py").read_text(encoding="utf-8") == "def (\n"
 
 
-def test_NON_tocca_le_fstring(g):
-    """La guardia sul tipo NAME e' l'UNICA difesa qui, non una ridondanza.
+@pytest.mark.parametrize(("prefisso", "tipo_atteso"), [
+    ("f", "FSTRING_MIDDLE"),
+    ("t", "TSTRING_MIDDLE"),
+])
+def test_la_guardia_e_un_allowlist_non_una_blocklist(g, prefisso, tipo_atteso):
+    """`if t.type != tokenize.NAME: continue` e' un ALLOWLIST assoluto --
+    passa solo NAME -- non un elenco di tipi «pericolosi» da riconoscere ed
+    escludere uno per uno. La differenza conta: un elenco andrebbe
+    aggiornato a ogni versione di Python che introduce un nuovo tipo di
+    token; un allowlist copre anche i tipi che non esistono ancora, per
+    costruzione.
 
-    Misurato: un commento o una stringa normale sono immuni a prescindere
-    dalla guardia, perche' il loro token include sempre il delimitatore
-    (`#`, `"`) e `classifica` confronta l'intero pezzo -- togliere la
-    guardia su quei due casi non li tocca comunque (verificato per
-    mutazione: allargarla a COMMENT lascia la suite verde). `FSTRING_MIDDLE`
-    (PEP 701, Python 3.12+) e' diverso: porta il testo letterale SENZA i
-    delimitatori, quindi e' l'unico punto dove la guardia sul tipo, e non la
-    forma del token, e' cio' che protegge davvero."""
-    dentro = 'msg = f"archivio{x}"\n'
+    Il test prova quindi la PROPRIETA', non l'elenco: un token diverso da
+    NAME che porta il testo letterale di una parola del glossario SENZA
+    delimitatori intorno resta intatto. COMMENT e STRING non sono casi
+    utili qui: portano sempre il loro delimitatore (`#`, le virgolette)
+    dentro `t.string`, e restano immuni anche senza la guardia (verificato
+    per mutazione altrove: allargare il filtro a COMMENT non fa fallire
+    `test_NON_tocca_i_commenti` ne' `test_NON_tocca_le_stringhe`). I due
+    casi che oggi hanno davvero testo nudo sono FSTRING_MIDDLE (f-string,
+    PEP 701, Python 3.12+) e TSTRING_MIDDLE (t-string, PEP 750,
+    Python 3.14+); il test verifica anche che l'interprete generi
+    davvero quel token, cosi' la parametrizzazione non resta silenziosamente
+    inerte se un giorno smettesse di generarlo."""
+    dentro = f'msg = {prefisso}"archivio{{x}}"\n'
+    generati = {t.type for t in tokenize.generate_tokens(io.StringIO(dentro).readline)}
+    assert getattr(tokenize, tipo_atteso) in generati, (
+        f"il caso di prova non genera {tipo_atteso}: la proprieta' non e' verificata"
+    )
     fuori, _ = rinomina.riscrivi(dentro, g, "memoria")
     assert fuori == dentro
+
+
+def test_NON_cambia_i_fine_riga_LF(g, tmp_path):
+    """Il giro non deve toccare i fine-riga esistenti -- di NESSUNA riga,
+    non solo di quella con l'identificatore rinominato.
+
+    Misurato: leggere e scrivere in universal newlines implicito (senza
+    fissare `newline`) fa si' che su Windows la scrittura traduca ogni LF
+    in CRLF, anche per le righe che il giro non doveva toccare -- un file
+    LF diventerebbe interamente CRLF, il contrario della prima guardia (un
+    diff che contiene una cosa sola). Il test legge e scrive BYTE GREZZI di
+    proposito: `read_text()`/`write_text()` senza `newline` rinormalizzano
+    in lettura e traducono in scrittura in modo simmetrico, e
+    maschererebbero esattamente il difetto che questo test deve
+    cogliere."""
+    f = tmp_path / "lf.py"
+    f.write_bytes(b"archivio = 1\nx = 2\n")
+    rinomina.applica(tmp_path, "memoria")
+    dopo = f.read_bytes()
+    assert b"\r\n" not in dopo
+    assert dopo == b"store = 1\nx = 2\n"
+
+
+def test_NON_cambia_i_fine_riga_CRLF(g, tmp_path):
+    """Il gemello del test sopra, nella direzione opposta.
+
+    Misurato: fissare `newline=""` solo in SCRITTURA non basta -- serve
+    anche in LETTURA. Senza, la lettura normalizza CRLF a LF in memoria (e'
+    la meta' «universal» dello universal newlines), e la scrittura
+    successiva (anche con `newline=""` fissato) riscrive fedelmente quell'LF
+    normalizzato: un file CRLF verrebbe declassato a LF su OGNI riga, la
+    stessa violazione della guardia vista sopra ma nella direzione
+    contraria. Provato per mutazione: togliere `newline=""` dalla sola
+    lettura di `_leggi_grezzo` non fa fallire il test gemello LF (il file
+    LF non ha nulla da normalizzare in lettura), ma fa fallire questo."""
+    f = tmp_path / "crlf.py"
+    f.write_bytes(b"archivio = 1\r\nx = 2\r\n")
+    rinomina.applica(tmp_path, "memoria")
+    dopo = f.read_bytes()
+    assert dopo == b"store = 1\r\nx = 2\r\n"
 
 
 def test_applica_su_un_file_singolo(g, tmp_path):
