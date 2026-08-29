@@ -180,3 +180,119 @@ def classifica(nome: str, g: Glossario, ambito: str):
     return Proposta(nome=nome, pezzi=[p.lower() for p in pezzi], suggerito=suggerito)
 
 
+import argparse
+import io
+import subprocess
+import tokenize
+
+from _comune import file_py, rel
+
+
+def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta]]:
+    """Il sorgente coi soli token NAME rinominati, piu' i composti da decidere.
+
+    Si sostituisce sul TESTO alle posizioni dei token, da destra a sinistra:
+    `tokenize.untokenize` rigenererebbe il file e ne perderebbe la
+    formattazione, che qui e' contenuto -- i commenti allineati di questa
+    codebase sono la sua parte migliore.
+    """
+    righe = sorgente.splitlines(keepends=True)
+    inizi = [0]
+    for r in righe:
+        inizi.append(inizi[-1] + len(r))
+
+    def offset(pos):
+        riga, col = pos
+        return inizi[riga - 1] + col
+
+    cambi, proposte = [], []
+    visti = set()
+    for t in tokenize.generate_tokens(io.StringIO(sorgente).readline):
+        if t.type != tokenize.NAME:
+            continue
+        esito = classifica(t.string, g, ambito)
+        if esito is None:
+            continue
+        if isinstance(esito, Proposta):
+            if esito.nome not in visti:
+                visti.add(esito.nome)
+                proposte.append(esito)
+            continue
+        cambi.append((offset(t.start), offset(t.end), esito))
+
+    fuori = sorgente
+    for i, j, nuovo in sorted(cambi, reverse=True):
+        fuori = fuori[:i] + nuovo + fuori[j:]
+    return fuori, proposte
+
+
+def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
+    """Tutto il sottosistema, oppure un file solo. Un file illeggibile si
+    riporta e si va avanti.
+
+    Misurato: `file_py()` usa `rglob`, che su un percorso-file non trova
+    nulla -- serve decidere l'elenco dei file all'inizio, non delegarlo
+    tutto a `file_py`, o un `--percorso` a un file singolo elaborerebbe
+    zero file senza errore: il difetto peggiore, perche' ha l'aspetto
+    esatto di un successo.
+    """
+    file = [base] if base.is_file() else file_py(base)
+    tutte: list[Proposta] = []
+    for f in file:
+        sorgente = leggi(f)
+        try:
+            fuori, proposte = riscrivi(sorgente, g_corrente(), ambito)
+        except (tokenize.TokenError, IndentationError, SyntaxError) as exc:
+            print(f"  ! {rel(f)}: non leggibile, saltato ({exc})")
+            continue
+        tutte.extend(proposte)
+        if scrivi and fuori != sorgente:
+            f.write_text(fuori, encoding="utf-8")
+    return tutte
+
+
+_G: Glossario | None = None
+
+
+def g_corrente() -> Glossario:
+    global _G
+    if _G is None:
+        _G = leggi_glossario()
+    return _G
+
+
+def _albero_pulito() -> bool:
+    fuori = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                           capture_output=True, text=True, check=False)
+    return not fuori.stdout.strip()
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description="Rinomina gli identificatori di un sottosistema.")
+    p.add_argument("--percorso", required=True, help="es. hiris/app/consumi")
+    p.add_argument("--ambito", required=True, help="il sottosistema, per gli omonimi: es. consumi")
+    p.add_argument("--dry-run", action="store_true", help="non scrive, elenca soltanto")
+    a = p.parse_args(argv)
+
+    # Guardia 1: un diff da rivedere non deve mai mescolare la rinomina con
+    # altro. E' l'unica cosa che rende leggibile un diff da migliaia di righe.
+    if not a.dry_run and not _albero_pulito():
+        print("albero sporco: la rinomina si applica solo su un albero pulito")
+        return 1
+
+    base = ROOT / a.percorso
+    if not base.exists():
+        print(f"percorso inesistente: {a.percorso}")
+        return 1
+
+    proposte = applica(base, a.ambito, scrivi=not a.dry_run)
+    print(f"{a.percorso} (ambito «{a.ambito}»): {len(proposte)} composti da decidere")
+    for pr in sorted(proposte, key=lambda x: x.nome):
+        print(f"  {pr.nome:38} pezzi={'+'.join(pr.pezzi):30} suggerito={pr.suggerito}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
