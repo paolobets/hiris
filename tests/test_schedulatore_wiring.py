@@ -33,8 +33,8 @@ import pytest
 
 from hiris.app import server
 from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
-from hiris.app.azione.cronaca import Cronaca
-from hiris.app.azione.porta import PortaAzione
+from hiris.app.azione.cronaca import Journal
+from hiris.app.azione.porta import ActionActuator
 from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.schedulatore.sweeper import Sweeper
 from hiris.app.schedulatore.turno import interpreta_promise
@@ -45,16 +45,16 @@ from hiris.app.schedulatore.turno import interpreta_promise
 def _load_costruzione_archivi():
     """Estrae dal sorgente vero di `_on_startup` il blocco che costruisce
     `app["cronaca"]`, `app["promesse"]` e passa la cronaca alla porta -- da
-    `app["cronaca"] = Cronaca(` fino (incluso) alla chiamata a `PortaAzione`.
+    `app["cronaca"] = Journal(` fino (incluso) alla chiamata a `ActionActuator`.
     """
     src = inspect.getsource(server._on_startup)
-    start = src.index('    app["cronaca"] = Cronaca(')
+    start = src.index('    app["cronaca"] = Journal(')
     end_marker = 'app.get("entity_cache"), app["cronaca"])'
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
-        "async def _check(app, data_dir, os, ha_client, Cronaca, "
-        "AgendaStore, PortaAzione):\n" + textwrap.indent(body, "    ")
+        "async def _check(app, data_dir, os, ha_client, Journal, "
+        "AgendaStore, ActionActuator):\n" + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup costruzione archivi>", "exec"), namespace)
@@ -66,23 +66,23 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(tmp_path):
     check = _load_costruzione_archivi()
     app: dict = {"registro_servizi": object()}  # sentinella: la porta la deve
     # ricevere TALE E QUALE, non ricalcolata.
-    ha_client = object()  # PortaAzione non lo chiama alla costruzione (solo lo
+    ha_client = object()  # ActionActuator non lo chiama alla costruzione (solo lo
     # conserva): un oggetto qualunque basta a dimostrare che e' quello passato.
 
-    await check(app, str(tmp_path), os, ha_client, Cronaca, AgendaStore,
-                PortaAzione)
+    await check(app, str(tmp_path), os, ha_client, Journal, AgendaStore,
+                ActionActuator)
 
-    assert isinstance(app["cronaca"], Cronaca)
+    assert isinstance(app["cronaca"], Journal)
     assert isinstance(app["promesse"], AgendaStore)
     try:
         porta = app["porta_azione"]
-        assert isinstance(porta, PortaAzione)
+        assert isinstance(porta, ActionActuator)
         # La porta deve aver ricevuto la STESSA cronaca appena costruita, non
         # `None` (il difetto che questo test esiste per impedire: una porta
         # costruita a tre argomenti scriverebbe di nuovo solo nel log).
-        assert porta._cronaca is app["cronaca"]
+        assert porta._journal is app["cronaca"]
         assert porta._ha is ha_client
-        assert porta._registro is app["registro_servizi"]
+        assert porta._registry is app["registro_servizi"]
     finally:
         app["cronaca"].close()
         app["promesse"].close()

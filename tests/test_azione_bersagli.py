@@ -14,10 +14,10 @@ Assistant**, con `extract_from_target`.
 Le prove sono in quattro parti, e ognuna guarda un pezzo diverso della stessa
 promessa:
 
-1. **la traduzione** (`verifica.traduci_bersaglio`, pura): i nomi italiani del
+1. **la traduzione** (`verifica.translate_target`, pura): i nomi italiani del
    modello diventano i cinque campi di `cv.TARGET_FIELDS`, e cio' che non si
    sa leggere si dichiara invece di sparire;
-2. **il verdetto** (`verifica.verifica`, pura): cosa si tocca, cosa resta
+2. **il verdetto** (`verifica.verification`, pura): cosa si tocca, cosa resta
    fuori e con che parola lo si dice -- senza rete, in millisecondi;
 3. **il client** (`ha_client.estrai_dal_bersaglio`): il comando che parte
    davvero, e le due meta' della risposta;
@@ -42,9 +42,9 @@ la preparazione sta in un helper `await`ato.
 import pytest
 
 from hiris.app.azione import porta as porta_modulo
-from hiris.app.azione.porta import PortaAzione
-from hiris.app.azione.registro import RegistroServizi
-from hiris.app.azione.verifica import BERSAGLI, traduci_bersaglio, verifica
+from hiris.app.azione.porta import ActionActuator
+from hiris.app.azione.registro import ServiceRegistry
+from hiris.app.azione.verifica import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
 
 # Come in `test_azione_porta.py`: cio' che si misura qui non e' la DURATA
@@ -54,7 +54,7 @@ SCADENZA_NEI_TEST = 0.01
 
 @pytest.fixture(autouse=True)
 def _scadenza_corta(monkeypatch):
-    monkeypatch.setattr(porta_modulo, "ATTESA_STATO_S", SCADENZA_NEI_TEST)
+    monkeypatch.setattr(porta_modulo, "STATE_WAIT_S", SCADENZA_NEI_TEST)
 
 
 RISPOSTA_HA = [
@@ -70,8 +70,8 @@ class FintoRegistroClient:
         return RISPOSTA_HA
 
 
-async def _registro_pronto() -> RegistroServizi:
-    r = RegistroServizi()
+async def _registro_pronto() -> ServiceRegistry:
+    r = ServiceRegistry()
     await r.aggiorna(FintoRegistroClient())
     return r
 
@@ -112,7 +112,7 @@ def test_i_cinque_nomi_italiani_diventano_i_cinque_campi_di_home_assistant():
     risponderebbe `invalid_format` e il bersaglio non si risolverebbe piu':
     un guasto che si vedrebbe solo sulla casa vera.
     """
-    tradotto, illeggibili = traduci_bersaglio({
+    tradotto, illeggibili = translate_target({
         "entita": ["light.salotto"], "dispositivi": ["abc123"],
         "aree": ["cucina"], "piani": ["primo"], "etichette": ["notturne"]})
     assert illeggibili == []
@@ -126,11 +126,11 @@ def test_il_client_e_la_verifica_conoscono_gli_stessi_cinque_campi():
     in cui la verifica traduce. Due elenchi scritti a mano nei due moduli
     divergerebbero al primo campo nuovo, e il bersaglio tradotto verrebbe
     scartato in silenzio dall'altro lato."""
-    assert set(HAClient.CAMPI_BERSAGLIO) == set(BERSAGLI.values())
+    assert set(HAClient.CAMPI_BERSAGLIO) == set(TARGETS.values())
 
 
 def test_una_voce_sola_puo_essere_una_stringa_anche_per_un_area():
-    tradotto, illeggibili = traduci_bersaglio({"aree": "cucina"})
+    tradotto, illeggibili = translate_target({"aree": "cucina"})
     assert tradotto == {"area_id": ["cucina"]}
     assert illeggibili == []
 
@@ -138,20 +138,20 @@ def test_una_voce_sola_puo_essere_una_stringa_anche_per_un_area():
 def test_una_voce_illeggibile_si_dichiara_invece_di_sparire():
     """Il difetto della fetta alla riga sbagliata: tradurre la meta' buona e
     buttare l'altra sarebbe un bersaglio ridotto in silenzio."""
-    tradotto, illeggibili = traduci_bersaglio({"aree": ["cucina", 7]})
+    tradotto, illeggibili = translate_target({"aree": ["cucina", 7]})
     assert tradotto == {"area_id": ["cucina"]}
     assert len(illeggibili) == 1 and "aree" in illeggibili[0]
 
 
 @pytest.mark.asyncio
 async def test_un_bersaglio_scritto_meta_bene_si_rifiuta_intero():
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"aree": ["cucina", 7]}},
                  await _registro_pronto(), STATI_CUCINA)
     assert v.ok is False
     assert v.da_risolvere is False, (
         "non si va a chiedere a Home Assistant meta' bersaglio: si rifiuta")
-    assert "7" in v.motivo
+    assert "7" in v.reason
 
 
 # ── 2. Il verdetto ─────────────────────────────────────────────────────────
@@ -162,12 +162,12 @@ async def test_un_bersaglio_per_area_non_si_esegue_senza_aver_chiesto_a_ha():
     `da_risolvere` non eseguirebbe niente, invece di eseguire su un elenco
     vuoto -- che sul bersaglio piu' pericoloso e' l'unico verso sicuro in cui
     sbagliare."""
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA)
     assert v.ok is False
     assert v.da_risolvere is True
-    assert v.bersaglio == {"area_id": ["cucina"]}
-    assert v.entita == ()
+    assert v.target == {"area_id": ["cucina"]}
+    assert v.entity == ()
 
 
 @pytest.mark.asyncio
@@ -178,12 +178,12 @@ async def test_spegni_tutto_in_cucina_tocca_TUTTE_le_luci_della_cucina():
     tutto. Qui l'elenco lo detta Home Assistant, e il verdetto lo riporta
     intero.
     """
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
-    assert v.ok is True, v.motivo
-    assert sorted(v.entita) == sorted(LUCI_CUCINA)
-    assert len(v.entita) == 9
+                 resolved=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
+    assert v.ok is True, v.reason
+    assert sorted(v.entity) == sorted(LUCI_CUCINA)
+    assert len(v.entity) == 9
 
 
 @pytest.mark.asyncio
@@ -192,9 +192,9 @@ async def test_cio_che_non_e_del_dominio_del_servizio_si_dichiara():
     siano tutte luci farebbe rifiutare «spegni le luci in cucina» in ogni casa
     vera -- ma nemmeno si tace: l'esito deve poter dire «ho toccato 9 delle 15
     cose che ci sono li' dentro»."""
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(TUTTA_LA_CUCINA))
+                 resolved=_risolto(TUTTA_LA_CUCINA))
     assert sorted(v.scartate) == sorted(ALTRO_IN_CUCINA)
 
 
@@ -205,18 +205,18 @@ async def test_un_area_che_non_esiste_e_un_area_vuota_sono_due_frasi_diverse():
     per i due casi manderebbe il modello a cercare un guasto dove c'e' solo
     un'area vuota, o a dire «e' vuota» di un'area che non esiste."""
     registro = await _registro_pronto()
-    non_c_e = verifica({"servizio": "light.turn_off",
+    non_c_e = verification({"servizio": "light.turn_off",
                         "bersaglio": {"aree": ["tinello"]}},
                        registro, STATI_CUCINA,
-                       risolto=_risolto([], aree_mancanti=["tinello"]))
-    vuota = verifica({"servizio": "light.turn_off",
+                       resolved=_risolto([], aree_mancanti=["tinello"]))
+    vuota = verification({"servizio": "light.turn_off",
                       "bersaglio": {"aree": ["ripostiglio"]}},
-                     registro, STATI_CUCINA, risolto=_risolto([]))
+                     registro, STATI_CUCINA, resolved=_risolto([]))
     assert non_c_e.ok is False and vuota.ok is False
-    assert "tinello" in non_c_e.motivo
-    assert "non esiste" in non_c_e.motivo or "non esistono" in non_c_e.motivo
-    assert non_c_e.motivo != vuota.motivo
-    assert "non contiene nessuna entita'" in vuota.motivo
+    assert "tinello" in non_c_e.reason
+    assert "non esiste" in non_c_e.reason or "non esistono" in non_c_e.reason
+    assert non_c_e.reason != vuota.reason
+    assert "non contiene nessuna entita'" in vuota.reason
 
 
 @pytest.mark.asyncio
@@ -224,14 +224,14 @@ async def test_un_bersaglio_che_nomina_qualcosa_di_inesistente_non_si_riduce():
     """Due aree, una vera e una che non c'e'. Eseguire sulla meta' buona e
     metterlo in una nota sarebbe il difetto di partenza con un alibi: si
     rifiuta, e il rifiuto dice quale delle due non esiste."""
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"aree": ["cucina", "tinello"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(TUTTA_LA_CUCINA, aree=["cucina"],
+                 resolved=_risolto(TUTTA_LA_CUCINA, aree=["cucina"],
                                   aree_mancanti=["tinello"]))
     assert v.ok is False
-    assert "tinello" in v.motivo
-    assert v.entita == ()
+    assert "tinello" in v.reason
+    assert v.entity == ()
 
 
 @pytest.mark.asyncio
@@ -243,23 +243,23 @@ async def test_i_quattro_registri_mancanti_si_dichiarano_tutti():
                              ("aree_mancanti", "tinello"),
                              ("dispositivi_mancanti", "aabbcc"),
                              ("etichette_mancanti", "notturne")):
-        v = verifica({"servizio": "light.turn_off",
+        v = verification({"servizio": "light.turn_off",
                       "bersaglio": {"aree": ["cucina"]}},
                      registro, STATI_CUCINA,
-                     risolto=_risolto(LUCI_CUCINA, **{chiave: [nominato]}))
+                     resolved=_risolto(LUCI_CUCINA, **{chiave: [nominato]}))
         assert v.ok is False, f"{chiave} non e' stato guardato"
-        assert nominato in v.motivo
+        assert nominato in v.reason
 
 
 @pytest.mark.asyncio
 async def test_un_area_senza_niente_del_dominio_del_servizio_lo_dice():
     """Diverso da «l'area e' vuota» e diverso da «l'area non c'e'»: la cucina
     esiste, ha sei cose dentro, e nessuna e' una luce."""
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(ALTRO_IN_CUCINA))
+                 resolved=_risolto(ALTRO_IN_CUCINA))
     assert v.ok is False
-    assert "6" in v.motivo and "light" in v.motivo
+    assert "6" in v.reason and "light" in v.reason
 
 
 @pytest.mark.asyncio
@@ -269,24 +269,24 @@ async def test_un_entita_senza_stato_si_esclude_e_si_dichiara():
     Tenerla nell'elenco non l'accenderebbe, e in cambio farebbe dire all'esito
     «non so cosa sia cambiato» dell'INTERA chiamata, perche' di lei nessuno
     annuncera' mai niente."""
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(LUCI_CUCINA + ["light.cucina_disabilitata"]))
-    assert v.ok is True, v.motivo
-    assert "light.cucina_disabilitata" not in v.entita
+                 resolved=_risolto(LUCI_CUCINA + ["light.cucina_disabilitata"]))
+    assert v.ok is True, v.reason
+    assert "light.cucina_disabilitata" not in v.entity
     assert v.sconosciute == ("light.cucina_disabilitata",)
-    assert sorted(v.entita) == sorted(LUCI_CUCINA)
+    assert sorted(v.entity) == sorted(LUCI_CUCINA)
 
 
 @pytest.mark.asyncio
 async def test_solo_entita_senza_stato_non_diventa_un_successo_su_niente():
     """Il complemento del test sopra: se DOPO le esclusioni non resta niente,
     non si chiama un servizio su un elenco vuoto raccontandolo come fatto."""
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"aree": ["soffitta"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"aree": ["soffitta"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(["light.soffitta_disabilitata"]))
+                 resolved=_risolto(["light.soffitta_disabilitata"]))
     assert v.ok is False
-    assert v.entita == ()
+    assert v.entity == ()
 
 
 @pytest.mark.asyncio
@@ -295,25 +295,25 @@ async def test_un_entita_nominata_male_resta_rifiutata_anche_dentro_un_area():
     una sua affermazione sbagliata, e il rifiuto che dice quale glielo fa
     correggere. Allargare la regola delle entita' risolte anche a queste
     avrebbe spento un controllo che funzionava."""
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"aree": ["cucina"], "entita": ["light.fantasma"]}},
                  await _registro_pronto(), STATI_CUCINA)
     assert v.ok is False
     assert v.da_risolvere is False, (
         "non si va a chiedere a Home Assistant un bersaglio gia' sbagliato")
-    assert "light.fantasma" in v.motivo
+    assert "light.fantasma" in v.reason
 
 
 @pytest.mark.asyncio
 async def test_homeassistant_su_un_area_tocca_tutti_i_domini():
     """«Spegni tutto in cucina», alla lettera: `homeassistant.turn_off` vale
     per ogni dominio, quindi il filtro sul dominio non deve toccarlo."""
-    v = verifica({"servizio": "homeassistant.turn_off",
+    v = verification({"servizio": "homeassistant.turn_off",
                   "bersaglio": {"aree": ["cucina"]}},
                  await _registro_pronto(), STATI_CUCINA,
-                 risolto=_risolto(TUTTA_LA_CUCINA))
-    assert v.ok is True, v.motivo
-    assert sorted(v.entita) == sorted(TUTTA_LA_CUCINA)
+                 resolved=_risolto(TUTTA_LA_CUCINA))
+    assert v.ok is True, v.reason
+    assert sorted(v.entity) == sorted(TUTTA_LA_CUCINA)
     assert v.scartate == ()
 
 
@@ -321,11 +321,11 @@ async def test_homeassistant_su_un_area_tocca_tutti_i_domini():
 async def test_un_bersaglio_di_sole_entita_non_chiede_niente_a_nessuno():
     """La strada di prima non cambia e non costa un giro di rete: `risolto`
     resta `None` e il verdetto e' comunque positivo."""
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"entita": ["light.cucina_1"]}},
                  await _registro_pronto(), STATI_CUCINA)
     assert v.ok is True and v.da_risolvere is False
-    assert v.entita == ("light.cucina_1",)
+    assert v.entity == ("light.cucina_1",)
 
 
 # ── 3. Il client: il comando che parte davvero ─────────────────────────────
@@ -497,10 +497,10 @@ class FintaCache:
         return [dict(voce) for voce in self._stati.values()]
 
 
-async def _porta(client) -> PortaAzione:
-    registro = RegistroServizi()
+async def _porta(client) -> ActionActuator:
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoRegistroClient())
-    return PortaAzione(client, registro, FintaCache(STATI_CUCINA))
+    return ActionActuator(client, registro, FintaCache(STATI_CUCINA))
 
 
 @pytest.mark.asyncio
@@ -509,8 +509,8 @@ async def test_la_porta_spegne_tutte_e_nove_le_luci_della_cucina():
     in cucina, nove entity_id nella chiamata a Home Assistant."""
     client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is True, esito.get("errore")
     _dominio, _servizio, dati = client.chiamate[0]
     assert sorted(dati["entity_id"]) == sorted(LUCI_CUCINA)
@@ -524,8 +524,8 @@ async def test_l_anteprima_si_calcola_prima_di_toccare_qualcosa():
     meglio."""
     client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
     porta = await _porta(client)
-    await porta.esegui({"servizio": "light.turn_off",
-                        "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    await porta.execute({"servizio": "light.turn_off",
+                        "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert [passo for passo, _ in client.sequenza] == ["risolvi", "chiama"]
 
 
@@ -536,8 +536,8 @@ async def test_l_esito_dice_cosa_conteneva_il_bersaglio_e_cosa_e_rimasto_fuori()
     fatto che l'utente deve sentirsi dire."""
     client = FintoClientPorta(risolve=_risolto(TUTTA_LA_CUCINA, aree=["cucina"]))
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     bersaglio = esito["bersaglio"]
     assert bersaglio["chiesto"] == {"area_id": ["cucina"]}
     assert sorted(bersaglio["risolte"]) == sorted(TUTTA_LA_CUCINA)
@@ -554,9 +554,9 @@ async def test_un_bersaglio_di_sole_entita_non_costa_un_giro_di_rete():
     un'altra e' un doppione."""
     client = FintoClientPorta(risolve=_risolto([]))
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
+    esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"entita": ["light.cucina_1"]}},
-                               origine="prova")
+                               actor="prova")
     assert esito["eseguito"] is True
     assert [passo for passo, _ in client.sequenza] == ["chiama"]
     assert "bersaglio" not in esito
@@ -569,8 +569,8 @@ async def test_un_client_che_non_sa_risolvere_non_esegue_e_lo_dichiara():
     raccontata come riuscita."""
     client = FintoClientSenzaBocca()
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
     assert client.chiamate == [], "non si tocca niente se non si e' potuto risolvere"
     assert "bersaglio.entita" in esito["errore"], (
@@ -584,8 +584,8 @@ async def test_un_bersaglio_non_risolto_non_diventa_un_bersaglio_vuoto():
     specchio cieco)."""
     client = FintoClientPorta(risolve={"errore": "Home Assistant non ha risposto"})
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
     assert client.chiamate == []
     assert "non ha risposto" in esito["errore"]
@@ -597,8 +597,8 @@ async def test_una_risoluzione_che_esplode_diventa_un_rifiuto_leggibile():
     un modello."""
     client = FintoClientPorta(solleva=True)
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["cucina"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["cucina"]}}, actor="prova")
     assert esito["eseguito"] is False
     assert client.chiamate == []
     assert "RuntimeError" in esito["errore"]
@@ -610,8 +610,8 @@ async def test_un_area_che_non_esiste_non_tocca_niente():
     chiamata parte."""
     client = FintoClientPorta(risolve=_risolto([], aree_mancanti=["tinello"]))
     porta = await _porta(client)
-    esito = await porta.esegui({"servizio": "light.turn_off",
-                                "bersaglio": {"aree": ["tinello"]}}, origine="prova")
+    esito = await porta.execute({"servizio": "light.turn_off",
+                                "bersaglio": {"aree": ["tinello"]}}, actor="prova")
     assert esito["eseguito"] is False
     assert client.chiamate == []
     assert "tinello" in esito["errore"]

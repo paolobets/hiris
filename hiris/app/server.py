@@ -29,11 +29,11 @@ from .api.handlers_models import (
 from .api.handlers_usage import handle_reset_usage, handle_storia_usage, handle_usage
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
-from .azione.costruzione.officina import Officina
-from .azione.costruzione.versioni import ArchivioCostruzioni
-from .azione.cronaca import Cronaca
-from .azione.porta import PortaAzione
-from .azione.registro import RegistroServizi
+from .azione.costruzione.officina import Workshop
+from .azione.costruzione.versioni import ConstructionStore
+from .azione.cronaca import Journal
+from .azione.porta import ActionActuator
+from .azione.registro import ServiceRegistry
 from .backends.embeddings import build_embedding_provider
 from .casa.anagrafe import (
     AREE_PER_GIRO,
@@ -1766,7 +1766,7 @@ async def _on_startup(app: web.Application) -> None:
     # al primo uso (`assicura_fresco`), non all'avvio -- un caricamento qui
     # allungherebbe il boot per una cosa che potrebbe non servire in questa
     # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
-    app["registro_servizi"] = RegistroServizi()
+    app["registro_servizi"] = ServiceRegistry()
 
     # fetta E5 Task 5: qui l'add-on installava la card Lovelace dentro Home
     # Assistant (copia in www/, file di ingress, risorsa registrata). La card
@@ -1849,7 +1849,7 @@ async def _on_startup(app: web.Application) -> None:
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
     # porta la riceve qui sotto.
-    app["cronaca"] = Cronaca(os.path.join(data_dir, "azioni.db"))
+    app["cronaca"] = Journal(os.path.join(data_dir, "azioni.db"))
 
     # L'archivio delle promesse (`schedulatore/archivio.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
@@ -1869,7 +1869,7 @@ async def _on_startup(app: web.Application) -> None:
     # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
     # via `costruisci_dispatcher_strumenti`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
-    app["porta_azione"] = PortaAzione(ha_client, app["registro_servizi"],
+    app["porta_azione"] = ActionActuator(ha_client, app["registro_servizi"],
                                       app.get("entity_cache"), app["cronaca"])
 
     # L'archivio delle costruzioni e l'officina (fetta «costruire»,
@@ -1878,11 +1878,11 @@ async def _on_startup(app: web.Application) -> None:
     # e il canale HA. Non riceve la porta e non la usa: sono due canali di
     # scrittura diversi -- «un canale, una porta», spec §2.1 -- e l'officina
     # non chiama mai un servizio.
-    app["costruzioni"] = ArchivioCostruzioni(
+    app["costruzioni"] = ConstructionStore(
         os.path.join(data_dir, "costruzioni.db"))
-    app["officina"] = Officina(
+    app["officina"] = Workshop(
         ha_client, app["costruzioni"], app["cronaca"],
-        leggi_fuso=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))
+        read_timezone=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
@@ -2775,7 +2775,7 @@ async def _on_startup(app: web.Application) -> None:
 
     app["orologio"] = Sweeper(
         app["promesse"],
-        execute=app["porta_azione"].esegui,
+        execute=app["porta_azione"].execute,
         interpreta=_interpreta,
     )
 

@@ -950,7 +950,7 @@ class DispatcherStrumenti:
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
         # scrive resta la porta, e questo attributo non le fa concorrenza.
         self._ha = ha
-        # Il registro dei servizi (`azione/registro.py::RegistroServizi`), la
+        # Il registro dei servizi (`azione/registro.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
         # stessa ragione di `_canale_ha`: due registri sarebbero due opinioni
         # su cosa esiste, e potrebbero divergere. Serve a `prometti` per
@@ -1510,14 +1510,14 @@ class DispatcherStrumenti:
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
         """
-        return await self._porta.esegui(argomenti, origine="chat")
+        return await self._porta.execute(argomenti, actor="chat")
 
     # -- le promesse -----------------------------------------------------
 
     async def _assicura_registro_fresco(self) -> None:
         """Scalda il registro dei servizi prima di verificare, se puo'.
 
-        Stessa forma di `azione/porta.py::Porta.esegui` (righe ~598-604): un
+        Stessa forma di `azione/porta.py::ActionActuator.execute` (righe ~598-604): un
         `try/except` attorno a `assicura_fresco`, perche' il registro si
         carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
@@ -1576,7 +1576,7 @@ class DispatcherStrumenti:
         """
         import time as _time
 
-        from ..azione.verifica import verifica
+        from ..azione.verifica import verification
 
         await self._assicura_registro_fresco()
 
@@ -1599,7 +1599,7 @@ class DispatcherStrumenti:
             chiamata = argomenti.get("chiamata")
             if not isinstance(chiamata, dict):
                 return {"errore": "una promessa «fai» ha bisogno di `chiamata`."}
-            rifiuto = self._verifica_ora(chiamata, verifica)
+            rifiuto = self._verifica_ora(chiamata, verification)
             if rifiuto is not None:
                 return {"errore": rifiuto}
             dati["chiamata"] = chiamata
@@ -1670,7 +1670,7 @@ class DispatcherStrumenti:
             return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
         esito = await self._officina.applica(
             proposta_id.strip(), origine="chat", turno=self._turno, adesso=_time.time())
-        # Punto 7 (residuo): `guasto_rete` e' interno (`Officina._fallita`/
+        # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_costruzioni.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
         # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
@@ -1690,7 +1690,7 @@ class DispatcherStrumenti:
 
         Senza registro si RIFIUTA, non si tace piu' (fix review Task 6,
         Rilievo 2, deciso dal proprietario): e' la STESSA guardia di
-        `azione/porta.py::_REGISTRO_MUTO` ("non so ancora cosa Home Assistant
+        `azione/porta.py::_MUTE_REGISTRY` ("non so ancora cosa Home Assistant
         sa fare"), spostata al momento della promessa invece che
         dell'esecuzione -- due porte non devono rispondere in modo opposto
         alla stessa situazione. La frase e' diversa apposta: li' si sta
@@ -1705,12 +1705,12 @@ class DispatcherStrumenti:
         Dal cablaggio del Task 7 c'e' un secondo caso, raggiungibile per la
         prima volta: all'avvio il registro esiste (non e' `None`, `server.py`
         lo costruisce sempre) ma e' ancora VUOTO -- mai caricato da Home
-        Assistant. Lasciare proseguire fino a `verifica()` produrrebbe «il
+        Assistant. Lasciare proseguire fino a `verification()` produrrebbe «il
         dominio non esiste. Domini disponibili: .» -- la frase FALSA detta
         con sicurezza contro cui mette in guardia `azione/porta.py`
-        (`_REGISTRO_MUTO`). Le due assenze raccontano lo stesso fatto («non so
+        (`_MUTE_REGISTRY`). Le due assenze raccontano lo stesso fatto («non so
         ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
-        criterio della porta -- si CHIEDE al registro (`domini()` vuoto), non
+        criterio della porta -- si CHIEDE al registro (`domains()` vuoto), non
         si reinventa la regola in un secondo posto. Il criterio vive in
         `_registro_non_pronto()`, condiviso con `_verifica_recapito`: sono la
         STESSA domanda («so gia' cosa questa casa sa fare?»), fatta da due
@@ -1738,7 +1738,7 @@ class DispatcherStrumenti:
             # `_verifica_ora` avesse potuto verificare l'entita' nominata,
             # mentre `PROMETTI_TOOL_DEF` dichiara al modello, senza
             # condizioni, «viene VERIFICATA adesso». Stesso criterio di
-            # `azione/porta.py::_SPECCHIO_CIECO` (`None` e `{}` insieme, di
+            # `azione/porta.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
             # proposito: una casa che davvero non ha nessuna entita' non ha
             # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
             # che questo rifiuto possa negare). Estratta in
@@ -1749,7 +1749,7 @@ class DispatcherStrumenti:
         verdetto = verifica(chiamata, self._registro, stati)
         if verdetto.da_risolvere:
             return None  # bersaglio per area: lo risolvera' la porta, al momento
-        return None if verdetto.ok else verdetto.motivo
+        return None if verdetto.ok else verdetto.reason
 
     def _specchio_cieco_rifiuto(self) -> str:
         """Il rifiuto quando lo specchio dello stato non e' leggibile: "non
@@ -1807,9 +1807,9 @@ class DispatcherStrumenti:
 
     def _registro_non_pronto(self) -> bool:
         """«Non so ancora cosa questa casa sa fare»: il registro e' assente
-        (`None`) o presente ma mai caricato da Home Assistant (`domini()`
+        (`None`) o presente ma mai caricato da Home Assistant (`domains()`
         vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
-        `azione/porta.py::Porta.esegui` per la guardia `_REGISTRO_MUTO` --
+        `azione/porta.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
         perche' senza domini non si puo' verificare NIENTE, ne' un `fai` ne'
         un recapito. Estratta qui (review Task 7, Rilievo 1) perche'
         `_verifica_ora` e `_verifica_recapito` la interrogavano entrambe, e la
@@ -1818,7 +1818,7 @@ class DispatcherStrumenti:
         e infatti divergevano, la seconda rifiutava un recapito ESISTENTE con
         «non esiste in questa casa» invece di dire che non lo sapeva ancora.
         """
-        return self._registro is None or not self._registro.domini()
+        return self._registro is None or not self._registro.domains()
 
     def _verifica_recapito(self, servizio: str) -> str | None:
         """Il rifiuto della verifica su un recapito, o `None`.
@@ -1837,7 +1837,7 @@ class DispatcherStrumenti:
         if "." not in servizio:
             return f"«{servizio}» non e' un servizio: serve «notify.qualcosa»."
         dominio, nome = servizio.split(".", 1)
-        if self._registro.servizio(dominio, nome) is None:
+        if self._registro.service(dominio, nome) is None:
             return (f"«{servizio}» non esiste in questa casa: cerca un servizio notify "
                     "vero prima di promettere di usarlo.")
         return None

@@ -8,9 +8,9 @@ import re
 import pytest
 
 from hiris.app.azione.costruzione import officina as officina_modulo
-from hiris.app.azione.costruzione.officina import Officina
-from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
-from hiris.app.azione.cronaca import Cronaca
+from hiris.app.azione.costruzione.officina import Workshop
+from hiris.app.azione.costruzione.versioni import ConstructionStore
+from hiris.app.azione.cronaca import Journal
 
 ADESSO = 1_756_000_000.0
 
@@ -34,7 +34,7 @@ class FintoHA:
         self.etichettate = []
         self._override = override
         # Le chiavi che questa casa finta ha DAVVERO. Tutto il resto e'
-        # assente -- ed e' cosi' che `_chiave_libera` puo' dire «e' libera»
+        # assente -- ed e' cosi' che `_free_key` puo' dire «e' libera»
         # senza inventare.
         self.esistenti = {"1771"}
         self.stati = [{"entity_id": "automation.tapparelle_all_alba",
@@ -125,10 +125,10 @@ class FintoHA:
 
 @pytest.fixture()
 def banco(tmp_path):
-    archivio = ArchivioCostruzioni(os.path.join(str(tmp_path), "costruzioni.db"))
-    cronaca = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
+    cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     ha = FintoHA()
-    officina = Officina(ha, archivio, cronaca)
+    officina = Workshop(ha, archivio, cronaca)
     yield officina, ha, archivio, cronaca
     archivio.close()
     cronaca.close()
@@ -150,7 +150,7 @@ def _intento(**kw):
 @pytest.mark.asyncio
 async def test_proporre_non_scrive_niente_su_home_assistant(banco):
     officina, ha, _, _ = banco
-    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" in esito
     assert ha.salvate == []
     assert ha.helper_creati == []
@@ -162,19 +162,19 @@ async def test_una_validazione_fallita_ferma_tutto_e_riporta_il_motivo_di_ha(ban
     officina, ha, archivio, _ = banco
     ha._override["valida"] = {"triggers": {"valid": False,
                                            "error": "Unknown trigger 'quando'"}}
-    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "Unknown trigger" in esito["errore"]
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
 async def test_confermare_nello_stesso_turno_non_si_puo(banco):
     """Il cancello e' l'umano: serve un messaggio in mezzo (spec §7)."""
     officina, ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t1",
-                                   adesso=ADESSO + 1)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t1",
+                                   now=ADESSO + 1)
     assert "errore" in esito
     assert ha.salvate == []
 
@@ -182,13 +182,13 @@ async def test_confermare_nello_stesso_turno_non_si_puo(banco):
 @pytest.mark.asyncio
 async def test_confermare_in_un_turno_successivo_scrive_davvero(banco):
     officina, ha, archivio, cronaca = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert esito["applicata"] is True
     assert ha.salvate[0][0] == "automation"
-    assert archivio.leggi(p["proposta_id"])["stato"] == "applicata"
-    riga = cronaca.leggi(esito["esecuzione_id"])
+    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+    riga = cronaca.read(esito["esecuzione_id"])
     assert riga["genere"] == "costruzione"
     assert riga["eseguito"] is True
 
@@ -198,9 +198,9 @@ async def test_senza_identita_di_turno_non_si_applica_dalla_chat(banco):
     """Se non so distinguere i turni non posso far valere il cancello: rifiuto
     e indico la strada che funziona (la pagina)."""
     officina, ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno=None, adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno=None,
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange=None, now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange=None,
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "pagina" in esito["errore"].lower()
     assert ha.salvate == []
@@ -210,17 +210,17 @@ async def test_senza_identita_di_turno_non_si_applica_dalla_chat(banco):
 async def test_dalla_pagina_si_applica_sempre(banco):
     """L'origine `pagina` E' un umano che ha cliccato: nessun turno da distinguere."""
     officina, _ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="pagina", turno=None,
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 60)
     assert esito["applicata"] is True
 
 
 @pytest.mark.asyncio
 async def test_l_entita_nata_riceve_l_etichetta(banco):
     officina, ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="chat", turno="t2", adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="chat", exchange="t2", now=ADESSO + 60)
     assert ha.etichettate == [("automation.tapparelle_all_alba", "hiris")]
 
 
@@ -229,8 +229,8 @@ async def test_modificare_un_oggetto_tuo_non_lo_marchia_come_fatto_da_hiris(banc
     """L'etichetta dice CHI L'HA FATTO, e una modifica non lo rende suo (spec §5)."""
     officina, ha, _, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="chat", turno="t2", adesso=ADESSO + 60)
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="chat", exchange="t2", now=ADESSO + 60)
     assert ha.etichettate == []
 
 
@@ -240,10 +240,10 @@ async def test_un_identificatore_non_verificabile_ferma_la_proposta(banco):
     errore, farebbe SOSTITUIRE l'automazione che c'era."""
     officina, ha, archivio, _ = banco
     ha._override["leggi"] = {"errore": "Home Assistant non ha risposto"}
-    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "alla cieca" in esito["errore"]
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -251,12 +251,12 @@ async def test_se_l_entita_non_compare_lo_dice_invece_di_dichiarare_riuscito(ban
     """Dire cosa e' successo, non cosa e' stato chiesto (spec §2.3)."""
     officina, ha, _, cronaca = banco
     ha.stati = []
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert esito["applicata"] is True
     assert esito["avviso"]
-    assert cronaca.leggi(esito["esecuzione_id"])["avviso"]
+    assert cronaca.read(esito["esecuzione_id"])["avviso"]
 
 
 @pytest.mark.asyncio
@@ -264,22 +264,22 @@ async def test_se_l_automazione_cade_gli_helper_appena_nati_si_disfano(banco):
     """Senza questa regola ogni tentativo fallito lascia rifiuti in casa."""
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert ha.helper_creati, "l'helper doveva essere creato prima del rifiuto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
-    assert archivio.leggi(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
 async def test_modificare_archivia_il_prima_prima_di_scrivere(banco):
     officina, ha, archivio, _ = banco
     intento = _intento(gesto="modifica", chiave="1771")
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
-    riga = archivio.leggi(p["proposta_id"])
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
+    riga = archivio.read(p["proposta_id"])
     assert riga["prima"]["alias"] == "com'era"
     assert "com'era" in riga["anteprima"] or "prima" in riga["anteprima"].lower()
     # «prima di scrivere» e' la parte del nome che l'assert sopra non prova
@@ -289,7 +289,7 @@ async def test_modificare_archivia_il_prima_prima_di_scrivere(banco):
 
 
 @pytest.mark.asyncio
-async def test_modificare_un_oggetto_esistente_lo_dichiara_nell_anteprima(banco):
+async def test_modificare_un_oggetto_esistente_lo_dichiara_nell_preview(banco):
     """Regola posta dal proprietario: se tocca qualcosa, lo deve dire.
 
     Rinominato rispetto alla versione precedente (che si chiamava "...non_di_
@@ -299,9 +299,9 @@ async def test_modificare_un_oggetto_esistente_lo_dichiara_nell_anteprima(banco)
     e' quello che rende l'asserzione capace di fallire davvero."""
     officina, _, _, _ = banco
     esito_modifica = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                                            origine="chat", turno="t1", adesso=ADESSO)
-    esito_crea = await officina.proponi(_intento(), origine="chat", turno="t1",
-                                        adesso=ADESSO)
+                                            actor="chat", exchange="t1", now=ADESSO)
+    esito_crea = await officina.proponi(_intento(), actor="chat", exchange="t1",
+                                        now=ADESSO)
     assert ("esiste già" in esito_modifica["anteprima"]
             or "già esistente" in esito_modifica["anteprima"])
     assert "esiste già" not in esito_crea["anteprima"]
@@ -312,9 +312,9 @@ async def test_una_struttura_gestita_a_mano_non_diventa_un_guasto(banco):
     """Se l'API dice che non si scrive, si dice PERCHE' (spec §6)."""
     officina, ha, _, _ = banco
     ha._override["salva"] = {"errore": "404: Not Found"}
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "gestite a mano" in esito["errore"]
 
 
@@ -322,11 +322,11 @@ async def test_una_struttura_gestita_a_mano_non_diventa_un_guasto(banco):
 async def test_ripristinare_rimette_il_prima_passando_dalla_stessa_officina(banco):
     officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
     ha.salvate.clear()
-    esito = await officina.ripristina(p["proposta_id"], origine="pagina", turno=None,
-                                      adesso=ADESSO + 120)
+    esito = await officina.ripristina(p["proposta_id"], actor="pagina", exchange=None,
+                                      now=ADESSO + 120)
     assert esito["applicata"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
@@ -340,19 +340,19 @@ async def test_una_scena_con_due_stati_sulla_stessa_entita_si_rifiuta(banco):
         _intento(dominio="scene", innesco=[], azioni=[], richiesto="scena",
                  stati=[{"entity_id": "light.salotto", "state": "on"},
                         {"entity_id": "light.salotto", "state": "off"}]),
-        origine="chat", turno="t1", adesso=ADESSO)
+        actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "light.salotto" in esito["errore"]
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
-async def test_il_consiglio_del_mestiere_viaggia_nell_anteprima(banco):
+async def test_il_consiglio_del_mestiere_viaggia_nell_preview(banco):
     officina, _, _, _ = banco
     esito = await officina.proponi(
         _intento(richiesto="automazione", innesco=[], ricorrente=False,
                  azioni=[{"action": "light.turn_off"}]),
-        origine="chat", turno="t1", adesso=ADESSO)
+        actor="chat", exchange="t1", now=ADESSO)
     assert "script" in esito["anteprima"]
 
 
@@ -367,11 +367,11 @@ async def test_modificare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
     officina, ha, archivio, _ = banco
     ha._override["leggi"] = {"assente": True}
     esito = await officina.proponi(_intento(gesto="modifica", chiave="9999"),
-                                   origine="chat", turno="t1", adesso=ADESSO)
+                                   actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "errore" in esito
     assert "9999" in esito["errore"] or "non esiste" in esito["errore"].lower()
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -380,10 +380,10 @@ async def test_cancellare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banc
     officina, ha, archivio, _ = banco
     ha._override["leggi"] = {"assente": True}
     esito = await officina.proponi(_intento(gesto="cancella", chiave="9999"),
-                                   origine="chat", turno="t1", adesso=ADESSO)
+                                   actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -395,9 +395,9 @@ async def test_una_proposta_senza_turno_non_si_conferma_da_un_turno_qualsiasi(ba
     turno`) restava falsa quando il turno memorizzato era `None`, e lasciava
     passare la prima conferma che capitava."""
     officina, ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno=None, adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="qualunque",
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange=None, now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="qualunque",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "pagina" in esito["errore"].lower()
     assert ha.salvate == []
@@ -408,10 +408,10 @@ async def test_l_origine_umana_che_scavalca_il_cancello_lascia_una_traccia(banco
     """IMPORTANT 1: se il Task 8 sbagliasse a inoltrare un'origine scelta dal
     modello come `pagina`, deve restarne una traccia -- non il silenzio."""
     officina, _ha, _, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     with caplog.at_level("INFO", logger="hiris.app.azione.costruzione.officina"):
-        await officina.applica(p["proposta_id"], origine="pagina", turno=None,
-                               adesso=ADESSO + 60)
+        await officina.applica(p["proposta_id"], actor="pagina", exchange=None,
+                               now=ADESSO + 60)
     assert any(r.levelname == "INFO" and "pagina" in r.message.lower()
               for r in caplog.records)
 
@@ -422,10 +422,10 @@ async def test_la_disfatta_dell_helper_e_dichiarata_nel_motivo(banco):
     tolto. Il motivo del rifiuto deve dirlo."""
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "modalita_notte" in esito["errore"]
 
@@ -437,11 +437,11 @@ async def test_se_la_disfatta_fallisce_lo_dice_invece_di_tacere(banco):
     nessuno pulira' piu'."""
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
     ha._override["cancella_helper"] = {"errore": "Home Assistant non ha risposto"}
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "toglilo a mano" in esito["errore"] or "rimasto in casa" in esito["errore"]
     assert "modalita_notte" in esito["errore"]
@@ -454,11 +454,11 @@ async def test_un_helper_senza_id_restituito_viene_dichiarato(banco):
     non perso in silenzio."""
     officina, ha, _archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
     ha._override["crea_helper"] = {"helper": {}}  # nessun id
     ha._override["salva"] = {"errore": "Message malformed: bad actions"}
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "input_boolean" in esito["errore"]
     assert ha.helper_cancellati == []
@@ -469,7 +469,7 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
     """IMPORTANT 3: la rivendicazione atomica, non una lettura gia' stantia
     nel momento in cui la si confronta.
 
-    Si simula la finestra di corsa monkeypatchando `_archivio.leggi` cosi' da
+    Si simula la finestra di corsa monkeypatchando `_store.read` cosi' da
     restituire sempre l'istantanea «in_attesa» catturata PRIMA che un'altra
     richiesta rivendichi la proposta per prima (`archivio.rivendica` sotto):
     e' la stessa finestra che due click ravvicinati aprirebbero in un server
@@ -488,16 +488,16 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
     non lo vedrebbe: serve anche `ha.helper_creati == []`."""
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
-    proposta_stantia = archivio.leggi(p["proposta_id"])
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
+    proposta_stantia = archivio.read(p["proposta_id"])
     assert proposta_stantia["stato"] == "in_attesa"
     # Un'altra richiesta rivendica per prima: il DB passa a `in_corso`.
-    prima_rivendicazione = archivio.rivendica(p["proposta_id"], adesso=ADESSO + 59)
+    prima_rivendicazione = archivio.rivendica(p["proposta_id"], now=ADESSO + 59)
     assert "errore" not in prima_rivendicazione
     # Questa richiesta lavora ancora sulla lettura stantia.
-    officina._archivio.leggi = lambda ident: proposta_stantia
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    officina._store.read = lambda ident: proposta_stantia
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert ha.salvate == []
     assert ha.helper_creati == []
@@ -514,11 +514,11 @@ async def test_un_intento_vuoto_si_rifiuta_invece_di_validare_niente(banco):
     esito = await officina.proponi(
         _intento(innesco=[], azioni=[], stati=[], parametri=[], ricorrente=False,
                  richiesto=None),
-        origine="chat", turno="t1", adesso=ADESSO)
+        actor="chat", exchange="t1", now=ADESSO)
     assert "proposta_id" not in esito
     assert "non ho capito" in esito["errore"]
     assert ha.salvate == []
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -526,7 +526,7 @@ async def test_il_motivo_del_mestiere_viaggia_nell_anteprima_anche_senza_dissens
     """IMPORTANT 4: prima il motivo del mestiere finiva nell'anteprima solo
     in caso di dissenso; ora ci finisce sempre, quando c'e'."""
     officina, _, _, _ = banco
-    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     assert "Nota" in esito["anteprima"]
     assert "automazione" in esito["anteprima"].lower()
 
@@ -539,16 +539,16 @@ async def test_ripristinare_dalla_chat_e_un_giro_in_due_tempi(banco):
     giorni. Ora, dalla chat, e' un giro in due tempi come tutto il resto."""
     officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
     ha.salvate.clear()
-    esito = await officina.ripristina(p["proposta_id"], origine="chat", turno="t3",
-                                      adesso=ADESSO + 120)
+    esito = await officina.ripristina(p["proposta_id"], actor="chat", exchange="t3",
+                                      now=ADESSO + 120)
     assert "proposta_id" in esito
     assert esito["anteprima"]
     assert ha.salvate == []
-    esito2 = await officina.applica(esito["proposta_id"], origine="chat", turno="t4",
-                                    adesso=ADESSO + 180)
+    esito2 = await officina.applica(esito["proposta_id"], actor="chat", exchange="t4",
+                                    now=ADESSO + 180)
     assert esito2["applicata"] is True
     assert ha.salvate[0][2]["alias"] == "com'era"
 
@@ -559,8 +559,8 @@ async def test_un_alias_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     unhashable type` da `_seme_da`. Il chiamante e' uno strumento riempito da
     un modello: si rifiuta con un motivo leggibile."""
     officina, ha, _archivio, _ = banco
-    esito = await officina.proponi(_intento(alias={"non": "testo"}), origine="chat",
-                                   turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(alias={"non": "testo"}), actor="chat",
+                                   exchange="t1", now=ADESSO)
     assert "errore" in esito
     assert "alias" in esito["errore"]
     assert ha.salvate == []
@@ -571,8 +571,8 @@ async def test_un_helper_che_non_e_un_dizionario_si_rifiuta_invece_di_esplodere(
     """IMPORTANT 6: una lista `helper` di stringhe solleverebbe `AttributeError`
     su `helper.get("dominio")`."""
     officina, ha, _archivio, _ = banco
-    esito = await officina.proponi(_intento(helper=["non un dizionario"]), origine="chat",
-                                   turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(helper=["non un dizionario"]), actor="chat",
+                                   exchange="t1", now=ADESSO)
     assert "errore" in esito
     assert "helper" in esito["errore"]
     assert ha.salvate == []
@@ -589,7 +589,7 @@ async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     vero, non un fake troppo permissivo."""
     officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(gesto="modifica", chiave=1771),
-                                   origine="chat", turno="t1", adesso=ADESSO)
+                                   actor="chat", exchange="t1", now=ADESSO)
     assert "errore" in esito
     assert "chiave" in esito["errore"]
     assert ha.salvate == []
@@ -601,7 +601,7 @@ async def test_dei_campi_che_non_sono_un_dizionario_si_rifiuta_invece_di_esplode
     `dict("abc")` solleva `ValueError`, `dict(5)` solleva `TypeError`."""
     officina, ha, _archivio, _ = banco
     esito = await officina.proponi(_intento(dominio="script", campi="abc"),
-                                   origine="chat", turno="t1", adesso=ADESSO)
+                                   actor="chat", exchange="t1", now=ADESSO)
     assert "errore" in esito
     assert "campi" in esito["errore"]
     assert ha.salvate == []
@@ -612,9 +612,9 @@ async def test_cancellare_chiama_cancella_configurazione_con_la_chiave_giusta(ba
     """IMPORTANT 7: nessun test esercitava il gesto distruttivo."""
     officina, ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="cancella", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+                               actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert esito["applicata"] is True
     assert ha.cancellate == [("automation", "1771")]
 
@@ -625,11 +625,11 @@ async def test_ripristinare_una_creazione_la_cancella(banco):
     ripristino in una cancellazione da Home Assistant -- nessun test lo
     esercitava."""
     officina, ha, _archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
     chiave_nata = ha.salvate[0][1]
-    esito = await officina.ripristina(p["proposta_id"], origine="pagina", turno=None,
-                                      adesso=ADESSO + 120)
+    esito = await officina.ripristina(p["proposta_id"], actor="pagina", exchange=None,
+                                      now=ADESSO + 120)
     assert esito["applicata"] is True
     assert ha.cancellate == [("automation", chiave_nata)]
 
@@ -641,10 +641,10 @@ async def test_lo_stato_in_corso_non_esce_come_token_grezzo(banco):
     """Minore 1: «in_corso» e' un token interno (snake_case), non una parola
     italiana da mostrare dentro una frase all'utente."""
     officina, _ha, archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
-    archivio.rivendica(p["proposta_id"], adesso=ADESSO + 1)
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    archivio.rivendica(p["proposta_id"], now=ADESSO + 1)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
     assert "errore" in esito
     assert "in_corso" not in esito["errore"]
     assert "in corso" in esito["errore"]
@@ -663,11 +663,11 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     review dei nove rischi del Task 7 non l'ha visto."""
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("salva_configurazione")
 
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
 
     # (a) un dizionario con errore, non un'eccezione sollevata fuori da qui.
     assert "errore" in esito
@@ -676,7 +676,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     assert ha.helper_creati, "l'helper doveva essere creato prima del guasto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
     # (c) la proposta non resta bloccata in_corso.
-    assert archivio.leggi(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
@@ -685,11 +685,11 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
     per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
     officina, ha, _archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("salva_configurazione")
 
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
 
     assert esito.get("guasto_rete") is True
 
@@ -700,30 +700,30 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
     officina.py:305): stessa protezione sul gesto distruttivo."""
     officina, ha, archivio, _ = banco
     p = await officina.proponi(_intento(gesto="cancella", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
+                               actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("cancella_configurazione")
 
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
 
     assert "errore" in esito
     assert esito.get("guasto_rete") is True
-    assert archivio.leggi(p["proposta_id"])["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"])["stato"] == "rifiutata"
 
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_durante_proponi_non_solleva(banco):
-    """Punto 1, il sito di `_chiave_libera` (officina.py:168, gesto `crea`):
+    """Punto 1, il sito di `_free_key` (officina.py:168, gesto `crea`):
     il modulo dichiara «non solleva mai» anche qui, non solo durante
     `applica`."""
     officina, ha, archivio, _ = banco
     ha._solleva.add("leggi_configurazione")
 
-    esito = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    esito = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
 
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -736,11 +736,11 @@ async def test_un_guasto_di_rete_durante_proponi_una_modifica_non_solleva(banco)
     ha._solleva.add("leggi_configurazione")
 
     esito = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                                   origine="chat", turno="t1", adesso=ADESSO)
+                                   actor="chat", exchange="t1", now=ADESSO)
 
     assert "proposta_id" not in esito
     assert "errore" in esito
-    assert archivio.elenca() == []
+    assert archivio.list() == []
 
 
 @pytest.mark.asyncio
@@ -756,8 +756,8 @@ async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banc
     officina, ha, _, _ = banco
     intento = _intento(gesto="modifica", chiave="1771",
                        helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
-    p = await officina.proponi(intento, origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="chat", turno="t2", adesso=ADESSO + 60)
+    p = await officina.proponi(intento, actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="chat", exchange="t2", now=ADESSO + 60)
     assert ("input_boolean.modalita_notte", "hiris") in ha.etichettate
     # Contrasto: l'oggetto principale modificato NON prende l'etichetta
     # (spec §5 -- una modifica non rende suo cio' che HIRIS non ha creato).
@@ -779,7 +779,7 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
     for dominio, atteso in (("automation", "un'automazione"),
                             ("script", "uno script"),
                             ("scene", "una scena")):
-        anteprima = officina._anteprima("crea", dominio, "1", {"alias": "X"}, None, None,
+        anteprima = officina._preview("crea", dominio, "1", {"alias": "X"}, None, None,
                                         consiglio)
         assert f"Creo {atteso} di nome «X»." in anteprima
         assert "un'script" not in anteprima
@@ -788,7 +788,7 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
     for dominio, atteso in (("automation", "l'automazione"),
                             ("script", "lo script"),
                             ("scene", "la scena")):
-        anteprima = officina._anteprima("modifica", dominio, "1", {"alias": "X"},
+        anteprima = officina._preview("modifica", dominio, "1", {"alias": "X"},
                                         {"alias": "X"}, {"alias": "Y"}, consiglio)
         assert f"Modifico {atteso} «X», che esiste già in casa tua." in anteprima
 
@@ -801,10 +801,10 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
     come gia' fa il messaggio del cancello in `applica`."""
     officina, _ha, _archivio, _ = banco
     p = await officina.proponi(_intento(gesto="modifica", chiave="1771"),
-                               origine="chat", turno="t1", adesso=ADESSO)
-    await officina.applica(p["proposta_id"], origine="pagina", turno=None, adesso=ADESSO + 60)
-    esito = await officina.ripristina(p["proposta_id"], origine="chat", turno=None,
-                                      adesso=ADESSO + 120)
+                               actor="chat", exchange="t1", now=ADESSO)
+    await officina.applica(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
+    esito = await officina.ripristina(p["proposta_id"], actor="chat", exchange=None,
+                                      now=ADESSO + 120)
     assert "proposta_id" in esito
     assert "pagina" in esito["anteprima"].lower()
 
@@ -922,27 +922,27 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
 
 
 # ---------------------------------------------------------------------------
-# Punto 2 (residuo) -- `_traduci_rifiuto` puo' raccontare una bugia.
+# Punto 2 (residuo) -- `_translate_rejection` puo' raccontare una bugia.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(banco):
     """Prima dell'ondata un guasto di rete SOLLEVAVA e non arrivava mai a
-    `_traduci_rifiuto`. Adesso ci arriva come stringa, e quella funzione fa
+    `_translate_rejection`. Adesso ci arriva come stringa, e quella funzione fa
     `if "404" in errore` -- una sottostringa nuda su tutto il messaggio. Una
     porta come 8404 o un IP che la contiene basta a far uscire "queste
     automazioni sono gestite a mano...": una spiegazione architetturale
     falsa, detta con sicurezza, per un guasto che e' semplicemente di rete."""
     officina, ha, _archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
 
     async def _guasto_con_404(dominio, chiave, corpo):
         raise ConnectionError(
             "Cannot connect to host 192.168.1.95:8404 ssl:default [Connect call failed]")
     ha.salva_configurazione = _guasto_con_404
 
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
 
     assert esito.get("guasto_rete") is True
     assert "non ha risposto" in esito["errore"]
@@ -959,13 +959,13 @@ async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
     e' indistinguibile, in log, da un guasto di rete vero: il difetto nascosto
     due volte."""
     officina, ha, _archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     ha._solleva.add("salva_configurazione")
 
     with caplog.at_level(logging.WARNING,
                          logger="hiris.app.azione.costruzione.officina"):
-        await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                               adesso=ADESSO + 60)
+        await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                               now=ADESSO + 60)
 
     record = next(r for r in caplog.records if "non riuscita" in r.getMessage())
     assert "ConnectionError" in record.getMessage()
@@ -983,15 +983,15 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
     toglie la garanzia che sia sempre una riga breve di trasporto -- e'
     quella di QUALUNQUE eccezione."""
     officina, ha, _archivio, _ = banco
-    p = await officina.proponi(_intento(), origine="chat", turno="t1", adesso=ADESSO)
+    p = await officina.proponi(_intento(), actor="chat", exchange="t1", now=ADESSO)
     lunghissimo = "x" * 1000
 
     async def _guasto_lungo(dominio, chiave, corpo):
         raise ConnectionError(lunghissimo)
     ha.salva_configurazione = _guasto_lungo
 
-    esito = await officina.applica(p["proposta_id"], origine="chat", turno="t2",
-                                   adesso=ADESSO + 60)
+    esito = await officina.applica(p["proposta_id"], actor="chat", exchange="t2",
+                                   now=ADESSO + 60)
 
     assert lunghissimo not in esito["errore"]
     assert "[troncato]" in esito["errore"]
@@ -1029,5 +1029,5 @@ def test_la_data_del_ripristino_e_nel_fuso_della_casa():
     UTC del 26 agosto, che a Roma sono l'1:30 del 27: se la data uscisse in
     UTC, sarebbe il GIORNO sbagliato, non solo l'ora sbagliata."""
     ts = 1787787000.0  # 2026-08-26T23:30:00Z == 27/08/2026 01:30 a Roma
-    officina = Officina(None, None, None, leggi_fuso=lambda: "Europe/Rome")
+    officina = Workshop(None, None, None, read_timezone=lambda: "Europe/Rome")
     assert officina._data(ts) == "27/08/2026 01:30"

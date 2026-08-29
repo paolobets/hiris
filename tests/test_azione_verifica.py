@@ -14,8 +14,8 @@ difende, il test cade. L'esito e' nel rapporto del task.
 """
 import pytest
 
-from hiris.app.azione.registro import RegistroServizi
-from hiris.app.azione.verifica import verifica
+from hiris.app.azione.registro import ServiceRegistry
+from hiris.app.azione.verifica import verification
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
@@ -65,28 +65,28 @@ class FintoClient:
 # `@pytest.fixture` su una funzione async consegna al test una COROUTINE, non
 # il valore -- un helper atteso dentro il test e' l'unica forma che non
 # dipende dalla versione di pytest-asyncio installata.
-async def _registro_pronto(risposta=None) -> RegistroServizi:
-    r = RegistroServizi()
+async def _registro_pronto(risposta=None) -> ServiceRegistry:
+    r = ServiceRegistry()
     await r.aggiorna(FintoClient(risposta))
     return r
 
 
 @pytest.mark.asyncio
 async def test_una_chiamata_sana_passa():
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"entita": ["light.salotto"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is True
-    assert v.dominio == "light" and v.servizio == "turn_off"
-    assert v.entita == ("light.salotto",)
+    assert v.domain == "light" and v.service == "turn_off"
+    assert v.entity == ("light.salotto",)
 
 
 @pytest.mark.asyncio
 async def test_servizio_scritto_male():
-    v = verifica({"servizio": "spegni", "bersaglio": {"entita": ["light.salotto"]}},
+    v = verification({"servizio": "spegni", "bersaglio": {"entita": ["light.salotto"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "dominio.servizio" in v.motivo
+    assert "dominio.servizio" in v.reason
 
 
 @pytest.mark.asyncio
@@ -96,20 +96,20 @@ async def test_dominio_inesistente_elenca_quelli_veri():
     sono: (niente)» invece di «il dominio lock non esiste in questa casa».
     Il motivo giusto e' meta' del lavoro: il modello legge questo e sceglie
     fra correggere il servizio e cercare un'altra strada."""
-    v = verifica({"servizio": "lock.turn_off", "bersaglio": {"entita": ["light.salotto"]}},
+    v = verification({"servizio": "lock.turn_off", "bersaglio": {"entita": ["light.salotto"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "lock" in v.motivo
-    assert "light" in v.motivo and "switch" in v.motivo, (
+    assert "lock" in v.reason
+    assert "light" in v.reason and "switch" in v.reason, (
         "il rifiuto deve dire quali domini esistono, non solo che quello chiesto no")
 
 
 @pytest.mark.asyncio
 async def test_servizio_inesistente_elenca_quelli_veri():
-    v = verifica({"servizio": "light.esplodi", "bersaglio": {"entita": ["light.salotto"]}},
+    v = verification({"servizio": "light.esplodi", "bersaglio": {"entita": ["light.salotto"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "turn_on" in v.motivo and "turn_off" in v.motivo, (
+    assert "turn_on" in v.reason and "turn_off" in v.reason, (
         "il rifiuto deve dire cosa esiste, non solo cosa non esiste")
 
 
@@ -117,17 +117,17 @@ async def test_servizio_inesistente_elenca_quelli_veri():
 async def test_servizio_senza_dettaglio_e_comunque_esistente():
     """La trappola lasciata dal Task 1, pinnata.
 
-    `registro.servizio()` risponde `{}` -- **falso in booleano** -- per un
+    `registro.service()` risponde `{}` -- **falso in booleano** -- per un
     servizio che esiste ma non dichiara ne' campi ne' bersaglio. Il contratto
-    e' `is None`, mai la verita' booleana: un `if registro.servizio(...)`
+    e' `is None`, mai la verita' booleana: un `if registro.service(...)`
     rifiuterebbe questa chiamata legittima, e col motivo sbagliato («non
     esiste» invece di niente).
     """
     registro = await _registro_pronto(
         [{"domain": "scene", "services": {"turn_on": {}}}])
-    assert registro.servizio("scene", "turn_on") == {}, (
+    assert registro.service("scene", "turn_on") == {}, (
         "premessa del test: il dettaglio e' il dict vuoto, falso in booleano")
-    v = verifica({"servizio": "scene.turn_on",
+    v = verification({"servizio": "scene.turn_on",
                   "bersaglio": {"entita": ["scene.serata"]}},
                  registro, {"scene.serata": {"state": "unknown", "attributes": {}}})
     assert v.ok is True, "un servizio senza dettaglio esiste: `is None`, non `if`"
@@ -135,23 +135,23 @@ async def test_servizio_senza_dettaglio_e_comunque_esistente():
 
 @pytest.mark.asyncio
 async def test_entita_inesistente():
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"entita": ["light.fantasma"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"entita": ["light.fantasma"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "light.fantasma" in v.motivo
+    assert "light.fantasma" in v.reason
 
 
 @pytest.mark.asyncio
 async def test_dominio_incrociato_rifiutato():
-    v = verifica({"servizio": "light.turn_off", "bersaglio": {"entita": ["switch.presa"]}},
+    v = verification({"servizio": "light.turn_off", "bersaglio": {"entita": ["switch.presa"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "switch.presa" in v.motivo
+    assert "switch.presa" in v.reason
 
 
 @pytest.mark.asyncio
 async def test_homeassistant_si_applica_a_tutto():
-    v = verifica({"servizio": "homeassistant.turn_off",
+    v = verification({"servizio": "homeassistant.turn_off",
                   "bersaglio": {"entita": ["switch.presa", "light.salotto"]}},
                  await _registro_pronto(), STATI)
     assert v.ok is True, "i servizi del dominio homeassistant valgono per ogni dominio"
@@ -159,12 +159,12 @@ async def test_homeassistant_si_applica_a_tutto():
 
 @pytest.mark.asyncio
 async def test_parametro_inventato_rifiutato_con_l_elenco_dei_veri():
-    v = verifica({"servizio": "light.turn_on",
+    v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},
                   "dati": {"luminosita": 50}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "brightness_pct" in v.motivo
+    assert "brightness_pct" in v.reason
 
 
 @pytest.mark.asyncio
@@ -172,12 +172,12 @@ async def test_dati_che_non_e_un_oggetto_rifiutato_per_quello_che_e():
     """Senza il controllo di tipo la lista verrebbe iterata lo stesso, e il
     rifiuto direbbe «brightness_pct non e' un parametro» -- vero ma inutile:
     il modello correggerebbe il nome del parametro invece della forma."""
-    v = verifica({"servizio": "light.turn_on",
+    v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},
                   "dati": ["brightness_pct"]},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "dati" in v.motivo
+    assert "dati" in v.reason
 
 
 @pytest.mark.asyncio
@@ -185,18 +185,18 @@ async def test_una_entita_sola_puo_essere_una_stringa():
     """Il modello che propone una sola entita' scrive spesso la stringa nuda
     invece della lista di uno. E' una forma legittima, non un errore: va
     accolta, o HIRIS rifiuterebbe per punteggiatura."""
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"entita": "light.salotto"}},
                  await _registro_pronto(), STATI)
     assert v.ok is True
-    assert v.entita == ("light.salotto",)
+    assert v.entity == ("light.salotto",)
 
 
 @pytest.mark.asyncio
 async def test_senza_bersaglio_rifiutato():
-    v = verifica({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
+    v = verification({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "entit" in v.motivo.lower()
+    assert "entit" in v.reason.lower()
 
 
 # --- cio' che il registro non ha saputo leggere -----------------------------
@@ -214,17 +214,17 @@ async def test_un_parametro_dentro_una_sezione_e_un_parametro_vero():
         "advanced_fields": {"collapsed": True, "fields": {"rgbw_color": {}}},
     }}}}]
     registro = await _registro_pronto(risposta)
-    v = verifica({"servizio": "light.turn_on",
+    v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},
                   "dati": {"rgbw_color": [255, 255, 255, 255]}}, registro, STATI)
-    assert v.ok is True, v.motivo
+    assert v.ok is True, v.reason
 
     # e il nome della sezione non e' diventato un parametro accettabile
-    no = verifica({"servizio": "light.turn_on",
+    no = verification({"servizio": "light.turn_on",
                    "bersaglio": {"entita": ["light.salotto"]},
                    "dati": {"advanced_fields": 1}}, registro, STATI)
     assert no.ok is False
-    assert "advanced_fields" not in no.motivo.split("Quelli veri sono:")[1]
+    assert "advanced_fields" not in no.reason.split("Quelli veri sono:")[1]
 
 
 @pytest.mark.asyncio
@@ -242,10 +242,10 @@ async def test_un_fields_illeggibile_non_solleva_e_non_rifiuta():
     rifiuto varrebbe per OGNI servizio della casa."""
     registro = await _registro_pronto(
         [{"domain": "light", "services": {"turn_on": {"fields": [{"name": "brightness_pct"}]}}}])
-    v = verifica({"servizio": "light.turn_on",
+    v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},
                   "dati": {"brightness_pct": 50}}, registro, STATI)
-    assert v.ok is True, v.motivo
+    assert v.ok is True, v.reason
 
 
 def test_un_fields_illeggibile_non_solleva_nemmeno_saltando_il_registro():
@@ -253,11 +253,11 @@ def test_un_fields_illeggibile_non_solleva_nemmeno_saltando_il_registro():
     controllo di forma dev'essere anche qui, o la promessa della porta
     tornerebbe a dipendere da chi la chiama."""
     class RegistroACaso:
-        def domini(self): return ["light"]
-        def servizi_di(self, d): return ["turn_on"]
-        def servizio(self, d, n): return {"fields": [{"name": "brightness_pct"}]}
+        def domains(self): return ["light"]
+        def services_for(self, d): return ["turn_on"]
+        def service(self, d, n): return {"fields": [{"name": "brightness_pct"}]}
 
-    v = verifica({"servizio": "light.turn_on",
+    v = verification({"servizio": "light.turn_on",
                   "bersaglio": {"entita": ["light.salotto"]},
                   "dati": {"brightness_pct": 50}}, RegistroACaso(), STATI)
     assert v.ok is True
@@ -268,12 +268,12 @@ async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
     """Il complemento: `{}` («letto: nessun parametro») e `None` («non l'ho
     letto») non devono collassare l'uno nell'altro, o allargare la difesa di
     R-1 avrebbe spento un controllo che funzionava."""
-    v = verifica({"servizio": "switch.turn_on",
+    v = verification({"servizio": "switch.turn_on",
                   "bersaglio": {"entita": ["switch.presa"]},
                   "dati": {"colore_del_mercoledi": "blu"}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "non accetta parametri" in v.motivo
+    assert "non accetta parametri" in v.reason
 
 
 # --- i servizi senza bersaglio -----------------------------------------------
@@ -286,31 +286,31 @@ async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
 # rifiutava incondizionatamente, prima ancora di guardare il servizio.
 #
 # La prova per mutazione di questa famiglia: rimettere `if not bersaglio_ha:`
-# incondizionato (senza `and _dichiara_bersaglio(definizione)`) fa cadere
+# incondizionato (senza `and _declare_target(definizione)`) fa cadere
 # `test_un_servizio_senza_target_accetta_un_bersaglio_vuoto`.
 
 @pytest.mark.asyncio
 async def test_un_servizio_senza_target_accetta_un_bersaglio_vuoto():
-    v = verifica({"servizio": "notify.mobile_app_x",
+    v = verification({"servizio": "notify.mobile_app_x",
                   "bersaglio": {},
                   "dati": {"message": "ciao", "title": "HIRIS"}},
                  await _registro_pronto(), STATI)
-    assert v.ok is True, v.motivo
-    assert v.entita == ()
-    assert v.bersaglio == {}
-    assert v.senza_bersaglio is True
+    assert v.ok is True, v.reason
+    assert v.entity == ()
+    assert v.target == {}
+    assert v.no_target is True
 
 
 @pytest.mark.asyncio
 async def test_un_servizio_senza_target_accetta_anche_bersaglio_del_tutto_assente():
     """«Bersaglio assente» e «bersaglio: {}» sono la stessa cosa per
-    `traduci_bersaglio` (vedi il suo docstring): devono restare la stessa
+    `translate_target` (vedi il suo docstring): devono restare la stessa
     cosa anche qui."""
-    v = verifica({"servizio": "notify.mobile_app_x",
+    v = verification({"servizio": "notify.mobile_app_x",
                   "dati": {"message": "ciao"}},
                  await _registro_pronto(), STATI)
-    assert v.ok is True, v.motivo
-    assert v.senza_bersaglio is True
+    assert v.ok is True, v.reason
+    assert v.no_target is True
 
 
 @pytest.mark.asyncio
@@ -320,9 +320,9 @@ async def test_un_servizio_col_target_resta_rifiutato_senza_bersaglio():
     bersaglio vuoto resta un errore -- identico a prima, parola per parola.
     E' il test gemello di `test_senza_bersaglio_rifiutato`, con l'assert piu'
     stretto sul motivo esatto."""
-    v = verifica({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
+    v = verification({"servizio": "light.turn_off"}, await _registro_pronto(), STATI)
     assert v.ok is False
-    assert v.motivo == ("serve un bersaglio: «entita» con gli id esatti, oppure "
+    assert v.reason == ("serve un bersaglio: «entita» con gli id esatti, oppure "
                         "«aree», «piani», «etichette» o «dispositivi» -- Home "
                         "Assistant risolve da se' cosa contengono, e non serve "
                         "elencare le entita' a mano.")
@@ -332,11 +332,11 @@ async def test_un_servizio_col_target_resta_rifiutato_senza_bersaglio():
 async def test_un_target_vuoto_ma_dichiarato_resta_rifiutato_senza_bersaglio():
     """`target: {}` (dichiarato, ma senza restrizioni -- il caso vero di
     `switch.turn_on` in `RISPOSTA_HA`) NON e' «nessun target»: e' un `target`
-    che accetta di tutto. Il verso prudente di `_dichiara_bersaglio` tratta
+    che accetta di tutto. Il verso prudente di `_declare_target` tratta
     qualunque `dict`, anche vuoto, come «lo dichiara»."""
-    v = verifica({"servizio": "switch.turn_on"}, await _registro_pronto(), STATI)
+    v = verification({"servizio": "switch.turn_on"}, await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "serve un bersaglio" in v.motivo
+    assert "serve un bersaglio" in v.reason
 
 
 @pytest.mark.asyncio
@@ -353,12 +353,12 @@ async def test_un_servizio_di_sistema_senza_target_resta_rifiutato_senza_bersagl
     recapito, e deve restare rifiutato esattamente come prima.
 
     Prova per mutazione: togliendo il controllo sulla famiglia da
-    `_bersaglio_vuoto_e_legittimo` (tornando a `not _dichiara_bersaglio(...)`
+    `_allows_empty_target` (tornando a `not _declare_target(...)`
     da solo) questo test diventa rosso.
     """
-    v = verifica({"servizio": "homeassistant.restart"}, await _registro_pronto(), STATI)
+    v = verification({"servizio": "homeassistant.restart"}, await _registro_pronto(), STATI)
     assert v.ok is False
-    assert v.motivo == ("serve un bersaglio: «entita» con gli id esatti, oppure "
+    assert v.reason == ("serve un bersaglio: «entita» con gli id esatti, oppure "
                         "«aree», «piani», «etichette» o «dispositivi» -- Home "
                         "Assistant risolve da se' cosa contengono, e non serve "
                         "elencare le entita' a mano.")
@@ -368,11 +368,11 @@ async def test_un_servizio_di_sistema_senza_target_resta_rifiutato_senza_bersagl
 async def test_un_servizio_senza_target_verifica_comunque_i_parametri():
     """Il bypass del bersaglio non e' un bypass di tutto: un parametro
     inventato resta un rifiuto, come per ogni altro servizio."""
-    v = verifica({"servizio": "notify.mobile_app_x",
+    v = verification({"servizio": "notify.mobile_app_x",
                   "dati": {"colore_del_mercoledi": "blu"}},
                  await _registro_pronto(), STATI)
     assert v.ok is False
-    assert "non e' un parametro" in v.motivo
+    assert "non e' un parametro" in v.reason
 
 
 @pytest.mark.asyncio
@@ -387,8 +387,8 @@ async def test_la_chiamata_dello_schedulatore_per_una_notifica_e_accettata():
         "servizio": "notify.mobile_app_x", "bersaglio": {},
         "dati": {"message": "e' salita di 2 gradi", "title": "HIRIS"},
     }
-    v = verifica(chiamata_dello_schedulatore, await _registro_pronto(), STATI)
-    assert v.ok is True, v.motivo
+    v = verification(chiamata_dello_schedulatore, await _registro_pronto(), STATI)
+    assert v.ok is True, v.reason
 
 
 # --- T8 (R2): dal nome di un'etichetta al label_id a un esegui verificato --
@@ -396,7 +396,7 @@ async def test_la_chiamata_dello_schedulatore_per_una_notifica_e_accettata():
 # Requisito 4 del brief: il giro intero che chiude il vicolo cieco piu'
 # radicale della famiglia (R2, docs/design/2026-08-20-i-riferimenti.md) --
 # dal NOME che l'utente ha scritto in Home Assistant, per `cerca`, al
-# `label_id`, a un bersaglio di `esegui` che `verifica()` ACCETTA. Non si
+# `label_id`, a un bersaglio di `esegui` che `verification()` ACCETTA. Non si
 # esegue: basta che il verdetto sia positivo con un id che, fino a questa
 # fetta, nessuna porta faceva uscire.
 
@@ -418,11 +418,11 @@ async def test_dal_nome_di_un_etichetta_al_label_id_a_una_verifica_che_passa():
                      if c["tipo"] == "etichetta")
     assert candidato["riferimento"] == "da_controllare"
 
-    v = verifica({"servizio": "light.turn_off",
+    v = verification({"servizio": "light.turn_off",
                   "bersaglio": {"etichette": [candidato["riferimento"]]}},
                  await _registro_pronto(), STATI,
-                 risolto={"entita": ["light.salotto"], "dispositivi": [], "aree": [],
+                 resolved={"entita": ["light.salotto"], "dispositivi": [], "aree": [],
                           "dispositivi_mancanti": [], "aree_mancanti": [],
                           "piani_mancanti": [], "etichette_mancanti": []})
-    assert v.ok is True, v.motivo
-    assert v.entita == ("light.salotto",)
+    assert v.ok is True, v.reason
+    assert v.entity == ("light.salotto",)

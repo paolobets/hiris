@@ -38,7 +38,7 @@ import logging
 
 from ...casa.tempo import zona_casa
 from ...proxy._sanitize import truncate_with_marker as _truncate
-from . import forme
+from . import composer
 from .mestiere import consiglia
 
 logger = logging.getLogger(__name__)
@@ -46,14 +46,14 @@ logger = logging.getLogger(__name__)
 # L'etichetta con cui Home Assistant tiene la paternita' di cio' che HIRIS
 # costruisce (spec §5). Vive nel registro di HA e non in una tabella nostra:
 # e' un fatto che lui sa gia' tenere.
-NOME_ETICHETTA = "HIRIS"
+LABEL_NAME = "HIRIS"
 
 # Le origini che sono, per costruzione, un essere umano che ha appena
 # cliccato. Per loro la guardia del turno non si applica -- non c'e' nessun
 # modello da trattenere.
-ORIGINI_UMANE = ("pagina",)
+HUMAN_ACTORS = ("pagina",)
 
-_GESTI = ("crea", "modifica", "cancella")
+OPERATIONS = ("crea", "modifica", "cancella")
 
 # Le due forme dell'articolo -- indeterminativo per «crea», determinativo per
 # «modifica»/«cancella» -- per i tre domini che questa fetta costruisce.
@@ -75,7 +75,7 @@ ARTICOLO_DETERMINATIVO = {"automation": "l'automazione", "script": "lo script",
 # trovato a fuoriuscire grezzo in un messaggio d'errore. `.get(stato, stato)`
 # tiene la mappa un ripiego, non un obbligo di completezza: uno stato nuovo
 # non ancora tradotto resta comunque leggibile, solo con l'underscore.
-_STATO_LEGGIBILE = {
+STATE_READABLE = {
     "applicata": "applicata",
     "rifiutata": "rifiutata",
     "scaduta": "scaduta",
@@ -83,8 +83,8 @@ _STATO_LEGGIBILE = {
 }
 
 
-def _stato_leggibile(stato: str) -> str:
-    return _STATO_LEGGIBILE.get(stato, stato)
+def _state_readable(state: str) -> str:
+    return STATE_READABLE.get(state, state)
 
 
 # Punto 4 (residuo): il messaggio grezzo di `_rete` (sotto) finisce in quattro
@@ -103,20 +103,20 @@ def _stato_leggibile(stato: str) -> str:
 # condivisa. Il cap resta 300 -- e' una scelta di QUESTO modulo (il
 # messaggio finisce, fra l'altro, nella cronaca permanente in SQLite),
 # l'algoritmo e' quello condiviso.
-_CAP_ERRORE_RETE = 300
+_NETWORK_ERROR_CAP = 300
 
 
-class Officina:
-    def __init__(self, ha, archivio, cronaca, *, leggi_fuso=None) -> None:
+class Workshop:
+    def __init__(self, ha, store, journal, *, read_timezone=None) -> None:
         self._ha = ha
-        self._archivio = archivio
-        self._cronaca = cronaca
+        self._store = store
+        self._journal = journal
         self._label_id: str | None = None
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
         # `app["consumi"]`).
-        self._leggi_fuso = leggi_fuso or (lambda: None)
+        self._read_timezone = read_timezone or (lambda: None)
 
     def _data(self, ts: float) -> str:
         """La data nel fuso della CASA. Senza, l'ora mostrata e' quella del
@@ -125,33 +125,33 @@ class Officina:
         inventa mai."""
         import datetime
         return datetime.datetime.fromtimestamp(
-            ts, zona_casa(self._leggi_fuso())).strftime("%d/%m/%Y %H:%M")
+            ts, zona_casa(self._read_timezone())).strftime("%d/%m/%Y %H:%M")
 
     # ---- proporre -------------------------------------------------------
 
-    async def proponi(self, intento: dict, *, origine: str, turno: str | None,
-                      adesso: float) -> dict:
-        gesto = intento.get("gesto")
-        dominio = intento.get("dominio")
-        if gesto not in _GESTI:
-            return {"errore": f"gesto sconosciuto: {gesto}. Gesti: {', '.join(_GESTI)}."}
-        if dominio not in self._ha.DOMINI_CONFIGURABILI:
-            return {"errore": (f"non so costruire «{dominio}». So costruire: "
+    async def proponi(self, intent: dict, *, actor: str, exchange: str | None,
+                      now: float) -> dict:
+        operation = intent.get("gesto")
+        domain = intent.get("dominio")
+        if operation not in OPERATIONS:
+            return {"errore": f"gesto sconosciuto: {operation}. Gesti: {', '.join(OPERATIONS)}."}
+        if domain not in self._ha.DOMINI_CONFIGURABILI:
+            return {"errore": (f"non so costruire «{domain}». So costruire: "
                                f"{', '.join(self._ha.DOMINI_CONFIGURABILI)}.")}
-        motivo_forma = _forma_invalida(intento)
-        if motivo_forma is not None:
-            return {"errore": motivo_forma}
+        form_reason = _invalid_form(intent)
+        if form_reason is not None:
+            return {"errore": form_reason}
 
         consiglio = consiglia({
-            "richiesto": intento.get("richiesto"),
-            "innesco": intento.get("innesco"),
-            "passi": intento.get("azioni"),
-            "stati": intento.get("stati"),
-            "parametri": intento.get("parametri"),
-            "riuso": intento.get("riuso"),
-            "ricorrente": intento.get("ricorrente"),
+            "richiesto": intent.get("richiesto"),
+            "innesco": intent.get("innesco"),
+            "passi": intent.get("azioni"),
+            "stati": intent.get("stati"),
+            "parametri": intent.get("parametri"),
+            "riuso": intent.get("riuso"),
+            "ricorrente": intent.get("ricorrente"),
         })
-        if gesto in ("crea", "modifica") and not consiglio["strutture"]:
+        if operation in ("crea", "modifica") and not consiglio["strutture"]:
             # L'unico caso in cui il mestiere non ha niente da dire e' proprio
             # quello in cui tace (`consiglia` torna col ritorno anticipato,
             # `dissenso: False`). Senza questo controllo il corpo composto
@@ -162,53 +162,53 @@ class Officina:
             return {"errore": consiglio["motivo"] or "non ho capito cosa costruire."}
 
         prima = None
-        chiave = intento.get("chiave")
-        if gesto in ("modifica", "cancella"):
-            if not chiave:
-                return {"errore": f"per {gesto} serve la chiave dell'oggetto da toccare."}
-            letto = await self._rete(self._ha.leggi_configurazione(dominio, chiave))
-            if letto.get("assente"):
+        key = intent.get("chiave")
+        if operation in ("modifica", "cancella"):
+            if not key:
+                return {"errore": f"per {operation} serve la chiave dell'oggetto da toccare."}
+            loaded = await self._rete(self._ha.leggi_configurazione(domain, key))
+            if loaded.get("assente"):
                 # `leggi_configurazione` ha TRE forme (`corpo`, `errore`,
                 # `assente`), non due: indicizzare `letto["corpo"]` su questo
                 # ramo solleverebbe `KeyError` fuori dal modulo, raggiungibile
                 # con argomenti perfettamente validi -- il modello propone una
                 # modifica a un'automazione che l'utente ha cancellato nel
                 # frattempo.
-                return {"errore": f"non trovo piu' {dominio}.{chiave} in casa tua: "
+                return {"errore": f"non trovo piu' {domain}.{key} in casa tua: "
                                   "forse e' stato cancellato nel frattempo."}
-            if "errore" in letto:
-                return {"errore": f"non ho potuto leggere com'e' adesso: {letto['errore']}"}
-            prima = letto["corpo"]
+            if "errore" in loaded:
+                return {"errore": f"non ho potuto leggere com'e' adesso: {loaded['errore']}"}
+            prima = loaded["corpo"]
 
-        if gesto == "cancella":
+        if operation == "cancella":
             dopo = None
         else:
-            if gesto == "crea":
-                libera = await self._chiave_libera(dominio, intento)
+            if operation == "crea":
+                libera = await self._free_key(domain, intent)
                 if "errore" in libera:
                     return libera
-                chiave = libera["chiave"]
-            composto = self._componi(intento, chiave)
+                key = libera["chiave"]
+            composto = self._compose(intent, key)
             if "errore" in composto:
                 return composto
-            dopo, chiave = composto["corpo"], composto["chiave"]
-            prova = await self._valida(dominio, dopo)
+            dopo, key = composto["corpo"], composto["chiave"]
+            prova = await self._validate(domain, dopo)
             if prova is not None:
                 return {"errore": prova}
 
-        anteprima = self._anteprima(gesto, dominio, chiave, intento, prima, dopo,
+        preview = self._preview(operation, domain, key, intent, prima, dopo,
                                     consiglio)
-        esito = self._archivio.proponi(
-            gesto=gesto, dominio=dominio, chiave=chiave, origine=origine,
-            turno=turno, frase=intento.get("frase"), prima=prima, dopo=dopo,
-            helper=list(intento.get("helper") or []), anteprima=anteprima,
-            adesso=adesso)
-        if "errore" in esito:
-            return esito
-        return {"proposta_id": esito["id"], "anteprima": anteprima,
+        occurrence = self._store.proponi(
+            operation=operation, domain=domain, key=key, actor=actor,
+            exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
+            helper=list(intent.get("helper") or []), preview=preview,
+            now=now)
+        if "errore" in occurrence:
+            return occurrence
+        return {"proposta_id": occurrence["id"], "anteprima": preview,
                 "consiglio": consiglio}
 
-    async def _chiave_libera(self, dominio: str, intento: dict) -> dict:
+    async def _free_key(self, domain: str, intent: dict) -> dict:
         """Una chiave che in questa casa non e' gia' occupata.
 
         **Un id gia' in uso non darebbe un errore: farebbe SOSTITUIRE la voce
@@ -220,99 +220,99 @@ class Officina:
         Si distingue `assente` da `errore` (vedi `leggi_configurazione`): se
         Home Assistant non risponde **non si dichiara libera** nessuna chiave.
         """
-        alias = intento.get("alias") or ""
+        alias = intent.get("alias") or ""
         occupate: set[str] = set()
-        if dominio == "script":
-            candidata = forme.slug_libero(alias, occupate)
+        if domain == "script":
+            candidata = composer.slug_libero(alias, occupate)
         else:
-            candidata = forme.nuovo_id(occupate, seme=_seme_da(intento))
+            candidata = composer.nuovo_id(occupate, seme=_seme_da(intent))
         for _ in range(5):
-            letto = await self._rete(self._ha.leggi_configurazione(dominio, candidata))
-            if letto.get("assente"):
+            loaded = await self._rete(self._ha.leggi_configurazione(domain, candidata))
+            if loaded.get("assente"):
                 return {"chiave": candidata}
-            if "errore" in letto:
+            if "errore" in loaded:
                 return {"errore": ("non ho potuto verificare se l'identificatore e' "
-                                   f"libero: {letto['errore']}. Non scrivo alla cieca.")}
+                                   f"libero: {loaded['errore']}. Non scrivo alla cieca.")}
             occupate.add(candidata)
-            if dominio == "script":
-                candidata = forme.slug_libero(alias, occupate)
+            if domain == "script":
+                candidata = composer.slug_libero(alias, occupate)
             else:
-                candidata = forme.nuovo_id(occupate, seme=int(candidata) + 1)
+                candidata = composer.nuovo_id(occupate, seme=int(candidata) + 1)
         return {"errore": "non sono riuscito a trovare un identificatore libero."}
 
-    def _componi(self, intento: dict, chiave: str | None) -> dict:
-        dominio = intento["dominio"]
-        alias = intento.get("alias") or ""
-        descrizione = intento.get("descrizione") or ""
+    def _compose(self, intent: dict, key: str | None) -> dict:
+        domain = intent["dominio"]
+        alias = intent.get("alias") or ""
+        descrizione = intent.get("descrizione") or ""
         if not alias:
             return {"errore": "serve un nome per l'oggetto da costruire."}
-        if dominio == "automation":
-            ident = chiave or forme.nuovo_id(set(), seme=_seme_da(intento))
-            return {"chiave": ident, "corpo": forme.componi_automazione(
+        if domain == "automation":
+            ident = key or composer.nuovo_id(set(), seme=_seme_da(intent))
+            return {"chiave": ident, "corpo": composer.compose_automation(
                 id_=ident, alias=alias, descrizione=descrizione,
-                innesco=intento.get("innesco") or [],
-                condizioni=intento.get("condizioni") or [],
-                azioni=intento.get("azioni") or [])}
-        if dominio == "script":
-            slug = chiave or forme.slug_libero(alias, set())
-            return {"chiave": slug, "corpo": forme.componi_script(
+                innesco=intent.get("innesco") or [],
+                conditions=intent.get("condizioni") or [],
+                actions=intent.get("azioni") or [])}
+        if domain == "script":
+            slug = key or composer.slug_libero(alias, set())
+            return {"chiave": slug, "corpo": composer.compose_script(
                 alias=alias, descrizione=descrizione,
-                passi=intento.get("azioni") or [],
-                campi=intento.get("campi"))}
+                passi=intent.get("azioni") or [],
+                fields=intent.get("campi"))}
         # Una scena e' l'unico dominio che a valle NON viene validato da Home
         # Assistant (`parti_da_validare` restituisce {} di proposito): se uno
         # stato e' malformato o ripetuto, QUESTO e' l'ultimo posto in cui
-        # qualcuno puo' accorgersene. `componi_scena` scarterebbe in silenzio.
-        guai = forme.problemi_stati(intento.get("stati") or [])
+        # qualcuno puo' accorgersene. `compose_scene` scarterebbe in silenzio.
+        guai = composer.state_problems(intent.get("stati") or [])
         if guai:
             return {"errore": "non posso comporre la scena -- " + "; ".join(guai)}
-        ident = chiave or forme.nuovo_id(set(), seme=_seme_da(intento))
-        return {"chiave": ident, "corpo": forme.componi_scena(
-            id_=ident, alias=alias, stati=intento.get("stati") or [])}
+        ident = key or composer.nuovo_id(set(), seme=_seme_da(intent))
+        return {"chiave": ident, "corpo": composer.compose_scene(
+            id_=ident, alias=alias, states=intent.get("stati") or [])}
 
-    async def _valida(self, dominio: str, corpo: dict) -> str | None:
+    async def _validate(self, domain: str, body: dict) -> str | None:
         """`None` se va bene, altrimenti il motivo -- quello di Home Assistant."""
-        parti = forme.parti_da_validare(dominio, corpo)
+        parti = composer.parti_da_validare(domain, body)
         if not parti:
             return None
-        esito = await self._ha.valida_config(**parti)
-        if "errore" in esito:
-            return f"non ho potuto far validare la configurazione: {esito['errore']}"
-        guasti = [f"{chiave}: {voce.get('error')}"
-                  for chiave, voce in esito.items()
-                  if isinstance(voce, dict) and not voce.get("valid")]
+        occurrence = await self._ha.valida_config(**parti)
+        if "errore" in occurrence:
+            return f"non ho potuto far validare la configurazione: {occurrence['errore']}"
+        guasti = [f"{key}: {entry.get('error')}"
+                  for key, entry in occurrence.items()
+                  if isinstance(entry, dict) and not entry.get("valid")]
         if guasti:
             return "Home Assistant rifiuta questa configurazione -- " + "; ".join(guasti)
         return None
 
-    def _anteprima(self, gesto, dominio, chiave, intento, prima, dopo,
+    def _preview(self, operation, domain, key, intent, prima, dopo,
                    consiglio) -> str:
         # `.get(dominio, dominio)`, non un indice nudo: l'elenco dei domini
         # configurabili e' del client (`HAClient.DOMINI_CONFIGURABILI`), non
         # di queste tabelle locali (ARTICOLO_INDETERMINATIVO/DETERMINATIVO,
         # sopra) -- un quarto dominio aggiunto la' solleverebbe `KeyError` qui.
         righe = []
-        if gesto == "crea":
+        if operation == "crea":
             # Punto 5 (residuo): la correzione dell'articolo (ondata finale,
             # punto 7) non toccava il participio -- «chiamata» concorda solo
             # con automazione e scena, e «uno script chiamata «X»» restava
             # sgrammaticato. «di nome» e' invariabile: non serve una terza
             # tabella di concordanze.
-            righe.append(f"Creo {ARTICOLO_INDETERMINATIVO.get(dominio, dominio)} "
-                         f"di nome «{intento.get('alias')}».")
-        elif gesto == "modifica":
-            righe.append(f"Modifico {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
-                         f"«{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Creo {ARTICOLO_INDETERMINATIVO.get(domain, domain)} "
+                         f"di nome «{intent.get('alias')}».")
+        elif operation == "modifica":
+            righe.append(f"Modifico {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
+                         f"«{(prima or {}).get('alias') or key}», "
                          "che esiste già in casa tua.")
             righe.append(f"Prima: {_compatta(prima)}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
-            righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(dominio, dominio)} "
-                         f"«{(prima or {}).get('alias') or chiave}», "
+            righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
+                         f"«{(prima or {}).get('alias') or key}», "
                          "che esiste già in casa tua. Conservo com'era.")
-        if intento.get("descrizione"):
-            righe.append(f"A cosa serve: {intento['descrizione']}")
-        for helper in intento.get("helper") or []:
+        if intent.get("descrizione"):
+            righe.append(f"A cosa serve: {intent['descrizione']}")
+        for helper in intent.get("helper") or []:
             righe.append(f"Nasce anche un {helper.get('dominio')}: "
                          f"{(helper.get('dati') or {}).get('name')}")
         if consiglio.get("motivo"):
@@ -325,14 +325,14 @@ class Officina:
 
     # ---- applicare ------------------------------------------------------
 
-    async def applica(self, proposta_id: str, *, origine: str, turno: str | None,
-                      adesso: float) -> dict:
-        proposta = self._archivio.leggi(proposta_id)
-        if proposta is None:
+    async def applica(self, proposal_id: str, *, actor: str, exchange: str | None,
+                      now: float) -> dict:
+        proposal = self._store.read(proposal_id)
+        if proposal is None:
             return {"errore": "non ho nessuna proposta con quell'identificatore."}
-        if proposta["stato"] != "in_attesa":
-            return {"errore": f"quella proposta e' gia' {_stato_leggibile(proposta['stato'])}."}
-        cancello = self._cancello(proposta, origine, turno)
+        if proposal["stato"] != "in_attesa":
+            return {"errore": f"quella proposta e' gia' {_state_readable(proposal['stato'])}."}
+        cancello = self._cancello(proposal, actor, exchange)
         if cancello is not None:
             return {"errore": cancello}
 
@@ -340,25 +340,25 @@ class Officina:
         # letto qui sopra non basta -- e' una lettura che una richiesta
         # concorrente (doppio clic sulla pagina, o pagina e chat insieme) puo'
         # gia' aver superato prima che questa arrivi a scrivere. La UPDATE
-        # atomica `WHERE stato='in_attesa'` di `ArchivioCostruzioni.rivendica`
+        # atomica `WHERE stato='in_attesa'` di `ConstructionStore.rivendica`
         # e' l'unico punto in cui chi arriva prima puo' davvero vincere.
-        rivendicata = self._archivio.rivendica(proposta_id, adesso=adesso)
+        rivendicata = self._store.rivendica(proposal_id, now=now)
         if "errore" in rivendicata:
             return {"errore": "quella proposta e' gia' stata presa in carico da "
                               "un'altra richiesta."}
 
-        dominio, chiave, gesto = proposta["dominio"], proposta["chiave"], proposta["gesto"]
+        domain, key, operation = proposal["dominio"], proposal["chiave"], proposal["gesto"]
         nati: list[tuple[str, str]] = []
         senza_id: list[str] = []
-        for helper in proposta["helper"]:
-            esito = await self._ha.crea_helper(helper.get("dominio"),
+        for helper in proposal["helper"]:
+            occurrence = await self._ha.crea_helper(helper.get("dominio"),
                                                helper.get("dati") or {})
-            if "errore" in esito:
-                nota = await self._disfa(nati, senza_id)
-                return self._fallita(proposta, adesso, origine,
+            if "errore" in occurrence:
+                note = await self._disfa(nati, senza_id)
+                return self._fallita(proposal, now, actor,
                                      f"non sono riuscito a creare l'helper: "
-                                     f"{esito['errore']}{nota}")
-            creato = esito.get("helper") or {}
+                                     f"{occurrence['errore']}{note}")
+            creato = occurrence.get("helper") or {}
             if creato.get("id"):
                 nati.append((helper.get("dominio"), creato["id"]))
             else:
@@ -369,19 +369,19 @@ class Officina:
                 # c'e' qualcosa da controllare (spec §3.1).
                 senza_id.append(str(helper.get("dominio")))
 
-        if gesto == "cancella":
-            scritto = await self._rete(self._ha.cancella_configurazione(dominio, chiave))
-            riuscito = "cancellato" in scritto
+        if operation == "cancella":
+            written = await self._rete(self._ha.cancella_configurazione(domain, key))
+            riuscito = "cancellato" in written
         else:
-            scritto = await self._rete(
-                self._ha.salva_configurazione(dominio, chiave, proposta["dopo"]))
-            riuscito = "salvato" in scritto
+            written = await self._rete(
+                self._ha.salva_configurazione(domain, key, proposal["dopo"]))
+            riuscito = "salvato" in written
 
         if not riuscito:
-            nota = await self._disfa(nati, senza_id)
-            guasto_rete = scritto.get("guasto_rete", False)
-            errore_grezzo = scritto.get("errore", "")
-            # Punto 2 (residuo): `_traduci_rifiuto` cerca «404» come SOTTOSTRINGA
+            note = await self._disfa(nati, senza_id)
+            guasto_rete = written.get("guasto_rete", False)
+            raw_error = written.get("errore", "")
+            # Punto 2 (residuo): `_translate_rejection` cerca «404» come SOTTOSTRINGA
             # nuda su tutto il messaggio -- un guasto di rete puo' contenere
             # quella cifra per caso (una porta, un IP) e uscirebbe come una
             # spiegazione architetturale falsa («queste automazioni sono
@@ -389,20 +389,20 @@ class Officina:
             # Assistant irraggiungibile. Il flag che l'ondata ha introdotto
             # due righe sopra distingue gia' i due casi -- non serve indovinare
             # dal testo.
-            motivo = errore_grezzo if guasto_rete else _traduci_rifiuto(
-                errore_grezzo, dominio)
-            return self._fallita(proposta, adesso, origine, motivo + nota,
+            reason = raw_error if guasto_rete else _translate_rejection(
+                raw_error, domain)
+            return self._fallita(proposal, now, actor, reason + note,
                                  guasto_rete=guasto_rete)
 
-        entita, avviso = await self._rileggi(dominio, chiave, gesto)
-        if gesto == "crea":
+        entity, notice = await self._reread(domain, key, operation)
+        if operation == "crea":
             # L'etichetta dice CHI L'HA FATTO, e su una modifica non l'ha fatto
             # HIRIS (spec §5). Un oggetto scritto dal proprietario resta suo
             # anche dopo che HIRIS ci ha messo le mani: che ce le abbia messe
             # e' un fatto DIVERSO, e vive dove lo si puo' interrogare -- la
             # cronaca, l'archivio delle versioni, la pagina.
-            for entity_id in entita:
-                await self._etichetta(entity_id)
+            for entity_id in entity:
+                await self._label(entity_id)
         # Gli helper sono SEMPRE nati -- `crea_helper` non e' altro --
         # indipendentemente dal gesto sul dominio principale: una
         # `modifica` puo' portarsi dietro un helper nuovo tanto quanto un
@@ -413,39 +413,39 @@ class Officina:
         # registro di Home Assistant e non in una tabella nostra (fondamenta
         # 2, spec §5), quella paternita' non esisteva da NESSUNA parte
         # (fondamenta 4: un dato che nessuno puo' chiedere non esiste).
-        for dominio_helper, helper_id in nati:
-            await self._etichetta(f"{dominio_helper}.{helper_id}")
+        for domain_helper, helper_id in nati:
+            await self._label(f"{domain_helper}.{helper_id}")
 
-        esecuzione_id = self._cronaca.registra_costruzione(
-            origine=origine, gesto=gesto, dominio=dominio, chiave=chiave,
-            entita=entita, eseguito=True, adesso=adesso, avviso=avviso)
-        esito_stato = self._archivio.segna_applicata(proposta_id, adesso=adesso,
-                                                      esecuzione_id=esecuzione_id)
-        if "errore" in esito_stato:
+        execution_id = self._journal.log_construction(
+            actor=actor, operation=operation, domain=domain, key=key,
+            entity=entity, eseguito=True, now=now, notice=notice)
+        occurrence_state = self._store.mark_applied(proposal_id, now=now,
+                                                      execution_id=execution_id)
+        if "errore" in occurrence_state:
             # Non ignorato: se la riga non e' piu' rivendicabile (un caso che
             # oggi non dovrebbe capitare, essendo appena stata rivendicata da
             # QUESTA chiamata) l'utente ha comunque avuto il suo risultato --
             # Home Assistant ha scritto -- e la traccia serve a chi legge il
             # log, non a cambiare l'esito verso l'utente.
-            logger.warning("segna_applicata non riuscita per %s: %s", proposta_id,
-                           esito_stato["errore"])
-        return {"applicata": True, "esecuzione_id": esecuzione_id,
-                "entita": entita, "avviso": avviso}
+            logger.warning("mark_applied non riuscita per %s: %s", proposal_id,
+                           occurrence_state["errore"])
+        return {"applicata": True, "esecuzione_id": execution_id,
+                "entita": entity, "avviso": notice}
 
-    def _cancello(self, proposta: dict, origine: str, turno: str | None) -> str | None:
+    def _cancello(self, proposal: dict, actor: str, exchange: str | None) -> str | None:
         """Il sì dell'umano, reso una guardia deterministica (spec §7).
 
         Il modello propone e il codice restringe: se `applica` fosse solo
         un'altra chiamata, il modello potrebbe concatenarla nello stesso turno
         e il sì dell'utente sparirebbe senza che nessuno se ne accorga.
         """
-        if origine in ORIGINI_UMANE:
-            # Qualunque valore di `origine` uguale a una voce di ORIGINI_UMANE
+        if actor in HUMAN_ACTORS:
+            # Qualunque valore di `origine` uguale a una voce di HUMAN_ACTORS
             # scavalca la guardia: se il Task 8 (o chi verra' dopo) sbagliasse
             # a inoltrare un'origine scelta dal modello come `pagina`, questa
             # riga e' l'unica traccia che ne resterebbe.
             logger.info("cancello scavalcato dall'origine umana %r per la proposta %s",
-                       origine, proposta["id"])
+                       actor, proposal["id"])
             return None
         # Una proposta nata SENZA identita' di turno (il ramo sincrono della
         # chat, un'intestazione mancante -- casi normali) non e' confermabile
@@ -455,15 +455,15 @@ class Officina:
         # passare la prima conferma che capitava: la regola giusta e'
         # l'inversa, e la strada e' la stessa di un chiamante che oggi non
         # porta un turno -- la pagina.
-        if not turno or not proposta["turno"]:
+        if not exchange or not proposal["turno"]:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
                     "apri la pagina Costruzioni e conferma di la'.")
-        if proposta["turno"] == turno:
+        if proposal["turno"] == exchange:
             return ("questa proposta e' nata in questo stesso turno: te l'ho mostrata, "
                     "ora dimmi tu se procedere.")
         return None
 
-    async def _rete(self, chiamata) -> dict:
+    async def _rete(self, call) -> dict:
         """Esegue una chiamata alle primitive REST di `HAClient`, catturando i
         guasti di TRASPORTO (ondata finale, punto 1).
 
@@ -488,7 +488,7 @@ class Officina:
         di trasporto breve.
         """
         try:
-            return await chiamata
+            return await call
         except Exception as exc:
             # Punto 3 (residuo): la cattura larga e' la scelta giusta (restringere
             # vorrebbe dire importare aiohttp qui, in un modulo deliberatamente
@@ -499,7 +499,7 @@ class Officina:
             logger.warning("chiamata verso Home Assistant non riuscita (%s): %s",
                            type(exc).__name__, exc, exc_info=True)
             return {"errore": (f"Home Assistant non ha risposto: "
-                               f"{_truncate(str(exc), _CAP_ERRORE_RETE)}"),
+                               f"{_truncate(str(exc), _NETWORK_ERROR_CAP)}"),
                     "guasto_rete": True}
 
     async def _disfa(self, nati: list[tuple[str, str]],
@@ -518,66 +518,66 @@ class Officina:
         """
         disfatti: list[str] = []
         rimasti: list[str] = []
-        for dominio, helper_id in reversed(nati):
-            esito = await self._ha.cancella_helper(dominio, helper_id)
-            if "errore" in esito:
+        for domain, helper_id in reversed(nati):
+            occurrence = await self._ha.cancella_helper(domain, helper_id)
+            if "errore" in occurrence:
                 logger.warning("helper %s.%s creato e NON disfatto: %s",
-                               dominio, helper_id, esito["errore"])
-                rimasti.append(f"{dominio}.{helper_id}")
+                               domain, helper_id, occurrence["errore"])
+                rimasti.append(f"{domain}.{helper_id}")
             else:
-                disfatti.append(f"{dominio}.{helper_id}")
+                disfatti.append(f"{domain}.{helper_id}")
         pezzi: list[str] = []
         if disfatti:
             pezzi.append("ho tolto anche " + ", ".join(disfatti))
         if rimasti:
             pezzi.append("l'helper " + ", ".join(rimasti) +
                          " e' rimasto in casa tua, toglilo a mano")
-        for dominio in senza_id or []:
-            pezzi.append(f"un helper {dominio} e' stato creato ma senza un id "
+        for domain in senza_id or []:
+            pezzi.append(f"un helper {domain} e' stato creato ma senza un id "
                          "restituito: non posso disfarlo automaticamente, "
                          "controllalo a mano")
         return (" " + "; ".join(pezzi) + ".") if pezzi else ""
 
-    def _fallita(self, proposta: dict, adesso: float, origine: str, motivo: str, *,
+    def _fallita(self, proposal: dict, now: float, actor: str, reason: str, *,
                 guasto_rete: bool = False) -> dict:
-        esecuzione_id = self._cronaca.registra_costruzione(
-            origine=origine, gesto=proposta["gesto"], dominio=proposta["dominio"],
-            chiave=proposta["chiave"], entita=[], eseguito=False, adesso=adesso,
-            errore=motivo)
-        esito_stato = self._archivio.segna_rifiutata(proposta["id"], adesso=adesso,
-                                                      motivo=motivo)
-        if "errore" in esito_stato:
-            logger.warning("segna_rifiutata non riuscita per %s: %s", proposta["id"],
-                           esito_stato["errore"])
-        esito = {"errore": motivo, "esecuzione_id": esecuzione_id}
+        execution_id = self._journal.log_construction(
+            actor=actor, operation=proposal["gesto"], domain=proposal["dominio"],
+            key=proposal["chiave"], entity=[], eseguito=False, now=now,
+            error=reason)
+        occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
+                                                      reason=reason)
+        if "errore" in occurrence_state:
+            logger.warning("mark_rejected non riuscita per %s: %s", proposal["id"],
+                           occurrence_state["errore"])
+        occurrence = {"errore": reason, "esecuzione_id": execution_id}
         if guasto_rete:
             # Distingue un guasto di TRASPORTO da un rifiuto vero di Home
             # Assistant (validazione, 400): `_agisci` (handlers_costruzioni.py)
             # legge questo flag per rispondere 503 invece di 409 -- la stessa
             # indisponibilita' che la GET dichiarerebbe (ondata finale, punto
             # 7, terza pulizia).
-            esito["guasto_rete"] = True
-        return esito
+            occurrence["guasto_rete"] = True
+        return occurrence
 
-    async def _rileggi(self, dominio: str, chiave: str,
-                       gesto: str) -> tuple[list[str], str | None]:
+    async def _reread(self, domain: str, key: str,
+                       operation: str) -> tuple[list[str], str | None]:
         """Cosa e' comparso davvero. Dire cosa e' successo, non cosa e' stato
         chiesto (spec §2.3)."""
-        if gesto == "cancella":
+        if operation == "cancella":
             return [], None
         try:
-            stati = await self._ha.get_states([])
+            states = await self._ha.get_states([])
         except Exception as exc:
             logger.debug("rilettura dopo la scrittura fallita: %s", exc)
             return [], ("ho scritto, ma non sono riuscito a rileggere lo stato: "
                         "controlla in Home Assistant.")
         trovate = []
-        for stato in stati or []:
-            eid = stato.get("entity_id") or ""
-            if not eid.startswith(f"{dominio}."):
+        for state in states or []:
+            eid = state.get("entity_id") or ""
+            if not eid.startswith(f"{domain}."):
                 continue
-            attributi = stato.get("attributes") or {}
-            if attributi.get("id") == chiave or eid == f"{dominio}.{chiave}":
+            attributes = state.get("attributes") or {}
+            if attributes.get("id") == key or eid == f"{domain}.{key}":
                 trovate.append(eid)
         if not trovate:
             return [], ("Home Assistant ha accettato la scrittura ma l'entita' non e' "
@@ -585,11 +585,11 @@ class Officina:
                         "non e' andata a buon fine.")
         return trovate, None
 
-    async def _etichetta(self, entity_id: str) -> None:
-        if self._label_id is None and not await self._risolvi_etichetta():
+    async def _label(self, entity_id: str) -> None:
+        if self._label_id is None and not await self._resolve_label():
             return
-        esito = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
-        if "errore" not in esito:
+        occurrence = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        if "errore" not in occurrence:
             return
         # Il `label_id` in cache potrebbe non esistere piu' in Home Assistant
         # (etichetta cancellata a mano dopo la prima risoluzione): restare
@@ -597,29 +597,29 @@ class Officina:
         # successivo in silenzio. Si azzera la cache e si ritenta UNA volta.
         logger.warning("etichetta non applicata a %s (label_id=%s): %s -- riprovo "
                        "risolvendo l'etichetta da capo", entity_id, self._label_id,
-                       esito["errore"])
+                       occurrence["errore"])
         self._label_id = None
-        if not await self._risolvi_etichetta():
+        if not await self._resolve_label():
             return
-        esito = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
-        if "errore" in esito:
+        occurrence = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        if "errore" in occurrence:
             logger.warning("etichetta non applicata a %s nemmeno al secondo tentativo: %s",
-                           entity_id, esito["errore"])
+                           entity_id, occurrence["errore"])
 
-    async def _risolvi_etichetta(self) -> bool:
+    async def _resolve_label(self) -> bool:
         """Trova o crea il `label_id` di HIRIS in Home Assistant, aggiornando
         la cache dell'istanza. Restituisce True se una `label_id` valida e'
         nota dopo la chiamata."""
-        elenco = await self._ha.elenca_etichette()
-        if "errore" in elenco:
-            logger.debug("etichette non lette: %s", elenco["errore"])
+        response = await self._ha.elenca_etichette()
+        if "errore" in response:
+            logger.debug("etichette non lette: %s", response["errore"])
             return False
-        for voce in elenco["etichette"]:
-            if (voce.get("name") or "").strip().lower() == NOME_ETICHETTA.lower():
-                self._label_id = voce.get("label_id")
+        for entry in response["etichette"]:
+            if (entry.get("name") or "").strip().lower() == LABEL_NAME.lower():
+                self._label_id = entry.get("label_id")
                 break
         if self._label_id is None:
-            creata = await self._ha.crea_etichetta(NOME_ETICHETTA)
+            creata = await self._ha.crea_etichetta(LABEL_NAME)
             if "errore" in creata:
                 logger.debug("etichetta non creata: %s", creata["errore"])
                 return False
@@ -628,59 +628,59 @@ class Officina:
 
     # ---- ripristinare ---------------------------------------------------
 
-    async def ripristina(self, costruzione_id: str, *, origine: str,
-                         turno: str | None, adesso: float) -> dict:
+    async def ripristina(self, construction_id: str, *, actor: str,
+                         exchange: str | None, now: float) -> dict:
         """Rimettere il «prima» e' un'ALTRA costruzione, e passa di qui.
 
         Non e' una scorciatoia che scrive diretta: valida come tutte le altre,
         e se nel frattempo quel corpo non e' piu' valido lo dice invece di
         scriverlo (spec §6).
         """
-        riga = self._archivio.leggi(costruzione_id)
-        if riga is None:
+        row = self._store.read(construction_id)
+        if row is None:
             return {"errore": "non ho nessuna costruzione con quell'identificatore."}
-        if riga["stato"] != "applicata":
+        if row["stato"] != "applicata":
             return {"errore": "quella costruzione non e' mai stata applicata: "
                               "non c'e' niente da rimettere."}
-        prima = riga["prima"]
-        dominio, chiave = riga["dominio"], riga["chiave"]
+        prima = row["prima"]
+        domain, key = row["dominio"], row["chiave"]
         if prima is None:
             # Ripristinare una CREAZIONE significa cancellare cio' che e' nato.
-            intento_gesto, dopo = "cancella", None
+            intent_operation, dopo = "cancella", None
         else:
-            intento_gesto, dopo = "modifica", prima
-            motivo = await self._valida(dominio, dopo)
-            if motivo is not None:
-                return {"errore": f"non posso rimettere com'era: {motivo}"}
-        anteprima = (f"Rimetto l'oggetto {dominio}.{chiave} com'era prima "
-                     f"del {self._data(riga['creata_ts'])}.")
-        proposta = self._archivio.proponi(
-            gesto=intento_gesto, dominio=dominio, chiave=chiave, origine=origine,
-            turno=turno, frase=f"ripristino di {costruzione_id}", prima=riga["dopo"],
-            dopo=dopo, helper=[], anteprima=anteprima, adesso=adesso)
-        if "errore" in proposta:
-            return proposta
-        if origine in ORIGINI_UMANE:
-            return await self.applica(proposta["id"], origine=origine, turno=turno,
-                                      adesso=adesso)
+            intent_operation, dopo = "modifica", prima
+            reason = await self._validate(domain, dopo)
+            if reason is not None:
+                return {"errore": f"non posso rimettere com'era: {reason}"}
+        preview = (f"Rimetto l'oggetto {domain}.{key} com'era prima "
+                     f"del {self._data(row['creata_ts'])}.")
+        proposal = self._store.proponi(
+            operation=intent_operation, domain=domain, key=key, actor=actor,
+            exchange=exchange, phrase=f"ripristino di {construction_id}", prima=row["dopo"],
+            dopo=dopo, helper=[], preview=preview, now=now)
+        if "errore" in proposal:
+            return proposal
+        if actor in HUMAN_ACTORS:
+            return await self.applica(proposal["id"], actor=actor, exchange=exchange,
+                                      now=now)
         # Dalla chat il ripristino e' un giro in due tempi come tutto il
         # resto (spec §7): applicarlo subito con lo STESSO `turno` che ha
         # appena creato la proposta farebbe rifiutare SEMPRE dal cancello (e'
         # letteralmente lo stesso turno), e la riga resterebbe `in_attesa` a
         # bruciare un posto del tetto di 20 per sette giorni -- venti
         # tentativi bloccherebbero le proposte di tutto il prodotto.
-        if not turno:
+        if not exchange:
             # Senza un turno riconoscibile questa proposta non sara' MAI
             # confermabile da un'origine non umana (`_cancello`, IMPORTANT 1
             # del round 2): l'unica strada e' la pagina, e l'anteprima
             # restituita deve dirlo -- lo stesso messaggio che `applica` da'
             # gia' in quel caso, non un'anteprima muta su un vicolo cieco.
-            anteprima += ("\nSenza un turno riconoscibile non potro' confermare da "
+            preview += ("\nSenza un turno riconoscibile non potro' confermare da "
                          "qui: apri la pagina Costruzioni e conferma di la'.")
-        return {"proposta_id": proposta["id"], "anteprima": anteprima}
+        return {"proposta_id": proposal["id"], "anteprima": preview}
 
 
-def _forma_invalida(intento: dict) -> str | None:
+def _invalid_form(intent: dict) -> str | None:
     """Le forme che l'intento deve avere perche' il resto del modulo non
     sollevi. Il chiamante e' uno strumento riempito da un modello: un `alias`
     che arriva come dizionario o un `helper` che arriva come lista di
@@ -695,27 +695,27 @@ def _forma_invalida(intento: dict) -> str | None:
     probabile che un modello faccia su questo campo: essendo un intero
     truthy, arriva intatto a `HAClient._CHIAVE_RE.match(chiave or "")` (l'`or`
     sostituisce solo i valori falsy) e solleva `TypeError`. `campi` non
-    testuale-a-dizionario arriva a `forme.componi_script`, che fa
+    testuale-a-dizionario arriva a `composer.compose_script`, che fa
     `dict(campi)` -- `ValueError` su una stringa, `TypeError` su un intero.
     """
-    for campo in ("alias", "descrizione", "frase", "chiave"):
-        valore = intento.get(campo)
-        if valore is not None and not isinstance(valore, str):
-            return f"«{campo}» deve essere testo, non {type(valore).__name__}."
-    for campo in ("innesco", "condizioni", "azioni", "stati", "helper", "parametri"):
-        valore = intento.get(campo)
-        if valore is not None and not isinstance(valore, list):
-            return f"«{campo}» deve essere una lista, non {type(valore).__name__}."
-    campi = intento.get("campi")
-    if campi is not None and not isinstance(campi, dict):
-        return f"«campi» deve essere un dizionario, non {type(campi).__name__}."
-    for voce in intento.get("helper") or []:
-        if not isinstance(voce, dict) or not isinstance(voce.get("dominio"), str):
+    for field in ("alias", "descrizione", "frase", "chiave"):
+        value = intent.get(field)
+        if value is not None and not isinstance(value, str):
+            return f"«{field}» deve essere testo, non {type(value).__name__}."
+    for field in ("innesco", "condizioni", "azioni", "stati", "helper", "parametri"):
+        value = intent.get(field)
+        if value is not None and not isinstance(value, list):
+            return f"«{field}» deve essere una lista, non {type(value).__name__}."
+    fields = intent.get("campi")
+    if fields is not None and not isinstance(fields, dict):
+        return f"«campi» deve essere un dizionario, non {type(fields).__name__}."
+    for entry in intent.get("helper") or []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("dominio"), str):
             return "ogni helper deve essere un dizionario con un «dominio» testuale."
     return None
 
 
-def _seme_da(intento: dict) -> int:
+def _seme_da(intent: dict) -> int:
     """Un seme per l'id, derivato dall'intento e non dall'orologio.
 
     L'orologio lo legge il chiamante (`adesso`), non le funzioni pure: qui
@@ -727,23 +727,23 @@ def _seme_da(intento: dict) -> int:
     in QUESTA casa, e Home Assistant rifiuterebbe comunque un duplicato.
     """
     base = 1_700_000_000_000
-    return base + abs(hash((intento.get("alias"), intento.get("frase")))) % 100_000_000
+    return base + abs(hash((intent.get("alias"), intent.get("frase")))) % 100_000_000
 
 
-def _compatta(corpo: dict | None) -> str:
-    if not corpo:
+def _compatta(body: dict | None) -> str:
+    if not body:
         return "(niente)"
     pezzi = []
-    for chiave in ("alias", "name", "description"):
-        if corpo.get(chiave):
-            pezzi.append(str(corpo[chiave]))
-    for chiave in ("triggers", "conditions", "actions", "sequence", "entities"):
-        if corpo.get(chiave):
-            pezzi.append(f"{chiave}: {len(corpo[chiave])}")
+    for key in ("alias", "name", "description"):
+        if body.get(key):
+            pezzi.append(str(body[key]))
+    for key in ("triggers", "conditions", "actions", "sequence", "entities"):
+        if body.get(key):
+            pezzi.append(f"{key}: {len(body[key])}")
     return " · ".join(pezzi) if pezzi else "(vuoto)"
 
 
-def _traduci_rifiuto(errore: str, dominio: str) -> str:
+def _translate_rejection(error: str, domain: str) -> str:
     """Un presupposto d'ambiente non deve sembrare un guasto (spec §6).
 
     Se l'API di configurazione non c'e' o non governa quella struttura --
@@ -754,9 +754,9 @@ def _traduci_rifiuto(errore: str, dominio: str) -> str:
     # RULING 2 della scansione pre-volo: il nome del dominio va in ITALIANO --
     # e' una frase rivolta all'utente, e i vincoli globali lo impongono.
     plurale = {"automation": "automazioni", "script": "script",
-               "scene": "scene"}.get(dominio, dominio)
-    if "404" in errore or "not found" in errore.lower():
+               "scene": "scene"}.get(domain, domain)
+    if "404" in error or "not found" in error.lower():
         return (f"queste {plurale} sono gestite a mano (o vivono in `packages/`): "
                 "l'API di configurazione di Home Assistant non le governa, e non posso "
                 "scriverle. Posso mostrarti il pezzo corretto da incollare.")
-    return errore
+    return error

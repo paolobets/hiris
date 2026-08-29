@@ -12,9 +12,9 @@ from hiris.app.api.handlers_costruzioni import (
     handle_rifiuta_costruzione,
     handle_ripristina_costruzione,
 )
-from hiris.app.azione.costruzione.officina import Officina
-from hiris.app.azione.costruzione.versioni import ArchivioCostruzioni
-from hiris.app.azione.cronaca import Cronaca
+from hiris.app.azione.costruzione.officina import Workshop
+from hiris.app.azione.costruzione.versioni import ConstructionStore
+from hiris.app.azione.cronaca import Journal
 from hiris.app.server import create_app
 from tests.test_costruzione_officina import FintoHA
 
@@ -31,22 +31,22 @@ class FintoArchivio:
         self.disdette = []
         self._esito_disdetta = esito_disdetta
 
-    def scadi(self, adesso):
+    def scadi(self, now):
         self.scadenze_chieste += 1
         return 0
 
-    def elenca(self, *, solo_in_attesa=False, limite=200):
-        if solo_in_attesa:
+    def list(self, *, pending_only=False, limit=200):
+        if pending_only:
             return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
 
-    def leggi(self, ident):
+    def read(self, ident):
         for r in self._righe:
             if r["id"] == ident:
                 return r
         return None
 
-    def segna_disdetta(self, ident, *, adesso):
+    def mark_cancelled(self, ident, *, now):
         self.disdette.append(ident)
         return self._esito_disdetta or {"id": ident, "stato": "disdetta"}
 
@@ -56,12 +56,12 @@ class FintaOfficina:
         self.esito = esito
         self.chiamate = []
 
-    async def applica(self, proposta_id, *, origine, turno, adesso):
-        self.chiamate.append(("applica", proposta_id, origine, turno))
+    async def applica(self, proposta_id, *, actor, exchange, now):
+        self.chiamate.append(("applica", proposta_id, actor, exchange))
         return self.esito
 
-    async def ripristina(self, costruzione_id, *, origine, turno, adesso):
-        self.chiamate.append(("ripristina", costruzione_id, origine, turno))
+    async def ripristina(self, costruzione_id, *, actor, exchange, now):
+        self.chiamate.append(("ripristina", costruzione_id, actor, exchange))
         return self.esito
 
 
@@ -131,7 +131,7 @@ async def test_una_conferma_rifiutata_non_risponde_200():
 async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
     """Ondata finale, punto 7 (terza pulizia): `_agisci` appiattiva ogni
     errore dell'officina su 409 -- anche un guasto di Home Assistant, che
-    dalla GET sarebbe un 503. `Officina._fallita`/`_rete` marcano un guasto
+    dalla GET sarebbe un 503. `Workshop._fallita`/`_rete` marcano un guasto
     di trasporto con `guasto_rete: True`; questa rotta lo deve leggere."""
     officina = FintaOfficina({"errore": "Home Assistant non ha risposto: timeout",
                               "guasto_rete": True})
@@ -205,11 +205,11 @@ ADESSO_HTTP = 1_756_100_000.0
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["costruzioni"] = ArchivioCostruzioni(
+    app["costruzioni"] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni_http.db"))
-    app["cronaca"] = Cronaca(os.path.join(str(tmp_path), "azioni_http.db"))
+    app["cronaca"] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
     ha = FintoHA()
-    app["officina"] = Officina(ha, app["costruzioni"], app["cronaca"])
+    app["officina"] = Workshop(ha, app["costruzioni"], app["cronaca"])
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
     app["_ha_finta"] = ha
@@ -225,17 +225,17 @@ async def client(aiohttp_client, tmp_path):
 async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="crea", dominio="automation", chiave="tapparelle_csrf",
-        origine="chat", turno="turno-1", frase="crea", prima=None,
-        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
-        adesso=ADESSO_HTTP)["id"]
+        operation="crea", domain="automation", key="tapparelle_csrf",
+        actor="chat", exchange="turno-1", phrase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
+        now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/costruzioni/{ident}/conferma")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
     # Home Assistant.
-    assert archivio.leggi(ident)["stato"] == "in_attesa"
+    assert archivio.read(ident)["stato"] == "in_attesa"
     assert client.app["_ha_finta"].salvate == []
 
 
@@ -243,15 +243,15 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
 async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client, csrf_stretto):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="crea", dominio="automation", chiave="tapparelle_csrf_ok",
-        origine="chat", turno="turno-1", frase="crea", prima=None,
-        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
-        adesso=ADESSO_HTTP)["id"]
+        operation="crea", domain="automation", key="tapparelle_csrf_ok",
+        actor="chat", exchange="turno-1", phrase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
+        now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/costruzioni/{ident}/conferma",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert archivio.leggi(ident)["stato"] == "applicata"
+    assert archivio.read(ident)["stato"] == "applicata"
     assert client.app["_ha_finta"].salvate
 
 
@@ -259,11 +259,11 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
 async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="modifica", dominio="automation", chiave="tapparelle_rip",
-        origine="chat", turno="turno-1", frase="modifica",
+        operation="modifica", domain="automation", key="tapparelle_rip",
+        actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        anteprima="anteprima", adesso=ADESSO_HTTP)["id"]
-    archivio.segna_applicata(ident, adesso=ADESSO_HTTP, esecuzione_id="e-test")
+        preview="anteprima", now=ADESSO_HTTP)["id"]
+    archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
     risposta = await client.post(f"/api/costruzioni/{ident}/ripristina")
     assert risposta.status == 403
@@ -271,7 +271,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
     assert client.app["_ha_finta"].salvate == []
     # Nessuna nuova proposta di ripristino deve essere nata: quella originale
     # resta l'unica riga dell'archivio.
-    assert len(archivio.elenca(limite=200)) == 1
+    assert len(archivio.list(limit=200)) == 1
 
 
 @pytest.mark.asyncio
@@ -280,11 +280,11 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
 ):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="modifica", dominio="automation", chiave="tapparelle_rip_ok",
-        origine="chat", turno="turno-1", frase="modifica",
+        operation="modifica", domain="automation", key="tapparelle_rip_ok",
+        actor="chat", exchange="turno-1", phrase="modifica",
         prima={"alias": "Prima"}, dopo={"alias": "Dopo"}, helper=[],
-        anteprima="anteprima", adesso=ADESSO_HTTP)["id"]
-    archivio.segna_applicata(ident, adesso=ADESSO_HTTP, esecuzione_id="e-test")
+        preview="anteprima", now=ADESSO_HTTP)["id"]
+    archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
     risposta = await client.post(f"/api/costruzioni/{ident}/ripristina",
                                  headers={"X-Requested-With": "fetch"})
@@ -300,28 +300,28 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="crea", dominio="automation", chiave="tapparelle_rifiuta_csrf",
-        origine="chat", turno="turno-1", frase="crea", prima=None,
-        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
-        adesso=ADESSO_HTTP)["id"]
+        operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
+        actor="chat", exchange="turno-1", phrase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
+        now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: sul 403 la proposta resta `in_attesa`.
-    assert archivio.leggi(ident)["stato"] == "in_attesa"
+    assert archivio.read(ident)["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio
 async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client, csrf_stretto):
     archivio = client.app["costruzioni"]
     ident = archivio.proponi(
-        gesto="crea", dominio="automation", chiave="tapparelle_rifiuta_csrf_ok",
-        origine="chat", turno="turno-1", frase="crea", prima=None,
-        dopo={"alias": "Tapparelle"}, helper=[], anteprima="anteprima",
-        adesso=ADESSO_HTTP)["id"]
+        operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
+        actor="chat", exchange="turno-1", phrase="crea", prima=None,
+        dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
+        now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert archivio.leggi(ident)["stato"] == "disdetta"
+    assert archivio.read(ident)["stato"] == "disdetta"

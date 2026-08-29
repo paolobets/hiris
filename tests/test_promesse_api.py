@@ -22,7 +22,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from hiris.app.azione.cronaca import Cronaca
+from hiris.app.azione.cronaca import Journal
 from hiris.app.chat_store import close_all_stores
 from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.server import create_app
@@ -49,7 +49,7 @@ async def client(aiohttp_client, tmp_path):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
     # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
     # sola in `create_app` -> `_avvia` (server.py).
-    app["cronaca"] = Cronaca(os.path.join(str(tmp_path), "azioni.db"))
+    app["cronaca"] = Journal(os.path.join(str(tmp_path), "azioni.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
@@ -162,25 +162,25 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 # ---------------------------------------------------------------------------
 # GET /api/esecuzioni/{id} -- review finale, rilievo ①: la cronaca si chiede
 # a parte, per identificatore. Non ricostruisce niente di suo: quel che esce
-# e' esattamente cio' che `Cronaca.leggi` gia' serializza.
+# e' esattamente cio' che `Journal.read` gia' serializza.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
     cronaca = client.app["cronaca"]
-    ident = cronaca.registra(
-        origine="schedulatore", servizio="light.turn_on", entita=["light.studio"],
-        eseguito=True, cambiato=["light.studio"], adesso=1_755_600_000.0)
+    ident = cronaca.log(
+        actor="schedulatore", service="light.turn_on", entity=["light.studio"],
+        eseguito=True, cambiato=["light.studio"], now=1_755_600_000.0)
 
     risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200
     corpo = await risposta.json()
     # Nessun dizionario nuovo: la forma e' esattamente quella di
-    # `cronaca.leggi(ident)`, non una sua ricostruzione da parte della rotta
-    # (mutazione: se la rotta smettesse di usare `Cronaca.leggi` e
+    # `cronaca.read(ident)`, non una sua ricostruzione da parte della rotta
+    # (mutazione: se la rotta smettesse di usare `Journal.read` e
     # ricostruisse a mano un sottoinsieme dei campi, questo confronto lo
     # vedrebbe subito).
-    assert corpo["esecuzione"] == cronaca.leggi(ident)
+    assert corpo["esecuzione"] == cronaca.read(ident)
     assert corpo["esecuzione"]["servizio"] == "light.turn_on"
     assert corpo["esecuzione"]["cambiato"] == ["light.studio"]
 
@@ -220,7 +220,7 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     finisse dietro un controllo CSRF (o venisse registrata come POST/GET
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
     cronaca = client.app["cronaca"]
-    ident = cronaca.registra(origine="chat", servizio="a.b", entita=[],
-                             eseguito=True, adesso=1.0)
+    ident = cronaca.log(actor="chat", service="a.b", entity=[],
+                             eseguito=True, now=1.0)
     risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200

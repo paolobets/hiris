@@ -344,21 +344,21 @@ _CHIAVI_NOMINATE_DAL_PROMPT = ("prima", "dopo", "cambiato", "avviso")
 
 
 async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
-    """L'unione delle chiavi che `PortaAzione.esegui` restituisce davvero.
+    """L'unione delle chiavi che `ActionActuator.execute` restituisce davvero.
 
     Usa le stesse finte di `tests/test_azione_porta.py` (importate, non
     ricopiate: una seconda copia divergerebbe il giorno in cui la forma vera
     di `EntityCache` cambia) e la porta VERA.
 
     **La scadenza si accorcia anche qui.** Dalla 2.4.1 la porta aspetta
-    l'annuncio del cambiamento (`porta.ATTESA_STATO_S`, 2 secondi), e il giro
+    l'annuncio del cambiamento (`porta.STATE_WAIT_S`, 2 secondi), e il giro
     2 esiste proprio per il caso in cui quell'annuncio non arriva: senza
     accorciarla, questa guardia sul prompt pagherebbe due secondi per contare
     delle chiavi. Il valore vero e' pinnato da `tests/test_azione_porta.py`.
     """
     from hiris.app.azione import porta as porta_modulo
-    from hiris.app.azione.porta import PortaAzione
-    from hiris.app.azione.registro import RegistroServizi
+    from hiris.app.azione.porta import ActionActuator
+    from hiris.app.azione.registro import ServiceRegistry
     from tests.test_azione_porta import (
         ANNUNCIA_IL_SALOTTO_SPENTO,
         SALOTTO_ACCESO,
@@ -369,22 +369,22 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
         _casa,
     )
 
-    monkeypatch.setattr(porta_modulo, "ATTESA_STATO_S", 0.05)
+    monkeypatch.setattr(porta_modulo, "STATE_WAIT_S", 0.05)
     chiavi = set()
 
     # giro 1: lo stato cambia davvero -> `prima`/`dopo`/`cambiato`, niente avviso
     client, cache = _casa(SALOTTO_ACCESO, annuncia=ANNUNCIA_IL_SALOTTO_SPENTO)
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(client)
-    porta = PortaAzione(client, registro, cache)
-    chiavi |= set(await porta.esegui(SPEGNI_IL_SALOTTO, origine="test"))
+    porta = ActionActuator(client, registro, cache)
+    chiavi |= set(await porta.execute(SPEGNI_IL_SALOTTO, actor="test"))
 
     # giro 2: la chiamata riesce e non cambia niente -> compare `avviso`
     client2 = FintoClient()
-    registro2 = RegistroServizi()
+    registro2 = ServiceRegistry()
     await registro2.aggiorna(client2)
-    porta2 = PortaAzione(client2, registro2, FintaCache(SALOTTO_SPENTO))
-    chiavi |= set(await porta2.esegui(SPEGNI_IL_SALOTTO, origine="test"))
+    porta2 = ActionActuator(client2, registro2, FintaCache(SALOTTO_SPENTO))
+    chiavi |= set(await porta2.execute(SPEGNI_IL_SALOTTO, actor="test"))
 
     return chiavi
 

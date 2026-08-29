@@ -60,7 +60,7 @@ EVENTI_ANAGRAFE = (
 # rilettura diversa. Un servizio nuovo non cambia la casa, e un'entita' nuova
 # non cambia i servizi.
 #
-# Perche' esistono: `RegistroServizi` si ricaricava SOLO a scadenza (300s), e
+# Perche' esistono: `ServiceRegistry` si ricaricava SOLO a scadenza (300s), e
 # per cinque minuti dopo l'installazione di un'integrazione HIRIS rifiutava i
 # suoi servizi dicendo «non esiste in questa casa» -- una frase falsa detta con
 # sicurezza. I nomi e i campi (`domain`, `service`) sono quelli dichiarati da
@@ -451,7 +451,7 @@ class HAClient:
 
     # Punto 6 (residuo, ondata finale punto 1): queste tre primitive sollevano
     # quello che rompe il trasporto -- non catturano niente da sole. Il loro
-    # UNICO chiamante (`azione/costruzione/officina.py::Officina._rete`) le
+    # UNICO chiamante (`azione/costruzione/officina.py::Workshop._rete`) le
     # avvolge apposta: quella guardia e' cio' che trasforma un guasto di rete
     # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
     # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a

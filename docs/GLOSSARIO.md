@@ -1016,6 +1016,7 @@ al Task 6 invece che deciso qui.
 | attesa | pending |
 | attivo | active |
 | attributo | attribute |
+| automazione | automation |
 | avviso | notice |
 | cambio | change |
 | campo | field |
@@ -1042,6 +1043,7 @@ al Task 6 invece che deciso qui.
 | dati | data |
 | denominatore | denominator |
 | dettaglio | detail |
+| dichiara | declare |
 | differenza | difference |
 | dimensione | dimension |
 | disponibile | available |
@@ -1116,6 +1118,7 @@ al Task 6 invece che deciso qui.
 | ritardo | delay |
 | scadenza | deadline |
 | scelto | chosen |
+| scena | scene |
 | scritto | written |
 | scrivi | write |
 | secondo | second |
@@ -1224,11 +1227,11 @@ al Task 6 invece che deciso qui.
 > occorrenze del confine sono poche (un parametro, un URL) rispetto ai casi che questa review ha
 > fatto cambiare (`raw`, sopra: ~24 righe su 6 file; `history`: 50 occorrenze), e `stati` vive quasi
 > sempre in composizione (`STATI_SOSPESO`, `STATI_CONCLUSI`), mai da solo, il che riduce il rischio
-> di uno scambio diretto. **Chi decidera' l'inglese delle costanti `STATI_SOSPESO`/`STATI_CONCLUSI`
-> in «I valori di dominio» (sotto, oggi senza inglese -- vedi C7) deve verificare questo rischio
-> prima di comporre `..._STATES` alla cieca**: se il contesto in cui la costante compare puo'
-> confondersi con l'elenco vivo delle entita' di Home Assistant, la forma composta va preferita a
-> `states` nudo, o va usato un suffisso diverso (`*_VALUES`, `*_SET`).
+> di uno scambio diretto. **Deciso (Task 7, «I valori di dominio», sotto): `STATES_SOSPESO` e
+> `STATES_CONCLUSI`**, cioe' `STATES_...` e non `..._STATES` -- proprio la forma che questa nota
+> chiedeva di preferire: il qualificatore (`SOSPESO`/`CONCLUSI`) resta subito accanto al nome della
+> costante invece di finire in coda dopo `STATES`, cosi' nessuna delle due si legge come l'elenco
+> vivo delle entita' di Home Assistant.
 
 > **`spazio` → `slot`: un disallineamento apparente, verificato durante la review finale del ramo
 > e non azionato -- decisione scritta, non un silenzio.** La frase «che cosa fa» descrive
@@ -1730,13 +1733,13 @@ per usarla.)
 | `GENRES` (ex `GENERI`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `cervello/oggetti.py:44`; colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |  |
 | `ASPECTS` (ex `GAMBE`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `cervello/pavimento.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
 | `SPECIE` | fai · chiedi | `schedulatore/promessa.py:21`; colonna `specie` in `schedulatore/archivio.py:34` |  |
-| `STATI_CONCLUSI` | mantenuta · saltata · disdetta · fallita | `schedulatore/promessa.py:22` — stato concluso delle promesse |  |
-| `STATI_SOSPESO` | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `schedulatore/promessa.py:34` — definita due volte, stesso valore |  |
+| `STATES_CONCLUSI` (ex `STATI_CONCLUSI`, rinominata durante la conversione di `schedulatore/` -- solo il nome della costante, non i valori; non composta in `..._STATES` per il rischio di confusione con l'elenco vivo delle entita' di Home Assistant, vedi la nota sopra) | mantenuta · saltata · disdetta · fallita | `schedulatore/promise.py:22` — stato concluso delle promesse |  |
+| `STATES_SOSPESO` (ex `STATI_SOSPESO`, rinominata dal Task 7 (`azione/`), gia' applicata a `schedulatore/promise.py` durante la sua conversione -- solo il nome della costante, non i valori; stessa cautela sulla composizione della riga sopra) | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `schedulatore/promise.py:34` — definita due volte, stesso valore |  |
 | `BALANCE_DIRECTIONS` (ex `DIREZIONI_BILANCIO`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `cervello/oggetti.py:71` — le direzioni del bilancio energia dell'osservatore |  |
 | `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | `esiti_provider.py:63` — famiglie di esito dei provider LLM |  |
-| `_GESTI` | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
+| `OPERATIONS` (ex `_GESTI`, rinominata dal Task 7 -- solo il nome della costante, non i valori; invisibile agli Step 1/2 perche' plurale, trovata solo eseguendo lo strumento sull'ambito `azione`) | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
 | `_TIPI_COMPORTAMENTO` | automazione · script | `casa/domande.py:68` — i tipi di comportamento della casa |  |
-| `ORIGINI_UMANE` | pagina | `azione/costruzione/officina.py:54` — l'origine di un'azione quando e' un umano a farla |  |
+| `HUMAN_ACTORS` (ex `ORIGINI_UMANE`, rinominata dal Task 7 -- solo il nome della costante, non i valori; stessa invisibilita' di `OPERATIONS` sopra, stessa riga) | pagina | `azione/costruzione/officina.py:54` — l'origine di un'azione quando e' un umano a farla |  |
 | `_SEGNI_MIGRAZIONE` | seminato · catena_seminata · piano_seminato | `api/handlers_models.py:94` — i segni lasciati da una migrazione gia' avvenuta |  |
 | `_LEGAMI_COMPRIMARI` | entita · automazione · scena · script | `server.py:807` — i tipi di comprimari a cui una promessa puo' legarsi |  |
 

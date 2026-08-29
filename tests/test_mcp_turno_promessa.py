@@ -41,8 +41,8 @@ class PortaFinta:
     def __init__(self) -> None:
         self.chiamate = []
 
-    async def esegui(self, chiamata, origine="chat"):
-        self.chiamate.append((chiamata, origine))
+    async def execute(self, chiamata, actor="chat"):
+        self.chiamate.append((chiamata, actor))
         return {"eseguito": True, "esecuzione_id": "e1"}
 
 
@@ -78,7 +78,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     async def _mai(_promessa):
         raise AssertionError("il turno non doveva passare dalla catena")
 
-    app["orologio"] = Sweeper(promesse, execute=porta.esegui, interpreta=_mai)
+    app["orologio"] = Sweeper(promesse, execute=porta.execute, interpreta=_mai)
     app.on_startup.clear()
     app.on_cleanup.clear()
 

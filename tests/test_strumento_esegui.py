@@ -26,8 +26,8 @@ class FintaPorta:
         self.esito = esito or {"eseguito": True, "servizio": "light.turn_off",
                                "entita": ["light.salotto"], "cambiato": ["light.salotto"]}
 
-    async def esegui(self, chiamata, *, origine):
-        self.chiamate.append((chiamata, origine))
+    async def execute(self, chiamata, *, actor):
+        self.chiamate.append((chiamata, actor))
         return self.esito
 
 
@@ -56,9 +56,9 @@ async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
-    chiamata, origine = porta.chiamate[0]
+    chiamata, actor = porta.chiamate[0]
     assert chiamata["servizio"] == "light.turn_off"
-    assert origine == "chat"
+    assert actor == "chat"
 
 
 @pytest.mark.asyncio
@@ -117,8 +117,8 @@ def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    assert 'app["porta_azione"] = PortaAzione(' in src
+    assert 'app["porta_azione"] = ActionActuator(' in src
     assert src.index('app["entity_cache"] = entity_cache') < src.index(
-        'app["porta_azione"] = PortaAzione('), (
+        'app["porta_azione"] = ActionActuator('), (
         "la porta si costruisce PRIMA dello specchio dello stato: nascerebbe "
         "con cache=None e rifiuterebbe ogni azione")

@@ -22,7 +22,7 @@ import unicodedata
 _NON_SLUG = re.compile(r"[^a-z0-9_]+")
 
 
-def nuovo_id(esistenti: set[str], seme: int) -> str:
+def nuovo_id(existing: set[str], seme: int) -> str:
     """Un id di automazione o scena che in questa casa non esiste.
 
     Home Assistant usa timestamp in millisecondi come id nei file scritti
@@ -36,61 +36,61 @@ def nuovo_id(esistenti: set[str], seme: int) -> str:
     """
     candidato = str(seme)
     passo = 0
-    while candidato in esistenti:
+    while candidato in existing:
         passo += 1
         candidato = str(seme + passo)
     return candidato
 
 
-def slug_libero(base: str, esistenti: set[str]) -> str:
+def slug_libero(base: str, existing: set[str]) -> str:
     """Una chiave di script che non collide. `cv.slug` la valida lato HA."""
     # Traslittera gli accenti prima di applicare la regex, altrimenti
     # "perché" → "perch" invece di "perche".
     base_clean = unicodedata.normalize("NFKD", base or "")
     base_ascii = base_clean.encode("ascii", "ignore").decode("ascii")
-    grezzo = _NON_SLUG.sub("_", base_ascii.strip().lower()).strip("_")
-    if not grezzo:
+    reading = _NON_SLUG.sub("_", base_ascii.strip().lower()).strip("_")
+    if not reading:
         # Uno slug vuoto finirebbe in `/api/config/script/config/`, che e'
         # un'altra rotta: mai restituire la stringa vuota.
-        grezzo = "script_hiris"
-    candidato = grezzo
+        reading = "script_hiris"
+    candidato = reading
     numero = 1
-    while candidato in esistenti:
+    while candidato in existing:
         numero += 1
-        candidato = f"{grezzo}_{numero}"
+        candidato = f"{reading}_{numero}"
     return candidato
 
 
-def componi_automazione(*, id_: str, alias: str, descrizione: str, innesco: list,
-                        condizioni: list, azioni: list, modo: str = "single") -> dict:
+def compose_automation(*, id_: str, alias: str, descrizione: str, innesco: list,
+                        conditions: list, actions: list, modo: str = "single") -> dict:
     """Il corpo di un'automazione, nell'ordine in cui l'editor di HA lo scrive."""
     return {
         "id": id_,
         "alias": alias,
         "description": descrizione,
         "triggers": list(innesco),
-        "conditions": list(condizioni),
-        "actions": list(azioni),
+        "conditions": list(conditions),
+        "actions": list(actions),
         "mode": modo,
     }
 
 
-def componi_script(*, alias: str, descrizione: str, passi: list,
-                   campi: dict | None = None, modo: str = "single") -> dict:
+def compose_script(*, alias: str, descrizione: str, passi: list,
+                   fields: dict | None = None, modo: str = "single") -> dict:
     """Il corpo di uno script. La CHIAVE (lo slug) non sta dentro il corpo:
     la porta l'URL, ed e' `slug_libero` a produrla."""
-    corpo = {
+    body = {
         "alias": alias,
         "description": descrizione,
         "sequence": list(passi),
         "mode": modo,
     }
-    if campi:
-        corpo["fields"] = dict(campi)
-    return corpo
+    if fields:
+        body["fields"] = dict(fields)
+    return body
 
 
-def componi_scena(*, id_: str, alias: str, stati: list[dict]) -> dict:
+def compose_scene(*, id_: str, alias: str, states: list[dict]) -> dict:
     """Il corpo di una scena: gli stati da ristabilire, per entita'.
 
     `stati` arriva come lista di dizionari con `entity_id` e il resto degli
@@ -98,26 +98,26 @@ def componi_scena(*, id_: str, alias: str, stati: list[dict]) -> dict:
     qui e non nel chiamante: e' la forma dell'oggetto, non una scelta di chi
     lo chiede.
 
-    **Precondizione**: gli stati sono gia' controllati con `problemi_stati`.
+    **Precondizione**: gli stati sono gia' controllati con `state_problems`.
     Una scena e' l'unico dominio che a valle non viene validato da Home
     Assistant (`parti_da_validare` restituisce {}): uno stato perso qui non
     lo intercetta piu' nessuno.
     """
-    entita: dict[str, dict] = {}
-    for voce in stati:
-        if not isinstance(voce, dict):
+    entity: dict[str, dict] = {}
+    for entry in states:
+        if not isinstance(entry, dict):
             continue
-        eid = voce.get("entity_id")
+        eid = entry.get("entity_id")
         if not eid:
             continue
-        entita[eid] = {k: v for k, v in voce.items() if k != "entity_id"}
-    return {"id": id_, "name": alias, "entities": entita}
+        entity[eid] = {k: v for k, v in entry.items() if k != "entity_id"}
+    return {"id": id_, "name": alias, "entities": entity}
 
 
-def problemi_stati(stati: list) -> list[str]:
+def state_problems(states: list) -> list[str]:
     """Cosa non va negli stati di una scena, in italiano leggibile.
 
-    Le tre `componi_*` hanno la stessa forma e restituiscono un corpo, non
+    Le tre `compose_*` hanno la stessa forma e restituiscono un corpo, non
     una coppia: la diagnosi vive qui, e la chiede il chiamante PRIMA di
     comporre. E' la stessa forma di `casa/comportamento.py::componi`, che
     gia' separa cio' che ha costruito da cio' che non ha potuto concludere.
@@ -126,27 +126,27 @@ def problemi_stati(stati: list) -> list[str]:
     validato da Home Assistant (`parti_da_validare` restituisce {}): uno
     stato perso qui non lo intercetta piu' nessuno.
     """
-    problemi: list[str] = []
+    problems: list[str] = []
     viste: set[str] = set()
 
-    for i, voce in enumerate(stati):
-        if not isinstance(voce, dict):
-            problemi.append(f"Voce {i}: non e' un dizionario")
+    for i, entry in enumerate(states):
+        if not isinstance(entry, dict):
+            problems.append(f"Voce {i}: non e' un dizionario")
             continue
 
-        eid = voce.get("entity_id")
+        eid = entry.get("entity_id")
         if not eid:
-            problemi.append(f"Voce {i}: manca entity_id")
+            problems.append(f"Voce {i}: manca entity_id")
             continue
 
         if eid in viste:
-            problemi.append(f"Duplicato: {eid} gia' visto")
+            problems.append(f"Duplicato: {eid} gia' visto")
         viste.add(eid)
 
-    return problemi
+    return problems
 
 
-def parti_da_validare(dominio: str, corpo: dict) -> dict:
+def parti_da_validare(domain: str, body: dict) -> dict:
     """I kwarg da passare a `HAClient.valida_config` per questo corpo.
 
     Una **scena non si valida**: non ha inneschi ne' azioni, e chiedere a
@@ -154,10 +154,10 @@ def parti_da_validare(dominio: str, corpo: dict) -> dict:
     nulla -- una frase vera che significa una cosa falsa. Chi legge questo
     dizionario vuoto sa che per le scene la verifica arriva al salvataggio.
     """
-    if dominio == "automation":
-        return {"triggers": corpo.get("triggers", []),
-                "conditions": corpo.get("conditions", []),
-                "actions": corpo.get("actions", [])}
-    if dominio == "script":
-        return {"actions": corpo.get("sequence", [])}
+    if domain == "automation":
+        return {"triggers": body.get("triggers", []),
+                "conditions": body.get("conditions", []),
+                "actions": body.get("actions", [])}
+    if domain == "script":
+        return {"actions": body.get("sequence", [])}
     return {}

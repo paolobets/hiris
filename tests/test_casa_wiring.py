@@ -230,7 +230,7 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
 
 # --- I servizi si rinfrescano su EVENTO, non a scadenza --------------------
 #
-# `RegistroServizi` si ricarica solo se ha piu' di 300 secondi
+# `ServiceRegistry` si ricarica solo se ha piu' di 300 secondi
 # (`azione/registro.py`). Conseguenza misurata da una review: per cinque minuti
 # dopo aver installato un'integrazione, HIRIS rifiuta i suoi servizi dicendo
 # «non esiste in questa casa» -- una frase FALSA detta con sicurezza, che e'
@@ -277,7 +277,7 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
     """Il cuore della fetta. Senza `invalida()`, `assicura_fresco` guarda solo
     l'eta' e torna subito: l'evento non servirebbe a niente."""
-    from hiris.app.azione.registro import RegistroServizi
+    from hiris.app.azione.registro import ServiceRegistry
 
     class _Ha:
         def __init__(self):
@@ -288,7 +288,7 @@ async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
             return [{"domain": "light", "services": {"turn_on": {}}}]
 
     ha = _Ha()
-    r = RegistroServizi()
+    r = ServiceRegistry()
     await r.assicura_fresco(ha)
     assert ha.letture == 1
 
@@ -308,14 +308,14 @@ def test_invalidare_non_svuota_cio_che_si_sapeva():
     fra l'evento e la rilettura HIRIS non potrebbe verificare NIENTE -- e un
     registro assente e' peggio di uno vecchio (e' la ragione scritta in
     `assicura_fresco`)."""
-    from hiris.app.azione.registro import RegistroServizi
+    from hiris.app.azione.registro import ServiceRegistry
 
-    r = RegistroServizi()
-    r._per_dominio = {"light": {"turn_on": {}}}
+    r = ServiceRegistry()
+    r._per_domain = {"light": {"turn_on": {}}}
     r._caricato_a = 1.0
     r.invalida()
-    assert r.servizio("light", "turn_on") is not None
-    assert not r.vuoto()
+    assert r.service("light", "turn_on") is not None
+    assert not r.empty()
 
 
 def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():

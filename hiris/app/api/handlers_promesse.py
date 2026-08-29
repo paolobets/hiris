@@ -12,7 +12,7 @@ pagina a leggere il testo dell'errore per sapere quale dei due mostrare.
 
 **`GET /api/esecuzioni/{id}`** vive qui e non in un file suo (review finale
 della fetta, rilievo ①): non serializza niente di suo neppure lei --
-`Cronaca.leggi` gia' lo fa (`azione/cronaca.py::_riga`) -- ed e' la sorella
+`Journal.read` gia' lo fa (`azione/cronaca.py::_row`) -- ed e' la sorella
 delle due sopra per lo stesso motivo per cui loro sono insieme: la pagina
 Promesse le chiama tutte e tre. La promessa NON ricopia i fatti
 dell'esecuzione (spec §8): si collega per `esecuzione_id`, e chi vuole
@@ -54,10 +54,10 @@ async def handle_delete_promessa(request: web.Request) -> web.Response:
 
 
 async def handle_get_esecuzione(request: web.Request) -> web.Response:
-    """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Cronaca.leggi`.
+    """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Journal.read`.
 
     404 «non ne ho piu' il dettaglio» copre sia l'id sbagliato sia la riga
-    potata dopo 90 giorni (`cronaca.py::CONSERVAZIONE_ESECUZIONI_S`): dal
+    potata dopo 90 giorni (`cronaca.py::RETENTION_EXECUTIONS_S`): dal
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
     """
@@ -65,7 +65,7 @@ async def handle_get_esecuzione(request: web.Request) -> web.Response:
     if cronaca is None:
         return web.json_response({"errore": "cronaca non disponibile"}, status=503)
     ident = request.match_info["id"]
-    riga = cronaca.leggi(ident)
+    riga = cronaca.read(ident)
     if riga is None:
         return web.json_response(
             {"errore": "non ho nessuna esecuzione con quell'identificatore."},

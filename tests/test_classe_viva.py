@@ -127,8 +127,8 @@ def test_l_impronta_di_esegui_porta_l_unita():
     """«adesso e' a 21, in stanza ci sono 69.8» senza scala e' un numero, non
     un fatto -- e il modello non puo' dedurla, perche' il nucleo gli vieta di
     applicare l'unita' della casa a una singola entita'."""
-    from hiris.app.azione.porta import _impronta
-    impronta = _impronta(
+    from hiris.app.azione.porta import _fingerprint
+    impronta = _fingerprint(
         {"id": "sensor.esterno", "state": "17.5", "unit": "°C"})
     assert impronta["unit"] == "°C"
-    assert _impronta({"id": "x", "state": "on", "unit": ""}) == {"state": "on"}
+    assert _fingerprint({"id": "x", "state": "on", "unit": ""}) == {"state": "on"}

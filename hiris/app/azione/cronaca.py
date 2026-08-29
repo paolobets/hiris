@@ -44,12 +44,12 @@ from ..storage import connect, init_schema
 # conserva un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
 # Si possono cambiare separatamente, in futuro, senza che l'altro se ne
 # accorga.
-CONSERVAZIONE_ESECUZIONI_S = 90 * 86400
+RETENTION_EXECUTIONS_S = 90 * 86400
 
 # Quante righe torna UNA interrogazione. La cronaca conserva 90 giorni: senza
 # tetto, «cosa hai fatto» su una casa attiva restituirebbe l'intero trimestre
 # dentro il contesto di un modello.
-MAX_RIGHE_ELENCO = 200
+MAX_LIST_ROWS = 200
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS esecuzioni (
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_esecuzioni_quando ON esecuzioni(quando_ts DESC);
 """
 
 
-def _migrazione_2(conn) -> None:
+def _migration_2(conn) -> None:
     """v1 -> v2: la cronaca registra anche le costruzioni.
 
     Due colonne aggiunte, nessuna riscritta: le righe gia' scritte restano
@@ -77,15 +77,15 @@ def _migrazione_2(conn) -> None:
     sono. Una migrazione che ricostruisce la tabella per due colonne
     rischierebbe di perdere una cronaca vera per un guadagno estetico.
     """
-    esistenti = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
-    if "genere" not in esistenti:
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
+    if "genere" not in existing:
         conn.execute("ALTER TABLE esecuzioni ADD COLUMN genere TEXT NOT NULL "
                      "DEFAULT 'comando'")
-    if "oggetto" not in esistenti:
+    if "oggetto" not in existing:
         conn.execute("ALTER TABLE esecuzioni ADD COLUMN oggetto TEXT")
 
 
-def _riga(r) -> dict:
+def _row(r) -> dict:
     return {
         "id": r["id"],
         "quando_ts": r["quando_ts"],
@@ -101,39 +101,39 @@ def _riga(r) -> dict:
     }
 
 
-class Cronaca:
+class Journal:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrazione_2})
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
 
-    def registra(self, *, origine: str, servizio: str, entita: list[str],
-                 eseguito: bool, adesso: float, cambiato: list[str] | None = None,
-                 errore: str | None = None, avviso: str | None = None) -> str:
+    def log(self, *, actor: str, service: str, entity: list[str],
+                 eseguito: bool, now: float, cambiato: list[str] | None = None,
+                 error: str | None = None, notice: str | None = None) -> str:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._conn.execute(
                 "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (adesso - CONSERVAZIONE_ESECUZIONI_S,))
+                (now - RETENTION_EXECUTIONS_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
                 "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL)",
-                (ident, adesso, origine, servizio, json.dumps(list(entita)),
+                (ident, now, actor, service, json.dumps(list(entity)),
                  int(bool(eseguito)),
                  None if cambiato is None else json.dumps(list(cambiato)),
-                 errore, avviso))
+                 error, notice))
             self._conn.commit()
         return ident
 
-    def registra_costruzione(self, *, origine: str, gesto: str, dominio: str,
-                             chiave: str, entita: list[str], eseguito: bool,
-                             adesso: float, errore: str | None = None,
-                             avviso: str | None = None) -> str:
+    def log_construction(self, *, actor: str, operation: str, domain: str,
+                             key: str, entity: list[str], eseguito: bool,
+                             now: float, error: str | None = None,
+                             notice: str | None = None) -> str:
         """Un atto di costruzione, nella STESSA tabella dei comandi.
 
         Un atto e' lo stesso fatto qualunque sia l'origine e qualunque sia il
@@ -151,29 +151,29 @@ class Cronaca:
         with self._lock:
             self._conn.execute(
                 "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (adesso - CONSERVAZIONE_ESECUZIONI_S,))
+                (now - RETENTION_EXECUTIONS_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
                 "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?)",
-                (ident, adesso, origine, f"{dominio}.{gesto}",
-                 json.dumps(list(entita)), int(bool(eseguito)), errore, avviso,
-                 f"{dominio}.{chiave}"))
+                (ident, now, actor, f"{domain}.{operation}",
+                 json.dumps(list(entity)), int(bool(eseguito)), error, notice,
+                 f"{domain}.{key}"))
             self._conn.commit()
         return ident
 
-    def leggi(self, esecuzione_id: str) -> dict | None:
+    def read(self, execution_id: str) -> dict | None:
         # Lettura, ma sulla stessa connessione condivisa (`check_same_thread=
         # False`) delle scritture: senza lock qui una `registra` in corso su
         # un altro thread potrebbe intrecciarsi con questa query. E' il
         # pattern appena consolidato in `schedulatore/archivio.py`.
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM esecuzioni WHERE id=?", (esecuzione_id,)).fetchone()
-        return None if r is None else _riga(r)
+                "SELECT * FROM esecuzioni WHERE id=?", (execution_id,)).fetchone()
+        return None if r is None else _row(r)
 
-    def elenca(self, *, da_ts: float, a_ts: float, entita: str | None = None,
-               limite: int = MAX_RIGHE_ELENCO) -> list[dict]:
+    def list(self, *, da_ts: float, a_ts: float, entity: str | None = None,
+               limit: int = MAX_LIST_ROWS) -> list[dict]:
         """Gli atti di HIRIS in una finestra, dal piu' recente.
 
         Fino a questa fetta la cronaca si poteva solo SCRIVERE e leggere per
@@ -196,7 +196,7 @@ class Cronaca:
         indistinguibile da «non ho fatto niente in quel periodo».
 
         Il lock e' lo STESSO delle scritture, per la ragione scritta in
-        `leggi`: connessione condivisa fra thread.
+        `read`: connessione condivisa fra thread.
         """
         with self._lock:
             # Il LIMIT di SQL non puo' essere quello finale col filtro per
@@ -204,12 +204,12 @@ class Cronaca:
             # su cui applicare il filtro Python. Questo MIGLIORA la probabilita'
             # di trovare righe dell'entita' cercata, ma non la garantisce se
             # la finestra contiene piu' di `limite*10` righe di altre entita'.
-            righe = self._conn.execute(
+            rows = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE quando_ts >= ? AND quando_ts <= ? "
                 "ORDER BY quando_ts DESC LIMIT ?",
-                (da_ts, a_ts, int(max(1, limite)) if entita is None
-                 else int(max(1, limite)) * 10)).fetchall()
-        esiti = [_riga(r) for r in righe]
-        if entita is not None:
-            esiti = [e for e in esiti if entita in e["entita"]]
-        return esiti[:int(max(1, limite))]
+                (da_ts, a_ts, int(max(1, limit)) if entity is None
+                 else int(max(1, limit)) * 10)).fetchall()
+        occurrences = [_row(r) for r in rows]
+        if entity is not None:
+            occurrences = [e for e in occurrences if entity in e["entita"]]
+        return occurrences[:int(max(1, limit))]

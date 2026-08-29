@@ -1,7 +1,7 @@
 """Le cinque rotte della pagina Costruzioni.
 
 Non serializzano niente per conto proprio: la forma di una costruzione e' UNA
-e vive in `azione/costruzione/versioni.py::_riga`, gia' usata dall'archivio.
+e vive in `azione/costruzione/versioni.py::_row`, gia' usata dall'archivio.
 Una seconda forma costruita qui renderebbe la pagina e la chat due racconti
 diversi dello stesso atto il primo giorno in cui qualcuno aggiunge un campo da
 una parte sola (fondamenta 3).
@@ -52,14 +52,14 @@ async def handle_get_costruzioni(request: web.Request) -> web.Response:
     archivio.scadi(time.time())
     solo_aperte = request.query.get("in_attesa") in ("1", "true", "si")
     return web.json_response(
-        {"costruzioni": archivio.elenca(solo_in_attesa=solo_aperte, limite=200)})
+        {"costruzioni": archivio.list(pending_only=solo_aperte, limit=200)})
 
 
 async def handle_get_costruzione(request: web.Request) -> web.Response:
     archivio = _archivio(request)
     if archivio is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
-    riga = archivio.leggi(request.match_info["id"])
+    riga = archivio.read(request.match_info["id"])
     if riga is None:
         return web.json_response({"errore": _NON_TROVATA}, status=404)
     return web.json_response({"costruzione": riga})
@@ -71,17 +71,17 @@ async def _agisci(request: web.Request, verbo: str) -> web.Response:
     if archivio is None or officina is None:
         return web.json_response({"errore": "officina non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.leggi(ident) is None:
+    if archivio.read(ident) is None:
         return web.json_response({"errore": _NON_TROVATA}, status=404)
     metodo = getattr(officina, verbo)
-    esito = await metodo(ident, origine="pagina", turno=None, adesso=time.time())
+    esito = await metodo(ident, actor="pagina", exchange=None, now=time.time())
     if "errore" in esito:
         # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
         # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la
         # stessa indisponibilita' che le due GET, qui sopra, dichiarano con
         # 503. Prima questo ramo appiattiva ogni errore dell'officina su 409,
         # anche quando la causa era Home Assistant irraggiungibile. Il flag
-        # e' interno (`Officina._fallita`/`_rete`): non deve uscire nel corpo
+        # e' interno (`Workshop._fallita`/`_rete`): non deve uscire nel corpo
         # della risposta.
         status = 503 if esito.pop("guasto_rete", False) else 409
         return web.json_response(esito, status=status)
@@ -107,9 +107,9 @@ async def handle_rifiuta_costruzione(request: web.Request) -> web.Response:
     if archivio is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.leggi(ident) is None:
+    if archivio.read(ident) is None:
         return web.json_response({"errore": _NON_TROVATA}, status=404)
-    esito = archivio.segna_disdetta(ident, adesso=time.time())
+    esito = archivio.mark_cancelled(ident, now=time.time())
     if "errore" in esito:
         return web.json_response(esito, status=409)
     return web.json_response(esito)

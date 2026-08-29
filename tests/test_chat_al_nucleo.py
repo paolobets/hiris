@@ -687,8 +687,8 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
         def __init__(self):
             self.chiamate = []
 
-        async def esegui(self, chiamata, *, origine):
-            self.chiamate.append((chiamata, origine))
+        async def execute(self, chiamata, *, actor):
+            self.chiamate.append((chiamata, actor))
             return {"eseguito": True, "servizio": "light.turn_off",
                     "entita": ["light.cucina_1"],
                     "prima": {"light.cucina_1": "on"},
@@ -733,10 +733,10 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     assert len(porta.chiamate) == 1, (
         "la chat non ha raggiunto la porta: `esegui` e' stato offerto al "
         "modello ma la sua chiamata non e' arrivata all'unico punto che esegue")
-    chiamata, origine = porta.chiamate[0]
+    chiamata, actor = porta.chiamate[0]
     assert chiamata["servizio"] == "light.turn_off"
     assert chiamata["bersaglio"]["entita"] == ["light.cucina_1"]
-    assert origine == "chat"
+    assert actor == "chat"
 
     # (3) l'esito della porta e' tornato al modello COME TOOL_RESULT, non
     # riscritto da noi. Si guarda il secondo giro: il contenuto del blocco

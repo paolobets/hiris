@@ -2,7 +2,7 @@
 
 Funzione pura: nessuna rete, nessun client, nessuno stato interno. Riceve
 cio' che il modello propone, il registro (cosa esiste) e lo specchio dello
-stato vivo (cosa c'e' in casa), e risponde un `Verdetto`.
+stato vivo (cosa c'e' in casa), e risponde un `Verdict`.
 
 **Perche' e' separata dalla porta.** La parte che decide se toccare la casa
 non deve aver bisogno della casa per essere provata: qui ogni caso di rifiuto
@@ -39,12 +39,12 @@ A risolverli e' Home Assistant (`extract_from_target`, vedi
 puo' chiamare. Quindi il giro e' in due tempi, e la parte che dice di no
 resta UNA:
 
-1. `verifica(chiamata, registro, stati)` su un bersaglio ricco risponde un
+1. `verification(chiamata, registro, stati)` su un bersaglio ricco risponde un
    verdetto NEGATIVO con `da_risolvere=True` e il bersaglio gia' tradotto
    nella forma di Home Assistant. Negativo e non «in attesa» di proposito:
    un chiamante che ignorasse il campo nuovo non eseguirebbe niente, invece
    di eseguire su un elenco vuoto.
-2. la porta lo risolve e richiama `verifica(..., risolto=<cio' che HA ha
+2. la porta lo risolve e richiama `verification(..., resolved=<cio' che HA ha
    detto>)`, che rifa' TUTTI i controlli con l'elenco in mano.
 
 Cio' che si e' scelto di NON fare, perche' un lettore futuro non lo scambi
@@ -65,7 +65,7 @@ per una dimenticanza:
 CRITICO ①. Fino a questa passata un bersaglio vuoto era SEMPRE un rifiuto,
 anche per un servizio come `notify.*` che non accetta un `target` -- e questo
 significava che una promessa «chiedi» non poteva mai notificare
-(`schedulatore/orologio.py` costruisce la sua chiamata con `"bersaglio": {}`,
+(`schedulatore/sweeper.py` costruisce la sua chiamata con `"bersaglio": {}`,
 e questa funzione la rifiutava incondizionatamente, PRIMA di guardare il
 servizio). Adesso un bersaglio vuoto e' legittimo quando -- e solo quando --
 il servizio non dichiara un `target` **e** appartiene alla famiglia dei
@@ -115,7 +115,7 @@ from ..casa.anagrafe import dominio_di
 _DOMINI_UNIVERSALI = frozenset({"homeassistant"})
 
 
-def _dichiara_bersaglio(definizione: dict) -> bool:
+def _declare_target(definizione: dict) -> bool:
     """Vero se questo servizio si aspetta un bersaglio (entita', area...).
 
     Review finale, rilievo CRITICO ①. Il campo e' `target` di
@@ -126,7 +126,7 @@ def _dichiara_bersaglio(definizione: dict) -> bool:
     caso di `notify.*` e di parecchi servizi di sistema, che oggi HIRIS
     rifiuta SEMPRE anche quando non hanno niente da bersagliare -- il difetto
     per cui una promessa «chiedi» non poteva mai notificare (vedi
-    `schedulatore/orologio.py::_mantieni_chiedi`).
+    `schedulatore/sweeper.py::_keep_chiedi`).
 
     **Il verso e' quello prudente.** Si allarga SOLO quando il dato dice
     esplicitamente «niente bersaglio» (`isinstance(..., dict)` falso): mai per
@@ -139,7 +139,7 @@ def _dichiara_bersaglio(definizione: dict) -> bool:
     tutti gli altri servizi il rifiuto resta identico a prima, parola per
     parola).
 
-    **Non basta da sola** -- vedi `_bersaglio_vuoto_e_legittimo`, che la
+    **Non basta da sola** -- vedi `_allows_empty_target`, che la
     combina con l'appartenenza alla famiglia dei recapiti: usata qui isolata
     allargherebbe su qualunque servizio senza `target`, non solo su chi
     serve davvero.
@@ -160,15 +160,15 @@ def _dichiara_bersaglio(definizione: dict) -> bool:
 _DOMINI_DI_RECAPITO = frozenset({"notify", "persistent_notification"})
 
 
-def _bersaglio_vuoto_e_legittimo(dominio: str, definizione: dict) -> bool:
+def _allows_empty_target(domain: str, definizione: dict) -> bool:
     """Vero se un bersaglio vuoto e' la forma giusta per QUESTA chiamata.
 
     Combina le due condizioni che, insieme, restano dentro il perimetro
-    misurato: il servizio non dichiara un `target` (`_dichiara_bersaglio`) E
+    misurato: il servizio non dichiara un `target` (`_declare_target`) E
     il suo dominio e' uno dei recapiti (`_DOMINI_DI_RECAPITO`). La prima da
     sola era troppo larga -- vedi il docstring del modulo.
     """
-    return dominio in _DOMINI_DI_RECAPITO and not _dichiara_bersaglio(definizione)
+    return domain in _DOMINI_DI_RECAPITO and not _declare_target(definizione)
 
 
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
@@ -184,7 +184,7 @@ def _bersaglio_vuoto_e_legittimo(dominio: str, definizione: dict) -> bool:
 # cio' che Home Assistant accetta come bersaglio. Unirli renderebbe
 # bersagliabile cio' che non lo e'.
 # DOPPIONE DICHIARATO: registri da mostrare contro bersagli accettati da HA
-BERSAGLI = {
+TARGETS = {
     "entita": "entity_id",
     "dispositivi": "device_id",
     "aree": "area_id",
@@ -204,17 +204,17 @@ _MANCANTI = (
 
 
 @dataclass(frozen=True)
-class Verdetto:
+class Verdict:
     ok: bool
-    motivo: str = ""
-    dominio: str = ""
-    servizio: str = ""
-    entita: tuple[str, ...] = field(default_factory=tuple)
+    reason: str = ""
+    domain: str = ""
+    service: str = ""
+    entity: tuple[str, ...] = field(default_factory=tuple)
     # Il bersaglio nella forma di Home Assistant, gia' tradotto e ripulito:
     # e' cio' che si manda a `extract_from_target`. C'e' anche nei verdetti
     # positivi, cosi' l'esito puo' dire cosa e' stato chiesto e non solo cosa
     # ne e' uscito.
-    bersaglio: dict = field(default_factory=dict)
+    target: dict = field(default_factory=dict)
     # `True` quando il bersaglio nomina qualcosa che solo Home Assistant sa
     # risolvere e nessuno gliel'ha ancora chiesto. Va sempre insieme a
     # `ok=False`: vedi il docstring del modulo.
@@ -227,21 +227,21 @@ class Verdetto:
     scartate: tuple[str, ...] = field(default_factory=tuple)   # altro dominio
     sconosciute: tuple[str, ...] = field(default_factory=tuple)  # senza stato
     # Vero quando il verdetto e' positivo e il servizio non dichiara un
-    # `target` **ed e' un recapito** (vedi `_bersaglio_vuoto_e_legittimo`):
+    # `target` **ed e' un recapito** (vedi `_allows_empty_target`):
     # `entita` e `bersaglio` restano vuoti apposta, e non e' un difetto -- e'
     # la forma giusta per un servizio come `notify.*`, che non ha niente da
     # bersagliare. La porta lo legge per non iniettare `entity_id: []` (che
     # direbbe una cosa diversa da «nessun bersaglio») e per non aprire un
     # ascolto di stato che non avrebbe niente da attendere (review finale,
     # rilievo CRITICO ①; ristretto ai recapiti dalla review indipendente).
-    senza_bersaglio: bool = False
+    no_target: bool = False
 
 
-def _no(motivo: str) -> Verdetto:
-    return Verdetto(ok=False, motivo=motivo)
+def _no(reason: str) -> Verdict:
+    return Verdict(ok=False, reason=reason)
 
 
-def traduci_bersaglio(bersaglio) -> tuple[dict, list[str]]:
+def translate_target(target) -> tuple[dict, list[str]]:
     """Il bersaglio del modello nella forma di Home Assistant, e cio' che di
     quel bersaglio non si e' saputo leggere.
 
@@ -260,32 +260,32 @@ def traduci_bersaglio(bersaglio) -> tuple[dict, list[str]]:
     uno -- vale per gli id delle entita' come per il nome di un'area -- ed e'
     una forma legittima: rifiutarla sarebbe rifiutare per punteggiatura.
     """
-    if not isinstance(bersaglio, dict):
+    if not isinstance(target, dict):
         return {}, []
     tradotto: dict[str, list[str]] = {}
     illeggibili: list[str] = []
-    for nostro, loro in BERSAGLI.items():
-        voci = bersaglio.get(nostro)
-        if voci is None:
+    for nostro, loro in TARGETS.items():
+        entries = target.get(nostro)
+        if entries is None:
             continue
-        if isinstance(voci, str):
-            voci = [voci]
-        if not isinstance(voci, list):
+        if isinstance(entries, str):
+            entries = [entries]
+        if not isinstance(entries, list):
             illeggibili.append(f"«{nostro}» non e' un elenco")
             continue
         buone = []
-        for voce in voci:
-            if isinstance(voce, str) and voce.strip():
-                buone.append(voce.strip())
+        for entry in entries:
+            if isinstance(entry, str) and entry.strip():
+                buone.append(entry.strip())
             else:
-                illeggibili.append(f"«{nostro}» contiene {voce!r}, "
+                illeggibili.append(f"«{nostro}» contiene {entry!r}, "
                                    f"che non e' un identificatore")
         if buone:
             tradotto[loro] = buone
     return tradotto, illeggibili
 
 
-def _cosa_non_esiste(risolto: dict) -> str:
+def _cosa_non_esiste(resolved: dict) -> str:
     """L'elenco di cio' che il bersaglio nominava e non esiste, gia' scritto.
 
     Stringa vuota quando esiste tutto. E' separata dal resto perche' e' la
@@ -293,48 +293,48 @@ def _cosa_non_esiste(risolto: dict) -> str:
     entita': «quell'area non c'e'» non e' «quell'area e' vuota».
     """
     parti = []
-    for chiave, nome in _MANCANTI:
-        voci = [v for v in risolto.get(chiave) or [] if isinstance(v, str)]
-        if voci:
-            parti.append(f"{nome} {_elenco(voci)}")
+    for key, name in _MANCANTI:
+        entries = [v for v in resolved.get(key) or [] if isinstance(v, str)]
+        if entries:
+            parti.append(f"{name} {_list(entries)}")
     return "; ".join(parti)
 
 
-def _elenco(voci, quante: int = 12) -> str:
-    voci = sorted(voci)
-    if len(voci) <= quante:
-        return ", ".join(voci)
-    return ", ".join(voci[:quante]) + f" (e altri {len(voci) - quante})"
+def _list(entries, count: int = 12) -> str:
+    entries = sorted(entries)
+    if len(entries) <= count:
+        return ", ".join(entries)
+    return ", ".join(entries[:count]) + f" (e altri {len(entries) - count})"
 
 
-def verifica(chiamata: dict, registro, stati: dict[str, dict],
-             *, risolto: dict | None = None) -> Verdetto:
+def verification(call: dict, registry, states: dict[str, dict],
+             *, resolved: dict | None = None) -> Verdict:
     """Il verdetto su una chiamata. `risolto` e' cio' che Home Assistant ha
     risposto su questo bersaglio (`ha_client.estrai_dal_bersaglio`), e serve
     solo ai bersagli che nominano aree, piani, etichette o dispositivi: su un
     bersaglio di sole entita' non si chiede niente a nessuno, ed e' voluto --
     un giro di rete per una cosa gia' scritta nella chiamata sarebbe un costo
     senza una domanda."""
-    grezzo = chiamata.get("servizio")
-    if not isinstance(grezzo, str) or grezzo.count(".") != 1:
+    reading = call.get("servizio")
+    if not isinstance(reading, str) or reading.count(".") != 1:
         return _no("il servizio va scritto come «dominio.servizio», "
                    "per esempio «light.turn_off».")
-    dominio, nome = grezzo.split(".")
+    domain, name = reading.split(".")
 
-    if dominio not in registro.domini():
-        return _no(f"il dominio «{dominio}» non esiste in questa casa. "
-                   f"Domini disponibili: {_elenco(registro.domini())}.")
+    if domain not in registry.domains():
+        return _no(f"il dominio «{domain}» non esiste in questa casa. "
+                   f"Domini disponibili: {_list(registry.domains())}.")
 
     # `is None`, mai `if not`: il registro risponde `{}` -- falso in booleano
     # -- per un servizio che ESISTE ma non dichiara ne' campi ne' bersaglio.
     # Con la verita' booleana HIRIS rifiuterebbe una chiamata legittima, e
     # col motivo sbagliato («non esiste» invece di niente).
-    definizione = registro.servizio(dominio, nome)
+    definizione = registry.service(domain, name)
     if definizione is None:
-        return _no(f"«{grezzo}» non esiste. I servizi di «{dominio}» sono: "
-                   f"{_elenco(registro.servizi_di(dominio))}.")
+        return _no(f"«{reading}» non esiste. I servizi di «{domain}» sono: "
+                   f"{_list(registry.services_for(domain))}.")
 
-    bersaglio_ha, illeggibili = traduci_bersaglio(chiamata.get("bersaglio"))
+    target_ha, illeggibili = translate_target(call.get("bersaglio"))
     if illeggibili:
         # Prima di dire «non c'e' niente»: un bersaglio scritto meta' bene si
         # rifiuta INTERO. Tradurne la meta' buona e tacere l'altra vorrebbe
@@ -342,12 +342,12 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
         return _no(f"questo bersaglio non si legge: {'; '.join(illeggibili)}. "
                    f"Ogni voce dev'essere un identificatore, o un elenco di "
                    f"identificatori.")
-    if not bersaglio_ha and not _bersaglio_vuoto_e_legittimo(dominio, definizione):
+    if not target_ha and not _allows_empty_target(domain, definizione):
         return _no("serve un bersaglio: «entita» con gli id esatti, oppure "
                    "«aree», «piani», «etichette» o «dispositivi» -- Home "
                    "Assistant risolve da se' cosa contengono, e non serve "
                    "elencare le entita' a mano.")
-    # Se `bersaglio_ha` e' vuoto ED e' arrivato fin qui, il servizio non
+    # Se `target_ha` e' vuoto ED e' arrivato fin qui, il servizio non
     # dichiara un target ED e' un recapito (review indipendente, punto ①):
     # non si rifiuta subito, si scende fino in fondo alla funzione -- che
     # riconosce questo caso all'UNICO altro punto in cui puo' arrivarci
@@ -359,18 +359,18 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
     # sua affermazione sbagliata, e il rifiuto che dice quale glielo fa
     # correggere. Le entita' che escono da un'area sono un'altra cosa -- le
     # dice Home Assistant, non lui -- e si filtrano piu' sotto.
-    nominate = bersaglio_ha.get("entity_id") or []
+    nominate = target_ha.get("entity_id") or []
     for eid in nominate:
-        if eid not in stati:
+        if eid not in states:
             return _no(f"l'entita' «{eid}» non esiste in questa casa.")
-        if dominio not in _DOMINI_UNIVERSALI and dominio_di(eid) != dominio:
-            return _no(f"«{grezzo}» non si applica a «{eid}», che e' del "
+        if domain not in _DOMINI_UNIVERSALI and dominio_di(eid) != domain:
+            return _no(f"«{reading}» non si applica a «{eid}», che e' del "
                        f"dominio «{eid.split('.')[0]}».")
 
-    dati = chiamata.get("dati") or {}
-    if not isinstance(dati, dict):
+    data = call.get("dati") or {}
+    if not isinstance(data, dict):
         return _no("«dati» dev'essere un oggetto di parametri.")
-    # `fields` arriva gia' normalizzato dal registro (`registro._campi`): o una
+    # `fields` arriva gia' normalizzato dal registro (`registro._fields`): o una
     # mappa di nomi, o `None` quando c'era ma in una forma che nessuno ha
     # saputo leggere. Il controllo `isinstance` qui non e' una ripetizione di
     # quello: e' cio' che rende vera, da sola, la promessa del docstring della
@@ -379,15 +379,15 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
     # `TypeError` fino al modello, che riceveva `unhashable type: 'dict'` come
     # motivo del rifiuto. Un registro costruito altrove, o una forma futura,
     # non deve poter riaprire quella strada.
-    campi = definizione.get("fields", {})
-    if isinstance(campi, dict):
-        nomi = {c for c in campi if isinstance(c, str)}
-        for chiave in dati:
-            if chiave not in nomi:
-                if not nomi:
-                    return _no(f"«{grezzo}» non accetta parametri, e ne hai passato «{chiave}».")
-                return _no(f"«{chiave}» non e' un parametro di «{grezzo}». "
-                           f"Quelli veri sono: {_elenco(nomi)}.")
+    fields = definizione.get("fields", {})
+    if isinstance(fields, dict):
+        names = {c for c in fields if isinstance(c, str)}
+        for key in data:
+            if key not in names:
+                if not names:
+                    return _no(f"«{reading}» non accetta parametri, e ne hai passato «{key}».")
+                return _no(f"«{key}» non e' un parametro di «{reading}». "
+                           f"Quelli veri sono: {_list(names)}.")
     # Se non e' una mappa non si verifica: rifiutare vorrebbe dire elencare
     # «quelli veri» senza saperli, o dire «non accetta parametri» di un
     # servizio che ne ha -- una frase falsa detta con sicurezza, e per giunta
@@ -396,31 +396,31 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
     # da cui si corregge: e' la stessa regola gia' dichiarata qui sopra per i
     # valori dei parametri.
 
-    if not bersaglio_ha:
+    if not target_ha:
         # Ci si arriva SOLO se il controllo sopra ha gia' lasciato passare
         # perche' il servizio non dichiara un target ED e' un recapito: un
         # bersaglio vuoto e' la forma giusta per chiamarlo, non un errore
-        # (review indipendente, punto ①). Vedi `Verdetto.senza_bersaglio`.
-        return Verdetto(ok=True, dominio=dominio, servizio=nome,
-                        entita=(), bersaglio={}, senza_bersaglio=True)
+        # (review indipendente, punto ①). Vedi `Verdetto.no_target`.
+        return Verdict(ok=True, domain=domain, service=name,
+                        entity=(), target={}, no_target=True)
 
-    if set(bersaglio_ha) == {"entity_id"}:
+    if set(target_ha) == {"entity_id"}:
         # Il caso di sempre: il modello ha detto esattamente cosa toccare, e
         # non c'e' niente da risolvere.
-        return Verdetto(ok=True, dominio=dominio, servizio=nome,
-                        entita=tuple(nominate), bersaglio=bersaglio_ha)
+        return Verdict(ok=True, domain=domain, service=name,
+                        entity=tuple(nominate), target=target_ha)
 
-    if risolto is None:
+    if resolved is None:
         # Negativo, non «in attesa»: chi non sa risolvere non esegue. Il
         # motivo non e' scritto per il modello -- non gli arriva mai, la porta
         # risolve e richiama -- ma per chi cablasse questa funzione altrove.
-        return Verdetto(ok=False, dominio=dominio, servizio=nome,
-                        bersaglio=bersaglio_ha, da_risolvere=True,
-                        motivo="questo bersaglio nomina aree, piani, etichette o "
+        return Verdict(ok=False, domain=domain, service=name,
+                        target=target_ha, da_risolvere=True,
+                        reason="questo bersaglio nomina aree, piani, etichette o "
                                "dispositivi: va risolto da Home Assistant prima "
                                "di poter essere eseguito.")
 
-    non_esiste = _cosa_non_esiste(risolto)
+    non_esiste = _cosa_non_esiste(resolved)
     if non_esiste:
         # Si RIFIUTA, non si riduce. Eseguire su cio' che resta sarebbe fare
         # meno di quel che e' stato chiesto e dirlo in una nota che il modello
@@ -432,17 +432,17 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
                    f"casa: {non_esiste}. Non ho toccato niente. Usa «cerca» per "
                    f"trovare il nome giusto e ripeti il comando.")
 
-    trovate = [e for e in risolto.get("entita") or [] if isinstance(e, str)]
+    trovate = [e for e in resolved.get("entita") or [] if isinstance(e, str)]
     if not trovate:
         return _no("il bersaglio esiste ma non contiene nessuna entita': "
                    "Home Assistant non ha niente da toccare li' dentro.")
 
-    del_dominio = [e for e in trovate
-                   if dominio in _DOMINI_UNIVERSALI or dominio_di(e) == dominio]
-    scartate = [e for e in trovate if e not in set(del_dominio)]
-    if not del_dominio:
+    in_domain = [e for e in trovate
+                   if domain in _DOMINI_UNIVERSALI or dominio_di(e) == domain]
+    scartate = [e for e in trovate if e not in set(in_domain)]
+    if not in_domain:
         return _no(f"il bersaglio contiene {len(trovate)} entita' e nessuna e' del "
-                   f"dominio «{dominio}»: «{grezzo}» non si applica a niente di "
+                   f"dominio «{domain}»: «{reading}» non si applica a niente di "
                    f"cio' che c'e' li' dentro.")
 
     # Un'entita' che sta nel registro e non nello specchio dello stato --
@@ -451,14 +451,14 @@ def verifica(chiamata: dict, registro, stati: dict[str, dict],
     # non la accenderebbe, e in cambio farebbe dire all'esito «non so cosa sia
     # cambiato» dell'INTERA chiamata, perche' di lei nessuno annuncera' mai
     # niente. Si toglie e si dichiara.
-    tenute = [e for e in del_dominio if e in stati]
-    sconosciute = [e for e in del_dominio if e not in stati]
+    tenute = [e for e in in_domain if e in states]
+    sconosciute = [e for e in in_domain if e not in states]
     if not tenute:
-        return _no(f"le {len(del_dominio)} entita' del dominio «{dominio}» che "
+        return _no(f"le {len(in_domain)} entita' del dominio «{domain}» che "
                    f"questo bersaglio contiene non hanno uno stato in questa casa "
                    f"(disabilitate, o non caricate): non c'e' niente che io possa "
                    f"toccare e poi rileggere.")
 
-    return Verdetto(ok=True, dominio=dominio, servizio=nome, entita=tuple(tenute),
-                    bersaglio=bersaglio_ha, scartate=tuple(scartate),
+    return Verdict(ok=True, domain=domain, service=name, entity=tuple(tenute),
+                    target=target_ha, scartate=tuple(scartate),
                     sconosciute=tuple(sconosciute))

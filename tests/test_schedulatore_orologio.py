@@ -20,8 +20,8 @@ class PortaFinta:
         self._occurrence = occurrence or {"eseguito": True, "cambiato": ["light.studio"],
                                 "esecuzione_id": "e1"}
 
-    async def __call__(self, chiamata, *, origine):
-        self.chiamate.append((chiamata, origine))
+    async def __call__(self, chiamata, *, actor):
+        self.chiamate.append((chiamata, actor))
         return self._occurrence
 
 
@@ -167,7 +167,7 @@ async def test_una_porta_che_solleva_non_ferma_il_battito(archivio):
 
     chiamate = []
 
-    async def porta(chiamata, *, origine):
+    async def porta(chiamata, *, actor):
         chiamate.append(chiamata)
         if len(chiamate) == 1:
             raise RuntimeError("la rete e' caduta")
@@ -186,10 +186,10 @@ async def test_un_chiedi_con_recapito_notifica_e_registra_cio_che_ha_detto(archi
     await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
 
     assert len(porta.chiamate) == 1
-    chiamata, origine = porta.chiamate[0]
+    chiamata, actor = porta.chiamate[0]
     assert chiamata["servizio"] == "notify.mobile_app_x"
     assert "2 gradi" in chiamata["dati"]["message"]
-    assert origine == "schedulatore"
+    assert actor == "schedulatore"
 
     p = archivio.read(ident)
     assert (p["stato"], p["avvisare"], p["testo"]) == ("mantenuta", True, "e' salita di 2 gradi")
@@ -262,10 +262,10 @@ async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
 # nove task e alla loro review.
 #
 # Questo test attraversa la giuntura per davvero: la STESSA `Sweeper`, con la
-# `PortaAzione` VERA (non un doppio), un registro VERO caricato da un
+# `ActionActuator` VERA (non un doppio), un registro VERO caricato da un
 # `notify.*` vero (senza `target`, com'e' in Home Assistant), e nessuna finta
 # a meta' strada. Se qualcuno rimettesse il rifiuto incondizionato su
-# bersaglio vuoto in `verifica()`, questo test torna rosso -- e non per un
+# bersaglio vuoto in `verification()`, questo test torna rosso -- e non per un
 # assert su una stringa isolata, ma perche' la promessa non risulterebbe piu'
 # "mantenuta" con un motivo onesto.
 
@@ -292,7 +292,7 @@ class _ClientSoloNotifica:
 
 class _CasaMinima:
     """Lo specchio dello stato vivo, con una sola entita' -- basta a
-    soddisfare la guardia (b) di `PortaAzione.esegui` (uno specchio VUOTO e
+    soddisfare la guardia (b) di `ActionActuator.execute` (uno specchio VUOTO e
     uno MAI CALDO valgono uguale, vedi il suo docstring); la notifica non
     guarda nessuna entita', ma la porta deve comunque poter dire di aver
     visto la casa prima di rifiutare o proseguire."""
@@ -302,17 +302,17 @@ class _CasaMinima:
 
 
 async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
-    from hiris.app.azione.porta import PortaAzione
-    from hiris.app.azione.registro import RegistroServizi
+    from hiris.app.azione.porta import ActionActuator
+    from hiris.app.azione.registro import ServiceRegistry
 
     ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
     client = _ClientSoloNotifica()
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(client)
-    porta = PortaAzione(client, registro, _CasaMinima())
+    porta = ActionActuator(client, registro, _CasaMinima())
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
 
-    await Sweeper(archivio, execute=porta.esegui, interpreta=turno).batti(ADESSO + 11)
+    await Sweeper(archivio, execute=porta.execute, interpreta=turno).batti(ADESSO + 11)
 
     assert client.chiamate == [
         ("notify", "mobile_app_x",

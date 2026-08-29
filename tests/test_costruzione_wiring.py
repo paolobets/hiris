@@ -6,8 +6,8 @@ from hiris.app import server
 
 def test_l_officina_e_l_archivio_sono_cablati():
     sorgente = inspect.getsource(server)
-    assert 'app["costruzioni"] = ArchivioCostruzioni(' in sorgente
-    assert 'app["officina"] = Officina(' in sorgente
+    assert 'app["costruzioni"] = ConstructionStore(' in sorgente
+    assert 'app["officina"] = Workshop(' in sorgente
 
 
 def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
@@ -17,19 +17,19 @@ def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
     non solo il suo prefisso: un domani in cui qualcuno aggiungesse
     `app["porta_azione"]` come quarto argomento (il difetto che il brief
     nomina per nome) farebbe arrossire questo test, non uno che si accontenta
-    di vedere 'Officina(' da qualche parte.
+    di vedere 'Workshop(' da qualche parte.
 
-    Dal Task 11 la chiamata porta anche `leggi_fuso` (il fuso della casa,
+    Dal Task 11 la chiamata porta anche `read_timezone` (il fuso della casa,
     non del container, nella data dell'anteprima di ripristino): l'assert
     resta sull'intera chiamata, ora su piu' righe."""
     sorgente = inspect.getsource(server)
-    inizio = sorgente.index('app["officina"] = Officina(')
+    inizio = sorgente.index('app["officina"] = Workshop(')
     fine = sorgente.index(")\n", inizio) + 1
     chiamata = sorgente[inizio:fine]
     assert chiamata == (
-        'app["officina"] = Officina(\n'
+        'app["officina"] = Workshop(\n'
         '        ha_client, app["costruzioni"], app["cronaca"],\n'
-        '        leggi_fuso=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))'
+        '        read_timezone=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))'
     )
     assert "porta_azione" not in chiamata
 
@@ -38,8 +38,8 @@ def test_l_officina_nasce_dopo_la_cronaca_che_le_serve():
     """La cronaca e' un ingresso dell'officina: se nascesse dopo, ogni atto
     resterebbe senza riga di registro -- in silenzio."""
     sorgente = inspect.getsource(server)
-    assert sorgente.index('app["cronaca"] = Cronaca(') < sorgente.index(
-        'app["officina"] = Officina(')
+    assert sorgente.index('app["cronaca"] = Journal(') < sorgente.index(
+        'app["officina"] = Workshop(')
 
 
 def test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento():

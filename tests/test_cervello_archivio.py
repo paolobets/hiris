@@ -260,7 +260,7 @@ def test_cambi_filtro_per_fonte(archivio):
 def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
     """Una riga scritta dallo schema v1 (senza le tre colonne di classe) deve
     continuare a rileggersi: la migrazione aggiunge colonne, non riscrive la
-    tabella. E' la stessa garanzia gia' provata per `Cronaca`."""
+    tabella. E' la stessa garanzia gia' provata per `Journal`."""
     percorso = os.path.join(str(tmp_path), "vecchio.db")
     conn = sqlite3.connect(percorso)
     conn.executescript(

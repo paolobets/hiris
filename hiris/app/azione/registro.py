@@ -22,7 +22,7 @@ di far cadere l'intero aggiornamento.
 
 La verifica arriva **fino ai parametri**, e non si ferma un livello sopra come
 faceva prima della revisione della fetta: `fields` viene normalizzato qui
-(`_campi`), cosi' che chi legge il registro trovi sempre o una mappa di nomi o
+(`_fields`), cosi' che chi legge il registro trovi sempre o una mappa di nomi o
 un `None` dichiarato, mai una forma da indovinare. Erano due difetti misurati,
 non ipotesi: un `fields` che non fosse una mappa faceva risalire un `TypeError`
 fino al modello (`unhashable type: 'dict'` come motivo di un rifiuto), e un
@@ -36,7 +36,7 @@ parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
 `**grezzo`, quindi la chiave sopravvive intera, `None` compreso -- perche' qui
 serve il dato grezzo, non una sua interpretazione: e' `azione/verifica.py` a
 decidere cosa significhi «un servizio senza `target`» (vedi
-`verifica._dichiara_bersaglio`), non questo modulo. `servizio("light", "turn_on") ==
+`verifica._declare_target`), non questo modulo. `servizio("light", "turn_on") ==
 {"target": {}}` (con) e `servizio("light", "toggle") == {}` (senza -- la chiave non
 compare affatto) sono ENTRAMBI casi gia' pinnati da un test (`tests/test_azione_registro.py::
 test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
@@ -47,7 +47,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def _campi(grezzo) -> dict | None:
+def _fields(reading) -> dict | None:
     """I parametri di un servizio, appiattiti di un livello.
 
     Tre esiti, e il terzo e' il motivo per cui questa funzione esiste:
@@ -67,7 +67,7 @@ def _campi(grezzo) -> dict | None:
       un'ipotesi.
     - **forma illeggibile** -- `fields` c'e' ma non e' una mappa: `None`.
       `None` NON e' `{}`, ed e' la stessa distinzione che questo modulo usa
-      gia' per `servizio()` e `eta_secondi()`: `{}` dice «letto: nessun
+      gia' per `servizio()` e `age_seconds()`: `{}` dice «letto: nessun
       parametro» e autorizza a rifiutare un parametro in piu', `None` dice
       «non l'ho potuto leggere» -- e su cio' che non si e' potuto misurare
       non si rifiuta.
@@ -78,21 +78,21 @@ def _campi(grezzo) -> dict | None:
     `fields`; una sezione ce l'ha per definizione, ed e' li' che stanno i
     nomi veri.
     """
-    if not isinstance(grezzo, dict):
+    if not isinstance(reading, dict):
         return None
     piatti: dict = {}
-    for nome, dettaglio in grezzo.items():
-        interni = dettaglio.get("fields") if isinstance(dettaglio, dict) else None
-        if isinstance(interni, dict):
-            for sotto, dettaglio_sotto in interni.items():
-                if isinstance(sotto, str):
-                    piatti[sotto] = dettaglio_sotto
-        elif isinstance(nome, str):
-            piatti[nome] = dettaglio
+    for name, detail in reading.items():
+        internal = detail.get("fields") if isinstance(detail, dict) else None
+        if isinstance(internal, dict):
+            for nested_name, nested_detail in internal.items():
+                if isinstance(nested_name, str):
+                    piatti[nested_name] = nested_detail
+        elif isinstance(name, str):
+            piatti[name] = detail
     return piatti
 
 
-def _dettaglio(grezzo) -> dict:
+def _detail(reading) -> dict:
     """Il dettaglio di un servizio, coi suoi `fields` gia' normalizzati.
 
     Un dettaglio che non e' un dizionario diventa `{}` -- «il servizio esiste,
@@ -100,21 +100,21 @@ def _dettaglio(grezzo) -> dict:
     dettaglio senza `fields` resta tale e quale: aggiungere una chiave che
     Home Assistant non ha mandato sarebbe insegnare invece di specchiare.
     """
-    if not isinstance(grezzo, dict):
+    if not isinstance(reading, dict):
         return {}
-    if "fields" not in grezzo:
-        return grezzo
-    return {**grezzo, "fields": _campi(grezzo["fields"])}
+    if "fields" not in reading:
+        return reading
+    return {**reading, "fields": _fields(reading["fields"])}
 
 
-class RegistroServizi:
-    def __init__(self, eta_massima_s: float = 300.0) -> None:
-        self._per_dominio: dict[str, dict[str, dict]] = {}
+class ServiceRegistry:
+    def __init__(self, max_age_s: float = 300.0) -> None:
+        self._per_domain: dict[str, dict[str, dict]] = {}
         self._caricato_a: float | None = None
-        self._eta_massima_s = eta_massima_s
+        self._max_age_s = max_age_s
         # Il segno di «rileggi appena serve», messo da `invalida()`. E' un
         # campo SUO e non un azzeramento di `_caricato_a`: quello significa
-        # «mai letto» (vedi `vuoto()`), e fingerlo farebbe SOLLEVARE
+        # «mai letto» (vedi `empty()`), e fingerlo farebbe SOLLEVARE
         # `assicura_fresco` al primo rinfresco fallito invece di tenere il
         # registro vecchio -- cioe' il contrario esatto di cio' che quel
         # metodo dichiara di volere.
@@ -128,18 +128,18 @@ class RegistroServizi:
         specchio di HA e diventerebbe un archivio di cio' che un tempo era
         possibile.
         """
-        grezzo = await ha_client.get_services()
+        reading = await ha_client.get_services()
         nuovo: dict[str, dict[str, dict]] = {}
-        for voce in grezzo or []:
-            if not isinstance(voce, dict):
+        for entry in reading or []:
+            if not isinstance(entry, dict):
                 continue
-            dominio = voce.get("domain")
-            servizi = voce.get("services")
-            if not isinstance(dominio, str) or not isinstance(servizi, dict):
+            domain = entry.get("domain")
+            services = entry.get("services")
+            if not isinstance(domain, str) or not isinstance(services, dict):
                 continue
-            nuovo[dominio] = {n: _dettaglio(d)
-                              for n, d in servizi.items() if isinstance(n, str)}
-        self._per_dominio = nuovo
+            nuovo[domain] = {n: _detail(d)
+                              for n, d in services.items() if isinstance(n, str)}
+        self._per_domain = nuovo
         self._caricato_a = time.monotonic()
         self._da_rileggere = False
         logger.info("registro servizi: %d domini, %d servizi",
@@ -150,11 +150,11 @@ class RegistroServizi:
         # nel log c'era solo un `INFO: 0 domini, 0 servizi` che assomiglia a
         # una casa senza servizi. E' il fallimento numero 1 del foglio delle
         # prove: qui diventa una diagnosi invece di un silenzio.
-        if grezzo and not nuovo:
+        if reading and not nuovo:
             logger.warning("registro servizi: la risposta di /api/services non era "
                            "vuota (%s voci) ma non se ne e' capita nessuna -- la sua "
                            "forma non e' quella attesa (lista di {domain, services})",
-                           len(grezzo) if isinstance(grezzo, list) else "?")
+                           len(reading) if isinstance(reading, list) else "?")
 
     async def assicura_fresco(self, ha_client) -> None:
         """Ricarica se serve. Un guasto NON svuota cio' che sapevamo.
@@ -162,7 +162,7 @@ class RegistroServizi:
         Un registro vecchio e' meno peggio di un registro assente: col primo
         HIRIS puo' ancora rifiutare un servizio che non esiste, col secondo
         non puo' verificare niente. Se il rinfresco fallisce si logga e si
-        tiene il vecchio -- e `eta_secondi()` resta grande, cosi' chi vuole
+        tiene il vecchio -- e `age_seconds()` resta grande, cosi' chi vuole
         saperlo puo' chiederlo.
 
         Al **primo** caricamento non c'e' nessun vecchio da proteggere:
@@ -170,17 +170,17 @@ class RegistroServizi:
         caricato e vuoto rispondono uguale a chi li interroga, e chi chiama
         deve poterli distinguere.
         """
-        eta = self.eta_secondi()
-        if eta is not None and eta < self._eta_massima_s and not self._da_rileggere:
+        age = self.age_seconds()
+        if age is not None and age < self._max_age_s and not self._da_rileggere:
             return
         try:
             await self.aggiorna(ha_client)
-        except Exception as errore:
-            if self.vuoto():
+        except Exception as error:
+            if self.empty():
                 raise
             logger.warning("registro servizi: rinfresco fallito (%s: %s), "
                            "tengo quello di %.0fs fa",
-                           type(errore).__name__, errore, eta or 0.0)
+                           type(error).__name__, error, age or 0.0)
 
     def invalida(self) -> None:
         """«Rileggi appena serve», non «dimentica».
@@ -197,30 +197,30 @@ class RegistroServizi:
         """
         self._da_rileggere = True
 
-    def servizio(self, dominio: str, nome: str) -> dict | None:
+    def service(self, domain: str, name: str) -> dict | None:
         """Il dettaglio di un servizio, o `None` se qui non esiste.
 
         Quando c'e', il suo `fields` -- se c'e' -- e' gia' normalizzato da
-        `_campi`: o una mappa di nomi di parametro, o `None` («c'era, ma in
+        `_fields`: o una mappa di nomi di parametro, o `None` («c'era, ma in
         una forma che non so leggere»). Chi lo interroga non deve piu'
         indovinare la forma, ed e' l'unico posto in cui quella forma va
         capita.
         """
-        return self._per_dominio.get(dominio, {}).get(nome)
+        return self._per_domain.get(domain, {}).get(name)
 
-    def domini(self) -> list[str]:
-        return sorted(self._per_dominio)
+    def domains(self) -> list[str]:
+        return sorted(self._per_domain)
 
-    def servizi_di(self, dominio: str) -> list[str]:
-        return sorted(self._per_dominio.get(dominio, {}))
+    def services_for(self, domain: str) -> list[str]:
+        return sorted(self._per_domain.get(domain, {}))
 
-    def eta_secondi(self) -> float | None:
+    def age_seconds(self) -> float | None:
         """Da quanti secondi il registro e' quello che e'. `None` = mai letto."""
         if self._caricato_a is None:
             return None
         return time.monotonic() - self._caricato_a
 
-    def vuoto(self) -> bool:
+    def empty(self) -> bool:
         """Vero finche' nessun caricamento e' mai riuscito.
 
         Non dice «zero servizi»: dice «mai letto». Un `/api/services` che

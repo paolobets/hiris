@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import pytest
 
-from hiris.app.azione.registro import RegistroServizi
+from hiris.app.azione.registro import ServiceRegistry
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.schedulatore.archivio import AgendaStore
@@ -105,12 +105,12 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     """Il cuore della fetta: il rifiuto arriva ora, non alle 17.
 
     Fix review Task 6, Rilievo 1: prima asseriva solo `"errore" in esito`, e
-    passava anche se `verifica()` fosse ESPLOSA (il doppio del registro non
-    aveva `servizi_di`, che `azione/verifica.py` chiama proprio nel ramo «il
+    passava anche se `verification()` fosse ESPLOSA (il doppio del registro non
+    aveva `services_for`, che `azione/verifica.py` chiama proprio nel ramo «il
     servizio non esiste» -- vedi `_RegistroFinto` sotto) invece di rifiutare
     col motivo vero. Ora si asserisce il CONTENUTO del messaggio: deve nominare
     il servizio inventato e i servizi che esistono davvero, che e' possibile
-    solo se `verifica()` e' arrivata fino in fondo al ramo giusto senza
+    solo se `verification()` e' arrivata fino in fondo al ramo giusto senza
     sollevare.
     """
     d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
@@ -152,18 +152,18 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     promesse,
 ):
     """Il caso limite che il cablaggio del Task 7 rende raggiungibile per la
-    prima volta: all'avvio `server.py` costruisce SEMPRE `RegistroServizi()`
+    prima volta: all'avvio `server.py` costruisce SEMPRE `ServiceRegistry()`
     (mai `None`), ma vuoto -- si carica al primo uso, non all'avvio. Senza la
-    guardia su `domini()`, `_verifica_ora` avrebbe proseguito fino a
-    `verifica()`, che avrebbe rifiutato con «il dominio "light" non esiste in
+    guardia su `domains()`, `_verifica_ora` avrebbe proseguito fino a
+    `verification()`, che avrebbe rifiutato con «il dominio "light" non esiste in
     questa casa. Domini disponibili: .» -- una frase FALSA detta con
     sicurezza (la casa non e' vuota, e' il registro che non e' stato letto),
-    esattamente cio' da cui mette in guardia `azione/porta.py::_REGISTRO_MUTO`.
+    esattamente cio' da cui mette in guardia `azione/porta.py::_MUTE_REGISTRY`.
     """
     # `cache=_CacheFinta()`: senza uno specchio dello stato leggibile
     # `_verifica_ora` si ferma prima (`_stati_grezzi()` -> `None` -> nessun
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
-    # esiste per chiudere -- vedi `verifica()` in `azione/verifica.py`.
+    # esiste per chiudere -- vedi `verification()` in `azione/verifica.py`.
     d = _dispatcher(promesse, registro=_RegistroVuoto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
@@ -242,8 +242,8 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
     promesse,
 ):
     """Il gemello del test sopra su `_verifica_ora` (review Task 7, Rilievo
-    1): prima del fix, un `_RegistroVuoto` (presente, `domini()` vuoto)
-    faceva rispondere `servizio(dominio, nome)` con `None` per QUALUNQUE
+    1): prima del fix, un `_RegistroVuoto` (presente, `domains()` vuoto)
+    faceva rispondere `service(dominio, nome)` con `None` per QUALUNQUE
     recapito -- «"notify.mobile_app_x" non esiste in questa casa», una frase
     FALSA (il servizio esiste, e' il registro che non e' stato ancora letto).
     Peggio del `fai` equivalente: un recapito sbagliato non fallisce
@@ -263,7 +263,7 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
 async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     """Il difetto misurato dal vivo su 3.9.1: un add-on appena avviato ha un
     registro PRESENTE ma mai caricato (si carica pigramente alla prima
-    azione ESEGUITA, `azione/porta.py::Porta.esegui`) -- e prima di questo
+    azione ESEGUITA, `azione/porta.py::ActionActuator.execute`) -- e prima di questo
     fix `_prometti` interrogava `_registro_non_pronto()` senza mai scaldare
     il registro. L'utente aveva appena chiesto di leggere le otto
     temperature (riuscito: quella lettura passa da un'altra strada, non dal
@@ -278,15 +278,15 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     e' scaldato, solo che non e' esploso.
     """
     ha = _HaConServizi()
-    registro = RegistroServizi()
-    assert registro.vuoto()  # la premessa esatta del difetto: mai caricato
+    registro = ServiceRegistry()
+    assert registro.empty()  # la premessa esatta del difetto: mai caricato
     d = _dispatcher(promesse, registro=registro, ha=ha, cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
     assert "errore" not in esito
     assert ha.chiamate_get_services == 1
-    assert not registro.vuoto()  # scaldato per davvero, non solo tollerato
+    assert not registro.empty()  # scaldato per davvero, non solo tollerato
 
 
 @pytest.mark.asyncio
@@ -416,13 +416,13 @@ async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
 
 
 class _RegistroFinto:
-    """Il doppio del registro dei servizi (`azione/registro.py::RegistroServizi`).
+    """Il doppio del registro dei servizi (`azione/registro.py::ServiceRegistry`).
 
     Fix review Task 6, Rilievo 1: espone SOLO i metodi che il percorso
-    esercitato da questo file legge davvero -- `domini()` e `servizio()`
-    (chiamati da `_verifica_ora`/`_verifica_recapito`), e `servizi_di()`, che
+    esercitato da questo file legge davvero -- `domains()` e `service()`
+    (chiamati da `_verifica_ora`/`_verifica_recapito`), e `services_for()`, che
     `azione/verifica.py` chiama nel ramo «il servizio non esiste» per
-    elencare quelli veri. Senza `servizi_di()` quel ramo faceva sollevare
+    elencare quelli veri. Senza `services_for()` quel ramo faceva sollevare
     `AttributeError`, catturato solo dalla rete di sicurezza generica di
     `dispatch()`: il test bandiera passava lo stesso (`"errore" in esito`
     resta vero anche per un'eccezione), ma non perche' la verifica avesse
@@ -439,33 +439,33 @@ class _RegistroFinto:
         ("light", "turn_on"): {}, ("notify", "mobile_app_x"): {},
     }
 
-    def domini(self):
+    def domains(self):
         return ["light", "notify"]
 
-    def servizio(self, dominio, nome):
+    def service(self, dominio, nome):
         return self._SERVIZI.get((dominio, nome))
 
-    def servizi_di(self, dominio):
+    def services_for(self, dominio):
         return sorted(nome for (dom, nome) in self._SERVIZI if dom == dominio)
 
 
 class _RegistroVuoto:
     """Il doppio del registro PRESENTE ma mai caricato da Home Assistant --
     lo stato reale di `app["registro_servizi"]` fra l'avvio e la prima
-    `assicura_fresco()`. Solo `domini()`: e' l'UNICO metodo che
+    `assicura_fresco()`. Solo `domains()`: e' l'UNICO metodo che
     `_verifica_ora` deve poter chiamare su un registro in questo stato, prima
-    di rifiutare -- se ne chiamasse un altro (`servizio()`, `servizi_di()`)
+    di rifiutare -- se ne chiamasse un altro (`service()`, `services_for()`)
     solleverebbe `AttributeError` invece di rifiutare col motivo giusto,
     esattamente l'errore che la review del Task 6 aveva trovato nel percorso
     gemello (vedi `_RegistroFinto` sopra)."""
 
-    def domini(self):
+    def domains(self):
         return []
 
 
 class _HaConServizi:
     """Il doppio del canale HA che risponde a `get_services()` per davvero
-    -- quello che `RegistroServizi.assicura_fresco` chiama per scaldarsi.
+    -- quello che `ServiceRegistry.assicura_fresco` chiama per scaldarsi.
 
     Deve saper PRODURRE il difetto: `light`/`notify` con almeno un
     servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
@@ -500,7 +500,7 @@ class _RegistroTracciaScaldamento:
     def __init__(self):
         self.chiamato = False
 
-    def domini(self):
+    def domains(self):
         return []
 
     async def assicura_fresco(self, ha_client):

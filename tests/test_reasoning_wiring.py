@@ -17,7 +17,7 @@ def test_reasoning_queue_importable():
 # mutazione che togliendo `leggi_fuso=lambda: _fuso_da_archivio_casa(
 # archivio_casa)` dalla costruzione di `ReasoningQueue` in `server.py`,
 # l'intera suite restava verde. Il gemello nello stesso commit -- la
-# costruzione di `Officina` -- quella mutazione la prende
+# costruzione di `Workshop` -- quella mutazione la prende
 # (`tests/test_costruzione_wiring.py::
 # test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta`), perche' quel test
 # confronta il TESTO esatto della chiamata. Qui si sceglie una forma diversa

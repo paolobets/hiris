@@ -197,7 +197,7 @@ async def test_una_voce_senza_entita_non_si_abbina_mai():
 
 @pytest.mark.asyncio
 async def test_fra_piu_candidati_si_sceglie_il_piu_vicino_nel_tempo():
-    """`Cronaca.elenca` ordina per `quando_ts DESC`: con due tentativi
+    """`Journal.list` ordina per `quando_ts DESC`: con due tentativi
     ravvicinati sulla stessa entita' il primo della lista non e' detto sia
     il gesto giusto."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],

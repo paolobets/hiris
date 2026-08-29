@@ -3,7 +3,7 @@
 Task 1 della fetta «comandare». Copre tre cose distinte:
 
 1. il **lettore** (`HAClient.get_services`), che apre `/api/services`;
-2. il **registro** (`RegistroServizi`), che tiene quella risposta in memoria
+2. il **registro** (`ServiceRegistry`), che tiene quella risposta in memoria
    e non solleva mai su cio' che non c'e';
 3. la **freschezza** (`assicura_fresco`), perche' le integrazioni di Home
    Assistant si installano a caldo e un registro letto una volta sola
@@ -20,7 +20,7 @@ import inspect
 
 import pytest
 
-from hiris.app.azione.registro import RegistroServizi
+from hiris.app.azione.registro import ServiceRegistry
 from hiris.app.proxy.ha_client import HAClient
 
 RISPOSTA_HA = [
@@ -54,38 +54,38 @@ def test_il_finto_combacia_con_la_firma_vera():
 
 @pytest.mark.asyncio
 async def test_il_registro_conosce_i_servizi_che_esistono():
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(RISPOSTA_HA))
-    assert registro.servizio("light", "turn_on") is not None
-    assert sorted(registro.servizi_di("light")) == ["turn_off", "turn_on"]
-    assert "switch" in registro.domini()
+    assert registro.service("light", "turn_on") is not None
+    assert sorted(registro.services_for("light")) == ["turn_off", "turn_on"]
+    assert "switch" in registro.domains()
 
 
 @pytest.mark.asyncio
 async def test_il_registro_non_inventa_cio_che_non_c_e():
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(RISPOSTA_HA))
-    assert registro.servizio("light", "esplodi") is None
-    assert registro.servizio("inesistente", "turn_on") is None
-    assert registro.servizi_di("inesistente") == []
+    assert registro.service("light", "esplodi") is None
+    assert registro.service("inesistente", "turn_on") is None
+    assert registro.services_for("inesistente") == []
 
 
 @pytest.mark.asyncio
 async def test_un_registro_mai_caricato_lo_dichiara():
-    registro = RegistroServizi()
-    assert registro.vuoto() is True
-    assert registro.eta_secondi() is None
+    registro = ServiceRegistry()
+    assert registro.empty() is True
+    assert registro.age_seconds() is None
     # e non solleva: chi lo interroga prima del caricamento riceve None,
     # non un'eccezione
-    assert registro.servizio("light", "turn_on") is None
+    assert registro.service("light", "turn_on") is None
 
 
 @pytest.mark.asyncio
 async def test_una_risposta_malformata_non_solleva():
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient([{"domain": "light"}, {"services": {}}, "spazzatura"]))
-    assert registro.servizio("light", "turn_on") is None
-    assert registro.vuoto() is False  # ha caricato: e' vuoto di CONTENUTO, non di tentativo
+    assert registro.service("light", "turn_on") is None
+    assert registro.empty() is False  # ha caricato: e' vuoto di CONTENUTO, non di tentativo
 
 
 @pytest.mark.asyncio
@@ -94,12 +94,12 @@ async def test_una_voce_di_servizio_che_non_e_un_dizionario_non_solleva():
     modulo): se il dettaglio di un servizio non fosse un dizionario, il
     servizio deve restare *conoscibile* -- esiste, non sappiamo com'e'
     fatto -- e non far cadere l'intero dominio."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(
         [{"domain": "light", "services": {"turn_on": "non un dizionario", "turn_off": {}}}]
     ))
-    assert registro.servizio("light", "turn_on") == {}
-    assert sorted(registro.servizi_di("light")) == ["turn_off", "turn_on"]
+    assert registro.service("light", "turn_on") == {}
+    assert sorted(registro.services_for("light")) == ["turn_off", "turn_on"]
 
 
 @pytest.mark.asyncio
@@ -107,19 +107,19 @@ async def test_un_aggiornamento_sostituisce_e_non_accumula():
     """Il registro e' lo SPECCHIO di `/api/services`, non un archivio che
     cresce: un'integrazione disinstallata deve sparire anche da qui, o HIRIS
     continuerebbe a credere possibile un servizio che non c'e' piu'."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     finto = FintoClient(RISPOSTA_HA)
     await registro.aggiorna(finto)
     finto.risposta = [{"domain": "light", "services": {"turn_on": {}}}]
     await registro.aggiorna(finto)
-    assert registro.domini() == ["light"]
-    assert registro.servizi_di("light") == ["turn_on"]
+    assert registro.domains() == ["light"]
+    assert registro.services_for("light") == ["turn_on"]
 
 
 @pytest.mark.asyncio
 async def test_il_registro_si_rinfresca_quando_e_vecchio():
     finto = FintoClient(RISPOSTA_HA)
-    registro = RegistroServizi(eta_massima_s=100)
+    registro = ServiceRegistry(max_age_s=100)
     await registro.assicura_fresco(finto)
     await registro.assicura_fresco(finto)
     assert finto.chiamate == 1, "un registro fresco non si ricarica"
@@ -139,11 +139,11 @@ async def test_se_il_rinfresco_fallisce_si_tiene_il_vecchio():
             return self.risposta
 
     finto = ClientCheRompe(RISPOSTA_HA)
-    registro = RegistroServizi(eta_massima_s=100)
+    registro = ServiceRegistry(max_age_s=100)
     await registro.assicura_fresco(finto)
     registro._caricato_a -= 200
     await registro.assicura_fresco(finto)   # non deve sollevare
-    assert registro.servizio("light", "turn_on") is not None, (
+    assert registro.service("light", "turn_on") is not None, (
         "un rinfresco fallito non deve svuotare cio' che sapevamo")
 
 
@@ -159,20 +159,20 @@ async def test_se_il_primo_caricamento_fallisce_il_guasto_si_vede():
             self.chiamate += 1
             raise RuntimeError("HA non risponde")
 
-    registro = RegistroServizi(eta_massima_s=100)
+    registro = ServiceRegistry(max_age_s=100)
     with pytest.raises(RuntimeError):
         await registro.assicura_fresco(ClientSempreRotto(RISPOSTA_HA))
-    assert registro.vuoto() is True
+    assert registro.empty() is True
 
 
 @pytest.mark.asyncio
 async def test_l_eta_cresce_e_parte_da_zero_al_caricamento():
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(RISPOSTA_HA))
-    eta = registro.eta_secondi()
+    eta = registro.age_seconds()
     assert eta is not None and eta < 5.0
     registro._caricato_a -= 42
-    assert registro.eta_secondi() >= 42
+    assert registro.age_seconds() >= 42
 
 
 @pytest.mark.asyncio
@@ -205,8 +205,8 @@ def test_il_registro_e_agganciato_all_app():
     su cio' che HA sa fare."""
     from hiris.app import server
 
-    assert server.RegistroServizi is RegistroServizi
-    assert 'app["registro_servizi"] = RegistroServizi()' in inspect.getsource(
+    assert server.ServiceRegistry is ServiceRegistry
+    assert 'app["registro_servizi"] = ServiceRegistry()' in inspect.getsource(
         server._on_startup)
 
 
@@ -224,12 +224,12 @@ async def test_i_campi_a_sezioni_salgono_di_un_livello():
     rifiutato, e al modello si offriva `advanced_fields` come «uno di quelli
     veri»: un rifiuto sbagliato e un nome interno spacciato per parametro,
     nella stessa frase."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient([{"domain": "light", "services": {"turn_on": {"fields": {
         "brightness_pct": {"selector": {}},
         "advanced_fields": {"collapsed": True, "fields": {"rgbw_color": {}, "effect": {}}},
     }}}}]))
-    campi = registro.servizio("light", "turn_on")["fields"]
+    campi = registro.service("light", "turn_on")["fields"]
     assert sorted(campi) == ["brightness_pct", "effect", "rgbw_color"]
     assert "advanced_fields" not in campi, (
         "il nome della sezione non e' un parametro: offerto al modello, lo "
@@ -240,27 +240,27 @@ async def test_i_campi_a_sezioni_salgono_di_un_livello():
 async def test_appiattire_non_tocca_i_campi_gia_piatti():
     """La difesa dev'essere innocua dove le sezioni non ci sono -- che e' la
     sola forma che qualcuno abbia mai scritto in una finta."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(RISPOSTA_HA))
-    assert sorted(registro.servizio("light", "turn_on")["fields"]) == [
+    assert sorted(registro.service("light", "turn_on")["fields"]) == [
         "brightness_pct", "transition"]
-    assert registro.servizio("switch", "turn_on")["fields"] == {}
+    assert registro.service("switch", "turn_on")["fields"] == {}
 
 
 @pytest.mark.asyncio
 async def test_un_campo_che_non_e_una_mappa_diventa_none_e_non_solleva():
     """R-1. `fields` che non e' una mappa (p.es. una lista di oggetti) faceva
-    risalire un `TypeError` da `PortaAzione.esegui`, e il modello riceveva
+    risalire un `TypeError` da `ActionActuator.execute`, e il modello riceveva
     «unhashable type: 'dict'» come **motivo del rifiuto**: un errore Python
     travestito da spiegazione.
 
     `None`, non `{}`: `{}` significa «letto, nessun parametro» e autorizza a
     rifiutare un parametro in piu'. Qui non abbiamo letto niente."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(
         [{"domain": "light", "services": {"turn_on": {"fields": [{"name": "brightness_pct"}]}}}]))
-    assert registro.servizio("light", "turn_on")["fields"] is None
-    assert registro.servizi_di("light") == ["turn_on"], (
+    assert registro.service("light", "turn_on")["fields"] is None
+    assert registro.services_for("light") == ["turn_on"], (
         "il servizio esiste: una forma non capita non deve farlo sparire")
 
 
@@ -268,11 +268,11 @@ async def test_un_campo_che_non_e_una_mappa_diventa_none_e_non_solleva():
 async def test_un_servizio_senza_campi_non_ne_guadagna_uno_finto():
     """Il registro e' lo SPECCHIO di `/api/services`: aggiungere una chiave che
     Home Assistant non ha mandato sarebbe insegnare invece di specchiare."""
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     await registro.aggiorna(FintoClient(
         [{"domain": "light", "services": {"turn_on": {"target": {}}, "toggle": {}}}]))
-    assert registro.servizio("light", "turn_on") == {"target": {}}
-    assert registro.servizio("light", "toggle") == {}
+    assert registro.service("light", "turn_on") == {"target": {}}
+    assert registro.service("light", "toggle") == {}
 
 
 @pytest.mark.asyncio
@@ -284,11 +284,11 @@ async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
     a una casa senza servizi. E' il fallimento numero 1 del foglio delle prove;
     chi non ha il foglio in mano deve poterlo diagnosticare dal log."""
     import logging
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
         # un dizionario, non una lista
         await registro.aggiorna(FintoClient({"light": {"turn_on": {}}}))
-    assert registro.domini() == []
+    assert registro.domains() == []
     assert any("non e' quella attesa" in r.getMessage() for r in caplog.records), caplog.text
 
 
@@ -297,7 +297,7 @@ async def test_una_casa_senza_servizi_non_viene_dichiarata_un_guasto(caplog):
     """Il complemento: la diagnosi qui sopra deve distinguere «non ho capito»
     da «non c'era niente da capire», o sarebbe un allarme che urla sempre."""
     import logging
-    registro = RegistroServizi()
+    registro = ServiceRegistry()
     with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
         await registro.aggiorna(FintoClient([]))
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []

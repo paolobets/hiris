@@ -66,7 +66,7 @@ class Sweeper:
             await self._keep_chiedi(promise, now)
 
     async def _keep_fai(self, promise: dict, now: float) -> None:
-        occurrence = await self._execute(promise["chiamata"], origine="schedulatore")
+        occurrence = await self._execute(promise["chiamata"], actor="schedulatore")
         if occurrence.get("eseguito"):
             self._store.concludi(promise["id"], state="mantenuta", now=now,
                                     execution_id=occurrence.get("esecuzione_id"))
@@ -118,7 +118,7 @@ class Sweeper:
             occurrence = await self._execute(
                 {"servizio": promise["recapito"], "bersaglio": {},
                  "dati": {"message": text, "title": "HIRIS"}},
-                origine="schedulatore")
+                actor="schedulatore")
             execution_id = occurrence.get("esecuzione_id")
             if not occurrence.get("eseguito"):
                 reason = ("te l'ho scritto qui ma la notifica non e' partita: %s"
