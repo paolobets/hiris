@@ -145,7 +145,7 @@ risparmiare tempo.
 | 4 | `cervello/` | 5 file, 1.624 righe | |
 | 5 | `azione/` | 10 file, 3.052 righe | |
 | 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
-| 7 | moduli alla radice + `server.py` + frontend JS | ~3.800 righe di solo `server.py` | → **rilascio** |
+| 7 | i moduli alla radice, `server.py`, il frontend JS | 3.818 righe di solo `server.py` (elenco sotto) | → **rilascio** |
 | 8 | le 14 rotte HTTP e i campi JSON, col frontend che le chiama | 14 rotte | un commit solo, le due sponde insieme |
 | 9 | i 13 nomi degli strumenti | 13 nomi | → **rilascio**, con verifica dal vivo |
 
