@@ -170,7 +170,16 @@ def classifica(nome: str, g: Glossario, ambito: str):
         # La forma del nome originale si conserva: `Archivio` -> `Store`,
         # `archivio` -> `store`. Rinominare una classe in minuscolo romperebbe
         # la convenzione di Python piu' silenziosamente di quanto sembri.
-        return en.capitalize() if nome[:1].isupper() else en
+        #
+        # Ma `nome[:1].isupper()` da solo confonde una classe (`Archivio`,
+        # PascalCase) con una costante di modulo (`ETICHETTA`, TUTTA
+        # maiuscola): entrambe iniziano con una lettera maiuscola. Misurato
+        # puntando lo strumento su `consumi/vocabolario.py` (Task 4): senza
+        # `nome.isupper()`, `ETICHETTA` diventava `Label` invece di `LABEL`,
+        # rompendo la convenzione delle costanti in silenzio.
+        if nome[:1].isupper():
+            return en.upper() if nome.isupper() else en.capitalize()
+        return en
     # Un composto in cui almeno un pezzo non e' deciso resta una proposta lo
     # stesso: il pezzo ignoto va guardato, non saltato. Una forma raggiunta
     # per alias (`costruzioni` -> lemma `costruzione` -> `construction`)

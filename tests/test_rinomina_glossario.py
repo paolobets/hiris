@@ -81,6 +81,20 @@ def test_una_parola_sola_si_classifica_e_si_applica(g):
     assert rinomina.classifica("archivio", g, "memoria") == "store"
 
 
+def test_una_parola_sola_maiuscola_diventa_PASCALCASE(g):
+    """`Archivio` -> `Store`: la classe resta una classe."""
+    assert rinomina.classifica("Archivio", g, "memoria") == "Store"
+
+
+def test_una_costante_TUTTA_MAIUSCOLA_resta_TUTTA_MAIUSCOLA(g):
+    """`ETICHETTA` e' una costante di modulo (convenzione TUTTA MAIUSCOLA),
+    non una classe: il solo controllo sulla prima lettera maiuscola la
+    confonderebbe con `Archivio` e produrrebbe `Label`, non `LABEL` --
+    rompendo la convenzione delle costanti in silenzio. Trovato puntando lo
+    strumento su `consumi/vocabolario.py` (Task 4)."""
+    assert rinomina.classifica("ETICHETTA", g, "consumi") == "LABEL"
+
+
 def test_un_composto_si_classifica_come_PROPOSTA_non_come_nome(g):
     """IL CUORE DELLO STRUMENTO. `unita_vive` non e' `unit_reported`: e'
     `reported_units`. L'italiano mette l'aggettivo dopo, l'inglese prima, e
