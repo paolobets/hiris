@@ -146,7 +146,7 @@ def test_total_increasing_da_solo_non_basta_piu_per_energia():
     non e' una classe di energia DICHIARATA, e un contatore che sale e basta
     non e' automaticamente energia (potrebbe essere litri, richieste HTTP,
     qualunque cosa che HA conta). Un contatore che porta ANCHE una classe di
-    `_ENERGY` (sopra) resta energia -- vedi `sensor.presa_energia` nella
+    `_ENERGIA` (sopra) resta energia -- vedi `sensor.presa_energia` nella
     parametrizzazione qui sopra.
 
     Mutazione ESEGUITA durante l'implementazione: ripristinato `or

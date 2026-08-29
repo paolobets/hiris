@@ -680,7 +680,7 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     `giro_di_confronto_albero`/`guarda_comportamento` qui accanto.
 
     Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
-    puo' sollevare da `guarda_sistema` stesso, se `annota` fallisce a meta' --
+    puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
     e in quel caso deve propagare, per il motivo scritto sul suo docstring.
     """
     osservatore = app.get("osservatore")
@@ -1144,13 +1144,13 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     progetto ha gia' pagato altrove. Due giorni fissi non hanno stato:
     guariscono da soli una notte saltata, al costo di rifare un lavoro che
     il piu' delle volte non serviva -- un costo che si puo' permettere
-    perche' `sostituisci_giorno` (`cervello/archivio.py`) e' **idempotente**:
+    perche' `replace_day` (`cervello/archivio.py`) e' **idempotente**:
     rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
     lo raddoppia.
 
     **Il limite di questa cura, e perche' "due" e' sicuro mentre un domani
     "venti" non lo sarebbe.** Riaggregare SOSTITUISCE gli oggetti del
-    giorno (`sostituisci_giorno`): non puo' distruggere comprensione finche'
+    giorno (`replace_day`): non puo' distruggere comprensione finche'
     il grezzo per rifarlo esiste ancora, e i due giorni bersaglio hanno al
     massimo due giorni e qualche ora, ben dentro la potatura a
     `READING_RETENTION_S` (22 giorni). L'ECCEZIONE, solo teorica: un
@@ -1286,7 +1286,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
             type(errore).__name__, errore)
         return
     if falliti:
-        # QUESTA funzione SOSTITUISCE (`sostituisci_giorno`), non costruisce
+        # QUESTA funzione SOSTITUISCE (`replace_day`), non costruisce
         # da zero: qualunque fallito -- anche uno solo su cento soggetti --
         # riscriverebbe un oggetto che la notte aveva letto con `[]`. Il
         # warning che conta e' gia' partito dentro `costruisci_comprimari`;

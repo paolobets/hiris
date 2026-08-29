@@ -302,6 +302,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
 | grezzo | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato | reading | ~ parziale |
+| guarda (cervello) | il verbo con cui l'osservatore si aggancia al rubinetto dei cambi di stato e delle condizioni di sistema e li annota cosi' come sono, senza interpretare nulla -- il meccanismo centrale della classe che lo fa (`Watcher`, ex `Osservatore`) | watch | ✓ arriva |
 | impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
 | instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ✓ arriva |
@@ -329,6 +330,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator | ~ parziale |
 | promessa | l'impegno per un momento futuro che l'utente ha chiesto -- fare qualcosa, oppure controllare qualcosa e riferire -- con la sua scadenza, la sua tolleranza al ritardo, e lo stato con cui si conclude | promise | ✓ arriva |
+| provenienza | se un valore osservato viene da una regola fissa del prodotto (il pavimento, mai tolto) o da una scelta dell'obiettivo del momento (aggiunto, puo' essere tolto) -- lo stesso principio classifica anche una direzione dell'energia (dichiarata dalla dashboard dell'utente, o dedotta dall'integrazione quando la dichiarata tace) -- aggiunta dal Task 6, non ancora passata dalla prova del lettore nuovo | provenance | ~ non provato |
 | registro | lo specchio aggiornato di cosa Home Assistant sa fare in questa casa, servizio per servizio e con i relativi parametri -- non un catalogo scritto da HIRIS, ma la copia di cio' che Home Assistant stesso dichiara di poter eseguire | registry | ~ parziale |
 | riconoscitore | il modulo che decide a quale parte della casa si riferisce una frase scritta, confrontandola con nomi e alias dichiarati e restringendo poi cio' che il modello propone a cio' che esiste davvero nell'anagrafe | resolver | ✓ arriva |
 | ricordi | le frasi esatte, cosi' come sono state dette, che una persona ha affidato a HIRIS -- la verita' che non si tocca mai, nemmeno quando la sua lettura viene corretta | memories | ~ parziale |
@@ -627,8 +629,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > `stati` (`states`, qui) e' il PATTERN con cui il codice nomina un insieme chiuso di quei valori
 > che condividono una proprieta' -- `STATI_CONCLUSI`/`STATI_SOSPESO`
 > (`schedulatore/promessa.py:22,34`, `azione/costruzione/versioni.py:36`), ma anche
-> `_STATI_ATTIVI` (`casa/nucleo.py:182`) e `_STATI_INTEGRAZIONE_ROTTA`/
-> `_STATI_INTEGRAZIONE_TRANSITORI` (`casa/nucleo.py:821`, `cervello/osservatore.py:31`), tutte
+> `_STATI_ATTIVI` (`casa/nucleo.py:182`) e `_STATI_INTEGRAZIONE_ROTTA`
+> (`casa/nucleo.py:821`) / `_TRANSIENT_INTEGRATION_STATES` (ex `_STATI_INTEGRAZIONE_TRANSITORI`, rinominata dal Task 6, `cervello/osservatore.py:31`), tutte
 > dello stesso schema `STATI_X = (valore, valore, ...)` usato per testare appartenenza, mai per
 > leggere un valore da solo. Non e' un secondo significato di `stato` (le tre accezioni gia' viste
 > restano tre), e' lo stesso concetto raccolto in insiemi con nome -- lo stesso schema gia' visto
@@ -1004,8 +1006,11 @@ al Task 6 invece che deciso qui.
 | aggiornato | updated |
 | aggiungi | add |
 | albero | tree |
+| altro | other |
 | ambiente | environment |
+| annota | record |
 | anteprima | preview |
+| aperto | open |
 | area | area |
 | argomento | argument |
 | attesa | pending |
@@ -1022,8 +1027,11 @@ al Task 6 invece che deciso qui.
 | chiudi | close |
 | classe | class |
 | codice | code |
+| colonna | column |
 | configurazione | configuration |
 | confronto | comparison |
+| conosciuto | known |
+| conservazione | retention |
 | consumi | usage |
 | conta | count |
 | corpo | body |
@@ -1032,7 +1040,9 @@ al Task 6 invece che deciso qui.
 | crea | create |
 | credenziale | credential |
 | dati | data |
+| denominatore | denominator |
 | dettaglio | detail |
+| differenza | difference |
 | dimensione | dimension |
 | disponibile | available |
 | dispositivo | device |
@@ -1041,19 +1051,23 @@ al Task 6 invece che deciso qui.
 | elenca | list |
 | elenco | list |
 | entita | entity |
+| episodio | episode |
 | errore | error |
 | esecuzione | execution |
+| esistente | existing |
 | eta | age |
 | etichetta | label |
 | evento | event |
+| finale | final |
 | fonte | source |
+| forma | form |
 | frase | phrase |
 | giorno | day |
 | giro | round |
 | gratuito | free |
-| guarda | look |
 | identificatore | identifier |
 | impronta | fingerprint |
+| iniziale | initial |
 | innesca | trigger |
 | integrazione | integration |
 | interno | internal |
@@ -1065,25 +1079,32 @@ al Task 6 invece che deciso qui.
 | mantieni | keep |
 | massimo | maximum |
 | minimo | minimum |
+| misura | measurement |
 | modelli | models |
 | modello | model |
+| momento | moment |
 | motivo | reason |
 | nome | name |
 | normalizza | normalize |
 | nota | note |
+| numeratore | numerator |
 | oggi | today |
 | opzioni | options |
 | ora | hour |
 | ottieni | get |
 | percorso | path |
+| picco | peak |
 | posizione | position |
 | pota | prune |
 | predefinito | default |
 | problema | problem |
 | programma | schedule |
 | proposta | proposal |
+| protagonista | protagonist |
 | pulisci | clean |
 | punto | point |
+| quale | which |
+| quando | when |
 | quante | count |
 | registra | log |
 | richiesta | request |
@@ -1095,10 +1116,12 @@ al Task 6 invece che deciso qui.
 | ritardo | delay |
 | scadenza | deadline |
 | scelto | chosen |
+| scritto | written |
 | scrivi | write |
 | secondo | second |
 | segna | mark |
 | semina | seed |
+| serie | series |
 | servizio | service |
 | sezione | section |
 | sistema | system |
@@ -1106,9 +1129,11 @@ al Task 6 invece che deciso qui.
 | sostituisci | replace |
 | statistiche | statistics |
 | stato | state |
+| successivo | next |
 | termine | term |
 | testo | text |
 | tipo | type |
+| totale | total |
 | traduci | translate |
 | trova | find |
 | unita | unit |
@@ -1117,11 +1142,27 @@ al Task 6 invece che deciso qui.
 | verificabile | verifiable |
 | voce | entry |
 | vuoto | empty |
+| zona | zone |
 
-> **`guarda`** compare **anche** fra i «Nomi degli strumenti» (sotto). Qui e' una parola ordinaria
-> (o un nome di funzione qualunque); li' e' il nome di uno strumento esposto al modello — la stessa
-> grafia, per due ragioni diverse, nella stessa lingua di partenza. Non e' un errore di copia:
-> sono due voci a se', e ciascuna avra' la propria decisione.
+> **`guarda` non e' piu' in questa tabella -- corretto durante la review del Task 6.** Viveva qui
+> come parola ordinaria (`look`) ED era gia' un nome dei tredici strumenti (`view`, sotto): due
+> righe nude con inglesi diversi, senza che nessuna lo dichiarasse un omonimo. Vedi la nota alla
+> fine di «I nomi degli strumenti» per la correzione completa (`guarda (casa) -> view`, `guarda
+> (cervello) -> watch`).
+
+> **`aperto -> open` e' protetto dalla guardia sulle keyword/builtin di `scripts/rinomina.py`
+> (Task 6): non si applica mai da solo su un identificatore nudo, perche' `open` e' un builtin
+> Python (il costruttore dei file) -- esce sempre come proposta, e chi la chiude decide un nome che
+> non lo ombreggi (`cervello/oggetti.py::aperti`, il caso vero, e' diventato `open_episodes`, non
+> `open`).**
+
+> **`spento` e `funziona`/`_FUNZIONANO` (`cervello/oggetti.py`) NON sono in questa tabella, di
+> proposito.** Non sono traduzioni dirette del verbo italiano: `_SPENTO` (rinominata `_RESTING`)
+> raggruppa stati di riposo molto piu' larghi di "spento" alla lettera (`locked`, `docked`,
+> `idle`...), e `_FUNZIONANO` (rinominata `_OPERABLE`) descrive domini Home Assistant che si
+> accendono/spengono come un interruttore, non "che funzionano" in senso generico. Applicare
+> `off`/`function` alla cieca avrebbe detto una bugia sul contenuto delle due costanti -- decisioni
+> di giudizio locali a `cervello/`, non parole ordinarie da riusare altrove senza rileggerle.
 
 > **`carica → load` e' sbagliato in un senso su due -- nota di scissione aggiunta durante la
 > review finale del ramo, con lo stesso metodo gia' usato per `stato` e `riga`, sotto.** Il senso
@@ -1342,7 +1383,7 @@ codice:
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
 | cerca | Trova nella casa aree, entita', dispositivi, piani, automazioni, script o etichette a partire da un nome o alias in linguaggio naturale, restituendo la lista COMPLETA dei candidati quando piu' di uno corrisponde allo stesso nome | search | ~ parziale |
-| guarda | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | view | ✓ arriva |
+| guarda (casa) | Il dettaglio completo di UNA cosa sola della casa -- area, entita', dispositivo, automazione, script o ricordo -- dato il suo identificatore ESATTO, mai un nome libero | view | ✓ arriva |
 | legami | Chi tocca una cosa della casa secondo Home Assistant -- quali automazioni, script, scene, gruppi o persone la nominano, e dove sta -- calcolato da Home Assistant su tutto cio' che ha caricato, non solo sui file che HIRIS legge da solo | related | ~ parziale |
 | ricorda | Salva per sempre qualcosa che una persona ha detto sulla casa -- una preferenza, un divieto, un fatto, una regola -- col testo esatto sempre conservato e un'interpretazione strutturata facoltativa | remember | ✓ arriva |
 | richiama | I ricordi gia' salvati che riguardano una parte della casa, dato il suo identificatore ESATTO, senza dover rileggere ogni ricordo uno per uno | fetch | ~ parziale |
@@ -1622,6 +1663,22 @@ codice:
 > tre lettori su quattro l'hanno accoppiato con `logbook` -- vedi la nota dedicata sopra, che
 > sostituisce la vecchia annotazione "isolata e generica" con l'azione richiesta sulla description.
 
+> **`guarda`: un difetto latente del lettore, trovato dalla review del Task 6 -- corretto qui,
+> non solo nello strumento.** Questa riga (sopra: «Il dettaglio completo di UNA cosa sola della
+> casa...», -> `view`) e la riga `guarda` di «Le parole ordinarie» (-> `look`) erano ENTRAMBE nude
+> (nessuna parentesi ambito), nella stessa mappa piatta: `leggi_glossario()` processa le tabelle in
+> ordine e l'ULTIMA scritta vince in silenzio -- qui `view`, senza che nessuna riga lo dichiarasse.
+> Il caso vero (Task 6, `cervello/osservatore.py`) ha aggiunto una TERZA lettura, `watch`
+> (`guarda_cambio`/`guarda_sistema`, il verbo del `Watcher`), rendendo `guarda` un omonimo a tre vie
+> mai dichiarato come tale. Corretto cosi': la riga qui sopra e' ora `guarda (casa)` (il vero
+> identificatore che descrive, `casa/domande.py::guarda`); `guarda (cervello) -> watch` e' una riga
+> a se' in «I concetti»; la riga `guarda -> look` di «Le parole ordinarie» e' stata tolta -- non
+> risultava applicata a nessun identificatore vero in nessun sottosistema gia' convertito (verificato
+> `grep` sui tre gia' fatti), era un default generico che nascondeva la collisione invece di
+> risolverla. `leggi_glossario()` ora solleva se due righe nude finissero di nuovo sullo stesso nome
+> con inglesi diversi (vedi `scripts/rinomina.py`): questa correzione lo rende silenzioso di nuovo
+> per il caso vero, ma la guardia resta per il prossimo.
+
 ## I valori di dominio
 
 **Aggiunto il 28/08 durante l'esecuzione: la spec non li aveva visti.** Emersi dalla review del
@@ -1670,12 +1727,12 @@ per usarla.)
 
 | costante | valori | dove vive | valori — inglese |
 |---|---|---|---|
-| `GENERI` | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `cervello/oggetti.py:44`; colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |  |
-| `GAMBE` | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `cervello/pavimento.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
+| `GENRES` (ex `GENERI`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `cervello/oggetti.py:44`; colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |  |
+| `ASPECTS` (ex `GAMBE`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `cervello/pavimento.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
 | `SPECIE` | fai · chiedi | `schedulatore/promessa.py:21`; colonna `specie` in `schedulatore/archivio.py:34` |  |
 | `STATI_CONCLUSI` | mantenuta · saltata · disdetta · fallita | `schedulatore/promessa.py:22` — stato concluso delle promesse |  |
 | `STATI_SOSPESO` | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `schedulatore/promessa.py:34` — definita due volte, stesso valore |  |
-| `DIREZIONI_BILANCIO` | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `cervello/oggetti.py:71` — le direzioni del bilancio energia dell'osservatore |  |
+| `BALANCE_DIRECTIONS` (ex `DIREZIONI_BILANCIO`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `cervello/oggetti.py:71` — le direzioni del bilancio energia dell'osservatore |  |
 | `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | `esiti_provider.py:63` — famiglie di esito dei provider LLM |  |
 | `_GESTI` | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
 | `_TIPI_COMPORTAMENTO` | automazione · script | `casa/domande.py:68` — i tipi di comportamento della casa |  |
@@ -1752,17 +1809,21 @@ for w, s in byword.items():
 PY
 ```
 
-**Risultato atteso, eseguito ora: cinque casi, tutti gia' documentati altrove nel documento.**
-`reading` (`cambi`/`grezzo`): non cambia con la rinomina del rilievo A2 (ne' col candidato
+**Corretto durante la review del Task 6: il conteggio diceva "cinque casi", eseguito davvero ne
+restituisce sette -- gli altri due erano gia' spiegati altrove nel documento, solo non contati
+qui.** `reading` (`cambi`/`grezzo`): non cambia con la rinomina del rilievo A2 (ne' col candidato
 intermedio bocciato, `sample` -- vedi la nota sotto la tabella «I concetti»), e' lo stesso caso
 che prima si chiamava `raw` con la stessa identica giustificazione — un solo concetto, due nomi
 italiani. `count` (`conta`/`quante`),
 `list` (`elenco`/`elenca`) e `read` (`letto`/`leggi`) sono forme flesse della stessa parola
-ordinaria. `promise` compare sia come concetto (`promessa`) sia come nome di strumento
-(`prometti`): **non e' una svista**, e' lo stesso concetto visto dai due lati che questa fetta
-separa ovunque -- il dato e lo strumento che lo scrive -- documentato per esteso nella nota sotto
-la tabella dei 13 nomi degli strumenti. Se questo comando restituisse un sesto caso non elencato
-qui, sarebbe una collisione vera da correggere, non da spiegare.
+ordinaria -- `write` (`scrittura`/`scrivi`) e' la stessa famiglia, il lato opposto della stessa
+coppia gia' vista per `read`. `promise` compare sia come concetto (`promessa`) sia come nome di
+strumento (`prometti`): **non e' una svista**, e' lo stesso concetto visto dai due lati che questa
+fetta separa ovunque -- il dato e lo strumento che lo scrive -- documentato per esteso nella nota
+sotto la tabella dei 13 nomi degli strumenti. `reference` (`riferimento (casa)`/`riferimento
+(memoria)`) e' un omonimo per ambito, non una forma flessa -- documentato per esteso nella nota
+«Il limite della qualificazione per ambito». Se questo comando restituisse un OTTAVO caso non
+elencato qui, sarebbe una collisione vera da correggere, non da spiegare.
 
 **3. Nessun file di codice toccato, e il linter resta verde:**
 

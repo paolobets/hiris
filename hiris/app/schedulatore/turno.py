@@ -333,12 +333,12 @@ def _domanda(promise: dict) -> str:
     """
     righe = ["Me l'hai chiesto cosi': «{}».".format(promise["frase"]),
              "Quello che devi guardare: {}".format(promise["domanda"])]
-    for misura in promise.get("istantanea") or []:
+    for measurement in promise.get("istantanea") or []:
         righe.append(
             "Quando me l'hai chiesto, {} era {}{} (misurato allora, non adesso).".format(
-                misura.get("entita"),
-                misura.get("valore"),
-                (" " + misura["unita"]) if misura.get("unita") else "",
+                measurement.get("entita"),
+                measurement.get("valore"),
+                (" " + measurement["unita"]) if measurement.get("unita") else "",
             )
         )
     return "\n".join(righe)

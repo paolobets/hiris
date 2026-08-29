@@ -252,7 +252,7 @@ def test_quota_autosufficienza_assente_senza_il_consumo_misurato():
 
 
 def test_quota_autosufficienza_non_esce_negativa_quando_il_prelievo_supera_il_consumo():
-    """**Punto 3 del mandato (27/08/2026): `_quota` promette nel nome e nel
+    """**Punto 3 del mandato (27/08/2026): `_share` promette nel nome e nel
     docstring un valore fra 0 e 1, e non lo garantiva.** Il caso non e'
     teorico: il prelievo puo' superare il consumo di casa quando la
     batteria si carica dalla rete -- quell'energia importata serve a

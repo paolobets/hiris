@@ -221,7 +221,7 @@ def test_il_genere_conosce_tutte_e_sei_le_gambe():
     `sensor.co_soggiorno` e' `None` e non `"sicurezza"` da questa correzione
     (giro di review, punto 7): e' un `sensor` che MISURA (una concentrazione
     numerica), non un `binary_sensor` che SCATTA -- vedi il docstring di
-    `genere_di` per la ragione per cui resta fuori."""
+    `genre_for` per la ragione per cui resta fuori."""
     assert genre_for("lock.porta_ingresso", "sicurezza") == "sicurezza"
     assert genre_for("alarm_control_panel.casa", "sicurezza") == "sicurezza"
     assert genre_for("siren.sirena_esterna", "sicurezza") == "sicurezza"
@@ -261,7 +261,7 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
 
 # -- Task 3, punto 0: il grezzo porta le tre classi che il pavimento legge --
 #
-# Prima di questa correzione, `_gamba_del_cambio` chiamava `pavimento.gamba`
+# Prima di questa correzione, `_reading_aspect` chiamava `pavimento.aspect`
 # SENZA attributi: per `sensor`/`binary_sensor` (che decidono la gamba dalla
 # classe, non dal dominio) la gamba tornava sempre `None`. Conseguenza
 # misurata: il genere `energia` non nasceva MAI, e nemmeno un solo oggetto
@@ -269,9 +269,9 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
 # restava raggiungibile solo per serrature, sirene e pannello dell'allarme.
 
 def test_un_binary_sensor_di_fumo_diventa_un_oggetto_di_sicurezza(archivio):
-    """La mutazione e' non passare le classi a `gamba` dentro
-    `_gamba_del_cambio`: senza `device_class="smoke"`, `pavimento.gamba`
-    tornerebbe `None` per un `binary_sensor`, `genere_di` tornerebbe `None`, e
+    """La mutazione e' non passare le classi a `aspect` dentro
+    `_reading_aspect`: senza `device_class="smoke"`, `pavimento.aspect`
+    tornerebbe `None` per un `binary_sensor`, `genre_for` tornerebbe `None`, e
     questo oggetto -- oggi impossibile -- non nascerebbe."""
     archivio.record(quando_ts=ts(2, 0), source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
@@ -444,7 +444,7 @@ def test_un_sensore_co_numerico_non_genera_un_oggetto_di_sicurezza(archivio):
     concentrazione come "0.4" non e' mai in `_RESTING` e aprirebbe un oggetto
     di sicurezza perennemente aperto al giorno, per ogni sensore CO
     numerico della casa. Mutazione: togliere l'eccezione `dominio ==
-    "sensor"` dal ramo sicurezza di `genere_di` -- il conteggio tornerebbe
+    "sensor"` dal ramo sicurezza di `genre_for` -- il conteggio tornerebbe
     1 invece di 0."""
     archivio.record(quando_ts=ts(2), source="entita",
                     subject="sensor.co_soggiorno", da=None, a="0.4",
@@ -713,7 +713,7 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
       guardia e' questo commento;
     - togliere il filtro `_UNKNOWN` in cima da solo resta verde ANCHE QUI,
       ma per una ragione diversa: quando 'unavailable' arriva a episodio
-      GIA' aperto, `_acceso("unavailable")` torna `True` (non e' in
+      GIA' aperto, `_is_on("unavailable")` torna `True` (non e' in
       `_RESTING`), e la guardia `if subject not in open_episodes` non fa nulla
       perche' il soggetto e' gia' dentro -- l'oggetto resta aperto per
       assorbimento del guardiano, non perche' la difesa regga qui.
@@ -760,7 +760,7 @@ def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
     morta, nessun test la sorveglia da sola. Togliere il filtro `_UNKNOWN`
     in cima da solo resta verde anche qui, per lo stesso assorbimento:
     l'episodio e' gia' aperto ("disarmed" dall'1:00) quando 'unavailable'
-    arriva alle 5:00, `_acceso("unavailable")` torna `True`, e la guardia
+    arriva alle 5:00, `_is_on("unavailable")` torna `True`, e la guardia
     non fa nulla perche' il soggetto e' gia' dentro -- ma quella meta' e'
     sorvegliata altrove (vedi il gemello per i due test che la
     catturano).
@@ -832,7 +832,7 @@ def test_il_limite_superiore_rispetta_il_protagonista_non_ignora_gli_altri(archi
     l'inizio del SUO prossimo episodio (15:00), non l'inizio dell'episodio
     di soggiorno_t (9:15) solo perche' capita prima. Mutazione: raccogliere
     gli inizi di TUTTI gli episodi in un'unica lista invece che per
-    protagonista (`prossimi_inizi` indicizzato senza il protagonista) --
+    protagonista (`next_starts` indicizzato senza il protagonista) --
     il limite del primo episodio di camera_t crollerebbe a 9:15 e la
     misura delle 10:00 sparirebbe dal suo corpo (nessun punto in
     [9:00, 9:15))."""
@@ -872,7 +872,7 @@ def test_il_limite_superiore_e_il_prossimo_episodio_non_l_ultimo(archivio):
     valore, e niente distingue "il prossimo" da "l'ultimo". Con tre
     accensioni del riscaldamento, il limite superiore delle misure del
     PRIMO episodio deve fermarsi al SECONDO (il prossimo), non sconfinare
-    fino al TERZO. Mutazione: `min` -> `max` in `limite_superiore` -- la
+    fino al TERZO. Mutazione: `min` -> `max` in `upper_limit` -- la
     misura delle 13:00, che sta nella finestra del secondo episodio (non
     dentro la sua durata, ma prima del terzo), finirebbe attribuita anche al
     primo, e "a" diventerebbe "22.0" invece di "20.0"."""

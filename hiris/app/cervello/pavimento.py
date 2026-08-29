@@ -34,7 +34,19 @@ _QUALITA_ARIA = frozenset({
     "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone",
     "sulphur_dioxide",
 })
-_ENERGY = frozenset({"energy", "power", "gas", "water"})
+# NON tradotta in `_ENERGY` (corretto durante la review del Task 6): "energia"
+# e' una delle sei ASPECTS (`chi c'e'`, comfort, dispersione, **energia**,
+# buono stato, sicurezza) -- un valore di dominio rinviato dal glossario,
+# esattamente come "sicurezza" nelle costanti gemelle qui sotto
+# (`_SICUREZZA_BINARIA`, `_SICUREZZA_SENSORE`, `_DOMINI_SICUREZZA`). La
+# REGOLA, applicabile a tutte e sette le costanti di questo file che
+# raggruppano classi Home Assistant per gamba: il nome della costante resta
+# italiano quando CONTIENE il nome esatto di un valore di dominio rinviato
+# (`presenza`, `comfort`, `sicurezza`, `energia`...), a prescindere da quanto
+# "ovvia" sembri la traduzione -- tradurne una e non le altre (`_ENERGIA` ->
+# `_ENERGY` accanto a `_SICUREZZA_SENSORE` invariata) sarebbe la stessa
+# incoerenza che questa fetta esiste per chiudere, dal lato sbagliato.
+_ENERGIA = frozenset({"energy", "power", "gas", "water"})
 
 # DEBITO DICHIARATO il 26/08/2026, CHIUSO A LIVELLO DI EPISODIO il
 # 27/08/2026 (mandato «le direzioni dell'energia» -- misurato sulla casa
@@ -102,7 +114,7 @@ _SICUREZZA_BINARIA = frozenset({
 # Trappola gia' documentata nel prodotto: la classe si chiama
 # `carbon_monoxide`, NON `co`. E trappola nuova: `gas` compare anche qui
 # sopra (`_SICUREZZA_BINARIA`) ma e' un'altra entita' -- il rilevatore di
-# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_ENERGY`).
+# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_ENERGIA`).
 # Il ramo per dominio in `aspect()` le separa gia': un controllo per sola
 # classe le fonderebbe.
 _SICUREZZA_SENSORE = frozenset({"carbon_monoxide"})
@@ -118,7 +130,7 @@ def _text(value) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def aspect(entity_id: str, attributi: dict | None) -> str | None:
+def aspect(entity_id: str, attributes: dict | None) -> str | None:
     """A quale gamba dell'obiettivo serve questa entita', o `None`.
 
     L'obiettivo e' «ottimizzare la casa e renderla confortevole», e ha tre
@@ -128,7 +140,7 @@ def aspect(entity_id: str, attributi: dict | None) -> str | None:
 
     **"Quanta energia si muove" e non "cosa consuma"** (correzione del
     26/08/2026): questa gamba cattura energia PRODOTTA e PRELEVATA nella
-    stessa classe HA (`energy`/`power`, vedi `_ENERGY` sopra), e "consuma"
+    stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
     affermerebbe il contrario per una buona meta' dei 15 sensori che un
     impianto fotovoltaico con accumulo porta in questa gamba.
 
@@ -142,12 +154,12 @@ def aspect(entity_id: str, attributi: dict | None) -> str | None:
     prompt non puo' fare): e' smettere di DERIVARE una classe che Home
     Assistant non dichiara. Un contatore che aumenta e basta non e' energia:
     e' la forma di molte cose (dati di rete, litri, richieste HTTP...), e
-    solo `_ENERGY` sopra -- classi dichiarate -- dice quali di quelle sono
+    solo `_ENERGIA` sopra -- classi dichiarate -- dice quali di quelle sono
     davvero energia.
     """
-    attributi = attributi if isinstance(attributi, dict) else {}
+    attributes = attributes if isinstance(attributes, dict) else {}
     domain = str(entity_id).split(".")[0]
-    device_class = _text(attributi.get("device_class"))
+    device_class = _text(attributes.get("device_class"))
 
     if domain == "person":
         return "chi c'e'"
@@ -160,7 +172,7 @@ def aspect(entity_id: str, attributi: dict | None) -> str | None:
         # `gps` sono i telefoni, e sono le fonti dietro le due `person`.
         # Non e' volume (i 65 fanno 114 cambi al giorno, lo zero per cento):
         # e' che non significano niente per l'obiettivo.
-        return "chi c'e'" if _text(attributi.get("source_type")) == "gps" else None
+        return "chi c'e'" if _text(attributes.get("source_type")) == "gps" else None
     if domain == "climate":
         return "comfort"
     if domain == "cover":
@@ -183,13 +195,13 @@ def aspect(entity_id: str, attributi: dict | None) -> str | None:
             # 1226 in questa casa. Il filtro e' per CLASSE, non per categoria:
             # escludere `diagnostic` in blocco toglierebbe «buono stato».
             return "buono stato"
-        if device_class in _ENERGY:
+        if device_class in _ENERGIA:
             return "energia"
     return None
 
 
-def in_baseline(entity_id: str, attributi: dict | None) -> bool:
+def in_baseline(entity_id: str, attributes: dict | None) -> bool:
     """Se questa entita' si osserva comunque. Derivata da `aspect`, mai
     riscritta: due risposte alla stessa domanda divergono, e la prima a
     divergere e' quella che nessuno guarda."""
-    return aspect(entity_id, attributi) is not None
+    return aspect(entity_id, attributes) is not None

@@ -181,3 +181,274 @@ def test_se_l_intestazione_della_tabella_alias_cambia_il_lettore_se_ne_accorge(t
     percorso.write_text(modificato, encoding="utf-8")
     with pytest.raises(ValueError):
         rinomina.leggi_glossario(percorso)
+
+
+# -- La guardia sulle keyword e sui builtin (rilievo del revisore, Task 6) --
+#
+# Lo strumento applicava l'inglese deciso anche quando coincideva con una
+# keyword Python (`class`) o un builtin (`type`, `list`, `round`...). Il
+# primo caso e' rumoroso (SyntaxError, trovato subito da py_compile); il
+# secondo e' silenzioso -- nessun cancello attivo lo vede, perche'
+# `flake8-builtins` non e' nel set di ruff -- e produce un TypeError solo
+# quando qualcosa chiama davvero il builtin ombreggiato.
+
+def test_una_keyword_python_non_si_applica_da_sola():
+    """`classe -> class`: applicato a un identificatore nudo produrrebbe
+    `class = ...`, un SyntaxError. Misurato dal vivo su
+    `cervello/pavimento.py` (Task 6)."""
+    gf = rinomina.Glossario(mappa={"classe": "class"})
+    esito = rinomina.classifica("classe", gf, "qualunque")
+    assert isinstance(esito, rinomina.Proposta), (
+        "una keyword Python non deve mai applicarsi da sola su un nome nudo")
+    assert esito.suggerito == "class"
+
+
+def test_un_builtin_ombreggiato_non_si_applica_da_solo():
+    """`tipo -> type`: non e' un SyntaxError, e' peggio -- parsa, e
+    ombreggia silenziosamente il builtin. Un `tipo` che nello stesso scope
+    chiama anche `type(x)` diventerebbe un TypeError solo a runtime, mai un
+    rosso in CI (nessuna regola flake8-builtins attiva su questo
+    progetto)."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    esito = rinomina.classifica("tipo", gf, "qualunque")
+    assert isinstance(esito, rinomina.Proposta), (
+        "un builtin ombreggiato non deve mai applicarsi da solo su un nome nudo")
+    assert esito.suggerito == "type"
+
+
+def test_un_prefisso_protegge_dalla_guardia_keyword_builtin():
+    """`_tipo` non ombreggia niente -- e' gia' un nome diverso da `type` --
+    quindi la guardia non deve bloccarlo: stessa disciplina del prefisso
+    privato gia' provata sopra (`_archivio -> _store`)."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    assert rinomina.classifica("_tipo", gf, "qualunque") == "_type"
+
+
+def test_un_suffisso_protegge_dalla_guardia_keyword_builtin():
+    """`tipo_` (convenzione Python per evitare di ombreggiare `type`) non
+    ombreggia niente neanche lui: si applica."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    assert rinomina.classifica("tipo_", gf, "qualunque") == "type_"
+
+
+def test_una_costante_che_diventa_un_builtin_non_e_pericolosa():
+    """`TIPO -> TYPE`: una costante tutta maiuscola non ombreggia il builtin
+    minuscolo `type`. La guardia si applica alla forma FINALE, non alla
+    parola del glossario da sola."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    assert rinomina.classifica("TIPO", gf, "qualunque") == "TYPE"
+
+
+@pytest.mark.parametrize("parola", ["classe", "tipo", "elenca", "elenco", "giro"])
+def test_le_parole_pericolose_vere_del_glossario_si_propongono(g, parola):
+    """Misurato dal revisore sul glossario vero: `classe`(28 occorrenze),
+    `tipo`(89), `elenca`/`elenco`(54), `giro`(22) -- applicate alla cieca su
+    identificatori nudi, la prima produce un SyntaxError rumoroso, le altre
+    tre ombreggiano `type`/`list`/`round` in silenzio. Tutte e cinque devono
+    uscire come proposte, mai come applicazioni dirette."""
+    assert isinstance(rinomina.classifica(parola, g, "casa"), rinomina.Proposta)
+
+
+def test_la_guardia_keyword_builtin_si_vede_anche_nel_file_riscritto(g):
+    """Prova per mutazione della guardia end-to-end (non solo su
+    `classifica()` isolata): un file con `tipo = 1` non deve diventare
+    `type = 1`."""
+    dentro = "tipo = 1\n"
+    fuori, proposte = rinomina.riscrivi(dentro, g, "casa")
+    assert fuori == dentro, "un builtin ombreggiato non si applica da solo"
+    assert [p.nome for p in proposte] == ["tipo"]
+
+
+# -- I plurali invisibili (rilievo del revisore, Task 6) --------------------
+#
+# Un plurale che non e' ne' la chiave esatta del glossario (`genere`,
+# singolare) ne' un alias dichiarato (come `gambe -> gamba`) sparisce da
+# `classifica()` SENZA nessuna proposta: `classifica()` ritorna `None`
+# quando nessun pezzo traduce, e un `None` non compare mai nell'elenco dei
+# composti del dry-run. Misurato dal vivo: `GENERI`/`DIREZIONI_BILANCIO`
+# (Task 6) erano invisibili cosi'.
+
+def test_un_plurale_non_aliasato_diventa_una_proposta():
+    """`GENERI` (plurale di `genere`, nessun alias) deve comparire come
+    proposta -- non sparire in silenzio come faceva prima di questa
+    guardia."""
+    gf = rinomina.Glossario(mappa={"genere": "genre"})
+    esito = rinomina.classifica("GENERI", gf, "qualunque")
+    assert isinstance(esito, rinomina.Proposta), (
+        "un plurale non aliasato non deve sparire senza proposta")
+    assert esito.suggerito == "genre"
+
+
+def test_un_plurale_via_euristica_non_si_applica_mai_da_solo():
+    """Anche quando il nome e' un pezzo solo, una singolarizzazione trovata
+    per euristica non e' una lettura diretta del glossario: si propone,
+    come un alias -- non si applica MAI da sola, a differenza di una parola
+    che il glossario ha davvero in tabella."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    esito = rinomina.classifica("tipi", gf, "qualunque")
+    assert isinstance(esito, rinomina.Proposta)
+    assert esito.suggerito == "type"
+
+
+def test_una_parola_singolare_vera_non_passa_dall_euristica_del_plurale():
+    """Controllo di non regressione: una parola che il glossario decide GIA'
+    al singolare continua ad applicarsi direttamente -- l'euristica del
+    plurale scatta solo quando la lettura diretta fallisce."""
+    gf = rinomina.Glossario(mappa={"genere": "genre"})
+    assert rinomina.classifica("genere", gf, "qualunque") == "genre"
+
+
+def test_un_composto_con_un_pezzo_plurale_lo_recupera_via_euristica():
+    """`_TIPI_ANCORA`-simile: un composto in cui un pezzo e' un plurale non
+    aliasato deve comunque proporre l'inglese di quel pezzo, non lasciarlo
+    intraducibile."""
+    gf = rinomina.Glossario(mappa={"tipo": "type"})
+    esito = rinomina.classifica("tipi_ancora", gf, "qualunque")
+    assert isinstance(esito, rinomina.Proposta)
+    assert esito.pezzi == ["tipi", "ancora"]
+    assert esito.suggerito == "type_ancora"
+
+
+@pytest.mark.parametrize("costante", ["GENERI", "GAMBE"])
+def test_le_costanti_vere_invisibili_ora_compaiono(g, costante):
+    """Regressione diretta sul glossario vero: `GENERI` e `GAMBE` erano
+    completamente invisibili al dry-run prima di questa guardia (nessuna
+    proposta, nessun cambio -- `classifica()` tornava `None`). Ora devono
+    comparire come proposte."""
+    esito = rinomina.classifica(costante, g, "cervello")
+    assert isinstance(esito, rinomina.Proposta), (
+        f"{costante} deve comparire come proposta, non sparire in silenzio")
+
+
+def test_direzioni_bilancio_ora_compare_come_proposta(g):
+    """`DIREZIONI_BILANCIO`: due pezzi, entrambi plurali/non decisi da soli
+    (`direzioni` non e' `direzione`, `bilancio` e' un valore di dominio
+    rinviato) -- prima di questa guardia era invisibile per intero."""
+    esito = rinomina.classifica("DIREZIONI_BILANCIO", g, "azione")
+    assert isinstance(esito, rinomina.Proposta)
+    assert "direzioni" in esito.pezzi
+
+
+# -- Il conflitto silenzioso fra tabelle (rilievo del revisore, Task 6) -----
+#
+# `guarda` era `look` fra le parole ordinarie e `view` fra i nomi degli
+# strumenti -- due righe NUDE, nessun ambito a dichiarare l'omonimia,
+# nessun segnale: l'ultima tabella letta vinceva in silenzio.
+
+def test_due_righe_nude_con_inglesi_diversi_fermano_la_lettura(tmp_path):
+    """Riproduce il difetto vero su un glossario sintetico minimo: due
+    tabelle, la stessa parola nuda, due inglesi diversi. Deve fermarsi
+    rumorosamente, non scegliere l'ultima in silenzio."""
+    testo = """## I concetti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+| prova | placeholder | look | ✓ arriva |
+
+## Le parole ordinarie
+
+| italiano | inglese |
+|---|---|
+| prova | view |
+
+## I nomi degli strumenti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+
+## Parole scartate durante l'estrazione
+
+| parola uscita dallo script | perche' e' stata scartata |
+|---|---|
+| backend | e' gia' inglese |
+
+| forma uscita dallo script | lemma nel glossario |
+|---|---|
+| costruzioni | costruzione |
+"""
+    percorso = tmp_path / "conflitto.md"
+    percorso.write_text(testo, encoding="utf-8")
+    with pytest.raises(ValueError, match="prova"):
+        rinomina.leggi_glossario(percorso)
+
+
+def test_la_stessa_riga_ripetuta_con_lo_stesso_inglese_non_e_un_conflitto(tmp_path):
+    """Due righe nude per la stessa parola che concordano non sono un
+    conflitto: e' ridondante, non contraddittorio. Non deve sollevare."""
+    testo = """## I concetti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+| prova | placeholder | view | ✓ arriva |
+
+## Le parole ordinarie
+
+| italiano | inglese |
+|---|---|
+| prova | view |
+
+## I nomi degli strumenti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+
+## Parole scartate durante l'estrazione
+
+| parola uscita dallo script | perche' e' stata scartata |
+|---|---|
+| backend | e' gia' inglese |
+
+| forma uscita dallo script | lemma nel glossario |
+|---|---|
+| costruzioni | costruzione |
+"""
+    percorso = tmp_path / "concorde.md"
+    percorso.write_text(testo, encoding="utf-8")
+    g = rinomina.leggi_glossario(percorso)
+    assert g.mappa["prova"] == "view"
+
+
+def test_un_omonimo_dichiarato_due_volte_in_disaccordo_ferma_la_lettura(tmp_path):
+    """Lo stesso principio, per una riga CON ambito: due dichiarazioni della
+    stessa coppia (parola, ambito) con inglesi diversi sono una
+    contraddizione, non una correzione dell'ultima riga sulla prima."""
+    testo = """## I concetti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+| prova (memoria) | placeholder uno | alpha | ✓ arriva |
+| prova (memoria) | placeholder due | beta | ✓ arriva |
+
+## Le parole ordinarie
+
+| italiano | inglese |
+|---|---|
+
+## I nomi degli strumenti
+
+| italiano | che cosa fa | inglese | prova del lettore nuovo |
+|---|---|---|---|
+
+## Parole scartate durante l'estrazione
+
+| parola uscita dallo script | perche' e' stata scartata |
+|---|---|
+| backend | e' gia' inglese |
+
+| forma uscita dallo script | lemma nel glossario |
+|---|---|
+| costruzioni | costruzione |
+"""
+    percorso = tmp_path / "conflitto_omonimo.md"
+    percorso.write_text(testo, encoding="utf-8")
+    with pytest.raises(ValueError, match="prova"):
+        rinomina.leggi_glossario(percorso)
+
+
+def test_il_glossario_vero_non_ha_conflitti_silenziosi(g):
+    """Il glossario vero deve gia' passare questa guardia -- l'ha gia'
+    passata per caricare `g` (fixture di modulo): se non sollevasse qui e
+    l'avesse sollevato altrove, vorrebbe dire che la correzione di `guarda`
+    non e' completa."""
+    assert g.omonimi["guarda"] == {"cervello": "watch", "casa": "view"}
+    assert "guarda" not in g.mappa

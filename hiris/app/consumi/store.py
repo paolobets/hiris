@@ -347,9 +347,9 @@ class UsageStore:
             base = os.path.splitext(os.path.basename(path))[0]
             provider = next((p for suff, p in _DAL_NAME.items()
                              if base.endswith(suff)), "claude")
-            quando = now
+            when = now
             try:
-                quando = datetime.fromisoformat(
+                when = datetime.fromisoformat(
                     data.get("last_reset") or "").timestamp()
             except (TypeError, ValueError):
                 pass
@@ -361,7 +361,7 @@ class UsageStore:
                 cost_usd=float(data.get("total_cost_usd") or 0.0),
                 cost_state="misurato",
                 errori_rate_limit=int(data.get("total_rate_limit_errors") or 0),
-                now=quando)
+                now=when)
             with self._lock:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO legacy_importati (percorso) VALUES (?)",

@@ -16,6 +16,8 @@ prova non e' decisa».
 """
 from __future__ import annotations
 
+import builtins
+import keyword
 import re
 import sys
 from dataclasses import dataclass, field
@@ -125,12 +127,38 @@ def leggi_glossario(percorso: Path | None = None) -> Glossario:
             if parola in g.scartate:
                 continue
             if ambito:
+                # Un secondo omonimo dichiarato per la STESSA coppia
+                # (parola, ambito) con un inglese diverso e' una riga
+                # scritta due volte in disaccordo con se stessa: si ferma
+                # rumorosamente, non si tiene l'ultima in silenzio.
+                esistente = g.omonimi.get(parola, {}).get(ambito)
+                if esistente is not None and esistente != en:
+                    raise ValueError(
+                        f"'{parola} ({ambito})' e' dichiarato due volte nel "
+                        f"glossario con inglesi diversi ('{esistente}' e "
+                        f"'{en}')")
                 # Un omonimo esce dalla mappa piatta anche se ci era gia'
                 # entrato da una riga senza parentesi: la mappa piatta
                 # risponderebbe con una sola delle due letture.
                 g.mappa.pop(parola, None)
                 g.omonimi.setdefault(parola, {})[ambito] = en
             elif parola not in g.omonimi:
+                # Due righe NUDE (senza ambito) per la stessa parola, in due
+                # tabelle diverse, con inglesi diversi: l'ultima tabella
+                # letta vincerebbe in silenzio -- misurato dal vivo (Task
+                # 6): `guarda` era `look` fra le parole ordinarie e `view`
+                # fra i nomi degli strumenti, nessuna riga lo dichiarava.
+                # O e' lo stesso concetto ripetuto (stesso inglese in
+                # entrambe: nessun problema, si sovrascrive con lo stesso
+                # valore), o va scritto come omonimo -- 'parola (ambito)' --
+                # non lasciato nudo in due posti.
+                esistente = g.mappa.get(parola)
+                if esistente is not None and esistente != en:
+                    raise ValueError(
+                        f"'{parola}' compare senza ambito in piu' tabelle "
+                        f"con inglesi diversi ('{esistente}' e '{en}'): "
+                        "e' un omonimo non dichiarato -- scrivilo come "
+                        f"'{parola} (ambito)' in ciascuna riga.")
                 g.mappa[parola] = en
     return g
 
@@ -161,22 +189,79 @@ def spezza(nome: str) -> list[str]:
     return [p for p in re.split(r"_+|(?<=[a-z0-9])(?=[A-Z])", nome) if p]
 
 
+_BUILTIN_NAMES = frozenset(dir(builtins))
+
+
+def _pericoloso(parola: str) -> bool:
+    """Vero se `parola` e' una keyword Python o il nome di un builtin.
+
+    Applicarla a un identificatore NUDO (senza trattini di protezione)
+    produce uno `SyntaxError` (una keyword: `class = ...`) o ombreggia
+    silenziosamente il builtin (`type`, `list`, `round`...) -- e il secondo
+    caso non lo vede nessun cancello finche' qualcosa non lo chiama
+    davvero, perche' `flake8-builtins` non e' nel set di regole attive.
+    Misurato dal vivo (Task 6): il glossario decide `classe -> class`,
+    applicato a un identificatore nudo in `cervello/pavimento.py` ha
+    prodotto `class = _text(...)`, trovato solo da `py_compile`. Non e' un
+    giudizio sulla parola decisa -- resta decisa cosi' -- e' una guardia
+    sulla FORMA nuda dell'applicazione, la stessa disciplina gia' in vigore
+    per il trattino basso finale (`gamba_` -> `aspect_`, non `aspect`)."""
+    return keyword.iskeyword(parola) or parola in _BUILTIN_NAMES
+
+
+def _radici_plurali(parola: str) -> list[str]:
+    """Candidati singolari italiani per una parola che potrebbe essere un
+    plurale non aliasato.
+
+    Senza questo, un plurale invisibile al glossario (nessun pezzo traduce)
+    sparisce dal dry-run SENZA NESSUNA PROPOSTA -- misurato dal vivo (Task
+    6): `GENERI`/`DIREZIONI_BILANCIO` non comparivano affatto nell'elenco
+    dei composti, non perche' decisi ma perche' `classifica()` ritorna
+    `None` quando NESSUN pezzo traduce, e "generi"/"direzioni" non sono le
+    chiavi esatte del glossario (`genere`/`direzione`, singolari) ne' hanno
+    un alias (a differenza di `gambe -> gamba`, che ce l'ha ed e' infatti
+    gia' riconosciuto). Una singolarizzazione trovata per questa via non si
+    applica MAI da sola: e' una supposizione morfologica, non una lettura
+    diretta del glossario, quindi il chiamante la tratta come un alias (una
+    Proposta, mai un'applicazione diretta) anche quando il nome e' un pezzo
+    solo.
+
+    Euristica, non un motore morfologico: copre le tre desinenze regolari
+    (maschile -o/-i, la coppia -e/-i condivisa da maschile e femminile,
+    femminile -a/-e), non le forme irregolari."""
+    candidati = []
+    if len(parola) > 1 and parola.endswith("i"):
+        radice = parola[:-1]
+        candidati.append(radice + "o")
+        candidati.append(radice + "e")
+    if len(parola) > 1 and parola.endswith("e"):
+        candidati.append(parola[:-1] + "a")
+    return candidati
+
+
 def classifica(nome: str, g: Glossario, ambito: str):
     """`str` da applicare, `Proposta` da confermare, o `None` da lasciar stare."""
     pezzi = spezza(nome)
-    per_alias = False
+    forza_proposta = False
     tradotti = []
     for p in pezzi:
         chiave = p.lower()
         lemma = g.alias.get(chiave)
         if lemma is not None:
-            per_alias = True
+            forza_proposta = True
             tradotti.append(g.per(lemma, ambito))
-        else:
-            tradotti.append(g.per(chiave, ambito))
+            continue
+        trovato = g.per(chiave, ambito)
+        if trovato is None:
+            for candidato in _radici_plurali(chiave):
+                trovato = g.per(candidato, ambito)
+                if trovato is not None:
+                    forza_proposta = True
+                    break
+        tradotti.append(trovato)
     if not any(tradotti):
         return None
-    if len(pezzi) == 1 and not per_alias:
+    if len(pezzi) == 1 and not forza_proposta:
         en = tradotti[0]
         if en is None:
             return None
@@ -209,12 +294,20 @@ def classifica(nome: str, g: Glossario, ambito: str):
             parola = en.upper() if nucleo.isupper() else en.capitalize()
         else:
             parola = en
+        if not prefisso and not suffisso and _pericoloso(parola):
+            # Nudo, nessun trattino di protezione: si propone, non si
+            # applica. Un prefisso o un suffisso (`_tipo`, `tipo_`) non
+            # ombreggiano niente -- sono gia' un nome diverso dal builtin --
+            # quindi restano nel ramo di applicazione diretta qui sopra.
+            return Proposta(nome=nome, pezzi=[nome.lower()], suggerito=parola)
         return prefisso + parola + suffisso
     # Un composto in cui almeno un pezzo non e' deciso resta una proposta lo
     # stesso: il pezzo ignoto va guardato, non saltato. Una forma raggiunta
-    # per alias (`costruzioni` -> lemma `costruzione` -> `construction`)
-    # resta una proposta anche da sola: l'inglese del lemma non e' detto
-    # abbia la stessa inflessione della forma originale (non e' sempre «+s»).
+    # per alias (`costruzioni` -> lemma `costruzione` -> `construction`) o
+    # per singolarizzazione di un plurale non aliasato (`GENERI` -> `genere`
+    # -> `genre`) resta una proposta anche da sola: ne' l'inflessione
+    # inglese del lemma ne' la singolarizzazione italiana sono garantite
+    # corrette -- una lettura diretta del glossario si', un'euristica no.
     suggerito = "_".join(t or p.lower() for t, p in zip(tradotti, pezzi))
     return Proposta(nome=nome, pezzi=[p.lower() for p in pezzi], suggerito=suggerito)
 

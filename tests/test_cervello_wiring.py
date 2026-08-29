@@ -7,9 +7,9 @@ cablato e' indistinguibile da uno assente.
 L'altra meta' prova i due difetti che il mandato originale del Task 5
 avrebbe lasciato nascere (task-5-correzioni.md):
 
-  A. `guarda_sistema` senza nessun chiamante -- codice morto dal primo
+  A. `watch_system` senza nessun chiamante -- codice morto dal primo
      giorno, e la spec §6 diventata una frase falsa;
-  A.1. un errore di lettura passato a `guarda_sistema` come lista vuota --
+  A.1. un errore di lettura passato a `watch_system` come lista vuota --
        peggio di non sapere, sapere il falso e scriverlo nell'archivio.
 """
 import asyncio
@@ -112,11 +112,11 @@ def test_la_potatura_gira_alle_03_00():
 
 # --------------------------------------------------------------------------
 # Correzione A: la terza voce che il mandato originale dimenticava --
-# `guarda_sistema` deve avere un chiamante vero, non restare morto.
+# `watch_system` deve avere un chiamante vero, non restare morto.
 # --------------------------------------------------------------------------
 
 def test_il_terzo_lavoro_periodico_delle_condizioni_e_registrato():
-    """Senza questo lavoro `guarda_sistema` non ha nessun chiamante di
+    """Senza questo lavoro `watch_system` non ha nessun chiamante di
     produzione: nasce codice morto lo stesso giorno in cui viene scritto, e
     la spec §6 (i guasti diventano oggetti dal primo giorno) diventa una
     frase falsa (task-5-correzioni.md, punto A)."""
@@ -316,7 +316,7 @@ def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono(
 
 def test_un_errore_di_problemi_salta_il_giro_per_intero():
     """La prova per mutazione (task-5-correzioni.md, punto A.1): con
-    `problemi()` che torna `{"errore": ...}`, `guarda_sistema` non viene
+    `problemi()` che torna `{"errore": ...}`, `watch_system` non viene
     chiamato. La mutazione (passare `[]` invece di saltare il giro) e' stata
     provata a mano durante l'implementazione e fa arrossire questa prova --
     non e' un'affermazione a vuoto."""

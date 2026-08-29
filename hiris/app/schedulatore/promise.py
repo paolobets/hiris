@@ -77,13 +77,13 @@ def validate(data: dict, *, now: float) -> str | None:
         return ("serve la frase con cui l'hai chiesto, cosi' com'e': e' cio' che "
                 "rende la promessa leggibile anche fra sei mesi.")
 
-    quando = data.get("quando_ts")
-    if not isinstance(quando, (int, float)) or isinstance(quando, bool):
+    when = data.get("quando_ts")
+    if not isinstance(when, (int, float)) or isinstance(when, bool):
         return "serve un momento preciso in cui mantenerla."
-    if quando <= now:
+    if when <= now:
         return ("quel momento e' gia' passato: intendevi domani? Dimmelo e la "
                 "rifaccio.")
-    if quando > now + ORIZZONTE_S:
+    if when > now + ORIZZONTE_S:
         return ("non tengo promesse oltre 30 giorni: e' il tetto che HIRIS si "
                 "e' dato.")
 

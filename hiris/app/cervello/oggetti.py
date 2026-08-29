@@ -194,7 +194,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     `sensor` numerico della gamba sicurezza NON genera un oggetto.** Oggi
     l'unico caso raggiungibile e' il monossido misurato in concentrazione
     (`carbon_monoxide` su `sensor`, non su `binary_sensor`): una lettura come
-    "0.4" non e' mai in `_RESTING`, quindi userebbe `_acceso` per aprire un
+    "0.4" non e' mai in `_RESTING`, quindi userebbe `_is_on` per aprire un
     oggetto che non chiuderebbe mai -- un guasto perennemente aperto al
     giorno, per ogni sensore CO numerico della casa. Un sensore che MISURA
     non e' un sensore che SCATTA: servirebbe una soglia per decidere quando
@@ -278,7 +278,7 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     return start.timestamp(), (start + timedelta(days=1)).timestamp()
 
 
-def _acceso(value) -> bool:
+def _is_on(value) -> bool:
     return str(value or "").strip().lower() not in _RESTING
 
 
@@ -348,7 +348,7 @@ def _kwh(value) -> float | None:
         return None
 
 
-def _percento(value) -> float | None:
+def _percent(value) -> float | None:
     """Una percentuale di batteria -> arrotondata a 1 decimale.
 
     1 decimale (56,6%): lo stato istantaneo della batteria e' un intero
@@ -365,7 +365,7 @@ def _percento(value) -> float | None:
         return None
 
 
-def _quota(numerator, denominator) -> float | None:
+def _share(numerator, denominator) -> float | None:
     """Un rapporto -> frazione fra 0 e 1, arrotondata a 3 decimali.
 
     3 decimali (0,712): un RAPPORTO merita piu' cifre di un kWh -- 71,2% e
@@ -428,20 +428,20 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     """
     moments: dict = {}
 
-    attive_produzione = [p for p in points_per_dimension.get("produzione", [])
+    active_produzione = [p for p in points_per_dimension.get("produzione", [])
                          if (p["valore"] or 0) > 0]
-    if attive_produzione:
-        moments["prima_ora_produzione"] = attive_produzione[0]["inizio"]
-        moments["ultima_ora_produzione"] = attive_produzione[-1]["inizio"]
-        peak = max(attive_produzione, key=lambda p: p["valore"])
+    if active_produzione:
+        moments["prima_ora_produzione"] = active_produzione[0]["inizio"]
+        moments["ultima_ora_produzione"] = active_produzione[-1]["inizio"]
+        peak = max(active_produzione, key=lambda p: p["valore"])
         moments["picco_produzione"] = {"valore": peak["valore"], "ora": peak["inizio"]}
 
-    attive_scarica = [p for p in points_per_dimension.get("scarica", [])
+    active_scarica = [p for p in points_per_dimension.get("scarica", [])
                       if (p["valore"] or 0) > 0]
-    if attive_scarica:
-        moments["fine_scarica_batteria"] = attive_scarica[-1]["fine"]
+    if active_scarica:
+        moments["fine_scarica_batteria"] = active_scarica[-1]["fine"]
 
-    autoconsumo_share = _quota(totals.get("autoconsumo", {}).get("valore"),
+    autoconsumo_share = _share(totals.get("autoconsumo", {}).get("valore"),
                                totals.get("produzione", {}).get("valore"))
     if autoconsumo_share is not None:
         moments["quota_autoconsumo"] = autoconsumo_share
@@ -463,7 +463,7 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     consumo = totals.get("consumo", {}).get("valore")
     prelievo = totals.get("prelievo", {}).get("valore")
     if consumo is not None and prelievo is not None:
-        self_sufficiency_share = _quota(consumo - prelievo, consumo)
+        self_sufficiency_share = _share(consumo - prelievo, consumo)
         if self_sufficiency_share is not None:
             moments["quota_autosufficienza"] = self_sufficiency_share
 
@@ -559,7 +559,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
         # giusta (correzione punto 2 del mandato, «cerca i fratelli»).
         battery_points = [p for p in (series.get(battery_entity) or [])
                           if isinstance(p, dict)]
-        battery_values = [{"ora": p.get("inizio"), "valore": _percento(p.get("media"))}
+        battery_values = [{"ora": p.get("inizio"), "valore": _percent(p.get("media"))}
                            for p in battery_points]
         if any(v["valore"] is not None for v in battery_values):
             body["batteria_percentuale_oraria"] = battery_values
@@ -729,7 +729,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         if genre == "sicurezza":
             # Sesta gamba, entita' vera: stessa logica acceso/spento del
             # funzionamento -- il genere e' diverso, la forma no.
-            if _acceso(r["a"]):
+            if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                         "stato": r["a"]}
@@ -749,7 +749,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             # in cima alla funzione): un riavvio di HA non apre ne' chiude
             # niente qui, per nessuna `person`.
             #
-            # Il confronto normalizza (strip, minuscole) come `_acceso` fa
+            # Il confronto normalizza (strip, minuscole) come `_is_on` fa
             # per gli altri rami -- pulizia del secondo giro di review: qui
             # confrontava il valore grezzo, mentre il filtro degli stati
             # ignoti, prima di questa correzione, normalizzava tre righe
@@ -761,7 +761,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                                     "stato": r["a"]}
             continue
         if genre == "funzionamento":
-            if _acceso(r["a"]):
+            if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                         "stato": r["a"]}

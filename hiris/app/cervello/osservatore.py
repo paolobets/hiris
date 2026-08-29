@@ -82,9 +82,9 @@ class Watcher:
                 # `new_state` a `None` e' un'entita' rimossa: non e' un cambio
                 # da osservare, e' una cosa che non c'e' piu'.
                 return False
-            attributi = new_state.get("attributes")
-            attributi = attributi if isinstance(attributi, dict) else {}
-            which = aspect(eid, attributi)
+            attributes = new_state.get("attributes")
+            attributes = attributes if isinstance(attributes, dict) else {}
+            which = aspect(eid, attributes)
             if which is None:
                 return False
             old_state = event.get("old_state")
@@ -108,9 +108,9 @@ class Watcher:
                 quando_ts=when, source="entita", subject=str(eid),
                 da=old_state.get("state") if isinstance(old_state, dict) else None,
                 a=new_state.get("state"),
-                device_class=_text_or_none(attributi.get("device_class")),
-                state_class=_text_or_none(attributi.get("state_class")),
-                source_type=_text_or_none(attributi.get("source_type")))
+                device_class=_text_or_none(attributes.get("device_class")),
+                state_class=_text_or_none(attributes.get("state_class")),
+                source_type=_text_or_none(attributes.get("source_type")))
             self._watched[str(eid)] = which
             return True
         except Exception as error:

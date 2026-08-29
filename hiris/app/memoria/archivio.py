@@ -196,7 +196,7 @@ class MemoryStore:
         c = self._conn
         try:
             c.execute("BEGIN")
-            assegnazioni = ", ".join(f"{colonna} = ?" for colonna in campi)
+            assegnazioni = ", ".join(f"{column} = ?" for column in campi)
             if assegnazioni:
                 cursore = c.execute(f"UPDATE ricordi SET {assegnazioni}, corretto_da_utente = 1 "
                                      f"WHERE id = ?", (*campi.values(), id))
