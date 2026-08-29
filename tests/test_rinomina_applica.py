@@ -102,6 +102,12 @@ def test_un_file_che_non_si_puo_leggere_non_ferma_il_giro(g, tmp_path):
     assert (tmp_path / "rotto.py").read_text(encoding="utf-8") == "def (\n"
 
 
+_VERSIONE_MINIMA = {
+    "FSTRING_MIDDLE": "3.12",  # f-string, PEP 701
+    "TSTRING_MIDDLE": "3.14",  # t-string, PEP 750
+}
+
+
 @pytest.mark.parametrize(("prefisso", "tipo_atteso"), [
     ("f", "FSTRING_MIDDLE"),
     ("t", "TSTRING_MIDDLE"),
@@ -125,7 +131,23 @@ def test_la_guardia_e_un_allowlist_non_una_blocklist(g, prefisso, tipo_atteso):
     PEP 701, Python 3.12+) e TSTRING_MIDDLE (t-string, PEP 750,
     Python 3.14+); il test verifica anche che l'interprete generi
     davvero quel token, cosi' la parametrizzazione non resta silenziosamente
-    inerte se un giorno smettesse di generarlo."""
+    inerte se un giorno smettesse di generarlo.
+
+    Ogni caso si salta da solo -- con una ragione leggibile -- quando
+    l'interprete che sta eseguendo il test e' troppo vecchio per generare
+    quel tipo di token: il salto e' per singolo caso (deciso da `hasattr`,
+    non da un `skipif` che spegnerebbe l'intera parametrizzazione), quindi
+    su Python 3.12 e 3.13 il caso `f` (FSTRING_MIDDLE) gira comunque per
+    davvero anche se il caso `t` (TSTRING_MIDDLE, 3.14+) si salta. Su
+    Python 3.11, dove nessuno dei due token esiste ancora, la proprieta'
+    non e' dimostrabile con questo test: entrambi i casi si saltano, ed e'
+    onesto cosi' -- non c'e' un terzo tipo di token, in 3.11, che porti
+    testo nudo senza delimitatori oltre a NAME."""
+    if not hasattr(tokenize, tipo_atteso):
+        pytest.skip(
+            f"{tipo_atteso} esiste da Python {_VERSIONE_MINIMA[tipo_atteso]}, "
+            f"assente in questo interprete ({sys.version_info.major}.{sys.version_info.minor})"
+        )
     dentro = f'msg = {prefisso}"archivio{{x}}"\n'
     generati = {t.type for t in tokenize.generate_tokens(io.StringIO(dentro).readline)}
     assert getattr(tokenize, tipo_atteso) in generati, (

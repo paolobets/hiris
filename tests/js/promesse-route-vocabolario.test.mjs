@@ -4,13 +4,19 @@ import { readFileSync } from 'node:fs';
 
 /* Review finale della fetta «lo schedulatore», rilievo ②: il vocabolario
    degli stati «in sospeso» (`in_attesa`, `in_corso`) vive in Python
-   (`hiris/app/schedulatore/promessa.py::STATI_SOSPESO`, usata da
+   (`hiris/app/schedulatore/promise.py::STATES_SOSPESO`, usata da
    `archivio.py` per le sue due query) E in JavaScript
    (`static/config/promesse-route.js::STATI_SOSPESO`, che filtra
    `GET /api/promesse?tutte=1` lato client) -- senza niente che li legasse.
-   Il vocabolario degli stati «conclusi» (`STATI_CONCLUSI`) ha la stessa
+   Il vocabolario degli stati «conclusi» (`STATES_CONCLUSI`) ha la stessa
    forma: Python lo usa per `concludi()`/potatura, il JavaScript lo rispecchia
    in `STATO_LABEL`/`STATO_BADGE`.
+
+   Nota sulla rinomina in inglese: `promise.py` e' gia' stato convertito
+   (`STATI_SOSPESO` -> `STATES_SOSPESO`, `STATI_CONCLUSI` -> `STATES_CONCLUSI`);
+   `promesse-route.js` no. I due lati parlano quindi due lingue diverse per i
+   NOMI delle costanti -- per questo il confronto qui sotto e' e resta sui
+   VALORI (gli insiemi di stringhe), mai sui nomi degli identificatori.
 
    `scripts/doppioni.py` cerca apposta queste coppie (vocabolario Python i
    cui membri compaiono tutti in un file JS), e per costruzione smette di
@@ -30,7 +36,7 @@ import { readFileSync } from 'node:fs';
    pagina. */
 
 const PROMESSA_PY = readFileSync(
-  new URL('../../hiris/app/schedulatore/promessa.py', import.meta.url), 'utf8');
+  new URL('../../hiris/app/schedulatore/promise.py', import.meta.url), 'utf8');
 const ROUTE_JS = readFileSync(
   new URL('../../hiris/app/static/config/promesse-route.js', import.meta.url), 'utf8');
 
@@ -40,13 +46,13 @@ const ROUTE_JS = readFileSync(
 function tuplaPython(nomeCostante) {
   const m = PROMESSA_PY.match(new RegExp(nomeCostante + '\\s*=\\s*\\(([^)]*)\\)'));
   assert.ok(m, 'costante Python non trovata: ' + nomeCostante +
-    ' (promessa.py e\' cambiato sotto questo test?)');
+    ' (promise.py e\' cambiato sotto questo test?)');
   return m[1].split(',').map((s) => s.trim()).filter(Boolean)
     .map((s) => s.replace(/^["']|["']$/g, ''));
 }
 
-test('STATI_SOSPESO: lo stesso insieme in promessa.py e in promesse-route.js', () => {
-  const python = tuplaPython('STATI_SOSPESO');
+test('STATI_SOSPESO: lo stesso insieme in promise.py (STATES_SOSPESO) e in promesse-route.js (STATI_SOSPESO)', () => {
+  const python = tuplaPython('STATES_SOSPESO');
   // Se questa riga fallisse, il problema e' la lettura del sorgente Python
   // (un rinominamento, un formato diverso), non ancora un confronto col JS:
   // separarla aiuta a leggere subito quale delle due cose si e' rotta.
@@ -61,8 +67,8 @@ test('STATI_SOSPESO: lo stesso insieme in promessa.py e in promesse-route.js', (
     'gli stati "in sospeso" devono essere lo stesso insieme in Python e in JavaScript');
 });
 
-test('STATI_CONCLUSI: ogni stato concluso di promessa.py ha una voce in STATO_LABEL e in STATO_BADGE', () => {
-  const python = tuplaPython('STATI_CONCLUSI');
+test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una voce in STATO_LABEL e in STATO_BADGE', () => {
+  const python = tuplaPython('STATES_CONCLUSI');
   assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'disdetta', 'fallita']));
 
   // Il JavaScript non ripete `STATI_CONCLUSI` come proprio insieme a se':
