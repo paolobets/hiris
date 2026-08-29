@@ -71,7 +71,7 @@ CONCLUDI_TOOL_DEF = {
 }
 
 
-def strumenti_promessa() -> list[dict]:
+def tools_promise() -> list[dict]:
     """Il catalogo di questo turno, DERIVATO da quello della chat.
 
     Le definizioni sono gli STESSI dizionari di `STRUMENTI_CONOSCENZA`, non
@@ -89,7 +89,7 @@ def strumenti_promessa() -> list[dict]:
     return ammessi + [CONCLUDI_TOOL_DEF]
 
 
-class DispatcherPromessa:
+class PromiseDispatcher:
     """Il guardiano del turno: lascia scendere solo i lettori, e tiene `concludi`.
 
     Sta DAVANTI a `DispatcherStrumenti` invece di modificarlo, per non mettere
@@ -100,25 +100,25 @@ class DispatcherPromessa:
         self._sotto = sotto
         self.conclusione: dict | None = None
 
-    async def dispatch(self, nome: str, argomenti: dict | None) -> dict:
+    async def dispatch(self, name: str, argomenti: dict | None) -> dict:
         argomenti = argomenti or {}
-        if nome == "concludi":
+        if name == "concludi":
             avvisare = argomenti.get("avvisare")
-            testo = argomenti.get("testo")
-            if not isinstance(avvisare, bool) or not isinstance(testo, str):
+            text = argomenti.get("testo")
+            if not isinstance(avvisare, bool) or not isinstance(text, str):
                 return {"errore": ("«concludi» vuole `avvisare` (vero o falso) e "
                                    "`testo` (cosa hai trovato).")}
-            self.conclusione = {"avvisare": avvisare, "testo": testo}
+            self.conclusione = {"avvisare": avvisare, "testo": text}
             return {"concluso": True}
-        if nome not in SOLA_LETTURA:
-            return {"errore": (f"«{nome}» non e' disponibile mentre mantengo una "
+        if name not in SOLA_LETTURA:
+            return {"errore": (f"«{name}» non e' disponibile mentre mantengo una "
                                "promessa: qui posso guardare e rispondere, non "
                                "toccare la casa. Se serve un'azione, dilla nel "
                                "testo e decidera' la persona.")}
-        return await self._sotto.dispatch(nome, argomenti)
+        return await self._sotto.dispatch(name, argomenti)
 
 
-async def interpreta_promessa(app, promessa: dict) -> dict:
+async def interpreta_promise(app, promise: dict) -> dict:
     """Sveglia il modello per una promessa «chiedi». Non solleva mai.
 
     Ritorna `{"avvisare": bool, "testo": str}` oppure `{"errore": str}`. Un
@@ -136,62 +136,62 @@ async def interpreta_promessa(app, promessa: dict) -> dict:
     # casa che gira interamente sul Piano Claude Max le promesse morivano su
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
-    via, motivo_ripiego = chi_risponde(app)
+    via, reason_downgrade = chi_risponde(app)
     if via == "ponte":
-        return _accoda_al_ponte(app, promessa)
+        return _accoda_al_bridge(app, promise)
 
     runner = app.get("llm_router") or app.get("claude_runner")
     if runner is None:
         return {"errore": "non c'era nessun modello a cui chiedere."}
 
-    dispatcher = DispatcherPromessa(costruisci_dispatcher_strumenti(app))
+    dispatcher = PromiseDispatcher(costruisci_dispatcher_strumenti(app))
     try:
         # Lo STESSO nucleo della chat (`costruisci_nucleo`), non una
         # composizione parallela: due contesti che descrivono la stessa casa
         # sono due verita' che divergono.
-        nucleo, _riepilogo = costruisci_nucleo(app)
-    except Exception as errore:
+        briefing, _riepilogo = costruisci_nucleo(app)
+    except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promessa["id"], type(errore).__name__, errore)
-        nucleo = ""
+                       promise["id"], type(error).__name__, error)
+        briefing = ""
 
     try:
-        risposta = await runner.chat(
-            user_message=_domanda(promessa),
-            system_prompt=_prompt_di_sistema(),
-            context_str=nucleo,
+        answer = await runner.chat(
+            user_message=_domanda(promise),
+            system_prompt=_prompt_di_system(),
+            context_str=briefing,
             conversation_history=[],
             model="auto",
             max_tokens=2000,
             agent_type="promessa",
             thinking_budget=0,
-            strumenti=strumenti_promessa(),
+            strumenti=tools_promise(),
             dispatcher=dispatcher,
         )
-    except Exception as errore:
+    except Exception as error:
         logger.warning("turno della promessa %s fallito (%s: %s)",
-                       promessa["id"], type(errore).__name__, errore)
-        return {"errore": f"il modello non ha risposto ({type(errore).__name__})."}
+                       promise["id"], type(error).__name__, error)
+        return {"errore": f"il modello non ha risposto ({type(error).__name__})."}
 
     if dispatcher.conclusione is None:
         logger.warning("promessa %s: il turno non ha chiamato «concludi»; "
                        "aveva risposto %d caratteri di testo",
-                       promessa["id"], len(risposta or ""))
-        return {"errore": _senza_conclusione(risposta)}
+                       promise["id"], len(answer or ""))
+        return {"errore": _senza_conclusione(answer)}
     conclusione = dict(dispatcher.conclusione)
-    nota = _nota_del_ripiego(motivo_ripiego)
-    if nota:
-        conclusione["nota"] = nota
+    note = _note_del_downgrade(reason_downgrade)
+    if note:
+        conclusione["nota"] = note
     return conclusione
 
 
 # Quanto della risposta del modello entra nel motivo. Il motivo finisce in una
 # colonna di SQLite e in una riga della pagina Promesse: riportarla intera
 # sarebbe un allegato, non un motivo.
-_TETTO_RIPORTO = 300
+_CEILING_RIPORTO = 300
 
 
-def _senza_conclusione(risposta) -> str:
+def _senza_conclusione(answer) -> str:
     """Il motivo di un turno che NON ha chiamato `concludi`, con dentro cio'
     che il modello aveva risposto al suo posto.
 
@@ -200,22 +200,22 @@ def _senza_conclusione(risposta) -> str:
     inutilizzabile -- perche' le TRE uscite del ciclo di `claude_runner.chat`
     che portano qui restituiscono tre stringhe DIVERSE (il testo del modello,
     `_MAX_ITERATIONS_NOTICE`, `_TRUNCATION_NOTICE`) e quella stringa era
-    l'unica cosa che le distingueva. `interpreta_promessa` la scartava: per
+    l'unica cosa che le distingueva. `interpreta_promise` la scartava: per
     sapere quale delle tre fosse capitata sulla casa vera e' servita
     un'indagine con tre riproduzioni sull'add-on vivo.
 
     Quando non c'e' proprio niente da riportare si torna alla frase di prima:
     un virgolettato vuoto affermerebbe «ha detto questo», e questo e' niente.
     """
-    detto = risposta.strip() if isinstance(risposta, str) else ""
+    detto = answer.strip() if isinstance(answer, str) else ""
     if not detto:
         return "il turno non ha concluso: non so cosa dirti."
-    if len(detto) > _TETTO_RIPORTO:
-        detto = detto[:_TETTO_RIPORTO].rstrip() + "…"
+    if len(detto) > _CEILING_RIPORTO:
+        detto = detto[:_CEILING_RIPORTO].rstrip() + "…"
     return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
 
 
-def _nota_del_ripiego(motivo: str) -> str:
+def _note_del_downgrade(reason: str) -> str:
     """La riga che dichiara un ripiego dal piano alla catena, o "" se non ce n'e'.
 
     Il ripiego si annuncia OGNI VOLTA (decisione del proprietario, 13 agosto):
@@ -230,14 +230,14 @@ def _nota_del_ripiego(motivo: str) -> str:
     silenzio -- questa riga parla di soldi. Si dice cio' che si sa per certo:
     il piano non ha risposto, e ha risposto la catena, a consumo.
     """
-    fatto = _MOTIVI_RIPIEGO.get(motivo)
+    fatto = _MOTIVI_RIPIEGO.get(reason)
     if not fatto:
         return ""
     return (f"Il Piano Claude Max {fatto}: questo turno l'ha mantenuto la catena, "
             "a consumo.")
 
 
-def _accoda_al_ponte(app, promessa: dict) -> dict:
+def _accoda_al_bridge(app, promise: dict) -> dict:
     """Il turno va al piano: si accoda e si torna SUBITO.
 
     Il battito non aspetta -- e' cio' che tiene in piedi «mai in ritardo»
@@ -260,43 +260,43 @@ def _accoda_al_ponte(app, promessa: dict) -> dict:
     from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 
     try:
-        nucleo, _riepilogo = costruisci_nucleo(app)
-    except Exception as errore:
+        briefing, _riepilogo = costruisci_nucleo(app)
+    except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promessa["id"], type(errore).__name__, errore)
-        nucleo = ""
+                       promise["id"], type(error).__name__, error)
+        briefing = ""
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce.
-    scadenza_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
         "scadenza_min", _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
-    adesso = time.time()
+    now = time.time()
     app["reasoning_queue"].enqueue(
         "promessa",
-        {"promessa_id": promessa["id"]},
+        {"promessa_id": promise["id"]},
         {
-            "promessa_id": promessa["id"],
+            "promessa_id": promise["id"],
             # `history` e `system_prompt` sono le chiavi che il turno del
             # ponte legge davvero (`agent/runner._reason_chat` ->
             # `prompts.build_chat_messages`): un turno di promessa e' un turno
             # con un contenuto diverso, non una seconda macchina. La domanda
             # entra come l'unico messaggio dell'utente -- che e' esattamente
             # cio' che e': qualcuno, tempo fa, ha chiesto questo.
-            "history": [{"role": "user", "content": _domanda(promessa)}],
-            "system_prompt": _prompt_di_sistema(),
-            "contesto": nucleo,
+            "history": [{"role": "user", "content": _domanda(promise)}],
+            "system_prompt": _prompt_di_system(),
+            "contesto": briefing,
         },
-        adesso + scadenza_min * 60,
-        now=adesso,
+        now + deadline_min * 60,
+        now=now,
     )
     logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
-                promessa["id"], scadenza_min)
+                promise["id"], deadline_min)
     return {"accodata": True}
 
 
-def _prompt_di_sistema() -> str:
+def _prompt_di_system() -> str:
     # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
-    # della chat (`costruisci_nucleo`, vedi `interpreta_promessa` sopra), coi
+    # della chat (`costruisci_nucleo`, vedi `interpreta_promise` sopra), coi
     # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
     # queste due righe il prompt non lo spiegava, e il modello non aveva modo
     # di sapere che poteva usarli direttamente invece di chiamare `cerca`.
@@ -325,15 +325,15 @@ def _prompt_di_sistema() -> str:
     )
 
 
-def _domanda(promessa: dict) -> str:
+def _domanda(promise: dict) -> str:
     """La domanda, con l'istantanea di partenza accanto.
 
     L'istantanea porta valore, unita' e istante della misura: senza, «e'
     aumentata» non ha un termine di paragone e il modello se lo inventerebbe.
     """
-    righe = ["Me l'hai chiesto cosi': «{}».".format(promessa["frase"]),
-             "Quello che devi guardare: {}".format(promessa["domanda"])]
-    for misura in promessa.get("istantanea") or []:
+    righe = ["Me l'hai chiesto cosi': «{}».".format(promise["frase"]),
+             "Quello che devi guardare: {}".format(promise["domanda"])]
+    for misura in promise.get("istantanea") or []:
         righe.append(
             "Quando me l'hai chiesto, {} era {}{} (misurato allora, non adesso).".format(
                 misura.get("entita"),

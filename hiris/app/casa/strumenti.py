@@ -1616,7 +1616,7 @@ class DispatcherStrumenti:
             if rifiuto is not None:
                 return {"errore": rifiuto}
 
-        return self._promesse.crea(dati, adesso=_time.time())
+        return self._promesse.create(dati, now=_time.time())
 
     def _promesse_elenco(self, argomenti: dict[str, Any]) -> dict:
         """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse.
@@ -1625,7 +1625,7 @@ class DispatcherStrumenti:
         gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
         """
         tutte = bool(argomenti.get("tutte"))
-        return {"promesse": self._promesse.elenca(solo_in_sospeso=not tutte)}
+        return {"promesse": self._promesse.list(solo_in_sospeso=not tutte)}
 
     def _disdici(self, argomenti: dict[str, Any]) -> dict:
         import time as _time
@@ -1633,7 +1633,7 @@ class DispatcherStrumenti:
         ident = argomenti.get("id")
         if not isinstance(ident, str) or not ident.strip():
             return {"errore": "«disdici» ha bisogno dell'`id` della promessa."}
-        return self._promesse.disdici(ident.strip(), adesso=_time.time())
+        return self._promesse.cancel(ident.strip(), now=_time.time())
 
     async def _costruisci(self, argomenti: dict[str, Any]) -> dict:
         """Propone. Non scrive: lo fa `conferma`, e non nello stesso turno."""

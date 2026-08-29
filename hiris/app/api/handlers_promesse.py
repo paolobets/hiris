@@ -35,8 +35,8 @@ async def handle_get_promesse(request: web.Request) -> web.Response:
         return web.json_response({"promesse": [], "errore": "archivio non disponibile"},
                                  status=503)
     tutte = request.query.get("tutte") in ("1", "true", "si")
-    return web.json_response({"promesse": archivio.elenca(solo_in_sospeso=not tutte,
-                                                          limite=200)})
+    return web.json_response({"promesse": archivio.list(solo_in_sospeso=not tutte,
+                                                       limit=200)})
 
 
 async def handle_delete_promessa(request: web.Request) -> web.Response:
@@ -44,10 +44,10 @@ async def handle_delete_promessa(request: web.Request) -> web.Response:
     if archivio is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.leggi(ident) is None:
+    if archivio.read(ident) is None:
         return web.json_response({"errore": "non ho nessuna promessa con quell'identificatore."},
                                  status=404)
-    esito = archivio.disdici(ident, adesso=time.time())
+    esito = archivio.cancel(ident, now=time.time())
     if "errore" in esito:
         return web.json_response(esito, status=409)
     return web.json_response(esito)

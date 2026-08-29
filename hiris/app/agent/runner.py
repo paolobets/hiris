@@ -99,7 +99,7 @@ o cosa dire senza una frase scritta da una persona. Non e' piu' vero -- dalla
 fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
 IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
 tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
-`chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promessa`
+`chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promise`
 -> `chi_risponde` -> `_accoda_al_ponte`, quando il ponte e' la via) tanto
 quanto un turno di chat vero: il battito dello schedulatore
 (`schedulatore/orologio.py`, ogni 15 s) lo sveglia da solo, ore dopo la
@@ -127,7 +127,7 @@ from ..chat_store import (
     SENTINELLA_VUOTO,
 )
 from ..decisione_modelli import ALIAS_DEL_PIANO
-from ..schedulatore.turno import strumenti_promessa
+from ..schedulatore.turno import tools_promise
 from . import prompts
 
 log = logging.getLogger("hiris.agent")
@@ -214,7 +214,7 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `concludi`, cioe' senza nessun modo di finire.
-    definizioni = strumenti_promessa() if per_promessa else STRUMENTI_CONOSCENZA
+    definizioni = tools_promise() if per_promessa else STRUMENTI_CONOSCENZA
     return tuple(f"{prefisso}{d['name']}" for d in definizioni)
 
 
@@ -291,8 +291,8 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `strumenti_promessa()` (i sei lettori piu' `concludi`) e dispaccia
-    # con `DispatcherPromessa`. Come `X-HIRIS-Turno` qui sopra NON e'
+    # `tools_promise()` (i sei lettori piu' `concludi`) e dispaccia
+    # con `PromiseDispatcher`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.
     #
@@ -513,7 +513,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     # stessa cosa che il turno usera': con l'intestazione della promessa la
     # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
-    definizioni = strumenti_promessa() if id_promessa else STRUMENTI_CONOSCENZA
+    definizioni = tools_promise() if id_promessa else STRUMENTI_CONOSCENZA
     attesi = {d["name"] for d in definizioni}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 

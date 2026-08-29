@@ -64,9 +64,9 @@ from .memoria.archivio import ArchivioMemoria
 from .memoria.cache_indice import CacheIndice
 from .proxy.entity_cache import EntityCache
 from .proxy.ha_client import HAClient
-from .schedulatore.archivio import ArchivioPromesse
-from .schedulatore.orologio import Orologio
-from .schedulatore.turno import interpreta_promessa
+from .schedulatore.archivio import AgendaStore
+from .schedulatore.sweeper import Sweeper
+from .schedulatore.turno import interpreta_promise
 from .token_interno import prepara_token_interno
 from .version import read_version
 
@@ -111,7 +111,7 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
     """
     ident = (job.get("wake") or {}).get("promessa_id") or ""
     archivio = app.get("promesse")
-    riga = archivio.leggi(ident) if (archivio is not None and ident) else None
+    riga = archivio.read(ident) if (archivio is not None and ident) else None
     if riga is None or riga.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
         # riapre. E' lo stesso ordine di controlli della consegna
@@ -120,8 +120,8 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
     minuti = int((app.get("models_config") or {}).get("ponte", {}).get(
         "scadenza_min", 5))
     archivio.concludi(
-        ident, stato="fallita", adesso=time.time(),
-        motivo=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
+        ident, state="fallita", now=time.time(),
+        reason=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
                 "risposto: non so cosa dirti."))
     logger.warning(
         "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
@@ -1858,7 +1858,7 @@ async def _on_startup(app: web.Application) -> None:
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
-    app["promesse"] = ArchivioPromesse(os.path.join(data_dir, "promesse.db"))
+    app["promesse"] = AgendaStore(os.path.join(data_dir, "promesse.db"))
 
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
     # (`azione/porta.py`). Sta QUI, e non accanto a `registro_servizi` piu'
@@ -2751,7 +2751,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe e del comportamento qui sopra: si dichiara e si prosegue,
     # e le promesse `in_corso` restano tali fino al prossimo riavvio.
     try:
-        app["promesse"].risana(adesso=_time.time())
+        app["promesse"].risana(now=_time.time())
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
@@ -2764,18 +2764,18 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
-    # L'orologio (`schedulatore/orologio.py`): non conosce ne' la chat ne' il
+    # L'orologio (`schedulatore/sweeper.py`): non conosce ne' la chat ne' il
     # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
     # `interpreta` (il turno di `chiedi`, `schedulatore/turno.py`).
-    # `interpreta_promessa` prende DUE argomenti (`app`, `promessa`); l'orologio
+    # `interpreta_promise` prende DUE argomenti (`app`, `promessa`); l'orologio
     # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
     # quel secondo argomento, catturato.
     async def _interpreta(promessa: dict) -> dict:
-        return await interpreta_promessa(app, promessa)
+        return await interpreta_promise(app, promessa)
 
-    app["orologio"] = Orologio(
+    app["orologio"] = Sweeper(
         app["promesse"],
-        esegui=app["porta_azione"].esegui,
+        execute=app["porta_azione"].esegui,
         interpreta=_interpreta,
     )
 
@@ -3674,7 +3674,7 @@ def create_app() -> web.Application:
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
     # modello ha come strumenti (`promesse`/`disdici` in
     # `casa/strumenti.py`), sulla stessa serializzazione
-    # (`schedulatore/promessa.py::serializza`, dentro l'archivio): due porte,
+    # (`schedulatore/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
     from .api.handlers_promesse import (

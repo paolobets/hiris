@@ -24,8 +24,8 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import ArchivioMemoria
-from hiris.app.schedulatore.archivio import ArchivioPromesse
-from hiris.app.schedulatore.orologio import Orologio
+from hiris.app.schedulatore.archivio import AgendaStore
+from hiris.app.schedulatore.sweeper import Sweeper
 from tests.test_strumenti_conoscenza import _semina_casa
 
 TOKEN = "token-di-prova-del-turno-di-promessa"
@@ -66,7 +66,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
 
     casa = _semina_casa(tmp_path)
     memoria = ArchivioMemoria(str(tmp_path / "memoria.db"))
-    promesse = ArchivioPromesse(str(tmp_path / "promesse.db"))
+    promesse = AgendaStore(str(tmp_path / "promesse.db"))
     porta = PortaFinta()
     app["archivio_casa"] = casa
     app["archivio_memoria"] = memoria
@@ -78,7 +78,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     async def _mai(_promessa):
         raise AssertionError("il turno non doveva passare dalla catena")
 
-    app["orologio"] = Orologio(promesse, esegui=porta.esegui, interpreta=_mai)
+    app["orologio"] = Sweeper(promesse, execute=porta.esegui, interpreta=_mai)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -92,12 +92,12 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
 
 
 def _crea_in_corso(promesse, *, recapito=None) -> str:
-    ident = promesse.crea({
+    ident = promesse.create({
         "specie": "chiedi", "frase": "fra un'ora verifica la temperatura",
         "quando_ts": ADESSO + 10, "domanda": "e' aumentata?",
         "recapito": recapito,
-    }, adesso=ADESSO)["promessa"]["id"]
-    assert promesse.prendi(ident, adesso=ADESSO + 11) is True
+    }, now=ADESSO)["promessa"]["id"]
+    assert promesse.prendi(ident, now=ADESSO + 11) is True
     return ident
 
 
@@ -214,7 +214,7 @@ async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(ro
     corpo = await risposta.json()
     assert corpo["result"].get("isError") is not True
 
-    p = promesse.leggi(ident)
+    p = promesse.read(ident)
     assert p["stato"] == "mantenuta"
     assert p["testo"] == "in bagno +0,4 gradi"
     assert p["avvisare"] is True
@@ -236,7 +236,7 @@ async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
                    "arguments": {"avvisare": False, "testo": "tutto fermo"}},
     }, promessa=ident)
 
-    p = promesse.leggi(ident)
+    p = promesse.read(ident)
     assert p["stato"] == "mantenuta"
     assert p["testo"] == "tutto fermo"
     assert porta.chiamate == [], "non c'era niente per cui disturbarlo"
@@ -256,4 +256,4 @@ async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
     }, promessa=ident)
 
     assert (await risposta.json())["result"]["isError"] is True
-    assert promesse.leggi(ident)["stato"] == "in_corso"
+    assert promesse.read(ident)["stato"] == "in_corso"

@@ -183,7 +183,7 @@ class ArchivioCostruzioni:
     def risana(self, *, adesso: float) -> int:
         """Le proposte rimaste `in_corso` al riavvio: chiuse, non ripescate.
 
-        Stessa forma di `ArchivioPromesse.risana` (`schedulatore/archivio.py`):
+        Stessa forma di `AgendaStore.risana` (`schedulatore/archivio.py`):
         una riga `in_corso` all'avvio significa una cosa sola, l'add-on si e'
         fermato fra `rivendica` e la transizione finale (`applica` non ha
         fatto in tempo a chiamare `segna_applicata` o `segna_rifiutata`).

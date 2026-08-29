@@ -29,7 +29,7 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.schedulatore.archivio import ArchivioPromesse
+from hiris.app.schedulatore.archivio import AgendaStore
 
 TOKEN = "token-di-prova-della-consegna"
 INTESTAZIONI = {"X-HIRIS-Internal-Token": TOKEN}
@@ -55,7 +55,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     app["internal_token"] = TOKEN
 
     coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
-    promesse = ArchivioPromesse(str(tmp_path / "promesse.db"))
+    promesse = AgendaStore(str(tmp_path / "promesse.db"))
     app["reasoning_queue"] = coda
     app["promesse"] = promesse
     app.on_startup.clear()
@@ -70,11 +70,11 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
 
 
 def _promessa_in_corso(promesse) -> str:
-    ident = promesse.crea({
+    ident = promesse.create({
         "specie": "chiedi", "frase": "fra un'ora verifica la temperatura",
         "quando_ts": ADESSO + 10, "domanda": "e' aumentata?", "recapito": None,
-    }, adesso=ADESSO)["promessa"]["id"]
-    assert promesse.prendi(ident, adesso=ADESSO + 11) is True
+    }, now=ADESSO)["promessa"]["id"]
+    assert promesse.prendi(ident, now=ADESSO + 11) is True
     return ident
 
 
@@ -108,7 +108,7 @@ async def test_un_turno_che_finisce_senza_concludere_fa_fallire_la_promessa(cons
         "reply": "Ho letto le otto stanze, ma da qui non posso mandarti una notifica."})
 
     assert risposta.status == 200
-    p = promesse.leggi(ident)
+    p = promesse.read(ident)
     assert p["stato"] == "fallita"
     assert "non ha concluso" in p["motivo"]
     assert "non posso mandarti una notifica" in p["motivo"]
@@ -122,12 +122,12 @@ async def test_se_concludi_e_gia_arrivato_la_consegna_non_riapre_niente(consegna
     client, coda, promesse = consegna
     ident = _promessa_in_corso(promesse)
     job = _accoda_e_prendi(coda, ident)
-    promesse.concludi(ident, stato="mantenuta", adesso=ADESSO + 20,
-                      testo="in bagno +0,4 gradi", avvisare=True)
+    promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
+                      text="in bagno +0,4 gradi", avvisare=True)
 
     await _consegna(client, job, {"reply": "qualunque cosa"})
 
-    p = promesse.leggi(ident)
+    p = promesse.read(ident)
     assert p["stato"] == "mantenuta"
     assert p["testo"] == "in bagno +0,4 gradi"
 
@@ -143,7 +143,7 @@ async def test_una_consegna_senza_risposta_fallisce_lo_stesso_dicendolo(consegna
 
     await _consegna(client, job, {})
 
-    p = promesse.leggi(ident)
+    p = promesse.read(ident)
     assert p["stato"] == "fallita"
     assert "non ha concluso" in p["motivo"]
     assert "«»" not in p["motivo"]
@@ -161,7 +161,7 @@ async def test_una_consegna_di_chat_non_tocca_le_promesse(consegna):
 
     await _consegna(client, job, {"reply": "ciao"})
 
-    assert promesse.leggi(ident)["stato"] == "in_corso"
+    assert promesse.read(ident)["stato"] == "in_corso"
 
 
 # --- la scadenza: niente resta appeso ---------------------------------------
@@ -171,7 +171,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     chiuderebbe solo al prossimo riavvio, cioe' forse mai."""
     from hiris.app.server import _chiudi_promessa_scaduta
 
-    promesse = ArchivioPromesse(str(tmp_path / "p.db"))
+    promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
         app = {"promesse": promesse,
@@ -179,7 +179,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
 
         _chiudi_promessa_scaduta(app, {"wake": {"promessa_id": ident}})
 
-        p = promesse.leggi(ident)
+        p = promesse.read(ident)
         assert p["stato"] == "fallita"
         assert "10 minuti" in p["motivo"]
     finally:
@@ -191,16 +191,16 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
     cancellerebbe un testo che l'utente puo' gia' aver letto."""
     from hiris.app.server import _chiudi_promessa_scaduta
 
-    promesse = ArchivioPromesse(str(tmp_path / "p.db"))
+    promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
-        promesse.concludi(ident, stato="mantenuta", adesso=ADESSO + 20,
-                          testo="tutto fermo", avvisare=False)
+        promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
+                          text="tutto fermo", avvisare=False)
 
         _chiudi_promessa_scaduta({"promesse": promesse, "models_config": {}},
                                  {"wake": {"promessa_id": ident}})
 
-        assert promesse.leggi(ident)["stato"] == "mantenuta"
+        assert promesse.read(ident)["stato"] == "mantenuta"
     finally:
         promesse.close()
 

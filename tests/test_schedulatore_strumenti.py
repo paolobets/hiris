@@ -8,7 +8,7 @@ import pytest
 from hiris.app.azione.registro import RegistroServizi
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
 from hiris.app.proxy.entity_cache import _to_minimal
-from hiris.app.schedulatore.archivio import ArchivioPromesse
+from hiris.app.schedulatore.archivio import AgendaStore
 
 # NON un `pytestmark` di modulo: a differenza di `test_schedulatore_orologio.py`
 # (dove ogni test e' async), qui un test e' sincrono
@@ -37,7 +37,7 @@ def _fra(minuti: int) -> str:
 
 @pytest.fixture()
 def promesse(tmp_path):
-    a = ArchivioPromesse(os.path.join(str(tmp_path), "promesse.db"))
+    a = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     yield a
     a.close()
 
@@ -74,7 +74,7 @@ async def test_prometti_un_chiedi_crea_la_promessa(promesse):
     })
     assert "errore" not in esito
     assert esito["promessa"]["specie"] == "chiedi"
-    assert promesse.elenca(solo_in_sospeso=True)
+    assert promesse.list(solo_in_sospeso=True)
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     assert "errore" in esito
     assert "light.inventato" in esito["errore"]
     assert "turn_on" in esito["errore"]  # il servizio vero, che il rifiuto elenca
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -144,7 +144,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -172,7 +172,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
     assert "Domini disponibili" not in esito["errore"]
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -190,7 +190,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -256,7 +256,7 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
     assert "errore" in esito
     assert "non e' pronto" in esito["errore"]
     assert "non esiste in questa casa" not in esito["errore"]
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -345,7 +345,7 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_na
     assert "errore" in esito
     assert "sensor.soggiorno_t" in esito["errore"]
     assert "cerca" in esito["errore"]
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 @pytest.mark.asyncio
@@ -378,7 +378,7 @@ async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verifi
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
     assert "errore" in esito
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 def test_la_cache_finta_riproduce_la_forma_minimale_vera():
@@ -412,7 +412,7 @@ async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
         "specie": "chiedi", "frase": "x", "quando": "domani verso sera",
         "domanda": "e' aumentata?"})
     assert "errore" in esito
-    assert promesse.elenca() == []
+    assert promesse.list() == []
 
 
 class _RegistroFinto:

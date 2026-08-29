@@ -35,9 +35,9 @@ from hiris.app import server
 from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
 from hiris.app.azione.cronaca import Cronaca
 from hiris.app.azione.porta import PortaAzione
-from hiris.app.schedulatore.archivio import ArchivioPromesse
-from hiris.app.schedulatore.orologio import Orologio
-from hiris.app.schedulatore.turno import interpreta_promessa
+from hiris.app.schedulatore.archivio import AgendaStore
+from hiris.app.schedulatore.sweeper import Sweeper
+from hiris.app.schedulatore.turno import interpreta_promise
 
 # ── Estrazione 1: cronaca + promesse + porta (con cronaca) ──────────────────
 
@@ -54,7 +54,7 @@ def _load_costruzione_archivi():
     body = textwrap.dedent(src[start:end])
     func_src = (
         "async def _check(app, data_dir, os, ha_client, Cronaca, "
-        "ArchivioPromesse, PortaAzione):\n" + textwrap.indent(body, "    ")
+        "AgendaStore, PortaAzione):\n" + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup costruzione archivi>", "exec"), namespace)
@@ -69,11 +69,11 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(tmp_path):
     ha_client = object()  # PortaAzione non lo chiama alla costruzione (solo lo
     # conserva): un oggetto qualunque basta a dimostrare che e' quello passato.
 
-    await check(app, str(tmp_path), os, ha_client, Cronaca, ArchivioPromesse,
+    await check(app, str(tmp_path), os, ha_client, Cronaca, AgendaStore,
                 PortaAzione)
 
     assert isinstance(app["cronaca"], Cronaca)
-    assert isinstance(app["promesse"], ArchivioPromesse)
+    assert isinstance(app["promesse"], AgendaStore)
     try:
         porta = app["porta_azione"]
         assert isinstance(porta, PortaAzione)
@@ -102,8 +102,8 @@ def _load_battito_avvio():
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
-        "async def _check(app, scheduler, _time, logger, Orologio, "
-        "interpreta_promessa):\n" + textwrap.indent(body, "    ")
+        "async def _check(app, scheduler, _time, logger, Sweeper, "
+        "interpreta_promise):\n" + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup battito>", "exec"), namespace)
@@ -124,7 +124,7 @@ class _SchedulerRegistratore:
 
 @pytest.fixture()
 def promesse(tmp_path):
-    a = ArchivioPromesse(os.path.join(str(tmp_path), "promesse.db"))
+    a = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     yield a
     a.close()
 
@@ -144,10 +144,10 @@ async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
     app = {"promesse": promesse, "porta_azione": porta_finta}
     scheduler = _SchedulerRegistratore()
 
-    await check(app, scheduler, _time_module, server.logger, Orologio,
-                interpreta_promessa)
+    await check(app, scheduler, _time_module, server.logger, Sweeper,
+                interpreta_promise)
 
-    assert isinstance(app["orologio"], Orologio)
+    assert isinstance(app["orologio"], Sweeper)
     battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_schedulatore_battito"]
     assert len(battiti) == 1, (
         "il battito deve essere registrato UNA volta, con questo id -- "
@@ -168,21 +168,21 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     # `crea()` con "non tengo promesse oltre 30 giorni" invece di crearla --
     # lo stesso difetto di date-a-mano gia' documentato in
     # `test_schedulatore_strumenti.py::_fra`.
-    ident = promesse.crea({
+    ident = promesse.create({
         "specie": "fai", "frase": "x", "quando_ts": 1_000.0 + 3600.0,
         "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.x"]}},
-    }, adesso=1_000.0)["promessa"]["id"]
-    promesse.prendi(ident, adesso=1_100.0)
-    assert promesse.leggi(ident)["stato"] == "in_corso"  # precondizione del test
+    }, now=1_000.0)["promessa"]["id"]
+    promesse.prendi(ident, now=1_100.0)
+    assert promesse.read(ident)["stato"] == "in_corso"  # precondizione del test
 
     check = _load_battito_avvio()
     app = {"promesse": promesse, "porta_azione": porta_finta}
     scheduler = _SchedulerRegistratore()
 
-    await check(app, scheduler, _time_module, server.logger, Orologio,
-                interpreta_promessa)
+    await check(app, scheduler, _time_module, server.logger, Sweeper,
+                interpreta_promise)
 
-    assert promesse.leggi(ident)["stato"] == "fallita"
+    assert promesse.read(ident)["stato"] == "fallita"
     # E il battito NON deve averla toccata: risana() deve essere finita
     # prima che qualunque cosa la prenda di nuovo in mano.
     porta_finta.esegui.assert_not_awaited()
@@ -198,7 +198,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
 # `orologio.batti()` a vuoto (o chiamasse un altro metodo), l'intera fetta
 # sarebbe verde e nessuna promessa scatterebbe mai in produzione -- nessun
 # test degli altri file se ne accorgerebbe, perche' il resto della catena e'
-# provato a pezzi separati (Orologio per conto suo in
+# provato a pezzi separati (Sweeper per conto suo in
 # `test_schedulatore_orologio.py`, la registrazione del job qui sopra).
 
 
@@ -235,7 +235,7 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante():
     orologio_finto.batti.assert_awaited_once()
     # "CON un istante", non a vuoto: una chiusura che chiamasse
     # `orologio.batti()` senza argomenti supererebbe un `assert_awaited()`
-    # generico ma non `Orologio.batti(self, adesso)`, che lo richiede -- il
+    # generico ma non `Sweeper.batti(self, adesso)`, che lo richiede -- il
     # doppio qui non lo impone (e' un MagicMock), quindi lo impone il test.
     args, kwargs = orologio_finto.batti.await_args
     assert len(args) == 1 and isinstance(args[0], float), (

@@ -383,7 +383,7 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
     "agent": "claude-haiku-4-5-20251001",
 }
-# Il turno di una promessa "chiedi" (`schedulatore/turno.py::interpreta_promessa`)
+# Il turno di una promessa "chiedi" (`schedulatore/turno.py::interpreta_promise`)
 # ragiona come un turno di chat -- confronta un valore con un'istantanea,
 # giudica se una condizione si e' verificata -- e per giunta gira SENZA
 # nessuno davanti: e' il caso in cui la qualita' del modello conta di piu',

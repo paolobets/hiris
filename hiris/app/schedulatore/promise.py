@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import json
 
-SPECIE = ("fai", "chiedi")
-STATI_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
+VERB = ("fai", "chiedi")
+STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # L'insieme «in sospeso» -- la sua UNICA casa (review finale, rilievo ②).
 # Prima viveva scritto a mano in due punti di `archivio.py` (due `WHERE
 # stato IN (...)` SQL letterali) e una terza volta in
-# `static/config/promesse-route.js::STATI_SOSPESO`, senza niente che li
+# `static/config/promesse-route.js::STATES_SOSPESO`, senza niente che li
 # legasse: uno stato non conclusivo aggiunto qui un domani sarebbe sparito
 # in silenzio dalla sezione azionabile della pagina, senza che niente
 # fallisse -- precisamente il rischio che la spec §12 nomina per la fetta
@@ -31,7 +31,7 @@ STATI_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # `tests/js/promesse-route-vocabolario.test.mjs` lega questo insieme al
 # JavaScript: e' quello che rende la divergenza NON silenziosa
 # (`scripts/doppioni.py`, `_costanti_gia_legate`).
-STATI_SOSPESO = ("in_attesa", "in_corso")
+STATES_SOSPESO = ("in_attesa", "in_corso")
 
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
 # si dichiara `saltata`. Una sola, non configurabile per promessa (spec §7).
@@ -42,7 +42,7 @@ TOLLERANZA_S = 120
 # sospeso piu' di 50 promesse. Servono perche' un modello che va in circolo non
 # deve poter riempire il disco.
 ORIZZONTE_S = 30 * 86400
-TETTO_IN_SOSPESO = 50
+CEILING_IN_SOSPESO = 50
 # Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
 # per sempre su una scheda SD e' un guasto rimandato. E' una politica di
 # QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
@@ -60,90 +60,90 @@ _CHIAVI = (
 )
 
 
-def valida(dati: dict, *, adesso: float) -> str | None:
+def validate(data: dict, *, now: float) -> str | None:
     """Il motivo per cui questa promessa non puo' nascere, o `None`.
 
     Ritorna una frase da mostrare all'utente, non un codice: chi la riceve e'
     uno strumento che parla a un modello, che a sua volta la deve poter
     spiegare a una persona.
     """
-    specie = dati.get("specie")
-    if specie not in SPECIE:
+    verb = data.get("specie")
+    if verb not in VERB:
         return ("una promessa e' «fai» (un'azione) o «chiedi» (una domanda a cui "
-                f"rispondere piu' tardi): «{specie}» non e' ne' l'una ne' l'altra.")
+                f"rispondere piu' tardi): «{verb}» non e' ne' l'una ne' l'altra.")
 
-    frase = dati.get("frase")
-    if not isinstance(frase, str) or not frase.strip():
+    phrase = data.get("frase")
+    if not isinstance(phrase, str) or not phrase.strip():
         return ("serve la frase con cui l'hai chiesto, cosi' com'e': e' cio' che "
                 "rende la promessa leggibile anche fra sei mesi.")
 
-    quando = dati.get("quando_ts")
+    quando = data.get("quando_ts")
     if not isinstance(quando, (int, float)) or isinstance(quando, bool):
         return "serve un momento preciso in cui mantenerla."
-    if quando <= adesso:
+    if quando <= now:
         return ("quel momento e' gia' passato: intendevi domani? Dimmelo e la "
                 "rifaccio.")
-    if quando > adesso + ORIZZONTE_S:
+    if quando > now + ORIZZONTE_S:
         return ("non tengo promesse oltre 30 giorni: e' il tetto che HIRIS si "
                 "e' dato.")
 
-    if specie == "fai":
-        chiamata = dati.get("chiamata")
-        if not isinstance(chiamata, dict) or not chiamata.get("servizio"):
+    if verb == "fai":
+        call = data.get("chiamata")
+        if not isinstance(call, dict) or not call.get("servizio"):
             return "una promessa «fai» ha bisogno del servizio da chiamare."
     else:
-        domanda = dati.get("domanda")
+        domanda = data.get("domanda")
         if not isinstance(domanda, str) or not domanda.strip():
             return "una promessa «chiedi» ha bisogno della domanda a cui rispondere."
     return None
 
 
-def _carica(grezzo):
+def _load(reading):
     """Un campo JSON dell'archivio, o `None`. Non solleva mai.
 
     Una riga scritta male non deve rendere illeggibile TUTTA la promessa: la
     frase e lo stato restano veri anche se `chiamata` non si riapre.
     """
-    if not grezzo:
+    if not reading:
         return None
     try:
-        return json.loads(grezzo)
+        return json.loads(reading)
     except (ValueError, TypeError):
         return None
 
 
-def serializza(riga) -> dict:
+def serializza(row) -> dict:
     """L'unica forma di una promessa. Stesse chiavi, sempre."""
     fuori = {
-        "id": riga["id"],
-        "specie": riga["specie"],
-        "frase": riga["frase"],
-        "quando_ts": riga["quando_ts"],
-        "quando_detto": riga["quando_detto"],
-        "fuso": riga["fuso"],
-        "chiamata": _carica(riga["chiamata_json"]),
-        "domanda": riga["domanda"],
-        "istantanea": _carica(riga["istantanea_json"]),
-        "recapito": riga["recapito"],
-        "stato": riga["stato"],
-        "motivo": riga["motivo"],
-        "esecuzione_id": riga["esecuzione_id"],
-        "testo": riga["testo"],
-        "avvisare": None if riga["avvisare"] is None else bool(riga["avvisare"]),
-        "nata_ts": riga["nata_ts"],
-        "risvegliata_ts": riga["risvegliata_ts"],
+        "id": row["id"],
+        "specie": row["specie"],
+        "frase": row["frase"],
+        "quando_ts": row["quando_ts"],
+        "quando_detto": row["quando_detto"],
+        "fuso": row["fuso"],
+        "chiamata": _load(row["chiamata_json"]),
+        "domanda": row["domanda"],
+        "istantanea": _load(row["istantanea_json"]),
+        "recapito": row["recapito"],
+        "stato": row["stato"],
+        "motivo": row["motivo"],
+        "esecuzione_id": row["esecuzione_id"],
+        "testo": row["testo"],
+        "avvisare": None if row["avvisare"] is None else bool(row["avvisare"]),
+        "nata_ts": row["nata_ts"],
+        "risvegliata_ts": row["risvegliata_ts"],
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori
 
 
-def motivo_ritardo(ritardo_s: float) -> str:
+def reason_delay(delay_s: float) -> str:
     """Cio' che si e' MISURATO, non una causa inventata (spec §7).
 
     HIRIS non sa perche' era ferma. Sa di quanto e' in ritardo, e dice solo
     quello.
     """
-    minuti = int(ritardo_s // 60)
+    minuti = int(delay_s // 60)
     if minuti < 1:
         return "scaduta da meno di un minuto quando l'orologio l'ha vista -- non eseguita."
     return f"scaduta da {minuti} minuti quando l'orologio l'ha vista -- non eseguita."

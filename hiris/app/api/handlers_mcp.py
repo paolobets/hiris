@@ -34,9 +34,9 @@ turno sincrono -- con l'identita' di `X-HIRIS-Turno` ripropagata, dalla fetta
 **Dalla fetta «le promesse seguono la catena» (22/08/2026) e' consapevole del
 TURNO.** Quando il job che il ponte sta servendo e' un `kind="promessa"`, la
 `--mcp-config` porta `X-HIRIS-Promessa`, questa rotta lo VERIFICA contro una
-promessa `in_corso`, e per quel turno serve `strumenti_promessa()` dispacciando
-con `DispatcherPromessa`. Non incrina niente di quanto scritto qui sopra: sono
-gli STESSI due oggetti del ramo sincrono, e `strumenti_promessa()` filtra le
+promessa `in_corso`, e per quel turno serve `tools_promise()` dispacciando
+con `PromiseDispatcher`. Non incrina niente di quanto scritto qui sopra: sono
+gli STESSI due oggetti del ramo sincrono, e `tools_promise()` filtra le
 definizioni di `STRUMENTI_CONOSCENZA` invece di riscriverle. Senza questo, un
 turno di promessa sul ponte non avrebbe `concludi` -- cioe' nessun modo di
 finire -- e vedrebbe `esegui`, cioe' potrebbe toccare la casa senza nessuno
@@ -79,7 +79,7 @@ from collections import OrderedDict
 from aiohttp import web
 
 from ..casa.strumenti import STRUMENTI_CONOSCENZA
-from ..schedulatore.turno import DispatcherPromessa, strumenti_promessa
+from ..schedulatore.turno import PromiseDispatcher, tools_promise
 from ..version import read_version
 from .handlers_chat import costruisci_dispatcher_strumenti
 
@@ -240,7 +240,7 @@ def _promessa_del_turno(request: web.Request) -> str:
     archivio = request.app.get("promesse")
     if archivio is None:
         return ""
-    riga = archivio.leggi(ident)
+    riga = archivio.read(ident)
     return ident if riga and riga.get("stato") == "in_corso" else ""
 
 
@@ -253,7 +253,7 @@ def catalogo_mcp(definizioni: list[dict] | None = None) -> list[dict]:
     qui da sola invece di essere dimenticata.
 
     Il parametro serve al turno di una promessa, che ha un catalogo suo
-    (`strumenti_promessa()`: i sei lettori piu' `concludi`). E' la STESSA
+    (`tools_promise()`: i sei lettori piu' `concludi`). E' la STESSA
     trasformazione, non una seconda: due funzioni che riformattano cataloghi
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
@@ -444,7 +444,7 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # giorno in cui qualcuno lo aggiunge alla chat. `concludi` non esiste
         # nel dispatcher della chat: lo serve il wrapper, ed e' li' che il
         # turno finisce.
-        dispatcher = DispatcherPromessa(dispatcher)
+        dispatcher = PromiseDispatcher(dispatcher)
     risultato = await dispatcher.dispatch(nome, argomenti)
 
     if id_promessa and dispatcher.conclusione is not None:
@@ -459,7 +459,7 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # dal primo, sul gesto piu' visibile che il prodotto compia.
         orologio = request.app.get("orologio")
         promessa = (request.app.get("promesse") or None)
-        riga = promessa.leggi(id_promessa) if promessa is not None else None
+        riga = promessa.read(id_promessa) if promessa is not None else None
         if orologio is None or riga is None:
             # Silenzio dichiarato: il modello ha concluso e noi non abbiamo di
             # che chiudere. Non si finge che sia andata: lo si dice a lui, che
@@ -472,7 +472,7 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
                                     "potuto chiudere la promessa.")}
         else:
             await orologio.concludi_chiedi(
-                riga, dispatcher.conclusione, adesso=time.time())
+                riga, dispatcher.conclusione, now=time.time())
 
     contenuto: dict = {
         "content": [{"type": "text", "text": json.dumps(risultato, ensure_ascii=False)}],
@@ -592,11 +592,11 @@ async def handle_mcp(request: web.Request) -> web.Response:
             # Il turno di una promessa vede il catalogo della promessa:
             # i sei lettori piu' `concludi`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
-            # di `STRUMENTI_CONOSCENZA` (strumenti_promessa le filtra, non
+            # di `STRUMENTI_CONOSCENZA` (tools_promise le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
             # entrambe le strade.
             return _risposta(id_richiesta, {"tools": catalogo_mcp(
-                strumenti_promessa() if _promessa else None)})
+                tools_promise() if _promessa else None)})
         if metodo == "tools/call":
             return await _chiama_strumento(request, corpo.get("params") or {}, id_richiesta)
         return _errore(

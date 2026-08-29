@@ -213,7 +213,7 @@ def test_resolve_model_auto_unknown_type_defaults_to_sonnet():
 
 def test_resolve_model_auto_promessa_e_agganciato_a_chat():
     """Rilievo minore della review finale dello schedulatore: il turno di una
-    promessa "chiedi" (`schedulatore/turno.py::interpreta_promessa`) usa
+    promessa "chiedi" (`schedulatore/turno.py::interpreta_promise`) usa
     `agent_type="promessa"`, che prima non era in `AUTO_MODEL_MAP` -- il
     ripiego su `MODEL` coincideva col valore di "chat" solo per coincidenza,
     non perche' le due costanti fossero legate. Qui si prova il legame:

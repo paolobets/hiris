@@ -52,7 +52,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
         archivio = request.app.get("promesse")
-        riga = archivio.leggi(ident) if (archivio is not None and ident) else None
+        riga = archivio.read(ident) if (archivio is not None and ident) else None
         if riga is None:
             logger.warning(
                 "consegna di un turno di promessa senza promessa (job_id=%s, "
@@ -65,8 +65,8 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             outcome = "promessa_gia_conclusa"
         else:
             archivio.concludi(
-                ident, stato="fallita", adesso=_now(request),
-                motivo=_senza_conclusione(decision.get("reply")))
+                ident, state="fallita", now=_now(request),
+                reason=_senza_conclusione(decision.get("reply")))
             outcome = "promessa_senza_conclusione"
         return web.json_response({"ok": True, "outcome": outcome})
 

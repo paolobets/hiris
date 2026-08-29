@@ -17,13 +17,13 @@ import secrets
 import threading
 
 from ..storage import connect, init_schema
-from .promessa import (
+from .promise import (
+    CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
-    STATI_CONCLUSI,
-    STATI_SOSPESO,
-    TETTO_IN_SOSPESO,
+    STATES_CONCLUSI,
+    STATES_SOSPESO,
     serializza,
-    valida,
+    validate,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,18 +51,18 @@ CREATE TABLE IF NOT EXISTS promesse (
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
 
-_CONCLUSI = ",".join(f"'{s}'" for s in STATI_CONCLUSI)
+_CONCLUSI = ",".join(f"'{s}'" for s in STATES_CONCLUSI)
 # Stessa forma di `_CONCLUSI` qui sopra, per lo stesso motivo: composta UNA
 # volta dal vocabolario di `promessa.py`, mai riscritta a mano nelle due
 # query sotto (review finale, rilievo ②).
-_SOSPESI = ",".join(f"'{s}'" for s in STATI_SOSPESO)
+_SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 
 
-def _json(valore) -> str | None:
-    return None if valore is None else json.dumps(valore)
+def _json(value) -> str | None:
+    return None if value is None else json.dumps(value)
 
 
-class ArchivioPromesse:
+class AgendaStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
@@ -74,18 +74,18 @@ class ArchivioPromesse:
 
     # -- scrivere ------------------------------------------------------
 
-    def crea(self, dati: dict, *, adesso: float) -> dict:
-        motivo = valida(dati, adesso=adesso)
-        if motivo is not None:
-            return {"errore": motivo}
+    def create(self, data: dict, *, now: float) -> dict:
+        reason = validate(data, now=now)
+        if reason is not None:
+            return {"errore": reason}
         with self._lock:
-            self._pota(adesso)
+            self._prune(now)
             in_sospeso = self._conn.execute(
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
-            if in_sospeso >= TETTO_IN_SOSPESO:
+            if in_sospeso >= CEILING_IN_SOSPESO:
                 return {"errore": (
-                    f"ho gia' {TETTO_IN_SOSPESO} promesse in sospeso, che e' il tetto "
+                    f"ho gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' il tetto "
                     "che HIRIS si e' dato: disdicine una prima di "
                     "farne un'altra."
                 )}
@@ -94,15 +94,15 @@ class ArchivioPromesse:
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
                 "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?)",
-                (ident, dati["specie"], dati["frase"].strip(), float(dati["quando_ts"]),
-                 dati.get("quando_detto"), dati.get("fuso"),
-                 _json(dati.get("chiamata")), dati.get("domanda"),
-                 _json(dati.get("istantanea")), dati.get("recapito"),
-                 adesso))
+                (ident, data["specie"], data["frase"].strip(), float(data["quando_ts"]),
+                 data.get("quando_detto"), data.get("fuso"),
+                 _json(data.get("chiamata")), data.get("domanda"),
+                 _json(data.get("istantanea")), data.get("recapito"),
+                 now))
             self._conn.commit()
-        return {"promessa": self.leggi(ident)}
+        return {"promessa": self.read(ident)}
 
-    def prendi(self, promessa_id: str, *, adesso: float) -> bool:
+    def prendi(self, promise_id: str, *, now: float) -> bool:
         """`in_attesa` -> `in_corso`, atomica. `False` se qualcuno e' arrivato prima.
 
         E' QUI che vive «mai due volte»: non nel chiamante, che potrebbe
@@ -112,24 +112,24 @@ class ArchivioPromesse:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato='in_corso', risvegliata_ts=? "
-                "WHERE id=? AND stato='in_attesa'", (adesso, promessa_id))
+                "WHERE id=? AND stato='in_attesa'", (now, promise_id))
             self._conn.commit()
             return cur.rowcount == 1
 
-    def concludi(self, promessa_id: str, *, stato: str, adesso: float,
-                 motivo: str | None = None, esecuzione_id: str | None = None,
-                 testo: str | None = None, avvisare: bool | None = None) -> None:
-        if stato not in STATI_CONCLUSI:
-            raise ValueError(f"«{stato}» non e' uno stato conclusivo")
+    def concludi(self, promise_id: str, *, state: str, now: float,
+                 reason: str | None = None, execution_id: str | None = None,
+                 text: str | None = None, avvisare: bool | None = None) -> None:
+        if state not in STATES_CONCLUSI:
+            raise ValueError(f"«{state}» non e' uno stato conclusivo")
         with self._lock:
             self._conn.execute(
                 "UPDATE promesse SET stato=?, motivo=?, esecuzione_id=?, testo=?, "
                 "avvisare=?, risvegliata_ts=COALESCE(risvegliata_ts, ?) WHERE id=?",
-                (stato, motivo, esecuzione_id, testo,
-                 None if avvisare is None else int(avvisare), adesso, promessa_id))
+                (state, reason, execution_id, text,
+                 None if avvisare is None else int(avvisare), now, promise_id))
             self._conn.commit()
 
-    def disdici(self, promessa_id: str, *, adesso: float) -> dict:
+    def cancel(self, promise_id: str, *, now: float) -> dict:
         """`in_attesa` -> `disdetta`, atomica sullo stesso modello di `prendi`.
 
         Non si legge lo stato per DECIDERE: si scrive con una
@@ -144,19 +144,19 @@ class ArchivioPromesse:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato='disdetta', "
                 "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
-                "WHERE id=? AND stato='in_attesa'", (adesso, promessa_id))
+                "WHERE id=? AND stato='in_attesa'", (now, promise_id))
             self._conn.commit()
             riuscita = cur.rowcount == 1
         if riuscita:
-            return {"promessa": self.leggi(promessa_id)}
-        riga = self.leggi(promessa_id)
-        if riga is None:
+            return {"promessa": self.read(promise_id)}
+        row = self.read(promise_id)
+        if row is None:
             return {"errore": "non ho nessuna promessa con quell'identificatore."}
         return {
-            "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(riga["stato"])
+            "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(row["stato"])
         }
 
-    def risana(self, *, adesso: float) -> int:
+    def risana(self, *, now: float) -> int:
         """Le prese a meta' al riavvio: `fallita`, col motivo, e non ripartono.
 
         Una promessa `in_corso` all'avvio significa una cosa sola: l'add-on si
@@ -181,10 +181,10 @@ class ArchivioPromesse:
         diverse: una sola li appiattisce, e manda a cercare un problema che
         non c'e'.
         """
-        _MOTIVO_FAI = (
+        _REASON_FAI = (
             "l'add-on si e' fermato mentre la manteneva: non l'ho ripetuta, "
             "perche' non so se fosse gia' partita.")
-        _MOTIVO_CHIEDI = (
+        _REASON_CHIEDI = (
             "l'add-on si e' fermato mentre guardavo: non ho toccato niente in "
             "casa, ma non so se la notifica fosse gia' partita. Non l'ho "
             "ripetuta: l'ora che mi avevi dato e' passata, e una risposta "
@@ -194,45 +194,45 @@ class ArchivioPromesse:
                 "UPDATE promesse SET stato='fallita', "
                 "motivo=CASE WHEN specie='fai' THEN ? ELSE ? END "
                 "WHERE stato='in_corso'",
-                (_MOTIVO_FAI, _MOTIVO_CHIEDI))
+                (_REASON_FAI, _REASON_CHIEDI))
             self._conn.commit()
-            quante = cur.rowcount
-        if quante:
+            count = cur.rowcount
+        if count:
             logger.warning("schedulatore: %d promesse erano in corso all'avvio, "
-                           "dichiarate fallite (non ripetute)", quante)
-        return quante
+                           "dichiarate fallite (non ripetute)", count)
+        return count
 
     # -- leggere -------------------------------------------------------
 
-    def leggi(self, promessa_id: str) -> dict | None:
+    def read(self, promise_id: str) -> dict | None:
         with self._lock:
-            riga = self._conn.execute(
-                "SELECT * FROM promesse WHERE id=?", (promessa_id,)).fetchone()
-        return None if riga is None else serializza(riga)
+            row = self._conn.execute(
+                "SELECT * FROM promesse WHERE id=?", (promise_id,)).fetchone()
+        return None if row is None else serializza(row)
 
-    def elenca(self, *, solo_in_sospeso: bool = False, limite: int = 50) -> list[dict]:
+    def list(self, *, solo_in_sospeso: bool = False, limit: int = 50) -> list[dict]:
         with self._lock:
             if solo_in_sospeso:
                 righe = self._conn.execute(
                     f"SELECT * FROM promesse WHERE stato IN ({_SOSPESI}) "
                     "ORDER BY quando_ts ASC LIMIT ?",
-                    (int(limite),)).fetchall()
+                    (int(limit),)).fetchall()
             else:
                 righe = self._conn.execute(
                     "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",
-                    (int(limite),)).fetchall()
+                    (int(limit),)).fetchall()
         return [serializza(r) for r in righe]
 
-    def scadute(self, adesso: float) -> list[dict]:
+    def scadute(self, now: float) -> list[dict]:
         with self._lock:
             righe = self._conn.execute(
                 "SELECT * FROM promesse WHERE stato='in_attesa' AND quando_ts<=? "
-                "ORDER BY quando_ts ASC", (adesso,)).fetchall()
+                "ORDER BY quando_ts ASC", (now,)).fetchall()
         return [serializza(r) for r in righe]
 
     # -- potare --------------------------------------------------------
 
-    def _pota(self, adesso: float) -> None:
+    def _prune(self, now: float) -> None:
         """Alla scrittura, non con un lavoro periodico (spec §8.1).
 
         Un lavoro in piu' sarebbe un secondo posto che sa QUANDO, cioe'
@@ -256,5 +256,5 @@ class ArchivioPromesse:
         """
         self._conn.execute(
             f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) AND risvegliata_ts < ?",
-            (adesso - CONSERVAZIONE_S,),
+            (now - CONSERVAZIONE_S,),
         )

@@ -11,7 +11,7 @@ import pytest
 
 from hiris.app.api import handlers_chat
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
-from hiris.app.schedulatore.turno import SOLA_LETTURA, strumenti_promessa
+from hiris.app.schedulatore.turno import SOLA_LETTURA, tools_promise
 
 
 def test_il_catalogo_porta_tredici_strumenti():
@@ -63,7 +63,7 @@ def test_i_due_lettori_entrano_nel_turno_delle_promesse():
     """`andamento` e `accaduto` LEGGONO e basta: escluderli sarebbe la scelta
     opposta a quella presa per `costruisci`, e per la ragione opposta."""
     assert "andamento" in SOLA_LETTURA and "accaduto" in SOLA_LETTURA
-    nomi = {d["name"] for d in strumenti_promessa()}
+    nomi = {d["name"] for d in tools_promise()}
     assert {"andamento", "accaduto"} <= nomi
 
 

@@ -24,7 +24,7 @@ import pytest_asyncio
 
 from hiris.app.azione.cronaca import Cronaca
 from hiris.app.chat_store import close_all_stores
-from hiris.app.schedulatore.archivio import ArchivioPromesse
+from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.server import create_app
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),
@@ -44,7 +44,7 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["promesse"] = ArchivioPromesse(os.path.join(str(tmp_path), "promesse.db"))
+    app["promesse"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     # La cronaca (`GET /api/esecuzioni/{id}`, rilievo ① della review finale):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
     # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
@@ -61,8 +61,8 @@ async def client(aiohttp_client, tmp_path):
 @pytest.mark.asyncio
 async def test_get_promesse_torna_le_in_sospeso(client):
     archivio = client.app["promesse"]
-    archivio.crea({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
-                   "domanda": "e' aumentata?"}, adesso=1.0)
+    archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
+                   "domanda": "e' aumentata?"}, now=1.0)
 
     risposta = await client.get("/api/promesse")
     assert risposta.status == 200
@@ -73,10 +73,10 @@ async def test_get_promesse_torna_le_in_sospeso(client):
 @pytest.mark.asyncio
 async def test_get_promesse_tutte_include_le_concluse(client):
     archivio = client.app["promesse"]
-    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+    ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          adesso=1.0)["promessa"]["id"]
-    archivio.concludi(ident, stato="mantenuta", adesso=2.0)
+                          now=1.0)["promessa"]["id"]
+    archivio.concludi(ident, state="mantenuta", now=2.0)
 
     corpo = await (await client.get("/api/promesse?tutte=1")).json()
     assert len(corpo["promesse"]) == 1
@@ -87,9 +87,9 @@ async def test_get_promesse_tutte_include_le_concluse(client):
 @pytest.mark.asyncio
 async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     archivio = client.app["promesse"]
-    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+    ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          adesso=1.0)["promessa"]["id"]
+                          now=1.0)["promessa"]["id"]
 
     primo = await client.delete(f"/api/promesse/{ident}")
     assert primo.status == 200
@@ -98,7 +98,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     corpo = await primo.json()
     assert corpo["promessa"]["id"] == ident
     assert corpo["promessa"]["stato"] == "disdetta"
-    assert archivio.leggi(ident)["stato"] == "disdetta"
+    assert archivio.read(ident)["stato"] == "disdetta"
 
     secondo = await client.delete(f"/api/promesse/{ident}")
     assert secondo.status == 409
@@ -117,27 +117,27 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
     l'archivio -- la promessa resta `in_attesa`, disdicibile per davvero piu'
     tardi, non "disdetta a meta'"."""
     archivio = client.app["promesse"]
-    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+    ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          adesso=1.0)["promessa"]["id"]
+                          now=1.0)["promessa"]["id"]
 
     risposta = await client.delete(f"/api/promesse/{ident}")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
-    assert archivio.leggi(ident)["stato"] == "in_attesa"
+    assert archivio.read(ident)["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio
 async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, csrf_stretto):
     archivio = client.app["promesse"]
-    ident = archivio.crea({"specie": "chiedi", "frase": "x",
+    ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          adesso=1.0)["promessa"]["id"]
+                          now=1.0)["promessa"]["id"]
 
     risposta = await client.delete(f"/api/promesse/{ident}",
                                    headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert archivio.leggi(ident)["stato"] == "disdetta"
+    assert archivio.read(ident)["stato"] == "disdetta"
 
 
 @pytest.mark.asyncio
@@ -146,8 +146,8 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     from hiris.app.casa.strumenti import DispatcherStrumenti
 
     archivio = client.app["promesse"]
-    archivio.crea({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
-                   "domanda": "?"}, adesso=1.0)
+    archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
+                   "domanda": "?"}, now=1.0)
 
     da_http = (await (await client.get("/api/promesse")).json())["promesse"][0]
     d = DispatcherStrumenti(None, None, promesse=archivio)
