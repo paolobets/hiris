@@ -5,7 +5,7 @@ usando cinque modelli, meno di duemila l'anno. La storia si tiene per sempre
 senza una politica di ritenzione da governare e senza mai cancellare dati
 dell'utente a scadenza.
 
-Non legge l'orologio: lo riceve (`adesso=`), come l'archivio delle promesse e
+Non legge l'orologio: lo riceve (`now=`), come l'archivio delle promesse e
 come `casa/nucleo.componi`. E non legge il fuso alla costruzione ma a ogni
 scrittura: la casa puo' cambiarlo (`core_config_updated`), e un fuso cotto qui
 dentro sarebbe quello di quando l'add-on e' partito.
@@ -71,7 +71,7 @@ class UsageStore:
         with self._lock:
             self._conn.close()
 
-    def timezone(self) -> str:
+    def _timezone(self) -> str:
         """Il fuso della casa, o «» se non si puo' sapere.
 
         Non solleva mai: un consumo non si perde perche' l'anagrafe non e'
@@ -91,7 +91,7 @@ class UsageStore:
 
     def log(self, provider: str, model: str, *, richieste: int = 1,
                  token_in: int = 0, token_out: int = 0,
-                 cache_read: int = 0, cache_scrittura: int = 0,
+                 cache_read: int = 0, cache_write: int = 0,
                  cost_usd: float | None = None, cost_state: str,
                  errori_rate_limit: int = 0, now: float) -> None:
         """Una chiamata entra nel secchiello del suo giorno.
@@ -100,7 +100,7 @@ class UsageStore:
         sulla riga del modello che l'ha preso, senza contarla come una
         richiesta servita.
         """
-        day = local_day(now, self.timezone())
+        day = local_day(now, self._timezone())
         with self._lock:
             row = self._conn.execute(
                 "SELECT costo_usd, costo_stato FROM consumo_giorno "
@@ -114,7 +114,7 @@ class UsageStore:
                     "errori_rate_limit, primo_ts, ultimo_ts) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (day, provider, model, richieste, token_in, token_out,
-                     cache_read, cache_scrittura, cost_usd, cost_state,
+                     cache_read, cache_write, cost_usd, cost_state,
                      errori_rate_limit, now, now))
             else:
                 state = piu_debole(row["costo_stato"], cost_state)
@@ -138,7 +138,7 @@ class UsageStore:
                     "primo_ts=MIN(primo_ts, ?), ultimo_ts=MAX(ultimo_ts, ?) "
                     "WHERE giorno=? AND provider=? AND modello=?",
                     (richieste, token_in, token_out, cache_read,
-                     cache_scrittura, sum(noti) if noti else None, state,
+                     cache_write, sum(noti) if noti else None, state,
                      errori_rate_limit, now, now,
                      day, provider, model))
             self._conn.commit()
@@ -264,7 +264,7 @@ class UsageStore:
         POSIZIONE dell'ancora, espressa nelle uniche coordinate che l'archivio
         possiede. Nessun altro posto la sa.
         """
-        day = local_day(now, self.timezone())
+        day = local_day(now, self._timezone())
         colonne = ", ".join(CAMPI)
         with self._lock:
             self._conn.execute("DELETE FROM ancora_saldo")

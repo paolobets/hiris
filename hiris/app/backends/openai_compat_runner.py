@@ -334,7 +334,7 @@ class OpenAICompatRunner:
         # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
         # sommava tutto insieme e non sapeva dire di quale modello parlasse --
         # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `consumi/archivio.py` attraverso `registra_consumo`, e i vecchi
+        # `consumi/store.py` attraverso `registra_consumo`, e i vecchi
         # `usage_*.json` ci entrano una volta sola all'avvio come riga
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.
@@ -390,7 +390,7 @@ class OpenAICompatRunner:
         self._registra_consumo(
             self.provider_nome, model, token_in=inp, token_out=out,
             cache_read=getattr(usage, "cached_tokens", 0) or 0,
-            cache_scrittura=getattr(usage, "cache_write_tokens", 0) or 0,
+            cache_write=getattr(usage, "cache_write_tokens", 0) or 0,
             cost_usd=costo, cost_state=stato, now=time.time())
 
     def _scrivi_rifiuto(self, modello: str) -> None:

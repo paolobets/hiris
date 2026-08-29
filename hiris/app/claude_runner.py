@@ -685,7 +685,7 @@ class ClaudeRunner:
         # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
         # sommava tutto insieme e non sapeva dire di quale modello parlasse --
         # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `consumi/archivio.py` attraverso `registra_consumo`, e i vecchi
+        # `consumi/store.py` attraverso `registra_consumo`, e i vecchi
         # `usage_*.json` ci entrano una volta sola all'avvio come riga
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.
@@ -737,7 +737,7 @@ class ClaudeRunner:
             "claude", modello, cost_dichiarato=None, cost_da_listino=costo)
         self._registra_consumo(
             "claude", modello, token_in=inp, token_out=out,
-            cache_read=cache_lettura, cache_scrittura=cache_scrittura,
+            cache_read=cache_lettura, cache_write=cache_scrittura,
             cost_usd=costo_usd, cost_state=stato, now=time.time())
 
     def _scrivi_rifiuto(self, modello: str) -> None:

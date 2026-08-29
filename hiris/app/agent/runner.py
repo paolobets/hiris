@@ -1151,7 +1151,7 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
         token_in=int(uso.get("input_tokens") or 0),
         token_out=int(uso.get("output_tokens") or 0),
         cache_read=int(uso.get("cache_read_input_tokens") or 0),
-        cache_scrittura=int(uso.get("cache_creation_input_tokens") or 0),
+        cache_write=int(uso.get("cache_creation_input_tokens") or 0),
         cost_usd=None, cost_state="compreso", now=time.time())
 
 

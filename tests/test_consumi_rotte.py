@@ -42,8 +42,8 @@ class _ArchivioCasaFinto:
     progetto chiama «chi lo riempie?». La strada vera passa da
     `archivio_casa`, come ogni altra lettura del fuso nel prodotto."""
 
-    def __init__(self, timezone):
-        self._fuso = timezone
+    def __init__(self, fuso):
+        self._fuso = fuso
 
     def sistema_di_riferimento(self):
         return {"fuso": self._fuso}
@@ -61,7 +61,7 @@ def _chiama(handler, app, query=None):
 def app(tmp_path):
     archivio = UsageStore(str(tmp_path / "consumi.db"), read_timezone=lambda: ROMA)
     archivio.log("claude", "claude-sonnet-4-6", token_in=100, token_out=10,
-                      cache_read=40, cache_scrittura=20, cost_usd=1.0,
+                      cache_read=40, cache_write=20, cost_usd=1.0,
                       cost_state="misurato", now=T21)
     archivio.log("openrouter", "un/modello", token_in=50, token_out=5,
                       cost_usd=None, cost_state="non_noto", now=T22)

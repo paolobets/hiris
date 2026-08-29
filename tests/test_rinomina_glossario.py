@@ -91,8 +91,20 @@ def test_una_costante_TUTTA_MAIUSCOLA_resta_TUTTA_MAIUSCOLA(g):
     non una classe: il solo controllo sulla prima lettera maiuscola la
     confonderebbe con `Archivio` e produrrebbe `Label`, non `LABEL` --
     rompendo la convenzione delle costanti in silenzio. Trovato puntando lo
-    strumento su `consumi/vocabolario.py` (Task 4)."""
+    strumento su `consumi/vocabolario.py` (Task 4, poi rinominato
+    `consumi/vocabulary.py` nello stesso task)."""
     assert rinomina.classifica("ETICHETTA", g, "consumi") == "LABEL"
+
+
+def test_un_prefisso_privato_si_conserva(g):
+    """`_fuso` e' un aiutante privato per convenzione Python (il trattino
+    basso iniziale): sparire lo trasforma in interfaccia PUBBLICA senza che
+    nessuno lo decida. Stessa famiglia del difetto sopra (la forma
+    dell'originale va conservata, non solo le maiuscole) -- trovato in
+    produzione: `hiris/app/consumi/store.py`, `_fuso` era diventato
+    `timezone` invece di `_timezone`."""
+    assert rinomina.classifica("_archivio", g, "memoria") == "_store"
+    assert rinomina.classifica("_fuso", g, "consumi") == "_timezone"
 
 
 def test_un_composto_si_classifica_come_PROPOSTA_non_come_nome(g):

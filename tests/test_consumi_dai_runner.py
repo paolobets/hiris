@@ -65,7 +65,7 @@ async def test_claude_scrive_il_modello_i_token_e_la_cache(monkeypatch):
     assert s["provider"] == "claude"
     assert s["model"] == "claude-sonnet-4-6"
     assert s["token_in"] == 100, "i token d'ingresso PURI, senza la cache dentro"
-    assert s["cache_scrittura"] == 30 and s["cache_read"] == 40
+    assert s["cache_write"] == 30 and s["cache_read"] == 40
     assert s["token_out"] == 20
     assert s["cost_state"] == "misurato"
     assert s["cost_usd"] > 0

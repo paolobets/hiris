@@ -66,6 +66,32 @@ def test_l_omonimo_segue_il_sottosistema(g):
     assert rinomina.riscrivi("ancora = 1\n", g, "consumi")[0] == "anchor = 1\n"
 
 
+def test_una_collisione_non_si_applica_e_si_segnala():
+    """Se due nomi ORIGINALI diversi finirebbero sullo stesso inglese nello
+    stesso file, nessuno dei due si applica: fonderli sarebbe peggio di non
+    rinominare -- un'identita' scambiata per un'altra senza che nessuno lo
+    sappia. Come un composto, si segnala e si chiede, non si indovina.
+
+    Sul glossario vero, DOPO la correzione del trattino basso qui sopra,
+    `_fuso`/`fuso` non collidono piu' (diventano `_timezone`/`timezone`,
+    distinti -- verificato a mano prima di scrivere questo test). La
+    collisione qui e' quindi fabbricata apposta -- due parole diverse fatte
+    puntare allo stesso inglese in un glossario finto -- per provare la
+    guardia in isolamento da una coppia del glossario vero che potrebbe
+    smettere di collidere (o iniziare a farlo) per motivi indipendenti da
+    questa guardia."""
+    gf = rinomina.Glossario(mappa={"alfa": "stesso", "beta": "stesso", "gamma": "diverso"})
+    dentro = "alfa = 1\nbeta = 2\ngamma = 3\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+
+    assert fuori == "alfa = 1\nbeta = 2\ndiverso = 3\n", (
+        "gamma non collide e si applica; alfa/beta collidono e restano intatte")
+    collisioni = [p for p in proposte if isinstance(p, rinomina.Collisione)]
+    assert len(collisioni) == 1
+    assert collisioni[0].nomi == ["alfa", "beta"]
+    assert collisioni[0].suggerito == "stesso"
+
+
 def test_un_file_che_non_si_puo_leggere_non_ferma_il_giro(g, tmp_path):
     """Un file rotto e' un fatto da riportare, non un motivo per lasciare il
     sottosistema a meta'."""

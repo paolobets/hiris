@@ -143,6 +143,19 @@ class Proposta:
     suggerito: str
 
 
+@dataclass
+class Collisione:
+    """Due nomi ORIGINALI diversi che, nello stesso file, finirebbero sullo
+    stesso inglese: `_fuso` e `fuso` diventano entrambi `timezone` senza il
+    trattino basso a distinguerli. Fonderli sarebbe peggio di non rinominare
+    -- un aiutante privato scambiato per l'interfaccia pubblica di
+    qualcun altro, senza che nessuno lo sappia. Come un composto, si segnala
+    e non si applica: lo strumento non indovina, chiede.
+    """
+    nomi: list[str]
+    suggerito: str
+
+
 def spezza(nome: str) -> list[str]:
     """I pezzi di un identificatore, senza i trattini bassi di convenzione."""
     return [p for p in re.split(r"_+|(?<=[a-z0-9])(?=[A-Z])", nome) if p]
@@ -167,19 +180,30 @@ def classifica(nome: str, g: Glossario, ambito: str):
         en = tradotti[0]
         if en is None:
             return None
+        # Il trattino basso iniziale e' la convenzione Python per «privato»,
+        # non una parola da tradurre: si toglie prima di guardare le
+        # maiuscole e si rimette identico alla fine. Senza, `_fuso` (un
+        # aiutante privato) diventava `timezone` (interfaccia pubblica) senza
+        # che nessuno lo decidesse -- misurato su `consumi/store.py` (Task 4,
+        # `_fuso` -> `timezone` invece di `_timezone`).
+        senza_prefisso = nome.lstrip("_")
+        prefisso = nome[:len(nome) - len(senza_prefisso)]
         # La forma del nome originale si conserva: `Archivio` -> `Store`,
         # `archivio` -> `store`. Rinominare una classe in minuscolo romperebbe
         # la convenzione di Python piu' silenziosamente di quanto sembri.
         #
-        # Ma `nome[:1].isupper()` da solo confonde una classe (`Archivio`,
-        # PascalCase) con una costante di modulo (`ETICHETTA`, TUTTA
-        # maiuscola): entrambe iniziano con una lettera maiuscola. Misurato
-        # puntando lo strumento su `consumi/vocabolario.py` (Task 4): senza
-        # `nome.isupper()`, `ETICHETTA` diventava `Label` invece di `LABEL`,
-        # rompendo la convenzione delle costanti in silenzio.
-        if nome[:1].isupper():
-            return en.upper() if nome.isupper() else en.capitalize()
-        return en
+        # Ma `senza_prefisso[:1].isupper()` da solo confonde una classe
+        # (`Archivio`, PascalCase) con una costante di modulo (`ETICHETTA`,
+        # TUTTA maiuscola): entrambe iniziano con una lettera maiuscola.
+        # Misurato puntando lo strumento su `consumi/vocabolario.py` (Task 4):
+        # senza `senza_prefisso.isupper()`, `ETICHETTA` diventava `Label`
+        # invece di `LABEL`, rompendo la convenzione delle costanti in
+        # silenzio.
+        if senza_prefisso[:1].isupper():
+            parola = en.upper() if senza_prefisso.isupper() else en.capitalize()
+        else:
+            parola = en
+        return prefisso + parola
     # Un composto in cui almeno un pezzo non e' deciso resta una proposta lo
     # stesso: il pezzo ignoto va guardato, non saltato. Una forma raggiunta
     # per alias (`costruzioni` -> lemma `costruzione` -> `construction`)
@@ -197,8 +221,9 @@ import tokenize
 from _comune import file_py, rel
 
 
-def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta]]:
-    """Il sorgente coi soli token NAME rinominati, piu' i composti da decidere.
+def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta | Collisione]]:
+    """Il sorgente coi soli token NAME rinominati, piu' i composti (e le
+    collisioni) da decidere.
 
     Si sostituisce sul TESTO alle posizioni dei token, da destra a sinistra:
     `tokenize.untokenize` rigenererebbe il file e ne perderebbe la
@@ -214,7 +239,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
         riga, col = pos
         return inizi[riga - 1] + col
 
-    cambi, proposte = [], []
+    grezzi, proposte = [], []
     visti = set()
     for t in tokenize.generate_tokens(io.StringIO(sorgente).readline):
         if t.type != tokenize.NAME:
@@ -227,7 +252,25 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
                 visti.add(esito.nome)
                 proposte.append(esito)
             continue
-        cambi.append((offset(t.start), offset(t.end), esito))
+        grezzi.append((offset(t.start), offset(t.end), t.string, esito))
+
+    # Guardia sulle collisioni: se due nomi ORIGINALI diversi finirebbero
+    # sullo stesso inglese in questo file, nessuno dei due si applica.
+    # Fondere due identita' diverse senza che nessuno lo sappia e' peggio di
+    # non rinominare -- lo stesso principio dei composti, applicato a un
+    # difetto che un composto non copre (qui ogni singolo nome e' gia'
+    # deciso; e' l'INCONTRO fra due nomi decisi che va guardato).
+    nomi_per_nuovo: dict[str, set[str]] = {}
+    for _, _, nome_originale, nuovo in grezzi:
+        nomi_per_nuovo.setdefault(nuovo, set()).add(nome_originale)
+    collisi = {nuovo: nomi for nuovo, nomi in nomi_per_nuovo.items() if len(nomi) > 1}
+    for nuovo, nomi in collisi.items():
+        chiave = (nuovo, tuple(sorted(nomi)))
+        if chiave not in visti:
+            visti.add(chiave)
+            proposte.append(Collisione(nomi=sorted(nomi), suggerito=nuovo))
+
+    cambi = [(i, j, nuovo) for i, j, _, nuovo in grezzi if nuovo not in collisi]
 
     fuori = sorgente
     for i, j, nuovo in sorted(cambi, reverse=True):
@@ -261,7 +304,7 @@ def _scrivi_grezzo(f: Path, testo: str) -> None:
         fh.write(testo)
 
 
-def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
+def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta | Collisione]:
     """Tutto il sottosistema, oppure un file solo. Un file illeggibile si
     riporta e si va avanti.
 
@@ -272,7 +315,7 @@ def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta]:
     esatto di un successo.
     """
     file = [base] if base.is_file() else file_py(base)
-    tutte: list[Proposta] = []
+    tutte: list[Proposta | Collisione] = []
     for f in file:
         sorgente = _leggi_grezzo(f)
         try:
@@ -321,9 +364,17 @@ def main(argv=None) -> int:
         return 1
 
     proposte = applica(base, a.ambito, scrivi=not a.dry_run)
-    print(f"{a.percorso} (ambito «{a.ambito}»): {len(proposte)} composti da decidere")
-    for pr in sorted(proposte, key=lambda x: x.nome):
+    composti = [p for p in proposte if isinstance(p, Proposta)]
+    collisioni = [p for p in proposte if isinstance(p, Collisione)]
+    msg = f"{a.percorso} (ambito «{a.ambito}»): {len(composti)} composti da decidere"
+    if collisioni:
+        msg += f", {len(collisioni)} collisioni"
+    print(msg)
+    for pr in sorted(composti, key=lambda x: x.nome):
         print(f"  {pr.nome:38} pezzi={'+'.join(pr.pezzi):30} suggerito={pr.suggerito}")
+    for c in sorted(collisioni, key=lambda x: x.suggerito):
+        print(f"  COLLISIONE {'/'.join(c.nomi):30} -> suggerito={c.suggerito} "
+              f"(nessuno dei due si applica)")
     return 0
 
 

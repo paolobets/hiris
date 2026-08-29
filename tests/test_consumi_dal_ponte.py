@@ -39,7 +39,7 @@ def test_il_ponte_registra_i_token_col_costo_COMPRESO(registro):
     provider, _modello, kw = registro[0]
     assert provider == "ponte"
     assert kw["token_in"] == 2100 and kw["token_out"] == 94
-    assert kw["cache_read"] == 1400 and kw["cache_scrittura"] == 210
+    assert kw["cache_read"] == 1400 and kw["cache_write"] == 210
     assert kw["cost_state"] == "compreso"
     assert kw["cost_usd"] is None, (
         "l'abbonamento non espone il prezzo del turno: 0,00 direbbe «gratis»")
