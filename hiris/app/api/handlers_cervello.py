@@ -1,8 +1,8 @@
 """Le due rotte della pagina dell'osservatore (fetta «l'osservatore», Task 7:
 docs/design/2026-08-26-l-osservatore.md §7).
 
-Non serializzano niente per conto proprio. `Osservatore.osservate()` e
-`ArchivioOsservazioni.oggetti()` gia' tornano la forma che la pagina mostra --
+Non serializzano niente per conto proprio. `Watcher.watching()` e
+`ObservationsStore.facts()` gia' tornano la forma che la pagina mostra --
 una seconda forma costruita qui la farebbe divergere il primo giorno in cui
 qualcuno aggiunge un campo da una parte sola (fondamenta 3).
 
@@ -24,7 +24,7 @@ from aiohttp import web
 async def handle_osservate(request: web.Request) -> web.Response:
     """Cosa sta guardando l'osservatore, e da dove viene ogni voce.
 
-    `Osservatore.osservate()` porta gia' `provenienza` per ciascuna voce --
+    `Watcher.watching()` porta gia' `provenienza` per ciascuna voce --
     oggi sempre `"pavimento"` -- che e' cio' che dice alla pagina se una
     voce si puo' togliere (spec §7). Non si ricalcola qui.
     """
@@ -32,15 +32,15 @@ async def handle_osservate(request: web.Request) -> web.Response:
     if osservatore is None:
         return web.json_response(
             {"osservate": [], "errore": "osservatore non disponibile"}, status=503)
-    return web.json_response({"osservate": osservatore.osservate()})
+    return web.json_response({"osservate": osservatore.watching()})
 
 
 async def handle_oggetti(request: web.Request) -> web.Response:
     """Gli oggetti costruiti dall'aggregazione, filtrabili per giorno.
 
     `giorno` arriva dalla query cosi' com'e' -- una stringa o `None` -- e va
-    all'archivio senza essere interpretato qui: e' `ArchivioOsservazioni.
-    oggetti()` a sapere cosa significa "nessun filtro" (`giorno=None`, gli
+    all'archivio senza essere interpretato qui: e' `ObservationsStore.
+    facts()` a sapere cosa significa "nessun filtro" (`giorno=None`, gli
     oggetti piu' recenti di ogni giorno). Un formato malformato non solleva:
     l'archivio confronta per uguaglianza esatta, e una data che non
     combacia con nessuna riga torna semplicemente un elenco vuoto -- non un
@@ -53,4 +53,4 @@ async def handle_oggetti(request: web.Request) -> web.Response:
         return web.json_response(
             {"oggetti": [], "errore": "archivio non disponibile"}, status=503)
     giorno = request.query.get("giorno") or None
-    return web.json_response({"oggetti": archivio.oggetti(giorno=giorno)})
+    return web.json_response({"oggetti": archivio.facts(day=giorno)})

@@ -6,7 +6,7 @@ Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo
 primo dispositivo nuovo e nessuno se ne accorge. **Non `state_class`**
 (correzione di parole della review, mandato «il bilancio dell'energia»,
 punto 7, 27/08/2026): dopo la correzione del 27/08 (vedi il docstring di
-`gamba` sotto), questa funzione non la legge piu' per decidere nessuna
+`aspect` sotto), questa funzione non la legge piu' per decidere nessuna
 gamba -- resta grezzo conservato nell'archivio (`cervello/archivio.py`),
 non un criterio del pavimento.
 
@@ -18,14 +18,14 @@ prompt non puo' togliere. Sopra di esso allarga; sotto, mai.
 """
 from __future__ import annotations
 
-GAMBE = ("chi c'e'", "comfort", "dispersione", "energia", "buono stato", "sicurezza")
+ASPECTS = ("chi c'e'", "comfort", "dispersione", "energia", "buono stato", "sicurezza")
 
 # Le classi che Home Assistant dichiara, raggruppate per gamba dell'obiettivo.
 # I nomi sono quelli veri di HA, non nostri.
 _PRESENZA = frozenset({"presence", "occupancy", "motion"})
 _APERTURA = frozenset({"door", "window", "opening", "garage_door"})
 _COMFORT = frozenset({"temperature", "humidity"})
-# Qualita' dell'aria: il docstring di `gamba` promette «che aria si respira»,
+# Qualita' dell'aria: il docstring di `aspect` promette «che aria si respira»,
 # non solo temperatura e umidita'. `carbon_monoxide` NON e' qui: e' una
 # concentrazione di un gas letale, non comfort -- vedi `_SICUREZZA_SENSORE`.
 _QUALITA_ARIA = frozenset({
@@ -34,7 +34,7 @@ _QUALITA_ARIA = frozenset({
     "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone",
     "sulphur_dioxide",
 })
-_ENERGIA = frozenset({"energy", "power", "gas", "water"})
+_ENERGY = frozenset({"energy", "power", "gas", "water"})
 
 # DEBITO DICHIARATO il 26/08/2026, CHIUSO A LIVELLO DI EPISODIO il
 # 27/08/2026 (mandato «le direzioni dell'energia» -- misurato sulla casa
@@ -53,7 +53,7 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # sensori, produzione compresa, e il mandato vieta esplicitamente di
 # sdoppiarla («la direzione e' DENTRO l'episodio, non e' una gamba nuova»).
 # La distinzione vera vive ora un livello sopra, nel CORPO di ogni episodio
-# di energia (`cervello/oggetti.py::aggrega_giorno`, parametro `direzioni`):
+# di energia (`cervello/oggetti.py::aggregate_day`, parametro `direzioni`):
 # `HAClient.direzioni_energia()` legge due fonti, sulla stessa connessione
 # --
 #
@@ -102,23 +102,23 @@ _SICUREZZA_BINARIA = frozenset({
 # Trappola gia' documentata nel prodotto: la classe si chiama
 # `carbon_monoxide`, NON `co`. E trappola nuova: `gas` compare anche qui
 # sopra (`_SICUREZZA_BINARIA`) ma e' un'altra entita' -- il rilevatore di
-# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_ENERGIA`).
-# Il ramo per dominio in `gamba()` le separa gia': un controllo per sola
+# fuga su `binary_sensor`, non il contatore su `sensor` (resta `_ENERGY`).
+# Il ramo per dominio in `aspect()` le separa gia': un controllo per sola
 # classe le fonderebbe.
 _SICUREZZA_SENSORE = frozenset({"carbon_monoxide"})
 
 
-def _testo(valore) -> str:
+def _text(value) -> str:
     """Un attributo di Home Assistant -> stringa confrontabile.
 
     Gli attributi arrivano da fuori: possono mancare, essere `None`, o avere un
     tipo inatteso. Un'eccezione qui fermerebbe l'osservatore su un evento solo,
     e l'osservatore gira per sempre.
     """
-    return valore.strip() if isinstance(valore, str) else ""
+    return value.strip() if isinstance(value, str) else ""
 
 
-def gamba(entity_id: str, attributi: dict | None) -> str | None:
+def aspect(entity_id: str, attributi: dict | None) -> str | None:
     """A quale gamba dell'obiettivo serve questa entita', o `None`.
 
     L'obiettivo e' «ottimizzare la casa e renderla confortevole», e ha tre
@@ -128,7 +128,7 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
 
     **"Quanta energia si muove" e non "cosa consuma"** (correzione del
     26/08/2026): questa gamba cattura energia PRODOTTA e PRELEVATA nella
-    stessa classe HA (`energy`/`power`, vedi `_ENERGIA` sopra), e "consuma"
+    stessa classe HA (`energy`/`power`, vedi `_ENERGY` sopra), e "consuma"
     affermerebbe il contrario per una buona meta' dei 15 sensori che un
     impianto fotovoltaico con accumulo porta in questa gamba.
 
@@ -142,54 +142,54 @@ def gamba(entity_id: str, attributi: dict | None) -> str | None:
     prompt non puo' fare): e' smettere di DERIVARE una classe che Home
     Assistant non dichiara. Un contatore che aumenta e basta non e' energia:
     e' la forma di molte cose (dati di rete, litri, richieste HTTP...), e
-    solo `_ENERGIA` sopra -- classi dichiarate -- dice quali di quelle sono
+    solo `_ENERGY` sopra -- classi dichiarate -- dice quali di quelle sono
     davvero energia.
     """
     attributi = attributi if isinstance(attributi, dict) else {}
-    dominio = str(entity_id).split(".")[0]
-    classe = _testo(attributi.get("device_class"))
+    domain = str(entity_id).split(".")[0]
+    device_class = _text(attributi.get("device_class"))
 
-    if dominio == "person":
+    if domain == "person":
         return "chi c'e'"
-    if dominio in _DOMINI_SICUREZZA:
+    if domain in _DOMINI_SICUREZZA:
         return "sicurezza"
-    if dominio == "device_tracker":
+    if domain == "device_tracker":
         # MISURATO il 26/08/2026: 65 dei 73 tracker di questa casa sono
         # `router` -- l'NVR, Alexa, un Echo, una TV, una lampada. Dicono «questo
         # apparecchio e' connesso al wifi», non «c'e' qualcuno in casa». I 4
         # `gps` sono i telefoni, e sono le fonti dietro le due `person`.
         # Non e' volume (i 65 fanno 114 cambi al giorno, lo zero per cento):
         # e' che non significano niente per l'obiettivo.
-        return "chi c'e'" if _testo(attributi.get("source_type")) == "gps" else None
-    if dominio == "climate":
+        return "chi c'e'" if _text(attributi.get("source_type")) == "gps" else None
+    if domain == "climate":
         return "comfort"
-    if dominio == "cover":
+    if domain == "cover":
         return "dispersione"
-    if dominio == "binary_sensor":
-        if classe in _PRESENZA:
+    if domain == "binary_sensor":
+        if device_class in _PRESENZA:
             return "chi c'e'"
-        if classe in _APERTURA:
+        if device_class in _APERTURA:
             return "dispersione"
-        if classe in _SICUREZZA_BINARIA:
+        if device_class in _SICUREZZA_BINARIA:
             return "sicurezza"
         return None
-    if dominio == "sensor":
-        if classe in _COMFORT or classe in _QUALITA_ARIA:
+    if domain == "sensor":
+        if device_class in _COMFORT or device_class in _QUALITA_ARIA:
             return "comfort"
-        if classe in _SICUREZZA_SENSORE:
+        if device_class in _SICUREZZA_SENSORE:
             return "sicurezza"
-        if classe == "battery":
+        if device_class == "battery":
             # `battery` e' `diagnostic`, e le entita' di servizio sono 604 su
             # 1226 in questa casa. Il filtro e' per CLASSE, non per categoria:
             # escludere `diagnostic` in blocco toglierebbe «buono stato».
             return "buono stato"
-        if classe in _ENERGIA:
+        if device_class in _ENERGY:
             return "energia"
     return None
 
 
-def nel_pavimento(entity_id: str, attributi: dict | None) -> bool:
-    """Se questa entita' si osserva comunque. Derivata da `gamba`, mai
+def in_baseline(entity_id: str, attributi: dict | None) -> bool:
+    """Se questa entita' si osserva comunque. Derivata da `aspect`, mai
     riscritta: due risposte alla stessa domanda divergono, e la prima a
     divergere e' quella che nessuno guarda."""
-    return gamba(entity_id, attributi) is not None
+    return aspect(entity_id, attributi) is not None

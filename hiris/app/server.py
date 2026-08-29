@@ -48,14 +48,14 @@ from .casa.comportamento import rileggi, rileggi_plance
 from .casa.domande import TIPO_LEGAME_HA
 from .casa.domande import legami as _legami_leggibili
 from .casa.tempo import zona_casa
-from .cervello.archivio import CONSERVAZIONE_CAMBI_S, ArchivioOsservazioni
+from .cervello.archivio import READING_RETENTION_S, ObservationsStore
 from .cervello.oggetti import (
-    DIREZIONI_BILANCIO,
-    aggrega_giorno,
-    confini_giorno,
-    costruisci_corpo_bilancio,
+    BALANCE_DIRECTIONS,
+    aggregate_day,
+    build_balance_body,
+    day_boundaries,
 )
-from .cervello.osservatore import Osservatore
+from .cervello.osservatore import Watcher
 from .decisione_modelli import piano_ha_il_token
 from .env_util import env_bool
 from .esiti_provider import RegistroEsiti
@@ -658,14 +658,14 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
 
 async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
-    caricate) verso `app["osservatore"].guarda_sistema` (fetta «l'osservatore»,
+    caricate) verso `app["osservatore"].watch_system` (fetta «l'osservatore»,
     Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
 
     **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
     (`task-5-correzioni.md`, punto A.1). `HAClient.problemi()` torna
     `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
     dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
-    «non c'e' niente che non va». `Osservatore.guarda_sistema` chiude ogni
+    «non c'e' niente che non va». `Watcher.watch_system` chiude ogni
     condizione che non trova piu' nell'elenco che riceve -- quindi un errore
     letto come lista vuota scriverebbe «chiuso» su OGNI guasto aperto alla
     prima disconnessione da Home Assistant: l'archivio registrerebbe che tutto
@@ -674,7 +674,7 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene. Meglio un buco nella storia che una bugia nella storia.
 
-    Chiamata una volta all'avvio (subito dopo `ricostruisci_condizioni`) e
+    Chiamata una volta all'avvio (subito dopo `rebuild_conditions`) e
     ogni dieci minuti dal lavoro periodico registrato piu' sotto in
     `_on_startup` -- stessa funzione, due chiamanti, come
     `giro_di_confronto_albero`/`guarda_comportamento` qui accanto.
@@ -698,9 +698,9 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
             "cervello: condizioni di sistema non lette, il registro delle "
             "integrazioni non e' disponibile -- giro saltato")
         return None
-    return osservatore.guarda_sistema(
-        problemi=esito_problemi.get("problemi") or [],
-        integrazioni=registri.get("integrazioni") or [])
+    return osservatore.watch_system(
+        problems=esito_problemi.get("problemi") or [],
+        integrations=registri.get("integrazioni") or [])
 
 
 def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
@@ -934,9 +934,9 @@ async def costruisci_bilanci(
     si puo' spostare, e il nome di un dispositivo lo puo' cambiare l'utente.
 
     Un dispositivo diventa un CANDIDATO solo se almeno una delle sue entita'
-    di energia ha una direzione fra `DIREZIONI_BILANCIO` **e** la classe
+    di energia ha una direzione fra `BALANCE_DIRECTIONS` **e** la classe
     `energy` (non `power`: il bilancio riporta kWh del giorno, non W
-    istantanei -- vedi il docstring di `costruisci_corpo_bilancio`). Un
+    istantanei -- vedi il docstring di `build_balance_body`). Un
     dispositivo senza nessuna direzione utile non diventa un bilancio: le
     sue entita' continuano a produrre il loro episodio individuale, come
     prima di questa fetta.
@@ -1008,7 +1008,7 @@ async def costruisci_bilanci(
         provenienza_per_dimensione: dict[str, str] = {}
         for soggetto in sorted(membri):
             info = direzioni.get(soggetto) if direzioni else None
-            if not info or info.get("direzione") not in DIREZIONI_BILANCIO:
+            if not info or info.get("direzione") not in BALANCE_DIRECTIONS:
                 continue
             voce = entita_per_id.get(soggetto) or {}
             if voce.get("classe") != "energy":
@@ -1041,7 +1041,7 @@ async def costruisci_bilanci(
         {soggetto for c in candidati.values() for soggetto in c["entita_per_dimensione"].values()}
         | {c["entita_batteria"] for c in candidati.values() if c["entita_batteria"]})
 
-    da_ts, a_ts = confini_giorno(giorno, fuso)
+    da_ts, a_ts = day_boundaries(giorno, fuso)
     da_iso = datetime.fromtimestamp(da_ts, tz=UTC).isoformat()
     a_iso = datetime.fromtimestamp(a_ts, tz=UTC).isoformat()
     esito = await ha_client.statistiche_orarie(ids_da_leggere, da_iso, a_iso)
@@ -1055,10 +1055,10 @@ async def costruisci_bilanci(
     bilanci: list[dict] = []
     falliti = 0
     for dispositivo_id, c in candidati.items():
-        corpo = costruisci_corpo_bilancio(
-            serie=serie, entita_per_dimensione=c["entita_per_dimensione"],
-            provenienza_per_dimensione=c["provenienza_per_dimensione"],
-            entita_batteria=c["entita_batteria"])
+        corpo = build_balance_body(
+            series=serie, entity_per_dimension=c["entita_per_dimensione"],
+            provenance_per_dimension=c["provenienza_per_dimensione"],
+            battery_entity=c["entita_batteria"])
         if not corpo.get("totali"):
             # **Correzione MEDIA della review (mandato, punto 3,
             # 27/08/2026): una serie vuota dove ci si aspettava un bilancio
@@ -1153,10 +1153,10 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     giorno (`sostituisci_giorno`): non puo' distruggere comprensione finche'
     il grezzo per rifarlo esiste ancora, e i due giorni bersaglio hanno al
     massimo due giorni e qualche ora, ben dentro la potatura a
-    `CONSERVAZIONE_CAMBI_S` (22 giorni). L'ECCEZIONE, solo teorica: un
+    `READING_RETENTION_S` (22 giorni). L'ECCEZIONE, solo teorica: un
     avvio con l'orologio di SISTEMA arretrato di venti giorni o piu'
     rispetto all'ultima potatura riaggregherebbe giorni il cui grezzo la
-    potatura ha gia' cancellato -- `aggrega_giorno` troverebbe meno cambi
+    potatura ha gia' cancellato -- `aggregate_day` troverebbe meno cambi
     di quanti l'oggetto esistente ne raccontasse (o nessuno), e li
     sostituirebbe con MENO oggetti, non con gli stessi. Non e' un caso da
     difendere con codice (un orologio di sistema cosi' indietro e' un
@@ -1168,7 +1168,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     **SOSTITUISCE, quindi non deve mai produrre meno di quello che trova**
     (CRITICAL trovato dalla review de «l'osservatore», 26/08/2026 --
     riparazione-impoverisce-brief.md). La prima stesura di questa funzione
-    chiamava `aggrega_giorno(..., comprimari=None)` col ragionamento che «un
+    chiamava `aggregate_day(..., companions=None)` col ragionamento che «un
     oggetto senza comprimari e' comunque infinitamente meglio di nessun
     oggetto» -- vero quando l'oggetto NON C'E'. E' falso qui: l'aggregazione
     notturna, la notte prima, ha gia' costruito quel giorno CON i comprimari,
@@ -1245,7 +1245,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     chiamante a decidere se e come contenerla, come per
     `guarda_condizioni_di_sistema` qui sopra.
 
-    `adesso` e' iniettabile per i test, come `Osservatore.__init__`: nella
+    `adesso` e' iniettabile per i test, come `Watcher.__init__`: nella
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
@@ -1258,9 +1258,9 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     # chiamata di rete per cambio farebbe migliaia di richieste.
     soggetti: set[str] = set()
     for giorno in giorni:
-        da_ts, a_ts = confini_giorno(giorno, fuso)
+        da_ts, a_ts = day_boundaries(giorno, fuso)
         soggetti.update(r["soggetto"] for r
-                        in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts))
+                        in app["osservazioni"].readings(da_ts=da_ts, a_ts=a_ts))
     try:
         mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
         # Le direzioni dell'energia si leggono UNA volta per i due giorni
@@ -1316,7 +1316,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     # non si leggono ferma l'intera riparazione -- per ENTRAMBI i giorni,
     # non solo per quello colpito: si calcolano prima i bilanci di tutti e
     # due i giorni bersaglio, e solo se ENTRAMBI riescono si scrive
-    # (`aggrega_giorno`, sotto). Altrimenti la notte precedente potrebbe
+    # (`aggregate_day`, sotto). Altrimenti la notte precedente potrebbe
     # aver gia' scritto un bilancio che questa riparazione sostituirebbe con
     # undici frammenti tornati individuali -- l'esatto impoverimento che
     # l'asimmetria esiste per impedire.
@@ -1346,11 +1346,11 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         return
 
     for giorno in giorni:
-        quanti = aggrega_giorno(
-            archivio=app["osservazioni"], giorno=giorno, fuso=fuso,
-            comprimari=lambda s, mappa=mappa: mappa.get(s, []),
-            direzioni=lambda s, m=mappa_direzioni: m.get(s),
-            bilanci=bilanci_per_giorno[giorno])
+        quanti = aggregate_day(
+            store=app["osservazioni"], day=giorno, timezone=fuso,
+            companions=lambda s, mappa=mappa: mappa.get(s, []),
+            directions=lambda s, m=mappa_direzioni: m.get(s),
+            balances=bilanci_per_giorno[giorno])
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             quanti, giorno)
@@ -1815,9 +1815,9 @@ async def _on_startup(app: web.Application) -> None:
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
     # perche' e' il suo unico ingresso.
-    app["osservazioni"] = ArchivioOsservazioni(
+    app["osservazioni"] = ObservationsStore(
         os.path.join(data_dir, "osservazioni.db"))
-    app["osservatore"] = Osservatore(app["osservazioni"])
+    app["osservatore"] = Watcher(app["osservazioni"])
     # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
     # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
     # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
@@ -1825,18 +1825,18 @@ async def _on_startup(app: web.Application) -> None:
     # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
     # utile: da quando dura. **Prima** del primo giro delle condizioni, qui
     # sotto. Non solleva mai (vedi il suo docstring).
-    app["osservatore"].ricostruisci_condizioni()
+    app["osservatore"].rebuild_conditions()
     # LO STESSO rubinetto che alimenta lo specchio, non un secondo: due
     # sorgenti degli stessi eventi sarebbero due cose che possono divergere.
     # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
     # lo specchio sia aggiornato prima.
-    ha_client.add_state_listener(app["osservatore"].guarda_cambio)
+    ha_client.add_state_listener(app["osservatore"].watch_reading)
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
     # per lo stesso motivo di `rileggi_problemi_ha` piu' sopra: senza,
     # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
     # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
-    # quella lettura, questa PUO' sollevare (`Osservatore.guarda_sistema`, se
+    # quella lettura, questa PUO' sollevare (`Watcher.watch_system`, se
     # `annota` fallisce a meta'): un archivio che non risponde non deve
     # impedire il boot.
     try:
@@ -2648,7 +2648,7 @@ async def _on_startup(app: web.Application) -> None:
     )
 
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena
-    # finito (`cervello/oggetti.py::aggrega_giorno`). Gira alle 00:20 e non a
+    # finito (`cervello/oggetti.py::aggregate_day`). Gira alle 00:20 e non a
     # mezzanotte: aggregare a mezzanotte esatta prenderebbe un giorno ancora
     # aperto, e venti minuti bastano perche' gli ultimi eventi della sera
     # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
@@ -2665,9 +2665,9 @@ async def _on_startup(app: web.Application) -> None:
             # I comprimari si leggono UNA volta per giornata, prima: dentro il
             # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
             # migliaia di richieste (Task 6, `costruisci_comprimari`).
-            da_ts, a_ts = confini_giorno(ieri, fuso)
+            da_ts, a_ts = day_boundaries(ieri, fuso)
             soggetti = sorted({r["soggetto"] for r
-                               in app["osservazioni"].cambi(da_ts=da_ts, a_ts=a_ts)})
+                               in app["osservazioni"].readings(da_ts=da_ts, a_ts=a_ts)})
             # Il conteggio dei falliti si ignora apposta (`_`): questo giro
             # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
             # il parziale, come dice il docstring di `costruisci_comprimari`.
@@ -2693,11 +2693,11 @@ async def _on_startup(app: web.Application) -> None:
             bilanci, _ = await costruisci_bilanci(
                 ha_client, app.get("archivio_casa"), giorno=ieri, fuso=fuso,
                 soggetti_energia=soggetti, direzioni=mappa_direzioni)
-            quanti = aggrega_giorno(
-                archivio=app["osservazioni"], giorno=ieri, fuso=fuso,
-                comprimari=lambda s: mappa.get(s, []),
-                direzioni=lambda s: mappa_direzioni.get(s),
-                bilanci=bilanci)
+            quanti = aggregate_day(
+                store=app["osservazioni"], day=ieri, timezone=fuso,
+                companions=lambda s: mappa.get(s, []),
+                directions=lambda s: mappa_direzioni.get(s),
+                balances=bilanci)
             logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
         except Exception as errore:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
@@ -2712,7 +2712,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
     # Il numero di giorni non si scrive a mano -- si deriva dalla costante
-    # dell'archivio (`cervello/archivio.CONSERVAZIONE_CAMBI_S`, 22 giorni: 21
+    # dell'archivio (`cervello/archivio.READING_RETENTION_S`, 22 giorni: 21
     # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
     # la riga di log non puo' mentire quando la costante cambia
     # (task-5-correzioni.md, punto C).
@@ -2724,9 +2724,9 @@ async def _on_startup(app: web.Application) -> None:
     # l'hanno gia'.
     async def _pota_osservazioni() -> None:
         try:
-            quanti = app["osservazioni"].pota(_time.time())
+            quanti = app["osservazioni"].prune(_time.time())
             if quanti:
-                giorni = CONSERVAZIONE_CAMBI_S // 86400
+                giorni = READING_RETENTION_S // 86400
                 logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
                             quanti, giorni)
         except Exception as errore:

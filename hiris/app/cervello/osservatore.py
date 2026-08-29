@@ -14,7 +14,7 @@ import logging
 import time
 
 from ..casa.tempo import epoch_istante
-from .pavimento import gamba
+from .pavimento import aspect
 
 logger = logging.getLogger(__name__)
 
@@ -28,41 +28,41 @@ logger = logging.getLogger(__name__)
 # per la stessa ragione di `pavimento.py`: «cosa e' un guasto QUI» e «cosa
 # racconta l'anagrafe» sono due domande diverse i cui elenchi possono
 # divergere in futuro per ragioni proprie.
-_STATI_INTEGRAZIONE_TRANSITORI = frozenset({"setup_in_progress", "unload_in_progress"})
+_TRANSIENT_INTEGRATION_STATES = frozenset({"setup_in_progress", "unload_in_progress"})
 
 
-def _testo_o_none(valore) -> str | None:
+def _text_or_none(value) -> str | None:
     """Un attributo di Home Assistant -> stringa per il grezzo, o `None`.
 
     Non inventa: un tipo inatteso (numero, lista, dict, stringa vuota)
     diventa `None`, non un `str(valore)` che scriverebbe testo spazzatura
     nella colonna."""
-    return valore if isinstance(valore, str) and valore.strip() else None
+    return value if isinstance(value, str) and value.strip() else None
 
 
-class Osservatore:
+class Watcher:
     """Il rubinetto e le condizioni di sistema, verso l'archivio.
 
-    `adesso` e' iniettabile perche' i test possano fissare l'orologio senza
+    `now` e' iniettabile perche' i test possano fissare l'orologio senza
     toccare il modulo `time`.
     """
 
-    def __init__(self, archivio, *, adesso=time.time) -> None:
-        self._archivio = archivio
-        self._adesso = adesso
+    def __init__(self, store, *, now=time.time) -> None:
+        self._store = store
+        self._now = now
         # Cosa sta guardando, e per quale gamba. Si riempie osservando: e'
         # cio' che la pagina mostra, e non una lista dichiarata a mano che
         # potrebbe divergere da cio' che succede davvero.
-        self._viste: dict[str, str] = {}
+        self._watched: dict[str, str] = {}
         # Le condizioni di sistema aperte all'ultimo giro. Serve a scrivere un
         # cambio quando NASCONO e quando FINISCONO, invece di riscriverle a
         # ogni passaggio del lavoro periodico. Vive solo in RAM: al riavvio
-        # va ricostruito con `ricostruisci_condizioni`, vedi sotto.
-        self._condizioni: set[str] = set()
+        # va ricostruito con `rebuild_conditions`, vedi sotto.
+        self._conditions: set[str] = set()
 
     # -- il rubinetto --------------------------------------------------
 
-    def guarda_cambio(self, evento) -> bool:
+    def watch_reading(self, event) -> bool:
         """Il callback di `add_state_listener`. **Non solleva mai.**
 
         Non e' per fermare l'osservatore: il rubinetto vero (`ha_client.py`,
@@ -74,25 +74,25 @@ class Osservatore:
         e non dipende da un dettaglio di cablaggio che potrebbe cambiare.
         """
         try:
-            if not isinstance(evento, dict):
+            if not isinstance(event, dict):
                 return False
-            eid = evento.get("entity_id")
-            nuovo = evento.get("new_state")
-            if not eid or not isinstance(nuovo, dict):
+            eid = event.get("entity_id")
+            new_state = event.get("new_state")
+            if not eid or not isinstance(new_state, dict):
                 # `new_state` a `None` e' un'entita' rimossa: non e' un cambio
                 # da osservare, e' una cosa che non c'e' piu'.
                 return False
-            attributi = nuovo.get("attributes")
+            attributi = new_state.get("attributes")
             attributi = attributi if isinstance(attributi, dict) else {}
-            quale = gamba(eid, attributi)
-            if quale is None:
+            which = aspect(eid, attributi)
+            if which is None:
                 return False
-            vecchio = evento.get("old_state")
+            old_state = event.get("old_state")
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.
-            quando = epoch_istante(nuovo.get("last_changed"))
-            if quando is None:
+            when = epoch_istante(new_state.get("last_changed"))
+            if when is None:
                 # Ripiego muto fino a qui: se HA cambiasse formato di
                 # `last_changed`, ogni cambio slitterebbe all'istante in cui
                 # l'abbiamo saputo e nessuno se ne accorgerebbe. DEBUG e non
@@ -103,25 +103,25 @@ class Osservatore:
                 logger.debug(
                     "osservatore: 'last_changed' mancante o illeggibile per "
                     "%s, uso l'orologio", eid)
-                quando = self._adesso()
-            self._archivio.annota(
-                quando_ts=quando, fonte="entita", soggetto=str(eid),
-                da=vecchio.get("state") if isinstance(vecchio, dict) else None,
-                a=nuovo.get("state"),
-                device_class=_testo_o_none(attributi.get("device_class")),
-                state_class=_testo_o_none(attributi.get("state_class")),
-                source_type=_testo_o_none(attributi.get("source_type")))
-            self._viste[str(eid)] = quale
+                when = self._now()
+            self._store.record(
+                quando_ts=when, source="entita", subject=str(eid),
+                da=old_state.get("state") if isinstance(old_state, dict) else None,
+                a=new_state.get("state"),
+                device_class=_text_or_none(attributi.get("device_class")),
+                state_class=_text_or_none(attributi.get("state_class")),
+                source_type=_text_or_none(attributi.get("source_type")))
+            self._watched[str(eid)] = which
             return True
-        except Exception as errore:
+        except Exception as error:
             logger.warning("osservatore: evento non annotato (%s: %s)",
-                           type(errore).__name__, errore)
+                           type(error).__name__, error)
             return False
 
     # -- le condizioni di sistema --------------------------------------
 
-    def guarda_sistema(self, *, problemi: list[dict] | None,
-                       integrazioni: list[dict] | None) -> int:
+    def watch_system(self, *, problems: list[dict] | None,
+                       integrations: list[dict] | None) -> int:
         """Le condizioni di Home Assistant, nella STESSA forma dei cambi.
 
         Un'integrazione rotta non e' un cambio di stato di un'entita' -- ma il
@@ -132,58 +132,58 @@ class Osservatore:
         aperti, e `config_entries/get` da' 9 integrazioni non caricate su 53.
         `system_health/info` torna vuoto e non si usa.
 
-        Gli stati transitori del boot (`_STATI_INTEGRAZIONE_TRANSITORI`) non
+        Gli stati transitori del boot (`_TRANSIENT_INTEGRATION_STATES`) non
         contano come guasto: vedi il commento accanto alla costante.
 
-        **`self._condizioni` si aggiorna incrementalmente**, un soggetto alla
-        volta dopo ogni `annota` riuscita -- non in blocco alla fine. Se
-        `annota` solleva a meta', le righe «aperto» gia' scritte devono
+        **`self._conditions` si aggiorna incrementalmente**, un soggetto alla
+        volta dopo ogni `record` riuscita -- non in blocco alla fine. Se
+        `record` solleva a meta', le righe «aperto» gia' scritte devono
         restare ricordate: altrimenti il giro successivo le riscriverebbe con
         un istante piu' tardo, cioe' due «aperto» per lo stesso soggetto e una
         data di nascita ambigua per chi aggrega. Qui e' legittimo che
-        l'eccezione propaghi -- il «mai sollevare» vale per `guarda_cambio` e
+        l'eccezione propaghi -- il «mai sollevare» vale per `watch_reading` e
         per la ricostruzione, non per questo metodo, che gira dentro un lavoro
         periodico -- ma la memoria deve restare coerente con cio' che e' stato
         davvero scritto.
         """
-        aperte: set[str] = set()
-        for p in problemi or []:
+        open_conditions: set[str] = set()
+        for p in problems or []:
             if not isinstance(p, dict):
                 continue
-            dominio = str(p.get("domain") or "").strip()
-            quale = str(p.get("issue_id") or "").strip()
-            if dominio and quale:
-                aperte.add(f"problema:{dominio}.{quale}")
-        for i in integrazioni or []:
+            domain = str(p.get("domain") or "").strip()
+            which = str(p.get("issue_id") or "").strip()
+            if domain and which:
+                open_conditions.add(f"problema:{domain}.{which}")
+        for i in integrations or []:
             if not isinstance(i, dict):
                 continue
-            stato = str(i.get("state") or "").strip()
-            if stato == "loaded" or stato in _STATI_INTEGRAZIONE_TRANSITORI:
+            state = str(i.get("state") or "").strip()
+            if state == "loaded" or state in _TRANSIENT_INTEGRATION_STATES:
                 continue
             ident = str(i.get("entry_id") or "").strip()
             if ident:
-                aperte.add(f"integrazione:{ident}")
+                open_conditions.add(f"integrazione:{ident}")
 
-        adesso = self._adesso()
-        scritti = 0
-        for nata in sorted(aperte - self._condizioni):
-            self._archivio.annota(quando_ts=adesso, fonte="sistema",
-                                  soggetto=nata, da=None, a="aperto")
-            self._condizioni.add(nata)
-            scritti += 1
-        for finita in sorted(self._condizioni - aperte):
-            self._archivio.annota(quando_ts=adesso, fonte="sistema",
-                                  soggetto=finita, da="aperto", a="chiuso")
-            self._condizioni.discard(finita)
-            scritti += 1
-        return scritti
+        now = self._now()
+        written = 0
+        for born in sorted(open_conditions - self._conditions):
+            self._store.record(quando_ts=now, source="sistema",
+                                  subject=born, da=None, a="aperto")
+            self._conditions.add(born)
+            written += 1
+        for ended in sorted(self._conditions - open_conditions):
+            self._store.record(quando_ts=now, source="sistema",
+                                  subject=ended, da="aperto", a="chiuso")
+            self._conditions.discard(ended)
+            written += 1
+        return written
 
-    def ricostruisci_condizioni(self) -> None:
-        """Risemina `self._condizioni` da cio' che l'archivio gia' sa.
+    def rebuild_conditions(self) -> None:
+        """Risemina `self._conditions` da cio' che l'archivio gia' sa.
 
-        **Perche' serve.** `self._condizioni` vive solo in RAM: al riavvio
+        **Perche' serve.** `self._conditions` vive solo in RAM: al riavvio
         dell'add-on -- che succede a ogni aggiornamento, non in un caso
-        limite -- quel set ripartirebbe vuoto, e `guarda_sistema` scriverebbe
+        limite -- quel set ripartirebbe vuoto, e `watch_system` scriverebbe
         di nuovo «aperto» per ogni guasto gia' aperto, come se fosse nato in
         quel momento. La data d'inizio e' l'unica informazione utile di un
         guasto che dura: sbagliarla non e' rumore, e' un fatto falso.
@@ -192,7 +192,7 @@ class Osservatore:
         lavoro periodico comincino a girare.
 
         **Limite dichiarato, non una promessa.** Il grezzo vive 21 giorni (22
-        con la guardia, vedi `archivio.CONSERVAZIONE_CAMBI_S`). Una condizione
+        con la guardia, vedi `archivio.READING_RETENTION_S`). Una condizione
         aperta da piu' a lungo ha gia' perso la sua riga d'apertura con la
         potatura: qui verra' vista come nuova, e la data d'inizio che
         l'oggetto porta sara' quella del ritrovamento, non quella vera. Non e'
@@ -203,8 +203,8 @@ class Osservatore:
         esattamente come al primissimo avvio: fermare l'avvio dell'add-on per
         questo sarebbe uno scambio peggiore.
 
-        **Filtra `fonte="sistema"` NELLA query (D1 del giro di correzioni).**
-        Senza, `cambi()` col suo `LIMIT` teneva le righe piu' VECCHIE: sui
+        **Filtra `source="sistema"` NELLA query (D1 del giro di correzioni).**
+        Senza, `readings()` col suo `LIMIT` teneva le righe piu' VECCHIE: sui
         320.000 cambi misurati per 22 giorni (spec §9②), dal quattordicesimo
         giorno di esercizio la ricostruzione smetteva di vedere gli ultimi
         otto -- proprio le righe che decidono l'ultimo stato di una
@@ -219,22 +219,22 @@ class Osservatore:
             # a `float('inf')` -- dice l'intenzione alla lettera, "nessun
             # estremo destro", invece di un `adesso + margine` arbitrario che
             # lascerebbe fuori in silenzio una riga con un istante piu' avanti
-            # dell'orologio di questo processo. `cambi()` lo accetta
+            # dell'orologio di questo processo. `readings()` lo accetta
             # (converte con `float(a_ts)`, e SQLite confronta `+Inf`
-            # correttamente). Il `limite` e' esplicito e largo apposta: dice
+            # correttamente). Il `limit` e' esplicito e largo apposta: dice
             # al lettore che il tetto e' stato pensato per il volume delle
             # righe di SISTEMA, non ereditato dal default pensato per quello
             # delle entita'.
-            righe = self._archivio.cambi(da_ts=0.0, a_ts=float("inf"),
-                                         fonte="sistema", limite=20_000)
-        except Exception as errore:
+            rows = self._store.readings(da_ts=0.0, a_ts=float("inf"),
+                                         source="sistema", limit=20_000)
+        except Exception as error:
             logger.warning(
                 "osservatore: stato di sistema non ricostruito, riparto da "
-                "vuoto (%s: %s)", type(errore).__name__, errore)
-            self._condizioni = set()
+                "vuoto (%s: %s)", type(error).__name__, error)
+            self._conditions = set()
             return
 
-        # `cambi()` torna dal piu' vecchio al piu' recente: scrivendo in
+        # `readings()` torna dal piu' vecchio al piu' recente: scrivendo in
         # ordine in questo dict, l'ultima assegnazione per soggetto e' sempre
         # la piu' recente -- e' cosi' che si trova "l'ultimo stato" senza
         # dover ordinare a mano.
@@ -243,19 +243,19 @@ class Osservatore:
         # ripete qui. Un secondo filtro Python "di scorta" maschererebbe la
         # regressione se quello nella query venisse tolto per errore -- ed e'
         # esattamente il difetto che questo metodo esiste per chiudere.
-        ultimo_stato: dict[str, str | None] = {}
-        for c in righe:
+        last_state: dict[str, str | None] = {}
+        for c in rows:
             if not isinstance(c, dict):
                 continue
-            soggetto = c.get("soggetto")
-            if not soggetto:
+            subject = c.get("soggetto")
+            if not subject:
                 continue
-            ultimo_stato[soggetto] = c.get("a")
-        self._condizioni = {s for s, stato in ultimo_stato.items() if stato == "aperto"}
+            last_state[subject] = c.get("a")
+        self._conditions = {s for s, state in last_state.items() if state == "aperto"}
 
     # -- la pagina -----------------------------------------------------
 
-    def osservate(self) -> list[dict]:
+    def watching(self) -> list[dict]:
         """Cosa sta guardando, e perche'.
 
         `provenienza` distingue cio' che e' nel **pavimento** (e non si toglie)
@@ -263,15 +263,15 @@ class Osservatore:
         e' pavimento: il prompt dell'obiettivo entra nella fetta successiva, e
         la terza provenienza -- «me l'ha chiesto l'analista» -- con lui.
 
-        **Una fonte sola per fatto.** Le entita' vengono da `_viste`, le
-        condizioni di sistema da `_condizioni` -- non si semina `_viste` con
+        **Una fonte sola per fatto.** Le entita' vengono da `_watched`, le
+        condizioni di sistema da `_conditions` -- non si semina `_watched` con
         le condizioni per rattoppare: sarebbe tenere in vita un doppione, e
         due risposte alla stessa domanda divergono (dopo un riavvio un
         guasto ricostruito sparirebbe da qui per sempre; all'opposto, una
         condizione chiusa scritta anche qui non verrebbe mai tolta).
         """
-        entita = ({"soggetto": s, "gamba": g, "provenienza": "pavimento"}
-                  for s, g in self._viste.items())
-        sistema = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
-                   for s in self._condizioni)
-        return sorted([*entita, *sistema], key=lambda o: (o["gamba"], o["soggetto"]))
+        entity = ({"soggetto": s, "gamba": g, "provenienza": "pavimento"}
+                  for s, g in self._watched.items())
+        system = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
+                   for s in self._conditions)
+        return sorted([*entity, *system], key=lambda o: (o["gamba"], o["soggetto"]))

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 
 from hiris.app.casa.archivio import ArchivioCasa
-from hiris.app.cervello.oggetti import confini_giorno
+from hiris.app.cervello.oggetti import day_boundaries
 from hiris.app.server import costruisci_bilanci
 from tests.test_cervello_comprimari import _ClienteLegami
 
@@ -26,7 +26,7 @@ def _casa(tmp_path, *, entita, dispositivi):
 
 
 def _iso_giorno(giorno=G, fuso="Europe/Rome"):
-    da_ts, a_ts = confini_giorno(giorno, fuso)
+    da_ts, a_ts = day_boundaries(giorno, fuso)
     return (datetime.fromtimestamp(da_ts, tz=UTC).isoformat(),
             datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
 
@@ -104,7 +104,7 @@ async def test_un_dispositivo_con_una_direzione_utile_diventa_un_bilancio(tmp_pa
 @pytest.mark.asyncio
 async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
     """**Correzione ALTO della review (mandato «il bilancio dell'energia»,
-    punto 1, 27/08/2026): "consumo" e' entrato in `DIREZIONI_BILANCIO`
+    punto 1, 27/08/2026): "consumo" e' entrato in `BALANCE_DIRECTIONS`
     come settimo totale, letto e non piu' derivato.** Un dispositivo la cui
     UNICA direzione utile e' "consumo" ora diventa un candidato come gli
     altri sei -- prima di questa correzione non lo era (il totale veniva

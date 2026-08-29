@@ -1299,7 +1299,7 @@ class HAClient:
         `da_iso`/`a_iso` sono istanti ISO gia' calcolati dal chiamante --
         stesso contratto di `storico()` qui sopra: il fuso della casa e il
         confine di un «giorno» sono decisioni di CHI CHIAMA (`cervello/
-        oggetti.py::confini_giorno`), non di questo client, che parla solo
+        oggetti.py::day_boundaries`), non di questo client, che parla solo
         di istanti espliciti.
 
         `period="hour"` fisso: e' la grana su cui si costruisce il bilancio

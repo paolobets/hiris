@@ -128,7 +128,7 @@ class _ClienteLegami:
         # sull'inizio lasciava una `a_iso` sbagliata passare inosservata --
         # stessa famiglia del difetto n.1 (una finta che accetta un
         # parametro e non lo verifica davvero), gravita' minima perche' nella
-        # vita vera `confini_giorno` non produce mai lo stesso `da_iso` per
+        # vita vera `day_boundaries` non produce mai lo stesso `da_iso` per
         # due giorni diversi. Chiuso perche' costava poco: una tupla al
         # posto di una stringa come chiave.
         self._statistiche_per_finestra = statistiche_per_finestra or {}

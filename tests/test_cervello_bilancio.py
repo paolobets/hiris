@@ -1,9 +1,9 @@
 """Il bilancio dell'energia: undici frammenti diventano un oggetto solo.
 
-Due meta'. La prima prova `costruisci_corpo_bilancio` -- pura, nessuna
+Due meta'. La prima prova `build_balance_body` -- pura, nessuna
 lettura di rete: le statistiche orarie arrivano gia' lette e tradotte
 (come le manderebbe `HAClient.statistiche_orarie()`, chiavi italiane). La
-seconda prova `aggrega_giorno(bilanci=...)`: il punto per cui questa fetta
+seconda prova `aggregate_day(balances=...)`: il punto per cui questa fetta
 esiste -- le entita' di un bilancio VALIDO smettono di produrre il loro
 episodio di energia individuale, quelle fuori continuano come prima.
 """
@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from hiris.app.cervello.archivio import ArchivioOsservazioni
-from hiris.app.cervello.oggetti import DIREZIONI_BILANCIO, aggrega_giorno, costruisci_corpo_bilancio
+from hiris.app.cervello.archivio import ObservationsStore
+from hiris.app.cervello.oggetti import BALANCE_DIRECTIONS, aggregate_day, build_balance_body
 
 G = "2026-08-24"
 MEZZANOTTE = 1787522400.0   # 2026-08-23T22:00:00+00:00 = 24/08 00:00 +02:00 Roma
@@ -24,7 +24,7 @@ def ts(ore, minuti=0):
 
 @pytest.fixture()
 def archivio(tmp_path):
-    a = ArchivioOsservazioni(os.path.join(str(tmp_path), "o.db"))
+    a = ObservationsStore(os.path.join(str(tmp_path), "o.db"))
     yield a
     a.close()
 
@@ -38,30 +38,30 @@ def _punto(ora, cambio, media=None):
 
 
 # --------------------------------------------------------------------------
-# `costruisci_corpo_bilancio` -- pura.
+# `build_balance_body` -- pura.
 # --------------------------------------------------------------------------
 
 def test_le_sette_dimensioni_note_diventano_totali_e_forma():
     """**Sette, non sei** (correzione ALTO della review, mandato «il
     bilancio dell'energia», punto 1, 27/08/2026): "consumo" e' entrato in
-    `DIREZIONI_BILANCIO` come settimo totale, letto e non piu' derivato
+    `BALANCE_DIRECTIONS` come settimo totale, letto e non piu' derivato
     (vedi `test_cervello_bilancio.py::test_quota_autosufficienza_...`
     sotto per la ragione).
 
     **`forma[d]` porta l'ORA di ogni punto** (correzione MEDIA, punto 2 del
     mandato): non piu' `[1.0, 2.0]`, ma `[{"ora","valore"}, ...]` -- la
     chiave nuova che la pagina deve conoscere e' `ora`."""
-    serie = {f"sensor.{d}": [_punto(6, 1.0), _punto(7, 2.0)] for d in DIREZIONI_BILANCIO}
-    entita = {d: f"sensor.{d}" for d in DIREZIONI_BILANCIO}
-    provenienza = {d: "dichiarata" for d in DIREZIONI_BILANCIO}
+    serie = {f"sensor.{d}": [_punto(6, 1.0), _punto(7, 2.0)] for d in BALANCE_DIRECTIONS}
+    entita = {d: f"sensor.{d}" for d in BALANCE_DIRECTIONS}
+    provenienza = {d: "dichiarata" for d in BALANCE_DIRECTIONS}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
-    assert set(corpo["totali"]) == set(DIREZIONI_BILANCIO) == {
+    assert set(corpo["totali"]) == set(BALANCE_DIRECTIONS) == {
         "produzione", "autoconsumo", "immissione", "prelievo", "carica",
         "scarica", "consumo"}
-    for d in DIREZIONI_BILANCIO:
+    for d in BALANCE_DIRECTIONS:
         assert corpo["totali"][d] == {"valore": 3.0, "provenienza": "dichiarata"}
         assert corpo["forma"][d] == [
             {"ora": "2026-08-24T06:00:00+00:00", "valore": 1.0},
@@ -70,14 +70,14 @@ def test_le_sette_dimensioni_note_diventano_totali_e_forma():
 
 
 def test_una_dimensione_senza_entita_non_compare():
-    """Una dimensione VOLUTA (fra le `DIREZIONI_BILANCIO`) ma senza entita'
+    """Una dimensione VOLUTA (fra le `BALANCE_DIRECTIONS`) ma senza entita'
     del dispositivo (es. "scarica" su un inverter senza batteria)
     semplicemente non compare -- il chiamante non ha messo niente in
-    `entita_per_dimensione` per quella dimensione."""
+    `entity_per_dimension` per quella dimensione."""
     serie = {"sensor.produzione": [_punto(6, 5.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"})
 
     assert set(corpo["totali"]) == {"produzione"}
     assert "scarica" not in corpo.get("totali", {})
@@ -89,23 +89,23 @@ def test_zero_ore_conosciute_toglie_la_dimensione_per_intero():
     `cambio` sempre `None` (nessun dato in tutte le 24 ore) non deve
     produrre un totale di 0.0 -- deve sparire, come se non ci fosse."""
     serie = {"sensor.produzione": [_punto(6, None), _punto(7, None)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"})
 
     assert corpo == {}
 
 
 def test_un_ora_mancante_non_azzera_il_totale():
-    """Mutazione ESEGUITA: in `costruisci_corpo_bilancio`, `conosciuti = [p[
+    """Mutazione ESEGUITA: in `build_balance_body`, `conosciuti = [p[
     "valore"] for p in punti]` (senza filtrare i `None`) al posto del
     filtro vero -- arrossisce, perche' `sum([1.0, None, 3.0])` solleva
     `TypeError` invece di tornare 4.0. Ripristinato subito dopo (verificato
     a mano, non lasciato nel codice)."""
     serie = {"sensor.produzione": [_punto(6, 1.0), _punto(7, None), _punto(8, 3.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"})
 
     assert corpo["totali"]["produzione"]["valore"] == 4.0
     assert corpo["forma"]["produzione"] == [
@@ -133,9 +133,9 @@ def test_forma_porta_l_ora_vera_anche_su_una_giornata_bucata():
     serie = {"sensor.produzione": [
         _punto(7, 1.0), _punto(8, 2.0), _punto(9, 3.0),
         _punto(12, 4.0), _punto(13, 5.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"})
 
     assert corpo["forma"]["produzione"] == [
         {"ora": "2026-08-24T07:00:00+00:00", "valore": 1.0},
@@ -149,9 +149,9 @@ def test_forma_porta_l_ora_vera_anche_su_una_giornata_bucata():
 def test_i_momenti_prima_ultima_ora_e_picco_di_produzione():
     serie = {"sensor.produzione": [
         _punto(6, 0.0), _punto(7, 1.0), _punto(8, 5.0), _punto(9, 2.0), _punto(10, 0.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"})
 
     assert corpo["momenti"]["prima_ora_produzione"] == "2026-08-24T07:00:00+00:00"
     assert corpo["momenti"]["ultima_ora_produzione"] == "2026-08-24T09:00:00+00:00"
@@ -162,9 +162,9 @@ def test_i_momenti_prima_ultima_ora_e_picco_di_produzione():
 def test_fine_scarica_batteria_e_la_fine_dell_ultima_ora_attiva():
     serie = {"sensor.scarica": [
         _punto(20, 1.0), _punto(21, 0.5), _punto(22, 0.0), _punto(23, 0.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"scarica": "sensor.scarica"},
-        provenienza_per_dimensione={"scarica": "dedotta"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"scarica": "sensor.scarica"},
+        provenance_per_dimension={"scarica": "dedotta"})
 
     # L'ultima ora ATTIVA e' le 21-22: "fine" e' il confine delle 22:00.
     assert corpo["momenti"]["fine_scarica_batteria"] == "2026-08-24T22:00:00+00:00"
@@ -172,9 +172,9 @@ def test_fine_scarica_batteria_e_la_fine_dell_ultima_ora_attiva():
 
 def test_scarica_mai_attiva_non_produce_il_momento():
     serie = {"sensor.scarica": [_punto(6, 0.0), _punto(7, 0.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"scarica": "sensor.scarica"},
-        provenienza_per_dimensione={"scarica": "dedotta"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"scarica": "sensor.scarica"},
+        provenance_per_dimension={"scarica": "dedotta"})
     # Zero ore conosciute (tutte 0.0 sono comunque CONOSCIUTE, non None):
     # la dimensione compare con totale 0.0, ma nessuna ora e' "attiva".
     assert corpo["totali"]["scarica"]["valore"] == 0.0
@@ -192,8 +192,8 @@ def test_quota_autoconsumo_da_produzione_e_autoconsumo():
     entita = {"produzione": "sensor.produzione", "autoconsumo": "sensor.autoconsumo"}
     provenienza = {d: "dichiarata" for d in entita}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
     assert corpo["momenti"]["quota_autoconsumo"] == 0.6
     assert "quota_autosufficienza" not in corpo["momenti"]
@@ -224,8 +224,8 @@ def test_quota_autosufficienza_si_calcola_sul_consumo_MISURATO_non_dedotto():
               "scarica": "sensor.scarica", "consumo": "sensor.consumo"}
     provenienza = {d: "dichiarata" for d in entita}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
     assert corpo["totali"]["consumo"]["valore"] == 17.0
     assert corpo["momenti"]["quota_autosufficienza"] == 0.412
@@ -245,8 +245,8 @@ def test_quota_autosufficienza_assente_senza_il_consumo_misurato():
     entita = {"autoconsumo": "sensor.autoconsumo", "prelievo": "sensor.prelievo"}
     provenienza = {d: "dichiarata" for d in entita}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
     assert "quota_autosufficienza" not in corpo.get("momenti", {})
 
@@ -271,8 +271,8 @@ def test_quota_autosufficienza_non_esce_negativa_quando_il_prelievo_supera_il_co
     entita = {"consumo": "sensor.consumo", "prelievo": "sensor.prelievo"}
     provenienza = {d: "dichiarata" for d in entita}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
     assert "quota_autosufficienza" not in corpo.get("momenti", {})
 
@@ -288,8 +288,8 @@ def test_quota_autosufficienza_al_confine_prelievo_uguale_consumo():
     entita = {"consumo": "sensor.consumo", "prelievo": "sensor.prelievo"}
     provenienza = {d: "dichiarata" for d in entita}
 
-    corpo = costruisci_corpo_bilancio(serie=serie, entita_per_dimensione=entita,
-                                      provenienza_per_dimensione=provenienza)
+    corpo = build_balance_body(series=serie, entity_per_dimension=entita,
+                                      provenance_per_dimension=provenienza)
 
     assert corpo["momenti"]["quota_autosufficienza"] == 0.0
 
@@ -298,9 +298,9 @@ def test_quota_assente_se_il_denominatore_manca():
     """Zero produzione conosciuta non e' "zero autoconsumo": e' "non lo so"
     -- la quota non compare, non diventa 0.0 ne' un'eccezione."""
     serie = {"sensor.autoconsumo": [_punto(6, 6.0)]}
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"autoconsumo": "sensor.autoconsumo"},
-        provenienza_per_dimensione={"autoconsumo": "dichiarata"})
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"autoconsumo": "sensor.autoconsumo"},
+        provenance_per_dimension={"autoconsumo": "dichiarata"})
     assert "quota_autoconsumo" not in corpo.get("momenti", {})
     assert "quota_autosufficienza" not in corpo.get("momenti", {})
 
@@ -319,10 +319,10 @@ def test_batteria_percentuale_oraria_arrotondata_a_un_decimale():
         "sensor.produzione": [_punto(6, 1.0)],
         "sensor.batteria": [_punto(6, None, media=56.5833), _punto(7, None, media=84.2)],
     }
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"},
-        entita_batteria="sensor.batteria")
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"},
+        battery_entity="sensor.batteria")
     assert corpo["batteria_percentuale_oraria"] == [
         {"ora": "2026-08-24T06:00:00+00:00", "valore": 56.6},
         {"ora": "2026-08-24T07:00:00+00:00", "valore": 84.2},
@@ -338,10 +338,10 @@ def test_batteria_percentuale_oraria_su_una_giornata_bucata():
         "sensor.produzione": [_punto(6, 1.0)],
         "sensor.batteria": [_punto(6, None, media=50.0), _punto(9, None, media=80.0)],
     }
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"},
-        entita_batteria="sensor.batteria")
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"},
+        battery_entity="sensor.batteria")
     assert corpo["batteria_percentuale_oraria"] == [
         {"ora": "2026-08-24T06:00:00+00:00", "valore": 50.0},
         {"ora": "2026-08-24T09:00:00+00:00", "valore": 80.0},
@@ -353,10 +353,10 @@ def test_batteria_assente_dal_corpo_se_non_ha_nessun_dato():
         "sensor.produzione": [_punto(6, 1.0)],
         "sensor.batteria": [_punto(6, None, media=None)],
     }
-    corpo = costruisci_corpo_bilancio(
-        serie=serie, entita_per_dimensione={"produzione": "sensor.produzione"},
-        provenienza_per_dimensione={"produzione": "dichiarata"},
-        entita_batteria="sensor.batteria")
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"},
+        battery_entity="sensor.batteria")
     assert "batteria_percentuale_oraria" not in corpo
 
 
@@ -364,14 +364,14 @@ def test_corpo_vuoto_quando_nessuna_statistica_dice_niente():
     """Le statistiche sono arrivate ma sono vuote per ogni dimensione voluta
     (es. entita' create dopo questo giorno): il corpo torna `{}`, non un
     dizionario con chiavi vuote annidate."""
-    corpo = costruisci_corpo_bilancio(
-        serie={}, entita_per_dimensione={"produzione": "sensor.x"},
-        provenienza_per_dimensione={"produzione": "dichiarata"})
+    corpo = build_balance_body(
+        series={}, entity_per_dimension={"produzione": "sensor.x"},
+        provenance_per_dimension={"produzione": "dichiarata"})
     assert corpo == {}
 
 
 # --------------------------------------------------------------------------
-# `aggrega_giorno(bilanci=...)` -- il punto per cui la fetta esiste.
+# `aggregate_day(balances=...)` -- il punto per cui la fetta esiste.
 # --------------------------------------------------------------------------
 
 def _bilancio_valido(dispositivo_id="dev1", nome="Inverter", entita=None):
@@ -390,28 +390,28 @@ def test_un_giorno_con_l_impianto_produce_un_bilancio_e_zero_episodi_per_i_suoi_
     energia per le entita' che vi sono dentro; un'entita' di energia FUORI
     da ogni bilancio continua a produrre il suo episodio.
 
-    Mutazione ESEGUITA: in `aggrega_giorno`, `if soggetto not in
-    entita_in_bilancio:` sostituito con `if True:` (ignorare la
+    Mutazione ESEGUITA: in `aggregate_day`, `if subject not in
+    entities_in_balance:` sostituito con `if True:` (ignorare la
     soppressione) -- arrossisce, perche' tornano 4 episodi di energia
     individuali oltre al bilancio invece di 0. Ripristinato subito dopo."""
     membri = ["sensor.energia_prodotta_oggi", "sensor.energia_autoconsumata_oggi",
              "sensor.potenza_prodotta", "sensor.totale_energia_prodotta"]
     for soggetto in membri:
-        archivio.annota(quando_ts=ts(6), fonte="entita", soggetto=soggetto,
+        archivio.record(quando_ts=ts(6), source="entita", subject=soggetto,
                         da=None, a="1.0", device_class="energy")
-        archivio.annota(quando_ts=ts(12), fonte="entita", soggetto=soggetto,
+        archivio.record(quando_ts=ts(12), source="entita", subject=soggetto,
                         da=None, a="5.0", device_class="energy")
     # Un'entita' di energia FUORI dal bilancio (un altro dispositivo, o
     # nessuno): deve continuare a produrre il suo episodio come prima.
-    archivio.annota(quando_ts=ts(7), fonte="entita", soggetto="sensor.altro_contatore",
+    archivio.record(quando_ts=ts(7), source="entita", subject="sensor.altro_contatore",
                     da=None, a="2.0", device_class="energy")
-    archivio.annota(quando_ts=ts(20), fonte="entita", soggetto="sensor.altro_contatore",
+    archivio.record(quando_ts=ts(20), source="entita", subject="sensor.altro_contatore",
                     da=None, a="9.0", device_class="energy")
 
-    quanti = aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
-                            bilanci=[_bilancio_valido(entita=membri)])
+    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                            balances=[_bilancio_valido(entita=membri)])
 
-    oggetti = archivio.oggetti(giorno=G)
+    oggetti = archivio.facts(day=G)
     assert quanti == len(oggetti)
 
     bilanci_scritti = [o for o in oggetti if o["genere"] == "bilancio"]
@@ -427,15 +427,15 @@ def test_un_giorno_con_l_impianto_produce_un_bilancio_e_zero_episodi_per_i_suoi_
 def test_il_bilancio_porta_il_nome_del_dispositivo_e_i_suoi_membri(archivio):
     membri = ["sensor.energia_prodotta_oggi"]
     for soggetto in membri:
-        archivio.annota(quando_ts=ts(6), fonte="entita", soggetto=soggetto,
+        archivio.record(quando_ts=ts(6), source="entita", subject=soggetto,
                         da=None, a="1.0", device_class="energy")
-        archivio.annota(quando_ts=ts(12), fonte="entita", soggetto=soggetto,
+        archivio.record(quando_ts=ts(12), source="entita", subject=soggetto,
                         da=None, a="5.0", device_class="energy")
 
-    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
-                   bilanci=[_bilancio_valido(entita=membri)])
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                   balances=[_bilancio_valido(entita=membri)])
 
-    [o] = [x for x in archivio.oggetti(giorno=G) if x["genere"] == "bilancio"]
+    [o] = [x for x in archivio.facts(day=G) if x["genere"] == "bilancio"]
     assert o["corpo"]["dispositivo"] == "Inverter"
     assert o["corpo"]["entita"] == membri
     assert o["corpo"]["totali"]["produzione"]["valore"] == 12.3
@@ -444,14 +444,14 @@ def test_il_bilancio_porta_il_nome_del_dispositivo_e_i_suoi_membri(archivio):
 def test_il_bilancio_si_chiude_sempre_dentro_la_giornata(archivio):
     """Come l'energia individuale: mai `fine_ts: None`, e' gia' cio' che si
     sa a fine giornata, non qualcosa ancora in corso."""
-    archivio.annota(quando_ts=ts(6), fonte="entita", soggetto="sensor.x",
+    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
                     da=None, a="1.0", device_class="energy")
-    aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
-                   bilanci=[_bilancio_valido(entita=["sensor.x"])])
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                   balances=[_bilancio_valido(entita=["sensor.x"])])
 
-    [o] = [x for x in archivio.oggetti(giorno=G) if x["genere"] == "bilancio"]
-    from hiris.app.cervello.oggetti import confini_giorno
-    da_ts, a_ts = confini_giorno(G, "Europe/Rome")
+    [o] = [x for x in archivio.facts(day=G) if x["genere"] == "bilancio"]
+    from hiris.app.cervello.oggetti import day_boundaries
+    da_ts, a_ts = day_boundaries(G, "Europe/Rome")
     assert o["inizio_ts"] == da_ts
     assert o["fine_ts"] == a_ts
 
@@ -462,17 +462,17 @@ def test_un_bilancio_senza_totali_non_sopprime_niente_e_non_si_scrive(archivio):
     statistiche non hanno detto niente per nessuna dimensione) non
     sopprime i suoi membri -- se lo facesse, undici frammenti diventerebbero
     ZERO oggetti, il peggioramento peggiore possibile."""
-    archivio.annota(quando_ts=ts(6), fonte="entita", soggetto="sensor.x",
+    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
                     da=None, a="1.0", device_class="energy")
-    archivio.annota(quando_ts=ts(12), fonte="entita", soggetto="sensor.x",
+    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.x",
                     da=None, a="5.0", device_class="energy")
 
     bilancio_vuoto = {"dispositivo_id": "dev1", "nome": "Inverter",
                       "entita": ["sensor.x"], "corpo": {}}
-    quanti = aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome",
-                            bilanci=[bilancio_vuoto])
+    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                            balances=[bilancio_vuoto])
 
-    oggetti = archivio.oggetti(giorno=G)
+    oggetti = archivio.facts(day=G)
     assert quanti == 1
     assert len(oggetti) == 1
     assert oggetti[0]["genere"] == "energia"
@@ -480,15 +480,15 @@ def test_un_bilancio_senza_totali_non_sopprime_niente_e_non_si_scrive(archivio):
 
 
 def test_senza_bilanci_il_comportamento_e_identico_a_prima(archivio):
-    """`bilanci=None` (il default): nessuna soppressione, nessun oggetto di
+    """`balances=None` (il default): nessuna soppressione, nessun oggetto di
     genere bilancio -- il comportamento di sempre, invariato."""
-    archivio.annota(quando_ts=ts(6), fonte="entita", soggetto="sensor.x",
+    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
                     da=None, a="1.0", device_class="energy")
-    archivio.annota(quando_ts=ts(12), fonte="entita", soggetto="sensor.x",
+    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.x",
                     da=None, a="5.0", device_class="energy")
 
-    quanti = aggrega_giorno(archivio=archivio, giorno=G, fuso="Europe/Rome")
+    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
 
-    oggetti = archivio.oggetti(giorno=G)
+    oggetti = archivio.facts(day=G)
     assert quanti == 1
     assert oggetti[0]["genere"] == "energia"

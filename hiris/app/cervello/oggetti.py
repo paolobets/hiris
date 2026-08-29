@@ -8,7 +8,7 @@ durava.
 
 **E' l'unico posto di questa fetta dove si giudica**, ed e' voluto: un giudizio
 qui si rifa' finche' il grezzo esiste (22 giorni: 21 di promessa, uno di
-guardia -- vedi `archivio.CONSERVAZIONE_CAMBI_S`), uno preso in scrittura non
+guardia -- vedi `archivio.READING_RETENTION_S`), uno preso in scrittura non
 si corregge piu'.
 
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
@@ -16,9 +16,9 @@ esce.** La prima non e' una lista scritta a mano: il pavimento (`pavimento.
 gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
 dominio, `device_class`, `source_type` (**non `state_class`**: correzione
 di parole della review, mandato «il bilancio dell'energia», punto 7,
-27/08/2026 -- dopo la correzione del 27/08, `pavimento.gamba` non lo legge
+27/08/2026 -- dopo la correzione del 27/08, `pavimento.aspect` non lo legge
 piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece, SI'**
-(correzione del giro di review, punto 9): `_FUNZIONANO` qui sotto e' una
+(correzione del giro di review, punto 9): `_OPERABLE` qui sotto e' una
 lista scritta a mano dei domini che si accendono e si spengono. Non c'e' modo
 di derivarla: Home Assistant non dichiara da nessuna parte «questo dominio
 funziona come un interruttore», quindi va mantenuta a mano e tenuta
@@ -30,26 +30,26 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..casa.tempo import zona_casa
-from .pavimento import gamba
+from .pavimento import aspect
 
-# `aggrega_giorno` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
+# `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
 # chiamata a `legami` dentro il ciclo farebbe migliaia di richieste per una
 # giornata. Renderla `async` "per il futuro" sarebbe generalita' speculativa.
-# **Vale identico per `bilanci`** (mandato «il bilancio dell'energia»,
+# **Vale identico per `balances`** (mandato «il bilancio dell'energia»,
 # 27/08/2026): arriva gia' costruito dal chiamante (`server.py::
 # costruisci_bilanci`), che ha gia' letto `HAClient.statistiche_orarie()` --
 # una lettura di rete per giro, non per giorno ne' per dispositivo.
 
-GENERI = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilancio")
+GENRES = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilancio")
 
 # Le SETTE dimensioni che il bilancio riporta. **Il consumo e' la settima**
 # (correzione ALTO della review, mandato «il bilancio dell'energia», punto
 # 1, 27/08/2026): prima di questa correzione erano sei, e "consumo" era
 # dichiaratamente escluso come "RIDONDANTE con autoconsumo+prelievo" -- una
 # frase che era un'ASSUNZIONE, non un fatto misurato, e su questa casa e'
-# FALSA. `_momenti_bilancio` sotto usava quell'identita' per calcolare
-# `quota_autosufficienza` come `autoconsumo/(autoconsumo+prelievo)`: su
+# FALSA. `_balance_moments` sotto usava quell'identita' per calcolare
+# `self_sufficiency_share` come `autoconsumo/(autoconsumo+prelievo)`: su
 # questa integrazione «autoconsumata» ESCLUDE la batteria (verificato:
 # e' esattamente prodotta-esportata-carica), quindi la somma mancava la
 # scarica -- oltre meta' del consumo vero della casa. Misurato il
@@ -66,9 +66,9 @@ GENERI = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilanc
 # avevamo (`energia_consumata_oggi`, la direzione "consumo" nella mappa
 # delle direzioni) e lo si buttava via in nome di una derivazione sbagliata:
 # ora si SMETTE di derivarlo, si legge, e le quote si calcolano su quello
-# (vedi `_momenti_bilancio`). Dove il sensore del consumo non esiste, la
+# (vedi `_balance_moments`). Dove il sensore del consumo non esiste, la
 # quota non si scrive -- campo assente, mai un numero inventato.
-DIREZIONI_BILANCIO = ("produzione", "autoconsumo", "immissione",
+BALANCE_DIRECTIONS = ("produzione", "autoconsumo", "immissione",
                       "prelievo", "carica", "scarica", "consumo")
 
 # I domini che «funzionano»: si accendono e si spengono, si aprono e si
@@ -79,7 +79,7 @@ DIREZIONI_BILANCIO = ("produzione", "autoconsumo", "immissione",
 # silenzio (nessun oggetto, nessun errore).
 #
 # **LA REGOLA (spec, §6, corretta il 26 agosto): un dominio entra QUI
-# insieme al suo stato di riposo in `_SPENTO` qui sotto, nella STESSA
+# insieme al suo stato di riposo in `_RESTING` qui sotto, nella STESSA
 # modifica. Le due cose non si toccano separatamente.** E' la terza volta in
 # questa fetta che lo stesso difetto nasce dal separarle: l'allarme
 # rovesciato (punto 3b), l'energia che non chiudeva mai (punto 6), e questi
@@ -89,12 +89,12 @@ DIREZIONI_BILANCIO = ("produzione", "autoconsumo", "immissione",
 # Un dominio dimenticato cade in silenzio (nessun oggetto); un dominio
 # aggiunto a meta' produce oggetti che non si chiudono mai -- lo stesso
 # costo, dai due lati opposti dello stesso elenco.
-_FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan",
+_OPERABLE = frozenset({"climate", "cover", "switch", "light", "fan",
                          "water_heater", "humidifier", "vacuum", "valve",
                          "media_player"})
 
 # Gli stati che valgono «a riposo»: chiudono un oggetto di funzionamento o di
-# sicurezza. Ogni dominio in `_FUNZIONANO` ha il SUO qui dentro -- e' la
+# sicurezza. Ogni dominio in `_OPERABLE` ha il SUO qui dentro -- e' la
 # regola scritta sopra. "off"/"closed" per i sei domini originali, "locked"
 # per la serratura, "armed_*" per il pannello dell'allarme (**"disarmed" e
 # "triggered" NO** -- correzione al rovesciamento della review, punto 3b: e'
@@ -131,23 +131,23 @@ _FUNZIONANO = frozenset({"climate", "cover", "switch", "light", "fan",
 # ora un oggetto ancora APERTO (`fine_ts: None`): e' la verita', non ha
 # finito.
 #
-# Un solo insieme, non due che si sovrappongono: `_SPENTO` e' usato da piu'
+# Un solo insieme, non due che si sovrappongono: `_RESTING` e' usato da piu'
 # rami (funzionamento e sicurezza). Non e' piu' un insieme esclusivo per
 # dominio in senso stretto -- "idle" chiude sia il vacuum sia il
 # media_player -- ma resta senza ambiguita': ogni valore ha lo stesso
 # significato («questo episodio e' finito») in qualunque dominio compaia.
-# **"unavailable"/"unknown" NON stanno qui** (vedi `_IGNOTO` sotto, e la
+# **"unavailable"/"unknown" NON stanno qui** (vedi `_UNKNOWN` sotto, e la
 # correzione del punto 2): non sono un riposo, sono «non lo sappiamo» --
 # trattarli come riposo li faceva CHIUDERE un episodio in corso, e il
 # ritorno dello stato vero ne apriva un secondo.
-_SPENTO = frozenset({"off", "closed", "none", "",
+_RESTING = frozenset({"off", "closed", "none", "",
                      "locked", "armed_home", "armed_away", "armed_night",
                      "armed_vacation", "armed_custom_bypass",
                      "docked", "returning", "error",
                      "idle", "standby"})
 
 # Stati "non lo so", non stati della casa. Un riavvio di Home Assistant fa
-# attraversare questi due stati a OGNI entita'. **Non sono in `_SPENTO`**
+# attraversare questi due stati a OGNI entita'. **Non sono in `_RESTING`**
 # (correzione punto 2 del secondo giro di review): la versione precedente li
 # metteva li' dentro, e "funzionamento"/"sicurezza" li trattavano come
 # riposo -- un riavvio a episodio in corso CHIUDEVA l'oggetto, e il ritorno
@@ -160,15 +160,15 @@ _SPENTO = frozenset({"off", "closed", "none", "",
 # La semantica giusta e' la TERZA, non «e' finito» ne' «e' cominciato»: una
 # riga con questo stato si SALTA, e l'episodio in corso resta aperto
 # ATTRAVERSO il buco -- che e' la verita', non sappiamo che sia finito. Il
-# salto vive in un punto solo, in cima ad `aggrega_giorno`, prima di ogni
+# salto vive in un punto solo, in cima ad `aggregate_day`, prima di ogni
 # ramo e prima delle misure (correzione punto 3: senza il salto in cima,
 # un'`unavailable` da riavvio a bordo giornata finiva come prima o ultima
 # lettura di un'energia) -- non piu' duplicato con una semantica diversa in
 # ogni ramo che lo tocca.
-_IGNOTO = frozenset({"unavailable", "unknown"})
+_UNKNOWN = frozenset({"unavailable", "unknown"})
 
 
-def genere_di(soggetto: str, gamba_: str | None) -> str | None:
+def genre_for(subject: str, aspect_: str | None) -> str | None:
     """Che tipo di oggetto puo' nascere da questo soggetto, o `None` se non ne
     nasce nessuno.
 
@@ -194,7 +194,7 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     `sensor` numerico della gamba sicurezza NON genera un oggetto.** Oggi
     l'unico caso raggiungibile e' il monossido misurato in concentrazione
     (`carbon_monoxide` su `sensor`, non su `binary_sensor`): una lettura come
-    "0.4" non e' mai in `_SPENTO`, quindi userebbe `_acceso` per aprire un
+    "0.4" non e' mai in `_RESTING`, quindi userebbe `_acceso` per aprire un
     oggetto che non chiuderebbe mai -- un guasto perennemente aperto al
     giorno, per ogni sensore CO numerico della casa. Un sensore che MISURA
     non e' un sensore che SCATTA: servirebbe una soglia per decidere quando
@@ -203,37 +203,37 @@ def genere_di(soggetto: str, gamba_: str | None) -> str | None:
     `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
     -- resta dentro senza bisogno di nessuna soglia.
     """
-    if soggetto.startswith(("problema:", "integrazione:")):
+    if subject.startswith(("problema:", "integrazione:")):
         return "guasto"
-    dominio = soggetto.split(".")[0]
-    if dominio in _FUNZIONANO:
+    domain = subject.split(".")[0]
+    if domain in _OPERABLE:
         return "funzionamento"
-    if dominio in ("person", "device_tracker"):
+    if domain in ("person", "device_tracker"):
         return "presenza"
-    if dominio == "sensor" and gamba_ == "energia":
+    if domain == "sensor" and aspect_ == "energia":
         return "energia"
-    if gamba_ == "sicurezza":
-        if dominio == "sensor":
+    if aspect_ == "sicurezza":
+        if domain == "sensor":
             return None
         return "sicurezza"
     return None
 
 
-def _gamba_del_cambio(soggetto: str, riga: dict) -> str | None:
+def _reading_aspect(subject: str, row: dict) -> str | None:
     """La gamba del soggetto, ricostruita dal grezzo.
 
     Il grezzo non porta il CONTESTO attorno (§3 della spec: temperatura,
     presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
     correzione, le tre classi che Home Assistant dichiara sull'entita' --
     `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
-    definizione, non un giudizio nostro. **`pavimento.gamba()` legge solo
+    definizione, non un giudizio nostro. **`pavimento.aspect()` legge solo
     `device_class` e `source_type`** per decidere la gamba di `sensor` e
     `binary_sensor` (correzione di parole della review, mandato «il
     bilancio dell'energia», punto 7, 27/08/2026: prima di questa
     correzione questo docstring diceva che le leggeva tutte e tre --
     `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
     traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
-    grezzo, non e' tolta dallo schema: e' `pavimento.gamba()` che non la
+    grezzo, non e' tolta dallo schema: e' `pavimento.aspect()` che non la
     legge, non `archivio.py` che smette di conservarla -- i 22 giorni di
     grezzo permettono di rifare il giudizio anche se un domani tornasse a
     servire.
@@ -244,16 +244,16 @@ def _gamba_del_cambio(soggetto: str, riga: dict) -> str | None:
     di rifarlo. Congelarlo in scrittura toglierebbe quella possibilita' il
     giorno in cui il pavimento cambiasse.
     """
-    if soggetto.startswith(("problema:", "integrazione:")):
+    if subject.startswith(("problema:", "integrazione:")):
         return None
-    return gamba(soggetto, {
-        "device_class": riga.get("device_class"),
-        "state_class": riga.get("state_class"),
-        "source_type": riga.get("source_type"),
+    return aspect(subject, {
+        "device_class": row.get("device_class"),
+        "state_class": row.get("state_class"),
+        "source_type": row.get("source_type"),
     })
 
 
-def confini_giorno(giorno: str, fuso: str | None) -> tuple[float, float]:
+def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     """L'inizio e la fine di un giorno **nel fuso della casa**.
 
     Le 23:30 di Roma sono le 21:30 UTC: un giorno calcolato in UTC spezzerebbe
@@ -273,16 +273,16 @@ def confini_giorno(giorno: str, fuso: str | None) -> tuple[float, float]:
     ne ha bisogno a importare comunque il nome privato, o a riscrivere il
     calcolo -- che e' esattamente come nascono i doppioni.
     """
-    zona = zona_casa(fuso)
-    inizio = datetime.fromisoformat(giorno).replace(tzinfo=zona)
-    return inizio.timestamp(), (inizio + timedelta(days=1)).timestamp()
+    zone = zona_casa(timezone)
+    start = datetime.fromisoformat(day).replace(tzinfo=zone)
+    return start.timestamp(), (start + timedelta(days=1)).timestamp()
 
 
-def _acceso(valore) -> bool:
-    return str(valore or "").strip().lower() not in _SPENTO
+def _acceso(value) -> bool:
+    return str(value or "").strip().lower() not in _RESTING
 
 
-def _differenza(iniziale, finale) -> float | None:
+def _difference(initial, final) -> float | None:
     """`finale - iniziale`, o `None` se uno dei due non si legge come numero.
 
     Un contatore scrive stringhe (`"1234.5"`). `None` e non zero quando la
@@ -304,7 +304,7 @@ def _differenza(iniziale, finale) -> float | None:
     virgola (misurato: `0.27`, `3.11`, `23.8`...).
     """
     try:
-        return round(float(finale) - float(iniziale), 2)
+        return round(float(final) - float(initial), 2)
     except (TypeError, ValueError):
         return None
 
@@ -324,12 +324,12 @@ def _differenza(iniziale, finale) -> float | None:
 # (`HAClient._richiedi_statistiche`, chiavi italiane) e i collegamenti
 # dispositivo/direzione GIA' risolti, e tornano il corpo di un bilancio.
 # Chi legge la rete e chi risolve il dispositivo e' `server.py::
-# costruisci_bilanci` -- stessa separazione di `comprimari`/`direzioni`
+# costruisci_bilanci` -- stessa separazione di `companions`/`directions`
 # sopra: la rete sta fuori, il giudizio sta qui, dove i 21 giorni di grezzo
 # (o, per il bilancio, le settimane di statistiche che HA conserva)
 # permettono di rifarlo.
 
-def _kwh(valore) -> float | None:
+def _kwh(value) -> float | None:
     """Un numero della gamba energia -> kWh arrotondati a 2 decimali.
 
     2 decimali (0,01 kWh = 10 Wh, mandato punto 6): i contatori di questa
@@ -340,15 +340,15 @@ def _kwh(valore) -> float | None:
     soglia. `None` -- non zero -- quando il valore manca o non e' un
     numero: e' la stessa distinzione di `_differenza` sopra.
     """
-    if valore is None:
+    if value is None:
         return None
     try:
-        return round(float(valore), 2)
+        return round(float(value), 2)
     except (TypeError, ValueError):
         return None
 
 
-def _percento(valore) -> float | None:
+def _percento(value) -> float | None:
     """Una percentuale di batteria -> arrotondata a 1 decimale.
 
     1 decimale (56,6%): lo stato istantaneo della batteria e' un intero
@@ -357,15 +357,15 @@ def _percento(valore) -> float | None:
     decimale distingue due ore vicine senza inventare una precisione che lo
     strumento non ha.
     """
-    if valore is None:
+    if value is None:
         return None
     try:
-        return round(float(valore), 1)
+        return round(float(value), 1)
     except (TypeError, ValueError):
         return None
 
 
-def _quota(numeratore, denominatore) -> float | None:
+def _quota(numerator, denominator) -> float | None:
     """Un rapporto -> frazione fra 0 e 1, arrotondata a 3 decimali.
 
     3 decimali (0,712): un RAPPORTO merita piu' cifre di un kWh -- 71,2% e
@@ -377,7 +377,7 @@ def _quota(numeratore, denominatore) -> float | None:
     **Mai negativa** (correzione ALTO della review, mandato «il bilancio
     dell'energia», punto 3, 27/08/2026): il nome e il docstring
     promettevano gia' «fra 0 e 1», ma nessun codice lo garantiva. Il caso
-    misurato e' `quota_autosufficienza` (`_momenti_bilancio` sotto),
+    misurato e' `self_sufficiency_share` (`_balance_moments` sotto),
     calcolata come `(consumo - prelievo) / consumo`: il prelievo PUO'
     superare il consumo di casa quando la batteria si carica dalla rete --
     quell'energia importata va a caricare, non e' consumo della casa, e la
@@ -393,18 +393,18 @@ def _quota(numeratore, denominatore) -> float | None:
     due lati -- ne' quello sbagliato di prima ne' un floor che affermerebbe
     il contrario.
     """
-    if not denominatore:
+    if not denominator:
         return None
     try:
-        valore = float(numeratore) / float(denominatore)
+        value = float(numerator) / float(denominator)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
-    if valore < 0:
+    if value < 0:
         return None
-    return round(valore, 3)
+    return round(value, 3)
 
 
-def _punti_dimensione(serie: dict[str, list[dict]], soggetto: str | None) -> list[dict]:
+def _dimension_points(series: dict[str, list[dict]], subject: str | None) -> list[dict]:
     """I punti orari di un'entita', ridotti a `{"inizio","fine","valore"}` --
     `valore` e' il `cambio` di quell'ora (il delta GIA' calcolato da HA,
     corretto per gli azzeramenti: vedi `HAClient._richiedi_statistiche`),
@@ -412,45 +412,45 @@ def _punti_dimensione(serie: dict[str, list[dict]], soggetto: str | None) -> lis
     non per l'intero `statistic_id`) resta `valore: None` -- mai uno zero
     inventato -- ma non toglie le altre ore dalla lista.
     """
-    if soggetto is None:
+    if subject is None:
         return []
-    punti = serie.get(soggetto) or []
+    points = series.get(subject) or []
     return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
              "valore": _kwh(p.get("cambio")) if isinstance(p, dict) else None}
-            for p in punti if isinstance(p, dict)]
+            for p in points if isinstance(p, dict)]
 
 
-def _momenti_bilancio(punti_per_dimensione: dict[str, list[dict]],
-                      totali: dict[str, dict]) -> dict:
+def _balance_moments(points_per_dimension: dict[str, list[dict]],
+                      totals: dict[str, dict]) -> dict:
     """I momenti derivati dalla forma e dai totali -- vedi
-    `costruisci_corpo_bilancio` per il contratto completo. Separata per
+    `build_balance_body` per il contratto completo. Separata per
     restare leggibile: ogni momento e' un piccolo giudizio a se'.
     """
-    momenti: dict = {}
+    moments: dict = {}
 
-    attive_produzione = [p for p in punti_per_dimensione.get("produzione", [])
+    attive_produzione = [p for p in points_per_dimension.get("produzione", [])
                          if (p["valore"] or 0) > 0]
     if attive_produzione:
-        momenti["prima_ora_produzione"] = attive_produzione[0]["inizio"]
-        momenti["ultima_ora_produzione"] = attive_produzione[-1]["inizio"]
-        picco = max(attive_produzione, key=lambda p: p["valore"])
-        momenti["picco_produzione"] = {"valore": picco["valore"], "ora": picco["inizio"]}
+        moments["prima_ora_produzione"] = attive_produzione[0]["inizio"]
+        moments["ultima_ora_produzione"] = attive_produzione[-1]["inizio"]
+        peak = max(attive_produzione, key=lambda p: p["valore"])
+        moments["picco_produzione"] = {"valore": peak["valore"], "ora": peak["inizio"]}
 
-    attive_scarica = [p for p in punti_per_dimensione.get("scarica", [])
+    attive_scarica = [p for p in points_per_dimension.get("scarica", [])
                       if (p["valore"] or 0) > 0]
     if attive_scarica:
-        momenti["fine_scarica_batteria"] = attive_scarica[-1]["fine"]
+        moments["fine_scarica_batteria"] = attive_scarica[-1]["fine"]
 
-    quota_autoconsumo = _quota(totali.get("autoconsumo", {}).get("valore"),
-                               totali.get("produzione", {}).get("valore"))
-    if quota_autoconsumo is not None:
-        momenti["quota_autoconsumo"] = quota_autoconsumo
+    autoconsumo_share = _quota(totals.get("autoconsumo", {}).get("valore"),
+                               totals.get("produzione", {}).get("valore"))
+    if autoconsumo_share is not None:
+        moments["quota_autoconsumo"] = autoconsumo_share
 
     # **Correzione ALTO della review (mandato «il bilancio dell'energia»,
     # punto 1, 27/08/2026): NON PIU' `autoconsumo/(autoconsumo+prelievo)`.**
     # Quella formula ASSUMEVA che il consumo della casa fosse la somma di
     # autoconsumo e prelievo -- un'identita' falsa su questa integrazione
-    # (vedi il commento sopra `DIREZIONI_BILANCIO`: «autoconsumata» esclude
+    # (vedi il commento sopra `BALANCE_DIRECTIONS`: «autoconsumata» esclude
     # la batteria, quindi la somma perde la scarica, oltre meta' del
     # consumo vero). La correzione non aggiunge la scarica alla somma --
     # sarebbe di nuovo DEDURRE un'identita' specifica di questa
@@ -460,28 +460,28 @@ def _momenti_bilancio(punti_per_dimensione: dict[str, list[dict]],
     # 14,72, prelievo 0,22 -> 0,985 (il numero vero; la vecchia formula
     # diceva 0,964). Senza il consumo misurato, niente quota: mai un
     # numero dedotto al posto di uno letto.
-    consumo = totali.get("consumo", {}).get("valore")
-    prelievo = totali.get("prelievo", {}).get("valore")
+    consumo = totals.get("consumo", {}).get("valore")
+    prelievo = totals.get("prelievo", {}).get("valore")
     if consumo is not None and prelievo is not None:
-        quota_autosufficienza = _quota(consumo - prelievo, consumo)
-        if quota_autosufficienza is not None:
-            momenti["quota_autosufficienza"] = quota_autosufficienza
+        self_sufficiency_share = _quota(consumo - prelievo, consumo)
+        if self_sufficiency_share is not None:
+            moments["quota_autosufficienza"] = self_sufficiency_share
 
-    return momenti
+    return moments
 
 
-def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
-                              entita_per_dimensione: dict[str, str],
-                              provenienza_per_dimensione: dict[str, str],
-                              entita_batteria: str | None = None) -> dict:
+def build_balance_body(*, series: dict[str, list[dict]],
+                              entity_per_dimension: dict[str, str],
+                              provenance_per_dimension: dict[str, str],
+                              battery_entity: str | None = None) -> dict:
     """Il corpo di un bilancio, dalle statistiche orarie GIA' lette e tradotte.
 
     **Pura**: nessuna lettura di rete. `serie` arriva gia' risolta dal
     chiamante (`HAClient.statistiche_orarie()`, chiavi italiane) -- stessa
-    disciplina di `comprimari`/`direzioni` in `aggrega_giorno`.
+    disciplina di `companions`/`directions` in `aggregate_day`.
 
-    `entita_per_dimensione`: `{"produzione": "sensor.x", ...}`, quale
-    entita' del dispositivo rappresenta quale delle `DIREZIONI_BILANCIO`
+    `entity_per_dimension`: `{"produzione": "sensor.x", ...}`, quale
+    entita' del dispositivo rappresenta quale delle `BALANCE_DIRECTIONS`
     -- scelta dal chiamante (`server.py::costruisci_bilanci`) fra le entita'
     del dispositivo che hanno quella direzione **e** la classe energia
     dichiarata (non potenza: il bilancio riporta kWh del giorno, non W
@@ -509,7 +509,7 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
     il primo valore in posizione zero. L'oggetto salvato, da solo, non
     sapeva piu' dire «alle 13», che e' l'unica ragione per cui la forma
     esiste (spec §1, §3). **La chiave nuova e' `ora`** (lo stesso nome gia'
-    usato da `picco_produzione` in `_momenti_bilancio` -- fondamenta 3,
+    usato da `picco_produzione` in `_balance_moments` -- fondamenta 3,
     consistenza), un ISO-8601 con fuso preso da `inizio` dello stesso punto
     -- l'istante GIA' letto e tradotto da `HAClient.statistiche_orarie()`,
     non ricalcolato. Non porta anche `fine`: la grana e' fissa a un'ora
@@ -528,66 +528,66 @@ def costruisci_corpo_bilancio(*, serie: dict[str, list[dict]],
     giusta. Il docstring di questo campo prometteva anche «24 valori»: su
     una giornata bucata la lista non ne ha 24 -- frase falsa, tolta.
     """
-    totali: dict[str, dict] = {}
-    forma: dict[str, list] = {}
-    punti_per_dimensione: dict[str, list[dict]] = {}
+    totals: dict[str, dict] = {}
+    form: dict[str, list] = {}
+    points_per_dimension: dict[str, list[dict]] = {}
 
-    for dimensione in DIREZIONI_BILANCIO:
-        punti = _punti_dimensione(serie, entita_per_dimensione.get(dimensione))
-        conosciuti = [p["valore"] for p in punti if p["valore"] is not None]
-        if not conosciuti:
+    for dimension in BALANCE_DIRECTIONS:
+        points = _dimension_points(series, entity_per_dimension.get(dimension))
+        known = [p["valore"] for p in points if p["valore"] is not None]
+        if not known:
             continue
-        punti_per_dimensione[dimensione] = punti
-        forma[dimensione] = [{"ora": p["inizio"], "valore": p["valore"]} for p in punti]
-        totali[dimensione] = {"valore": round(sum(conosciuti), 2),
-                              "provenienza": provenienza_per_dimensione.get(dimensione)}
+        points_per_dimension[dimension] = points
+        form[dimension] = [{"ora": p["inizio"], "valore": p["valore"]} for p in points]
+        totals[dimension] = {"valore": round(sum(known), 2),
+                              "provenienza": provenance_per_dimension.get(dimension)}
 
-    corpo: dict = {}
-    if totali:
-        corpo["totali"] = totali
-    if forma:
-        corpo["forma"] = forma
-    momenti = _momenti_bilancio(punti_per_dimensione, totali)
-    if momenti:
-        corpo["momenti"] = momenti
+    body: dict = {}
+    if totals:
+        body["totali"] = totals
+    if form:
+        body["forma"] = form
+    moments = _balance_moments(points_per_dimension, totals)
+    if moments:
+        body["momenti"] = moments
 
-    if entita_batteria is not None:
+    if battery_entity is not None:
         # Stessa forma di `forma[dimensione]` sopra, stessa ragione: `ora`
         # e' l'istante GIA' letto e tradotto (`inizio` del punto), non un
         # indice di posizione -- un buco del recorder non deve disallineare
         # la curva della batteria mentre quella dell'energia, accanto, resta
         # giusta (correzione punto 2 del mandato, «cerca i fratelli»).
-        punti_batteria = [p for p in (serie.get(entita_batteria) or [])
+        battery_points = [p for p in (series.get(battery_entity) or [])
                           if isinstance(p, dict)]
-        valori_batteria = [{"ora": p.get("inizio"), "valore": _percento(p.get("media"))}
-                           for p in punti_batteria]
-        if any(v["valore"] is not None for v in valori_batteria):
-            corpo["batteria_percentuale_oraria"] = valori_batteria
+        battery_values = [{"ora": p.get("inizio"), "valore": _percento(p.get("media"))}
+                           for p in battery_points]
+        if any(v["valore"] is not None for v in battery_values):
+            body["batteria_percentuale_oraria"] = battery_values
 
-    return corpo
+    return body
 
 
-def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
-                         comprimari=None, direzioni=None, bilanci=None) -> int:
+def aggregate_day(*, store, day: str, timezone: str | None,
+                         companions=None, directions=None, balances=None) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
     oggetti si accumulano in una lista e si consegnano tutti insieme, in una
-    volta sola, ad `archivio.sostituisci_giorno` -- cancellare e poi inserire
+    volta sola, ad `archivio.replace_day` -- cancellare e poi inserire
     uno per uno, con un commit per ciascuno, lascerebbe un giorno mezzo
     scritto indistinguibile da uno completo se qualcosa muore a meta'. E'
     esattamente il difetto gemello che il vecchio «costruire» ha gia' pagato
     (accodava invece di sostituire, e le ancore YAML lo nascondevano).
 
-    `comprimari(soggetto) -> list[str]` dice quali altre cose stanno con il
+    `companions(subject) -> list[str]` dice quali altre cose stanno con il
     protagonista. E' iniettabile perche' nella vita vera lo chiede a `legami`
     (una chiamata di rete) e nei test no. **Non si indovina dal nome**: e' il
     caso misurato del lampadario, dove tre lampade, il loro gruppo e
     l'interruttore fisico sono un sistema solo.
 
-    `direzioni(soggetto) -> dict | None` dice la direzione di un contatore di
+    `directions(subject) -> dict | None` dice la direzione di un contatore di
     energia -- `{"direzione": ..., "provenienza": "dichiarata" | "dedotta"}`,
-    o `None` se non si conosce. **Stessa forma di `comprimari`, stessa
+    o `None` se non si conosce. **Stessa forma di `companions`, stessa
     ragione**: nella vita vera lo chiede a `HAClient.direzioni_energia()`
     (due letture di rete, `energy/get_prefs` + il registro entita'), nei
     test no. **Non si scrive nel grezzo** (mandato «le direzioni
@@ -623,7 +623,7 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     La GAMBA resta "energia" (non si sdoppia: e' vera per tutti e 17 i
     sensori dell'inverter, produzione compresa -- `pavimento.py`), ma il
     CORPO di un episodio di energia ora porta `direzione`/`provenienza`
-    quando `direzioni()`, sopra, le sa dire -- lette da `energy/get_prefs`
+    quando `directions()`, sopra, le sa dire -- lette da `energy/get_prefs`
     (la dashboard Energia, dichiarata) e da `translation_key` (dedotta
     dall'integrazione, dove la dichiarata tace). Non e' un debito chiuso
     del tutto: la dichiarata copre 6 delle 17 entita' di questa casa, la
@@ -631,7 +631,7 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     un episodio senza `direzione` resta possibile, ed e' un fatto onesto
     («non lo sappiamo»), non un buco silenzioso.
 
-    `bilanci: list[dict] | None` -- **terzo debito, CHIUSO il 27/08/2026**
+    `balances: list[dict] | None` -- **terzo debito, CHIUSO il 27/08/2026**
     (mandato «il bilancio dell'energia»): undici frammenti di energia dello
     stesso dispositivo diventano UN oggetto, di genere `"bilancio"`. Ogni
     elemento e' `{"dispositivo_id", "nome", "entita": [...], "corpo": {...}}`
@@ -639,7 +639,7 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     legge `HAClient.statistiche_orarie()`: **il bilancio non dipende dal
     grezzo**, viene dalle statistiche di HA, che sono piu' corrette
     (gestiscono gli azzeramenti) e piu' durature dei nostri 22 giorni). E'
-    lo STESSO principio di `comprimari`/`direzioni`: la rete sta fuori da
+    lo STESSO principio di `companions`/`directions`: la rete sta fuori da
     questa funzione, che resta sincrona.
 
     **Le entita' elencate in `entita` di un bilancio VALIDO (con almeno un
@@ -648,14 +648,14 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     avremmo undici frammenti *PIU'* l'oggetto, peggio di prima. Un bilancio
     senza nemmeno un totale (le statistiche non hanno detto niente per
     nessuna delle sue dimensioni) NON sopprime niente e non si scrive: e'
-    la stessa regola di `direzioni`, mai un oggetto vuoto al posto di
+    la stessa regola di `directions`, mai un oggetto vuoto al posto di
     quello che c'era. Le entita' di energia FUORI da ogni bilancio (nessun
     dispositivo, o un dispositivo di cui NESSUNA entita' ha una direzione
-    riconosciuta fra `DIREZIONI_BILANCIO`) continuano a produrre il loro
+    riconosciuta fra `BALANCE_DIRECTIONS`) continuano a produrre il loro
     episodio come prima. **Non piu' "un dispositivo la cui unica direzione
     e' 'consumo' non basta a costruirne uno"** (frase corretta dal mandato
     «il bilancio dell'energia», punto 4, 27/08/2026: era gia' falsa da
-    quando "consumo" e' entrata in `DIREZIONI_BILANCIO` come settimo totale
+    quando "consumo" e' entrata in `BALANCE_DIRECTIONS` come settimo totale
     -- vedi il commento sopra la costante -- ed era contraddetta da un test
     dello stesso giro, `test_server_bilanci.py::
     test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato`: un
@@ -665,78 +665,78 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     entrare non ha nessuna forma
     migliore di quella che gia' aveva.
     """
-    da_ts, a_ts = confini_giorno(giorno, fuso)
-    righe = archivio.cambi(da_ts=da_ts, a_ts=a_ts)
+    da_ts, a_ts = day_boundaries(day, timezone)
+    rows = store.readings(da_ts=da_ts, a_ts=a_ts)
 
     # Solo i bilanci VALIDI (con almeno un totale) sopprimono i loro membri
-    # -- vedi il docstring di `bilanci` sopra: un bilancio vuoto sarebbe un
+    # -- vedi il docstring di `balances` sopra: un bilancio vuoto sarebbe un
     # peggioramento puro (undici frammenti in meno, zero fatti in piu').
-    bilanci_validi = [b for b in (bilanci or [])
+    valid_balances = [b for b in (balances or [])
                       if isinstance(b, dict) and (b.get("corpo") or {}).get("totali")]
-    entita_in_bilancio: set[str] = {e for b in bilanci_validi for e in (b.get("entita") or [])}
+    entities_in_balance: set[str] = {e for b in valid_balances for e in (b.get("entita") or [])}
 
     # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
-    # ramo e prima delle misure (`_IGNOTO`, correzione dei punti 2 e 3 del
+    # ramo e prima delle misure (`_UNKNOWN`, correzione dei punti 2 e 3 del
     # secondo giro di review): un riavvio di Home Assistant li fa
     # attraversare a OGNI entita'. Filtrarli a valle -- come prima, con
-    # `_SPENTO` per funzionamento/sicurezza e un `if` locale per presenza --
+    # `_RESTING` per funzionamento/sicurezza e un `if` locale per presenza --
     # li faceva significare due cose diverse nello stesso modulo: riposo in
     # un ramo (chiude un episodio in corso), salto nell'altro. La riga che
     # si perde qui e' un buco nell'informazione, non un fatto sulla casa:
     # non deve ne' aprire ne' chiudere niente, in NESSUN ramo, e non deve
     # contaminare il riepilogo di un'energia (`misure`, sotto) con
     # "unavailable" come prima o ultima lettura del giorno.
-    righe = [r for r in righe
-             if str(r["a"] or "").strip().lower() not in _IGNOTO]
+    rows = [r for r in rows
+             if str(r["a"] or "").strip().lower() not in _UNKNOWN]
 
     # Prima passata: le misure, per soggetto. Servono come contesto e non
     # generano oggetti da sole.
-    misure: dict[str, list[tuple[float, str]]] = {}
-    for r in righe:
-        misure.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
+    measurements: dict[str, list[tuple[float, str]]] = {}
+    for r in rows:
+        measurements.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
 
-    aperti: dict[str, dict] = {}
+    open_episodes: dict[str, dict] = {}
     # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
     # Si separano dal corpo apposta (vedi sotto): il limite superiore delle
     # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
     # protagonista, che a meta' del ciclo non e' ancora noto.
-    episodi: list[dict] = []
-    energia_soggetti: set[str] = set()
+    episodes: list[dict] = []
+    energy_subjects: set[str] = set()
 
-    def chiudi(soggetto: str, quando: float | None) -> None:
-        o = aperti.pop(soggetto, None)
+    def close(subject: str, when: float | None) -> None:
+        o = open_episodes.pop(subject, None)
         if o is None:
             return
-        episodi.append({"genere": o["genere"], "protagonista": soggetto,
-                        "inizio": o["inizio"], "fine": quando,
+        episodes.append({"genere": o["genere"], "protagonista": subject,
+                        "inizio": o["inizio"], "fine": when,
                         "corpo_base": {"stato": o["stato"]}})
 
-    for r in righe:
-        soggetto = r["soggetto"]
-        genere = genere_di(soggetto, _gamba_del_cambio(soggetto, r))
-        if genere is None:
+    for r in rows:
+        subject = r["soggetto"]
+        genre = genre_for(subject, _reading_aspect(subject, r))
+        if genre is None:
             continue
-        if genere == "guasto":
-            # Solo condizioni di sistema arrivano qui (vedi `genere_di`):
-            # convenzione di `osservatore.guarda_sistema` -- "aperto" nasce,
+        if genre == "guasto":
+            # Solo condizioni di sistema arrivano qui (vedi `genre_for`):
+            # convenzione di `osservatore.watch_system` -- "aperto" nasce,
             # "chiuso" e nient'altro finisce.
             if r["a"] == "aperto":
-                aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                     "stato": "aperto"}
             else:
-                chiudi(soggetto, r["quando_ts"])
+                close(subject, r["quando_ts"])
             continue
-        if genere == "sicurezza":
+        if genre == "sicurezza":
             # Sesta gamba, entita' vera: stessa logica acceso/spento del
             # funzionamento -- il genere e' diverso, la forma no.
             if _acceso(r["a"]):
-                if soggetto not in aperti:
-                    aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                if subject not in open_episodes:
+                    open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                         "stato": r["a"]}
             else:
-                chiudi(soggetto, r["quando_ts"])
+                close(subject, r["quando_ts"])
             continue
-        if genere == "presenza":
+        if genre == "presenza":
             # «home» e' il riposo, come «off» lo e' per un funzionamento:
             # l'oggetto e' l'ASSENZA, «fuori casa dalle 8:10 alle 17:34», non
             # il ritorno. Trattare anche il ritorno come un secondo oggetto
@@ -755,18 +755,18 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             # ignoti, prima di questa correzione, normalizzava tre righe
             # sopra. Due convenzioni per lo stesso valore, ora una sola.
             if str(r["a"] or "").strip().lower() == "home":
-                chiudi(soggetto, r["quando_ts"])
-            elif soggetto not in aperti:
-                aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                close(subject, r["quando_ts"])
+            elif subject not in open_episodes:
+                open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                     "stato": r["a"]}
             continue
-        if genere == "funzionamento":
+        if genre == "funzionamento":
             if _acceso(r["a"]):
-                if soggetto not in aperti:
-                    aperti[soggetto] = {"genere": genere, "inizio": r["quando_ts"],
+                if subject not in open_episodes:
+                    open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
                                         "stato": r["a"]}
             else:
-                chiudi(soggetto, r["quando_ts"])
+                close(subject, r["quando_ts"])
             continue
         # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
         # contatore visto oggi. Il riepilogo (prima lettura, ultima,
@@ -778,13 +778,13 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
         # punto principale + punto 4): il bilancio lo sostituisce. Senza
         # questo salto avremmo undici frammenti PIU' l'oggetto -- peggio
         # di adesso, non meglio.
-        if genere == "energia" and soggetto not in entita_in_bilancio:
-            energia_soggetti.add(soggetto)
+        if genre == "energia" and subject not in entities_in_balance:
+            energy_subjects.add(subject)
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
-    for soggetto in list(aperti):
-        chiudi(soggetto, None)
+    for subject in list(open_episodes):
+        close(subject, None)
 
     # Le energie si costruiscono ora, dal riepilogo delle misure: un
     # oggetto di energia del giorno SI CHIUDE sempre (mai `fine_ts: None`,
@@ -792,11 +792,11 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     # finale e la differenza -- non la prima lettura sola con un oggetto
     # perennemente aperto, che era il difetto misurato su 29 contatori
     # della casa.
-    for soggetto in sorted(energia_soggetti):
-        punti = misure.get(soggetto, [])
-        if not punti:
+    for subject in sorted(energy_subjects):
+        points = measurements.get(subject, [])
+        if not points:
             continue
-        iniziale, finale = punti[0][1], punti[-1][1]
+        initial, final = points[0][1], points[-1][1]
         # Una sola lettura nel giorno non dice quanto e' cambiato: e'
         # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
         # codice la fa gia' altrove restituendo `None` quando `_differenza`
@@ -806,12 +806,12 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
         # cambiato niente" travestito da dato. **La parola resta neutra**
         # (26/08/2026): "consumato" sarebbe falso per la meta' dei sensori
         # di un impianto fotovoltaico con accumulo, che PRODUCONO.
-        differenza = _differenza(iniziale, finale) if len(punti) > 1 else None
-        episodi.append({"genere": "energia", "protagonista": soggetto,
-                        "inizio": punti[0][0], "fine": punti[-1][0],
-                        "corpo_base": {"valore_iniziale": iniziale,
-                                       "valore_finale": finale,
-                                       "differenza": differenza}})
+        difference = _difference(initial, final) if len(points) > 1 else None
+        episodes.append({"genere": "energia", "protagonista": subject,
+                        "inizio": points[0][0], "fine": points[-1][0],
+                        "corpo_base": {"valore_iniziale": initial,
+                                       "valore_finale": final,
+                                       "differenza": difference}})
 
     # Il limite superiore delle misure di un comprimario e' l'inizio del
     # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata
@@ -820,28 +820,28 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
     # acceso 15:30-17:05 e di nuovo 19:00-20:00, con la temperatura misurata
     # fino alle 23:00, faceva riportare al PRIMO episodio come temperatura
     # finale quella delle 23:00 -- il clima del secondo episodio e oltre.
-    prossimi_inizi: dict[str, list[float]] = {}
-    for e in episodi:
-        prossimi_inizi.setdefault(e["protagonista"], []).append(e["inizio"])
+    next_starts: dict[str, list[float]] = {}
+    for e in episodes:
+        next_starts.setdefault(e["protagonista"], []).append(e["inizio"])
 
-    def limite_superiore(protagonista: str, inizio: float) -> float:
-        successivi = [i for i in prossimi_inizi.get(protagonista, []) if i > inizio]
-        return min(successivi) if successivi else a_ts
+    def upper_limit(protagonist: str, start: float) -> float:
+        later = [i for i in next_starts.get(protagonist, []) if i > start]
+        return min(later) if later else a_ts
 
-    costruiti: list[dict] = []
-    for e in episodi:
-        alto = limite_superiore(e["protagonista"], e["inizio"])
-        corpo = {**e["corpo_base"], "comprimari": [], "misure": {}}
+    built: list[dict] = []
+    for e in episodes:
+        upper_bound = upper_limit(e["protagonista"], e["inizio"])
+        body = {**e["corpo_base"], "comprimari": [], "misure": {}}
         if e["genere"] == "energia":
             # Solo l'energia porta una direzione (mandato, punto 2): un
-            # `direzioni` troppo largo, o un refuso nel confronto del
+            # `directions` troppo largo, o un refuso nel confronto del
             # genere, non deve poter far comparire `direzione` su un
             # funzionamento o una presenza.
-            info = direzioni(e["protagonista"]) if direzioni else None
+            info = directions(e["protagonista"]) if directions else None
             if info:
-                corpo["direzione"] = info["direzione"]
-                corpo["provenienza"] = info["provenienza"]
-        for altro in (comprimari(e["protagonista"]) if comprimari else []):
+                body["direzione"] = info["direzione"]
+                body["provenienza"] = info["provenienza"]
+        for other in (companions(e["protagonista"]) if companions else []):
             # Il limite INFERIORE e' l'inizio dell'oggetto: una misura presa
             # PRIMA che l'episodio cominciasse non e' cio' che si sapeva
             # della grandezza collegata mentre l'oggetto durava, e' il clima
@@ -851,28 +851,28 @@ def aggrega_giorno(*, archivio, giorno: str, fuso: str | None,
             # durava e subito dopo, prima del prossimo episodio DI QUESTO
             # protagonista -- non del prossimo cambio di un argomento
             # qualunque.
-            punti = [(t, v) for t, v in misure.get(altro, [])
-                     if e["inizio"] <= t < alto]
-            corpo["comprimari"].append(altro)
-            if punti:
-                corpo["misure"][altro] = {"da": punti[0][1], "a": punti[-1][1]}
-        costruiti.append({"genere": e["genere"], "protagonista": e["protagonista"],
+            points = [(t, v) for t, v in measurements.get(other, [])
+                     if e["inizio"] <= t < upper_bound]
+            body["comprimari"].append(other)
+            if points:
+                body["misure"][other] = {"da": points[0][1], "a": points[-1][1]}
+        built.append({"genere": e["genere"], "protagonista": e["protagonista"],
                           "inizio_ts": e["inizio"], "fine_ts": e["fine"],
-                          "corpo": corpo})
+                          "corpo": body})
 
     # I bilanci: un oggetto al giorno per dispositivo, protagonista =
     # `dispositivo_id` (stabile nel registro di HA -- non l'entita', che il
     # bilancio riassume, ne' il nome, che l'utente puo' cambiare: si
     # RISOLVE in aggregazione, non si congela nel grezzo, la stessa ragione
-    # di `comprimari`/`direzioni`). Si CHIUDE sempre dentro la giornata (mai
+    # di `companions`/`directions`). Si CHIUDE sempre dentro la giornata (mai
     # `fine_ts: None`, come l'energia individuale sopra): e' gia' cio' che
     # si sa a fine giornata.
-    for b in bilanci_validi:
-        costruiti.append({
+    for b in valid_balances:
+        built.append({
             "genere": "bilancio", "protagonista": b["dispositivo_id"],
             "inizio_ts": da_ts, "fine_ts": a_ts,
             "corpo": {**b["corpo"], "dispositivo": b.get("nome"),
                      "entita": sorted(b.get("entita") or [])},
         })
 
-    return archivio.sostituisci_giorno(giorno, costruiti)
+    return store.replace_day(day, built)

@@ -8,15 +8,15 @@ class _FintoArchivio:
     def __init__(self):
         self.chiesto = None
 
-    def oggetti(self, *, giorno=None, limite=200):
-        self.chiesto = {"giorno": giorno, "limite": limite}
+    def facts(self, *, day=None, limit=200):
+        self.chiesto = {"giorno": day, "limite": limit}
         return [{"id": 1, "giorno": "2026-08-24", "genere": "funzionamento",
                  "protagonista": "climate.camera_t", "inizio_ts": 1.0,
                  "fine_ts": 2.0, "corpo": {"comprimari": []}}]
 
 
 class _FintoOsservatore:
-    def osservate(self):
+    def watching(self):
         return [{"soggetto": "climate.camera_t", "gamba": "comfort",
                  "provenienza": "pavimento"}]
 
@@ -71,7 +71,7 @@ async def test_gli_oggetti_filtrano_per_giorno_dalla_query():
 async def test_senza_giorno_nella_query_non_si_inventa_una_data():
     """`giorno` assente deve arrivare all'archivio come `None`, non come una
     stringa vuota o una data scelta qui: e' l'archivio a sapere cosa significa
-    "nessun filtro" (`archivio.py::oggetti`)."""
+    "nessun filtro" (`archivio.py::facts`)."""
     archivio = _FintoArchivio()
     r = await handle_oggetti(_richiesta({"osservazioni": archivio}))
     assert r.status == 200

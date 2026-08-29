@@ -13,7 +13,7 @@ MERCOLEDI', l'unita' dell'esempio da cui nasce tutto il cervello.
 
 **Perche' la soglia vera e' 22 e non 21.** Ventun giorni sono la promessa; il
 ventiduesimo e' la guardia che la rende vera al bordo. Vedi il commento accanto
-a `CONSERVAZIONE_CAMBI_S`.
+a `READING_RETENTION_S`.
 
 **Perche' non e' il ritorno di `history.db`.** Quello scriveva e nessuno
 leggeva, e l'avvio lo tratta ancora oggi come un residuo da rimuovere. La
@@ -38,10 +38,10 @@ from ..storage import connect, init_schema
 # oltre la soglia sarebbe l'evento fondativo stesso, il mercoledi' alle
 # 17:30. Il 22esimo giorno copre con margine l'ora dell'ora legale, senza far
 # entrare il fuso orario nell'archivio.
-CONSERVAZIONE_CAMBI_S = 22 * 86400
+READING_RETENTION_S = 22 * 86400
 
 
-def _migrazione_2(conn) -> None:
+def _migration_2(conn) -> None:
     """v1 -> v2: il grezzo porta anche `device_class`, `state_class` e
     `source_type` (Task 3 del giro di correzioni: prima non c'erano, e mezzo
     pavimento -- energia, i rilevatori della sesta gamba -- non produceva
@@ -51,11 +51,11 @@ def _migrazione_2(conn) -> None:
     mandato «il bilancio dell'energia», punto 4, 27/08/2026 -- falsa al
     presente: era vera ed era stata dichiarata fuori scope quando scritta
     il 26/08, la scelta giusta allora). Dopo la correzione del 27/08 sul
-    traffico di rete (`pavimento.py::gamba`, il suo docstring), `pavimento.
-    gamba()` legge solo `device_class` e `source_type` per decidere la
+    traffico di rete (`pavimento.py::aspect`, il suo docstring), `pavimento.
+    aspect()` legge solo `device_class` e `source_type` per decidere la
     gamba di `sensor` e `binary_sensor` -- `state_class` NON e' piu' fra i
     criteri. Resta comunque QUI, nel grezzo: non e' tolta dallo schema, e'
-    `pavimento.gamba()` che ha smesso di leggerla per decidere la gamba, non
+    `pavimento.aspect()` che ha smesso di leggerla per decidere la gamba, non
     `archivio.py` che smette di conservarla -- i 22 giorni di grezzo
     permettono di rifare il giudizio anche se un domani tornasse a servire.
 
@@ -65,10 +65,10 @@ def _migrazione_2(conn) -> None:
     che ricostruisse la tabella per tre colonne rischierebbe di perdere
     settimane di osservazione per un guadagno estetico.
     """
-    esistenti = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
-    for colonna in ("device_class", "state_class", "source_type"):
-        if colonna not in esistenti:
-            conn.execute(f"ALTER TABLE cambi ADD COLUMN {colonna} TEXT")
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
+    for column in ("device_class", "state_class", "source_type"):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
@@ -98,20 +98,20 @@ CREATE INDEX IF NOT EXISTS idx_oggetti_giorno ON oggetti(giorno, inizio_ts);
 """
 
 
-def _riga_cambio(r) -> dict:
+def _reading_row(r) -> dict:
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
             "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
             "device_class": r["device_class"], "state_class": r["state_class"],
             "source_type": r["source_type"]}
 
 
-def _riga_oggetto(r) -> dict:
+def _fact_row(r) -> dict:
     return {"id": r["id"], "giorno": r["giorno"], "genere": r["genere"],
             "protagonista": r["protagonista"], "inizio_ts": r["inizio_ts"],
             "fine_ts": r["fine_ts"], "corpo": json.loads(r["corpo_json"])}
 
 
-class ArchivioOsservazioni:
+class ObservationsStore:
     """La memoria dell'osservatore. Il lock e' lo stesso delle scritture anche
     in lettura: la connessione e' condivisa fra thread (`check_same_thread=
     False`), ed e' il pattern gia' consolidato in `azione/cronaca.py`."""
@@ -119,7 +119,7 @@ class ArchivioOsservazioni:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migrazione_2})
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
@@ -127,7 +127,7 @@ class ArchivioOsservazioni:
 
     # -- i cambi -------------------------------------------------------
 
-    def annota(self, *, quando_ts: float, fonte: str, soggetto: str,
+    def record(self, *, quando_ts: float, source: str, subject: str,
                da, a, device_class: str | None = None,
                state_class: str | None = None,
                source_type: str | None = None) -> None:
@@ -140,7 +140,7 @@ class ArchivioOsservazioni:
 
         `device_class`, `state_class` e `source_type` sono le tre classi che
         Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' cio' che serve a `pavimento.gamba()` per
+        un giudizio nostro: e' cio' che serve a `pavimento.aspect()` per
         decidere la gamba di `sensor` e `binary_sensor` quando l'aggregazione
         rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
         annullabili: le condizioni di sistema non li portano, e una riga
@@ -150,13 +150,13 @@ class ArchivioOsservazioni:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
                 "state_class,source_type) VALUES(?,?,?,?,?,?,?,?)",
-                (float(quando_ts), fonte, soggetto,
+                (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
                  device_class, state_class, source_type))
             self._conn.commit()
 
-    def cambi(self, *, da_ts: float, a_ts: float, soggetto: str | None = None,
-              fonte: str | None = None, limite: int = 200_000) -> list[dict]:
+    def readings(self, *, da_ts: float, a_ts: float, subject: str | None = None,
+              source: str | None = None, limit: int = 200_000) -> list[dict]:
         """I cambi di una finestra, **dal piu' vecchio**.
 
         Al contrario della cronaca degli atti, che torna dal piu' recente:
@@ -179,57 +179,57 @@ class ArchivioOsservazioni:
         """
         sql = "SELECT * FROM cambi WHERE quando_ts >= ? AND quando_ts < ?"
         args: list = [float(da_ts), float(a_ts)]
-        if soggetto is not None:
+        if subject is not None:
             sql += " AND soggetto = ?"
-            args.append(soggetto)
-        if fonte is not None:
+            args.append(subject)
+        if source is not None:
             sql += " AND fonte = ?"
-            args.append(fonte)
+            args.append(source)
         sql += " ORDER BY quando_ts ASC, id ASC LIMIT ?"
-        args.append(int(max(1, limite)))
+        args.append(int(max(1, limit)))
         with self._lock:
-            righe = self._conn.execute(sql, tuple(args)).fetchall()
-        return [_riga_cambio(r) for r in righe]
+            rows = self._conn.execute(sql, tuple(args)).fetchall()
+        return [_reading_row(r) for r in rows]
 
-    def pota(self, adesso_ts: float) -> int:
+    def prune(self, now_ts: float) -> int:
         """Butta i cambi oltre la conservazione. **Non tocca gli oggetti**: le
         due tabelle hanno due vite, e una potatura che si portasse via cio' che
         si e' capito cancellerebbe mesi per liberare qualche megabyte."""
         with self._lock:
             cur = self._conn.execute("DELETE FROM cambi WHERE quando_ts < ?",
-                                     (float(adesso_ts) - CONSERVAZIONE_CAMBI_S,))
+                                     (float(now_ts) - READING_RETENTION_S,))
             self._conn.commit()
             return cur.rowcount or 0
 
     # -- gli oggetti ---------------------------------------------------
 
-    def oggetti(self, *, giorno: str | None = None, limite: int = 200) -> list[dict]:
+    def facts(self, *, day: str | None = None, limit: int = 200) -> list[dict]:
         """Gli oggetti, dal piu' recente."""
         sql = "SELECT * FROM oggetti"
         args: list = []
-        if giorno is not None:
+        if day is not None:
             sql += " WHERE giorno = ?"
-            args.append(giorno)
+            args.append(day)
         sql += " ORDER BY inizio_ts DESC, id DESC LIMIT ?"
-        args.append(int(max(1, limite)))
+        args.append(int(max(1, limit)))
         with self._lock:
-            righe = self._conn.execute(sql, tuple(args)).fetchall()
-        return [_riga_oggetto(r) for r in righe]
+            rows = self._conn.execute(sql, tuple(args)).fetchall()
+        return [_fact_row(r) for r in rows]
 
     # `salva_oggetto` (un INSERT nudo) e `dimentica_oggetti` (un DELETE nudo)
     # sono uscite qui (giro di correzioni, task-5-fix-brief.md punto 4):
-    # nessun chiamante di produzione le usava -- `aggrega_giorno` scrive
-    # SEMPRE attraverso `sostituisci_giorno`, l'unica via transazionale, e i
+    # nessun chiamante di produzione le usava -- `aggregate_day` scrive
+    # SEMPRE attraverso `replace_day`, l'unica via transazionale, e i
     # mandati dei task 6 e 7 non le reclamano (cercato in tutto `hiris/`,
     # non solo nel cervello). Lasciarle accanto a quella transazionale era un
     # invito a usarle in sequenza -- ed e' esattamente il difetto che
-    # `sostituisci_giorno` esiste per chiudere: un crash fra un DELETE e
+    # `replace_day` esiste per chiudere: un crash fra un DELETE e
     # l'INSERT che lo segue lascia il giorno vuoto o mezzo scritto, e
     # nessuno se ne accorge finche' non serve rileggerlo. Se la
     # cancellazione utente della spec (§8, "dimentica un giorno") tornera'
     # a servire, si riscrivera' allora, con i suoi test e la sua
     # transazione.
-    def sostituisci_giorno(self, giorno: str, oggetti: list[dict]) -> int:
+    def replace_day(self, day: str, facts: list[dict]) -> int:
         """Rifa' un giorno per intero, in **una sola transazione**: cancella
         gli oggetti esistenti di `giorno` e inserisce quelli nuovi.
 
@@ -245,22 +245,22 @@ class ArchivioOsservazioni:
         schema), **l'intera transazione va indietro**: il giorno resta quello
         di prima, mai mezzo riscritto.
 
-        Ogni elemento di `oggetti` e' un dict con le chiavi `genere`,
+        Ogni elemento di `facts` e' un dict con le chiavi `genere`,
         `protagonista`, `inizio_ts`, `fine_ts`, `corpo` -- meno `giorno` che
         qui e' comune a tutti.
         """
         with self._lock:
             try:
-                self._conn.execute("DELETE FROM oggetti WHERE giorno = ?", (giorno,))
-                for o in oggetti:
+                self._conn.execute("DELETE FROM oggetti WHERE giorno = ?", (day,))
+                for o in facts:
                     self._conn.execute(
                         "INSERT INTO oggetti(giorno,genere,protagonista,inizio_ts,fine_ts,"
                         "corpo_json) VALUES(?,?,?,?,?,?)",
-                        (giorno, o["genere"], o["protagonista"], float(o["inizio_ts"]),
+                        (day, o["genere"], o["protagonista"], float(o["inizio_ts"]),
                          None if o.get("fine_ts") is None else float(o["fine_ts"]),
                          json.dumps(o["corpo"], ensure_ascii=False)))
                 self._conn.commit()
             except Exception:
                 self._conn.rollback()
                 raise
-            return len(oggetti)
+            return len(facts)

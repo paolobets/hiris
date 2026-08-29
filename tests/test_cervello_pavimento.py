@@ -8,7 +8,7 @@ la review del primo task.
 """
 import pytest
 
-from hiris.app.cervello.pavimento import GAMBE, gamba, nel_pavimento
+from hiris.app.cervello.pavimento import ASPECTS, aspect, in_baseline
 
 
 @pytest.mark.parametrize("eid, attributi, atteso", [
@@ -26,8 +26,8 @@ from hiris.app.cervello.pavimento import GAMBE, gamba, nel_pavimento
     ("sensor.rilevatore_co", {"device_class": "carbon_monoxide"}, "sicurezza"),
 ])
 def test_le_sei_gambe_dell_obiettivo(eid, attributi, atteso):
-    assert gamba(eid, attributi) == atteso
-    assert atteso in GAMBE
+    assert aspect(eid, attributi) == atteso
+    assert atteso in ASPECTS
 
 
 def test_i_device_tracker_del_router_restano_FUORI():
@@ -39,14 +39,14 @@ def test_i_device_tracker_del_router_restano_FUORI():
     Non e' una questione di volume: quei 65 fanno 114 cambi al giorno, lo zero
     per cento. E' che non significano niente per l'obiettivo.
     """
-    assert gamba("device_tracker.nvr", {"source_type": "router"}) is None
-    assert gamba("device_tracker.alexa", {"source_type": "router"}) is None
+    assert aspect("device_tracker.nvr", {"source_type": "router"}) is None
+    assert aspect("device_tracker.alexa", {"source_type": "router"}) is None
 
 
 def test_i_device_tracker_gps_sono_le_persone():
     """I 4 `gps` sono i telefoni, e sono le fonti che stanno dietro alle due
     `person`. Senza di loro «chi c'e'» si riduce a due entita' sole."""
-    assert gamba("device_tracker.iphone_di_marta", {"source_type": "gps"}) == "chi c'e'"
+    assert aspect("device_tracker.iphone_di_marta", {"source_type": "gps"}) == "chi c'e'"
 
 
 def test_un_tracker_senza_source_type_resta_fuori():
@@ -54,7 +54,7 @@ def test_un_tracker_senza_source_type_resta_fuori():
     si sta fuori: un rumore in piu' costa disco, un dato mancante costa un
     passato che non si ricompra -- ma un tracker senza tipo non e' una persona
     finche' non lo dice, e le `person` non passano di qui."""
-    assert gamba("device_tracker.ipad_mini", {}) is None
+    assert aspect("device_tracker.ipad_mini", {}) is None
 
 
 def test_la_batteria_entra_anche_se_e_di_servizio():
@@ -63,7 +63,7 @@ def test_la_batteria_entra_anche_se_e_di_servizio():
     precisamente «buono stato». Il filtro e' per CLASSE del dispositivo, non
     per categoria: escluderli in blocco toglierebbe una gamba dell'obiettivo.
     """
-    assert gamba("sensor.sensore_batteria",
+    assert aspect("sensor.sensore_batteria",
                  {"device_class": "battery", "entity_category": "diagnostic"}) == "buono stato"
 
 
@@ -75,7 +75,7 @@ def test_cio_che_non_serve_all_obiettivo_resta_fuori():
         ("button.identifica", {}),
         ("update.firmware", {}),
     ]:
-        assert gamba(eid, attributi) is None, eid
+        assert aspect(eid, attributi) is None, eid
 
 
 @pytest.mark.parametrize("eid, attributi, atteso", [
@@ -101,7 +101,7 @@ def test_la_sesta_gamba_sicurezza(eid, attributi, atteso):
     era una dimenticanza, non una scelta, ed e' il buco peggiore possibile:
     un allarme che scatta e rientra mentre nessuno e' in casa, se non
     osservato, dopo tre giorni non esiste piu' in Home Assistant."""
-    assert gamba(eid, attributi) == atteso
+    assert aspect(eid, attributi) == atteso
 
 
 def test_la_trappola_del_gas_due_gambe_per_lo_stesso_nome_di_classe():
@@ -110,16 +110,16 @@ def test_la_trappola_del_gas_due_gambe_per_lo_stesso_nome_di_classe():
     `binary_sensor` con classe `gas` e' il rilevatore di fuga (sicurezza). Il
     ramo per dominio le separa gia'; un controllo per sola classe le
     fonderebbe."""
-    assert gamba("sensor.contatore_gas", {"device_class": "gas"}) == "energia"
-    assert gamba("binary_sensor.fuga_gas", {"device_class": "gas"}) == "sicurezza"
+    assert aspect("sensor.contatore_gas", {"device_class": "gas"}) == "energia"
+    assert aspect("binary_sensor.fuga_gas", {"device_class": "gas"}) == "sicurezza"
 
 
 def test_carbon_monoxide_non_co():
     """Trappola gia' documentata nel prodotto: la classe si chiama
     `carbon_monoxide`, NON `co`. Un'entita' con la sigla sbagliata non deve
     finire ne' in sicurezza ne' altrove per un falso positivo di stringa."""
-    assert gamba("sensor.monossido_garage", {"device_class": "carbon_monoxide"}) == "sicurezza"
-    assert gamba("sensor.monossido_garage", {"device_class": "co"}) is None
+    assert aspect("sensor.monossido_garage", {"device_class": "carbon_monoxide"}) == "sicurezza"
+    assert aspect("sensor.monossido_garage", {"device_class": "co"}) is None
 
 
 @pytest.mark.parametrize("classe", [
@@ -129,10 +129,10 @@ def test_carbon_monoxide_non_co():
     "sulphur_dioxide",
 ])
 def test_la_qualita_dell_aria_entra_in_comfort(classe):
-    """Il docstring di `gamba` promette «che aria si respira»: prima di questa
+    """Il docstring di `aspect` promette «che aria si respira»: prima di questa
     correzione il codice copriva solo temperatura e umidita', una frase
     falsa."""
-    assert gamba("sensor.aria_soggiorno", {"device_class": classe}) == "comfort"
+    assert aspect("sensor.aria_soggiorno", {"device_class": classe}) == "comfort"
 
 
 def test_total_increasing_da_solo_non_basta_piu_per_energia():
@@ -146,18 +146,18 @@ def test_total_increasing_da_solo_non_basta_piu_per_energia():
     non e' una classe di energia DICHIARATA, e un contatore che sale e basta
     non e' automaticamente energia (potrebbe essere litri, richieste HTTP,
     qualunque cosa che HA conta). Un contatore che porta ANCHE una classe di
-    `_ENERGIA` (sopra) resta energia -- vedi `sensor.presa_energia` nella
+    `_ENERGY` (sopra) resta energia -- vedi `sensor.presa_energia` nella
     parametrizzazione qui sopra.
 
     Mutazione ESEGUITA durante l'implementazione: ripristinato `or
-    classe_stato == "total_increasing"` nel ramo `sensor` di `gamba()` --
+    classe_stato == "total_increasing"` nel ramo `sensor` di `aspect()` --
     questo test arrossisce (`'energia' == None` fallisce), perche' torna a
     classificare il traffico di rete come energia. Ripristinata la
     correzione subito dopo."""
-    assert gamba("sensor.betarena_gb_inviati",
+    assert aspect("sensor.betarena_gb_inviati",
                  {"device_class": "data_size", "state_class": "total_increasing",
                   "unit_of_measurement": "GB"}) is None
-    assert gamba("sensor.betarena_gb_ricevuti",
+    assert aspect("sensor.betarena_gb_ricevuti",
                  {"device_class": "data_size", "state_class": "total_increasing"}) is None
 
 
@@ -167,35 +167,35 @@ def test_nel_pavimento_e_la_stessa_domanda_di_gamba():
     sia sui rami decisi dal DOMINIO sia su quelli decisi dagli ATTRIBUTI
     (`device_class`, `state_class`, `source_type`): entrambi vanno provati."""
     # Rami decisi dal dominio da soli.
-    assert nel_pavimento("person.marta", {}) is True
-    assert nel_pavimento("light.lampadario", {}) is False
-    assert nel_pavimento("lock.porta_ingresso", {}) is True
-    assert nel_pavimento("alarm_control_panel.centrale", {}) is True
+    assert in_baseline("person.marta", {}) is True
+    assert in_baseline("light.lampadario", {}) is False
+    assert in_baseline("lock.porta_ingresso", {}) is True
+    assert in_baseline("alarm_control_panel.centrale", {}) is True
 
     # Rami decisi da `device_class` su `binary_sensor`.
-    assert nel_pavimento("binary_sensor.movimento", {"device_class": "occupancy"}) is True
-    assert nel_pavimento("binary_sensor.porta", {"device_class": "door"}) is True
-    assert nel_pavimento("binary_sensor.fumo", {"device_class": "smoke"}) is True
-    assert nel_pavimento("binary_sensor.rumore", {"device_class": "sound"}) is False
+    assert in_baseline("binary_sensor.movimento", {"device_class": "occupancy"}) is True
+    assert in_baseline("binary_sensor.porta", {"device_class": "door"}) is True
+    assert in_baseline("binary_sensor.fumo", {"device_class": "smoke"}) is True
+    assert in_baseline("binary_sensor.rumore", {"device_class": "sound"}) is False
 
     # Rami decisi da `device_class` su `sensor`.
-    assert nel_pavimento("sensor.temp", {"device_class": "temperature"}) is True
-    assert nel_pavimento("sensor.aria", {"device_class": "pm25"}) is True
-    assert nel_pavimento("sensor.co", {"device_class": "carbon_monoxide"}) is True
-    assert nel_pavimento("sensor.batteria", {"device_class": "battery"}) is True
-    assert nel_pavimento("sensor.energia", {"device_class": "energy"}) is True
-    assert nel_pavimento("sensor.uptime", {"device_class": "timestamp"}) is False
+    assert in_baseline("sensor.temp", {"device_class": "temperature"}) is True
+    assert in_baseline("sensor.aria", {"device_class": "pm25"}) is True
+    assert in_baseline("sensor.co", {"device_class": "carbon_monoxide"}) is True
+    assert in_baseline("sensor.batteria", {"device_class": "battery"}) is True
+    assert in_baseline("sensor.energia", {"device_class": "energy"}) is True
+    assert in_baseline("sensor.uptime", {"device_class": "timestamp"}) is False
 
     # Un `total_increasing` SENZA una classe di energia dichiarata resta
     # fuori (27/08/2026, mandato «il bilancio dell'energia» punto 5): vedi
     # `test_total_increasing_da_solo_non_basta_piu_per_energia` qui sotto.
-    assert nel_pavimento("sensor.contatore", {"state_class": "total_increasing"}) is False
-    assert nel_pavimento("sensor.istantaneo", {"state_class": "measurement"}) is False
+    assert in_baseline("sensor.contatore", {"state_class": "total_increasing"}) is False
+    assert in_baseline("sensor.istantaneo", {"state_class": "measurement"}) is False
 
     # Rami decisi da `source_type` su `device_tracker`.
-    assert nel_pavimento("device_tracker.iphone", {"source_type": "gps"}) is True
-    assert nel_pavimento("device_tracker.nvr", {"source_type": "router"}) is False
-    assert nel_pavimento("device_tracker.ipad", {}) is False
+    assert in_baseline("device_tracker.iphone", {"source_type": "gps"}) is True
+    assert in_baseline("device_tracker.nvr", {"source_type": "router"}) is False
+    assert in_baseline("device_tracker.ipad", {}) is False
 
 
 @pytest.mark.parametrize("attributi, atteso", [
@@ -211,4 +211,4 @@ def test_attributi_malformati_non_sollevano(attributi, atteso):
     ma "non solleva" non basta: nessuno di questi valori malformati descrive
     una classe o un tipo che il pavimento riconosce, quindi il risultato
     corretto e' sempre e soltanto `None`, non uno qualsiasi fra piu' esiti."""
-    assert gamba("sensor.x", attributi) is atteso
+    assert aspect("sensor.x", attributi) is atteso
