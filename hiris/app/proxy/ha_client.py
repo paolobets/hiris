@@ -10,7 +10,7 @@ from urllib.parse import quote
 import aiohttp
 
 from ..casa.anagrafe import SEVERITA_PROBLEMA
-from ..casa.tempo import normalizza_ore
+from ..casa.tempo import normalize_hours
 from ._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
 
@@ -1084,7 +1084,7 @@ class HAClient:
         if entita is not None and not _ENTITY_ID_RE.match(str(entita)):
             logger.warning("diario: entita' non valida: %r", entita)
             return {"errore": _truncate(f"entita' non valida: {entita!r}", 200)}
-        finestra = int(normalizza_ore(ore, tetto=MAX_DIARIO_ORE,
+        finestra = int(normalize_hours(ore, ceiling=MAX_DIARIO_ORE,
                                       default=DEFAULT_DIARIO_ORE))
         now = datetime.now(UTC)
         start = (now - timedelta(hours=finestra)).isoformat()

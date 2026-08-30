@@ -184,7 +184,7 @@ def test_senza_fuso_noto_non_si_inventa(archivio):
     **Cambio a `ts(1)`**: le 23:00Z del 23 agosto, che cade FRA le due
     mezzanotti. In UTC appartiene a "2026-08-23". Con un fuso inventato
     (es. `Europe/Rome`, +02:00) apparterrebbe gia' al 24: il conteggio del 23
-    tornerebbe zero. E' la mutazione -- far tornare a `zona_casa(None)` un
+    tornerebbe zero. E' la mutazione -- far tornare a `home_space_zone(None)` un
     `ZoneInfo("Europe/Rome")` -- che questo test deve rilevare."""
     archivio.record(quando_ts=ts(1), source="entita",
                     subject="climate.camera_t", da="off", a="heat")

@@ -409,7 +409,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "app": {"archivio_casa": _ArchivioCasaCheSolleva()},
         "ha_client": None, "logger": logger_test,
         "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-        "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+        "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
         "day_boundaries": server.day_boundaries,
         "costruisci_comprimari": server.costruisci_comprimari,
         "costruisci_bilanci": server.costruisci_bilanci,
@@ -768,7 +768,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "ha_client": cliente,
             "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "costruisci_comprimari": server.costruisci_comprimari,
             "costruisci_bilanci": server.costruisci_bilanci,
@@ -1097,7 +1097,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
             "app": {"archivio_casa": None, "osservazioni": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "costruisci_comprimari": server.costruisci_comprimari,
             "costruisci_bilanci": server.costruisci_bilanci,
@@ -1140,7 +1140,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
             "app": {"archivio_casa": None, "osservazioni": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "costruisci_comprimari": server.costruisci_comprimari,
             "costruisci_bilanci": server.costruisci_bilanci,
@@ -1319,7 +1319,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
         # trovato dal vivo (review indipendente, fetta «la rinomina»,
         # Task 7): un test che dipende dall'orologio reale non deve
         # dipendere da un FUSO diverso da quello che il codice usa.
-        adesso_reale = datetime.now(server.zona_casa("Europe/Rome"))
+        adesso_reale = datetime.now(server.home_space_zone("Europe/Rome"))
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.record(quando_ts=quando.timestamp(), source="entita",
@@ -1336,7 +1336,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
             "app": {"archivio_casa": casa, "osservazioni": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "costruisci_comprimari": server.costruisci_comprimari,
             "costruisci_bilanci": server.costruisci_bilanci,
@@ -1372,7 +1372,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
     try:
         # Stessa correzione del test gemello sopra: "ieri" nel fuso
         # della casa, non in UTC (vedi la nota li').
-        adesso_reale = datetime.now(server.zona_casa("Europe/Rome"))
+        adesso_reale = datetime.now(server.home_space_zone("Europe/Rome"))
         ieri = adesso_reale - timedelta(days=1)
         quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
         archivio.record(quando_ts=quando.timestamp(), source="entita",
@@ -1388,7 +1388,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
             "app": {"archivio_casa": casa, "osservazioni": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "zona_casa": server.zona_casa,
+            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "costruisci_comprimari": server.costruisci_comprimari,
             "costruisci_bilanci": server.costruisci_bilanci,

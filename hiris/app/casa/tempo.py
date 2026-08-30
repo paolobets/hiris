@@ -31,21 +31,21 @@ logger = logging.getLogger(__name__)
 # Conseguenza da guardare in faccia: la domanda da cui questa fetta nasce --
 # «le temperature delle camere nelle ultime 48 ore» -- cade SOPRA la soglia e
 # riceve fasce orarie. Se la si volesse piu' fine, si alza questo numero.
-SOGLIA_GRANA_ORE = 24
+GRANULARITY_THRESHOLD_HOURS = 24
 
 # Il tetto della finestra richiedibile: 90 giorni. Non e' la conservazione di
 # Home Assistant (quella non e' leggibile da nessuna API, vedi
-# `finestra_coperta` in `andamento`): e' il limite oltre il quale la domanda
+# `finestra_coperta` in `trend`): e' il limite oltre il quale la domanda
 # non e' piu' una domanda sulla casa ma una scansione del database.
-MAX_FINESTRA_ORE = 24 * 90
+MAX_WINDOW_HOURS = 24 * 90
 
 # Quando `ore` non e' interpretabile. Un giorno: la finestra che la parola
 # «oggi» significa.
-DEFAULT_ORE = 24.0
+DEFAULT_HOURS = 24.0
 
 
-def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
-                   default: float = DEFAULT_ORE) -> float:
+def normalize_hours(raw, *, ceiling: float = MAX_WINDOW_HOURS,
+                   default: float = DEFAULT_HOURS) -> float:
     """Qualunque cosa -> un numero di ore fra 1 e `tetto`.
 
     `ore` arriva da una tool-call del modello: puo' essere `None`, una
@@ -67,12 +67,12 @@ def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
     totale.
     """
     try:
-        numero = float(grezzo)
+        number = float(raw)
     except Exception:
         return default
-    if math.isnan(numero):  # NaN: non confrontabile, vale come assente
+    if math.isnan(number):  # NaN: non confrontabile, vale come assente
         return default
-    return min(float(tetto), max(1.0, numero))
+    return min(float(ceiling), max(1.0, number))
 
 
 # I soli state_class che Home Assistant traduce DAVVERO in statistiche a
@@ -84,27 +84,27 @@ def normalizza_ore(grezzo, *, tetto: float = MAX_FINESTRA_ORE,
 # un'omissione nostra (spec §1). Un'appartenenza a questo insieme, non
 # un'esclusione della sola `measurement_angle`: il vocabolario di HA non si
 # arrotonda, e domani potrebbe crescere di un'altra classe che non aggrega.
-STATE_CLASS_CON_STATISTICHE = frozenset({"measurement", "total", "total_increasing"})
+STATE_CLASSES_WITH_STATISTICS = frozenset({"measurement", "total", "total_increasing"})
 
 
-def produce_statistiche(state_class) -> bool:
+def produces_statistics(state_class) -> bool:
     """Se questo `state_class` produce DAVVERO una statistica a lungo termine.
 
     Non `bool(state_class)`: quel cablaggio manderebbe ANCHE
     `measurement_angle` sul ramo statistiche, e una banderuola interrogata
     oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
     cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
-    Vive qui (pura, senza rete) accanto a `scegli_superficie`, che la
+    Vive qui (pura, senza rete) accanto a `choose_surface`, che la
     consuma: e' domanda di vocabolario HA, non di scelta della superficie.
 
-    Il nome e' diverso dal parametro `ha_statistiche` che questo modulo passa
-    in giro (`andamento`, `scegli_superficie`): quello e' gia' il booleano
+    Il nome e' diverso dal parametro `has_statistics` che questo modulo passa
+    in giro (`trend`, `choose_surface`): quello e' gia' il booleano
     risolto, questa e' la funzione che lo risolve dal vocabolario di HA --
     due cose diverse, non due nomi per la stessa."""
-    return state_class in STATE_CLASS_CON_STATISTICHE
+    return state_class in STATE_CLASSES_WITH_STATISTICS
 
 
-def scegli_superficie(*, ore: float, ha_statistiche: bool) -> str:
+def choose_surface(*, hours: float, has_statistics: bool) -> str:
     """`"dettaglio"` o `"statistiche"`, e nient'altro puo' deciderlo.
 
     Due assi soli: quanto e' lunga la finestra, e se l'entita' ha
@@ -116,12 +116,12 @@ def scegli_superficie(*, ore: float, ha_statistiche: bool) -> str:
     La soglia e' INCLUSIVA: 24 ore esatte sono ancora dettaglio. «Le ultime
     ventiquattr'ore» e' una domanda su oggi, e su oggi si guardano i cambi.
     """
-    if ore <= SOGLIA_GRANA_ORE:
+    if hours <= GRANULARITY_THRESHOLD_HOURS:
         return "dettaglio"
-    return "statistiche" if ha_statistiche else "dettaglio"
+    return "statistiche" if has_statistics else "dettaglio"
 
 
-def zona_casa(fuso: str | None):
+def home_space_zone(timezone: str | None):
     """Il fuso della casa, o UTC se non lo sappiamo. Non inventa mai.
 
     Un fuso sbagliato sposta le ore di una risposta senza che nessuno se ne
@@ -134,28 +134,28 @@ def zona_casa(fuso: str | None):
     come nascono i doppioni, perche' il prossimo che ne ha bisogno o importa
     il nome privato o riscrive il calcolo.
     """
-    if not fuso:
+    if not timezone:
         return UTC
     try:
         from zoneinfo import ZoneInfo
 
-        return ZoneInfo(fuso)
+        return ZoneInfo(timezone)
     except Exception:
-        logger.warning("fuso della casa non riconosciuto (%r): finestra in UTC", fuso)
+        logger.warning("fuso della casa non riconosciuto (%r): finestra in UTC", timezone)
         return UTC
 
 
-def finestra(*, ore: float, adesso_ts: float, fuso: str | None) -> tuple[str, str]:
+def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, str]:
     """`(da_iso, a_iso)` nel fuso della casa, con l'offset SEMPRE scritto.
 
     Un istante senza fuso e' la stessa classe di difetto di un numero senza
-    unita': «alle 17» di quale fuso? E' la stessa regola che `epoch_istante`,
+    unita': «alle 17» di quale fuso? E' la stessa regola che `instant_epoch`,
     qui sotto, applica in lettura (e che `casa/strumenti.py` riusa per gli
     istanti in ingresso della chat) -- applicata qui in uscita.
     """
-    zona = zona_casa(fuso)
-    a = datetime.fromtimestamp(adesso_ts, tz=zona)
-    da = a - timedelta(hours=ore)
+    zone = home_space_zone(timezone)
+    a = datetime.fromtimestamp(now_ts, tz=zone)
+    da = a - timedelta(hours=hours)
     return da.isoformat(), a.isoformat()
 
 
@@ -164,9 +164,9 @@ def finestra(*, ore: float, adesso_ts: float, fuso: str | None) -> tuple[str, st
 # protegge la LEGGIBILITA'. Per le entita' con statistiche il problema non si
 # pone -- sopra la soglia si passa alle fasce -- ma per le altre il dettaglio
 # e' l'unica fonte che esista, e li' si riassume di nostro.
-MAX_PUNTI_IN_RISPOSTA = 120
+MAX_POINTS_PER_ANSWER = 120
 
-_NOTA_MAI_CAMBIATO = "in questa finestra il valore non e' mai cambiato."
+_NEVER_CHANGED_NOTE = "in questa finestra il valore non e' mai cambiato."
 # Tre cause producono lo STESSO risultato vuoto, e da qui non si distinguono:
 # `purge_keep_days` non e' leggibile da nessuna API, quindi non sappiamo se i
 # dati ci sono mai stati e sono scaduti, o non ci sono mai stati. Elencarne
@@ -174,21 +174,21 @@ _NOTA_MAI_CAMBIATO = "in questa finestra il valore non e' mai cambiato."
 # cio' che HA conserva) sarebbe affermare cause sbagliate con sicurezza --
 # l'onesto e' dichiarare l'incertezza fra le tre, non risolverla a caso.
 # Nessun numero di giorni qui: quel numero non lo sappiamo.
-_NOTA_NESSUNA_REGISTRAZIONE = (
+_NO_RECORDING_NOTE = (
     "Home Assistant non ha registrazioni per questa entita' in questa "
     "finestra: puo' darsi che la finestra chiesta vada oltre cio' che Home "
     "Assistant conserva, che l'entita' sia esclusa dalla registrazione "
     "(in quel caso non ne restera' mai), oppure che non esista piu' -- da "
     "qui non possiamo distinguere quale delle tre."
 )
-_NOTA_FASCE = (
+_BAND_NOTE = (
     "valori a fasce orarie (minimo, massimo, media di ogni ora), non le "
     "singole misure: la finestra chiesta e' piu' lunga di un giorno."
 )
 # F1 (onda finale): un `inizio` che non si legge come ISO-8601 col fuso NON e'
 # «nessuna registrazione» -- e' una forma che questo modulo non sa leggere.
 # Prima dell'onda finale l'`or 0.0` sulla riga qui sotto trasformava
-# `epoch_istante(None)` in zero, il confronto con `da_ts` (~1,7 miliardi)
+# `instant_epoch(None)` in zero, il confronto con `da_ts` (~1,7 miliardi)
 # scartava la fascia come "prima della finestra", e un'entita' con dati VERI
 # finiva su «Home Assistant non ha registrazioni». Non e' un'ipotesi di
 # scuola: alcune versioni del recorder rendono `start` come epoch in
@@ -197,16 +197,16 @@ _NOTA_FASCE = (
 # in silenzio, e' la parte obbligatoria della correzione (vedi il rapporto
 # dell'onda finale): il modello deve poter dire «non ho potuto leggere»
 # invece di «non c'e' niente».
-_ERRORE_FASCIA_ILLEGGIBILE = (
+_UNREADABLE_BAND_ERROR = (
     "Home Assistant ha risposto con fasce orarie il cui istante di inizio "
     "non e' nella forma attesa (ISO-8601 con fuso): non posso dire se i dati "
     "ci sono senza rischiare di leggerli male."
 )
 
 
-async def andamento(*, ha, entita: str, ore, unita: str | None,
-                    ha_statistiche: bool, adesso_ts: float,
-                    fuso: str | None) -> dict:
+async def trend(*, ha, entity: str, hours, unit: str | None,
+                    has_statistics: bool, now_ts: float,
+                    timezone: str | None) -> dict:
     """Un valore nel tempo, con la grana e la finestra DAVVERO coperte.
 
     Ritorna `{"entita", "grana", "unita", "finestra_chiesta_ore",
@@ -224,64 +224,64 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
     **Una fascia oraria con un `inizio` che non si legge come ISO-8601 col
     fuso e' un guasto, non un vuoto** (fix onda finale, F1): convertirla in
     silenzio in «prima della finestra» produrrebbe la stessa frase falsa di
-    `_NOTA_NESSUNA_REGISTRAZIONE` su un'entita' che invece ha dati veri.
+    `_NO_RECORDING_NOTE` su un'entita' che invece ha dati veri.
     """
-    ore = normalizza_ore(ore)
-    da_iso, a_iso = finestra(ore=ore, adesso_ts=adesso_ts, fuso=fuso)
-    superficie = scegli_superficie(ore=ore, ha_statistiche=ha_statistiche)
-    base = {"entita": entita, "unita": unita, "finestra_chiesta_ore": ore}
+    hours = normalize_hours(hours)
+    da_iso, a_iso = window(hours=hours, now_ts=now_ts, timezone=timezone)
+    surface = choose_surface(hours=hours, has_statistics=has_statistics)
+    base = {"entita": entity, "unita": unit, "finestra_chiesta_ore": hours}
 
-    if superficie == "statistiche":
-        esito = await ha.statistiche([entita], "hour", int(ore / 24) + 1)
-        if "serie" not in esito:
-            return {**base, "errore": esito.get("errore", "statistiche non disponibili")}
+    if surface == "statistiche":
+        occurrence = await ha.statistiche([entity], "hour", int(hours / 24) + 1)
+        if "serie" not in occurrence:
+            return {**base, "errore": occurrence.get("errore", "statistiche non disponibili")}
         # Il confronto passa per l'epoch, MAI per le stringhe: le statistiche
         # tornano in UTC (`+00:00`) e la finestra nasce nel fuso della casa
         # (`+02:00` d'estate a Roma). Due ISO-8601 con offset diversi non sono
         # ordinabili come testo -- «2026-08-23T13:00:00+00:00» sembra maggiore
         # di «2026-08-23T14:00:00+02:00» e sono lo stesso istante.
-        da_ts = epoch_istante(da_iso) or 0.0
-        tutte = esito["serie"].get(entita, [])
+        da_ts = instant_epoch(da_iso) or 0.0
+        all = occurrence["serie"].get(entity, [])
         # Si separa PRIMA «non si legge» da «e' prima della finestra»: un
         # `or 0.0` unico per i due casi (come c'era) confonde un istante
         # illeggibile con un istante fuori finestra, e il secondo scarta la
         # fascia in silenzio mentre il primo deve fermare la risposta.
-        illeggibili = [f for f in tutte if epoch_istante(f.get("inizio")) is None]
-        if illeggibili:
-            return {**base, "errore": _ERRORE_FASCIA_ILLEGGIBILE}
-        fasce = [f for f in tutte if epoch_istante(f.get("inizio")) >= da_ts]
-        if not fasce:
+        unreadable = [f for f in all if instant_epoch(f.get("inizio")) is None]
+        if unreadable:
+            return {**base, "errore": _UNREADABLE_BAND_ERROR}
+        bands = [f for f in all if instant_epoch(f.get("inizio")) >= da_ts]
+        if not bands:
             return {**base, "grana": "oraria", "finestra_coperta": None,
-                    "punti": [], "nota": _NOTA_NESSUNA_REGISTRAZIONE}
-        nota = _NOTA_FASCE
-        ridotte = fasce
-        if len(fasce) > MAX_PUNTI_IN_RISPOSTA:
+                    "punti": [], "nota": _NO_RECORDING_NOTE}
+        notes = _BAND_NOTE
+        sampled = bands
+        if len(bands) > MAX_POINTS_PER_ANSWER:
             # Stesso gemello del ramo dettaglio, due righe piu' sotto: uno
             # slice secco (`fasce[-N:]`) sposta `punti[0]` avanti nel tempo
             # mentre `finestra_coperta` restava calcolata sull'elenco intero
             # -- una copertura dichiarata e non consegnata (fondamenta 3).
-            # `_assottiglia` campiona invece di tagliare, e tiene la prima
+            # `_sample` campiona invece di tagliare, e tiene la prima
             # fascia in indice 0: e' cio' che tiene `finestra_coperta` vera.
-            ridotte = _assottiglia(fasce, MAX_PUNTI_IN_RISPOSTA)
+            sampled = _sample(bands, MAX_POINTS_PER_ANSWER)
             # Il numero VERO delle fasce, non «molte»: la media di un'ora
             # resta una media, l'assottigliamento qui e' un campionamento
             # sulle fasce gia' pronte, mai una media di medie.
-            nota = (f"{_NOTA_FASCE} {len(fasce)} fasce nella finestra, ridotte "
-                    f"a {len(ridotte)} distribuite nel tempo.")
+            notes = (f"{_BAND_NOTE} {len(bands)} fasce nella finestra, ridotte "
+                    f"a {len(sampled)} distribuite nel tempo.")
         return {**base, "grana": "oraria",
-                "finestra_coperta": _coperta(fasce, "inizio", a_iso),
+                "finestra_coperta": _covered(bands, "inizio", a_iso),
                 # Stesso motivo del ramo dettaglio: le statistiche tornano in
                 # UTC e la finestra nasce nel fuso della casa. Due offset nella
                 # stessa risposta sono la fondamenta 3 rotta in un dizionario.
-                "punti": _nel_fuso(ridotte, ("inizio", "fine"), a_iso), "nota": nota}
+                "punti": _in_timezone(sampled, ("inizio", "fine"), a_iso), "nota": notes}
 
-    esito = await ha.storico([entita], da_iso, a_iso)
-    if "serie" not in esito:
-        return {**base, "errore": esito.get("errore", "storico non disponibile")}
-    punti = esito["serie"].get(entita, [])
-    if not punti:
+    occurrence = await ha.storico([entity], da_iso, a_iso)
+    if "serie" not in occurrence:
+        return {**base, "errore": occurrence.get("errore", "storico non disponibile")}
+    points = occurrence["serie"].get(entity, [])
+    if not points:
         return {**base, "grana": "dettaglio", "finestra_coperta": None,
-                "punti": [], "nota": _NOTA_NESSUNA_REGISTRAZIONE}
+                "punti": [], "nota": _NO_RECORDING_NOTE}
     # F2 (onda finale): `ha.storico` promette nel proprio docstring che
     # `troncato` c'e' SEMPRE, apposta perche' «chi legge deve poter sapere
     # che e' scattato». Non leggerlo qui butta via quella promessa: dopo il
@@ -290,38 +290,38 @@ async def andamento(*, ha, entita: str, ore, unita: str | None,
     # spacciarlo per esatto direbbe «5000 cambi» quando ce n'erano 12.000. La
     # stessa ragione per cui `finestra_coperta` si e' ristretta: il taglio ha
     # scartato i cambi piu' vecchi, non la casa ha smesso di generarli.
-    troncato_dal_client = bool(esito.get("troncato"))
-    conteggio = f"almeno {len(punti)}" if troncato_dal_client else str(len(punti))
-    nota = None
-    if len(punti) == 1 and not troncato_dal_client:
-        nota = _NOTA_MAI_CAMBIATO
-    ridotti = punti
-    if len(punti) > MAX_PUNTI_IN_RISPOSTA:
-        ridotti = _assottiglia(punti, MAX_PUNTI_IN_RISPOSTA)
+    truncated_by_client = bool(occurrence.get("troncato"))
+    count = f"almeno {len(points)}" if truncated_by_client else str(len(points))
+    notes = None
+    if len(points) == 1 and not truncated_by_client:
+        notes = _NEVER_CHANGED_NOTE
+    sampled = points
+    if len(points) > MAX_POINTS_PER_ANSWER:
+        sampled = _sample(points, MAX_POINTS_PER_ANSWER)
         # Il numero VERO (o il pavimento dichiarato come tale), non «molti»:
         # e' cio' che permette a chi legge di capire che sta guardando un
         # campione e non l'elenco intero.
-        nota = (f"{conteggio} cambi nella finestra, ridotti a "
-                f"{len(ridotti)} punti distribuiti nel tempo.")
-    if troncato_dal_client:
-        nota = (nota or f"{conteggio} cambi nella finestra.") + (
+        notes = (f"{count} cambi nella finestra, ridotti a "
+                f"{len(sampled)} punti distribuiti nel tempo.")
+    if truncated_by_client:
+        notes = (notes or f"{count} cambi nella finestra.") + (
             " Home Assistant ne aveva di piu' di quelli che questo elenco "
             "puo' portare: sono stati tenuti i piu' recenti, e la finestra "
             "davvero coperta e' percio' piu' corta di quella chiesta.")
     return {**base, "grana": "dettaglio",
-            "finestra_coperta": _coperta(punti, "quando", a_iso),
+            "finestra_coperta": _covered(points, "quando", a_iso),
             # Gli istanti dei punti si riscrivono nel fuso della casa, come
-            # gia' fa `_coperta` per gli estremi della finestra. Visto dal
+            # gia' fa `_covered` per gli estremi della finestra. Visto dal
             # vivo il 24/08/2026: `finestra_coperta` diceva `14:18+02:00` e
             # `punti[0]` diceva `12:18+00:00` -- lo STESSO istante, dentro un
             # dizionario solo. Chi legge (un modello, che poi parla a una
             # persona) puo' concluderne che i dati cominciano due ore dopo
             # l'apertura della finestra. E' la fondamenta 3 dentro una sola
             # risposta, e costa una riscrittura.
-            "punti": _nel_fuso(ridotti, ("quando",), a_iso), "nota": nota}
+            "punti": _in_timezone(sampled, ("quando",), a_iso), "nota": notes}
 
 
-def epoch_istante(grezzo) -> float | None:
+def instant_epoch(raw) -> float | None:
     """Un ISO-8601 col fuso -> epoch. `None` se non si legge o se il fuso manca.
 
     Un istante SENZA fuso viene rifiutato invece di essere letto come locale:
@@ -333,16 +333,16 @@ def epoch_istante(grezzo) -> float | None:
     modulo e' leggero e non importa quasi niente, quindi resta qui e
     `strumenti.py` la importa -- mai il contrario.
     """
-    if not isinstance(grezzo, str) or not grezzo.strip():
+    if not isinstance(raw, str) or not raw.strip():
         return None
     try:
-        momento = datetime.fromisoformat(grezzo.strip())
+        moment = datetime.fromisoformat(raw.strip())
     except ValueError:
         return None
-    return None if momento.tzinfo is None else momento.timestamp()
+    return None if moment.tzinfo is None else moment.timestamp()
 
 
-def _nel_fuso(punti: list[dict], chiavi: tuple[str, ...], a_iso: str) -> list[dict]:
+def _in_timezone(points: list[dict], keys: tuple[str, ...], a_iso: str) -> list[dict]:
     """Le chiavi temporali di `punti` (`chiavi`) riscritte nel fuso di `a_iso`.
 
     Lo storico di Home Assistant torna in UTC, la finestra nasce nel fuso
@@ -356,7 +356,7 @@ def _nel_fuso(punti: list[dict], chiavi: tuple[str, ...], a_iso: str) -> list[di
     `inizio` -- lo stesso punto usciva con `inizio` a +02:00 e `fine`
     ancora a +00:00, due fusi nella stessa risposta. E' la rottura della
     consistenza fra le porte dentro un modulo i cui stessi commenti la
-    denunciano per `finestra_coperta`/`punti` (vedi `andamento` sopra) e
+    denunciano per `finestra_coperta`/`punti` (vedi `trend` sopra) e
     non se ne accorgevano per `fine`. Il ramo del dettaglio passa una sola
     chiave (`("quando",)`): le sue righe non portano `fine`, quindi il
     ciclo sotto e' un no-op su quella chiave, non un ramo diverso.
@@ -365,23 +365,23 @@ def _nel_fuso(punti: list[dict], chiavi: tuple[str, ...], a_iso: str) -> list[di
     sbagliato che uno inventato, e la coppia `finestra_coperta` lo dichiara
     comunque con la stessa regola.
     """
-    zona = None
+    zone = None
     try:
-        zona = datetime.fromisoformat(a_iso).tzinfo
+        zone = datetime.fromisoformat(a_iso).tzinfo
     except ValueError:
-        return list(punti)
-    riscritti = []
-    for p in punti:
-        nuovo = dict(p)
-        for chiave in chiavi:
-            quando = epoch_istante(p.get(chiave))
-            if quando is not None:
-                nuovo[chiave] = datetime.fromtimestamp(quando, tz=zona).isoformat()
-        riscritti.append(nuovo)
-    return riscritti
+        return list(points)
+    rewritten = []
+    for p in points:
+        new = dict(p)
+        for key in keys:
+            when = instant_epoch(p.get(key))
+            if when is not None:
+                new[key] = datetime.fromtimestamp(when, tz=zone).isoformat()
+        rewritten.append(new)
+    return rewritten
 
 
-def _coperta(punti: list[dict], chiave: str, a_iso: str) -> dict | None:
+def _covered(points: list[dict], key: str, a_iso: str) -> dict | None:
     """La finestra che i dati coprono DAVVERO -- dal primo istante tornato.
 
     `da` si riscrive nel fuso di `a`: le statistiche tornano in UTC e la
@@ -393,21 +393,21 @@ def _coperta(punti: list[dict], chiave: str, a_iso: str) -> dict | None:
     `a` ISO (fix onda finale, F1) sarebbe una frase vera che significa una
     cosa falsa quanto una grana taciuta.
     """
-    if not punti:
+    if not points:
         return None
-    grezzo = punti[0].get(chiave)
-    quando = epoch_istante(grezzo)
-    if quando is None:
-        return {"da": grezzo if grezzo is None else str(grezzo), "a": a_iso}
+    raw = points[0].get(key)
+    when = instant_epoch(raw)
+    if when is None:
+        return {"da": raw if raw is None else str(raw), "a": a_iso}
     try:
-        zona = datetime.fromisoformat(a_iso).tzinfo
-        da = datetime.fromtimestamp(quando, tz=zona).isoformat()
+        zone = datetime.fromisoformat(a_iso).tzinfo
+        da = datetime.fromtimestamp(when, tz=zone).isoformat()
     except ValueError:
-        da = grezzo
+        da = raw
     return {"da": da, "a": a_iso}
 
 
-def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
+def _sample(points: list[dict], count: int) -> list[dict]:
     """Un campione distribuito nel tempo, primo e ultimo sempre compresi.
 
     Non una media: la media di stati che possono essere `on`/`off` non
@@ -415,18 +415,18 @@ def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
     punti e' dichiarato dalla nota che accompagna la risposta; INVENTARNE uno
     che non e' mai esistito non si dichiara in nessun modo.
     """
-    if len(punti) <= quanti:
-        return list(punti)
-    if quanti <= 1:
+    if len(points) <= count:
+        return list(points)
+    if count <= 1:
         # Con un solo posto non si puo' tenere primo E ultimo: si tiene il
         # piu' recente. Irraggiungibile con `MAX_PUNTI_IN_RISPOSTA` (120), ma
         # la funzione ha un secondo chiamante (il ramo statistiche) e senza
         # questa guardia `quanti - 1` diventerebbe zero al denominatore.
-        return [punti[-1]]
-    passo = (len(punti) - 1) / (quanti - 1)
-    scelti = [punti[round(i * passo)] for i in range(quanti)]
-    scelti[-1] = punti[-1]
-    return scelti
+        return [points[-1]]
+    step = (len(points) - 1) / (count - 1)
+    chosen = [points[round(i * step)] for i in range(count)]
+    chosen[-1] = points[-1]
+    return chosen
 
 
 # Quanto possono distare un atto della cronaca e la voce del diario che
@@ -435,11 +435,11 @@ def _assottiglia(punti: list[dict], quanti: int) -> list[dict]:
 # aggancio e' entita' + istante vicino, e sessanta secondi sono larghi per la
 # latenza di una chiamata di servizio e stretti per due gesti distinti sulla
 # stessa lampada. E' il motivo per cui l'esito si chiama «probabile».
-TOLLERANZA_ABBINAMENTO_S = 60
+MATCH_TOLERANCE_S = 60
 
 
-async def accaduto(*, ha, cronaca, entita: str | None, ore,
-                   adesso_ts: float) -> dict:
+async def logbook(*, ha, journal, entity: str | None, hours,
+                   now_ts: float) -> dict:
     """Cosa e' successo in una finestra, e -- dove si puo' dire -- per mano di chi.
 
     Ritorna `{"voci", "troncato", "ore", "nota"}` oppure `{"errore"}`.
@@ -460,55 +460,55 @@ async def accaduto(*, ha, cronaca, entita: str | None, ore,
     accesa qualcuno, non so chi» anche quando era stato HIRIS e il dato
     c'era, solo illeggibile.
     """
-    ore = normalizza_ore(ore)
-    esito = await ha.diario(entita, int(ore))
-    if "voci" not in esito:
-        return {"errore": esito.get("errore", "il diario non e' disponibile")}
+    hours = normalize_hours(hours)
+    occurrence = await ha.diario(entity, int(hours))
+    if "voci" not in occurrence:
+        return {"errore": occurrence.get("errore", "il diario non e' disponibile")}
     # La finestra dell'abbinamento e' quella che il diario ha DAVVERO coperto
     # (`ore` puo' essere stato clampato dal client): due finestre diverse
     # produrrebbero atti senza voce e voci senza atto, in modo invisibile.
-    ore_vere = float(esito.get("ore") or ore)
-    atti = []
-    # F3 (onda finale): `cronaca_letta` distingue «HIRIS non l'ha fatto» da
+    real_hours = float(occurrence.get("ore") or hours)
+    acts = []
+    # F3 (onda finale): `journal_loaded` distingue «HIRIS non l'ha fatto» da
     # «non ho potuto guardare la mia cronaca» -- oggi le due hanno la STESSA
     # faccia (l'assenza di `per_mano_di` su ogni voce), e senza questa
     # dichiarazione il modello direbbe «l'ha accesa qualcuno, non so chi»
     # ANCHE quando e' stato HIRIS e il dato c'era, solo illeggibile. E' la
     # stessa ragione per cui `_cerca` costruisce `non_ho_potuto_guardare`
     # (`_cecita` in strumenti.py): due facce diverse per due fatti diversi.
-    cronaca_letta = False
-    if cronaca is None:
+    journal_loaded = False
+    if journal is None:
         logger.debug("accaduto: nessuna cronaca disponibile, attribuzione persa")
     else:
         try:
-            atti = cronaca.list(da_ts=adesso_ts - ore_vere * 3600,
-                                  a_ts=adesso_ts, entity=entita)
-            cronaca_letta = True
-        except Exception as errore:
+            acts = journal.list(da_ts=now_ts - real_hours * 3600,
+                                  a_ts=now_ts, entity=entity)
+            journal_loaded = True
+        except Exception as error:
             # L'attribuzione e' un di piu': un archivio che non risponde non
             # deve togliere all'utente la risposta sulla casa -- ma deve
             # dichiararsi, non sparire in silenzio (vedi sopra).
             logger.warning("cronaca illeggibile durante «accaduto» (%s: %s)",
-                           type(errore).__name__, errore)
-            atti = []
-    voci = [_abbina(v, atti) for v in esito["voci"]]
-    note = []
-    if not cronaca_letta:
-        note.append(
+                           type(error).__name__, error)
+            acts = []
+    entries = [_match(v, acts) for v in occurrence["voci"]]
+    notes = []
+    if not journal_loaded:
+        notes.append(
             "non ho potuto controllare la mia cronaca: una voce senza "
             "«per_mano_di» potrebbe comunque essere mia, e non solo di "
             "un'automazione o di una persona."
         )
-    if esito.get("troncato"):
-        note.append("le voci piu' vecchie della finestra non sono in questo elenco.")
-    if ore_vere < ore:
-        note.append(f"il diario copre al piu' {int(ore_vere)} ore, non le "
-                    f"{int(ore)} chieste.")
-    return {"voci": voci, "troncato": bool(esito.get("troncato")),
-            "ore": int(ore_vere), "nota": " ".join(note) or None}
+    if occurrence.get("troncato"):
+        notes.append("le voci piu' vecchie della finestra non sono in questo elenco.")
+    if real_hours < hours:
+        notes.append(f"il diario copre al piu' {int(real_hours)} ore, non le "
+                    f"{int(hours)} chieste.")
+    return {"voci": entries, "troncato": bool(occurrence.get("troncato")),
+            "ore": int(real_hours), "nota": " ".join(notes) or None}
 
 
-def _abbina(voce: dict, atti: list[dict]) -> dict:
+def _match(entry: dict, acts: list[dict]) -> dict:
     """La voce del diario, piu' -- dove si puo' dire -- l'atto che PROBABILMENTE
     l'ha causata. Senza abbinamento la voce esce INVARIATA: «e' successo
     qualcosa e non so chi» resta una risposta onesta.
@@ -526,21 +526,21 @@ def _abbina(voce: dict, atti: list[dict]) -> dict:
     (ordinata per tempo decrescente): con due tentativi ravvicinati sulla
     stessa entita' il primo della lista non e' detto sia il gesto giusto.
     """
-    quando = epoch_istante(voce.get("quando"))
-    entita_voce = voce.get("entita")
-    if quando is None or not entita_voce:
-        return voce
-    migliore, scarto_migliore = None, None
-    for atto in atti:
-        if entita_voce not in (atto.get("entita") or []):
+    when = instant_epoch(entry.get("quando"))
+    entry_entity = entry.get("entita")
+    if when is None or not entry_entity:
+        return entry
+    best, best_gap = None, None
+    for act in acts:
+        if entry_entity not in (act.get("entita") or []):
             continue
-        scarto = abs(float(atto.get("quando_ts") or 0.0) - quando)
-        if scarto > TOLLERANZA_ABBINAMENTO_S:
+        gap = abs(float(act.get("quando_ts") or 0.0) - when)
+        if gap > MATCH_TOLERANCE_S:
             continue
-        if scarto_migliore is None or scarto < scarto_migliore:
-            migliore, scarto_migliore = atto, scarto
-    if migliore is None:
-        return voce
-    return {**voce, "per_mano_di": "HIRIS", "abbinamento": "probabile",
-            "atto": {"id": migliore.get("id"), "origine": migliore.get("origine"),
-                     "servizio": migliore.get("servizio")}}
+        if best_gap is None or gap < best_gap:
+            best, best_gap = act, gap
+    if best is None:
+        return entry
+    return {**entry, "per_mano_di": "HIRIS", "abbinamento": "probabile",
+            "atto": {"id": best.get("id"), "origine": best.get("origine"),
+                     "servizio": best.get("servizio")}}

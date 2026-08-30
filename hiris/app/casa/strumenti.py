@@ -1580,7 +1580,7 @@ class DispatcherStrumenti:
 
         await self._assicura_registro_fresco()
 
-        quando = tempo.epoch_istante(argomenti.get("quando"))
+        quando = tempo.instant_epoch(argomenti.get("quando"))
         if quando is None:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
@@ -1939,16 +1939,16 @@ class DispatcherStrumenti:
         entita = entita.strip()
         stati = self._stati_grezzi() or {}
         voce = stati.get(entita) or {}
-        return await tempo.andamento(
-            ha=self._canale_ha(), entita=entita, ore=argomenti.get("ore"),
-            unita=voce.get("unit") or None,
-            # `tempo.produce_statistiche`, non `bool(state_class)` (fix onda
+        return await tempo.trend(
+            ha=self._canale_ha(), entity=entita, hours=argomenti.get("ore"),
+            unit=voce.get("unit") or None,
+            # `tempo.produces_statistics`, non `bool(state_class)` (fix onda
             # finale, F4): `measurement_angle` e' un `state_class` vero e
             # proprio ma NON produce statistiche (spec §1) -- una banderuola
             # interrogata oltre la soglia di grana finirebbe su un elenco
             # vuoto invece che sul dettaglio, la superficie giusta per lei.
-            ha_statistiche=tempo.produce_statistiche(voce.get("state_class")),
-            adesso_ts=_time.time(), fuso=self._fuso())
+            has_statistics=tempo.produces_statistics(voce.get("state_class")),
+            now_ts=_time.time(), timezone=self._fuso())
 
     async def _accaduto(self, argomenti: dict[str, Any]) -> dict:
         entita = argomenti.get("entita")
@@ -1956,7 +1956,7 @@ class DispatcherStrumenti:
             return {"errore": "«accaduto» vuole «entita» come identificatore, oppure niente."}
         import time as _time
 
-        return await tempo.accaduto(
-            ha=self._canale_ha(), cronaca=self._cronaca,
-            entita=entita.strip() if isinstance(entita, str) else None,
-            ore=argomenti.get("ore"), adesso_ts=_time.time())
+        return await tempo.logbook(
+            ha=self._canale_ha(), journal=self._cronaca,
+            entity=entita.strip() if isinstance(entita, str) else None,
+            hours=argomenti.get("ore"), now_ts=_time.time())

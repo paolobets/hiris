@@ -106,28 +106,28 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
                      "name": "Camera", "device_class": "temperature",
                      "state_class": "measurement", "domain": "sensor"}]
 
-    async def _finto_andamento(**kwargs):
+    async def _finto_trend(**kwargs):
         visti.update(kwargs)
-        return {"entita": kwargs["entita"], "grana": "dettaglio", "punti": []}
+        return {"entita": kwargs["entity"], "grana": "dettaglio", "punti": []}
 
     import hiris.app.casa.strumenti as modulo
-    originale = modulo.tempo.andamento
-    modulo.tempo.andamento = _finto_andamento
+    originale = modulo.tempo.trend
+    modulo.tempo.trend = _finto_trend
     try:
         d = DispatcherStrumenti(None, None, cache=_Cache(), ha=object())
         await d.dispatch("andamento", {"entita": "sensor.camera", "ore": 6})
     finally:
-        modulo.tempo.andamento = originale
-    assert visti["unita"] == "°C"
-    assert visti["ha_statistiche"] is True
+        modulo.tempo.trend = originale
+    assert visti["unit"] == "°C"
+    assert visti["has_statistics"] is True
 
 
 @pytest.mark.asyncio
 async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     """Il gemello del test sopra, per `accaduto`. Senza questo test la prova
-    mentale che conta e' negativa: se `cronaca=self._cronaca` diventasse
-    `cronaca=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
-    questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.accaduto` e
+    mentale che conta e' negativa: se `journal=self._cronaca` diventasse
+    `journal=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
+    questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.logbook` e
     non il dispatcher. L'effetto sarebbe silenzioso: la risposta continua ad
     arrivare, solo senza mai dire «l'ho fatto io» -- l'attribuzione sparisce
     e nessuno se ne accorge."""
@@ -135,19 +135,19 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     cronaca_vera = object()  # un oggetto RICONOSCIBILE: deve arrivare esso
                               # stesso, non un sostituto costruito qui.
 
-    async def _finto_accaduto(**kwargs):
+    async def _finto_logbook(**kwargs):
         visti.update(kwargs)
-        return {"voci": [], "troncato": False, "ore": kwargs["ore"], "nota": None}
+        return {"voci": [], "troncato": False, "ore": kwargs["hours"], "nota": None}
 
     import hiris.app.casa.strumenti as modulo
-    originale = modulo.tempo.accaduto
-    modulo.tempo.accaduto = _finto_accaduto
+    originale = modulo.tempo.logbook
+    modulo.tempo.logbook = _finto_logbook
     try:
         d = DispatcherStrumenti(None, None, ha=object(), cronaca=cronaca_vera)
         await d.dispatch("accaduto", {"ore": 6})
     finally:
-        modulo.tempo.accaduto = originale
-    assert visti["cronaca"] is cronaca_vera
+        modulo.tempo.logbook = originale
+    assert visti["journal"] is cronaca_vera
 
 
 @pytest.mark.asyncio
@@ -157,7 +157,7 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
     (`bool(state_class)`) manderebbe una banderuola oltre le 24 ore sul ramo
     statistiche, cioe' su un elenco vuoto che direbbe «non e' mai cambiata»
     -- mentre il dettaglio, la superficie giusta per lei, esiste. Qui
-    `tempo.andamento` gira DAVVERO (non e' fintato): se il cablaggio tornasse
+    `tempo.trend` gira DAVVERO (non e' fintato): se il cablaggio tornasse
     a `bool(...)`, `grana` sarebbe «oraria» e la finta HA registrerebbe
     «statistiche», non «storico»."""
     class _Cache:

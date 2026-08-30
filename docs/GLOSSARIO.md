@@ -1067,15 +1067,19 @@ al Task 6 invece che deciso qui.
 | etichetta | label |
 | evento | event |
 | fallito | failed |
+| fascia | band |
 | finale | final |
+| finestra | window |
 | fonte | source |
 | forma | form |
 | frase | phrase |
 | fresco | fresh |
 | giorno | day |
 | giro | round |
+| grana | granularity |
 | gratuito | free |
 | identificatore | identifier |
+| illeggibile | unreadable |
 | impronta | fingerprint |
 | iniziale | initial |
 | innesca | trigger |
@@ -1083,6 +1087,7 @@ al Task 6 invece che deciso qui.
 | interno | internal |
 | invalida | invalidate |
 | inventario | inventory |
+| istante | instant |
 | leggi | read |
 | leggibile | readable |
 | limite | limit |
@@ -1147,6 +1152,7 @@ al Task 6 invece che deciso qui.
 | sezione | section |
 | sistema | system |
 | soggetto | subject |
+| soglia | threshold |
 | sostituisci | replace |
 | statistiche | statistics |
 | stato | state |

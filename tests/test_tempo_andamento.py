@@ -17,13 +17,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from hiris.app.casa.tempo import (
-    MAX_PUNTI_IN_RISPOSTA,
-    _coperta,
-    andamento,
-    epoch_istante,
+    MAX_POINTS_PER_ANSWER,
+    _covered,
+    instant_epoch,
+    trend,
 )
 
-ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
+NOW = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
 
 
 class _FintoHA:
@@ -34,33 +34,33 @@ class _FintoHA:
     def __init__(self, *, storico=None, statistiche=None):
         self._storico = storico if storico is not None else {"serie": {}}
         self._statistiche = statistiche if statistiche is not None else {"serie": {}}
-        self.chiamate = []
+        self.calls = []
 
-    async def storico(self, entita, da_iso, a_iso):
-        self.chiamate.append(("storico", tuple(entita), da_iso, a_iso))
+    async def storico(self, entity, da_iso, a_iso):
+        self.calls.append(("storico", tuple(entity), da_iso, a_iso))
         return self._storico
 
     async def statistiche(self, identificatori, periodo, giorni):
-        self.chiamate.append(("statistiche", tuple(identificatori), periodo, giorni))
+        self.calls.append(("statistiche", tuple(identificatori), periodo, giorni))
         return self._statistiche
 
 
 @pytest.mark.asyncio
-async def test_finestra_corta_legge_i_cambi_veri():
+async def test_short_window_reads_real_changes():
     ha = _FintoHA(storico={"serie": {"sensor.camera": [
         {"quando": "2026-08-24T12:00:00+02:00", "valore": "21.0"},
         {"quando": "2026-08-24T13:00:00+02:00", "valore": "21.4"},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["grana"] == "dettaglio"
-    assert esito["unita"] == "°C"
-    assert len(esito["punti"]) == 2
-    assert ha.chiamate[0][0] == "storico"
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["grana"] == "dettaglio"
+    assert occurrence["unita"] == "°C"
+    assert len(occurrence["punti"]) == 2
+    assert ha.calls[0][0] == "storico"
 
 
 @pytest.mark.asyncio
-async def test_quarantotto_ore_di_un_sensore_ricevono_le_fasce_orarie():
+async def test_forty_eight_hours_of_a_sensor_receive_hourly_bands():
     """La domanda da cui la fetta nasce. Cade SOPRA la soglia e riceve fasce:
     la spec §4.1 lo dichiara, e questo test e' il posto in cui quella scelta
     e' visibile invece che sepolta in una costante."""
@@ -68,66 +68,66 @@ async def test_quarantotto_ore_di_un_sensore_ricevono_le_fasce_orarie():
         {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
          "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["grana"] == "oraria"
-    assert esito["punti"][0]["media"] == 26.5
-    assert ha.chiamate[0][0] == "statistiche"
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["grana"] == "oraria"
+    assert occurrence["punti"][0]["media"] == 26.5
+    assert ha.calls[0][0] == "statistiche"
     # M5: un refuso su "hour" o nel calcolo dei giorni passerebbe inosservato
     # se nessuno guardasse cosa arriva davvero a `ha.statistiche`.
-    assert ha.chiamate[0][2] == "hour"
-    assert ha.chiamate[0][3] == int(48 / 24) + 1
+    assert ha.calls[0][2] == "hour"
+    assert ha.calls[0][3] == int(48 / 24) + 1
 
 
 @pytest.mark.asyncio
-async def test_la_grana_oraria_e_dichiarata_nella_nota():
+async def test_hourly_granularity_is_declared_in_the_note():
     """Una media oraria presentata come una misura e' una frase vera che
     significa una cosa falsa (spec §3.2)."""
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
         {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
          "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "orarie" in esito["nota"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "orarie" in occurrence["nota"]
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_non_e_un_valore_mai_cambiato():
+async def test_a_failure_is_not_a_value_that_never_changed():
     ha = _FintoHA(storico={"errore": "Home Assistant ha risposto 502"})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "punti" not in esito
-    assert "502" in esito["errore"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "punti" not in occurrence
+    assert "502" in occurrence["errore"]
 
 
 @pytest.mark.asyncio
-async def test_nessuna_registrazione_dichiara_il_dubbio_sul_recorder():
+async def test_no_recording_declares_the_doubt_about_the_recorder():
     """Un elenco vuoto DAVVERO vuoto (non un guasto) non e' «non e' mai
     cambiata»: potrebbe essere un'entita' esclusa dalla registrazione, e per
     quelle lo storico e' vuoto per sempre. Non lo sappiamo con certezza, e la
     risposta lo dice cosi': dichiarando il dubbio, non affermando."""
     ha = _FintoHA(storico={"serie": {}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita="°C",
-                            ha_statistiche=False, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["punti"] == []
-    assert "esclusa" in esito["nota"]
-    assert "mai cambiat" not in esito["nota"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit="°C",
+                            has_statistics=False, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["punti"] == []
+    assert "esclusa" in occurrence["nota"]
+    assert "mai cambiat" not in occurrence["nota"]
 
 
 @pytest.mark.asyncio
-async def test_un_solo_punto_e_un_valore_fermo_non_un_vuoto():
+async def test_a_single_point_is_a_steady_value_not_an_empty_one():
     ha = _FintoHA(storico={"serie": {"sensor.camera": [
         {"quando": "2026-08-24T12:00:00+02:00", "valore": "21.0"},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert len(esito["punti"]) == 1
-    assert "non e' mai cambiato" in esito["nota"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert len(occurrence["punti"]) == 1
+    assert "non e' mai cambiato" in occurrence["nota"]
 
 
 @pytest.mark.asyncio
-async def test_la_finestra_coperta_si_MISURA_non_si_assume():
+async def test_the_covered_window_is_MEASURED_not_assumed():
     """`purge_keep_days` non e' leggibile da nessuna API. Se i dati cominciano
     dopo l'inizio della finestra chiesta, la finestra coperta e' quella dei
     dati -- misurata, non dedotta da una costante che potrebbe essere falsa su
@@ -135,36 +135,36 @@ async def test_la_finestra_coperta_si_MISURA_non_si_assume():
     ha = _FintoHA(storico={"serie": {"sensor.camera": [
         {"quando": "2026-08-24T13:30:00+02:00", "valore": "21.0"},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=24, unita="°C",
-                            ha_statistiche=False, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["finestra_coperta"]["da"] == "2026-08-24T13:30:00+02:00"
-    assert esito["finestra_chiesta_ore"] == 24.0
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=24, unit="°C",
+                            has_statistics=False, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["finestra_coperta"]["da"] == "2026-08-24T13:30:00+02:00"
+    assert occurrence["finestra_chiesta_ore"] == 24.0
 
 
 @pytest.mark.asyncio
-async def test_il_volume_si_riassume_e_lo_dichiara():
+async def test_the_volume_is_summarized_and_declared():
     punti = [{"quando": f"2026-08-24T{h:02d}:{m:02d}:00+02:00", "valore": str(20 + m % 5)}
              for h in range(14) for m in range(60)]
     ha = _FintoHA(storico={"serie": {"sensor.camera": punti}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=24, unita="°C",
-                            ha_statistiche=False, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert len(esito["punti"]) <= MAX_PUNTI_IN_RISPOSTA
-    assert "840" in esito["nota"]  # il numero VERO dei cambi, non «molti»
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=24, unit="°C",
+                            has_statistics=False, now_ts=NOW, timezone="Europe/Rome")
+    assert len(occurrence["punti"]) <= MAX_POINTS_PER_ANSWER
+    assert "840" in occurrence["nota"]  # il numero VERO dei cambi, non «molti»
 
 
 @pytest.mark.asyncio
-async def test_senza_statistiche_una_finestra_lunga_resta_sul_dettaglio():
+async def test_without_statistics_a_long_window_stays_on_detail():
     ha = _FintoHA(storico={"serie": {"binary_sensor.porta": [
         {"quando": "2026-08-23T20:00:00+02:00", "valore": "on"},
     ]}})
-    esito = await andamento(ha=ha, entita="binary_sensor.porta", ore=72, unita=None,
-                            ha_statistiche=False, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["grana"] == "dettaglio"
-    assert ha.chiamate[0][0] == "storico"
+    occurrence = await trend(ha=ha, entity="binary_sensor.porta", hours=72, unit=None,
+                            has_statistics=False, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["grana"] == "dettaglio"
+    assert ha.calls[0][0] == "storico"
 
 
 @pytest.mark.asyncio
-async def test_la_finestra_coperta_riscrive_il_fuso_dal_sorgente_UTC():
+async def test_the_covered_window_rewrites_the_timezone_from_the_UTC_source():
     """I3: le statistiche di Home Assistant tornano SEMPRE in UTC -- e' il
     caso NORMALE, non l'eccezione. Nessuno degli altri test lo esercita: se
     la riscrittura del fuso in `_coperta` sparisse, nessuno se ne
@@ -174,13 +174,13 @@ async def test_la_finestra_coperta_riscrive_il_fuso_dal_sorgente_UTC():
         {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
          "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["finestra_coperta"]["da"] == "2026-08-23T15:00:00+02:00"
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["finestra_coperta"]["da"] == "2026-08-23T15:00:00+02:00"
 
 
 @pytest.mark.asyncio
-async def test_le_fasce_oltre_il_massimo_si_campionano_come_il_dettaglio():
+async def test_bands_beyond_the_max_are_sampled_like_detail():
     """C2: uno slice secco (`fasce[-N:]`) sposta `punti[0]` avanti nel tempo
     mentre `finestra_coperta` restava calcolata sull'elenco INTERO -- una
     copertura dichiarata e mai consegnata. Il ramo statistiche deve
@@ -197,18 +197,18 @@ async def test_le_fasce_oltre_il_massimo_si_campionano_come_il_dettaglio():
               "minimo": 20.0, "massimo": 21.0, "media": 20.5}
              for i in range(200)]
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": fasce}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=240, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert len(esito["punti"]) <= MAX_PUNTI_IN_RISPOSTA
-    assert epoch_istante(esito["punti"][0]["inizio"]) == \
-        epoch_istante(esito["finestra_coperta"]["da"])
-    assert "200" in esito["nota"]  # il numero VERO delle fasce, non «molte»
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=240, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert len(occurrence["punti"]) <= MAX_POINTS_PER_ANSWER
+    assert instant_epoch(occurrence["punti"][0]["inizio"]) == \
+        instant_epoch(occurrence["finestra_coperta"]["da"])
+    assert "200" in occurrence["nota"]  # il numero VERO delle fasce, non «molte»
 
 
 # -- F1 (onda finale): un istante non leggibile e' un guasto, non un vuoto --
 
 @pytest.mark.asyncio
-async def test_fascia_con_inizio_numerico_fallisce_rumorosamente():
+async def test_band_with_numeric_start_fails_loudly():
     """Alcune versioni del recorder rendono `start` come epoch in
     millisecondi (un numero), non come stringa ISO -- mai misurato dal vivo
     su questo prodotto (spec S7). Prima della correzione l'`or 0.0` faceva
@@ -218,63 +218,63 @@ async def test_fascia_con_inizio_numerico_fallisce_rumorosamente():
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
         {"inizio": 1787569200000, "minimo": 25.9, "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "punti" not in esito
-    assert "errore" in esito
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "punti" not in occurrence
+    assert "errore" in occurrence
     # Non e' la nota del terzo esito (§3.3): un guasto non e' un vuoto.
-    assert "non ha registrazioni" not in esito["errore"]
+    assert "non ha registrazioni" not in occurrence["errore"]
 
 
 @pytest.mark.asyncio
-async def test_fascia_senza_inizio_fallisce_rumorosamente():
+async def test_band_without_start_fails_loudly():
     """Lo stesso guasto, ma con la chiave assente invece che di un tipo
     inatteso: anche qui `epoch_istante` torna `None`, e deve fermare la
     risposta invece di essere confuso con un vuoto legittimo."""
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
         {"minimo": 25.9, "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "punti" not in esito
-    assert "errore" in esito
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "punti" not in occurrence
+    assert "errore" in occurrence
 
 
 @pytest.mark.asyncio
-async def test_statistiche_davvero_vuote_restano_lesito_nessuna_registrazione():
+async def test_truly_empty_statistics_stay_the_no_recording_occurrence():
     """Regressione: senza NESSUNA fascia (non un problema di forma, un vuoto
     vero) l'esito resta il terzo del §3.3, non un errore -- la correzione di
     F1 non deve trasformare ogni assenza in un guasto."""
     ha = _FintoHA(statistiche={"serie": {}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "errore" not in esito
-    assert esito["punti"] == []
-    assert "esclusa" in esito["nota"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "errore" not in occurrence
+    assert occurrence["punti"] == []
+    assert "esclusa" in occurrence["nota"]
 
 
-def test_coperta_con_istante_non_leggibile_ha_tipi_coerenti():
+def test_covered_with_unreadable_instant_has_consistent_types():
     """`_coperta` non deve mescolare tipi nella stessa coppia: se l'istante
     grezzo non si legge, sia `da` sia `a` restano stringhe -- un `da`
     numerico accanto a un `a` ISO e' la stessa famiglia di difetto di una
     grana taciuta."""
-    risultato = _coperta([{"quando": 1787569200000}], "quando",
+    result = _covered([{"quando": 1787569200000}], "quando",
                          "2026-08-24T14:00:00+02:00")
-    assert isinstance(risultato["da"], str)
-    assert risultato["da"] == "1787569200000"
+    assert isinstance(result["da"], str)
+    assert result["da"] == "1787569200000"
 
 
-def test_coperta_con_istante_assente_resta_none():
+def test_covered_with_missing_instant_stays_none():
     """Il caso degenere: nessuna chiave a cui appoggiarsi resta `None`, non
     la stringa letterale "None"."""
-    risultato = _coperta([{}], "quando", "2026-08-24T14:00:00+02:00")
-    assert risultato["da"] is None
+    result = _covered([{}], "quando", "2026-08-24T14:00:00+02:00")
+    assert result["da"] is None
 
 
 # -- F2 (onda finale): il troncamento del CLIENT diventa un pavimento -------
 
 @pytest.mark.asyncio
-async def test_il_troncamento_del_client_diventa_un_pavimento_dichiarato():
+async def test_the_client_truncation_becomes_a_declared_floor():
     """`ha.storico` promette `troncato` SEMPRE, apposta perche' «chi legge
     deve poter sapere che e' scattato». Se `tempo.andamento` non lo legge, il
     conteggio nella nota e' un pavimento spacciato per esatto: su 12.000
@@ -282,25 +282,25 @@ async def test_il_troncamento_del_client_diventa_un_pavimento_dichiarato():
     punti = [{"quando": f"2026-08-24T00:{m:02d}:00+02:00", "valore": "x"}
              for m in range(60)]
     ha = _FintoHA(storico={"serie": {"sensor.camera": punti}, "troncato": True})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita=None,
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert f"almeno {len(punti)}" in esito["nota"]
-    assert "piu' corta" in esito["nota"] or "piu' vecchi" in esito["nota"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit=None,
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert f"almeno {len(punti)}" in occurrence["nota"]
+    assert "piu' corta" in occurrence["nota"] or "piu' vecchi" in occurrence["nota"]
 
 
 @pytest.mark.asyncio
-async def test_senza_troncamento_il_conteggio_resta_esatto():
+async def test_without_truncation_the_count_stays_exact():
     """Regressione: senza `troncato`, la nota non deve mai dire «almeno»."""
     punti = [{"quando": f"2026-08-24T00:{m:02d}:00+02:00", "valore": "x"}
              for m in range(60)]
     ha = _FintoHA(storico={"serie": {"sensor.camera": punti}, "troncato": False})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=2, unita=None,
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert "almeno" not in (esito["nota"] or "")
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=2, unit=None,
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert "almeno" not in (occurrence["nota"] or "")
 
 
 @pytest.mark.asyncio
-async def test_i_punti_escono_nello_STESSO_fuso_della_finestra_coperta():
+async def test_points_come_out_in_the_SAME_timezone_as_the_covered_window():
     """Visto dal vivo il 24/08/2026: `finestra_coperta` diceva
     `2026-08-24T14:18+02:00` e `punti[0]` diceva `2026-08-24T12:18+00:00`.
     Sono lo STESSO istante, ma dentro un dizionario solo, e chi legge puo'
@@ -312,29 +312,29 @@ async def test_i_punti_escono_nello_STESSO_fuso_della_finestra_coperta():
         {"quando": "2026-08-24T10:18:50+00:00", "valore": "25.5"},
         {"quando": "2026-08-24T11:00:00+00:00", "valore": "25.6"},
     ]}, "troncato": False})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=6, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["punti"][0]["quando"] == "2026-08-24T12:18:50+02:00"
-    assert esito["punti"][1]["quando"] == "2026-08-24T13:00:00+02:00"
-    assert esito["finestra_coperta"]["da"] == esito["punti"][0]["quando"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=6, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["punti"][0]["quando"] == "2026-08-24T12:18:50+02:00"
+    assert occurrence["punti"][1]["quando"] == "2026-08-24T13:00:00+02:00"
+    assert occurrence["finestra_coperta"]["da"] == occurrence["punti"][0]["quando"]
 
 
 @pytest.mark.asyncio
-async def test_anche_le_fasce_escono_nel_fuso_della_casa():
+async def test_bands_also_come_out_in_the_home_space_timezone():
     """Il gemello del test qui sopra sul ramo delle statistiche: stessa
     domanda, stessa forma della risposta (fondamenta 3)."""
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
         {"inizio": "2026-08-23T13:00:00+00:00", "minimo": 25.9,
          "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
-    assert esito["finestra_coperta"]["da"] == esito["punti"][0]["inizio"]
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
+    assert occurrence["finestra_coperta"]["da"] == occurrence["punti"][0]["inizio"]
 
 
 @pytest.mark.asyncio
-async def test_la_fine_di_una_fascia_esce_nello_STESSO_fuso_dell_inizio():
+async def test_the_end_of_a_band_comes_out_in_the_SAME_timezone_as_the_start():
     """Punto 5 del mandato «il bilancio dell'energia» (BASSO, 27/08/2026):
     la traduzione unificata (`HAClient._richiedi_statistiche`) ha aggiunto
     la chiave `fine` a ogni fascia, ma `andamento` riscriveva nel fuso della
@@ -347,7 +347,7 @@ async def test_la_fine_di_una_fascia_esce_nello_STESSO_fuso_dell_inizio():
         {"inizio": "2026-08-23T13:00:00+00:00", "fine": "2026-08-23T14:00:00+00:00",
          "minimo": 25.9, "massimo": 27.1, "media": 26.5},
     ]}})
-    esito = await andamento(ha=ha, entita="sensor.camera", ore=48, unita="°C",
-                            ha_statistiche=True, adesso_ts=ADESSO, fuso="Europe/Rome")
-    assert esito["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
-    assert esito["punti"][0]["fine"] == "2026-08-23T16:00:00+02:00"
+    occurrence = await trend(ha=ha, entity="sensor.camera", hours=48, unit="°C",
+                            has_statistics=True, now_ts=NOW, timezone="Europe/Rome")
+    assert occurrence["punti"][0]["inizio"] == "2026-08-23T15:00:00+02:00"
+    assert occurrence["punti"][0]["fine"] == "2026-08-23T16:00:00+02:00"

@@ -13,10 +13,10 @@ paga piu' caro di ogni altro.
 import pytest
 
 from hiris.app.azione.cronaca import Journal
-from hiris.app.casa.tempo import accaduto
+from hiris.app.casa.tempo import logbook
 from tests._contratti import assert_stessa_firma
 
-ADESSO = 1787572800.0  # 24 agosto 2026, 12:00 UTC
+NOW = 1787572800.0  # 24 agosto 2026, 12:00 UTC
 
 
 class _FintoHA:
@@ -37,7 +37,7 @@ class _FintaCronaca:
         return list(self._righe)
 
 
-def test_la_finta_cronaca_combacia_con_la_firma_vera():
+def test_the_fake_journal_matches_the_real_signature():
     """Se `Journal.list` cambia firma, questo test cade invece di
     lasciare che il finto imiti un contratto che non esiste piu'
     (review indipendente, fetta «la rinomina»: `entita=`/`limite=` erano
@@ -54,7 +54,7 @@ def _voce(quando, messaggio="acceso", entita="light.cucina"):
 
 
 @pytest.mark.asyncio
-async def test_un_atto_di_hiris_si_riconosce_e_si_dichiara_probabile():
+async def test_an_act_by_hiris_is_recognized_and_declared_probable():
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
     cronaca = _FintaCronaca([{
@@ -62,16 +62,16 @@ async def test_un_atto_di_hiris_si_riconosce_e_si_dichiara_probabile():
         "origine": "chat", "servizio": "light.turn_on",
         "entita": ["light.cucina"], "eseguito": True, "genere": "comando",
         "cambiato": None, "errore": None, "avviso": None, "oggetto": None}])
-    esito = await accaduto(ha=ha, cronaca=cronaca, entita="light.cucina",
-                           ore=24, adesso_ts=ADESSO)
-    voce = esito["voci"][0]
+    occurrence = await logbook(ha=ha, journal=cronaca, entity="light.cucina",
+                           hours=24, now_ts=NOW)
+    voce = occurrence["voci"][0]
     assert voce["per_mano_di"] == "HIRIS"
     assert voce["abbinamento"] == "probabile"
     assert voce["atto"]["servizio"] == "light.turn_on"
 
 
 @pytest.mark.asyncio
-async def test_una_voce_lontana_nel_tempo_non_si_abbina():
+async def test_an_entry_far_in_time_does_not_match():
     """Mezz'ora dopo non e' lo stesso gesto. Senza tolleranza, ogni atto di
     HIRIS si prenderebbe il merito di tutto cio' che quella lampada ha fatto
     nella giornata."""
@@ -82,13 +82,13 @@ async def test_una_voce_lontana_nel_tempo_non_si_abbina():
         "servizio": "light.turn_on", "entita": ["light.cucina"],
         "eseguito": True, "genere": "comando", "cambiato": None,
         "errore": None, "avviso": None, "oggetto": None}])
-    esito = await accaduto(ha=ha, cronaca=cronaca, entita="light.cucina",
-                           ore=24, adesso_ts=ADESSO)
-    assert "per_mano_di" not in esito["voci"][0]
+    occurrence = await logbook(ha=ha, journal=cronaca, entity="light.cucina",
+                           hours=24, now_ts=NOW)
+    assert "per_mano_di" not in occurrence["voci"][0]
 
 
 @pytest.mark.asyncio
-async def test_un_atto_su_un_altra_entita_non_si_abbina():
+async def test_an_act_on_another_entity_does_not_match():
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
     cronaca = _FintaCronaca([{
@@ -96,45 +96,45 @@ async def test_un_atto_su_un_altra_entita_non_si_abbina():
         "servizio": "light.turn_on", "entita": ["light.salotto"],
         "eseguito": True, "genere": "comando", "cambiato": None,
         "errore": None, "avviso": None, "oggetto": None}])
-    esito = await accaduto(ha=ha, cronaca=cronaca, entita="light.cucina",
-                           ore=24, adesso_ts=ADESSO)
-    assert "per_mano_di" not in esito["voci"][0]
+    occurrence = await logbook(ha=ha, journal=cronaca, entity="light.cucina",
+                           hours=24, now_ts=NOW)
+    assert "per_mano_di" not in occurrence["voci"][0]
 
 
 @pytest.mark.asyncio
-async def test_senza_abbinamento_la_voce_resta_intera_e_onesta():
+async def test_without_a_match_the_entry_stays_whole_and_honest():
     """«L'ha accesa qualcuno e non so chi» e' una risposta buona. Non lo e'
     tacere la voce perche' non sappiamo attribuirla."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
-    esito = await accaduto(ha=ha, cronaca=_FintaCronaca([]), entita="light.cucina",
-                           ore=24, adesso_ts=ADESSO)
-    assert len(esito["voci"]) == 1
-    assert "per_mano_di" not in esito["voci"][0]
+    occurrence = await logbook(ha=ha, journal=_FintaCronaca([]), entity="light.cucina",
+                           hours=24, now_ts=NOW)
+    assert len(occurrence["voci"]) == 1
+    assert "per_mano_di" not in occurrence["voci"][0]
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_del_diario_non_e_una_giornata_tranquilla():
+async def test_a_diary_failure_is_not_a_quiet_day():
     ha = _FintoHA({"errore": "Home Assistant ha risposto 503"})
-    esito = await accaduto(ha=ha, cronaca=_FintaCronaca([]), entita=None,
-                           ore=24, adesso_ts=ADESSO)
-    assert "voci" not in esito and "503" in esito["errore"]
+    occurrence = await logbook(ha=ha, journal=_FintaCronaca([]), entity=None,
+                           hours=24, now_ts=NOW)
+    assert "voci" not in occurrence and "503" in occurrence["errore"]
 
 
 @pytest.mark.asyncio
-async def test_il_troncamento_del_diario_arriva_fino_alla_nota():
+async def test_the_diary_truncation_reaches_the_note():
     """Una lista tagliata che non dichiara il taglio fa concludere al modello
     «non e' successo altro»."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": True, "ore": 168})
-    esito = await accaduto(ha=ha, cronaca=_FintaCronaca([]), entita=None,
-                           ore=1000, adesso_ts=ADESSO)
-    assert "piu' vecchie" in esito["nota"]
-    assert esito["ore"] == 168
+    occurrence = await logbook(ha=ha, journal=_FintaCronaca([]), entity=None,
+                           hours=1000, now_ts=NOW)
+    assert "piu' vecchie" in occurrence["nota"]
+    assert occurrence["ore"] == 168
 
 
 @pytest.mark.asyncio
-async def test_la_cronaca_si_interroga_sulla_stessa_finestra_del_diario():
+async def test_the_journal_is_queried_on_the_same_window_as_the_diary():
     """Due finestre diverse produrrebbero atti senza voce e voci senza atto,
     in modo invisibile. Si chiede una finestra piu' larga di quella che il
     client clampa (`ore=1000`): la finta dichiara `ore: 168`, il vero tetto
@@ -143,26 +143,26 @@ async def test_la_cronaca_si_interroga_sulla_stessa_finestra_del_diario():
     per caso, a differenza di una finta che dichiarasse le stesse ore chieste."""
     ha = _FintoHA({"voci": [], "troncato": False, "ore": 168})
     cronaca = _FintaCronaca([])
-    await accaduto(ha=ha, cronaca=cronaca, entita="light.cucina", ore=1000,
-                   adesso_ts=ADESSO)
-    da_ts, a_ts, entita = cronaca.chiamate[0]
-    assert a_ts == ADESSO
-    assert da_ts == pytest.approx(ADESSO - 168 * 3600)
-    assert entita == "light.cucina"
+    await logbook(ha=ha, journal=cronaca, entity="light.cucina", hours=1000,
+                   now_ts=NOW)
+    da_ts, a_ts, entity = cronaca.chiamate[0]
+    assert a_ts == NOW
+    assert da_ts == pytest.approx(NOW - 168 * 3600)
+    assert entity == "light.cucina"
 
 
 @pytest.mark.asyncio
-async def test_senza_cronaca_l_accaduto_risponde_lo_stesso():
-    """`cronaca=None` e' legittimo (il dispatcher e' SEMPRE costruibile): si
+async def test_without_a_journal_logbook_answers_anyway():
+    """`journal=None` e' legittimo (il dispatcher e' SEMPRE costruibile): si
     perde l'attribuzione, non la risposta -- ma la perdita si DICHIARA (F3,
     onda finale): senza questa nota «HIRIS non l'ha fatto» e «non ho potuto
     controllare» hanno la stessa faccia, nessuna voce con `per_mano_di`."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
-    esito = await accaduto(ha=ha, cronaca=None, entita=None, ore=24,
-                           adesso_ts=ADESSO)
-    assert len(esito["voci"]) == 1
-    assert "cronaca" in esito["nota"]
+    occurrence = await logbook(ha=ha, journal=None, entity=None, hours=24,
+                           now_ts=NOW)
+    assert len(occurrence["voci"]) == 1
+    assert "cronaca" in occurrence["nota"]
 
 
 class _FintaCronacaCheSolleva:
@@ -174,7 +174,7 @@ class _FintaCronacaCheSolleva:
 
 
 @pytest.mark.asyncio
-async def test_una_cronaca_che_solleva_degrada_e_non_rompe():
+async def test_a_journal_that_raises_degrades_and_does_not_break():
     """Prima di F3 (onda finale) questo test pinnava SOLO la sopravvivenza --
     cioe' pinnava il silenzio: la risposta arrivava comunque, ma senza dire
     che l'attribuzione non era stata verificata. «HIRIS non l'ha fatto» e
@@ -182,15 +182,15 @@ async def test_una_cronaca_che_solleva_degrada_e_non_rompe():
     pretende anche la dichiarazione, nella `nota`."""
     ha = _FintoHA({"voci": [_voce("2026-08-24T11:00:00+00:00")],
                    "troncato": False, "ore": 24})
-    esito = await accaduto(ha=ha, cronaca=_FintaCronacaCheSolleva(),
-                           entita="light.cucina", ore=24, adesso_ts=ADESSO)
-    assert len(esito["voci"]) == 1
-    assert "per_mano_di" not in esito["voci"][0]
-    assert "cronaca" in esito["nota"]
+    occurrence = await logbook(ha=ha, journal=_FintaCronacaCheSolleva(),
+                           entity="light.cucina", hours=24, now_ts=NOW)
+    assert len(occurrence["voci"]) == 1
+    assert "per_mano_di" not in occurrence["voci"][0]
+    assert "cronaca" in occurrence["nota"]
 
 
 @pytest.mark.asyncio
-async def test_una_voce_senza_entita_non_si_abbina_mai():
+async def test_an_entry_without_entity_never_matches():
     """Il logbook di Home Assistant produce voci senza `entity_id` -- i
     trigger di automazione, per esempio. Senza entita' non c'e' nessun
     aggancio possibile: il solo controllo temporale prenderebbe un atto su
@@ -203,13 +203,13 @@ async def test_una_voce_senza_entita_non_si_abbina_mai():
         "servizio": "climate.set_temperature", "entita": ["climate.soggiorno"],
         "eseguito": True, "genere": "comando", "cambiato": None,
         "errore": None, "avviso": None, "oggetto": None}])
-    esito = await accaduto(ha=ha, cronaca=cronaca, entita=None, ore=24,
-                           adesso_ts=ADESSO)
-    assert "per_mano_di" not in esito["voci"][0]
+    occurrence = await logbook(ha=ha, journal=cronaca, entity=None, hours=24,
+                           now_ts=NOW)
+    assert "per_mano_di" not in occurrence["voci"][0]
 
 
 @pytest.mark.asyncio
-async def test_fra_piu_candidati_si_sceglie_il_piu_vicino_nel_tempo():
+async def test_among_several_candidates_the_closest_in_time_is_chosen():
     """`Journal.list` ordina per `quando_ts DESC`: con due tentativi
     ravvicinati sulla stessa entita' il primo della lista non e' detto sia
     il gesto giusto."""
@@ -225,6 +225,6 @@ async def test_fra_piu_candidati_si_sceglie_il_piu_vicino_nel_tempo():
          "eseguito": True, "genere": "comando", "cambiato": None,
          "errore": None, "avviso": None, "oggetto": None},
     ])
-    esito = await accaduto(ha=ha, cronaca=cronaca, entita="light.cucina",
-                           ore=24, adesso_ts=ADESSO)
-    assert esito["voci"][0]["atto"]["id"] == "vicino"
+    occurrence = await logbook(ha=ha, journal=cronaca, entity="light.cucina",
+                           hours=24, now_ts=NOW)
+    assert occurrence["voci"][0]["atto"]["id"] == "vicino"

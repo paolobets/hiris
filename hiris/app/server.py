@@ -47,7 +47,7 @@ from .casa.archivio import HomeSpaceStore
 from .casa.comportamento import reread, reread_dashboards
 from .casa.domande import TIPO_LEGAME_HA
 from .casa.domande import legami as _legami_leggibili
-from .casa.tempo import zona_casa
+from .casa.tempo import home_space_zone
 from .cervello.archivio import READING_RETENTION_S, ObservationsStore
 from .cervello.oggetti import (
     BALANCE_DIRECTIONS,
@@ -1250,7 +1250,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     dire cos'e' «oggi».
     """
     fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
-    oggi = adesso(zona_casa(fuso)).date()
+    oggi = adesso(home_space_zone(fuso)).date()
     giorni = [(oggi - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
 
     # I comprimari si leggono UNA volta per i due giorni insieme, come fa
@@ -2661,7 +2661,7 @@ async def _on_startup(app: web.Application) -> None:
             # l'eccezione finisce nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salta in silenzio.
             fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
-            ieri = (datetime.now(zona_casa(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
+            ieri = (datetime.now(home_space_zone(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
             # I comprimari si leggono UNA volta per giornata, prima: dentro il
             # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
             # migliaia di richieste (Task 6, `costruisci_comprimari`).

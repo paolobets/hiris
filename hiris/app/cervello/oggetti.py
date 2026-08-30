@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ..casa.tempo import zona_casa
+from ..casa.tempo import home_space_zone
 from .pavimento import aspect
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
@@ -273,7 +273,7 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     ne ha bisogno a importare comunque il nome privato, o a riscrivere il
     calcolo -- che e' esattamente come nascono i doppioni.
     """
-    zone = zona_casa(timezone)
+    zone = home_space_zone(timezone)
     start = datetime.fromisoformat(day).replace(tzinfo=zone)
     return start.timestamp(), (start + timedelta(days=1)).timestamp()
 

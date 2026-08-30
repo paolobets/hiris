@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from ...casa.tempo import zona_casa
+from ...casa.tempo import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
 from .mestiere import consiglia
@@ -125,7 +125,7 @@ class Workshop:
         inventa mai."""
         import datetime
         return datetime.datetime.fromtimestamp(
-            ts, zona_casa(self._read_timezone())).strftime("%d/%m/%Y %H:%M")
+            ts, home_space_zone(self._read_timezone())).strftime("%d/%m/%Y %H:%M")
 
     # ---- proporre -------------------------------------------------------
 

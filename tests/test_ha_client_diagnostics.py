@@ -322,9 +322,9 @@ async def test_diario_clamps_ore_to_maximum(client, ore):
 
 @pytest.mark.asyncio
 async def test_diario_usa_il_suo_tetto_non_quello_di_tempo():
-    """L'unificazione di normalizza_ore: diario ha tetto 168, tempo.py ha tetto
+    """L'unificazione di normalize_hours: diario ha tetto 168, tempo.py ha tetto
     2160. Questo test verifica che diario usi il suo tetto specifico. Se togli
-    tetto=MAX_DIARIO_ORE dalla chiamata di normalizza_ore in ha_client.py, il
+    tetto=MAX_DIARIO_ORE dalla chiamata di normalize_hours in ha_client.py, il
     diario clatherebbe il valore 200 a 2160 invece di 168 e il test
     fallirebbe."""
     client = HAClient(base_url="http://supervisor/core", token="test-token")

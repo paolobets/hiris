@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from ..casa.tempo import zona_casa
+from ..casa.tempo import home_space_zone
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -316,7 +316,7 @@ class ReasoningQueue:
         (`zona_casa` ricade su UTC quando il fuso non si sa, e non lo
         inventa mai)."""
         ts = time.time() if now is None else now
-        dt = datetime.fromtimestamp(ts, zona_casa(self._leggi_fuso()))
+        dt = datetime.fromtimestamp(ts, home_space_zone(self._leggi_fuso()))
         # M-3 (review finale «il linter e le best practice»): NON
         # `day_start + 86400`. Un giorno locale non dura sempre 86400
         # secondi -- due volte l'anno a Roma dura 23 o 25 ore (l'ora legale

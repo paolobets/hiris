@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ..casa.tempo import epoch_istante
+from ..casa.tempo import instant_epoch
 from .pavimento import aspect
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class Watcher:
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.
-            when = epoch_istante(new_state.get("last_changed"))
+            when = instant_epoch(new_state.get("last_changed"))
             if when is None:
                 # Ripiego muto fino a qui: se HA cambiasse formato di
                 # `last_changed`, ogni cambio slitterebbe all'istante in cui
