@@ -254,7 +254,7 @@ _GAP_SECTION_RESERVE = 400
 # svuota per intero PRIMA di toccare un solo ricordo, perche' "casa" viene
 # prima di "ricordi" nell'ordine di taglio -- un modello che legge quel
 # nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
-_MIN_HOME_SPACE_ROWS_RESERVE = 3
+_MIN_HOME_SPACE_LINES_RESERVE = 3
 
 # L'intestazione della sezione dei guasti. E' una domanda a cui l'utente vuole
 # una risposta, non una categoria di archivio: «cosa non va» si legge e si
@@ -281,7 +281,7 @@ _FAULTS_HEADING = "## Cosa non va in casa"
 # che sono un irrigatore solo ha bisogno di sapersi chiamare. Sopra l'uno il
 # nucleo torna a fare quello che dichiara di fare nel docstring del modulo:
 # conta, non elenca.
-_MAX_DEVICE_NAMES_IN_ROW = 1
+_MAX_DEVICE_NAMES_IN_LINE = 1
 
 
 def _carriers(area_entities: list[dict], domain: str) -> tuple[list[str], int]:
@@ -334,7 +334,7 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
     if len(devices) + without >= count:
         # Tante cose quante entita': il conteggio dice gia' tutto.
         return ""
-    if without or len(devices) > _MAX_DEVICE_NAMES_IN_ROW:
+    if without or len(devices) > _MAX_DEVICE_NAMES_IN_LINE:
         # Piu' di un portatore: si conta, non si elenca (vedi la costante).
         # `senza` non nullo con un solo dispositivo e' lo stesso caso visto da
         # un'altra parte -- il nome coprirebbe solo una parte delle entita'
@@ -466,7 +466,7 @@ _MEASUREMENT_NAMES = {
 }
 
 
-def _now_row(frame: dict | None, now: float | None) -> str:
+def _now_line(frame: dict | None, now: float | None) -> str:
     """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
 
     Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `prometti`
@@ -494,7 +494,7 @@ def _now_row(frame: dict | None, now: float | None) -> str:
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label)
 
 
-def _reference_frame_rows(frame: dict | None, now: float | None = None) -> list[str]:
+def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
     Va PRIMA di tutto il resto perche' e' cio' che rende leggibile tutto il
@@ -514,7 +514,7 @@ def _reference_frame_rows(frame: dict | None, now: float | None = None) -> list[
     """
     if not frame:
         return []
-    rows = []
+    lines = []
     identity = []
     # Il nome che l'utente ha dato alla casa in Home Assistant. Entrava nel
     # sistema di riferimento e non usciva da questa riga: la fetta A dichiarava
@@ -533,15 +533,15 @@ def _reference_frame_rows(frame: dict | None, now: float | None = None) -> list[
     if frame.get("versione_ha"):
         identity.append(f"Home Assistant {frame['versione_ha']}")
     if identity:
-        rows.append("Riferimento: " + ", ".join(identity) + ".")
+        lines.append("Riferimento: " + ", ".join(identity) + ".")
     # Subito dopo il fuso, perche' e' lo stesso oggetto: l'ora e il sistema in
     # cui leggerla. Dentro `righe_sistema` e non accanto, cosi' eredita il peso
     # 0 del taglio (`pesi_casa` in `componi`): un nucleo che tronca via
     # l'orologio rimetterebbe il modello a indovinare l'ora proprio nei casi
     # in cui la casa e' grande.
-    now_row = _now_row(frame, now)
-    if now_row:
-        rows.append(now_row)
+    now_line = _now_line(frame, now)
+    if now_line:
+        lines.append(now_line)
 
     unit = frame.get("unita") or {}
     if isinstance(unit, dict):
@@ -550,14 +550,14 @@ def _reference_frame_rows(frame: dict | None, now: float | None = None) -> list[
         measurements = [f"{name} {unit[key]}"
                   for key, name in _MEASUREMENT_NAMES.items() if unit.get(key)]
         if measurements:
-            rows.append(
+            lines.append(
                 "Unita' con cui ragiona la casa: " + ", ".join(measurements)
                 + " (ogni entita' porta la propria: se manca, manca -- non e'"
                   " questa).")
-    return rows
+    return lines
 
 
-def _home_space_rows(floors: list[dict],
+def _home_space_lines(floors: list[dict],
                 device_names: dict[str, str] | None) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
     -- vedi il docstring del modulo sul perche'.
@@ -582,11 +582,11 @@ def _home_space_rows(floors: list[dict],
     non degradare in silenzio, chi chiama dichiara se i nomi ce li ha."""
     if not floors:
         return ["Nessun piano registrato."]
-    rows = []
+    lines = []
     for floor in floors:
-        rows.append(f"{name_with_id(floor['nome'], floor['id'])}:")
+        lines.append(f"{name_with_id(floor['nome'], floor['id'])}:")
         if not floor["aree"]:
-            rows.append("  - (nessuna area)")
+            lines.append("  - (nessuna area)")
             continue
         for area in floor["aree"]:
             counts = _count_per_domain(area["entita"])
@@ -597,8 +597,8 @@ def _home_space_rows(floors: list[dict],
                     for dom, n in counts.items())
             else:
                 detail = "nessuna entita'"
-            rows.append(f"  - {_tree_area_name(area)}: {detail}")
-    return rows
+            lines.append(f"  - {_tree_area_name(area)}: {detail}")
+    return lines
 
 
 def _area_per_entity(floors: list[dict]) -> dict[str, str]:
@@ -640,12 +640,12 @@ def _group_highlights(entries: list[dict]) -> list[tuple[int, str]]:
     # abbellimento, e' cio' che permette a chi legge (una persona dalla pagina,
     # o il modello nel prompt) di vedere una stanza per volta invece di
     # ricomporla a mente.
-    rows = []
+    lines = []
     for area_name, domain, readable_state in sorted(order):
         n = counts[(area_name, domain, readable_state)]
-        row = f"- {area_name}: {n} {_domain_name(domain, n)} ({readable_state})"
-        rows.append((n, row))
-    return rows
+        line = f"- {area_name}: {n} {_domain_name(domain, n)} ({readable_state})"
+        lines.append((n, line))
+    return lines
 
 
 def _grouped_highlights_heading(total: int) -> str:
@@ -696,7 +696,7 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     return True
 
 
-def _highlight_rows(home_space: dict, state: dict, floors: list[dict],
+def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
                     unreliable_state: bool,
                     reported_classes: dict[str, str] | None = None
                     ) -> tuple[list[str], list[int], bool]:
@@ -773,27 +773,27 @@ def _highlight_rows(home_space: dict, state: dict, floors: list[dict],
     # sarebbe la prima a cadere; e `_intestazione_notevoli_raggruppati` conta
     # la somma dei pesi, quindi con peso 1 direbbe «N+1 elementi notevoli»
     # includendo una riga che non e' un elemento ma un riassunto.
-    unreachable_row = ([f"- {unreachable} entità non rispondono."]
+    unreachable_line = ([f"- {unreachable} entità non rispondono."]
                 if unreachable else [])
     unreachable_weight = [0] if unreachable else []
 
     if not entries:
         # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
         # due frasi diverse e si dicono tutte e due.
-        return (unreachable_row + ["Niente di notevole al momento."],
+        return (unreachable_line + ["Niente di notevole al momento."],
                 unreachable_weight + [1], False)
     if len(entries) > _INDIVIDUAL_HIGHLIGHT_THRESHOLD:
         groups = _group_highlights(entries)
-        return (unreachable_row + [row for _, row in groups],
+        return (unreachable_line + [line for _, line in groups],
                 unreachable_weight + [weight for weight, _ in groups], True)
-    rows = []
+    lines = []
     for v in entries:
         prefix = f"{v['area_nome']}: " if v["area_nome"] else ""
-        rows.append(f"- {prefix}{v['nome']} ({v['stato_leggibile']})")
-    return (unreachable_row + rows, unreachable_weight + [1] * len(rows), False)
+        lines.append(f"- {prefix}{v['nome']} ({v['stato_leggibile']})")
+    return (unreachable_line + lines, unreachable_weight + [1] * len(lines), False)
 
 
-def _behavior_rows(behavior: list[dict]) -> list[str]:
+def _behavior_lines(behavior: list[dict]) -> list[str]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `nome_con_id` in `anagrafe.py`: fetta "i riferimenti",
     incidente 2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
@@ -802,16 +802,16 @@ def _behavior_rows(behavior: list[dict]) -> list[str]:
     sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
     if not behavior:
         return ["Nessuna automazione o script registrati."]
-    rows = []
+    lines = []
     for v in behavior:
         id_ = v.get("id")
         name = v.get("nome") or id_ or "(senza nome)"
         kind = v.get("tipo", "?")
-        row = f"- {name_with_id(name, id_)} ({kind})"
+        line = f"- {name_with_id(name, id_)} ({kind})"
         if v.get("corpo") is None:
-            row += " -- corpo non disponibile, solo il nome"
-        rows.append(row)
-    return rows
+            line += " -- corpo non disponibile, solo il nome"
+        lines.append(line)
+    return lines
 
 
 # Gli stati in cui un'integrazione di Home Assistant NON sta funzionando.
@@ -1201,7 +1201,7 @@ def _comparison_notice(comparison: dict | None) -> str | None:
     return "Confronto con Home Assistant -- " + " ".join(phrases)
 
 
-def _memory_rows(memories: list[dict]) -> list[str]:
+def _memory_lines(memories: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
     al "conta, non elencare" (vedi docstring del modulo).
 
@@ -1236,7 +1236,7 @@ def _memory_rows(memories: list[dict]) -> list[str]:
     # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
     sorted_memories = sorted(sanitized_memories(memories), key=lambda r: r.get("id", 0),
                               reverse=True)
-    rows = []
+    lines = []
     for r in sorted_memories:
         said_by = r.get("detto_da") or "qualcuno"
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
@@ -1245,11 +1245,11 @@ def _memory_rows(memories: list[dict]) -> list[str]:
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
         # colmarla.
-        rows.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {said_by})")
-    return rows
+        lines.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {said_by})")
+    return lines
 
 
-def _gap_rows(notices: list[str]) -> list[str]:
+def _gap_lines(notices: list[str]) -> list[str]:
     if not notices:
         return ["Nessuna lacuna nota."]
     return [f"- {a}" for a in notices]
@@ -1275,8 +1275,8 @@ def _cut_notice(excluded_per_pool: dict[str, int], cut_order, ceiling: int) -> s
 
 def _assemble(sections: list[tuple[str, list[str]]]) -> str:
     blocks = []
-    for title, rows in sections:
-        block = title if not rows else title + "\n" + "\n".join(rows)
+    for title, lines in sections:
+        block = title if not lines else title + "\n" + "\n".join(lines)
         blocks.append(block)
     return "\n\n".join(blocks)
 
@@ -1480,8 +1480,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte
     # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
-    reference_frame_rows = _reference_frame_rows(reference_frame, now)
-    home_space_rows = reference_frame_rows + _home_space_rows(floors, device_names)
+    reference_frame_lines = _reference_frame_lines(reference_frame, now)
+    home_space_lines = reference_frame_lines + _home_space_lines(floors, device_names)
 
     unreliable = _unreliable_state(home_space, state, reliable_state, unavailable)
     if unreliable:
@@ -1489,22 +1489,22 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
-    highlight_rows, highlight_weights, grouped_highlight = _highlight_rows(
+    highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
         home_space, state, floors, unreliable, reported_classes)
-    behavior_rows = _behavior_rows(behavior)
-    memory_rows = _memory_rows(memories)
+    behavior_lines = _behavior_lines(behavior)
+    memory_lines = _memory_lines(memories)
 
     # Peso 0 al riferimento: l'intestazione somma i pesi per dire quante righe
     # di conteggio ci sono, e il riferimento non e' un conteggio -- contarlo
     # avrebbe fatto dire al nucleo un numero di aree piu' alto del vero.
-    home_space_weights = ([0] * len(reference_frame_rows)
-                           + [1] * (len(home_space_rows) - len(reference_frame_rows)))
+    home_space_weights = ([0] * len(reference_frame_lines)
+                           + [1] * (len(home_space_lines) - len(reference_frame_lines)))
     # La riserva che non si taglia mai vale i CONTEGGI: si alza di quanto
     # occupa il riferimento, cosi' aggiungerlo non toglie in silenzio una riga
     # di casa a chi legge (IMPORTANT (6)).
-    home_space_reserve = _MIN_HOME_SPACE_ROWS_RESERVE + len(reference_frame_rows)
-    behavior_weights = [1] * len(behavior_rows)
-    memory_weights = [1] * len(memory_rows)
+    home_space_reserve = _MIN_HOME_SPACE_LINES_RESERVE + len(reference_frame_lines)
+    behavior_weights = [1] * len(behavior_lines)
+    memory_weights = [1] * len(memory_lines)
 
     def _current_highlight_section() -> list[str]:
         # L'intestazione raggruppata (se serve) si ricostruisce dal totale
@@ -1512,16 +1512,16 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         # originale: dopo un taglio, un'intestazione che afferma il numero
         # di PRIMA sopra righe che ne sommano meno e' il nucleo che si
         # contraddice da solo (IMPORTANT ⑤).
-        if grouped_highlight and highlight_rows:
-            return [_grouped_highlights_heading(sum(highlight_weights))] + highlight_rows
-        return list(highlight_rows)
+        if grouped_highlight and highlight_lines:
+            return [_grouped_highlights_heading(sum(highlight_weights))] + highlight_lines
+        return list(highlight_lines)
 
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
     # diverso e definito piu' sotto (`ordine_taglio`).
-    home_space_section = ("## La casa", home_space_rows)
+    home_space_section = ("## La casa", home_space_lines)
     highlight_section = ("## Notevole adesso", _current_highlight_section())
-    behavior_section = ("## Cio' che la casa fa gia' da sola", behavior_rows)
-    memory_section = ("## Cio' che le persone hanno detto", memory_rows)
+    behavior_section = ("## Cio' che la casa fa gia' da sola", behavior_lines)
+    memory_section = ("## Cio' che le persone hanno detto", memory_lines)
 
     print_order = [home_space_section, highlight_section, behavior_section, memory_section]
 
@@ -1547,11 +1547,11 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # piu' sotto.
     cut_order: list[tuple[str, list[str], list[int], int]] = []
     if not unreliable:
-        cut_order.append(("notevole", highlight_rows, highlight_weights, 0))
+        cut_order.append(("notevole", highlight_lines, highlight_weights, 0))
     cut_order += [
-        ("comportamento", behavior_rows, behavior_weights, 0),
-        ("casa", home_space_rows, home_space_weights, home_space_reserve),
-        ("ricordi", memory_rows, memory_weights, 0),
+        ("comportamento", behavior_lines, behavior_weights, 0),
+        ("casa", home_space_lines, home_space_weights, home_space_reserve),
+        ("ricordi", memory_lines, memory_weights, 0),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
     # del sostantivo -- vedi il docstring di `_avviso_taglio`.
@@ -1569,14 +1569,14 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     truncated = False
     excluded_per_pool: dict[str, int] = {}
 
-    def _pop(pool_name: str, rows_pool: list[str], pool_weights: list[int], reserve: int) -> None:
+    def _pop(pool_name: str, lines_pool: list[str], pool_weights: list[int], reserve: int) -> None:
         # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
         # rappresenta davvero -- per "notevole" raggruppato puo' essere
         # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
         # volte sulla lacuna piu' calda della casa e' peggio di non
         # dichiararlo affatto: sembra onesto e non lo e'.
         nonlocal truncated
-        rows_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
+        lines_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
         weight = pool_weights.pop()
         truncated = True
         excluded_per_pool[pool_name] = excluded_per_pool.get(pool_name, 0) + weight
@@ -1588,9 +1588,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             # toglie a sua volta. Non conta come elemento escluso: le aree
             # che c'erano sotto sono gia' state contate ai loro rispettivi
             # pop, questo e' solo il titolo rimasto orfano.
-            while (len(rows_pool) > reserve and rows_pool
-                   and rows_pool[-1].endswith(":") and not rows_pool[-1].startswith("  ")):
-                rows_pool.pop()
+            while (len(lines_pool) > reserve and lines_pool
+                   and lines_pool[-1].endswith(":") and not lines_pool[-1].startswith("  ")):
+                lines_pool.pop()
                 pool_weights.pop()
 
     # IMPORTANT ④: il budget per casa/notevole/comportamento/ricordi non e'
@@ -1601,7 +1601,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # nucleo occuperebbe uno spazio che le lacune, gia' dichiarate, non
     # avrebbero avuto, e la rete di sicurezza sotto sarebbe l'unica cosa a
     # farsi carico dello sforamento.
-    known_gaps_length = len(_assemble([("## Cio' che HIRIS ignora", _gap_rows(notices))]))
+    known_gaps_length = len(_assemble([("## Cio' che HIRIS ignora", _gap_lines(notices))]))
     # La sezione dei guasti entra nel conto come le lacune: sta FUORI dal
     # taglio -- non si accorcia mai, perche' e' la risposta alla domanda piu'
     # comune che si faccia a questo prodotto -- quindi lo spazio che occupa va
@@ -1612,9 +1612,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     gap_reserve = max(_GAP_SECTION_RESERVE, known_gaps_length + _GAP_SECTION_RESERVE)
     budget = max(0, ceiling - gap_reserve - faults_length)
 
-    for pool_name, rows_pool, pool_weights, reserve in cut_order:
-        while len(rows_pool) > reserve and len(_assemble(print_order)) > budget:
-            _pop(pool_name, rows_pool, pool_weights, reserve)
+    for pool_name, lines_pool, pool_weights, reserve in cut_order:
+        while len(lines_pool) > reserve and len(_assemble(print_order)) > budget:
+            _pop(pool_name, lines_pool, pool_weights, reserve)
         if len(_assemble(print_order)) <= budget:
             break
 
@@ -1628,7 +1628,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(_cut_notice(excluded_per_pool, cut_labels, ceiling))
         cut_notice_index = len(notices) - 1
 
-    gap_section = ("## Cio' che HIRIS ignora", _gap_rows(notices))
+    gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
 
     # DOVE va la sezione dei guasti: subito dopo «La casa» e PRIMA di «Notevole
     # adesso». L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
@@ -1654,18 +1654,18 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # oltre quella, mai (IMPORTANT ⑥): sforare il tetto in modo dichiarato
     # e' meno grave che svuotare anche la mappa in silenzio.
     safety_pools = [
-        ("ricordi", memory_rows, memory_weights, 0),
-        ("comportamento", behavior_rows, behavior_weights, 0),
-        ("casa", home_space_rows, home_space_weights, home_space_reserve),
+        ("ricordi", memory_lines, memory_weights, 0),
+        ("comportamento", behavior_lines, behavior_weights, 0),
+        ("casa", home_space_lines, home_space_weights, home_space_reserve),
     ]
     if not unreliable:
-        safety_pools.append(("notevole", highlight_rows, highlight_weights, 0))
+        safety_pools.append(("notevole", highlight_lines, highlight_weights, 0))
 
     while len(text) > int(ceiling * 1.1):
         cut = False
-        for pool_name, rows_pool, pool_weights, reserve in safety_pools:
-            if len(rows_pool) > reserve:
-                _pop(pool_name, rows_pool, pool_weights, reserve)
+        for pool_name, lines_pool, pool_weights, reserve in safety_pools:
+            if len(lines_pool) > reserve:
+                _pop(pool_name, lines_pool, pool_weights, reserve)
                 cut = True
                 break
         if not cut:
@@ -1676,7 +1676,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             cut_notice_index = len(notices) - 1
         else:
             notices[cut_notice_index] = message
-        gap_section = ("## Cio' che HIRIS ignora", _gap_rows(notices))
+        gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
         text = _assemble(_with_faults(print_order) + [gap_section])
 
     memories_excluded = excluded_per_pool.get("ricordi", 0)

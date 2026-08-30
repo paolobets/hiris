@@ -1244,6 +1244,7 @@ al Task 6 invece che deciso qui.
 | ricostruisci | rebuild |
 | riepilogo | summary |
 | riga | row |
+| riga (nucleo) | line |
 | rileggi | reread |
 | ripara | repair |
 | ripristina | restore |
@@ -1348,15 +1349,22 @@ al Task 6 invece che deciso qui.
 > fra le otto esaminate: era gia' elencata da questo stesso documento due sezioni piu' sotto, come
 > valore di `DIREZIONI_BILANCIO`, un posto che quella caccia non ha guardato.
 
-> **`riga`: la stessa parola, due significati.** Negli archivi SQLite (`cervello/archivio.py`,
-> `memoria/archivio.py`, `casa/archivio.py`, `azione/cronaca.py`, `schedulatore/promessa.py`,
-> `decisione_modelli.py`) `riga`/`righe` e' una riga di tabella: `row` e' corretto e non perde
-> niente. Ma in `casa/nucleo.py` (`_riga_adesso`, `_righe_sistema`, `_righe_casa`,
-> `_righe_notevole`, `_righe_comportamento`, `_righe_ricordi`, `_righe_lacune`, `righe_pool` —
-> i costruttori del prompt di sistema) `riga` e' una riga di **testo**, non di tabella: la' la
-> parola giusta e' `line`, non `row`. La tabella sopra fissa l'equivalente di default (`row`,
-> il senso maggioritario e quello dato per obbligato dal brief); chi rinomina in `casa/nucleo.py`
-> deve leggere il contesto e usare `line`, non applicare `row` alla cieca.
+> **`riga`: omonimo per ambito, il sesto di questa fetta -- `riga (nucleo) -> line` in tabella,
+> sopra.** Negli archivi SQLite (`cervello/archivio.py`, `memoria/archivio.py`, `casa/archivio.py`,
+> `azione/cronaca.py`, `schedulatore/promessa.py`, `decisione_modelli.py`) `riga`/`righe` e' una
+> riga di tabella: `row` e' corretto e non perde niente -- ed e' il senso DOMINANTE, misurato
+> (`cervello/archivio.py`: 53 occorrenze; `chat_store.py`: 17; piu' `azione/cronaca.py` e i
+> costruttori `_fact_row`/`_reading_row`), motivo per cui la riga nuda `riga -> row` resta cosi'
+> com'e'. Ma `casa/nucleo.py` costruisce il testo che il modello legge -- non una tabella -- e li'
+> `riga` e' sempre una riga di **testo**: la parola giusta e' `line`. **Applicato per intero nel
+> lotto di `strumenti.py` (arbitrato del proprietario, dopo la misura sopra)**: tutta la famiglia
+> (`_home_space_rows` -> `_home_space_lines`, `_behavior_rows` -> `_behavior_lines`, `_gap_rows`
+> -> `_gap_lines`, `_highlight_rows` -> `_highlight_lines`, `_memory_rows` -> `_memory_lines`,
+> `_reference_frame_rows` -> `_reference_frame_lines`, `_now_row` -> `_now_line`,
+> `unreachable_row` -> `unreachable_line`, `rows_pool` -> `lines_pool`, il bare `row`/`rows` ->
+> `line`/`lines` -- 99 occorrenze in tutto, non le "~30" stimate prima di contarle davvero) --
+> non solo la variabile locale mostrata come esempio: lasciare meta' famiglia `row` e meta' `line`
+> nello stesso file sarebbe stata l'incoerenza che questa correzione esiste per togliere.
 
 > **`stato`: tre significati, non uno.** La tabella sopra lo marca confine → `state`: e' giusto
 > per il senso principale, lo stato di un'entita' di Home Assistant (`casa/domande.py`,
