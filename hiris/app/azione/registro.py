@@ -129,7 +129,7 @@ class ServiceRegistry:
         possibile.
         """
         reading = await ha_client.get_services()
-        nuovo: dict[str, dict[str, dict]] = {}
+        new: dict[str, dict[str, dict]] = {}
         for entry in reading or []:
             if not isinstance(entry, dict):
                 continue
@@ -137,20 +137,20 @@ class ServiceRegistry:
             services = entry.get("services")
             if not isinstance(domain, str) or not isinstance(services, dict):
                 continue
-            nuovo[domain] = {n: _detail(d)
+            new[domain] = {n: _detail(d)
                               for n, d in services.items() if isinstance(n, str)}
-        self._per_domain = nuovo
+        self._per_domain = new
         self._caricato_a = time.monotonic()
         self._da_rileggere = False
         logger.info("registro servizi: %d domini, %d servizi",
-                    len(nuovo), sum(len(s) for s in nuovo.values()))
+                    len(new), sum(len(s) for s in new.values()))
         # Una risposta che c'era e da cui non si e' capito NIENTE e' l'unico
         # esito che il resto del prodotto non sa raccontare: l'utente si sente
         # dire «non sono riuscito a leggerlo, riprova fra poco» per sempre, e
         # nel log c'era solo un `INFO: 0 domini, 0 servizi` che assomiglia a
         # una casa senza servizi. E' il fallimento numero 1 del foglio delle
         # prove: qui diventa una diagnosi invece di un silenzio.
-        if reading and not nuovo:
+        if reading and not new:
             logger.warning("registro servizi: la risposta di /api/services non era "
                            "vuota (%s voci) ma non se ne e' capita nessuna -- la sua "
                            "forma non e' quella attesa (lista di {domain, services})",

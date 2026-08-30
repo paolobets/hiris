@@ -443,11 +443,11 @@ class _RegistroFinto:
     def domains(self):
         return ["light", "notify"]
 
-    def service(self, dominio, nome):
-        return self._SERVIZI.get((dominio, nome))
+    def service(self, domain, name):
+        return self._SERVIZI.get((domain, name))
 
-    def services_for(self, dominio):
-        return sorted(nome for (dom, nome) in self._SERVIZI if dom == dominio)
+    def services_for(self, domain):
+        return sorted(nome for (dom, nome) in self._SERVIZI if dom == domain)
 
 
 class _RegistroVuoto:

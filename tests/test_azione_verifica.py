@@ -255,8 +255,8 @@ def test_un_fields_illeggibile_non_solleva_nemmeno_saltando_il_registro():
     tornerebbe a dipendere da chi la chiama."""
     class RegistroACaso:
         def domains(self): return ["light"]
-        def services_for(self, d): return ["turn_on"]
-        def service(self, d, n): return {"fields": [{"name": "brightness_pct"}]}
+        def services_for(self, domain): return ["turn_on"]
+        def service(self, domain, name): return {"fields": [{"name": "brightness_pct"}]}
 
     # Se `ServiceRegistry` cambia firma, questa riga cade invece di
     # lasciare che il finto imiti un contratto che non esiste piu'.

@@ -22,10 +22,12 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import server
+from hiris.app.azione.porta import ActionActuator
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.schedulatore.archivio import AgendaStore
 from hiris.app.schedulatore.sweeper import Sweeper
+from tests._contratti import assert_stessa_firma
 from tests.test_strumenti_conoscenza import _semina_casa
 
 TOKEN = "token-di-prova-del-turno-di-promessa"
@@ -41,9 +43,17 @@ class PortaFinta:
     def __init__(self) -> None:
         self.chiamate = []
 
-    async def execute(self, chiamata, actor="chat"):
-        self.chiamate.append((chiamata, actor))
+    async def execute(self, call: dict, *, actor: str):
+        self.chiamate.append((call, actor))
         return {"eseguito": True, "esecuzione_id": "e1"}
+
+
+def test_la_finta_porta_combacia_con_la_firma_vera():
+    """Guardia (review Task 7, round 3): questa finta era cablata come
+    `Sweeper(..., execute=porta.execute, ...)`, lo stesso cablaggio di
+    `server.py`, e divergeva gia' (`chiamata, actor="chat"` contro
+    `call, *, actor` del vero) senza che niente diventasse rosso."""
+    assert_stessa_firma(ActionActuator.execute, PortaFinta.execute, nome="execute")
 
 
 @pytest_asyncio.fixture

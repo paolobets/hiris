@@ -395,11 +395,11 @@ class _StateListener:
         un motivo che non ha niente a che vedere con la casa.
         """
         try:
-            nuovo = (data or {}).get("new_state")
-            eid = nuovo.get("entity_id") if isinstance(nuovo, dict) else None
+            new = (data or {}).get("new_state")
+            eid = new.get("entity_id") if isinstance(new, dict) else None
             if eid not in self._bersagli:
                 return
-            fingerprint = _fingerprint_from_ha_state(nuovo)
+            fingerprint = _fingerprint_from_ha_state(new)
             if fingerprint is None:
                 return
             self.udite[eid] = fingerprint
