@@ -27,10 +27,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.casa.strumenti import RICORDA_TOOL_DEF
+from hiris.app.casa.strumenti import REMEMBER_TOOL_DEF
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT, ClaudeRunner
 
-NOME_RICORDA = RICORDA_TOOL_DEF["name"]
+NOME_RICORDA = REMEMBER_TOOL_DEF["name"]
 
 
 def _sys_text(system) -> str:

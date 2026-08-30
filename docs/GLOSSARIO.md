@@ -291,6 +291,7 @@ in §4①:
 | `nostre` | `nostro` |
 | `vivi` | `vive` |
 | `citate` | `citato` |
+| `nostri` | `nostro` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -1101,6 +1102,7 @@ al Task 6 invece che deciso qui.
 | configurazione | configuration |
 | confronta | compare |
 | confronto | comparison |
+| conoscenza | knowledge |
 | conosciuto | known |
 | conservazione | retention |
 | consumi | usage |
@@ -1280,6 +1282,7 @@ al Task 6 invece che deciso qui.
 | statistiche | statistics |
 | stato | state |
 | successivo | next |
+| suffisso | suffix |
 | suggerimento | suggestion |
 | taciuto | silenced |
 | tagliato | cut |
@@ -1498,12 +1501,12 @@ guardia sulle collisioni fin dal lotto 4 (`anagrafe.py`), rimandata perche' vive
 ancora suo: entrambe decise `-> count` (righe sopra), ma nello stesso file (`nucleo.py`) nominano
 cose diverse -- `quante` e' quasi sempre uno SCALARE (un numero: quante entita' porta una riga,
 `_annotazione_dispositivo`), `conteggio` e' sempre un DIZIONARIO (dominio -> quante, in quattro
-funzioni diverse: `_conta_perdominio_di`, `_righe_casa`, `_raggruppa_notevoli`,
-`_avviso_integrazioni`). Deciso qui, guardando il codice invece di applicare la riga alla cieca:
+funzioni diverse: `_count_per_domain`, `_home_space_rows`, `_group_highlights`,
+`_integrations_notice`). Deciso qui, guardando il codice invece di applicare la riga alla cieca:
 `conteggio` (il dizionario) -> **`counts`** (plurale: e' una mappa di piu' conteggi, coerente con
 `conteggi -> counts` gia' deciso per il ritorno di `anagrafe.rebuild`); `quante` (lo scalare) resta
 **`count`** (singolare), la riga com'e' scritta sopra. Due occorrenze di `quante` in
-`_avviso_integrazioni`/`_avviso_confronto` non sono ne' l'uno ne' l'altro: portano gia' una FRASE
+`_integrations_notice`/`_comparison_notice` non sono ne' l'uno ne' l'altro: portano gia' una FRASE
 formattata ("3 aree", "un'area"), non un numero -- rinominate a mano `count_phrase`, per non
 promettere uno scalare dove il valore e' un testo.
 
@@ -1512,15 +1515,15 @@ perche' parole singole (come `righe`/`identita`, corrette sopra).** Trovate rile
 identificatore per identificatore dopo il giro dello strumento, non dal dry-run: nessuna era un
 composto, quindi nessuna era comparsa nell'elenco da decidere.
 
-- `ripetuta` (`_avviso_integrazioni`, il suffisso " x2" di un'integrazione ripetuta) ->
+- `ripetuta` (`_integrations_notice`, il suffisso " x2" di un'integrazione ripetuta) ->
   **`repeat_suffix`**: non una parola del vocabolario generale, un nome che dice cosa la variabile
   CONTIENE.
-- `chiusura` (`_avviso_problemi`, la clausola finale gia' concordata al singolare/plurale: "non e'
+- `chiusura` (`_problems_notice`, la clausola finale gia' concordata al singolare/plurale: "non e'
   elencato qui, si legge" / "non sono elencati qui, si leggono") -> **`closing_phrase`**, stessa
   famiglia di `count_phrase`: non e' un conteggio ne' un verbo, e' una frase gia' fatta.
-- `da_dire` (`_avviso_problemi`, i problemi non silenziati, quelli che il testo restituito
+- `da_dire` (`_problems_notice`, i problemi non silenziati, quelli che il testo restituito
   effettivamente elenca) -> **`to_report`**.
-- `guardate` (`_avviso_confronto`, le aree per cui il confronto e' stato fatto) -> **`checked`**,
+- `guardate` (`_comparison_notice`, le aree per cui il confronto e' stato fatto) -> **`checked`**,
   la stessa parola gia' scelta in `anagrafe.confronta_con_home_assistant` per il campo dati
   OMONIMO. La chiave stringa del dizionario che quella funzione restituisce (`"guardate"`) resta
   cosi' -- e' dato, non un identificatore -- il nome cambia solo sulla variabile locale che lo
@@ -1542,13 +1545,55 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   MAI lo stesso nome del metodo di `HAClient.problemi()` che lo alimenta (protetto a parte in
   `_METODI_HA_CLIENT`) -- qui non c'e' un punto davanti, e' un parametro, non un attributo.
 - `detto_da` (`_memory_rows`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
-  `"detto_da"`, la stessa colonna di `memoria/archivio.py` (`memoria/` non e' ancora convertita) --
-  cambia solo la variabile locale che la legge qui. La FRASE italiana che finisce nel testo
+  `"detto_da"`, la stessa colonna di `memoria/archivio.py` -- resta italiana PER SEMPRE, come ogni
+  colonna di database di questa fetta (regola permanente, non legata allo stato di conversione di
+  `memoria/`: cambierebbe solo se la colonna stessa venisse migrata, una decisione a parte).
+  Cambia solo la variabile locale che la legge qui. La FRASE italiana che finisce nel testo
   ("detto da ...") resta italiana: e' cio' che il modello legge, non un identificatore.
 - Forme plurali non incatenate dallo strumento perche' l'alias esistente traduce il singolare
   (`identificativo -> identificatore`, `dettaglio -> detail`) ma non la forma con la "i" finale:
   `identificativi` -> `identifiers`, `dettagli` -> `details`, `gruppi` -> `groups` (`gruppo ->
   group` e' nuovo in questo lotto, sotto).
+
+**Decisioni del lotto di `casa/strumenti.py`, il dispatcher dei tredici strumenti.**
+
+- **`_ARCHIVIO_PER_STRUMENTO`/`_archivio_mancante` -> `_RESOURCE_PER_TOOL`/`_missing_resource`,
+  non `_store_*`.** Il nome originale usa "archivio" in senso largo: la mappa elenca anche `"ha"`
+  (il canale verso Home Assistant) e `"porta"`/`"officina"` (due servizi, non due archivi).
+  Applicare `archivio -> store` alla lettera avrebbe promesso "manca lo STORE" quando il messaggio
+  vero e' "manca il collegamento vivo con Home Assistant" -- deciso guardando i quattro rami di
+  `_missing_resource`, non la singola parola.
+- **`_cecita` -> `_blind_spots`**: non e' nel vocabolario generale, e' il nome di UN metodo che
+  spiega perche' `cerca` puo' non vedere qualcosa che esiste (registri caduti, entita' senza nome).
+  `cecita` stessa non e' mai stata una parola da tradurre in astratto.
+- **`tipo` (bare, locale) -> `kind`, mai `type`**: stessa decisione di `domande.py` (lotto 6) per
+  lo stesso motivo -- ombreggerebbe il builtin. `casa/strumenti.py` chiama `domande.view` e
+  `domande.related` passando questo stesso valore per posizione ai loro parametri, gia' `kind`:
+  riusare la parola invece di deciderla di nuovo e' la fondamenta "nessun doppione" applicata a un
+  nome, non solo a un concetto.
+- **`caduti` -> `fallen_stores`**, non `unavailable`: il concetto e' lo stesso di `registro_caduto
+  -> unavailable` (lotto 5), ma nello stesso file esiste gia' un parametro `non_disponibili ->
+  unavailable` con un significato diverso (i registri passati a `guarda`) -- due variabili
+  `unavailable` nello stesso modulo, anche se in funzioni diverse, sarebbero state una lettura
+  ambigua per chi rivede il codice senza il contesto di questa nota.
+- **`letto`/`specchio_letto` -> `loaded`/`mirror_loaded`, mai `read`**: gia' deciso e scritto in
+  questo glossario (vedi la riga `letto` sopra, in "Le parole ordinarie") proprio guardando
+  `casa/strumenti.py` come uno dei due file dove `leggi` (il verbo, `read`) e `letto` (il
+  participio, `loaded`) convivono -- applicato qui per la prima volta.
+- **Il parametro `verifica` di `_verifica_ora` -> `verify`**: riceve la funzione
+  `azione.verifica.verification` (mai rinominata: e' un ambito chiuso ma non mio da toccare in
+  questo lotto) come valore -- il nome del PARAMETRO e' mio, il nome della funzione importata no.
+- Composti auto-suggeriti dallo strumento e ACCETTATI cosi' come sono (ordine gia' naturale in
+  inglese, nessuna correzione semantica necessaria): `_TIPI_ANCORA -> _TETHER_TYPES` (il
+  vocabolario delle ancore e' di `memoria/`, che ha gia' deciso `ancora -> tether`),
+  `_TIPI_LEGAME_NOSTRI -> _OUR_LINK_TYPES`, `STRUMENTI_CONOSCENZA -> KNOWLEDGE_TOOLS`,
+  `_NOMI_STRUMENTI -> _TOOL_NAMES`, `DispatcherStrumenti -> ToolDispatcher`, e le tredici costanti
+  `*_TOOL_DEF` (`CERCA_TOOL_DEF -> SEARCH_TOOL_DEF`, ecc.): ognuna e' il nome della costante Python,
+  mai la stringa `"name"` che il modello legge dentro -- quella resta italiana, e' il contratto.
+- **`entita` (bare, locale)**: tradotta `entity` dove il valore e' UNA cosa sola (`_andamento`,
+  `_accaduto`), `entities` dove e' una lista (`_verifica_da_confrontare`, `_istantanea`) --
+  l'italiano non flette la parola fra singolare e plurale, l'inglese si', e la forma del
+  parametro (`list` contro stringa) dice quale delle due serve.
 
 ## I nomi degli strumenti
 

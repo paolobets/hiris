@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from hiris.app.agent import prompts, runner
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI
 
 
@@ -111,7 +111,7 @@ def _tools_list_come_la_rotta() -> dict:
     mano qui sarebbe il secondo catalogo, e questo finto client smetterebbe
     di somigliare alla rotta il giorno in cui il catalogo cambia."""
     return {"jsonrpc": "2.0", "id": 1,
-            "result": {"tools": [{"name": d["name"]} for d in STRUMENTI_CONOSCENZA]}}
+            "result": {"tools": [{"name": d["name"]} for d in KNOWLEDGE_TOOLS]}}
 
 
 class _Client:
@@ -643,7 +643,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     # compreso dalla fetta «comandare»: l'elenco si DERIVA da
     # `STRUMENTI_CONOSCENZA`, cosi' uno strumento nuovo entra qui da solo
     # invece di lasciare questo test a sorvegliarne quattro su cinque.
-    for voce in STRUMENTI_CONOSCENZA:
+    for voce in KNOWLEDGE_TOOLS:
         assert f"`{voce['name']}`" in guida
     # ...e i due che la persona nomina davvero (impostazioni_chat.py ne scrive
     # due soli, ed e' una decisione: vedi il commento sopra
@@ -749,7 +749,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     assert passati == set(runner.nomi_mcp()), (
         f"i nomi passati ad --allowedTools ({sorted(passati)!r}) non sono "
         f"quelli derivati da STRUMENTI_CONOSCENZA ({sorted(runner.nomi_mcp())!r})")
-    assert passati == {f"mcp__hiris__{d['name']}" for d in STRUMENTI_CONOSCENZA}
+    assert passati == {f"mcp__hiris__{d['name']}" for d in KNOWLEDGE_TOOLS}
 
     # e i tool LOCALI del CLI restano esplicitamente vietati (shell/fs del
     # container addon): il prompt non e' l'unica difesa.

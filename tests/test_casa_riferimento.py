@@ -20,7 +20,7 @@ import pytest
 from hiris.app.casa.anagrafe import rebuild, reference_frame
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import compose
-from hiris.app.casa.strumenti import DispatcherStrumenti
+from hiris.app.casa.strumenti import ToolDispatcher
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE, HAClient
 
@@ -283,7 +283,7 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             {"id": "sensor.indice", "state": "72", "unit": ""},
             {"id": "sensor.termo", "state": "72", "unit": "F"},
         ])
-        d = DispatcherStrumenti(archivio, memoria, cache=cache)
+        d = ToolDispatcher(archivio, memoria, cache=cache)
         esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
         per_id = {e["id"]: e for e in esito["entita"]}
 

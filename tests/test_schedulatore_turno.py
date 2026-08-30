@@ -1,7 +1,7 @@
 """Il turno di «chiedi»: guarda, risponde, e non tocca niente."""
 import pytest
 
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.schedulatore.turno import (
     SOLA_LETTURA,
     PromiseDispatcher,
@@ -28,7 +28,7 @@ def test_il_catalogo_contiene_i_lettori_e_concludi():
 
 def test_ogni_nome_ammesso_esiste_davvero_nel_catalogo_della_chat():
     """Un rinomino altrove non deve poter svuotare questo catalogo in silenzio."""
-    veri = {d["name"] for d in STRUMENTI_CONOSCENZA}
+    veri = {d["name"] for d in KNOWLEDGE_TOOLS}
     assert set(SOLA_LETTURA) <= veri
 
 

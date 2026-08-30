@@ -2,10 +2,10 @@ import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.strumenti import (
-    CERCA_TOOL_DEF,
-    ESEGUI_TOOL_DEF,
-    STRUMENTI_CONOSCENZA,
-    DispatcherStrumenti,
+    EXECUTE_TOOL_DEF,
+    KNOWLEDGE_TOOLS,
+    SEARCH_TOOL_DEF,
+    ToolDispatcher,
 )
 from hiris.app.memoria.archivio import MemoryStore
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
@@ -83,12 +83,12 @@ def memoria(tmp_path):
 
 @pytest.fixture
 def dispatcher(archivio_casa, memoria):
-    return DispatcherStrumenti(archivio_casa, memoria)
+    return ToolDispatcher(archivio_casa, memoria)
 
 
 @pytest.fixture
 def dispatcher_ambiguo(archivio_casa_ambiguo, memoria):
-    return DispatcherStrumenti(archivio_casa_ambiguo, memoria)
+    return ToolDispatcher(archivio_casa_ambiguo, memoria)
 
 
 def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
@@ -129,7 +129,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     entrano anche nel catalogo del turno delle promesse
     (`schedulatore/turno.py::SOLA_LETTURA`), da cui `costruisci` e `conferma`
     restano fuori."""
-    nomi = {s["name"] for s in STRUMENTI_CONOSCENZA}
+    nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
     assert nomi == {"cerca", "guarda", "legami", "ricorda", "richiama", "esegui",
                     "prometti", "promesse", "disdici", "costruisci", "conferma",
                     "andamento", "accaduto"}
@@ -138,7 +138,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
 def test_ogni_definizione_ha_una_descrizione_utile():
     """Una descrizione vaga e' un tool che il modello usa male: sono pochi,
     possono permettersi di essere spiegati bene."""
-    for s in STRUMENTI_CONOSCENZA:
+    for s in KNOWLEDGE_TOOLS:
         assert len(s["description"]) > 60
         assert s["input_schema"]["type"] == "object"
 
@@ -329,7 +329,7 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
     dietro `aggiornata_il()` (l'anagrafe) SOLO -- se non imparasse anche
     `comportamento_letto_il()`, questo test servirebbe per sempre l'indice
     di prima, con l'automazione ancora sotto il nome vecchio."""
-    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     prima = await d.dispatch("cerca", {"testo": "sveglia"})
     assert any(c["riferimento"] == "automation.sveglia"
               for t in prima["trovati"] for c in t["candidati"])
@@ -362,7 +362,7 @@ def test_cerca_tool_def_dichiara_i_tipi_nuovi():
     che sa solo il NOME di un'etichetta deve poter arrivare al label_id con
     UNA chiamata»)."""
     for parola in ("piano", "automazione", "script", "etichetta"):
-        assert parola in CERCA_TOOL_DEF["description"], \
+        assert parola in SEARCH_TOOL_DEF["description"], \
             f"CERCA_TOOL_DEF non dichiara «{parola}»"
 
 
@@ -372,7 +372,7 @@ def test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id():
     nemmeno DOVE andarlo a cercare -- un modello che leggesse solo la
     definizione dello strumento non aveva modo di scoprire che «cerca» e
     «guarda» lo producono ora."""
-    descrizione = ESEGUI_TOOL_DEF["input_schema"]["properties"]["bersaglio"][
+    descrizione = EXECUTE_TOOL_DEF["input_schema"]["properties"]["bersaglio"][
         "properties"]["etichette"]["description"].lower()
     assert "cerca" in descrizione
     assert "guarda" in descrizione
@@ -396,7 +396,7 @@ async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
     restituiva sempre `stato: None` perche' la cache non era cablata --
     onesto ma inutile."""
     cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache)
+    d = ToolDispatcher(archivio_casa, memoria, cache=cache)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     stati = {e["id"]: e["stato"] for e in esito["entita"]}
     assert stati["light.cucina_1"] == "on"
@@ -408,7 +408,7 @@ async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
 async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivio_casa, memoria):
     """Ogni `stato: None` sarebbe altrimenti ambiguo fra «l'entita' non ha
     stato» e «non ho potuto guardare»."""
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=None)
+    d = ToolDispatcher(archivio_casa, memoria, cache=None)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
@@ -431,7 +431,7 @@ async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, m
     """Fix E1-③: `_stato_vivo` inghiottiva l'eccezione e restituiva `{}`,
     indistinguibile da "nessuna entita' ha stato" -- con la cache che si
     dichiara comunque caricata, `stato_non_letto` non scattava mai."""
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
@@ -453,8 +453,8 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
     sarebbero la stessa classe di divergenza che il nucleo chiude condividendo
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
-    stato, nomi, unita, _classi, _da_quando, _attributi, letto = d._specchio()
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    stato, nomi, unita, _classi, _da_quando, _attributi, letto = d._mirror()
     assert letto is True
     assert stato["light.abat_jour_1"] == "off" and stato["sensor.y"] == "21"
     assert nomi == {"light.abat_jour_1": "Abat-jour"}
@@ -468,7 +468,7 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
     """Le abat-jour, dal vivo: quattro giri di `cerca` diventano uno."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("cerca", {"testo": "accendi l'abat-jour"})
     riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
     assert riferimenti == ["light.abat_jour_1"]
@@ -488,7 +488,7 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     dalla chiamata a `_guarda_dettaglio` in `strumenti._guarda`)."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("guarda", {"tipo": "entita", "riferimento": "light.abat_jour_1"})
     assert esito["esiste"] is True
     assert esito["nome"] is None
@@ -511,7 +511,7 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
                     "name": None, "original_name": None}],
     }, [])
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "giardino"})
     assert esito["esiste"] is True
     entita = {e["id"]: e for e in esito["entita"]}
@@ -532,7 +532,7 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
         "entita": [{"entity_id": "light.abat_jour_1", "device_id": "dev_irr",
                     "name": None, "original_name": None}],
     }, [])
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("guarda", {"tipo": "dispositivo", "riferimento": "dev_irr"})
     assert esito["esiste"] is True
     entita = {e["id"]: e for e in esito["entita"]}
@@ -547,8 +547,8 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
     letto male il campo di `guarda` (`nome: null` + una chiave non
     descritta), concludendo «senza nome» mentre il nome c'era. Una forma
     sola, dichiarata in entrambe le definizioni."""
-    from hiris.app.casa.strumenti import CERCA_TOOL_DEF, GUARDA_TOOL_DEF
-    for tool_def in (CERCA_TOOL_DEF, GUARDA_TOOL_DEF):
+    from hiris.app.casa.strumenti import SEARCH_TOOL_DEF, VIEW_TOOL_DEF
+    for tool_def in (SEARCH_TOOL_DEF, VIEW_TOOL_DEF):
         assert "nome_dedotto" in tool_def["description"], (
             f"«{tool_def['name']}» restituisce nome_dedotto ma non lo dichiara")
 
@@ -557,7 +557,7 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):
     archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
-    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "il bagno"})
     assert esito["trovati"] == []
     assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
@@ -575,7 +575,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
         loaded = False
         def all_states(self): return []
 
-    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
         "cerca", {"testo": "abat-jour"})
     assert any("specchio" in m for m in esito["non_ho_potuto_guardare"])
 
@@ -589,7 +589,7 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
         loaded = False
         def all_states(self): return []
 
-    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
         "cerca", {"testo": "luce cucina"})
     assert "non_ho_potuto_guardare" not in esito
 
@@ -614,7 +614,7 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
             # come Home Assistant chiama proprio questa entita'.
             return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
 
-    esito = await DispatcherStrumenti(archivio_casa, memoria,
+    esito = await ToolDispatcher(archivio_casa, memoria,
                                       cache=_SpecchioSenzaQuestaVoce()).dispatch(
         "cerca", {"testo": "abat-jour"})
     assert esito["trovati"] == []
@@ -653,7 +653,7 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
             # fatto stabile misurato sull'impianto vero.
             return [{"id": "light.c", "state": "on", "name": "Luce cucina"}]
 
-    esito = await DispatcherStrumenti(archivio_casa, memoria,
+    esito = await ToolDispatcher(archivio_casa, memoria,
                                       cache=_SpecchioSenzaLaSecondaVoce()).dispatch(
         "cerca", {"testo": "luce cucina"})
     riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
@@ -689,7 +689,7 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
         loaded = False
         def all_states(self): return []
 
-    esito = await DispatcherStrumenti(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
         "cerca", {"testo": "luce cucina"})
 
     riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
@@ -716,7 +716,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.disabilitata", "name": None, "original_name": None,
          "disabled_by": "user"}]}, [])
-    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "luce cucina"})
     assert "non_ho_potuto_guardare" not in esito
 
@@ -731,7 +731,7 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
     `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
     nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
     archivio_casa.replace({"aree": [], "entita": []}, ["etichette"])
-    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "da controllare"})
     assert esito["trovati"] == []
     assert "non_ho_potuto_guardare" in esito
@@ -750,7 +750,7 @@ async def test_cerca_dichiara_i_file_di_comportamento_non_letti(archivio_casa, m
     li'."""
     archivio_casa.replace_behavior(
         [], unloaded_files={"automations.yaml": "assente"})
-    esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "una automazione che non esiste per niente"})
     assert esito["trovati"] == []
     assert "non_ho_potuto_guardare" in esito
@@ -771,8 +771,8 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
         def all_states(self):
             yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
             raise RuntimeError("boom")
-    stato, nomi, unita, classi, da_quando, attributi, letto = DispatcherStrumenti(
-        archivio_casa, memoria, cache=_Rotta())._specchio()
+    stato, nomi, unita, classi, da_quando, attributi, letto = ToolDispatcher(
+        archivio_casa, memoria, cache=_Rotta())._mirror()
     # Anche le UNITA' (e l'ISTANTE) raccolti a meta' si buttano: mezzo
     # dizionario farebbe apparire senza unita'/istante proprio le entita' che
     # la lettura non ha raggiunto -- lo stesso difetto dei nomi, sui campi nuovi.
@@ -781,8 +781,8 @@ def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, mem
 
 
 def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
-    assert DispatcherStrumenti(
-        archivio_casa, memoria, cache=None)._specchio() == ({}, {}, {}, {}, {}, {}, True)
+    assert ToolDispatcher(
+        archivio_casa, memoria, cache=None)._mirror() == ({}, {}, {}, {}, {}, {}, True)
 
 
 @pytest.mark.asyncio
@@ -828,7 +828,7 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
     None il modello riceveva «'NoneType' object has no attribute 'leggi'»: un
     errore Python travestito da risposta, che non gli permette ne' di capire
     ne' di spiegarlo all'utente -- solo di riprovare all'infinito."""
-    d = DispatcherStrumenti(None, None, cache=None)
+    d = ToolDispatcher(None, None, cache=None)
     for nome, argomenti in [
         ("cerca", {"testo": "cucina"}),
         ("guarda", {"tipo": "area", "riferimento": "cucina"}),
@@ -877,7 +877,7 @@ def _conta_costruzioni(monkeypatch):
 async def test_due_cerca_di_fila_a_stato_invariato_costruiscono_un_solo_indice(
         archivio_casa, memoria, monkeypatch):
     chiamate = _conta_costruzioni(monkeypatch)
-    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     await d.dispatch("cerca", {"testo": "cucina"})
     await d.dispatch("cerca", {"testo": "sala"})
     assert len(chiamate) == 1
@@ -890,7 +890,7 @@ async def test_senza_cache_indice_il_comportamento_resta_quello_di_oggi(
     chiamante non la passa' rovinerebbe questo test -- due `cerca` devono
     ricostruire due volte, come prima del Task B7."""
     chiamate = _conta_costruzioni(monkeypatch)
-    d = DispatcherStrumenti(archivio_casa, memoria)  # cache_indice non passata
+    d = ToolDispatcher(archivio_casa, memoria)  # cache_indice non passata
     await d.dispatch("cerca", {"testo": "cucina"})
     await d.dispatch("cerca", {"testo": "sala"})
     assert len(chiamate) == 2
@@ -903,7 +903,7 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
     servirebbe un indice VECCHIO, facendo sparire un'entita' che esiste
     davvero. Qui la si aggiunge dopo la prima `cerca` e si pretende che la
     seconda la trovi."""
-    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     prima = await d.dispatch("cerca", {"testo": "frullatore"})
     assert prima["trovati"] == []
 
@@ -938,8 +938,8 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
             return [{"id": "light.abat_jour_1", "state": "off", "name": self.nome}]
 
     cache_stato = _CacheMutevole("")  # nessun nome ancora
-    cache_indice = LookupCache()
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache_stato, cache_indice=cache_indice)
+    lookup_cache = LookupCache()
+    d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato, lookup_cache=lookup_cache)
     prima = await d.dispatch("cerca", {"testo": "abat-jour"})
     assert prima["trovati"] == []
 
@@ -957,7 +957,7 @@ async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
     quattro (rimbalzo) e mai uno solo condiviso (servirebbe contenuti
     sbagliati all'uno o all'altro)."""
     chiamate = _conta_costruzioni(monkeypatch)
-    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     await d.dispatch("cerca", {"testo": "cucina"})
     await d.dispatch("ricorda", {"testo": "una frase qualsiasi"})
     await d.dispatch("cerca", {"testo": "sala"})
@@ -977,7 +977,7 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     chiamate = _conta_costruzioni(monkeypatch)
     # Nessun `sostituisci()` ancora: `aggiornata_il()` e' `None` davvero.
     vuoto = HomeSpaceStore(str(tmp_path / "vuota.db"))
-    d = DispatcherStrumenti(vuoto, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(vuoto, memoria, lookup_cache=LookupCache())
     await d.dispatch("ricorda", {"testo": "prima, anagrafe non letta"})
     assert len(chiamate) == 1
 
@@ -1011,7 +1011,7 @@ async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
         return originale()
 
     monkeypatch.setattr(archivio_casa, "read", spia)
-    d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
+    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
 
     await d.dispatch("ricorda", {"testo": "prima chiamata, miss: deve leggere"})
     assert len(chiamate_leggi) == 1
@@ -1051,7 +1051,7 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
         {"id": "sensor.cucina_t", "state": "21.5", "name": "Temperatura", "unit": "°C"},
         {"id": "light.cucina_1", "state": "on", "name": "Faretti"},
     ])
-    d = DispatcherStrumenti(archivio_casa, memoria, cache=cache)
+    d = ToolDispatcher(archivio_casa, memoria, cache=cache)
     esito = await d.dispatch("guarda", {"tipo": "area", "riferimento": "cucina"})
     per_id = {e["id"]: e for e in esito["entita"]}
     assert per_id["sensor.cucina_t"]["stato"] == "21.5"

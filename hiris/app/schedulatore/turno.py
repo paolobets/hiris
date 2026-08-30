@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..decisione_modelli import _MOTIVI_RIPIEGO
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ def tools_promise() -> list[dict]:
     copie: una descrizione migliorata li' vale anche qui, senza che nessuno se
     ne debba ricordare.
     """
-    ammessi = [d for d in STRUMENTI_CONOSCENZA if d["name"] in SOLA_LETTURA]
+    ammessi = [d for d in KNOWLEDGE_TOOLS if d["name"] in SOLA_LETTURA]
     if len(ammessi) != len(SOLA_LETTURA):
         # Un nome ammesso che non esiste piu' nel catalogo della chat (un
         # rinomino) svuoterebbe questo catalogo IN SILENZIO, lasciando il turno

@@ -78,7 +78,7 @@ from collections import OrderedDict
 
 from aiohttp import web
 
-from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..schedulatore.turno import PromiseDispatcher, tools_promise
 from ..version import read_version
 from .handlers_chat import costruisci_dispatcher_strumenti
@@ -258,7 +258,7 @@ def catalogo_mcp(definizioni: list[dict] | None = None) -> list[dict]:
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
     voci: list[dict] = []
-    for definizione in (STRUMENTI_CONOSCENZA if definizioni is None else definizioni):
+    for definizione in (KNOWLEDGE_TOOLS if definizioni is None else definizioni):
         voce = {chiave: valore for chiave, valore in definizione.items()
                 if chiave != "input_schema"}
         if "input_schema" in definizione:
@@ -365,7 +365,7 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         return _errore(
             -32602,
             "«tools/call» richiede «params.name», il nome NUDO dello strumento "
-            f"(uno fra {', '.join(sorted(d['name'] for d in STRUMENTI_CONOSCENZA))}); "
+            f"(uno fra {', '.join(sorted(d['name'] for d in KNOWLEDGE_TOOLS))}); "
             f"ricevuto invece {nome!r}.",
             id_richiesta,
         )

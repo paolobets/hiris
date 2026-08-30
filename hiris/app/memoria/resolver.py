@@ -154,9 +154,9 @@ def _compila(term: str) -> re.Pattern[str]:
     linguaggio naturale dopo/prima di quel bordo viene uno spazio, un altro
     segno di punteggiatura o la fine della frase. Il confine si mette solo
     dove il bordo e' un carattere di parola."""
-    prefisso = r"(?<!\w)" if _e_carattere_di_parola(term[0]) else ""
-    suffisso = r"(?!\w)" if _e_carattere_di_parola(term[-1]) else ""
-    return re.compile(prefisso + re.escape(term) + suffisso)
+    prefix = r"(?<!\w)" if _e_carattere_di_parola(term[0]) else ""
+    suffix = r"(?!\w)" if _e_carattere_di_parola(term[-1]) else ""
+    return re.compile(prefix + re.escape(term) + suffix)
 
 
 class Lookup:

@@ -118,7 +118,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from ..casa.strumenti import STRUMENTI_CONOSCENZA
+from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..chat_store import (
     PREFISSO_ERRORE_RUNNER,
     SENTINELLA_FLUSSO_INCOMPLETO,
@@ -214,7 +214,7 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `concludi`, cioe' senza nessun modo di finire.
-    definizioni = tools_promise() if per_promessa else STRUMENTI_CONOSCENZA
+    definizioni = tools_promise() if per_promessa else KNOWLEDGE_TOOLS
     return tuple(f"{prefisso}{d['name']}" for d in definizioni)
 
 
@@ -513,7 +513,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     # stessa cosa che il turno usera': con l'intestazione della promessa la
     # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
-    definizioni = tools_promise() if id_promessa else STRUMENTI_CONOSCENZA
+    definizioni = tools_promise() if id_promessa else KNOWLEDGE_TOOLS
     attesi = {d["name"] for d in definizioni}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 

@@ -41,7 +41,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import (
     BASE_IDENTITA,
     BASE_REGOLE_STRUMENTI,
@@ -238,7 +238,7 @@ def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
     # unico (fetta «comandare», Task 7): scritto a mano restava a quattro
     # mentre il catalogo ne aveva cinque, ed e' esattamente la dichiarazione
     # che invecchia in silenzio di cui questo file e' pieno di lapidi.
-    for voce in STRUMENTI_CONOSCENZA:
+    for voce in KNOWLEDGE_TOOLS:
         assert f"`{voce['name']}`" in prompts._GUIDA_CON_STRUMENTI
     assert "HAI gli strumenti di HIRIS" in system
     assert "NON hai alcuno strumento" not in system

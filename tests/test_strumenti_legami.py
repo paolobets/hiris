@@ -24,7 +24,7 @@ import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import LINK_NAME, related, view
-from hiris.app.casa.strumenti import DispatcherStrumenti
+from hiris.app.casa.strumenti import ToolDispatcher
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests.test_cervello_comprimari import _ClienteLegami
@@ -63,8 +63,8 @@ def casa(tmp_path):
     a.close()
 
 
-def _dispatcher(casa, memoria, ha=None, porta=None):
-    return DispatcherStrumenti(casa, memoria, ha=ha, porta=porta)
+def _dispatcher(casa, memoria, ha=None, actuator=None):
+    return ToolDispatcher(casa, memoria, ha=ha, actuator=actuator)
 
 
 # --- il vocabolario -------------------------------------------------------
@@ -191,7 +191,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
     direbbero la stessa cosa, e sono opposti.
     """
     porta_con_canale = _FintaPorta(_ClienteLegami(default={"automation": ["automation.a"]}))
-    esito = await _dispatcher(casa, memoria, porta=porta_con_canale).dispatch(
+    esito = await _dispatcher(casa, memoria, actuator=porta_con_canale).dispatch(
         "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "legami" not in esito, (
         "lo strumento ha trovato il canale dentro la porta: il ripiego "

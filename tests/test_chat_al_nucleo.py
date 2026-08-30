@@ -52,7 +52,7 @@ import pytest
 
 from hiris.app.azione.porta import ActionActuator
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.impostazioni_chat import ImpostazioniChat
@@ -198,8 +198,8 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
     # Derivati, non ricopiati: cio' che questo test prova e' che la rotta
     # passi al runner IL catalogo (`STRUMENTI_CONOSCENZA`), non un elenco
     # suo -- e quella proprieta' non dipende da quante voci abbia.
-    assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
-    assert isinstance(call_kwargs["dispatcher"], DispatcherStrumenti)
+    assert nomi == {d["name"] for d in KNOWLEDGE_TOOLS}
+    assert isinstance(call_kwargs["dispatcher"], ToolDispatcher)
 
 
 @pytest.mark.asyncio
@@ -219,7 +219,7 @@ async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_
     assert resp.status == 200
 
     dispatcher = mock_runner.chat.call_args.kwargs["dispatcher"]
-    assert isinstance(dispatcher._turno, str) and dispatcher._turno, (
+    assert isinstance(dispatcher._exchange, str) and dispatcher._exchange, (
         "il dispatcher che arriva al runner non porta un'identita' di turno "
         "non vuota: la guardia dell'officina rifiuterebbe QUALUNQUE "
         "`conferma` fatta dalla chat sincrona, anche in un turno successivo "
@@ -270,8 +270,8 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
     await resp.text()
 
     nomi = {t["name"] for t in catturati["strumenti"]}
-    assert nomi == {d["name"] for d in STRUMENTI_CONOSCENZA}
-    assert isinstance(catturati["dispatcher"], DispatcherStrumenti)
+    assert nomi == {d["name"] for d in KNOWLEDGE_TOOLS}
+    assert isinstance(catturati["dispatcher"], ToolDispatcher)
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +419,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # ---------------------------------------------------------------------------
 
 async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_casa=None,
-                                          archivio_memoria=None, cache=None, porta=None):
+                                          archivio_memoria=None, cache=None, actuator=None):
     """Come `_build_chat_client` sopra, ma con un `ClaudeRunner` VERO al
     posto del mock -- l'unico modo per verificare che la chat segua il
     protocollo vero degli strumenti (richiesta -> tool_use -> tool_result ->
@@ -455,8 +455,8 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     # `esegui` disponibile al dispatcher: senza, lo strumento c'e' nel
     # catalogo ma dichiara «il collegamento con Home Assistant non e'
     # disponibile» -- il degrado onesto del contratto di `dispatch()`.
-    if porta is not None:
-        app["porta_azione"] = porta
+    if actuator is not None:
+        app["porta_azione"] = actuator
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -701,9 +701,9 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     # lasciare che il finto imiti un contratto che non esiste piu'.
     assert_stessa_firma(ActionActuator.execute, _PortaFinta.execute, nome="execute")
 
-    porta = _PortaFinta()
+    actuator = _PortaFinta()
     client, runner = await _build_chat_client_runner_reale(
-        aiohttp_client, tmp_path, archivio_casa=archivio_casa, porta=porta,
+        aiohttp_client, tmp_path, archivio_casa=archivio_casa, actuator=actuator,
     )
 
     richieste: list[dict] = []
@@ -727,7 +727,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     # (1) il catalogo offerto e' quello unico, `esegui` compreso -- e nessuno
     # dei trentaquattro e' rientrato.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
-    assert nomi_offerti == {d["name"] for d in STRUMENTI_CONOSCENZA}
+    assert nomi_offerti == {d["name"] for d in KNOWLEDGE_TOOLS}
     assert "esegui" in nomi_offerti
     strumenti_che_scrivono = {
         "call_ha_service", "trigger_automation", "toggle_automation",
@@ -736,10 +736,10 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     assert not (nomi_offerti & strumenti_che_scrivono)
 
     # (2) la chiamata e' arrivata ALLA PORTA, una volta sola, con l'origine.
-    assert len(porta.chiamate) == 1, (
+    assert len(actuator.chiamate) == 1, (
         "la chat non ha raggiunto la porta: `esegui` e' stato offerto al "
         "modello ma la sua chiamata non e' arrivata all'unico punto che esegue")
-    chiamata, actor = porta.chiamate[0]
+    chiamata, actor = actuator.chiamate[0]
     assert chiamata["servizio"] == "light.turn_off"
     assert chiamata["bersaglio"]["entita"] == ["light.cucina_1"]
     assert actor == "chat"

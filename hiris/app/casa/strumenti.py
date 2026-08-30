@@ -136,10 +136,10 @@ from . import tempo
 from .anagrafe import live_mirror
 from .archivio import HomeSpaceStore
 from .domande import HA_LINK_TYPE
-from .domande import related as _legami_leggibili
-from .domande import sanitized_memories as _ricordi_sanificati
-from .domande import search as _cerca_candidati
-from .domande import view as _guarda_dettaglio
+from .domande import related as _readable_links
+from .domande import sanitized_memories as _sanitized_memories
+from .domande import search as _search_candidates
+from .domande import view as _view_detail
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
 # `memoria/interpretazione.VOCABULARY["ancore"]` -- la fonte vera, non
@@ -159,12 +159,12 @@ from .domande import view as _guarda_dettaglio
 # una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
 # puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
 # stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
-_TIPI_ANCORA = tuple(sorted(VOCABULARY["ancore"]))
+_TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 
 logger = logging.getLogger(__name__)
 
 
-CERCA_TOOL_DEF = {
+SEARCH_TOOL_DEF = {
     "name": "cerca",
     "description": (
         "Trova nella casa un'area, un'entita', un dispositivo, un piano, "
@@ -230,7 +230,7 @@ CERCA_TOOL_DEF = {
     },
 }
 
-GUARDA_TOOL_DEF = {
+VIEW_TOOL_DEF = {
     "name": "guarda",
     "description": (
         "Il dettaglio di UNA cosa sola della casa: un'area con le sue entita' e "
@@ -299,9 +299,9 @@ GUARDA_TOOL_DEF = {
 # Home Assistant -- invece di riscritti qui: un elenco a mano nella
 # descrizione e un altro nel gestore sarebbero due vocabolari, e il primo a
 # divergere sarebbe quello che legge il modello.
-_TIPI_LEGAME_NOSTRI = tuple(sorted(HA_LINK_TYPE))
+_OUR_LINK_TYPES = tuple(sorted(HA_LINK_TYPE))
 
-LEGAMI_TOOL_DEF = {
+RELATED_TOOL_DEF = {
     "name": "legami",
     "description": (
         "CHI tocca una cosa della casa, secondo Home Assistant: quali "
@@ -310,7 +310,7 @@ LEGAMI_TOOL_DEF = {
         "che senza questo strumento non hanno risposta: «perche' si e' accesa la "
         "luce del corridoio?» e -- prima di proporre di cancellare o cambiare "
         "qualcosa -- «se tolgo questa, cosa smette di funzionare?». "
-        "Richiede `tipo` (uno fra: " + ", ".join(_TIPI_LEGAME_NOSTRI) + ") e "
+        "Richiede `tipo` (uno fra: " + ", ".join(_OUR_LINK_TYPES) + ") e "
         "`riferimento`, l'identificatore ESATTO (usa `cerca` se hai solo un nome). "
         "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
         "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
@@ -338,7 +338,7 @@ LEGAMI_TOOL_DEF = {
             "tipo": {
                 "type": "string",
                 "description": "Che cosa e' la cosa di cui vuoi i legami: uno fra "
-                               + ", ".join(_TIPI_LEGAME_NOSTRI) + ".",
+                               + ", ".join(_OUR_LINK_TYPES) + ".",
             },
             "riferimento": {
                 "type": "string",
@@ -353,7 +353,7 @@ LEGAMI_TOOL_DEF = {
     },
 }
 
-RICORDA_TOOL_DEF = {
+REMEMBER_TOOL_DEF = {
     "name": "ricorda",
     "description": (
         "Salva qualcosa che una persona ha detto sulla casa -- una preferenza, "
@@ -464,7 +464,7 @@ RICORDA_TOOL_DEF = {
     },
 }
 
-RICHIAMA_TOOL_DEF = {
+FETCH_TOOL_DEF = {
     "name": "richiama",
     "description": (
         "I ricordi gia' salvati che riguardano una parte della casa -- un'area, "
@@ -495,7 +495,7 @@ RICHIAMA_TOOL_DEF = {
     },
 }
 
-ESEGUI_TOOL_DEF = {
+EXECUTE_TOOL_DEF = {
     "name": "esegui",
     "description": (
         "Chiama un servizio di Home Assistant per far succedere qualcosa nella "
@@ -589,7 +589,7 @@ ESEGUI_TOOL_DEF = {
     },
 }
 
-PROMETTI_TOOL_DEF = {
+PROMISE_TOOL_DEF = {
     "name": "prometti",
     "description": (
         "Metti da parte qualcosa da fare, o da guardare, PIU' TARDI: «alle 17 "
@@ -653,7 +653,7 @@ PROMETTI_TOOL_DEF = {
     },
 }
 
-PROMESSE_TOOL_DEF = {
+AGENDA_TOOL_DEF = {
     "name": "promesse",
     "description": (
         "Cosa HIRIS ha promesso: cio' che e' ancora in sospeso e, se chiedi lo "
@@ -676,7 +676,7 @@ PROMESSE_TOOL_DEF = {
     },
 }
 
-DISDICI_TOOL_DEF = {
+CANCEL_TOOL_DEF = {
     "name": "disdici",
     "description": (
         "Annulla una promessa che non e' ancora stata mantenuta. Serve il suo "
@@ -691,7 +691,7 @@ DISDICI_TOOL_DEF = {
     },
 }
 
-COSTRUISCI_TOOL_DEF = {
+PROPOSE_TOOL_DEF = {
     "name": "costruisci",
     "description": (
         "PROPONE di creare, modificare o cancellare un'automazione, uno script "
@@ -762,7 +762,7 @@ COSTRUISCI_TOOL_DEF = {
     },
 }
 
-CONFERMA_TOOL_DEF = {
+CONFIRM_TOOL_DEF = {
     "name": "conferma",
     "description": (
         "Applica una proposta creata da `costruisci`: da qui in poi la cosa "
@@ -784,7 +784,7 @@ CONFERMA_TOOL_DEF = {
     },
 }
 
-ANDAMENTO_TOOL_DEF = {
+TREND_TOOL_DEF = {
     "name": "andamento",
     "description": (
         "Come e' andato nel tempo il valore di UNA entita': la temperatura di "
@@ -829,7 +829,7 @@ ANDAMENTO_TOOL_DEF = {
     },
 }
 
-ACCADUTO_TOOL_DEF = {
+LOGBOOK_TOOL_DEF = {
     "name": "accaduto",
     "description": (
         # F5 (onda finale): la versione precedente prometteva «quale
@@ -883,12 +883,12 @@ ACCADUTO_TOOL_DEF = {
     },
 }
 
-STRUMENTI_CONOSCENZA: list[dict] = [
-    CERCA_TOOL_DEF, GUARDA_TOOL_DEF, LEGAMI_TOOL_DEF, RICORDA_TOOL_DEF,
-    RICHIAMA_TOOL_DEF, ESEGUI_TOOL_DEF,
-    PROMETTI_TOOL_DEF, PROMESSE_TOOL_DEF, DISDICI_TOOL_DEF,
-    COSTRUISCI_TOOL_DEF, CONFERMA_TOOL_DEF,
-    ANDAMENTO_TOOL_DEF, ACCADUTO_TOOL_DEF,
+KNOWLEDGE_TOOLS: list[dict] = [
+    SEARCH_TOOL_DEF, VIEW_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
+    FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
+    PROMISE_TOOL_DEF, AGENDA_TOOL_DEF, CANCEL_TOOL_DEF,
+    PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
+    TREND_TOOL_DEF, LOGBOOK_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -899,10 +899,10 @@ STRUMENTI_CONOSCENZA: list[dict] = [
 # modello (che legge `STRUMENTI_CONOSCENZA`) e poi si sarebbe sentito
 # rispondere «non e' fra quelli disponibili» dal dispatcher: il tipo di
 # incoerenza che il modello non puo' ne' capire ne' aggirare.
-_NOMI_STRUMENTI = frozenset(d["name"] for d in STRUMENTI_CONOSCENZA)
+_TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
 
 
-class DispatcherStrumenti:
+class ToolDispatcher:
     """Collega i tredici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
@@ -916,12 +916,12 @@ class DispatcherStrumenti:
     modello -- mai un'eccezione che gli spezza il turno.
     """
 
-    def __init__(self, archivio_casa: HomeSpaceStore, archivio_memoria: MemoryStore,
-                 cache=None, porta=None, cache_indice: LookupCache | None = None,
-                 ha=None, registro=None, promesse=None, officina=None,
-                 turno: str | None = None, cronaca=None) -> None:
-        self._casa = archivio_casa
-        self._memoria = archivio_memoria
+    def __init__(self, home_space_store: HomeSpaceStore, memory_store: MemoryStore,
+                 cache=None, actuator=None, lookup_cache: LookupCache | None = None,
+                 ha=None, registry=None, agenda=None, workshop=None,
+                 exchange: str | None = None, journal=None) -> None:
+        self._home_space = home_space_store
+        self._memory = memory_store
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
         # il nucleo prende "notevole adesso": una sola fonte, un solo
         # specchio. La cache resta in SOLA LETTURA anche adesso che `esegui`
@@ -935,7 +935,7 @@ class DispatcherStrumenti:
         # che esegue. `None` e' legittimo: il dispatcher e' SEMPRE costruibile
         # (contratto della classe), e senza porta `esegui` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
-        self._porta = porta
+        self._actuator = actuator
         # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::costruisci_dispatcher_strumenti`) ma vive
@@ -944,7 +944,7 @@ class DispatcherStrumenti:
         # ricostruiscono l'indice ogni volta come facevano prima di questo
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
-        self._cache_indice = cache_indice
+        self._lookup_cache = lookup_cache
         # Il canale verso Home Assistant, per `legami` e per cio' che dopo di
         # esso chiedera' un fatto MOMENTANEO (i legami non si archiviano --
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
@@ -964,21 +964,21 @@ class DispatcherStrumenti:
         # Rilievo 1): un `fai` o un recapito mai verificati nascerebbero con
         # una promessa che dichiara "viene VERIFICATA adesso" senza esserlo
         # stata.
-        self._registro = registro
+        self._registry = registry
         # L'archivio delle promesse (`schedulatore/archivio.py`). `None` e'
         # legittimo come per la porta: i tre strumenti dichiarano un errore
         # leggibile invece di sollevare.
-        self._promesse = promesse
+        self._agenda = agenda
         # L'officina (`azione/costruzione/officina.py`), l'unico punto che
         # scrive CONFIGURAZIONE. Sorella della porta, non sua sostituta: sono
         # due canali diversi (spec «un canale, una porta»). `None` e'
         # legittimo come per la porta: i due strumenti dichiarano un errore.
-        self._officina = officina
+        self._workshop = workshop
         # L'identita' di QUESTO turno. Serve alla guardia dell'officina: una
         # proposta non si conferma nel turno che l'ha creata. Senza identita'
         # l'officina rifiuta di applicare dalla chat e indica la pagina --
         # un cancello che non sa chi sta passando non e' un cancello.
-        self._turno = turno
+        self._exchange = exchange
         # La cronaca degli atti (`azione/cronaca.py`), la STESSA istanza che
         # riceve l'officina -- non una seconda apertura dello stesso file
         # SQLite. Serve ad `accaduto` per dire «l'ho fatto io» dove il diario
@@ -986,9 +986,9 @@ class DispatcherStrumenti:
         # legittimo e NON passa da `_archivio_mancante`: senza cronaca lo
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
         # risposta -- che e' una degradazione, non un guasto.
-        self._cronaca = cronaca
+        self._journal = journal
 
-    _ARCHIVIO_PER_STRUMENTO: ClassVar[dict[str, tuple[str, ...]]] = {
+    _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
         "cerca": ("casa",), "guarda": ("casa", "memoria"),
         "legami": ("ha",),
         "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
@@ -999,7 +999,7 @@ class DispatcherStrumenti:
         "andamento": ("ha",), "accaduto": ("ha",),
     }
 
-    def _canale_ha(self):
+    def _ha_channel(self):
         """Il canale vivo verso Home Assistant -- uno solo, mai un secondo.
 
         `legami` chiede a Home Assistant un fatto che non esiste in nessun
@@ -1025,40 +1025,40 @@ class DispatcherStrumenti:
         """
         return self._ha
 
-    def _archivio_mancante(self, nome: str) -> str | None:
+    def _missing_resource(self, name: str) -> str | None:
         """Quale archivio serve a questo strumento e non c'e'."""
-        for quale in self._ARCHIVIO_PER_STRUMENTO.get(nome, ()):
-            if quale == "casa" and self._casa is None:
+        for which in self._RESOURCE_PER_TOOL.get(name, ()):
+            if which == "casa" and self._home_space is None:
                 return "la conoscenza della casa non e' ancora stata caricata"
-            if quale == "memoria" and self._memoria is None:
+            if which == "memoria" and self._memory is None:
                 return "l'archivio della memoria non e' ancora stato caricato"
-            if quale == "porta" and self._porta is None:
+            if which == "porta" and self._actuator is None:
                 return "il collegamento con Home Assistant non e' disponibile"
-            if quale == "ha" and self._canale_ha() is None:
+            if which == "ha" and self._ha_channel() is None:
                 # Distinto dal messaggio della porta apposta: li' manca
                 # l'oggetto che ESEGUE, qui il canale a cui CHIEDERE. Sono due
                 # assenze diverse, e un utente che legge la risposta del
                 # modello deve poter capire quale delle due sta guardando.
                 return "non c'e' un collegamento vivo con Home Assistant a cui chiederli"
-            if quale == "promesse" and self._promesse is None:
+            if which == "promesse" and self._agenda is None:
                 return "l'archivio delle promesse non e' ancora stato caricato"
-            if quale == "officina" and self._officina is None:
+            if which == "officina" and self._workshop is None:
                 return ("non posso costruire: l'officina non e' disponibile "
                         "(Home Assistant non e' raggiungibile, o l'add-on e' appena partito)")
         return None
 
-    async def dispatch(self, nome: str, argomenti: dict[str, Any] | None) -> dict:
-        argomenti = argomenti or {}
+    async def dispatch(self, name: str, arguments: dict[str, Any] | None) -> dict:
+        arguments = arguments or {}
         # Gli archivi possono mancare: il chiamante puo' costruirci prima che
         # esistano. Senza questo controllo il modello riceve
         # «'NoneType' object has no attribute 'leggi'» -- un errore Python
         # travestito da risposta, mentre questo dispatcher promette messaggi
         # LEGGIBILI. Dire cosa manca e' anche l'unico modo perche' il modello
         # possa spiegarlo all'utente invece di riprovare all'infinito.
-        mancante = self._archivio_mancante(nome)
-        if mancante is not None:
-            return {"errore": f"«{nome}» non e' disponibile: {mancante}."}
-        if nome not in _NOMI_STRUMENTI:
+        missing = self._missing_resource(name)
+        if missing is not None:
+            return {"errore": f"«{name}» non e' disponibile: {missing}."}
+        if name not in _TOOL_NAMES:
             # NON "non inventare nomi di tool": se il modello ha chiamato
             # questo nome, gliel'abbiamo dato NOI in un turno precedente (un
             # tool rimosso da un aggiornamento, o un refuso nostro nella
@@ -1066,24 +1066,24 @@ class DispatcherStrumenti:
             # gli avevamo servito noi e' esattamente il difetto gia'
             # corretto una volta su questo ramo. Il messaggio resta un fatto
             # neutro: cosa esiste, non un rimprovero.
-            disponibili = ", ".join(sorted(_NOMI_STRUMENTI))
-            return {"errore": f"lo strumento «{nome}» non e' fra quelli disponibili "
-                              f"({disponibili})."}
-        gestore = {
-            "cerca": self._cerca,
-            "guarda": self._guarda,
-            "legami": self._legami,
-            "ricorda": self._ricorda,
-            "richiama": self._richiama,
-            "esegui": self._esegui,
-            "prometti": self._prometti,
-            "promesse": self._promesse_elenco,
-            "disdici": self._disdici,
-            "costruisci": self._costruisci,
-            "conferma": self._conferma,
-            "andamento": self._andamento,
-            "accaduto": self._accaduto,
-        }[nome]
+            available = ", ".join(sorted(_TOOL_NAMES))
+            return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
+                              f"({available})."}
+        handler = {
+            "cerca": self._search,
+            "guarda": self._view,
+            "legami": self._related,
+            "ricorda": self._remember,
+            "richiama": self._recall,
+            "esegui": self._execute,
+            "prometti": self._promise,
+            "promesse": self._list_agenda,
+            "disdici": self._cancel,
+            "costruisci": self._propose,
+            "conferma": self._confirm,
+            "andamento": self._trend,
+            "accaduto": self._happened,
+        }[name]
         try:
             # `_esegui`, `_legami`, `_prometti`, `_costruisci`, `_conferma`,
             # `_andamento` e `_accaduto` sono coroutine (fanno rete, o --
@@ -1092,11 +1092,11 @@ class DispatcherStrumenti:
             # attendibile invece di rendere `async` anche i sei sincroni:
             # cambiare la loro firma avrebbe toccato tredici gestori per un
             # bisogno di sette.
-            esito = gestore(argomenti)
-            if inspect.isawaitable(esito):
-                esito = await esito
-            return esito
-        except Exception as errore:
+            occurrence = handler(arguments)
+            if inspect.isawaitable(occurrence):
+                occurrence = await occurrence
+            return occurrence
+        except Exception as error:
             # Rete di sicurezza finale: qualunque guasto imprevisto (un
             # archivio chiuso a meta', un tipo inatteso negli argomenti) si
             # dichiara qui invece di risalire -- vedi il docstring della
@@ -1106,17 +1106,17 @@ class DispatcherStrumenti:
             # all'operatore, che non ha altro modo di saperlo (il modello
             # riceve solo la stringa "errore", non uno stack). Loggato qui.
             logger.warning(
-                "strumento «%s» ha sollevato %s: %s", nome, type(errore).__name__, errore
+                "strumento «%s» ha sollevato %s: %s", name, type(error).__name__, error
             )
-            return {"errore": f"lo strumento «{nome}» ha incontrato un problema: {errore}"}
+            return {"errore": f"lo strumento «{name}» ha incontrato un problema: {error}"}
 
     # -- cerca ---------------------------------------------------------
 
-    def _cerca(self, argomenti: dict[str, Any]) -> dict:
-        testo = argomenti.get("testo")
-        if not isinstance(testo, str) or not testo.strip():
+    def _search(self, arguments: dict[str, Any]) -> dict:
+        text = arguments.get("testo")
+        if not isinstance(text, str) or not text.strip():
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
-        casa = self._casa.read()
+        home_space = self._home_space.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
         # `guarda` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
         # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
@@ -1124,22 +1124,23 @@ class DispatcherStrumenti:
         # per chi partiva da un nome. Letto eagerly come `casa`: `_cerca`
         # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
         # passa affatto -- il comportamento non e' un tipo di ancora).
-        comportamento = self._casa.behavior()
-        _, nomi_vivi, _unita, _classi, _da_quando, _attributi, specchio_letto = self._specchio()
+        behavior = self._home_space.behavior()
+        _, reported_names, _units, _classes, _since_when, _attributes, mirror_loaded = \
+            self._mirror()
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
         # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
         # T7) e i nomi vivi di ripiego non cambiano -- vedi
         # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
         # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_ricorda` no,
         # e sulla stessa casa i due indici hanno contenuti diversi.
-        if self._cache_indice is not None:
-            indice = self._cache_indice.get(
-                "cerca", casa, self._casa.updated_at(), nomi_vivi,
-                comportamento, self._casa.behavior_loaded_at())
+        if self._lookup_cache is not None:
+            lookup = self._lookup_cache.get(
+                "cerca", home_space, self._home_space.updated_at(), reported_names,
+                behavior, self._home_space.behavior_loaded_at())
         else:
-            indice = costruisci_indice(casa, nomi_vivi, comportamento)
-        trovati = _cerca_candidati(indice, testo)
-        risposta: dict = {"trovati": trovati}
+            lookup = costruisci_indice(home_space, reported_names, behavior)
+        found = _search_candidates(lookup, text)
+        response: dict = {"trovati": found}
         # N2 (ri-review): il ramo strutturale di `_cecita` (I3, sotto) si
         # accende su OGNI casa sana che abbia entita' senza nome ne' nel
         # registro ne' nello specchio -- sull'impianto vero, un fatto
@@ -1150,14 +1151,15 @@ class DispatcherStrumenti:
         # dichiararla comunque la rende permanente -- un'assenza dichiarata
         # SEMPRE smette di essere un segnale (la stessa invariante 4 che
         # questo ramo esiste per rispettare, rivoltata contro se stessa).
-        cecita = self._cecita(casa, specchio_letto, nomi_vivi, trovati_vuoti=not trovati)
-        if cecita:
-            risposta["non_ho_potuto_guardare"] = cecita
-        return risposta
+        blind_spots = self._blind_spots(home_space, mirror_loaded, reported_names,
+                                        found_nothing=not found)
+        if blind_spots:
+            response["non_ho_potuto_guardare"] = blind_spots
+        return response
 
-    def _cecita(self, casa: dict, specchio_letto: bool,
-                nomi_vivi: dict[str, str] | None = None, *,
-                trovati_vuoti: bool = True) -> list[str]:
+    def _blind_spots(self, home_space: dict, mirror_loaded: bool,
+                reported_names: dict[str, str] | None = None, *,
+                found_nothing: bool = True) -> list[str]:
         """Perche' `trovati` potrebbe essere vuoto SENZA che la cosa manchi.
 
         Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
@@ -1177,7 +1179,7 @@ class DispatcherStrumenti:
         smette di essere un segnale (la stessa invariante 4 qui sopra,
         rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
         spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
-        motivi: list[str] = []
+        reasons: list[str] = []
         # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
         # `_ARCHIVI` in memoria/resolver.py -- allargarla rifarebbe il
@@ -1187,12 +1189,12 @@ class DispatcherStrumenti:
         # etichette stesse come candidati: un registro etichette caduto
         # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
         # aggiunta qui invece che nella mappa che serve a un altro scopo.
-        caduti = sorted(set(self._casa.unavailable())
+        fallen_stores = sorted(set(self._home_space.unavailable())
                         & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
-        if caduti:
-            motivi.append(
+        if fallen_stores:
+            reasons.append(
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
-                f"{', '.join(caduti)}. Cio' che sta li' dentro non e' cercabile adesso, "
+                f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile adesso, "
                 "e potrebbe esistere lo stesso.")
         # Fix finale ① (2026-08-20): il comportamento (automazioni/script)
         # non passa MAI da `non_disponibili()` -- la sua fonte e' un file
@@ -1203,23 +1205,23 @@ class DispatcherStrumenti:
         # in domande.py); `_cerca` non lo leggeva affatto, quindi un file di
         # comportamento non letto restituiva 'trovati': [] nudo per un nome
         # di automazione/script che poteva essere scritto proprio li'.
-        unloaded_files = self._casa.unloaded_files()
+        unloaded_files = self._home_space.unloaded_files()
         if unloaded_files:
-            motivi.append(
+            reasons.append(
                 f"file di automazioni/script non letti: "
                 f"{', '.join(sorted(unloaded_files))}. Cio' che c'e' scritto li' dentro "
                 "non e' cercabile adesso, e potrebbe esistere lo stesso.")
 
-        senza_nome = [e for e in casa.get("entita") or []
+        unnamed = [e for e in home_space.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
-        specchio_ok = specchio_letto and inventario_leggibile(self._cache)
-        if senza_nome and not specchio_ok:
-            motivi.append(
-                f"{len(senza_nome)} entita' non hanno un nome nel registro di Home Assistant e "
+        mirror_ok = mirror_loaded and inventario_leggibile(self._cache)
+        if unnamed and not mirror_ok:
+            reasons.append(
+                f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "
                 "lo specchio dello stato non e' leggibile: il ripiego sul nome che Home "
                 "Assistant mostra non e' disponibile, quindi quelle entita' non sono "
                 "cercabili per nome in questo momento.")
-        elif senza_nome and specchio_ok:
+        elif unnamed and mirror_ok:
             # I3 (review finale), invariante 4 sul caso PARZIALE: lo specchio
             # e' leggibile (altrimenti il ramo sopra avrebbe gia' parlato),
             # ma per QUESTE entita' non porta un friendly_name -- il registro
@@ -1229,60 +1231,60 @@ class DispatcherStrumenti:
             # vivo, da dichiarare") ma nessuna fetta l'aveva scritto: senza
             # questo ramo, quelle entita' restano "trovati": [] nudo,
             # indistinguibile da "non esistono".
-            senza_nome_vivo = [e for e in senza_nome
-                               if not ((nomi_vivi or {}).get(e["id"]) or "").strip()]
+            unnamed_even_live = [e for e in unnamed
+                               if not ((reported_names or {}).get(e["id"]) or "").strip()]
             # trovati_vuoti: vedi il docstring -- questo fatto e' stabile
             # (non si risolve riprovando la ricerca), quindi si dichiara
             # solo quando serve a spiegare un `trovati` vuoto, mai a fianco
             # di candidati gia' trovati.
-            if senza_nome_vivo and trovati_vuoti:
-                motivi.append(
-                    f"{len(senza_nome_vivo)} entita' di questa casa non hanno un nome ne' nel "
+            if unnamed_even_live and found_nothing:
+                reasons.append(
+                    f"{len(unnamed_even_live)} entita' di questa casa non hanno un nome ne' nel "
                     "registro di Home Assistant ne' nello specchio dello stato (lo specchio si "
                     "legge, ma non porta un nome per queste): e' un limite stabile di quelle "
                     "entita', non un guasto di questa ricerca -- ripetere la stessa ricerca non "
                     "cambia nulla, serve rinominarle in Home Assistant.")
-        return motivi
+        return reasons
 
     # -- guarda ----------------------------------------------------------
 
-    def _guarda(self, argomenti: dict[str, Any]) -> dict:
-        tipo = argomenti.get("tipo")
-        riferimento = argomenti.get("riferimento")
-        if not tipo or riferimento is None:
+    def _view(self, arguments: dict[str, Any]) -> dict:
+        kind = arguments.get("tipo")
+        reference = arguments.get("riferimento")
+        if not kind or reference is None:
             return {"errore": "«guarda» richiede «tipo» e «riferimento»."}
         # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT):
         # il modello puo' passarlo come stringa (i JSON tool-call spesso lo
         # fanno). Un riferimento non convertibile non e' un errore da
         # sollevare -- e' lo stesso "non l'ho trovato" degli altri tipi.
-        if tipo == "ricordo" and not isinstance(riferimento, int):
+        if kind == "ricordo" and not isinstance(reference, int):
             try:
-                riferimento = int(riferimento)
+                reference = int(reference)
             except (TypeError, ValueError):
-                return {"esiste": False, "tipo": "ricordo", "riferimento": riferimento}
+                return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
 
-        casa = self._casa.read()
-        non_disponibili = tuple(self._casa.unavailable())
-        comportamento = self._casa.behavior()
-        unloaded_files = self._casa.unloaded_files()
+        home_space = self._home_space.read()
+        unavailable = tuple(self._home_space.unavailable())
+        behavior = self._home_space.behavior()
+        unloaded_files = self._home_space.unloaded_files()
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_casa.handle_get_nucleo`.
-        ricordi = self._memoria.fetch(limit=self._memoria.count())
+        memories = self._memory.fetch(limit=self._memory.count())
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
-        stato, nomi_vivi, unita_vive, classi_vive, da_quando_vive, attributi_vivi, letto = \
-            self._specchio()
-        dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
-                                      unavailable=non_disponibili,
+        (state, reported_names, reported_units, reported_classes,
+         reported_since_when, reported_attributes, loaded) = self._mirror()
+        detail = _view_detail(home_space, behavior, memories, state, kind, reference,
+                                      unavailable=unavailable,
                                       unloaded_files=unloaded_files,
-                                      fallback_names=nomi_vivi,
-                                      reported_units=unita_vive,
-                                      reported_classes=classi_vive,
-                                      reported_since_when=da_quando_vive,
-                                      reported_attributes=attributi_vivi)
+                                      fallback_names=reported_names,
+                                      reported_units=reported_units,
+                                      reported_classes=reported_classes,
+                                      reported_since_when=reported_since_when,
+                                      reported_attributes=reported_attributes)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -1290,11 +1292,11 @@ class DispatcherStrumenti:
         # cache di se stessa), non sostituito -- una cache che si dichiara
         # `loaded` ma il cui `all_states()` solleva davvero e' comunque
         # "non letto" qui.
-        if isinstance(dettaglio, dict) and (not letto or not inventario_leggibile(self._cache)):
-            dettaglio["stato_non_letto"] = True
-        return dettaglio
+        if isinstance(detail, dict) and (not loaded or not inventario_leggibile(self._cache)):
+            detail["stato_non_letto"] = True
+        return detail
 
-    def _specchio(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
+    def _mirror(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
                                  dict[str, str], dict[str, str], dict[str, dict], bool]:
         """Lo specchio vivo in UNA lettura:
         `(stato, nomi, unita, classi, da_quando, attributi, letto)`.
@@ -1344,15 +1346,15 @@ class DispatcherStrumenti:
             # La lettura vera e' in `anagrafe.specchio_vivo`, condivisa con chi
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
-            stato, nomi, unita, classi, da_quando, attributi = \
+            state, names, units, classes, since_when, attributes = \
                 live_mirror(self._cache.all_states())
         except Exception:
             return {}, {}, {}, {}, {}, {}, False
-        return stato, nomi, unita, classi, da_quando, attributi, True
+        return state, names, units, classes, since_when, attributes, True
 
     # -- legami --------------------------------------------------------
 
-    async def _legami(self, argomenti: dict[str, Any]) -> dict:
+    async def _related(self, arguments: dict[str, Any]) -> dict:
         """Chiede a Home Assistant chi tocca questa cosa, e non lo salva.
 
         Non lo salva ed e' una scelta, non una dimenticanza: i legami sono
@@ -1366,70 +1368,70 @@ class DispatcherStrumenti:
         forma della risposta stanno in `domande.legami`, che e' pura e si
         prova senza rete.
         """
-        tipo = argomenti.get("tipo")
-        riferimento = argomenti.get("riferimento")
-        if not tipo or not riferimento:
+        kind = arguments.get("tipo")
+        reference = arguments.get("riferimento")
+        if not kind or not reference:
             return {"errore": "«legami» richiede «tipo» e «riferimento»."}
-        tipo_ha = HA_LINK_TYPE.get(tipo)
-        if tipo_ha is None:
+        ha_kind = HA_LINK_TYPE.get(kind)
+        if ha_kind is None:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
             # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,
             # che arriva al modello come «errore» generico e non gli insegna
             # niente. Stessa scelta di `_richiama` con le ancore.
-            disponibili = ", ".join(_TIPI_LEGAME_NOSTRI)
-            return {"errore": f"«{tipo}» non e' un tipo di cui Home Assistant sappia "
-                              f"i legami ({disponibili})."}
-        risposta = await self._canale_ha().legami(tipo_ha, str(riferimento))
-        return _legami_leggibili(risposta, tipo, riferimento)
+            available = ", ".join(_OUR_LINK_TYPES)
+            return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
+                              f"i legami ({available})."}
+        response = await self._ha_channel().legami(ha_kind, str(reference))
+        return _readable_links(response, kind, reference)
 
     # -- ricorda -----------------------------------------------------------
 
-    def _ricorda(self, argomenti: dict[str, Any]) -> dict:
-        testo = argomenti.get("testo")
-        if not isinstance(testo, str) or not testo.strip():
+    def _remember(self, arguments: dict[str, Any]) -> dict:
+        text = arguments.get("testo")
+        if not isinstance(text, str) or not text.strip():
             return {"errore": "«ricorda» richiede un «testo» non vuoto."}
 
         # `aggiornata_il` decide sia "anagrafe letta?" sia la chiave della
         # cache sotto: letto una volta sola, nessun await fra le due letture
         # in questa funzione sincrona, quindi non possono mai disallinearsi.
-        aggiornata_il = self._casa.updated_at()
-        anagrafe_letta = aggiornata_il is not None
+        updated_at = self._home_space.updated_at()
+        topology_loaded = updated_at is not None
 
-        def _casa_per_indice() -> dict:
+        def _home_space_for_lookup() -> dict:
             # PIGRA apposta (fix review indipendente, Task B7): la chiave
             # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
             # su un hit questa funzione non viene mai chiamata, e la lettura
             # SQL vera (+ json.loads per riga di `ArchivioCasa.leggi()`) non
             # si paga. A differenza di `_cerca`, dove `casa` serve comunque a
             # `_cecita()` piu' sotto e non c'e' niente da rimandare.
-            return self._casa.read() if anagrafe_letta else {}
+            return self._home_space.read() if topology_loaded else {}
 
         # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
         # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
         # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
         # della casa piena non si confondono mai (memoria/cache_indice.py).
-        if self._cache_indice is not None:
-            indice = self._cache_indice.get_lazy("ricorda", _casa_per_indice, aggiornata_il)
+        if self._lookup_cache is not None:
+            lookup = self._lookup_cache.get_lazy("ricorda", _home_space_for_lookup, updated_at)
         else:
-            indice = costruisci_indice(_casa_per_indice())
-        if not anagrafe_letta:
+            lookup = costruisci_indice(_home_space_for_lookup())
+        if not topology_loaded:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa
             # distinzione di `handlers_memoria._tipi_non_verificabili`.
-            tipi_non_verificabili = frozenset(_TIPI_ANCORA)
+            unverifiable_kinds = frozenset(_TETHER_TYPES)
         else:
-            caduti = set(self._casa.unavailable())
-            tipi_non_verificabili = frozenset(
-                tipo for tipo, chiave in STORE_KEY_PER_TYPE.items() if chiave in caduti)
+            fallen_stores = set(self._home_space.unavailable())
+            unverifiable_kinds = frozenset(
+                kind for kind, key in STORE_KEY_PER_TYPE.items() if key in fallen_stores)
 
-        interpretazione = {
-            "forza": argomenti.get("forza"),
-            "grandezza": argomenti.get("grandezza"),
-            "minimo": argomenti.get("minimo"),
-            "massimo": argomenti.get("massimo"),
-            "ancore": argomenti.get("ancore") or [],
-            "condizioni": argomenti.get("condizioni") or [],
+        interpretation = {
+            "forza": arguments.get("forza"),
+            "grandezza": arguments.get("grandezza"),
+            "minimo": arguments.get("minimo"),
+            "massimo": arguments.get("massimo"),
+            "ancore": arguments.get("ancore") or [],
+            "condizioni": arguments.get("condizioni") or [],
         }
         # Il CANCELLO (memoria/interpretazione.py): scarta cio' che non
         # regge (un'ancora inventata, una forza fuori vocabolario) e lo
@@ -1444,25 +1446,25 @@ class DispatcherStrumenti:
         # Le unita' VIVE: il registro di Home Assistant non le manda (le riempie
         # solo se l'utente le ha forzate a mano), quindi senza questo la
         # deduzione dell'unita' di un ricordo non e' mai scattata.
-        _stato, _nomi, unita_vive, _classi, _da_quando, _attributi, _letto = self._specchio()
-        pulita, problemi, correzioni = validate(
-            interpretazione, indice, tipi_non_verificabili, unita_vive)
+        _state, _names, reported_units, _classes, _since_when, _attributes, _loaded = self._mirror()
+        cleaned, problems, corrections = validate(
+            interpretation, lookup, unverifiable_kinds, reported_units)
 
-        id_ricordo = self._memoria.remember(
-            testo, detto_da=argomenti.get("detto_da"),
-            ancore=pulita["ancore"], conditions=pulita["condizioni"],
-            modality=pulita["forza"], grandezza=pulita["grandezza"],
-            minimum=pulita["minimo"], maximum=pulita["massimo"], unit=pulita["unita"],
+        memory_id = self._memory.remember(
+            text, detto_da=arguments.get("detto_da"),
+            ancore=cleaned["ancore"], conditions=cleaned["condizioni"],
+            modality=cleaned["forza"], grandezza=cleaned["grandezza"],
+            minimum=cleaned["minimo"], maximum=cleaned["massimo"], unit=cleaned["unita"],
         )
-        return {"salvato": True, "id": id_ricordo, "problemi": problemi, "correzioni": correzioni}
+        return {"salvato": True, "id": memory_id, "problemi": problems, "correzioni": corrections}
 
     # -- richiama ------------------------------------------------------
 
-    def _richiama(self, argomenti: dict[str, Any]) -> dict:
-        riferimento = argomenti.get("riferimento")
-        if riferimento is None:
+    def _recall(self, arguments: dict[str, Any]) -> dict:
+        reference = arguments.get("riferimento")
+        if reference is None:
             return {"errore": "«richiama» richiede un «riferimento»."}
-        tipo = argomenti.get("tipo")
+        kind = arguments.get("tipo")
         # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
         # o "entita'" con l'accento -- plausibilissimo per un modello
         # italiano che non lo sta copiando da uno schema) finiva silenzioso
@@ -1473,36 +1475,36 @@ class DispatcherStrumenti:
         # con un tipo ignoto almeno risponde `esiste: False`; qui si
         # dichiara l'errore invece, cosi' un input non valido resta
         # distinguibile da "non ti ho detto niente".
-        if tipo is not None and tipo not in _TIPI_ANCORA:
-            disponibili = ", ".join(_TIPI_ANCORA)
-            return {"errore": f"«{tipo}» non e' un tipo di ancora valido per «richiama» "
-                              f"({disponibili})."}
-        tipi = (tipo,) if tipo else _TIPI_ANCORA
+        if kind is not None and kind not in _TETHER_TYPES:
+            available = ", ".join(_TETHER_TYPES)
+            return {"errore": f"«{kind}» non e' un tipo di ancora valido per «richiama» "
+                              f"({available})."}
+        kinds = (kind,) if kind else _TETHER_TYPES
 
         # Il modello puo' non sapere se «cucina» e' un'area o un dispositivo
         # (o, in teoria, un'entita'): senza `tipo` si cerca su tutti e tre e
         # si uniscono i risultati, invece di pretendere che lo specifichi
         # sempre -- una ricerca che fallisce solo perche' il tipo indovinato
         # era sbagliato sarebbe un "non ho trovato niente" bugiardo.
-        visti: set[int] = set()
-        ricordi: list[dict] = []
-        for t in tipi:
-            for ricordo in self._memoria.per_tether(t, riferimento):
-                if ricordo["id"] in visti:
+        seen: set[int] = set()
+        memories: list[dict] = []
+        for t in kinds:
+            for memory in self._memory.per_tether(t, reference):
+                if memory["id"] in seen:
                     continue
-                visti.add(ricordo["id"])
-                ricordi.append(ricordo)
-        ricordi.sort(key=lambda r: r["id"], reverse=True)
+                seen.add(memory["id"])
+                memories.append(memory)
+        memories.sort(key=lambda r: r["id"], reverse=True)
         # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
         # l'archivio direttamente, non passa da `domande.guarda` -- senza
         # questa riga il testo usciva filtrato da `guarda` e grezzo da
         # `richiama`, la fondamenta 3 rotta dentro la correzione che doveva
         # chiuderla. Stessa funzione condivisa, un punto solo.
-        return {"ricordi": _ricordi_sanificati(ricordi)}
+        return {"ricordi": _sanitized_memories(memories)}
 
     # -- esegui --------------------------------------------------------
 
-    async def _esegui(self, argomenti: dict[str, Any]) -> dict:
+    async def _execute(self, arguments: dict[str, Any]) -> dict:
         """Non fa nulla: chiede alla porta.
 
         E' voluto. Tutta la logica -- verifica, chiamata, rilettura, registro
@@ -1510,11 +1512,11 @@ class DispatcherStrumenti:
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
         """
-        return await self._porta.execute(argomenti, actor="chat")
+        return await self._actuator.execute(arguments, actor="chat")
 
     # -- le promesse -----------------------------------------------------
 
-    async def _assicura_registro_fresco(self) -> None:
+    async def _ensure_registry_fresh(self) -> None:
         """Scalda il registro dei servizi prima di verificare, se puo'.
 
         Stessa forma di `azione/porta.py::ActionActuator.execute` (righe ~598-604): un
@@ -1545,19 +1547,19 @@ class DispatcherStrumenti:
         aggiungere "ha" a `_ARCHIVIO_PER_STRUMENTO["prometti"]` sarebbe
         proprio quello scambio).
         """
-        if self._registro is None:
+        if self._registry is None:
             return
-        canale = self._canale_ha()
-        if canale is None:
+        channel = self._ha_channel()
+        if channel is None:
             return
         try:
-            await self._registro.ensure_fresh(canale)
-        except Exception as errore:
+            await self._registry.ensure_fresh(channel)
+        except Exception as error:
             logger.warning(
                 "prometti: rinfresco del registro servizi fallito (%s: %s), "
-                "resta il rifiuto onesto", type(errore).__name__, errore)
+                "resta il rifiuto onesto", type(error).__name__, error)
 
-    async def _prometti(self, argomenti: dict[str, Any]) -> dict:
+    async def _promise(self, arguments: dict[str, Any]) -> dict:
         """Il modello propone, il codice restringe (spec §9.1).
 
         Tutto si verifica ADESSO: la chiamata contro questa installazione, il
@@ -1578,108 +1580,108 @@ class DispatcherStrumenti:
 
         from ..azione.verifica import verification
 
-        await self._assicura_registro_fresco()
+        await self._ensure_registry_fresh()
 
-        quando = tempo.instant_epoch(argomenti.get("quando"))
-        if quando is None:
+        when = tempo.instant_epoch(arguments.get("quando"))
+        if when is None:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
 
-        specie = argomenti.get("specie")
-        dati = {
-            "specie": specie,
-            "frase": argomenti.get("frase") or "",
-            "quando_ts": quando,
-            "quando_detto": argomenti.get("quando_detto"),
-            "fuso": self._fuso(),
-            "recapito": argomenti.get("recapito") or None,
+        verb = arguments.get("specie")
+        data = {
+            "specie": verb,
+            "frase": arguments.get("frase") or "",
+            "quando_ts": when,
+            "quando_detto": arguments.get("quando_detto"),
+            "fuso": self._timezone(),
+            "recapito": arguments.get("recapito") or None,
         }
 
-        if specie == "fai":
-            chiamata = argomenti.get("chiamata")
-            if not isinstance(chiamata, dict):
+        if verb == "fai":
+            call = arguments.get("chiamata")
+            if not isinstance(call, dict):
                 return {"errore": "una promessa «fai» ha bisogno di `chiamata`."}
-            rifiuto = self._verifica_ora(chiamata, verification)
-            if rifiuto is not None:
-                return {"errore": rifiuto}
-            dati["chiamata"] = chiamata
+            refusal = self._verify_now(call, verification)
+            if refusal is not None:
+                return {"errore": refusal}
+            data["chiamata"] = call
         else:
-            da_confrontare = argomenti.get("da_confrontare") or []
-            rifiuto = self._verifica_da_confrontare(da_confrontare)
-            if rifiuto is not None:
-                return {"errore": rifiuto}
-            dati["domanda"] = argomenti.get("domanda")
-            dati["istantanea"] = self._istantanea(da_confrontare)
+            to_compare = arguments.get("da_confrontare") or []
+            refusal = self._verify_comparison_targets(to_compare)
+            if refusal is not None:
+                return {"errore": refusal}
+            data["domanda"] = arguments.get("domanda")
+            data["istantanea"] = self._snapshot(to_compare)
 
-        if dati["recapito"]:
-            rifiuto = self._verifica_recapito(dati["recapito"])
-            if rifiuto is not None:
-                return {"errore": rifiuto}
+        if data["recapito"]:
+            refusal = self._verify_recipient(data["recapito"])
+            if refusal is not None:
+                return {"errore": refusal}
 
-        return self._promesse.create(dati, now=_time.time())
+        return self._agenda.create(data, now=_time.time())
 
-    def _promesse_elenco(self, argomenti: dict[str, Any]) -> dict:
+    def _list_agenda(self, arguments: dict[str, Any]) -> dict:
         """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse.
 
         Il nome del metodo NON puo' essere `_promesse`: quell'attributo e'
         gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
         """
-        tutte = bool(argomenti.get("tutte"))
-        return {"promesse": self._promesse.list(solo_in_sospeso=not tutte)}
+        show_all = bool(arguments.get("tutte"))
+        return {"promesse": self._agenda.list(solo_in_sospeso=not show_all)}
 
-    def _disdici(self, argomenti: dict[str, Any]) -> dict:
+    def _cancel(self, arguments: dict[str, Any]) -> dict:
         import time as _time
 
-        ident = argomenti.get("id")
-        if not isinstance(ident, str) or not ident.strip():
+        identifier = arguments.get("id")
+        if not isinstance(identifier, str) or not identifier.strip():
             return {"errore": "«disdici» ha bisogno dell'`id` della promessa."}
-        return self._promesse.cancel(ident.strip(), now=_time.time())
+        return self._agenda.cancel(identifier.strip(), now=_time.time())
 
-    async def _costruisci(self, argomenti: dict[str, Any]) -> dict:
+    async def _propose(self, arguments: dict[str, Any]) -> dict:
         """Propone. Non scrive: lo fa `conferma`, e non nello stesso turno."""
         import time as _time
-        intento = {
-            "gesto": argomenti.get("gesto"),
-            "dominio": argomenti.get("dominio"),
-            "chiave": argomenti.get("chiave"),
-            "alias": argomenti.get("alias"),
-            "descrizione": argomenti.get("descrizione") or "",
-            "innesco": argomenti.get("innesco") or [],
-            "condizioni": argomenti.get("condizioni") or [],
-            "azioni": argomenti.get("azioni") or [],
-            "stati": argomenti.get("stati") or [],
-            "campi": argomenti.get("campi"),
-            "parametri": argomenti.get("parametri") or [],
-            "riuso": bool(argomenti.get("riuso")),
-            "ricorrente": bool(argomenti.get("ricorrente")),
-            "richiesto": argomenti.get("richiesto"),
-            "helper": argomenti.get("helper") or [],
-            "frase": argomenti.get("frase"),
+        intent = {
+            "gesto": arguments.get("gesto"),
+            "dominio": arguments.get("dominio"),
+            "chiave": arguments.get("chiave"),
+            "alias": arguments.get("alias"),
+            "descrizione": arguments.get("descrizione") or "",
+            "innesco": arguments.get("innesco") or [],
+            "condizioni": arguments.get("condizioni") or [],
+            "azioni": arguments.get("azioni") or [],
+            "stati": arguments.get("stati") or [],
+            "campi": arguments.get("campi"),
+            "parametri": arguments.get("parametri") or [],
+            "riuso": bool(arguments.get("riuso")),
+            "ricorrente": bool(arguments.get("ricorrente")),
+            "richiesto": arguments.get("richiesto"),
+            "helper": arguments.get("helper") or [],
+            "frase": arguments.get("frase"),
         }
-        return await self._officina.propose(
-            intento, actor="chat", exchange=self._turno, now=_time.time())
+        return await self._workshop.propose(
+            intent, actor="chat", exchange=self._exchange, now=_time.time())
 
-    async def _conferma(self, argomenti: dict[str, Any]) -> dict:
+    async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `costruisci`. La guardia del
         turno (non si conferma nel turno che ha proposto) vive nell'officina:
         qui si passa `self._turno`, la stessa identita' coniata una volta per
         turno dal chiamante (`api/handlers_chat.py`/`api/handlers_mcp.py`)."""
         import time as _time
-        proposta_id = (argomenti or {}).get("proposta_id")
-        if not isinstance(proposta_id, str) or not proposta_id.strip():
+        proposal_id = (arguments or {}).get("proposta_id")
+        if not isinstance(proposal_id, str) or not proposal_id.strip():
             return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
-        esito = await self._officina.apply(
-            proposta_id.strip(), actor="chat", exchange=self._turno, now=_time.time())
+        occurrence = await self._workshop.apply(
+            proposal_id.strip(), actor="chat", exchange=self._exchange, now=_time.time())
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_costruzioni.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
         # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
         # modello: senza questa riga il flag ci arrivava integro, e «interno»
         # sarebbe stato vero da una sola delle due porte.
-        esito.pop("guasto_rete", None)
-        return esito
+        occurrence.pop("guasto_rete", None)
+        return occurrence
 
-    def _verifica_ora(self, chiamata: dict, verifica) -> str | None:
+    def _verify_now(self, call: dict, verify) -> str | None:
         """Il rifiuto della verifica, o `None`. Sola lettura: non esegue niente.
 
         Non si risolvono i bersagli per aree o etichette: quella risoluzione
@@ -1724,12 +1726,12 @@ class DispatcherStrumenti:
         forma decisa li' -- si rifiuta, non si tace -- invece di scriverne
         una terza copia.
         """
-        if self._registro_non_pronto():
+        if self._registry_not_ready():
             return ("non posso ancora prometterlo: non so cosa questa casa sa "
                     "fare, perche' il registro dei servizi non e' pronto. "
                     "Riprova fra un momento.")
-        stati = self._stati_grezzi()
-        if not stati:
+        states = self._state_readings()
+        if not states:
             # Terza occorrenza dello stesso schema (review finale, rilievo
             # minore): il registro assente si rifiuta (Task 6), il recapito
             # non verificabile si rifiuta (Task 7), e uno specchio cieco deve
@@ -1745,13 +1747,13 @@ class DispatcherStrumenti:
             # `_specchio_cieco_rifiuto()` (Task 2, R7): `_verifica_da_confrontare`
             # fa la STESSA domanda, e una seconda stringa scritta a mano li'
             # sarebbe un doppione appena creato.
-            return self._specchio_cieco_rifiuto()
-        verdetto = verifica(chiamata, self._registro, stati)
-        if verdetto.da_risolvere:
+            return self._blind_mirror_refusal()
+        verdict = verify(call, self._registry, states)
+        if verdict.da_risolvere:
             return None  # bersaglio per area: lo risolvera' la porta, al momento
-        return None if verdetto.ok else verdetto.reason
+        return None if verdict.ok else verdict.reason
 
-    def _specchio_cieco_rifiuto(self) -> str:
+    def _blind_mirror_refusal(self) -> str:
         """Il rifiuto quando lo specchio dello stato non e' leggibile: "non
         so ancora", non un silenzio.
 
@@ -1765,7 +1767,7 @@ class DispatcherStrumenti:
                 "questa casa, l'inventario delle entita' non e' "
                 "disponibile. Riprova fra un momento.")
 
-    def _verifica_da_confrontare(self, entita: list) -> str | None:
+    def _verify_comparison_targets(self, entities: list) -> str | None:
         """Il rifiuto se `da_confrontare` nomina un riferimento che lo
         specchio non conosce, o `None`. Sola lettura, come `_verifica_ora`.
 
@@ -1793,19 +1795,19 @@ class DispatcherStrumenti:
         Il motivo nomina il riferimento (cosa non esiste) e la strada per
         correggersi (pattern `azione/verifica.py:430-432`: «usa "cerca"...»).
         """
-        if not entita:
+        if not entities:
             return None
-        stati = self._stati_grezzi()
-        if not stati:
-            return self._specchio_cieco_rifiuto()
-        sconosciuti = [str(e) for e in entita if e not in stati]
-        if sconosciuti:
+        states = self._state_readings()
+        if not states:
+            return self._blind_mirror_refusal()
+        unknown = [str(e) for e in entities if e not in states]
+        if unknown:
             return ("non posso prometterlo: {} non esiste in questa casa. "
                      "Usa «cerca» per trovare l'id esatto e ripeti la "
-                     "richiesta.".format(", ".join(sconosciuti)))
+                     "richiesta.".format(", ".join(unknown)))
         return None
 
-    def _registro_non_pronto(self) -> bool:
+    def _registry_not_ready(self) -> bool:
         """«Non so ancora cosa questa casa sa fare»: il registro e' assente
         (`None`) o presente ma mai caricato da Home Assistant (`domains()`
         vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
@@ -1818,9 +1820,9 @@ class DispatcherStrumenti:
         e infatti divergevano, la seconda rifiutava un recapito ESISTENTE con
         «non esiste in questa casa» invece di dire che non lo sapeva ancora.
         """
-        return self._registro is None or not self._registro.domains()
+        return self._registry is None or not self._registry.domains()
 
-    def _verifica_recapito(self, servizio: str) -> str | None:
+    def _verify_recipient(self, service: str) -> str | None:
         """Il rifiuto della verifica su un recapito, o `None`.
 
         Senza registro pronto si RIFIUTA (allineato a `_verifica_ora`, non
@@ -1830,19 +1832,19 @@ class DispatcherStrumenti:
         il modo peggiore in cui una promessa puo' rompersi, perche' nessuno
         se ne accorge finche' non manca all'appuntamento.
         """
-        if self._registro_non_pronto():
+        if self._registry_not_ready():
             return ("non posso ancora prometterlo con questo recapito: non so "
                     "cosa questa casa sa fare, perche' il registro dei "
                     "servizi non e' pronto. Riprova fra un momento.")
-        if "." not in servizio:
-            return f"«{servizio}» non e' un servizio: serve «notify.qualcosa»."
-        dominio, nome = servizio.split(".", 1)
-        if self._registro.service(dominio, nome) is None:
-            return (f"«{servizio}» non esiste in questa casa: cerca un servizio notify "
+        if "." not in service:
+            return f"«{service}» non e' un servizio: serve «notify.qualcosa»."
+        domain, name = service.split(".", 1)
+        if self._registry.service(domain, name) is None:
+            return (f"«{service}» non esiste in questa casa: cerca un servizio notify "
                     "vero prima di promettere di usarlo.")
         return None
 
-    def _istantanea(self, entita: list) -> list[dict]:
+    def _snapshot(self, entities: list) -> list[dict]:
         """I valori di partenza, presi ADESSO, con la loro unita'.
 
         Senza l'unita' e senza l'istante, «e' aumentata» non ha un termine di
@@ -1860,22 +1862,22 @@ class DispatcherStrumenti:
         """
         import time as _time
 
-        stati = self._stati_grezzi() or {}
-        adesso = _time.time()
-        misure = []
-        for ident in entita:
-            stato = stati.get(ident)
-            if stato is None:
-                misure.append({"entita": ident, "valore": None, "unita": None,
-                               "misurato_ts": adesso,
+        states = self._state_readings() or {}
+        now = _time.time()
+        measurements = []
+        for identifier in entities:
+            state = states.get(identifier)
+            if state is None:
+                measurements.append({"entita": identifier, "valore": None, "unita": None,
+                               "misurato_ts": now,
                                "nota": "non esisteva quando l'hai chiesto"})
                 continue
-            misure.append({"entita": ident, "valore": stato.get("state"),
-                           "unita": stato.get("unit") or None,
-                           "misurato_ts": adesso})
-        return misure
+            measurements.append({"entita": identifier, "valore": state.get("state"),
+                           "unita": state.get("unit") or None,
+                           "misurato_ts": now})
+        return measurements
 
-    def _stati_grezzi(self) -> dict[str, dict] | None:
+    def _state_readings(self) -> dict[str, dict] | None:
         """Lo specchio dello stato vivo, GREZZO: entity_id -> `{state, attributes, ...}`.
 
         `_specchio()` ritorna mappe GIA' DERIVATE (nomi, unita', classi) per
@@ -1894,19 +1896,19 @@ class DispatcherStrumenti:
         if not inventario_leggibile(self._cache):
             return None
         try:
-            grezzo = self._cache.all_states()
-        except Exception as errore:
+            readings = self._cache.all_states()
+        except Exception as error:
             logger.warning("specchio grezzo illeggibile (%s: %s)",
-                           type(errore).__name__, errore)
+                           type(error).__name__, error)
             return None
-        stati: dict[str, dict] = {}
-        for voce in grezzo or []:
-            eid = voce.get("id") if isinstance(voce, dict) else None
+        states: dict[str, dict] = {}
+        for entry in readings or []:
+            eid = entry.get("id") if isinstance(entry, dict) else None
             if eid:
-                stati[eid] = voce
-        return stati
+                states[eid] = entry
+        return states
 
-    def _fuso(self) -> str | None:
+    def _timezone(self) -> str | None:
         """Il fuso della casa, dalla stessa fonte del nucleo.
 
         `ArchivioCasa.sistema_di_riferimento()` (`casa/archivio.py`) e' l'UNICO
@@ -1917,13 +1919,13 @@ class DispatcherStrumenti:
         promessa nasce comunque -- `fuso` e' un campo dichiarativo della
         promessa (spec §9.1), non un cancello che la blocca.
         """
-        if self._casa is None:
+        if self._home_space is None:
             return None
-        return self._casa.reference_frame().get("fuso")
+        return self._home_space.reference_frame().get("fuso")
 
     # -- il tempo ------------------------------------------------------
 
-    async def _andamento(self, argomenti: dict[str, Any]) -> dict:
+    async def _trend(self, arguments: dict[str, Any]) -> dict:
         """Un valore nel tempo. La scelta della superficie e' di `casa/tempo.py`.
 
         Qui si legge dallo specchio cio' che il modello non deve doverci
@@ -1931,32 +1933,32 @@ class DispatcherStrumenti:
         chiedergli di sapere una cosa che abbiamo noi -- e sbaglierebbe in
         silenzio (spec §3.1).
         """
-        entita = argomenti.get("entita")
-        if not isinstance(entita, str) or not entita.strip():
+        entity = arguments.get("entita")
+        if not isinstance(entity, str) or not entity.strip():
             return {"errore": "«andamento» richiede «entita»: l'identificatore esatto."}
         import time as _time
 
-        entita = entita.strip()
-        stati = self._stati_grezzi() or {}
-        voce = stati.get(entita) or {}
+        entity = entity.strip()
+        states = self._state_readings() or {}
+        entry = states.get(entity) or {}
         return await tempo.trend(
-            ha=self._canale_ha(), entity=entita, hours=argomenti.get("ore"),
-            unit=voce.get("unit") or None,
+            ha=self._ha_channel(), entity=entity, hours=arguments.get("ore"),
+            unit=entry.get("unit") or None,
             # `tempo.produces_statistics`, non `bool(state_class)` (fix onda
             # finale, F4): `measurement_angle` e' un `state_class` vero e
             # proprio ma NON produce statistiche (spec §1) -- una banderuola
             # interrogata oltre la soglia di grana finirebbe su un elenco
             # vuoto invece che sul dettaglio, la superficie giusta per lei.
-            has_statistics=tempo.produces_statistics(voce.get("state_class")),
-            now_ts=_time.time(), timezone=self._fuso())
+            has_statistics=tempo.produces_statistics(entry.get("state_class")),
+            now_ts=_time.time(), timezone=self._timezone())
 
-    async def _accaduto(self, argomenti: dict[str, Any]) -> dict:
-        entita = argomenti.get("entita")
-        if entita is not None and (not isinstance(entita, str) or not entita.strip()):
+    async def _happened(self, arguments: dict[str, Any]) -> dict:
+        entity = arguments.get("entita")
+        if entity is not None and (not isinstance(entity, str) or not entity.strip()):
             return {"errore": "«accaduto» vuole «entita» come identificatore, oppure niente."}
         import time as _time
 
         return await tempo.logbook(
-            ha=self._canale_ha(), journal=self._cronaca,
-            entity=entita.strip() if isinstance(entita, str) else None,
-            hours=argomenti.get("ore"), now_ts=_time.time())
+            ha=self._ha_channel(), journal=self._journal,
+            entity=entity.strip() if isinstance(entity, str) else None,
+            hours=arguments.get("ore"), now_ts=_time.time())

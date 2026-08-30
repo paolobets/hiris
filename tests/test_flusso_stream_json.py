@@ -16,7 +16,7 @@ import logging
 from unittest.mock import patch
 
 from hiris.app.agent import runner
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 
 # ── i mattoni dei flussi finti ───────────────────────────────────────────────
 
@@ -649,7 +649,7 @@ class _ClientSondaOk:
     `tools/list` (i nomi nudi del catalogo)."""
 
     def post(self, url, headers=None, json=None, timeout=None):
-        nomi = [d["name"] for d in STRUMENTI_CONOSCENZA]
+        nomi = [d["name"] for d in KNOWLEDGE_TOOLS]
         return _RispostaSonda({"result": {"tools": [{"name": n} for n in nomi]}})
 
 

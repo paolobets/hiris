@@ -46,7 +46,7 @@ import pytest
 
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.memoria.archivio import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
@@ -58,7 +58,7 @@ from tests.test_token_interno import (  # noqa: F401  (fixture usata da pytest)
     ponte_con_configurazione_predefinita,
 )
 
-_NOMI_NUDI = {d["name"] for d in STRUMENTI_CONOSCENZA}
+_NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
 
 def _normalizza(argv):
@@ -176,7 +176,7 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     opposta a `costruisci`/`conferma`."""
     nomi = runner.nomi_mcp()
 
-    assert len(nomi) == len(STRUMENTI_CONOSCENZA) == 13
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

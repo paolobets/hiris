@@ -6,7 +6,7 @@ from typing import ClassVar
 import pytest
 
 from hiris.app.azione.registro import ServiceRegistry
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.schedulatore.archivio import AgendaStore
 from tests._contratti import assert_stessa_firma
@@ -49,11 +49,11 @@ def _dispatcher(promesse, **extra):
     Gli altri archivi restano `None`: i gestori dichiarano un errore invece di
     sollevare, ed e' il contratto della classe.
     """
-    return DispatcherStrumenti(None, None, promesse=promesse, **extra)
+    return ToolDispatcher(None, None, agenda=promesse, **extra)
 
 
 def test_i_tre_strumenti_sono_nel_catalogo():
-    nomi = {d["name"] for d in STRUMENTI_CONOSCENZA}
+    nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
     assert {"prometti", "promesse", "disdici"} <= nomi
 
 
@@ -114,7 +114,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     solo se `verification()` e' arrivata fino in fondo al ramo giusto senza
     sollevare.
     """
-    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -165,7 +165,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     # `_verifica_ora` si ferma prima (`_stati_grezzi()` -> `None` -> nessun
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
     # esiste per chiudere -- vedi `verification()` in `azione/verifica.py`.
-    d = _dispatcher(promesse, registro=_RegistroVuoto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -184,7 +184,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
     rifiuto -- e la promessa nasceva senza che il suo servizio fosse mai
     stato verificato, mentre `PROMETTI_TOOL_DEF` dichiara al modello «viene
     VERIFICATA adesso» senza condizioni."""
-    d = _dispatcher(promesse, registro=_RegistroFinto())  # nessuna cache
+    d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -204,7 +204,7 @@ async def test_un_chiedi_nasce_anche_senza_registro(promesse):
     -- questo lo rende un'asserzione intenzionale, cosi' che un domani in cui
     qualcuno stringesse la guardia a TUTTE le specie se ne accorga subito."""
     d = _dispatcher(promesse)  # nessun registro, apposta
-    assert d._registro is None
+    assert d._registry is None
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "verifica la temperatura",
         "quando": _fra(60), "domanda": "e' aumentata?"})
@@ -214,7 +214,7 @@ async def test_un_chiedi_nasce_anche_senza_registro(promesse):
 
 @pytest.mark.asyncio
 async def test_un_fai_valido_nasce(promesse):
-    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -228,7 +228,7 @@ async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
     """Registro CARICO, recapito davvero inesistente: il rifiuto vero, non
     quello di «non lo so ancora» -- le due frasi restano distinte (review
     Task 7, Rilievo 1)."""
-    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.non_esiste"})
@@ -250,7 +250,7 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
     Peggio del `fai` equivalente: un recapito sbagliato non fallisce
     rumorosamente, fa si' che la risposta della promessa non arrivi a
     nessuno."""
-    d = _dispatcher(promesse, registro=_RegistroVuoto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
@@ -279,15 +279,15 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     e' scaldato, solo che non e' esploso.
     """
     ha = _HaConServizi()
-    registro = ServiceRegistry()
-    assert registro.empty()  # la premessa esatta del difetto: mai caricato
-    d = _dispatcher(promesse, registro=registro, ha=ha, cache=_CacheFinta())
+    registry = ServiceRegistry()
+    assert registry.empty()  # la premessa esatta del difetto: mai caricato
+    d = _dispatcher(promesse, registry=registry, ha=ha, cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
     assert "errore" not in esito
     assert ha.chiamate_get_services == 1
-    assert not registro.empty()  # scaldato per davvero, non solo tollerato
+    assert not registry.empty()  # scaldato per davvero, non solo tollerato
 
 
 @pytest.mark.asyncio
@@ -302,19 +302,19 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     direbbe subito, mentre un'asserzione sul solo messaggio di errore no
     (un `try/except` a monte lo inghiottirebbe comunque in "non e' pronto").
     """
-    registro = _RegistroTracciaScaldamento()
-    d = _dispatcher(promesse, registro=registro, cache=_CacheFinta())  # nessun ha
+    registry = _RegistroTracciaScaldamento()
+    d = _dispatcher(promesse, registry=registry, cache=_CacheFinta())  # nessun ha
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
-    assert not registro.chiamato  # non si e' nemmeno tentato di scaldarlo
+    assert not registry.chiamato  # non si e' nemmeno tentato di scaldarlo
     assert "errore" in esito
     assert "non e' pronto" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
-    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "verifica la temperatura",
         "quando": _fra(60),
@@ -338,7 +338,7 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_na
     su quel test gemello: un rifiuto generico che non nomina nulla
     lascerebbe passare una guardia rotta che rifiuta sempre, a caso.
     """
-    d = _dispatcher(promesse, registro=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "verifica il soggiorno",
         "quando": _fra(60),
@@ -373,7 +373,7 @@ async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verifi
     per `da_confrontare` -- riusa la STESSA forma, non ne inventa una terza:
     senza uno specchio leggibile non si sa se il riferimento esiste, quindi
     non si tace facendo nascere una promessa mai verificata."""
-    d = _dispatcher(promesse, registro=_RegistroFinto())  # nessuna cache
+    d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
     esito = await d.dispatch("prometti", {
         "specie": "chiedi", "frase": "verifica il soggiorno",
         "quando": _fra(60),

@@ -357,6 +357,34 @@ def _verifica_idempotenza(base: Path, ambito: str, copia: Path,
         "e' stato corretto altrove e questa riga va tolta")
 
 
+def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str]]:
+    """L'insieme delle coppie (nome vecchio, nome nuovo) fra due sorgenti che
+    differiscono SOLO per rinomina di identificatori -- mai per l'aggiunta o
+    la rimozione di un token: una rinomina non cambia la struttura del
+    programma, quindi i due flussi di token hanno la STESSA lunghezza, e
+    confrontarli posizione per posizione basta.
+
+    Serve a rendere fine un residuo noto a grana di file (`_SORVEGLIATI`,
+    `_verifica_idempotenza`): quel controllo dice CHE un file diverge, non
+    COSA -- e un'eccezione a grana di file puo' nascondere un secondo
+    debito nato dopo, nello stesso file, per una ragione diversa (misurato
+    dal vivo: `memoria/resolver.py::_compila` aveva sia `inizio` (residuo
+    dichiarato) sia `prefisso`/`suffisso` -- una meta' di quella seconda
+    coppia era stata decisa nel glossario da questo stesso lotto per
+    `casa/strumenti.py`, e la guardia a grana di file non l'avrebbe vista
+    finche' qualcuno non fosse arrivato a leggere `resolver.py` di
+    persona)."""
+    toks_prima = [t for t in tokenize.generate_tokens(io.StringIO(prima).readline)
+                  if t.type == tokenize.NAME]
+    toks_dopo = [t for t in tokenize.generate_tokens(io.StringIO(dopo).readline)
+                 if t.type == tokenize.NAME]
+    assert len(toks_prima) == len(toks_dopo), (
+        "i due sorgenti non hanno lo stesso numero di identificatori: "
+        "questa funzione confronta solo rinomine, non altre modifiche")
+    return {(a.string, b.string) for a, b in zip(toks_prima, toks_dopo)
+            if a.string != b.string}
+
+
 # **L'elenco esplicito e leggibile degli ambiti SORVEGLIATI.** Corretto dopo
 # il rilievo del coordinatore: il vecchio controllo guardava solo due
 # sottosistemi su sei (schedulatore, memoria) -- un residuo trovato durante
@@ -409,6 +437,22 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("casa/anagrafe.py", "casa", frozenset()),
     ("casa/domande.py", "casa", frozenset()),
     ("casa/nucleo.py", "casa", frozenset()),
+    # `strumenti.py` importa il proprio vicino con `from . import tempo`: la
+    # protezione dei percorsi di import (`_righe_di_percorso_e_parola_chiave`)
+    # segue il proprio `modo` di stato PAROLA PER PAROLA e lo azzera appena
+    # incontra "import" -- corretto per `from .X import Y` (il nome
+    # importato arriva DOPO l'azzeramento, ma "X" e' gia' protetto perche'
+    # letto PRIMA), ma non per `from . import X` (qui "X" e' l'unico token
+    # dopo "import", quindi arriva DOPO l'azzeramento e resta un NAME
+    # qualunque). "tempo" e' un concetto gia' deciso (`tempo -> historian`,
+    # "I concetti"): senza questa eccezione lo strumento riscriverebbe
+    # l'import in `from . import historian`, un `ModuleNotFoundError` --
+    # `casa/tempo.py` non e' stato rinominato (i nomi dei file sono un passo
+    # a parte, mai una riscrittura di stringa). Misurato dal vivo (lotto 7):
+    # la stessa importazione dentro `casa/nucleo.py` non ha questo problema
+    # perche' usa la forma `from .anagrafe import (...)`, dove il nome del
+    # modulo vive PRIMA di "import" ed e' quindi gia' protetto.
+    ("casa/strumenti.py", "casa", frozenset({Path("strumenti.py")})),
 )
 
 
@@ -422,6 +466,30 @@ def test_gli_ambiti_chiusi_restano_idempotenti(tmp_path):
         etichetta = percorso.replace("/", "_")
         _verifica_idempotenza(ROOT / "hiris" / "app" / percorso, ambito,
                               tmp_path / etichetta, residui_noti)
+
+
+def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
+    """La grana FINE del residuo noto di `memoria/resolver.py` (sopra, in
+    `_SORVEGLIATI`): non basta sapere che il file diverge, serve sapere
+    COSA cambia -- l'eccezione a grana di file l'ha gia' nascosto una volta
+    (vedi `_sostituzioni_di_identificatori`). Se domani un'altra parola di
+    `resolver.py` entra nel glossario per un altro lotto, questa prova
+    arrossisce ANCHE SE il file resta nell'elenco dei cambiati sopra."""
+    import shutil
+
+    from _comune import ROOT
+    base = ROOT / "hiris" / "app" / "memoria" / "resolver.py"
+    copia = tmp_path / "resolver.py"
+    shutil.copy(base, copia)
+    prima = copia.read_text(encoding="utf-8")
+    rinomina.applica(copia, "memoria", scrivi=True)
+    dopo = copia.read_text(encoding="utf-8")
+    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
+    assert sostituzioni == {("inizio", "start")}, (
+        f"memoria/resolver.py diverge su {sostituzioni}, atteso solo "
+        "{('inizio', 'start')} -- un nuovo nome e' comparso: decidilo "
+        "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
+        "un'eccezione a grana di file")
 
 
 def test_la_verifica_di_idempotenza_arrossisce_se_qualcosa_cambia(tmp_path):

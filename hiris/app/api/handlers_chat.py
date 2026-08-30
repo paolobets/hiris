@@ -6,7 +6,7 @@ import time
 from aiohttp import web
 
 from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
-from ..casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from ..casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -53,7 +53,7 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
-def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> DispatcherStrumenti:
+def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
     I tredici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
@@ -111,12 +111,12 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> Dispatcher
     dentro no -- e' cosi' che il riuso vale FRA i turni, non solo dentro uno
     (vedi `memoria/cache_indice.py` per la chiave e il perche').
     """
-    return DispatcherStrumenti(
+    return ToolDispatcher(
         app.get("archivio_casa"),
         app.get("archivio_memoria"),
         cache=app.get("entity_cache"),
-        porta=app.get("porta_azione"),
-        cache_indice=app.get("cache_indice_strumenti"),
+        actuator=app.get("porta_azione"),
+        lookup_cache=app.get("cache_indice_strumenti"),
         # Il canale verso Home Assistant, per `legami`: quello strumento non
         # legge l'archivio, chiede a HA chi tocca una cosa
         # (`search/related`). Senza questa riga sarebbe uno strumento sempre
@@ -131,21 +131,21 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> Dispatcher
         # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
         # Serve a `prometti` per verificare un `fai` ADESSO
         # (`DispatcherStrumenti._verifica_ora`) e un `recapito`.
-        registro=app.get("registro_servizi"),
+        registry=app.get("registro_servizi"),
         # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
         # `prometti`/`promesse`/`disdici`.
-        promesse=app.get("promesse"),
+        agenda=app.get("promesse"),
         # L'officina (`azione/costruzione/officina.py`, fetta «costruire»):
         # la casa di `costruisci`/`conferma`. Sorella di `porta_azione`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
-        officina=app.get("officina"),
+        workshop=app.get("officina"),
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
-        turno=turno,
+        exchange=turno,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
         # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
         # `accaduto` per attribuire a HIRIS cio' che ha fatto HIRIS.
-        cronaca=app.get("cronaca"),
+        journal=app.get("cronaca"),
     )
 
 
@@ -544,7 +544,7 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
             # dichiarato inapplicabile, con un log, al momento
             # dell'accodamento.
             thinking_budget=0,
-            strumenti=STRUMENTI_CONOSCENZA,
+            strumenti=KNOWLEDGE_TOOLS,
             dispatcher=costruisci_dispatcher_strumenti(request.app, turno=id_turno),
         )
     except RunnerBackendError as exc:
@@ -948,7 +948,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             # done-event SSE (uscito anche lui, nessun lettore in static/).
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
-            strumenti=STRUMENTI_CONOSCENZA,
+            strumenti=KNOWLEDGE_TOOLS,
             dispatcher=dispatcher_strumenti,
         ):
             await stream_resp.write(chunk.encode())
@@ -998,7 +998,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             # Vedi il commento gemello sul ramo streaming sopra.
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
-            strumenti=STRUMENTI_CONOSCENZA,
+            strumenti=KNOWLEDGE_TOOLS,
             dispatcher=dispatcher_strumenti,
         )
     except RunnerBackendError as exc:

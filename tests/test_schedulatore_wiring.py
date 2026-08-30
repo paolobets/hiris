@@ -322,8 +322,8 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 
     dispatcher = costruisci_dispatcher_strumenti(app)
 
-    assert dispatcher._registro is registro_sentinella
-    assert dispatcher._promesse is promesse_sentinella
+    assert dispatcher._registry is registro_sentinella
+    assert dispatcher._agenda is promesse_sentinella
 
 
 # ── Il README dichiara UN NUMERO di lavori periodici -- deve restare vero ───

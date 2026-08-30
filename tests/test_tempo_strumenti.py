@@ -10,15 +10,15 @@ import inspect
 import pytest
 
 from hiris.app.api import handlers_chat
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.schedulatore.turno import SOLA_LETTURA, tools_promise
 from tests._contratti import assert_stessa_firma
 
 
 def test_il_catalogo_porta_tredici_strumenti():
-    assert len(STRUMENTI_CONOSCENZA) == 13
-    nomi = {d["name"] for d in STRUMENTI_CONOSCENZA}
+    assert len(KNOWLEDGE_TOOLS) == 13
+    nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
     assert {"andamento", "accaduto"} <= nomi
 
 
@@ -27,7 +27,13 @@ def test_il_catalogo_porta_tredici_strumenti():
 # `_promesse` (quell'attributo e' gia' l'archivio, vedi il commento nel
 # `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
 # saltando la verifica per quel nome.
-_GESTORE_ATTESO = {"promesse": "_promesse_elenco"}
+_GESTORE_ATTESO = {
+    "cerca": "_search", "guarda": "_view", "legami": "_related",
+    "ricorda": "_remember", "richiama": "_recall", "esegui": "_execute",
+    "prometti": "_promise", "promesse": "_list_agenda", "disdici": "_cancel",
+    "costruisci": "_propose", "conferma": "_confirm", "andamento": "_trend",
+    "accaduto": "_happened",
+}
 
 
 @pytest.mark.asyncio
@@ -45,11 +51,11 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
     finto che restituisce un marcatore UNICO per quel nome: se la risposta non
     e' quel marcatore, o `dispatch` ha chiamato un gestore diverso, o non ne
     ha chiamato nessuno."""
-    for definizione in STRUMENTI_CONOSCENZA:
+    for definizione in KNOWLEDGE_TOOLS:
         nome = definizione["name"]
         attributo = _GESTORE_ATTESO.get(nome, f"_{nome}")
-        d = DispatcherStrumenti(object(), object(), ha=object(), porta=object(),
-                                 promesse=object(), officina=object())
+        d = ToolDispatcher(object(), object(), ha=object(), actuator=object(),
+                                 agenda=object(), workshop=object())
         assert hasattr(d, attributo), (
             f"«{nome}» dovrebbe essere servito da `self.{attributo}`, che non "
             "esiste sul dispatcher")
@@ -74,12 +80,12 @@ def test_il_dispatcher_riceve_la_cronaca_dall_app():
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al
     contrario, lo stesso difetto gia' pagato da `legami`."""
     sorgente = inspect.getsource(handlers_chat.costruisci_dispatcher_strumenti)
-    assert 'cronaca=app.get("cronaca")' in sorgente
+    assert 'journal=app.get("cronaca")' in sorgente
 
 
 @pytest.mark.asyncio
 async def test_senza_canale_ha_i_due_strumenti_dichiarano_invece_di_sollevare():
-    d = DispatcherStrumenti(None, None)
+    d = ToolDispatcher(None, None)
     for nome in ("andamento", "accaduto"):
         esito = await d.dispatch(nome, {"entita": "sensor.x", "ore": 24})
         assert "errore" in esito
@@ -87,7 +93,7 @@ async def test_senza_canale_ha_i_due_strumenti_dichiarano_invece_di_sollevare():
 
 @pytest.mark.asyncio
 async def test_andamento_pretende_un_entita():
-    d = DispatcherStrumenti(None, None, ha=object())
+    d = ToolDispatcher(None, None, ha=object())
     esito = await d.dispatch("andamento", {"ore": 24})
     assert "errore" in esito and "entita" in esito["errore"]
 
@@ -116,7 +122,7 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
     originale = modulo.tempo.trend
     modulo.tempo.trend = _finto_trend
     try:
-        d = DispatcherStrumenti(None, None, cache=_Cache(), ha=object())
+        d = ToolDispatcher(None, None, cache=_Cache(), ha=object())
         await d.dispatch("andamento", {"entita": "sensor.camera", "ore": 6})
     finally:
         modulo.tempo.trend = originale
@@ -145,7 +151,7 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     originale = modulo.tempo.logbook
     modulo.tempo.logbook = _finto_logbook
     try:
-        d = DispatcherStrumenti(None, None, ha=object(), cronaca=cronaca_vera)
+        d = ToolDispatcher(None, None, ha=object(), journal=cronaca_vera)
         await d.dispatch("accaduto", {"ore": 6})
     finally:
         modulo.tempo.logbook = originale
@@ -193,7 +199,7 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
     assert_stessa_firma(HAClient.statistiche, _HA.statistiche, nome="statistiche")
 
     ha = _HA()
-    d = DispatcherStrumenti(None, None, cache=_Cache(), ha=ha)
+    d = ToolDispatcher(None, None, cache=_Cache(), ha=ha)
     esito = await d.dispatch(
         "andamento", {"entita": "sensor.vento_direzione", "ore": 48})
     assert esito["grana"] == "dettaglio"

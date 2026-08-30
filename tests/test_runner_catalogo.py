@@ -28,7 +28,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import ClaudeRunner
 
 # fetta E2 Task 8: `tools/http_tools.py` e' uscito per intero (HTTP_REQUEST_
@@ -176,18 +176,18 @@ async def test_openai_senza_strumenti_non_offre_alcun_tool(openai_runner):
 # (`tests/test_strumenti_conoscenza.py`): scriverle di nuovo qui era il
 # secondo elenco degli stessi nomi, che infatti e' caduto all'ingresso del
 # quinto strumento pur non essendoci nulla di rotto nel runner.
-_NOMI_DEL_CATALOGO = {d["name"] for d in STRUMENTI_CONOSCENZA}
+_NOMI_DEL_CATALOGO = {d["name"] for d in KNOWLEDGE_TOOLS}
 
 
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_offre_esattamente_quelli(claude_runner):
-    nomi = await _tools_di_chat_claude(claude_runner, strumenti=STRUMENTI_CONOSCENZA)
+    nomi = await _tools_di_chat_claude(claude_runner, strumenti=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
 @pytest.mark.asyncio
 async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
-    nomi = await _tools_di_chat_openai(openai_runner, strumenti=STRUMENTI_CONOSCENZA)
+    nomi = await _tools_di_chat_openai(openai_runner, strumenti=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
@@ -243,7 +243,7 @@ async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_r
 
     claude_runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     result = await claude_runner.chat(
-        "cerca il bagno", strumenti=STRUMENTI_CONOSCENZA, dispatcher=finto_dispatcher,
+        "cerca il bagno", strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     )
 
     assert result == "trovato"
@@ -276,7 +276,7 @@ async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_r
     openai_runner._client.chat.completions.create = AsyncMock(side_effect=[resp1, resp2])
     result = await openai_runner.chat(
         user_message="cerca il bagno", model="gpt-4o",
-        strumenti=STRUMENTI_CONOSCENZA, dispatcher=finto_dispatcher,
+        strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     )
 
     assert result == "trovato"
@@ -332,7 +332,7 @@ async def test_openai_stream_con_strumenti_offre_esattamente_quelli(openai_runne
 
     openai_runner._client.chat.completions.create = capture
     async for _ in openai_runner.chat_stream(
-        user_message="ciao", model="gpt-4o", strumenti=STRUMENTI_CONOSCENZA,
+        user_message="ciao", model="gpt-4o", strumenti=KNOWLEDGE_TOOLS,
     ):
         pass
 
@@ -357,7 +357,7 @@ async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(o
     openai_runner._client.chat.completions.create = capture
     async for _ in openai_runner.chat_stream(
         user_message="cerca il bagno", model="gpt-4o",
-        strumenti=STRUMENTI_CONOSCENZA, dispatcher=finto_dispatcher,
+        strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     ):
         pass
 

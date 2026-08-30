@@ -3,7 +3,7 @@ import pytest
 
 from hiris.app.agent.runner import nomi_mcp
 from hiris.app.azione.costruzione.officina import Workshop
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.schedulatore.turno import tools_promise
 from tests._contratti import assert_stessa_firma
 
@@ -34,11 +34,11 @@ def test_la_finta_officina_combacia_con_la_firma_vera():
 
 
 def _dispatcher(**kw):
-    return DispatcherStrumenti(archivio_casa=None, archivio_memoria=None, **kw)
+    return ToolDispatcher(home_space_store=None, memory_store=None, **kw)
 
 
 def test_i_due_strumenti_sono_nel_catalogo():
-    nomi = [d["name"] for d in STRUMENTI_CONOSCENZA]
+    nomi = [d["name"] for d in KNOWLEDGE_TOOLS]
     assert "costruisci" in nomi
     assert "conferma" in nomi
 
@@ -59,29 +59,29 @@ def test_il_turno_di_una_promessa_non_li_riceve():
 
 @pytest.mark.asyncio
 async def test_costruisci_passa_l_intento_e_il_turno_all_officina():
-    officina = FintaOfficina()
-    d = _dispatcher(officina=officina, turno="t7")
+    workshop = FintaOfficina()
+    d = _dispatcher(workshop=workshop, exchange="t7")
     esito = await d.dispatch("costruisci", {
         "gesto": "crea", "dominio": "automation", "alias": "X",
         "descrizione": "d", "innesco": [{"trigger": "sun"}],
         "azioni": [{"action": "cover.open_cover"}]})
-    verbo, intento, origine, turno = officina.chiamate[0]
+    verbo, intento, origine, exchange = workshop.chiamate[0]
     assert verbo == "propose"
     assert intento["dominio"] == "automation"
     assert origine == "chat"
-    assert turno == "t7"
+    assert exchange == "t7"
     assert esito["proposta_id"] == "p1"
 
 
 @pytest.mark.asyncio
 async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
-    officina = FintaOfficina()
-    d = _dispatcher(officina=officina, turno="t7")
+    workshop = FintaOfficina()
+    d = _dispatcher(workshop=workshop, exchange="t7")
     await d.dispatch("conferma", {"proposta_id": "p1"})
-    verbo, proposta_id, _origine, turno = officina.chiamate[0]
+    verbo, proposta_id, _origine, exchange = workshop.chiamate[0]
     assert verbo == "apply"
     assert proposta_id == "p1"
-    assert turno == "t7"
+    assert exchange == "t7"
 
 
 @pytest.mark.asyncio
@@ -94,13 +94,13 @@ async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
     (`costruisci_dispatcher_strumenti`) -- dia la stessa identita' a
     ENTRAMBI gli strumenti quando li chiama in sequenza nello stesso turno.
     fetta «costruire», review indipendente (I3)."""
-    officina = FintaOfficina()
-    d = _dispatcher(officina=officina, turno="stesso-turno-vero")
+    workshop = FintaOfficina()
+    d = _dispatcher(workshop=workshop, exchange="stesso-turno-vero")
     await d.dispatch("costruisci", {"gesto": "crea", "dominio": "automation"})
     await d.dispatch("conferma", {"proposta_id": "p1"})
-    assert len(officina.chiamate) == 2
-    turno_costruisci = officina.chiamate[0][3]
-    turno_conferma = officina.chiamate[1][3]
+    assert len(workshop.chiamate) == 2
+    turno_costruisci = workshop.chiamate[0][3]
+    turno_conferma = workshop.chiamate[1][3]
     assert turno_costruisci == turno_conferma == "stesso-turno-vero"
 
 
@@ -113,11 +113,11 @@ async def test_senza_officina_lo_strumento_dichiara_un_errore_e_non_solleva():
 
 @pytest.mark.asyncio
 async def test_conferma_senza_identificatore_non_indovina():
-    officina = FintaOfficina()
-    d = _dispatcher(officina=officina, turno="t7")
+    workshop = FintaOfficina()
+    d = _dispatcher(workshop=workshop, exchange="t7")
     esito = await d.dispatch("conferma", {})
     assert "errore" in esito
-    assert officina.chiamate == []
+    assert workshop.chiamate == []
 
 
 @pytest.mark.asyncio
@@ -128,9 +128,9 @@ async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
     Sul percorso chat, prima di questa correzione, lo strumento restituiva il
     dizionario di `apply` tale e quale: il flag usciva integro verso il
     modello. O e' interno da entrambe le porte, o il commento mente su una."""
-    officina = FintaOfficina(esito_applica={
+    workshop = FintaOfficina(esito_applica={
         "errore": "Home Assistant non ha risposto: timeout", "guasto_rete": True})
-    d = _dispatcher(officina=officina, turno="t7")
+    d = _dispatcher(workshop=workshop, exchange="t7")
     esito = await d.dispatch("conferma", {"proposta_id": "p1"})
     assert "guasto_rete" not in esito
     assert "errore" in esito

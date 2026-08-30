@@ -143,14 +143,14 @@ async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, 
 @pytest.mark.asyncio
 async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     """Fondamenta n.3: una promessa vista dalla chat e dalla pagina e' la stessa."""
-    from hiris.app.casa.strumenti import DispatcherStrumenti
+    from hiris.app.casa.strumenti import ToolDispatcher
 
     archivio = client.app["promesse"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "?"}, now=1.0)
 
     da_http = (await (await client.get("/api/promesse")).json())["promesse"][0]
-    d = DispatcherStrumenti(None, None, promesse=archivio)
+    d = ToolDispatcher(None, None, agenda=archivio)
     da_strumento = (await d.dispatch("promesse", {}))["promesse"][0]
 
     assert da_http == da_strumento
@@ -167,8 +167,8 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
 @pytest.mark.asyncio
 async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
-    cronaca = client.app["cronaca"]
-    ident = cronaca.log(
+    journal = client.app["cronaca"]
+    ident = journal.log(
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
         executed=True, changed=["light.studio"], now=1_755_600_000.0)
 
@@ -180,7 +180,7 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
     # (mutazione: se la rotta smettesse di usare `Journal.read` e
     # ricostruisse a mano un sottoinsieme dei campi, questo confronto lo
     # vedrebbe subito).
-    assert corpo["esecuzione"] == cronaca.read(ident)
+    assert corpo["esecuzione"] == journal.read(ident)
     assert corpo["esecuzione"]["servizio"] == "light.turn_on"
     assert corpo["esecuzione"]["cambiato"] == ["light.studio"]
 
@@ -219,8 +219,8 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     passare, stessa esenzione di `GET /api/promesse`. Mutazione: se la rotta
     finisse dietro un controllo CSRF (o venisse registrata come POST/GET
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
-    cronaca = client.app["cronaca"]
-    ident = cronaca.log(actor="chat", service="a.b", entity=[],
+    journal = client.app["cronaca"]
+    ident = journal.log(actor="chat", service="a.b", entity=[],
                              executed=True, now=1.0)
     risposta = await client.get(f"/api/esecuzioni/{ident}")
     assert risposta.status == 200

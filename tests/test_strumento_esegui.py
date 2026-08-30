@@ -18,7 +18,7 @@ import inspect
 import pytest
 
 from hiris.app.azione.porta import ActionActuator
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from tests._contratti import assert_stessa_firma
 
 
@@ -40,7 +40,7 @@ def test_la_finta_porta_combacia_con_la_firma_vera():
 
 
 def test_esegui_e_nel_catalogo_unico():
-    nomi = [d["name"] for d in STRUMENTI_CONOSCENZA]
+    nomi = [d["name"] for d in KNOWLEDGE_TOOLS]
     assert "esegui" in nomi
     assert len(nomi) == len(set(nomi)), "nessun nome duplicato nel catalogo"
 
@@ -59,19 +59,19 @@ def test_esegui_si_propaga_al_catalogo_del_ponte():
 
 @pytest.mark.asyncio
 async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
-    porta = FintaPorta()
-    d = DispatcherStrumenti(None, None, cache=None, porta=porta)
+    actuator = FintaPorta()
+    d = ToolDispatcher(None, None, cache=None, actuator=actuator)
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
-    chiamata, actor = porta.chiamate[0]
+    chiamata, actor = actuator.chiamate[0]
     assert chiamata["servizio"] == "light.turn_off"
     assert actor == "chat"
 
 
 @pytest.mark.asyncio
 async def test_senza_porta_lo_dichiara_invece_di_rompersi():
-    d = DispatcherStrumenti(None, None, cache=None, porta=None)
+    d = ToolDispatcher(None, None, cache=None, actuator=None)
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert "errore" in esito
@@ -81,7 +81,7 @@ async def test_senza_porta_lo_dichiara_invece_di_rompersi():
 @pytest.mark.asyncio
 async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
     """La modifica a dispatch() non deve rompere i gestori che non sono coroutine."""
-    d = DispatcherStrumenti(None, None, cache=None, porta=None)
+    d = ToolDispatcher(None, None, cache=None, actuator=None)
     esito = await d.dispatch("cerca", {"testo": "salotto"})
     assert "errore" in esito  # niente archivio casa: errore dichiarato, non eccezione
 
@@ -102,13 +102,13 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     insieme."""
     from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
 
-    porta = FintaPorta()
-    d = costruisci_dispatcher_strumenti({"porta_azione": porta})
+    actuator = FintaPorta()
+    d = costruisci_dispatcher_strumenti({"porta_azione": actuator})
 
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
-    assert porta.chiamate, "il dispatcher costruito dall'app non ha la porta"
+    assert actuator.chiamate, "il dispatcher costruito dall'app non ha la porta"
 
 
 def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():

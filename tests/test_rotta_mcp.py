@@ -29,7 +29,7 @@ import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.api import handlers_mcp
-from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA
+from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
@@ -118,7 +118,7 @@ async def test_tools_list_espone_esattamente_il_catalogo_della_costante(rotta):
     corpo = await risposta.json()
 
     nomi = {voce["name"] for voce in corpo["result"]["tools"]}
-    assert nomi == {definizione["name"] for definizione in STRUMENTI_CONOSCENZA}
+    assert nomi == {definizione["name"] for definizione in KNOWLEDGE_TOOLS}
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_tools_list_rinomina_solo_la_chiave_dello_schema(rotta):
         client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})).json()
     per_nome = {voce["name"]: voce for voce in corpo["result"]["tools"]}
 
-    for definizione in STRUMENTI_CONOSCENZA:
+    for definizione in KNOWLEDGE_TOOLS:
         voce = per_nome[definizione["name"]]
         assert "inputSchema" in voce
         assert "input_schema" not in voce
@@ -634,7 +634,7 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
     costruttori = []
     for percorso in radice.rglob("*.py"):
         for numero, riga in enumerate(percorso.read_text(encoding="utf-8").splitlines(), 1):
-            if "DispatcherStrumenti(" in riga and not riga.strip().startswith("#"):
+            if "ToolDispatcher(" in riga and not riga.strip().startswith("#"):
                 costruttori.append(f"{percorso.relative_to(radice)}:{numero}")
     assert len(costruttori) == 1, (
         "il dispatcher va costruito in UN SOLO punto "
