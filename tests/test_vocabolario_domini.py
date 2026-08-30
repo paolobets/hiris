@@ -12,7 +12,7 @@ delle cose che HA crea da se' (`input_*`, `counter`, `timer`, `zone`, `sun`,
 ...). Ognuno e' stato verificato come componente vero del sorgente di Home
 Assistant, non ricordato.
 """
-from hiris.app.casa.nucleo import _NOMI_DOMINIO, _nome_dominio
+from hiris.app.casa.nucleo import _DOMAIN_NAMES, _domain_name
 
 # Le 45 piattaforme di `homeassistant/generated/entity_platforms.py`,
 # copiate dalla fonte. Se HA ne aggiunge una, questa prova lo dice il giorno
@@ -40,12 +40,12 @@ _DOMINI_NON_PIATTAFORMA = (
 
 
 def test_ogni_piattaforma_di_home_assistant_ha_un_nome_italiano():
-    senza = sorted(d for d in _PIATTAFORME_HA if d not in _NOMI_DOMINIO)
+    senza = sorted(d for d in _PIATTAFORME_HA if d not in _DOMAIN_NAMES)
     assert senza == [], f"tipologie che il digesto stamperebbe in inglese: {senza}"
 
 
 def test_ogni_dominio_non_piattaforma_ha_un_nome_italiano():
-    senza = sorted(d for d in _DOMINI_NON_PIATTAFORMA if d not in _NOMI_DOMINIO)
+    senza = sorted(d for d in _DOMINI_NON_PIATTAFORMA if d not in _DOMAIN_NAMES)
     assert senza == [], f"tipologie che il digesto stamperebbe in inglese: {senza}"
 
 
@@ -54,7 +54,7 @@ def test_il_vocabolario_non_contiene_domini_inventati():
     dominio che in Home Assistant non esiste e' una riga che nessuno leggera'
     mai, e nessuno la cancellera' perche' sembra utile."""
     conosciuti = set(_PIATTAFORME_HA) | set(_DOMINI_NON_PIATTAFORMA)
-    inventati = sorted(d for d in _NOMI_DOMINIO if d not in conosciuti)
+    inventati = sorted(d for d in _DOMAIN_NAMES if d not in conosciuti)
     assert inventati == [], f"tipologie che Home Assistant non ha: {inventati}"
 
 
@@ -63,7 +63,7 @@ def test_singolare_e_plurale_sono_dichiarati_non_dedotti():
     resta «aspirapolvere», «analisi» resta «analisi». Dedurlo produrrebbe
     «aspirapolveres». Sono dichiarati uno per uno, ed e' il motivo per cui il
     vocabolario e' una tabella e non una funzione."""
-    for dominio, coppia in _NOMI_DOMINIO.items():
+    for dominio, coppia in _DOMAIN_NAMES.items():
         assert isinstance(coppia, tuple) and len(coppia) == 2, dominio
         singolare, plurale = coppia
         assert singolare.strip() and plurale.strip(), dominio
@@ -73,7 +73,7 @@ def test_un_dominio_sconosciuto_esce_com_e_invece_di_sparire():
     """Home Assistant puo' aggiungere una piattaforma domani. Meglio «2
     quantum_flux» che una riga che sparisce: un conteggio mancante e' una
     casa raccontata piu' piccola di com'e'."""
-    assert _nome_dominio("quantum_flux", 2) == "quantum_flux"
+    assert _domain_name("quantum_flux", 2) == "quantum_flux"
 
 
 def test_i_nomi_non_ripetono_una_parola_gia_presa():
@@ -81,4 +81,4 @@ def test_i_nomi_non_ripetono_una_parola_gia_presa():
     label che l'utente scrive in Home Assistant, che ora escono da `guarda` e
     si cercano. Chiamare cosi' anche il dominio `tag` (i bollini NFC) darebbe
     due significati alla stessa parola, nella stessa risposta."""
-    assert "etichetta" not in _NOMI_DOMINIO["tag"][0]
+    assert "etichetta" not in _DOMAIN_NAMES["tag"][0]

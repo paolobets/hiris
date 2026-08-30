@@ -753,10 +753,10 @@ def _translate_rejection(error: str, domain: str) -> str:
     """
     # RULING 2 della scansione pre-volo: il nome del dominio va in ITALIANO --
     # e' una frase rivolta all'utente, e i vincoli globali lo impongono.
-    plurale = {"automation": "automazioni", "script": "script",
+    plural = {"automation": "automazioni", "script": "script",
                "scene": "scene"}.get(domain, domain)
     if "404" in error or "not found" in error.lower():
-        return (f"queste {plurale} sono gestite a mano (o vivono in `packages/`): "
+        return (f"queste {plural} sono gestite a mano (o vivono in `packages/`): "
                 "l'API di configurazione di Home Assistant non le governa, e non posso "
                 "scriverle. Posso mostrarti il pezzo corretto da incollare.")
     return error

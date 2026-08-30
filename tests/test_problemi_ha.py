@@ -24,15 +24,15 @@ import asyncio
 import pytest
 
 from hiris.app.api.handlers_casa import costruisci_nucleo
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import rileggi_problemi_ha
 
 
 def _nucleo(problemi):
     """Il nucleo di una casa vuota: qui interessa solo la sezione dei guasti."""
-    return componi({"entita": [], "integrazioni": []}, [], [], {},
-                   problemi=problemi)
+    return compose({"entita": [], "integrazioni": []}, [], [], {},
+                   problems=problemi)
 
 
 def _p(**campi):

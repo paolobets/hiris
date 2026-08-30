@@ -64,7 +64,7 @@ from .domande import sanitized_memories
 # una persona, vedi il brief); un dominio che non conosciamo resta visibile
 # col proprio nome invece di sparire, cosi' un tipo nuovo si legge diverso
 # ma non si perde.
-_NOMI_DOMINIO = {
+_DOMAIN_NAMES = {
     # --- le 45 piattaforme dichiarate da Home Assistant ---
     # Copiate da `homeassistant/generated/entity_platforms.py` (l'elenco che HA
     # genera da se'), non ricordate: ognuna e' stata verificata come componente
@@ -179,7 +179,7 @@ _NOMI_DOMINIO = {
 # dichiarato) in tests/test_vocabolario_tipologie.py. Da riguardare quando
 # `_DOMINI_EVENTO` guadagna un dominio nuovo -- porta con se' il proprio
 # stato "attivo" da aggiungere qui.
-_STATI_ATTIVI = {"on", "open", "unlocked", "playing", "cleaning"}
+_ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 
 # I domini in cui l'attivo e' un'ECCEZIONE rispetto al riposo -- cioe' in cui
 # «acceso» significa che qualcuno o qualcosa lo ha acceso.
@@ -202,7 +202,7 @@ _STATI_ATTIVI = {"on", "open", "unlocked", "playing", "cleaning"}
 # non qualcosa che HA dichiara da se'. Pinnato in
 # tests/test_vocabolario_tipologie.py: da riguardare quando un dominio nuovo
 # entra nel prodotto e ha un proprio stato "attivo" degno di annuncio.
-_DOMINI_EVENTO = {
+_EVENT_DOMAINS = {
     "light", "switch", "cover", "lock", "fan",
     "media_player", "valve", "remote", "siren", "vacuum",
 }
@@ -223,7 +223,7 @@ _DOMINI_EVENTO = {
 # forte di un elenco ricopiato). L'elenco stesso e' pinnato di suo (mutazione:
 # toglierne una classe fa rosso) in tests/test_vocabolario_tipologie.py; da
 # riguardare quando HA aggiunge una nuova device_class di allarme o apertura.
-_CLASSI_EVENTO = {
+_EVENT_CLASSES = {
     # allarmi
     "moisture", "smoke", "gas", "carbon_monoxide", "safety", "tamper", "problem",
     "heat", "cold",
@@ -235,7 +235,7 @@ _CLASSI_EVENTO = {
 # sfonderebbe il nucleo tanto quanto elencare le trecento entita' della casa
 # (vedi il docstring del modulo): si raggruppa per area, dominio e stato --
 # vedi `_raggruppa_notevoli`.
-_SOGLIA_NOTEVOLE_INDIVIDUALE = 15
+_INDIVIDUAL_HIGHLIGHT_THRESHOLD = 15
 
 
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
@@ -246,7 +246,7 @@ _SOGLIA_NOTEVOLE_INDIVIDUALE = 15
 # piu' di questo, il budget per il resto si restringe di conseguenza (vedi
 # `componi()`) -- altrimenti l'avviso stesso, cresciuto oltre la stima,
 # sarebbe cio' che sfonda il tetto in silenzio (IMPORTANT ④).
-_RISERVA_SEZIONE_LACUNE = 400
+_GAP_SECTION_RESERVE = 400
 
 # Quante righe della mappa (`_righe_casa`) il taglio non tocca MAI. E' la
 # sezione piu' economica per riga e la piu' utile per orientarsi (vedi
@@ -254,12 +254,12 @@ _RISERVA_SEZIONE_LACUNE = 400
 # svuota per intero PRIMA di toccare un solo ricordo, perche' "casa" viene
 # prima di "ricordi" nell'ordine di taglio -- un modello che legge quel
 # nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
-_RISERVA_MINIMA_RIGHE_CASA = 3
+_MIN_HOME_SPACE_ROWS_RESERVE = 3
 
 # L'intestazione della sezione dei guasti. E' una domanda a cui l'utente vuole
 # una risposta, non una categoria di archivio: «cosa non va» si legge e si
 # riferisce, «cio' che HIRIS ignora» si salta.
-_TITOLO_GUASTI = "## Cosa non va in casa"
+_FAULTS_HEADING = "## Cosa non va in casa"
 
 
 # Quanti nomi di dispositivo una riga di conteggio puo' citare prima di
@@ -281,10 +281,10 @@ _TITOLO_GUASTI = "## Cosa non va in casa"
 # che sono un irrigatore solo ha bisogno di sapersi chiamare. Sopra l'uno il
 # nucleo torna a fare quello che dichiara di fare nel docstring del modulo:
 # conta, non elenca.
-_MAX_NOMI_DISPOSITIVO_IN_RIGA = 1
+_MAX_DEVICE_NAMES_IN_ROW = 1
 
 
-def _portatori(entita_area: list[dict], dominio: str) -> tuple[list[str], int]:
+def _carriers(area_entities: list[dict], domain: str) -> tuple[list[str], int]:
     """Chi PORTA le entita' di `dominio` in quest'area: gli id dei dispositivi
     distinti, e quante entita' non ne hanno nessuno.
 
@@ -297,21 +297,21 @@ def _portatori(entita_area: list[dict], dominio: str) -> tuple[list[str], int]:
     per cui `_conta_per_dominio` ordina: l'ordine dev'essere quello
     dell'anagrafe, non quello dell'hash, o due letture della stessa casa
     producono due nuclei diversi."""
-    dispositivi: list[str] = []
-    senza = 0
-    for entita in entita_area:
-        if domain_of(entita["id"]) != dominio:
+    devices: list[str] = []
+    without = 0
+    for entity in area_entities:
+        if domain_of(entity["id"]) != domain:
             continue
-        dispositivo_id = entita.get("dispositivo_id")
-        if not dispositivo_id:
-            senza += 1
-        elif dispositivo_id not in dispositivi:
-            dispositivi.append(dispositivo_id)
-    return dispositivi, senza
+        device_id = entity.get("dispositivo_id")
+        if not device_id:
+            without += 1
+        elif device_id not in devices:
+            devices.append(device_id)
+    return devices, without
 
 
-def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
-                             nomi_dispositivo: dict[str, str] | None) -> str:
+def _device_annotation(area_entities: list[dict], domain: str, count: int,
+                             device_names: dict[str, str] | None) -> str:
     """Il pezzo fra parentesi da attaccare a «4 valve» -- o "" quando la riga
     non mente per omissione.
 
@@ -328,19 +328,19 @@ def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
     `dispositivo_id` un riferimento al nulla e l'annotazione stamperebbe
     "(id: ...)" su tutta la casa. La lacuna e' gia' dichiarata in "cio' che
     HIRIS ignora": qui non si aggiunge un secondo silenzio."""
-    if nomi_dispositivo is None:
+    if device_names is None:
         return ""
-    dispositivi, senza = _portatori(entita_area, dominio)
-    if len(dispositivi) + senza >= quante:
+    devices, without = _carriers(area_entities, domain)
+    if len(devices) + without >= count:
         # Tante cose quante entita': il conteggio dice gia' tutto.
         return ""
-    if senza or len(dispositivi) > _MAX_NOMI_DISPOSITIVO_IN_RIGA:
+    if without or len(devices) > _MAX_DEVICE_NAMES_IN_ROW:
         # Piu' di un portatore: si conta, non si elenca (vedi la costante).
         # `senza` non nullo con un solo dispositivo e' lo stesso caso visto da
         # un'altra parte -- il nome coprirebbe solo una parte delle entita'
         # contate, e un'annotazione parziale afferma piu' di quel che sa.
         return ""
-    if not dispositivi:
+    if not devices:
         # Irraggiungibile da `_righe_casa`, che conta e raggruppa sulla STESSA
         # lista con lo STESSO `_dominio`: con zero portatori e zero entita'
         # senza dispositivo, `quante` e' zero e il confronto `>= quante` ha gia'
@@ -351,34 +351,34 @@ def _annotazione_dispositivo(entita_area: list[dict], dominio: str, quante: int,
         # totale d'area, un conteggio precalcolato) qui trova una riga senza
         # annotazione invece di una casa senza assistente.
         return ""
-    id_dispositivo = dispositivi[0]
-    nome = (nomi_dispositivo.get(id_dispositivo) or "").strip()
-    if nome:
-        return f" ({nome})"
+    device_id = devices[0]
+    name = (device_names.get(device_id) or "").strip()
+    if name:
+        return f" ({name})"
     # Un dispositivo senza nome esiste davvero: `casa/archivio.py` scrive
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
     # MARCATO come id -- la stessa convenzione di `_nome_area_visualizzato`
     # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui
     # `guarda("dispositivo", ...)` lo ritrova, e perche' un id tecnico non va
     # mai spacciato per un nome dichiarato dall'utente.
-    return f" (id: {id_dispositivo})"
+    return f" (id: {device_id})"
 
 
-def _nome_dominio(dominio: str, n: int) -> str:
-    coppia = _NOMI_DOMINIO.get(dominio)
-    if coppia is None:
-        return dominio
-    singolare, plurale = coppia
-    return singolare if n == 1 else plurale
+def _domain_name(domain: str, n: int) -> str:
+    pair = _DOMAIN_NAMES.get(domain)
+    if pair is None:
+        return domain
+    singular, plural = pair
+    return singular if n == 1 else plural
 
 
-def _plurale(n: int, singolare: str, plurale: str) -> str:
-    return singolare if n == 1 else plurale
+def _plural(n: int, singular: str, plural: str) -> str:
+    return singular if n == 1 else plural
 
 
 
 
-def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
+def _is_event(domain: str, device_class: str | None, value) -> bool:
     """Sta SUCCEDENDO qualcosa? -- non «e' cosi'», non «vale tanto».
 
     E' la domanda che il digesto deve porsi, ed e' diversa da «vale la pena
@@ -389,26 +389,26 @@ def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
     esisteva e al suo posto c'era un `in _STATI_NOTEVOLI` cieco al tipo: 300
     elementi su 845, e il dettaglio individuale perso sotto il raggruppamento.
     """
-    v = str(valore).lower()
-    if dominio == "alarm_control_panel":
+    v = str(value).lower()
+    if domain == "alarm_control_panel":
         # Solo "triggered": armato e disarmato sono la routine quotidiana, non
         # un'eccezione. Regola gia' presente prima di questa fetta, conservata.
         return v == "triggered"
-    if dominio == "binary_sensor":
-        return v == "on" and classe in _CLASSI_EVENTO
-    if dominio in _DOMINI_EVENTO:
-        return v in _STATI_ATTIVI
+    if domain == "binary_sensor":
+        return v == "on" and device_class in _EVENT_CLASSES
+    if domain in _EVENT_DOMAINS:
+        return v in _ACTIVE_STATES
     return False
 
 
-def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
-    conteggio: dict[str, int] = {}
-    for e in entita:
-        dominio = domain_of(e["id"])
-        conteggio[dominio] = conteggio.get(dominio, 0) + 1
+def _count_per_domain(entity: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for e in entity:
+        domain = domain_of(e["id"])
+        counts[domain] = counts.get(domain, 0) + 1
     # Ordine alfabetico sul dominio: stabile, non dipende dall'ordine in cui
     # i registri sono stati letti o restituiti.
-    return {dominio: conteggio[dominio] for dominio in sorted(conteggio)}
+    return {domain: counts[domain] for domain in sorted(counts)}
 
 
 # `nome_con_id` (R1, fetta "i riferimenti", incidente 2026-08-20) ora vive in
@@ -417,7 +417,7 @@ def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
 # scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
 
 
-def _nome_area_visualizzato(area: dict) -> str:
+def _displayed_area_name(area: dict) -> str:
     """Il nome di un'area per il PREFISSO di "Notevole adesso"
     (`_area_di_ogni_entita`): l'id accanto solo se e' una pseudo-area
     (IMPORTANT ⑦): "Senza area", "Aree non lette" & co. non esistono
@@ -438,7 +438,7 @@ def _nome_area_visualizzato(area: dict) -> str:
     return area["nome"]
 
 
-def _nome_area_per_albero(area: dict) -> str:
+def _tree_area_name(area: dict) -> str:
     """Il nome di un'area per l'albero di "La casa" (`_righe_casa`): l'id
     accanto SEMPRE che differisca dal nome, reale o pseudo che sia -- e' il
     reperto R1 dell'incidente 2026-08-20: l'albero mostrava solo nomi,
@@ -454,7 +454,7 @@ def _nome_area_per_albero(area: dict) -> str:
 # in `homeassistant/const.py`, non trascritte da una tabella di
 # documentazione: e' esattamente il modo in cui "co" sarebbe dovuto essere
 # "carbon_monoxide" e un allarme monossido sarebbe sparito in silenzio).
-_NOMI_MISURA = {
+_MEASUREMENT_NAMES = {
     "temperature": "temperatura",
     "length": "lunghezza",
     "mass": "massa",
@@ -466,7 +466,7 @@ _NOMI_MISURA = {
 }
 
 
-def _riga_adesso(sistema: dict | None, adesso: float | None) -> str:
+def _now_row(frame: dict | None, now: float | None) -> str:
     """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
 
     Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `prometti`
@@ -482,19 +482,19 @@ def _riga_adesso(sistema: dict | None, adesso: float | None) -> str:
     UTC E LO SI SCRIVE -- non e' il ripiego silenzioso che questo modulo
     vieta, e' un'altra affermazione vera.
     """
-    if adesso is None:
+    if now is None:
         return ""
-    nome = (sistema or {}).get("fuso") or ""
+    name = (frame or {}).get("fuso") or ""
     try:
-        fuso, etichetta = (ZoneInfo(nome), nome) if nome else (UTC, "UTC")
+        timezone, label = (ZoneInfo(name), name) if name else (UTC, "UTC")
     except (ZoneInfoNotFoundError, ValueError):
-        fuso, etichetta = UTC, "UTC"
-    quando = datetime.fromtimestamp(adesso, fuso)
+        timezone, label = UTC, "UTC"
+    when = datetime.fromtimestamp(now, timezone)
     return "Adesso sono le {} del {} (fuso {}).".format(
-        quando.strftime("%H:%M"), quando.strftime("%d/%m/%Y"), etichetta)
+        when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label)
 
 
-def _righe_sistema(sistema: dict | None, adesso: float | None = None) -> list[str]:
+def _reference_frame_rows(frame: dict | None, now: float | None = None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
     Va PRIMA di tutto il resto perche' e' cio' che rende leggibile tutto il
@@ -512,53 +512,53 @@ def _righe_sistema(sistema: dict | None, adesso: float | None = None) -> list[st
     contenere un sensore in Fahrenheit, e un indice senza unita' non diventa
     "gradi" perche' la casa e' metrica.
     """
-    if not sistema:
+    if not frame:
         return []
-    righe = []
-    identita = []
+    rows = []
+    identity = []
     # Il nome che l'utente ha dato alla casa in Home Assistant. Entrava nel
     # sistema di riferimento e non usciva da questa riga: la fetta A dichiarava
     # «esce da due porte, con la stessa forma», e ne usciva da una e mezza.
     # Per primo, perche' e' il nome della cosa di cui parla tutto il resto.
-    if sistema.get("nome"):
-        identita.append(f"casa «{sistema['nome']}»")
-    if sistema.get("fuso"):
-        identita.append(f"fuso {sistema['fuso']}")
-    if sistema.get("lingua"):
-        identita.append(f"lingua {sistema['lingua']}")
-    if sistema.get("valuta"):
-        identita.append(f"valuta {sistema['valuta']}")
-    if sistema.get("paese"):
-        identita.append(f"paese {sistema['paese']}")
-    if sistema.get("versione_ha"):
-        identita.append(f"Home Assistant {sistema['versione_ha']}")
-    if identita:
-        righe.append("Riferimento: " + ", ".join(identita) + ".")
+    if frame.get("nome"):
+        identity.append(f"casa «{frame['nome']}»")
+    if frame.get("fuso"):
+        identity.append(f"fuso {frame['fuso']}")
+    if frame.get("lingua"):
+        identity.append(f"lingua {frame['lingua']}")
+    if frame.get("valuta"):
+        identity.append(f"valuta {frame['valuta']}")
+    if frame.get("paese"):
+        identity.append(f"paese {frame['paese']}")
+    if frame.get("versione_ha"):
+        identity.append(f"Home Assistant {frame['versione_ha']}")
+    if identity:
+        rows.append("Riferimento: " + ", ".join(identity) + ".")
     # Subito dopo il fuso, perche' e' lo stesso oggetto: l'ora e il sistema in
     # cui leggerla. Dentro `righe_sistema` e non accanto, cosi' eredita il peso
     # 0 del taglio (`pesi_casa` in `componi`): un nucleo che tronca via
     # l'orologio rimetterebbe il modello a indovinare l'ora proprio nei casi
     # in cui la casa e' grande.
-    riga_adesso = _riga_adesso(sistema, adesso)
-    if riga_adesso:
-        righe.append(riga_adesso)
+    now_row = _now_row(frame, now)
+    if now_row:
+        rows.append(now_row)
 
-    unita = sistema.get("unita") or {}
-    if isinstance(unita, dict):
+    unit = frame.get("unita") or {}
+    if isinstance(unit, dict):
         # Ordine dichiarato da `_NOMI_MISURA`, non quello del dizionario che
         # arriva da HA: due case identiche devono produrre lo stesso digesto.
-        misure = [f"{nome} {unita[chiave]}"
-                  for chiave, nome in _NOMI_MISURA.items() if unita.get(chiave)]
-        if misure:
-            righe.append(
-                "Unita' con cui ragiona la casa: " + ", ".join(misure)
+        measurements = [f"{name} {unit[key]}"
+                  for key, name in _MEASUREMENT_NAMES.items() if unit.get(key)]
+        if measurements:
+            rows.append(
+                "Unita' con cui ragiona la casa: " + ", ".join(measurements)
                 + " (ogni entita' porta la propria: se manca, manca -- non e'"
                   " questa).")
-    return righe
+    return rows
 
 
-def _righe_casa(piani: list[dict],
-                nomi_dispositivo: dict[str, str] | None) -> list[str]:
+def _home_space_rows(floors: list[dict],
+                device_names: dict[str, str] | None) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
     -- vedi il docstring del modulo sul perche'.
 
@@ -580,28 +580,28 @@ def _righe_casa(piani: list[dict],
     lascerebbe solo un modo di chiamare questa funzione che produce una
     mappa muta senza che nessuno l'abbia deciso. In un modulo che esiste per
     non degradare in silenzio, chi chiama dichiara se i nomi ce li ha."""
-    if not piani:
+    if not floors:
         return ["Nessun piano registrato."]
-    righe = []
-    for piano in piani:
-        righe.append(f"{name_with_id(piano['nome'], piano['id'])}:")
-        if not piano["aree"]:
-            righe.append("  - (nessuna area)")
+    rows = []
+    for floor in floors:
+        rows.append(f"{name_with_id(floor['nome'], floor['id'])}:")
+        if not floor["aree"]:
+            rows.append("  - (nessuna area)")
             continue
-        for area in piano["aree"]:
-            conteggio = _conta_perdominio_di(area["entita"])
-            if conteggio:
-                dettaglio = ", ".join(
-                    f"{n} {_nome_dominio(dom, n)}"
-                    + _annotazione_dispositivo(area["entita"], dom, n, nomi_dispositivo)
-                    for dom, n in conteggio.items())
+        for area in floor["aree"]:
+            counts = _count_per_domain(area["entita"])
+            if counts:
+                detail = ", ".join(
+                    f"{n} {_domain_name(dom, n)}"
+                    + _device_annotation(area["entita"], dom, n, device_names)
+                    for dom, n in counts.items())
             else:
-                dettaglio = "nessuna entita'"
-            righe.append(f"  - {_nome_area_per_albero(area)}: {dettaglio}")
-    return righe
+                detail = "nessuna entita'"
+            rows.append(f"  - {_tree_area_name(area)}: {detail}")
+    return rows
 
 
-def _area_di_ogni_entita(piani: list[dict]) -> dict[str, str]:
+def _area_per_entity(floors: list[dict]) -> dict[str, str]:
     """entity_id -> nome dell'area (o pseudo-area: "Senza area", "Aree non
     lette", ...) che le e' stata assegnata, letta dallo STESSO albero usato
     per "La casa". Serve a "Notevole adesso" per non ricalcolare l'area a
@@ -609,16 +609,16 @@ def _area_di_ogni_entita(piani: list[dict]) -> dict[str, str]:
     `gerarchia()` -- e per raccontare, di un'entita' con un riferimento
     penzolante o un registro caduto, esattamente cio' che "La casa" ne
     direbbe, invece di lasciarla senza prefisso in silenzio."""
-    mappa = {}
-    for piano in piani:
-        for area in piano["aree"]:
-            nome = _nome_area_visualizzato(area)
-            for entita in area["entita"]:
-                mappa[entita["id"]] = nome
-    return mappa
+    area_lookup = {}
+    for floor in floors:
+        for area in floor["aree"]:
+            name = _displayed_area_name(area)
+            for entity in area["entita"]:
+                area_lookup[entity["id"]] = name
+    return area_lookup
 
 
-def _raggruppa_notevoli(voci: list[dict]) -> list[tuple[int, str]]:
+def _group_highlights(entries: list[dict]) -> list[tuple[int, str]]:
     """Oltre `_SOGLIA_NOTEVOLE_INDIVIDUALE`, "Notevole adesso" CONTA anche
     lei invece di elencare -- "Cucina: 3 luci (accese)" invece di tre righe.
 
@@ -627,39 +627,39 @@ def _raggruppa_notevoli(voci: list[dict]) -> list[tuple[int, str]]:
     correttamente quanti ELEMENTI sono esclusi quando una riga raggruppata
     viene tagliata, non quante RIGHE (IMPORTANT ⑤) -- una riga puo' valere
     per cento entita'."""
-    conteggio: dict[tuple[str, str, str], int] = {}
-    ordine: list[tuple[str, str, str]] = []
-    for v in voci:
-        chiave = (v["area_nome"] or "Fuori da un'area nota", v["dominio"], v["stato_leggibile"])
-        if chiave not in conteggio:
-            ordine.append(chiave)
-        conteggio[chiave] = conteggio.get(chiave, 0) + 1
+    counts: dict[tuple[str, str, str], int] = {}
+    order: list[tuple[str, str, str]] = []
+    for v in entries:
+        key = (v["area_nome"] or "Fuori da un'area nota", v["dominio"], v["stato_leggibile"])
+        if key not in counts:
+            order.append(key)
+        counts[key] = counts.get(key, 0) + 1
     # Le righe si raccolgono nell'ordine in cui capitano le entita', che e'
     # quello dell'anagrafe: la stessa area finirebbe sparsa in tre punti
     # diversi dell'elenco. Qui si tengono insieme -- la leggibilita' non e' un
     # abbellimento, e' cio' che permette a chi legge (una persona dalla pagina,
     # o il modello nel prompt) di vedere una stanza per volta invece di
     # ricomporla a mente.
-    righe = []
-    for area_nome, dominio, stato_leggibile in sorted(ordine):
-        n = conteggio[(area_nome, dominio, stato_leggibile)]
-        riga = f"- {area_nome}: {n} {_nome_dominio(dominio, n)} ({stato_leggibile})"
-        righe.append((n, riga))
-    return righe
+    rows = []
+    for area_name, domain, readable_state in sorted(order):
+        n = counts[(area_name, domain, readable_state)]
+        row = f"- {area_name}: {n} {_domain_name(domain, n)} ({readable_state})"
+        rows.append((n, row))
+    return rows
 
 
-def _intestazione_notevoli_raggruppati(totale: int) -> str:
+def _grouped_highlights_heading(total: int) -> str:
     """La riga di testa di "Notevole adesso" quando raggruppato, ricostruita
     dal TOTALE ATTUALMENTE mostrato -- non da quello originale prima di un
     eventuale taglio (IMPORTANT ⑤): un'intestazione che dice "150 elementi"
     sopra righe che ne sommano 95 e' il nucleo che si contraddice da solo."""
-    voce = _plurale(totale, "elemento notevole", "elementi notevoli")
-    return (f"({totale} {voce}: raggruppati per area, dominio e stato -- "
-            f"oltre {_SOGLIA_NOTEVOLE_INDIVIDUALE} il dettaglio individuale non ci sta.)")
+    entry = _plural(total, "elemento notevole", "elementi notevoli")
+    return (f"({total} {entry}: raggruppati per area, dominio e stato -- "
+            f"oltre {_INDIVIDUAL_HIGHLIGHT_THRESHOLD} il dettaglio individuale non ci sta.)")
 
 
-def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool,
-                        non_disponibili: tuple[str, ...] = ()) -> bool:
+def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
+                        unavailable: tuple[str, ...] = ()) -> bool:
     """Distingue «ho guardato ed e' tutto tranquillo» da «non ho guardato»:
     sono due cose diverse, e la Sezione 2 deve dirle diversamente (CRITICAL
     ②). Tre modi per finirci dentro:
@@ -682,23 +682,23 @@ def _stato_inaffidabile(casa: dict, stato: dict, stato_affidabile: bool,
 
     Una casa senza entita' non ci finisce: li' "niente di notevole" e'
     vero, non e' un silenzio -- non c'e' nulla da guardare."""
-    if not stato_affidabile:
+    if not reliable_state:
         return True
-    if "entita" in non_disponibili:
+    if "entita" in unavailable:
         return True
-    entita_attive = [e for e in casa.get("entita", []) if not e.get("disabilitata")]
-    if not entita_attive:
+    active_entities = [e for e in home_space.get("entita", []) if not e.get("disabilitata")]
+    if not active_entities:
         return False
-    for e in entita_attive:
-        valore = stato.get(e["id"])
-        if valore is not None and str(valore).lower() != "unknown":
+    for e in active_entities:
+        value = state.get(e["id"])
+        if value is not None and str(value).lower() != "unknown":
             return False
     return True
 
 
-def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
-                    stato_inaffidabile: bool,
-                    classi_vive: dict[str, str] | None = None
+def _highlight_rows(home_space: dict, state: dict, floors: list[dict],
+                    unreliable_state: bool,
+                    reported_classes: dict[str, str] | None = None
                     ) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
@@ -714,23 +714,23 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
     nelle righe tagliabili apposta, per poterla ricalcolare sul totale VERO
     dopo il taglio invece di lasciarla affermare un numero che le righe
     sotto non confermano piu'."""
-    if stato_inaffidabile:
+    if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
             "questo momento c'e' qualcosa di notevole -- non e' lo stesso di "
             "'niente di notevole'.")
         ], [1], False)
-    area_per_entita = _area_di_ogni_entita(piani)
+    area_per_entity = _area_per_entity(floors)
     # La classe viene dallo SPECCHIO: il registro delle entita' non la manda
     # (`anagrafe.classe_effettiva`). Finche' si e' letta solo dal registro,
     # `_e_un_evento` ha sempre ricevuto `None` per ogni sensore binario --
     # quindi nessun allagamento, nessun fumo, nessun monossido e' MAI entrato
     # in questa sezione, e le voci di `_SIGNIFICATO_CLASSE` non sono mai
     # state raggiunte.
-    vive = classi_vive or {}
-    voci = []
-    irraggiungibili = 0
-    for e in casa.get("entita", []):
+    reported = reported_classes or {}
+    entries = []
+    unreachable = 0
+    for e in home_space.get("entita", []):
         if e.get("disabilitata"):
             continue
         # I DUE CAMPI CHE HOME ASSISTANT DICHIARA, e che questo digesto
@@ -747,24 +747,24 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
         if e.get("nascosta"):
             continue
         entity_id = e["id"]
-        if entity_id not in stato:
+        if entity_id not in state:
             continue
-        valore = stato[entity_id]
+        value = state[entity_id]
         # Le irraggiungibili non sono «cosa sta facendo la casa»: sono SALUTE,
         # ed erano 119 -- 76 righe di digesto. Il fatto resta (una riga di
         # conteggio, sotto), il dettaglio e' della fetta «salute di HA».
-        if str(valore).lower() == "unavailable":
-            irraggiungibili += 1
+        if str(value).lower() == "unavailable":
+            unreachable += 1
             continue
-        if not _e_un_evento(
-            domain_of(entity_id), actual_class(e.get("classe"), vive.get(entity_id)), valore,
+        if not _is_event(
+            domain_of(entity_id), actual_class(e.get("classe"), reported.get(entity_id)), value,
         ):
             continue
-        voci.append({
-            "area_nome": area_per_entita.get(entity_id),
+        entries.append({
+            "area_nome": area_per_entity.get(entity_id),
             "dominio": domain_of(entity_id),
             "stato_leggibile": translate_state(
-                valore, actual_class(e.get("classe"), vive.get(entity_id)),
+                value, actual_class(e.get("classe"), reported.get(entity_id)),
             ),
             "nome": e.get("nome") or entity_id,
         })
@@ -773,57 +773,57 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
     # sarebbe la prima a cadere; e `_intestazione_notevoli_raggruppati` conta
     # la somma dei pesi, quindi con peso 1 direbbe «N+1 elementi notevoli»
     # includendo una riga che non e' un elemento ma un riassunto.
-    riga_giu = ([f"- {irraggiungibili} entità non rispondono."]
-                if irraggiungibili else [])
-    peso_giu = [0] if irraggiungibili else []
+    unreachable_row = ([f"- {unreachable} entità non rispondono."]
+                if unreachable else [])
+    unreachable_weight = [0] if unreachable else []
 
-    if not voci:
+    if not entries:
         # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
         # due frasi diverse e si dicono tutte e due.
-        return (riga_giu + ["Niente di notevole al momento."],
-                peso_giu + [1], False)
-    if len(voci) > _SOGLIA_NOTEVOLE_INDIVIDUALE:
-        gruppi = _raggruppa_notevoli(voci)
-        return (riga_giu + [riga for _, riga in gruppi],
-                peso_giu + [peso for peso, _ in gruppi], True)
-    righe = []
-    for v in voci:
-        prefisso = f"{v['area_nome']}: " if v["area_nome"] else ""
-        righe.append(f"- {prefisso}{v['nome']} ({v['stato_leggibile']})")
-    return (riga_giu + righe, peso_giu + [1] * len(righe), False)
+        return (unreachable_row + ["Niente di notevole al momento."],
+                unreachable_weight + [1], False)
+    if len(entries) > _INDIVIDUAL_HIGHLIGHT_THRESHOLD:
+        groups = _group_highlights(entries)
+        return (unreachable_row + [row for _, row in groups],
+                unreachable_weight + [weight for weight, _ in groups], True)
+    rows = []
+    for v in entries:
+        prefix = f"{v['area_nome']}: " if v["area_nome"] else ""
+        rows.append(f"- {prefix}{v['nome']} ({v['stato_leggibile']})")
+    return (unreachable_row + rows, unreachable_weight + [1] * len(rows), False)
 
 
-def _righe_comportamento(comportamento: list[dict]) -> list[str]:
+def _behavior_rows(behavior: list[dict]) -> list[str]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `nome_con_id` in `anagrafe.py`: fetta "i riferimenti",
     incidente 2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
-    if not comportamento:
+    if not behavior:
         return ["Nessuna automazione o script registrati."]
-    righe = []
-    for v in comportamento:
+    rows = []
+    for v in behavior:
         id_ = v.get("id")
-        nome = v.get("nome") or id_ or "(senza nome)"
-        tipo = v.get("tipo", "?")
-        riga = f"- {name_with_id(nome, id_)} ({tipo})"
+        name = v.get("nome") or id_ or "(senza nome)"
+        kind = v.get("tipo", "?")
+        row = f"- {name_with_id(name, id_)} ({kind})"
         if v.get("corpo") is None:
-            riga += " -- corpo non disponibile, solo il nome"
-        righe.append(riga)
-    return righe
+            row += " -- corpo non disponibile, solo il nome"
+        rows.append(row)
+    return rows
 
 
 # Gli stati in cui un'integrazione di Home Assistant NON sta funzionando.
 # I valori sono quelli veri di `ConfigEntryState` (`homeassistant/config_entries.py`),
 # verificati: `loaded` e' l'unico stato sano, `setup_in_progress` e
 # `unload_in_progress` sono momentanei e non si annunciano.
-_STATI_INTEGRAZIONE_ROTTA = {
+_BROKEN_INTEGRATION_STATES = {
     "setup_error", "setup_retry", "migration_error", "failed_unload", "not_loaded",
 }
 
 
-def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
+def _integrations_notice(integrations: list[dict]) -> str | None:
     """«Perche' la telecamera del giardino non risponde?»
 
     Un'integrazione caduta e' la spiegazione piu' probabile di un gruppo di
@@ -842,9 +842,9 @@ def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
     Il motivo esce solo se c'e': HA lo riempie per `setup_error` e
     `setup_retry`, non sempre per `not_loaded`. Inventarlo sarebbe peggio.
     """
-    rotte = [i for i in integrazioni or []
-             if (i.get("stato") or "") in _STATI_INTEGRAZIONE_ROTTA]
-    if not rotte:
+    broken = [i for i in integrations or []
+             if (i.get("stato") or "") in _BROKEN_INTEGRATION_STATES]
+    if not broken:
         return None
     # Una voce per NOME+STATO+MOTIVO, non una per config entry.
     #
@@ -863,20 +863,20 @@ def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
     #
     # Il titolo si ripulisce dagli spazi: sull'impianto vero c'e' un
     # «Abat-jour » con lo spazio in coda, e uscirebbe cosi' nel testo.
-    conteggio: dict[tuple, int] = {}
-    for i in sorted(rotte, key=lambda x: (x.get("dominio") or "", x.get("titolo") or "")):
-        nome = (i.get("titolo") or i.get("dominio") or "senza nome").strip() or "senza nome"
-        motivo = (i.get("motivo") or "").strip()
-        chiave = (nome, i.get("stato"), motivo)
-        conteggio[chiave] = conteggio.get(chiave, 0) + 1
-    voci = []
-    for (nome, stato, motivo), quante in conteggio.items():
-        ripetuta = f" x{quante}" if quante > 1 else ""
-        voci.append(f"{nome}{ripetuta} ({stato}{': ' + motivo if motivo else ''})")
-    totale = sum(conteggio.values())
-    quante = "Un'integrazione" if totale == 1 else f"{totale} integrazioni"
-    verbo = "non sta funzionando" if totale == 1 else "non stanno funzionando"
-    return (f"{quante} di Home Assistant {verbo}: {', '.join(voci)}. "
+    counts: dict[tuple, int] = {}
+    for i in sorted(broken, key=lambda x: (x.get("dominio") or "", x.get("titolo") or "")):
+        name = (i.get("titolo") or i.get("dominio") or "senza nome").strip() or "senza nome"
+        reason = (i.get("motivo") or "").strip()
+        key = (name, i.get("stato"), reason)
+        counts[key] = counts.get(key, 0) + 1
+    entries = []
+    for (name, state, reason), count in counts.items():
+        repeat_suffix = f" x{count}" if count > 1 else ""
+        entries.append(f"{name}{repeat_suffix} ({state}{': ' + reason if reason else ''})")
+    total = sum(counts.values())
+    count_phrase = "Un'integrazione" if total == 1 else f"{total} integrazioni"
+    verb = "non sta funzionando" if total == 1 else "non stanno funzionando"
+    return (f"{count_phrase} di Home Assistant {verb}: {', '.join(entries)}. "
             "Le entita' che dipendono da loro possono non rispondere.")
 
 
@@ -901,7 +901,7 @@ def _avviso_integrazioni(integrazioni: list[dict]) -> str | None:
 # guasto da solo, e l'unico momento in cui saperlo serve e' prima. Tutto il
 # resto (`critical`, `error`, una severita' che non sappiamo giudicare) si
 # dice per nome.
-_SEVERITA_PROBLEMA_TACIUTE = ("warning",)
+_SILENCED_PROBLEM_SEVERITIES = ("warning",)
 
 # Quanti problemi si citano per nome prima di tornare a CONTARE -- la regola
 # del modulo (docstring in cima) applicata anche qui. Gli avvisi non passano
@@ -909,16 +909,16 @@ _SEVERITA_PROBLEMA_TACIUTE = ("warning",)
 # avviso di millecinquecento caratteri che niente puo' accorciare, dentro un
 # nucleo che ne ha seimila in tutto. Cinque bastano a far capire di che
 # famiglia sono; il numero degli altri resta dichiarato.
-_TETTO_PROBLEMI_ELENCATI = 5
+_LISTED_PROBLEMS_CEILING = 5
 
 # Dove si vanno a leggere per esteso. Il registro NON porta il testo del
 # problema -- porta una `translation_key` che vive nello `strings.json`
 # dell'integrazione, e HIRIS non ce l'ha. Mandare l'utente dove il testo c'e'
 # e' l'unica cosa onesta da fare al posto di inventarlo.
-_DOVE_SI_RIPARANO = "Impostazioni -> Riparazioni di Home Assistant"
+_REPAIR_LOCATION = "Impostazioni -> Riparazioni di Home Assistant"
 
 
-def _voce_problema(p: dict) -> str:
+def _problem_entry(p: dict) -> str:
     """Un problema in una riga, coi soli campi che si sanno interpretare.
 
     Il nome e' `dominio: chiave` ed e' lo STESSO ripiego che usa Home
@@ -939,21 +939,21 @@ def _voce_problema(p: dict) -> str:
       `server.rileggi_problemi_ha`), e una data di apertura non cambia cosa
       c'e' da fare.
     """
-    nome = f"{p.get('domain') or 'senza dominio'}: " \
+    name = f"{p.get('domain') or 'senza dominio'}: " \
            f"{p.get('translation_key') or p.get('issue_id') or 'senza chiave'}"
-    dettagli = [(p.get("severity") or "").strip().lower() or "severita' non dichiarata"]
-    scadenza = (p.get("breaks_in_ha_version") or "").strip()
-    if scadenza:
-        dettagli.append(f"si rompe in {scadenza}")
+    details = [(p.get("severity") or "").strip().lower() or "severita' non dichiarata"]
+    deadline = (p.get("breaks_in_ha_version") or "").strip()
+    if deadline:
+        details.append(f"si rompe in {deadline}")
     # `is_fixable` e' `bool | None`: `None` non e' `False`, e' «HA non lo dice».
     # Si annota solo il si', perche' e' l'unico che cambia cosa puo' fare chi
     # legge -- un clic invece di una modifica a mano.
     if p.get("is_fixable"):
-        dettagli.append("Home Assistant sa ripararlo da solo")
-    return f"{nome} ({', '.join(dettagli)})"
+        details.append("Home Assistant sa ripararlo da solo")
+    return f"{name} ({', '.join(details)})"
 
 
-def _avviso_problemi(problemi: dict | None) -> str | None:
+def _problems_notice(problems: dict | None) -> str | None:
     """Cio' che Home Assistant ha GIA' diagnosticato come rotto.
 
     Gemello di `_avviso_integrazioni`, e sta nella stessa sezione per la
@@ -976,26 +976,26 @@ def _avviso_problemi(problemi: dict | None) -> str | None:
     - `{"problemi": [...]}`: le righe come HA le manda, gia' senza le ignorate
       dall'utente (`HAClient.problemi`).
     """
-    if problemi is None:
+    if problems is None:
         return None
 
-    errore = (problemi.get("errore") or "").strip()
-    if errore:
+    error = (problems.get("errore") or "").strip()
+    if error:
         return ("il registro dei problemi di Home Assistant non si e' potuto "
-                f"leggere ({errore}): qui non si sta dicendo che la casa e' "
+                f"leggere ({error}): qui non si sta dicendo che la casa e' "
                 "sana, si sta dicendo che non si e' potuto guardare.")
 
-    da_dire: list[dict] = []
-    taciuti = 0
-    for p in problemi.get("problemi") or []:
+    to_report: list[dict] = []
+    silenced = 0
+    for p in problems.get("problemi") or []:
         if not isinstance(p, dict):
             continue
-        severita = (p.get("severity") or "").strip().lower()
-        scadenza = (p.get("breaks_in_ha_version") or "").strip()
-        if severita in _SEVERITA_PROBLEMA_TACIUTE and not scadenza:
-            taciuti += 1
+        severity = (p.get("severity") or "").strip().lower()
+        deadline = (p.get("breaks_in_ha_version") or "").strip()
+        if severity in _SILENCED_PROBLEM_SEVERITIES and not deadline:
+            silenced += 1
             continue
-        da_dire.append(p)
+        to_report.append(p)
 
     # L'ordine di gravita' NON si riscrive qui: `SEVERITA_PROBLEMA` e'
     # gia' ordinata dalla piu' grave, ed e' la sua unica casa (fondamenta:
@@ -1004,60 +1004,60 @@ def _avviso_problemi(problemi: dict | None) -> str | None:
     # Chi ha una severita' che non conosciamo finisce in fondo -- si dice
     # comunque, ma dopo cio' che sappiamo graduare. A parita', dominio e
     # chiave: due letture identiche devono produrre lo stesso nucleo.
-    def _gravita(p: dict) -> tuple[int, str, str]:
-        severita = (p.get("severity") or "").strip().lower()
-        rango = (PROBLEM_SEVERITY.index(severita)
-                 if severita in PROBLEM_SEVERITY
+    def _severity_rank(p: dict) -> tuple[int, str, str]:
+        severity = (p.get("severity") or "").strip().lower()
+        rank = (PROBLEM_SEVERITY.index(severity)
+                 if severity in PROBLEM_SEVERITY
                  else len(PROBLEM_SEVERITY))
-        return (rango, p.get("domain") or "", p.get("issue_id") or "")
+        return (rank, p.get("domain") or "", p.get("issue_id") or "")
 
-    da_dire.sort(key=_gravita)
-    non_elencati = max(0, len(da_dire) - _TETTO_PROBLEMI_ELENCATI)
+    to_report.sort(key=_severity_rank)
+    unlisted = max(0, len(to_report) - _LISTED_PROBLEMS_CEILING)
 
     # Il numero dei taciuti esce SEMPRE che ce ne siano, anche quando non c'e'
     # nient'altro da dire. Un filtro silenzioso e' un altro modo di mentire, e
     # il modulo dichiara gia' che la priorita' non e' «cosa e' recuperabile»
     # ma «cosa il modello perde la possibilita' di SAPERE che esiste»: il
     # numero glielo lascia, il testo si va a leggere dove il testo c'e'.
-    coda_taciuti = ""
-    if taciuti:
+    silenced_tail = ""
+    if silenced:
         # La frase intera cambia al singolare, non solo la desinenza: «Altri 1
         # problema ... non sono elencato» e' cio' che succede a concordare un
         # pezzo per volta. Stessa disciplina di `_avviso_taglio`, che per la
         # stessa ragione riceve le frasi gia' concordate.
-        coda_taciuti = (" Un altro problema di severita' minore non e' elencato"
-                        if taciuti == 1 else
-                        f" Altri {taciuti} problemi di severita' minore non sono elencati")
-        coda_taciuti += " (warning senza una versione di rottura dichiarata)."
+        silenced_tail = (" Un altro problema di severita' minore non e' elencato"
+                        if silenced == 1 else
+                        f" Altri {silenced} problemi di severita' minore non sono elencati")
+        silenced_tail += " (warning senza una versione di rottura dichiarata)."
 
-    if not da_dire:
-        if not taciuti:
+    if not to_report:
+        if not silenced:
             # Il registro c'e' ed e' vuoto: non si dice niente, che e' la cosa
             # giusta da dire. Stessa scelta di `_avviso_integrazioni` su una
             # casa sana.
             return None
         # Anche qui la frase intera, non la desinenza (vedi `coda_taciuti`).
-        quanti_e_quali = ("1 problema aperto di severita' minore" if taciuti == 1
-                          else f"{taciuti} problemi aperti di severita' minore")
-        chiusura = ("non e' elencato qui, si legge" if taciuti == 1
+        count_and_which = ("1 problema aperto di severita' minore" if silenced == 1
+                          else f"{silenced} problemi aperti di severita' minore")
+        closing_phrase = ("non e' elencato qui, si legge" if silenced == 1
                     else "non sono elencati qui, si leggono")
-        return (f"Home Assistant ha {quanti_e_quali} (warning senza una "
-                f"versione di rottura dichiarata): {chiusura} in "
-                f"{_DOVE_SI_RIPARANO}.")
+        return (f"Home Assistant ha {count_and_which} (warning senza una "
+                f"versione di rottura dichiarata): {closing_phrase} in "
+                f"{_REPAIR_LOCATION}.")
 
-    voci = "; ".join(_voce_problema(p) for p in da_dire[:_TETTO_PROBLEMI_ELENCATI])
-    quanti = len(da_dire)
-    voce = _plurale(quanti, "problema", "problemi")
-    coda_non_elencati = ""
-    if non_elencati:
-        coda_non_elencati = ("; e un altro problema della stessa lista, non elencato"
-                             if non_elencati == 1 else
-                             f"; e altri {non_elencati} problemi della stessa "
+    entries = "; ".join(_problem_entry(p) for p in to_report[:_LISTED_PROBLEMS_CEILING])
+    count = len(to_report)
+    entry = _plural(count, "problema", "problemi")
+    unlisted_tail = ""
+    if unlisted:
+        unlisted_tail = ("; e un altro problema della stessa lista, non elencato"
+                             if unlisted == 1 else
+                             f"; e altri {unlisted} problemi della stessa "
                              "lista, non elencati")
-    return (f"Home Assistant ha gia' diagnosticato {quanti} {voce}: {voci}"
-            f"{coda_non_elencati}.{coda_taciuti} "
-            f"Si {_plurale(quanti, 'legge', 'leggono')} per esteso e si "
-            f"{_plurale(quanti, 'ripara', 'riparano')} in {_DOVE_SI_RIPARANO}.")
+    return (f"Home Assistant ha gia' diagnosticato {count} {entry}: {entries}"
+            f"{unlisted_tail}.{silenced_tail} "
+            f"Si {_plural(count, 'legge', 'leggono')} per esteso e si "
+            f"{_plural(count, 'ripara', 'riparano')} in {_REPAIR_LOCATION}.")
 
 
 # Quanti `entity_id` si citano per area prima di tornare a CONTARE -- la
@@ -1067,23 +1067,23 @@ def _avviso_problemi(problemi: dict | None) -> str | None:
 # una riga che niente puo' accorciare. Quattro bastano a far capire di che
 # famiglia sono (una piattaforma sola? un dispositivo solo?); il numero degli
 # altri resta dichiarato.
-_TETTO_ENTITA_CONFRONTO = 4
+_COMPARISON_ENTITIES_CEILING = 4
 
 
-def _entita_citate(identificativi: list[str]) -> str:
+def _cited_entities(identifiers: list[str]) -> str:
     """Gli id di un'area, tagliati al tetto e col resto DICHIARATO. Mai un
     elenco accorciato in silenzio: sarebbe la stessa bugia del filtro muto."""
-    citate = list(identificativi)[:_TETTO_ENTITA_CONFRONTO]
-    resto = len(identificativi) - len(citate)
-    testo = ", ".join(citate)
-    if resto == 1:
-        testo += ", e un'altra"
-    elif resto > 1:
-        testo += f", e altre {resto}"
-    return testo
+    cited = list(identifiers)[:_COMPARISON_ENTITIES_CEILING]
+    rest = len(identifiers) - len(cited)
+    text = ", ".join(cited)
+    if rest == 1:
+        text += ", e un'altra"
+    elif rest > 1:
+        text += f", e altre {rest}"
+    return text
 
 
-def _avviso_confronto(confronto: dict | None) -> str | None:
+def _comparison_notice(comparison: dict | None) -> str | None:
     """L'albero raccontato da HIRIS contro la casa che Home Assistant risolve.
 
     Fino a questa fetta `gerarchia()` era un'AFFERMAZIONE che niente
@@ -1116,65 +1116,65 @@ def _avviso_confronto(confronto: dict | None) -> str | None:
     come per il giro intero -- `None` invece significa che il chiamante non ha
     chiesto, ed e' l'unico caso in cui il silenzio non afferma niente.
     """
-    if confronto is None:
+    if comparison is None:
         return None
 
-    errore = str(confronto.get("errore") or "").strip()
-    if errore:
+    error = str(comparison.get("errore") or "").strip()
+    if error:
         return ("il confronto fra l'albero della casa e Home Assistant non si e' "
-                f"potuto fare ({errore}): qui non si sta dicendo che l'albero "
+                f"potuto fare ({error}): qui non si sta dicendo che l'albero "
                 "combacia, si sta dicendo che non si e' potuto controllare.")
 
-    guardate = [g for g in confronto.get("guardate") or [] if isinstance(g, dict)]
-    if not guardate:
+    checked = [g for g in comparison.get("guardate") or [] if isinstance(g, dict)]
+    if not checked:
         # Nessuna area confrontata (una casa senza aree, o un giro che non e'
         # ancora partito). Si tace, e tacere qui non afferma niente: l'albero
         # non si dichiara verificato in nessun altro punto del nucleo.
         return None
 
-    piu = [g for g in guardate if g.get("in_piu") or g.get("assente_in_ha")]
-    meno = [g for g in guardate if g.get("mancanti")]
-    non_lette = [g for g in guardate if g.get("errore")]
-    if not (piu or meno or non_lette):
+    extra = [g for g in checked if g.get("in_piu") or g.get("assente_in_ha")]
+    missing = [g for g in checked if g.get("mancanti")]
+    not_loaded = [g for g in checked if g.get("errore")]
+    if not (extra or missing or not_loaded):
         # COMBACIANO. Vedi il docstring: e' il caso normale, e il silenzio e'
         # la cosa giusta da dire.
         return None
 
-    frasi: list[str] = []
+    phrases: list[str] = []
 
-    if piu:
-        voci = []
-        for g in piu:
+    if extra:
+        entries = []
+        for g in extra:
             if g.get("assente_in_ha"):
                 # L'area intera non c'e' piu': si dice questo e non l'elenco
                 # delle sue entita', che sarebbe la stessa notizia detta a
                 # pezzi.
-                voci.append(f"{g.get('nome')} ({g.get('area')}) non esiste "
+                entries.append(f"{g.get('nome')} ({g.get('area')}) non esiste "
                             "piu' in Home Assistant")
             else:
-                voci.append(f"{g.get('nome')}: {_entita_citate(g.get('in_piu') or [])}")
-        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
-        frasi.append(
-            f"In {quante} l'albero di HIRIS afferma qualcosa che Home Assistant "
-            f"non conferma -- {'; '.join(voci)}. E' il caso peggiore dei due: "
+                entries.append(f"{g.get('nome')}: {_cited_entities(g.get('in_piu') or [])}")
+        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        phrases.append(
+            f"In {count_phrase} l'albero di HIRIS afferma qualcosa che Home Assistant "
+            f"non conferma -- {'; '.join(entries)}. E' il caso peggiore dei due: "
             "e' cosi' che nasce una risposta sbagliata detta con sicurezza, e "
             "finche' l'anagrafe non si ricostruisce quelle attribuzioni non "
             "reggono.")
 
-    if meno:
-        voci = [f"{g.get('nome')}: {_entita_citate(g.get('mancanti') or [])}"
-                for g in meno]
-        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
-        frasi.append(
-            f"In {quante} Home Assistant riporta entita' che l'albero di HIRIS "
-            f"non ci attribuisce -- {'; '.join(voci)}. La replica dell'anagrafe "
+    if missing:
+        entries = [f"{g.get('nome')}: {_cited_entities(g.get('mancanti') or [])}"
+                for g in missing]
+        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        phrases.append(
+            f"In {count_phrase} Home Assistant riporta entita' che l'albero di HIRIS "
+            f"non ci attribuisce -- {'; '.join(entries)}. La replica dell'anagrafe "
             "e' piu' vecchia della casa, o un registro non ha risposto.")
 
-    if non_lette:
-        voci = [f"{g.get('nome')} ({g.get('errore')})" for g in non_lette]
-        quante = _plurale(len(voci), "un'area", f"{len(voci)} aree")
-        frasi.append(
-            f"Su {quante} il confronto non si e' potuto fare -- {'; '.join(voci)}: "
+    if not_loaded:
+        entries = [f"{g.get('nome')} ({g.get('errore')})" for g in not_loaded]
+        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        phrases.append(
+            f"Su {count_phrase} il confronto non si e' potuto fare -- {'; '.join(entries)}: "
             "non si sta dicendo che quelle aree combaciano, si sta dicendo che "
             "non si sono potute controllare.")
 
@@ -1182,26 +1182,26 @@ def _avviso_confronto(confronto: dict | None) -> str | None:
     # sembrare completo un controllo parziale -- «una divergenza in un'area»
     # detto senza dire che le aree guardate erano tre su sedici lascia credere
     # che le altre tredici siano state trovate a posto.
-    totali = confronto.get("aree_totali")
-    n = len(guardate)
-    verbo = _plurale(n, "Confrontata", "Confrontate")
-    quante = _plurale(n, "1 area", f"{n} aree")
-    if isinstance(totali, int) and 0 < totali <= n:
-        campione = f"{verbo} {quante}: tutte quelle della casa."
-    elif isinstance(totali, int) and totali > 0:
-        campione = (f"{verbo} {quante} sulle {totali} della casa; le altre non "
+    totals = comparison.get("aree_totali")
+    n = len(checked)
+    verb = _plural(n, "Confrontata", "Confrontate")
+    count_phrase = _plural(n, "1 area", f"{n} aree")
+    if isinstance(totals, int) and 0 < totals <= n:
+        sample = f"{verb} {count_phrase}: tutte quelle della casa."
+    elif isinstance(totals, int) and totals > 0:
+        sample = (f"{verb} {count_phrase} sulle {totals} della casa; le altre non "
                     "sono state guardate in questo giro.")
     else:
-        campione = f"{verbo} {quante} della casa."
-    frasi.append(campione)
+        sample = f"{verb} {count_phrase} della casa."
+    phrases.append(sample)
 
     # Le frasi sono FRASI, ognuna con la maiuscola: dopo un punto una
     # minuscola si legge come un errore di stampa, e un avviso che sembra rotto
     # si legge male anche quando dice la cosa giusta.
-    return "Confronto con Home Assistant -- " + " ".join(frasi)
+    return "Confronto con Home Assistant -- " + " ".join(phrases)
 
 
-def _righe_ricordi(ricordi: list[dict]) -> list[str]:
+def _memory_rows(memories: list[dict]) -> list[str]:
     """I ricordi ENTRANO INTERI, con chi li ha detti -- l'unica eccezione
     al "conta, non elencare" (vedi docstring del modulo).
 
@@ -1214,7 +1214,7 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     scarterebbero i piu' recenti mentre l'avviso continuerebbe ad
     affermare il contrario. Ordinando qui, la promessa la mantiene il
     codice, non il caso con cui arrivano gli argomenti."""
-    if not ricordi:
+    if not memories:
         return ["Nessun ricordo registrato."]
     # N1 (review indipendente 25/08/2026): questa riga chiamava
     # `sanitize_text` inline invece di `ricordi_sanificati()` -- la funzione
@@ -1234,28 +1234,28 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     # non nell'archivio (`memoria/archivio.py`), che resta la verita'
     # cosi' come e' stata detta (regola 1 del modulo): il testo
     # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
-    ricordi_ordinati = sorted(sanitized_memories(ricordi), key=lambda r: r.get("id", 0),
+    sorted_memories = sorted(sanitized_memories(memories), key=lambda r: r.get("id", 0),
                               reverse=True)
-    righe = []
-    for r in ricordi_ordinati:
-        detto_da = r.get("detto_da") or "qualcuno"
+    rows = []
+    for r in sorted_memories:
+        said_by = r.get("detto_da") or "qualcuno"
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
         # tagliato «si raggiunge con `guarda("ricordo", id)`» -- ma l'id non
         # era stampato da nessuna porta, e `richiama` esige un'ancora che i
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
         # colmarla.
-        righe.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {detto_da})")
-    return righe
+        rows.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {said_by})")
+    return rows
 
 
-def _righe_lacune(avvisi: list[str]) -> list[str]:
-    if not avvisi:
+def _gap_rows(notices: list[str]) -> list[str]:
+    if not notices:
         return ["Nessuna lacuna nota."]
-    return [f"- {a}" for a in avvisi]
+    return [f"- {a}" for a in notices]
 
 
-def _avviso_taglio(esclusi_per_pool: dict[str, int], ordine_taglio, tetto: int) -> str:
+def _cut_notice(excluded_per_pool: dict[str, int], cut_order, ceiling: int) -> str:
     """La frase che dichiara il taglio DENTRO il nucleo -- non solo nel
     riepilogo. Ricostruita da zero ogni volta che `esclusi_per_pool` cambia,
     cosi' non puo' mai restare disallineata da cio' che e' stato tagliato
@@ -1265,33 +1265,33 @@ def _avviso_taglio(esclusi_per_pool: dict[str, int], ordine_taglio, tetto: int) 
     generi diversi ("riga ... inclusa" contro "elemento ... incluso") non si
     possono comporre con un participio unico senza sbagliarne meta'.
     """
-    parti = []
-    for nome_pool, singolare, plurale in ordine_taglio:
-        n = esclusi_per_pool.get(nome_pool, 0)
+    parts = []
+    for pool_name, singular, plural in cut_order:
+        n = excluded_per_pool.get(pool_name, 0)
         if n:
-            parti.append(f"{n} {_plurale(n, singolare, plurale)}")
-    return f"Il nucleo superava il tetto di {tetto} caratteri: " + "; ".join(parti) + "."
+            parts.append(f"{n} {_plural(n, singular, plural)}")
+    return f"Il nucleo superava il tetto di {ceiling} caratteri: " + "; ".join(parts) + "."
 
 
-def _assembla(sezioni: list[tuple[str, list[str]]]) -> str:
-    blocchi = []
-    for titolo, righe in sezioni:
-        blocco = titolo if not righe else titolo + "\n" + "\n".join(righe)
-        blocchi.append(blocco)
-    return "\n\n".join(blocchi)
+def _assemble(sections: list[tuple[str, list[str]]]) -> str:
+    blocks = []
+    for title, rows in sections:
+        block = title if not rows else title + "\n" + "\n".join(rows)
+        blocks.append(block)
+    return "\n\n".join(blocks)
 
 
-def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
-            stato: dict, tetto: int = 6000,
-            non_disponibili: tuple[str, ...] = (),
-            stato_affidabile: bool = True,
+def compose(home_space: dict, behavior: list[dict], memories: list[dict],
+            state: dict, ceiling: int = 6000,
+            unavailable: tuple[str, ...] = (),
+            reliable_state: bool = True,
             behavior_problems: tuple[str, ...] = (),
-            file_non_letti_comportamento: dict[str, str] | None = None,
-            sistema_di_riferimento: dict | None = None,
-            classi_vive: dict[str, str] | None = None,
-            problemi: dict | None = None,
-            confronto: dict | None = None,
-            adesso: float | None = None) -> tuple[str, dict]:
+            unloaded_behavior_files: dict[str, str] | None = None,
+            reference_frame: dict | None = None,
+            reported_classes: dict[str, str] | None = None,
+            problems: dict | None = None,
+            comparison: dict | None = None,
+            now: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1353,7 +1353,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     docstring del modulo: non e' "cosa e' recuperabile" (lo e' tutto), e'
     "cosa il modello perde la possibilita' di sapere che esiste".
     """
-    avvisi: list[str] = []
+    notices: list[str] = []
 
     # DUE ELENCHI, non uno, e la differenza e' quella che ha fatto sbagliare
     # una risposta vera il 2026-08-18.
@@ -1374,24 +1374,24 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # Non e' stato un errore del modello: era il titolo a dire il falso. Nove
     # integrazioni rotte non sono cio' che HIRIS ignora, sono cio' che HIRIS
     # SA e deve dire.
-    guasti_casa: list[str] = []
+    home_space_faults: list[str] = []
 
-    guasto = _avviso_integrazioni(casa.get("integrazioni") or [])
-    if guasto:
-        guasti_casa.append(guasto)
+    fault = _integrations_notice(home_space.get("integrazioni") or [])
+    if fault:
+        home_space_faults.append(fault)
 
     # Subito dopo le integrazioni rotte, e non altrove: sono la stessa specie
     # di fatto -- cio' che HA ha diagnosticato -- e chi legge deve trovarli
     # accanto. Separarli significherebbe far cercare due volte la stessa
     # risposta.
-    diagnosi = _avviso_problemi(problemi)
-    if diagnosi:
-        guasti_casa.append(diagnosi)
+    diagnosis = _problems_notice(problems)
+    if diagnosis:
+        home_space_faults.append(diagnosis)
 
-    if non_disponibili:
-        avvisi.append(
+    if unavailable:
+        notices.append(
             "registri di Home Assistant che non hanno risposto all'ultima "
-            f"lettura: {', '.join(sorted(non_disponibili))}. "
+            f"lettura: {', '.join(sorted(unavailable))}. "
             "Cio' che manca qui sotto potrebbe esistere lo stesso.")
 
     # Subito dopo i registri caduti, e prima di tutto il resto: sono la stessa
@@ -1401,9 +1401,9 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # deve trovare le due cose una accanto all'altra. Gli avvisi di HA
     # (integrazioni, problemi) restano sopra perche' parlano della casa, non
     # della nostra copia.
-    divergenza = _avviso_confronto(confronto)
-    if divergenza:
-        avvisi.append(divergenza)
+    divergence = _comparison_notice(comparison)
+    if divergence:
+        notices.append(divergence)
 
     # Le NASCOSTE: fuori dalle gestioni, dentro la conoscenza.
     #
@@ -1418,13 +1418,13 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # senza chiamare uno strumento per ognuna delle sedici aree. `guarda` le
     # riporta gia' (filtra `disabilitata`, mai `nascosta`): la conoscenza c'era,
     # mancava il numero.
-    nascoste = [e for e in casa.get("entita", [])
+    hidden = [e for e in home_space.get("entita", [])
                 if e.get("nascosta") and not e.get("disabilitata")]
-    if nascoste:
-        n = len(nascoste)
-        voce = _plurale(n, "entita' nascosta", "entita' nascoste")
-        avvisi.append(
-            f"{n} {voce} in Home Assistant: non entrano in «Notevole adesso» "
+    if hidden:
+        n = len(hidden)
+        entry = _plural(n, "entita' nascosta", "entita' nascoste")
+        notices.append(
+            f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
             "perche' l'utente le ha nascoste, ma esistono e `guarda` le "
             "riporta se gliele chiedi.")
 
@@ -1435,22 +1435,22 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # sfondava il tetto del 94% da solo, e duplicava un'informazione gia'
     # visibile riga per riga in "Cio' che la casa fa gia' da sola"
     # (`_righe_comportamento` marca ogni voce senza corpo in linea).
-    corpi_mancanti = [v for v in comportamento if v.get("corpo") is None]
-    if corpi_mancanti:
-        n = len(corpi_mancanti)
-        voce = _plurale(n, "voce di comportamento", "voci di comportamento")
-        avvisi.append(f"{n} {voce} senza corpo disponibile (solo il nome).")
+    missing_bodies = [v for v in behavior if v.get("corpo") is None]
+    if missing_bodies:
+        n = len(missing_bodies)
+        entry = _plural(n, "voce di comportamento", "voci di comportamento")
+        notices.append(f"{n} {entry} senza corpo disponibile (solo il nome).")
 
     if behavior_problems:
         n = len(behavior_problems)
-        voce = _plurale(n, "problema", "problemi")
-        avvisi.append(
-            f"{n} {voce} nella lettura del comportamento (id duplicati, voci "
+        entry = _plural(n, "problema", "problemi")
+        notices.append(
+            f"{n} {entry} nella lettura del comportamento (id duplicati, voci "
             "malformate: vedi /api/casa per il dettaglio).")
 
-    if file_non_letti_comportamento:
-        nomi = ", ".join(sorted(file_non_letti_comportamento))
-        avvisi.append(f"file di comportamento non letti: {nomi}.")
+    if unloaded_behavior_files:
+        names = ", ".join(sorted(unloaded_behavior_files))
+        notices.append(f"file di comportamento non letti: {names}.")
 
     # `componi()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
     # sono gia' in `casa["dispositivi"]`, la stessa struttura che il chiamante
@@ -1464,68 +1464,69 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # riferimento al nulla e l'annotazione stamperebbe "(id: ...)" su tutta la
     # casa. La lacuna e' gia' dichiarata negli avvisi e in "cio' che HIRIS
     # ignora": qui si tace, non si inventa. Vedi `_annotazione_dispositivo`.
-    if "dispositivi" in non_disponibili:
-        nomi_dispositivo: dict[str, str] | None = None
+    if "dispositivi" in unavailable:
+        device_names: dict[str, str] | None = None
     else:
-        nomi_dispositivo = {d["id"]: (d.get("nome") or "")
-                            for d in casa.get("dispositivi") or [] if d.get("id")}
+        device_names = {d["id"]: (d.get("nome") or "")
+                            for d in home_space.get("dispositivi") or [] if d.get("id")}
 
     # Un solo albero (`gerarchia()`, con `non_disponibili` applicato),
     # condiviso da "La casa" e da "Notevole adesso": prima di questo fix
     # `_righe_notevole` se ne ricalcolava uno proprio a mano, che poteva
     # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
     # lette" (CRITICAL ①).
-    piani = hierarchy(casa, non_disponibili)
+    floors = hierarchy(home_space, unavailable)
     # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte
     # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
-    righe_sistema = _righe_sistema(sistema_di_riferimento, adesso)
-    righe_casa = righe_sistema + _righe_casa(piani, nomi_dispositivo)
+    reference_frame_rows = _reference_frame_rows(reference_frame, now)
+    home_space_rows = reference_frame_rows + _home_space_rows(floors, device_names)
 
-    inaffidabile = _stato_inaffidabile(casa, stato, stato_affidabile, non_disponibili)
-    if inaffidabile:
-        avvisi.append(
+    unreliable = _unreliable_state(home_space, state, reliable_state, unavailable)
+    if unreliable:
+        notices.append(
             "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
-    righe_notevole, pesi_notevole, notevole_raggruppato = _righe_notevole(
-        casa, stato, piani, inaffidabile, classi_vive)
-    righe_comportamento = _righe_comportamento(comportamento)
-    righe_ricordi = _righe_ricordi(ricordi)
+    highlight_rows, highlight_weights, grouped_highlight = _highlight_rows(
+        home_space, state, floors, unreliable, reported_classes)
+    behavior_rows = _behavior_rows(behavior)
+    memory_rows = _memory_rows(memories)
 
     # Peso 0 al riferimento: l'intestazione somma i pesi per dire quante righe
     # di conteggio ci sono, e il riferimento non e' un conteggio -- contarlo
     # avrebbe fatto dire al nucleo un numero di aree piu' alto del vero.
-    pesi_casa = [0] * len(righe_sistema) + [1] * (len(righe_casa) - len(righe_sistema))
+    home_space_weights = ([0] * len(reference_frame_rows)
+                           + [1] * (len(home_space_rows) - len(reference_frame_rows)))
     # La riserva che non si taglia mai vale i CONTEGGI: si alza di quanto
     # occupa il riferimento, cosi' aggiungerlo non toglie in silenzio una riga
     # di casa a chi legge (IMPORTANT (6)).
-    riserva_casa = _RISERVA_MINIMA_RIGHE_CASA + len(righe_sistema)
-    pesi_comportamento = [1] * len(righe_comportamento)
-    pesi_ricordi = [1] * len(righe_ricordi)
+    home_space_reserve = _MIN_HOME_SPACE_ROWS_RESERVE + len(reference_frame_rows)
+    behavior_weights = [1] * len(behavior_rows)
+    memory_weights = [1] * len(memory_rows)
 
-    def _sezione_notevole_corrente() -> list[str]:
+    def _current_highlight_section() -> list[str]:
         # L'intestazione raggruppata (se serve) si ricostruisce dal totale
         # ATTUALMENTE rappresentato dalle righe rimaste, mai da quello
         # originale: dopo un taglio, un'intestazione che afferma il numero
         # di PRIMA sopra righe che ne sommano meno e' il nucleo che si
         # contraddice da solo (IMPORTANT ⑤).
-        if notevole_raggruppato and righe_notevole:
-            return [_intestazione_notevoli_raggruppati(sum(pesi_notevole))] + righe_notevole
-        return list(righe_notevole)
+        if grouped_highlight and highlight_rows:
+            return [_grouped_highlights_heading(sum(highlight_weights))] + highlight_rows
+        return list(highlight_rows)
 
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
     # diverso e definito piu' sotto (`ordine_taglio`).
-    sez_casa = ("## La casa", righe_casa)
-    sez_notevole = ("## Notevole adesso", _sezione_notevole_corrente())
-    sez_comportamento = ("## Cio' che la casa fa gia' da sola", righe_comportamento)
-    sez_ricordi = ("## Cio' che le persone hanno detto", righe_ricordi)
+    home_space_section = ("## La casa", home_space_rows)
+    highlight_section = ("## Notevole adesso", _current_highlight_section())
+    behavior_section = ("## Cio' che la casa fa gia' da sola", behavior_rows)
+    memory_section = ("## Cio' che le persone hanno detto", memory_rows)
 
-    ordine_stampa = [sez_casa, sez_notevole, sez_comportamento, sez_ricordi]
+    print_order = [home_space_section, highlight_section, behavior_section, memory_section]
 
-    def _aggiorna_sezione_notevole() -> None:
-        ordine_stampa[1] = ("## Notevole adesso", _sezione_notevole_corrente())
+    def _refresh_highlight_section() -> None:
+        print_order[1] = ("## Notevole adesso", _current_highlight_section())
 
     # (chiave, righe, pesi, riserva minima) -- l'ordine qui e' l'ordine di
     # taglio: dal meno utile al piu' prezioso. Prima si tagliano gli
@@ -1544,17 +1545,17 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # ricreerebbe esattamente: un silenzio non dichiarato. Resta fuori dal
     # taglio; se il nucleo sfora lo stesso, ci pensa la rete di sicurezza
     # piu' sotto.
-    ordine_taglio: list[tuple[str, list[str], list[int], int]] = []
-    if not inaffidabile:
-        ordine_taglio.append(("notevole", righe_notevole, pesi_notevole, 0))
-    ordine_taglio += [
-        ("comportamento", righe_comportamento, pesi_comportamento, 0),
-        ("casa", righe_casa, pesi_casa, riserva_casa),
-        ("ricordi", righe_ricordi, pesi_ricordi, 0),
+    cut_order: list[tuple[str, list[str], list[int], int]] = []
+    if not unreliable:
+        cut_order.append(("notevole", highlight_rows, highlight_weights, 0))
+    cut_order += [
+        ("comportamento", behavior_rows, behavior_weights, 0),
+        ("casa", home_space_rows, home_space_weights, home_space_reserve),
+        ("ricordi", memory_rows, memory_weights, 0),
     ]
     # (chiave, frase singolare, frase plurale) GIA' concordate col genere
     # del sostantivo -- vedi il docstring di `_avviso_taglio`.
-    etichette_taglio = [
+    cut_labels = [
         ("notevole", "elemento notevole non incluso",
                      "elementi notevoli non inclusi"),
         ("comportamento", "voce di comportamento non inclusa",
@@ -1565,32 +1566,32 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
                     "ricordi non inclusi (i piu' vecchi prima)"),
     ]
 
-    troncato = False
-    esclusi_per_pool: dict[str, int] = {}
+    truncated = False
+    excluded_per_pool: dict[str, int] = {}
 
-    def _pop(nome_pool: str, righe_pool: list[str], pesi_pool: list[int], riserva: int) -> None:
+    def _pop(pool_name: str, rows_pool: list[str], pool_weights: list[int], reserve: int) -> None:
         # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
         # rappresenta davvero -- per "notevole" raggruppato puo' essere
         # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
         # volte sulla lacuna piu' calda della casa e' peggio di non
         # dichiararlo affatto: sembra onesto e non lo e'.
-        nonlocal troncato
-        righe_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
-        peso = pesi_pool.pop()
-        troncato = True
-        esclusi_per_pool[nome_pool] = esclusi_per_pool.get(nome_pool, 0) + peso
-        if nome_pool == "notevole":
-            _aggiorna_sezione_notevole()
-        if nome_pool == "casa":
+        nonlocal truncated
+        rows_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
+        weight = pool_weights.pop()
+        truncated = True
+        excluded_per_pool[pool_name] = excluded_per_pool.get(pool_name, 0) + weight
+        if pool_name == "notevole":
+            _refresh_highlight_section()
+        if pool_name == "casa":
             # MINOR: un'intestazione di piano ("Primo piano:") senza righe
             # sotto e' un artefatto del taglio, non un'informazione -- si
             # toglie a sua volta. Non conta come elemento escluso: le aree
             # che c'erano sotto sono gia' state contate ai loro rispettivi
             # pop, questo e' solo il titolo rimasto orfano.
-            while (len(righe_pool) > riserva and righe_pool
-                   and righe_pool[-1].endswith(":") and not righe_pool[-1].startswith("  ")):
-                righe_pool.pop()
-                pesi_pool.pop()
+            while (len(rows_pool) > reserve and rows_pool
+                   and rows_pool[-1].endswith(":") and not rows_pool[-1].startswith("  ")):
+                rows_pool.pop()
+                pool_weights.pop()
 
     # IMPORTANT ④: il budget per casa/notevole/comportamento/ricordi non e'
     # `tetto - _RISERVA_SEZIONE_LACUNE` alla cieca. Se le lacune GIA' note
@@ -1600,21 +1601,21 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # nucleo occuperebbe uno spazio che le lacune, gia' dichiarate, non
     # avrebbero avuto, e la rete di sicurezza sotto sarebbe l'unica cosa a
     # farsi carico dello sforamento.
-    lunghezza_lacune_note = len(_assembla([("## Cio' che HIRIS ignora", _righe_lacune(avvisi))]))
+    known_gaps_length = len(_assemble([("## Cio' che HIRIS ignora", _gap_rows(notices))]))
     # La sezione dei guasti entra nel conto come le lacune: sta FUORI dal
     # taglio -- non si accorcia mai, perche' e' la risposta alla domanda piu'
     # comune che si faccia a questo prodotto -- quindi lo spazio che occupa va
     # sottratto prima, o a farsi carico dello sforamento resterebbe solo la
     # rete di sicurezza in fondo.
-    lunghezza_guasti = (len(_assembla([(_TITOLO_GUASTI, list(guasti_casa))]))
-                        if guasti_casa else 0)
-    riserva_lacune = max(_RISERVA_SEZIONE_LACUNE, lunghezza_lacune_note + _RISERVA_SEZIONE_LACUNE)
-    budget = max(0, tetto - riserva_lacune - lunghezza_guasti)
+    faults_length = (len(_assemble([(_FAULTS_HEADING, list(home_space_faults))]))
+                        if home_space_faults else 0)
+    gap_reserve = max(_GAP_SECTION_RESERVE, known_gaps_length + _GAP_SECTION_RESERVE)
+    budget = max(0, ceiling - gap_reserve - faults_length)
 
-    for nome_pool, righe_pool, pesi_pool, riserva in ordine_taglio:
-        while len(righe_pool) > riserva and len(_assembla(ordine_stampa)) > budget:
-            _pop(nome_pool, righe_pool, pesi_pool, riserva)
-        if len(_assembla(ordine_stampa)) <= budget:
+    for pool_name, rows_pool, pool_weights, reserve in cut_order:
+        while len(rows_pool) > reserve and len(_assemble(print_order)) > budget:
+            _pop(pool_name, rows_pool, pool_weights, reserve)
+        if len(_assemble(print_order)) <= budget:
             break
 
     # L'indice dell'avviso di taglio dentro `avvisi`, se e quando esiste --
@@ -1622,12 +1623,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # di sovrascrivere un avviso diverso che gli stesse accanto (es. i
     # corpi mancanti), che una sostituzione posizionale "ultimo elemento"
     # romperebbe silenziosamente se il taglio scattasse solo piu' avanti.
-    indice_avviso_taglio = None
-    if troncato:
-        avvisi.append(_avviso_taglio(esclusi_per_pool, etichette_taglio, tetto))
-        indice_avviso_taglio = len(avvisi) - 1
+    cut_notice_index = None
+    if truncated:
+        notices.append(_cut_notice(excluded_per_pool, cut_labels, ceiling))
+        cut_notice_index = len(notices) - 1
 
-    sez_lacune = ("## Cio' che HIRIS ignora", _righe_lacune(avvisi))
+    gap_section = ("## Cio' che HIRIS ignora", _gap_rows(notices))
 
     # DOVE va la sezione dei guasti: subito dopo «La casa» e PRIMA di «Notevole
     # adesso». L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
@@ -1636,12 +1637,12 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # chi legge il riferimento per capire i nomi che ci trova dentro.
     #
     # Fuori dal pool di taglio, come le lacune: non si accorcia mai.
-    def _con_guasti(sezioni: list) -> list:
-        if not guasti_casa:
-            return sezioni
-        return [sezioni[0], (_TITOLO_GUASTI, list(guasti_casa))] + sezioni[1:]
+    def _with_faults(sections: list) -> list:
+        if not home_space_faults:
+            return sections
+        return [sections[0], (_FAULTS_HEADING, list(home_space_faults))] + sections[1:]
 
-    testo = _assembla(_con_guasti(ordine_stampa) + [sez_lacune])
+    text = _assemble(_with_faults(print_order) + [gap_section])
 
     # Rete di sicurezza: se anche cosi' il testo sfora, si continua a
     # tagliare -- ricordi prima (gia' l'ultima cosa nell'ordine di taglio),
@@ -1652,44 +1653,44 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # dichiarato in piu'. Si scende fino alla riserva minima della mappa;
     # oltre quella, mai (IMPORTANT ⑥): sforare il tetto in modo dichiarato
     # e' meno grave che svuotare anche la mappa in silenzio.
-    pools_sicurezza = [
-        ("ricordi", righe_ricordi, pesi_ricordi, 0),
-        ("comportamento", righe_comportamento, pesi_comportamento, 0),
-        ("casa", righe_casa, pesi_casa, riserva_casa),
+    safety_pools = [
+        ("ricordi", memory_rows, memory_weights, 0),
+        ("comportamento", behavior_rows, behavior_weights, 0),
+        ("casa", home_space_rows, home_space_weights, home_space_reserve),
     ]
-    if not inaffidabile:
-        pools_sicurezza.append(("notevole", righe_notevole, pesi_notevole, 0))
+    if not unreliable:
+        safety_pools.append(("notevole", highlight_rows, highlight_weights, 0))
 
-    while len(testo) > int(tetto * 1.1):
-        tagliato = False
-        for nome_pool, righe_pool, pesi_pool, riserva in pools_sicurezza:
-            if len(righe_pool) > riserva:
-                _pop(nome_pool, righe_pool, pesi_pool, riserva)
-                tagliato = True
+    while len(text) > int(ceiling * 1.1):
+        cut = False
+        for pool_name, rows_pool, pool_weights, reserve in safety_pools:
+            if len(rows_pool) > reserve:
+                _pop(pool_name, rows_pool, pool_weights, reserve)
+                cut = True
                 break
-        if not tagliato:
+        if not cut:
             break
-        messaggio = _avviso_taglio(esclusi_per_pool, etichette_taglio, tetto)
-        if indice_avviso_taglio is None:
-            avvisi.append(messaggio)
-            indice_avviso_taglio = len(avvisi) - 1
+        message = _cut_notice(excluded_per_pool, cut_labels, ceiling)
+        if cut_notice_index is None:
+            notices.append(message)
+            cut_notice_index = len(notices) - 1
         else:
-            avvisi[indice_avviso_taglio] = messaggio
-        sez_lacune = ("## Cio' che HIRIS ignora", _righe_lacune(avvisi))
-        testo = _assembla(_con_guasti(ordine_stampa) + [sez_lacune])
+            notices[cut_notice_index] = message
+        gap_section = ("## Cio' che HIRIS ignora", _gap_rows(notices))
+        text = _assemble(_with_faults(print_order) + [gap_section])
 
-    ricordi_esclusi = esclusi_per_pool.get("ricordi", 0)
+    memories_excluded = excluded_per_pool.get("ricordi", 0)
 
-    riepilogo = {
-        "caratteri": len(testo),
-        "troncato": troncato,
-        "ricordi_esclusi": ricordi_esclusi,
+    summary = {
+        "caratteri": len(text),
+        "troncato": truncated,
+        "ricordi_esclusi": memories_excluded,
         # Due chiavi come le due sezioni, e per la stessa ragione: `guasti`
         # sono fatti sulla CASA, `avvisi` sono i limiti di cio' che HIRIS sa.
         # Tenerli in un elenco solo qui rimetterebbe in piedi la confusione che
         # nel testo e' appena stata sciolta -- e il riepilogo non puo'
         # raccontare una forma diversa da quella che il testo ha.
-        "guasti": guasti_casa,
-        "avvisi": avvisi,
+        "guasti": home_space_faults,
+        "avvisi": notices,
     }
-    return testo, riepilogo
+    return text, summary

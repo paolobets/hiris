@@ -150,7 +150,7 @@ class UsageStore:
     # divergerebbero proprio su `costo_parziale` -- il campo che impedisce
     # alla pagina di spacciare un pavimento per un costo.
 
-    def _dove(self, da: str) -> tuple[str, tuple]:
+    def _where(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
 
     def sezioni(self, *, da: str = "", da_anchor: bool = False) -> list[dict]:
@@ -163,7 +163,7 @@ class UsageStore:
 
         if da_anchor:
             da = self._anchor_day() or da
-        dove, arg = self._dove(da)
+        where, arg = self._where(da)
         somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
         with self._lock:
             righe = self._conn.execute(
@@ -171,7 +171,7 @@ class UsageStore:
                 "MIN(costo_stato) AS uno_stato, "
                 "SUM(CASE WHEN costo_stato='non_noto' THEN 1 ELSE 0 END) AS ignoti, "
                 "MIN(giorno) AS primo_uso, MAX(giorno) AS ultimo_uso "
-                f"FROM consumo_giorno {dove} GROUP BY provider, modello "
+                f"FROM consumo_giorno {where} GROUP BY provider, modello "
                 "ORDER BY provider, modello", arg).fetchall()
 
         per_provider: dict[str, dict] = {}

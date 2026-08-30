@@ -24,7 +24,7 @@ Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
 import pytest
 
 from hiris.app.casa import anagrafe, nucleo
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 
 # Le finte vivono gia' in `test_nucleo.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
@@ -38,7 +38,7 @@ def _sezione_notevole(testo: str) -> str:
 
 def _con(entita, stato_extra):
     casa = dict(_CASA, entita=_CASA["entita"] + entita)
-    return componi(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
+    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
 
 
 def _voce(eid, nome, **extra):
@@ -105,7 +105,7 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
     il difetto che questa fetta chiude, su una riga sola. `_CLASSI_EVENTO` vive
     in `nucleo`, `_SIGNIFICATO_CLASSE` nella sua unica casa, `anagrafe`."""
-    senza = sorted(nucleo._CLASSI_EVENTO - set(anagrafe._CLASS_MEANING))
+    senza = sorted(nucleo._EVENT_CLASSES - set(anagrafe._CLASS_MEANING))
     assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
 
@@ -127,7 +127,7 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     vocabolario e aggiungergliene accanto un secondo."""
     assert not hasattr(nucleo, "_CLASSI_APERTURA"), (
         "la tabella vecchia deve sparire, non restare accanto alla nuova")
-    sezione = _sezione_notevole(componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
     assert "Porta" in sezione and "aperto" in sezione
 
 
@@ -215,7 +215,7 @@ def test_sotto_la_soglia_le_luci_si_chiamano_per_nome():
     """Il metro della fetta, in piccolo: tolto il rumore il digesto scende
     sotto i 15, il dettaglio individuale torna, e HIRIS puo' dire QUALE luce
     senza chiamare nessuno strumento."""
-    sezione = _sezione_notevole(componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
     assert "Faretti" in sezione
 
 
@@ -263,7 +263,7 @@ def test_senza_nascoste_non_si_dice_niente():
     """Un avviso che compare sempre non e' un avviso -- lezione gia' pagata in
     questo prodotto."""
     assert "nascost" not in _sezione_lacune(
-        componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+        compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
 
 
 def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
@@ -298,8 +298,8 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 def test_stati_attivi_e_pinnato_alla_fonte():
     """Mutazione: togliere uno stato da `_STATI_ATTIVI` deve far rosso
     questo test."""
-    senza = sorted(_STATI_ATTIVI_HA - nucleo._STATI_ATTIVI)
-    extra = sorted(nucleo._STATI_ATTIVI - _STATI_ATTIVI_HA)
+    senza = sorted(_STATI_ATTIVI_HA - nucleo._ACTIVE_STATES)
+    extra = sorted(nucleo._ACTIVE_STATES - _STATI_ATTIVI_HA)
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")
@@ -314,8 +314,8 @@ _DOMINI_EVENTO_HA = {
 def test_domini_evento_e_pinnato_alla_fonte():
     """Mutazione: togliere un dominio da `_DOMINI_EVENTO` deve far rosso
     questo test."""
-    senza = sorted(_DOMINI_EVENTO_HA - nucleo._DOMINI_EVENTO)
-    extra = sorted(nucleo._DOMINI_EVENTO - _DOMINI_EVENTO_HA)
+    senza = sorted(_DOMINI_EVENTO_HA - nucleo._EVENT_DOMAINS)
+    extra = sorted(nucleo._EVENT_DOMAINS - _DOMINI_EVENTO_HA)
     assert not senza and not extra, (
         f"_DOMINI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")
@@ -327,7 +327,7 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
     quello gia' pinnato fra `_CLASSI_EVENTO` e `_SIGNIFICATO_CLASSE`."""
     from tests.test_vocabolario_domini import _PIATTAFORME_HA
-    sconosciuti = sorted(nucleo._DOMINI_EVENTO - set(_PIATTAFORME_HA))
+    sconosciuti = sorted(nucleo._EVENT_DOMAINS - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
 
 
@@ -341,8 +341,8 @@ def test_classi_evento_e_pinnato_alla_fonte():
     """Mutazione: togliere una classe da `_CLASSI_EVENTO` deve far rosso
     questo test -- la mutazione che il brief della fetta chiede esplicitamente
     («togliere una classe dall'elenco»)."""
-    senza = sorted(_CLASSI_EVENTO_HA - nucleo._CLASSI_EVENTO)
-    extra = sorted(nucleo._CLASSI_EVENTO - _CLASSI_EVENTO_HA)
+    senza = sorted(_CLASSI_EVENTO_HA - nucleo._EVENT_CLASSES)
+    extra = sorted(nucleo._EVENT_CLASSES - _CLASSI_EVENTO_HA)
     assert not senza and not extra, (
         f"_CLASSI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")

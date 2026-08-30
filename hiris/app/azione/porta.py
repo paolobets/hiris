@@ -583,11 +583,11 @@ class ActionActuator:
         except Exception as error:
             logger.warning("azione fallita [origine=%s] %s: %s",
                            actor, service, error)
-            messaggio = f"Home Assistant ha rifiutato la chiamata: {error}"
+            message = f"Home Assistant ha rifiutato la chiamata: {error}"
             execution_id = self._record(
                 actor=actor, service=service, entity=[],
-                executed=False, error=messaggio)
-            occurrence = {"eseguito": False, "errore": messaggio}
+                executed=False, error=message)
+            occurrence = {"eseguito": False, "errore": message}
             if execution_id is not None:
                 occurrence["esecuzione_id"] = execution_id
             return occurrence
@@ -689,12 +689,12 @@ class ActionActuator:
             except Exception as error:
                 logger.warning("azione fallita [origine=%s] %s.%s: %s",
                                actor, verdict.domain, verdict.service, error)
-                messaggio = f"Home Assistant ha rifiutato la chiamata: {error}"
+                message = f"Home Assistant ha rifiutato la chiamata: {error}"
                 execution_id = self._record(
                     actor=actor,
                     service=f"{verdict.domain}.{verdict.service}",
-                    entity=list(verdict.entity), executed=False, error=messaggio)
-                occurrence = {"eseguito": False, "errore": messaggio}
+                    entity=list(verdict.entity), executed=False, error=message)
+                occurrence = {"eseguito": False, "errore": message}
                 if execution_id is not None:
                     occurrence["esecuzione_id"] = execution_id
                 return occurrence

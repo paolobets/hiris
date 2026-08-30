@@ -149,7 +149,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
         # Lo STESSO nucleo della chat (`costruisci_nucleo`), non una
         # composizione parallela: due contesti che descrivono la stessa casa
         # sono due verita' che divergono.
-        briefing, _riepilogo = costruisci_nucleo(app)
+        briefing, _summary = costruisci_nucleo(app)
     except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
                        promise["id"], type(error).__name__, error)
@@ -260,7 +260,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 
     try:
-        briefing, _riepilogo = costruisci_nucleo(app)
+        briefing, _summary = costruisci_nucleo(app)
     except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
                        promise["id"], type(error).__name__, error)

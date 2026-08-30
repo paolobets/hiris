@@ -7,11 +7,11 @@ leggeva ne' l'uno ne' l'altro: poteva solo contare le entita' non disponibili
 e non sapere perche'.
 """
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 
 
 def _nucleo(integrazioni):
-    testo, riepilogo = componi({"entita": [], "integrazioni": integrazioni}, [], [], {})
+    testo, riepilogo = compose({"entita": [], "integrazioni": integrazioni}, [], [], {})
     return testo, riepilogo
 
 

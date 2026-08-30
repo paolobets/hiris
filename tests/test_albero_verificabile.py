@@ -48,7 +48,7 @@ from hiris.app.casa.anagrafe import (
     tree_areas,
 )
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 from hiris.app.server import giro_di_confronto_albero
 
 # --------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def _confronto(casa, risposte):
 def _nucleo(confronto, casa=None):
     """Il nucleo della casa data: qui interessa solo la sezione delle lacune."""
     casa = casa if casa is not None else {"entita": [], "integrazioni": []}
-    return componi(casa, [], [], {}, confronto=confronto)
+    return compose(casa, [], [], {}, comparison=confronto)
 
 
 # --------------------------------------------------------------------------

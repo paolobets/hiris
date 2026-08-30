@@ -30,7 +30,7 @@ che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
 
 from hiris.app.casa.anagrafe import actual_class, live_mirror
 from hiris.app.casa.domande import view
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 
 # L'anagrafe COM'E' DAVVERO: `classe` a None, perche' HA non la manda.
 _CASA = {
@@ -62,7 +62,7 @@ def test_un_allagamento_entra_nel_digesto():
     """LA PROVA CHE CONTA. Con la classe dal solo registro questa e' rossa:
     il sensore e' `on` e il digesto dice «Niente di notevole al momento»."""
     stato, _n, _u, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
-    testo, _ = componi(_CASA, [], [], stato, classi_vive=classi)
+    testo, _ = compose(_CASA, [], [], stato, reported_classes=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "bagnato" in sezione, sezione
     assert "Niente di notevole" not in sezione
@@ -77,7 +77,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
     specchio = [{"id": "light.cucina", "state": "on", "name": "Faretto",
                  "device_class": None, "unit": ""}]
     stato, _n, _u, classi, _da_quando, _attributi = live_mirror(specchio)
-    testo, _ = componi(casa, [], [], stato, classi_vive=classi)
+    testo, _ = compose(casa, [], [], stato, reported_classes=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "acceso" in sezione
     assert "bagnato" not in sezione

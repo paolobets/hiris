@@ -18,7 +18,7 @@ import time
 from aiohttp import web
 
 from ..casa.anagrafe import category_names, hierarchy, live_mirror
-from ..casa.nucleo import componi
+from ..casa.nucleo import compose
 from ..proxy.entity_cache import inventario_leggibile
 
 
@@ -314,23 +314,23 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # "niente acceso" invece di "non ho potuto guardare".
     stato_affidabile = archivio_casa is not None and inventario_leggibile(cache)
 
-    return componi(
+    return compose(
         casa, comportamento, ricordi, stato,
-        non_disponibili=non_disponibili,
-        stato_affidabile=stato_affidabile,
+        unavailable=non_disponibili,
+        reliable_state=stato_affidabile,
         behavior_problems=behavior_problems,
-        file_non_letti_comportamento=file_non_letti_comportamento,
-        sistema_di_riferimento=sistema_di_riferimento,
-        classi_vive=classi_vive,
-        problemi=problemi,
-        confronto=confronto,
+        unloaded_behavior_files=file_non_letti_comportamento,
+        reference_frame=sistema_di_riferimento,
+        reported_classes=classi_vive,
+        problems=problemi,
+        comparison=confronto,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/nucleo passano tutti di qua), perche'
         # `componi` e' pura e non legge nulla da sola. Senza questa riga il
         # parametro esisterebbe, i test di `componi` passerebbero, e il modello
         # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
         # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
-        adesso=time.time(),
+        now=time.time(),
     )
 
 

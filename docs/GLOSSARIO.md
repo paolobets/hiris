@@ -290,6 +290,7 @@ in §4①:
 | `candidata` | `candidato` |
 | `nostre` | `nostro` |
 | `vivi` | `vive` |
+| `citate` | `citato` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -1057,6 +1058,7 @@ al Task 6 invece che deciso qui.
 | italiano | inglese |
 |---|---|
 | adesso | now |
+| affidabile | reliable |
 | aggiorna | refresh |
 | aggiornato | updated |
 | aggiungi | add |
@@ -1065,18 +1067,21 @@ al Task 6 invece che deciso qui.
 | ambiente | environment |
 | ambito | scope |
 | annota | record |
+| annotazione | annotation |
 | anteprima | preview |
 | aperto | open |
 | applica | apply |
 | area | area |
 | argomento | argument |
 | assegnato | assigned |
+| assembla | assemble |
 | assicura | ensure |
 | attesa | pending |
 | attivo | active |
 | attributo | attribute |
 | automazione | automation |
 | avviso | notice |
+| blocco | block |
 | cambiato | changed |
 | cambio | change |
 | campione | sample |
@@ -1088,7 +1093,9 @@ al Task 6 invece che deciso qui.
 | chiamata | call |
 | chiave | key |
 | chiudi | close |
+| citato | cited |
 | classe | class |
+| coda | tail |
 | codice | code |
 | colonna | column |
 | configurazione | configuration |
@@ -1098,7 +1105,8 @@ al Task 6 invece che deciso qui.
 | conservazione | retention |
 | consumi | usage |
 | conta | count |
-| conteggio | count |
+| conteggio | counts |
+| coppia | pair |
 | corpo | body |
 | corrente | current |
 | costo | cost |
@@ -1108,6 +1116,7 @@ al Task 6 invece che deciso qui.
 | dedotto | deduced |
 | denominatore | denominator |
 | dettaglio | detail |
+| diagnosi | diagnosis |
 | dichiara | declare |
 | dichiarato | declared |
 | differenza | difference |
@@ -1115,14 +1124,18 @@ al Task 6 invece che deciso qui.
 | disabilitato | disabled |
 | disponibile | available |
 | dispositivo | device |
+| divergenza | divergence |
 | dominio | domain |
 | dopo (casa) | after |
+| dove | where |
 | effettivo | actual |
 | elenca | list |
+| elencato | listed |
 | elenco | list |
 | entita | entity |
 | episodio | episode |
 | errore | error |
+| escluso | excluded |
 | esecuzione | execution |
 | eseguito | executed |
 | esistente | existing |
@@ -1145,9 +1158,12 @@ al Task 6 invece che deciso qui.
 | gratuito | free |
 | guasto | fault |
 | identificatore | identifier |
+| identita | identity |
 | illeggibile | unreadable |
 | impronta | fingerprint |
+| inaffidabile | unreliable |
 | incompleto | incomplete |
+| individuale | individual |
 | iniziale | initial |
 | inizio | start |
 | innesca | trigger |
@@ -1155,15 +1171,20 @@ al Task 6 invece che deciso qui.
 | interno | internal |
 | invalida | invalidate |
 | inventario | inventory |
+| irraggiungibile | unreachable |
 | istante | instant |
+| lacuna | gap |
 | leggi | read |
 | leggibile | readable |
 | lettore | reader |
 | limite | limit |
 | locale | local |
 | loro (casa) | their |
+| lunghezza | length |
+| mancante | missing |
 | mantieni | keep |
 | massimo | maximum |
+| messaggio | message |
 | minimo | minimum |
 | misura | measurement |
 | modelli | models |
@@ -1181,15 +1202,22 @@ al Task 6 invece che deciso qui.
 | nuovo | new |
 | oggetto | object |
 | oggi | today |
+| ogni | every |
 | opzioni | options |
 | ora | hour |
+| ordine | order |
+| ordinato | sorted |
 | ottieni | get |
 | parte | part |
 | percorso | path |
+| peso | weight |
 | piattaforma | platform |
 | picco | peak |
+| plurale | plural |
+| portatore | carrier |
 | posizione | position |
 | pota | prune |
+| prefisso | prefix |
 | predefinito | default |
 | principale | main |
 | problema | problem |
@@ -1203,20 +1231,28 @@ al Task 6 invece che deciso qui.
 | quale | which |
 | quando | when |
 | quante | count |
+| raggruppa | group |
+| gruppo | group |
+| raggruppato | grouped |
+| rango | rank |
 | registra | log |
 | resto | rest |
 | richiesta | request |
 | ricordo | memory |
+| ricostruisci | rebuild |
+| riepilogo | summary |
 | riga | row |
 | rileggi | reread |
-| ricostruisci | rebuild |
+| ripara | repair |
 | ripristina | restore |
+| riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
 | risposta | answer |
 | risultato | result |
 | ritardo | delay |
 | rivendica | claim |
+| rotta | broken |
 | sanificato | sanitized |
 | scadenza | deadline |
 | scegli | choose |
@@ -1233,29 +1269,39 @@ al Task 6 invece che deciso qui.
 | servizio | service |
 | severita | severity |
 | sezione | section |
+| sicurezza | safety |
 | significato | meaning |
+| singolare | singular |
 | sistema | system |
 | soggetto | subject |
 | soglia | threshold |
 | sostituisci | replace |
+| stampa | print |
 | statistiche | statistics |
 | stato | state |
 | successivo | next |
 | suggerimento | suggestion |
+| taciuto | silenced |
+| tagliato | cut |
+| taglio | cut |
 | termine | term |
 | testo | text |
 | tipo | type |
+| titolo | title |
 | totale | total |
+| tradotto | translated |
 | traduci | translate |
 | traduzione | translation |
-| tradotto | translated |
+| troncato | truncated |
 | trova | find |
 | trovato | found |
 | unita | unit |
 | valida | validate |
 | valore | value |
+| verbo | verb |
 | verificabile | verifiable |
 | visibile | visible |
+| visualizzato | displayed |
 | vivo | live |
 | voce | entry |
 | vuoto | empty |
@@ -1446,6 +1492,63 @@ rispecchia una colonna", che confonderebbe il livello Python con quello SQL. Dec
 `eseguito → executed` e `cambiato → changed` (righe sopra, «Le parole ordinarie») e applicate a
 entrambi i metodi: la firma di `Journal.log` ora traduce OGNI suo parametro, le colonne del
 database (`eseguito`, `cambiato_json`) restano quelle di sempre.
+
+**La collisione `conteggio`/`quante`, decisa nel lotto di `casa/nucleo.py`.** Segnalata dalla
+guardia sulle collisioni fin dal lotto 4 (`anagrafe.py`), rimandata perche' viveva in un file non
+ancora suo: entrambe decise `-> count` (righe sopra), ma nello stesso file (`nucleo.py`) nominano
+cose diverse -- `quante` e' quasi sempre uno SCALARE (un numero: quante entita' porta una riga,
+`_annotazione_dispositivo`), `conteggio` e' sempre un DIZIONARIO (dominio -> quante, in quattro
+funzioni diverse: `_conta_perdominio_di`, `_righe_casa`, `_raggruppa_notevoli`,
+`_avviso_integrazioni`). Deciso qui, guardando il codice invece di applicare la riga alla cieca:
+`conteggio` (il dizionario) -> **`counts`** (plurale: e' una mappa di piu' conteggi, coerente con
+`conteggi -> counts` gia' deciso per il ritorno di `anagrafe.rebuild`); `quante` (lo scalare) resta
+**`count`** (singolare), la riga com'e' scritta sopra. Due occorrenze di `quante` in
+`_avviso_integrazioni`/`_avviso_confronto` non sono ne' l'uno ne' l'altro: portano gia' una FRASE
+formattata ("3 aree", "un'area"), non un numero -- rinominate a mano `count_phrase`, per non
+promettere uno scalare dove il valore e' un testo.
+
+**Altre decisioni a mano prese nel lotto di `casa/nucleo.py`, invisibili al criterio dei composti
+perche' parole singole (come `righe`/`identita`, corrette sopra).** Trovate rileggendo il file
+identificatore per identificatore dopo il giro dello strumento, non dal dry-run: nessuna era un
+composto, quindi nessuna era comparsa nell'elenco da decidere.
+
+- `ripetuta` (`_avviso_integrazioni`, il suffisso " x2" di un'integrazione ripetuta) ->
+  **`repeat_suffix`**: non una parola del vocabolario generale, un nome che dice cosa la variabile
+  CONTIENE.
+- `chiusura` (`_avviso_problemi`, la clausola finale gia' concordata al singolare/plurale: "non e'
+  elencato qui, si legge" / "non sono elencati qui, si leggono") -> **`closing_phrase`**, stessa
+  famiglia di `count_phrase`: non e' un conteggio ne' un verbo, e' una frase gia' fatta.
+- `da_dire` (`_avviso_problemi`, i problemi non silenziati, quelli che il testo restituito
+  effettivamente elenca) -> **`to_report`**.
+- `guardate` (`_avviso_confronto`, le aree per cui il confronto e' stato fatto) -> **`checked`**,
+  la stessa parola gia' scelta in `anagrafe.confronta_con_home_assistant` per il campo dati
+  OMONIMO. La chiave stringa del dizionario che quella funzione restituisce (`"guardate"`) resta
+  cosi' -- e' dato, non un identificatore -- il nome cambia solo sulla variabile locale che lo
+  legge qui.
+- `piu`/`meno` (stessa funzione, i due casi -- l'albero ne ha DI PIU' di quel che HA conferma /
+  Home Assistant ne riporta MENO di quel che l'albero conosce) -> **`extra`**/**`missing`**:
+  tradurre alla lettera ("more"/"less") non direbbe la stessa cosa in inglese, `missing` in piu'
+  e' coerente con la chiave dati `mancanti` che quella lista filtra.
+- `mappa` (`_area_per_entity`, un semplice `entity_id -> nome area`) -> **`area_lookup`**, non
+  `map`: applicarla nuda avrebbe ombreggiato il builtin (stessa guardia di `_pericoloso`, vedi
+  `scripts/rinomina.py`). Non e' la stessa cosa del concetto `indice -> lookup` di `memoria/`: qui
+  e' descrittiva di una variabile locale, non il nome di una struttura del prodotto.
+- `_assembla` -> **`_assemble`** (e le sue variabili locali `blocchi`/`blocco` -> `blocks`/`block`),
+  `rango` (`_severity_rank`) -> **`rank`**, `righe_pool` -> **`rows_pool`**, `tagliato` (il
+  flag per-iterazione del taglio, distinto da `troncato` -- il flag dell'intero giro) -> **`cut`**:
+  letture dirette del glossario (`taglio -> cut`, `raggruppa -> group`, ecc.), non nuove decisioni,
+  ma invisibili allo strumento perche' nessuna e' un composto.
+- `problemi`, il parametro pubblico di `compose()` e di `_problems_notice()` -> **`problems`**:
+  MAI lo stesso nome del metodo di `HAClient.problemi()` che lo alimenta (protetto a parte in
+  `_METODI_HA_CLIENT`) -- qui non c'e' un punto davanti, e' un parametro, non un attributo.
+- `detto_da` (`_memory_rows`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
+  `"detto_da"`, la stessa colonna di `memoria/archivio.py` (`memoria/` non e' ancora convertita) --
+  cambia solo la variabile locale che la legge qui. La FRASE italiana che finisce nel testo
+  ("detto da ...") resta italiana: e' cio' che il modello legge, non un identificatore.
+- Forme plurali non incatenate dallo strumento perche' l'alias esistente traduce il singolare
+  (`identificativo -> identificatore`, `dettaglio -> detail`) ma non la forma con la "i" finale:
+  `identificativi` -> `identifiers`, `dettagli` -> `details`, `gruppi` -> `groups` (`gruppo ->
+  group` e' nuovo in questo lotto, sotto).
 
 ## I nomi degli strumenti
 

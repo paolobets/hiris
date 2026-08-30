@@ -408,6 +408,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("casa/tempo.py", "casa", frozenset()),
     ("casa/anagrafe.py", "casa", frozenset()),
     ("casa/domande.py", "casa", frozenset()),
+    ("casa/nucleo.py", "casa", frozenset()),
 )
 
 

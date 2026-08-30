@@ -19,7 +19,7 @@ import pytest
 
 from hiris.app.casa.anagrafe import rebuild, reference_frame
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.nucleo import componi
+from hiris.app.casa.nucleo import compose
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE, HAClient
@@ -151,7 +151,7 @@ def test_il_riferimento_si_rilegge_quando_la_casa_lo_cambia():
 # --- il nucleo: chi lo legge ----------------------------------------------
 
 def _nucleo(sistema):
-    testo, _ = componi({"entita": []}, [], [], {}, sistema_di_riferimento=sistema)
+    testo, _ = compose({"entita": []}, [], [], {}, reference_frame=sistema)
     return testo
 
 
@@ -181,9 +181,9 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
     L'istante sta accanto al fuso perche' e' lo stesso oggetto: un orario
     senza il suo fuso e' il «72» senza i gradi."""
     # 21/08/2026, 17:00:00 a Roma (l'istante del risveglio andato male).
-    testo, _ = componi({"entita": []}, [], [], {},
-                       sistema_di_riferimento=reference_frame(_CONFIG),
-                       adesso=1787324400.0)
+    testo, _ = compose({"entita": []}, [], [], {},
+                       reference_frame=reference_frame(_CONFIG),
+                       now=1787324400.0)
     assert "17:00" in testo, "senza l'ora il modello se la inventa"
     assert "21/08/2026" in testo, "senza la data «alle 17» e' ambiguo fra oggi e domani"
 
