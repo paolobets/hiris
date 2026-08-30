@@ -323,27 +323,114 @@ def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
     assert proposte == []
 
 
-def test_l_idempotenza_si_misura_riapplicando_ad_albero_gia_convertito(tmp_path):
-    """L'idempotenza non si dichiara, si misura: si applica lo strumento a
-    una COPIA di un sottosistema gia' convertito e si controlla che non
-    cambi un solo byte. Qui sui due sottosistemi veri del Task 5, cosi'
-    che una regressione futura (in questo script o nel glossario) si veda
-    subito, invece di scoprirsi al prossimo ambito."""
-    import shutil
+def _verifica_idempotenza(base: Path, ambito: str, copia: Path,
+                          residui_noti: frozenset = frozenset()) -> None:
+    """Applica lo strumento a una COPIA di `base` (un file o una cartella)
+    e controlla che il risultato sia identico bit per bit -- l'idempotenza
+    non si dichiara, si misura.
 
-    from _comune import ROOT
-    for cartella, ambito in (("schedulatore", "schedulatore"), ("memoria", "memoria")):
-        origine = ROOT / "hiris" / "app" / cartella
-        copia = tmp_path / cartella
-        shutil.copytree(origine, copia, ignore=shutil.ignore_patterns("__pycache__"))
-        prima = {f.relative_to(copia): f.read_bytes()
-                for f in copia.rglob("*.py")}
+    `residui_noti` e' l'elenco esplicito dei file per cui una divergenza e'
+    GIA' NOTA e tracciata altrove (un drift pre-esistente non ancora
+    chiuso, non un difetto di questo controllo): l'uguaglianza e' ESATTA
+    in entrambe le direzioni, quindi un residuo che smette di divergere
+    (perche' qualcuno l'ha corretto altrove, senza aggiornare questa riga)
+    fa fallire la prova esattamente come una regressione vera -- un
+    eccezione dimenticata sarebbe silenziosa quanto il difetto che
+    l'eccezione doveva coprire."""
+    import shutil
+    if base.is_dir():
+        shutil.copytree(base, copia, ignore=shutil.ignore_patterns("__pycache__"))
+        prima = {f.relative_to(copia): f.read_bytes() for f in copia.rglob("*.py")}
         rinomina.applica(copia, ambito, scrivi=True)
-        dopo = {f.relative_to(copia): f.read_bytes()
-               for f in copia.rglob("*.py")}
-        assert dopo == prima, (
-            f"riapplicare lo strumento a {cartella}/ (gia' convertito) ha "
-            "cambiato qualcosa: non e' idempotente")
+        dopo = {f.relative_to(copia): f.read_bytes() for f in copia.rglob("*.py")}
+    else:
+        shutil.copy(base, copia)
+        chiave = Path(base.name)
+        prima = {chiave: copia.read_bytes()}
+        rinomina.applica(copia, ambito, scrivi=True)
+        dopo = {chiave: copia.read_bytes()}
+    cambiati = frozenset(k for k in prima if prima[k] != dopo[k])
+    assert cambiati == residui_noti, (
+        f"{base}: file cambiati={sorted(map(str, cambiati))}, "
+        f"attesi={sorted(map(str, residui_noti))} -- se e' comparso un file "
+        "nuovo e' una regressione; se un residuo noto non compare piu' "
+        "e' stato corretto altrove e questa riga va tolta")
+
+
+# **L'elenco esplicito e leggibile degli ambiti SORVEGLIATI.** Corretto dopo
+# il rilievo del coordinatore: il vecchio controllo guardava solo due
+# sottosistemi su sei (schedulatore, memoria) -- il residuo trovato durante
+# il lotto 5 (`candidato`/`inizio` mai applicati a `memoria/resolver.py`,
+# parole decise stamattina nel commit `036474b`, non "fin dalla stesura
+# originale del glossario" come una prima diagnosi aveva scritto per
+# errore) viveva in un ambito COPERTO ma non riverificato dopo l'aggiunta
+# di parole nuove; un secondo residuo, in `azione/costruzione/composer.py`,
+# vive invece in un ambito che questo test non guardava affatto. Allargato
+# a tutti e sei.
+#
+# `casa/` non e' ancora finito (`domande.py`, `nucleo.py`, `strumenti.py`
+# restano italiani): elencare la cartella intera pretenderebbe zero anche
+# li', cosa falsa per costruzione. Si elencano invece i singoli file gia'
+# chiusi, uno per lotto -- un dato esplicito che chi legge puo' contare,
+# non un'assenza silenziosa. Quando l'ultimo lotto di `casa/` chiude, le
+# cinque righe si possono sostituire con `("casa", "casa", frozenset())`.
+#
+# `residui_noti` per `azione`: `costruzione/composer.py` ha ancora
+# `candidato` (due funzioni private) e il parametro PUBBLICO keyword-only
+# `modo` di `compose_automation`/`compose_script` in italiano -- entrambi
+# parole gia' decise, ma un parametro pubblico si rinomina solo dopo aver
+# cercato ogni chiamante per `modo=` in tutto il repo: rimandato a un giro
+# dedicato (segnalato nel report del lotto 5), non risolto di sfuggita qui.
+_SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
+    ("schedulatore", "schedulatore", frozenset()),
+    ("memoria", "memoria", frozenset()),
+    ("consumi", "consumi", frozenset()),
+    ("cervello", "cervello", frozenset()),
+    ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
+    ("casa/lettura_yaml.py", "casa", frozenset()),
+    ("casa/comportamento.py", "casa", frozenset()),
+    ("casa/archivio.py", "casa", frozenset()),
+    ("casa/tempo.py", "casa", frozenset()),
+    ("casa/anagrafe.py", "casa", frozenset()),
+)
+
+
+def test_gli_ambiti_chiusi_restano_idempotenti(tmp_path):
+    """La guardia sui sei ambiti (cinque interi piu' i file gia' chiusi di
+    `casa/`, vedi `_SORVEGLIATI` sopra): una regressione futura (in questo
+    script o nel glossario) si vede qui, sull'ambito dove e' successa,
+    invece di scoprirsi per caso al prossimo lotto che tocca quell'ambito."""
+    from _comune import ROOT
+    for percorso, ambito, residui_noti in _SORVEGLIATI:
+        etichetta = percorso.replace("/", "_")
+        _verifica_idempotenza(ROOT / "hiris" / "app" / percorso, ambito,
+                              tmp_path / etichetta, residui_noti)
+
+
+def test_la_verifica_di_idempotenza_arrossisce_se_qualcosa_cambia(tmp_path):
+    """Prova per mutazione, isolata dal vero `hiris/app/` (cosi' non dipende
+    da trovare per caso un identificatore reale non ancora applicato): un
+    file sintetico con `archivio`, gia' deciso -> `store` per l'ambito
+    `memoria`, deve far fallire `_verifica_idempotenza` -- e' esattamente
+    la forma del difetto che il test sopra sorveglia."""
+    modulo = tmp_path / "sorgente.py"
+    modulo.write_text("archivio = 1\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        _verifica_idempotenza(modulo, "memoria", tmp_path / "copia.py")
+
+
+def test_un_residuo_noto_dimenticato_arrossisce_anche_lui(tmp_path):
+    """Il gemello nella direzione opposta: se un `residuo_noto` smette di
+    divergere davvero (qualcuno l'ha corretto altrove) e nessuno toglie la
+    riga da `_SORVEGLIATI`, la lista mentirebbe silenziosamente -- questa
+    prova dimostra che l'uguaglianza `cambiati == residui_noti` e' ESATTA,
+    non un `>=`, quindi un'eccezione dimenticata si vede."""
+    modulo = tmp_path / "sorgente.py"
+    modulo.write_text("x = 1\n", encoding="utf-8")  # niente da rinominare
+    with pytest.raises(AssertionError):
+        _verifica_idempotenza(modulo, "memoria", tmp_path / "copia.py",
+                              residui_noti=frozenset({Path("sorgente.py")}))
+
 
 
 def test_un_import_nudo_non_azzera_il_riconoscimento_del_resto_del_file():
