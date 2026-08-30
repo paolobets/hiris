@@ -17,7 +17,7 @@ import time
 
 from aiohttp import web
 
-from ..casa.anagrafe import gerarchia, nomi_delle_categorie, specchio_vivo
+from ..casa.anagrafe import category_names, hierarchy, live_mirror
 from ..casa.nucleo import componi
 from ..proxy.entity_cache import inventario_leggibile
 
@@ -36,7 +36,7 @@ def _mappa_categorie(casa: dict) -> dict[str, dict[str, str]]:
     categoria a seconda della porta.
     """
     mappa: dict[str, dict[str, str]] = {}
-    for (ambito, categoria_id), nome in nomi_delle_categorie(casa).items():
+    for (ambito, categoria_id), nome in category_names(casa).items():
         mappa.setdefault(ambito, {})[categoria_id] = nome
     return mappa
 
@@ -100,7 +100,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
         # sono due case diverse a seconda della porta da cui entri.
         "sistema_di_riferimento": archivio.reference_frame(),
-        "piani": gerarchia(casa, non_disponibili),
+        "piani": hierarchy(casa, non_disponibili),
         # I NOMI delle etichette, id -> nome.
         #
         # `gerarchia()` mette sulle aree e sulle entita' i soli `label_id` --
@@ -269,7 +269,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     classi_vive: dict[str, str] = {}
     if cache is not None:
         try:
-            stato, _nomi, _unita, classi_vive, _da_quando, _attributi = specchio_vivo(
+            stato, _nomi, _unita, classi_vive, _da_quando, _attributi = live_mirror(
                 cache.all_states())
         except Exception:
             stato, classi_vive = {}, {}

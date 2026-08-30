@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import specchio_vivo
+from ..casa.anagrafe import live_mirror
 from ..memoria.interpretazione import deduci_unit, validate
 from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 
@@ -92,7 +92,7 @@ def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict, dict, dict]
     if cache is None or not hasattr(cache, "all_states"):
         return {}, {}, {}, {}, {}, {}
     try:
-        return specchio_vivo(cache.all_states())
+        return live_mirror(cache.all_states())
     except Exception:
         return {}, {}, {}, {}, {}, {}
 

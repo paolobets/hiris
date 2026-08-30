@@ -42,10 +42,10 @@ from aiohttp import web
 
 from hiris.app.api.handlers_casa import costruisci_nucleo, handle_get_casa
 from hiris.app.casa.anagrafe import (
-    aree_dell_albero,
-    confronta_con_home_assistant,
-    gerarchia,
-    scegli_campione,
+    choose_sample,
+    compare_with_home_assistant,
+    hierarchy,
+    tree_areas,
 )
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
@@ -90,7 +90,7 @@ def _risposta(entita=(), aree_mancanti=()):
 
 
 def _confronto(casa, risposte):
-    return confronta_con_home_assistant(gerarchia(casa), casa, risposte)
+    return compare_with_home_assistant(hierarchy(casa), casa, risposte)
 
 
 def _nucleo(confronto, casa=None):
@@ -223,7 +223,7 @@ def test_la_rotazione_copre_tutta_la_casa():
     aree = [{"id": f"a{i}", "nome": f"A{i}"} for i in range(7)]
     viste, dopo = [], None
     for _ in range(3):
-        campione = scegli_campione(aree, 3, dopo)
+        campione = choose_sample(aree, 3, dopo)
         viste.extend(a["id"] for a in campione)
         dopo = campione[-1]["id"]
     assert {a["id"] for a in aree} <= set(viste)
@@ -233,13 +233,13 @@ def test_la_rotazione_e_riproducibile():
     """Due esecuzioni identiche devono produrre lo stesso nucleo. Un campione
     casuale lo farebbe cambiare senza che sia cambiato niente nella casa."""
     aree = [{"id": f"a{i}", "nome": f"A{i}"} for i in range(7)]
-    assert scegli_campione(aree, 3, "a2") == scegli_campione(aree, 3, "a2")
+    assert choose_sample(aree, 3, "a2") == choose_sample(aree, 3, "a2")
 
 
 def test_la_rotazione_riprende_da_capo_alla_fine():
     aree = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
-    assert [a["id"] for a in scegli_campione(aree, 2, "b")] == ["c", "a"]
-    assert [a["id"] for a in scegli_campione(aree, 2, "zzz")] == ["a", "b"]
+    assert [a["id"] for a in choose_sample(aree, 2, "b")] == ["c", "a"]
+    assert [a["id"] for a in choose_sample(aree, 2, "zzz")] == ["a", "b"]
 
 
 def test_le_pseudo_aree_non_si_confrontano():
@@ -248,11 +248,11 @@ def test_le_pseudo_aree_non_si_confrontano():
     `aree_mancanti`, cioe' una divergenza inventata da noi sull'unico
     contenitore che dichiara gia' di essere una nostra costruzione."""
     casa = _casa([_entita("light.orfana"), _entita("light.cucina", area="cucina")])
-    piani = gerarchia(casa)
+    piani = hierarchy(casa)
 
     nomi = {p["nome"] for p in piani}
     assert "Fuori dalle aree" in nomi  # l'orfana c'e' davvero, nell'albero
-    identificativi = {a["id"] for a in aree_dell_albero(piani)}
+    identificativi = {a["id"] for a in tree_areas(piani)}
     assert identificativi == {"cucina", "bagno"}
 
 
@@ -539,7 +539,7 @@ def test_gerarchia_resta_pura_e_non_sa_niente_del_confronto():
     un campo del confronto -- e' per questo che si aggiunge qui invece di
     romperlo."""
     casa = _casa([_entita("light.cucina", area="cucina")])
-    piani = gerarchia(casa)
+    piani = hierarchy(casa)
     cucina = piani[0]["aree"][0]
     assert set(cucina) == {"id", "nome", "alias", "etichette", "entita_temperatura",
                            "entita_umidita", "entita", "entita_disabilitate",

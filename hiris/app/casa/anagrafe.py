@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def ricostruisci(client, archivio) -> dict:
+async def rebuild(client, store) -> dict:
     """Rilegge tutti i registri da HA e sostituisce l'anagrafe.
 
     Restituisce `{"conteggi": {...}, "non_disponibili": [...]}`.
@@ -31,26 +31,26 @@ async def ricostruisci(client, archivio) -> dict:
     riconnessione) non basta a farla ritentare subito. Una replica vecchia e
     dichiarata stantia e' meglio di una vuota spacciata per fresca.
     """
-    registri, non_disponibili = await client.leggi_registri()
-    sistema, sistema_letto = await _leggi_sistema(client)
-    if not sistema_letto:
-        non_disponibili = list(non_disponibili) + ["sistema_di_riferimento"]
-    conteggi = {chiave: len(valore) for chiave, valore in registri.items()}
+    registries, unavailable = await client.leggi_registri()
+    reference_frame, reference_frame_loaded = await _read_reference_frame(client)
+    if not reference_frame_loaded:
+        unavailable = list(unavailable) + ["sistema_di_riferimento"]
+    counts = {key: len(value) for key, value in registries.items()}
     # "categorie:script" fallisce per un solo ambito, non per l'intero
     # registro "categorie": si confronta il nome del registro (prima dei
     # due punti), non la stringa intera.
-    registri_falliti = {nome.split(":", 1)[0] for nome in non_disponibili}
-    if non_disponibili and registri_falliti >= set(registri):
+    registries_failed = {name.split(":", 1)[0] for name in unavailable}
+    if unavailable and registries_failed >= set(registries):
         logger.warning(
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
-            "quella di prima, non sostituita da un vuoto", non_disponibili)
+            "quella di prima, non sostituita da un vuoto", unavailable)
     else:
-        archivio.replace(registri, non_disponibili, reference_frame=sistema)
-        if non_disponibili:
+        store.replace(registries, unavailable, reference_frame=reference_frame)
+        if unavailable:
             logger.warning("anagrafe ricostruita, ma questi registri non hanno risposto: %s",
-                           non_disponibili)
-        logger.info("anagrafe ricostruita: %s", conteggi)
-    return {"conteggi": conteggi, "non_disponibili": non_disponibili}
+                           unavailable)
+        logger.info("anagrafe ricostruita: %s", counts)
+    return {"conteggi": counts, "non_disponibili": unavailable}
 
 
 # I campi di `get_config` che HIRIS tiene, e sotto quale nome. La chiave a
@@ -59,7 +59,7 @@ async def ricostruisci(client, archivio) -> dict:
 # vive nell'archivio: l'anagrafe parla la lingua di HIRIS ovunque -- `nome`,
 # `alias`, `etichette` -- e un dizionario meta' inglese sarebbe l'unico posto
 # in cui non lo fa.
-_CAMPI_RIFERIMENTO = {
+_REFERENCE_FRAME_FIELDS = {
     "time_zone": "fuso",
     "currency": "valuta",
     "language": "lingua",
@@ -70,7 +70,7 @@ _CAMPI_RIFERIMENTO = {
 }
 
 
-def sistema_di_riferimento(config) -> dict:
+def reference_frame(config) -> dict:
     """Il sistema di riferimento della casa, distillato dalla config di HA.
 
     Un valore senza il suo sistema di riferimento non e' un dato, e' un
@@ -99,12 +99,12 @@ def sistema_di_riferimento(config) -> dict:
     """
     if not isinstance(config, dict):
         return {}
-    return {nostro: config[loro]
-            for loro, nostro in _CAMPI_RIFERIMENTO.items()
-            if config.get(loro)}
+    return {our: config[their]
+            for their, our in _REFERENCE_FRAME_FIELDS.items()
+            if config.get(their)}
 
 
-async def _leggi_sistema(client) -> tuple[dict, bool]:
+async def _read_reference_frame(client) -> tuple[dict, bool]:
     """`(sistema, letto)`. Separati perche' sono due domande diverse: un
     riferimento vuoto perche' HA non ha risposto e uno vuoto perche' HA non
     ha niente da dire producono lo stesso dizionario, e chi ci costruisce
@@ -115,28 +115,28 @@ async def _leggi_sistema(client) -> tuple[dict, bool]:
     dichiara) non deve far fallire l'intera ricostruzione dell'anagrafe: la
     casa senza riferimento e' incompleta, la casa non ricostruita e' vuota.
     """
-    lettore = getattr(client, "get_config", None)
-    if lettore is None:
+    reader = getattr(client, "get_config", None)
+    if reader is None:
         return {}, False
     try:
-        sistema = sistema_di_riferimento(await lettore())
+        frame = reference_frame(await reader())
     except Exception as e:  # rete caduta, comando rifiutato, HA a meta' avvio
         logger.warning("sistema di riferimento della casa non letto: %s", e)
         return {}, False
-    return sistema, bool(sistema)
+    return frame, bool(frame)
 
 
 # Id espliciti per le pseudo-aree e i piani-contenitore: mai None, cosi' un
 # consumatore che indicizzi per id (naturale, su un albero con id) non fa
 # sparire in silenzio due contenitori diversi che per caso condividevano la
 # stessa chiave.
-_ID_SENZA_AREA = "__senza_area__"
-_ID_AREE_NON_LETTE = "__aree_non_lette__"
-_ID_AREA_SCONOSCIUTA = "__area_sconosciuta__"
-_ID_DISPOSITIVI_NON_LETTI = "__dispositivi_non_letti__"
-_ID_SENZA_PIANO = "__senza_piano__"
-_ID_PIANI_NON_LETTI = "__piani_non_letti__"
-_ID_FUORI_DALLE_AREE = "__fuori_dalle_aree__"
+_ID_WITHOUT_AREA = "__senza_area__"
+_ID_AREA_NON_LOADED = "__aree_non_lette__"
+_ID_UNKNOWN_AREA = "__area_sconosciuta__"
+_ID_DEVICE_NON_LOADED = "__dispositivi_non_letti__"
+_ID_WITHOUT_FLOOR = "__senza_piano__"
+_ID_FLOOR_NON_LOADED = "__piani_non_letti__"
+_ID_OUTSIDE_AREAS = "__fuori_dalle_aree__"
 
 # Le pseudo-aree che una vista di dettaglio (`domande.guarda("area", ...)`)
 # sa raggiungere per ID -- MAI per nome: "Senza area" e' un nome che due case
@@ -146,10 +146,10 @@ _ID_FUORI_DALLE_AREE = "__fuori_dalle_aree__"
 # `gerarchia()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
 # un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.
 _ID_PSEUDO_AREA = frozenset(
-    {_ID_SENZA_AREA, _ID_AREE_NON_LETTE, _ID_AREA_SCONOSCIUTA, _ID_DISPOSITIVI_NON_LETTI})
+    {_ID_WITHOUT_AREA, _ID_AREA_NON_LOADED, _ID_UNKNOWN_AREA, _ID_DEVICE_NON_LOADED})
 
 
-def e_pseudo_area(area_id: str) -> bool:
+def is_pseudo_area(area_id: str) -> bool:
     """Vero se `area_id` e' una pseudo-area generata da `gerarchia()` (non
     un'area vera di Home Assistant): chi la mostra per nome deve mostrare
     anche l'id, l'unica chiave con cui `guarda('area', ...)` la ritrova
@@ -157,8 +157,8 @@ def e_pseudo_area(area_id: str) -> bool:
     return area_id in _ID_PSEUDO_AREA
 
 
-def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                                  dict[str, str], dict[str, str], dict[str, dict]]:
+def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
+                               dict[str, str], dict[str, str], dict[str, dict]]:
     """Lo specchio dello stato in sei dizionari:
     `(stato, nomi, unita, classi, da_quando, attributi)`.
 
@@ -200,38 +200,38 @@ def specchio_vivo(righe) -> tuple[dict[str, str], dict[str, str], dict[str, str]
     scaldando davvero. Il modello ha risposto con quell'unica informazione,
     ed era vera solo a meta'.
     """
-    stato: dict[str, str] = {}
-    nomi: dict[str, str] = {}
-    unita: dict[str, str] = {}
-    classi: dict[str, str] = {}
-    da_quando: dict[str, str] = {}
-    attributi: dict[str, dict] = {}
-    for e in righe:
+    state: dict[str, str] = {}
+    names: dict[str, str] = {}
+    unit: dict[str, str] = {}
+    classes: dict[str, str] = {}
+    since_when: dict[str, str] = {}
+    attributes: dict[str, dict] = {}
+    for e in rows:
         if not isinstance(e, dict):
             continue
         entity_id = e.get("id")
         if not entity_id:
             continue
-        stato[entity_id] = e.get("state")
-        nome = e.get("name")
-        if isinstance(nome, str) and nome.strip():
-            nomi[entity_id] = nome.strip()
-        misura = e.get("unit")
-        if isinstance(misura, str) and misura.strip():
-            unita[entity_id] = misura.strip()
-        classe = e.get("device_class")
-        if isinstance(classe, str) and classe.strip():
-            classi[entity_id] = classe.strip()
-        istante = e.get("last_changed")
-        if isinstance(istante, str) and istante.strip():
-            da_quando[entity_id] = istante.strip()
+        state[entity_id] = e.get("state")
+        name = e.get("name")
+        if isinstance(name, str) and name.strip():
+            names[entity_id] = name.strip()
+        measurement = e.get("unit")
+        if isinstance(measurement, str) and measurement.strip():
+            unit[entity_id] = measurement.strip()
+        device_class = e.get("device_class")
+        if isinstance(device_class, str) and device_class.strip():
+            classes[entity_id] = device_class.strip()
+        instant = e.get("last_changed")
+        if isinstance(instant, str) and instant.strip():
+            since_when[entity_id] = instant.strip()
         extra = e.get("attributes")
         if isinstance(extra, dict) and extra:
-            attributi[entity_id] = extra
-    return stato, nomi, unita, classi, da_quando, attributi
+            attributes[entity_id] = extra
+    return state, names, unit, classes, since_when, attributes
 
 
-def nome_con_id(nome: str, id_: str | None) -> str:
+def name_with_id(name: str, id_: str | None) -> str:
     """Nome con l'id accanto tra parentesi, quando l'id dice qualcosa che il
     nome da solo non dice (R1/R2, fetta "i riferimenti", incidente
     2026-08-20).
@@ -248,12 +248,12 @@ def nome_con_id(nome: str, id_: str | None) -> str:
     penzolante, dove l'unica cosa che si conosce di lui e' il suo id) -- in
     entrambi una parentesi in piu' sarebbe rumore, non informazione.
     """
-    if not id_ or id_ == nome:
-        return nome
-    return f"{nome} (id: {id_})"
+    if not id_ or id_ == name:
+        return name
+    return f"{name} (id: {id_})"
 
 
-def nomi_delle_etichette(casa: dict) -> dict[str, str]:
+def label_names(home_space: dict) -> dict[str, str]:
     """label_id -> nome, dal registro delle etichette dell'anagrafe.
 
     Home Assistant mette nei registri di aree, dispositivi ed entita' i soli
@@ -276,10 +276,10 @@ def nomi_delle_etichette(casa: dict) -> dict[str, str]:
     altro.
     """
     return {e["id"]: e.get("nome") or e["id"]
-            for e in casa.get("etichette") or [] if e.get("id")}
+            for e in home_space.get("etichette") or [] if e.get("id")}
 
 
-def _etichette_id_e_nome(voce: dict, nomi: dict[str, str]) -> list[tuple[str, str]]:
+def _label_id_and_name(entry: dict, names: dict[str, str]) -> list[tuple[str, str]]:
     """(label_id, nome) per ogni etichetta valida della voce -- la base
     condivisa da `etichette_con_nome` (ricerca: nomi PURI, mai l'id nel
     testo che si indicizza) ed `etichette_con_id` (display: nome+id
@@ -289,11 +289,11 @@ def _etichette_id_e_nome(voce: dict, nomi: dict[str, str]) -> list[tuple[str, st
     vero di «questa cosa non ha etichette». Stessa scelta di `gerarchia()`
     con le aree sconosciute.
     """
-    return [(str(e), nomi.get(str(e), str(e))) for e in (voce.get("etichette") or [])
+    return [(str(e), names.get(str(e), str(e))) for e in (entry.get("etichette") or [])
             if str(e).strip()]
 
 
-def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
+def labels_with_name(entry: dict, names: dict[str, str]) -> list[str]:
     """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
 
     SOLO nomi, MAI l'id nel testo: alimenta anche l'indice di `cerca`
@@ -305,10 +305,10 @@ def etichette_con_nome(voce: dict, nomi: dict[str, str]) -> list[str]:
     `etichette_con_id` sotto: due usi diversi, due funzioni -- non una che
     prova a servirli entrambi.
     """
-    return [nome for _, nome in _etichette_id_e_nome(voce, nomi)]
+    return [name for _, name in _label_id_and_name(entry, names)]
 
 
-def etichette_con_id(voce: dict, nomi: dict[str, str]) -> list[str]:
+def labels_with_id(entry: dict, names: dict[str, str]) -> list[str]:
     """Come `etichette_con_nome`, ma col `label_id` accanto come dato
     ACCESSORIO -- `Nome (id: X)`, la stessa forma di `nome_con_id` che
     l'albero del nucleo usa gia' per aree/piani/automazioni (T8, R2:
@@ -323,10 +323,10 @@ def etichette_con_id(voce: dict, nomi: dict[str, str]) -> list[str]:
     LEGGERE (`guarda`), mai dove diventa un termine da CERCARE -- vedi il
     docstring di `etichette_con_nome`.
     """
-    return [nome_con_id(nome, id_) for id_, nome in _etichette_id_e_nome(voce, nomi)]
+    return [name_with_id(name, id_) for id_, name in _label_id_and_name(entry, names)]
 
 
-def nomi_delle_categorie(casa: dict) -> dict[tuple[str, str], str]:
+def category_names(home_space: dict) -> dict[tuple[str, str], str]:
     """(ambito, category_id) -> nome, dal registro delle categorie.
 
     Le categorie sono la SECONDA tassonomia scritta a mano dall'utente in Home
@@ -352,17 +352,17 @@ def nomi_delle_categorie(casa: dict) -> dict[tuple[str, str], str]:
     (`memoria/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
     """
-    nomi: dict[tuple[str, str], str] = {}
-    for c in casa.get("categorie") or []:
-        identificativo = str(c.get("id") or "").strip()
-        if not identificativo:
+    names: dict[tuple[str, str], str] = {}
+    for c in home_space.get("categorie") or []:
+        identifier = str(c.get("id") or "").strip()
+        if not identifier:
             continue
-        ambito = str(c.get("ambito") or "").strip()
-        nomi[(ambito, identificativo)] = str(c.get("nome") or "").strip() or identificativo
-    return nomi
+        scope = str(c.get("ambito") or "").strip()
+        names[(scope, identifier)] = str(c.get("nome") or "").strip() or identifier
+    return names
 
 
-def categorie_con_nome(voce: dict, nomi: dict[tuple[str, str], str]) -> dict[str, str]:
+def categories_with_name(entry: dict, names: dict[tuple[str, str], str]) -> dict[str, str]:
     """Le categorie di una voce dell'anagrafe: `{ambito: nome}`.
 
     Resta un dizionario e non diventa una lista di nomi -- come sono invece le
@@ -376,17 +376,17 @@ def categorie_con_nome(voce: dict, nomi: dict[tuple[str, str], str]) -> dict[str
     «questa cosa sta in una categoria che non so nominare» e' piu' vero di
     «questa cosa non ha categoria». Stessa scelta di `etichette_con_nome`.
     """
-    assegnate = voce.get("categorie")
-    if not isinstance(assegnate, dict):
+    assigned = entry.get("categorie")
+    if not isinstance(assigned, dict):
         return {}
-    fuori: dict[str, str] = {}
-    for ambito, identificativo in assegnate.items():
-        ambito = str(ambito).strip()
-        identificativo = str(identificativo).strip()
-        if not ambito or not identificativo:
+    outside: dict[str, str] = {}
+    for scope, identifier in assigned.items():
+        scope = str(scope).strip()
+        identifier = str(identifier).strip()
+        if not scope or not identifier:
             continue
-        fuori[ambito] = nomi.get((ambito, identificativo), identificativo)
-    return fuori
+        outside[scope] = names.get((scope, identifier), identifier)
+    return outside
 
 
 # Le tre severita' di un problema diagnosticato da Home Assistant, dalla piu'
@@ -399,7 +399,7 @@ def categorie_con_nome(voce: dict, nomi: dict[tuple[str, str], str]) -> dict[str
 # dichiara PURO. Questa e' gia' la casa degli altri vocabolari di Home
 # Assistant (i significati delle classi, le traduzioni degli stati), ed e' una
 # foglia: la puo' importare chiunque.
-SEVERITA_PROBLEMA = ("critical", "error", "warning")
+PROBLEM_SEVERITY = ("critical", "error", "warning")
 
 
 # --- il vocabolario degli stati -------------------------------------------
@@ -411,7 +411,7 @@ SEVERITA_PROBLEMA = ("critical", "error", "warning")
 # perdita d'acqua aveva la forma di una lampadina accesa a seconda di chi la
 # chiedeva.
 
-_TRADUZIONE_STATO = {
+_STATE_TRANSLATION = {
     "on": "acceso", "off": "spento", "open": "aperta", "closed": "chiusa",
     "home": "in casa", "not_home": "fuori casa", "unlocked": "sbloccata",
     "locked": "bloccata", "playing": "in riproduzione", "paused": "in pausa",
@@ -431,7 +431,7 @@ _TRADUZIONE_STATO = {
 # I significati NON sono inventati: sono quelli dichiarati in
 # developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il
 # 16/08/2026. Dove HA dice «on means wet», qui c'e' «bagnato».
-_SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
+_CLASS_MEANING: dict[str, tuple[str, str]] = {
     # allarmi
     "moisture": ("bagnato", "asciutto"),
     "smoke": ("fumo rilevato", "nessun fumo"),
@@ -487,7 +487,7 @@ _SIGNIFICATO_CLASSE: dict[str, tuple[str, str]] = {
 # (`components/climate/const.py`), verificati: il dominio non ha una
 # `device_class` propria (a differenza di sensori e binary_sensor), quindi
 # questa tabella si applica per DOMINIO, non per classe.
-_HVAC_MODE_LEGGIBILE = {
+_HVAC_MODE_READABLE = {
     "off": "spento", "heat": "riscaldamento", "cool": "raffrescamento",
     "heat_cool": "riscaldamento/raffrescamento", "auto": "automatica",
     "dry": "deumidificazione", "fan_only": "sola ventilazione",
@@ -497,14 +497,14 @@ _HVAC_MODE_LEGGIBILE = {
 # termostato senza questo attributo (integrazioni che non lo mandano) resta
 # onesto per omissione -- vedi `_stato_leggibile_climate` sotto, che senza
 # azione nota dice solo l'impostazione e non inventa un funzionamento.
-_HVAC_ACTION_LEGGIBILE = {
+_HVAC_ACTION_READABLE = {
     "heating": "sta scaldando", "cooling": "sta raffrescando",
     "drying": "sta deumidificando", "fan": "sta ventilando",
     "preheating": "sta preriscaldando", "idle": "fermo", "off": "spento",
 }
 
 
-def _stato_leggibile_climate(valore, hvac_action: str | None) -> str:
+def _readable_climate_state(value, hvac_action: str | None) -> str:
     """Lo stato di un termostato in parole, onesto sulla differenza fra
     impostazione e funzionamento (vedi `_HVAC_MODE_LEGGIBILE`).
 
@@ -514,20 +514,20 @@ def _stato_leggibile_climate(valore, hvac_action: str | None) -> str:
     un'informazione parziale dichiarata come tale che una frase che
     suggerisce un funzionamento che nessuno ha confermato.
     """
-    v = str(valore).lower()
-    modo = _HVAC_MODE_LEGGIBILE.get(v)
-    if modo is None:
-        return str(valore)
+    v = str(value).lower()
+    mode = _HVAC_MODE_READABLE.get(v)
+    if mode is None:
+        return str(value)
     if v == "off":
-        return modo
-    azione = _HVAC_ACTION_LEGGIBILE.get(str(hvac_action).lower()) if hvac_action else None
-    if azione:
-        return f"impostato su {modo}, {azione}"
-    return f"impostato su {modo}"
+        return mode
+    action = _HVAC_ACTION_READABLE.get(str(hvac_action).lower()) if hvac_action else None
+    if action:
+        return f"impostato su {mode}, {action}"
+    return f"impostato su {mode}"
 
 
-def traduci_stato(valore, classe: str | None = None, dominio: str | None = None,
-                  hvac_action: str | None = None) -> str:
+def translate_state(value, device_class: str | None = None, domain: str | None = None,
+                    hvac_action: str | None = None) -> str:
     """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
     `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
     `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant.
@@ -538,19 +538,19 @@ def traduci_stato(valore, classe: str | None = None, dominio: str | None = None,
     questa firma esiste per chiudere -- vedi `_stato_leggibile_climate`.
     Chi non li passa (il nucleo, per scelta: e' testo pagato a ogni turno, e
     il climate non entra mai in "Notevole adesso") si comporta come prima."""
-    if dominio == "climate":
-        return _stato_leggibile_climate(valore, hvac_action)
-    v = str(valore).lower()
-    significato = _SIGNIFICATO_CLASSE.get(classe or "")
-    if significato:
+    if domain == "climate":
+        return _readable_climate_state(value, hvac_action)
+    v = str(value).lower()
+    meaning = _CLASS_MEANING.get(device_class or "")
+    if meaning:
         if v == "on":
-            return significato[0]
+            return meaning[0]
         if v == "off":
-            return significato[1]
-    return _TRADUZIONE_STATO.get(v, str(valore))
+            return meaning[1]
+    return _STATE_TRANSLATION.get(v, str(value))
 
 
-def dominio_di(entity_id) -> str:
+def domain_of(entity_id) -> str:
     """Il dominio di un `entity_id`: `light.cucina` -> `light`.
 
     Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
@@ -569,11 +569,11 @@ def dominio_di(entity_id) -> str:
     guardare. Stesso principio per cui `_nome_dominio` lascia uscire un
     dominio che non sa tradurre invece di saltare la riga.
     """
-    testo = str(entity_id)
-    return testo.split(".", 1)[0] if "." in testo else testo
+    text = str(entity_id)
+    return text.split(".", 1)[0] if "." in text else text
 
 
-def area_effettiva(entita: dict, area_del_dispositivo: dict[str, str | None]) -> str | None:
+def actual_area(entity: dict, area_del_device: dict[str, str | None]) -> str | None:
     """L'area di un'entita': la PROPRIA se ce l'ha, altrimenti quella del suo
     dispositivo.
 
@@ -595,10 +595,10 @@ def area_effettiva(entita: dict, area_del_dispositivo: dict[str, str | None]) ->
     pseudo-area «Dispositivi non letti») lo decide prima di chiamare qui:
     questa funzione risponde alla domanda, non la qualifica.
     """
-    return entita.get("area_id") or area_del_dispositivo.get(entita.get("dispositivo_id"))
+    return entity.get("area_id") or area_del_device.get(entity.get("dispositivo_id"))
 
 
-def classe_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
+def actual_class(declared: str | None, live: str | None) -> str | None:
     """La classe di un'entita' (`device_class`): la VIVA vince su quella del
     registro -- e sul campo e' l'unica che esista.
 
@@ -633,13 +633,13 @@ def classe_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
     `get_entries`: allora le due fonti coesisteranno, e questa funzione dira'
     gia' quale vince.
     """
-    for candidata in (viva, dichiarata):
-        if isinstance(candidata, str) and candidata.strip():
-            return candidata.strip()
+    for candidate in (live, declared):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
     return None
 
 
-def unita_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
+def actual_unit(declared: str | None, live: str | None) -> str | None:
     """L'unita' vera di un'entita': la VIVA vince su quella del registro.
 
     Home Assistant converte le unita' **solo alla prima aggiunta del sensore**:
@@ -661,13 +661,13 @@ def unita_effettiva(dichiarata: str | None, viva: str | None) -> str | None:
     resta `None`: **non si inventa** -- vedi `sistema_di_riferimento`, che
     descrive la casa e non le sue entita'.
     """
-    for candidata in (viva, dichiarata):
-        if isinstance(candidata, str) and candidata.strip():
-            return candidata.strip()
+    for candidate in (live, declared):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
     return None
 
 
-def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()) -> list[dict]:
+def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = ()) -> list[dict]:
     """La casa in forma di albero: piani → aree → entita'.
 
     Due regole di Home Assistant che vanno rispettate o meta' della casa
@@ -758,38 +758,38 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
     sezioni del nucleo si contraddicevano fra loro: una le contava, l'altra
     no.
     """
-    dispositivi_letti = "dispositivi" not in non_disponibili
-    area_del_dispositivo = {d["id"]: d.get("area_id") for d in casa.get("dispositivi", [])}
+    device_loaded = "dispositivi" not in unavailable
+    area_del_device = {d["id"]: d.get("area_id") for d in home_space.get("dispositivi", [])}
 
     per_area: dict[str | None, list[dict]] = {}
-    per_area_disabilitate: dict[str | None, list[dict]] = {}
-    per_area_nascoste: dict[str | None, list[dict]] = {}
-    dispositivi_non_letti = []
-    for entita in casa.get("entita", []):
-        area_propria = entita.get("area_id")
-        dispositivo_id = entita.get("dispositivo_id")
-        if not area_propria and dispositivo_id and not dispositivi_letti:
+    per_area_disabled: dict[str | None, list[dict]] = {}
+    per_area_hidden: dict[str | None, list[dict]] = {}
+    device_non_loaded = []
+    for entity in home_space.get("entita", []):
+        own_area = entity.get("area_id")
+        device_id = entity.get("dispositivo_id")
+        if not own_area and device_id and not device_loaded:
             # Erediterebbe l'area dal dispositivo, ma il registro dei
             # dispositivi non ha risposto: non possiamo sapere quale sarebbe,
             # quindi non finge di essere "senza area". Vale anche per le
             # disabilitate e le nascoste: non risolvibili, non tracciate
             # nemmeno a parte.
-            if not entita.get("disabilitata"):
-                dispositivi_non_letti.append(entita)
+            if not entity.get("disabilitata"):
+                device_non_loaded.append(entity)
             continue
-        area_id = area_effettiva(entita, area_del_dispositivo)
-        if entita.get("disabilitata"):
-            per_area_disabilitate.setdefault(area_id, []).append(entita)
-        elif entita.get("nascosta"):
-            per_area_nascoste.setdefault(area_id, []).append(entita)
+        area_id = actual_area(entity, area_del_device)
+        if entity.get("disabilitata"):
+            per_area_disabled.setdefault(area_id, []).append(entity)
+        elif entity.get("nascosta"):
+            per_area_hidden.setdefault(area_id, []).append(entity)
         else:
-            per_area.setdefault(area_id, []).append(entita)
+            per_area.setdefault(area_id, []).append(entity)
 
-    aree_per_piano: dict[str | None, list[dict]] = {}
-    aree_note = set()
-    for area in casa.get("aree", []):
-        aree_note.add(area["id"])
-        aree_per_piano.setdefault(area.get("piano_id"), []).append({
+    areas_per_floor: dict[str | None, list[dict]] = {}
+    known_areas = set()
+    for area in home_space.get("aree", []):
+        known_areas.add(area["id"])
+        areas_per_floor.setdefault(area.get("piano_id"), []).append({
             "id": area["id"],
             "nome": area["nome"],
             "alias": area.get("alias", []),
@@ -801,67 +801,67 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
             "entita": per_area.get(area["id"], []),
             # Non nei conteggi (vedi il docstring), ma raggiungibili nel
             # dettaglio di un'area -- vedi `domande._guarda_area`.
-            "entita_disabilitate": per_area_disabilitate.get(area["id"], []),
+            "entita_disabilitate": per_area_disabled.get(area["id"], []),
             # Stessa forma, per le nascoste: non nei conteggi, raggiungibili
             # a parte -- vedi il docstring qui sopra.
-            "entita_nascoste": per_area_nascoste.get(area["id"], []),
+            "entita_nascoste": per_area_hidden.get(area["id"], []),
         })
 
     # Le entita' fuori dalle aree note si dividono per causa. Se le aree non
     # sono state lette, non possiamo fidarci nemmeno della distinzione fra
     # "area_id assente" e "area_id sconosciuto": vanno tutte in un unico
     # bucket "Aree non lette".
-    aree_lette = "aree" not in non_disponibili
-    senza_area, aree_non_lette, area_sconosciuta = [], [], []
-    for area_id, elenco in per_area.items():
-        if area_id in aree_note:
+    area_loaded = "aree" not in unavailable
+    without_area, area_non_loaded, unknown_area = [], [], []
+    for area_id, entries in per_area.items():
+        if area_id in known_areas:
             continue
-        if not aree_lette:
-            aree_non_lette.extend(elenco)
+        if not area_loaded:
+            area_non_loaded.extend(entries)
         elif area_id is None:
-            senza_area.extend(elenco)
+            without_area.extend(entries)
         else:
-            area_sconosciuta.extend(elenco)
+            unknown_area.extend(entries)
 
-    piani = []
-    for piano in casa.get("piani", []):
-        piani.append({
-            "id": piano["id"], "nome": piano["nome"], "livello": piano.get("livello"),
-            "aree": aree_per_piano.pop(piano["id"], []),
+    floors = []
+    for floor in home_space.get("piani", []):
+        floors.append({
+            "id": floor["id"], "nome": floor["nome"], "livello": floor.get("livello"),
+            "aree": areas_per_floor.pop(floor["id"], []),
         })
-    piani.sort(key=lambda p: (p["livello"] is None, p["livello"] or 0, p["nome"]))
+    floors.sort(key=lambda p: (p["livello"] is None, p["livello"] or 0, p["nome"]))
 
     # Le aree senza piano si dividono per la stessa causa delle entita' senza
     # area sopra: se i piani non sono stati letti, "Senza piano" affermerebbe
     # un dato che non abbiamo.
-    piani_letti = "piani" not in non_disponibili
-    resto = [a for elenco in aree_per_piano.values() for a in elenco]
-    if resto:
-        if piani_letti:
-            piani.append({"id": _ID_SENZA_PIANO, "nome": "Senza piano", "livello": None,
-                          "aree": resto})
+    floor_loaded = "piani" not in unavailable
+    rest = [a for entries in areas_per_floor.values() for a in entries]
+    if rest:
+        if floor_loaded:
+            floors.append({"id": _ID_WITHOUT_FLOOR, "nome": "Senza piano", "livello": None,
+                          "aree": rest})
         else:
-            piani.append({"id": _ID_PIANI_NON_LETTI, "nome": "Piani non letti", "livello": None,
-                          "aree": resto})
+            floors.append({"id": _ID_FLOOR_NON_LOADED, "nome": "Piani non letti", "livello": None,
+                          "aree": rest})
 
-    fuori_dalle_aree = []
-    if aree_non_lette:
-        fuori_dalle_aree.append({"id": _ID_AREE_NON_LETTE, "nome": "Aree non lette",
-                                 "alias": [], "etichette": [], "entita": aree_non_lette})
-    if area_sconosciuta:
-        fuori_dalle_aree.append({"id": _ID_AREA_SCONOSCIUTA, "nome": "Area sconosciuta",
-                                 "alias": [], "etichette": [], "entita": area_sconosciuta})
-    if senza_area:
-        fuori_dalle_aree.append({"id": _ID_SENZA_AREA, "nome": "Senza area",
-                                 "alias": [], "etichette": [], "entita": senza_area})
-    if dispositivi_non_letti:
-        fuori_dalle_aree.append({"id": _ID_DISPOSITIVI_NON_LETTI, "nome": "Dispositivi non letti",
-                                 "alias": [], "etichette": [], "entita": dispositivi_non_letti})
-    if fuori_dalle_aree:
-        piani.append({"id": _ID_FUORI_DALLE_AREE, "nome": "Fuori dalle aree", "livello": None,
-                      "aree": fuori_dalle_aree})
+    outside_areas = []
+    if area_non_loaded:
+        outside_areas.append({"id": _ID_AREA_NON_LOADED, "nome": "Aree non lette",
+                                 "alias": [], "etichette": [], "entita": area_non_loaded})
+    if unknown_area:
+        outside_areas.append({"id": _ID_UNKNOWN_AREA, "nome": "Area sconosciuta",
+                                 "alias": [], "etichette": [], "entita": unknown_area})
+    if without_area:
+        outside_areas.append({"id": _ID_WITHOUT_AREA, "nome": "Senza area",
+                                 "alias": [], "etichette": [], "entita": without_area})
+    if device_non_loaded:
+        outside_areas.append({"id": _ID_DEVICE_NON_LOADED, "nome": "Dispositivi non letti",
+                                 "alias": [], "etichette": [], "entita": device_non_loaded})
+    if outside_areas:
+        floors.append({"id": _ID_OUTSIDE_AREAS, "nome": "Fuori dalle aree", "livello": None,
+                      "aree": outside_areas})
 
-    return piani
+    return floors
 
 
 # --- il confronto: l'albero smette di essere un'affermazione ---------------
@@ -890,10 +890,10 @@ def gerarchia(casa: dict[str, list[dict]], non_disponibili: tuple[str, ...] = ()
 # chi lo legge deve saperlo -- per questo `confronta_con_home_assistant`
 # dichiara sempre `aree_totali`, e il nucleo non dice mai una divergenza senza
 # dire su quante aree l'ha cercata.
-AREE_PER_GIRO = 3
+AREAS_PER_ROUND = 3
 
 
-def _indice_aree(piani: list[dict]) -> dict[str, dict]:
+def _area_lookup(floors: list[dict]) -> dict[str, dict]:
     """`{area_id: area}` per le sole aree VERE dell'albero.
 
     Le pseudo-aree (`e_pseudo_area`: «Senza area», «Aree non lette», «Area
@@ -904,17 +904,17 @@ def _indice_aree(piani: list[dict]) -> dict[str, dict]:
     costruzione. Confrontare vuol dire chiedere all'originale qualcosa che
     l'originale conosce.
     """
-    indice: dict[str, dict] = {}
-    for piano in piani or []:
-        for area in piano.get("aree") or []:
-            identificativo = area.get("id")
-            if not identificativo or e_pseudo_area(identificativo):
+    lookup: dict[str, dict] = {}
+    for floor in floors or []:
+        for area in floor.get("aree") or []:
+            identifier = area.get("id")
+            if not identifier or is_pseudo_area(identifier):
                 continue
-            indice[identificativo] = area
-    return indice
+            lookup[identifier] = area
+    return lookup
 
 
-def aree_dell_albero(piani: list[dict]) -> list[dict]:
+def tree_areas(floors: list[dict]) -> list[dict]:
     """Le aree vere dell'albero -- `[{"id", "nome"}]` -- ordinate per id.
 
     L'ordine e' per ID e non per nome: e' l'unica chiave che Home Assistant
@@ -923,13 +923,13 @@ def aree_dell_albero(piani: list[dict]) -> list[dict]:
     cambia quando l'utente rinomina una stanza farebbe saltare il turno a
     un'area a caso.
     """
-    return sorted(({"id": identificativo, "nome": area.get("nome") or identificativo}
-                   for identificativo, area in _indice_aree(piani).items()),
+    return sorted(({"id": identifier, "nome": area.get("nome") or identifier}
+                   for identifier, area in _area_lookup(floors).items()),
                   key=lambda a: a["id"])
 
 
-def scegli_campione(aree: list[dict], quante: int = AREE_PER_GIRO,
-                    dopo: str | None = None) -> list[dict]:
+def choose_sample(areas: list[dict], count: int = AREAS_PER_ROUND,
+                  after: str | None = None) -> list[dict]:
     """Le prossime `quante` aree da confrontare, a ROTAZIONE.
 
     A rotazione e non a caso, per due ragioni che contano entrambe:
@@ -950,22 +950,22 @@ def scegli_campione(aree: list[dict], quante: int = AREE_PER_GIRO,
     salterebbe o ripeterebbe una posizione in silenzio, mentre «la prima dopo
     questa» resta vera comunque. Finito il giro si ricomincia da capo.
     """
-    if quante <= 0 or not aree:
+    if count <= 0 or not areas:
         return []
-    inizio = 0
-    if dopo:
-        for i, area in enumerate(aree):
-            if area["id"] > dopo:
-                inizio = i
+    start = 0
+    if after:
+        for i, area in enumerate(areas):
+            if area["id"] > after:
+                start = i
                 break
         else:
-            inizio = 0
-    quante = min(quante, len(aree))
-    doppio = list(aree) + list(aree)
-    return doppio[inizio:inizio + quante]
+            start = 0
+    count = min(count, len(areas))
+    doubled = list(areas) + list(areas)
+    return doubled[start:start + count]
 
 
-def _fuori_dal_confronto(entita: dict | None) -> bool:
+def _excluded_from_comparison(entity: dict | None) -> bool:
     """Vero se questa entita' NON e' confrontabile fra i due alberi.
 
     Tre differenze fra la nostra lista e quella di Home Assistant NON sono
@@ -1002,15 +1002,15 @@ def _fuori_dal_confronto(entita: dict | None) -> bool:
     scartarla per prudenza sarebbe il difetto che questa fetta esiste per
     chiudere.
     """
-    if not isinstance(entita, dict):
+    if not isinstance(entity, dict):
         return False
-    return bool(entita.get("nascosta")
-                or entita.get("disabilitata")
-                or str(entita.get("categoria") or "").strip())
+    return bool(entity.get("nascosta")
+                or entity.get("disabilitata")
+                or str(entity.get("categoria") or "").strip())
 
 
-def _confronta_area(area: dict | None, identificativo: str, risposta,
-                    note: dict[str, dict]) -> dict:
+def _compare_area(area: dict | None, identifier: str, answer,
+                  known: dict[str, dict]) -> dict:
     """Il verdetto su UNA area: `{"area", "nome"}` piu' uno dei due esiti.
 
     O `errore` (non si e' potuto guardare) o la coppia `mancanti`/`in_piu`
@@ -1018,21 +1018,21 @@ def _confronta_area(area: dict | None, identificativo: str, risposta,
     letto non e' un confronto riuscito, e vale per la singola area
     esattamente come per il giro intero.
     """
-    voce = {"area": identificativo, "nome": (area or {}).get("nome") or identificativo}
+    entry = {"area": identifier, "nome": (area or {}).get("nome") or identifier}
     if area is None:
         # Il campione nasce dall'albero, quindi in produzione questo ramo
         # scatta solo se l'anagrafe si e' ricostruita fra la domanda e la
         # risposta. Non e' un combaciare: e' un confronto perso.
-        voce["errore"] = ("quest'area non e' piu' nell'albero: l'anagrafe si e' "
+        entry["errore"] = ("quest'area non e' piu' nell'albero: l'anagrafe si e' "
                           "ricostruita mentre la si confrontava")
-        return voce
-    if not isinstance(risposta, dict):
-        voce["errore"] = "Home Assistant non ha risposto"
-        return voce
-    guasto = str(risposta.get("errore") or "").strip()
-    if guasto:
-        voce["errore"] = guasto
-        return voce
+        return entry
+    if not isinstance(answer, dict):
+        entry["errore"] = "Home Assistant non ha risposto"
+        return entry
+    fault = str(answer.get("errore") or "").strip()
+    if fault:
+        entry["errore"] = fault
+        return entry
 
     # L'area che HA dichiara MANCANTE e' il caso peggiore in forma pura: HIRIS
     # ha una stanza intera che l'originale non ha piu'. Si dice a parte perche'
@@ -1040,19 +1040,19 @@ def _confronta_area(area: dict | None, identificativo: str, risposta,
     # arriverebbe come un elenco di entita' che non si toccano -- la stessa
     # distinzione fra «l'area e' vuota» e «quell'area non c'e'» che
     # `estrai_dal_bersaglio` porta gia' nelle sue due meta'.
-    voce["assente_in_ha"] = identificativo in (risposta.get("aree_mancanti") or [])
+    entry["assente_in_ha"] = identifier in (answer.get("aree_mancanti") or [])
 
-    nostre = {e.get("id") for e in area.get("entita") or []
-              if e.get("id") and not _fuori_dal_confronto(e)}
-    loro = {i for i in risposta.get("entita") or []
-            if i and not _fuori_dal_confronto(note.get(i))}
-    voce["mancanti"] = sorted(loro - nostre)
-    voce["in_piu"] = sorted(nostre - loro)
-    return voce
+    ours = {e.get("id") for e in area.get("entita") or []
+              if e.get("id") and not _excluded_from_comparison(e)}
+    theirs = {i for i in answer.get("entita") or []
+            if i and not _excluded_from_comparison(known.get(i))}
+    entry["mancanti"] = sorted(theirs - ours)
+    entry["in_piu"] = sorted(ours - theirs)
+    return entry
 
 
-def confronta_con_home_assistant(piani: list[dict], casa: dict,
-                                 risposte: dict[str, dict]) -> dict:
+def compare_with_home_assistant(floors: list[dict], home_space: dict,
+                                answers: dict[str, dict]) -> dict:
     """Il giro di confronto, in forma pura: albero + risposte di HA -> esito.
 
     `risposte` e' `{area_id: cio' che ha risposto estrai_dal_bersaglio}`, nello
@@ -1068,8 +1068,8 @@ def confronta_con_home_assistant(piani: list[dict], casa: dict,
     funzione pura che leggesse l'orologio non sarebbe piu' confrontabile con se
     stessa.
     """
-    indice = _indice_aree(piani)
-    note = {e.get("id"): e for e in (casa.get("entita") or []) if e.get("id")}
-    guardate = [_confronta_area(indice.get(identificativo), identificativo, risposta, note)
-                for identificativo, risposta in (risposte or {}).items()]
-    return {"aree_totali": len(indice), "guardate": guardate}
+    lookup = _area_lookup(floors)
+    known = {e.get("id"): e for e in (home_space.get("entita") or []) if e.get("id")}
+    checked = [_compare_area(lookup.get(identifier), identifier, answer, known)
+                for identifier, answer in (answers or {}).items()]
+    return {"aree_totali": len(lookup), "guardate": checked}

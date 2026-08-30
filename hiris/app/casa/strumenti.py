@@ -133,7 +133,7 @@ from ..memoria.interpretazione import VOCABULARY, validate
 from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..proxy.entity_cache import inventario_leggibile
 from . import tempo
-from .anagrafe import specchio_vivo
+from .anagrafe import live_mirror
 from .archivio import HomeSpaceStore
 from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
@@ -1345,7 +1345,7 @@ class DispatcherStrumenti:
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
             stato, nomi, unita, classi, da_quando, attributi = \
-                specchio_vivo(self._cache.all_states())
+                live_mirror(self._cache.all_states())
         except Exception:
             return {}, {}, {}, {}, {}, {}, False
         return stato, nomi, unita, classi, da_quando, attributi, True

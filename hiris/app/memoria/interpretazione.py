@@ -43,7 +43,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
-from ..casa.anagrafe import area_effettiva, unita_effettiva
+from ..casa.anagrafe import actual_area, actual_unit
 
 # Le quattro... anzi tre caselle con un vocabolario chiuso: "a chi si
 # riferisce" e "che forza ha" restano qui elencate per intero; "cosa
@@ -258,7 +258,7 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
         if tether["tipo"] == "entita":
             entity = lookup.verify("entita", tether["riferimento"])
             if entity:
-                unit = unita_effettiva(entity.get("unita"), reported.get(entity.get("id")))
+                unit = actual_unit(entity.get("unita"), reported.get(entity.get("id")))
                 if unit is not None:
                     return unit
         elif tether["tipo"] == "area" and grandezza is not None:
@@ -273,9 +273,9 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
             for entity in lookup.tutti("entita"):
                 if entity.get("classe") != grandezza:
                     continue
-                if area_effettiva(entity, area_del_device) != area_id:
+                if actual_area(entity, area_del_device) != area_id:
                     continue
-                unit = unita_effettiva(entity.get("unita"), reported.get(entity.get("id")))
+                unit = actual_unit(entity.get("unita"), reported.get(entity.get("id")))
                 if unit is not None:
                     return unit
     return None

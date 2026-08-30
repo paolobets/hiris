@@ -269,6 +269,7 @@ in §4①:
 | `propria` | `proprio` |
 | `viva` | `vivo` |
 | `candidata` | `candidato` |
+| `nostre` | `nostro` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -1069,6 +1070,7 @@ al Task 6 invece che deciso qui.
 | codice | code |
 | colonna | column |
 | configurazione | configuration |
+| confronta | compare |
 | confronto | comparison |
 | conosciuto | known |
 | conservazione | retention |
@@ -1091,6 +1093,7 @@ al Task 6 invece che deciso qui.
 | disponibile | available |
 | dispositivo | device |
 | dominio | domain |
+| dopo (casa) | after |
 | effettivo | actual |
 | elenca | list |
 | elenco | list |
@@ -1111,6 +1114,7 @@ al Task 6 invece che deciso qui.
 | forma | form |
 | frase | phrase |
 | fresco | fresh |
+| fuori (casa) | outside |
 | gerarchia | hierarchy |
 | giorno | day |
 | giro | round |
@@ -1133,6 +1137,7 @@ al Task 6 invece che deciso qui.
 | lettore | reader |
 | limite | limit |
 | locale | local |
+| loro (casa) | their |
 | mantieni | keep |
 | massimo | maximum |
 | minimo | minimum |
@@ -1146,6 +1151,7 @@ al Task 6 invece che deciso qui.
 | nodo | node |
 | nome | name |
 | normalizza | normalize |
+| nostro (casa) | our |
 | nota | note |
 | numeratore | numerator |
 | nuovo | new |
@@ -1185,6 +1191,7 @@ al Task 6 invece che deciso qui.
 | rivendica | claim |
 | sanificato | sanitized |
 | scadenza | deadline |
+| scegli | choose |
 | scelto | chosen |
 | scena | scene |
 | sconosciuto | unknown |
@@ -1193,6 +1200,7 @@ al Task 6 invece che deciso qui.
 | secondo | second |
 | segna | mark |
 | semina | seed |
+| senza (casa) | without |
 | serie | series |
 | servizio | service |
 | severita | severity |

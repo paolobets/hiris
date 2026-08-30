@@ -11,7 +11,7 @@ fra tutti i sensori dell'area quale intende chi chiede -- e su una stanza con
 il termostato, la valvola e il sensore della finestra puo' benissimo scegliere
 quello sbagliato e rispondere con sicurezza.
 """
-from hiris.app.casa.anagrafe import gerarchia
+from hiris.app.casa.anagrafe import hierarchy
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 
@@ -42,7 +42,7 @@ def test_l_archivio_conserva_le_entita_di_riferimento(tmp_path):
 
 
 def test_l_albero_le_porta(tmp_path):
-    piani = gerarchia(_casa(tmp_path), ())
+    piani = hierarchy(_casa(tmp_path), ())
     aree = [a for p in piani for a in p["aree"]]
     soggiorno = next(a for a in aree if a["id"] == "soggiorno")
     assert soggiorno["entita_temperatura"] == "sensor.soggiorno_temp"

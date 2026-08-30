@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.casa.anagrafe import gerarchia, ricostruisci
+from hiris.app.casa.anagrafe import hierarchy, rebuild
 from hiris.app.casa.archivio import HomeSpaceStore
 
 _REGISTRI = {
@@ -46,7 +46,7 @@ async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    esito = await ricostruisci(client, archivio)
+    esito = await rebuild(client, archivio)
     assert esito["conteggi"]["aree"] == 2
     assert esito["conteggi"]["entita"] == 4
     assert esito["non_disponibili"] == []
@@ -60,7 +60,7 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(dict(_REGISTRI, piani=[]), ["piani"]))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    esito = await ricostruisci(client, archivio)
+    esito = await rebuild(client, archivio)
     assert esito["non_disponibili"] == ["piani"]
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
 
@@ -72,13 +72,13 @@ async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    await ricostruisci(client, archivio)
+    await rebuild(client, archivio)
     prima = archivio.updated_at()
 
     vuoti = {chiave: [] for chiave in _REGISTRI}
     client.leggi_registri = AsyncMock(return_value=(vuoti, list(_REGISTRI)))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    esito = await ricostruisci(client, archivio)
+    esito = await rebuild(client, archivio)
 
     assert archivio.read()["aree"]           # la casa di ieri e' ancora li'
     assert archivio.updated_at() == prima  # e non finge di essere fresca
@@ -87,34 +87,34 @@ async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
 
 def test_l_entita_eredita_l_area_dal_proprio_dispositivo(archivio):
     archivio.replace(_REGISTRI)
-    aree = {a["nome"]: a for a in gerarchia(archivio.read())[0]["aree"]}
+    aree = {a["nome"]: a for a in hierarchy(archivio.read())[0]["aree"]}
     assert "sensor.frigo_temp" in [e["id"] for e in aree["Cucina"]["entita"]]
 
 
 def test_l_area_dell_entita_vince_su_quella_del_dispositivo(archivio):
     archivio.replace(_REGISTRI)
-    piani = gerarchia(archivio.read())
+    piani = hierarchy(archivio.read())
     solaio = next(a for p in piani for a in p["aree"] if a["nome"] == "Solaio")
     assert [e["id"] for e in solaio["entita"]] == ["light.faretto"]
 
 
 def test_le_aree_senza_piano_stanno_in_un_piano_senza_nome(archivio):
     archivio.replace(_REGISTRI)
-    piani = gerarchia(archivio.read())
+    piani = hierarchy(archivio.read())
     senza = next(p for p in piani if p["id"] == "__senza_piano__")
     assert [a["nome"] for a in senza["aree"]] == ["Solaio"]
 
 
 def test_le_entita_disabilitate_non_entrano_nella_gerarchia(archivio):
     archivio.replace(_REGISTRI)
-    tutte = [e["id"] for p in gerarchia(archivio.read())
+    tutte = [e["id"] for p in hierarchy(archivio.read())
              for a in p["aree"] for e in a["entita"]]
     assert "sensor.spenta" not in tutte
 
 
 def test_le_entita_senza_casa_sono_raccolte_a_parte(archivio):
     archivio.replace(_REGISTRI)
-    piani = gerarchia(archivio.read())
+    piani = hierarchy(archivio.read())
     fuori = [a for p in piani for a in p["aree"] if a["id"] == "__senza_area__"]
     assert [e["id"] for a in fuori for e in a["entita"]] == ["sensor.orfana"]
 
@@ -124,7 +124,7 @@ def test_un_registro_delle_aree_caduto_non_diventa_una_casa_senza_aree(archivio)
     ogni entita' della casa finiva in «Senza area», e HIRIS presentava «questa
     casa non ha organizzazione» invece di «non ho potuto leggere le aree»."""
     archivio.replace(dict(_REGISTRI, aree=[]), ["aree"])
-    piani = gerarchia(archivio.read(), ("aree",))
+    piani = hierarchy(archivio.read(), ("aree",))
     aree = [a for p in piani for a in p["aree"]]
     assert [a["nome"] for a in aree] == ["Aree non lette"]
     assert "sensor.frigo_temp" in [e["id"] for e in aree[0]["entita"]]
@@ -138,7 +138,7 @@ def test_un_riferimento_penzolante_non_e_una_entita_senza_area(archivio):
         {"entity_id": "sensor.orfana", "device_id": None, "area_id": None},
     ])
     archivio.replace(registri)
-    aree = {a["nome"]: a for p in gerarchia(archivio.read()) for a in p["aree"]}
+    aree = {a["nome"]: a for p in hierarchy(archivio.read()) for a in p["aree"]}
     assert [e["id"] for e in aree["Area sconosciuta"]["entita"]] == ["sensor.fantasma"]
     assert [e["id"] for e in aree["Senza area"]["entita"]] == ["sensor.orfana"]
 
@@ -156,7 +156,7 @@ def test_un_registro_dispositivi_caduto_non_svuota_le_stanze(archivio):
         "etichette": [], "categorie": [], "integrazioni": [],
     }
     archivio.replace(registri, ["dispositivi"])
-    piani = gerarchia(archivio.read(), ("dispositivi",))
+    piani = hierarchy(archivio.read(), ("dispositivi",))
     aree = {a["nome"]: a for p in piani for a in p["aree"]}
     assert "Dispositivi non letti" in aree
     assert len(aree["Dispositivi non letti"]["entita"]) == 3
@@ -171,7 +171,7 @@ def test_un_registro_piani_caduto_non_diventa_una_casa_senza_piani(archivio):
         "etichette": [], "categorie": [], "integrazioni": [],
     }
     archivio.replace(registri, ["piani"])
-    piani = gerarchia(archivio.read(), ("piani",))
+    piani = hierarchy(archivio.read(), ("piani",))
     assert [p["id"] for p in piani] == ["__piani_non_letti__"]
     assert [a["nome"] for a in piani[0]["aree"]] == ["Cucina"]
 
@@ -184,7 +184,7 @@ def test_le_entita_nascoste_finiscono_in_una_chiave_a_parte(archivio):
         {"entity_id": "light.lampadario_nascosto", "device_id": "d1", "area_id": None,
          "hidden_by": "user"}])
     archivio.replace(registri)
-    cucina = next(a for p in gerarchia(archivio.read()) for a in p["aree"]
+    cucina = next(a for p in hierarchy(archivio.read()) for a in p["aree"]
              if a["nome"] == "Cucina")
     assert "light.lampadario_nascosto" not in [e["id"] for e in cucina["entita"]]
     assert [e["id"] for e in cucina["entita_nascoste"]] == ["light.lampadario_nascosto"]
@@ -195,7 +195,7 @@ def test_un_area_senza_nascoste_ha_la_chiave_vuota(archivio):
     `domande.guarda`, che la omette quando e' vuota): e' una struttura
     interna, non la risposta finale al modello."""
     archivio.replace(_REGISTRI)
-    cucina = next(a for p in gerarchia(archivio.read()) for a in p["aree"]
+    cucina = next(a for p in hierarchy(archivio.read()) for a in p["aree"]
              if a["nome"] == "Cucina")
     assert cucina["entita_nascoste"] == []
 
@@ -208,7 +208,7 @@ def test_una_entita_disabilitata_e_nascosta_resta_fra_le_disabilitate(archivio):
         {"entity_id": "light.morta_e_nascosta", "device_id": "d1", "area_id": None,
          "disabled_by": "user", "hidden_by": "user"}])
     archivio.replace(registri)
-    cucina = next(a for p in gerarchia(archivio.read()) for a in p["aree"]
+    cucina = next(a for p in hierarchy(archivio.read()) for a in p["aree"]
              if a["nome"] == "Cucina")
     assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita_nascoste"]]
     assert "light.morta_e_nascosta" not in [e["id"] for e in cucina["entita"]]
@@ -219,7 +219,7 @@ def test_i_due_contenitori_hanno_identita_distinte(archivio):
     """Due piani con lo stesso id facevano sparire in silenzio le aree vere
     senza piano, appena qualcuno indicizzava per id."""
     archivio.replace(_REGISTRI)
-    piani = gerarchia(archivio.read())
+    piani = hierarchy(archivio.read())
     identita = [p["id"] for p in piani]
     assert len(identita) == len(set(identita))
     per_id = {p["id"]: p for p in piani}

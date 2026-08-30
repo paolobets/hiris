@@ -18,7 +18,7 @@ fino a cio' che `guarda` restituisce -- non i singoli anelli: un test per
 anello (come esistevano gia' per `_to_minimal`) non avrebbe mai visto questo
 difetto, perche' ogni anello faceva il proprio lavoro.
 """
-from hiris.app.casa.anagrafe import specchio_vivo, traduci_stato
+from hiris.app.casa.anagrafe import live_mirror, translate_state
 from hiris.app.casa.domande import guarda
 from hiris.app.proxy.entity_cache import _to_minimal
 
@@ -48,7 +48,7 @@ _CASA = {
 
 
 def _specchio_del_termostato():
-    return specchio_vivo([_to_minimal(_RAW_TERMOSTATO)])
+    return live_mirror([_to_minimal(_RAW_TERMOSTATO)])
 
 
 # --- ogni anello, presi da soli -- gia' passavano prima di questa fetta ---
@@ -99,7 +99,7 @@ def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
     qui -- serve leggere `hvac_action` davvero, non solo dichiararne uno."""
     raw = {**_RAW_TERMOSTATO,
            "attributes": {**_RAW_TERMOSTATO["attributes"], "hvac_action": "heating"}}
-    stato, _nomi, _unita, _classi, _da_quando, attributi = specchio_vivo([_to_minimal(raw)])
+    stato, _nomi, _unita, _classi, _da_quando, attributi = live_mirror([_to_minimal(raw)])
     dettaglio = guarda(_CASA, [], [], stato, "entita", "climate.matrimoniale",
                        attributi_vivi=attributi)
     assert "sta scaldando" in dettaglio["stato_leggibile"]
@@ -110,9 +110,9 @@ def test_e_senza_hvac_action_non_si_inventa_un_funzionamento():
     """Un'integrazione che non manda `hvac_action` (o un attributo fuori
     vocabolario): lo stato_leggibile dichiara solo l'impostazione, non
     inventa "fermo" ne' "sta scaldando" -- nessuno dei due sarebbe vero."""
-    assert traduci_stato("heat", None, "climate", None) == "impostato su riscaldamento"
-    assert "fermo" not in traduci_stato("heat", None, "climate", None)
-    assert "sta scaldando" not in traduci_stato("heat", None, "climate", None)
+    assert translate_state("heat", None, "climate", None) == "impostato su riscaldamento"
+    assert "fermo" not in translate_state("heat", None, "climate", None)
+    assert "sta scaldando" not in translate_state("heat", None, "climate", None)
 
 
 # --- il confine deciso: attributi SOLO sul dettaglio, mai nelle liste -----

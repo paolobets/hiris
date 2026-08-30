@@ -87,7 +87,7 @@ serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 """
 from dataclasses import dataclass, field
 
-from ..casa.anagrafe import dominio_di
+from ..casa.anagrafe import domain_of
 
 # I servizi di questo dominio si applicano a QUALUNQUE dominio di entita'
 # (`homeassistant.turn_off` spegne luci, prese, media player...). Senza
@@ -363,7 +363,7 @@ def verification(call: dict, registry, states: dict[str, dict],
     for eid in nominate:
         if eid not in states:
             return _no(f"l'entita' «{eid}» non esiste in questa casa.")
-        if domain not in _DOMINI_UNIVERSALI and dominio_di(eid) != domain:
+        if domain not in _DOMINI_UNIVERSALI and domain_of(eid) != domain:
             return _no(f"«{reading}» non si applica a «{eid}», che e' del "
                        f"dominio «{eid.split('.')[0]}».")
 
@@ -438,7 +438,7 @@ def verification(call: dict, registry, states: dict[str, dict],
                    "Home Assistant non ha niente da toccare li' dentro.")
 
     in_domain = [e for e in trovate
-                   if domain in _DOMINI_UNIVERSALI or dominio_di(e) == domain]
+                   if domain in _DOMINI_UNIVERSALI or domain_of(e) == domain]
     scartate = [e for e in trovate if e not in set(in_domain)]
     if not in_domain:
         return _no(f"il bersaglio contiene {len(trovate)} entita' e nessuna e' del "

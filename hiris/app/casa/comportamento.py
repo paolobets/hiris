@@ -16,7 +16,7 @@ import logging
 import re
 from pathlib import Path
 
-from .anagrafe import dominio_di
+from .anagrafe import domain_of
 from .lettura_yaml import load_file
 
 logger = logging.getLogger(__name__)
@@ -280,7 +280,7 @@ async def reread(client, store, ha_folder: Path | None) -> dict:
     # replica vecchia e dichiarata stantia e' meglio di una fresca e falsa.
     behavior_domains = {"automation", "script"}
     state_has_behavior = any(
-        dominio_di(s.get("entity_id", "")) in behavior_domains for s in states
+        domain_of(s.get("entity_id", "")) in behavior_domains for s in states
     )
     files_have_entries = bool(automations) or bool(script)
     if not state_has_behavior and files_have_entries:

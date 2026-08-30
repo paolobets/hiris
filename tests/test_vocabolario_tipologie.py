@@ -105,7 +105,7 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
     il difetto che questa fetta chiude, su una riga sola. `_CLASSI_EVENTO` vive
     in `nucleo`, `_SIGNIFICATO_CLASSE` nella sua unica casa, `anagrafe`."""
-    senza = sorted(nucleo._CLASSI_EVENTO - set(anagrafe._SIGNIFICATO_CLASSE))
+    senza = sorted(nucleo._CLASSI_EVENTO - set(anagrafe._CLASS_MEANING))
     assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
 

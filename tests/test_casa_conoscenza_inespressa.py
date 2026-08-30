@@ -21,7 +21,7 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 """
 import pytest
 
-from hiris.app.casa.anagrafe import unita_effettiva
+from hiris.app.casa.anagrafe import actual_unit
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 from hiris.app.memoria.interpretazione import deduci_unit
@@ -140,11 +140,11 @@ def test_la_regola_dell_unita_sta_in_un_posto_solo():
     vince su quella del registro. Prima la stessa decisione era presa a mano
     in due funzioni diverse: la stessa forma di difetto per cui la pagina
     Modelli era vera riga per riga e falsa nel complesso."""
-    assert unita_effettiva(None, "C") == "C"
-    assert unita_effettiva("F", "C") == "C", "la viva vince: HA converte all'ingresso"
-    assert unita_effettiva("F", None) == "F", "senza viva, resta cio' che il registro dice"
-    assert unita_effettiva(None, None) is None, "non si inventa"
-    assert unita_effettiva("F", "   ") == "F", "una stringa vuota non e' un'unita'"
+    assert actual_unit(None, "C") == "C"
+    assert actual_unit("F", "C") == "C", "la viva vince: HA converte all'ingresso"
+    assert actual_unit("F", None) == "F", "senza viva, resta cio' che il registro dice"
+    assert actual_unit(None, None) is None, "non si inventa"
+    assert actual_unit("F", "   ") == "F", "una stringa vuota non e' un'unita'"
 
 
 def test_deduci_unita_usa_la_fonte_viva(casa):

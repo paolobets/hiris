@@ -50,15 +50,15 @@ from __future__ import annotations
 
 from ..proxy._sanitize import sanitize_text
 from .anagrafe import (
-    categorie_con_nome,
-    classe_effettiva,
-    dominio_di,
-    etichette_con_id,
-    gerarchia,
-    nomi_delle_categorie,
-    nomi_delle_etichette,
-    traduci_stato,
-    unita_effettiva,
+    actual_class,
+    actual_unit,
+    categories_with_name,
+    category_names,
+    domain_of,
+    hierarchy,
+    label_names,
+    labels_with_id,
+    translate_state,
 )
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
@@ -163,7 +163,7 @@ def cerca(indice, testo: str) -> list[dict]:
                 # leggere male l'altro.
                 candidato["nome_dedotto"] = dedotto
             if candidato["tipo"] == "entita":
-                candidato["dominio"] = dominio_di(candidato["riferimento"])
+                candidato["dominio"] = domain_of(candidato["riferimento"])
                 if oggetto.get("nascosta"):
                     candidato["nascosta"] = True
     return risultati
@@ -249,14 +249,14 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
         dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
         if dedotto:
             dettaglio_entita["nome_dedotto"] = dedotto
-    unita = unita_effettiva(voce.get("unita"), (unita_vive or {}).get(entita_id))
+    unita = actual_unit(voce.get("unita"), (unita_vive or {}).get(entita_id))
     if unita:
         dettaglio_entita["unita"] = unita
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
     # manda affatto (`anagrafe.classe_effettiva`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
-    classe = classe_effettiva(voce.get("classe"), (classi_vive or {}).get(entita_id))
+    classe = actual_class(voce.get("classe"), (classi_vive or {}).get(entita_id))
     if classe:
         dettaglio_entita["classe"] = classe
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
@@ -281,8 +281,8 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     valore = dettaglio_entita.get("stato")
     if valore is not None:
         hvac_action = ((attributi_vivi or {}).get(entita_id) or {}).get("hvac_action")
-        dettaglio_entita["stato_leggibile"] = traduci_stato(
-            valore, dettaglio_entita.get("classe"), dominio_di(entita_id), hvac_action)
+        dettaglio_entita["stato_leggibile"] = translate_state(
+            valore, dettaglio_entita.get("classe"), domain_of(entita_id), hvac_action)
     # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
     # una cosa non risponde e cosa le si puo' chiedere.
     piattaforma = (voce.get("piattaforma") or "").strip()
@@ -334,7 +334,7 @@ def _con_categorie(dettaglio: dict, voce: dict,
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle categorie caduto. Stessa disciplina di `etichette`.
     """
-    categorie = categorie_con_nome(voce, nomi_categorie)
+    categorie = categories_with_name(voce, nomi_categorie)
     if categorie:
         dettaglio["categorie"] = categorie
     return dettaglio
@@ -365,7 +365,7 @@ def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) 
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle etichette caduto. Stessa disciplina di `unita`.
     """
-    etichette = etichette_con_id(voce, nomi_etichette)
+    etichette = labels_with_id(voce, nomi_etichette)
     if etichette:
         dettaglio["etichette"] = etichette
     return dettaglio
@@ -474,9 +474,9 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # "Senza area" invece che in "Dispositivi non letti". Risultato: una
     # cucina con cinque luci ne mostra quattro, con `esiste: True` e nessun
     # avviso: la stessa forma di una cucina davvero piu' piccola.
-    piani = gerarchia(casa, tuple(non_disponibili))
-    nomi_etichette = nomi_delle_etichette(casa)
-    nomi_categorie = nomi_delle_categorie(casa)
+    piani = hierarchy(casa, tuple(non_disponibili))
+    nomi_etichette = label_names(casa)
+    nomi_categorie = category_names(casa)
     area = _trova_area(piani, riferimento)
     if area is None:
         # CRITICAL ③: se il registro delle aree non ha risposto, "non
@@ -580,8 +580,8 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_arricchisci_entita`).
     dettaglio = _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
-                                    nomi_delle_etichette(casa), classi_vive,
-                                    nomi_delle_categorie(casa), attributi_vivi)
+                                    label_names(casa), classi_vive,
+                                    category_names(casa), attributi_vivi)
     # GLI ATTRIBUTI CURATI (`_DOMAIN_ATTRS`, `proxy/entity_cache.py`): solo
     # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
     # fetta "attributi al modello" (2026-08-25). `_guarda_area` e
@@ -607,8 +607,8 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
                  classi_vive: dict[str, str] | None = None,
                  da_quando_vive: dict[str, str] | None = None,
                  attributi_vivi: dict[str, dict] | None = None) -> dict:
-    nomi_etichette = nomi_delle_etichette(casa)
-    nomi_categorie = nomi_delle_categorie(casa)
+    nomi_etichette = label_names(casa)
+    nomi_categorie = category_names(casa)
     dispositivo = next(
         (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
     if dispositivo is None:

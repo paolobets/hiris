@@ -34,10 +34,10 @@ import re
 import unicodedata
 
 from ..casa.anagrafe import (
-    categorie_con_nome,
-    etichette_con_nome,
-    nomi_delle_categorie,
-    nomi_delle_etichette,
+    categories_with_name,
+    category_names,
+    label_names,
+    labels_with_name,
 )
 
 # Tipi che l'indice riconosce, nello spazio di nomi di verifica(): stessa
@@ -218,13 +218,13 @@ class Lookup:
         trovate: list[tuple[int, dict]] = []
         for candidati, pattern in self._termini():
             for m in pattern.finditer(normalizzata):
-                inizio, fine = m.span()
-                if any(inizio < f and i < fine for i, f in intervalli_occupati):
+                start, fine = m.span()
+                if any(start < f and i < fine for i, f in intervalli_occupati):
                     continue
-                intervalli_occupati.append((inizio, fine))
-                inizio_originale = mappa[inizio]
+                intervalli_occupati.append((start, fine))
+                inizio_originale = mappa[start]
                 fine_originale = mappa[fine - 1] + 1
-                trovate.append((inizio, {
+                trovate.append((start, {
                     "nome_visto": phrase[inizio_originale:fine_originale],
                     "candidati": [{"tipo": type, "riferimento": reference}
                                   for type, reference in candidati],
@@ -258,7 +258,7 @@ class Lookup:
 
 
 def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
-              candidato: tuple[str, str]) -> None:
+              candidate: tuple[str, str]) -> None:
     """Aggiunge `candidato` (tipo, riferimento) al termine che
     `term_originale` normalizza a -- il cuore di `costruisci_indice()`,
     estratto perche' anagrafe e comportamento (sotto) lo condividono: due
@@ -274,8 +274,8 @@ def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
     if not term_normalizzato:
         return
     candidati = termini.setdefault(term_normalizzato, [])
-    if candidato not in candidati:
-        candidati.append(candidato)
+    if candidate not in candidati:
+        candidati.append(candidate)
 
 
 def costruisci_indice(home_space: dict,
@@ -350,8 +350,8 @@ def costruisci_indice(home_space: dict,
     termini: dict[str, list[tuple[str, str]]] = {}
     per_type: dict[str, dict[str, dict]] = {}
     downgrade = nomi_di_ripiego or {}
-    nomi_etichette = nomi_delle_etichette(home_space)
-    nomi_categorie = nomi_delle_categorie(home_space)
+    nomi_etichette = label_names(home_space)
+    nomi_categorie = category_names(home_space)
 
     for store_key, type in _ARCHIVI:
         registry = per_type.setdefault(type, {})
@@ -405,8 +405,8 @@ def costruisci_indice(home_space: dict,
             # Un rilevatore che muore sul dato vecchio lascia `cerca` e
             # `ricorda` rotti fino al riavvio successivo. Vedi `_log`.
             for term_originale in [dedotto or name, *(entry.get("alias") or []),
-                                      *etichette_con_nome(entry, nomi_etichette),
-                                      *categorie_con_nome(entry, nomi_categorie).values()]:
+                                      *labels_with_name(entry, nomi_etichette),
+                                      *categories_with_name(entry, nomi_categorie).values()]:
                 _log(termini, term_originale, (type, reference))
 
     # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
@@ -424,8 +424,8 @@ def costruisci_indice(home_space: dict,
         registry = per_type.setdefault(entry_type, {})
         registry[reference] = entry
         for term_originale in [entry.get("nome") or "", *(entry.get("alias") or []),
-                                  *etichette_con_nome(entry, nomi_etichette),
-                                  *categorie_con_nome(entry, nomi_categorie).values()]:
+                                  *labels_with_name(entry, nomi_etichette),
+                                  *categories_with_name(entry, nomi_categorie).values()]:
             _log(termini, term_originale, (entry_type, reference))
 
     # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md

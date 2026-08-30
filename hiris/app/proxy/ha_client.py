@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import aiohttp
 
-from ..casa.anagrafe import SEVERITA_PROBLEMA
+from ..casa.anagrafe import PROBLEM_SEVERITY
 from ..casa.tempo import normalize_hours
 from ._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
@@ -1421,7 +1421,7 @@ class HAClient:
     # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
     # tenerle qui avrebbe voluto dire far importare il client di rete al
     # digesto, che si dichiara puro.
-    SEVERITA_PROBLEMA = SEVERITA_PROBLEMA
+    SEVERITA_PROBLEMA = PROBLEM_SEVERITY
 
     async def problemi(self) -> dict:
         """I guasti che Home Assistant ha GIA' diagnosticato.

@@ -47,13 +47,13 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .anagrafe import (
-    SEVERITA_PROBLEMA,
-    classe_effettiva,
-    dominio_di,
-    e_pseudo_area,
-    gerarchia,
-    nome_con_id,
-    traduci_stato,
+    PROBLEM_SEVERITY,
+    actual_class,
+    domain_of,
+    hierarchy,
+    is_pseudo_area,
+    name_with_id,
+    translate_state,
 )
 from .domande import ricordi_sanificati
 
@@ -300,7 +300,7 @@ def _portatori(entita_area: list[dict], dominio: str) -> tuple[list[str], int]:
     dispositivi: list[str] = []
     senza = 0
     for entita in entita_area:
-        if dominio_di(entita["id"]) != dominio:
+        if domain_of(entita["id"]) != dominio:
             continue
         dispositivo_id = entita.get("dispositivo_id")
         if not dispositivo_id:
@@ -404,7 +404,7 @@ def _e_un_evento(dominio: str, classe: str | None, valore) -> bool:
 def _conta_perdominio_di(entita: list[dict]) -> dict[str, int]:
     conteggio: dict[str, int] = {}
     for e in entita:
-        dominio = dominio_di(e["id"])
+        dominio = domain_of(e["id"])
         conteggio[dominio] = conteggio.get(dominio, 0) + 1
     # Ordine alfabetico sul dominio: stabile, non dipende dall'ordine in cui
     # i registri sono stati letti o restituiti.
@@ -433,8 +433,8 @@ def _nome_area_visualizzato(area: dict) -> str:
     notevole costerebbe piu' di quel che rende. Per l'albero di "La casa",
     che puo' permetterselo (una riga per area, non una per entita'), vedi
     `_nome_area_per_albero`."""
-    if e_pseudo_area(area["id"]):
-        return nome_con_id(area["nome"], area["id"])
+    if is_pseudo_area(area["id"]):
+        return name_with_id(area["nome"], area["id"])
     return area["nome"]
 
 
@@ -446,7 +446,7 @@ def _nome_area_per_albero(area: dict) -> str:
     nome mostrato. A differenza di `_nome_area_visualizzato`, che alimenta
     anche il prefisso di "Notevole adesso" (dove l'id resta fuori, vedi
     li'), qui il costo e' una riga per area."""
-    return nome_con_id(area["nome"], area["id"])
+    return name_with_id(area["nome"], area["id"])
 
 
 # I nomi italiani delle otto misure del sistema di unita' di Home Assistant.
@@ -584,7 +584,7 @@ def _righe_casa(piani: list[dict],
         return ["Nessun piano registrato."]
     righe = []
     for piano in piani:
-        righe.append(f"{nome_con_id(piano['nome'], piano['id'])}:")
+        righe.append(f"{name_with_id(piano['nome'], piano['id'])}:")
         if not piano["aree"]:
             righe.append("  - (nessuna area)")
             continue
@@ -757,14 +757,14 @@ def _righe_notevole(casa: dict, stato: dict, piani: list[dict],
             irraggiungibili += 1
             continue
         if not _e_un_evento(
-            dominio_di(entity_id), classe_effettiva(e.get("classe"), vive.get(entity_id)), valore,
+            domain_of(entity_id), actual_class(e.get("classe"), vive.get(entity_id)), valore,
         ):
             continue
         voci.append({
             "area_nome": area_per_entita.get(entity_id),
-            "dominio": dominio_di(entity_id),
-            "stato_leggibile": traduci_stato(
-                valore, classe_effettiva(e.get("classe"), vive.get(entity_id)),
+            "dominio": domain_of(entity_id),
+            "stato_leggibile": translate_state(
+                valore, actual_class(e.get("classe"), vive.get(entity_id)),
             ),
             "nome": e.get("nome") or entity_id,
         })
@@ -807,7 +807,7 @@ def _righe_comportamento(comportamento: list[dict]) -> list[str]:
         id_ = v.get("id")
         nome = v.get("nome") or id_ or "(senza nome)"
         tipo = v.get("tipo", "?")
-        riga = f"- {nome_con_id(nome, id_)} ({tipo})"
+        riga = f"- {name_with_id(nome, id_)} ({tipo})"
         if v.get("corpo") is None:
             riga += " -- corpo non disponibile, solo il nome"
         righe.append(riga)
@@ -1006,9 +1006,9 @@ def _avviso_problemi(problemi: dict | None) -> str | None:
     # chiave: due letture identiche devono produrre lo stesso nucleo.
     def _gravita(p: dict) -> tuple[int, str, str]:
         severita = (p.get("severity") or "").strip().lower()
-        rango = (SEVERITA_PROBLEMA.index(severita)
-                 if severita in SEVERITA_PROBLEMA
-                 else len(SEVERITA_PROBLEMA))
+        rango = (PROBLEM_SEVERITY.index(severita)
+                 if severita in PROBLEM_SEVERITY
+                 else len(PROBLEM_SEVERITY))
         return (rango, p.get("domain") or "", p.get("issue_id") or "")
 
     da_dire.sort(key=_gravita)
@@ -1475,7 +1475,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     # `_righe_notevole` se ne ricalcolava uno proprio a mano, che poteva
     # dire "Senza area" dove "La casa" -- correttamente -- diceva "Aree non
     # lette" (CRITICAL ①).
-    piani = gerarchia(casa, non_disponibili)
+    piani = hierarchy(casa, non_disponibili)
     # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte

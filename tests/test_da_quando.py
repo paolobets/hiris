@@ -12,7 +12,7 @@ test che li CONTA e' quello che impedisce al sesto di nascere senza.
 import re
 from pathlib import Path
 
-from hiris.app.casa.anagrafe import specchio_vivo
+from hiris.app.casa.anagrafe import live_mirror
 from hiris.app.proxy.entity_cache import _to_minimal
 
 _SORGENTE_DOMANDE = Path(__file__).parent.parent / "hiris" / "app" / "casa" / "domande.py"
@@ -33,7 +33,7 @@ def test_uno_stato_senza_istante_non_inventa_niente():
 
 
 def test_lo_specchio_porta_l_istante_accanto_allo_stato():
-    stato, _n, _u, _c, da_quando, _a = specchio_vivo([
+    stato, _n, _u, _c, da_quando, _a = live_mirror([
         {"id": "sensor.camera", "state": "22.4", "name": "Camera",
          "unit": "°C", "device_class": "temperature",
          "last_changed": "2026-08-24T11:00:00+00:00"},

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from ..casa.anagrafe import dominio_di
+from ..casa.anagrafe import domain_of
 from ._sanitize import sanitize_ha_value
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def inventario_non_leggibile(cache) -> dict | None:
 
 # Una lettura sola per tutti, in `casa/anagrafe.dominio_di`: era scritta sei
 # volte, e due copie non erano d'accordo su un id senza punto.
-_domain = dominio_di
+_domain = domain_of
 
 
 _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {

@@ -28,7 +28,7 @@ voce dello specchio dello stato (`entity_cache._to_minimal`). E' anche la fonte
 che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
 """
 
-from hiris.app.casa.anagrafe import classe_effettiva, specchio_vivo
+from hiris.app.casa.anagrafe import actual_class, live_mirror
 from hiris.app.casa.domande import guarda
 from hiris.app.casa.nucleo import componi
 
@@ -46,22 +46,22 @@ _SPECCHIO = [{"id": "binary_sensor.perdita_lavatrice", "state": "on",
 
 
 def test_la_regola_sta_in_un_posto_solo():
-    assert classe_effettiva(None, "moisture") == "moisture"
-    assert classe_effettiva("door", "moisture") == "moisture", "la viva vince"
-    assert classe_effettiva("door", None) == "door"
-    assert classe_effettiva(None, None) is None
-    assert classe_effettiva("door", "  ") == "door"
+    assert actual_class(None, "moisture") == "moisture"
+    assert actual_class("door", "moisture") == "moisture", "la viva vince"
+    assert actual_class("door", None) == "door"
+    assert actual_class(None, None) is None
+    assert actual_class("door", "  ") == "door"
 
 
 def test_lo_specchio_porta_anche_le_classi():
-    _stato, _nomi, _unita, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
+    _stato, _nomi, _unita, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
     assert classi["binary_sensor.perdita_lavatrice"] == "moisture"
 
 
 def test_un_allagamento_entra_nel_digesto():
     """LA PROVA CHE CONTA. Con la classe dal solo registro questa e' rossa:
     il sensore e' `on` e il digesto dice «Niente di notevole al momento»."""
-    stato, _n, _u, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
+    stato, _n, _u, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
     testo, _ = componi(_CASA, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "bagnato" in sezione, sezione
@@ -76,7 +76,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
                         "classe": None}]}
     specchio = [{"id": "light.cucina", "state": "on", "name": "Faretto",
                  "device_class": None, "unit": ""}]
-    stato, _n, _u, classi, _da_quando, _attributi = specchio_vivo(specchio)
+    stato, _n, _u, classi, _da_quando, _attributi = live_mirror(specchio)
     testo, _ = componi(casa, [], [], stato, classi_vive=classi)
     sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
     assert "acceso" in sezione
@@ -84,7 +84,7 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
 
 
 def test_guarda_dice_la_classe_che_prometteva():
-    _s, _n, _u, classi, _da_quando, _attributi = specchio_vivo(_SPECCHIO)
+    _s, _n, _u, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
     d = guarda(_CASA, [], [], {"binary_sensor.perdita_lavatrice": "on"},
                "entita", "binary_sensor.perdita_lavatrice", classi_vive=classi)
     assert d["classe"] == "moisture"

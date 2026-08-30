@@ -36,12 +36,12 @@ from .azione.porta import ActionActuator
 from .azione.registro import ServiceRegistry
 from .backends.embeddings import build_embedding_provider
 from .casa.anagrafe import (
-    AREE_PER_GIRO,
-    aree_dell_albero,
-    confronta_con_home_assistant,
-    gerarchia,
-    ricostruisci,
-    scegli_campione,
+    AREAS_PER_ROUND,
+    choose_sample,
+    compare_with_home_assistant,
+    hierarchy,
+    rebuild,
+    tree_areas,
 )
 from .casa.archivio import HomeSpaceStore
 from .casa.comportamento import reread, reread_dashboards
@@ -703,7 +703,7 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
         integrations=registri.get("integrazioni") or [])
 
 
-def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
+def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
 
@@ -770,9 +770,9 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         # replica. Ricostruirlo dopo le risposte vorrebbe dire confrontare un
         # albero con le risposte a domande fatte su un altro.
         casa = archivio.read()
-        piani = gerarchia(casa, tuple(archivio.unavailable()))
-        aree = aree_dell_albero(piani)
-        campione = scegli_campione(aree, quante, stato["dopo"])
+        piani = hierarchy(casa, tuple(archivio.unavailable()))
+        aree = tree_areas(piani)
+        campione = choose_sample(aree, quante, stato["dopo"])
 
         risposte: dict[str, dict] = {}
         for area in campione:
@@ -784,7 +784,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         if campione:
             stato["dopo"] = campione[-1]["id"]
 
-        esito = confronta_con_home_assistant(piani, casa, risposte)
+        esito = compare_with_home_assistant(piani, casa, risposte)
         # La data la mette il chiamante: `confronta_con_home_assistant` e'
         # pura, e una funzione pura che leggesse l'orologio non sarebbe piu'
         # confrontabile con se stessa. Serve a chi disegna l'albero
@@ -1396,7 +1396,7 @@ def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
     async def _fra_poco():
         try:
             await asyncio.sleep(ritardo)
-            await ricostruisci(client, archivio)
+            await rebuild(client, archivio)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -1987,7 +1987,7 @@ async def _on_startup(app: web.Application) -> None:
         os.path.join(data_dir, "consumi.db"),
         read_timezone=lambda: _fuso_da_archivio_casa(archivio_casa))
     try:
-        await ricostruisci(ha_client, archivio_casa)
+        await rebuild(ha_client, archivio_casa)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
     ha_client.add_anagrafe_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))

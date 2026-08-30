@@ -28,7 +28,7 @@ import sqlite3
 
 import pytest
 
-from hiris.app.casa.anagrafe import nomi_delle_categorie
+from hiris.app.casa.anagrafe import category_names
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 from hiris.app.memoria.resolver import costruisci_indice
@@ -103,7 +103,7 @@ def test_il_registro_resta_indicizzato_per_coppia(casa):
     sopra la prima e un'automazione si sentirebbe rispondere il nome di una
     scena -- in silenzio, e senza mai piu' cambiare.
     """
-    nomi = nomi_delle_categorie(casa)
+    nomi = category_names(casa)
     assert nomi[("automation", "01luci")] == "Luci esterne"
     assert nomi[("scene", "01luci")] == "Atmosfere"
 

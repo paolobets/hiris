@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.casa.anagrafe import ricostruisci, sistema_di_riferimento
+from hiris.app.casa.anagrafe import rebuild, reference_frame
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
 from hiris.app.casa.strumenti import DispatcherStrumenti
@@ -52,7 +52,7 @@ def archivio(tmp_path):
 # --- la distillazione: cosa entra, cosa resta fuori ------------------------
 
 def test_tiene_i_campi_del_riferimento():
-    rif = sistema_di_riferimento(_CONFIG)
+    rif = reference_frame(_CONFIG)
     assert rif["fuso"] == "Europe/Rome"
     assert rif["valuta"] == "EUR"
     assert rif["lingua"] == "it"
@@ -69,7 +69,7 @@ def test_non_tiene_cio_che_e_gia_altrove_o_e_momentaneo():
     nessuna domanda di oggi e non si tiene per ogni evenienza. `state` e'
     momentaneo -- scritto in un archivio che si rilegge di rado mentirebbe
     poche ore dopo, ed e' peggio di non saperlo."""
-    rif = sistema_di_riferimento(_CONFIG)
+    rif = reference_frame(_CONFIG)
     for campo in ("components", "integrazioni", "latitude", "longitude",
                   "posizione", "state", "stato"):
         assert campo not in rif, f"{campo} non deve entrare nel riferimento"
@@ -78,20 +78,20 @@ def test_non_tiene_cio_che_e_gia_altrove_o_e_momentaneo():
 def test_una_config_illeggibile_non_inventa_un_riferimento():
     """Meglio nessun riferimento che uno inventato: chi legge deve poter
     distinguere «non lo so» da «e' metrico»."""
-    assert sistema_di_riferimento(None) == {}
-    assert sistema_di_riferimento("non un dizionario") == {}
-    assert sistema_di_riferimento({}) == {}
+    assert reference_frame(None) == {}
+    assert reference_frame("non un dizionario") == {}
+    assert reference_frame({}) == {}
 
 
 def test_una_config_a_meta_porta_solo_cio_che_c_e():
-    rif = sistema_di_riferimento({"time_zone": "Europe/Rome"})
+    rif = reference_frame({"time_zone": "Europe/Rome"})
     assert rif == {"fuso": "Europe/Rome"}
 
 
 # --- l'archivio: dove vive ------------------------------------------------
 
 def test_l_archivio_conserva_e_restituisce_il_riferimento(archivio):
-    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
+    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
     assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
 
@@ -104,7 +104,7 @@ def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
     """Stessa dottrina dell'anagrafe intera: una replica vecchia e' meglio di
     un vuoto spacciato per fresco. Se HA non ha risposto, il fuso di ieri e'
     ancora quello giusto."""
-    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
+    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
     archivio.replace({}, ["sistema_di_riferimento"], reference_frame={})
     assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
@@ -116,7 +116,7 @@ async def test_ricostruisci_legge_anche_il_riferimento(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=({"entita": []}, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    esito = await ricostruisci(client, archivio)
+    esito = await rebuild(client, archivio)
     assert esito["non_disponibili"] == []
     assert archivio.reference_frame()["valuta"] == "EUR"
 
@@ -128,7 +128,7 @@ async def test_un_riferimento_non_letto_si_dichiara(archivio):
     client = AsyncMock()
     client.leggi_registri = AsyncMock(return_value=({"entita": []}, []))
     client.get_config = AsyncMock(side_effect=OSError("HA muto"))
-    esito = await ricostruisci(client, archivio)
+    esito = await rebuild(client, archivio)
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 
 
@@ -146,7 +146,7 @@ def _nucleo(sistema):
 
 
 def test_il_nucleo_dichiara_il_riferimento():
-    testo = _nucleo(sistema_di_riferimento(_CONFIG))
+    testo = _nucleo(reference_frame(_CONFIG))
     # Il nome proprio della casa: entrava nell'archivio, usciva da /api/casa e
     # non arrivava al modello. E' il nome della cosa di cui parla tutto il resto.
     assert "Casa" in testo
@@ -172,7 +172,7 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
     senza il suo fuso e' il «72» senza i gradi."""
     # 21/08/2026, 17:00:00 a Roma (l'istante del risveglio andato male).
     testo, _ = componi({"entita": []}, [], [], {},
-                       sistema_di_riferimento=sistema_di_riferimento(_CONFIG),
+                       sistema_di_riferimento=reference_frame(_CONFIG),
                        adesso=1787324400.0)
     assert "17:00" in testo, "senza l'ora il modello se la inventa"
     assert "21/08/2026" in testo, "senza la data «alle 17» e' ambiguo fra oggi e domani"
@@ -187,7 +187,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     e il modello continua a indovinare l'ora esattamente come prima."""
     from hiris.app.api.handlers_casa import costruisci_nucleo
 
-    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
+    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
 
     testo, _ = costruisci_nucleo({"archivio_casa": archivio})
 
@@ -200,7 +200,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
 def test_senza_l_istante_il_nucleo_non_ne_inventa_uno():
     """Stessa disciplina del fuso: tacere e' meglio che affermare un'ora a
     caso. `componi` resta PURA -- non legge l'orologio, lo riceve."""
-    testo = _nucleo(sistema_di_riferimento(_CONFIG))
+    testo = _nucleo(reference_frame(_CONFIG))
     assert "adesso sono le" not in testo.lower()
 
 
@@ -266,7 +266,7 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
                  {"entity_id": "sensor.termo", "name": "Termometro",
                   "area_id": "cucina", "unit_of_measurement": "F"},
              ]},
-            [], reference_frame=sistema_di_riferimento(_CONFIG))
+            [], reference_frame=reference_frame(_CONFIG))
         assert archivio.reference_frame()["unita"]["temperature"] == "C"
 
         cache = _SpecchioFinto([

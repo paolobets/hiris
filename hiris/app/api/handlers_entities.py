@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import dominio_di
+from ..casa.anagrafe import domain_of
 from ..proxy.entity_cache import inventario_non_leggibile
 
 
@@ -25,7 +25,7 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
         eid = s.get("id") or s.get("entity_id")
         if not eid:
             continue
-        dom = s.get("domain") or dominio_di(eid)
+        dom = s.get("domain") or domain_of(eid)
         dc = s.get("device_class")
         name = s.get("name") or ""
         if domains and dom not in domains:
