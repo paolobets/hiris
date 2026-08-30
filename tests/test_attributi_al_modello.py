@@ -19,7 +19,7 @@ anello (come esistevano gia' per `_to_minimal`) non avrebbe mai visto questo
 difetto, perche' ogni anello faceva il proprio lavoro.
 """
 from hiris.app.casa.anagrafe import live_mirror, translate_state
-from hiris.app.casa.domande import guarda
+from hiris.app.casa.domande import view
 from hiris.app.proxy.entity_cache import _to_minimal
 
 # Lo stato grezzo COM'E' DAVVERO sull'impianto del proprietario: impostato su
@@ -78,9 +78,9 @@ def test_c_guarda_su_un_entita_non_dice_piu_solo_heat():
     chiave "attributi" e "stato_leggibile" valeva "heat" -- la stessa forma
     letta dal proprietario in chat."""
     stato, nomi, unita, classi, da_quando, attributi = _specchio_del_termostato()
-    dettaglio = guarda(_CASA, [], [], stato, "entita", "climate.matrimoniale",
-                       nomi_di_ripiego=nomi, unita_vive=unita, classi_vive=classi,
-                       da_quando_vive=da_quando, attributi_vivi=attributi)
+    dettaglio = view(_CASA, [], [], stato, "entita", "climate.matrimoniale",
+                       fallback_names=nomi, reported_units=unita, reported_classes=classi,
+                       reported_since_when=da_quando, reported_attributes=attributi)
     assert dettaglio["esiste"] is True
     assert dettaglio["stato"] == "heat"
     assert dettaglio["attributi"]["hvac_action"] == "idle"
@@ -100,8 +100,8 @@ def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
     raw = {**_RAW_TERMOSTATO,
            "attributes": {**_RAW_TERMOSTATO["attributes"], "hvac_action": "heating"}}
     stato, _nomi, _unita, _classi, _da_quando, attributi = live_mirror([_to_minimal(raw)])
-    dettaglio = guarda(_CASA, [], [], stato, "entita", "climate.matrimoniale",
-                       attributi_vivi=attributi)
+    dettaglio = view(_CASA, [], [], stato, "entita", "climate.matrimoniale",
+                       reported_attributes=attributi)
     assert "sta scaldando" in dettaglio["stato_leggibile"]
     assert "fermo" not in dettaglio["stato_leggibile"]
 
@@ -123,7 +123,7 @@ def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
     risposta di un dato che nessuno ha chiesto per la singola cosa. Il
     dettaglio di UNA entita' (`_guarda_entita`) e' l'unico posto dove esce."""
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
-    dettaglio = guarda(_CASA, [], [], stato, "area", "camera", attributi_vivi=attributi)
+    dettaglio = view(_CASA, [], [], stato, "area", "camera", reported_attributes=attributi)
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita, (
         "gli attributi grezzi sono usciti in una LISTA: violano il confine deciso")
@@ -136,7 +136,7 @@ def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
     risposte diverse a seconda che si chiami `guarda('area', ...)` o
     `guarda('entita', ...)` (fondamenta 3)."""
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
-    dettaglio = guarda(_CASA, [], [], stato, "area", "camera", attributi_vivi=attributi)
+    dettaglio = view(_CASA, [], [], stato, "area", "camera", reported_attributes=attributi)
     entita = dettaglio["entita"][0]
     assert entita["stato_leggibile"] == "impostato su riscaldamento, fermo"
 
@@ -150,7 +150,7 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
                     "disabilitata": False}],
     }
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
-    dettaglio = guarda(casa, [], [], stato, "dispositivo", "dev_t", attributi_vivi=attributi)
+    dettaglio = view(casa, [], [], stato, "dispositivo", "dev_t", reported_attributes=attributi)
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita
     assert entita["stato_leggibile"] == "impostato su riscaldamento, fermo"
@@ -161,7 +161,7 @@ def test_i_senza_attributi_vivi_guarda_si_comporta_come_prima():
     niente chiave "attributi", e `stato_leggibile` degrada onestamente
     all'impostazione sola -- non torna "heat" nudo, che sarebbe il vecchio
     difetto con un'altra faccia."""
-    dettaglio = guarda(_CASA, [], [], {"climate.matrimoniale": "heat"},
+    dettaglio = view(_CASA, [], [], {"climate.matrimoniale": "heat"},
                        "entita", "climate.matrimoniale")
     assert "attributi" not in dettaglio
     assert dettaglio["stato_leggibile"] == "impostato su riscaldamento"

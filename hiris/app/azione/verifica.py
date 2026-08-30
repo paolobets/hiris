@@ -262,7 +262,7 @@ def translate_target(target) -> tuple[dict, list[str]]:
     """
     if not isinstance(target, dict):
         return {}, []
-    tradotto: dict[str, list[str]] = {}
+    translated: dict[str, list[str]] = {}
     illeggibili: list[str] = []
     for nostro, loro in TARGETS.items():
         entries = target.get(nostro)
@@ -281,8 +281,8 @@ def translate_target(target) -> tuple[dict, list[str]]:
                 illeggibili.append(f"«{nostro}» contiene {entry!r}, "
                                    f"che non e' un identificatore")
         if buone:
-            tradotto[loro] = buone
-    return tradotto, illeggibili
+            translated[loro] = buone
+    return translated, illeggibili
 
 
 def _cosa_non_esiste(resolved: dict) -> str:

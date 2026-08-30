@@ -23,7 +23,7 @@ import hashlib
 import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import NOME_LEGAME, guarda, legami
+from hiris.app.casa.domande import LINK_NAME, related, view
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
@@ -74,7 +74,7 @@ def test_il_vocabolario_copre_ESATTAMENTE_i_tipi_di_home_assistant():
     stesso elenco visto da due parti. Se Home Assistant ne aggiunge uno e il
     client lo accetta mentre la tabella no, il modello riceve un tipo che non
     sa nominare e non puo' richiedere: questa prova cade prima."""
-    assert set(NOME_LEGAME) == set(HAClient.TIPI_LEGAME)
+    assert set(LINK_NAME) == set(HAClient.TIPI_LEGAME)
 
 
 @pytest.mark.asyncio
@@ -123,7 +123,7 @@ def test_un_tipo_nuovo_di_home_assistant_non_si_perde_per_strada():
     """Una chiave che la tabella non conosce esce col nome di Home Assistant.
     Un nome non tradotto e' un fastidio; una riga buttata sarebbe un legame
     scomparso in silenzio, che e' il difetto contro cui esiste questa fetta."""
-    esito = legami({"quadro_di_comando": ["x.y"]}, "entita", "light.corridoio")
+    esito = related({"quadro_di_comando": ["x.y"]}, "entita", "light.corridoio")
     assert esito["legami"] == {"quadro_di_comando": ["x.y"]}
 
 
@@ -255,7 +255,7 @@ def test_guarda_dichiara_i_tipi_che_non_sa_aprire():
     restituisce scene, gruppi e persone -- cose vere, che Home Assistant ha
     appena mostrato -- e `guarda` non le sa aprire. Rispondere `esiste: false`
     e basta significa far dire al modello «quella scena non esiste»."""
-    dettaglio = guarda(_CASA_MINIMA, [], [], {}, "scena", "scene.serata")
+    dettaglio = view(_CASA_MINIMA, [], [], {}, "scena", "scene.serata")
     assert dettaglio["esiste"] is False
     assert dettaglio["non_so_guardare"] is True
 
@@ -265,6 +265,6 @@ def test_un_tipo_che_guarda_SA_aprire_non_si_scusa():
     `non_so_guardare` comparisse sempre, un'area davvero inesistente
     diventerebbe «non l'ho saputa guardare» -- e il modello smetterebbe di
     poter dire che una cosa non c'e'."""
-    dettaglio = guarda(_CASA_MINIMA, [], [], {}, "area", "cucina_che_non_esiste")
+    dettaglio = view(_CASA_MINIMA, [], [], {}, "area", "cucina_che_non_esiste")
     assert dettaglio["esiste"] is False
     assert "non_so_guardare" not in dettaglio

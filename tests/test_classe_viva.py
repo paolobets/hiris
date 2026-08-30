@@ -29,7 +29,7 @@ che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
 """
 
 from hiris.app.casa.anagrafe import actual_class, live_mirror
-from hiris.app.casa.domande import guarda
+from hiris.app.casa.domande import view
 from hiris.app.casa.nucleo import componi
 
 # L'anagrafe COM'E' DAVVERO: `classe` a None, perche' HA non la manda.
@@ -85,8 +85,8 @@ def test_una_lampadina_accesa_non_diventa_un_allagamento():
 
 def test_guarda_dice_la_classe_che_prometteva():
     _s, _n, _u, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
-    d = guarda(_CASA, [], [], {"binary_sensor.perdita_lavatrice": "on"},
-               "entita", "binary_sensor.perdita_lavatrice", classi_vive=classi)
+    d = view(_CASA, [], [], {"binary_sensor.perdita_lavatrice": "on"},
+               "entita", "binary_sensor.perdita_lavatrice", reported_classes=classi)
     assert d["classe"] == "moisture"
     assert d["stato_leggibile"] == "bagnato"
 

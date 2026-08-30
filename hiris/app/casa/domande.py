@@ -65,7 +65,7 @@ from .anagrafe import (
 # "automazione" e uno "script" sono voci dello stesso elenco
 # (comportamento.py), non due archivi diversi: la distinzione e' nel campo
 # `tipo` della voce, non nella provenienza.
-_TIPI_COMPORTAMENTO = {"automazione", "script"}
+_BEHAVIOR_TYPES = {"automazione", "script"}
 
 # I quattordici tipi che `search/related` sa collegare -- i VALORI di
 # `ItemType` (`homeassistant/components/search/__init__.py`, letti sul
@@ -88,7 +88,7 @@ _TIPI_COMPORTAMENTO = {"automazione", "script"}
 # `guarda` lo DICHIARA invece di rispondere «non esiste» (vedi il ramo finale
 # di `guarda`): un id vero preso da qui non deve poter diventare
 # un'affermazione falsa sulla casa.
-NOME_LEGAME = {
+LINK_NAME = {
     "area": "area",
     "automation": "automazione",
     "automation_blueprint": "progetto_di_automazione",
@@ -106,10 +106,10 @@ NOME_LEGAME = {
 }
 
 # La stessa tabella dal verso del modello. Derivata, mai riscritta.
-TIPO_LEGAME_HA = {nostro: loro for loro, nostro in NOME_LEGAME.items()}
+HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 
 
-def cerca(indice, testo: str) -> list[dict]:
+def search(lookup, text: str) -> list[dict]:
     """Trova `testo` per nome o alias, con l'ambiguita' dichiarata.
 
     E' `Lookup.find()` PIU' cio' che serve a non sbagliare cosa si e'
@@ -147,13 +147,13 @@ def cerca(indice, testo: str) -> list[dict]:
 
     `verify()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
-    risultati = indice.find(testo)
-    for voce in risultati:
-        for candidato in voce["candidati"]:
-            oggetto = indice.verify(candidato["tipo"], candidato["riferimento"]) or {}
-            dedotto = (oggetto.get("nome_dedotto") or "").strip()
-            candidato["nome"] = (oggetto.get("nome") or "").strip() or dedotto
-            if dedotto:
+    results = lookup.find(text)
+    for entry in results:
+        for candidate in entry["candidati"]:
+            resolved = lookup.verify(candidate["tipo"], candidate["riferimento"]) or {}
+            deduced = (resolved.get("nome_dedotto") or "").strip()
+            candidate["nome"] = (resolved.get("nome") or "").strip() or deduced
+            if deduced:
                 # I2 (review finale): `nome_dedotto` e' UNA forma sola in
                 # tutto il modulo -- la stringa col nome dedotto, la stessa
                 # che porta `guarda()`/`_guarda_entita`. Prima di questo fix
@@ -161,15 +161,15 @@ def cerca(indice, testo: str) -> list[dict]:
                 # stringa: due tipi diversi per lo stesso fatto, con un
                 # modello che poteva imparare la forma sbagliata dall'uno e
                 # leggere male l'altro.
-                candidato["nome_dedotto"] = dedotto
-            if candidato["tipo"] == "entita":
-                candidato["dominio"] = domain_of(candidato["riferimento"])
-                if oggetto.get("nascosta"):
-                    candidato["nascosta"] = True
-    return risultati
+                candidate["nome_dedotto"] = deduced
+            if candidate["tipo"] == "entita":
+                candidate["dominio"] = domain_of(candidate["riferimento"])
+                if resolved.get("nascosta"):
+                    candidate["nascosta"] = True
+    return results
 
 
-def _ricordi_ancorati(ricordi: list[dict], tipo: str, riferimento) -> list[dict]:
+def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
     """I ricordi di `ricordi` che portano un'ancora (tipo, riferimento)
     uguale a quella cercata -- stessa chiave di `MemoryStore.per_tether`
     (memoria/archivio.py), ma su una lista gia' in memoria: `guarda` e'
@@ -181,16 +181,16 @@ def _ricordi_ancorati(ricordi: list[dict], tipo: str, riferimento) -> list[dict]
     dispositivo) -- semplicemente non trova mai nulla qui: non e' un
     errore, e' un tipo di "cosa" per cui nessun ricordo si ancora.
     """
-    trovati = []
-    for r in ricordi:
-        for ancora in r.get("ancore") or []:
-            if ancora.get("tipo") == tipo and ancora.get("riferimento") == riferimento:
-                trovati.append(r)
+    found = []
+    for r in memories:
+        for tether in r.get("ancore") or []:
+            if tether.get("tipo") == kind and tether.get("riferimento") == reference:
+                found.append(r)
                 break
-    return trovati
+    return found
 
 
-def _trova_area(piani: list[dict], riferimento) -> dict | None:
+def _find_area(floors: list[dict], reference) -> dict | None:
     """L'area `riferimento` nell'albero gia' costruito da `gerarchia()`,
     con le entita' che le spettano (ereditarieta' dal dispositivo, esclusi
     i disabilitati) gia' risolte.
@@ -199,20 +199,20 @@ def _trova_area(piani: list[dict], riferimento) -> dict | None:
     piccola reimplementazione delle stesse regole e' gia' costata un
     Critical al Task 1 -- qui non si ripete.
     """
-    for piano in piani:
-        for area in piano["aree"]:
-            if area["id"] == riferimento:
+    for floor in floors:
+        for area in floor["aree"]:
+            if area["id"] == reference:
                 return area
     return None
 
 
-def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
-                        nomi_di_ripiego: dict[str, str] | None,
-                        unita_vive: dict[str, str] | None = None,
-                        nomi_etichette: dict[str, str] | None = None,
-                        classi_vive: dict[str, str] | None = None,
-                        nomi_categorie: dict[tuple[str, str], str] | None = None,
-                        attributi_vivi: dict[str, dict] | None = None) -> dict:
+def _enrich_entity(entity_detail: dict, entry: dict,
+                        fallback_names: dict[str, str] | None,
+                        reported_units: dict[str, str] | None = None,
+                        label_lookup: dict[str, str] | None = None,
+                        reported_classes: dict[str, str] | None = None,
+                        category_lookup: dict[tuple[str, str], str] | None = None,
+                        reported_attributes: dict[str, dict] | None = None) -> dict:
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `dettaglio_entita` con cio' che lo SPECCHIO VIVO sa e il
@@ -244,21 +244,21 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     finale): prima di quel fix solo `_guarda_entita` applicava il nome dedotto,
     e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
     stessa porta unica, per non ripetere quella storia."""
-    entita_id = voce.get("id")
-    if not (dettaglio_entita.get("nome") or "").strip():
-        dedotto = ((nomi_di_ripiego or {}).get(entita_id) or "").strip()
-        if dedotto:
-            dettaglio_entita["nome_dedotto"] = dedotto
-    unita = actual_unit(voce.get("unita"), (unita_vive or {}).get(entita_id))
-    if unita:
-        dettaglio_entita["unita"] = unita
+    entity_id = entry.get("id")
+    if not (entity_detail.get("nome") or "").strip():
+        deduced = ((fallback_names or {}).get(entity_id) or "").strip()
+        if deduced:
+            entity_detail["nome_dedotto"] = deduced
+    unit = actual_unit(entry.get("unita"), (reported_units or {}).get(entity_id))
+    if unit:
+        entity_detail["unita"] = unit
     # La CLASSE: dallo specchio vivo, perche' il registro delle entita' non la
     # manda affatto (`anagrafe.classe_effettiva`). Prima questa riga usciva
     # `null` su ogni entita' della casa, e con lei taceva tutto il vocabolario
     # dei significati.
-    classe = actual_class(voce.get("classe"), (classi_vive or {}).get(entita_id))
-    if classe:
-        dettaglio_entita["classe"] = classe
+    device_class = actual_class(entry.get("classe"), (reported_classes or {}).get(entity_id))
+    if device_class:
+        entity_detail["classe"] = device_class
     # Lo stato IN PAROLE, accanto al valore grezzo -- mai al posto suo:
     # `stato` e' il fatto, `stato_leggibile` e' l'interpretazione, e non si
     # sovrascrivono (stessa disciplina di `nome`/`nome_dedotto`).
@@ -278,16 +278,16 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     # quando l'entita' non e' un termostato: `traduci_stato` li ignora per
     # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
     # farlo condizionale.
-    valore = dettaglio_entita.get("stato")
-    if valore is not None:
-        hvac_action = ((attributi_vivi or {}).get(entita_id) or {}).get("hvac_action")
-        dettaglio_entita["stato_leggibile"] = translate_state(
-            valore, dettaglio_entita.get("classe"), domain_of(entita_id), hvac_action)
+    value = entity_detail.get("stato")
+    if value is not None:
+        hvac_action = ((reported_attributes or {}).get(entity_id) or {}).get("hvac_action")
+        entity_detail["stato_leggibile"] = translate_state(
+            value, entity_detail.get("classe"), domain_of(entity_id), hvac_action)
     # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
     # una cosa non risponde e cosa le si puo' chiedere.
-    piattaforma = (voce.get("piattaforma") or "").strip()
-    if piattaforma:
-        dettaglio_entita["piattaforma"] = piattaforma
+    platform = (entry.get("piattaforma") or "").strip()
+    if platform:
+        entity_detail["piattaforma"] = platform
     # NASCOSTA e CATEGORIA: fuori dalle gestioni, dentro la conoscenza.
     #
     # Il digesto conta le nascoste e scrive «esistono, e `guarda` le riporta se
@@ -297,17 +297,17 @@ def _arricchisci_entita(dettaglio_entita: dict, voce: dict,
     #
     # Solo quando sono vere: `nascosta: false` su ogni entita' di una casa da
     # trecento sarebbe rumore in ogni risposta, e `categoria: null` pure.
-    if voce.get("nascosta"):
-        dettaglio_entita["nascosta"] = True
-    categoria = (voce.get("categoria") or "").strip()
-    if categoria:
-        dettaglio_entita["categoria"] = categoria
-    _con_categorie(dettaglio_entita, voce, nomi_categorie or {})
-    return _con_etichette(dettaglio_entita, voce, nomi_etichette or {})
+    if entry.get("nascosta"):
+        entity_detail["nascosta"] = True
+    category = (entry.get("categoria") or "").strip()
+    if category:
+        entity_detail["categoria"] = category
+    _add_categories(entity_detail, entry, category_lookup or {})
+    return _add_labels(entity_detail, entry, label_lookup or {})
 
 
-def _con_categorie(dettaglio: dict, voce: dict,
-                   nomi_categorie: dict[tuple[str, str], str]) -> dict:
+def _add_categories(detail: dict, entry: dict,
+                   category_lookup: dict[tuple[str, str], str]) -> dict:
     """L'altra tassonomia scritta a mano dall'utente in Home Assistant.
 
     Le categorie stanno alle etichette come una cartella sta a un post-it:
@@ -334,13 +334,13 @@ def _con_categorie(dettaglio: dict, voce: dict,
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle categorie caduto. Stessa disciplina di `etichette`.
     """
-    categorie = categories_with_name(voce, nomi_categorie)
-    if categorie:
-        dettaglio["categorie"] = categorie
-    return dettaglio
+    categories = categories_with_name(entry, category_lookup)
+    if categories:
+        detail["categorie"] = categories
+    return detail
 
 
-def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) -> dict:
+def _add_labels(detail: dict, entry: dict, label_lookup: dict[str, str]) -> dict:
     """Le etichette che l'utente ha scritto a mano in Home Assistant.
 
     Sono il significato piu' DICHIARATO che esista in quella casa -- «inverno»,
@@ -365,13 +365,13 @@ def _con_etichette(dettaglio: dict, voce: dict, nomi_etichette: dict[str, str]) 
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un
     registro delle etichette caduto. Stessa disciplina di `unita`.
     """
-    etichette = labels_with_id(voce, nomi_etichette)
-    if etichette:
-        dettaglio["etichette"] = etichette
-    return dettaglio
+    labels = labels_with_id(entry, label_lookup)
+    if labels:
+        detail["etichette"] = labels
+    return detail
 
 
-def _suggerimento_cerca(riferimento) -> str:
+def _search_suggestion(reference) -> str:
     """Il messaggio che accompagna un `esiste: False` sui tre rami che
     possono confondere un NOME con un id -- area, entita', dispositivo.
 
@@ -389,12 +389,12 @@ def _suggerimento_cerca(riferimento) -> str:
     che togliere il richiamo da un ramo solo non lascia gli altri due
     invariati -- si nota, perche' la frase e' la stessa ovunque.
     """
-    return (f"«{riferimento}» non e' stato trovato. Se e' un NOME (non un "
+    return (f"«{reference}» non e' stato trovato. Se e' un NOME (non un "
             f"id), chiama «cerca» con questo testo per trovare l'id giusto, "
             f"poi ripeti «guarda» con quello.")
 
 
-def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dict:
+def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     """Il dict `esiste: False` comune ai rami che possono confondere un
     NOME con un id -- area, entita', dispositivo, e da T7 (R2) anche
     automazione/script (`_guarda_comportamento`, sotto).
@@ -426,20 +426,20 @@ def _dettaglio_non_trovato(tipo: str, riferimento, registro_caduto: bool) -> dic
     questa funzione come gli altri tre rami, invece di duplicarne la
     logica con un `file_non_letti` scambiato per `registro_caduto`.
     """
-    dettaglio = {"esiste": False, "tipo": tipo, "riferimento": riferimento}
-    if registro_caduto:
-        dettaglio["non_disponibile"] = True
+    detail = {"esiste": False, "tipo": kind, "riferimento": reference}
+    if unavailable:
+        detail["non_disponibile"] = True
     else:
-        dettaglio["suggerimento"] = _suggerimento_cerca(riferimento)
-    return dettaglio
+        detail["suggerimento"] = _search_suggestion(reference)
+    return detail
 
 
-def _righe_entita(elenco: list[dict], stato: dict, da_quando_vive: dict[str, str] | None,
-                  disabilitata: bool, nomi_di_ripiego: dict[str, str] | None,
-                  unita_vive: dict[str, str] | None, nomi_etichette: dict[str, str],
-                  classi_vive: dict[str, str] | None,
-                  nomi_categorie: dict[tuple[str, str], str],
-                  attributi_vivi: dict[str, dict] | None) -> list[dict]:
+def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str, str] | None,
+                  disabled: bool, fallback_names: dict[str, str] | None,
+                  reported_units: dict[str, str] | None, label_lookup: dict[str, str],
+                  reported_classes: dict[str, str] | None,
+                  category_lookup: dict[tuple[str, str], str],
+                  reported_attributes: dict[str, dict] | None) -> list[dict]:
     """Un elenco grezzo di voci dell'anagrafe (`entita`/`entita_disabilitate`/
     `entita_nascoste` di `gerarchia()`) arricchito UNA riga alla volta con
     `_arricchisci_entita` -- il ciclo si scriveva tre volte in `_guarda_area`
@@ -450,34 +450,34 @@ def _righe_entita(elenco: list[dict], stato: dict, da_quando_vive: dict[str, str
     voce: chi chiama sa gia' da quale lista viene (le disabilitate hanno gia'
     lasciato `per_area`/`per_area_nascoste` in `gerarchia()`)."""
     return [
-        _arricchisci_entita(
+        _enrich_entity(
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]),
-             "da_quando": (da_quando_vive or {}).get(e["id"]),
-             "disabilitata": disabilitata},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie, attributi_vivi)
-        for e in elenco
+             "stato": state.get(e["id"]),
+             "da_quando": (reported_since_when or {}).get(e["id"]),
+             "disabilitata": disabled},
+            e, fallback_names, reported_units, label_lookup, reported_classes,
+            category_lookup, reported_attributes)
+        for e in entries
     ]
 
 
-def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
-                 non_disponibili: tuple[str, ...] = (),
-                 nomi_di_ripiego: dict[str, str] | None = None,
-                 unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None,
-                 attributi_vivi: dict[str, dict] | None = None) -> dict:
+def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
+                 unavailable: tuple[str, ...] = (),
+                 fallback_names: dict[str, str] | None = None,
+                 reported_units: dict[str, str] | None = None,
+                 reported_classes: dict[str, str] | None = None,
+                 reported_since_when: dict[str, str] | None = None,
+                 reported_attributes: dict[str, dict] | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `gerarchia()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
     # "Senza area" invece che in "Dispositivi non letti". Risultato: una
     # cucina con cinque luci ne mostra quattro, con `esiste: True` e nessun
     # avviso: la stessa forma di una cucina davvero piu' piccola.
-    piani = hierarchy(casa, tuple(non_disponibili))
-    nomi_etichette = label_names(casa)
-    nomi_categorie = category_names(casa)
-    area = _trova_area(piani, riferimento)
+    floors = hierarchy(home_space, tuple(unavailable))
+    label_lookup = label_names(home_space)
+    category_lookup = category_names(home_space)
+    area = _find_area(floors, reference)
     if area is None:
         # CRITICAL ③: se il registro delle aree non ha risposto, "non
         # trovata" non e' lo stesso di "non esiste" -- potrebbe stare
@@ -485,19 +485,20 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
         # modello legge "quest'area non esiste nella tua casa", un'
         # affermazione che nessuno ha il diritto di fare. La scelta fra
         # `non_disponibile` e `suggerimento` e' in `_dettaglio_non_trovato`.
-        return _dettaglio_non_trovato("area", riferimento, "aree" in non_disponibili)
-    entita = (
+        return _not_found_detail("area", reference, "aree" in unavailable)
+    entity = (
         # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
         # dire "questa luce c'e' ma e' disabilitata" -- `_guarda_dispositivo`
         # e `_guarda_entita` lo fanno gia', `_guarda_area` no. `gerarchia()`
         # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
         # anagrafe.py). Restano dentro `entita`, marcate: sapere che quella
         # luce c'e' ma non funziona e' informazione, non rumore.
-        _righe_entita(area["entita"], stato, da_quando_vive, False, nomi_di_ripiego,
-                     unita_vive, nomi_etichette, classi_vive, nomi_categorie, attributi_vivi)
-        + _righe_entita(area.get("entita_disabilitate", []), stato, da_quando_vive, True,
-                       nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-                       nomi_categorie, attributi_vivi)
+        _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
+                     reported_units, label_lookup, reported_classes, category_lookup,
+                     reported_attributes)
+        + _entity_rows(area.get("entita_disabilitate", []), state, reported_since_when, True,
+                       fallback_names, reported_units, label_lookup, reported_classes,
+                       category_lookup, reported_attributes)
     )
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
@@ -512,76 +513,76 @@ def _guarda_area(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # un campo. Restano pero' COMPLETE e raggiungibili qui, per la stessa
     # domanda esplicita -- "cosa hai nascosto?" -- che il campo `nascosta`
     # serviva gia' quando l'entita' si guarda da sola (`_guarda_entita`).
-    entita_nascoste = _righe_entita(area.get("entita_nascoste", []), stato, da_quando_vive,
-                                    False, nomi_di_ripiego, unita_vive, nomi_etichette,
-                                    classi_vive, nomi_categorie, attributi_vivi)
+    hidden_entities = _entity_rows(area.get("entita_nascoste", []), state, reported_since_when,
+                                    False, fallback_names, reported_units, label_lookup,
+                                    reported_classes, category_lookup, reported_attributes)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
-    incompleto = sorted(set(non_disponibili) & {"aree", "dispositivi", "entita"})
-    dettaglio = {
+    incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
+    detail = {
         "esiste": True, "tipo": "area", "id": area["id"], "nome": area["nome"],
-        "entita": entita,
-        "ricordi": _ricordi_ancorati(ricordi, "area", riferimento),
+        "entita": entity,
+        "ricordi": _tethered_memories(memories, "area", reference),
     }
     # Solo quando ce n'e' almeno una: `entita_nascoste: []` su ogni area
     # (la stragrande maggioranza non ne ha) sarebbe rumore in ogni risposta
     # -- stessa disciplina di `unita`/`etichette`/`categorie` in questo file.
-    if entita_nascoste:
-        dettaglio["entita_nascoste"] = entita_nascoste
+    if hidden_entities:
+        detail["entita_nascoste"] = hidden_entities
     # Le entita' di riferimento della stanza: solo quando l'utente le ha
     # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
     # indistinguibile da un registro delle aree caduto.
-    for chiave in ("entita_temperatura", "entita_umidita"):
-        valore = (area.get(chiave) or "").strip()
-        if valore:
-            dettaglio[chiave] = valore
-    _con_etichette(dettaglio, area, nomi_etichette)
-    if incompleto:
-        dettaglio["elenco_incompleto"] = incompleto
-    return dettaglio
+    for key in ("entita_temperatura", "entita_umidita"):
+        value = (area.get(key) or "").strip()
+        if value:
+            detail[key] = value
+    _add_labels(detail, area, label_lookup)
+    if incomplete:
+        detail["elenco_incompleto"] = incomplete
+    return detail
 
 
-def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
-                   non_disponibili: tuple[str, ...] = (),
-                   nomi_di_ripiego: dict[str, str] | None = None,
-                   unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None,
-                 attributi_vivi: dict[str, dict] | None = None) -> dict:
-    entita = next((e for e in casa.get("entita") or [] if e.get("id") == riferimento), None)
-    if entita is None:
+def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
+                   unavailable: tuple[str, ...] = (),
+                   fallback_names: dict[str, str] | None = None,
+                   reported_units: dict[str, str] | None = None,
+                 reported_classes: dict[str, str] | None = None,
+                 reported_since_when: dict[str, str] | None = None,
+                 reported_attributes: dict[str, dict] | None = None) -> dict:
+    entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
+    if entity is None:
         # CRITICAL ③: col registro "entita" caduto (`sostituisci` parziale
         # lascia la tabella vuota), un'entita' vera non trovata qui non e'
         # un'entita' che non esiste -- e' un registro che non ha risposto.
         # Prima di questo fix la firma non aveva nemmeno un punto d'ingresso
         # per dirlo: `non_disponibili` era ricevuto da `guarda()` ma
         # inoltrato SOLO a `_guarda_area`.
-        return _dettaglio_non_trovato("entita", riferimento, "entita" in non_disponibili)
-    dettaglio = {
-        "esiste": True, "tipo": "entita", "id": entita["id"], "nome": entita.get("nome"),
+        return _not_found_detail("entita", reference, "entita" in unavailable)
+    detail = {
+        "esiste": True, "tipo": "entita", "id": entity["id"], "nome": entity.get("nome"),
         # `unita` NON viene da qui: `config/entity_registry/list` risponde con
         # `as_partial_dict`, che non contiene ne' l'unita' ne' la classe ne'
         # gli alias (verificato sul sorgente di HA). La aggiunge
         # `_arricchisci_entita` dallo specchio vivo, che ce l'ha davvero -- e solo
         # quando c'e'. Prima questa riga prometteva un campo che era sempre
         # `null`: una promessa che non ha mai mantenuto niente.
-        "classe": entita.get("classe"),
+        "classe": entity.get("classe"),
         # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
         # non funziona) ma sparisce dall'albero di `gerarchia()` -- questo
         # campo dice perche' `guarda` la trova comunque, senza far credere
         # che sia una stanza arredata (stesso principio di anagrafe.py).
-        "disabilitata": bool(entita.get("disabilitata")),
-        "stato": stato.get(entita["id"]),
-        "da_quando": (da_quando_vive or {}).get(entita["id"]),
-        "ricordi": _ricordi_ancorati(ricordi, "entita", riferimento),
+        "disabilitata": bool(entity.get("disabilitata")),
+        "stato": state.get(entity["id"]),
+        "da_quando": (reported_since_when or {}).get(entity["id"]),
+        "ricordi": _tethered_memories(memories, "entita", reference),
     }
     # Stesso rimedio di `costruisci_indice` e per lo stesso motivo: su
     # questa casa `name` e `original_name` sono entrambi vuoti per un'intera
     # famiglia di entita', e un `nome: null` qui e' un'entita' che l'utente
     # chiama per nome e HIRIS non sa nominare. Marcato, mai scritto sopra
     # `nome`: dichiarato e dedotto restano due fatti (`_arricchisci_entita`).
-    dettaglio = _arricchisci_entita(dettaglio, entita, nomi_di_ripiego, unita_vive,
-                                    label_names(casa), classi_vive,
-                                    category_names(casa), attributi_vivi)
+    detail = _enrich_entity(detail, entity, fallback_names, reported_units,
+                                    label_names(home_space), reported_classes,
+                                    category_names(home_space), reported_attributes)
     # GLI ATTRIBUTI CURATI (`_DOMAIN_ATTRS`, `proxy/entity_cache.py`): solo
     # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
     # fetta "attributi al modello" (2026-08-25). `_guarda_area` e
@@ -594,28 +595,28 @@ def _guarda_entita(casa: dict, ricordi: list[dict], stato: dict, riferimento,
     # comunque `stato_leggibile` ovunque, dentro `_arricchisci_entita`: la
     # differenza qui e' solo se il resto degli attributi grezzi (luminosita',
     # posizione, titolo del brano...) esce come chiave a se'.
-    attributi = (attributi_vivi or {}).get(entita["id"])
-    if attributi:
-        dettaglio["attributi"] = attributi
-    return dettaglio
+    attributes = (reported_attributes or {}).get(entity["id"])
+    if attributes:
+        detail["attributi"] = attributes
+    return detail
 
 
-def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferimento,
-                        non_disponibili: tuple[str, ...] = (),
-                        nomi_di_ripiego: dict[str, str] | None = None,
-                        unita_vive: dict[str, str] | None = None,
-                 classi_vive: dict[str, str] | None = None,
-                 da_quando_vive: dict[str, str] | None = None,
-                 attributi_vivi: dict[str, dict] | None = None) -> dict:
-    nomi_etichette = label_names(casa)
-    nomi_categorie = category_names(casa)
-    dispositivo = next(
-        (d for d in casa.get("dispositivi") or [] if d.get("id") == riferimento), None)
-    if dispositivo is None:
+def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
+                        unavailable: tuple[str, ...] = (),
+                        fallback_names: dict[str, str] | None = None,
+                        reported_units: dict[str, str] | None = None,
+                 reported_classes: dict[str, str] | None = None,
+                 reported_since_when: dict[str, str] | None = None,
+                 reported_attributes: dict[str, dict] | None = None) -> dict:
+    label_lookup = label_names(home_space)
+    category_lookup = category_names(home_space)
+    device = next(
+        (d for d in home_space.get("dispositivi") or [] if d.get("id") == reference), None)
+    if device is None:
         # CRITICAL ③, stesso difetto applicato al dispositivo: col registro
         # "dispositivi" caduto, "non trovato" non e' "non esiste".
-        return _dettaglio_non_trovato("dispositivo", riferimento,
-                                      "dispositivi" in non_disponibili)
+        return _not_found_detail("dispositivo", reference,
+                                      "dispositivi" in unavailable)
     # Stessa ragione per cui `_guarda_entita` porta `disabilitata`: qui si
     # legge `casa["entita"]` grezzo, fuori da `gerarchia()`, che le disabilitate
     # le esclude. Senza dirlo, un dispositivo spento e le sue entita' morte
@@ -628,61 +629,61 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
     # (fetta "nascoste fuori dagli elenchi", 2026-08-25) -- STESSA chiave,
     # STESSA forma della porta area, cosi' il modello non impara due
     # vocabolari per lo stesso fatto su due porte diverse.
-    entita_grezze_del_dispositivo = [
-        e for e in casa.get("entita") or [] if e.get("dispositivo_id") == riferimento]
-    nascoste_grezze = [e for e in entita_grezze_del_dispositivo
+    raw_device_entities = [
+        e for e in home_space.get("entita") or [] if e.get("dispositivo_id") == reference]
+    raw_hidden = [e for e in raw_device_entities
                        if e.get("nascosta") and not e.get("disabilitata")]
-    visibili_grezze = [e for e in entita_grezze_del_dispositivo
+    raw_visible = [e for e in raw_device_entities
                        if not (e.get("nascosta") and not e.get("disabilitata"))]
-    entita_del_dispositivo = [
-        _arricchisci_entita(
+    device_entities = [
+        _enrich_entity(
             # `classe` e `stato` come dall'area: la stessa entita' e' la stessa
             # cosa da tutte le porte. Senza lo stato, questa porta usciva con
             # `unita: "C"` e nessun valore -- un'unita' di misura di un numero
             # che non c'e', e il modello o dice "non lo so" o lo inventa.
             {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
-             "stato": stato.get(e["id"]),
-             "da_quando": (da_quando_vive or {}).get(e["id"]),
+             "stato": state.get(e["id"]),
+             "da_quando": (reported_since_when or {}).get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
-            e, nomi_di_ripiego, unita_vive, nomi_etichette, classi_vive,
-            nomi_categorie, attributi_vivi)
-        for e in visibili_grezze
+            e, fallback_names, reported_units, label_lookup, reported_classes,
+            category_lookup, reported_attributes)
+        for e in raw_visible
     ]
-    entita_nascoste_dispositivo = _righe_entita(
-        nascoste_grezze, stato, da_quando_vive, False, nomi_di_ripiego, unita_vive,
-        nomi_etichette, classi_vive, nomi_categorie, attributi_vivi)
-    dettaglio = {
-        "esiste": True, "tipo": "dispositivo", "id": dispositivo["id"],
-        "nome": dispositivo.get("nome"),
-        "disabilitato": bool(dispositivo.get("disabilitato")),
-        "entita": entita_del_dispositivo,
-        "ricordi": _ricordi_ancorati(ricordi, "dispositivo", riferimento),
+    device_hidden_entities = _entity_rows(
+        raw_hidden, state, reported_since_when, False, fallback_names, reported_units,
+        label_lookup, reported_classes, category_lookup, reported_attributes)
+    detail = {
+        "esiste": True, "tipo": "dispositivo", "id": device["id"],
+        "nome": device.get("nome"),
+        "disabilitato": bool(device.get("disabilitato")),
+        "entita": device_entities,
+        "ricordi": _tethered_memories(memories, "dispositivo", reference),
     }
     # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
-    if entita_nascoste_dispositivo:
-        dettaglio["entita_nascoste"] = entita_nascoste_dispositivo
+    if device_hidden_entities:
+        detail["entita_nascoste"] = device_hidden_entities
     # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
     # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
     # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
-    for chiave in ("produttore", "modello"):
-        valore = (dispositivo.get(chiave) or "").strip()
-        if valore:
-            dettaglio[chiave] = valore
-    _con_etichette(dettaglio, dispositivo, nomi_etichette)
+    for key in ("produttore", "modello"):
+        value = (device.get(key) or "").strip()
+        if value:
+            detail[key] = value
+    _add_labels(detail, device, label_lookup)
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_guarda_area`.
-    if "entita" in non_disponibili:
-        dettaglio["elenco_incompleto"] = ["entita"]
-    return dettaglio
+    if "entita" in unavailable:
+        detail["elenco_incompleto"] = ["entita"]
+    return detail
 
 
-def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
-                           tipo: str, riferimento,
+def _view_behavior(behavior: list[dict], memories: list[dict],
+                           kind: str, reference,
                            unloaded_files: dict[str, str] | None = None) -> dict:
-    voce = next(
-        (v for v in comportamento if v.get("id") == riferimento and v.get("tipo") == tipo), None)
-    if voce is None:
+    entry = next(
+        (v for v in behavior if v.get("id") == reference and v.get("tipo") == kind), None)
+    if entry is None:
         # CRITICAL ③, quinto ramo: se un file di comportamento non si e'
         # letto (`automations.yaml`/`scripts.yaml`, o uno incluso in un
         # pacchetto), "non trovato" non e' "non esiste" -- potrebbe essere
@@ -699,21 +700,21 @@ def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
         # della cosa), e ora che `cerca` indicizza automazioni e script un
         # NOME al posto dell'id e' un errore possibile anche qui: merita lo
         # stesso `suggerimento` degli altri tre rami, con la stessa frase.
-        return _dettaglio_non_trovato(tipo, riferimento, bool(unloaded_files))
+        return _not_found_detail(kind, reference, bool(unloaded_files))
     return {
-        "esiste": True, "tipo": tipo, "id": voce["id"], "nome": voce.get("nome"),
+        "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
         # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo
         # dichiara) e un corpo vuoto ma presente sono due valori diversi, e
         # questa funzione non li confonde riscrivendoli.
-        "corpo": voce.get("corpo"), "origine": voce.get("origine"),
-        "ricordi": _ricordi_ancorati(ricordi, tipo, riferimento),
+        "corpo": entry.get("corpo"), "origine": entry.get("origine"),
+        "ricordi": _tethered_memories(memories, kind, reference),
     }
 
 
-def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
-    ricordo = next((r for r in ricordi if r.get("id") == riferimento), None)
-    if ricordo is None:
-        return {"esiste": False, "tipo": "ricordo", "riferimento": riferimento}
+def _view_memory(memories: list[dict], reference) -> dict:
+    memory = next((r for r in memories if r.get("id") == reference), None)
+    if memory is None:
+        return {"esiste": False, "tipo": "ricordo", "riferimento": reference}
     # La forma e' PIATTA, la stessa di `richiama` e dei `ricordi` che ogni
     # altro ramo di `guarda` gia' restituisce (`_ricordi_ancorati`).
     #
@@ -729,20 +730,20 @@ def _guarda_ricordo(ricordi: list[dict], riferimento) -> dict:
     # Le caselle restano distinte dal TESTO -- che e' la verita' e non si
     # riscrive -- ma la distinzione la fanno i nomi dei campi, non un livello
     # di annidamento in piu' che esiste da una porta sola.
-    dettaglio = {
-        "esiste": True, "tipo": "ricordo", "id": ricordo["id"], "testo": ricordo["testo"],
-        "detto_da": ricordo.get("detto_da"),
-        "detto_il": ricordo.get("detto_il"),
-        "forza": ricordo.get("forza"), "grandezza": ricordo.get("grandezza"),
-        "minimo": ricordo.get("minimo"), "massimo": ricordo.get("massimo"),
-        "unita": ricordo.get("unita"),
-        "ancore": ricordo.get("ancore") or [],
-        "condizioni": ricordo.get("condizioni") or [],
+    detail = {
+        "esiste": True, "tipo": "ricordo", "id": memory["id"], "testo": memory["testo"],
+        "detto_da": memory.get("detto_da"),
+        "detto_il": memory.get("detto_il"),
+        "forza": memory.get("forza"), "grandezza": memory.get("grandezza"),
+        "minimo": memory.get("minimo"), "massimo": memory.get("massimo"),
+        "unita": memory.get("unita"),
+        "ancore": memory.get("ancore") or [],
+        "condizioni": memory.get("condizioni") or [],
     }
-    return dettaglio
+    return detail
 
 
-def ricordi_sanificati(ricordi: list[dict] | None) -> list[dict]:
+def sanitized_memories(memories: list[dict] | None) -> list[dict]:
     """I ricordi con `testo` passato dal sanitizzatore -- funzione condivisa,
     non una riga ripetuta a ogni porta che restituisce ricordi al modello.
 
@@ -758,18 +759,18 @@ def ricordi_sanificati(ricordi: list[dict] | None) -> list[dict]:
     Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola 1): questa
     e' una copia, non una riscrittura -- vedi il docstring di `guarda()`."""
     return [dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
-           for r in (ricordi or [])]
+           for r in (memories or [])]
 
 
-def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
-           tipo: str, riferimento,
-           non_disponibili: tuple[str, ...] = (),
+def view(home_space: dict, behavior: list[dict], memories: list[dict], state: dict,
+           kind: str, reference,
+           unavailable: tuple[str, ...] = (),
            unloaded_files: dict[str, str] | None = None,
-           nomi_di_ripiego: dict[str, str] | None = None,
-           unita_vive: dict[str, str] | None = None,
-           classi_vive: dict[str, str] | None = None,
-           da_quando_vive: dict[str, str] | None = None,
-           attributi_vivi: dict[str, dict] | None = None) -> dict:
+           fallback_names: dict[str, str] | None = None,
+           reported_units: dict[str, str] | None = None,
+           reported_classes: dict[str, str] | None = None,
+           reported_since_when: dict[str, str] | None = None,
+           reported_attributes: dict[str, dict] | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -891,23 +892,23 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     un'altra. Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola
     1): questa e' una copia, non una riscrittura.
     """
-    ricordi = ricordi_sanificati(ricordi)
-    if tipo == "area":
-        return _guarda_area(casa, ricordi, stato, riferimento, non_disponibili,
-                            nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
-                            attributi_vivi)
-    if tipo == "entita":
-        return _guarda_entita(casa, ricordi, stato, riferimento, non_disponibili,
-                              nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
-                              attributi_vivi)
-    if tipo == "dispositivo":
-        return _guarda_dispositivo(casa, ricordi, stato, riferimento, non_disponibili,
-                                   nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
-                                   attributi_vivi)
-    if tipo in _TIPI_COMPORTAMENTO:
-        return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, unloaded_files)
-    if tipo == "ricordo":
-        return _guarda_ricordo(ricordi, riferimento)
+    memories = sanitized_memories(memories)
+    if kind == "area":
+        return _view_area(home_space, memories, state, reference, unavailable,
+                            fallback_names, reported_units, reported_classes,
+                            reported_since_when, reported_attributes)
+    if kind == "entita":
+        return _view_entity(home_space, memories, state, reference, unavailable,
+                              fallback_names, reported_units, reported_classes,
+                              reported_since_when, reported_attributes)
+    if kind == "dispositivo":
+        return _view_device(home_space, memories, state, reference, unavailable,
+                                   fallback_names, reported_units, reported_classes,
+                                   reported_since_when, reported_attributes)
+    if kind in _BEHAVIOR_TYPES:
+        return _view_behavior(behavior, memories, kind, reference, unloaded_files)
+    if kind == "ricordo":
+        return _view_memory(memories, reference)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che
@@ -923,11 +924,11 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
     # sbagliata detta con sicurezza su una cosa che Home Assistant gli aveva
     # appena mostrato. Stessa disciplina di `non_disponibile`: «non l'ho
     # trovato» e «non ho potuto guardare» sono due fatti diversi.
-    return {"esiste": False, "tipo": tipo, "riferimento": riferimento,
+    return {"esiste": False, "tipo": kind, "riferimento": reference,
             "non_so_guardare": True}
 
 
-def legami(risposta: dict, tipo: str, riferimento) -> dict:
+def related(answer: dict, kind: str, reference) -> dict:
     """Chi tocca questa cosa, nella forma che il modello legge.
 
     Prende la risposta GIA' ottenuta da `HAClient.legami()` -- questa
@@ -963,18 +964,18 @@ def legami(risposta: dict, tipo: str, riferimento) -> dict:
     lascia la struttura di Home Assistant e si spiega al modello (nella
     descrizione dello strumento) come leggerla.
     """
-    if not isinstance(risposta, dict) or "errore" in risposta:
-        motivo = (risposta.get("errore") if isinstance(risposta, dict)
+    if not isinstance(answer, dict) or "errore" in answer:
+        reason = (answer.get("errore") if isinstance(answer, dict)
                   else "risposta in forma inattesa")
         return {"errore": (
-            f"non ho potuto sapere chi tocca «{riferimento}»: {motivo}. "
+            f"non ho potuto sapere chi tocca «{reference}»: {reason}. "
             "Non e' un «non la tocca nessuno»: e' una domanda a cui Home "
             "Assistant non ha risposto, e il legame potrebbe esserci.")}
-    tradotti = {NOME_LEGAME.get(chiave, chiave): list(valori)
-                for chiave, valori in risposta.items()}
+    translated = {LINK_NAME.get(key, key): list(values)
+                for key, values in answer.items()}
     # Ordinate per nome: Home Assistant manda un dizionario costruito da
     # insiemi, e due letture identiche produrrebbero due risposte con le
     # chiavi in ordine diverso. I VALORI li ordina gia' il client, e per la
     # stessa ragione.
-    return {"tipo": tipo, "riferimento": riferimento,
-            "legami": {nome: tradotti[nome] for nome in sorted(tradotti)}}
+    return {"tipo": kind, "riferimento": reference,
+            "legami": {name: translated[name] for name in sorted(translated)}}

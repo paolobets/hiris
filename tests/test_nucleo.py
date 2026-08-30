@@ -90,7 +90,7 @@ def test_un_ricordo_legittimo_con_accenti_e_apostrofi_non_si_mutila():
 # lista tenuta allineata a mano.
 def test_il_nucleo_usa_la_funzione_condivisa_ricordi_sanificati():
     from hiris.app.casa import domande
-    assert nucleo.ricordi_sanificati is domande.ricordi_sanificati
+    assert nucleo.sanitized_memories is domande.sanitized_memories
 
 def test_i_nomi_di_cio_che_la_casa_fa_da_sola_ci_sono_i_corpi_no():
     testo, _ = componi(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)

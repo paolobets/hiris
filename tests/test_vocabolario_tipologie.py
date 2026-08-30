@@ -179,13 +179,13 @@ def test_un_telefono_in_casa_non_e_un_evento_MA_guarda_lo_riporta():
     non saprebbe piu' rispondere a «chi e' in casa?». Senza la seconda meta' di
     questa prova avremmo costruito un filtro invece di un vocabolario, e la
     suite sarebbe restata verde."""
-    from hiris.app.casa.domande import guarda
+    from hiris.app.casa.domande import view
     voce = _voce("device_tracker.paolo", "Telefono di Paolo")
     sezione = _sezione_notevole(_con([voce], {"device_tracker.paolo": "home"}))
     assert "Telefono di Paolo" not in sezione
 
     casa = dict(_CASA, entita=_CASA["entita"] + [voce])
-    dettaglio = guarda(casa, _COMPORTAMENTO, _RICORDI,
+    dettaglio = view(casa, _COMPORTAMENTO, _RICORDI,
                        dict(_STATO, **{"device_tracker.paolo": "home"}),
                        "area", "sala")
     assert any(e["id"] == "device_tracker.paolo" for e in dettaglio["entita"]), (

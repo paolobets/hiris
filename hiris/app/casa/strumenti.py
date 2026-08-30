@@ -135,11 +135,11 @@ from ..proxy.entity_cache import inventario_leggibile
 from . import tempo
 from .anagrafe import live_mirror
 from .archivio import HomeSpaceStore
-from .domande import TIPO_LEGAME_HA
-from .domande import cerca as _cerca_candidati
-from .domande import guarda as _guarda_dettaglio
-from .domande import legami as _legami_leggibili
-from .domande import ricordi_sanificati as _ricordi_sanificati
+from .domande import HA_LINK_TYPE
+from .domande import related as _legami_leggibili
+from .domande import sanitized_memories as _ricordi_sanificati
+from .domande import search as _cerca_candidati
+from .domande import view as _guarda_dettaglio
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
 # `memoria/interpretazione.VOCABULARY["ancore"]` -- la fonte vera, non
@@ -299,7 +299,7 @@ GUARDA_TOOL_DEF = {
 # Home Assistant -- invece di riscritti qui: un elenco a mano nella
 # descrizione e un altro nel gestore sarebbero due vocabolari, e il primo a
 # divergere sarebbe quello che legge il modello.
-_TIPI_LEGAME_NOSTRI = tuple(sorted(TIPO_LEGAME_HA))
+_TIPI_LEGAME_NOSTRI = tuple(sorted(HA_LINK_TYPE))
 
 LEGAMI_TOOL_DEF = {
     "name": "legami",
@@ -1276,13 +1276,13 @@ class DispatcherStrumenti:
         stato, nomi_vivi, unita_vive, classi_vive, da_quando_vive, attributi_vivi, letto = \
             self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
-                                      non_disponibili=non_disponibili,
+                                      unavailable=non_disponibili,
                                       unloaded_files=unloaded_files,
-                                      nomi_di_ripiego=nomi_vivi,
-                                      unita_vive=unita_vive,
-                                      classi_vive=classi_vive,
-                                      da_quando_vive=da_quando_vive,
-                                      attributi_vivi=attributi_vivi)
+                                      fallback_names=nomi_vivi,
+                                      reported_units=unita_vive,
+                                      reported_classes=classi_vive,
+                                      reported_since_when=da_quando_vive,
+                                      reported_attributes=attributi_vivi)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -1370,7 +1370,7 @@ class DispatcherStrumenti:
         riferimento = argomenti.get("riferimento")
         if not tipo or not riferimento:
             return {"errore": "«legami» richiede «tipo» e «riferimento»."}
-        tipo_ha = TIPO_LEGAME_HA.get(tipo)
+        tipo_ha = HA_LINK_TYPE.get(tipo)
         if tipo_ha is None:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
             # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,

@@ -55,7 +55,7 @@ from .anagrafe import (
     name_with_id,
     translate_state,
 )
-from .domande import ricordi_sanificati
+from .domande import sanitized_memories
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -1234,7 +1234,7 @@ def _righe_ricordi(ricordi: list[dict]) -> list[str]:
     # non nell'archivio (`memoria/archivio.py`), che resta la verita'
     # cosi' come e' stata detta (regola 1 del modulo): il testo
     # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
-    ricordi_ordinati = sorted(ricordi_sanificati(ricordi), key=lambda r: r.get("id", 0),
+    ricordi_ordinati = sorted(sanitized_memories(ricordi), key=lambda r: r.get("id", 0),
                               reverse=True)
     righe = []
     for r in ricordi_ordinati:

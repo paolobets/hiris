@@ -47,7 +47,7 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
 
     Un'asserzione che si accontentasse di vedere «da_quando» da qualche parte
     nel file non difenderebbe niente: qui si LEGA ogni occorrenza di
-    `"stato": stato.get(` alla presenza del suo gemello nelle righe
+    `"stato": state.get(` alla presenza del suo gemello nelle righe
     immediatamente seguenti.
 
     Erano quattro occorrenze TESTUALI il 24/08/2026 (una per lista di
@@ -63,7 +63,7 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     """
     sorgente = _SORGENTE_DOMANDE.read_text(encoding="utf-8")
     righe = sorgente.splitlines()
-    punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*stato\.get\(', r)]
+    punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*state\.get\(', r)]
     # Tre, verificati col grep sul sorgente vero al 25/08/2026 (righe 447 --
     # `_righe_entita`, condivisa --, 565 -- `_guarda_entita` --, 636 --
     # `_guarda_dispositivo` --). Il conteggio serve solo a impedire che una

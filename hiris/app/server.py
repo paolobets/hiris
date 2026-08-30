@@ -45,8 +45,8 @@ from .casa.anagrafe import (
 )
 from .casa.archivio import HomeSpaceStore
 from .casa.comportamento import reread, reread_dashboards
-from .casa.domande import TIPO_LEGAME_HA
-from .casa.domande import legami as _legami_leggibili
+from .casa.domande import HA_LINK_TYPE
+from .casa.domande import related as _legami_leggibili
 from .casa.tempo import home_space_zone
 from .cervello.archivio import READING_RETENTION_S, ObservationsStore
 from .cervello.oggetti import (
@@ -877,7 +877,7 @@ async def costruisci_comprimari(
     """
     mappa: dict[str, list[str]] = {}
     falliti = 0
-    tipo_ha = TIPO_LEGAME_HA["entita"]  # sempre "entity": i soggetti che
+    tipo_ha = HA_LINK_TYPE["entita"]  # sempre "entity": i soggetti che
     # arrivano qui sono protagonisti di oggetti, cioe' entita' di Home
     # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
     # `search/related` sa collegare.

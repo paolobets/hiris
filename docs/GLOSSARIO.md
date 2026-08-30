@@ -270,6 +270,7 @@ in §4①:
 | `viva` | `vivo` |
 | `candidata` | `candidato` |
 | `nostre` | `nostro` |
+| `vivi` | `vive` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -330,6 +331,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | intento | la struttura con cui una richiesta di nuova costruzione descrive se stessa -- che cosa la fa scattare, quali passi compie, quali stati verifica, quali parametri porta, se va riusata o si ripete, se e' stata chiesta esplicitamente -- da cui si decide quale oggetto serve davvero | intent | ✓ arriva |
 | interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation | ~ parziale |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation | ~ parziale |
+| legame | la relazione fra una cosa della casa e le altre che la nominano o dove sta, nel vocabolario dei quattordici tipi che Home Assistant riconosce per l'API di ricerca -- il tipo di legame, non il legame stesso: `legami()` ("I nomi degli strumenti") ne restituisce l'elenco, questa e' la parola con cui una singola voce di quell'elenco si nomina | link | ~ parziale |
 | letto | il participio passato di `leggi`: non l'atto di leggere ma il RISULTATO, cio' che e' stato letto e tenuto -- `sistema_letto`, `specchio_letto`, `comportamento_letto_il`. Il glossario aveva risolto sia `leggi` sia `letto` con lo stesso inglese (`read`): la guardia sulle collisioni dello strumento di rinomina (Task 4bis) l'ha trovato prima che potesse fondere l'atto e il risultato in un nome solo, su `casa/strumenti.py` e `azione/costruzione/officina.py`, dove le due forme convivono. `leggi` resta `read`: e' il verbo, il nome giusto per un metodo (`casa.leggi()`). `letto` e' il participio, quindi diventa un aggettivo in inglese: `loaded` | loaded | ✓ arriva |
 | lettura (casa) | trasforma il testo di un file di configurazione di Home Assistant nella struttura che rappresenta, sollevando quando il testo e' davvero malformato invece di restituire un risultato vuoto indistinguibile da un file senza contenuto | parse | ✓ arriva |
 | lettura (consumi) | i token che una chiamata ha RICEVUTO dalla cache del provider invece di generarli da capo -- un significato distinto da «trasformare il testo di un file di configurazione» (la riga sopra): scoperto rinominando `consumi/` (Task 4), dove applicare alla cieca `parse` avrebbe prodotto un nome semanticamente falso per `cache_lettura`. La stessa codebase aveva gia' scelto `cache_read`/`cache_write` altrove (`backends/pricing.py`) prima che questo glossario lo dicesse | read | ✓ arriva |
@@ -1083,6 +1085,7 @@ al Task 6 invece che deciso qui.
 | crea | create |
 | credenziale | credential |
 | dati | data |
+| dedotto | deduced |
 | denominatore | denominator |
 | dettaglio | detail |
 | dichiara | declare |
@@ -1124,6 +1127,7 @@ al Task 6 invece che deciso qui.
 | identificatore | identifier |
 | illeggibile | unreadable |
 | impronta | fingerprint |
+| incompleto | incomplete |
 | iniziale | initial |
 | inizio | start |
 | innesca | trigger |
@@ -1155,12 +1159,14 @@ al Task 6 invece che deciso qui.
 | nota | note |
 | numeratore | numerator |
 | nuovo | new |
+| oggetto | object |
 | oggi | today |
 | opzioni | options |
 | ora | hour |
 | ottieni | get |
 | parte | part |
 | percorso | path |
+| piattaforma | platform |
 | picco | peak |
 | posizione | position |
 | pota | prune |
@@ -1180,6 +1186,7 @@ al Task 6 invece che deciso qui.
 | registra | log |
 | resto | rest |
 | richiesta | request |
+| ricordo | memory |
 | riga | row |
 | rileggi | reread |
 | ricostruisci | rebuild |
@@ -1187,6 +1194,7 @@ al Task 6 invece che deciso qui.
 | risolto | resolved |
 | risolvi | resolve |
 | risposta | answer |
+| risultato | result |
 | ritardo | delay |
 | rivendica | claim |
 | sanificato | sanitized |
@@ -1213,17 +1221,21 @@ al Task 6 invece che deciso qui.
 | statistiche | statistics |
 | stato | state |
 | successivo | next |
+| suggerimento | suggestion |
 | termine | term |
 | testo | text |
 | tipo | type |
 | totale | total |
 | traduci | translate |
 | traduzione | translation |
+| tradotto | translated |
 | trova | find |
+| trovato | found |
 | unita | unit |
 | valida | validate |
 | valore | value |
 | verificabile | verifiable |
+| visibile | visible |
 | vivo | live |
 | voce | entry |
 | vuoto | empty |

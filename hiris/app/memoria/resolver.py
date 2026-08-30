@@ -361,16 +361,16 @@ def costruisci_indice(home_space: dict,
                 continue
 
             name = entry.get("nome") or ""
-            dedotto = ""
+            deduced = ""
             if not name.strip() and type == "entita":
-                dedotto = (downgrade.get(reference) or "").strip()
-            if dedotto:
+                deduced = (downgrade.get(reference) or "").strip()
+            if deduced:
                 # Copia, non mutazione in place: `voce` e' il dizionario che
                 # `ArchivioCasa.leggi()` ha appena costruito per il
                 # chiamante, e marcarlo li' accoppierebbe l'indice al ciclo
                 # di vita di una struttura che non gli appartiene.
                 entry = dict(entry)
-                entry["nome_dedotto"] = dedotto
+                entry["nome_dedotto"] = deduced
             registry[reference] = entry
 
             # Nome, alias E ETICHETTE. Le etichette sono parole che l'utente
@@ -404,7 +404,7 @@ def costruisci_indice(home_space: dict,
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
             # Un rilevatore che muore sul dato vecchio lascia `cerca` e
             # `ricorda` rotti fino al riavvio successivo. Vedi `_log`.
-            for term_originale in [dedotto or name, *(entry.get("alias") or []),
+            for term_originale in [deduced or name, *(entry.get("alias") or []),
                                       *labels_with_name(entry, nomi_etichette),
                                       *categories_with_name(entry, nomi_categorie).values()]:
                 _log(termini, term_originale, (type, reference))

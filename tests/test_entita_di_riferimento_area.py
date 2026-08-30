@@ -13,7 +13,7 @@ quello sbagliato e rispondere con sicurezza.
 """
 from hiris.app.casa.anagrafe import hierarchy
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import guarda
+from hiris.app.casa.domande import view
 
 _REGISTRI = {
     "aree": [
@@ -49,7 +49,7 @@ def test_l_albero_le_porta(tmp_path):
 
 
 def test_guarda_un_area_le_dice(tmp_path):
-    d = guarda(_casa(tmp_path), [], [], {}, "area", "soggiorno")
+    d = view(_casa(tmp_path), [], [], {}, "area", "soggiorno")
     assert d["entita_temperatura"] == "sensor.soggiorno_temp"
     assert d["entita_umidita"] == "sensor.soggiorno_umid"
 
@@ -57,7 +57,7 @@ def test_guarda_un_area_le_dice(tmp_path):
 def test_un_area_senza_dichiarazione_non_ne_inventa_una(tmp_path):
     """Il contrario, e serve quanto l'altra: una chiave `null` su ogni area
     sarebbe rumore, e per giunta indistinguibile da un registro caduto."""
-    d = guarda(_casa(tmp_path), [], [], {}, "area", "ripostiglio")
+    d = view(_casa(tmp_path), [], [], {}, "area", "ripostiglio")
     assert "entita_temperatura" not in d
     assert "entita_umidita" not in d
 

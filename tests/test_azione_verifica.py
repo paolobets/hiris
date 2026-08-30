@@ -417,11 +417,11 @@ _CASA_CON_ETICHETTA = {
 
 @pytest.mark.asyncio
 async def test_dal_nome_di_un_etichetta_al_label_id_a_una_verifica_che_passa():
-    from hiris.app.casa.domande import cerca
+    from hiris.app.casa.domande import search
     from hiris.app.memoria.resolver import costruisci_indice
 
     indice = costruisci_indice(_CASA_CON_ETICHETTA)
-    trovati = cerca(indice, "da controllare")
+    trovati = search(indice, "da controllare")
     candidato = next(c for t in trovati for c in t["candidati"]
                      if c["tipo"] == "etichetta")
     assert candidato["riferimento"] == "da_controllare"

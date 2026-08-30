@@ -30,7 +30,7 @@ import pytest
 
 from hiris.app.casa.anagrafe import category_names
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import guarda
+from hiris.app.casa.domande import view
 from hiris.app.memoria.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
@@ -117,7 +117,7 @@ def test_guarda_un_entita_dice_le_sue_categorie_COL_NOME(casa):
     vorrebbe dire riferire all'utente un identificativo che non ha mai
     scritto, e che non cambia nemmeno rinominando la categoria.
     """
-    d = guarda(casa, [], [], {}, "entita", "automation.luci_giardino")
+    d = view(casa, [], [], {}, "entita", "automation.luci_giardino")
     assert d["categorie"] == {"automation": "Luci esterne"}
 
 
@@ -129,7 +129,7 @@ def test_l_ambito_esce_insieme_al_nome(casa):
     risposta, «Atmosfere» e «Luci esterne» sarebbero due stringhe senza
     niente che dica a quale tassonomia appartengono.
     """
-    d = guarda(casa, [], [], {}, "entita", "scene.cena")
+    d = view(casa, [], [], {}, "entita", "scene.cena")
     assert d["categorie"] == {"scene": "Atmosfere"}
 
 
@@ -137,7 +137,7 @@ def test_una_categoria_che_il_registro_non_nomina_resta_il_suo_id(casa):
     """Un riferimento penzolante -- o uno dei quattro ambiti caduto -- non fa
     sparire l'assegnazione: «sta in una categoria che non so nominare» e' piu'
     vero di «non ha categoria». Stessa scelta di `etichette_con_nome`."""
-    d = guarda(casa, [], [], {}, "entita", "script.irrigazione")
+    d = view(casa, [], [], {}, "entita", "script.irrigazione")
     assert d["categorie"] == {"script": "01sparita"}
 
 
@@ -145,7 +145,7 @@ def test_senza_categorie_la_chiave_non_compare(casa):
     """`categorie: {}` su ogni cosa sarebbe rumore in ogni risposta e --
     peggio -- indistinguibile da un registro caduto. Stessa disciplina di
     `etichette` e di `unita`."""
-    d = guarda(casa, [], [], {}, "entita", "light.faretto")
+    d = view(casa, [], [], {}, "entita", "light.faretto")
     assert "categorie" not in d
 
 
@@ -154,7 +154,7 @@ def test_categoria_e_categorie_restano_due_fatti_distinti(casa):
     `config`/`diagnostic`, decisa dall'INTEGRAZIONE. `categorie` (plurale) e'
     la tassonomia dell'UTENTE. Sulla stessa entita' convivono e non si
     sovrascrivono."""
-    d = guarda(casa, [], [], {}, "entita", "input_boolean.vacanza")
+    d = view(casa, [], [], {}, "entita", "input_boolean.vacanza")
     assert d["categoria"] == "config"
     assert d["categorie"] == {"helpers": "Vacanza casa"}
 
@@ -165,10 +165,10 @@ def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
     """CONSISTENZA. `piattaforma` ed `etichette` uscivano da una porta su tre,
     ed e' il difetto per cui `_arricchisci_entita` e' nata: un campo nuovo che
     entra da un ramo solo lo rifa'."""
-    dall_entita = guarda(casa, [], [], {}, "entita", "switch.pompa")
-    dal_dispositivo = guarda(casa, [], [], {}, "dispositivo", "d1")
+    dall_entita = view(casa, [], [], {}, "entita", "switch.pompa")
+    dal_dispositivo = view(casa, [], [], {}, "dispositivo", "d1")
     pompa = next(e for e in dal_dispositivo["entita"] if e["id"] == "switch.pompa")
-    dall_area = guarda(casa, [], [], {}, "area", "giardino")
+    dall_area = view(casa, [], [], {}, "area", "giardino")
     luci = next(e for e in dall_area["entita"] if e["id"] == "automation.luci_giardino")
 
     atteso = {"automation": "Luci esterne"}
@@ -202,7 +202,7 @@ def test_l_identificativo_non_diventa_un_termine_di_ricerca(casa):
 def test_la_categoria_non_diventa_il_nome_di_niente(casa):
     """Entra fra i termini che `trova()` riconosce, non fra i nomi: un'entita'
     continua a chiamarsi come la chiama la casa."""
-    d = guarda(casa, [], [], {}, "entita", "automation.luci_giardino")
+    d = view(casa, [], [], {}, "entita", "automation.luci_giardino")
     assert d["nome"] == "Luci giardino"
     assert "nome_dedotto" not in d
 
@@ -235,7 +235,7 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
         a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
     assert voce["categorie"] == {"automation": "01luci"}
-    assert guarda(letta, [], [], {}, "entita", "automation.luci_giardino")["categorie"] == {
+    assert view(letta, [], [], {}, "entita", "automation.luci_giardino")["categorie"] == {
         "automation": "Luci esterne"}
 
 
@@ -255,7 +255,7 @@ def test_una_riga_illeggibile_ripiega_su_un_dizionario(tmp_path):
         a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "light.faretto")
     assert voce["categorie"] == {}
-    assert "categorie" not in guarda(letta, [], [], {}, "entita", "light.faretto")
+    assert "categorie" not in view(letta, [], [], {}, "entita", "light.faretto")
 
 
 def test_due_ambiti_con_lo_stesso_id_non_fanno_saltare_la_casa(tmp_path):
