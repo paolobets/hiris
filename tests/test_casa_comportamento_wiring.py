@@ -3,15 +3,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.server import sentinella_comportamento
 
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     yield a
-    a.chiudi()
+    a.close()
 
 
 @pytest.fixture
@@ -125,12 +125,12 @@ async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartel
 
     assert await guarda() is True                # prima lettura, senza cartella
     assert await guarda() is False               # e non si ripete a vuoto
-    assert archivio.comportamento() == []        # niente cartella, niente corpi
+    assert archivio.behavior() == []        # niente cartella, niente corpi
 
     montata[0] = str(cartella)                   # il Supervisor finisce il mount
     # Ora anche Home Assistant riporta vive le due voci del file: uno stato
     # senza NESSUNA automation.*/script.* mentre i file ne contengono
-    # (guardia del Critical (1), vedi comportamento.rileggi) terrebbe la
+    # (guardia del Critical (1), vedi comportamento.reread) terrebbe la
     # replica precedente invece di sostituirla -- qui invece lo stato e' in
     # regola, ed e' la comparsa della cartella a fare la differenza.
     client.get_states = AsyncMock(return_value=[
@@ -143,6 +143,6 @@ async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartel
 
     # Cio' che conta: PRIMA della cartella non c'era niente, DOPO i due corpi
     # dei file sono agganciati alle entita' vive.
-    voci = archivio.comportamento()
+    voci = archivio.behavior()
     assert sorted(v["nome"] for v in voci) == ["Saluta", "Sveglia"]
     assert all(v["origine"] == "file" for v in voci)

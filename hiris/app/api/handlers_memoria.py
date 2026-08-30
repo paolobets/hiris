@@ -67,7 +67,7 @@ def _anagrafe_letta(casa_archivio) -> bool:
     valida al primo avvio, che e' esattamente il bug che questa funzione
     esiste per evitare.
     """
-    return casa_archivio is not None and casa_archivio.aggiornata_il() is not None
+    return casa_archivio is not None and casa_archivio.updated_at() is not None
 
 
 def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict, dict, dict]:
@@ -109,7 +109,7 @@ def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str
     """
     if not anagrafe_letta:
         return frozenset(STORE_KEY_PER_TYPE)
-    chiavi_non_disponibili = set(casa_archivio.non_disponibili())
+    chiavi_non_disponibili = set(casa_archivio.unavailable())
     return frozenset(tipo for tipo, chiave in STORE_KEY_PER_TYPE.items()
                       if chiave in chiavi_non_disponibili)
 
@@ -150,7 +150,7 @@ async def handle_get_memoria(request: web.Request) -> web.Response:
     # ricordo sia ancorato bene. Lo specchio si legge gia' quattro righe piu'
     # in la' per le unita': mancava solo passarne i nomi.
     stato_vivo = _specchio_della_pagina(request)
-    indice = (costruisci_indice(casa_archivio.leggi(), stato_vivo[1])
+    indice = (costruisci_indice(casa_archivio.read(), stato_vivo[1])
               if anagrafe_letta else None)
     non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
 
@@ -218,7 +218,7 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
     stato_vivo = _specchio_della_pagina(request)
-    indice = (costruisci_indice(casa_archivio.leggi(), stato_vivo[1])
+    indice = (costruisci_indice(casa_archivio.read(), stato_vivo[1])
               if anagrafe_letta else costruisci_indice({}))
     tipi_non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
     # Le unita' vive, dalla stessa fonte che usa `ricorda` in chat. Senza,

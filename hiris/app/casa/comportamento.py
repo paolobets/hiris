@@ -21,7 +21,7 @@ from .lettura_yaml import load_file
 
 logger = logging.getLogger(__name__)
 
-_AUTOMAZIONI = "automations.yaml"
+_AUTOMATIONS = "automations.yaml"
 _SCRIPT = "scripts.yaml"
 
 # entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
@@ -54,22 +54,22 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 _ASSENTE = object()
 
 
-def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict], list[str]]:
+def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict], list[str]]:
     """Incrocia i file con lo stato e produce l'elenco del comportamento.
 
-    `automazioni_yaml`/`script_yaml` a `None` significano «non ho letto il
+    `automation_yaml`/`script_yaml` a `None` significano «non ho letto il
     file»: le voci vive restano, marcate `solo_stato`. Una lista vuota
     significa invece «il file c'e' e non contiene niente», ed e' un fatto
     diverso.
 
-    Restituisce `(voci, problemi)`. `problemi` e' un elenco di frasi in
+    Restituisce `(entries, problems)`. `problems` e' un elenco di frasi in
     italiano leggibile su cio' che NON si e' potuto concludere con certezza
     — id duplicati, script vuoti, file mal formati. Un silenzio non
     dichiarato e' indistinguibile da un'assenza di problemi: se questi casi
     non finissero qui, il chiamante li scambierebbe per dati buoni.
     """
-    problemi: list[str] = []
-    automazioni_yaml = automazioni_yaml or []
+    problems: list[str] = []
+    automation_yaml = automation_yaml or []
 
     # Un trattino residuo in coda ("- id: '1'\n  alias: X\n-\n") o un valore
     # scalare al posto di una mappa sono entrambi YAML VALIDO: il parser non
@@ -78,53 +78,53 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
     # `None` o su una stringa. Si scarta PRIMA di tutto il resto — id,
     # conteggi, aggancio allo stato — cosi' nessuno di quei passaggi vede mai
     # una voce che non e' un dizionario.
-    automazioni_valide: list[dict] = []
-    for indice, v in enumerate(automazioni_yaml):
+    valid_automations: list[dict] = []
+    for index, v in enumerate(automation_yaml):
         if not isinstance(v, dict):
-            problemi.append(
-                f"{_AUTOMAZIONI}: voce #{indice + 1} non e' un dizionario "
+            problems.append(
+                f"{_AUTOMATIONS}: voce #{index + 1} non e' un dizionario "
                 f"(trovato {type(v).__name__}) — scartata"
             )
             continue
-        automazioni_valide.append(v)
-    automazioni_yaml = automazioni_valide
+        valid_automations.append(v)
+    automation_yaml = valid_automations
 
     # Un id usato da piu' voci non e' una chiave: prima si conta, poi si
     # decide chi entra nella mappa. Tenerla "l'ultima vince" (il bug
     # originale) marcherebbe come "file" — dato certo — l'entita' viva che
     # per caso corrisponde all'id duplicato, con il corpo sbagliato.
-    conteggio_id: dict[str, int] = {}
-    for v in automazioni_yaml:
+    id_counts: dict[str, int] = {}
+    for v in automation_yaml:
         if v.get("id") is not None:
-            chiave = str(v.get("id"))
-            conteggio_id[chiave] = conteggio_id.get(chiave, 0) + 1
-    ambigui = {chiave for chiave, n in conteggio_id.items() if n > 1}
-    for chiave in sorted(ambigui):
-        problemi.append(f"{_AUTOMAZIONI}: id {chiave} usato da {conteggio_id[chiave]} voci")
+            key = str(v.get("id"))
+            id_counts[key] = id_counts.get(key, 0) + 1
+    ambigui = {key for key, n in id_counts.items() if n > 1}
+    for key in sorted(ambigui):
+        problems.append(f"{_AUTOMATIONS}: id {key} usato da {id_counts[key]} voci")
 
-    per_id_automazione: dict[str, dict] = {}
+    by_automation_id: dict[str, dict] = {}
     senza_id: list[dict] = []
-    for v in automazioni_yaml:
-        id_grezzo = v.get("id")
-        if id_grezzo is None:
+    for v in automation_yaml:
+        raw_id = v.get("id")
+        if raw_id is None:
             # Scritta a mano, senza passare dall'interfaccia: non si puo'
             # agganciare a nessuna entita' viva, ma non per questo sparisce.
             senza_id.append(v)
             continue
-        chiave = str(id_grezzo)
-        if chiave not in ambigui:
-            per_id_automazione[chiave] = v
+        key = str(raw_id)
+        if key not in ambigui:
+            by_automation_id[key] = v
 
     if script_yaml is None:
-        script_per_chiave: dict = {}
+        scripts_by_key: dict = {}
     elif isinstance(script_yaml, dict):
-        script_per_chiave = dict(script_yaml)
+        scripts_by_key = dict(script_yaml)
     else:
         # Abitudine presa da automations.yaml: scripts.yaml scritto come
         # lista. `dict(script_yaml)` non solleva subito e produce un
         # dizionario spurio; l'errore arriverebbe piu' tardi, incoerente.
-        script_per_chiave = {}
-        problemi.append(
+        scripts_by_key = {}
+        problems.append(
             f"{_SCRIPT}: atteso un dizionario di script, trovato un oggetto di tipo "
             f"{type(script_yaml).__name__} — nessuno script letto dal file"
         )
@@ -135,100 +135,100 @@ def componi(automazioni_yaml, script_yaml, stati: list[dict]) -> tuple[list[dict
     # valori che non sono ne' `None` (assente-e-nullo, gia' gestito) ne' un
     # dizionario, cosi' il `.get("alias")` piu' sotto non vede mai altro.
     script_validi: dict = {}
-    for chiave, valore in script_per_chiave.items():
-        if valore is None:
-            problemi.append(f"{_SCRIPT}: script '{chiave}' presente nel file ma vuoto")
-            script_validi[chiave] = None
-        elif isinstance(valore, dict):
-            script_validi[chiave] = valore
+    for key, value in scripts_by_key.items():
+        if value is None:
+            problems.append(f"{_SCRIPT}: script '{key}' presente nel file ma vuoto")
+            script_validi[key] = None
+        elif isinstance(value, dict):
+            script_validi[key] = value
         else:
-            problemi.append(
-                f"{_SCRIPT}: script '{chiave}' non e' un dizionario "
-                f"(trovato {type(valore).__name__}) — scartato"
+            problems.append(
+                f"{_SCRIPT}: script '{key}' non e' un dizionario "
+                f"(trovato {type(value).__name__}) — scartato"
             )
-    script_per_chiave = script_validi
+    scripts_by_key = script_validi
 
-    voci: list[dict] = []
-    visti_automazione: set[str] = set()
+    entries: list[dict] = []
+    seen_automations: set[str] = set()
     visti_script: set[str] = set()
 
-    for stato in stati:
-        entity_id = stato.get("entity_id", "")
-        dominio, _, object_id = entity_id.partition(".")
-        attributi = stato.get("attributes") or {}
-        nome = attributi.get("friendly_name") or object_id
+    for state in states:
+        entity_id = state.get("entity_id", "")
+        domain, _, object_id = entity_id.partition(".")
+        attributes = state.get("attributes") or {}
+        name = attributes.get("friendly_name") or object_id
 
-        if dominio == "automation":
+        if domain == "automation":
             # `None` e' l'unica assenza: un id intero `0` (numerazione a
             # mano da zero) e' un id vero, non un id mancante.
-            id_attributo = attributi.get("id")
-            chiave = str(id_attributo) if id_attributo is not None else ""
-            if chiave and chiave in ambigui:
-                voci.append({
-                    "id": entity_id, "tipo": "automazione", "nome": nome,
+            attribute_id = attributes.get("id")
+            key = str(attribute_id) if attribute_id is not None else ""
+            if key and key in ambigui:
+                entries.append({
+                    "id": entity_id, "tipo": "automazione", "nome": name,
                     "corpo": None, "origine": "ambiguo", "id_reale": True,
                 })
                 continue
-            corpo = per_id_automazione.get(chiave) if chiave else None
-            if corpo is not None:
-                visti_automazione.add(chiave)
-            voci.append({
-                "id": entity_id, "tipo": "automazione", "nome": nome,
-                "corpo": corpo, "origine": "file" if corpo is not None else "solo_stato",
+            body = by_automation_id.get(key) if key else None
+            if body is not None:
+                seen_automations.add(key)
+            entries.append({
+                "id": entity_id, "tipo": "automazione", "nome": name,
+                "corpo": body, "origine": "file" if body is not None else "solo_stato",
                 "id_reale": True,
             })
-        elif dominio == "script":
-            corpo = script_per_chiave.get(object_id, _ASSENTE)
-            if corpo is not _ASSENTE:
+        elif domain == "script":
+            body = scripts_by_key.get(object_id, _ASSENTE)
+            if body is not _ASSENTE:
                 # Conosciuta anche se vuota: non deve ripresentarsi come
                 # solo_file piu' sotto.
                 visti_script.add(object_id)
             else:
-                corpo = None
-            voci.append({
-                "id": entity_id, "tipo": "script", "nome": nome,
-                "corpo": corpo, "origine": "file" if corpo is not None else "solo_stato",
+                body = None
+            entries.append({
+                "id": entity_id, "tipo": "script", "nome": name,
+                "corpo": body, "origine": "file" if body is not None else "solo_stato",
                 "id_reale": True,
             })
 
     # Cio' che sta nel file e non nello stato e' scritto ma NON caricato:
     # un'automazione disabilitata all'origine, o una configurazione con un
     # errore. E' un fatto sulla casa, e va visto invece che scartato.
-    for chiave, corpo in per_id_automazione.items():
-        if chiave not in visti_automazione:
-            voci.append({
-                "id": f"automation.__non_caricata_{chiave}", "tipo": "automazione",
-                "nome": corpo.get("alias") or chiave, "corpo": corpo,
+    for key, body in by_automation_id.items():
+        if key not in seen_automations:
+            entries.append({
+                "id": f"automation.__non_caricata_{key}", "tipo": "automazione",
+                "nome": body.get("alias") or key, "corpo": body,
                 # Questo id e' sintetico (combacia comunque con la forma
                 # dominio.oggetto di un entity_id vero — vedi _ENTITY_ID_RE):
                 # senza questo campo un consumatore lo passerebbe a un
                 # servizio come se l'entita' esistesse davvero.
                 "origine": "solo_file", "id_reale": False,
             })
-    for indice, corpo in enumerate(senza_id):
-        nome = corpo.get("alias") or f"automazione senza id #{indice + 1}"
-        voci.append({
-            "id": f"automation.__senza_id_{indice}", "tipo": "automazione",
-            "nome": nome, "corpo": corpo, "origine": "solo_file", "id_reale": False,
+    for index, body in enumerate(senza_id):
+        name = body.get("alias") or f"automazione senza id #{index + 1}"
+        entries.append({
+            "id": f"automation.__senza_id_{index}", "tipo": "automazione",
+            "nome": name, "corpo": body, "origine": "solo_file", "id_reale": False,
         })
-        problemi.append(
-            f"{_AUTOMAZIONI}: automazione '{nome}' senza id, non collegabile a nessuna entita'"
+        problems.append(
+            f"{_AUTOMATIONS}: automazione '{name}' senza id, non collegabile a nessuna entita'"
         )
-    for chiave, corpo in script_per_chiave.items():
-        if chiave not in visti_script:
+    for key, body in scripts_by_key.items():
+        if key not in visti_script:
             # Id sintetico prefissato, simmetrico a quello delle automazioni
             # sopra: due rami dello stesso codice non devono avere due
             # convenzioni diverse per «scritto ma non caricato».
-            voci.append({
-                "id": f"script.__non_caricato_{chiave}", "tipo": "script",
-                "nome": (corpo or {}).get("alias") or chiave, "corpo": corpo,
+            entries.append({
+                "id": f"script.__non_caricato_{key}", "tipo": "script",
+                "nome": (body or {}).get("alias") or key, "corpo": body,
                 "origine": "solo_file", "id_reale": False,
             })
 
-    return voci, problemi
+    return entries, problems
 
 
-async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
+async def reread(client, store, ha_folder: Path | None) -> dict:
     """Rilegge i due file e li incrocia con lo stato, poi sostituisce.
 
     Restituisce
@@ -242,29 +242,29 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
     cose chiedono interventi opposti, e un elenco unico dei "mancanti" le
     rendeva indistinguibili.
     """
-    automazioni = script = None
-    non_letti: dict[str, str] = {}
-    if cartella_ha is not None:
-        for nome, attributo in ((_AUTOMAZIONI, "automazioni"), (_SCRIPT, "script")):
+    automations = script = None
+    unloaded: dict[str, str] = {}
+    if ha_folder is not None:
+        for name, attribute in ((_AUTOMATIONS, "automazioni"), (_SCRIPT, "script")):
             try:
-                contenuto = load_file(cartella_ha / nome)
+                content = load_file(ha_folder / name)
             except Exception as exc:
-                logger.warning("%s non leggibile: %s", nome, exc)
-                contenuto = None
-                non_letti[nome] = f"illeggibile: {exc}"
+                logger.warning("%s non leggibile: %s", name, exc)
+                content = None
+                unloaded[name] = f"illeggibile: {exc}"
             else:
-                if contenuto is None:
-                    non_letti[nome] = "assente"
-            if attributo == "automazioni":
-                automazioni = contenuto
+                if content is None:
+                    unloaded[name] = "assente"
+            if attribute == "automazioni":
+                automations = content
             else:
-                script = contenuto
+                script = content
     else:
-        non_letti = {_AUTOMAZIONI: "assente", _SCRIPT: "assente"}
+        unloaded = {_AUTOMATIONS: "assente", _SCRIPT: "assente"}
 
     # `[]` significa «tutte»: e' la convenzione di HAClient.get_states, che
     # richiede l'argomento. Gli altri sei chiamanti fanno cosi'.
-    stati = await client.get_states([]) or []
+    states = await client.get_states([]) or []
 
     # Guardia sulla gamba dello stato, stessa forma di quella dell'anagrafe
     # (anagrafe.ricostruisci, anagrafe.py:40-43): se lo stato NON porta
@@ -278,12 +278,12 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
     # ma NON caricata: qualcosa non va — un'affermazione positiva e FALSA, e
     # farebbe sparire del tutto quelle scritte a mano (solo_stato). Una
     # replica vecchia e dichiarata stantia e' meglio di una fresca e falsa.
-    domini_comportamento = {"automation", "script"}
-    stato_ha_comportamento = any(
-        dominio_di(s.get("entity_id", "")) in domini_comportamento for s in stati
+    behavior_domains = {"automation", "script"}
+    state_has_behavior = any(
+        dominio_di(s.get("entity_id", "")) in behavior_domains for s in states
     )
-    file_hanno_voci = bool(automazioni) or bool(script)
-    if not stato_ha_comportamento and file_hanno_voci:
+    files_have_entries = bool(automations) or bool(script)
+    if not state_has_behavior and files_have_entries:
         messaggio = (
             "nessuna entita' automation.*/script.* nello stato mentre i file "
             "ne contengono voci: Home Assistant probabilmente non ha ancora "
@@ -291,34 +291,34 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
             "sostituito, mantenuta la replica precedente"
         )
         logger.warning("comportamento: %s", messaggio)
-        voci_correnti = archivio.comportamento()
-        conteggi_correnti: dict[str, int] = {}
-        for v in voci_correnti:
-            conteggi_correnti[v["tipo"]] = conteggi_correnti.get(v["tipo"], 0) + 1
+        current_entries = store.behavior()
+        current_counts: dict[str, int] = {}
+        for v in current_entries:
+            current_counts[v["tipo"]] = current_counts.get(v["tipo"], 0) + 1
         return {
-            "conteggi": conteggi_correnti,
-            "senza_corpo": sum(1 for v in voci_correnti if v["corpo"] is None),
-            "file_non_letti": non_letti, "problemi": [messaggio],
+            "conteggi": current_counts,
+            "senza_corpo": sum(1 for v in current_entries if v["corpo"] is None),
+            "file_non_letti": unloaded, "problemi": [messaggio],
         }
 
-    voci, problemi = componi(automazioni, script, stati)
-    archivio.sostituisci_comportamento(voci, problemi=problemi, file_non_letti=non_letti)
+    entries, problems = compose(automations, script, states)
+    store.replace_behavior(entries, problems=problems, unloaded_files=unloaded)
 
-    conteggi: dict[str, int] = {}
-    for v in voci:
-        conteggi[v["tipo"]] = conteggi.get(v["tipo"], 0) + 1
-    senza_corpo = sum(1 for v in voci if v["corpo"] is None)
-    if senza_corpo:
-        logger.info("comportamento: %d voci di cui %d senza corpo", len(voci), senza_corpo)
-    if problemi:
-        logger.warning("comportamento: %d problemi nella lettura: %s", len(problemi), problemi)
+    counts: dict[str, int] = {}
+    for v in entries:
+        counts[v["tipo"]] = counts.get(v["tipo"], 0) + 1
+    without_body = sum(1 for v in entries if v["corpo"] is None)
+    if without_body:
+        logger.info("comportamento: %d voci di cui %d senza corpo", len(entries), without_body)
+    if problems:
+        logger.warning("comportamento: %d problemi nella lettura: %s", len(problems), problems)
     return {
-        "conteggi": conteggi, "senza_corpo": senza_corpo,
-        "file_non_letti": non_letti, "problemi": problemi,
+        "conteggi": counts, "senza_corpo": without_body,
+        "file_non_letti": unloaded, "problemi": problems,
     }
 
 
-def _entita_in(config) -> list[str]:
+def _entities_in(config) -> list[str]:
     """Le entita' nominate in una configurazione di plancia: ogni valore che
     somiglia a un entity_id (dominio.oggetto), trovato nelle chiavi `entity`
     e `entities`, in tutto l'albero della config (viste, card, card
@@ -331,29 +331,29 @@ def _entita_in(config) -> list[str]:
     riproporla: e' il senso di leggere le plance."""
     trovate: set[str] = set()
 
-    def _aggiungi_se_entita(valore) -> None:
-        if isinstance(valore, str) and _ENTITY_ID_RE.match(valore):
-            trovate.add(valore)
+    def _add_if_entity(value) -> None:
+        if isinstance(value, str) and _ENTITY_ID_RE.match(value):
+            trovate.add(value)
 
-    def _cammina(nodo) -> None:
-        if isinstance(nodo, dict):
-            for chiave, valore in nodo.items():
-                if chiave in ("entity", "entities"):
-                    if isinstance(valore, list):
-                        for elemento in valore:
-                            _aggiungi_se_entita(elemento)
+    def _cammina(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("entity", "entities"):
+                    if isinstance(value, list):
+                        for item in value:
+                            _add_if_entity(item)
                     else:
-                        _aggiungi_se_entita(valore)
-                _cammina(valore)
-        elif isinstance(nodo, list):
-            for elemento in nodo:
-                _cammina(elemento)
+                        _add_if_entity(value)
+                _cammina(value)
+        elif isinstance(node, list):
+            for item in node:
+                _cammina(item)
 
     _cammina(config)
     return sorted(trovate)
 
 
-async def rileggi_plance(client, archivio) -> dict:
+async def reread_dashboards(client, store) -> dict:
     """Rilegge le plance da HA (compresa la predefinita) e sostituisce.
 
     Se NESSUNA plancia risulta leggibile (`config` a `None` su tutte, o
@@ -372,7 +372,7 @@ async def rileggi_plance(client, archivio) -> dict:
 
     Restituisce `{"conteggi": {"plance": n}, "non_disponibili": [...]}`.
     """
-    plance, non_disponibili = await client.leggi_plance()
+    dashboards, unavailable = await client.leggi_plance()
     # L'elenco stesso ("lovelace/dashboards/list") puo' fallire (timeout,
     # disconnessione) mentre la config della predefinita si legge lo stesso —
     # e' un'altra connessione WS. Senza distinguere questo caso, `plance`
@@ -380,18 +380,18 @@ async def rileggi_plance(client, archivio) -> dict:
     # leggibile") non scatterebbe, e la replica verrebbe sostituita con la
     # sola predefinita — Cucina, Camera, Tablet sparirebbero senza finire
     # nemmeno fra i non disponibili, perche' l'elenco non li ha mai nominati.
-    elenco_fallito = any(nd.split(":", 1)[0] == "elenco" for nd in non_disponibili)
-    leggibili = [p for p in plance if p.get("config") is not None]
-    if not leggibili or elenco_fallito:
+    list_failed = any(nd.split(":", 1)[0] == "elenco" for nd in unavailable)
+    readable = [p for p in dashboards if p.get("config") is not None]
+    if not readable or list_failed:
         logger.warning(
             "plance: %s (non disponibili: %s) — replica precedente conservata",
-            "elenco delle plance non arrivato" if elenco_fallito else "nessuna leggibile",
-            non_disponibili)
-        return {"conteggi": {"plance": 0}, "non_disponibili": non_disponibili}
+            "elenco delle plance non arrivato" if list_failed else "nessuna leggibile",
+            unavailable)
+        return {"conteggi": {"plance": 0}, "non_disponibili": unavailable}
 
-    voci = [{**p, "entita": _entita_in(p.get("config"))} for p in plance]
-    archivio.sostituisci_plance(voci, non_disponibili=non_disponibili)
-    if non_disponibili:
+    entries = [{**p, "entita": _entities_in(p.get("config"))} for p in dashboards]
+    store.replace_dashboards(entries, unavailable=unavailable)
+    if unavailable:
         logger.info("plance: %d lette, %d non disponibili (%s)",
-                    len(voci), len(non_disponibili), non_disponibili)
-    return {"conteggi": {"plance": len(voci)}, "non_disponibili": non_disponibili}
+                    len(entries), len(unavailable), unavailable)
+    return {"conteggi": {"plance": len(entries)}, "non_disponibili": unavailable}

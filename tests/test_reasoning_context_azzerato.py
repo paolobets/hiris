@@ -168,7 +168,7 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 # ---------------------------------------------------------------------------
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import ImpostazioniChat
 from hiris.app.memoria.archivio import MemoryStore
@@ -207,8 +207,8 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     app["data_dir"] = data_dir
     app["ponte_attivo"] = True
 
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [],
@@ -278,6 +278,6 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
             assert corpo["reply"] == "in cucina ci sono i faretti"
             assert ricordo_segreto not in json.dumps(corpo, ensure_ascii=False)
     finally:
-        archivio_casa.chiudi()
+        archivio_casa.close()
         archivio_memoria.close()
         reasoning_queue.close()

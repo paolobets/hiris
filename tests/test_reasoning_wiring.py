@@ -79,11 +79,11 @@ class _SpiaReasoningQueue:
 
 
 def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_path):
-    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.casa.archivio import HomeSpaceStore
 
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        archivio_casa.sostituisci({}, [], sistema_di_riferimento={"fuso": "Europe/Rome"})
+        archivio_casa.replace({}, [], reference_frame={"fuso": "Europe/Rome"})
 
         check = _estrai_costruzione_reasoning_queue()
         app: dict = {}
@@ -100,7 +100,7 @@ def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_pat
         # vero della casa quando chiamato -- non un valore qualunque.
         assert istanza.leggi_fuso() == "Europe/Rome"
     finally:
-        archivio_casa.chiudi()
+        archivio_casa.close()
 
 
 # fetta E3 Task 5 (raccoglie la riserva della review E3 blocco 1, I-1):

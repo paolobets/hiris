@@ -134,7 +134,7 @@ from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..proxy.entity_cache import inventario_leggibile
 from . import tempo
 from .anagrafe import specchio_vivo
-from .archivio import ArchivioCasa
+from .archivio import HomeSpaceStore
 from .domande import TIPO_LEGAME_HA
 from .domande import cerca as _cerca_candidati
 from .domande import guarda as _guarda_dettaglio
@@ -916,7 +916,7 @@ class DispatcherStrumenti:
     modello -- mai un'eccezione che gli spezza il turno.
     """
 
-    def __init__(self, archivio_casa: ArchivioCasa, archivio_memoria: MemoryStore,
+    def __init__(self, archivio_casa: HomeSpaceStore, archivio_memoria: MemoryStore,
                  cache=None, porta=None, cache_indice: LookupCache | None = None,
                  ha=None, registro=None, promesse=None, officina=None,
                  turno: str | None = None, cronaca=None) -> None:
@@ -1116,7 +1116,7 @@ class DispatcherStrumenti:
         testo = argomenti.get("testo")
         if not isinstance(testo, str) or not testo.strip():
             return {"errore": "«cerca» richiede un «testo» non vuoto."}
-        casa = self._casa.leggi()
+        casa = self._casa.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
         # `guarda` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
         # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
@@ -1124,7 +1124,7 @@ class DispatcherStrumenti:
         # per chi partiva da un nome. Letto eagerly come `casa`: `_cerca`
         # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
         # passa affatto -- il comportamento non e' un tipo di ancora).
-        comportamento = self._casa.comportamento()
+        comportamento = self._casa.behavior()
         _, nomi_vivi, _unita, _classi, _da_quando, _attributi, specchio_letto = self._specchio()
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
         # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
@@ -1134,8 +1134,8 @@ class DispatcherStrumenti:
         # e sulla stessa casa i due indici hanno contenuti diversi.
         if self._cache_indice is not None:
             indice = self._cache_indice.get(
-                "cerca", casa, self._casa.aggiornata_il(), nomi_vivi,
-                comportamento, self._casa.comportamento_letto_il())
+                "cerca", casa, self._casa.updated_at(), nomi_vivi,
+                comportamento, self._casa.behavior_loaded_at())
         else:
             indice = costruisci_indice(casa, nomi_vivi, comportamento)
         trovati = _cerca_candidati(indice, testo)
@@ -1187,7 +1187,7 @@ class DispatcherStrumenti:
         # etichette stesse come candidati: un registro etichette caduto
         # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
         # aggiunta qui invece che nella mappa che serve a un altro scopo.
-        caduti = sorted(set(self._casa.non_disponibili())
+        caduti = sorted(set(self._casa.unavailable())
                         & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
         if caduti:
             motivi.append(
@@ -1203,11 +1203,11 @@ class DispatcherStrumenti:
         # in domande.py); `_cerca` non lo leggeva affatto, quindi un file di
         # comportamento non letto restituiva 'trovati': [] nudo per un nome
         # di automazione/script che poteva essere scritto proprio li'.
-        file_non_letti = self._casa.file_non_letti()
-        if file_non_letti:
+        unloaded_files = self._casa.unloaded_files()
+        if unloaded_files:
             motivi.append(
                 f"file di automazioni/script non letti: "
-                f"{', '.join(sorted(file_non_letti))}. Cio' che c'e' scritto li' dentro "
+                f"{', '.join(sorted(unloaded_files))}. Cio' che c'e' scritto li' dentro "
                 "non e' cercabile adesso, e potrebbe esistere lo stesso.")
 
         senza_nome = [e for e in casa.get("entita") or []
@@ -1261,10 +1261,10 @@ class DispatcherStrumenti:
             except (TypeError, ValueError):
                 return {"esiste": False, "tipo": "ricordo", "riferimento": riferimento}
 
-        casa = self._casa.leggi()
-        non_disponibili = tuple(self._casa.non_disponibili())
-        comportamento = self._casa.comportamento()
-        file_non_letti = self._casa.file_non_letti()
+        casa = self._casa.read()
+        non_disponibili = tuple(self._casa.unavailable())
+        comportamento = self._casa.behavior()
+        unloaded_files = self._casa.unloaded_files()
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
@@ -1277,7 +1277,7 @@ class DispatcherStrumenti:
             self._specchio()
         dettaglio = _guarda_dettaglio(casa, comportamento, ricordi, stato, tipo, riferimento,
                                       non_disponibili=non_disponibili,
-                                      file_non_letti=file_non_letti,
+                                      unloaded_files=unloaded_files,
                                       nomi_di_ripiego=nomi_vivi,
                                       unita_vive=unita_vive,
                                       classi_vive=classi_vive,
@@ -1392,7 +1392,7 @@ class DispatcherStrumenti:
         # `aggiornata_il` decide sia "anagrafe letta?" sia la chiave della
         # cache sotto: letto una volta sola, nessun await fra le due letture
         # in questa funzione sincrona, quindi non possono mai disallinearsi.
-        aggiornata_il = self._casa.aggiornata_il()
+        aggiornata_il = self._casa.updated_at()
         anagrafe_letta = aggiornata_il is not None
 
         def _casa_per_indice() -> dict:
@@ -1402,7 +1402,7 @@ class DispatcherStrumenti:
             # SQL vera (+ json.loads per riga di `ArchivioCasa.leggi()`) non
             # si paga. A differenza di `_cerca`, dove `casa` serve comunque a
             # `_cecita()` piu' sotto e non c'e' niente da rimandare.
-            return self._casa.leggi() if anagrafe_letta else {}
+            return self._casa.read() if anagrafe_letta else {}
 
         # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
         # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
@@ -1419,7 +1419,7 @@ class DispatcherStrumenti:
             # distinzione di `handlers_memoria._tipi_non_verificabili`.
             tipi_non_verificabili = frozenset(_TIPI_ANCORA)
         else:
-            caduti = set(self._casa.non_disponibili())
+            caduti = set(self._casa.unavailable())
             tipi_non_verificabili = frozenset(
                 tipo for tipo, chiave in STORE_KEY_PER_TYPE.items() if chiave in caduti)
 
@@ -1919,7 +1919,7 @@ class DispatcherStrumenti:
         """
         if self._casa is None:
             return None
-        return self._casa.sistema_di_riferimento().get("fuso")
+        return self._casa.reference_frame().get("fuso")
 
     # -- il tempo ------------------------------------------------------
 

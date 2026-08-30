@@ -98,7 +98,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     finally:
         promesse.close()
         memoria.close()
-        casa.chiudi()
+        casa.close()
 
 
 def _crea_in_corso(promesse, *, recapito=None) -> str:

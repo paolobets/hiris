@@ -29,7 +29,7 @@ import sqlite3
 import pytest
 
 from hiris.app.casa.anagrafe import nomi_delle_categorie
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 from hiris.app.memoria.resolver import costruisci_indice
 
@@ -73,10 +73,10 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
-    a.sostituisci(_REGISTRI, [])
-    letta = a.leggi()
-    a.chiudi()
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a.replace(_REGISTRI, [])
+    letta = a.read()
+    a.close()
     return letta
 
 
@@ -227,12 +227,12 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     vecchio.commit()
     vecchio.close()
 
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
-        a.sostituisci(_REGISTRI, [])
-        letta = a.leggi()
+        a.replace(_REGISTRI, [])
+        letta = a.read()
     finally:
-        a.chiudi()
+        a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
     assert voce["categorie"] == {"automation": "01luci"}
     assert guarda(letta, [], [], {}, "entita", "automation.luci_giardino")["categorie"] == {
@@ -244,15 +244,15 @@ def test_una_riga_illeggibile_ripiega_su_un_dizionario(tmp_path):
     di `alias` ed `etichette` -- chiunque faccia `.items()` solleverebbe, e su
     una porta sola, cioe' proprio dove non lo si prova."""
     percorso = str(tmp_path / "storta.db")
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
-        a.sostituisci(_REGISTRI, [])
+        a.replace(_REGISTRI, [])
         a._conn.execute("UPDATE entita SET categorie = 'non json' WHERE id = ?",
                         ("light.faretto",))
         a._conn.commit()
-        letta = a.leggi()
+        letta = a.read()
     finally:
-        a.chiudi()
+        a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "light.faretto")
     assert voce["categorie"] == {}
     assert "categorie" not in guarda(letta, [], [], {}, "entita", "light.faretto")
@@ -271,12 +271,12 @@ def test_due_ambiti_con_lo_stesso_id_non_fanno_saltare_la_casa(tmp_path):
     riga: faceva rotolare indietro la ricostruzione INTERA della casa. La casa
     restava quella di prima, senza che nessuno lo dicesse.
     """
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        a.sostituisci(_REGISTRI, [])
-        letta = a.leggi()
+        a.replace(_REGISTRI, [])
+        letta = a.read()
     finally:
-        a.chiudi()
+        a.close()
     coppie = {(c["ambito"], c["id"]): c["nome"] for c in letta["categorie"]}
     assert coppie[("automation", "01luci")] == "Luci esterne"
     assert coppie[("scene", "01luci")] == "Atmosfere"
@@ -297,12 +297,12 @@ def test_un_archivio_con_la_vecchia_chiave_risale(tmp_path):
     vecchio.commit()
     vecchio.close()
 
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
-        a.sostituisci(_REGISTRI, [])
-        letta = a.leggi()
+        a.replace(_REGISTRI, [])
+        letta = a.read()
     finally:
-        a.chiudi()
+        a.close()
     coppie = {(c["ambito"], c["id"]) for c in letta["categorie"]}
     assert ("automation", "01luci") in coppie
     assert ("scene", "01luci") in coppie
@@ -317,8 +317,8 @@ def test_l_archivio_di_una_casa_gia_installata_risale_dalla_versione_3(tmp_path)
     esercita un ordine diverso -- e una casa vera non passa di li'.
     """
     percorso = str(tmp_path / "installata.db")
-    a = ArchivioCasa(percorso)
-    a.chiudi()
+    a = HomeSpaceStore(percorso)
+    a.close()
     # Si riporta indietro l'archivio a com'era prima di questa fetta: la
     # colonna via, la vecchia chiave, e la versione che dichiarava tutto cio'.
     vecchio = sqlite3.connect(percorso)
@@ -330,13 +330,13 @@ def test_l_archivio_di_una_casa_gia_installata_risale_dalla_versione_3(tmp_path)
     vecchio.commit()
     vecchio.close()
 
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
         assert a._conn.execute("PRAGMA user_version").fetchone()[0] == 5
-        a.sostituisci(_REGISTRI, [])
-        letta = a.leggi()
+        a.replace(_REGISTRI, [])
+        letta = a.read()
     finally:
-        a.chiudi()
+        a.close()
     voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
     assert voce["categorie"] == {"automation": "01luci"}
     assert {(c["ambito"], c["id"]) for c in letta["categorie"]} == {

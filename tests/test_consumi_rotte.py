@@ -19,7 +19,9 @@ from hiris.app.api.handlers_usage import (
     handle_storia_usage,
     handle_usage,
 )
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.consumi.store import UsageStore
+from tests._contratti import assert_stessa_firma
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00
@@ -36,7 +38,7 @@ class _Req:
 
 class _ArchivioCasaFinto:
     """Il minimo che `_fuso_da_archivio_casa` (`server.py`) legge:
-    `sistema_di_riferimento()`. Sostituisce `app["fuso_casa"]` (riparazione-
+    `reference_frame()`. Sostituisce `app["fuso_casa"]` (riparazione-
     impoverisce-brief.md, appendice punto 7): quella chiave non la popolava
     nessun codice di produzione, solo questa finta -- il difetto che questo
     progetto chiama «chi lo riempie?». La strada vera passa da
@@ -45,8 +47,15 @@ class _ArchivioCasaFinto:
     def __init__(self, fuso):
         self._fuso = fuso
 
-    def sistema_di_riferimento(self):
+    def reference_frame(self):
         return {"fuso": self._fuso}
+
+
+# Se `HomeSpaceStore.reference_frame` cambia firma, questa riga cade invece
+# di lasciare che il finto imiti un contratto che non esiste piu' (fetta «la
+# rinomina», Task 8 -- la stessa classe di difetto gia' misurata nel Task 7).
+assert_stessa_firma(HomeSpaceStore.reference_frame, _ArchivioCasaFinto.reference_frame,
+                     nome="reference_frame")
 
 
 def _corpo(risposta):

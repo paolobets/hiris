@@ -1039,6 +1039,7 @@ al Task 6 invece che deciso qui.
 | conservazione | retention |
 | consumi | usage |
 | conta | count |
+| conteggio | count |
 | corpo | body |
 | corrente | current |
 | costo | cost |
@@ -1065,6 +1066,7 @@ al Task 6 invece che deciso qui.
 | eta | age |
 | etichetta | label |
 | evento | event |
+| fallito | failed |
 | finale | final |
 | fonte | source |
 | forma | form |
@@ -1109,6 +1111,7 @@ al Task 6 invece che deciso qui.
 | posizione | position |
 | pota | prune |
 | predefinito | default |
+| principale | main |
 | problema | problem |
 | programma | schedule |
 | proponi | propose |
@@ -1129,6 +1132,7 @@ al Task 6 invece che deciso qui.
 | risposta | answer |
 | ritardo | delay |
 | rivendica | claim |
+| sanificato | sanitized |
 | scadenza | deadline |
 | scelto | chosen |
 | scena | scene |

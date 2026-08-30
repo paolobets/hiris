@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import programma_ricostruzione_anagrafe, programma_rilettura_comportamento
 
@@ -23,9 +23,9 @@ _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     yield a
-    a.chiudi()
+    a.close()
 
 
 @pytest.mark.asyncio
@@ -54,7 +54,7 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     # Contare le chiamate non basta: `_fra_poco` ingoia ogni eccezione per non
     # uccidere l'ascoltatore, quindi due ricostruzioni FALLITE darebbero lo
     # stesso conteggio. Solo l'archivio scritto prova che sono riuscite.
-    assert archivio.aggiornata_il() is not None
+    assert archivio.updated_at() is not None
 
 
 @pytest.mark.asyncio

@@ -22,7 +22,7 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 import pytest
 
 from hiris.app.casa.anagrafe import unita_effettiva
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 from hiris.app.memoria.interpretazione import deduci_unit
 from hiris.app.memoria.resolver import costruisci_indice
@@ -57,10 +57,10 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
-    a.sostituisci(_REGISTRI, [])
-    letta = a.leggi()
-    a.chiudi()
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a.replace(_REGISTRI, [])
+    letta = a.read()
+    a.close()
     return letta
 
 
@@ -216,8 +216,8 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     from hiris.app.api.handlers_memoria import handle_patch_memoria
     from hiris.app.memoria.archivio import MemoryStore
 
-    casa_archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    casa_archivio.sostituisci(_REGISTRI, [])
+    casa_archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    casa_archivio.replace(_REGISTRI, [])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     id_ricordo = memoria.remember(
         "il frigo lo tengo fra 3 e 5", detto_da="paolo",

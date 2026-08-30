@@ -1,6 +1,6 @@
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.strumenti import (
     CERCA_TOOL_DEF,
     ESEGUI_TOOL_DEF,
@@ -23,7 +23,7 @@ from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
 
 def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
     conn = archivio._conn  # unico modo per seminare la forma "letta" senza duplicare sostituisci()
     conn.execute("BEGIN")
     for piano in casa["piani"]:
@@ -46,7 +46,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
     conn.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('non_disponibili', '[]')")
     conn.commit()
     if comportamento:
-        archivio.sostituisci_comportamento(comportamento)
+        archivio.replace_behavior(comportamento)
     return archivio
 
 
@@ -54,7 +54,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
 def archivio_casa(tmp_path):
     a = _semina_casa(tmp_path)
     yield a
-    a.chiudi()
+    a.close()
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def archivio_casa_ambiguo(tmp_path):
     }
     a = _semina_casa(tmp_path, casa=casa, comportamento=[])
     yield a
-    a.chiudi()
+    a.close()
 
 
 @pytest.fixture
@@ -334,7 +334,7 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
     assert any(c["riferimento"] == "automation.sveglia"
               for t in prima["trovati"] for c in t["candidati"])
 
-    archivio_casa.sostituisci_comportamento([
+    archivio_casa.replace_behavior([
         {"id": "automation.sveglia", "tipo": "automazione", "nome": "Risveglio mattutino",
          "corpo": {"trigger": []}, "origine": "file"},
     ])
@@ -466,7 +466,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
 @pytest.mark.asyncio
 async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio_casa, memoria):
     """Le abat-jour, dal vivo: quattro giri di `cerca` diventano uno."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("cerca", {"testo": "accendi l'abat-jour"})
@@ -486,7 +486,7 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     cache che porta un `friendly_name` si prova che il collegamento c'e'
     davvero (mutazione che uccide: togliere `nomi_di_ripiego=nomi_vivi`
     dalla chiamata a `_guarda_dettaglio` in `strumenti._guarda`)."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = DispatcherStrumenti(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("guarda", {"tipo": "entita", "riferimento": "light.abat_jour_1"})
@@ -506,7 +506,7 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
     `_guarda_area`. Solo passando da `dispatch()` con una cache vera si prova
     il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
     ramo, lasciando intatto quello di `_guarda_entita`)."""
-    archivio_casa.sostituisci({
+    archivio_casa.replace({
         "aree": [{"area_id": "giardino", "name": "Giardino"}],
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
                     "name": None, "original_name": None}],
@@ -527,7 +527,7 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
     dell'irrigazione: 'guarda' su un dispositivo trovato). Mutazione che
     uccide: togliere l'inoltro su QUESTO ramo, lasciando intatti gli altri
     due."""
-    archivio_casa.sostituisci({
+    archivio_casa.replace({
         "dispositivi": [{"id": "dev_irr", "name": "Irrigazione"}],
         "entita": [{"entity_id": "light.abat_jour_1", "device_id": "dev_irr",
                     "name": None, "original_name": None}],
@@ -556,7 +556,7 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
 @pytest.mark.asyncio
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):
-    archivio_casa.sostituisci({"aree": [], "entita": []}, ["entita"])
+    archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
     esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "il bagno"})
     assert esito["trovati"] == []
@@ -568,7 +568,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
         archivio_casa, memoria):
     """Mutazione uccisa: dichiarare lo specchio illeggibile SEMPRE. Su una
     casa in cui tutti hanno un nome, non c'e' niente da dichiarare."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
     class _NonPronta:
@@ -582,7 +582,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
 
 @pytest.mark.asyncio
 async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archivio_casa, memoria):
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"}]}, [])
 
     class _NonPronta:
@@ -604,7 +604,7 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
     entita' -- ma non sa come si chiama proprio questa: senza dichiararlo,
     'trovati': [] e' indistinguibile da 'nessuna cosa con quel nome', il
     difetto che ha gia' bruciato quattro giri di `cerca` sulle abat-jour."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
     class _SpecchioSenzaQuestaVoce:
@@ -641,7 +641,7 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
     quello che cercava. Senza il fix, un modello riceve questa riserva a
     OGNI turno, comprese le risposte giuste -- l'invariante 4 applicata bene
     ma rivoltata contro se stessa (esitazione sistematica)."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
@@ -680,7 +680,7 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
     piu' naturale da fare guardando quel codice -- le prime due asserzioni
     cadrebbero mentre 'light.c' continuerebbe a essere trovato: qui sta la
     rete che il test B3/N2 non aveva ancora steso."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.senza", "name": None, "original_name": None}]},
         ["dispositivi"])  # registro "dispositivi" caduto; "entita"/"aree" letti bene
@@ -712,7 +712,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
     """Mutazione uccisa: contare fra le «senza nome» anche le entita'
     disabilitate. Una disabilitata senza nome non e' cercabile per scelta
     dell'utente, non per un limite di HIRIS -- non deve produrre una scusa."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.disabilitata", "name": None, "original_name": None,
          "disabled_by": "user"}]}, [])
@@ -730,7 +730,7 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
     (deliberatamente: non e' un tipo di ancora, vedi il commento su
     `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
     nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
-    archivio_casa.sostituisci({"aree": [], "entita": []}, ["etichette"])
+    archivio_casa.replace({"aree": [], "entita": []}, ["etichette"])
     esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "da controllare"})
     assert esito["trovati"] == []
@@ -748,8 +748,8 @@ async def test_cerca_dichiara_i_file_di_comportamento_non_letti(archivio_casa, m
     mai: un file di comportamento non letto restituiva 'trovati': [] nudo
     per un nome di automazione/script che potrebbe essere scritto proprio
     li'."""
-    archivio_casa.sostituisci_comportamento(
-        [], file_non_letti={"automations.yaml": "assente"})
+    archivio_casa.replace_behavior(
+        [], unloaded_files={"automations.yaml": "assente"})
     esito = await DispatcherStrumenti(archivio_casa, memoria).dispatch(
         "cerca", {"testo": "una automazione che non esiste per niente"})
     assert esito["trovati"] == []
@@ -907,7 +907,7 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
     prima = await d.dispatch("cerca", {"testo": "frullatore"})
     assert prima["trovati"] == []
 
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
     # `sostituisci()` marca `aggiornata_il` col secondo corrente: forzare un
     # valore diverso da quello di prima garantisce che il test non dipenda
@@ -927,7 +927,7 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
     """Stessa anagrafe, stesso `aggiornata_il`: solo il friendly_name dello
     specchio dello stato cambia. Una chiave che non catturasse i nomi vivi
     servirebbe un indice senza quell'entita' per sempre."""
-    archivio_casa.sostituisci({"entita": [
+    archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
 
     class _CacheMutevole:
@@ -976,19 +976,19 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     `problemi` non vuoti comunque, un test sul risultato non basterebbe)."""
     chiamate = _conta_costruzioni(monkeypatch)
     # Nessun `sostituisci()` ancora: `aggiornata_il()` e' `None` davvero.
-    vuoto = ArchivioCasa(str(tmp_path / "vuota.db"))
+    vuoto = HomeSpaceStore(str(tmp_path / "vuota.db"))
     d = DispatcherStrumenti(vuoto, memoria, cache_indice=LookupCache())
     await d.dispatch("ricorda", {"testo": "prima, anagrafe non letta"})
     assert len(chiamate) == 1
 
-    vuoto.sostituisci({"aree": [], "entita": []}, [])  # ora aggiornata_il() e' un valore vero
+    vuoto.replace({"aree": [], "entita": []}, [])  # ora aggiornata_il() e' un valore vero
     await d.dispatch("ricorda", {"testo": "dopo, anagrafe letta (vuota)"})
     assert len(chiamate) == 2  # non riusato: il ramo e' cambiato davvero
 
     await d.dispatch("ricorda", {"testo": "ancora dopo, stesso stato"})
     assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
 
-    vuoto.chiudi()
+    vuoto.close()
 
 
 @pytest.mark.asyncio
@@ -996,21 +996,21 @@ async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
     archivio_casa, memoria, monkeypatch
 ):
     """Rilievo Importante della review indipendente: `_ricorda` chiamava
-    SEMPRE `ArchivioCasa.leggi()` prima di sapere se la cache avrebbe dato un
+    SEMPRE `HomeSpaceStore.read()` prima di sapere se la cache avrebbe dato un
     colpo a segno -- su un hit quella lettura (SQL vero + json.loads per
     riga) veniva fatta e buttata. La chiave (aggiornata_il + impronta dei
-    nomi) si calcola SENZA leggere l'anagrafe: su un hit, `leggi()` non deve
+    nomi) si calcola SENZA leggere l'anagrafe: su un hit, `read()` non deve
     essere chiamata affatto. Un test che guarda solo il risultato di
     `ricorda` passerebbe identico con la lettura ancora dentro -- serve
     contare le chiamate vere, come per le costruzioni dell'indice."""
     chiamate_leggi = []
-    originale = archivio_casa.leggi
+    originale = archivio_casa.read
 
     def spia():
         chiamate_leggi.append(1)
         return originale()
 
-    monkeypatch.setattr(archivio_casa, "leggi", spia)
+    monkeypatch.setattr(archivio_casa, "read", spia)
     d = DispatcherStrumenti(archivio_casa, memoria, cache_indice=LookupCache())
 
     await d.dispatch("ricorda", {"testo": "prima chiamata, miss: deve leggere"})

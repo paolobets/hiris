@@ -47,7 +47,7 @@ from hiris.app.casa.anagrafe import (
     gerarchia,
     scegli_campione,
 )
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
 from hiris.app.server import giro_di_confronto_albero
 
@@ -382,8 +382,8 @@ class _ClienteFinto:
 
 
 def _archivio_con_una_casa(tmp_path, entita=(), aree=("cucina", "bagno", "sala")):
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio.sostituisci({
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": a, "name": a.capitalize(), "floor_id": "terra"}
                  for a in aree],
@@ -409,7 +409,7 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
     assert app["confronto_albero"]["aree_totali"] == 3
     assert app["confronto_albero"]["letto_il"]
     assert len(app["confronto_albero"]["guardate"]) == 1
-    archivio.chiudi()
+    archivio.close()
 
 
 def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
@@ -422,7 +422,7 @@ def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
     asyncio.run(giro())
     asyncio.run(giro())
     assert cliente.chieste == ["bagno", "cucina", "sala", "bagno"]
-    archivio.chiudi()
+    archivio.close()
 
 
 def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
@@ -434,7 +434,7 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
     assert all(g["errore"] for g in app["confronto_albero"]["guardate"])
     testo, _ = costruisci_nucleo(app)
     assert "non si sono potute controllare" in testo
-    archivio.chiudi()
+    archivio.close()
 
 
 def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
@@ -450,7 +450,7 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
     assert asyncio.run(giro_di_confronto_albero(app, _ClienteVecchio())()) is None
     assert asyncio.run(giro_di_confronto_albero(app, None)()) is None
     assert "confronto_albero" not in app
-    archivio.chiudi()
+    archivio.close()
 
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
@@ -489,7 +489,7 @@ async def test_api_casa_mostra_la_divergenza_sull_albero(aiohttp_client, tmp_pat
     corpo = await (await client.get("/api/casa")).json()
     assert corpo["confronto"]["guardate"][0]["in_piu"] == ["light.fantasma"]
     assert corpo["confronto"]["aree_totali"] == 3
-    archivio.chiudi()
+    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -505,7 +505,7 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
 
     corpo = await (await client.get("/api/casa")).json()
     assert corpo["confronto"] is None
-    archivio.chiudi()
+    archivio.close()
 
 
 @pytest.mark.parametrize("confronto", [

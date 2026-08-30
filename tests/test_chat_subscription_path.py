@@ -890,14 +890,14 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
 @pytest.mark.asyncio
 async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.api.handlers_chat import componi_contesto_chat
-    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.casa.archivio import HomeSpaceStore
     from hiris.app.memoria.archivio import MemoryStore
 
     app, q, _runner, _impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
 
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [],
@@ -930,7 +930,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         # il primo a saperlo.
         assert contesto == componi_contesto_chat(app, data_dir)
     finally:
-        archivio_casa.chiudi()
+        archivio_casa.close()
         archivio_memoria.close()
 
 

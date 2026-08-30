@@ -43,8 +43,8 @@ from .casa.anagrafe import (
     ricostruisci,
     scegli_campione,
 )
-from .casa.archivio import ArchivioCasa
-from .casa.comportamento import rileggi, rileggi_plance
+from .casa.archivio import HomeSpaceStore
+from .casa.comportamento import reread, reread_dashboards
 from .casa.domande import TIPO_LEGAME_HA
 from .casa.domande import legami as _legami_leggibili
 from .casa.tempo import zona_casa
@@ -769,8 +769,8 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREE_PER_GIRO):
         # domande a HA e il verdetto guardano tutti la STESSA fotografia della
         # replica. Ricostruirlo dopo le risposte vorrebbe dire confrontare un
         # albero con le risposte a domande fatte su un altro.
-        casa = archivio.leggi()
-        piani = gerarchia(casa, tuple(archivio.non_disponibili()))
+        casa = archivio.read()
+        piani = gerarchia(casa, tuple(archivio.unavailable()))
         aree = aree_dell_albero(piani)
         campione = scegli_campione(aree, quante, stato["dopo"])
 
@@ -972,7 +972,7 @@ async def costruisci_bilanci(
     if archivio_casa is None or not soggetti_energia:
         return [], 0
 
-    casa = archivio_casa.leggi()
+    casa = archivio_casa.read()
     entita_per_id = {e.get("id"): e for e in casa.get("entita", []) if e.get("id")}
     nome_dispositivo = {d.get("id"): d.get("nome") or d.get("id")
                         for d in casa.get("dispositivi", []) if d.get("id")}
@@ -1083,7 +1083,7 @@ async def costruisci_bilanci(
 
 
 def _fuso_da_archivio_casa(archivio_casa) -> str | None:
-    """Il fuso della casa, letto da `sistema_di_riferimento()` -- `None` se
+    """Il fuso della casa, letto da `reference_frame()` -- `None` se
     `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
     costruisce).
 
@@ -1115,7 +1115,7 @@ def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     docstring suo che dice perche' non si unifica qui. Non toccarla senza
     leggerlo prima.
     """
-    return archivio_casa.sistema_di_riferimento().get("fuso") if archivio_casa else None
+    return archivio_casa.reference_frame().get("fuso") if archivio_casa else None
 
 
 async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
@@ -1128,7 +1128,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
 
     **La cura vera al buco del punto 2 (task-5-fix-brief.md).** `_aggrega_
     ieri`, qui sotto, aggrega **solo** «ieri», ogni notte alle 00:20. Se
-    quella notte `sistema_di_riferimento()` solleva -- la sua query SQL non
+    quella notte `reference_frame()` solleva -- la sua query SQL non
     e' protetta -- l'aggregazione salta, e poiche' il lavoro notturno guarda
     sempre e solo «ieri», quel giorno **non viene piu' aggregato da nessun
     percorso**: il grezzo per rifarlo resta li' fino alla potatura (22
@@ -1427,7 +1427,7 @@ def programma_rilettura_plance(client, archivio, ritardo: float = 3.0):
     async def _fra_poco():
         try:
             await asyncio.sleep(ritardo)
-            await rileggi_plance(client, archivio)
+            await reread_dashboards(client, archivio)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -1508,7 +1508,7 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
         if not forza and ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
             return False
         try:
-            await rileggi(client, archivio, stato["cartella"])
+            await reread(client, archivio, stato["cartella"])
         except Exception as exc:
             # NON si memorizza l'impronta qui: se lo si facesse prima di aver
             # letto davvero, un guasto passeggero (Home Assistant che si
@@ -1927,7 +1927,7 @@ async def _on_startup(app: web.Application) -> None:
     # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
     # nel log, non fa fallire l'add-on -- il primo evento di registro la
     # ricostruira' comunque.
-    archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))
+    archivio_casa = HomeSpaceStore(os.path.join(data_dir, "casa.db"))
     app["archivio_casa"] = archivio_casa
 
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
@@ -1954,7 +1954,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Nasce PRIMA di `UsageStore` qui sotto e prima di `ricostruisci`
     # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
-    # `sistema_di_riferimento()` legge il fuso GIA' PERSISTITO su disco dalle
+    # `reference_frame()` legge il fuso GIA' PERSISTITO su disco dalle
     # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
     # `ricostruisci()`, che parla con Home Assistant, legherebbe questa
     # riparazione a un servizio di rete che non le serve.
@@ -2039,7 +2039,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
     # lettura non deve poter impedire il boot.
     try:
-        await rileggi_plance(ha_client, archivio_casa)
+        await reread_dashboards(ha_client, archivio_casa)
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
     ha_client.add_plance_listener(programma_rilettura_plance(ha_client, archivio_casa))
@@ -2171,7 +2171,7 @@ async def _on_startup(app: web.Application) -> None:
     # ripiego sul fuso dell'host e poi su `"UTC"`. Quindi in produzione (sotto
     # il Supervisor vero, non `docker run` nudo) `TZ` c'e' sempre, e le 00:20
     # dichiarate da pagina, README e piano sono davvero le 00:20 della casa --
-    # la stessa fonte del fuso che `archivio_casa.sistema_di_riferimento()`
+    # la stessa fonte del fuso che `archivio_casa.reference_frame()`
     # legge per l'aggregazione stessa (§0 sopra). Nessuna correzione: ne' al
     # container/schedulatore (gia' corretto da chi lo ospita), ne' alle tre
     # frasi (gia' vere). Resta vero solo FUORI dal Supervisor -- uno sviluppo
@@ -2656,7 +2656,7 @@ async def _on_startup(app: web.Application) -> None:
     async def _aggrega_ieri() -> None:
         try:
             # `fuso`/`ieri` DENTRO il try (task-5-fix-brief.md, punto 2a):
-            # `sistema_di_riferimento()` fa una query SQL non protetta, e se
+            # `reference_frame()` fa una query SQL non protetta, e se
             # solleva FUORI da qui il warning contestualizzato non parte --
             # l'eccezione finisce nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salta in silenzio.
@@ -3412,7 +3412,7 @@ async def _on_cleanup(app: web.Application) -> None:
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "archivio_casa" in app:
-        app["archivio_casa"].chiudi()
+        app["archivio_casa"].close()
     if "archivio_memoria" in app:
         app["archivio_memoria"].close()
     # I due archivi del Task 7 (schedulatore): stessa disciplina dei due qui

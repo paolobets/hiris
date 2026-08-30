@@ -81,21 +81,21 @@ async def test_un_entita_senza_alias_non_ne_guadagna_uno_vuoto():
 async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
     """La prova che conta: dall'anagrafe fino a `cerca`. Senza, l'alias
     sarebbe letto e salvato e non porterebbe a niente -- la fondamenta 4."""
-    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.casa.archivio import HomeSpaceStore
     from hiris.app.memoria.resolver import costruisci_indice
 
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        a.sostituisci({"entita": [
+        a.replace({"entita": [
             {"entity_id": "light.salotto", "name": "Piantana",
              "aliases": ["lampada della nonna"]},
         ]}, [])
-        indice = costruisci_indice(a.leggi())
+        indice = costruisci_indice(a.read())
         trovati = indice.find("lampada della nonna")
         candidati = [c for t in trovati for c in t["candidati"]]
         assert {"tipo": "entita", "riferimento": "light.salotto"} in candidati
     finally:
-        a.chiudi()
+        a.close()
 
 
 @pytest.mark.asyncio

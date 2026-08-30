@@ -45,7 +45,7 @@ async def ricostruisci(client, archivio) -> dict:
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
             "quella di prima, non sostituita da un vuoto", non_disponibili)
     else:
-        archivio.sostituisci(registri, non_disponibili, sistema_di_riferimento=sistema)
+        archivio.replace(registri, non_disponibili, reference_frame=sistema)
         if non_disponibili:
             logger.warning("anagrafe ricostruita, ma questi registri non hanno risposto: %s",
                            non_disponibili)

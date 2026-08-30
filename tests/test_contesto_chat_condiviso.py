@@ -62,7 +62,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     assert "## Sessioni precedenti" in contesto
     assert "irrigazione del giardino" in contesto
 
-    archivio_casa.chiudi()
+    archivio_casa.close()
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
 
 def test_archivio_guasto_non_solleva_e_restituisce_il_testo_di_guasto(tmp_path):
     archivio_casa = _semina_casa(tmp_path)
-    archivio_casa.chiudi()  # la connessione sotto e' chiusa: ogni query solleva
+    archivio_casa.close()  # la connessione sotto e' chiusa: ogni query solleva
     data_dir = str(tmp_path)
 
     app = {"archivio_casa": archivio_casa}

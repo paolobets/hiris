@@ -6,7 +6,7 @@ legge a ogni ricostruzione. HIRIS salvava lo stato, buttava il motivo, e non
 leggeva ne' l'uno ne' l'altro: poteva solo contare le entita' non disponibili
 e non sapere perche'.
 """
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
 
 
@@ -16,17 +16,17 @@ def _nucleo(integrazioni):
 
 
 def test_il_motivo_del_guasto_si_conserva(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        a.sostituisci({"integrazioni": [
+        a.replace({"integrazioni": [
             {"domain": "reolink", "title": "Reolink", "state": "setup_retry",
              "reason": "timeout durante la connessione"},
         ]}, [])
-        voce = a.leggi()["integrazioni"][0]
+        voce = a.read()["integrazioni"][0]
         assert voce["stato"] == "setup_retry"
         assert voce["motivo"] == "timeout durante la connessione"
     finally:
-        a.chiudi()
+        a.close()
 
 
 def test_un_integrazione_caduta_si_dichiara_col_motivo():
@@ -80,15 +80,15 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     vecchio.commit()
     vecchio.close()
 
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
-        a.sostituisci({"integrazioni": [
+        a.replace({"integrazioni": [
             {"domain": "reolink", "title": "Reolink", "state": "setup_error",
              "reason": "credenziali rifiutate"},
         ]}, [])
-        assert a.leggi()["integrazioni"][0]["motivo"] == "credenziali rifiutate"
+        assert a.read()["integrazioni"][0]["motivo"] == "credenziali rifiutate"
     finally:
-        a.chiudi()
+        a.close()
 
 
 def test_due_voci_con_lo_stesso_nome_non_si_ripetono():

@@ -81,7 +81,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         yield client, memoria_db
     finally:
         memoria.close()
-        casa.chiudi()
+        casa.close()
 
 
 @pytest_asyncio.fixture

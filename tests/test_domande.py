@@ -333,7 +333,7 @@ def test_guarda_un_automazione_non_trovata_dichiara_i_file_non_letti():
     che davvero non esiste."""
     dettaglio = guarda(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                        "script", "script.scritto_a_mano",
-                       file_non_letti={"scripts.yaml": "assente"})
+                       unloaded_files={"scripts.yaml": "assente"})
     assert dettaglio["esiste"] is False
     assert dettaglio["non_disponibile"] is True
 

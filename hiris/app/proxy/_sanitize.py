@@ -53,7 +53,7 @@ can enter the model's context calls one of the two functions below:
 - `casa/archivio.py::ArchivioCasa.sostituisci_comportamento` -- a SECOND,
   separate writer (different cadence, different source, see its docstring)
   for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
-  `friendly_name`, read by `comportamento.rileggi()` via a RAW
+  `friendly_name`, read by `comportamento.reread()` via a RAW
   `get_states([])` call that does NOT go through `entity_cache._to_minimal`
   -- the same network-controllable text C-2 sanitizes everywhere else it
   surfaces, missed here on a first pass because the file it lives next to

@@ -82,14 +82,14 @@ async def handle_get_casa(request: web.Request) -> web.Response:
                               "problemi": None, "file_non_letti": None, "voci": []},
             "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
         })
-    casa = archivio.leggi()
-    non_disponibili = archivio.non_disponibili()
-    voci_comportamento = archivio.comportamento()
+    casa = archivio.read()
+    non_disponibili = archivio.unavailable()
+    voci_comportamento = archivio.behavior()
     conteggi_comportamento: dict[str, int] = {}
     for v in voci_comportamento:
         conteggi_comportamento[v["tipo"]] = conteggi_comportamento.get(v["tipo"], 0) + 1
     return web.json_response({
-        "anagrafe_letta_il": archivio.aggiornata_il(),
+        "anagrafe_letta_il": archivio.updated_at(),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
         # campo una casa senza piani e un registro dei piani caduto sarebbero
         # la stessa schermata.
@@ -99,7 +99,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
         # sono due case diverse a seconda della porta da cui entri.
-        "sistema_di_riferimento": archivio.sistema_di_riferimento(),
+        "sistema_di_riferimento": archivio.reference_frame(),
         "piani": gerarchia(casa, non_disponibili),
         # I NOMI delle etichette, id -> nome.
         #
@@ -151,7 +151,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # e non c'era niente da dire».
         "confronto": request.app.get("confronto_albero"),
         "comportamento": {
-            "letto_il": archivio.comportamento_letto_il(),
+            "letto_il": archivio.behavior_loaded_at(),
             "conteggi": conteggi_comportamento,
             # Il campo che conta di piu': quante voci HIRIS conosce solo di
             # nome. Le automazioni scritte a mano non stanno nei file, e di
@@ -163,19 +163,19 @@ async def handle_get_casa(request: web.Request) -> web.Response:
             # Cio' che l'ultima lettura NON ha potuto concludere con
             # certezza (id duplicati, script vuoti, voci malformate) e i
             # file che non si sono letti, con la ragione. Costruiti con
-            # cura da comportamento.componi()/rileggi() -- prima morivano in
+            # cura da comportamento.compose()/reread() -- prima morivano in
             # una riga di log, invisibili a chi guarda solo /api/casa.
-            "problemi": archivio.problemi_comportamento(),
-            "file_non_letti": archivio.file_non_letti(),
+            "problemi": archivio.behavior_problems(),
+            "file_non_letti": archivio.unloaded_files(),
             "voci": voci_comportamento,
         },
         "plance": {
-            "lette_il": archivio.plance_lette_il(),
+            "lette_il": archivio.dashboards_loaded_at(),
             # Le plance/percorsi che l'ultima lettura non e' riuscita a
             # risolvere -- stesso principio di "non_disponibili" sopra,
             # applicato alle plance invece che ai registri.
-            "non_disponibili": archivio.non_disponibili_plance(),
-            "voci": archivio.plance(),
+            "non_disponibili": archivio.unavailable_dashboards(),
+            "voci": archivio.dashboards(),
         },
     })
 
@@ -223,22 +223,22 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         casa: dict = {}
         non_disponibili: tuple[str, ...] = ()
         comportamento: list[dict] = []
-        problemi_comportamento: tuple[str, ...] = ()
+        behavior_problems: tuple[str, ...] = ()
         file_non_letti_comportamento: dict[str, str] = {}
         sistema_di_riferimento: dict = {}
     else:
-        casa = archivio_casa.leggi()
-        non_disponibili = tuple(archivio_casa.non_disponibili())
-        comportamento = archivio_casa.comportamento()
+        casa = archivio_casa.read()
+        non_disponibili = tuple(archivio_casa.unavailable())
+        comportamento = archivio_casa.behavior()
         # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
         # sconosciuta (id duplicato, file malformato) non arrivava mai al
         # modello -- `/api/casa` li espone gia', `componi()` non aveva un
         # parametro per riceverli.
-        problemi_comportamento = tuple(archivio_casa.problemi_comportamento())
-        file_non_letti_comportamento = archivio_casa.file_non_letti()
+        behavior_problems = tuple(archivio_casa.behavior_problems())
+        file_non_letti_comportamento = archivio_casa.unloaded_files()
         # Unita', fuso, valuta, lingua: senza, il modello legge "72" senza
         # sapere in che scala e "alle 8" senza sapere in che fuso.
-        sistema_di_riferimento = archivio_casa.sistema_di_riferimento()
+        sistema_di_riferimento = archivio_casa.reference_frame()
 
     # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
     # Con `conta()` (scritto apposta per dichiarare questa differenza) si
@@ -318,7 +318,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
         casa, comportamento, ricordi, stato,
         non_disponibili=non_disponibili,
         stato_affidabile=stato_affidabile,
-        problemi_comportamento=problemi_comportamento,
+        behavior_problems=behavior_problems,
         file_non_letti_comportamento=file_non_letti_comportamento,
         sistema_di_riferimento=sistema_di_riferimento,
         classi_vive=classi_vive,

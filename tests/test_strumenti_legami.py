@@ -22,7 +22,7 @@ import hashlib
 
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import NOME_LEGAME, guarda, legami
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import MemoryStore
@@ -58,9 +58,9 @@ def memoria(tmp_path):
 
 @pytest.fixture
 def casa(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     yield a
-    a.chiudi()
+    a.close()
 
 
 def _dispatcher(casa, memoria, ha=None, porta=None):
@@ -228,7 +228,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
     restare identico per un pezzo -- una scrittura vera sarebbe passata
     inosservata. E si guarda anche la cartella, cosi' nemmeno un archivio
     NUOVO nato di fianco puo' sfuggire."""
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
         def _impronta():
             dump = "\n".join(archivio._conn.iterdump())
@@ -242,7 +242,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
         assert esito["legami"]
         assert _impronta() == prima, "i legami sono momentanei: non si archiviano"
     finally:
-        archivio.chiudi()
+        archivio.close()
 
 
 # --- «non lo so aprire» non e' «non esiste» -------------------------------

@@ -642,7 +642,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             "in cucina si cena alle 20"]
     finally:
         memoria.close()
-        casa.chiudi()
+        casa.close()
 
 
 def _riga_init(*, stato: str = "connected", nomi=None) -> str:

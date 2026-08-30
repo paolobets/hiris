@@ -12,7 +12,7 @@ il termostato, la valvola e il sensore della finestra puo' benissimo scegliere
 quello sbagliato e rispondere con sicurezza.
 """
 from hiris.app.casa.anagrafe import gerarchia
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import guarda
 
 _REGISTRI = {
@@ -27,12 +27,12 @@ _REGISTRI = {
 
 
 def _casa(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        a.sostituisci(_REGISTRI, [])
-        return a.leggi()
+        a.replace(_REGISTRI, [])
+        return a.read()
     finally:
-        a.chiudi()
+        a.close()
 
 
 def test_l_archivio_conserva_le_entita_di_riferimento(tmp_path):
@@ -78,10 +78,10 @@ def test_un_archivio_gia_esistente_guadagna_le_colonne(tmp_path):
     vecchio.commit()
     vecchio.close()
 
-    a = ArchivioCasa(percorso)
+    a = HomeSpaceStore(percorso)
     try:
-        a.sostituisci(_REGISTRI, [])
-        area = next(x for x in a.leggi()["aree"] if x["id"] == "soggiorno")
+        a.replace(_REGISTRI, [])
+        area = next(x for x in a.read()["aree"] if x["id"] == "soggiorno")
         assert area["entita_temperatura"] == "sensor.soggiorno_temp"
     finally:
-        a.chiudi()
+        a.close()

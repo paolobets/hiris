@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.cervello.oggetti import day_boundaries
 from hiris.app.server import costruisci_bilanci
 from tests.test_cervello_comprimari import _ClienteLegami
@@ -19,9 +19,9 @@ def _casa(tmp_path, *, entita, dispositivi):
     """Un `ArchivioCasa` reale, seminato coi registri GREZZI (chiavi
     inglesi, come li manderebbe `HAClient.leggi_registri()`): fedele al
     contratto vero di `ArchivioCasa.sostituisci`, non una finta a parte."""
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
-    a.sostituisci({"dispositivi": dispositivi, "entita": entita}, [],
-                 sistema_di_riferimento={"fuso": "Europe/Rome"})
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a.replace({"dispositivi": dispositivi, "entita": entita}, [],
+                 reference_frame={"fuso": "Europe/Rome"})
     return a
 
 
@@ -65,7 +65,7 @@ async def test_senza_soggetti_niente_bilanci_niente_rete(tmp_path):
         assert falliti == 0
         assert cliente.statistiche_chieste == []
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -98,7 +98,7 @@ async def test_un_dispositivo_con_una_direzione_utile_diventa_un_bilancio(tmp_pa
         assert ids == ["sensor.energia_prodotta_oggi"]
         assert (da_iso, a_iso) == _iso_giorno()
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -127,7 +127,7 @@ async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
         [b] = bilanci
         assert b["corpo"]["totali"]["consumo"]["valore"] == 14.72
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -150,7 +150,7 @@ async def test_senza_nessuna_direzione_utile_niente_bilancio_niente_rete(tmp_pat
         assert falliti == 0
         assert cliente.statistiche_chieste == []
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -174,7 +174,7 @@ async def test_una_direzione_su_potenza_non_basta_serve_la_classe_energy(tmp_pat
         assert falliti == 0
         assert cliente.statistiche_chieste == []
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -211,7 +211,7 @@ async def test_la_batteria_dello_stesso_dispositivo_entra_nella_lettura(tmp_path
         ids, _, _ = cliente.statistiche_chieste[0]
         assert set(ids) == {"sensor.energia_prodotta_oggi", "sensor.batteria"}
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -231,7 +231,7 @@ async def test_un_entita_senza_dispositivo_non_e_un_errore_resta_fuori(tmp_path)
         assert falliti == 0
         assert cliente.statistiche_chieste == []
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -259,7 +259,7 @@ async def test_due_dispositivi_candidati_una_connessione_sola(tmp_path):
         assert {b["dispositivo_id"] for b in bilanci} == {"dev1", "dev2"}
         assert len(cliente.statistiche_chieste) == 1  # UNA connessione per ENTRAMBI
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -288,7 +288,7 @@ async def test_una_serie_vuota_per_un_candidato_conta_come_fallimento(tmp_path):
         assert bilanci == []
         assert falliti == 1
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -324,7 +324,7 @@ async def test_i_membri_del_bilancio_sono_solo_i_soggetti_con_una_direzione_vera
         [b] = bilanci
         assert b["entita"] == ["sensor.energia_prodotta_oggi"]
     finally:
-        casa.chiudi()
+        casa.close()
 
 
 @pytest.mark.asyncio
@@ -351,4 +351,4 @@ async def test_un_guasto_delle_statistiche_fallisce_tutti_i_candidati_insieme(tm
         assert bilanci == []
         assert falliti == 2
     finally:
-        casa.chiudi()
+        casa.close()

@@ -1285,7 +1285,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
             stato: dict, tetto: int = 6000,
             non_disponibili: tuple[str, ...] = (),
             stato_affidabile: bool = True,
-            problemi_comportamento: tuple[str, ...] = (),
+            behavior_problems: tuple[str, ...] = (),
             file_non_letti_comportamento: dict[str, str] | None = None,
             sistema_di_riferimento: dict | None = None,
             classi_vive: dict[str, str] | None = None,
@@ -1339,7 +1339,7 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
     `_avviso_confronto`, che tiene separati i tre esiti e il non-letto.
 
     `problemi_comportamento`/`file_non_letti_comportamento` sono le
-    dichiarazioni che `comportamento.rileggi()` costruisce gia' e che
+    dichiarazioni che `comportamento.reread()` costruisce gia' e che
     `/api/casa` espone (`ArchivioCasa.problemi_comportamento()`/
     `.file_non_letti()`): senza un parametro per riceverle, il PERCHE' di
     un'automazione sconosciuta (id duplicato, file malformato) non arrivava
@@ -1441,8 +1441,8 @@ def componi(casa: dict, comportamento: list[dict], ricordi: list[dict],
         voce = _plurale(n, "voce di comportamento", "voci di comportamento")
         avvisi.append(f"{n} {voce} senza corpo disponibile (solo il nome).")
 
-    if problemi_comportamento:
-        n = len(problemi_comportamento)
+    if behavior_problems:
+        n = len(behavior_problems)
         voce = _plurale(n, "problema", "problemi")
         avvisi.append(
             f"{n} {voce} nella lettura del comportamento (id duplicati, voci "

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hiris.app.casa.anagrafe import ricostruisci, sistema_di_riferimento
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import MemoryStore
@@ -44,9 +44,9 @@ _CONFIG = {
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = ArchivioCasa(str(tmp_path / "casa.db"))
+    a = HomeSpaceStore(str(tmp_path / "casa.db"))
     yield a
-    a.chiudi()
+    a.close()
 
 
 # --- la distillazione: cosa entra, cosa resta fuori ------------------------
@@ -91,22 +91,22 @@ def test_una_config_a_meta_porta_solo_cio_che_c_e():
 # --- l'archivio: dove vive ------------------------------------------------
 
 def test_l_archivio_conserva_e_restituisce_il_riferimento(archivio):
-    archivio.sostituisci({}, [], sistema_di_riferimento=sistema_di_riferimento(_CONFIG))
-    assert archivio.sistema_di_riferimento()["fuso"] == "Europe/Rome"
+    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
+    assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
 
 def test_senza_riferimento_l_archivio_lo_dice_vuoto(archivio):
-    archivio.sostituisci({}, [])
-    assert archivio.sistema_di_riferimento() == {}
+    archivio.replace({}, [])
+    assert archivio.reference_frame() == {}
 
 
 def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
     """Stessa dottrina dell'anagrafe intera: una replica vecchia e' meglio di
     un vuoto spacciato per fresco. Se HA non ha risposto, il fuso di ieri e'
     ancora quello giusto."""
-    archivio.sostituisci({}, [], sistema_di_riferimento=sistema_di_riferimento(_CONFIG))
-    archivio.sostituisci({}, ["sistema_di_riferimento"], sistema_di_riferimento={})
-    assert archivio.sistema_di_riferimento()["fuso"] == "Europe/Rome"
+    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
+    archivio.replace({}, ["sistema_di_riferimento"], reference_frame={})
+    assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
 
 # --- la ricostruzione: chi lo va a prendere -------------------------------
@@ -118,7 +118,7 @@ async def test_ricostruisci_legge_anche_il_riferimento(archivio):
     client.get_config = AsyncMock(return_value=_CONFIG)
     esito = await ricostruisci(client, archivio)
     assert esito["non_disponibili"] == []
-    assert archivio.sistema_di_riferimento()["valuta"] == "EUR"
+    assert archivio.reference_frame()["valuta"] == "EUR"
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     e il modello continua a indovinare l'ora esattamente come prima."""
     from hiris.app.api.handlers_casa import costruisci_nucleo
 
-    archivio.sostituisci({}, [], sistema_di_riferimento=sistema_di_riferimento(_CONFIG))
+    archivio.replace({}, [], reference_frame=sistema_di_riferimento(_CONFIG))
 
     testo, _ = costruisci_nucleo({"archivio_casa": archivio})
 
@@ -251,10 +251,10 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
     Mutazione che la fa fallire: in `domande._con_nome_dedotto`, ripiegare
     sull'unita' della casa quando `unita_vive` non ne ha una.
     """
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     try:
-        archivio.sostituisci(
+        archivio.replace(
             {"aree": [{"area_id": "cucina", "name": "Cucina"}],
              "entita": [
                  # un indice: un numero senza unita', il caso da proteggere
@@ -266,8 +266,8 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
                  {"entity_id": "sensor.termo", "name": "Termometro",
                   "area_id": "cucina", "unit_of_measurement": "F"},
              ]},
-            [], sistema_di_riferimento=sistema_di_riferimento(_CONFIG))
-        assert archivio.sistema_di_riferimento()["unita"]["temperature"] == "C"
+            [], reference_frame=sistema_di_riferimento(_CONFIG))
+        assert archivio.reference_frame()["unita"]["temperature"] == "C"
 
         cache = _SpecchioFinto([
             {"id": "sensor.indice", "state": "72", "unit": ""},
@@ -283,5 +283,5 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             "l'unita' propria dell'entita' deve arrivare, e vincere su quella "
             "della casa")
     finally:
-        archivio.chiudi()
+        archivio.close()
         memoria.close()

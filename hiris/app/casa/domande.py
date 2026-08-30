@@ -679,7 +679,7 @@ def _guarda_dispositivo(casa: dict, ricordi: list[dict], stato: dict, riferiment
 
 def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
                            tipo: str, riferimento,
-                           file_non_letti: dict[str, str] | None = None) -> dict:
+                           unloaded_files: dict[str, str] | None = None) -> dict:
     voce = next(
         (v for v in comportamento if v.get("id") == riferimento and v.get("tipo") == tipo), None)
     if voce is None:
@@ -699,7 +699,7 @@ def _guarda_comportamento(comportamento: list[dict], ricordi: list[dict],
         # della cosa), e ora che `cerca` indicizza automazioni e script un
         # NOME al posto dell'id e' un errore possibile anche qui: merita lo
         # stesso `suggerimento` degli altri tre rami, con la stessa frase.
-        return _dettaglio_non_trovato(tipo, riferimento, bool(file_non_letti))
+        return _dettaglio_non_trovato(tipo, riferimento, bool(unloaded_files))
     return {
         "esiste": True, "tipo": tipo, "id": voce["id"], "nome": voce.get("nome"),
         # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo
@@ -764,7 +764,7 @@ def ricordi_sanificati(ricordi: list[dict] | None) -> list[dict]:
 def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: dict,
            tipo: str, riferimento,
            non_disponibili: tuple[str, ...] = (),
-           file_non_letti: dict[str, str] | None = None,
+           unloaded_files: dict[str, str] | None = None,
            nomi_di_ripiego: dict[str, str] | None = None,
            unita_vive: dict[str, str] | None = None,
            classi_vive: dict[str, str] | None = None,
@@ -905,7 +905,7 @@ def guarda(casa: dict, comportamento: list[dict], ricordi: list[dict], stato: di
                                    nomi_di_ripiego, unita_vive, classi_vive, da_quando_vive,
                                    attributi_vivi)
     if tipo in _TIPI_COMPORTAMENTO:
-        return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, file_non_letti)
+        return _guarda_comportamento(comportamento, ricordi, tipo, riferimento, unloaded_files)
     if tipo == "ricordo":
         return _guarda_ricordo(ricordi, riferimento)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo

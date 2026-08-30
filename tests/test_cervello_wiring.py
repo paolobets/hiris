@@ -20,8 +20,10 @@ import textwrap
 from datetime import UTC
 
 from hiris.app import server
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.cervello.archivio import READING_RETENTION_S
 from hiris.app.server import guarda_condizioni_di_sistema
+from tests._contratti import assert_stessa_firma
 from tests.test_cervello_comprimari import _ClienteLegami
 
 # --------------------------------------------------------------------------
@@ -368,23 +370,29 @@ def test_senza_osservatore_non_scrive_niente():
 # --------------------------------------------------------------------------
 
 class _ArchivioCasaCheSolleva:
-    """`sistema_di_riferimento()` che solleva -- la sua query SQL, dice il
+    """`reference_frame()` che solleva -- la sua query SQL, dice il
     mandato, non e' protetta: qui si simula il guasto vero, non solo
     l'assenza di `archivio_casa`."""
 
-    def sistema_di_riferimento(self):
+    def reference_frame(self):
         raise RuntimeError("sqlite del sistema di riferimento irraggiungibile")
 
 
+# Se `HomeSpaceStore.reference_frame` cambia firma, questa riga cade invece
+# di lasciare che il finto imiti un contratto che non esiste piu'.
+assert_stessa_firma(HomeSpaceStore.reference_frame, _ArchivioCasaCheSolleva.reference_frame,
+                     nome="reference_frame")
+
+
 def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_non_si_legge(caplog):
-    """Punto 2(a): se `sistema_di_riferimento()` solleva, il warning
+    """Punto 2(a): se `reference_frame()` solleva, il warning
     contestualizzato ('cervello: ...') deve partire comunque -- non finire
     nel registro di apscheduler senza prefisso, cosa che succede quando
     `fuso`/`ieri` sono calcolati FUORI dal try.
 
     Prima della correzione questo test e' rosso per davvero, non per un
     assert: `asyncio.run(job())` solleva `RuntimeError`, perche' l'eccezione
-    di `sistema_di_riferimento()` esce dalla funzione innestata prima ancora
+    di `reference_frame()` esce dalla funzione innestata prima ancora
     di entrare nel try.
 
     **Correzione di riparazione-impoverisce-brief.md, appendice punto 4.**
@@ -820,7 +828,7 @@ def _estrai_blocco_riparazione_avvio() -> str:
     inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
     stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
     src = inspect.getsource(server._on_startup)
-    marcatore_inizio = 'archivio_casa = ArchivioCasa(os.path.join(data_dir, "casa.db"))'
+    marcatore_inizio = 'archivio_casa = HomeSpaceStore(os.path.join(data_dir, "casa.db"))'
     marcatore_fine = '"fallita (%s: %s)", type(exc).__name__, exc)'
     inizio = src.index(marcatore_inizio)
     # Dall'INIZIO DELLA RIGA, non dal marcatore: altrimenti la prima riga
@@ -862,7 +870,7 @@ def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
         ricevuto["archivio_casa"] = app.get("archivio_casa")
 
     namespace = {
-        "os": os_reale, "data_dir": str(tmp_path), "ArchivioCasa": server.ArchivioCasa,
+        "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
         "app": {}, "ha_client": None,
         "riaggrega_gli_ultimi_due_giorni": _spia,
         "logger": logging.getLogger("test_riparazione_riceve_archivio_casa"),
@@ -874,10 +882,10 @@ def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
     try:
         asyncio.run(namespace["_check"]())
         assert ricevuto.get("archivio_casa") is not None
-        assert isinstance(ricevuto["archivio_casa"], server.ArchivioCasa)
+        assert isinstance(ricevuto["archivio_casa"], server.HomeSpaceStore)
         assert ricevuto["archivio_casa"] is namespace["app"]["archivio_casa"]
     finally:
-        namespace["app"]["archivio_casa"].chiudi()
+        namespace["app"]["archivio_casa"].close()
 
 
 def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path):
@@ -903,7 +911,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
 
     Il fuso arriva a `archivio_casa` non da una chiamata di rete (il finto
     `ha_client` non la sa fare), ma da cio' che e' gia' scritto su
-    `casa.db`: `sistema_di_riferimento()` legge il fuso PERSISTITO dalle
+    `casa.db`: `reference_frame()` legge il fuso PERSISTITO dalle
     sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
     dell'add-on (`casa.db` sopravvive ai riavvii). Il file si semina una
     volta, PRIMA di eseguire l'estratto, con una `ArchivioCasa` separata che
@@ -929,7 +937,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
-    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.casa.archivio import HomeSpaceStore
     from hiris.app.cervello.archivio import ObservationsStore
 
     roma = ZoneInfo("Europe/Rome")
@@ -942,9 +950,9 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     casa_db = str(tmp_path / "casa.db")
     osservazioni_db = str(tmp_path / "osservazioni.db")
 
-    seme = ArchivioCasa(casa_db)
-    seme.sostituisci({}, [], sistema_di_riferimento={"fuso": "Europe/Rome"})
-    seme.chiudi()
+    seme = HomeSpaceStore(casa_db)
+    seme.replace({}, [], reference_frame={"fuso": "Europe/Rome"})
+    seme.close()
 
     archivio = ObservationsStore(osservazioni_db)
     try:
@@ -977,7 +985,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         import os as os_reale
         cliente = _ClienteLegami()
         namespace = {
-            "os": os_reale, "data_dir": str(tmp_path), "ArchivioCasa": server.ArchivioCasa,
+            "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
             "app": {"osservazioni": archivio}, "ha_client": cliente,
             "riaggrega_gli_ultimi_due_giorni": server.riaggrega_gli_ultimi_due_giorni,
             "logger": logging.getLogger("test_due_porte"),
@@ -989,7 +997,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         try:
             asyncio.run(namespace["_check"]())
         finally:
-            namespace["app"]["archivio_casa"].chiudi()
+            namespace["app"]["archivio_casa"].close()
 
         oggetti_riparazione = archivio.facts(day=giorno_bersaglio)
 
@@ -1267,14 +1275,14 @@ def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     """Un `ArchivioCasa` reale con un dispositivo e una sua entita' di
     energia -- il minimo che `costruisci_bilanci` ha bisogno di leggere dal
     registro (fedele al contratto vero, non una finta a parte)."""
-    from hiris.app.casa.archivio import ArchivioCasa
+    from hiris.app.casa.archivio import HomeSpaceStore
 
-    casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    casa.sostituisci(
+    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    casa.replace(
         {"dispositivi": [{"id": "dev1", "name": "Inverter"}],
          "entita": [{"entity_id": "sensor.energia_prodotta_oggi",
                     "device_id": "dev1", "device_class": "energy"}]},
-        [], sistema_di_riferimento={"fuso": fuso})
+        [], reference_frame={"fuso": fuso})
     return casa
 
 
@@ -1346,7 +1354,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
         assert bilancio["corpo"]["totali"]["produzione"]["valore"] == 3.0
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_falliscono(tmp_path):
@@ -1395,7 +1403,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
         assert oggetti[0]["protagonista"] == "sensor.energia_prodotta_oggi"
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
@@ -1428,7 +1436,7 @@ def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
         assert oggetti[0]["corpo"]["totali"]["produzione"]["valore"] == 4.0
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_falliscono(tmp_path):
@@ -1481,7 +1489,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
         assert dopo == prima
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_errore(tmp_path):
@@ -1528,7 +1536,7 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
         assert dopo == prima
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path):
@@ -1585,7 +1593,7 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
         assert b_ieri["corpo"]["totali"]["produzione"]["valore"] == 7.0
     finally:
         archivio.close()
-        casa.chiudi()
+        casa.close()
 
 
 # --------------------------------------------------------------------------

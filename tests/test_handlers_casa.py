@@ -10,7 +10,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_casa import handle_get_casa, handle_get_nucleo
-from hiris.app.casa.archivio import ArchivioCasa
+from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.memoria.archivio import MemoryStore
 
 
@@ -29,8 +29,8 @@ class _CacheFinta:
 
 @pytest.mark.asyncio
 async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio.sostituisci({
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
@@ -49,7 +49,7 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
     assert corpo["conteggi"]["aree"] == 1
     assert corpo["anagrafe_letta_il"] is not None
     assert corpo["non_disponibili"] == []
-    archivio.chiudi()
+    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -78,8 +78,8 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, tmp_path):
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio.sostituisci_comportamento(
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio.replace_behavior(
         [
             {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
              "corpo": {"trigger": []}, "origine": "file"},
@@ -88,8 +88,8 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
             {"id": "script.vuoto", "tipo": "script", "nome": "Vuoto",
              "corpo": {}, "origine": "file"},
         ],
-        problemi=["automations.yaml: id 42 usato da 2 voci"],
-        file_non_letti={"scripts.yaml": "assente"},
+        problems=["automations.yaml: id 42 usato da 2 voci"],
+        unloaded_files={"scripts.yaml": "assente"},
     )
     app = web.Application()
     app["archivio_casa"] = archivio
@@ -107,20 +107,20 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     # le due cose non sono la stessa cosa e non vanno confuse.
     assert comportamento["senza_corpo"] == 1
     assert len(comportamento["voci"]) == 3
-    # Le dichiarazioni costruite da comportamento.componi()/rileggi() devono
+    # Le dichiarazioni costruite da comportamento.compose()/reread() devono
     # arrivare fin qui, non morire in un log (Important 3).
     assert comportamento["problemi"] == ["automations.yaml: id 42 usato da 2 voci"]
     assert comportamento["file_non_letti"] == {"scripts.yaml": "assente"}
     per_id = {v["id"]: v for v in comportamento["voci"]}
     assert per_id["automation.a_mano"]["corpo"] is None
     assert per_id["script.vuoto"]["corpo"] == {}
-    archivio.chiudi()
+    archivio.close()
 
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client, tmp_path):
-    archivio = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio.sostituisci_plance([
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio.replace_dashboards([
         {"url_path": None, "title": "Principale", "mode": "storage",
          "config": {"views": []}, "entita": ["light.cucina"]},
         {"url_path": "cucina", "title": "Cucina", "mode": "storage",
@@ -148,15 +148,15 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     # Una plancia in modalita' YAML non si legge: `config: None` e' un fatto
     # diverso da "plancia senza viste" e non va appiattito.
     assert cucina["config"] is None
-    archivio.chiudi()
+    archivio.close()
 
 
 @pytest.mark.asyncio
 async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_path):
     """`/api/nucleo` mostra il testo ESATTO che il modello ha davanti, e il
     riepilogo (caratteri, troncato, ricordi esclusi) e' coerente col testo."""
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [],
@@ -184,7 +184,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     assert riepilogo["caratteri"] == len(testo)
     assert riepilogo["troncato"] is False
     assert riepilogo["ricordi_esclusi"] == 0
-    archivio_casa.chiudi()
+    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -217,13 +217,13 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     dire "Senza area", un'affermazione che non abbiamo il diritto di fare)
     sia nel riepilogo -- mai inghiottito da un modulo che lo riceve e non
     lo passa oltre."""
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [], "dispositivi": [],
         "entita": [{"entity_id": "light.orfana", "name": "Orfana", "area_id": None}],
         "etichette": [], "categorie": [], "integrazioni": [],
-    }, non_disponibili=["aree"])
+    }, unavailable=["aree"])
     app = web.Application()
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = None
@@ -238,7 +238,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
     assert any("aree" in a and "non hanno risposto" in a for a in corpo["riepilogo"]["avvisi"])
-    archivio_casa.chiudi()
+    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -250,8 +250,8 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     casa con 180 ricordi invisibili. Qui si verifica che TUTTI i ricordi
     arrivino a `componi()` (usando `conta()`), lasciando al taglio -- che
     dichiara sempre -- decidere cosa non entra."""
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
@@ -280,7 +280,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     # Il PIU' VECCHIO (il primo scritto) e' anche il primo a saltare per la
     # regola "il piu' vecchio prima" -- ma la sua assenza deve essere
     # CONTATA in ricordi_esclusi, mai un'invisibilita' gratuita come prima.
-    archivio_casa.chiudi()
+    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -291,17 +291,17 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     comportamento, ma `componi()` non aveva un parametro per riceverli --
     con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
     modello attraverso `/api/nucleo`."""
-    archivio_casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    archivio_casa.sostituisci({
+    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_casa.sostituisci_comportamento(
+    archivio_casa.replace_behavior(
         [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
           "corpo": {"trigger": []}, "origine": "file"}],
-        problemi=["automations.yaml: id 42 usato da 2 voci"],
-        file_non_letti={"scripts.yaml": "assente"},
+        problems=["automations.yaml: id 42 usato da 2 voci"],
+        unloaded_files={"scripts.yaml": "assente"},
     )
     app = web.Application()
     app["archivio_casa"] = archivio_casa
@@ -316,7 +316,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     avvisi = corpo["riepilogo"]["avvisi"]
     assert any("problema" in a and "comportamento" in a for a in avvisi)
     assert any("scripts.yaml" in a for a in avvisi)
-    archivio_casa.chiudi()
+    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -329,8 +329,8 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     Esce la MAPPA, una volta, non il nome ripetuto su ogni entita' etichettata:
     li' e' lo stesso fatto scritto mille volte.
     """
-    casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    casa.sostituisci({
+    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    casa.replace({
         "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"]}],
         "etichette": [{"label_id": "da_controllare", "name": "Da controllare"}],
         "entita": [],
@@ -363,8 +363,8 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
     questa porta -- la stessa categoria usciva col nome dallo strumento e con
     l'id grezzo dalla pagina.
     """
-    casa = ArchivioCasa(str(tmp_path / "casa.db"))
-    casa.sostituisci({
+    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    casa.replace({
         "aree": [], "entita": [],
         "categorie": [
             {"category_id": "c1", "name": "Vacanza", "ambito": "automation"},

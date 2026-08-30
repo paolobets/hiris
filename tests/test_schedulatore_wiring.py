@@ -276,17 +276,23 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
 
 
 @pytest.mark.asyncio
-async def test_il_cleanup_chiude_casa_e_memoria_col_metodo_giusto_ciascuno():
-    """`app["archivio_casa"]` (`ArchivioCasa`, ambito `casa`, non convertito)
-    espone ancora `.chiudi()`; `app["archivio_memoria"]` (`MemoryStore`,
-    Task 5) espone `.close()` -- due nomi diversi per la stessa azione,
-    perche' i due sottosistemi sono a meta' del passaggio all'inglese in due
-    momenti diversi. Trovato dalla review del Task 5 per mutazione: rimettere
-    `.chiudi()` su `archivio_memoria` lasciava la suite verde (nessun altro
-    test lo copriva), e HIRIS sarebbe uscito verde di cancello e di suite per
-    poi sollevare `AttributeError` allo SPEGNIMENTO, lasciando il file
-    sqlite bloccato -- esattamente il guasto che il commento sopra
-    `if "archivio_memoria" in app` descrive."""
+async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
+    """`app["archivio_casa"]` (`HomeSpaceStore`, ambito `casa`) e
+    `app["archivio_memoria"]` (`MemoryStore`, Task 5) esponevano due nomi
+    diversi per la stessa azione -- `.chiudi()` contro `.close()` -- perche'
+    i due sottosistemi erano a meta' del passaggio all'inglese in due
+    momenti diversi. La fetta «la rinomina» (Task 8) chiude quel divario:
+    ora entrambi espongono `.close()`, e questo test verifica che
+    `_on_cleanup` chiami quel nome su entrambi, non che ne usi due diversi.
+
+    Trovato dalla review del Task 5 per mutazione, quando l'asimmetria era
+    ancora vera: rimettere `.chiudi()` su `archivio_memoria` lasciava la
+    suite verde (nessun altro test lo copriva), e HIRIS sarebbe uscito verde
+    di cancello e di suite per poi sollevare `AttributeError` allo
+    SPEGNIMENTO, lasciando il file sqlite bloccato -- esattamente il guasto
+    che il commento sopra `if "archivio_memoria" in app` descrive. La
+    guardia resta valida oggi nella direzione opposta: se una delle due
+    tornasse a `.chiudi()` da sola, questo test lo direbbe."""
     archivio_casa_finto = MagicMock()
     archivio_memoria_finto = MagicMock()
     app = {
@@ -297,9 +303,9 @@ async def test_il_cleanup_chiude_casa_e_memoria_col_metodo_giusto_ciascuno():
 
     await server._on_cleanup(app)
 
-    archivio_casa_finto.chiudi.assert_called_once()
+    archivio_casa_finto.close.assert_called_once()
     archivio_memoria_finto.close.assert_called_once()
-    archivio_casa_finto.close.assert_not_called()
+    archivio_casa_finto.chiudi.assert_not_called()
     archivio_memoria_finto.chiudi.assert_not_called()
 
 
