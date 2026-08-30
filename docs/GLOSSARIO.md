@@ -1509,7 +1509,7 @@ guardia sulle collisioni fin dal lotto 4 (`anagrafe.py`), rimandata perche' vive
 ancora suo: entrambe decise `-> count` (righe sopra), ma nello stesso file (`nucleo.py`) nominano
 cose diverse -- `quante` e' quasi sempre uno SCALARE (un numero: quante entita' porta una riga,
 `_annotazione_dispositivo`), `conteggio` e' sempre un DIZIONARIO (dominio -> quante, in quattro
-funzioni diverse: `_count_per_domain`, `_home_space_rows`, `_group_highlights`,
+funzioni diverse: `_count_per_domain`, `_home_space_lines`, `_group_highlights`,
 `_integrations_notice`). Deciso qui, guardando il codice invece di applicare la riga alla cieca:
 `conteggio` (il dizionario) -> **`counts`** (plurale: e' una mappa di piu' conteggi, coerente con
 `conteggi -> counts` gia' deciso per il ritorno di `anagrafe.rebuild`); `quante` (lo scalare) resta
@@ -1545,14 +1545,16 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `scripts/rinomina.py`). Non e' la stessa cosa del concetto `indice -> lookup` di `memoria/`: qui
   e' descrittiva di una variabile locale, non il nome di una struttura del prodotto.
 - `_assembla` -> **`_assemble`** (e le sue variabili locali `blocchi`/`blocco` -> `blocks`/`block`),
-  `rango` (`_severity_rank`) -> **`rank`**, `righe_pool` -> **`rows_pool`**, `tagliato` (il
+  `rango` (`_severity_rank`) -> **`rank`**, `righe_pool` -> **`lines_pool`** (corretto dopo il
+  lotto di `riga (nucleo) -> line`: era `rows_pool` quando questa riga fu scritta, prima che
+  l'omonimia per ambito fosse arbitrata -- vedi la nota su `riga` sopra), `tagliato` (il
   flag per-iterazione del taglio, distinto da `troncato` -- il flag dell'intero giro) -> **`cut`**:
   letture dirette del glossario (`taglio -> cut`, `raggruppa -> group`, ecc.), non nuove decisioni,
   ma invisibili allo strumento perche' nessuna e' un composto.
 - `problemi`, il parametro pubblico di `compose()` e di `_problems_notice()` -> **`problems`**:
   MAI lo stesso nome del metodo di `HAClient.problemi()` che lo alimenta (protetto a parte in
   `_METODI_HA_CLIENT`) -- qui non c'e' un punto davanti, e' un parametro, non un attributo.
-- `detto_da` (`_memory_rows`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
+- `detto_da` (`_memory_lines`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
   `"detto_da"`, la stessa colonna di `memoria/archivio.py` -- resta italiana PER SEMPRE, come ogni
   colonna di database di questa fetta (regola permanente, non legata allo stato di conversione di
   `memoria/`: cambierebbe solo se la colonna stessa venisse migrata, una decisione a parte).

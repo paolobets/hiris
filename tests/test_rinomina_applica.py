@@ -492,6 +492,51 @@ def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
         "un'eccezione a grana di file")
 
 
+def test_il_residuo_di_casa_strumenti_e_solo_tempo_historian(tmp_path):
+    """Il gemello di `test_il_residuo_di_memoria_resolver_e_solo_inizio_start`,
+    per il residuo di `casa/strumenti.py` in `_SORVEGLIATI`: la stessa cecita'
+    a grana di file (un secondo debito italiano nello stesso file non
+    l'avrebbe fatta arrossire) e' stata trovata dal vivo dal revisore --
+    la lezione del gemello di `memoria/` non era stata replicata qui."""
+    import shutil
+
+    from _comune import ROOT
+    base = ROOT / "hiris" / "app" / "casa" / "strumenti.py"
+    copia = tmp_path / "strumenti.py"
+    shutil.copy(base, copia)
+    prima = copia.read_text(encoding="utf-8")
+    rinomina.applica(copia, "casa", scrivi=True)
+    dopo = copia.read_text(encoding="utf-8")
+    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
+    assert sostituzioni == {("tempo", "historian")}, (
+        f"casa/strumenti.py diverge su {sostituzioni}, atteso solo "
+        "{('tempo', 'historian')} -- un nuovo nome e' comparso: decidilo "
+        "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
+        "un'eccezione a grana di file")
+
+
+def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
+    """Il terzo gemello: `azione/costruzione/composer.py` in `_SORVEGLIATI`
+    porta DUE parole (`candidato`, `modo`), non una -- l'insieme atteso ha
+    due elementi, non uno, ed e' comunque ESATTO: un terzo nome che comparisse
+    domani deve far arrossire questa prova, non allargarla in silenzio."""
+    import shutil
+
+    from _comune import ROOT
+    base = ROOT / "hiris" / "app" / "azione" / "costruzione" / "composer.py"
+    copia = tmp_path / "composer.py"
+    shutil.copy(base, copia)
+    prima = copia.read_text(encoding="utf-8")
+    rinomina.applica(copia, "azione", scrivi=True)
+    dopo = copia.read_text(encoding="utf-8")
+    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
+    assert sostituzioni == {("candidato", "candidate"), ("modo", "mode")}, (
+        f"azione/costruzione/composer.py diverge su {sostituzioni}, atteso "
+        "solo {('candidato', 'candidate'), ('modo', 'mode')} -- un nuovo "
+        "nome e' comparso: decidilo davvero (applicalo, o traccialo qui) "
+        "invece di lasciarlo dentro un'eccezione a grana di file")
+
+
 def test_la_verifica_di_idempotenza_arrossisce_se_qualcosa_cambia(tmp_path):
     """Prova per mutazione, isolata dal vero `hiris/app/` (cosi' non dipende
     da trovare per caso un identificatore reale non ancora applicato): un
