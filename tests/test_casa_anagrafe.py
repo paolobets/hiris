@@ -1,9 +1,10 @@
-from unittest.mock import AsyncMock
+from unittest.mock import create_autospec
 
 import pytest
 
 from hiris.app.casa.anagrafe import hierarchy, rebuild
 from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.proxy.ha_client import HAClient
 
 _REGISTRI = {
     "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
@@ -34,6 +35,20 @@ _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
            "unit_system": {"temperature": "C", "length": "km"}}
 
 
+def _client(registries, unavailable=(), config=_CONFIG):
+    """Un `HAClient` finto, autospec'd sulla classe VERA -- misurato dal
+    vivo (review lotto 5): un `AsyncMock()` nudo lasciava passare
+    `await client.registers_extra()` (un metodo che `HAClient` non ha)
+    in silenzio, `2922 passed` inclusi. `create_autospec` chiude lo stesso
+    buco di `_METODI_HA_CLIENT` (`scripts/rinomina.py`) dal lato dei test:
+    chiamare un attributo che la classe vera non ha solleva
+    `AttributeError` invece di restituire un altro Mock qualunque."""
+    client = create_autospec(HAClient, instance=True)
+    client.leggi_registri.return_value = (registries, list(unavailable))
+    client.get_config.return_value = config
+    return client
+
+
 @pytest.fixture
 def archivio(tmp_path):
     a = HomeSpaceStore(str(tmp_path / "casa.db"))
@@ -43,9 +58,7 @@ def archivio(tmp_path):
 
 @pytest.mark.asyncio
 async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
-    client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
-    client.get_config = AsyncMock(return_value=_CONFIG)
+    client = _client(_REGISTRI)
     esito = await rebuild(client, archivio)
     assert esito["conteggi"]["aree"] == 2
     assert esito["conteggi"]["entita"] == 4
@@ -57,9 +70,7 @@ async def test_ricostruisci_riempie_l_archivio_e_riepiloga(archivio):
 async def test_ricostruisci_riporta_i_registri_caduti(archivio):
     """Un registro caduto non ferma l'anagrafe, ma non deve sparire: la casa
     senza piani e il registro dei piani caduto danno la stessa lista vuota."""
-    client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=(dict(_REGISTRI, piani=[]), ["piani"]))
-    client.get_config = AsyncMock(return_value=_CONFIG)
+    client = _client(dict(_REGISTRI, piani=[]), ["piani"])
     esito = await rebuild(client, archivio)
     assert esito["non_disponibili"] == ["piani"]
     assert esito["conteggi"]["aree"] == 2   # il resto e' passato lo stesso
@@ -69,15 +80,12 @@ async def test_ricostruisci_riporta_i_registri_caduti(archivio):
 async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     """L'utente rinomina un'entita' e subito riavvia HA: l'antirimbalzo scade a
     HA spento. La casa buona di ieri non deve sparire."""
-    client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=(_REGISTRI, []))
-    client.get_config = AsyncMock(return_value=_CONFIG)
+    client = _client(_REGISTRI)
     await rebuild(client, archivio)
     prima = archivio.updated_at()
 
     vuoti = {chiave: [] for chiave in _REGISTRI}
-    client.leggi_registri = AsyncMock(return_value=(vuoti, list(_REGISTRI)))
-    client.get_config = AsyncMock(return_value=_CONFIG)
+    client.leggi_registri.return_value = (vuoti, list(_REGISTRI))
     esito = await rebuild(client, archivio)
 
     assert archivio.read()["aree"]           # la casa di ieri e' ancora li'

@@ -222,6 +222,25 @@ qualificata per ambito che, dentro QUEL sottosistema, compare sia nuda sia dentr
 significati diversi. Non basta chiedersi «che ambito e'»: bisogna chiedersi anche «che forma ha,
 qui, in questa occorrenza» prima di fidarsi del valore della riga.
 
+**Terzo caso, e stavolta il peggiore dei tre: `fuori` dentro `casa/`** (rilievo della review
+indipendente sul lotto 5). `fuori (casa)` → `outside` e' stato deciso guardando le forme composte
+di `anagrafe.py` (`fuori_dalle_aree` → `outside_areas`, `_ID_FUORI_DALLE_AREE`,
+`_fuori_dal_confronto` → `_excluded_from_comparison`): tutte portano il senso "escluso/al di fuori
+di un confine". Ma la stessa parola, **nuda**, compare una volta sola nello stesso file
+(`categorie_con_nome`, oggi `categories_with_name`) con un senso completamente diverso: non
+"escluso", ma "il dizionario che la funzione produce in uscita" -- lo stesso idioma di
+`schedulatore/promise.py::serializza` (`fuori = {...}; return fuori`) e di
+`consumi/store.py`, gli stessi due file che avevano gia' motivato la qualificazione `(casa)` invece
+di lasciare `fuori` nudo per l'intero repository. **Qui l'asimmetria gira dalla parte sbagliata**:
+non e' la forma composta a portare il senso minoritario (come per `riferimento`, sopra) -- e'
+proprio la forma NUDA, quella che lo strumento applica da solo senza chiedere conferma, a portare
+il senso sbagliato in un caso. Applicato una prima volta alla cieca (`fuori` → `outside` sul
+dizionario delle categorie risolte: un nome che mente, "outside" su un dato che non ha niente di
+"fuori" o "escluso"), corretto durante la review indipendente in `resolved` -- deciso a mano, il
+singolo residuo, esattamente come gia' fatto per `spazio_precedente` sopra. La riga `fuori (casa)`
+resta corretta per tutti gli altri usi del file (composti, mai applicati da soli): il residuo era
+uno solo, ed era nella forma che il meccanismo si fida di piu'.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -338,6 +357,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | memoria | il sottosistema che conserva per sempre le frasi esatte che una persona ha detto sulla sua casa insieme a come HIRIS le ha interpretate, correggibile senza toccare le parole originali, senza anonimizzazione e senza scadenza | memory | ~ parziale |
 | mestiere | la funzione pura che, davanti a una richiesta, decide se serve un'automazione, uno script, una scena o una combinazione delle tre, e dice anche perche' -- consigliando senza mai bloccare chi insiste per un'altra scelta | advisor | ✓ arriva |
 | migrazione | la copia, fatta una volta sola e segnata perche' non si ripeta, di un valore che viveva nello schema delle opzioni dell'add-on verso l'archivio proprio di HIRIS, cosi' che togliere l'opzione dallo schema in un rilascio successivo non ne faccia sparire il valore in silenzio | migration | ~ parziale |
+| note (casa) | l'aggettivo "conosciuto/e", non il sostantivo inglese "notes": `{entity_id: entita}` costruito dai registri grezzi dell'anagrafe, usato per guardare se un id che Home Assistant riporta corrisponde a un'entita' GIA' CONOSCIUTA da noi, dentro il confronto (`casa/anagrafe.py::compare_with_home_assistant`/`_compare_area`). **Qualificato per collisione fra ambiti, non dentro `casa/`**: `azione/costruzione/officina.py:357,381,394` ha gia' un identificatore bare `note` con l'ALTRO senso -- il sostantivo inglese "note" (un messaggio d'errore accodato da `_disfa()`), gia' valido inglese per coincidenza. Decisa a mano durante la conversione di `anagrafe.py` (lotto 5), applicata subito col nome giusto (`known`) senza mai passare da una riga di glossario -- scritta ora, a conversione fatta, perche' un lotto futuro che aggiungesse `note -> known` nuda romperebbe silenziosamente `officina.py` | known | ✓ arriva |
 | notevole | un'etichetta calcolata al momento della composizione, non conservata, che segnala le cose il cui stato attuale si scosta dalla normalita' -- acceso, aperto, in allarme -- perche' compaiano subito nel riepilogo | highlight | ✓ arriva |
 | nucleo | il testo unico e sempre presente che chi ragiona riceve a ogni messaggio, ottenuto comprimendo sotto un tetto di caratteri la casa, cio' che fa da sola e i ricordi, uguale per chiunque lo consulti | briefing | ✓ arriva |
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop | ~ parziale |

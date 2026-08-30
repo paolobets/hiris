@@ -301,6 +301,19 @@ class _ClienteFinto:
         return self._registri_esito
 
 
+def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
+    """Guardia contro il buco misurato dal vivo (review lotto 5,
+    `casa/anagrafe.py`): un finto duck-typed puo' rinominare i suoi
+    parametri o cambiarne il conteggio senza che nessuno se ne accorga,
+    perche' Python non controlla un'interfaccia -- solo che il nome
+    esista. Qui `leggi_registri` non ha parametri oltre `self`, quindi il
+    rischio e' basso, ma la guardia costa una riga e vale per ogni
+    modifica futura a `HAClient.leggi_registri`."""
+    from hiris.app.proxy.ha_client import HAClient
+    assert_stessa_firma(HAClient.leggi_registri, _ClienteFinto.leggi_registri,
+                        nome="HAClient.leggi_registri")
+
+
 def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono():
     osservatore = _OsservatoreFinto()
     app = {"osservatore": osservatore}

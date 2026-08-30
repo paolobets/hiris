@@ -218,13 +218,13 @@ class Lookup:
         trovate: list[tuple[int, dict]] = []
         for candidati, pattern in self._termini():
             for m in pattern.finditer(normalizzata):
-                start, fine = m.span()
-                if any(start < f and i < fine for i, f in intervalli_occupati):
+                inizio, fine = m.span()
+                if any(inizio < f and i < fine for i, f in intervalli_occupati):
                     continue
-                intervalli_occupati.append((start, fine))
-                inizio_originale = mappa[start]
+                intervalli_occupati.append((inizio, fine))
+                inizio_originale = mappa[inizio]
                 fine_originale = mappa[fine - 1] + 1
-                trovate.append((start, {
+                trovate.append((inizio, {
                     "nome_visto": phrase[inizio_originale:fine_originale],
                     "candidati": [{"tipo": type, "riferimento": reference}
                                   for type, reference in candidati],

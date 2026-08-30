@@ -359,31 +359,46 @@ def _verifica_idempotenza(base: Path, ambito: str, copia: Path,
 
 # **L'elenco esplicito e leggibile degli ambiti SORVEGLIATI.** Corretto dopo
 # il rilievo del coordinatore: il vecchio controllo guardava solo due
-# sottosistemi su sei (schedulatore, memoria) -- il residuo trovato durante
-# il lotto 5 (`candidato`/`inizio` mai applicati a `memoria/resolver.py`,
-# parole decise stamattina nel commit `036474b`, non "fin dalla stesura
-# originale del glossario" come una prima diagnosi aveva scritto per
-# errore) viveva in un ambito COPERTO ma non riverificato dopo l'aggiunta
-# di parole nuove; un secondo residuo, in `azione/costruzione/composer.py`,
-# vive invece in un ambito che questo test non guardava affatto. Allargato
-# a tutti e sei.
+# sottosistemi su sei (schedulatore, memoria) -- un residuo trovato durante
+# il lotto 5 viveva in un ambito COPERTO ma non riverificato dopo
+# l'aggiunta di parole nuove al glossario; un secondo, in
+# `azione/costruzione/composer.py`, vive invece in un ambito che questo
+# test non guardava affatto. Allargato a tutti e sei.
 #
-# `casa/` non e' ancora finito (`domande.py`, `nucleo.py`, `strumenti.py`
-# restano italiani): elencare la cartella intera pretenderebbe zero anche
-# li', cosa falsa per costruzione. Si elencano invece i singoli file gia'
-# chiusi, uno per lotto -- un dato esplicito che chi legge puo' contare,
-# non un'assenza silenziosa. Quando l'ultimo lotto di `casa/` chiude, le
-# cinque righe si possono sostituire con `("casa", "casa", frozenset())`.
+# `casa/` non e' ancora finito (`domande.py` e `nucleo.py` restano in
+# parte italiani, `strumenti.py` per intero): elencare la cartella intera
+# pretenderebbe zero anche li', cosa falsa per costruzione. Si elencano
+# invece i singoli file gia' chiusi, uno per lotto -- un dato esplicito
+# che chi legge puo' contare, non un'assenza silenziosa. Quando l'ultimo
+# lotto di `casa/` chiude, le cinque righe si possono sostituire con
+# `("casa", "casa", frozenset())`.
+#
+# `residui_noti` per `memoria`: `resolver.py::Lookup.find` ha `inizio`
+# ancora italiano -- **deliberatamente**, review del lotto 5: tradurlo da
+# solo (`inizio -> start`) senza il suo gemello nella stessa espressione
+# (`fine`, mai deciso nel glossario) avrebbe lasciato una coppia a meta'
+# tradotta (`start, fine = m.span()`), la STESSA asimmetria che ha
+# motivato la qualificazione `dopo (casa)` invece di lasciarlo nudo. La
+# correzione tocca solo file gia' miei (`domande.py`), non `resolver.py`
+# per intero (~30 identificatori italiani restano li', fuori dal
+# perimetro): chiudere le coppie (`fine -> end`,
+# `inizio_originale`/`fine_originale`, `candidati`) e' un giro a se',
+# rimandato al lotto che convertira' `memoria/` per intero -- e servirebbe
+# comunque a poco: due nomi corretti non avvicinano il file a
+# "convertito".
 #
 # `residui_noti` per `azione`: `costruzione/composer.py` ha ancora
 # `candidato` (due funzioni private) e il parametro PUBBLICO keyword-only
 # `modo` di `compose_automation`/`compose_script` in italiano -- entrambi
-# parole gia' decise, ma un parametro pubblico si rinomina solo dopo aver
-# cercato ogni chiamante per `modo=` in tutto il repo: rimandato a un giro
-# dedicato (segnalato nel report del lotto 5), non risolto di sfuggita qui.
+# parole gia' decise. **Corretto durante la review del lotto 5**: `modo`
+# non ha ZERO chiamanti che lo passano per keyword in tutto il repo
+# (verificato con un grep, non presunto) -- il rinvio non e' perche'
+# cercarli costerebbe caro, e' semplicemente che `azione/` non e' un file
+# di questo lotto: rinominare un parametro pubblico, anche a costo zero,
+# resta un giro a se', rimandato al lotto che convertira' `azione/`.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("schedulatore", "schedulatore", frozenset()),
-    ("memoria", "memoria", frozenset()),
+    ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("consumi", "consumi", frozenset()),
     ("cervello", "cervello", frozenset()),
     ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
@@ -392,6 +407,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("casa/archivio.py", "casa", frozenset()),
     ("casa/tempo.py", "casa", frozenset()),
     ("casa/anagrafe.py", "casa", frozenset()),
+    ("casa/domande.py", "casa", frozenset()),
 )
 
 

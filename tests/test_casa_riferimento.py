@@ -13,7 +13,7 @@ l'unita' vera e' quella dell'entita', e la casa dice solo come la casa
 ragiona. Chi le confondesse scriverebbe "gradi Celsius" sotto un numero che
 non lo e'.
 """
-from unittest.mock import AsyncMock
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -22,7 +22,7 @@ from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import componi
 from hiris.app.casa.strumenti import DispatcherStrumenti
 from hiris.app.memoria.archivio import MemoryStore
-from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE
+from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE, HAClient
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che
 # HIRIS legge piu' due che deve buttare via (`components`, `latitude`) --
@@ -111,11 +111,23 @@ def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
 
 # --- la ricostruzione: chi lo va a prendere -------------------------------
 
+def _client(registries=None, unavailable=(), config=_CONFIG,
+           get_config_error=None):
+    """Un `HAClient` finto, autospec'd sulla classe VERA -- stessa guardia di
+    `test_casa_anagrafe.py::_client` (review lotto 5: un `AsyncMock()` nudo
+    non si accorge di un metodo chiamato per errore che `HAClient` non ha)."""
+    client = create_autospec(HAClient, instance=True)
+    client.leggi_registri.return_value = (registries or {"entita": []}, list(unavailable))
+    if get_config_error is not None:
+        client.get_config.side_effect = get_config_error
+    else:
+        client.get_config.return_value = config
+    return client
+
+
 @pytest.mark.asyncio
 async def test_ricostruisci_legge_anche_il_riferimento(archivio):
-    client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=({"entita": []}, []))
-    client.get_config = AsyncMock(return_value=_CONFIG)
+    client = _client()
     esito = await rebuild(client, archivio)
     assert esito["non_disponibili"] == []
     assert archivio.reference_frame()["valuta"] == "EUR"
@@ -125,9 +137,7 @@ async def test_ricostruisci_legge_anche_il_riferimento(archivio):
 async def test_un_riferimento_non_letto_si_dichiara(archivio):
     """Non si ingoia: finisce nella stessa lista con cui l'anagrafe dichiara
     ogni altro silenzio -- niente meccanismo nuovo per dire la stessa cosa."""
-    client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=({"entita": []}, []))
-    client.get_config = AsyncMock(side_effect=OSError("HA muto"))
+    client = _client(get_config_error=OSError("HA muto"))
     esito = await rebuild(client, archivio)
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 

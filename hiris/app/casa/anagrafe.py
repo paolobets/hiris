@@ -32,8 +32,8 @@ async def rebuild(client, store) -> dict:
     dichiarata stantia e' meglio di una vuota spacciata per fresca.
     """
     registries, unavailable = await client.leggi_registri()
-    reference_frame, reference_frame_loaded = await _read_reference_frame(client)
-    if not reference_frame_loaded:
+    frame, frame_loaded = await _read_reference_frame(client)
+    if not frame_loaded:
         unavailable = list(unavailable) + ["sistema_di_riferimento"]
     counts = {key: len(value) for key, value in registries.items()}
     # "categorie:script" fallisce per un solo ambito, non per l'intero
@@ -45,7 +45,7 @@ async def rebuild(client, store) -> dict:
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
             "quella di prima, non sostituita da un vuoto", unavailable)
     else:
-        store.replace(registries, unavailable, reference_frame=reference_frame)
+        store.replace(registries, unavailable, reference_frame=frame)
         if unavailable:
             logger.warning("anagrafe ricostruita, ma questi registri non hanno risposto: %s",
                            unavailable)
@@ -379,14 +379,14 @@ def categories_with_name(entry: dict, names: dict[tuple[str, str], str]) -> dict
     assigned = entry.get("categorie")
     if not isinstance(assigned, dict):
         return {}
-    outside: dict[str, str] = {}
+    resolved: dict[str, str] = {}
     for scope, identifier in assigned.items():
         scope = str(scope).strip()
         identifier = str(identifier).strip()
         if not scope or not identifier:
             continue
-        outside[scope] = names.get((scope, identifier), identifier)
-    return outside
+        resolved[scope] = names.get((scope, identifier), identifier)
+    return resolved
 
 
 # Le tre severita' di un problema diagnosticato da Home Assistant, dalla piu'
@@ -573,7 +573,7 @@ def domain_of(entity_id) -> str:
     return text.split(".", 1)[0] if "." in text else text
 
 
-def actual_area(entity: dict, area_del_device: dict[str, str | None]) -> str | None:
+def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
     """L'area di un'entita': la PROPRIA se ce l'ha, altrimenti quella del suo
     dispositivo.
 
@@ -595,7 +595,7 @@ def actual_area(entity: dict, area_del_device: dict[str, str | None]) -> str | N
     pseudo-area «Dispositivi non letti») lo decide prima di chiamare qui:
     questa funzione risponde alla domanda, non la qualifica.
     """
-    return entity.get("area_id") or area_del_device.get(entity.get("dispositivo_id"))
+    return entity.get("area_id") or device_area.get(entity.get("dispositivo_id"))
 
 
 def actual_class(declared: str | None, live: str | None) -> str | None:
@@ -759,7 +759,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     no.
     """
     device_loaded = "dispositivi" not in unavailable
-    area_del_device = {d["id"]: d.get("area_id") for d in home_space.get("dispositivi", [])}
+    device_area = {d["id"]: d.get("area_id") for d in home_space.get("dispositivi", [])}
 
     per_area: dict[str | None, list[dict]] = {}
     per_area_disabled: dict[str | None, list[dict]] = {}
@@ -777,7 +777,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             if not entity.get("disabilitata"):
                 device_non_loaded.append(entity)
             continue
-        area_id = actual_area(entity, area_del_device)
+        area_id = actual_area(entity, device_area)
         if entity.get("disabilitata"):
             per_area_disabled.setdefault(area_id, []).append(entity)
         elif entity.get("nascosta"):
