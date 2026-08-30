@@ -256,6 +256,26 @@ in §4①:
 | `costruzioni` | `costruzione` |
 | `esiti` | `esito` |
 | `gambe` | `gamba` |
+| `lette` | `letto` |
+| `sconosciuta` | `sconosciuto` |
+| `effettiva` | `effettivo` |
+| `identificativo` | `identificatore` |
+| `disabilitate` | `disabilitato` |
+| `disabilitata` | `disabilitato` |
+| `nascoste` | `nascosto` |
+| `nascosta` | `nascosto` |
+| `assegnate` | `assegnato` |
+| `dichiarata` | `dichiarato` |
+| `propria` | `proprio` |
+| `viva` | `vivo` |
+| `candidata` | `candidato` |
+
+Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
+script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
+`Proposta` di un plurale non aliasato), e senza una riga qui resterebbero invisibili per sempre --
+non un composto (`_radici_plurali` non copre il genere), non una parola gia' decisa. Scoperte in
+`casa/anagrafe.py` (Task 8, lotto 4) con la scansione dedicata sull'AST che il criterio di fine
+richiede -- la stessa enumerazione gia' raccomandata dal Task 8 per non fidarsi del solo dry-run.
 
 ## I concetti
 
@@ -337,6 +357,17 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | riferimento (casa) | l'insieme dei dati con cui si interpreta ogni altra misura della casa -- unita', ora locale, valuta, lingua, paese, versione dell'installazione -- distillato una volta e mai cancellato da una lettura vuota, perche' quello di ieri resta quello giusto finche' non arriva un valore nuovo (`casa/anagrafe.py::sistema_di_riferimento`) -- **corretto in fix round 2 (rilievo del reviewer): l'inglese era `frame`, sbagliato.** Misurato con token reali (`tokenize.NAME`, non un grep sul file intero: prosa e stringhe escluse) su ogni file di `casa/`: il senso *frame* qui descritto vive **solo dentro composti** -- `sistema_di_riferimento` (10 occorrenze, in `anagrafe.py`/`archivio.py`/`nucleo.py`/`strumenti.py`) e `_CAMPI_RIFERIMENTO`/`_migrazione_3_entita_di_riferimento_dell_area` (4, in `anagrafe.py`/`archivio.py`) -- mentre `riferimento` **nudo** (53: 39 in `domande.py`, 14 in `strumenti.py`) porta il senso opposto, quello di `riferimento (memoria)` sotto (l'id a cui punta un'ancora). Lo strumento propone sempre i composti invece di applicarli da solo, quindi il senso sbagliato non passa mai dall'automatismo su quella forma -- ma la parola nuda si', e vince per numero (53 contro 14): l'inglese di questa riga e' quello del senso nudo, `reference`, non `frame`. **Chi convertira' `casa/` non trovera' un suggerimento pronto per i tre composti**: lo strumento comporra' `sistema_di_reference` pezzo per pezzo, che e' sbagliato -- serve una decisione umana esplicita (`system_frame` o simile), proprio perche' quei tre nomi portano l'altro senso. Vedi «Il limite della qualificazione per ambito» per il limite di fondo che questo caso rivela | reference | ✓ arriva |
 | riferimento (memoria) | l'identificatore a cui punta un'ancora -- un'area, un'entita', un dispositivo -- un significato generico, distinto dal "sistema di riferimento" per interpretare le misure (riga sopra). Scoperto rinominando `memoria/` (Task 5, review): applicare alla cieca `frame` -- l'inglese di `riferimento (casa)` al momento di questa scoperta -- avrebbe prodotto `lookup.verify(tipo, frame)`, un nome che allude a un sistema di unita'/locale per qualcosa che e' solo l'id referenziato. La stessa parola, con lo stesso significato di memoria, vive gia' anche in `casa/domande.py` (non ancora convertito): misurata con token reali in fix round 2, sono 39 occorrenze nude (piu' 14 in `casa/strumenti.py`, vedi la misura completa in `riferimento (casa)`, sopra) -- non piu' "almeno 8 punti" come stimato qui in origine. **Corretto in fix round 2: `riferimento (casa)` e' stato a sua volta corretto in `reference`** (lo stesso di questa riga), proprio perche' il senso nudo -- quello di questa riga -- domina numericamente in `casa/`; quando quell'ambito verra' convertito, il senso nudo non avra' quindi bisogno di una qualificazione diversa da questa, ma i tre composti che portano ancora il senso *frame* (`sistema_di_riferimento` e affini) sì -- vedi «Il limite della qualificazione per ambito» | reference | ✓ arriva |
 | rifiuto | una risposta negativa che porta sempre, insieme al no, il motivo per cui non si procede -- mai un diniego silenzioso -- usata sia per bloccare la scrittura di un campo non valido prima che tocchi il disco, sia per fermare un comando o una costruzione prima che tocchino Home Assistant | rejection | ✓ arriva |
+
+> **Decisione umana per i tre composti che portano il senso *frame* di `riferimento (casa)`**
+> (annunciata come dovuta sopra, presa nel Task 8 lotto 4 convertendo `anagrafe.py`): il nome
+> **non** e' `system_frame` (l'esempio provvisorio della nota) ma **`reference_frame`**, perche'
+> `HomeSpaceStore.replace`/`.reference_frame` (`casa/archivio.py`, gia' convertito nel Task 8 lotto
+> 2) usava gia' quel nome per lo stesso identico concetto -- la funzione che lo PRODUCE
+> (`anagrafe.py`) doveva chiamarsi come il posto che lo CONSERVA, non inventare un secondo nome per
+> lo stesso fatto (fondamenta: una sola casa). Applicato: `sistema_di_riferimento` (funzione) ->
+> `reference_frame`, `_CAMPI_RIFERIMENTO` -> `_REFERENCE_FRAME_FIELDS`. Il terzo composto citato,
+> `_migrazione_3_entita_di_riferimento_dell_area`, non e' ancora stato incontrato nel Task 8 (vive
+> in un file non ancora convertito): stessa direzione quando arrivera' il suo turno.
 | ripiego | il passaggio, dichiarato sempre e mai silenzioso, con cui un turno che non ha potuto essere servito dal canale a forfait viene rifatto da capo su quello a consumo -- uno stato non definitivo di un lavoro in coda, distinto da uno riuscito, scaduto o fallito, perche' resta da chiudere finche' non arriva una risposta | downgrade | ✓ arriva |
 | schedulatore | il sottosistema che tiene le promesse fatte per un momento futuro: le risveglia quando arriva l'ora, ne porta a termine il compito o la domanda, e registra sempre come e' andata | keeper | ~ parziale |
 | scrittura | i token che una chiamata ha fatto CREARE nella cache del provider, il lato opposto di `lettura (consumi)` -- mai aggiunta finche' non serviva: la sua assenza teneva `cache_scrittura` in italiano nella firma pubblica di `consumi/`, accanto a `cache_read` gia' inglese, i due lati della stessa coppia in due lingue | write | ✓ arriva |
@@ -1009,12 +1040,14 @@ al Task 6 invece che deciso qui.
 | albero | tree |
 | altro | other |
 | ambiente | environment |
+| ambito | scope |
 | annota | record |
 | anteprima | preview |
 | aperto | open |
 | applica | apply |
 | area | area |
 | argomento | argument |
+| assegnato | assigned |
 | assicura | ensure |
 | attesa | pending |
 | attivo | active |
@@ -1023,7 +1056,9 @@ al Task 6 invece che deciso qui.
 | avviso | notice |
 | cambiato | changed |
 | cambio | change |
+| campione | sample |
 | campo | field |
+| candidato | candidate |
 | carica | load |
 | cartella | folder |
 | categoria | category |
@@ -1049,8 +1084,10 @@ al Task 6 invece che deciso qui.
 | denominatore | denominator |
 | dettaglio | detail |
 | dichiara | declare |
+| dichiarato | declared |
 | differenza | difference |
 | dimensione | dimension |
+| disabilitato | disabled |
 | disponibile | available |
 | dispositivo | device |
 | dominio | domain |
@@ -1074,14 +1111,17 @@ al Task 6 invece che deciso qui.
 | forma | form |
 | frase | phrase |
 | fresco | fresh |
+| gerarchia | hierarchy |
 | giorno | day |
 | giro | round |
 | grana | granularity |
 | gratuito | free |
+| guasto | fault |
 | identificatore | identifier |
 | illeggibile | unreadable |
 | impronta | fingerprint |
 | iniziale | initial |
+| inizio | start |
 | innesca | trigger |
 | integrazione | integration |
 | interno | internal |
@@ -1090,6 +1130,7 @@ al Task 6 invece che deciso qui.
 | istante | instant |
 | leggi | read |
 | leggibile | readable |
+| lettore | reader |
 | limite | limit |
 | locale | local |
 | mantieni | keep |
@@ -1098,8 +1139,10 @@ al Task 6 invece che deciso qui.
 | misura | measurement |
 | modelli | models |
 | modello | model |
+| modo | mode |
 | momento | moment |
 | motivo | reason |
+| nascosto | hidden |
 | nodo | node |
 | nome | name |
 | normalizza | normalize |
@@ -1121,6 +1164,7 @@ al Task 6 invece che deciso qui.
 | programma | schedule |
 | proponi | propose |
 | proposta | proposal |
+| proprio | own |
 | protagonista | protagonist |
 | pulisci | clean |
 | punto | point |
@@ -1128,9 +1172,11 @@ al Task 6 invece che deciso qui.
 | quando | when |
 | quante | count |
 | registra | log |
+| resto | rest |
 | richiesta | request |
 | riga | row |
 | rileggi | reread |
+| ricostruisci | rebuild |
 | ripristina | restore |
 | risolto | resolved |
 | risolvi | resolve |
@@ -1149,7 +1195,9 @@ al Task 6 invece che deciso qui.
 | semina | seed |
 | serie | series |
 | servizio | service |
+| severita | severity |
 | sezione | section |
+| significato | meaning |
 | sistema | system |
 | soggetto | subject |
 | soglia | threshold |
@@ -1162,11 +1210,13 @@ al Task 6 invece che deciso qui.
 | tipo | type |
 | totale | total |
 | traduci | translate |
+| traduzione | translation |
 | trova | find |
 | unita | unit |
 | valida | validate |
 | valore | value |
 | verificabile | verifiable |
+| vivo | live |
 | voce | entry |
 | vuoto | empty |
 | zona | zone |
