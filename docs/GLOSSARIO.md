@@ -1093,6 +1093,7 @@ al Task 6 invece che deciso qui.
 | modello | model |
 | momento | moment |
 | motivo | reason |
+| nodo | node |
 | nome | name |
 | normalizza | normalize |
 | nota | note |
@@ -1131,6 +1132,7 @@ al Task 6 invece che deciso qui.
 | scadenza | deadline |
 | scelto | chosen |
 | scena | scene |
+| sconosciuto | unknown |
 | scritto | written |
 | scrivi | write |
 | secondo | second |

@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 from .anagrafe import dominio_di
-from .lettura_yaml import carica_file
+from .lettura_yaml import load_file
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +247,7 @@ async def rileggi(client, archivio, cartella_ha: Path | None) -> dict:
     if cartella_ha is not None:
         for nome, attributo in ((_AUTOMAZIONI, "automazioni"), (_SCRIPT, "script")):
             try:
-                contenuto = carica_file(cartella_ha / nome)
+                contenuto = load_file(cartella_ha / nome)
             except Exception as exc:
                 logger.warning("%s non leggibile: %s", nome, exc)
                 contenuto = None
