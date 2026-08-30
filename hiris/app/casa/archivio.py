@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_aree_piano ON aree(piano_id);
 CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 """
 
-_TABELLE = ["piani", "aree", "dispositivi", "entita", "etichette",
+_TABLES = ["piani", "aree", "dispositivi", "entita", "etichette",
             "categorie", "integrazioni"]
 
 # La plancia predefinita di Home Assistant ha `url_path` nullo. SQLite non
@@ -151,9 +151,9 @@ def _dict(value) -> str:
     """
     if not isinstance(value, dict):
         return "{}"
-    pulito = {str(k).strip(): str(v).strip() for k, v in value.items()
+    cleaned = {str(k).strip(): str(v).strip() for k, v in value.items()
               if str(k).strip() and str(v).strip()}
-    return json.dumps(pulito, ensure_ascii=False)
+    return json.dumps(cleaned, ensure_ascii=False)
 
 
 def _migration_2_integration_reason(conn) -> None:
@@ -273,8 +273,8 @@ class HomeSpaceStore:
         c = self._conn
         try:
             c.execute("BEGIN")
-            for tabella in _TABELLE:
-                c.execute(f"DELETE FROM {tabella}")
+            for table in _TABLES:
+                c.execute(f"DELETE FROM {table}")
 
             for p in registries.get("piani", []):
                 c.execute("INSERT INTO piani (id, nome, livello, icona) VALUES (?,?,?,?)",
@@ -614,9 +614,9 @@ class HomeSpaceStore:
     def read(self) -> dict[str, list[dict]]:
         """L'anagrafe intera, con le liste JSON gia' sciolte."""
         home_space: dict[str, list[dict]] = {}
-        for tabella in _TABELLE:
-            righe = self._conn.execute(f"SELECT * FROM {tabella}").fetchall()
-            home_space[tabella] = [self._unpack(dict(r)) for r in righe]
+        for table in _TABLES:
+            rows = self._conn.execute(f"SELECT * FROM {table}").fetchall()
+            home_space[table] = [self._unpack(dict(r)) for r in rows]
         return home_space
 
     @staticmethod

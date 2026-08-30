@@ -14,6 +14,7 @@ import pytest
 
 from hiris.app.azione.cronaca import Journal
 from hiris.app.casa.tempo import logbook
+from hiris.app.proxy.ha_client import HAClient
 from tests._contratti import assert_stessa_firma
 
 NOW = 1787572800.0  # 24 agosto 2026, 12:00 UTC
@@ -25,6 +26,13 @@ class _FintoHA:
 
     async def diario(self, entita, ore):
         return self._risposta
+
+
+# `HAClient` non e' convertito da questa fetta: se `.diario` cambiasse
+# firma (o una finta futura la seguisse a ruota rinominandosi come il
+# chiamante, gia' successo una volta in questa fetta -- review Task 8),
+# questa riga cade prima che la produzione veda un `AttributeError`.
+assert_stessa_firma(HAClient.diario, _FintoHA.diario, nome="diario")
 
 
 class _FintaCronaca:

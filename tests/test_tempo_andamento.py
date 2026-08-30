@@ -22,6 +22,8 @@ from hiris.app.casa.tempo import (
     instant_epoch,
     trend,
 )
+from hiris.app.proxy.ha_client import HAClient
+from tests._contratti import assert_stessa_firma
 
 NOW = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
 
@@ -36,13 +38,25 @@ class _FintoHA:
         self._statistiche = statistiche if statistiche is not None else {"serie": {}}
         self.calls = []
 
-    async def storico(self, entity, da_iso, a_iso):
-        self.calls.append(("storico", tuple(entity), da_iso, a_iso))
+    async def storico(self, entita, da_iso, a_iso):
+        self.calls.append(("storico", tuple(entita), da_iso, a_iso))
         return self._storico
 
     async def statistiche(self, identificatori, periodo, giorni):
         self.calls.append(("statistiche", tuple(identificatori), periodo, giorni))
         return self._statistiche
+
+
+# `HAClient` e' un ambito che questa fetta non converte: i suoi metodi
+# restano in italiano, e questa finta li imita col loro nome vero. Se
+# `HAClient.storico`/`.statistiche` cambiassero firma (o qualcuno li
+# rinominasse insieme al chiamante, come e' gia' successo una volta in
+# questa fetta -- review Task 8, `ha.statistiche()` diventato
+# `ha.statistics()` nel sorgente mentre la finta seguiva a ruota), questa
+# riga cade invece di lasciare la suite verde su un contratto che non
+# esiste piu'.
+assert_stessa_firma(HAClient.storico, _FintoHA.storico, nome="storico")
+assert_stessa_firma(HAClient.statistiche, _FintoHA.statistiche, nome="statistiche")
 
 
 @pytest.mark.asyncio

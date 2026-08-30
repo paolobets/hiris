@@ -155,8 +155,8 @@ def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, s
     """
     zone = home_space_zone(timezone)
     a = datetime.fromtimestamp(now_ts, tz=zone)
-    da = a - timedelta(hours=hours)
-    return da.isoformat(), a.isoformat()
+    start = a - timedelta(hours=hours)
+    return start.isoformat(), a.isoformat()
 
 
 # Quanti punti arrivano al modello in UNA risposta. Non e' il cap del client
@@ -241,15 +241,15 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
         # ordinabili come testo -- «2026-08-23T13:00:00+00:00» sembra maggiore
         # di «2026-08-23T14:00:00+02:00» e sono lo stesso istante.
         da_ts = instant_epoch(da_iso) or 0.0
-        all = occurrence["serie"].get(entity, [])
+        bands_all = occurrence["serie"].get(entity, [])
         # Si separa PRIMA «non si legge» da «e' prima della finestra»: un
         # `or 0.0` unico per i due casi (come c'era) confonde un istante
         # illeggibile con un istante fuori finestra, e il secondo scarta la
         # fascia in silenzio mentre il primo deve fermare la risposta.
-        unreadable = [f for f in all if instant_epoch(f.get("inizio")) is None]
+        unreadable = [f for f in bands_all if instant_epoch(f.get("inizio")) is None]
         if unreadable:
             return {**base, "errore": _UNREADABLE_BAND_ERROR}
-        bands = [f for f in all if instant_epoch(f.get("inizio")) >= da_ts]
+        bands = [f for f in bands_all if instant_epoch(f.get("inizio")) >= da_ts]
         if not bands:
             return {**base, "grana": "oraria", "finestra_coperta": None,
                     "punti": [], "nota": _NO_RECORDING_NOTE}
@@ -401,10 +401,10 @@ def _covered(points: list[dict], key: str, a_iso: str) -> dict | None:
         return {"da": raw if raw is None else str(raw), "a": a_iso}
     try:
         zone = datetime.fromisoformat(a_iso).tzinfo
-        da = datetime.fromtimestamp(when, tz=zone).isoformat()
+        start = datetime.fromtimestamp(when, tz=zone).isoformat()
     except ValueError:
-        da = raw
-    return {"da": da, "a": a_iso}
+        start = raw
+    return {"da": start, "a": a_iso}
 
 
 def _sample(points: list[dict], count: int) -> list[dict]:

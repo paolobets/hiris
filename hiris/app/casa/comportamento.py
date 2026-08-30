@@ -51,7 +51,7 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # (perche' "sembrava" senza corpo) e una `solo_file` (perche' "sembrava" mai
 # vista) — fino a un UNIQUE constraint failed che fa fallire l'intero
 # aggiornamento del comportamento.
-_ASSENTE = object()
+_ABSENT = object()
 
 
 def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict], list[str]]:
@@ -98,21 +98,21 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
         if v.get("id") is not None:
             key = str(v.get("id"))
             id_counts[key] = id_counts.get(key, 0) + 1
-    ambigui = {key for key, n in id_counts.items() if n > 1}
-    for key in sorted(ambigui):
+    ambiguous = {key for key, n in id_counts.items() if n > 1}
+    for key in sorted(ambiguous):
         problems.append(f"{_AUTOMATIONS}: id {key} usato da {id_counts[key]} voci")
 
     by_automation_id: dict[str, dict] = {}
-    senza_id: list[dict] = []
+    without_id: list[dict] = []
     for v in automation_yaml:
         raw_id = v.get("id")
         if raw_id is None:
             # Scritta a mano, senza passare dall'interfaccia: non si puo'
             # agganciare a nessuna entita' viva, ma non per questo sparisce.
-            senza_id.append(v)
+            without_id.append(v)
             continue
         key = str(raw_id)
-        if key not in ambigui:
+        if key not in ambiguous:
             by_automation_id[key] = v
 
     if script_yaml is None:
@@ -134,23 +134,23 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
     # `saluta: 'ciao'` — uno scalare al posto della mappa. Prima si scartano i
     # valori che non sono ne' `None` (assente-e-nullo, gia' gestito) ne' un
     # dizionario, cosi' il `.get("alias")` piu' sotto non vede mai altro.
-    script_validi: dict = {}
+    valid_scripts: dict = {}
     for key, value in scripts_by_key.items():
         if value is None:
             problems.append(f"{_SCRIPT}: script '{key}' presente nel file ma vuoto")
-            script_validi[key] = None
+            valid_scripts[key] = None
         elif isinstance(value, dict):
-            script_validi[key] = value
+            valid_scripts[key] = value
         else:
             problems.append(
                 f"{_SCRIPT}: script '{key}' non e' un dizionario "
                 f"(trovato {type(value).__name__}) — scartato"
             )
-    scripts_by_key = script_validi
+    scripts_by_key = valid_scripts
 
     entries: list[dict] = []
     seen_automations: set[str] = set()
-    visti_script: set[str] = set()
+    seen_scripts: set[str] = set()
 
     for state in states:
         entity_id = state.get("entity_id", "")
@@ -163,7 +163,7 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
             # mano da zero) e' un id vero, non un id mancante.
             attribute_id = attributes.get("id")
             key = str(attribute_id) if attribute_id is not None else ""
-            if key and key in ambigui:
+            if key and key in ambiguous:
                 entries.append({
                     "id": entity_id, "tipo": "automazione", "nome": name,
                     "corpo": None, "origine": "ambiguo", "id_reale": True,
@@ -178,11 +178,11 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
                 "id_reale": True,
             })
         elif domain == "script":
-            body = scripts_by_key.get(object_id, _ASSENTE)
-            if body is not _ASSENTE:
+            body = scripts_by_key.get(object_id, _ABSENT)
+            if body is not _ABSENT:
                 # Conosciuta anche se vuota: non deve ripresentarsi come
                 # solo_file piu' sotto.
-                visti_script.add(object_id)
+                seen_scripts.add(object_id)
             else:
                 body = None
             entries.append({
@@ -205,7 +205,7 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
                 # servizio come se l'entita' esistesse davvero.
                 "origine": "solo_file", "id_reale": False,
             })
-    for index, body in enumerate(senza_id):
+    for index, body in enumerate(without_id):
         name = body.get("alias") or f"automazione senza id #{index + 1}"
         entries.append({
             "id": f"automation.__senza_id_{index}", "tipo": "automazione",
@@ -215,7 +215,7 @@ def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict
             f"{_AUTOMATIONS}: automazione '{name}' senza id, non collegabile a nessuna entita'"
         )
     for key, body in scripts_by_key.items():
-        if key not in visti_script:
+        if key not in seen_scripts:
             # Id sintetico prefissato, simmetrico a quello delle automazioni
             # sopra: due rami dello stesso codice non devono avere due
             # convenzioni diverse per «scritto ma non caricato».
@@ -284,13 +284,13 @@ async def reread(client, store, ha_folder: Path | None) -> dict:
     )
     files_have_entries = bool(automations) or bool(script)
     if not state_has_behavior and files_have_entries:
-        messaggio = (
+        message = (
             "nessuna entita' automation.*/script.* nello stato mentre i file "
             "ne contengono voci: Home Assistant probabilmente non ha ancora "
             "caricato le automazioni (riavvio, safe mode) — comportamento NON "
             "sostituito, mantenuta la replica precedente"
         )
-        logger.warning("comportamento: %s", messaggio)
+        logger.warning("comportamento: %s", message)
         current_entries = store.behavior()
         current_counts: dict[str, int] = {}
         for v in current_entries:
@@ -298,7 +298,7 @@ async def reread(client, store, ha_folder: Path | None) -> dict:
         return {
             "conteggi": current_counts,
             "senza_corpo": sum(1 for v in current_entries if v["corpo"] is None),
-            "file_non_letti": unloaded, "problemi": [messaggio],
+            "file_non_letti": unloaded, "problemi": [message],
         }
 
     entries, problems = compose(automations, script, states)
@@ -329,13 +329,13 @@ def _entities_in(config) -> list[str]:
 
     Serve a rispondere «questa entita' la vedi gia' in Cucina» invece di
     riproporla: e' il senso di leggere le plance."""
-    trovate: set[str] = set()
+    found: set[str] = set()
 
     def _add_if_entity(value) -> None:
         if isinstance(value, str) and _ENTITY_ID_RE.match(value):
-            trovate.add(value)
+            found.add(value)
 
-    def _cammina(node) -> None:
+    def _walk(node) -> None:
         if isinstance(node, dict):
             for key, value in node.items():
                 if key in ("entity", "entities"):
@@ -344,13 +344,13 @@ def _entities_in(config) -> list[str]:
                             _add_if_entity(item)
                     else:
                         _add_if_entity(value)
-                _cammina(value)
+                _walk(value)
         elif isinstance(node, list):
             for item in node:
-                _cammina(item)
+                _walk(item)
 
-    _cammina(config)
-    return sorted(trovate)
+    _walk(config)
+    return sorted(found)
 
 
 async def reread_dashboards(client, store) -> dict:

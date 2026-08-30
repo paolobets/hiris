@@ -319,11 +319,48 @@ import tokenize
 
 from _comune import file_py, rel
 
+# Il confine di HAClient (`proxy/ha_client.py`): un ambito che questa fetta
+# non converte affatto, ma che OGNI sottosistema convertito puo' chiamare
+# per attributo (`ha.storico(...)`, `ha.statistiche(...)`...). Una parola
+# gia' decisa nel glossario (`statistiche -> statistics`) non sa
+# distinguere "un metodo mio che si chiama cosi'" da "un metodo DI
+# HACLIENT che si chiama cosi' per caso" -- l'attributo dopo il punto e'
+# un NAME come un altro per il tokenizzatore. Misurato dal vivo (Task 8,
+# review indipendente): il join meccanico ha tradotto
+# `ha.statistiche(...)` in `ha.statistics(...)` dentro `casa/tempo.py` --
+# un `AttributeError` in produzione alla prima domanda di andamento sopra
+# le 24 ore, perche' `HAClient.statistiche` resta cosi' finche' `proxy/`
+# non viene convertito, e nessun test lo vedeva perche' il finto che lo
+# imitava era stato rinominato insieme al chiamante.
+#
+# Elenco letto a mano da `proxy/ha_client.py` (non importato: questo
+# script non dipende dal resto del pacchetto) -- va aggiornato se quel
+# file guadagna o perde un metodo. Include anche i privati (`_ws_batch` e
+# simili): non c'e' svantaggio a proteggerli anche se oggi nessuna parola
+# del glossario li tocca, e un domani in cui una collidesse non
+# richiederebbe di ricordarsi di questa lista.
+_METODI_HA_CLIENT = frozenset({
+    "start", "stop", "get_states", "get_services", "call_service",
+    "_rotta_config", "_motivo_http", "leggi_configurazione",
+    "salva_configurazione", "cancella_configurazione", "valida_config",
+    "_esito_ws", "crea_helper", "cancella_helper", "elenca_etichette",
+    "crea_etichetta", "aggiungi_etichetta_a", "estrai_dal_bersaglio",
+    "leggi_plance", "get_error_log", "_health_value", "get_system_health",
+    "storico", "diario", "render_template", "_ws_batch", "_ws_request",
+    "_ws_command", "_ws_call", "statistiche", "statistiche_orarie",
+    "_richiedi_statistiche", "legami", "problemi", "direzioni_energia",
+    "_dichiara", "get_config", "leggi_registri", "_aggiungi_campi_estesi",
+    "add_state_listener", "remove_state_listener", "add_anagrafe_listener",
+    "add_servizi_listener", "add_plance_listener", "start_websocket",
+    "_ws_loop",
+})
 
-def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]]:
-    """Due insiemi di INDICI nella lista `tokens`: quelli che sono un
-    segmento di un percorso di IMPORT, e quelli che sono il nome di una
-    PAROLA CHIAVE (keyword argument) in una chiamata.
+
+def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int], set[int]]:
+    """Tre insiemi di INDICI nella lista `tokens`: quelli che sono un
+    segmento di un percorso di IMPORT, quelli che sono il nome di una
+    PAROLA CHIAVE (keyword argument) in una chiamata, e quelli che sono un
+    METODO DI HACLIENT letto per attributo (`ha.storico(...)`).
 
     Un percorso di import (`from ..casa.anagrafe import X`, `import
     hiris.app.memoria.archivio`) e' un indirizzo verso UN ALTRO modulo, mai
@@ -347,9 +384,17 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
     `)`/`]`, per le chiamate incatenate) che non sia essa stessa una
     `def` -- una parentesi di raggruppamento o di definizione lascia il
     nome cosi' com'e' (e' la propria firma, o non e' affatto una chiamata).
+
+    Un metodo di `HAClient` (`ha.storico(...)`, `self._ha.statistiche(...)`)
+    e' un attributo di un oggetto che arriva da un ambito -- `proxy/` --
+    che questa fetta non converte affatto: riconosciuto per struttura (un
+    NAME preceduto da un singolo `.`) e per appartenenza a
+    `_METODI_HA_CLIENT`, indipendentemente da quale variabile lo precede.
+    Trattato come una parola chiave: si segnala, non si applica.
     """
     percorso: set[int] = set()
     parola_chiave: set[int] = set()
+    confine_ha: set[int] = set()
 
     modo = None  # None | "percorso_from" | "percorso_import" | "alias_in_arrivo"
     inizio_riga = True
@@ -398,6 +443,11 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
                     and tokens[i + 1].type == tokenize.OP
                     and tokens[i + 1].string == "="):
                 parola_chiave.add(i)
+            elif (t.string in _METODI_HA_CLIENT
+                    and precedente is not None
+                    and precedente.type == tokenize.OP
+                    and precedente.string == "."):
+                confine_ha.add(i)
 
         if t.type == tokenize.NEWLINE:
             # Fine della riga LOGICA: `percorso_from` si chiude sempre da
@@ -420,7 +470,7 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
             precedente_precedente = precedente
             precedente = t
 
-    return percorso, parola_chiave
+    return percorso, parola_chiave, confine_ha
 
 
 def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta | Collisione]]:
@@ -442,7 +492,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
         return inizi[riga - 1] + col
 
     tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
-    percorso, parola_chiave = _righe_di_percorso_e_parola_chiave(tokens)
+    percorso, parola_chiave, confine_ha = _righe_di_percorso_e_parola_chiave(tokens)
 
     grezzi, proposte = [], []
     visti = set()
@@ -461,12 +511,15 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
                 visti.add(esito.nome)
                 proposte.append(esito)
             continue
-        if i in parola_chiave:
+        if i in parola_chiave or i in confine_ha:
             # Una parola chiave in una chiamata: lo strumento non puo'
             # sapere se punta a una funzione gia' convertita. Si segnala
             # come una proposta -- non indovina, chiede -- invece di
             # applicarla e rischiare di rompere una firma altrui in
             # silenzio (`origine=` verso `azione/porta.py::esegui`, misurato).
+            # Stessa cura per un metodo di HAClient (`confine_ha`): rompere
+            # `ha.statistiche()` in `ha.statistics()` e' lo stesso guasto,
+            # misurato dal vivo su `casa/tempo.py` (Task 8).
             proposta = Proposta(nome=t.string, pezzi=[t.string.lower()], suggerito=esito)
             if proposta.nome not in visti:
                 visti.add(proposta.nome)

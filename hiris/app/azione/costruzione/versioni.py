@@ -325,7 +325,7 @@ class ConstructionStore:
 
         Va chiamata con il lock gia' preso.
         """
-        soglia = now - self.RETENTION_S
+        threshold = now - self.RETENTION_S
         cur = self._conn.execute(
             "DELETE FROM costruzioni WHERE creata_ts < ? AND id NOT IN ("
             "  SELECT id FROM ("
@@ -333,10 +333,10 @@ class ConstructionStore:
             "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
             "    FROM costruzioni WHERE stato='applicata'"
             "  ) WHERE rn = 1)",
-            (soglia,))
+            (threshold,))
         self._conn.commit()
         count = cur.rowcount
         if count:
             logger.info("costruzioni: potate %d righe piu' vecchie della soglia %s "
-                        "(l'ultima applicata di ogni oggetto e' esclusa)", count, soglia)
+                        "(l'ultima applicata di ogni oggetto e' esclusa)", count, threshold)
         return count

@@ -11,7 +11,9 @@ import pytest
 
 from hiris.app.api import handlers_chat
 from hiris.app.casa.strumenti import STRUMENTI_CONOSCENZA, DispatcherStrumenti
+from hiris.app.proxy.ha_client import HAClient
 from hiris.app.schedulatore.turno import SOLA_LETTURA, tools_promise
+from tests._contratti import assert_stessa_firma
 
 
 def test_il_catalogo_porta_tredici_strumenti():
@@ -181,6 +183,14 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
         async def statistiche(self, identificatori, periodo, giorni):
             self.chiamate.append("statistiche")
             return {"serie": {}}
+
+    # `HAClient` non e' convertito da questa fetta: se `.storico`/
+    # `.statistiche` cambiassero firma (o una finta futura li seguisse a
+    # ruota rinominandosi come il chiamante, gia' successo una volta in
+    # questa fetta -- review Task 8), questa riga cade prima che la
+    # produzione veda un `AttributeError`.
+    assert_stessa_firma(HAClient.storico, _HA.storico, nome="storico")
+    assert_stessa_firma(HAClient.statistiche, _HA.statistiche, nome="statistiche")
 
     ha = _HA()
     d = DispatcherStrumenti(None, None, cache=_Cache(), ha=ha)

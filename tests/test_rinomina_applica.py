@@ -293,6 +293,36 @@ def test_una_parola_chiave_ripetuta_produce_una_sola_proposta():
     assert len(proposte) == 1
 
 
+def test_un_metodo_di_haclient_non_si_applica_da_solo():
+    """`ha.statistiche(...)`: `statistiche` e' una parola gia' decisa nel
+    glossario, ma l'oggetto e' `HAClient` (`proxy/`, un ambito che questa
+    fetta non converte affatto) -- lo strumento non puo' sapere se quel
+    preciso attributo appartiene a un ambito gia' convertito o no. Misurato
+    dal vivo (review Task 8): senza questa guardia, `ha.statistiche(...)`
+    dentro `casa/tempo.py::trend` diventava `ha.statistics(...)`, un
+    `AttributeError` in produzione perche' `HAClient.statistiche` resta
+    cosi' finche' `proxy/` non e' convertito."""
+    gf = rinomina.Glossario(mappa={"statistiche": "statistics"})
+    dentro = 'esito = await ha.statistiche([entita], "hour", 3)\n'
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro, "il metodo di HAClient non si applica da solo"
+    assert [p.nome for p in proposte] == ["statistiche"]
+    assert proposte[0].suggerito == "statistics"
+
+
+def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
+    """La guardia e' un allowlist su `_METODI_HA_CLIENT`, non un blocco
+    generico su ogni chiamata per attributo: un metodo mio (qui,
+    `comportamento`, non nell'elenco) continua ad applicarsi come sempre,
+    altrimenti la guardia diventerebbe il difetto opposto -- bloccare
+    anche cio' che lo strumento puo' verificare."""
+    gf = rinomina.Glossario(mappa={"comportamento": "behavior"})
+    dentro = "voci = self._casa.comportamento()\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "voci = self._casa.behavior()\n"
+    assert proposte == []
+
+
 def test_l_idempotenza_si_misura_riapplicando_ad_albero_gia_convertito(tmp_path):
     """L'idempotenza non si dichiara, si misura: si applica lo strumento a
     una COPIA di un sottosistema gia' convertito e si controlla che non
