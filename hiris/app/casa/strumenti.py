@@ -131,7 +131,7 @@ from ..memoria.archivio import MemoryStore
 from ..memoria.cache_indice import LookupCache
 from ..memoria.interpretazione import VOCABULARY, validate
 from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
-from ..proxy.entity_cache import inventario_leggibile
+from ..proxy.entity_cache import inventory_is_readable
 from . import tempo
 from .anagrafe import live_mirror
 from .archivio import HomeSpaceStore
@@ -1214,7 +1214,7 @@ class ToolDispatcher:
 
         unnamed = [e for e in home_space.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
-        mirror_ok = mirror_loaded and inventario_leggibile(self._cache)
+        mirror_ok = mirror_loaded and inventory_is_readable(self._cache)
         if unnamed and not mirror_ok:
             reasons.append(
                 f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "
@@ -1288,11 +1288,11 @@ class ToolDispatcher:
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
-        # fine) va OR-ato con `inventario_leggibile` (cosa dichiara la
+        # fine) va OR-ato con `inventory_is_readable` (cosa dichiara la
         # cache di se stessa), non sostituito -- una cache che si dichiara
         # `loaded` ma il cui `all_states()` solleva davvero e' comunque
         # "non letto" qui.
-        if isinstance(detail, dict) and (not loaded or not inventario_leggibile(self._cache)):
+        if isinstance(detail, dict) and (not loaded or not inventory_is_readable(self._cache)):
             detail["stato_non_letto"] = True
         return detail
 
@@ -1339,7 +1339,7 @@ class ToolDispatcher:
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
-        l'inventario non e' guardabile ci pensa `inventario_leggibile`."""
+        l'inventario non e' guardabile ci pensa `inventory_is_readable`."""
         if self._cache is None or not hasattr(self._cache, "all_states"):
             return {}, {}, {}, {}, {}, {}, True
         try:
@@ -1884,7 +1884,7 @@ class ToolDispatcher:
         chi le vuole cosi'; qui serve invece la forma minima di
         `EntityCache.all_states()`, la stessa che legge
         `azione/porta.py::Porta._stati` per verificare una chiamata prima di
-        eseguirla. La guardia (`inventario_leggibile`) e' la STESSA di
+        eseguirla. La guardia (`inventory_is_readable`) e' la STESSA di
         `_specchio` e di `Porta._stati`: la regola «cache assente o mai
         caricata non e' un inventario leggibile» si paga in un posto solo,
         non in un terzo qui.
@@ -1893,7 +1893,7 @@ class ToolDispatcher:
         o una lettura che solleva); non e' `{}`, che direbbe «guardato, casa
         vuota».
         """
-        if not inventario_leggibile(self._cache):
+        if not inventory_is_readable(self._cache):
             return None
         try:
             readings = self._cache.all_states()

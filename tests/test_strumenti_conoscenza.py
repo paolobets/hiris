@@ -416,7 +416,7 @@ async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivi
 class _CacheGuastaMaDichiarataPronta:
     """`loaded` e' True (la cache si dichiara pronta) ma `all_states()`
     solleva -- il caso che il fix E1-③ chiude: senza di esso
-    `inventario_leggibile()` vedrebbe solo `loaded=True` e non
+    `inventory_is_readable()` vedrebbe solo `loaded=True` e non
     dichiarerebbe mai `stato_non_letto`, anche con la lettura vera fallita
     e `stato: None` su tutto."""
 

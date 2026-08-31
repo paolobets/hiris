@@ -21,20 +21,20 @@ logger = logging.getLogger(__name__)
 # moduli (dispatcher, ha_tools, briefing, api/handlers_entities): i primi tre
 # sono usciti nella demolizione (rispettivamente 68d3670, bca1b85, 2441b7d) --
 # oggi il solo lettore di produzione e' `api/handlers_entities.py`, via
-# `inventario_non_leggibile()` sotto.
-ERRORE_INVENTARIO_ASSENTE = (
+# `unreadable_inventory_error()` sotto.
+NO_INVENTORY_ERROR = (
     "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
     "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
     "non ho potuto controllare."
 )
-ERRORE_INVENTARIO_NON_PRONTO = (
+INVENTORY_NOT_READY_ERROR = (
     "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
     "entità non è ancora pronto (la lettura iniziale da Home Assistant non è "
     "andata a buon fine o è ancora in corso). Riprova fra poco."
 )
 
 
-def inventario_leggibile(cache) -> bool:
+def inventory_is_readable(cache) -> bool:
     """True quando dalla cache si puo' leggere un inventario che vale come
     fotografia della casa.
 
@@ -45,7 +45,7 @@ def inventario_leggibile(cache) -> bool:
     return cache is not None and bool(getattr(cache, "loaded", True))
 
 
-def inventario_non_leggibile(cache) -> dict | None:
+def unreadable_inventory_error(cache) -> dict | None:
     """None se l'inventario e' utilizzabile, altrimenti l'errore da restituire
     subito al chiamante.
 
@@ -56,10 +56,10 @@ def inventario_non_leggibile(cache) -> dict | None:
     """
     if cache is None:
         logger.warning("lettura entita' rifiutata: nessun inventario configurato")
-        return {"error": ERRORE_INVENTARIO_ASSENTE}
-    if not inventario_leggibile(cache):
+        return {"error": NO_INVENTORY_ERROR}
+    if not inventory_is_readable(cache):
         logger.warning("lettura entita' rifiutata: inventario non ancora caricato")
-        return {"error": ERRORE_INVENTARIO_NON_PRONTO}
+        return {"error": INVENTORY_NOT_READY_ERROR}
     return None
 
 
@@ -110,7 +110,7 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
 # che un dispositivo di rete possa scrivere liberamente: sanificarli
 # convertirebbe un numero in stringa senza motivo, e non chiude un rischio
 # vero -- e' l'eccesso di zelo che il modulo stesso mette in guardia.
-_ATTRIBUTI_TESTO_LIBERO = frozenset({"media_title", "media_artist", "source"})
+_FREE_TEXT_ATTRIBUTES = frozenset({"media_title", "media_artist", "source"})
 
 
 def _to_minimal(raw: dict) -> dict:
@@ -151,9 +151,9 @@ def _to_minimal(raw: dict) -> dict:
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
     if domain_keys:
         extra = {k: attrs[k] for k in domain_keys if k in attrs}
-        for chiave in _ATTRIBUTI_TESTO_LIBERO:
-            if isinstance(extra.get(chiave), str):
-                extra[chiave] = sanitize_ha_value(extra[chiave])
+        for key in _FREE_TEXT_ATTRIBUTES:
+            if isinstance(extra.get(key), str):
+                extra[key] = sanitize_ha_value(extra[key])
         if extra:
             result["attributes"] = extra
     return result

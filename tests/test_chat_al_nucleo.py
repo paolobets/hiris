@@ -72,7 +72,7 @@ class _CacheFinta:
     """Sostituto minimo di `EntityCache` -- stessa forma usata da
     tests/test_handlers_casa.py per `handle_get_briefing`: `all_states()`
     restituisce dict con chiave "id" (non "entity_id"), e `loaded` governa
-    `inventario_leggibile()`."""
+    `inventory_is_readable()`."""
 
     def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
         self._stati = stati

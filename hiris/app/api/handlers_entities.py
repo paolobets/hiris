@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..casa.anagrafe import domain_of
-from ..proxy.entity_cache import inventario_non_leggibile
+from ..proxy.entity_cache import unreadable_inventory_error
 
 
 def _csv(v: str | None):
@@ -81,7 +81,7 @@ async def handle_list_entities(request: web.Request) -> web.Response:
     cache = request.app.get("entity_cache")
     if cache is not None and not hasattr(cache, "all_states"):
         cache = None
-    fault = inventario_non_leggibile(cache)
+    fault = unreadable_inventory_error(cache)
     if fault is not None:
         return web.json_response(fault, status=503)
     ents = filter_entities(cache.all_states(),

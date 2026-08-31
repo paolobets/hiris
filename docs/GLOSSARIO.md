@@ -2121,7 +2121,14 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   oggetto (`handlers_memoria.py`).
 - **`inventario_leggibile` lasciata intatta**: e' importata da `proxy/entity_cache.py`, ambito che
   questa fetta non converte -- stessa trappola di `inventario_non_leggibile` (lotto 3), protetta
-  per costruzione (composto, mai applicato da solo).
+  per costruzione (composto, mai applicato da solo). **CHIUSA dal lotto 15**, che ha convertito
+  `proxy/entity_cache.py`: le due funzioni sono ora `inventory_is_readable` e
+  `unreadable_inventory_error`, e i quattro importatori -- `api/handlers_casa.py`,
+  `api/handlers_entities.py`, `azione/porta.py`, `casa/strumenti.py` -- sono stati aggiornati
+  nello STESSO commit. Il nome importato non e' protetto dalla guardia dei percorsi di import
+  (arriva dopo `import`, vedi la nota in `_righe_di_percorso_e_parola_chiave`) ne' dal controllo
+  di chiusura, che guarda le parole chiave e non i nomi importati: e' l'unica sponda che nessun
+  meccanismo copre, e va chiusa a mano guardando i chiamanti.
 - Nessuna parola nuova nel glossario per questo lotto: l'insieme dei file che lo strumento
   riscriverebbe nei sei ambiti chiusi e' rimasto identico (`resolver.py`, `composer.py`,
   `strumenti.py`), misurato prima del commit come prescritto sotto.
@@ -2297,6 +2304,45 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 - Nessun'altra rinomina: il resto del file era gia' inglese, docstring compresi (e' un modulo che
   nasce con la prosa in inglese, unico in `hiris/app/` -- non si traduce all'italiano, come non si
   traduce niente: il perimetro e' il codice).
+
+
+**Decisioni del lotto 15 (`proxy/entity_cache.py`).**
+
+- **`inventario_leggibile -> inventory_is_readable`, NON `inventory_readable`** (il suggerimento
+  meccanico). `leggibile -> readable` e' deciso e la traduzione pezzo per pezzo e' corretta: e'
+  l'ORDINE a essere sbagliato, ed e' lo stesso difetto della misura del 31/08 (`STATE_READABLE ->
+  READABLE_STATE`). Ma qui la correzione dell'ordine non basta: `readable_inventory` nominerebbe
+  una COSA (un inventario leggibile) mentre questa funzione dichiara un FATTO (che l'inventario si
+  puo' leggere) e torna un booleano. **Un predicato non e' un sintagma nominale**: si scrive come
+  una frase -- `inventory_is_readable(cache)` -- e ogni sito di chiamata lo legge come tale
+  (`if not inventory_is_readable(self._cache):`). Precedenti nel prodotto: `_can_respond`,
+  `_allows_empty_target`, `in_baseline`.
+- **`inventario_non_leggibile -> unreadable_inventory_error`, e la coppia SMETTE di essere una
+  coppia morfologica.** In italiano i due nomi erano `X` e `non_X`; in inglese non possono esserlo,
+  perche' non fanno la stessa cosa: il primo torna un booleano, il secondo torna **il dizionario
+  d'errore da restituire subito al chiamante**, oppure `None`. Il nome dice cosa la funzione
+  RESTITUISCE. E' la stessa regola gia' scritta per `non`: sparisce nella traduzione
+  (`non_disponibili -> unavailable`, `_NON_TROVATA -> _NOT_FOUND`), non diventa `non_readable`.
+- **`ERRORE_INVENTARIO_ASSENTE -> NO_INVENTORY_ERROR`, senza decidere `assente`.** `assente` non e'
+  mai stata decisa, e il candidato ovvio (`missing`) e' gia' preso da `mancante -> missing`: sarebbe
+  la stessa collisione permanente evitata per `libero`/`free` nel lotto 14. Il nome usa invece la
+  forma gia' in uso nel prodotto per esattamente questo caso, `_MSG_NESSUN_PROVIDER ->
+  _NO_PROVIDER_MSG` (lotto 7).
+- **`ERRORE_INVENTARIO_NON_PRONTO -> INVENTORY_NOT_READY_ERROR`, senza decidere `pronto`.**
+  `not_ready` e' gia' l'inglese che il prodotto usa per questa identica forma
+  (`casa/strumenti.py::_registry_not_ready`): riuso, non traduzione. Aggiungere una riga nuda
+  `pronto -> ready` avrebbe riaperto tutti e sei gli ambiti chiusi insieme (vedi «Ambito chiuso»)
+  per un guadagno che il riuso dava gratis. `assente` e `pronto` restano **undecided e non
+  protette**.
+- **`_ATTRIBUTI_TESTO_LIBERO -> _FREE_TEXT_ATTRIBUTES`**: `free_text` e' lo stesso inglese gia'
+  scelto nel lotto 14 per `MAX_FREE_TEXT`, nel modulo che questa costante alimenta
+  (`sanitize_ha_value` sugli attributi liberi del `media_player`) -- due lotti, un solo nome per un
+  solo concetto.
+- `chiave -> key` auto-applicato (parola singola gia' decisa).
+- **Il nome di un test NON si rinomina**:
+  `tests/test_strumenti_conoscenza.py:408::test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto`
+  contiene le tre parole ma e' prosa italiana, come i nomi di test in tutti e 172 i file. Le
+  CITAZIONI dentro i docstring degli stessi file sono state aggiornate: sono riferimenti, non prosa.
 
 
 ## I nomi degli strumenti

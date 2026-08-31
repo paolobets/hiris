@@ -95,7 +95,7 @@ import asyncio
 import logging
 import time
 
-from ..proxy.entity_cache import _to_minimal, inventario_leggibile
+from ..proxy.entity_cache import _to_minimal, inventory_is_readable
 from .verifica import verification
 
 logger = logging.getLogger(__name__)
@@ -451,14 +451,14 @@ class ActionActuator:
         Tre modi di non aver guardato, un solo esito: cache non cablata,
         cache mai caricata (`loaded is False`: cio' che ha dentro sono le
         entita' mosse dagli eventi, non la casa) e lettura che solleva.
-        `inventario_leggibile` copre i primi due ed e' la stessa funzione che
+        `inventory_is_readable` copre i primi due ed e' la stessa funzione che
         usa `casa/strumenti.py` -- duplicarne la regola era il modo in cui
         questo difetto e' gia' sopravvissuto altrove.
 
         La forma e' quella vera di `EntityCache.all_states()`: una lista di
         dizionari minimali con chiave `id` (non `entity_id`).
         """
-        if not inventario_leggibile(self._cache):
+        if not inventory_is_readable(self._cache):
             return None
         try:
             reading = self._cache.all_states()

@@ -19,7 +19,7 @@ from aiohttp import web
 
 from ..casa.anagrafe import category_names, hierarchy, live_mirror
 from ..casa.nucleo import compose
-from ..proxy.entity_cache import inventario_leggibile
+from ..proxy.entity_cache import inventory_is_readable
 
 
 def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
@@ -312,7 +312,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # due sole non basta: un archivio letto ma una cache non ancora caricata
     # produrrebbe uno stato vuoto che "Notevole adesso" leggerebbe come
     # "niente acceso" invece di "non ho potuto guardare".
-    reliable_state = home_space_store is not None and inventario_leggibile(cache)
+    reliable_state = home_space_store is not None and inventory_is_readable(cache)
 
     return compose(
         home_space, behavior, memories, state,

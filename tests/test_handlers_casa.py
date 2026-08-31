@@ -17,7 +17,7 @@ from hiris.app.memoria.archivio import MemoryStore
 class _CacheFinta:
     """Sostituto minimo di `EntityCache` per i test: stessa forma di
     `all_states()` (lista di dict con chiave "id", non "entity_id") e
-    stessa bandiera `loaded` che governa `inventario_leggibile()`."""
+    stessa bandiera `loaded` che governa `inventory_is_readable()`."""
 
     def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
         self._stati = stati

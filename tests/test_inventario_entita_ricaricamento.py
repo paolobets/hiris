@@ -20,7 +20,7 @@ from contextlib import suppress
 import pytest
 
 from hiris.app import server
-from hiris.app.proxy.entity_cache import EntityCache, inventario_non_leggibile
+from hiris.app.proxy.entity_cache import EntityCache, unreadable_inventory_error
 
 
 class _HA:
@@ -68,7 +68,7 @@ async def _get_entities_on_come_lo_strumento(cache):
     get_entities_on` era un pass-through di una riga a `cache.get_on()` --
     uscita anche lei (fetta E2 Task 8, orfana dallo stesso Task 7): si chiama
     `cache.get_on()` direttamente."""
-    guasto = inventario_non_leggibile(cache)
+    guasto = unreadable_inventory_error(cache)
     if guasto is not None:
         return guasto
     # `get_on()` e' uscita col censimento del 17/08/2026: si legge lo specchio

@@ -526,7 +526,7 @@ class _RegistroTracciaScaldamento:
 class _CacheFinta:
     """Il doppio dello specchio dello stato.
 
-    `loaded` guida `inventario_leggibile` (`proxy/entity_cache.py`); il
+    `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`); il
     metodo che porta gli stati e' `all_states()`, non `get_all()` -- e'
     quello vero di `EntityCache`, lo stesso che legge sia
     `DispatcherStrumenti._specchio` sia `azione/porta.py::Porta._stati`.
