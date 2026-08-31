@@ -424,6 +424,19 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # cercarli costerebbe caro, e' semplicemente che `azione/` non e' un file
 # di questo lotto: rinominare un parametro pubblico, anche a costo zero,
 # resta un giro a se', rimandato al lotto che convertira' `azione/`.
+#
+# `schedulatore` mostra `frozenset()` (nessun residuo) qui sotto, ed e'
+# VERO -- lo strumento non cambia nulla su quell'ambito -- ma non e'
+# COMPLETO: `AgendaStore.list::solo_in_sospeso` (`archivio.py:213`) e'
+# ancora italiano, invisibile perche' nessuno dei suoi tre pezzi (`solo`,
+# `in`, `sospeso`) e' mai stato deciso -- non una parola gia' decisa
+# rimandata (come `modo` sopra), una parola MAI vista dal glossario.
+# Questa guardia misura stabilita', non completezza (Task 9, scoperto
+# convertendo `api/handlers_promesse.py`, che chiama gia' questo
+# parametro per keyword e lo lascia intatto): tracciato a grana di parola
+# in `test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso`,
+# non qui, perche' non c'e' nessun `prima`/`dopo` da confrontare quando
+# lo strumento non tocca nulla.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("schedulatore", "schedulatore", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
@@ -535,6 +548,47 @@ def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
         "solo {('candidato', 'candidate'), ('modo', 'mode')} -- un nuovo "
         "nome e' comparso: decidilo davvero (applicalo, o traccialo qui) "
         "invece di lasciarlo dentro un'eccezione a grana di file")
+
+
+def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
+    """Un quarto residuo, di una specie diversa dai tre sopra: qui lo
+    strumento non ha NIENTE da applicare, quindi non c'e' un `prima`/`dopo`
+    da confrontare con `_sostituzioni_di_identificatori`.
+
+    `AgendaStore.list` (`schedulatore/archivio.py:213`) ha ancora il
+    parametro keyword-only `solo_in_sospeso: bool = False`, mai deciso: i
+    suoi tre pezzi (`solo`, `in`, `sospeso`) sono tutti fuori dal
+    glossario, quindi `classifica()` torna `None` per ciascuno e la parola
+    e' invisibile al dry-run come al join meccanico -- verificato
+    eseguendo `python scripts/rinomina.py --percorso hiris/app/schedulatore
+    --ambito schedulatore --dry-run`: non compare ne' fra i composti ne'
+    applicata. Per questo `_SORVEGLIATI` dichiara `schedulatore` con
+    residuo `frozenset()` (vuoto): la guardia di idempotenza e' vera --
+    lo strumento non cambia nulla, quindi e' stabile -- ma stabile non
+    e' completo. La firma vera e' un canarino diretto sul parametro,
+    non un confronto testuale: se domani qualcuno rinomina
+    `solo_in_sospeso` (decidendo le sue tre parole nel glossario e
+    applicandole, il modo per farlo SPARIRE invece di restare tracciato),
+    questo test si rompe con un messaggio che spiega perche', invece di
+    restare silenziosamente disallineato.
+
+    Due chiamanti pubblici usano gia' questo nome esatto per keyword, ed
+    e' per questo che nessuno dei due lo tocca: `api/handlers_promesse.py`
+    (`store.list(solo_in_sospeso=not show_all, ...)`, Task 9 di questa
+    fetta) e `casa/strumenti.py:1630` (gia' chiuso). Se le tre parole
+    vengono decise un domani, tutti e due i chiamanti vanno aggiornati
+    nello stesso commit del parametro, non lasciati indietro."""
+    import inspect
+
+    from hiris.app.schedulatore.archivio import AgendaStore
+
+    parametri = inspect.signature(AgendaStore.list).parameters
+    assert "solo_in_sospeso" in parametri, (
+        "il residuo tracciato qui e' sparito: se e' stato deciso e "
+        "applicato per davvero (schedulatore/archivio.py, "
+        "api/handlers_promesse.py, casa/strumenti.py, i due test dedicati), "
+        "questo test va tolto, non solo aggiornato")
+    assert parametri["solo_in_sospeso"].kind == inspect.Parameter.KEYWORD_ONLY
 
 
 def test_la_verifica_di_idempotenza_arrossisce_se_qualcosa_cambia(tmp_path):

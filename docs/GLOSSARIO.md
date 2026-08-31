@@ -246,18 +246,47 @@ per OGNI ALTRO ambito, non solo per il proprio.** Trovato convertendo `api/handl
 (Task 9 di questa fetta): `Glossario.per()` cerca prima in `omonimi`, e `leggi_glossario()` toglie
 la parola da `mappa` (la riga nuda) nel momento stesso in cui legge la PRIMA riga qualificata per
 quella parola, qualunque sia l'ambito -- verificato chiamando `Glossario.per("riga", ...)` da
-codice: `per("riga", "nucleo")` → `line` (corretto), ma `per("riga", "api")` e perfino
-`per("riga", "casa")` → `None`, nonostante la riga nuda `riga | row` sia ancora scritta nella
-tabella due righe sopra. La riga nuda non e' quindi un ripiego che "resta valido per tutti gli
-altri ambiti" quando ne esiste una qualificata da qualche parte -- e' spenta ovunque, e ogni
-ambito che vuole quel senso deve avere la propria riga qualificata esplicita, anche se il senso e'
-identico a quello che la riga nuda intendeva dare di default. E' per questo che esiste, qui sotto,
-`riga (api) | row`: non un secondo senso di `riga` scoperto in `api/`, ma la stessa riga nuda
-`riga | row` resa di nuovo raggiungibile per questo ambito. **Chi trova `per(parola, ambito)` che
-torna `None` per una parola che il glossario sembra gia' dare per scontata non deve fidarsi della
-riga nuda**: va verificato con `Glossario.per()` da codice se quella parola ha gia' una riga
-qualificata altrove per un ambito diverso -- se si', la riga nuda e' gia' spenta anche per il
-proprio ambito, silenziosamente.
+codice: `per("riga", "casa")` e perfino `per("riga", "api")` → `None`, nonostante la riga nuda
+`riga | row` sia ancora scritta nella tabella due righe sopra. La riga nuda non e' quindi un
+ripiego che "resta valido per tutti gli altri ambiti" quando ne esiste una qualificata da qualche
+parte -- e' spenta ovunque, e ogni ambito che vuole quel senso deve avere la propria riga
+qualificata esplicita, anche se il senso e' identico a quello che la riga nuda intendeva dare di
+default. E' per questo che esiste, qui sotto, `riga (api) | row`: non un secondo senso di `riga`
+scoperto in `api/`, ma la stessa riga nuda `riga | row` resa di nuovo raggiungibile per questo
+ambito. **Chi trova `per(parola, ambito)` che torna `None` per una parola che il glossario sembra
+gia' dare per scontata non deve fidarsi della riga nuda**: va verificato con `Glossario.per()` da
+codice se quella parola ha gia' una riga qualificata altrove per un ambito diverso -- se si', la
+riga nuda e' gia' spenta anche per il proprio ambito, silenziosamente.
+
+**Correzione allo stesso paragrafo (Task 9, verifica del coordinatore): l'esempio originale
+citava `per("riga", "nucleo") -> "line"` come caso funzionante -- era falso.** `nucleo` non e' mai
+stato un ambito valido: gli ambiti sono i nomi delle CARTELLE con cui si invoca `rinomina.py
+--ambito <...>` (`casa`, `memoria`, `api`, ...), e `nucleo.py` e' un FILE dentro `casa/`. La riga
+era scritta `riga (nucleo)`, non `riga (casa)`: nessuna invocazione reale dello strumento passa
+mai `--ambito nucleo`, quindi quella riga non ha mai risolto nulla per nessuno, dal lotto di
+`strumenti.py` fino a qui -- il codice di `nucleo.py` e' comunque giusto solo perche' la famiglia
+`line` fu applicata A MANO. Corretto in tabella (`riga (casa) | line`, sopra) e verificato
+eseguendo: `Glossario.per("riga", "casa")` torna ora `line`, senza conflitti nel resto di `casa/`
+(scansione `tokenize`, zero identificatori `riga`/`righe` residui fuori da `nucleo.py`).
+
+**La conseguenza operativa generale, per chi qualifica una parola d'ora in poi: qualificarla per
+UN ambito la rende cieca in TUTTI GLI ALTRI, non solo silenziosa in quello nuovo.** Non e' un
+difetto da correggere in blocco -- e' il comportamento sicuro (`None` invece di indovinare) --
+ma va saputo, perche' il criterio di fine di questa fetta conta i COMPOSTI, e una parola nuda gia'
+qualificata altrove che ricompare nuda in un ambito nuovo non e' un composto: e' invisibile allo
+stesso identico modo, silenziosamente italiana per sempre finche' nessuno aggiunge la riga
+`parola (nuovo_ambito)` esplicita. Tredici parole sono gia' qualificate in questo glossario, e
+ciascuna e' cieca in ogni ambito che non compare fra parentesi: `ancora` (vede in `consumi`,
+`memoria`), `guarda` (`casa`, `cervello`), `verifica` (`azione`, `memoria`), `lettura` (`casa`,
+`consumi`), `riferimento` (`casa`, `memoria`), `riga` (`casa`), `dopo`/`fuori`/`loro`/`nostro`/
+`senza`/`note` (solo `casa`) -- misurato chiamando `Glossario.omonimi` da codice. Nei quattro
+ambiti non ancora aperti da questa fetta (`api`, `agent`, `proxy`, `backends`) tutte e tredici
+restano italiane senza che nessun dry-run lo segnali, se compaiono nude. **La disciplina, non
+un'automazione**: quando una di queste parole compare nuda in un file che si sta convertendo,
+verificare con `Glossario.per(parola, ambito)` da codice invece di fidarsi del dry-run, decidere
+guardando il codice se il senso e' lo stesso di un ambito gia' qualificato o un altro ancora, e
+aggiungere la riga `parola (proprio_ambito)` di conseguenza -- esattamente il passo gia' fatto per
+`riga (api)` sopra.
 
 ## Parole scartate durante l'estrazione
 
@@ -387,7 +416,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
-| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log | subscription | ✓ arriva |
+| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log -- **`(abbonamento)` NON e' un ambito reale (nessuna cartella `hiris/app/abbonamento/` esiste, e non e' un refuso da correggere in un nome di cartella vero come `riga (nucleo) -> riga (casa)` qui sopra): il senso *subscription* di `piano` non vive in un sottosistema unico, e' sparso fra file di radice e `api/` (`api/handlers_chat.py`, `api/handlers_models.py::_pulisci_modello_del_piano`, `migrazione_opzioni.py`, `agent/runner.py`, `instradamento.py`). Questa riga resta di proposito irraggiungibile da `Glossario.per("piano", ambito)` per qualunque `--ambito` reale: e' una documentazione del significato deciso, da applicare A MANO ovunque questo senso di `piano` compaia (sempre dentro un composto finora, mai nudo -- verificato con `tokenize` su `hiris/app`), non un'automazione da riattivare qualificandola** | subscription | ✓ arriva |
 | piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i livelli verticali di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
 | plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ✓ arriva |
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
@@ -1263,7 +1292,7 @@ al Task 6 invece che deciso qui.
 | riepilogo | summary |
 | riga | row |
 | riga (api) | row |
-| riga (nucleo) | line |
+| riga (casa) | line |
 | rileggi | reread |
 | ripara | repair |
 | ripristina | restore |
@@ -1369,7 +1398,7 @@ al Task 6 invece che deciso qui.
 > fra le otto esaminate: era gia' elencata da questo stesso documento due sezioni piu' sotto, come
 > valore di `DIREZIONI_BILANCIO`, un posto che quella caccia non ha guardato.
 
-> **`riga`: omonimo per ambito, il sesto di questa fetta -- `riga (nucleo) -> line` in tabella,
+> **`riga`: omonimo per ambito, il sesto di questa fetta -- `riga (casa) -> line` in tabella,
 > sopra.** Negli archivi SQLite (`cervello/archivio.py`, `memoria/archivio.py`, `casa/archivio.py`,
 > `azione/cronaca.py`, `schedulatore/promessa.py`, `decisione_modelli.py`) `riga`/`righe` e' una
 > riga di tabella: `row` e' corretto e non perde niente -- ed e' il senso DOMINANTE, misurato
@@ -1385,6 +1414,25 @@ al Task 6 invece che deciso qui.
 > `line`/`lines` -- 99 occorrenze in tutto, non le "~30" stimate prima di contarle davvero) --
 > non solo la variabile locale mostrata come esempio: lasciare meta' famiglia `row` e meta' `line`
 > nello stesso file sarebbe stata l'incoerenza che questa correzione esiste per togliere.
+>
+> **Corretto (Task 9, `api/`): la riga era scritta `riga (nucleo)`, e per un anno intero -- dal
+> lotto di `strumenti.py` fino a qui -- non ha mai fatto nulla.** `Glossario.per(parola, ambito)`
+> riceve l'ambito con cui si invoca `rinomina.py --ambito <...>`, e quell'argomento e' sempre il
+> nome di una CARTELLA (`casa`, `memoria`, `api`, ...): `nucleo` non e' mai stato un ambito valido,
+> e' il nome del FILE dentro `casa/` dove vive il senso *line*. `per("riga", "nucleo")` non e' mai
+> stato chiamato da nessuna invocazione reale dello strumento (si invoca sempre `--ambito casa`,
+> mai `--ambito nucleo`): la riga era una decisione scritta senza effetto, e il codice di
+> `nucleo.py` e' comunque giusto solo perche' la famiglia `line` e' stata applicata A MANO, non
+> dal join meccanico che questa riga avrebbe dovuto guidare. **Verificato eseguendo**, prima e
+> dopo la correzione: `Glossario.per("riga", "casa")` tornava `None` (nonostante `casa/nucleo.py`
+> usi gia' `line` ovunque) e ora torna `line`; l'assenza di conflitto con gli altri sette file di
+> `casa/` e' verificata con una scansione `tokenize` su tutta la cartella, zero identificatori
+> `riga`/`righe` residui fuori da `nucleo.py` (sono gia' tutti diventati `row`/`rows` a mano,
+> prima che questa riga esistesse) -- qualificare per `casa` non ha quindi nulla da correggere
+> retroattivamente, protegge solo un'eventuale riapplicazione futura. Vedi «Il limite della
+> qualificazione per ambito» per la conseguenza operativa generale che questo errore rivela: una
+> parola si qualifica col nome della CARTELLA con cui lo strumento si invoca, mai col nome di un
+> file al suo interno.
 
 > **`stato`: tre significati, non uno.** La tabella sopra lo marca confine → `state`: e' giusto
 > per il senso principale, lo stato di un'entita' di Home Assistant (`casa/domande.py`,
