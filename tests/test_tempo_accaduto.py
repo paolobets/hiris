@@ -24,7 +24,7 @@ class _FintoHA:
     def __init__(self, risposta):
         self._risposta = risposta
 
-    async def diario(self, entita, ore):
+    async def diario(self, entity, ore):
         return self._risposta
 
 

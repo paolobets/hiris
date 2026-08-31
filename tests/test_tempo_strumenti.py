@@ -180,9 +180,9 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
         def __init__(self):
             self.chiamate = []
 
-        async def storico(self, entita, da_iso, a_iso):
+        async def storico(self, entities, da_iso, a_iso):
             self.chiamate.append("storico")
-            return {"serie": {entita[0]: [
+            return {"serie": {entities[0]: [
                 {"quando": "2026-08-24T08:00:00+02:00", "valore": "180"}]},
                 "troncato": False}
 

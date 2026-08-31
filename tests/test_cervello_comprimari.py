@@ -58,9 +58,9 @@ class _ClienteLegami:
 
     Costruita sui quattro esiti che `HAClient.legami` produce davvero:
 
-    - **risposta buona**: `mappa[identificatore]` un dizionario grezzo
+    - **risposta buona**: `mappa[identifier]` un dizionario grezzo
       (es. `{"entity": ["sensor.x"]}`);
-    - **risposta vuota**: `identificatore` assente da `mappa` (o mappato a
+    - **risposta vuota**: `identifier` assente da `mappa` (o mappato a
       `{}`) -- "nessun legame", non un guasto. E' anche il default quando
       non si passa `mappa`: un client che non fallisce mai e non ha niente
       da dire, per i test che vogliono la riparazione INCONDIZIONATA
@@ -68,10 +68,10 @@ class _ClienteLegami:
       con `None`, `costruisci_comprimari` chiamerebbe `None.legami(...)`,
       prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni
       soggetto come fallito -- il contrario di "incondizionata";
-    - **dizionario d'errore**: `mappa[identificatore] = {"errore": ...}`, o
+    - **dizionario d'errore**: `mappa[identifier] = {"errore": ...}`, o
       `default={"errore": ...}` per farlo rispondere cosi' a QUALUNQUE
       identificatore senza doverli elencare tutti;
-    - **risposta malformata**: `mappa[identificatore]` un dizionario la cui
+    - **risposta malformata**: `mappa[identifier]` un dizionario la cui
       traduzione (`casa/domande.py::legami`, chiamata da
       `costruisci_comprimari`) non e' contenuta -- es. `{"entity": 5}`, un
       intero al posto della lista che Home Assistant vero manda sempre. E'
@@ -136,11 +136,11 @@ class _ClienteLegami:
         self.direzioni_chieste = 0
         self.statistiche_chieste: list[tuple[list[str], str, str]] = []
 
-    async def legami(self, tipo, identificatore):
-        self.chiesti.append((tipo, identificatore))
+    async def legami(self, tipo, identifier):
+        self.chiesti.append((tipo, identifier))
         if tipo not in HAClient.TIPI_LEGAME:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
-        return self._mappa.get(identificatore, self._default)
+        return self._mappa.get(identifier, self._default)
 
     async def direzioni_energia(self):
         self.direzioni_chieste += 1

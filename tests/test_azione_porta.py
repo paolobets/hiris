@@ -136,8 +136,8 @@ class FintoClient:
         if callback in self.ascoltatori:
             self.ascoltatori.remove(callback)
 
-    async def call_service(self, dominio, servizio, dati):
-        self.chiamate.append((dominio, servizio, dati))
+    async def call_service(self, domain, service, data):
+        self.chiamate.append((domain, service, data))
         if self._annuncia and self._ritardo is None:
             self._annuncia_ora()
         elif self._annuncia:
@@ -358,7 +358,7 @@ async def test_i_parametri_della_chiamata_arrivano_a_home_assistant():
 @pytest.mark.asyncio
 async def test_un_guasto_di_home_assistant_diventa_un_errore_leggibile():
     class ClientCheRompe(FintoClient):
-        async def call_service(self, dominio, servizio, dati):
+        async def call_service(self, domain, service, data):
             raise RuntimeError("HTTP 500")
 
     client = ClientCheRompe()
@@ -978,7 +978,7 @@ async def test_l_ascoltatore_effimero_si_toglie_sempre():
     assert client.ascoltatori == [], "ascoltatore rimasto dopo un comando riuscito"
 
     class ClientCheRompe(FintoClient):
-        async def call_service(self, dominio, servizio, dati):
+        async def call_service(self, domain, service, data):
             raise RuntimeError("HTTP 500")
 
     client_rotto = ClientCheRompe()
@@ -1075,7 +1075,7 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
     from hiris.app.azione.cronaca import Journal
 
     class ClientCheRompe(FintoClient):
-        async def call_service(self, dominio, servizio, dati):
+        async def call_service(self, domain, service, data):
             raise RuntimeError("HTTP 500")
 
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
@@ -1192,9 +1192,9 @@ class ClientCheRegistraGliAscoltatori(FintoClient):
         super().__init__(*args, **kwargs)
         self.ascoltatori_durante_la_chiamata: list | None = None
 
-    async def call_service(self, dominio, servizio, dati):
+    async def call_service(self, domain, service, data):
         self.ascoltatori_durante_la_chiamata = list(self.ascoltatori)
-        return await super().call_service(dominio, servizio, dati)
+        return await super().call_service(domain, service, data)
 
 
 @pytest.mark.asyncio
@@ -1255,7 +1255,7 @@ async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
 @pytest.mark.asyncio
 async def test_una_notifica_fallita_e_un_errore_leggibile():
     class ClientCheRompe(FintoClient):
-        async def call_service(self, dominio, servizio, dati):
+        async def call_service(self, domain, service, data):
             raise RuntimeError("il servizio di notifica non risponde")
 
     client = ClientCheRompe()

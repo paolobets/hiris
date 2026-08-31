@@ -458,8 +458,8 @@ class FintoClientPorta:
     async def get_services(self):
         return RISPOSTA_HA
 
-    async def estrai_dal_bersaglio(self, bersaglio):
-        self.sequenza.append(("risolvi", bersaglio))
+    async def estrai_dal_bersaglio(self, target):
+        self.sequenza.append(("risolvi", target))
         if self._solleva:
             raise RuntimeError("websocket caduto")
         return self._risolve
@@ -471,9 +471,9 @@ class FintoClientPorta:
         if callback in self.ascoltatori:
             self.ascoltatori.remove(callback)
 
-    async def call_service(self, dominio, servizio, dati):
-        self.sequenza.append(("chiama", f"{dominio}.{servizio}"))
-        self.chiamate.append((dominio, servizio, dati))
+    async def call_service(self, domain, service, data):
+        self.sequenza.append(("chiama", f"{domain}.{service}"))
+        self.chiamate.append((domain, service, data))
         return []
 
 

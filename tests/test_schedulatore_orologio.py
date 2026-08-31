@@ -293,8 +293,8 @@ class _ClientSoloNotifica:
         return [{"domain": "notify", "services": {
             "mobile_app_x": {"fields": {"message": {}, "title": {}}}}}]
 
-    async def call_service(self, dominio, servizio, dati):
-        self.chiamate.append((dominio, servizio, dati))
+    async def call_service(self, domain, service, data):
+        self.chiamate.append((domain, service, data))
         return []
 
 

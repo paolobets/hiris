@@ -373,8 +373,8 @@ class _ClienteFinto:
         self.guasto = guasto
         self.chieste: list[str] = []
 
-    async def estrai_dal_bersaglio(self, bersaglio):
-        identificativo = bersaglio["area_id"][0]
+    async def estrai_dal_bersaglio(self, target):
+        identificativo = target["area_id"][0]
         self.chieste.append(identificativo)
         if self.guasto:
             return {"errore": self.guasto}

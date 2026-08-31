@@ -38,8 +38,8 @@ class _FintoHA:
         self._statistiche = statistiche if statistiche is not None else {"serie": {}}
         self.calls = []
 
-    async def storico(self, entita, da_iso, a_iso):
-        self.calls.append(("storico", tuple(entita), da_iso, a_iso))
+    async def storico(self, entities, da_iso, a_iso):
+        self.calls.append(("storico", tuple(entities), da_iso, a_iso))
         return self._storico
 
     async def statistiche(self, identificatori, periodo, giorni):

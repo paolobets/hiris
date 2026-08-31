@@ -15,7 +15,7 @@ from hiris.app.azione.cronaca import Journal
 ADESSO = 1_756_000_000.0
 
 # La stessa guardia di `HAClient._CHIAVE_RE` (hiris/app/proxy/ha_client.py):
-# `chiave or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
+# `key or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
 # vuota -- un intero o un dizionario, essendo truthy, arrivano intatti a
 # `.match()`, che solleva `TypeError` su qualunque cosa non sia str/bytes.
 # Una finta che accettasse una chiave non testuale nasconderebbe esattamente
@@ -59,12 +59,12 @@ class FintoHA:
         return self._override.get("valida", {
             k: {"valid": True, "error": None} for k in kw})
 
-    async def salva_configurazione(self, dominio, chiave, corpo):
+    async def salva_configurazione(self, domain, key, body):
         self._forse_solleva("salva_configurazione")
         if "salva" in self._override:
             return self._override["salva"]
-        self.salvate.append((dominio, chiave, corpo))
-        self.esistenti.add(chiave)
+        self.salvate.append((domain, key, body))
+        self.esistenti.add(key)
         # Dopo la scrittura l'entita' esiste, e porta l'id appena scritto:
         # senza questo il finto Home Assistant direbbe sempre «non e'
         # comparsa», e il test dell'etichetta misurerebbe il fake, non il codice.
@@ -74,46 +74,46 @@ class FintoHA:
         # non c'e' nessuna voce da aggiornare -- indicizzare stati[0] a vuoto
         # sollevava IndexError, un guasto della finta e non del codice.
         if self.stati:
-            self.stati[0]["attributes"]["id"] = chiave
+            self.stati[0]["attributes"]["id"] = key
         return {"salvato": True}
 
-    async def cancella_configurazione(self, dominio, chiave):
+    async def cancella_configurazione(self, domain, key):
         self._forse_solleva("cancella_configurazione")
-        self.cancellate.append((dominio, chiave))
+        self.cancellate.append((domain, key))
         return {"cancellato": True}
 
-    async def leggi_configurazione(self, dominio, chiave):
+    async def leggi_configurazione(self, domain, key):
         self._forse_solleva("leggi_configurazione")
         if "leggi" in self._override:
             return self._override["leggi"]
-        if not _CHIAVE_RE_FINTA.match(chiave or ""):
-            # Fedele a `HAClient._CHIAVE_RE.match(chiave or "")`: una chiave
+        if not _CHIAVE_RE_FINTA.match(key or ""):
+            # Fedele a `HAClient._CHIAVE_RE.match(key or "")`: una chiave
             # falsy (None, "") diventa "" e fallisce il match normalmente; una
             # chiave truthy non testuale (un intero, un dizionario) arriva
             # intatta a `.match()` e solleva `TypeError` -- lo stesso crash
             # del client vero, non nascosto da una finta piu' permissiva.
             return {"errore": "la chiave non ha una forma ammessa"}
-        if chiave in self.esistenti:
-            return {"corpo": {"id": chiave, "alias": "com'era"}}
+        if key in self.esistenti:
+            return {"corpo": {"id": key, "alias": "com'era"}}
         return {"assente": True}
 
-    async def crea_helper(self, dominio, dati):
+    async def crea_helper(self, domain, data):
         if "crea_helper" in self._override:
             return self._override["crea_helper"]
-        self.helper_creati.append((dominio, dati))
+        self.helper_creati.append((domain, data))
         return {"helper": {"id": "modalita_notte"}}
 
-    async def cancella_helper(self, dominio, helper_id):
+    async def cancella_helper(self, domain, helper_id):
         if "cancella_helper" in self._override:
             return self._override["cancella_helper"]
-        self.helper_cancellati.append((dominio, helper_id))
+        self.helper_cancellati.append((domain, helper_id))
         return {"cancellato": True}
 
     async def elenca_etichette(self):
         return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
 
-    async def crea_etichetta(self, nome):
-        return {"etichetta": {"label_id": "hiris", "name": nome}}
+    async def crea_etichetta(self, name):
+        return {"etichetta": {"label_id": "hiris", "name": name}}
 
     async def aggiungi_etichetta_a(self, entity_id, label_id):
         self.etichettate.append((entity_id, label_id))
@@ -582,7 +582,7 @@ async def test_un_helper_che_non_e_un_dizionario_si_rifiuta_invece_di_esplodere(
 async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     """IMPORTANT 6 (round 3, chiuso a meta' nel round 2): `"chiave": 1771`
     invece di `"1771"` e' l'errore di forma piu' probabile che un modello
-    faccia su questo campo -- `HAClient._CHIAVE_RE.match(chiave or "")`
+    faccia su questo campo -- `HAClient._CHIAVE_RE.match(key or "")`
     riceve un intero intatto (e' truthy: `or ""` non lo tocca) e solleva
     `TypeError`. La finta ora e' fedele su questo punto (vedi
     `FintoHA.leggi_configurazione`), quindi questo test misura il codice
