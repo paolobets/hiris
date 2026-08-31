@@ -589,13 +589,46 @@ def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
     trovava mai niente e archiviava «in cucina non sotto i 20» come «da 20»
     nudo, senza scala, per sempre.
 
-    `area_del_dispositivo` e' `{id_dispositivo: area_id}` -- vuoto quando il
+    `device_area` e' `{id_dispositivo: area_id}` -- la costruisce
+    `device_areas()`, qui sotto -- vuoto quando il
     registro dei dispositivi non ha risposto. Chi deve DISTINGUERE "non ha
     area" da "non ho potuto leggere i dispositivi" (l'albero lo fa, con la
     pseudo-area «Dispositivi non letti») lo decide prima di chiamare qui:
     questa funzione risponde alla domanda, non la qualifica.
     """
     return entity.get("area_id") or device_area.get(entity.get("dispositivo_id"))
+
+
+def device_areas(devices) -> dict[str, str | None]:
+    """`{id_dispositivo: area_id}`, la mappa che `actual_area` legge.
+
+    **Esisteva due volte, e due nomi diversi l'avevano resa invisibile**
+    (misura ordine-e-preposizioni, 31/08): la stessa dict-comprehension viveva
+    qui dentro `hierarchy()` come `device_area` e in
+    `memoria/interpretazione.py::deduci_unit` come `area_del_device`, passata
+    alla stessa `actual_area()`. Nessuno strumento poteva vederlo -- il
+    rilevatore di doppioni confronta i PEZZI dei nomi, e li' i pezzi erano gli
+    stessi ma l'ordine no. E' la stessa ragione per cui `actual_area` esiste
+    come funzione: il fatto e' uno, e scritto due volte diverge.
+
+    **Prende gli oggetti, non la casa**, perche' le due fonti non sono la
+    stessa struttura: `hierarchy()` legge il registro grezzo
+    (`home_space["dispositivi"]`), `deduci_unit` legge l'indice gia' costruito
+    (`Lookup.tutti("dispositivo")`). E' la sola differenza vera fra le due
+    copie, ed e' un argomento, non un secondo corpo.
+
+    **La guardia sull'id non e' tolleranza, e' correttezza**: la mappa serve
+    SOLO a essere interrogata per `dispositivo_id`, e un oggetto senza id non
+    puo' essere il bersaglio del `dispositivo_id` di nessuna entita' --
+    tenerlo dentro non aggiungerebbe una risposta, aggiungerebbe una chiave
+    che nessuno puo' chiedere. Nel ramo dell'indice la guardia c'era gia' ed
+    e' morta per costruzione (`costruisci_indice` salta le voci con `id is
+    None`); nel ramo del registro non c'era, e la comprehension diceva
+    `d["id"]`: una riga di registro malformata faceva saltare con `KeyError`
+    l'INTERO albero della casa, per un oggetto che comunque non sarebbe mai
+    stato usato.
+    """
+    return {d["id"]: d.get("area_id") for d in devices or [] if d.get("id")}
 
 
 def actual_class(declared: str | None, live: str | None) -> str | None:
@@ -759,7 +792,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     no.
     """
     device_loaded = "dispositivi" not in unavailable
-    device_area = {d["id"]: d.get("area_id") for d in home_space.get("dispositivi", [])}
+    device_area = device_areas(home_space.get("dispositivi"))
 
     per_area: dict[str | None, list[dict]] = {}
     per_area_disabled: dict[str | None, list[dict]] = {}

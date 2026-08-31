@@ -2,7 +2,7 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from hiris.app.casa.anagrafe import hierarchy, rebuild
+from hiris.app.casa.anagrafe import device_areas, hierarchy, rebuild
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.proxy.ha_client import HAClient
 
@@ -233,3 +233,38 @@ def test_i_due_contenitori_hanno_identita_distinte(archivio):
     per_id = {p["id"]: p for p in piani}
     assert [a["nome"] for a in per_id["__senza_piano__"]["aree"]] == ["Solaio"]
     assert [a["nome"] for a in per_id["__fuori_dalle_aree__"]["aree"]] == ["Senza area"]
+
+
+# -- `device_areas`: una sola casa per la mappa dispositivo -> area ---------
+
+def test_la_mappa_delle_aree_dei_dispositivi_salta_quelli_senza_id():
+    """La mappa serve SOLO a essere interrogata per `dispositivo_id`: un
+    oggetto senza id non puo' essere il bersaglio di nessuna entita', quindi
+    tenerlo dentro aggiungerebbe una chiave che nessuno puo' chiedere."""
+    assert device_areas([{"id": "d1", "area_id": "cucina"},
+                         {"nome": "malformato"},
+                         {"id": "d2", "area_id": None}]) == {"d1": "cucina", "d2": None}
+
+
+def test_la_mappa_delle_aree_dei_dispositivi_regge_un_registro_assente():
+    """`None` e' cio' che `home_space.get("dispositivi")` restituisce su una
+    casa il cui registro dei dispositivi non ha risposto."""
+    assert device_areas(None) == {}
+    assert device_areas([]) == {}
+
+
+def test_una_riga_di_registro_senza_id_non_fa_saltare_l_albero():
+    """Prima dell'unificazione la comprehension dentro `hierarchy()` diceva
+    `d["id"]` senza guardia: una riga di registro malformata sollevava
+    `KeyError` e portava via l'INTERO albero della casa, per un oggetto che
+    nessuna entita' avrebbe comunque potuto nominare. La gemella in
+    `memoria/interpretazione.py` la guardia ce l'aveva gia' -- ed e' il
+    genere di divergenza che due nomi diversi per lo stesso fatto
+    (`device_area` contro `area_del_device`) tengono nascosta."""
+    casa = {"piani": [],
+            "aree": [{"id": "cucina", "nome": "Cucina", "piano_id": None}],
+            "dispositivi": [{"id": "d1", "area_id": "cucina"},
+                            {"nome": "riga senza id"}],
+            "entita": [{"id": "sensor.frigo", "dispositivo_id": "d1", "area_id": None}]}
+    cucina = next(a for p in hierarchy(casa) for a in p["aree"] if a["nome"] == "Cucina")
+    assert [e["id"] for e in cucina["entita"]] == ["sensor.frigo"]

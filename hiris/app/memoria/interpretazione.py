@@ -43,7 +43,7 @@ riesce a dedurla, resta `None`: inventarla sarebbe peggio di non averla.
 """
 from __future__ import annotations
 
-from ..casa.anagrafe import actual_area, actual_unit
+from ..casa.anagrafe import actual_area, actual_unit, device_areas
 
 # Le quattro... anzi tre caselle con un vocabolario chiuso: "a chi si
 # riferisce" e "che forza ha" restano qui elencate per intero; "cosa
@@ -268,8 +268,7 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
             # in `casa.anagrafe.area_effettiva`, la stessa che usa `gerarchia()`
             # per costruire l'albero: qui prima si confrontava il solo
             # `area_id` proprio, e su una casa vera non si trovava mai niente.
-            device_area = {d["id"]: d.get("area_id")
-                                    for d in lookup.tutti("dispositivo") if d.get("id")}
+            device_area = device_areas(lookup.tutti("dispositivo"))
             for entity in lookup.tutti("entita"):
                 if entity.get("classe") != grandezza:
                     continue
