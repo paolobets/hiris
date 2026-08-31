@@ -81,11 +81,32 @@ I composti rompono la sostituzione cieca in tre modi distinti, tutti misurati:
    in ordine italiano.
 2. **Ci sono preposizioni.** `nomi_di_ripiego`: quel `di` non è una parola del glossario, e in
    inglese sparisce del tutto.
-3. **Ci sono sigle di confine.** `ha_credenziale`: quel `ha` è *Home Assistant*, non il verbo. Un
-   dizionario cieco lo tradurrebbe.
+3. **Ci sono sigle di confine.** `sanitize_ha_value` (`casa/archivio.py:109`, 29 siti): quel `ha`
+   è *Home Assistant*, e resta `ha` — non si traduce e non si espande. Lo stesso vale per
+   `ha_client` (109 siti), `ha_base_url`, `ha_config_dir`, `_ha_channel`,
+   `_fingerprint_from_ha_state`.
+   **Il contro-esempio va letto insieme, ed è la parte istruttiva** (corretto il 31/08: fino a
+   quel giorno questa riga portava `ha_credenziale` come esempio del caso *Home Assistant*, ed
+   era falso). In `ha_credenziale` (`decisione_modelli.py:653,717,736,755`) quel `ha` è il
+   **verbo** — «il provider ha una credenziale», `ha_credenziale = bool(credenziali.get(pid))`
+   — e infatti il gemello già inglese si chiama `_config_has_credential`
+   (`api/handlers_models.py:369`), non `ha_credential`. La stessa sigla è *Home Assistant* in
+   dieci nomi su dodici e il verbo negli altri due (`ha_credenziale`, `piano_ha_il_token`):
+   nessuna regola meccanica separa i due casi, li separa solo la lettura di ciò che sta
+   intorno. Un documento che avvertiva di non innescare la trappola l'aveva armata: chi apriva
+   `decisione_modelli.py` leggendo questa riga avrebbe scritto `ha_credential`.
 
 I composti più frequenti, per dare la misura: `archivio_casa` (41), `esecuzione_id` (32),
 `classi_vive` (29), `unita_vive` (29), `dispositivo_id` (26), `nomi_di_ripiego` (25).
+
+**Dei tre modi, uno solo si può meccanizzare, e dal 31/08 c'è un cancello che lo fa** — il
+secondo: `tests/test_preposizioni_italiane.py` vieta una preposizione, un articolo o una
+congiunzione italiana dentro un identificatore, su tutto il Python del progetto, con
+l'istantanea dei 224 casi noti che cala mano a mano che i sottosistemi si convertono. Il primo
+(l'ordine) **non** si meccanizza: richiede di sapere quale pezzo è la testa del nome, cioè il
+significato e non la forma, e il suo unico controllo resta la lettura — vedi
+«Due difetti di composizione, e solo uno si può meccanizzare» in `docs/GLOSSARIO.md`. Il terzo
+(le sigle) nemmeno: lo dice la riga qui sopra.
 
 ---
 

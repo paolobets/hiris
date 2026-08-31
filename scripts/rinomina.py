@@ -10,9 +10,18 @@ invece che una precauzione che qualcuno puo' dimenticare.
 **Non indovina.** Sui nomi composti l'inglese inverte l'ordine delle parole
 (`unita_vive` non e' `unit_reported`, e' `reported_units`), ci sono
 preposizioni che spariscono (`nomi_di_ripiego`) e sigle di confine da non
-tradurre (`ha_credenziale`: quel `ha` e' Home Assistant). Quindi propone e si
-ferma: e' la legge del glossario applicata alla rinomina, «una riga senza
-prova non e' decisa».
+tradurre (`sanitize_ha_value`: quel `ha` e' Home Assistant, e resta `ha`).
+Quindi propone e si ferma: e' la legge del glossario applicata alla
+rinomina, «una riga senza prova non e' decisa».
+
+**E la stessa sigla non e' sempre la stessa cosa** (corretto il 31/08:
+questo docstring portava `ha_credenziale` come esempio del confine, ed era
+falso). In `decisione_modelli.py:653` quel `ha` e' il VERBO -- «il provider
+ha una credenziale» -- e il gemello gia' inglese si chiama
+`_config_has_credential`, non `ha_credential`. Dieci nomi su dodici sono
+Home Assistant e due sono il verbo: nessuna regola meccanica li separa, li
+separa la lettura -- che e' la ragione per cui questo strumento propone
+invece di applicare.
 """
 from __future__ import annotations
 
