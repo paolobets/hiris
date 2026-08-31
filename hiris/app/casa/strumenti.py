@@ -1418,7 +1418,7 @@ class ToolDispatcher:
         if not topology_loaded:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa
-            # distinzione di `handlers_memoria._tipi_non_verificabili`.
+            # distinzione di `handlers_memoria._unverifiable_types`.
             unverifiable_kinds = frozenset(_TETHER_TYPES)
         else:
             fallen_stores = set(self._home_space.unavailable())
@@ -1437,7 +1437,7 @@ class ToolDispatcher:
         # regge (un'ancora inventata, una forza fuori vocabolario) e lo
         # DICHIARA in `problemi` -- non lo lascia passare in silenzio, e non
         # butta via l'intero ricordo per questo. E' la differenza con
-        # `handlers_memoria.handle_patch_memoria`, che invece RIFIUTA
+        # `handlers_memoria.handle_patch_memory`, che invece RIFIUTA
         # un'intera correzione se `problemi` non e' vuota: li' si sta
         # correggendo un ricordo gia' esistente e l'utente puo' riprovare,
         # qui si sta salvando per la prima volta cio' che qualcuno ha detto

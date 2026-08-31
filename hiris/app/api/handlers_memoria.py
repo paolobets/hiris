@@ -51,7 +51,7 @@ _CORRECTABLE_FIELDS = {
 }
 
 # Quanti ricordi mostra al massimo il GET. Non e' un tetto silenzioso: la
-# risposta porta sempre `totale` (vedi handle_get_memoria), cosi' chi guarda
+# risposta porta sempre `totale` (vedi handle_get_memories), cosi' chi guarda
 # sa se sta vedendo tutto o solo la coda piu' recente.
 _MEMORIES_SHOWN_LIMIT = 200
 
@@ -114,10 +114,10 @@ def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[st
                       if key in unavailable_keys)
 
 
-def _risolvi_ancora(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
+def _resolve_tether(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
     """Un'ancora arricchita col nome che l'anagrafe conosce OGGI.
 
-    "non ho potuto controllare" (`indice is None`, l'anagrafe non e' mai
+    "non ho potuto controllare" (`lookup is None`, l'anagrafe non e' mai
     stata letta; oppure il tipo di questa ancora e' fra i registri che non
     hanno risposto all'ultima lettura) e "ho controllato e non c'e' piu'"
     sono due fatti diversi: `esiste` resta `None` nel primo caso, mai
@@ -157,7 +157,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
     for r in memories:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
-        r["ancore"] = [_risolvi_ancora(a, lookup, unverifiable) for a in r["ancore"]]
+        r["ancore"] = [_resolve_tether(a, lookup, unverifiable) for a in r["ancore"]]
     return web.json_response({
         "disponibile": True,
         "ricordi": memories,

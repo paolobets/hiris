@@ -26,11 +26,11 @@
       falso. I tre stati (`true`/`false`/`null`) restano tre resi diversi.
    2. `PATCH` corregge l'interpretazione, MAI il testo — non c'è un campo
       per modificare `testo` in questa pagina, perché il backend lo
-      ignorerebbe comunque (`_CAMPI_CORREGGIBILI`). Un rifiuto (400, ancora
+      ignorerebbe comunque (`_CORRECTABLE_FIELDS`). Un rifiuto (400, ancora
       senza riscontro nell'anagrafe; o 404, ricordo sparito nel frattempo)
       mostra sempre la ragione che il server manda, non un errore generico.
    3. La risposta porta sempre `totale` accanto ai ricordi mostrati
-      (`_LIMITE_RICORDI_MOSTRATI = 200`): se `mostrati < totale` la pagina
+      (`_MEMORIES_SHOWN_LIMIT = 200`): se `mostrati < totale` la pagina
       lo dichiara, così un ricordo oltre il taglio non sembra cancellato.
 
    Ambito dichiarato di "correggere": i campi scalari dell'interpretazione
@@ -400,7 +400,7 @@ window.HirisMemoriaRoute = (function () {
       return;
     }
 
-    /* Il taglio a `_LIMITE_RICORDI_MOSTRATI` si dichiara: senza questa
+    /* Il taglio a `_MEMORIES_SHOWN_LIMIT` si dichiara: senza questa
        riga un ricordo oltre il taglio è invisibile, indistinguibile da uno
        cancellato (handlers_memoria.py, regola 3). */
     lista.appendChild(el('p', 'field-hint', mostrati < totale

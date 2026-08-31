@@ -288,6 +288,62 @@ guardando il codice se il senso e' lo stesso di un ambito gia' qualificato o un 
 aggiungere la riga `parola (proprio_ambito)` di conseguenza -- esattamente il passo gia' fatto per
 `riga (api)` sopra.
 
+## Le citazioni fra backtick seguono il codice
+
+**La prosa italiana non si traduce -- ma un identificatore citato fra backtick in un commento o in
+una docstring non e' prosa: e' un riferimento, e un riferimento a un nome che non esiste piu' e'
+semplicemente falso.** Regola in vigore dal lotto 9 di Task 9, corretta subito dopo (review del
+lotto 9) perche' la prima formulazione lasciava passare esattamente il caso che conta.
+
+**Il confine e' «rese false da me», ovunque siano -- non «nel file che sto toccando».** La prima
+stesura diceva «aggiorna quelle che tu stesso rendi false» e, subito dopo, «non andare a caccia di
+quelle vecchie»: chi la leggeva capiva ragionevolmente «nel file che sto editando», e con quel
+confine rinominare una funzione PUBBLICA lascia false per sempre tutte le citazioni che la nominano
+altrove -- cinque, misurate dopo il lotto 9, in `casa/strumenti.py` e in
+`static/config/memoria-route.js`, cioe' in un ambito gia' chiuso e nel frontend. Restano fuori solo
+le citazioni gia' false PRIMA del proprio lotto: quelle vanno in un giro unico di fine fetta, e non
+si vanno a cercare mentre si converte.
+
+**Il criterio meccanico e' «ogni parola dentro ogni coppia di backtick», mai il contenuto intero.**
+Confrontare l'intero contenuto dei backtick con l'elenco dei nomi rinominati non vede una citazione
+che sia un'ESPRESSIONE: `` `indice is None` `` non combacia con `indice`, `` `turno=id_turno` `` non
+combacia con `id_turno`, `` `_LIMITE_RICORDI_MOSTRATI = 200` `` non combacia con la costante.
+Misurato dal vivo due volte: il lotto 9 aveva dichiarato di aver verificato tutte le citazioni del
+proprio file e ne aveva mancata una **nello stesso file** (`handlers_memoria.py:118`); il lotto 10
+ne ha lasciata una in un test (`tests/test_rotta_mcp.py:652`), trovata solo dal lotto 11 col
+criterio corretto. Non e' distrazione: e' il criterio sbagliato.
+
+**Il frontend conta.** Le citazioni vivono anche nei commenti JavaScript (`hiris/app/static/`), che
+nessun cancello Python guarda: la ricerca si fa su `hiris/` e `tests/` interi, non sui soli `.py`.
+
+**La protezione e' per la PROSA italiana, non per un identificatore nudo.** Un nome di funzione
+scritto senza backtick in un commento -- `# vedi handle_get_memoria` -- e' formalmente esente da
+questa regola e sostanzialmente falso allo stesso modo: si corregge. La regola dei backtick decide
+cosa e' certamente un riferimento, non cosa e' lecito lasciare falso.
+
+## «Ambito chiuso» significa chiuso rispetto al glossario di QUEL giorno
+
+**Aggiunto dopo la review del lotto 9, e non descrive un difetto da correggere: descrive come il
+meccanismo e' fatto.** Un sottosistema «chiuso» non e' congelato. Non e' lo strumento ad
+attraversare il confine -- `applica()` e' limitato dal `--percorso` che riceve -- **e' il glossario
+a essere globale**: `Glossario.per(parola, ambito)` ignora del tutto l'ambito per una riga NUDA, e
+le righe nude sono oltre 340 contro 13 qualificate.
+
+**Conseguenza operativa, diretta e non teorica: ogni riga nuda nuova riapre tutti e sei gli ambiti
+chiusi insieme.** E' gia' successo tre volte -- `carattere` (lotto 8) su `memoria/resolver.py`,
+`richiesto` (lotto 9) su `azione/costruzione/mestiere.py`, `definizione` (lotto 10) su
+`azione/verifica.py` -- e ogni volta l'unico contenimento e' stato
+`tests/test_rinomina_applica.py::test_gli_ambiti_chiusi_restano_idempotenti`, che ha fatto il suo
+lavoro. Ma un fatto che vive solo dentro un test lo conosce soltanto chi lo fa fallire: e' scritto
+qui perche' lo si sappia PRIMA.
+
+**Cosa si misura, prima di committare una parola nuova**: non il numero delle proposte, che cambia
+a ogni lotto per ragioni innocue, ma **l'insieme dei FILE che lo strumento riscriverebbe** in
+ciascuno dei sei ambiti chiusi, che deve restare identico a quello noto (oggi:
+`memoria/resolver.py`, `azione/costruzione/composer.py`, `casa/strumenti.py`). Un file nuovo in
+quell'insieme e' una parola che ha attraversato un confine: o la si corregge a mano nel file
+toccato -- come e' stato fatto tutte e tre le volte -- o la parola non entra.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -299,6 +355,7 @@ gia' nella lingua di destinazione o sono una sigla, e sono state tolte a mano da
 | `backend` | e' gia' inglese -- corretto durante la review finale del ramo, la ragione precedente citava un file che non esiste (nessun file si chiama `backend*.py`, solo la cartella `backends/`): il singolare vive come identificatore vero, per esempio `nome_backend` (`api/handlers_chat.py:302,303,305`), oltre che in prosa ovunque nel sottosistema |
 | `sanitize` | e' gia' inglese, usata cosi' com'e' nel codice |
 | `yaml` | e' una sigla di formato, non si traduce |
+| `grandezza` | **contratto col modello, come i 13 nomi degli strumenti: e' una CHIAVE dello schema di `REMEMBER_TOOL_DEF`** (`casa/strumenti.py:397`, dentro `input_schema.properties`), riletta col suo nome esatto quando l'argomento torna indietro (`casa/strumenti.py:1430`, `arguments.get("grandezza")`), e ripetuta nella descrizione che il modello legge. Le stringhe che il modello legge non si toccano mai -- e questa e' una di quelle, non un identificatore Python. **Sta QUI e non fra le parole non ancora decise perche' «non decisa» significa invisibile, non protetta**: `classifica('grandezza')` tornava `None` solo perche' nessuno l'aveva scritta, e il giorno in cui qualcuno la decidesse per un'altra ragione (e' un parametro keyword-only vero di `MemoryStore.remember` e di `memoria/interpretazione.py::deduci_unit`/`validate`) niente lo fermerebbe. Scritta qui, lo strumento la salta per costruzione e ignora anche un'eventuale riga futura. Rilievo della review del lotto 9: la ragione registrata allora era l'asimmetria fra `def` e chiamata dentro `memoria/` -- vera, ma **evapora** il giorno in cui si riaprisse `casa/`; questa no |
 
 **`dispatcher` NON e' in questa lista, e va scritto perche' fa eccezione -- corretto durante la
 review finale del ramo, che ha trovato una riga completa in «I concetti» per una parola gia'
@@ -377,7 +434,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
 | ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede | anchor | ~ parziale |
 | ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto | tether | ~ parziale |
-| ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memoria.py::_risolvi_ancora` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce, non un secondo senso -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito | tether | ~ parziale |
+| ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memoria.py::_resolve_tether` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito. **Attenzione, e la prima stesura lo taceva: `api` porta ENTRAMBI i sensi di `ancora`, non uno solo.** `api/handlers_usage.py:119,120,121,153,218` usa l'ancora dei CONSUMI (`ancora (consumi) -> anchor`), non questa. Questa riga non sbaglia oggi solo perche' `consumi/` e' stato convertito PRIMA, e quelle cinque occorrenze si scrivono gia' `anchor`: con un altro ordine dei lotti sarebbe una regola che sbaglia in silenzio, ed e' esattamente il caso che «Il limite della qualificazione per ambito» descrive (due sensi DENTRO lo stesso ambito, che una riga per ambito non sa distinguere). Chi incontra `ancora` nuda in un file di `api/` guarda il file prima di fidarsi di questa riga: se e' `handlers_usage.py` o un suo parente, e' `anchor` | tether | ~ parziale |
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
