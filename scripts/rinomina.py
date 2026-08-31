@@ -381,13 +381,35 @@ _METODI_USAGE_STORE = frozenset({
     "_sottrai_saldo", "importa_legacy",
 })
 
+# Terza voce (Task 9, `api/handlers_impostazioni.py`, PRIMA di applicare il
+# file, non dopo): `ImpostazioniChat` (`impostazioni_chat.py`, un file di
+# RADICE -- non un ambito di questa fetta, ne' chiuso ne' aperto) e' un
+# dataclass, non una classe di servizio: il rischio non e' un METODO
+# rinominato per attributo, e' un CAMPO. `nome` e `giorni_conservazione`
+# restano italiani (gli altri cinque campi sono gia' inglesi per conto
+# loro: `system_prompt`, `response_mode`, `thinking_budget`,
+# `max_chat_turns`, `restrict_to_home`). Misurato PRIMA di romperlo:
+# `corrente.nome` (`nome` gia' deciso, parola ordinaria -> `name`)
+# diventava `corrente.name` in una prova isolata (`rinomina.riscrivi()` su
+# uno snippet sintetico) -- lo stesso guasto di `ha.statistiche()` e di
+# `archivio.sezioni()`, qui su un campo di dataclass invece che su un
+# metodo. Elenco letto a mano da `impostazioni_chat.py`: i sette campi piu'
+# i due metodi pubblici (`carica`, `salva`).
+_METODI_IMPOSTAZIONI_CHAT = frozenset({
+    "nome", "system_prompt", "response_mode", "thinking_budget",
+    "max_chat_turns", "restrict_to_home", "giorni_conservazione",
+    "carica", "salva",
+})
+
 # L'insieme delle classi esterne protette per attributo, indipendentemente
 # da QUALE oggetto le porta: `_righe_di_percorso_e_parola_chiave` non sa
 # (ne' deve sapere) se una variabile si chiama `ha`, `archivio` o
 # `store` -- controlla solo se il NOME dopo il punto appartiene a una di
 # queste classi. Un domani in cui una terza classe rivelasse lo stesso
 # guasto si aggiunge qui, non si duplica il meccanismo.
-_METODI_ESTERNI_PROTETTI = _METODI_HA_CLIENT | _METODI_USAGE_STORE
+_METODI_ESTERNI_PROTETTI = (
+    _METODI_HA_CLIENT | _METODI_USAGE_STORE | _METODI_IMPOSTAZIONI_CHAT
+)
 
 
 def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int], set[int]]:

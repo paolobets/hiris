@@ -18,8 +18,8 @@ from .api.handlers_chat_history import handle_clear_chat_history, handle_get_cha
 from .api.handlers_config import handle_config
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_impostazioni import (
-    handle_get_impostazioni,
-    handle_save_impostazioni,
+    handle_get_settings,
+    handle_save_settings,
 )
 from .api.handlers_models import (
     handle_get_models_config,
@@ -3568,8 +3568,8 @@ def create_app() -> web.Application:
     # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
     # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
     # (static/config/impostazioni-route.js), nello stesso commit.
-    app.router.add_get("/api/impostazioni-chat", handle_get_impostazioni)
-    app.router.add_put("/api/impostazioni-chat", handle_save_impostazioni)
+    app.router.add_get("/api/impostazioni-chat", handle_get_settings)
+    app.router.add_put("/api/impostazioni-chat", handle_save_settings)
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)

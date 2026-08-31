@@ -91,7 +91,7 @@ logger = logging.getLogger(__name__)
 # un errore parlante, non un silenzio (una chiave scritta male -- `modello`
 # invece di `model` -- verrebbe altrimenti accettata e ignorata, e l'utente
 # leggerebbe "salvato" senza che nulla sia cambiato).
-CAMPI = (
+FIELDS = (
     "nome",
     "system_prompt",
     "response_mode",
@@ -106,29 +106,29 @@ CAMPI = (
 # trattano "compact" e "minimal"; qualunque altro valore ricade nel ramo
 # neutro, che e' esattamente "auto". Elencarli qui evita che l'utente scriva
 # un quarto valore convinto di aver ottenuto qualcosa.
-MODI_RISPOSTA = ("auto", "compact", "minimal")
+RESPONSE_MODES = ("auto", "compact", "minimal")
 
 # Il prompt di sistema e' testo libero: l'unico tetto e' quello che impedisce
 # a un incollaggio accidentale (un documento intero) di far fallire ogni turno
 # di chat contro il limite di contesto del modello, in un punto in cui il
 # messaggio d'errore arriverebbe dal provider e non da noi.
-MAX_CARATTERI_PROMPT = 20000
+MAX_PROMPT_CHARS = 20000
 
 
-class Rifiuto(Exception):
+class Rejection(Exception):
     """Un campo non valido, col nome del campo e il perche' in italiano.
 
     Esiste per far fallire la validazione INTERA prima di qualunque scrittura:
     il chiamante la cattura e risponde 400, e il file su disco non e' stato
     toccato."""
 
-    def __init__(self, campo: str, motivo: str) -> None:
-        super().__init__(motivo)
-        self.campo = campo
-        self.motivo = motivo
+    def __init__(self, field: str, reason: str) -> None:
+        super().__init__(reason)
+        self.field = field
+        self.reason = reason
 
 
-def _tipo(valore) -> str:
+def _type(value) -> str:
     """Il tipo del valore ricevuto, detto in italiano -- mai il valore stesso
     (un prompt di sistema intero dentro un messaggio d'errore sarebbe
     illeggibile in pagina, e finirebbe anche nel log)."""
@@ -136,10 +136,10 @@ def _tipo(valore) -> str:
         bool: "un booleano", int: "un numero", float: "un numero",
         str: "testo", list: "una lista", dict: "un oggetto",
         type(None): "un valore nullo",
-    }.get(type(valore), type(valore).__name__)
+    }.get(type(value), type(value).__name__)
 
 
-def _testo(body: dict, chiave: str, corrente: str) -> str:
+def _text(body: dict, key: str, current: str) -> str:
     """Il valore di un campo di testo, verificato ANCHE come scrivibile.
 
     Fix round 1, I-1. `isinstance(valore, str)` verifica il TIPO, non la
@@ -158,41 +158,41 @@ def _testo(body: dict, chiave: str, corrente: str) -> str:
     «si valida tutto prima di toccare il disco» resta vera per costruzione,
     non per fortuna.
     """
-    if chiave not in body:
-        return corrente
-    valore = body[chiave]
-    if not isinstance(valore, str):
-        raise Rifiuto(chiave, f"«{chiave}» deve essere testo, non {_tipo(valore)}.")
+    if key not in body:
+        return current
+    value = body[key]
+    if not isinstance(value, str):
+        raise Rejection(key, f"«{key}» deve essere testo, non {_type(value)}.")
     try:
-        valore.encode("utf-8")
+        value.encode("utf-8")
     except UnicodeEncodeError as exc:
         # Del carattere si dice la POSIZIONE, mai il valore: stessa disciplina
         # di `token_interno.motivo_token_non_valido`, e un prompt di sistema
         # intero dentro un messaggio d'errore sarebbe illeggibile in pagina.
-        raise Rifiuto(
-            chiave,
-            f"«{chiave}» contiene un carattere non rappresentabile in UTF-8 "
+        raise Rejection(
+            key,
+            f"«{key}» contiene un carattere non rappresentabile in UTF-8 "
             f"(posizione {exc.start}): di solito significa che il testo e' "
             "stato incollato da una sorgente malformata. Ricopialo e riprova.",
         ) from None
-    return valore
+    return value
 
 
-def _intero_non_negativo(body: dict, chiave: str, corrente: int) -> int:
-    if chiave not in body:
-        return corrente
-    valore = body[chiave]
+def _non_negative_integer(body: dict, key: str, current: int) -> int:
+    if key not in body:
+        return current
+    value = body[key]
     # `bool` e' sottoclasse di `int` in Python: senza questo controllo `True`
     # passerebbe per 1 e un errore di tipo del client diventerebbe un
     # salvataggio silenzioso.
-    if isinstance(valore, bool) or not isinstance(valore, int):
-        raise Rifiuto(chiave, f"«{chiave}» deve essere un numero intero, non {_tipo(valore)}.")
-    if valore < 0:
-        raise Rifiuto(chiave, f"«{chiave}» non può essere negativo (ricevuto {valore}).")
-    return valore
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise Rejection(key, f"«{key}» deve essere un numero intero, non {_type(value)}.")
+    if value < 0:
+        raise Rejection(key, f"«{key}» non può essere negativo (ricevuto {value}).")
+    return value
 
 
-def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
+def validate(current: ImpostazioniChat, body) -> ImpostazioniChat:
     """Le impostazioni nuove, a partire dalle correnti e dal corpo ricevuto.
 
     Solleva `Rifiuto` al primo campo che non va, senza aver scritto niente.
@@ -200,25 +200,25 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     dell'intero oggetto dalla pagina, ma un client che manda meno campi non
     deve distruggere quelli che non nomina."""
     if not isinstance(body, dict):
-        raise Rifiuto("", "Il corpo della richiesta deve essere un oggetto JSON.")
+        raise Rejection("", "Il corpo della richiesta deve essere un oggetto JSON.")
 
-    sconosciute = sorted(k for k in body if k not in CAMPI)
-    if sconosciute:
-        raise Rifiuto(
-            sconosciute[0],
+    unknown_fields = sorted(k for k in body if k not in FIELDS)
+    if unknown_fields:
+        raise Rejection(
+            unknown_fields[0],
             "Campi non riconosciuti: {}. I campi ammessi sono: {}.".format(
-                ", ".join(sconosciute), ", ".join(CAMPI)),
+                ", ".join(unknown_fields), ", ".join(FIELDS)),
         )
 
-    nome = _testo(body, "nome", corrente.nome).strip()
-    if not nome:
-        raise Rifiuto("nome", "«nome» non può essere vuoto.")
+    name = _text(body, "nome", current.nome).strip()
+    if not name:
+        raise Rejection("nome", "«nome» non può essere vuoto.")
 
-    prompt = _testo(body, "system_prompt", corrente.system_prompt).strip()
-    if len(prompt) > MAX_CARATTERI_PROMPT:
-        raise Rifiuto(
+    prompt = _text(body, "system_prompt", current.system_prompt).strip()
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise Rejection(
             "system_prompt",
-            f"«system_prompt» supera i {MAX_CARATTERI_PROMPT} caratteri "
+            f"«system_prompt» supera i {MAX_PROMPT_CHARS} caratteri "
             f"(ne ha {len(prompt)}).",
         )
     # Vuoto NON significa "prompt vuoto": significa "rimetti il default nel
@@ -227,25 +227,25 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     if not prompt:
         prompt = DEFAULT_SYSTEM_PROMPT
 
-    modo = _testo(body, "response_mode", corrente.response_mode).strip()
-    if modo not in MODI_RISPOSTA:
-        raise Rifiuto(
+    mode = _text(body, "response_mode", current.response_mode).strip()
+    if mode not in RESPONSE_MODES:
+        raise Rejection(
             "response_mode",
-            "«response_mode» ammette solo {}.".format(", ".join(MODI_RISPOSTA)),
+            "«response_mode» ammette solo {}.".format(", ".join(RESPONSE_MODES)),
         )
 
-    thinking = _intero_non_negativo(body, "thinking_budget", corrente.thinking_budget)
-    turni = _intero_non_negativo(body, "max_chat_turns", corrente.max_chat_turns)
+    thinking = _non_negative_integer(body, "thinking_budget", current.thinking_budget)
+    turns = _non_negative_integer(body, "max_chat_turns", current.max_chat_turns)
 
     if "restrict_to_home" in body:
-        restrizione = body["restrict_to_home"]
-        if not isinstance(restrizione, bool):
-            raise Rifiuto(
+        restriction = body["restrict_to_home"]
+        if not isinstance(restriction, bool):
+            raise Rejection(
                 "restrict_to_home",
-                f"«restrict_to_home» deve essere true o false, non {_tipo(restrizione)}.",
+                f"«restrict_to_home» deve essere true o false, non {_type(restriction)}.",
             )
     else:
-        restrizione = corrente.restrict_to_home
+        restriction = current.restrict_to_home
 
     # Stesso `_intero_non_negativo` dei due campi sopra: `0` e' un valore
     # AMMESSO (Task 12 -- "non cancella e non limita mai niente"), non un
@@ -253,48 +253,48 @@ def valida(corrente: ImpostazioniChat, body) -> ImpostazioniChat:
     # (`int(0,3650)`) solo perche' e' l'opzione dell'add-on -- qui, come per
     # `thinking_budget`/`max_chat_turns`, il limite vero non esiste o non e'
     # di competenza di questa validazione.
-    giorni_conservazione = _intero_non_negativo(
-        body, "giorni_conservazione", corrente.giorni_conservazione)
+    giorni_conservazione = _non_negative_integer(
+        body, "giorni_conservazione", current.giorni_conservazione)
 
     return ImpostazioniChat(
-        nome=nome,
+        nome=name,
         system_prompt=prompt,
-        response_mode=modo,
+        response_mode=mode,
         thinking_budget=thinking,
-        max_chat_turns=turni,
-        restrict_to_home=restrizione,
+        max_chat_turns=turns,
+        restrict_to_home=restriction,
         giorni_conservazione=giorni_conservazione,
     )
 
 
-def _payload(impostazioni: ImpostazioniChat) -> dict:
+def _payload(settings: ImpostazioniChat) -> dict:
     """I sette campi, piu' due cose che la pagina non deve indovinare: i
     valori ammessi per `response_mode` e il prompt di default (per il
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
     return {
-        "nome": impostazioni.nome,
-        "system_prompt": impostazioni.system_prompt,
-        "response_mode": impostazioni.response_mode,
-        "thinking_budget": impostazioni.thinking_budget,
-        "max_chat_turns": impostazioni.max_chat_turns,
-        "restrict_to_home": impostazioni.restrict_to_home,
-        "giorni_conservazione": impostazioni.giorni_conservazione,
-        "modi_risposta": list(MODI_RISPOSTA),
+        "nome": settings.nome,
+        "system_prompt": settings.system_prompt,
+        "response_mode": settings.response_mode,
+        "thinking_budget": settings.thinking_budget,
+        "max_chat_turns": settings.max_chat_turns,
+        "restrict_to_home": settings.restrict_to_home,
+        "giorni_conservazione": settings.giorni_conservazione,
+        "modi_risposta": list(RESPONSE_MODES),
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     }
 
 
-async def handle_get_impostazioni(request: web.Request) -> web.Response:
+async def handle_get_settings(request: web.Request) -> web.Response:
     """Le impostazioni in vigore ADESSO -- quelle che il prossimo turno di
     chat leggera'. Si prendono da `app["impostazioni_chat"]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
-    impostazioni = request.app.get("impostazioni_chat") or ImpostazioniChat()
-    return web.json_response(_payload(impostazioni))
+    settings = request.app.get("impostazioni_chat") or ImpostazioniChat()
+    return web.json_response(_payload(settings))
 
 
-async def handle_save_impostazioni(request: web.Request) -> web.Response:
+async def handle_save_settings(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:
@@ -303,21 +303,21 @@ async def handle_save_impostazioni(request: web.Request) -> web.Response:
             status=400,
         )
 
-    corrente = request.app.get("impostazioni_chat") or ImpostazioniChat()
+    current = request.app.get("impostazioni_chat") or ImpostazioniChat()
     try:
-        nuove = valida(corrente, body)
-    except Rifiuto as rifiuto:
+        updated = validate(current, body)
+    except Rejection as rejection:
         # Il rifiuto e' esplicito e dice quale campo: l'alternativa (accettare
         # e ignorare) sarebbe esattamente il salvataggio silenzioso a meta'
         # che questo task esiste per non introdurre.
-        logger.info("Impostazioni chat rifiutate: %s", rifiuto.motivo)
+        logger.info("Impostazioni chat rifiutate: %s", rejection.reason)
         return web.json_response(
-            {"error": rifiuto.motivo, "campo": rifiuto.campo}, status=400,
+            {"error": rejection.reason, "campo": rejection.field}, status=400,
         )
 
     data_dir = request.app.get("data_dir") or "/data"
     try:
-        nuove.salva(data_dir)
+        updated.salva(data_dir)
     except OSError as exc:
         # Mai un "salvato" davanti a un disco che non ha accettato niente, e
         # mai un 500 muto: si dice cosa e' successo, e le impostazioni in
@@ -336,5 +336,5 @@ async def handle_save_impostazioni(request: web.Request) -> web.Response:
     # Hot-update: vedi la docstring in cima al file. Senza questa riga il
     # salvataggio riesce e la chat continua a usare i valori vecchi fino al
     # riavvio.
-    request.app["impostazioni_chat"] = nuove
-    return web.json_response({"ok": True, **_payload(nuove)})
+    request.app["impostazioni_chat"] = updated
+    return web.json_response({"ok": True, **_payload(updated)})

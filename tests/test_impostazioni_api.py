@@ -14,9 +14,9 @@ import pytest_asyncio
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_impostazioni import (
-    CAMPI,
-    MAX_CARATTERI_PROMPT,
-    MODI_RISPOSTA,
+    FIELDS,
+    MAX_PROMPT_CHARS,
+    RESPONSE_MODES,
 )
 from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
@@ -83,7 +83,7 @@ async def test_get_porta_anche_i_modi_ammessi_e_il_prompt_di_default(client):
     `response_mode` ne' del prompt di default: invecchierebbero al primo
     cambiamento nel codice. Viaggiano nel payload."""
     body = await (await client.get(ROTTA)).json()
-    assert body["modi_risposta"] == list(MODI_RISPOSTA)
+    assert body["modi_risposta"] == list(RESPONSE_MODES)
     assert body["default_system_prompt"] == DEFAULT_SYSTEM_PROMPT
 
 
@@ -153,7 +153,7 @@ async def test_put_scrive_in_modo_atomico_e_non_lascia_il_temporaneo(client):
     assert os.path.exists(_file(client))
     assert not os.path.exists(_file(client) + ".tmp")
     # Rileggibile come JSON completo: tutti e sette i campi, mai un troncone.
-    assert sorted(_su_disco(client)) == sorted(CAMPI)
+    assert sorted(_su_disco(client)) == sorted(FIELDS)
 
 
 @pytest.mark.asyncio
@@ -245,7 +245,7 @@ CORPI_RIFIUTATI = [
     ("response_mode", {"response_mode": "prolisso"}, "ammette solo"),
     ("nome", {"nome": "   "}, "non può essere vuoto"),
     ("nome", {"nome": 42}, "deve essere testo"),
-    ("system_prompt", {"system_prompt": "x" * (MAX_CARATTERI_PROMPT + 1)}, "supera i"),
+    ("system_prompt", {"system_prompt": "x" * (MAX_PROMPT_CHARS + 1)}, "supera i"),
     ("modello", {"modello": "claude-opus-4-7"}, "Campi non riconosciuti"),
 ]
 
@@ -418,7 +418,7 @@ async def test_il_get_non_porta_piu_un_modello(client):
     ESATTO delle chiavi, non l'assenza di una: un campo aggiunto in silenzio è
     lo stesso difetto della prossima volta."""
     body = await (await client.get(ROTTA)).json()
-    assert set(body) == set(CAMPI) | {"modi_risposta", "default_system_prompt"}
+    assert set(body) == set(FIELDS) | {"modi_risposta", "default_system_prompt"}
 
 
 def test_model_non_e_piu_un_campo_ammesso():
@@ -426,8 +426,8 @@ def test_model_non_e_piu_un_campo_ammesso():
     rotta: se `model` tornasse in `CAMPI`, il PUT ricomincerebbe ad accettarlo
     e il 400 di sopra diventerebbe un 200 — e nessuno dei due test lo direbbe
     da solo se il valore non fosse pinnato qui."""
-    assert "model" not in CAMPI
-    assert CAMPI == (
+    assert "model" not in FIELDS
+    assert FIELDS == (
         "nome", "system_prompt", "response_mode",
         "thinking_budget", "max_chat_turns", "restrict_to_home",
         "giorni_conservazione",

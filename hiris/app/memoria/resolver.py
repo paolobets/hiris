@@ -109,8 +109,8 @@ def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     minuscolo = text.lower()
     reading: list[str] = []
     mappa_grezza: list[int] = []
-    for original_index, carattere in enumerate(minuscolo):
-        decomposto = unicodedata.normalize("NFKD", carattere)
+    for original_index, character in enumerate(minuscolo):
+        decomposto = unicodedata.normalize("NFKD", character)
         for c in decomposto:
             if unicodedata.combining(c):
                 continue
@@ -137,8 +137,8 @@ def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     return "".join(normalizzato), mappa
 
 
-def _e_carattere_di_parola(carattere: str) -> bool:
-    return re.match(r"\w", carattere) is not None
+def _e_carattere_di_parola(character: str) -> bool:
+    return re.match(r"\w", character) is not None
 
 
 def _compila(term: str) -> re.Pattern[str]:

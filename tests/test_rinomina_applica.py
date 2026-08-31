@@ -352,6 +352,34 @@ def test_un_metodo_che_non_e_di_usagestore_si_applica_normalmente():
     assert proposte == []
 
 
+def test_un_campo_di_impostazionichat_non_si_applica_da_solo():
+    """Terza voce della stessa guardia (Task 9, `api/handlers_impostazioni.py`):
+    `ImpostazioniChat` e' un dataclass, non una classe di servizio -- il
+    rischio e' un CAMPO letto per attributo, non un metodo. `nome` e' una
+    parola ordinaria gia' decisa (`-> name`); l'attributo vero del dataclass
+    resta `nome` (`impostazioni_chat.py`, un file di radice, mai deciso).
+    Misurato PRIMA di romperlo: senza questa guardia `corrente.nome`
+    diventava `corrente.name` in una prova isolata su questo stesso
+    snippet."""
+    gf = rinomina.Glossario(mappa={"nome": "name"})
+    dentro = "etichetta = corrente.nome\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro, "il campo di ImpostazioniChat non si applica da solo"
+    assert [p.nome for p in proposte] == ["nome"]
+    assert proposte[0].suggerito == "name"
+
+
+def test_un_campo_che_non_e_di_impostazionichat_si_applica_normalmente():
+    """La guardia su `ImpostazioniChat` e' un allowlist quanto le altre due:
+    un attributo mio (qui, `comportamento`, non in nessuno dei tre elenchi)
+    continua ad applicarsi come sempre."""
+    gf = rinomina.Glossario(mappa={"comportamento": "behavior"})
+    dentro = "voci = self._chat.comportamento()\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "voci = self._chat.behavior()\n"
+    assert proposte == []
+
+
 def _verifica_idempotenza(base: Path, ambito: str, copia: Path,
                           residui_noti: frozenset = frozenset()) -> None:
     """Applica lo strumento a una COPIA di `base` (un file o una cartella)

@@ -338,6 +338,10 @@ in §4①:
 | `nostre` | `nostro` |
 | `vivi` | `vive` |
 | `citate` | `citato` |
+| `sconosciute` | `sconosciuto` |
+| `campi` | `campo` |
+| `modi` | `modo` |
+| `nuove` | `nuovo` |
 | `nostri` | `nostro` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
@@ -1136,6 +1140,7 @@ al Task 6 invece che deciso qui.
 | campione | sample |
 | campo | field |
 | candidato | candidate |
+| carattere | character |
 | carica | load |
 | cartella | folder |
 | categoria | category |
@@ -1220,6 +1225,7 @@ al Task 6 invece che deciso qui.
 | innesca | trigger |
 | integrazione | integration |
 | interno | internal |
+| intero | integer |
 | invalida | invalidate |
 | inventario | inventory |
 | irraggiungibile | unreachable |
@@ -1245,6 +1251,7 @@ al Task 6 invece che deciso qui.
 | momento | moment |
 | motivo | reason |
 | nascosto | hidden |
+| negativo | negative |
 | nodo | node |
 | nome | name |
 | normalizza | normalize |
@@ -1289,6 +1296,7 @@ al Task 6 invece che deciso qui.
 | rango | rank |
 | registra | log |
 | resto | rest |
+| restrizione | restriction |
 | richiesta | request |
 | ricordo | memory |
 | ricostruisci | rebuild |
@@ -1746,6 +1754,42 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `schedulatore/promise.py::serializza` gia' documentato in «Il limite della qualificazione per
   ambito», applicato a mano senza toccare la riga `fuori (casa)`). Tutte private, nessun
   chiamante esterno.
+- **`nome`/`giorni_conservazione` (`handlers_impostazioni.py`, verso `ImpostazioniChat`) --
+  terza voce della guardia meccanica**: `ImpostazioniChat` (`impostazioni_chat.py`, un file di
+  RADICE, ne' ambito chiuso ne' aperto) e' un dataclass con due campi ancora italiani. Misurato
+  PRIMA di romperlo (`rinomina.riscrivi()` su uno snippet isolato): `corrente.nome` diventava
+  `corrente.name` senza guardia. Estesa `scripts/rinomina.py` con
+  `_METODI_IMPOSTAZIONI_CHAT` (i sette campi piu' i due metodi pubblici, `carica`/`salva`),
+  unita a `_METODI_ESTERNI_PROTETTI`. Due test nuovi, entrambi provati per mutazione. `nome`
+  come parola ordinaria si applica comunque alle VARIABILI LOCALI non protette (`nome -> name`),
+  `giorni_conservazione` resta intatto ovunque (mai deciso come parola generale, stessa
+  ragione di `handlers_chat_history.py`, lotto 1: la parola vive gia', invariata, in tutti i sei
+  ambiti chiusi).
+- `Rifiuto -> Rejection` (classe, campi `.campo`/`.motivo -> .field`/`.reason`, MIA -- non
+  un'interfaccia esterna, sicura da rinominare per intero), `_tipo -> _type`, `_testo -> _text`,
+  `valida -> validate`, `CAMPI -> FIELDS` (non `field` singolare, il suggerimento meccanico
+  letterale: e' una tupla di piu' nomi), `MODI_RISPOSTA -> RESPONSE_MODES`,
+  `MAX_CARATTERI_PROMPT -> MAX_PROMPT_CHARS` (invisibile al dry-run: nessuno dei tre pezzi era
+  mai stato deciso), `_intero_non_negativo -> _non_negative_integer` (aggettivo prima del nome),
+  `sconosciute -> unknown_fields`, `nuove -> updated` (non l'alias letterale "new": e' un'istanza
+  singola gia' validata, non un aggettivo su un plurale), `turni -> turns` (**non** `exchange`,
+  il suggerimento del concetto generale `turno -> exchange`: qui il senso e' il conteggio di
+  `max_chat_turns`, gia' inglese con la parola "turns", non lo scambio col modello del
+  reasoning -- collisione catturata leggendo il codice, non applicata alla cieca).
+- Tre parole nuove nel glossario, verificate senza collisioni di senso su tutto `hiris/app`:
+  `intero -> integer`, `negativo -> negative`, `restrizione -> restriction`. Quattro alias di
+  forma flessa aggiunti: `campi -> campo`, `modi -> modo`, `nuove -> nuovo`,
+  `sconosciute -> sconosciuto`. Una quinta parola, `carattere -> character`, ha causato un
+  effetto collaterale reale in un ambito gia' idempotente: vedi sotto.
+- **Effetto collaterale reale, chiuso subito**: `carattere -> character` (decisa qui, per
+  `MAX_CARATTERI_PROMPT`) si applica anche a `memoria/resolver.py` (2 occorrenze, un parametro e
+  una variabile di loop, entrambi privati e senza chiamanti per keyword -- verificato con grep).
+  Trovato dalla guardia di idempotenza (`test_il_residuo_di_memoria_resolver_e_solo_inizio_start`,
+  andata rossa: "diverge su {('carattere', 'character'), ('inizio', 'start')}"), non da
+  un'ispezione volontaria. Corretto A MANO nel file (non rilanciando l'intero strumento, che
+  avrebbe reintrodotto anche `inizio -> start`, il residuo deliberatamente lasciato italiano
+  dal fix I2 del Task 8): rinominate le due occorrenze private di `carattere`, la guardia torna
+  verde. Nessun altro pezzo di `memoria/resolver.py` toccato.
 
 ## I nomi degli strumenti
 
