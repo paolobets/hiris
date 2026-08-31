@@ -27,4 +27,4 @@ pyyaml>=6.0.3,<7.0
 # installa con tutto il resto. Il TETTO al minor successivo e' la difesa vera —
 # ruff cambia il proprio set di default fra minor, e senza tetto un CI verde
 # diventerebbe rosso senza che nessuno abbia toccato una riga.
-ruff>=0.16.4,<0.17.0
+ruff>=0.16.5,<0.17.0
