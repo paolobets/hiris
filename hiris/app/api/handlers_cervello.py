@@ -21,21 +21,21 @@ from __future__ import annotations
 from aiohttp import web
 
 
-async def handle_osservate(request: web.Request) -> web.Response:
+async def handle_watching(request: web.Request) -> web.Response:
     """Cosa sta guardando l'osservatore, e da dove viene ogni voce.
 
     `Watcher.watching()` porta gia' `provenienza` per ciascuna voce --
     oggi sempre `"pavimento"` -- che e' cio' che dice alla pagina se una
     voce si puo' togliere (spec §7). Non si ricalcola qui.
     """
-    osservatore = request.app.get("osservatore")
-    if osservatore is None:
+    watcher = request.app.get("osservatore")
+    if watcher is None:
         return web.json_response(
             {"osservate": [], "errore": "osservatore non disponibile"}, status=503)
-    return web.json_response({"osservate": osservatore.watching()})
+    return web.json_response({"osservate": watcher.watching()})
 
 
-async def handle_oggetti(request: web.Request) -> web.Response:
+async def handle_facts(request: web.Request) -> web.Response:
     """Gli oggetti costruiti dall'aggregazione, filtrabili per giorno.
 
     `giorno` arriva dalla query cosi' com'e' -- una stringa o `None` -- e va
@@ -48,9 +48,9 @@ async def handle_oggetti(request: web.Request) -> web.Response:
     (un giorno in cui la casa non ha fatto niente di osservabile), non un
     guasto.
     """
-    archivio = request.app.get("osservazioni")
-    if archivio is None:
+    store = request.app.get("osservazioni")
+    if store is None:
         return web.json_response(
             {"oggetti": [], "errore": "archivio non disponibile"}, status=503)
-    giorno = request.query.get("giorno") or None
-    return web.json_response({"oggetti": archivio.facts(day=giorno)})
+    day = request.query.get("giorno") or None
+    return web.json_response({"oggetti": store.facts(day=day)})

@@ -1,7 +1,10 @@
 """Le due rotte della pagina dell'osservatore."""
 import pytest
 
-from hiris.app.api.handlers_cervello import handle_oggetti, handle_osservate
+from hiris.app.api.handlers_cervello import handle_facts, handle_watching
+from hiris.app.cervello.archivio import ObservationsStore
+from hiris.app.cervello.osservatore import Watcher
+from tests._contratti import assert_stessa_firma
 
 
 class _FintoArchivio:
@@ -29,9 +32,13 @@ def _richiesta(app, query=None):
     return _R()
 
 
+assert_stessa_firma(ObservationsStore.facts, _FintoArchivio.facts, nome="facts")
+assert_stessa_firma(Watcher.watching, _FintoOsservatore.watching, nome="watching")
+
+
 @pytest.mark.asyncio
 async def test_osservate_dice_cosa_si_guarda_e_perche():
-    r = await handle_osservate(_richiesta({"osservatore": _FintoOsservatore()}))
+    r = await handle_watching(_richiesta({"osservatore": _FintoOsservatore()}))
     assert r.status == 200
 
 
@@ -39,7 +46,7 @@ async def test_osservate_dice_cosa_si_guarda_e_perche():
 async def test_osservate_porta_la_provenienza_di_ogni_voce():
     """La pagina decide se una voce si puo' togliere guardando questo campo:
     senza, non c'e' modo di distinguere pavimento da obiettivo (spec §7)."""
-    r = await handle_osservate(_richiesta({"osservatore": _FintoOsservatore()}))
+    r = await handle_watching(_richiesta({"osservatore": _FintoOsservatore()}))
     corpo = _corpo(r)
     assert corpo["osservate"][0]["provenienza"] == "pavimento"
 
@@ -48,20 +55,20 @@ async def test_osservate_porta_la_provenienza_di_ogni_voce():
 async def test_senza_osservatore_la_rotta_lo_DICHIARA():
     """Un elenco vuoto direbbe «non guardo niente»; l'osservatore assente e'
     un'altra cosa, ed e' la distinzione che questo prodotto difende ovunque."""
-    r = await handle_osservate(_richiesta({}))
+    r = await handle_watching(_richiesta({}))
     assert r.status == 503
 
 
 @pytest.mark.asyncio
 async def test_gli_oggetti_si_leggono():
-    r = await handle_oggetti(_richiesta({"osservazioni": _FintoArchivio()}))
+    r = await handle_facts(_richiesta({"osservazioni": _FintoArchivio()}))
     assert r.status == 200
 
 
 @pytest.mark.asyncio
 async def test_gli_oggetti_filtrano_per_giorno_dalla_query():
     archivio = _FintoArchivio()
-    r = await handle_oggetti(
+    r = await handle_facts(
         _richiesta({"osservazioni": archivio}, query={"giorno": "2026-08-24"}))
     assert r.status == 200
     assert archivio.chiesto["giorno"] == "2026-08-24"
@@ -73,14 +80,14 @@ async def test_senza_giorno_nella_query_non_si_inventa_una_data():
     stringa vuota o una data scelta qui: e' l'archivio a sapere cosa significa
     "nessun filtro" (`archivio.py::facts`)."""
     archivio = _FintoArchivio()
-    r = await handle_oggetti(_richiesta({"osservazioni": archivio}))
+    r = await handle_facts(_richiesta({"osservazioni": archivio}))
     assert r.status == 200
     assert archivio.chiesto["giorno"] is None
 
 
 @pytest.mark.asyncio
 async def test_senza_archivio_la_rotta_lo_DICHIARA():
-    r = await handle_oggetti(_richiesta({}))
+    r = await handle_facts(_richiesta({}))
     assert r.status == 503
 
 

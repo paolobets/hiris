@@ -3730,9 +3730,9 @@ def create_app() -> web.Application:
     # oggetti che l'aggregazione notturna ha costruito. Due GET, come
     # /api/casa e /api/memoria qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
-    from .api.handlers_cervello import handle_oggetti, handle_osservate
-    app.router.add_get("/api/cervello/osservate", handle_osservate)
-    app.router.add_get("/api/cervello/oggetti", handle_oggetti)
+    from .api.handlers_cervello import handle_facts, handle_watching
+    app.router.add_get("/api/cervello/osservate", handle_watching)
+    app.router.add_get("/api/cervello/oggetti", handle_facts)
 
     return app
 
