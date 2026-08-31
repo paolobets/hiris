@@ -385,7 +385,7 @@ _METODI_HA_CLIENT = frozenset({
     "salva_configurazione", "cancella_configurazione", "valida_config",
     "_esito_ws", "crea_helper", "cancella_helper", "elenca_etichette",
     "crea_etichetta", "aggiungi_etichetta_a", "estrai_dal_bersaglio",
-    "leggi_plance", "get_error_log", "_health_value", "get_system_health",
+    "leggi_plance", "_health_value", "get_system_health",
     "storico", "diario", "render_template", "_ws_batch", "_ws_request",
     "_ws_command", "_ws_call", "statistiche", "statistiche_orarie",
     "_richiedi_statistiche", "legami", "problemi", "direzioni_energia",

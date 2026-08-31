@@ -76,23 +76,3 @@ def _make_ws_registry_mock(msg_type: str, result_data: list) -> tuple:
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
     return session, ws
-
-
-@pytest.mark.asyncio
-async def test_get_error_log_parses_counts(client):
-    mock_resp = AsyncMock()
-    mock_resp.raise_for_status = MagicMock()
-    mock_resp.text = AsyncMock(return_value=(
-        "2026-01-01 ERROR (MainThread) [homeassistant] Something broke\n"
-        "2026-01-01 WARNING (MainThread) [sensor] Minor issue\n"
-        "2026-01-01 WARNING (MainThread) [sensor] Another\n"
-    ))
-    client._session = MagicMock()
-    client._session.get = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(return_value=mock_resp),
-        __aexit__=AsyncMock(return_value=False),
-    ))
-    result = await client.get_error_log(limit=50)
-    assert result["errors"] == 1
-    assert result["warnings"] == 2
-    assert len(result["top_errors"]) == 1

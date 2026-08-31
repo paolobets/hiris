@@ -884,31 +884,6 @@ class HAClient:
     # invocava mai (lo nominava solo nei propri messaggi d'errore, come
     # suggerimento per l'LLM), ne' alcun altro modulo vivo.
 
-    async def get_error_log(self, limit: int = 100) -> dict:
-        """Fetch HA error log and return parsed summary."""
-        _empty = {"errors": 0, "warnings": 0, "top_errors": []}
-        url = f"{self._base_url}/api/error_log"
-        try:
-            async with self._session.get(url) as resp:
-                if resp.status in (403, 404):
-                    logger.debug("get_error_log: endpoint returned %s — skipping", resp.status)
-                    return _empty
-                resp.raise_for_status()
-                text = await resp.text()
-        except Exception as exc:
-            logger.debug("get_error_log: unavailable (%s)", exc)
-            return _empty
-        lines = text.strip().splitlines()
-        errors, warnings, top_errors = 0, 0, []
-        for line in lines[-limit:]:
-            if " ERROR " in line:
-                errors += 1
-                if len(top_errors) < 5:
-                    top_errors.append(line[20:120] if len(line) > 20 else line)
-            elif " WARNING " in line:
-                warnings += 1
-        return {"errors": errors, "warnings": warnings, "top_errors": top_errors}
-
     @staticmethod
     def _health_value(value: Any) -> Any:
         """Appiattisce un valore di system_health in uno scalare presentabile.

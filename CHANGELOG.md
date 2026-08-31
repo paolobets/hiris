@@ -21,6 +21,14 @@ briefing per una riga malformata e' peggio che ometterla.
 
 Provato per mutazione: tolta la guardia, due test diventano rossi con `KeyError`.
 
+**Un metodo cancellato, e non era una rinomina.** `HAClient.get_error_log()` chiedeva
+`GET /api/error_log`, che su Home Assistant 2026.8.3 risponde **404** — provato sulla casa vera
+con un token valido, mentre `/api/`, `/api/config` e `/api/logbook` rispondono 200. Il metodo
+inghiottiva il 404 e restituiva `{"errors": 0, "warnings": 0}`: collegato a uno strumento
+avrebbe detto «zero errori» su una casa che ne aveva 6 e 11 warning. Non era riparabile — era
+il metodo intero a essere sbagliato — e non aveva nessun chiamante vivo. La via viva
+(`system_log/list` sul WebSocket) e' una fetta a se'.
+
 Il resto del lavoro di questo giro non si vede usando HIRIS — 25 identificatori con parole inglesi
 in ordine italiano o tenute insieme da una preposizione italiana, un cancello che vieta quella
 forma per sempre su tutto il Python del progetto, e un esempio falso corretto nella specifica della
