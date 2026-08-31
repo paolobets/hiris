@@ -409,6 +409,49 @@ ciascuno dei sei ambiti chiusi, che deve restare identico a quello noto (oggi:
 quell'insieme e' una parola che ha attraversato un confine: o la si corregge a mano nel file
 toccato -- come e' stato fatto tutte e tre le volte -- o la parola non entra.
 
+## Due difetti di composizione, e solo uno si puo' meccanizzare
+
+**Aggiunto dopo la misura ordine-e-preposizioni del 31/08.** Quella misura ha letto uno per uno i
+676 composti interamente inglesi di `hiris/app/` e ne ha trovati 25 difettosi (3,0% su 844
+composti vivi). **Nessuno dei 25 sarebbe uscito rilanciando `scripts/rinomina.py`**: sono fatti di
+parole gia' inglesi, e lo strumento non ha niente da tradurre. Ma i 25 non sono una cosa sola: sono
+due difetti diversi, e si difendono in due modi diversi.
+
+**① La giuntura italiana -- MECCANIZZABILE, e ora c'e' un cancello.** `_prompt_di_system`,
+`area_del_device`, `behavior_loaded_il`, `state_e_cost`, `da_anchor`, `da_iso`/`a_iso`,
+`da_ts`/`a_ts`: una preposizione (o un articolo, o una congiunzione) italiana che tiene insieme
+parole inglesi. E' un fatto di FORMA -- la parola c'e' o non c'e' -- quindi un test la puo' vietare
+per sempre, comprese le 11.266 righe dei sottosistemi che nessuno ha ancora aperto. Il cancello e'
+`tests/test_preposizioni_italiane.py`, e porta scritte dentro le tre regole (forme piane, elisioni
+solo davanti a vocale, `a` solo se non e' l'ultimo pezzo), le due forme escluse con la misura degli
+usi inglesi veri (`in`, `per`), e cio' che non copre (i nomi `test_*`, il camelCase,
+`hiris/app/static/` che e' JavaScript).
+
+**② L'ordine invertito -- NON meccanizzabile, e il suo unico controllo e' la lettura.**
+`bands_all` invece di `all_bands`, `reason_downgrade` invece di `downgrade_reason`, `lines_pool`
+invece di `pool_lines`, `STATE_READABLE` invece di `READABLE_STATE`, `RETENTION_EXECUTIONS_S`
+invece di `EXECUTIONS_RETENTION_S`, `target_ha` invece di `ha_target`.
+
+**Perche' nessuna macchina lo puo' vedere**: gli stessi due pezzi inglesi sono corretti in
+ENTRAMBI gli ordini, e quale sia quello giusto dipende da quale pezzo e' la **testa** del nome --
+cioe' dal significato, non dalla forma. `state_class` e `class_state` sono due nomi diversi ed
+entrambi grammaticali; `promise_tools` sono gli strumenti di una promessa e `tools_promise`
+sarebbe la promessa di uno strumento. Riconoscere la testa vuol dire sapere di che cosa parla il
+nome, ed e' esattamente cio' che questo strumento dichiara di non saper fare («**Non indovina**»,
+docstring di `scripts/rinomina.py`).
+
+**Che non si possa automatizzare non la rende meno vincolante**: la rende una regola che nessuna
+macchina difende, e va detto. Il controllo e' la lettura, in due momenti: chi converte un file
+rilegge OGNI suo identificatore composto con una sola domanda -- «qual e' la testa?» -- e la review
+la rifa. La misura del 31/08 e' ripetibile ed e' il modo di rifarla su scala: si enumerano i
+composti con `spezza()`, si separano quelli interamente inglesi, e si leggono tutti.
+
+**Perche' la lettura distratta non basta**, misurato: `casa/nucleo.py:1572` dichiarava
+`_pop(pool_name, lines_pool, pool_weights, reserve)` -- **due parametri su tre in ordine inglese e
+uno in ordine italiano, nella stessa riga**. Nessuna delle review precedenti si e' fermata li',
+perche' un solo nome fuori posto in mezzo a due giusti non stona abbastanza. La domanda va fatta a
+ogni nome, non aspettata dall'occhio.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -2226,7 +2269,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 - **Cio' che resta italiano, e non e' un residuo**: ogni parola chiave verso
   `decisione_modelli.componi_adesso`/`componi_topologia`/`componi_pannello` (`catena`,
   `credenziali`, `modelli`, `ponte_attivo`, `scadenza_ponte_min`, `esiti`, `adesso`, `valori`,
-  `fonte`, `scelto`, `auto_risolto`, `indirizzo`, `timeout_ollama_s`, `nascondi_gratuiti`) e i
+  `fonte`, `scelto`, `auto_risolto`, `indirizzo`, `nascondi_gratuiti`) e i
   nomi importati da li' (`FINE_CATENA`, `modello_cli`, `piano_ha_il_token`): sono firme di un
   modulo di RADICE che questa fetta non converte. `registro_esiti.tutti()` e' protetto due volte
   -- e' un plurale, quindi mai applicato da solo, ed e' nella guardia `_METODI_REGISTRO_ESITI`

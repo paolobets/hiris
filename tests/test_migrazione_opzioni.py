@@ -160,7 +160,7 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
 
     archivio, _ = semina(load_models_config(str(tmp_path)),
                          {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
-    # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE e solo l'avvio lo
+    # `flags=True`: `seminato` e' un SEGNO DI MIGRAZIONE e solo l'avvio lo
     # scrive -- vedi `test_una_put_non_puo_riscrivere_il_segno_della_semina`.
     save_models_config(str(tmp_path), archivio, flags=True)
     disco = json.loads((tmp_path / "models_config.json").read_text(encoding="utf-8"))
@@ -588,7 +588,7 @@ def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato
     assert primo["models_config"]["chain_order"] == ["claude", "openrouter"]
 
     # Il gesto dell'utente: la ✕ su tutte e due le righe. E' una PUT, quindi
-    # `segni` resta falso -- come dalla pagina.
+    # `flags` resta falso -- come dalla pagina.
     save_models_config(str(tmp_path), {"chain_order": []})
 
     secondo = _avvia_la_semina_della_catena(

@@ -1916,7 +1916,7 @@ async def _on_startup(app: web.Application) -> None:
     # rilascio successivo (versione B, opzioni fuori dallo schema) troverebbe di
     # nuovo un archivio non seminato E un ambiente muto -- cioe' esattamente la
     # perdita di valori che la versione A esiste per evitare.
-    # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
+    # `flags=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
     # l'avvio e' l'unico posto che lo scrive -- una PUT non lo tocca piu'
     # (`handlers_models._MIGRATION_FLAGS`).
     save_models_config(data_dir, _archivio, flags=True)
