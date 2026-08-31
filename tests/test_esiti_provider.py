@@ -152,7 +152,7 @@ def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
         assert famiglia_da_codice(codice) in FAMIGLIE
     # `scaduto` non nasce da un codice HTTP: non c'è nessuna risposta da cui
     # prenderlo. La scrive a mano l'unico punto che la osserva
-    # (`handlers_chat._ripiega_sulla_catena`), ed è per questo che questa riga
+    # (`handlers_chat._downgrade_to_chain`), ed è per questo che questa riga
     # sta qui e non nel ciclo qui sopra.
     assert "scaduto" not in {famiglia_da_codice(c)
                              for c in (400, 401, 402, 403, 404, 429, 500, None)}

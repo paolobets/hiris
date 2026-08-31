@@ -40,7 +40,7 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import costruisci_nucleo, handle_get_home_space
+from hiris.app.api.handlers_casa import compose_briefing, handle_get_home_space
 from hiris.app.casa.anagrafe import (
     choose_sample,
     compare_with_home_assistant,
@@ -432,7 +432,7 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
 
     asyncio.run(giro_di_confronto_albero(app, cliente, quante=2)())
     assert all(g["errore"] for g in app["confronto_albero"]["guardate"])
-    testo, _ = costruisci_nucleo(app)
+    testo, _ = compose_briefing(app)
     assert "non si sono potute controllare" in testo
     archivio.close()
 
@@ -454,20 +454,20 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
 
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
-    """La catena intera: `app["confronto_albero"]` -> `costruisci_nucleo` ->
+    """La catena intera: `app["confronto_albero"]` -> `compose_briefing` ->
     `componi`. Senza questo cablaggio il giro sarebbe un dato scritto e mai
     letto -- la quarta fondamenta al contrario."""
     app = {"confronto_albero": {"aree_totali": 4, "guardate": [
         {"area": "cucina", "nome": "Cucina", "mancanti": [], "in_piu": ["light.fantasma"],
          "assente_in_ha": False},
     ]}}
-    testo, _ = costruisci_nucleo(app)
+    testo, _ = compose_briefing(app)
     assert "light.fantasma" in testo
     assert "sulle 4 della casa" in testo
 
 
 def test_senza_la_chiave_il_nucleo_non_afferma_che_l_albero_e_verificato():
-    testo, _ = costruisci_nucleo({})
+    testo, _ = compose_briefing({})
     assert "Confronto con Home Assistant" not in testo
 
 

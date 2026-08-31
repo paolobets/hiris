@@ -882,14 +882,14 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
 # `history` + `system_prompt` e rispondeva senza sapere nulla della casa,
 # mentre il percorso sincrono aveva il nucleo: era la disparita' che la fetta
 # chiude. Il pin decisivo non e' "il contesto c'e'" ma "e' IDENTICO a quello
-# del ramo sincrono": entrambi vengono da `componi_contesto_chat`, e due
+# del ramo sincrono": entrambi vengono da `compose_chat_context`, e due
 # composizioni separate divergerebbero in silenzio (la "funzione doppia"
 # vietata da CLAUDE.md).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
-    from hiris.app.api.handlers_chat import componi_contesto_chat
+    from hiris.app.api.handlers_chat import compose_chat_context
     from hiris.app.casa.archivio import HomeSpaceStore
     from hiris.app.memoria.archivio import MemoryStore
 
@@ -928,7 +928,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la
         # stessa app: se un giorno i due percorsi divergono, questo assert e'
         # il primo a saperlo.
-        assert contesto == componi_contesto_chat(app, data_dir)
+        assert contesto == compose_chat_context(app, data_dir)
     finally:
         archivio_casa.close()
         archivio_memoria.close()
@@ -1166,7 +1166,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     assert _piano_puo_rispondere(app) == (True, "")
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
-    # `_piano_puo_rispondere`: la scrive `_ripiega_sulla_catena`.
+    # `_piano_puo_rispondere`: la scrive `_downgrade_to_chain`.
     assert "scadenza" in _MOTIVI_RIPIEGO
 
 

@@ -992,7 +992,7 @@ def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
     """La prova gemella del silenzio. Senza la natura la nota perderebbe la
     meta' per cui esiste, e «ha risposto pinco, .» sarebbe una riga rotta che
     parla di soldi: meglio non scriverla. Stessa regola di
-    `_nota_di_chi_ha_risposto` quando non sa chi ha risposto."""
+    `_who_answered_note` quando non sa chi ha risposto."""
     assert nota_ripiego(motivo="scadenza", chi_ha_risposto="pinco") == ""
 
 

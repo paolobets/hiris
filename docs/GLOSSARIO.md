@@ -288,6 +288,40 @@ guardando il codice se il senso e' lo stesso di un ambito gia' qualificato o un 
 aggiungere la riga `parola (proprio_ambito)` di conseguenza -- esattamente il passo gia' fatto per
 `riga (api)` sopra.
 
+## Verbo e sostantivo possono condividere lo stesso inglese: e' una classe ACCETTATA
+
+**Scritta durante il Task 9 (lotto 12) su richiesta del coordinatore, dopo che era gia' successa
+cinque volte senza che nessuna riga la dichiarasse.** L'italiano distingue il verbo dal sostantivo
+dell'atto (`scrivi`/`scrittura`, `elenca`/`elenco`); l'inglese spesso no. Quando due parole
+italiane sono il verbo e il nome dello STESSO atto, la colonna «inglese» puo' contenere la stessa
+parola per entrambe, e **non e' l'omonimia che «Il limite della qualificazione per ambito»
+descrive**: li' una parola italiana porta due sensi diversi e va disambiguata; qui due parole
+italiane portano lo stesso senso, e il collasso e' una proprieta' della lingua di arrivo, non un
+difetto da contenere.
+
+Le sei coppie oggi in tabella -- **l'elenco e' il punto, non l'esempio**: cinque erano nate una
+per volta, ciascuna senza sapere delle altre, e la sesta stava per essere ridecisa da capo perche'
+nessuna riga diceva che la classe era ammessa.
+
+| verbo | sostantivo | inglese |
+|---|---|---|
+| `scrivi` | `scrittura` | `write` |
+| `elenca` | `elenco` | `list` |
+| `raggruppa` | `gruppo` | `group` |
+| `taglia` (come `tagliato`) | `taglio` | `cut` |
+| `leggi` | `lettura (consumi)` | `read` |
+| `chiama` | `chiamata` | `call` |
+| `ripiega` | `ripiego` | `downgrade` |
+
+**Il confine, perche' la classe non diventi un permesso generico:** vale solo quando il verbo e il
+sostantivo nominano lo stesso atto. Due parole italiane con sensi DIVERSI che finiscono sullo
+stesso inglese restano un difetto, e la guardia `Collisione` di `scripts/rinomina.py` le ferma
+quando si incontrano nello stesso file -- non perche' l'inglese coincida, ma perche' fondere due
+identita' diverse e' peggio che non rinominare. Le coppie qui sopra non la fanno mai scattare per
+un motivo strutturale, non per fortuna: verbo e sostantivo dello stesso atto non compaiono quasi
+mai come due identificatori distinti nella stessa funzione, e se accadesse la guardia direbbe di
+guardarli, che e' la risposta giusta.
+
 ## Le citazioni fra backtick seguono il codice
 
 **La prosa italiana non si traduce -- ma un identificatore citato fra backtick in un commento o in
@@ -352,7 +386,7 @@ gia' nella lingua di destinazione o sono una sigla, e sono state tolte a mano da
 
 | parola uscita dallo script | perche' e' stata scartata |
 |---|---|
-| `backend` | e' gia' inglese -- corretto durante la review finale del ramo, la ragione precedente citava un file che non esiste (nessun file si chiama `backend*.py`, solo la cartella `backends/`): il singolare vive come identificatore vero, per esempio `nome_backend` (`api/handlers_chat.py:302,303,305`), oltre che in prosa ovunque nel sottosistema |
+| `backend` | e' gia' inglese -- corretto durante la review finale del ramo, la ragione precedente citava un file che non esiste (nessun file si chiama `backend*.py`, solo la cartella `backends/`): il singolare vive come identificatore vero, per esempio `nome_backend` (`llm_router.py:218,228,231,242,245,249`; era anche in `api/handlers_chat.py:302,303,305`, dove il Task 9 lotto 12 l'ha portato a `backend_name` -- il pezzo `backend` resta invariato, che e' il punto di questa riga), oltre che in prosa ovunque nel sottosistema |
 | `sanitize` | e' gia' inglese, usata cosi' com'e' nel codice |
 | `yaml` | e' una sigla di formato, non si traduce |
 | `grandezza` | **contratto col modello, come i 13 nomi degli strumenti: e' una CHIAVE dello schema di `REMEMBER_TOOL_DEF`** (`casa/strumenti.py:397`, dentro `input_schema.properties`), riletta col suo nome esatto quando l'argomento torna indietro (`casa/strumenti.py:1430`, `arguments.get("grandezza")`), e ripetuta nella descrizione che il modello legge. Le stringhe che il modello legge non si toccano mai -- e questa e' una di quelle, non un identificatore Python. **Sta QUI e non fra le parole non ancora decise perche' «non decisa» significa invisibile, non protetta**: `classifica('grandezza')` tornava `None` solo perche' nessuno l'aveva scritta, e il giorno in cui qualcuno la decidesse per un'altra ragione (e' un parametro keyword-only vero di `MemoryStore.remember` e di `memoria/interpretazione.py::deduci_unit`/`validate`) niente lo fermerebbe. Scritta qui, lo strumento la salta per costruzione e ignora anche un'eventuale riga futura. Rilievo della review del lotto 9: la ragione registrata allora era l'asimmetria fra `def` e chiamata dentro `memoria/` -- vera, ma **evapora** il giorno in cui si riaprisse `casa/`; questa no |
@@ -1220,7 +1254,7 @@ al Task 6 invece che deciso qui.
 | chiudi | close |
 | citato | cited |
 | classe | class |
-| coda | tail |
+| coda | tail | **due sensi vivi, e quello che lo strumento applica da solo e' il minoritario -- quarto caso della famiglia gia' descritta in «Il limite della qualificazione per ambito» (Task 9, lotto 12).** `tail` e' giusto per `agent/runner.py:1559` (`coda = stdout.strip()[-200:]`, l'ultimo pezzo del flusso letto) e per i due `_coda` di `tests/test_strumenti_al_ponte.py` e `tests/test_token_interno.py`. Ma in `api/handlers_chat.py::_downgrade_to_chain` e nei quattro file di test che la nominano (`test_reasoning_queue.py`, `test_instradamento.py::_CodaFinta`, `test_promessa_dal_ponte.py`, `test_schedulatore_turno.py`) `coda` e' la CODA DI LAVORO, cioe' `ReasoningQueue`: `tail = request.app["reasoning_queue"]` sarebbe un nome che mente. Qualificare per ambito non aiuta -- i due sensi convivono dentro `agent/` come dentro `tests/` -- e nemmeno la forma li separa: sono entrambi NUDI, che e' esattamente il caso peggiore descritto per `fuori (casa)`. Si decide occorrenza per occorrenza guardando il codice: `queue` quando e' `ReasoningQueue` (il nome che l'app usa gia' nella chiave `reasoning_queue` e nella classe), `tail` quando e' la coda di una stringa |
 | codice | code |
 | colonna | column |
 | configurazione | configuration |
@@ -1382,6 +1416,7 @@ al Task 6 invece che deciso qui.
 | ricostruisci | rebuild |
 | riepilogo | summary |
 | rifiuta | reject |
+| ripiega | downgrade |
 | riga | row |
 | riga (api) | row |
 | riga (casa) | line |
@@ -2011,6 +2046,76 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 - Nessuna parola nuova nel glossario per questo lotto: l'insieme dei file che lo strumento
   riscriverebbe nei sei ambiti chiusi e' rimasto identico (`resolver.py`, `composer.py`,
   `strumenti.py`), misurato prima del commit come prescritto sotto.
+
+**Decisioni del lotto 12 (`api/handlers_chat.py` + la coppia `nucleo` di `api/handlers_casa.py`).**
+
+- **`esito` -> la QUARTA voce della guardia meccanica, e la sola delle quattro che ferma un
+  difetto ATTIVO invece che futuro.** `handlers_chat.py:303` scrive
+  `registro.esito(nome_backend)` su un `RegistroEsiti` (`esiti_provider.py`, file di RADICE mai
+  convertito), ed `esito -> occurrence` e' deciso da sempre: senza guardia il join produceva
+  `registry.occurrence(...)`, cioe' un `AttributeError` alla prima chat che ripiega dal piano alla
+  catena. Misurato con `rinomina.riscrivi()` sul file vero PRIMA di scriverlo, e provato per
+  mutazione (tolta la voce dall'unione, la sostituzione ricompare). E' l'unico attributo di tutto
+  `api/` in questa condizione.
+- **`coda` -> `queue`, mai `tail`** (vedi l'annotazione accanto alla riga `coda` in «Le parole
+  ordinarie»): `coda = request.app["reasoning_queue"]` e' la coda di lavoro, non la coda di una
+  stringa. Il senso `tail` esiste ed e' vivo (`agent/runner.py:1559`), quindi la riga NON e'
+  sbagliata -- e' il quarto caso di «due sensi dentro lo stesso ambito», e per giunta il peggiore:
+  entrambi vivono nella forma NUDA, quella che lo strumento applica da solo senza chiedere.
+- **`registro` -> `occurrence_registry`, non `registry`.** La riga `registro` di «I concetti» e'
+  il registro dei SERVIZI di Home Assistant, e nello stesso file, 130 righe piu' su,
+  `create_tool_dispatcher` passa gia' `registry=app.get("registro_servizi")` proprio con quel
+  senso. Applicare `registry` al `RegistroEsiti` avrebbe messo due cose diverse sotto lo stesso
+  nome nello stesso modulo -- la stessa ragione per cui `caduti` divento' `fallen_stores` e non
+  `unavailable` in `casa/strumenti.py`.
+- **`motivo` e `turno`: la trappola di `stato` (lotto 10), altre due volte, e la seconda ATTRAVERSA
+  UN FILE.** Lo strumento rinomina il parametro nella `def` e lascia intatte le parole chiave nelle
+  CHIAMATE. Per `_who_answered_note(*, motivo)` le due chiamate erano nello stesso file; per
+  `create_tool_dispatcher(app, turno=...)` una delle tre era in `api/handlers_mcp.py:438`, cioe' in
+  un altro file gia' convertito, dove nessun cancello di questo lotto guardava. Chiuse a mano su
+  tutte le sponde. **Cio' che NON si tocca, e sta a un carattere di distanza:**
+  `nota_ripiego(motivo=..., chi_ha_risposto=...)` (`decisione_modelli.py`, file di RADICE) e
+  `runner.chat(strumenti=..., dispatcher=...)` -- parole chiave di firme altrui, che restano
+  italiane finche' quei file non si convertono.
+- **`risposta` -> `answer` in `_downgrade_to_chain`, ma `response` in `handle_chat_reply_poll`**:
+  nel primo caso la variabile tiene il testo che il modello ha prodotto (lo stesso senso che
+  `schedulatore/turno.py` chiama gia' `answer`), nel secondo tiene un `web.Response`. Lo strumento
+  applicava `answer` a entrambe. **Debito onesto che ne resta**: nel ramo sincrono di `handle_chat`
+  la stessa cosa del primo caso si chiama gia' `response` da prima di questa fetta -- due nomi
+  inglesi per un concetto solo nello stesso file. Non l'ho unificato: `response` non e' un
+  identificatore italiano e non ricade nel mandato di questa fetta.
+- **`costruisci_dispatcher_strumenti -> create_tool_dispatcher` e `costruisci_nucleo ->
+  compose_briefing`: il suggerimento meccanico (`propose_*`) mentiva su entrambe.** `costruisci`
+  e' il verbo dello strumento che PROPONE una costruzione (`costruisci -> propose`), e nessuna
+  delle due funzioni propone niente: una costruisce un oggetto, l'altra compone un testo chiamando
+  `casa/nucleo.compose`. `build_*` e' escluso a sua volta perche' `build` e' bloccato dalla regola
+  di collisione (vedi la riga `costruzione`). Scelti `create` (riga gia' decisa, gia' usata per
+  `create_rounds_per_exchange` nel lotto 10) e `compose` (riga gia' decisa) sul nome di cio' che le
+  due funzioni FANNO.
+- **La coppia `nucleo` esce intera, mai a meta'**: `compose_briefing` e `handle_get_briefing`
+  (`api/handlers_casa.py`) si convertono in QUESTO lotto e non nel loro, perche' la prima e'
+  importata per nome da `api/handlers_chat.py:28` e da `schedulatore/turno.py:128,259`.
+  Rinominarne una sola avrebbe lasciato mezza coppia sulla stessa parola -- lo stesso difetto di
+  `_risolvi_ancora`/`ancora` corretto poche ore prima.
+- **Composti ad hoc, tutti privati e senza chiamanti esterni**: `_ripiega_sulla_catena ->
+  _downgrade_to_chain` (con la parola nuova `ripiega -> downgrade`, verbo del gia' deciso `ripiego
+  -> downgrade`: vedi «Verbo e sostantivo possono condividere lo stesso inglese»),
+  `_nota_di_chi_ha_risposto -> _who_answered_note`, `_motivo_ripiego -> _downgrade_reason`
+  (l'aggettivo prima del nome, non l'ordine italiano `reason_downgrade` del suggerimento),
+  `_motivo_del_piano -> _subscription_reason` (`piano (abbonamento)`, la riga annotata come
+  irraggiungibile e applicata a mano), `_scadenza_min -> _deadline_min`,
+  `nome_backend -> backend_name`, `dispatcher_strumenti -> tool_dispatcher`,
+  `nucleo_testo`/`_nucleo_riepilogo -> briefing_text`/`_briefing_summary`, `id_turno ->
+  exchange_id`, `_via -> _route` (`via` mai decisa: il nome dice cosa il valore SCEGLIE -- il
+  canale che servira' il turno -- non traduce la parola).
+- **Residui dichiarati, con la loro ragione**: `_PREDEFINITI_ARCHIVIO` (importato da
+  `api/handlers_models.py`, l'ultimo file riservato di `api/`); `nota_ripiego` e le sue due parole
+  chiave (`decisione_modelli.py`, radice); `risolvi_ripiego`/`reclama_scaduto`/`has_pending_chat`
+  (`reasoning/queue.py`, mai convertito); `giorni`/`giorni_conservazione` (la decisione del lotto
+  1, invariata); i nomi delle funzioni `test_*` che contengono un identificatore rinominato
+  (`tests/test_schedulatore_wiring.py:315`) -- i nomi dei test sono prosa italiana in tutti e 172
+  i file, e rinominarne uno perche' contiene un nome convertito sarebbe arbitrario finche' non si
+  converte `tests/` per intero.
 
 ## I nomi degli strumenti
 

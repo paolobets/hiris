@@ -23,7 +23,7 @@ import asyncio
 
 import pytest
 
-from hiris.app.api.handlers_casa import costruisci_nucleo
+from hiris.app.api.handlers_casa import compose_briefing
 from hiris.app.casa.nucleo import compose
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import rileggi_problemi_ha
@@ -318,19 +318,19 @@ def test_is_fixable_assente_non_e_un_no():
 # --------------------------------------------------------------------------
 
 def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
-    """La catena intera: `app["problemi_ha"]` -> `costruisci_nucleo` ->
+    """La catena intera: `app["problemi_ha"]` -> `compose_briefing` ->
     `componi`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
     app = {"problemi_ha": {"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
     ]}}
-    testo, _ = costruisci_nucleo(app)
+    testo, _ = compose_briefing(app)
     assert "caldaia" in testo
     assert "pressione" in testo
 
 
 def test_senza_la_chiave_il_nucleo_non_afferma_che_la_casa_e_sana():
-    testo, _ = costruisci_nucleo({})
+    testo, _ = compose_briefing({})
     assert "Riparazioni" not in testo
 
 
@@ -360,7 +360,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     app: dict = {}
     asyncio.run(rileggi_problemi_ha(app, _ClienteRotto()))
     assert app["problemi_ha"] == {"errore": "Home Assistant non ha risposto"}
-    testo, _ = costruisci_nucleo(app)
+    testo, _ = compose_briefing(app)
     assert "non si e' potuto guardare" in testo
 
 

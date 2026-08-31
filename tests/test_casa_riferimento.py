@@ -191,15 +191,15 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
 def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     """Chi lo riempie? La domanda che questo progetto ha gia' pagato tre volte.
 
-    `componi` e' pura e riceve `adesso`: se `costruisci_nucleo` -- l'unico
+    `componi` e' pura e riceve `adesso`: se `compose_briefing` -- l'unico
     compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
     GET /api/nucleo -- non gliela passa, il parametro esiste, i test passano,
     e il modello continua a indovinare l'ora esattamente come prima."""
-    from hiris.app.api.handlers_casa import costruisci_nucleo
+    from hiris.app.api.handlers_casa import compose_briefing
 
     archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
 
-    testo, _ = costruisci_nucleo({"archivio_casa": archivio})
+    testo, _ = compose_briefing({"archivio_casa": archivio})
 
     assert "Adesso sono le" in testo, (
         "il nucleo di produzione non porta l'ora: il parametro c'e' e nessuno "

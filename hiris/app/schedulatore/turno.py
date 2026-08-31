@@ -125,8 +125,8 @@ async def interpreta_promise(app, promise: dict) -> dict:
     turno che finisce senza chiamare `concludi` e' un errore dichiarato, non un
     «forse e' andata bene».
     """
-    from ..api.handlers_casa import costruisci_nucleo
-    from ..api.handlers_chat import costruisci_dispatcher_strumenti
+    from ..api.handlers_casa import compose_briefing
+    from ..api.handlers_chat import create_tool_dispatcher
     from ..instradamento import chi_risponde
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
@@ -144,12 +144,12 @@ async def interpreta_promise(app, promise: dict) -> dict:
     if runner is None:
         return {"errore": "non c'era nessun modello a cui chiedere."}
 
-    dispatcher = PromiseDispatcher(costruisci_dispatcher_strumenti(app))
+    dispatcher = PromiseDispatcher(create_tool_dispatcher(app))
     try:
-        # Lo STESSO nucleo della chat (`costruisci_nucleo`), non una
+        # Lo STESSO nucleo della chat (`compose_briefing`), non una
         # composizione parallela: due contesti che descrivono la stessa casa
         # sono due verita' che divergono.
-        briefing, _summary = costruisci_nucleo(app)
+        briefing, _summary = compose_briefing(app)
     except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
                        promise["id"], type(error).__name__, error)
@@ -256,11 +256,11 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     composto qui perche' e' l'ultimo punto in cui esistono l'app e gli
     archivi, con la STESSA funzione del ramo sincrono.
     """
-    from ..api.handlers_casa import costruisci_nucleo
+    from ..api.handlers_casa import compose_briefing
     from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
 
     try:
-        briefing, _summary = costruisci_nucleo(app)
+        briefing, _summary = compose_briefing(app)
     except Exception as error:
         logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
                        promise["id"], type(error).__name__, error)
@@ -296,7 +296,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
 
 def _prompt_di_system() -> str:
     # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
-    # della chat (`costruisci_nucleo`, vedi `interpreta_promise` sopra), coi
+    # della chat (`compose_briefing`, vedi `interpreta_promise` sopra), coi
     # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
     # queste due righe il prompt non lo spiegava, e il modello non aveva modo
     # di sapere che poteva usarli direttamente invece di chiamare `cerca`.

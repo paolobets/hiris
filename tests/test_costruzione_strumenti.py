@@ -91,7 +91,7 @@ async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
     costruiscono ciascuno un proprio `DispatcherStrumenti`, ed entrambi
     usano "t7" per caso, non per dimostrazione): e' che LA STESSA istanza --
     quella che il chiamante costruisce UNA volta per turno
-    (`costruisci_dispatcher_strumenti`) -- dia la stessa identita' a
+    (`create_tool_dispatcher`) -- dia la stessa identita' a
     ENTRAMBI gli strumenti quando li chiama in sequenza nello stesso turno.
     fetta «costruire», review indipendente (I3)."""
     workshop = FintaOfficina()

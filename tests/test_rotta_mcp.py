@@ -638,7 +638,7 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
                 costruttori.append(f"{percorso.relative_to(radice)}:{numero}")
     assert len(costruttori) == 1, (
         "il dispatcher va costruito in UN SOLO punto "
-        f"(costruisci_dispatcher_strumenti); trovati invece: {costruttori}"
+        f"(create_tool_dispatcher); trovati invece: {costruttori}"
     )
     assert costruttori[0].replace("\\", "/").startswith("api/handlers_chat.py:"), costruttori
 
@@ -646,22 +646,22 @@ def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
 @pytest.mark.asyncio
 async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monkeypatch):
     """La controprova dinamica del test qui sopra: se `handle_mcp` smettesse di
-    passare da `costruisci_dispatcher_strumenti`, questo test cadrebbe.
+    passare da `create_tool_dispatcher`, questo test cadrebbe.
 
     fetta «costruire», review indipendente (I3): il cablaggio della guardia
-    non era pinnato da nessun test -- cancellare `turno=exchange_id` dalla
+    non era pinnato da nessun test -- cancellare `exchange=exchange_id` dalla
     chiamata in `handlers_mcp.py` avrebbe reso ogni proposta nata dal ponte
     inconfermabile, e nessun test se ne sarebbe accorto. Qui si verifica che
-    il `turno` ricevuto dal costruttore sia DAVVERO il valore
+    l'`exchange` ricevuto dal costruttore sia DAVVERO il valore
     dell'intestazione `X-HIRIS-Turno`, non un `None` o un valore inventato."""
     chiamate = []
-    vero = handlers_mcp.costruisci_dispatcher_strumenti
+    vero = handlers_mcp.create_tool_dispatcher
 
-    def _spia(app, turno=None):
-        chiamate.append((app, turno))
-        return vero(app, turno=turno)
+    def _spia(app, exchange=None):
+        chiamate.append((app, exchange))
+        return vero(app, exchange=exchange)
 
-    monkeypatch.setattr(handlers_mcp, "costruisci_dispatcher_strumenti", _spia)
+    monkeypatch.setattr(handlers_mcp, "create_tool_dispatcher", _spia)
     client, _ = rotta
     intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-guardia-mcp"}
     await _jsonrpc(client, {

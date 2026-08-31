@@ -11,7 +11,7 @@ e' uscita con la fetta E2, l'organismo proattivo con la E3) per un job
 fetta "il ponte riceve il nucleo" (parita' A, Task 2): il ponte non riceve
 piu' soltanto `history` + `system_prompt`. Riceve anche il `contesto` -- la
 STESSA stringa che il ramo sincrono passa al runner, composta da
-`handlers_chat.componi_contesto_chat` (nucleo + sessioni precedenti). Da qui
+`handlers_chat.compose_chat_context` (nucleo + sessioni precedenti). Da qui
 in poi questo file compone il system prompt del ponte NELLO STESSO ORDINE del
 ramo sincrono (`claude_runner.py`, `ClaudeRunner.chat`): BASE -> persona ->
 modificatori -> guida -> contesto. Le costanti di BASE si IMPORTANO da
@@ -381,7 +381,7 @@ def build_chat_messages(system_prompt: str, history: list, *,
     oltre alla trascrizione» -- vero finche' il job del ponte portava solo
     `history` + `system_prompt`. Ora porta anche `contesto`, la stessa
     stringa che il ramo sincrono passa al runner
-    (`handlers_chat.componi_contesto_chat`: nucleo + sessioni precedenti), e
+    (`handlers_chat.compose_chat_context`: nucleo + sessioni precedenti), e
     quella stringa entra in coda al system. Resta vero -- e la guida continua
     a dirlo -- che gli STRUMENTI non ci sono: `contesto` e' una fotografia,
     non un accesso.

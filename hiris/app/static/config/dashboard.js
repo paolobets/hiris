@@ -10,8 +10,8 @@
      - GET /api/casa   -> l'anagrafe ricostruita, il comportamento, le plance;
      - GET /api/nucleo -> il testo ESATTO che il modello ha davanti in chat
                           (la stessa composizione, non un secondo conto:
-                          `handlers_casa.costruisci_nucleo()` e' condivisa con
-                          `handlers_chat.componi_contesto_chat`).
+                          `handlers_casa.compose_briefing()` e' condivisa con
+                          `handlers_chat.compose_chat_context`).
 
    La regola che governa ogni riga qui sotto: i campi di /api/casa hanno TRE
    stati, non due. `null` = «non ho potuto controllare», `[]`/`{}`/`0` = «ho

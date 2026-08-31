@@ -79,7 +79,7 @@ def test_il_dispatcher_riceve_la_cronaca_dall_app():
     """Senza questa riga `accaduto` risponderebbe sempre senza attribuzione:
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al
     contrario, lo stesso difetto gia' pagato da `legami`."""
-    sorgente = inspect.getsource(handlers_chat.costruisci_dispatcher_strumenti)
+    sorgente = inspect.getsource(handlers_chat.create_tool_dispatcher)
     assert 'journal=app.get("cronaca")' in sorgente
 
 

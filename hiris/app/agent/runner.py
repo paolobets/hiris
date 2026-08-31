@@ -27,7 +27,7 @@ fetta "il ponte riceve il nucleo" (parita' A, Task 2): questa nota diceva
 «ragiona in puro testo, senza poter leggere o controllare la casa». La prima
 meta' e' diventata falsa: il job di chat porta ora anche `contesto`, la
 STESSA stringa che il ramo sincrono passa al runner
-(`handlers_chat.componi_contesto_chat`: nucleo + sessioni precedenti), e
+(`handlers_chat.compose_chat_context`: nucleo + sessioni precedenti), e
 `_reason_chat` la passa a `prompts.build_chat_messages`. Il modello quindi
 LEGGE una fotografia della casa, presa quando il messaggio e' stato accodato;
 cio' che continua a non poter fare e' guardarla ADESSO e agire su di essa.
@@ -1218,7 +1218,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # normale pur essendo cieca sulla casa. Si distingue la chiave ASSENTE
     # (job legacy: log esplicito) da una chiave presente e vuota (il nucleo
     # non si e' composto: lo dichiara gia' il suo testo, vedi
-    # `handlers_chat.componi_contesto_chat`). In entrambi i casi il prompt
+    # `handlers_chat.compose_chat_context`). In entrambi i casi il prompt
     # dice al modello che in questo turno non ha la fotografia della casa
     # (`prompts._CONTESTO_ASSENTE`): il degrado si dichiara anche a valle,
     # non solo in un log che nessuno legge.

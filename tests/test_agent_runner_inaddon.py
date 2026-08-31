@@ -437,7 +437,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # ── fix round 1, Important 1: la falsita' speculare era stata corretta
     # per la casa («leggere» -> «guardare adesso») e lasciata in piedi per la
     # META' MEMORIA. Il contesto che arriva al ponte contiene TUTTI i ricordi
-    # (`costruisci_nucleo` chiama `richiama(limite=conta())`) e le sessioni
+    # (`compose_briefing` chiama `richiama(limite=conta())`) e le sessioni
     # precedenti: dire al modello che non puo' «richiamare ricordi» mentre il
     # ricordo e' scritto tre blocchi piu' sotto e' lo stesso difetto.
     assert "richiamare ricordi" not in system

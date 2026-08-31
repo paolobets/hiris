@@ -938,7 +938,7 @@ class ToolDispatcher:
         self._actuator = actuator
         # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
-        # vedi `handlers_chat.py::costruisci_dispatcher_strumenti`) ma vive
+        # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
         # dipendenza. Default `None`: nessuna cache, `_cerca`/`_ricorda`
         # ricostruiscono l'indice ogni volta come facevano prima di questo
@@ -1009,7 +1009,7 @@ class ToolDispatcher:
         si autenticano da soli sono due cose che possono divergere.
 
         Il canale arriva da fuori (`ha=`), dall'unico costruttore del
-        dispatcher (`api/handlers_chat.py::costruisci_dispatcher_strumenti`),
+        dispatcher (`api/handlers_chat.py::create_tool_dispatcher`),
         ed e' lo stesso oggetto che riceve la porta dell'azione.
 
         C'e' stato per poco un ripiego che leggeva `porta._ha` -- l'attributo
@@ -1270,7 +1270,7 @@ class ToolDispatcher:
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
-        # recenti -- stessa scelta di `handlers_casa.handle_get_nucleo`.
+        # recenti -- stessa scelta di `handlers_casa.handle_get_briefing`.
         memories = self._memory.fetch(limit=self._memory.count())
         # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa

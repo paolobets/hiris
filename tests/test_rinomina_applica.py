@@ -352,6 +352,35 @@ def test_un_metodo_che_non_e_di_usagestore_si_applica_normalmente():
     assert proposte == []
 
 
+def test_un_metodo_di_registroesiti_non_si_applica_da_solo():
+    """Quarta voce della guardia (Task 9, `api/handlers_chat.py`), e la sola
+    delle quattro che previene un difetto ATTIVO invece che futuro:
+    `esito -> occurrence` e' deciso da sempre, e `handlers_chat.py:303` legge
+    `registro.esito(...)` su un `RegistroEsiti` (`esiti_provider.py`, file di
+    RADICE mai convertito). Senza questa voce il join produce
+    `registry.occurrence(...)`, cioe' un `AttributeError` alla prima chat che
+    ripiega dal piano alla catena -- e nessun cancello lo vede, perche' il
+    finto che imita il registro nei test verrebbe rinominato insieme al
+    chiamante."""
+    gf = rinomina.Glossario(mappa={"esito": "occurrence"})
+    dentro = "esito = registro.esito(nome_backend)\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "occurrence = registro.esito(nome_backend)\n", (
+        "l'attributo di RegistroEsiti non si applica da solo; la variabile "
+        "locale si'")
+    assert [p.nome for p in proposte] == ["esito"]
+
+
+def test_un_attributo_che_non_e_di_registroesiti_si_applica_normalmente():
+    """La controprova, come per le altre tre voci: la guardia e' un elenco di
+    nomi, non un blocco generico su ogni attributo dopo un punto."""
+    gf = rinomina.Glossario(mappa={"esitante": "hesitant"})
+    dentro = "x = registro.esitante()\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "x = registro.hesitant()\n"
+    assert proposte == []
+
+
 def test_un_campo_di_impostazionichat_non_si_applica_da_solo():
     """Terza voce della stessa guardia (Task 9, `api/handlers_impostazioni.py`):
     `ImpostazioniChat` e' un dataclass, non una classe di servizio -- il

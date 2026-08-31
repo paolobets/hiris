@@ -328,7 +328,7 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
 
 # I tre fatti che il turno puo' aver osservato, e non uno di piu'. Sono le
 # STESSE tre parole che `instradamento._piano_puo_rispondere` restituisce e
-# che `_ripiega_sulla_catena` passa: la corrispondenza e' pinnata da un test,
+# che `_downgrade_to_chain` passa: la corrispondenza e' pinnata da un test,
 # perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
 # -- produrrebbe silenzio, che e' peggio.
 _MOTIVI_RIPIEGO: dict[str, str] = {
@@ -358,7 +358,7 @@ def nota_ripiego(*, motivo: str, chi_ha_risposto: str) -> str:
     approssimativa: producono `""`, e la nota non si scrive. La natura e' la
     meta' che riguarda i soldi -- e' la ragione per cui questa riga esiste -- e
     una riga falsa sui soldi e' peggio del silenzio. Il chiamante ha gia' la
-    stessa regola per «chi ha risposto» (vedi `_nota_di_chi_ha_risposto`): qui
+    stessa regola per «chi ha risposto» (vedi `_who_answered_note`): qui
     si ridice perche' questa funzione puo' essere chiamata da chiunque, e una
     regola che vale solo se il chiamante se la ricorda non e' una regola.
     """

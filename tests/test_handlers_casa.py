@@ -9,7 +9,7 @@ il secondo modo di fare la stessa cosa che questo refactor vuole eliminare.
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import handle_get_home_space, handle_get_nucleo
+from hiris.app.api.handlers_casa import handle_get_briefing, handle_get_home_space
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.memoria.archivio import MemoryStore
 
@@ -169,7 +169,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
     app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    app.router.add_get("/api/nucleo", handle_get_briefing)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/nucleo")
@@ -197,7 +197,7 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     app["archivio_casa"] = None
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    app.router.add_get("/api/nucleo", handle_get_briefing)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/nucleo")
@@ -228,7 +228,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    app.router.add_get("/api/nucleo", handle_get_briefing)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/nucleo")
@@ -265,7 +265,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    app.router.add_get("/api/nucleo", handle_get_briefing)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/nucleo")
@@ -307,7 +307,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    app.router.add_get("/api/nucleo", handle_get_briefing)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/nucleo")

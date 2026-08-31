@@ -10,7 +10,7 @@ casa che ne vedono due diverse, vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
 
 Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.componi`, condiviso
-con GET /api/nucleo tramite `handlers_casa.costruisci_nucleo` -- stessa
+con GET /api/nucleo tramite `handlers_casa.compose_briefing` -- stessa
 composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
 chiuse, non conoscenza sulla casa.
@@ -70,7 +70,7 @@ def _close_chat_stores_after_each_test():
 
 class _CacheFinta:
     """Sostituto minimo di `EntityCache` -- stessa forma usata da
-    tests/test_handlers_casa.py per `handle_get_nucleo`: `all_states()`
+    tests/test_handlers_casa.py per `handle_get_briefing`: `all_states()`
     restituisce dict con chiave "id" (non "entity_id"), e `loaded` governa
     `inventario_leggibile()`."""
 
@@ -283,7 +283,7 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
 @pytest.mark.asyncio
 async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_path):
     """Nessun `archivio_casa` wired nell'app (il caso difensivo di
-    `costruisci_nucleo`/`handle_get_nucleo` quando `_on_startup` non e'
+    `compose_briefing`/`handle_get_briefing` quando `_on_startup` non e'
     ancora girato) -- stessa lacuna che
     tests/test_handlers_casa.py::test_api_nucleo_senza_archivi_non_afferma_di_sapere
     verifica per /api/nucleo, qui verificata per il contesto che la chat
@@ -308,7 +308,7 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
 # esplicito: "un fallimento qui non deve mai impedire alla chat di
 # rispondere" (vedi git blame su handlers_chat.py). Diventare una fonte sola
 # (Task 3) ha fatto sparire quel commento insieme al codice, e la regola con
-# lui -- `costruisci_nucleo()` non era protetta, quindi un `casa.db` in lock
+# lui -- `compose_briefing()` non era protetta, quindi un `casa.db` in lock
 # dopo un riavvio sporco (qui riprodotto chiudendo la connessione sotto
 # l'archivio, che e' esattamente lo stesso sqlite3.ProgrammingError di un
 # database inutilizzabile) faceva sollevare handle_chat per intero.

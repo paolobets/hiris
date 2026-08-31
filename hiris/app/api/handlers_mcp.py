@@ -27,7 +27,7 @@ la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
 `STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
-`costruisci_dispatcher_strumenti(app, turno=exchange_id)`, la stessa funzione del
+`create_tool_dispatcher(app, exchange=exchange_id)`, la stessa funzione del
 turno sincrono -- con l'identita' di `X-HIRIS-Turno` ripropagata, dalla fetta
 «costruire».
 
@@ -81,7 +81,7 @@ from aiohttp import web
 from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..schedulatore.turno import PromiseDispatcher, tools_promise
 from ..version import read_version
-from .handlers_chat import costruisci_dispatcher_strumenti
+from .handlers_chat import create_tool_dispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +435,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
     # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
     # non esiste.
-    dispatcher = costruisci_dispatcher_strumenti(request.app, turno=exchange_id)
+    dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     promise_id = _exchange_promise_id(request)
     if promise_id:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:

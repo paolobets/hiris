@@ -3,7 +3,7 @@ in ABBONAMENTO riceve il nucleo, e il prompt di sistema dice esattamente cio'
 che quel percorso ha e cio' che non ha.
 
 Prima di questo task i due percorsi di chat erano disuguali: il sincrono
-riceveva il nucleo (`handlers_chat.componi_contesto_chat`, estratta dal Task
+riceveva il nucleo (`handlers_chat.compose_chat_context`, estratta dal Task
 1) e i quattro strumenti di `casa/strumenti.py`; il ponte riceveva SOLO
 `history` + `system_prompt` e rispondeva senza sapere niente della casa. Qui
 si pinna la meta' che questa fetta chiude -- il contesto -- e NON gli
@@ -185,8 +185,8 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
 
 # ---------------------------------------------------------------------------
 # ②ter fix round 1, Important 1: la fotografia porta anche la MEMORIA, e il
-# prompt deve dirlo. `costruisci_nucleo` passa TUTTI i ricordi
-# (`richiama(limite=conta())`) e `componi_contesto_chat` aggiunge
+# prompt deve dirlo. `compose_briefing` passa TUTTI i ricordi
+# (`richiama(limite=conta())`) e `compose_chat_context` aggiunge
 # "## Sessioni precedenti": negare al modello di poter "richiamare ricordi"
 # mentre il ricordo e' scritto tre blocchi piu' sotto e' la stessa falsita'
 # speculare gia' corretta per lo stato della casa.
@@ -466,7 +466,7 @@ def test_il_job_con_contesto_non_logga_e_porta_la_casa(caplog):
 def test_contesto_presente_ma_vuoto_non_e_un_job_legacy(caplog):
     """La chiave c'e' ma il nucleo non si e' composto (stringa vuota): NON e'
     il caso legacy e non deve loggare come tale -- quel degrado lo dichiara
-    gia' il testo del nucleo (`componi_contesto_chat`). Il prompt pero' dice
+    gia' il testo del nucleo (`compose_chat_context`). Il prompt pero' dice
     comunque al modello che la fotografia non c'e'."""
     job = {"kind": "chat", "job_id": "job-vuoto",
            "context": {"history": [], "system_prompt": "Sei HIRIS.",

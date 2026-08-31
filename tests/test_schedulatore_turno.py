@@ -35,7 +35,7 @@ def test_ogni_nome_ammesso_esiste_davvero_nel_catalogo_della_chat():
 def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
     """Fix finale ④ (review 2026-08-20): il turno riceve lo STESSO nucleo
     della chat, coi suoi `(id: X)` accanto ad aree/piani/automazioni/script
-    (`costruisci_nucleo`, vedi `interpreta_promise`), ma prima di questo fix
+    (`compose_briefing`, vedi `interpreta_promise`), ma prima di questo fix
     il prompt non lo spiegava affatto, ne' diceva il conteggio del
     parallelismo -- che QUI e' vero al 100% perche' il turno gira su
     `runner.chat`, lo stesso ciclo di `claude_runner.py`
@@ -150,8 +150,8 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
 # conclusione, mai un runner che la produce chiamando `concludi` attraverso
 # `PromiseDispatcher` -- il percorso vero.
 #
-# Un `app` vuoto (`{}`) e' legittimo: `costruisci_nucleo` e
-# `costruisci_dispatcher_strumenti` sono "SEMPRE componibili" per contratto
+# Un `app` vuoto (`{}`) e' legittimo: `compose_briefing` e
+# `create_tool_dispatcher` sono "SEMPRE componibili" per contratto
 # (vedi i loro docstring in `hiris/app/api/handlers_casa.py` e
 # `handlers_chat.py`), anche senza archivi -- e' la stessa disciplina che
 # rende `interpreta_promise` provabile senza un server vero.

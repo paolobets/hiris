@@ -1803,7 +1803,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
-    # `DispatcherStrumenti` che la riceve (`costruisci_dispatcher_strumenti`
+    # `DispatcherStrumenti` che la riceve (`create_tool_dispatcher`
     # in `api/handlers_chat.py`). Prima di questo task `_cerca`/`_ricorda`
     # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
     # subito: si ripagava ogni volta la lettura dell'anagrafe E la
@@ -1854,7 +1854,7 @@ async def _on_startup(app: web.Application) -> None:
     # L'archivio delle promesse (`schedulatore/archivio.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
     # di questo cablaggio. La legge sia la chat (via
-    # `costruisci_dispatcher_strumenti`, per `prometti`/`promesse`/`disdici`)
+    # `create_tool_dispatcher`, per `prometti`/`promesse`/`disdici`)
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
@@ -1867,7 +1867,7 @@ async def _on_startup(app: web.Application) -> None:
     # esiste ancora -- `app.get("entity_cache")` avrebbe dato `None` e la
     # porta avrebbe rifiutato OGNI azione con «non vedo lo stato di questa
     # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
-    # via `costruisci_dispatcher_strumenti`, lo schedulatore e il brain
+    # via `create_tool_dispatcher`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
     app["porta_azione"] = ActionActuator(ha_client, app["registro_servizi"],
                                       app.get("entity_cache"), app["cronaca"])
@@ -2458,7 +2458,7 @@ async def _on_startup(app: web.Application) -> None:
     # la CATTURA DELLO STORICO (`HistoryStore`/`HistoryCapture`, history.db),
     # perche' scrivevano nello stesso posto e, letto il codice, non avevano
     # nessun altro consumatore vivo:
-    #   - la chat prende il contesto da `costruisci_nucleo()` (Task 3 "il
+    #   - la chat prende il contesto da `compose_briefing()` (Task 3 "il
     #     contesto della chat viene dal nucleo"), mai da `KnowledgeStore`;
     #   - la pagina Memoria interroga `memoria/archivio.py`, non la coda di
     #     approvazione (config/memoria-route.js lo dichiara per iscritto);
@@ -3722,8 +3722,8 @@ def create_app() -> web.Application:
     # Task 8 una faccia ce l'ha -- la home della configurazione
     # (`static/config/dashboard.js`) legge questa rotta e /api/casa, e non
     # ne ricalcola nessun dato per conto proprio.
-    from .api.handlers_casa import handle_get_nucleo
-    app.router.add_get("/api/nucleo", handle_get_nucleo)
+    from .api.handlers_casa import handle_get_briefing
+    app.router.add_get("/api/nucleo", handle_get_briefing)
 
     # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
     # §7): la pagina che dice «cosa sto guardando e perche'» e mostra gli

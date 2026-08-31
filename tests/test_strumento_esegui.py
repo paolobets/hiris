@@ -96,14 +96,14 @@ async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
 
 @pytest.mark.asyncio
 async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
-    """`costruisci_dispatcher_strumenti` e' l'UNICO punto di costruzione del
+    """`create_tool_dispatcher` e' l'UNICO punto di costruzione del
     dispatcher (chat sincrona e rotta `/api/mcp` chiamano lui): se la porta non
     passa di qui non passa da nessuna parte, e per entrambi i percorsi
     insieme."""
-    from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
+    from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     actuator = FintaPorta()
-    d = costruisci_dispatcher_strumenti({"porta_azione": actuator})
+    d = create_tool_dispatcher({"porta_azione": actuator})
 
     esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})

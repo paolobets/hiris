@@ -25,7 +25,7 @@ from ..chat_store import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..decisione_modelli import nota_ripiego
 from ..instradamento import chi_risponde
-from .handlers_casa import costruisci_nucleo
+from .handlers_casa import compose_briefing
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
-def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispatcher:
+def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
 
     I tredici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
@@ -68,7 +68,7 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispat
     ultimi due (`andamento`, `accaduto`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
     mano di chi -- passando per `casa/tempo.py`. Il dispatcher si costruisce
-    dagli stessi oggetti dell'app che alimentano `costruisci_nucleo()`
+    dagli stessi oggetti dell'app che alimentano `compose_briefing()`
     (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`,
     `officina` e `cronaca` -- lo stesso specchio dello stato vivo, non uno
     ricalcolato a mano -- ed e' SEMPRE costruibile, anche quando archivi,
@@ -76,12 +76,12 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispat
     dichiarano un `errore` per strumento invece (vedi
     `DispatcherStrumenti.dispatch`).
 
-    `turno` (fetta «costruire», facoltativo e `None` per default: ogni
+    `exchange` (fetta «costruire», facoltativo e `None` per default: ogni
     chiamante che non lo passa non cambia comportamento) e' l'identita' di
     QUESTO turno, coniata UNA volta dal chiamante e non una per strumento --
     serve alla guardia dell'officina, che rifiuta di confermare una proposta
     nel turno stesso in cui e' nata. Sul ramo sincrono la conia
-    `handle_chat`/`_ripiega_sulla_catena` (`secrets.token_urlsafe(8)`, una
+    `handle_chat`/`_downgrade_to_chain` (`secrets.token_urlsafe(8)`, una
     volta per richiesta); sulla rotta MCP e' `X-HIRIS-Turno`, che
     `handlers_mcp.py` legge gia' per il tetto dei giri di strumento e
     ripropone qui.
@@ -94,7 +94,7 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispat
     (tre cataloghi della stessa cosa): qui ce n'e' una sola, e un
     grep del nome della classe seguito da parentesi su `hiris/app/` lo dimostra
     (e `tests/test_rotta_mcp.py` lo pinna). E' lo stesso
-    principio gia' applicato al nucleo con `costruisci_nucleo`
+    principio gia' applicato al nucleo con `compose_briefing`
     (`handlers_casa.py`: «la STESSA composizione, non due che potrebbero
     divergere»).
 
@@ -141,7 +141,7 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispat
         workshop=app.get("officina"),
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
-        exchange=turno,
+        exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
         # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
         # `accaduto` per attribuire a HIRIS cio' che ha fatto HIRIS.
@@ -149,23 +149,23 @@ def costruisci_dispatcher_strumenti(app, turno: str | None = None) -> ToolDispat
     )
 
 
-def _build_system_prompt(impostazioni) -> str:
+def _build_system_prompt(settings) -> str:
     """Il prompt statico della chat, condiviso dal ramo sincrono e da quello
     in abbonamento (async job context).
 
     fetta E4 Task 4 ("un bot solo"): prima componeva `strategic_context` +
     `system_prompt` di un `Chatbot` -- due campi pensati per una molteplicita'
     di persone che non esiste piu'. `ImpostazioniChat` ha un solo campo
-    (`system_prompt`): niente piu' da comporre. `impostazioni` non e' mai
+    (`system_prompt`): niente piu' da comporre. `settings` non e' mai
     `None` (vedi `ImpostazioniChat.carica`, che non lo restituisce mai) --
     il parametro resta accettabile a `None` solo per i test che passano un
     oggetto costruito a mano."""
-    if impostazioni and impostazioni.system_prompt:
-        return impostazioni.system_prompt.strip()
+    if settings and settings.system_prompt:
+        return settings.system_prompt.strip()
     return ""
 
 
-def componi_contesto_chat(app, data_dir: str) -> str:
+def compose_chat_context(app, data_dir: str) -> str:
     """Il contesto della chat -- nucleo piu' sessioni precedenti -- in
     un'unica stringa.
 
@@ -175,7 +175,7 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     stringa nel job del ponte (chat via abbonamento) -- se la ricopiasse, i
     due percorsi avrebbero due composizioni destinate a divergere, la
     "funzione doppia" vietata da CLAUDE.md:70-72. Prende `app` (non
-    `request`), stessa ragione di `costruisci_nucleo` in handlers_casa.py:
+    `request`), stessa ragione di `compose_briefing` in handlers_casa.py:
     nessun motivo di legarla a una request in corso.
     """
     # Inject closed-session summaries so Claude remembers previous conversations.
@@ -199,7 +199,7 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     # sovrapposizione n.1 della mappa del prodotto, vista da dentro (due
     # intelligenze nella stessa casa che ne vedono due diverse -- vedi
     # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
-    # `costruisci_nucleo()` (condivisa con GET /api/nucleo,
+    # `compose_briefing()` (condivisa con GET /api/nucleo,
     # handlers_casa.py -- stessa composizione, non due che potrebbero
     # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
     # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
@@ -217,11 +217,11 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun
     # piano registrato.", "Stato non letto ... non e' lo stesso di 'niente
     # di notevole'", una voce in "Cio' che HIRIS ignora") -- lo stesso
-    # principio gia' verificato per `handle_get_nucleo`
+    # principio gia' verificato per `handle_get_briefing`
     # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
     # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
     # scattare, perche' il testo che il modello legge lo dice da solo.
-    # Fix E1-①: `costruisci_nucleo()` non e' protetta -- apre `archivio_casa`
+    # Fix E1-①: `compose_briefing()` non e' protetta -- apre `archivio_casa`
     # e `archivio_memoria` (SQLite) e puo' sollevare (file corrotto, o in
     # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
     # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
@@ -233,17 +233,17 @@ def componi_contesto_chat(app, data_dir: str) -> str:
     # in lock fa rispondere 500 a OGNI `POST /api/chat`, dove prima -- coi
     # quattro try/except separati -- la chat rispondeva semplicemente SENZA
     # quella fonte. Il fallback qui sotto non e' una stringa vuota (che
-    # `if nucleo_testo:` scarterebbe zittendo la chat sul contesto, e che il
+    # `if briefing_text:` scarterebbe zittendo la chat sul contesto, e che il
     # modello leggerebbe come "casa vuota" invece che "guasto"): e' la
     # stessa distinzione che il nucleo gia' fa per i registri caduti
     # (`non_disponibili`) e per lo stato inaffidabile (`stato_non_letto`),
     # qui applicata al caso in cui comporlo del tutto solleva invece di
     # dichiarare.
     try:
-        nucleo_testo, _nucleo_riepilogo = costruisci_nucleo(app)
+        briefing_text, _briefing_summary = compose_briefing(app)
     except Exception as exc:
         logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
-        nucleo_testo = (
+        briefing_text = (
             "## Cio' che HIRIS ignora\n"
             "- il nucleo non si e' potuto comporre: un archivio della casa o "
             "della memoria e' guasto o non leggibile in questo momento. "
@@ -254,8 +254,8 @@ def componi_contesto_chat(app, data_dir: str) -> str:
             "scritto, non rispondere come se conoscessi la casa."
         )
     context_parts: list[str] = []
-    if nucleo_testo:
-        context_parts.append(nucleo_testo)
+    if briefing_text:
+        context_parts.append(briefing_text)
     if past_str:
         context_parts.append(f"## Sessioni precedenti\n{past_str}")
     return "\n\n".join(context_parts)
@@ -271,7 +271,7 @@ def componi_contesto_chat(app, data_dir: str) -> str:
 # Non sono un doppione ri-esportato: si importano da dove vivono.
 
 
-def _nota_di_chi_ha_risposto(request: web.Request, *, motivo: str) -> str:
+def _who_answered_note(request: web.Request, *, reason: str) -> str:
     """La riga che dichiara un ripiego, o "" se non c'è niente da dichiarare.
 
     Decisione del proprietario, 13 agosto: **il ripiego si annuncia ogni
@@ -296,18 +296,18 @@ def _nota_di_chi_ha_risposto(request: web.Request, *, motivo: str) -> str:
     nessuna nota che una che nomina il provider sbagliato: questa riga parla di
     soldi, e una riga falsa sui soldi è peggio del silenzio.
     """
-    registro = request.app.get("registro_esiti")
-    if registro is None:
+    occurrence_registry = request.app.get("registro_esiti")
+    if occurrence_registry is None:
         return ""
-    for nome_backend in (request.app.get("catena_modelli") or []):
-        esito = registro.esito(nome_backend)
-        if esito and esito["tipo"] == "risposto":
-            return nota_ripiego(motivo=motivo, chi_ha_risposto=nome_backend)
+    for backend_name in (request.app.get("catena_modelli") or []):
+        occurrence = occurrence_registry.esito(backend_name)
+        if occurrence and occurrence["tipo"] == "risposto":
+            return nota_ripiego(motivo=reason, chi_ha_risposto=backend_name)
     return ""
 
 
 async def _enqueue_chat_job(
-    request: web.Request, impostazioni, message: str, data_dir: str,
+    request: web.Request, settings, message: str, data_dir: str,
 ) -> web.Response:
     """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
     reasoning queue (``kind="chat"``) instead of calling a runner
@@ -334,9 +334,9 @@ async def _enqueue_chat_job(
     # Task 12: stesso secondo lavoro di `giorni_conservazione` del ramo
     # sincrono qui sotto (`handle_chat`) — il ponte non deve rileggere piu'
     # conversazione di quanto l'utente abbia scelto.
-    history = load_history(data_dir, giorni=impostazioni.giorni_conservazione)
+    history = load_history(data_dir, giorni=settings.giorni_conservazione)
     sanitized_history = _trim_history(history)
-    system_prompt = _build_system_prompt(impostazioni)
+    system_prompt = _build_system_prompt(settings)
 
     reasoning_queue = request.app["reasoning_queue"]
     now = time.time()
@@ -346,10 +346,10 @@ async def _enqueue_chat_job(
     # ne teneva una copia (Task 6) che nessuno leggeva e che la pagina Modelli
     # poteva riscrivere: due rappresentazioni dello stesso numero, e quella che
     # l'utente cambiava non era quella che il turno subiva.
-    _scadenza_min = ((request.app.get("models_config") or {})
+    _deadline_min = ((request.app.get("models_config") or {})
                      .get("ponte", {}).get("scadenza_min",
                                       _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
-    deadline = now + int(_scadenza_min) * 60
+    deadline = now + int(_deadline_min) * 60
     context = {
         "history": sanitized_history,
         "system_prompt": system_prompt,
@@ -365,16 +365,16 @@ async def _enqueue_chat_job(
         # l'unica cosa che il prompt puo' promettere al modello e' una
         # fotografia presa in questo istante, non una lettura dal vivo (vedi
         # `agent/prompts.py`).
-        "contesto": componi_contesto_chat(request.app, data_dir),
+        "contesto": compose_chat_context(request.app, data_dir),
         # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
         # impostazioni della chat che SONO testo di prompt -- gli stessi due
         # valori che il ramo sincrono legge qui sotto, a `handle_chat`
-        # (`impostazioni.restrict_to_home` / `.response_mode`). Prima di
+        # (`settings.restrict_to_home` / `.response_mode`). Prima di
         # questo task il job non le portava affatto e il ponte rispondeva
         # sempre senza restrizione ne' modificatore di formato, qualunque
         # fosse la configurazione dell'utente.
-        "restrict_to_home": impostazioni.restrict_to_home,
-        "response_mode": impostazioni.response_mode,
+        "restrict_to_home": settings.restrict_to_home,
+        "response_mode": settings.response_mode,
         # Il modello del piano e' un CAMPO, letto dall'archivio a ogni turno
         # come la scadenza qui sopra e il tetto piu' su: e' il TERZO valore che
         # questo punto legge da `models_config["ponte"]`.
@@ -409,7 +409,7 @@ async def _enqueue_chat_job(
     # lasciarlo davanti a un'impostazione che risulta salvata e non fa niente,
     # senza una riga da nessuna parte. Si dichiara al momento
     # dell'accodamento, una volta per turno e solo se e' diverso da zero.
-    if impostazioni.thinking_budget:
+    if settings.thinking_budget:
         logger.warning(
             "thinking_budget=%d NON viene applicato a questo turno: passa dal "
             "ponte per abbonamento, che parla con la CLI di Claude Code e non "
@@ -417,14 +417,14 @@ async def _enqueue_chat_job(
             "resta salvata ma non ha effetto qui: il ragionamento esteso vale "
             "solo con i modelli Claude sul percorso diretto (chat_via_"
             "subscription spento).",
-            impostazioni.thinking_budget,
+            settings.thinking_budget,
         )
 
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
-async def _ripiega_sulla_catena(request: web.Request, job_id: str):
+async def _downgrade_to_chain(request: web.Request, job_id: str):
     """Rifà sulla catena il turno che il piano non ha servito in tempo.
 
     È qui e non nello sweep di `server.py` per una ragione misurata: lo sweep
@@ -445,9 +445,9 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
     Restituisce `None` quando un altro poll ha già reclamato questo turno: si
     continua ad aspettare lui invece di ripiegare due volte.
     """
-    coda = request.app["reasoning_queue"]
-    adesso = time.time()
-    job = coda.reclama_scaduto(job_id, adesso)
+    queue = request.app["reasoning_queue"]
+    now = time.time()
+    job = queue.reclama_scaduto(job_id, now)
     if job is None:
         return None
 
@@ -463,9 +463,9 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
     # `frase_esito` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
     # ha risposto. È la stessa parola più larga del fatto che questa fetta
     # esiste per togliere.
-    registro = request.app.get("registro_esiti")
-    if registro is not None:
-        registro.fallimento(
+    occurrence_registry = request.app.get("registro_esiti")
+    if occurrence_registry is not None:
+        occurrence_registry.fallimento(
             "subscription", famiglia="scaduto", codice=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
             # che l'utente vede la compone `decisione_modelli.frase_esito`.
@@ -474,8 +474,8 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
             # dall'archivio: la scadenza può essere stata cambiata mentre il
             # turno era in volo, e quel numero racconterebbe un'attesa che non
             # c'è stata.
-            durata_s=float(job.get("deadline_ts", adesso))
-            - float(job.get("created_ts", adesso)))
+            durata_s=float(job.get("deadline_ts", now))
+            - float(job.get("created_ts", now)))
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     contesto = job.get("context") or {}
@@ -485,7 +485,7 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
         # risposto nessuno. La nota parla di CHI ha risposto al posto del piano.
         # Il job si chiude comunque, altrimenti resterebbe in 'ripiego' fino
         # allo sweep e ogni poll ritenterebbe.
-        coda.risolvi_ripiego(job_id, {"reply": ""}, time.time())
+        queue.risolvi_ripiego(job_id, {"reply": ""}, time.time())
         return web.json_response({
             "status": "error",
             "message": ("Il Piano Claude Max non ha risposto in tempo, e non c'è "
@@ -502,7 +502,7 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
         # L'identita' di QUESTO turno, coniata UNA volta qui e non dentro il
         # dispatcher: questa funzione risponde a UNA sola richiesta HTTP (il
         # poll che ha scoperto la scadenza), quindi una sola identita' le
-        # basta -- vedi il docstring di `costruisci_dispatcher_strumenti` per
+        # basta -- vedi il docstring di `create_tool_dispatcher` per
         # la guardia che la usa.
         #
         # Review indipendente (I3, fetta «costruire»): CONVERSAZIONALMENTE
@@ -518,8 +518,8 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
         # renderebbe confermabile qui -- fuori dal turno che l'ha proposta,
         # ed e' esattamente cio' che la guardia esiste per impedire. Chi
         # tocca questo contesto deve saperlo.
-        id_turno = secrets.token_urlsafe(8)
-        risposta = await runner.chat(
+        exchange_id = secrets.token_urlsafe(8)
+        answer = await runner.chat(
             user_message=ultimo,
             system_prompt=contesto.get("system_prompt", ""),
             context_str=contesto.get("contesto", ""),
@@ -545,20 +545,20 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
             # dell'accodamento.
             thinking_budget=0,
             strumenti=KNOWLEDGE_TOOLS,
-            dispatcher=costruisci_dispatcher_strumenti(request.app, turno=id_turno),
+            dispatcher=create_tool_dispatcher(request.app, exchange=exchange_id),
         )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
         # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
-        risposta = exc.friendly_message
+        answer = exc.friendly_message
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
-    nota = _nota_di_chi_ha_risposto(request, motivo="scadenza")
+    note = _who_answered_note(request, reason="scadenza")
     # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
-    coda.risolvi_ripiego(job_id, {"reply": risposta, "nota": nota}, time.time())
-    if not _is_toxic_assistant(risposta):
+    queue.risolvi_ripiego(job_id, {"reply": answer, "nota": note}, time.time())
+    if not _is_toxic_assistant(answer):
         # SOLO la risposta: il turno dell'utente è già in cronologia da prima
         # dell'accodamento (`_enqueue_chat_job`), e riscriverlo lo
         # duplicherebbe. E SOLO la risposta anche rispetto alla nota: una nota
@@ -566,10 +566,10 @@ async def _ripiega_sulla_catena(request: web.Request, job_id: str):
         # cui ragiona -- è la stessa famiglia del difetto dichiarato su «Errore
         # temporaneo del servizio AI», che in cronologia ci finisce e non
         # dovrebbe.
-        append_messages([{"role": "assistant", "content": risposta}], data_dir)
-    payload = {"status": "done", "reply": risposta}
-    if nota:
-        payload["nota"] = nota
+        append_messages([{"role": "assistant", "content": answer}], data_dir)
+    payload = {"status": "done", "reply": answer}
+    if note:
+        payload["nota"] = note
     return web.json_response(payload)
 
 
@@ -612,9 +612,9 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # provider successivo, e la risposta arriva in QUESTA stessa
         # conversazione, su QUESTO stesso job: il browser non deve cambiare
         # niente, perché la forma della risposta è quella che già aspetta.
-        risposta = await _ripiega_sulla_catena(request, job_id)
-        if risposta is not None:
-            return risposta
+        response = await _downgrade_to_chain(request, job_id)
+        if response is not None:
+            return response
         # `None` = un altro poll ha già reclamato: si continua ad aspettare lui,
         # invece di ripiegare due volte.
         return web.json_response({"status": "pending"})
@@ -687,7 +687,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
     data_dir = request.app.get("data_dir", "/data")
-    impostazioni = request.app["impostazioni_chat"]
+    settings = request.app["impostazioni_chat"]
 
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
@@ -697,7 +697,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # turn limit is silently bypassed whenever the bridge is on
     # (the old position, after the subscription branch's early return, was
     # never reached in that mode).
-    max_turns = impostazioni.max_chat_turns
+    max_turns = settings.max_chat_turns
     if max_turns > 0:
         turn_count = count_user_turns(data_dir)
         if turn_count >= max_turns:
@@ -710,7 +710,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Il motivo del ripiego a monte, `None` quando non c'è stato: lo legge il
     # fondo di questa funzione per comporre la nota, DOPO aver saputo chi ha
     # davvero risposto.
-    _motivo_ripiego = None
+    _downgrade_reason = None
 
     # Slice 4b (chat via abbonamento), Task 2: when subscription mode is on
     # AND the reasoning-queue bridge is wired, hand the turn to the async
@@ -726,8 +726,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     # disponibile» finiva in un errore invece che nel provider successivo. Il
     # ramo `else` più sotto è il ritorno: si scende alla catena, che è la riga
     # subito dopo questo blocco.
-    _via, _motivo_del_piano = chi_risponde(request.app)
-    if _via == "ponte" or _motivo_del_piano:
+    _route, _subscription_reason = chi_risponde(request.app)
+    if _route == "ponte" or _subscription_reason:
         # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
         # above/below is unaffected when the flag is off. Checked before
         # anything is persisted/enqueued so a blocked turn leaves no trace.
@@ -746,7 +746,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"error": "C'è già una risposta in arrivo per questa conversazione."},
                 status=409,
             )
-        if _motivo_del_piano:
+        if _subscription_reason:
             # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
             # gli manca il token (il worker non parte, `should_start_agent_
             # worker`) oppure il tetto giornaliero è pieno. Non si accoda un
@@ -759,13 +759,13 @@ async def handle_chat(request: web.Request) -> web.Response:
             # averlo chiesto -- ed è esattamente il caso per cui il ripiego si
             # annuncia (la `nota` in fondo a questa funzione). Senza quella
             # riga questo cambio sarebbe un prelievo silenzioso.
-            _motivo_ripiego = _motivo_del_piano
+            _downgrade_reason = _subscription_reason
             logger.warning(
                 "Il piano non può rispondere a questo turno (%s): il turno "
                 "passa alla catena. Il costo cambia -- dal forfait al consumo.",
-                _motivo_del_piano)
+                _subscription_reason)
         else:
-            return await _enqueue_chat_job(request, impostazioni, message, data_dir)
+            return await _enqueue_chat_job(request, settings, message, data_dir)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -817,7 +817,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
     # all'avvio: un utente che lo abbassa in `#/impostazioni` lo vede avere
     # effetto dal messaggio successivo, senza riavviare.
-    history = load_history(data_dir, giorni=impostazioni.giorni_conservazione)
+    history = load_history(data_dir, giorni=settings.giorni_conservazione)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)
@@ -836,17 +836,17 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (`effective_chatbot_id`) e' uscito -- chat_store non ha piu' alcuna
     # nozione di id da cui degradare, `load_history`/`get_past_summaries`
     # leggono sempre l'UNICA cronologia che esiste.
-    system_prompt = _build_system_prompt(impostazioni)
+    system_prompt = _build_system_prompt(settings)
 
-    # Nucleo + sessioni precedenti, in un'unica stringa: `componi_contesto_chat`
+    # Nucleo + sessioni precedenti, in un'unica stringa: `compose_chat_context`
     # (Task 1 della fetta "il ponte riceve il nucleo", parita' A) estrae
     # invariato il blocco che prima viveva qui -- vedi il suo docstring per il
     # perche' (il Task 2 mette la STESSA stringa nel job del ponte, senza
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
-    context_str = componi_contesto_chat(request.app, data_dir)
+    context_str = compose_chat_context(request.app, data_dir)
 
     # I tredici strumenti della chat -- il perche' di ogni riga sta
-    # nel docstring di `costruisci_dispatcher_strumenti` (sopra), che dalla
+    # nel docstring di `create_tool_dispatcher` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
     # che possono divergere.
@@ -865,12 +865,12 @@ async def handle_chat(request: web.Request) -> web.Response:
     # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
     # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
     # basta. Serve alla guardia dell'officina (`costruisci`/`conferma`, vedi
-    # il docstring di `costruisci_dispatcher_strumenti`).
-    id_turno = secrets.token_urlsafe(8)
-    dispatcher_strumenti = costruisci_dispatcher_strumenti(request.app, turno=id_turno)
+    # il docstring di `create_tool_dispatcher`).
+    exchange_id = secrets.token_urlsafe(8)
+    tool_dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
 
     # fetta "la catena diventa l'unica verita'": qui c'era
-    # `agent_model = impostazioni.model`. Il campo e' uscito con la decisione
+    # `agent_model = settings.model`. Il campo e' uscito con la decisione
     # del proprietario del 13 agosto: il modello si sceglie per provider, nella
     # pagina Modelli, e la chat chiede SEMPRE `auto`. Non e' una costante di
     # comodo: `auto` e' l'UNICO valore che fa passare il turno dal ciclo di
@@ -912,9 +912,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     # Task 5) e' uscito per intero dalla firma dei runner alla fetta E4 Task 6:
     # non c'e' piu' nulla da passare qui.
     agent_max_tokens = CHAT_MAX_TOKENS
-    agent_restrict = impostazioni.restrict_to_home
-    agent_response_mode = impostazioni.response_mode
-    agent_thinking_budget = impostazioni.thinking_budget
+    agent_restrict = settings.restrict_to_home
+    agent_response_mode = settings.response_mode
+    agent_thinking_budget = settings.thinking_budget
 
     wants_stream = (
         "text/event-stream" in request.headers.get("Accept", "")
@@ -949,7 +949,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=KNOWLEDGE_TOOLS,
-            dispatcher=dispatcher_strumenti,
+            dispatcher=tool_dispatcher,
         ):
             await stream_resp.write(chunk.encode())
             try:
@@ -999,7 +999,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
             strumenti=KNOWLEDGE_TOOLS,
-            dispatcher=dispatcher_strumenti,
+            dispatcher=tool_dispatcher,
         )
     except RunnerBackendError as exc:
         # Review C/#13: runners now raise instead of returning a friendly
@@ -1073,12 +1073,12 @@ async def handle_chat(request: web.Request) -> web.Response:
     # L'annuncio del ripiego a monte. Si compone QUI e non nel ramo che ha
     # deciso di ripiegare, perché prima della chiamata qui sopra non si sa
     # ancora CHI ha risposto -- il router ripiega a sua volta, e il primo della
-    # catena può aver fallito. `_motivo_ripiego` resta `None` quando il turno
+    # catena può aver fallito. `_downgrade_reason` resta `None` quando il turno
     # non ha ripiegato, e allora non si scrive niente. La forma della risposta
     # NON cambia: `response` e `debug` restano identici e `nota` è facoltativa,
     # quindi un client che la ignori continua a funzionare.
-    if _motivo_ripiego:
-        nota = _nota_di_chi_ha_risposto(request, motivo=_motivo_ripiego)
-        if nota:
-            payload["nota"] = nota
+    if _downgrade_reason:
+        note = _who_answered_note(request, reason=_downgrade_reason)
+        if note:
+            payload["nota"] = note
     return web.json_response(payload)

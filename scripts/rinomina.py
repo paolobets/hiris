@@ -401,6 +401,30 @@ _METODI_IMPOSTAZIONI_CHAT = frozenset({
     "carica", "salva",
 })
 
+# Quarta voce (Task 9, `api/handlers_chat.py`, PRIMA di applicare il file):
+# `RegistroEsiti` (`esiti_provider.py`, un altro file di RADICE) e' l'unico
+# ricevitore di tutto `api/` su cui una parola GIA' DECISA si applicherebbe da
+# sola. `esito -> occurrence` e' deciso da sempre («I concetti»), e
+# `handlers_chat.py:303` scrive `registro.esito(nome_backend)`: senza questa
+# voce il join meccanico produce `registry.occurrence(...)` -- un
+# `AttributeError` alla prima chat che ripiega dal piano alla catena, cioe'
+# proprio sul percorso che la fetta «la catena diventa l'unica verita'» esiste
+# per rendere affidabile. **Non e' un rischio futuro come per `UsageStore`**
+# (dove nessuna parola era decisa e la guardia preveniva un domani): qui il
+# difetto e' ATTIVO oggi, misurato con `rinomina.riscrivi()` sul file vero
+# prima di scriverlo su disco, e provato per mutazione.
+#
+# Elenco letto a mano da `esiti_provider.py` (stessa disciplina delle altre
+# tre: i due campi privati, i quattro metodi pubblici, e le due funzioni di
+# modulo -- `famiglia_da_codice`/`famiglia_errore` non sono attributi della
+# classe, ma si leggono per attributo sul MODULO
+# (`esiti_provider.famiglia_errore(...)`) ed e' lo stesso gesto sintattico).
+_METODI_REGISTRO_ESITI = frozenset({
+    "__init__", "_orologio", "_per_provider",
+    "successo", "fallimento", "esito", "tutti",
+    "famiglia_da_codice", "famiglia_errore",
+})
+
 # L'insieme delle classi esterne protette per attributo, indipendentemente
 # da QUALE oggetto le porta: `_righe_di_percorso_e_parola_chiave` non sa
 # (ne' deve sapere) se una variabile si chiama `ha`, `archivio` o
@@ -409,6 +433,7 @@ _METODI_IMPOSTAZIONI_CHAT = frozenset({
 # guasto si aggiunge qui, non si duplica il meccanismo.
 _METODI_ESTERNI_PROTETTI = (
     _METODI_HA_CLIENT | _METODI_USAGE_STORE | _METODI_IMPOSTAZIONI_CHAT
+    | _METODI_REGISTRO_ESITI
 )
 
 

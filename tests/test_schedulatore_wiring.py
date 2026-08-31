@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from hiris.app import server
-from hiris.app.api.handlers_chat import costruisci_dispatcher_strumenti
+from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.azione.cronaca import Journal
 from hiris.app.azione.porta import ActionActuator
 from hiris.app.schedulatore.archivio import AgendaStore
@@ -320,7 +320,7 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     promesse_sentinella = object()
     app = {"registro_servizi": registro_sentinella, "promesse": promesse_sentinella}
 
-    dispatcher = costruisci_dispatcher_strumenti(app)
+    dispatcher = create_tool_dispatcher(app)
 
     assert dispatcher._registry is registro_sentinella
     assert dispatcher._agenda is promesse_sentinella

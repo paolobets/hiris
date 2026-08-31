@@ -180,11 +180,11 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     })
 
 
-def costruisci_nucleo(app) -> tuple[str, dict]:
+def compose_briefing(app) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
-    Condivisa da `handle_get_nucleo` (GET /api/nucleo, la verifica dal vivo)
-    e da `handlers_chat.componi_contesto_chat` (il contesto che il modello
+    Condivisa da `handle_get_briefing` (GET /api/nucleo, la verifica dal vivo)
+    e da `handlers_chat.compose_chat_context` (il contesto che il modello
     riceve davvero -- dalla fetta "il ponte riceve il nucleo", parita' A, su
     ENTRAMBI i percorsi di chat: il sincrono e quello in abbonamento): la
     STESSA composizione, non due che potrebbero divergere -- e' esattamente la
@@ -203,7 +203,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     perche' `reliable_state` richiede ENTRAMBI l'archivio e un inventario
     vivo pronto -- e' invariato da prima di questo refactor: vedi i
     commenti storici in git blame su questa funzione (era il corpo di
-    `handle_get_nucleo`) per il dettaglio di ciascuna scelta.
+    `handle_get_briefing`) per il dettaglio di ciascuna scelta.
     """
     home_space_store = app.get("archivio_casa")
     memory_store = app.get("archivio_memoria")
@@ -334,7 +334,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     )
 
 
-async def handle_get_nucleo(request: web.Request) -> web.Response:
+async def handle_get_briefing(request: web.Request) -> web.Response:
     """GET /api/nucleo: il testo ESATTO che il modello ha sempre davanti, e
     il riepilogo di quanto ne resta fuori.
 
@@ -344,10 +344,10 @@ async def handle_get_nucleo(request: web.Request) -> web.Response:
     `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
     QUESTO Home Assistant, produce un nucleo sensato.
 
-    La composizione vera e' in `costruisci_nucleo()` qui sopra, condivisa
+    La composizione vera e' in `compose_briefing()` qui sopra, condivisa
     con `handlers_chat.handle_chat` -- questo handler resta un guscio
     sottile che la chiama e la serializza, cosi' i due punti non possono
     raccontare due nuclei diversi della stessa casa.
     """
-    text, summary = costruisci_nucleo(request.app)
+    text, summary = compose_briefing(request.app)
     return web.json_response({"testo": text, "riepilogo": summary})
