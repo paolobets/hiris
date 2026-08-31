@@ -463,7 +463,7 @@ gia' nella lingua di destinazione o sono una sigla, e sono state tolte a mano da
 | `backend` | e' gia' inglese -- corretto durante la review finale del ramo, la ragione precedente citava un file che non esiste (nessun file si chiama `backend*.py`, solo la cartella `backends/`): il singolare vive come identificatore vero, per esempio `nome_backend` (`llm_router.py:218,228,231,242,245,249`; era anche in `api/handlers_chat.py:302,303,305`, dove il Task 9 lotto 12 l'ha portato a `backend_name` -- il pezzo `backend` resta invariato, che e' il punto di questa riga), oltre che in prosa ovunque nel sottosistema |
 | `sanitize` | e' gia' inglese, usata cosi' com'e' nel codice |
 | `yaml` | e' una sigla di formato, non si traduce |
-| `ha` | **e' la sigla di Home Assistant in dieci nomi su dodici, e il VERBO negli altri due -- quindi non si traduce mai, e si legge sempre.** I dieci: `ha_client` (109 siti), `ha_base_url`, `ha_config_dir`, `sanitize_ha_value`, `_ha_channel`, `_fingerprint_from_ha_state`, `ha_target`, `ha_fingerprints`, `HA_LINK_TYPE`, `_find_ha_config_dir` -- li' `ha` resta `ha`. I due: `ha_credenziale` (`decisione_modelli.py:653,717,736,755`, `ha_credenziale = bool(credenziali.get(pid))`) e `piano_ha_il_token`, dove `ha` e' il verbo «avere» e il gemello gia' inglese si chiama `_config_has_credential` (`api/handlers_models.py:369`) -- **non** `ha_credential`. Scritta qui il 31/08 dopo che la misura ordine-e-preposizioni ha trovato la trappola ARMATA in due documenti che avvertivano di non innescarla (la specifica della fetta e il docstring di `scripts/rinomina.py`, che portavano entrambi `ha_credenziale` come esempio del caso *Home Assistant*): stare qui significa che lo strumento la salta per costruzione, invece di saltarla solo perche' nessuno l'ha decisa. Chi convertira' `decisione_modelli.py` deve scrivere `has_credential`, e la chiave JSON `"ha_credenziale"` (letta da `static/config/models-route.js`, sei siti) resta com'e' finche' non si convertono i campi |
+| `ha` | **e' la sigla di Home Assistant in dieci nomi su dodici, e il VERBO negli altri due -- quindi non si traduce mai, e si legge sempre.** I dieci: `ha_client` (109 siti), `ha_base_url`, `ha_config_dir`, `sanitize_ha_value`, `_ha_channel`, `_fingerprint_from_ha_state`, `ha_target`, `ha_fingerprints`, `HA_LINK_TYPE`, `_find_ha_config_dir` -- li' `ha` resta `ha`. I due: `ha_credenziale` (`decisione_modelli.py:653,717,736,755`, `ha_credenziale = bool(credenziali.get(pid))`) e `piano_ha_il_token`, dove `ha` e' il verbo «avere» e il gemello gia' inglese si chiama `_config_has_credential` (`api/handlers_models.py:369`) -- **non** `ha_credential`. Scritta qui il 31/08 dopo che la misura ordine-e-preposizioni ha trovato la trappola ARMATA in due documenti che avvertivano di non innescarla (la specifica della fetta e il docstring di `scripts/rinomina.py`, che portavano entrambi `ha_credenziale` come esempio del caso *Home Assistant*): stare qui significa che lo strumento non traduce MAI `ha` da solo, invece di non tradurlo solo perche' nessuno l'ha deciso. **Non significa che sia protetto il COMPOSTO**: `classifica('ha_credenziale')` restituisce ancora `Proposta(suggerito='ha_credential')`, cioe' esattamente il nome sbagliato -- perche' un composto si compone dai pezzi tradotti E da quelli non tradotti. La rete vera e' un'altra, ed e' sufficiente: **lo strumento propone e si ferma**, non applica mai un composto, e questa riga dice a chi guarda la proposta cosa scrivere. Distinguere le due cose e' la differenza fra una protezione e una speranza. Chi convertira' `decisione_modelli.py` deve scrivere `has_credential`, e la chiave JSON `"ha_credenziale"` (letta da `static/config/models-route.js`, sei siti) resta com'e' finche' non si convertono i campi |
 | `grandezza` | **contratto col modello, come i 13 nomi degli strumenti: e' una CHIAVE dello schema di `REMEMBER_TOOL_DEF`** (`casa/strumenti.py:397`, dentro `input_schema.properties`), riletta col suo nome esatto quando l'argomento torna indietro (`casa/strumenti.py:1430`, `arguments.get("grandezza")`), e ripetuta nella descrizione che il modello legge. Le stringhe che il modello legge non si toccano mai -- e questa e' una di quelle, non un identificatore Python. **Sta QUI e non fra le parole non ancora decise perche' «non decisa» significa invisibile, non protetta**: `classifica('grandezza')` tornava `None` solo perche' nessuno l'aveva scritta, e il giorno in cui qualcuno la decidesse per un'altra ragione (e' un parametro keyword-only vero di `MemoryStore.remember` e di `memoria/interpretazione.py::deduci_unit`/`validate`) niente lo fermerebbe. Scritta qui, lo strumento la salta per costruzione e ignora anche un'eventuale riga futura. Rilievo della review del lotto 9: la ragione registrata allora era l'asimmetria fra `def` e chiamata dentro `memoria/` -- vera, ma **evapora** il giorno in cui si riaprisse `casa/`; questa no |
 
 **`dispatcher` NON e' in questa lista, e va scritto perche' fa eccezione -- corretto durante la
@@ -1505,7 +1505,8 @@ al Task 6 invece che deciso qui.
 | risultato | result |
 | ritardo | delay |
 | rivendica | claim |
-| rotta | broken |
+| rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento propone `_rotta_config -> broken_config`, e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
+| rotta (participio) | broken | **Annotazione, non una riga raggiungibile**: `(participio)` non e' un ambito reale e nessun `--ambito` la trovera' mai, esattamente come `piano (abbonamento)`. Serve a tenere scritto il senso -- `porta_rotta` e' una porta GUASTA -- accanto a quello che gli somiglia, perche' chi legge solo la riga giusta non capisce perche' esiste. Si applica a mano, se mai servira' |
 | sanificato | sanitized |
 | scadenza | deadline |
 | scegli | choose |
@@ -2859,6 +2860,34 @@ fetta separa ovunque -- il dato e lo strumento che lo scrive -- documentato per 
 sotto la tabella dei 13 nomi degli strumenti. `reference` (`riferimento (casa)`/`riferimento
 (memoria)`) e' un omonimo per ambito, non una forma flessa -- documentato per esteso nella nota
 «Il limite della qualificazione per ambito».
+
+**Rimisurato il 31/08, ed e' il caso in cui il documento sul controllo era piu' vecchio del
+controllo: il comando restituisce OGGI 18 casi, non otto.** La frase qui sotto («se questo
+comando restituisse un NONO caso non elencato qui, sarebbe quello a essere una collisione vera»)
+era vera quando fu scritta e ha smesso di esserlo senza che nessuno la rileggesse -- il glossario
+e' cresciuto di dieci righe qualificate e di parecchie coppie verbo/sostantivo, e ognuna aggiunge
+un caso. **I dieci arrivati dopo appartengono tutti a famiglie gia' documentate qui sotto**, e si
+leggono cosi':
+
+- **omonimi per ambito** (stessa parola italiana, due ambiti): `tether` (`ancora (api)`/
+  `ancora (memoria)`), `row` (`riga`/`riga (api)`) -- la stessa famiglia di `reference`;
+- **verbo e sostantivo dello stesso atto**, la classe ACCETTATA descritta piu' su: `downgrade`
+  (`ripiega`/`ripiego`), `cut` (`tagliato`/`taglio`);
+- **un concetto solo con due nomi italiani**, la stessa famiglia di `reading` (`cambi`/`grezzo`):
+  `memory` (`memoria`/`ricordo`), `known` (`conosciuto`/`note (casa)`), `verb` (`specie`/`verbo`),
+  e **`route` (`via`/`rotta (proxy)`, aggiunto il 31/08)** -- `via` e' il canale che servira' il
+  turno, `rotta` e' il percorso HTTP: due parole italiane per la stessa idea di «strada», che in
+  inglese e' una parola sola. Lo dichiaro qui invece di inventare un secondo inglese per non
+  farlo comparire: un `endpoint` scritto solo per far tacere questo controllo sarebbe un nome
+  scelto dal controllo, non dal significato.
+
+**La conseguenza operativa, che ha smesso di essere «il nono caso»**: il numero cresce da solo, e
+contarlo non e' piu' il controllo. Il controllo e' che **ogni caso che il comando restituisce sia
+riconducibile a una delle tre famiglie qui sopra**; un caso che non lo e' -- due parole italiane
+di senso diverso finite sullo stesso inglese senza essere ne' omonimi per ambito, ne' verbo e
+sostantivo, ne' due nomi dello stesso concetto -- e' la collisione vera da correggere. E' la stessa
+ragione per cui `libero -> free` non e' stato scritto (lotto 14) e `assente -> missing` non e'
+stato scritto (lotto 15): li' le due parole dicevano cose diverse davvero.
 
 **Aggiornato durante la review indipendente del Task 7 (`azione/`): l'ottavo caso e' arrivato, ed
 e' spiegato, non una collisione vera.** `propose` (`proponi`/`costruisci`) e' la STESSA coppia

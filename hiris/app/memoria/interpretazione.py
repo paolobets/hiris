@@ -265,7 +265,7 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
             area_id = tether["riferimento"]
             # L'area EREDITATA dal dispositivo conta quanto quella propria --
             # anzi, di piu': in una casa vera e' il caso normale. La regola sta
-            # in `casa.anagrafe.area_effettiva`, la stessa che usa `gerarchia()`
+            # in `casa.anagrafe.actual_area`, la stessa che usa `hierarchy()`
             # per costruire l'albero: qui prima si confrontava il solo
             # `area_id` proprio, e su una casa vera non si trovava mai niente.
             device_area = device_areas(lookup.tutti("dispositivo"))

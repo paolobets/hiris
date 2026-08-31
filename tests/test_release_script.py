@@ -68,6 +68,27 @@ def test_changelog_section_present_passes(tmp_path):
         rel.check_changelog("0.6.0")  # must not exit
 
 
+def test_una_sezione_non_rilasciato_ferma_il_rilascio(tmp_path):
+    """Il cancello: `extract_changelog_section` estrae SOLO `## [X.Y.Z]` e
+    ignora cio' che le sta sopra, quindi una sezione «Non rilasciato» lasciata
+    li' resterebbe orfana per sempre e fuori dalle note di rilascio. Provato
+    per mutazione: tolto il controllo da `check_changelog`, questo test passa
+    invece di fallire."""
+    cl = tmp_path / "CHANGELOG.md"
+    cl.write_text("# HIRIS\n\n## [Non rilasciato]\n\nun cambio di comportamento\n\n"
+                  "## [0.6.0]\n\nnote\n", encoding="utf-8")
+    with patch.object(rel, "CHANGELOG", cl), pytest.raises(SystemExit):
+        rel.check_changelog("0.6.0")
+
+
+def test_senza_sezione_non_rilasciato_il_controllo_passa(tmp_path):
+    """Il contrario, perche' un cancello che ferma sempre non e' un cancello."""
+    cl = tmp_path / "CHANGELOG.md"
+    cl.write_text("# HIRIS\n\n## [0.6.0]\n\nnote\n", encoding="utf-8")
+    with patch.object(rel, "CHANGELOG", cl):
+        rel.check_changelog("0.6.0")  # non deve uscire
+
+
 def test_missing_changelog_section_aborts(tmp_path):
     cl = tmp_path / "CHANGELOG.md"
     cl.write_text("# Changelog\n\n## [0.5.0] — 2026-04-20\n")

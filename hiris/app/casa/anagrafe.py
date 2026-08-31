@@ -131,11 +131,11 @@ async def _read_reference_frame(client) -> tuple[dict, bool]:
 # sparire in silenzio due contenitori diversi che per caso condividevano la
 # stessa chiave.
 _ID_WITHOUT_AREA = "__senza_area__"
-_ID_AREA_NON_LOADED = "__aree_non_lette__"
+_ID_UNLOADED_AREA = "__aree_non_lette__"
 _ID_UNKNOWN_AREA = "__area_sconosciuta__"
-_ID_DEVICE_NON_LOADED = "__dispositivi_non_letti__"
+_ID_UNLOADED_DEVICE = "__dispositivi_non_letti__"
 _ID_WITHOUT_FLOOR = "__senza_piano__"
-_ID_FLOOR_NON_LOADED = "__piani_non_letti__"
+_ID_UNLOADED_FLOOR = "__piani_non_letti__"
 _ID_OUTSIDE_AREAS = "__fuori_dalle_aree__"
 
 # Le pseudo-aree che una vista di dettaglio (`domande.guarda("area", ...)`)
@@ -146,7 +146,7 @@ _ID_OUTSIDE_AREAS = "__fuori_dalle_aree__"
 # `gerarchia()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
 # un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.
 _ID_PSEUDO_AREA = frozenset(
-    {_ID_WITHOUT_AREA, _ID_AREA_NON_LOADED, _ID_UNKNOWN_AREA, _ID_DEVICE_NON_LOADED})
+    {_ID_WITHOUT_AREA, _ID_UNLOADED_AREA, _ID_UNKNOWN_AREA, _ID_UNLOADED_DEVICE})
 
 
 def is_pseudo_area(area_id: str) -> bool:
@@ -797,7 +797,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     per_area: dict[str | None, list[dict]] = {}
     per_area_disabled: dict[str | None, list[dict]] = {}
     per_area_hidden: dict[str | None, list[dict]] = {}
-    device_non_loaded = []
+    unloaded_device = []
     for entity in home_space.get("entita", []):
         own_area = entity.get("area_id")
         device_id = entity.get("dispositivo_id")
@@ -808,7 +808,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             # disabilitate e le nascoste: non risolvibili, non tracciate
             # nemmeno a parte.
             if not entity.get("disabilitata"):
-                device_non_loaded.append(entity)
+                unloaded_device.append(entity)
             continue
         area_id = actual_area(entity, device_area)
         if entity.get("disabilitata"):
@@ -845,12 +845,12 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     # "area_id assente" e "area_id sconosciuto": vanno tutte in un unico
     # bucket "Aree non lette".
     area_loaded = "aree" not in unavailable
-    without_area, area_non_loaded, unknown_area = [], [], []
+    without_area, unloaded_area, unknown_area = [], [], []
     for area_id, entries in per_area.items():
         if area_id in known_areas:
             continue
         if not area_loaded:
-            area_non_loaded.extend(entries)
+            unloaded_area.extend(entries)
         elif area_id is None:
             without_area.extend(entries)
         else:
@@ -874,22 +874,22 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             floors.append({"id": _ID_WITHOUT_FLOOR, "nome": "Senza piano", "livello": None,
                           "aree": rest})
         else:
-            floors.append({"id": _ID_FLOOR_NON_LOADED, "nome": "Piani non letti", "livello": None,
+            floors.append({"id": _ID_UNLOADED_FLOOR, "nome": "Piani non letti", "livello": None,
                           "aree": rest})
 
     outside_areas = []
-    if area_non_loaded:
-        outside_areas.append({"id": _ID_AREA_NON_LOADED, "nome": "Aree non lette",
-                                 "alias": [], "etichette": [], "entita": area_non_loaded})
+    if unloaded_area:
+        outside_areas.append({"id": _ID_UNLOADED_AREA, "nome": "Aree non lette",
+                                 "alias": [], "etichette": [], "entita": unloaded_area})
     if unknown_area:
         outside_areas.append({"id": _ID_UNKNOWN_AREA, "nome": "Area sconosciuta",
                                  "alias": [], "etichette": [], "entita": unknown_area})
     if without_area:
         outside_areas.append({"id": _ID_WITHOUT_AREA, "nome": "Senza area",
                                  "alias": [], "etichette": [], "entita": without_area})
-    if device_non_loaded:
-        outside_areas.append({"id": _ID_DEVICE_NON_LOADED, "nome": "Dispositivi non letti",
-                                 "alias": [], "etichette": [], "entita": device_non_loaded})
+    if unloaded_device:
+        outside_areas.append({"id": _ID_UNLOADED_DEVICE, "nome": "Dispositivi non letti",
+                                 "alias": [], "etichette": [], "entita": unloaded_device})
     if outside_areas:
         floors.append({"id": _ID_OUTSIDE_AREAS, "nome": "Fuori dalle aree", "livello": None,
                       "aree": outside_areas})

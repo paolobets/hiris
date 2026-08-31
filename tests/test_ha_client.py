@@ -52,27 +52,3 @@ async def test_get_states_filters_correctly(client):
     assert "light.living" in entity_ids
     assert "sensor.temp" in entity_ids
     assert "light.kitchen" not in entity_ids
-
-
-def _make_ws_registry_mock(msg_type: str, result_data: list) -> tuple:
-    """Build a minimal WS session mock that returns result_data for the given msg_type."""
-    it = iter([
-        {"type": "auth_required"},
-        {"type": "auth_ok"},
-        {"id": 1, "type": "result", "success": True, "result": result_data},
-    ])
-
-    async def _receive_json():
-        return next(it)
-
-    ws = AsyncMock()
-    ws.receive_json = _receive_json
-    ws.send_json = AsyncMock()
-    ws.__aenter__ = AsyncMock(return_value=ws)
-    ws.__aexit__ = AsyncMock(return_value=False)
-
-    session = AsyncMock()
-    session.ws_connect = MagicMock(return_value=ws)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return session, ws

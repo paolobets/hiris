@@ -21,6 +21,8 @@ briefing per una riga malformata e' peggio che ometterla.
 
 Provato per mutazione: tolta la guardia, due test diventano rossi con `KeyError`.
 
+**E c'e' un SECONDO cambio, piu' piccolo e nella stessa direzione** (aggiunto dopo la review, che l'aveva trovato mentre il changelog nominava solo il primo): la funzione unificata accetta anche un registro **assente** — `device_areas(None)` restituisce `{}` invece di sollevare. Prima, `home_space.get("dispositivi", [])` copriva la chiave mancante ma non un valore `None` esplicito. E' strettamente piu' tollerante, va nella stessa direzione della guardia sull'`id` — un registro che non ha risposto e' gia' dichiarato altrove, e non deve portarsi via l'albero — ed e' coperto da un test.
+
 **Un metodo cancellato, e non era una rinomina.** `HAClient.get_error_log()` chiedeva
 `GET /api/error_log`, che su Home Assistant 2026.8.3 risponde **404** — provato sulla casa vera
 con un token valido, mentre `/api/`, `/api/config` e `/api/logbook` rispondono 200. Il metodo

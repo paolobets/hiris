@@ -9,7 +9,7 @@ Usage:
 Steps (abort on first failure):
   1   Validate semver X.Y.Z
   2   Check config.yaml version matches --version
-  3   Check CHANGELOG.md has ## [X.Y.Z] section
+  3   Check CHANGELOG.md has ## [X.Y.Z] section AND no ## [Non rilasciato] left
   4   Check git tree clean (only config.yaml / CHANGELOG.md allowed dirty)
   5   Run pytest (skipped with --skip-tests)
   6   git add + commit chore: release vX.Y.Z
@@ -100,11 +100,34 @@ def check_config_version(version: str) -> None:
 # Step 3
 # ---------------------------------------------------------------------------
 
+# La sezione che si scrive fra un rilascio e l'altro, quando una fetta produce
+# qualcosa che va detto (per esempio un cambio di comportamento) ma il rilascio
+# non c'e' ancora. E' una convenzione utile e ha una trappola precisa, misurata
+# il 31/08: `extract_changelog_section` estrae la sezione `## [X.Y.Z]` e IGNORA
+# tutto cio' che le sta sopra. Chi rilascia scrivendo una sezione NUOVA -- invece
+# di rinominare questa -- lascerebbe il contenuto orfano in cima al file per
+# sempre, e le note di rilascio non lo conterrebbero: la cosa che valeva la pena
+# dire e' l'unica che non verrebbe detta.
+#
+# Da qui il cancello: finche' esiste una sezione «Non rilasciato», il rilascio si
+# ferma. Non e' una regola da ricordare, e' un passo che fallisce -- che e' la
+# sola forma in cui una convenzione sopravvive a chi non la conosce.
+_UNRELEASED_HEADING = "## [Non rilasciato]"
+
+
 def check_changelog(version: str) -> None:
     try:
         text = CHANGELOG.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         _fail(f"CHANGELOG.md not found at {CHANGELOG}")
+    if _UNRELEASED_HEADING in text:
+        _fail(
+            f"CHANGELOG.md still has a '{_UNRELEASED_HEADING}' section.\n"
+            f"  Rename it to '## [{version}] — <titolo> ({{data}})' (merging it with\n"
+            f"  whatever else this release says). A new section written BELOW it would\n"
+            f"  leave its content orphaned forever: this script extracts only the\n"
+            f"  '## [{version}]' section for the release notes."
+        )
     if f"## [{version}]" not in text:
         _fail(
             f"CHANGELOG.md missing section '## [{version}]'\n"
