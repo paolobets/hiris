@@ -1,5 +1,31 @@
 # HIRIS — Changelog
 
+## [Non rilasciato]
+
+**Un cambio di comportamento, dichiarato qui perche' e' nato dentro una rinomina e li' nessuno lo
+cercherebbe.** Una riga del registro dei dispositivi di Home Assistant **senza `id`** non fa piu'
+saltare l'albero della casa: viene omessa.
+
+Prima esistevano due copie della stessa mappa «dispositivo → area», con due nomi diversi
+(`device_area` in `casa/anagrafe.py`, `area_del_device` in `memoria/interpretazione.py`) — ed e'
+proprio li' che divergevano: una scartava gli oggetti senza `id`, l'altra li leggeva con `d["id"]` e
+sollevava `KeyError`. **Il comportamento precedente non era una decisione: era l'accidente di quale
+delle due copie si eseguiva** — la stessa riga malformata faceva esplodere il briefing della casa e
+passare indenne la deduzione dell'unita' di misura di un ricordo.
+
+Unificarle in una sola funzione (`casa.anagrafe.device_areas`) **obbligava** a scegliere, e la
+scelta e' l'omissione: quella mappa serve solo a essere interrogata per `dispositivo_id`, e un
+dispositivo senza `id` non puo' essere il bersaglio di nessuna entita' — tenerlo dentro non
+aggiunge una risposta, aggiunge una chiave che nessuno puo' chiedere. E far esplodere l'intero
+briefing per una riga malformata e' peggio che ometterla.
+
+Provato per mutazione: tolta la guardia, due test diventano rossi con `KeyError`.
+
+Il resto del lavoro di questo giro non si vede usando HIRIS — 25 identificatori con parole inglesi
+in ordine italiano o tenute insieme da una preposizione italiana, un cancello che vieta quella
+forma per sempre su tutto il Python del progetto, e un esempio falso corretto nella specifica della
+fetta **e** nel docstring dello strumento, dove era stato copiato.
+
 ## [3.14.5] — Tutti e sei i sottosistemi parlano inglese (2026-08-31)
 
 **Non cambia niente che si possa vedere usando HIRIS.** Nessun comportamento diverso, nessuna rotta,

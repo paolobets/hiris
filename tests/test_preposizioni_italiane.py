@@ -192,18 +192,30 @@ def _scansione() -> dict[str, str]:
 # 2. i MISTI che la misura ha tenuto fuori apposta (`_accoda_al_bridge`,
 #    `_normalize_con_mappa`, `cost_da_listino`; il quarto,
 #    `CEILING_IN_SOSPESO`, non compare qui perche' porta `in`, forma esclusa);
-# 3. i pochi falsi positivi noti, che restano perche' toglierli vorrebbe dire
-#    indebolire la regola: `O_CREAT`/`O_TRUNC`/`O_WRONLY` (le costanti di
-#    `os`, dove `O` sta per «open»), `a_trunc` (`a` e' il messaggio
-#    dell'assistente, non la preposizione), `col_offset`/`end_col_offset`
-#    (`col` sta per «column», l'API di `tokenize`).
+# 3. i sei falsi positivi noti -- **annotati uno per uno ACCANTO alla loro
+#    voce**, in cima all'elenco, e non qui: una decisione che vive lontano da
+#    cio' che decide non la legge nessuno. Restano dentro perche' toglierli
+#    vorrebbe dire togliere `o` e `col` dalle forme piane, cioe' due buchi
+#    veri in cambio di sei falsi allarmi.
 _NOTE_ITALIANE = frozenset({
+    # -- I SEI FALSI POSITIVI, annotati dove si leggono ------------------------
+    # NON sono debito da far calare: sono nomi corretti che la regola non sa
+    # distinguere. Chi li trova qui non deve «correggerli».
+    "O_CREAT", "O_TRUNC", "O_WRONLY",  # costanti di `os` (`impostazioni_chat.py`):
+                                       # quella `O` sta per «open», non e' la
+                                       # congiunzione
+    "a_trunc",                         # `chat_store.py`: quella `a` e' il messaggio
+                                       # dell'assistente, accanto a `u_trunc` che e'
+                                       # quello dell'utente
+    "col_offset", "end_col_offset",    # attributi di `tokenize`: quel `col` sta per
+                                       # «column», non e' `con` + articolo
+    # -- il resto: debito italiano vero, e cala --------------------------------
     "ACCENDI_LE_ABAT_JOUR", "ALIAS_DEL_PIANO", "ANNUNCIA_IL_CLIMA_A_21",
     "ANNUNCIA_IL_SALOTTO_SPENTO", "ANNUNCIA_LE_ABAT_JOUR_ACCESE",
     "AZIONE_METTI_IL_PIANO_IN_TESTA", "AZIONE_TOGLI_IL_PIANO", "CAMERA_A_17_5", "CLIMA_A_19",
     "CLIMA_A_21", "CREDENZIALI_DEL_PROPRIETARIO", "HA_RIPORTA_IL_SALOTTO_SPENTO",
-    "HA_RIPORTA_LA_CAMERA_A_19_5", "METTI_A_21", "METTI_LA_CAMERA_A_19_5", "O_CREAT", "O_TRUNC",
-    "O_WRONLY", "SCADENZA_NEI_TEST", "SENTINELLE_DEL_PONTE", "SPEGNI_IL_SALOTTO",
+    "HA_RIPORTA_LA_CAMERA_A_19_5", "METTI_A_21", "METTI_LA_CAMERA_A_19_5", 
+    "SCADENZA_NEI_TEST", "SENTINELLE_DEL_PONTE", "SPEGNI_IL_SALOTTO",
     "TUTTA_LA_CUCINA", "VARIABILE_TOKEN_DEL_PIANO", "_ARCHIVIO_DELL_UTENTE",
     "_BLOCCHI_A_TUTTA_LARGHEZZA", "_CASA_CON_ETICHETTA", "_CHIAVI_NOMINATE_DAL_PROMPT",
     "_DIREZIONE_DA_TRANSLATION_KEY", "_DOMINI_DI_RECAPITO", "_FALSITA_IN_ENTRAMBE_LE_VOCI",
@@ -230,16 +242,16 @@ _NOTE_ITALIANE = frozenset({
     "_semina_casa_con_comportamento", "_semina_gli_archivi", "_solo_i_nostri", "_sonda_con",
     "_sostituzioni_di_identificatori", "_specchio_del_termostato", "_su_disco",
     "_testi_che_legge_l_utente", "_tools_list_come_la_rotta", "_tutte_le_descrizioni", "a_iso",
-    "a_trunc", "a_ts", "aggiornata_il", "alias_di_oggi", "annuncio_di_un_altra", "app_con",
+    "a_ts", "aggiornata_il", "alias_di_oggi", "annuncio_di_un_altra", "app_con",
     "ascoltatori_durante_la_chiamata", "avvolte_da_rete", "body_con", "casa_con_orfana",
     "catena_di_oggi", "chiamata_dello_schedulatore", "chiamato_con",
     "chiavi_che_parlano_del_ponte", "claude_con_elenco", "client_con", "cliente_su",
-    "col_offset", "col_token", "col_token_del_piano", "commenti_di", "con_free", "con_gratuiti",
+    "col_token", "col_token_del_piano", "commenti_di", "con_free", "con_gratuiti",
     "con_registro_caduto", "corpo_ricevuto_dal_modello", "cost_da_listino", "da_anchor",
     "da_http", "da_iso", "da_quando", "da_quante", "da_risolvere", "da_run_sh", "da_salvare",
     "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
-    "e_alias", "e_contenitore", "e_def", "e_intestazione", "end_col_offset",
+    "e_alias", "e_contenitore", "e_def", "e_intestazione", 
     "entita_del_dispositivo", "estrai_dal_bersaglio", "famiglia_da_codice", "forme_del_token",
     "fra_parentesi", "giro_di_confronto_albero", "grave_piu_un_taciuto",
     "guarda_condizioni_di_sistema", "i_alias", "i_base", "i_cerca", "i_compact", "i_contesto",
@@ -314,7 +326,7 @@ def test_l_elisione_vale_solo_davanti_a_vocale():
     assert giunture("close_all_stores") == []
 
 
-def test_a_in_coda_e_un_etichetta_non_unpreposizione_a():
+def test_a_in_coda_e_un_etichetta_non_una_preposizione():
     assert giunture("a_ts") == ["a"]
     assert giunture("_chiamate_a_salva") == ["a"]
     assert giunture("text_a") == []
