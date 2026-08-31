@@ -97,7 +97,7 @@ integration's failure `motivo` are NOT `state` -- HA does not cap them at
 all, and a legitimate one can honestly run longer than 255 -- so they now go
 through `sanitize_ha_free_text` (cap 500, see its docstring for the number)
 instead of `sanitize_ha_value`. Both functions, and the shared `sanitize_text`
-underneath them, append a trailing marker (`_TRONCATO`, " [troncato]") when a
+underneath them, append a trailing marker (`_TRUNCATED`, " [troncato]") when a
 cut actually happens -- the same convention `proxy/ha_client.py::_truncate`
 uses (the two truncators were unified into one function, M1 in
 correzioni-minori.md, so it is now literally the same code, not just the same
@@ -200,7 +200,7 @@ _INJECTION_RE = re.compile(
 # IDENTICAL string (" [troncato]") before the merge, so there was no visible
 # text to choose between -- this one survives because it is the module that
 # both callers already depend on, not because either wording lost.
-_TRONCATO = " [troncato]"
+_TRUNCATED = " [troncato]"
 
 
 def truncate_with_marker(text, cap: int) -> str:
@@ -208,7 +208,7 @@ def truncate_with_marker(text, cap: int) -> str:
 
     Nessun filtro di iniezione qui -- SOLO il taglio. E' la funzione che
     prima viveva duplicata come `ha_client.py::_truncate` (stesso algoritmo,
-    stessa costante `_TRUNC_MARK`/`_TRONCATO`) per tagliare messaggi d'errore
+    stessa costante `_TRUNC_MARK`/`_TRUNCATED`) per tagliare messaggi d'errore
     e risposte di template che non sono testo libero di Home Assistant e non
     vanno fatti passare dal filtro di iniezione -- `sanitize_text` la
     richiama sotto DOPO aver gia' applicato quel filtro, per il proprio caso
@@ -232,9 +232,9 @@ def truncate_with_marker(text, cap: int) -> str:
         text = str(text)
     if len(text) <= cap:
         return text
-    if cap <= len(_TRONCATO):
+    if cap <= len(_TRUNCATED):
         return text[:max(0, cap)]
-    return text[:cap - len(_TRONCATO)] + _TRONCATO
+    return text[:cap - len(_TRUNCATED)] + _TRUNCATED
 
 
 def sanitize_text(v, max_len: int = 2000) -> str:
@@ -244,7 +244,7 @@ def sanitize_text(v, max_len: int = 2000) -> str:
     persisting cleartext reasoning that must stay readable (display-only).
 
     The result never exceeds `max_len`. When the text actually gets cut, the
-    cut is DECLARED with a trailing marker (`_TRONCATO`, marker included in
+    cut is DECLARED with a trailing marker (`_TRUNCATED`, marker included in
     the budget) instead of silently disappearing — via `truncate_with_marker`
     below, shared with `ha_client.py::_truncate` since M1 (audit-2026-08-25,
     minori). Text at or under `max_len` is returned untouched, no marker:
@@ -300,11 +300,11 @@ def sanitize_ha_value(v) -> str:
 # SMS/email paragraph or a one-line exception with its message (not a full
 # traceback): generous for the legitimate case this fix exists for, without
 # letting one crafted logbook message eat most of the model's context.
-MAX_TESTO_LIBERO = 500
+MAX_FREE_TEXT = 500
 
 
 def sanitize_ha_free_text(v) -> str:
     """Come `sanitize_ha_value`, ma per campi HA liberi che NON sono `state`
     (`messaggio` del diario, `motivo` di un'integrazione rotta) -- vedi
-    `MAX_TESTO_LIBERO` sopra per la ragione del numero."""
-    return sanitize_text(v, MAX_TESTO_LIBERO)
+    `MAX_FREE_TEXT` sopra per la ragione del numero."""
+    return sanitize_text(v, MAX_FREE_TEXT)

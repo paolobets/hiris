@@ -1394,7 +1394,7 @@ al Task 6 invece che deciso qui.
 | giorno | day |
 | giro | round |
 | grana | granularity |
-| gratuito | free |
+| gratuito | free | **`free` e' preso da QUESTO senso -- «senza costo» -- e non e' disponibile per `libero`, «non vincolato».** Misurato nel lotto 14 (`proxy/_sanitize.py`): `MAX_TESTO_LIBERO` andava all'inglese e il suggerimento meccanico era `max_text_libero`, meta' nome. Scrivere `libero -> free` avrebbe messo due parole italiane di senso diverso sullo stesso inglese in modo PERMANENTE -- la collisione che `Collisione` ferma dentro un file, resa regola. Risolto riusando il nome dell'interfaccia che la costante alimenta (`sanitize_ha_free_text` -> `MAX_FREE_TEXT`), e `libero` resta undecided: chi la incontra decide guardando il codice, non traducendo |
 | guasto | fault |
 | identificatore | identifier |
 | identita | identity |
@@ -2275,6 +2275,29 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   modulo di RADICE che questa fetta non converte. `registro_esiti.tutti()` e' protetto due volte
   -- e' un plurale, quindi mai applicato da solo, ed e' nella guardia `_METODI_REGISTRO_ESITI`
   aggiunta dal lotto 12.
+
+**Decisioni del lotto 14 (`proxy/_sanitize.py`), il primo di `proxy/`.**
+
+- **`_TRONCATO -> _TRUNCATED`**, auto-applicato dal join (`troncato -> truncated` era gia' deciso).
+  **Il VALORE della costante, `" [troncato]"`, non si tocca**: e' la stringa che compare nel testo
+  che il modello e la persona leggono, e le stringhe sono fuori dal perimetro della fetta. La
+  costante e' privata e senza importatori esterni (verificato con un grep su `hiris/`, `tests/`,
+  `scripts/` e `docs/`): le uniche altre occorrenze erano tre citazioni fra backtick nello stesso
+  file, aggiornate.
+- **`MAX_TESTO_LIBERO -> MAX_FREE_TEXT`, e NON aggiungendo `libero -> free` al glossario.** Il
+  suggerimento meccanico era `max_text_libero`, cioe' meta' nome. Ma `free` **e' gia' preso**:
+  `gratuito -> free`, fra le parole ordinarie, e i due sensi sono davvero diversi -- «senza costo»
+  contro «non vincolato». Scrivere `libero -> free` avrebbe messo due parole italiane di senso
+  diverso sullo stesso inglese, che e' esattamente cio' che la guardia `Collisione` esiste per
+  fermare, e lo avrebbe reso **permanente** invece che locale. Il nome viene percio' dall'interfaccia
+  che quella costante gia' alimenta -- `sanitize_ha_free_text`, «HA free text», inglese gia' scritto
+  in quel file da prima della fetta -- come `pending_only`, `turni -> turns` e `da_anchor`.
+  **`libero` resta undecided e NON protetta**: chi la incontra altrove deve rileggere questa riga e
+  la nota accanto a `gratuito`, non decidere di sfuggita.
+- Nessun'altra rinomina: il resto del file era gia' inglese, docstring compresi (e' un modulo che
+  nasce con la prosa in inglese, unico in `hiris/app/` -- non si traduce all'italiano, come non si
+  traduce niente: il perimetro e' il codice).
+
 
 ## I nomi degli strumenti
 

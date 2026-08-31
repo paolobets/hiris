@@ -39,7 +39,7 @@ def test_sanitize_ha_value_under_255_is_not_marked():
 
 # --- M2 (audit-2026-08-25, minori): campi liberi NON-`state` (`messaggio`
 # del diario, `motivo` di un'integrazione) meritano un tetto dedicato, non
-# i 255 di `sanitize_ha_value` -- vedi MAX_TESTO_LIBERO in _sanitize.py.
+# i 255 di `sanitize_ha_value` -- vedi MAX_FREE_TEXT in _sanitize.py.
 
 def test_sanitize_ha_free_text_lets_a_legitimate_long_message_through():
     """Il caso vero che M2 corregge: un messaggio di automazione (o il
