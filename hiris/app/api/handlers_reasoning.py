@@ -51,20 +51,20 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         from ..schedulatore.turno import _senza_conclusione
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
-        archivio = request.app.get("promesse")
-        riga = archivio.read(ident) if (archivio is not None and ident) else None
-        if riga is None:
+        store = request.app.get("promesse")
+        row = store.read(ident) if (store is not None and ident) else None
+        if row is None:
             logger.warning(
                 "consegna di un turno di promessa senza promessa (job_id=%s, "
                 "id=%r): non c'e' niente da chiudere", job_id, ident)
             outcome = "promessa_sconosciuta"
-        elif riga.get("stato") != "in_corso":
+        elif row.get("stato") != "in_corso":
             # `concludi` e' gia' arrivato: la promessa e' chiusa e non si
             # riapre. Riaprirla cancellerebbe un testo che l'utente puo' gia'
             # aver letto -- o peggio, farebbe partire una seconda notifica.
             outcome = "promessa_gia_conclusa"
         else:
-            archivio.concludi(
+            store.concludi(
                 ident, state="fallita", now=_now(request),
                 reason=_senza_conclusione(decision.get("reply")))
             outcome = "promessa_senza_conclusione"
