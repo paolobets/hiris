@@ -16,8 +16,8 @@ import pytest
 
 from hiris.app.api.handlers_usage import (
     handle_reset_usage,
-    handle_storia_usage,
     handle_usage,
+    handle_usage_history,
 )
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.consumi.store import UsageStore
@@ -173,14 +173,14 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
 # ── la storia ───────────────────────────────────────────────────────────────
 
 def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
-    corpo = _corpo(_chiama(handle_storia_usage, app,
+    corpo = _corpo(_chiama(handle_usage_history, app,
                            {"da": "2026-08-21", "a": "2026-08-22"}))
     assert [g["giorno"] for g in corpo["giorni"]] == ["2026-08-21", "2026-08-22"]
     assert corpo["giorni"][0]["per_provider"]["claude"]["cost_eur"] > 0
 
 
 def test_la_storia_senza_parametri_da_gli_ultimi_trenta_giorni(app):
-    corpo = _corpo(_chiama(handle_storia_usage, app))
+    corpo = _corpo(_chiama(handle_usage_history, app))
     assert "da" in corpo and "a" in corpo
     assert isinstance(corpo["giorni"], list)
 

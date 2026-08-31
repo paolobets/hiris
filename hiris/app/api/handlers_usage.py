@@ -39,7 +39,7 @@ from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
 
-_MSG_NESSUN_PROVIDER = (
+_NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c'è "
     "ancora nessun modello che risponda, quindi non c'è nessun consumo da "
     "misurare. Configura una chiave API o il token dell'abbonamento nelle "
@@ -47,7 +47,7 @@ _MSG_NESSUN_PROVIDER = (
 )
 
 # Quanti giorni di storia si danno quando nessuno chiede un intervallo.
-_GIORNI_STORIA = 30
+_HISTORY_DAYS = 30
 
 
 def _euro(usd):
@@ -55,7 +55,7 @@ def _euro(usd):
     return None if usd is None else round(usd * _EUR_RATE, 6)
 
 
-def _puo_rispondere(app) -> bool:
+def _can_respond(app) -> bool:
     """Se esiste qualcuno che potrebbe consumare, adesso.
 
     Con un provider configurato uno ZERO e' un fatto misurato -- «non hai
@@ -66,11 +66,11 @@ def _puo_rispondere(app) -> bool:
                 or app.get("ponte_attivo"))
 
 
-def _non_misurata() -> dict:
+def _unmeasured() -> dict:
     return {
         "misurata": False,
         "motivo": "nessun_provider",
-        "messaggio": _MSG_NESSUN_PROVIDER,
+        "messaggio": _NO_PROVIDER_MSG,
         # `null`, non `0`: vedi la docstring del modulo.
         "total_requests": None,
         "input_tokens": None,
@@ -89,7 +89,7 @@ def _iso(ts: float) -> str | None:
     return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
 
 
-def _modello_fuori(m: dict) -> dict:
+def _model_out(m: dict) -> dict:
     """Una riga di modello come la legge la pagina. `token_in` resta PURO."""
     return {
         "modello": m["modello"],
@@ -108,17 +108,17 @@ def _modello_fuori(m: dict) -> dict:
 
 
 async def handle_usage(request: web.Request) -> web.Response:
-    archivio = request.app.get("consumi")
-    if archivio is None or (archivio.empty() and not _puo_rispondere(request.app)):
-        return web.json_response(_non_misurata())
+    store = request.app.get("consumi")
+    if store is None or (store.empty() and not _can_respond(request.app)):
+        return web.json_response(_unmeasured())
 
     # `?da=sempre` chiede la storia intera; senza parametro si conta
     # dall'ancora, che e' cio' che la pagina mostra per primo. Il parametro
     # esiste perche' l'interruttore «da ultimo azzeramento / da sempre» possa
     # davvero cambiare qualcosa: senza, sarebbe un pulsante che non fa niente.
-    da_ancora = request.query.get("da") != "sempre"
-    sezioni = archivio.sezioni(da_anchor=da_ancora)
-    totali = archivio.totali(da_anchor=da_ancora)
+    da_anchor = request.query.get("da") != "sempre"
+    sections = store.sezioni(da_anchor=da_anchor)
+    totals = store.totali(da_anchor=da_anchor)
 
     # `input_tokens` in cima e' INCLUSIVO della cache: e' la stessa quantita'
     # che la pagina e il riquadro della chat mostravano prima di questa fetta.
@@ -126,8 +126,8 @@ async def handle_usage(request: web.Request) -> web.Response:
     # tariffe sue ed e' il numero che dice se il prefisso sta lavorando.
     # Sommare qui la sola colonna pura farebbe crollare il totale, e
     # sembrerebbe una perdita di dati invece di un cambio di rappresentazione.
-    ingresso = (totali["token_in"] + totali["cache_lettura"]
-                + totali["cache_scrittura"])
+    input_tokens = (totals["token_in"] + totals["cache_lettura"]
+                + totals["cache_scrittura"])
     # L'aiutante di `server.py` -- import locale per evitare il ciclo:
     # `server` importa GIA' `handle_usage` da questo modulo (riparazione-
     # impoverisce-brief.md, appendice punto 6). Prima di questa riga c'era
@@ -136,23 +136,23 @@ async def handle_usage(request: web.Request) -> web.Response:
     # punto 7): nessun codice di produzione scriveva quella chiave, la
     # riempiva solo la finta di un test -- vedi `tests/test_consumi_rotte.py`.
     from ..server import _fuso_da_archivio_casa
-    fuso = _fuso_da_archivio_casa(request.app.get("archivio_casa")) or ""
+    timezone = _fuso_da_archivio_casa(request.app.get("archivio_casa")) or ""
 
     return web.json_response({
         "misurata": True,
-        "total_requests": totali["richieste"],
-        "input_tokens": ingresso,
-        "output_tokens": totali["token_out"],
-        "total_tokens": ingresso + totali["token_out"],
-        "cost_usd": round(totali["costo_usd"], 6),
-        "cost_eur": _euro(totali["costo_usd"]),
+        "total_requests": totals["richieste"],
+        "input_tokens": input_tokens,
+        "output_tokens": totals["token_out"],
+        "total_tokens": input_tokens + totals["token_out"],
+        "cost_usd": round(totals["costo_usd"], 6),
+        "cost_eur": _euro(totals["costo_usd"]),
         # Se anche un solo modello e' senza prezzo, il totale NON e' il costo:
         # e' un pavimento, e la pagina lo scrive con un «>=».
-        "costo_parziale": totali["costo_parziale"],
-        "rate_limit_errors": totali["errori_rate_limit"],
-        "last_reset": _iso(archivio.anchor()),
-        "fuso": fuso or "UTC",
-        "fuso_noto": bool(fuso),
+        "costo_parziale": totals["costo_parziale"],
+        "rate_limit_errors": totals["errori_rate_limit"],
+        "last_reset": _iso(store.anchor()),
+        "fuso": timezone or "UTC",
+        "fuso_noto": bool(timezone),
         "sezioni": [{
             "provider": s["provider"],
             "etichetta": s["etichetta"],
@@ -167,12 +167,12 @@ async def handle_usage(request: web.Request) -> web.Response:
             "costo_usd": None if s["costo_usd"] is None else round(s["costo_usd"], 6),
             "cost_eur": _euro(s["costo_usd"]),
             "costo_parziale": s["costo_parziale"],
-            "modelli": [_modello_fuori(m) for m in s["modelli"]],
-        } for s in sezioni],
+            "modelli": [_model_out(m) for m in s["modelli"]],
+        } for s in sections],
     })
 
 
-async def handle_storia_usage(request: web.Request) -> web.Response:
+async def handle_usage_history(request: web.Request) -> web.Response:
     """`GET /api/usage/storia?da=&a=` -- i secchielli giornalieri, per il grafico.
 
     Ha una rotta SUA perche' e' una domanda diversa, con parametri suoi: un
@@ -181,23 +181,23 @@ async def handle_storia_usage(request: web.Request) -> web.Response:
     `/api/usage` a intervalli: appesantirlo con trenta giorni di serie
     storica farebbe pagare a ogni giro una domanda che la chat non fa.
     """
-    archivio = request.app.get("consumi")
-    if archivio is None:
+    store = request.app.get("consumi")
+    if store is None:
         return web.json_response({"giorni": [], "da": "", "a": ""})
 
-    oggi = datetime.fromtimestamp(time.time(), UTC)
-    a = request.query.get("a") or oggi.strftime("%Y-%m-%d")
+    today = datetime.fromtimestamp(time.time(), UTC)
+    a = request.query.get("a") or today.strftime("%Y-%m-%d")
     da = request.query.get("da") or (
-        datetime.fromtimestamp(time.time() - _GIORNI_STORIA * 86400, UTC)
+        datetime.fromtimestamp(time.time() - _HISTORY_DAYS * 86400, UTC)
         .strftime("%Y-%m-%d"))
 
     giorni = []
-    for g in archivio.storia(da=da, a=a):
+    for g in store.storia(da=da, a=a):
         giorni.append({
             "giorno": g["giorno"],
             "per_provider": {
-                nome: {**dati, "cost_eur": _euro(dati["costo_usd"])}
-                for nome, dati in g["per_provider"].items()
+                name: {**data, "cost_eur": _euro(data["costo_usd"])}
+                for name, data in g["per_provider"].items()
             },
         })
     return web.json_response({"giorni": giorni, "da": da, "a": a})
@@ -210,10 +210,10 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
     richiesta in conflitto con lo stato della risorsa» -- e' uscito con la
     ragione che lo giustificava: un'ancora c'e' sempre.
     """
-    archivio = request.app.get("consumi")
-    if archivio is None:
-        corpo = _non_misurata()
-        corpo["cancellato"] = False
-        return web.json_response(corpo, status=409)
-    quando = archivio.sposta_anchor(time.time())
-    return web.json_response({"last_reset": _iso(quando), "cancellato": False})
+    store = request.app.get("consumi")
+    if store is None:
+        body = _unmeasured()
+        body["cancellato"] = False
+        return web.json_response(body, status=409)
+    when = store.sposta_anchor(time.time())
+    return web.json_response({"last_reset": _iso(when), "cancellato": False})

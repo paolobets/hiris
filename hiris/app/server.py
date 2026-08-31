@@ -26,7 +26,7 @@ from .api.handlers_models import (
     handle_list_models,
     handle_save_models_config,
 )
-from .api.handlers_usage import handle_reset_usage, handle_storia_usage, handle_usage
+from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .azione.costruzione.officina import Workshop
@@ -3525,7 +3525,7 @@ def create_app() -> web.Application:
     # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
     app.router.add_get("/api/usage", handle_usage)
-    app.router.add_get("/api/usage/storia", handle_storia_usage)
+    app.router.add_get("/api/usage/storia", handle_usage_history)
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)

@@ -355,6 +355,40 @@ _METODI_HA_CLIENT = frozenset({
     "_ws_loop",
 })
 
+# La STESSA guardia, per una specie diversa di confine (Task 9, `api/`):
+# `UsageStore` (`consumi/store.py`) e' un ambito GIA' CHIUSO -- a
+# differenza di `HAClient`, la cui intera classe resta fuori da questa
+# fetta -- ma tre dei suoi metodi PUBBLICI (`sezioni`, `totali`, `storia`)
+# non sono mai stati decisi nel glossario, e restano italiani nonostante
+# `consumi/` sia "idempotente". Un ambito idempotente non e' la garanzia
+# che ci si aspetterebbe (vedi il debito tracciato in
+# `tests/test_rinomina_applica.py` per `AgendaStore.list::
+# solo_in_sospeso` e `ConstructionStore.scadi`, la stessa famiglia):
+# `sezioni -> section`/`totali -> total` sarebbero comunque solo delle
+# PROPOSTE (parole singole non aliasate al plurale, mai applicate da
+# sole), ma il giorno in cui qualcuno decidesse `sezione -> section` per
+# un'altra ragione, `archivio.sezioni(...)` diventerebbe
+# `archivio.section(...)` in silenzio -- lo stesso guasto di
+# `ha.statistiche()`, misurato PRIMA di commetterlo qui (dry-run su
+# `api/handlers_usage.py`, che chiama tutti e tre), non dopo.
+#
+# Elenco letto a mano da `consumi/store.py` (stessa disciplina di
+# `_METODI_HA_CLIENT`: include anche i privati e i metodi gia' inglesi,
+# nessuno svantaggio a proteggerli).
+_METODI_USAGE_STORE = frozenset({
+    "__init__", "close", "_timezone", "empty", "log", "_where", "sezioni",
+    "totali", "storia", "anchor", "_anchor_day", "sposta_anchor",
+    "_sottrai_saldo", "importa_legacy",
+})
+
+# L'insieme delle classi esterne protette per attributo, indipendentemente
+# da QUALE oggetto le porta: `_righe_di_percorso_e_parola_chiave` non sa
+# (ne' deve sapere) se una variabile si chiama `ha`, `archivio` o
+# `store` -- controlla solo se il NOME dopo il punto appartiene a una di
+# queste classi. Un domani in cui una terza classe rivelasse lo stesso
+# guasto si aggiunge qui, non si duplica il meccanismo.
+_METODI_ESTERNI_PROTETTI = _METODI_HA_CLIENT | _METODI_USAGE_STORE
+
 
 def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int], set[int]]:
     """Tre insiemi di INDICI nella lista `tokens`: quelli che sono un
@@ -389,7 +423,11 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
     e' un attributo di un oggetto che arriva da un ambito -- `proxy/` --
     che questa fetta non converte affatto: riconosciuto per struttura (un
     NAME preceduto da un singolo `.`) e per appartenenza a
-    `_METODI_HA_CLIENT`, indipendentemente da quale variabile lo precede.
+    `_METODI_ESTERNI_PROTETTI`, indipendentemente da quale variabile lo
+    precede. **Non solo `HAClient`**: `_METODI_ESTERNI_PROTETTI` unisce
+    anche `_METODI_USAGE_STORE` (`UsageStore`, `consumi/`) -- un ambito
+    GIA' CHIUSO puo' avere metodi pubblici mai decisi quanto uno non
+    ancora toccato, e il rischio per lo strumento e' identico (Task 9).
     Trattato come una parola chiave: si segnala, non si applica.
     """
     percorso: set[int] = set()
@@ -443,7 +481,7 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
                     and tokens[i + 1].type == tokenize.OP
                     and tokens[i + 1].string == "="):
                 parola_chiave.add(i)
-            elif (t.string in _METODI_HA_CLIENT
+            elif (t.string in _METODI_ESTERNI_PROTETTI
                     and precedente is not None
                     and precedente.type == tokenize.OP
                     and precedente.string == "."):
@@ -517,9 +555,12 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
             # come una proposta -- non indovina, chiede -- invece di
             # applicarla e rischiare di rompere una firma altrui in
             # silenzio (`origine=` verso `azione/porta.py::esegui`, misurato).
-            # Stessa cura per un metodo di HAClient (`confine_ha`): rompere
-            # `ha.statistiche()` in `ha.statistics()` e' lo stesso guasto,
-            # misurato dal vivo su `casa/tempo.py` (Task 8).
+            # Stessa cura per un metodo di HAClient o di UsageStore
+            # (`confine_ha`, che nonostante il nome copre entrambi ora):
+            # rompere `ha.statistiche()` in `ha.statistics()` e' lo stesso
+            # guasto di rompere `archivio.sezioni()` in `archivio.section()`,
+            # misurato dal vivo su `casa/tempo.py` (Task 8) e prevenuto per
+            # `consumi/store.py` prima di commetterlo (Task 9).
             proposta = Proposta(nome=t.string, pezzi=[t.string.lower()], suggerito=esito)
             if proposta.nome not in visti:
                 visti.add(proposta.nome)

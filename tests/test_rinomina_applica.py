@@ -323,6 +323,35 @@ def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
     assert proposte == []
 
 
+def test_un_metodo_di_usagestore_non_si_applica_da_solo():
+    """La stessa guardia, per `UsageStore` (Task 9): `sezioni`/`totali`/
+    `storia` sono metodi PUBBLICI di un ambito gia' chiuso (`consumi/`)
+    ma mai decisi -- se una parola omonima venisse decisa domani per
+    un'altra ragione (`sezione -> section`), applicarla alla cieca
+    romperebbe `archivio.sezioni(...)` in `archivio.section(...)`, lo
+    stesso guasto di `ha.statistiche()`. Misurato PRIMA di commetterlo
+    (dry-run su `api/handlers_usage.py`), non dopo -- la lezione esplicita
+    di questo Task."""
+    gf = rinomina.Glossario(mappa={"sezioni": "section"})
+    dentro = "corpo = archivio.sezioni(da_anchor=True)\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == dentro, "il metodo di UsageStore non si applica da solo"
+    assert [p.nome for p in proposte] == ["sezioni"]
+    assert proposte[0].suggerito == "section"
+
+
+def test_un_metodo_che_non_e_di_usagestore_si_applica_normalmente():
+    """La guardia su `UsageStore` e' un allowlist quanto quella su
+    `HAClient`, non un blocco generico: un metodo mio (qui,
+    `comportamento`, non in nessuno dei due elenchi) continua ad
+    applicarsi come sempre."""
+    gf = rinomina.Glossario(mappa={"comportamento": "behavior"})
+    dentro = "voci = self._consumi.comportamento()\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert fuori == "voci = self._consumi.behavior()\n"
+    assert proposte == []
+
+
 def _verifica_idempotenza(base: Path, ambito: str, copia: Path,
                           residui_noti: frozenset = frozenset()) -> None:
     """Applica lo strumento a una COPIA di `base` (un file o una cartella)

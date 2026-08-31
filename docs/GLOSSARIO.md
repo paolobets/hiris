@@ -1214,6 +1214,7 @@ al Task 6 invece che deciso qui.
 | inaffidabile | unreliable |
 | incompleto | incomplete |
 | individuale | individual |
+| ingresso | input |
 | iniziale | initial |
 | inizio | start |
 | innesca | trigger |
@@ -1716,6 +1717,35 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   (`schedulatore/`, vedi `tests/test_rinomina_applica.py`). Non tracciato li' perche' fuori dal
   perimetro-file di questo lotto: segnalato qui perche' chi apre `azione/costruzione/versioni.py`
   lo sappia prima di scoprirlo per caso.
+
+- `store.concludi(...)`/`_senza_conclusione` (`handlers_reasoning.py`, verso
+  `AgendaStore.concludi` e `schedulatore/turno.py::_senza_conclusione`) **lasciati intatti di
+  proposito**: stessa classe di residuo di `store.scadi`, sopra -- metodi/funzioni ancora italiani
+  in un ambito gia' chiuso (`schedulatore/`), mai decisi. Entrambi nell'elenco unico del debito nel
+  report di Task 9, non ripetuti qui parola per parola.
+- **`ingresso -> input_tokens`, non `input` nudo**: `input` e' un builtin Python (`_pericoloso`),
+  la stessa guardia di `classe`/`class` -- lo strumento lo segnala come proposta invece di
+  applicarlo, e la scelta a mano riusa il nome del campo JSON che la variabile alimenta
+  (`"input_tokens"`), la stessa disciplina gia' vista per `pending_only`.
+- **`sezioni`/`totali` (`handlers_usage.py`, verso `UsageStore.sezioni`/`.totali`) e `storia`
+  (verso `UsageStore.storia`) NON decise come parole generali**, a differenza di `ingresso`:
+  sono metodi PUBBLICI di un ambito gia' chiuso (`consumi/`) mai tradotti -- terzo/quarto/quinto
+  caso della stessa famiglia di `scadi`/`solo_in_sospeso`/`concludi`. Qui pero' la scoperta e'
+  arrivata PRIMA di romperli (dry-run su questo stesso file, che chiama tutti e tre): la guardia
+  di `scripts/rinomina.py` e' stata estesa con `_METODI_USAGE_STORE`, sullo stesso modello di
+  `_METODI_HA_CLIENT`, cosi' un domani in cui `sezione -> section` venisse decisa per un'altra
+  ragione non romperebbe silenziosamente queste tre chiamate. Le variabili LOCALI che ricevono i
+  risultati sono comunque tradotte a mano (`sections`, `totals`) senza toccare le chiamate
+  protette -- la funzione `handle_storia_usage -> handle_usage_history` (il nome della rotta,
+  mio) e' tradotta lo stesso, senza mai scrivere una riga generale `storia -> history` che
+  romperebbe la guardia appena descritta se applicata a un `def storia(` non protetto.
+- `_MSG_NESSUN_PROVIDER -> _NO_PROVIDER_MSG`, `_GIORNI_STORIA -> _HISTORY_DAYS` (composto ad hoc,
+  non una parola generale: vedi sopra il perche' di `storia`), `_puo_rispondere -> _can_respond`,
+  `_non_misurata -> _unmeasured`, `_modello_fuori -> _model_out` (`fuori` qui e' il senso
+  "dato in uscita", NON il senso `fuori (casa) -> outside`: lo stesso idioma di
+  `schedulatore/promise.py::serializza` gia' documentato in «Il limite della qualificazione per
+  ambito», applicato a mano senza toccare la riga `fuori (casa)`). Tutte private, nessun
+  chiamante esterno.
 
 ## I nomi degli strumenti
 
