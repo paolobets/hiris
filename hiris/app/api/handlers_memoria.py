@@ -162,7 +162,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         "disponibile": True,
         "ricordi": memories,
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
-        # ricordi oltre `_LIMITE_RICORDI_MOSTRATI` sono invisibili, e un
+        # ricordi oltre `_MEMORIES_SHOWN_LIMIT` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
         # memoria non evapora (memoria/archivio.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
@@ -214,7 +214,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # non verifica NESSUNA ancora, che e' il comportamento giusto in
     # fail-closed -- "un'ancora senza riscontro non si scrive" vale anche
     # quando il riscontro non si puo' nemmeno cercare. Ma la RAGIONE che
-    # arriva all'utente deve dirlo com'e' (`tipi_non_verificabili`, sotto):
+    # arriva all'utente deve dirlo com'e' (`unverifiable_types`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
     live_state = _page_mirror(request)
