@@ -1002,7 +1002,7 @@ def componi_pannello(
         # Serve perché accendendo `dove` per il piano si accenderebbe anche il
         # campo di testo libero (nel pannello filtro e campo sono la stessa
         # cosa): si potrebbe incollare `gpt-4o`, salvarlo, e vederselo ridurre
-        # a `sonnet` da `_pulisci_ponte` con un log che nessuno legge. Un
+        # a `sonnet` da `_clean_bridge` con un log che nessuno legge. Un
         # controllo abilitato che non fa quello che dice -- la cosa che i tre
         # radio spenti dichiaravano di voler evitare, rientrata dalla porta
         # opposta.

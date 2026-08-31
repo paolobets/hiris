@@ -271,7 +271,7 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
    lo `state.cfg` DI DEFAULT DEL MODULO -- catena vuota, nessun modello per
    provider, ponte e Ollama ai predefiniti, e `seminato: false`.
 
-   Il backend applicava tutto (erano tutte in `_CHIAVI_NOSTRE`). Da quel
+   Il backend applicava tutto (erano tutte in `_OUR_KEYS`). Da quel
    momento la chat rispondeva «Nessun provider utilizzabile in catena», e al
    riavvio successivo la semina rigirava. Un click. */
 

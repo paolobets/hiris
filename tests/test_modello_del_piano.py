@@ -18,16 +18,16 @@ ALIAS = ("haiku", "sonnet", "opus")
 def test_il_predefinito_del_campo_non_e_mai_vuoto():
     """Vuoto significherebbe «non so», e «non so» e' la porta da cui la regola
     «se non so niente allora fai come prima» e' gia' rientrata quattro volte."""
-    assert handlers_models._PREDEFINITI_ARCHIVIO["ponte"]["modello"] == "sonnet"
+    assert handlers_models._STORE_DEFAULTS["ponte"]["modello"] == "sonnet"
 
 
 @pytest.mark.parametrize("alias", ALIAS)
 def test_i_tre_alias_passano_intatti(alias):
-    assert handlers_models._pulisci_ponte({"modello": alias})["modello"] == alias
+    assert handlers_models._clean_bridge({"modello": alias})["modello"] == alias
 
 
 def test_un_archivio_senza_il_campo_riceve_il_predefinito():
-    assert handlers_models._pulisci_ponte({})["modello"] == "sonnet"
+    assert handlers_models._clean_bridge({})["modello"] == "sonnet"
 
 
 @pytest.mark.parametrize("scritto,atteso", [
@@ -39,20 +39,20 @@ def test_un_identificatore_si_riporta_dentro_invece_di_far_fallire(scritto, atte
     """Come i due `_clamp_int` accanto: un valore fuori range non e' un corpo
     malformato, si riporta dentro. Il riduttore e' `modello_cli`, che qui trova
     la sua unica casa."""
-    assert handlers_models._pulisci_ponte({"modello": scritto})["modello"] == atteso
+    assert handlers_models._clean_bridge({"modello": scritto})["modello"] == atteso
 
 
 @pytest.mark.parametrize("spazzatura", ["gpt-4o", "", None, 42, [], {"a": 1}])
 def test_cio_che_non_e_un_alias_diventa_sonnet_e_non_esplode(spazzatura):
-    esito = handlers_models._pulisci_ponte({"modello": spazzatura})["modello"]
+    esito = handlers_models._clean_bridge({"modello": spazzatura})["modello"]
     assert esito in ALIAS
     assert esito == "sonnet"
 
 
 def test_il_campo_nuovo_non_cancella_gli_altri_tre_del_ponte():
-    """`_pulisci_ponte` scrive l'oggetto intero: un campo aggiunto senza
+    """`_clean_bridge` scrive l'oggetto intero: un campo aggiunto senza
     riportare gli altri li azzererebbe a ogni PUT."""
-    pulito = handlers_models._pulisci_ponte(
+    pulito = handlers_models._clean_bridge(
         {"attivo": True, "scadenza_min": 10, "tetto_giornaliero": 150,
          "modello": "opus"})
     assert pulito == {"attivo": True, "scadenza_min": 10,
@@ -111,13 +111,13 @@ def test_il_segno_non_viaggia_in_una_put(tmp_path):
     """Un client che rimandasse `piano_seminato: false` -- un gateway MCP con
     uno snapshot vecchio -- farebbe RIGIRARE la semina al riavvio successivo,
     ricoprendo la scelta dell'utente col valore derivato. Il segno vive fuori
-    da `_CHIAVI_NOSTRE`, come gli altri due."""
+    da `_OUR_KEYS`, come gli altri due."""
     d = str(tmp_path)
     handlers_models.save_models_config(
         d, {"ponte": {"attivo": True, "scadenza_min": 5,
                       "tetto_giornaliero": 50, "modello": "opus"},
             "piano_seminato": True},
-        segni=True)
+        flags=True)
     handlers_models.save_models_config(
         d, {"ponte": {"attivo": True, "scadenza_min": 5,
                       "tetto_giornaliero": 50, "modello": "opus"},
@@ -127,7 +127,7 @@ def test_il_segno_non_viaggia_in_una_put(tmp_path):
 
 def test_il_segno_sopravvive_al_giro_load_save(tmp_path):
     d = str(tmp_path)
-    handlers_models.save_models_config(d, {"piano_seminato": True}, segni=True)
+    handlers_models.save_models_config(d, {"piano_seminato": True}, flags=True)
     assert handlers_models.load_models_config(d)["piano_seminato"] is True
 
 
@@ -167,7 +167,7 @@ def _archivio_pre_fetta(tmp_path, modello_claude, modello_piano="sonnet"):
         "ponte": {"attivo": True, "scadenza_min": 10,
                   "tetto_giornaliero": 150, "modello": modello_piano},
         "seminato": True, "catena_seminata": True, "chain_order": ["claude"],
-    }, segni=True)
+    }, flags=True)
     return d
 
 

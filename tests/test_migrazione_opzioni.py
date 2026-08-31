@@ -162,7 +162,7 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
                          {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
     # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE e solo l'avvio lo
     # scrive -- vedi `test_una_put_non_puo_riscrivere_il_segno_della_semina`.
-    save_models_config(str(tmp_path), archivio, segni=True)
+    save_models_config(str(tmp_path), archivio, flags=True)
     disco = json.loads((tmp_path / "models_config.json").read_text(encoding="utf-8"))
     assert disco["seminato"] is True
     assert disco["ponte"]["scadenza_min"] == 20

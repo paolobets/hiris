@@ -116,7 +116,7 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
     # I predefiniti si LEGGONO da `_PREDEFINITI`, non si ridigitano qui: erano
     # gli stessi numeri scritti due volte nello stesso file (una nel
     # dizionario, una come argomento di `_intero`/`_bool`), piu' una terza
-    # volta in `api/handlers_models._PREDEFINITI_ARCHIVIO`. E' esattamente la
+    # volta in `api/handlers_models._STORE_DEFAULTS`. E' esattamente la
     # struttura che ha prodotto il debito F -- `strategia_ultima` che valeva
     # `""` in una copia e `"balanced"` nell'altra, e ogni installazione, anche
     # nuova, che logga «Copiati: strategia_ultima» -- chiuso allora
@@ -162,7 +162,7 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
         # sarebbe un'affermazione sui valori dell'utente, e nessun valore
         # dell'utente e' stato letto. Se ci si arriva con un archivio che
         # ESISTEVA ma non si e' potuto leggere, la riga che lo dice l'ha gia'
-        # scritta `_leggi_archivio_grezzo` (logger.error), e questa non la
+        # scritta `_read_raw_store` (logger.error), e questa non la
         # contraddice piu'.
         log.info(
             "Migrazione (versione A): non c'era nessuna opzione dell'add-on da "

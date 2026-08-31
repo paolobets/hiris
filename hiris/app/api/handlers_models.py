@@ -16,7 +16,7 @@ from ..decisione_modelli import (
     componi_topologia,
     piano_ha_il_token,
 )
-from ..migrazione_opzioni import _PREDEFINITI as _PREDEFINITI_SEMINA
+from ..migrazione_opzioni import _PREDEFINITI as _SEED_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _clean_provider_models(raw) -> dict:
 # dizionario di predefiniti, non cinque costanti sparse: `load` e `save`
 # leggono la stessa struttura, e un campo aggiunto qui non puo' dimenticarsi in
 # uno dei due.
-_PREDEFINITI_ARCHIVIO = {
+_STORE_DEFAULTS = {
     # `modello`: il modello del piano, che dalla fetta «il modello del piano»
     # e' un valore SUO e non piu' un effetto di `provider_models["claude"]`.
     # Il predefinito e' `"sonnet"` e NON la stringa vuota: vuoto
@@ -64,15 +64,15 @@ _PREDEFINITI_ARCHIVIO = {
     # campo in piu' -- la semina lo tratta a parte
     # (`semina_modello_del_piano`), quindi non sta nell'altro elenco: la
     # differenza e' voluta, e adesso e' l'unica.
-    "ponte": {**_PREDEFINITI_SEMINA["ponte"], "modello": "sonnet"},
-    "ollama": dict(_PREDEFINITI_SEMINA["ollama"]),
+    "ponte": {**_SEED_DEFAULTS["ponte"], "modello": "sonnet"},
+    "ollama": dict(_SEED_DEFAULTS["ollama"]),
 }
 
 # Le sole chiavi che un CLIENT puo' scrivere: le sei decisioni della pagina
 # Modelli. Tutto il resto che sta sul disco (a partire da 'brain_model')
 # sopravvive intatto -- vedi la lettura-modifica-scrittura in
 # save_models_config.
-_CHIAVI_NOSTRE = (
+_OUR_KEYS = (
     "chain_order", "provider_models", "ponte", "ollama",
     "nascondi_gratuiti", "strategia_ultima",
 )
@@ -80,7 +80,7 @@ _CHIAVI_NOSTRE = (
 # I SEGNI DELLA MIGRAZIONE, che non sono decisioni e non viaggiano in una PUT.
 # `seminato` dice che le opzioni dell'add-on sono gia' state copiate;
 # `catena_seminata` che la catena e' gia' stata copiata dalla vecchia regola.
-# Stavano in `_CHIAVI_NOSTRE` e ne sono usciti: un client che rimandasse
+# Stavano in `_OUR_KEYS` e ne sono usciti: un client che rimandasse
 # `seminato: false` -- la pagina lo faceva, con lo `state.cfg` di default, dopo
 # un GET fallito; un gateway MCP con uno snapshot stale lo farebbe ancora --
 # farebbe RIGIRARE la semina al riavvio successivo, e dopo la versione B, con
@@ -88,13 +88,13 @@ _CHIAVI_NOSTRE = (
 # Cioe' la perdita silenziosa che le due versioni della migrazione esistono per
 # evitare, innescata da un click.
 #
-# Il valore sopravvive comunque a ogni PUT: `_chiavi_archivio` lo ricava da
+# Il valore sopravvive comunque a ogni PUT: `_store_keys` lo ricava da
 # `base`, che parte dal contenuto GIA' SU DISCO. Solo l'avvio li scrive, con
-# `segni=True`.
-_SEGNI_MIGRAZIONE = ("seminato", "catena_seminata", "piano_seminato")
+# `flags=True`.
+_MIGRATION_FLAGS = ("seminato", "catena_seminata", "piano_seminato")
 
 
-def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
+def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
     """Gli stessi estremi dello `schema:` di config.yaml (`int(1,120)`,
     `int(0,1000)`, `int(10,1800)`). Il Supervisor li faceva rispettare per noi;
     da quando il valore arriva da una PUT tocca a noi -- e si RIPORTA DENTRO,
@@ -107,20 +107,20 @@ def _clamp_int(valore, predefinito: int, minimo: int, massimo: int) -> int:
     migrazione perderebbe proprio cio' che esiste per conservare. Il disallineo
     fra i due numeri e' dichiarato, non risolto in questa fetta."""
     try:
-        n = int(valore)
+        n = int(value)
     except (TypeError, ValueError):
-        return predefinito
-    return max(minimo, min(massimo, n))
+        return default
+    return max(minimum, min(maximum, n))
 
 
-def _pulisci_modello_del_piano(valore, predefinito: str) -> str:
+def _clean_subscription_model(value, default: str) -> str:
     """Uno dei tre alias, sempre. Si RIPORTA DENTRO come i due `_clamp_int`
     accanto: un valore fuori dall'insieme non e' un corpo malformato.
 
     Il riduttore e' `agent.runner.modello_cli`, che qui trova il suo UNICO
     chiamante rimasto. Fino alla fetta «il modello del piano» ne aveva due --
     il turno del ponte (`handlers_chat._enqueue_chat_job`) e la riga della
-    pagina (`_modelli_in_uso`) -- che erano lo stesso calcolo fatto in due
+    pagina (`_models_in_use`) -- che erano lo stesso calcolo fatto in due
     file, cioe' due implementazioni della stessa regola libere di divergere.
     Adesso traduce una volta sola, all'INGRESSO del campo: cio' che sta
     nell'archivio e' gia' un alias, e chi legge non ha niente da tradurre.
@@ -131,47 +131,47 @@ def _pulisci_modello_del_piano(valore, predefinito: str) -> str:
     l'avvio con `ImportError ... partially initialized module`.
     """
     from ..agent.runner import modello_cli
-    if not isinstance(valore, str) or not valore.strip():
-        return predefinito
-    return modello_cli(valore)
+    if not isinstance(value, str) or not value.strip():
+        return default
+    return modello_cli(value)
 
 
-def _pulisci_ponte(raw) -> dict:
+def _clean_bridge(raw) -> dict:
     raw = raw if isinstance(raw, dict) else {}
-    d = _PREDEFINITI_ARCHIVIO["ponte"]
+    d = _STORE_DEFAULTS["ponte"]
     return {
         "attivo": bool(raw.get("attivo", d["attivo"])),
         "scadenza_min": _clamp_int(raw.get("scadenza_min"), d["scadenza_min"], 1, 120),
         "tetto_giornaliero": _clamp_int(
             raw.get("tetto_giornaliero"), d["tetto_giornaliero"], 0, 1000),
-        "modello": _pulisci_modello_del_piano(raw.get("modello"), d["modello"]),
+        "modello": _clean_subscription_model(raw.get("modello"), d["modello"]),
     }
 
 
-def _pulisci_ollama(raw) -> dict:
+def _clean_ollama(raw) -> dict:
     raw = raw if isinstance(raw, dict) else {}
-    d = _PREDEFINITI_ARCHIVIO["ollama"]
-    modello = raw.get("modello", d["modello"])
+    d = _STORE_DEFAULTS["ollama"]
+    model = raw.get("modello", d["modello"])
     return {
-        "modello": modello if isinstance(modello, str) else "",
+        "modello": model if isinstance(model, str) else "",
         "timeout_s": _clamp_int(raw.get("timeout_s"), d["timeout_s"], 10, 1800),
     }
 
 
-def _chiavi_archivio(raw: dict) -> dict:
+def _store_keys(raw: dict) -> dict:
     """Le cinque chiavi nuove, pulite. Usata da `load` e da `save`: un solo
     posto in cui la forma e' definita."""
-    strategia = raw.get("strategia_ultima")
+    strategy = raw.get("strategia_ultima")
     return {
-        "ponte": _pulisci_ponte(raw.get("ponte")),
-        "ollama": _pulisci_ollama(raw.get("ollama")),
+        "ponte": _clean_bridge(raw.get("ponte")),
+        "ollama": _clean_ollama(raw.get("ollama")),
         "nascondi_gratuiti": bool(raw.get("nascondi_gratuiti", False)),
         # Debito F del Task 6, chiuso qui: il predefinito del campo e' quello
         # dell'opzione da cui viene (`llm_strategy: "balanced"` in
         # config.yaml). Valeva "", e la differenza faceva contare come
         # «copiato» un valore che nessuno aveva scelto -- vedi
         # `migrazione_opzioni._PREDEFINITI`.
-        "strategia_ultima": strategia if isinstance(strategia, str) else "balanced",
+        "strategia_ultima": strategy if isinstance(strategy, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
         # Il segno della semina della CATENA, distinto da `seminato` (che e'
         # quello delle OPZIONI). Prima non esisteva e la semina della catena si
@@ -182,7 +182,7 @@ def _chiavi_archivio(raw: dict) -> dict:
         "catena_seminata": bool(raw.get("catena_seminata", False)),
         # Il segno della semina del MODELLO DEL PIANO, distinto dagli altri due:
         # e' la TERZA migrazione, e un archivio puo' trovarsi a due terzi. Come
-        # gli altri vive fuori da `_CHIAVI_NOSTRE`: un client che lo rimandasse
+        # gli altri vive fuori da `_OUR_KEYS`: un client che lo rimandasse
         # a `false` farebbe rigirare la semina al riavvio successivo, e la
         # semina ricopre `ponte.modello` -- cioe' la scelta dell'utente.
         "piano_seminato": bool(raw.get("piano_seminato", False)),
@@ -193,7 +193,7 @@ def _models_config_path(data_dir: str) -> str:
     return os.path.join(data_dir, "models_config.json")
 
 
-def _metti_da_parte_l_archivio_illeggibile(path: str) -> None:
+def _set_aside_unreadable_store(path: str) -> None:
     """Rinomina in `.corrotto` invece di lasciarlo sovrascrivere.
 
     `save_models_config` fa lettura-modifica-scrittura partendo dal disco: se
@@ -205,26 +205,26 @@ def _metti_da_parte_l_archivio_illeggibile(path: str) -> None:
     file era ancora quello dell'utente. Un secondo guasto salverebbe sopra di
     lui l'archivio dei predefiniti gia' riscritto, cioe' niente.
     """
-    guasto = path + ".corrotto"
+    corrupted_path = path + ".corrotto"
     try:
-        if os.path.exists(guasto):
+        if os.path.exists(corrupted_path):
             logger.error(
                 "%s esiste gia' e non viene sovrascritto: contiene la copia "
                 "piu' vecchia, cioe' l'unica che puo' ancora avere i tuoi "
-                "valori. Il file illeggibile di adesso resta dov'e'.", guasto)
+                "valori. Il file illeggibile di adesso resta dov'e'.", corrupted_path)
             return
-        os.replace(path, guasto)
+        os.replace(path, corrupted_path)
         logger.error(
             "Il file illeggibile e' stato messo da parte in %s invece di essere "
             "sovrascritto: da li' si possono ancora recuperare a mano i valori "
-            "che conteneva.", guasto)
-    except OSError as errore:
+            "che conteneva.", corrupted_path)
+    except OSError as error:
         logger.error(
             "Non si e' potuto mettere da parte %s (%s): il prossimo salvataggio "
-            "lo sovrascrivera'.", path, errore)
+            "lo sovrascrivera'.", path, error)
 
 
-def _leggi_archivio_grezzo(path: str) -> dict:
+def _read_raw_store(path: str) -> dict:
     """Legge `models_config.json`, e quando NON si legge lo dice e lo mette da parte.
 
     Questa lettura falliva in `{}` senza una riga di log. Da questa versione
@@ -246,30 +246,30 @@ def _leggi_archivio_grezzo(path: str) -> dict:
     """
     try:
         with open(path, encoding="utf-8") as fh:
-            grezzo = json.load(fh)
+            raw = json.load(fh)
     except FileNotFoundError:
         return {}
-    except Exception as errore:
+    except Exception as error:
         logger.error(
             "%s non si e' potuto leggere (%s: %s). HIRIS riparte dai predefiniti: "
             "catena, ponte, Ollama, filtro dei gratuiti e preset che avevi "
             "scelto NON sono stati letti. Da questa versione questo file e' "
             "l'unica copia di quelle decisioni.",
-            path, type(errore).__name__, errore)
-        _metti_da_parte_l_archivio_illeggibile(path)
+            path, type(error).__name__, error)
+        _set_aside_unreadable_store(path)
         return {}
-    if not isinstance(grezzo, dict):
+    if not isinstance(raw, dict):
         logger.error(
             "%s contiene %s invece di un oggetto JSON. HIRIS riparte dai "
             "predefiniti: le decisioni che conteneva NON sono state lette.",
-            path, type(grezzo).__name__)
-        _metti_da_parte_l_archivio_illeggibile(path)
+            path, type(raw).__name__)
+        _set_aside_unreadable_store(path)
         return {}
-    return grezzo
+    return raw
 
 
 def load_models_config(data_dir: str) -> dict:
-    raw = _leggi_archivio_grezzo(_models_config_path(data_dir))
+    raw = _read_raw_store(_models_config_path(data_dir))
     raw_chain = raw.get("chain_order", [])
     if not isinstance(raw_chain, list):
         raw_chain = []
@@ -292,15 +292,15 @@ def load_models_config(data_dir: str) -> dict:
     return {
         "chain_order": chain,
         "provider_models": _clean_provider_models(raw.get("provider_models")),
-        **_chiavi_archivio(raw),
+        **_store_keys(raw),
     }
 
 
-def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dict:
-    """`segni=True` e' riservato all'avvio (`server._on_startup`): e' l'unico
+def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dict:
+    """`flags=True` e' riservato all'avvio (`server._on_startup`): e' l'unico
     momento in cui `seminato`/`catena_seminata` si scrivono. Ogni altro
     chiamante -- la PUT, e quindi la pagina e il gateway MCP -- li lascia dove
-    sono: vedi `_SEGNI_MIGRAZIONE`."""
+    sono: vedi `_MIGRATION_FLAGS`."""
     if not isinstance(data, dict):
         data = {}
     path = _models_config_path(data_dir)
@@ -310,13 +310,13 @@ def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dic
     # cancellerebbe silenziosamente un 'brain_model' legacy dal disco -- il
     # contrario di quanto dichiara il log in load_models_config ("non piu'
     # letto ne' scritto", che un operatore legge come "e' ancora li'"). Solo
-    # le chiavi che questa versione possiede (_CHIAVI_NOSTRE) vengono
+    # le chiavi che questa versione possiede (_OUR_KEYS) vengono
     # aggiornate; qualunque altra chiave gia' sul disco (incl. 'brain_model')
     # resta intatta.
     # Stessa lettura di `load_models_config`, e quindi stessa regola quando il
     # file non si legge: lo dice e lo mette da parte. Qui vale ancora di piu',
     # perche' e' la riga DOPO che sovrascrive.
-    disk_data = _leggi_archivio_grezzo(path)
+    disk_data = _read_raw_store(path)
     # Task 6: la fusione parte dal CONTENUTO GIA' SU DISCO, non dai
     # predefiniti -- ed e' la STESSA ragione del fix di claude_runner._save_usage
     # per 'per_agent'. Da quando le chiavi scritte sono sette invece di due, un
@@ -325,9 +325,9 @@ def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dic
     # configurazione silenziosa, cioe' esattamente cio' che la versione A
     # esiste per impedire. Il contratto della PUT e' «sempre l'oggetto intero»
     # e la pagina lo rispetta, ma un client diverso esiste (il gateway MCP).
-    scrivibili = _CHIAVI_NOSTRE + (_SEGNI_MIGRAZIONE if segni else ())
+    writable = _OUR_KEYS + (_MIGRATION_FLAGS if flags else ())
     base = dict(disk_data)
-    base.update({k: v for k, v in data.items() if k in scrivibili})
+    base.update({k: v for k, v in data.items() if k in writable})
     raw_chain = base.get("chain_order", [])
     if not isinstance(raw_chain, list):
         # Una chain_order non-lista (null, un numero) non e' un 500: si azzera,
@@ -336,7 +336,7 @@ def save_models_config(data_dir: str, data: dict, *, segni: bool = False) -> dic
     clean = {
         "chain_order": [n for n in raw_chain if n in _VALID_BACKENDS],
         "provider_models": _clean_provider_models(base.get("provider_models")),
-        **_chiavi_archivio(base),
+        **_store_keys(base),
     }
     disk_data.update(clean)
     with open(tmp, "w", encoding="utf-8") as fh:
@@ -388,7 +388,7 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
     return False
 
 
-def _credenziali_dei_cinque(request: web.Request) -> dict[str, bool]:
+def _credentials_of_the_five(request: web.Request) -> dict[str, bool]:
     """I cinque fatti di credenziale, misurati UNA volta per richiesta.
 
     Task 8: qui viveva `_build_config_providers`, che componeva il payload
@@ -410,8 +410,8 @@ def _credenziali_dei_cinque(request: web.Request) -> dict[str, bool]:
             for pid in _CONFIG_PROVIDER_IDS}
 
 
-def _modelli_in_uso(provider_models: dict, modello_ollama: str,
-                    modello_piano: str) -> dict[str, str]:
+def _models_in_use(provider_models: dict, ollama_model: str,
+                    subscription_model: str) -> dict[str, str]:
     """Il modello che il runtime userebbe ADESSO, per provider.
 
     Non «il modello configurato»: quello che il runner risolverebbe con
@@ -442,7 +442,7 @@ def _modelli_in_uso(provider_models: dict, modello_ollama: str,
 
     claude = resolve_model("auto", "chat", provider_models.get("claude", ""))
     return {
-        "subscription": modello_piano,
+        "subscription": subscription_model,
         "claude": claude,
         "openai": provider_models.get("openai", "") or _AUTO_COMPAT["chat"],
         # `OpenRouterRunner._resolve_model` NON usa `AUTO_MODEL_MAP` (è la
@@ -457,7 +457,7 @@ def _modelli_in_uso(provider_models: dict, modello_ollama: str,
         # dopo il Task 6 quello slot era una COPIA dell'archivio, ferma al
         # momento dell'avvio, e una copia che non si aggiorna a una PUT è la
         # seconda rappresentazione da cui questa fetta esiste per liberarsi.
-        "ollama": modello_ollama,
+        "ollama": ollama_model,
     }
 
 
@@ -494,12 +494,12 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # risposte alla stessa domanda. Tolta l'implicazione in `server.py`, il
     # secondo valore e' il primo: qui ne resta uno, `ponte["attivo"]`, e la
     # pagina lo legge di li'.
-    _ponte_acceso = payload["ponte"]["attivo"]
+    _bridge_on = payload["ponte"]["attivo"]
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
     # due derivazioni degli stessi fatti nello stesso handler sarebbero la
     # miniatura del difetto che questa fetta chiude.
-    _credenziali = _credenziali_dei_cinque(request)
-    _modelli = _modelli_in_uso(payload["provider_models"],
+    _credentials = _credentials_of_the_five(request)
+    _models = _models_in_use(payload["provider_models"],
                                payload["ollama"]["modello"],
                                payload["ponte"]["modello"])
     # LA catena, una sola: quella che il router ha in mano adesso. Non si
@@ -508,7 +508,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # scrittura a caldo, invariante 4, che il Task 10 chiude. Finché quel
     # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
-    _catena = list(request.app.get("catena_modelli") or [])
+    _chain = list(request.app.get("catena_modelli") or [])
     # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
     # RUNTIME -- che dal Task 10 è l'ARCHIVIO, non l'ambiente. Fino alla 2.4.1
     # venivano da `BRIDGE_DEADLINE_MIN` e `OLLAMA_REQUEST_TIMEOUT` perché era
@@ -522,27 +522,27 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     #
     # I valori arrivano già riportati dentro gli estremi da `load_models_config`
     # (`_clamp_int`), quindi qui non si ripulisce una seconda volta.
-    _scadenza_ponte = payload["ponte"]["scadenza_min"]
-    _timeout_ollama = payload["ollama"]["timeout_s"]
+    _bridge_deadline = payload["ponte"]["scadenza_min"]
+    _ollama_timeout = payload["ollama"]["timeout_s"]
     payload["adesso"] = componi_adesso(
-        catena=_catena,
-        credenziali=_credenziali,
-        modelli=_modelli,
-        ponte_attivo=_ponte_acceso,
+        catena=_chain,
+        credenziali=_credentials,
+        modelli=_models,
+        ponte_attivo=_bridge_on,
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
         # turno per scrivere la scadenza (`now + ponte.scadenza_min * 60`), e
         # lo STESSO numero che va ai connettori qui sotto: la frase in cima e
         # la riga sotto il piano non possono dire due minuti diversi.
-        scadenza_ponte_min=_scadenza_ponte,
+        scadenza_ponte_min=_bridge_deadline,
     )
     # La topologia: chi è in catena, in che ordine, e chi ne sta fuori. La
     # pagina RICEVE due liste già ordinate e non ne calcola nessuna --
     # invariante 2 della spec.
     payload["catena"], payload["fuori_catena"] = componi_topologia(
-        chain_order=_catena,
-        credenziali=_credenziali,
-        modelli=_modelli,
-        ponte_attivo=_ponte_acceso,
+        chain_order=_chain,
+        credenziali=_credentials,
+        modelli=_models,
+        ponte_attivo=_bridge_on,
         # Che cosa è successo DAVVERO, per provider (Task 11). Non una sonda:
         # `RegistroEsiti` è alimentato dal ciclo di ripiego del router, cioè
         # dal traffico vero. Sondare cinque provider a ogni apertura della
@@ -560,8 +560,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
         # in cui «3 min fa» è una cosa che si possa provare.
         adesso=time.time(),
-        scadenza_ponte_min=_scadenza_ponte,
-        timeout_ollama_s=_timeout_ollama,
+        scadenza_ponte_min=_bridge_deadline,
+        timeout_ollama_s=_ollama_timeout,
     )
     # Cosa c'è dopo l'ultimo anello: una frase sulla catena, non su una riga.
     # Quale riga sia l'ultima cambia con un gesto, e la pagina riordina da sé
@@ -590,9 +590,9 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     # processo dove `_on_startup` non è girato, la funzione non c'è -- e non
     # esserci non è un errore da inghiottire, è l'assenza del runtime da
     # rimettere in vigore.
-    ricalcola = request.app.get("ricalcola_catena")
-    if callable(ricalcola):
-        ricalcola()
+    recompute = request.app.get("ricalcola_catena")
+    if callable(recompute):
+        recompute()
     return web.json_response({"ok": True, **clean})
 
 
@@ -632,7 +632,7 @@ _OPENAI_SKIP = re.compile(r"instruct|embed|vision|realtime|audio|transcribe|tts|
 
 # ── Le tre letture, e la loro PROVENIENZA ─────────────────────────────────
 #
-# Ognuna restituisce `(modelli, fonte)`, dove `fonte` è "viva" (letta adesso
+# Ognuna restituisce `(models, source)`, dove `source` è "viva" (letta adesso
 # dal provider) o "riserva" (elenco scritto nel sorgente). Non è un dettaglio
 # di registrazione: cinque secondi di pazienza e, se falliscono, queste
 # funzioni restituivano una lista scritta a mano DUE ANNI FA con un
@@ -702,17 +702,17 @@ async def _fetch_claude_models(api_key: str) -> tuple[list[str], str]:
         # legacy-instruct), e l'ordine È un'informazione -- i più recenti per
         # primi, come li manda l'API. Riordinare nasconderebbe qual è il
         # modello nuovo.
-        modelli = [m["id"] for m in data.get("data", []) if m.get("id")]
+        models = [m["id"] for m in data.get("data", []) if m.get("id")]
         # Una risposta 200 che non contiene nessun modello non è una lettura
         # riuscita: la stessa regola già scritta in `_fetch_openai_models`.
-        return (modelli, "viva") if modelli else (_CLAUDE_MODELS, "riserva")
+        return (models, "viva") if models else (_CLAUDE_MODELS, "riserva")
     except Exception as exc:
         logger.warning("Could not fetch Anthropic models: %s", exc)
         return _CLAUDE_MODELS, "riserva"
 
 
 async def _fetch_ollama_models(local_model_url: str,
-                               modello_scelto: str) -> tuple[list[str], str]:
+                               chosen_model: str) -> tuple[list[str], str]:
     """L'elenco di ciò che è SCARICATO su quella macchina, da `/api/tags`.
 
     Il ripiego è il modello scelto e basta: non è un catalogo di riserva, è
@@ -720,12 +720,12 @@ async def _fetch_ollama_models(local_model_url: str,
     nemmeno quello c'è, la lista è vuota -- ed è la verità, non un guasto.
     """
     from ..backends.ollama import _validate_ollama_url
-    riserva = [modello_scelto] if modello_scelto else []
+    reserve = [chosen_model] if chosen_model else []
     try:
         _validate_ollama_url(local_model_url)
     except ValueError as exc:
         logger.warning("Invalid local_model_url for Ollama listing: %s", exc)
-        return riserva, "riserva"
+        return reserve, "riserva"
     base = local_model_url.rstrip("/")
     timeout = aiohttp.ClientTimeout(total=5)
     try:
@@ -735,12 +735,12 @@ async def _fetch_ollama_models(local_model_url: str,
         ):
             if resp.status != 200:
                 logger.warning("Ollama /api/tags returned %s", resp.status)
-                return riserva, "riserva"
+                return reserve, "riserva"
             data = await resp.json()
         return [m["name"] for m in data.get("models", [])], "viva"
     except Exception as exc:
         logger.warning("Could not fetch Ollama models: %s", exc)
-        return riserva, "riserva"
+        return reserve, "riserva"
 
 
 # Curated subset of popular OpenRouter models. The full catalog (200+) is
@@ -794,14 +794,14 @@ def _supports_tools(entry: dict) -> bool:
 
 
 async def _fetch_openrouter_models(api_key: str,
-                                   nascondi_gratuiti: bool = False,
+                                   hide_free_models: bool = False,
                                    ) -> tuple[list[str], str]:
     """Fetch the full OpenRouter model list and filter to a usable, tool-capable subset.
 
     Falls back to _OPENROUTER_PRESETS (best-effort, may include tool-incapable
     models) only if the live capability check cannot be performed.
 
-    `nascondi_gratuiti` arriva dall'ARCHIVIO (`models_config["nascondi_gratuiti"]`),
+    `hide_free_models` arriva dall'ARCHIVIO (`models_config["nascondi_gratuiti"]`),
     non dall'ambiente: è la casella che sta sotto l'elenco che filtra, e deve
     agire sulla lista che l'utente sta guardando nello stesso istante in cui la
     spunta. Sul ramo di RISERVA non ha effetto -- i preset tornano non filtrati
@@ -840,7 +840,7 @@ async def _fetch_openrouter_models(api_key: str,
             )
             return _OPENROUTER_PRESETS, "riserva"
 
-        hide_free = bool(nascondi_gratuiti)
+        hide_free = bool(hide_free_models)
 
         # TUTTI i modelli utilizzabili, non un sottoinsieme curato a mano.
         #
@@ -922,22 +922,22 @@ async def handle_list_models(request: web.Request) -> web.Response:
     client diverso dalla pagina (il gateway, uno script) si aspetta, e una
     rotta che cambia significato in silenzio è la cosa che questa fetta ritira.
     """
-    voluto = request.query.get("provider", "")
-    archivio = load_models_config(request.app.get("data_dir") or "/data")
-    provider_models = archivio["provider_models"]
-    modello_ollama = archivio["ollama"]["modello"]
-    nascondi = bool(archivio["nascondi_gratuiti"])
+    requested = request.query.get("provider", "")
+    store = load_models_config(request.app.get("data_dir") or "/data")
+    provider_models = store["provider_models"]
+    ollama_model = store["ollama"]["modello"]
+    hide_free = bool(store["nascondi_gratuiti"])
     # Gli stessi modelli che la riga mostra, dalla stessa funzione: il pannello
     # e la riga da cui si apre non possono dire due cose diverse.
-    in_uso = _modelli_in_uso(provider_models, modello_ollama,
-                             archivio["ponte"]["modello"])
+    in_use = _models_in_use(provider_models, ollama_model,
+                             store["ponte"]["modello"])
     claude_key = request.app.get("claude_api_key", "")
     openai_key = request.app.get("openai_api_key", "")
     openrouter_key = request.app.get("openrouter_api_key", "")
     local_url = request.app.get("local_model_url", "")
 
-    async def leggi(pid: str) -> tuple[list[str], str, str, str]:
-        """`(valori, fonte, scelto, auto_risolto)` per un provider.
+    async def read(pid: str) -> tuple[list[str], str, str, str]:
+        """`(values, source, chosen, auto_risolto)` per un provider.
 
         La fonte "assente" non è un errore: è «non c'è nessun elenco da
         leggere, e il perché è la credenziale». Serve perché un pannello che si
@@ -953,7 +953,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
             # con la stessa parola invece di offrire tre voci inerti.
             if not _config_has_credential(request, "subscription"):
                 return [], "assente", "", ""
-            return [], "fissa", in_uso["subscription"], ""
+            return [], "fissa", in_use["subscription"], ""
         if pid == "claude":
             # Uguale a OpenAI e a OpenRouter dalla fetta «il modello del
             # piano». Qui il ramo era diverso in DUE modi, e tutti e due sono
@@ -970,44 +970,44 @@ async def handle_list_models(request: web.Request) -> web.Response:
             # entra in catena), ma è una capacità che c'era.
             if not claude_key:
                 return [], "assente", provider_models.get("claude", ""), ""
-            valori, fonte = await _fetch_claude_models(claude_key)
-            return valori, fonte, provider_models.get("claude", ""), in_uso["claude"]
+            values, source = await _fetch_claude_models(claude_key)
+            return values, source, provider_models.get("claude", ""), in_use["claude"]
         if pid == "openai":
             if not openai_key:
                 return [], "assente", provider_models.get("openai", ""), ""
-            valori, fonte = await _fetch_openai_models(openai_key)
-            return valori, fonte, provider_models.get("openai", ""), in_uso["openai"]
+            values, source = await _fetch_openai_models(openai_key)
+            return values, source, provider_models.get("openai", ""), in_use["openai"]
         if pid == "openrouter":
             if not openrouter_key:
                 return [], "assente", provider_models.get("openrouter", ""), ""
-            valori, fonte = await _fetch_openrouter_models(
-                openrouter_key, nascondi_gratuiti=nascondi)
-            return (valori, fonte, provider_models.get("openrouter", ""),
-                    in_uso["openrouter"])
+            values, source = await _fetch_openrouter_models(
+                openrouter_key, hide_free_models=hide_free)
+            return (values, source, provider_models.get("openrouter", ""),
+                    in_use["openrouter"])
         # Ollama. Nessuna voce «auto»: il runner locale usa SEMPRE il modello
         # scelto (`locale=True` fa vincere `_modello_scelto()` su ogni altro
         # ramo di `_resolve_model`),
         # perché quell'istanza ne ha scaricato uno solo e chiedergliene un
         # altro fallirebbe.
         if not local_url:
-            return [], "assente", modello_ollama, ""
-        valori, fonte = await _fetch_ollama_models(local_url, modello_ollama)
-        return valori, fonte, modello_ollama, ""
+            return [], "assente", ollama_model, ""
+        values, source = await _fetch_ollama_models(local_url, ollama_model)
+        return values, source, ollama_model, ""
 
     providers: list[dict] = []
     for pid in _CONFIG_PROVIDER_IDS:
-        if voluto and voluto != pid:
+        if requested and requested != pid:
             continue
-        valori, fonte, scelto, auto = await leggi(pid)
+        values, source, chosen, auto = await read(pid)
         # LA REGOLA, in una riga: chi viene CHIESTO riceve sempre una risposta;
         # senza una richiesta compaiono solo quelli per cui un elenco esiste.
         # Un pannello che si apre su una riga e non dice niente sarebbe la
         # forma piccola del difetto che questa fetta chiude.
-        if not voluto and fonte == "assente":
+        if not requested and source == "assente":
             continue
         providers.append(componi_pannello(
-            provider_id=pid, valori=valori, fonte=fonte, scelto=scelto,
-            auto_risolto=auto, indirizzo=local_url, nascondi_gratuiti=nascondi,
+            provider_id=pid, valori=values, fonte=source, scelto=chosen,
+            auto_risolto=auto, indirizzo=local_url, nascondi_gratuiti=hide_free,
         ))
 
     return web.json_response({"providers": providers})

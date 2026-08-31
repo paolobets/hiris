@@ -146,7 +146,7 @@
          semina al riavvio successivo, e dopo la versione B, con l'ambiente
          muto, ricopierebbe i predefiniti: la perdita silenziosa che le due
          versioni della migrazione esistono per evitare. Il backend lo tiene
-         fuori da `_CHIAVI_NOSTRE` (`api/handlers_models.py`), quindi anche una
+         fuori da `_OUR_KEYS` (`api/handlers_models.py`), quindi anche una
          PUT che lo portasse non lo toccherebbe; qui non viaggia proprio. */
     }
   };

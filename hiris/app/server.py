@@ -1918,8 +1918,8 @@ async def _on_startup(app: web.Application) -> None:
     # perdita di valori che la versione A esiste per evitare.
     # `segni=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
     # l'avvio e' l'unico posto che lo scrive -- una PUT non lo tocca piu'
-    # (`handlers_models._SEGNI_MIGRAZIONE`).
-    save_models_config(data_dir, _archivio, segni=True)
+    # (`handlers_models._MIGRATION_FLAGS`).
+    save_models_config(data_dir, _archivio, flags=True)
     app["models_config"] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
@@ -2384,7 +2384,7 @@ async def _on_startup(app: web.Application) -> None:
         _arch, _da_salvare = semina_catena(dict(app["models_config"]),
                                            _catena_di_oggi, log=logger)
         if _da_salvare:
-            save_models_config(data_dir, _arch, segni=True)
+            save_models_config(data_dir, _arch, flags=True)
             app["models_config"] = load_models_config(data_dir)
 
     # La TERZA semina: il modello del Piano Claude Max. Fino alla 3.1.0 era un
@@ -2409,7 +2409,7 @@ async def _on_startup(app: web.Application) -> None:
         _arch_p, _da_salvare_p = semina_modello_del_piano(
             dict(app["models_config"]), _alias_di_oggi, log=logger)
         if _da_salvare_p:
-            save_models_config(data_dir, _arch_p, segni=True)
+            save_models_config(data_dir, _arch_p, flags=True)
             app["models_config"] = load_models_config(data_dir)
 
     # Qui viveva `_sub_first_class`, cioe' `_credenziali["subscription"] and
@@ -3267,7 +3267,7 @@ async def _on_startup(app: web.Application) -> None:
     # di Ollama presa all'avvio: dopo il Task 6 la casa del valore e'
     # l'archivio, e una copia in memoria che nessuna PUT aggiorna e' la
     # seconda rappresentazione da cui questa fetta esiste per liberarsi -- i
-    # suoi due lettori (`handle_list_models`, `_modelli_in_uso`) avrebbero
+    # suoi due lettori (`handle_list_models`, `_models_in_use`) avrebbero
     # continuato a mostrare il modello di prima dopo un salvataggio. Leggono
     # `models_config["ollama"]["modello"]`, come tutti.
 

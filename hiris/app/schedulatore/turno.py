@@ -257,7 +257,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     archivi, con la STESSA funzione del ramo sincrono.
     """
     from ..api.handlers_casa import compose_briefing
-    from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
+    from ..api.handlers_models import _STORE_DEFAULTS
 
     try:
         briefing, _summary = compose_briefing(app)
@@ -269,7 +269,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce.
     deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
-        "scadenza_min", _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
     now = time.time()
     app["reasoning_queue"].enqueue(
         "promessa",

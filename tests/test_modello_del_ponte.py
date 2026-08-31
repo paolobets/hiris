@@ -3,7 +3,7 @@
 Fino alla 3.1.0 veniva composto a ogni turno da `provider_models["claude"]`:
 `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`, in
 `handlers_chat._enqueue_chat_job` e -- identico -- in
-`handlers_models._modelli_in_uso`. Due implementazioni dello stesso calcolo, e
+`handlers_models._models_in_use`. Due implementazioni dello stesso calcolo, e
 un campo solo per due economie opposte: a consumo si sceglie il modello
 frugale, nel piano il modello non costa di piu'. L'impianto del proprietario,
 misurato il 15 agosto 2026, girava sul piano con `haiku`.
@@ -14,7 +14,7 @@ non poteva esprimere.
 
 I test [1]-[4] su `modello_cli` restano validi parola per parola: la funzione
 non e' sparita, ha cambiato mestiere. Da traduttore chiamato a ogni turno e'
-diventata il VALIDATORE del campo (`handlers_models._pulisci_modello_del_piano`),
+diventata il VALIDATORE del campo (`handlers_models._clean_subscription_model`),
 e il suo silenzio dichiarato -- il `log.warning` su un modello non-Anthropic --
 serve adesso a chi scrive a mano `/data/models_config.json`. Il campo, la sua
 pulizia e la sua semina vivono in `tests/test_modello_del_piano.py`.
@@ -154,7 +154,7 @@ def test_il_piano_mostra_il_campo_e_non_una_composizione(alias):
     """Claude API su haiku, il piano su `alias`: la riga del piano dice
     `alias`. Con la regola vecchia direbbe sempre `haiku`."""
     from hiris.app.api import handlers_models
-    modelli = handlers_models._modelli_in_uso(
+    modelli = handlers_models._models_in_use(
         {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""},
         "", alias)
     assert modelli["subscription"] == alias
@@ -166,8 +166,8 @@ def test_cambiare_il_modello_di_claude_api_non_tocca_il_piano():
     from hiris.app.api import handlers_models
     prima = {"claude": "claude-haiku-4-5-20251001", "openai": "", "openrouter": ""}
     dopo = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
-    assert handlers_models._modelli_in_uso(prima, "", "sonnet")["subscription"] == "sonnet"
-    assert handlers_models._modelli_in_uso(dopo, "", "sonnet")["subscription"] == "sonnet"
+    assert handlers_models._models_in_use(prima, "", "sonnet")["subscription"] == "sonnet"
+    assert handlers_models._models_in_use(dopo, "", "sonnet")["subscription"] == "sonnet"
 
 
 def test_e_cambiare_il_piano_non_tocca_claude_api():
@@ -176,5 +176,5 @@ def test_e_cambiare_il_piano_non_tocca_claude_api():
     API passerebbe tutto il resto del file."""
     from hiris.app.api import handlers_models
     pm = {"claude": "claude-opus-4-7", "openai": "", "openrouter": ""}
-    assert handlers_models._modelli_in_uso(pm, "", "haiku")["claude"] == "claude-opus-4-7"
-    assert handlers_models._modelli_in_uso(pm, "", "opus")["claude"] == "claude-opus-4-7"
+    assert handlers_models._models_in_use(pm, "", "haiku")["claude"] == "claude-opus-4-7"
+    assert handlers_models._models_in_use(pm, "", "opus")["claude"] == "claude-opus-4-7"

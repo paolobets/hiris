@@ -63,7 +63,7 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "chain_order", "provider_models", "ponte", "ollama",
         "nascondi_gratuiti", "strategia_ultima",
         # I TRE SEGNI di migrazione. Si leggono (il GET descrive l'archivio
-        # per intero), ma non si SCRIVONO da qui: `_SEGNI_MIGRAZIONE` li tiene
+        # per intero), ma non si SCRIVONO da qui: `_MIGRATION_FLAGS` li tiene
         # fuori da cio' che una PUT puo' toccare -- vedi
         # `test_una_put_non_puo_riscrivere_i_segni_della_migrazione`.
         "seminato", "catena_seminata", "piano_seminato",

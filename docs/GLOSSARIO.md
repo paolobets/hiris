@@ -553,7 +553,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
-| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log -- **`(abbonamento)` NON e' un ambito reale (nessuna cartella `hiris/app/abbonamento/` esiste, e non e' un refuso da correggere in un nome di cartella vero come `riga (nucleo) -> riga (casa)` qui sopra): il senso *subscription* di `piano` non vive in un sottosistema unico, e' sparso fra file di radice e `api/` (`api/handlers_chat.py`, `api/handlers_models.py::_pulisci_modello_del_piano`, `migrazione_opzioni.py`, `agent/runner.py`, `instradamento.py`). Questa riga resta di proposito irraggiungibile da `Glossario.per("piano", ambito)` per qualunque `--ambito` reale: e' una documentazione del significato deciso, da applicare A MANO ovunque questo senso di `piano` compaia (sempre dentro un composto finora, mai nudo -- verificato con `tokenize` su `hiris/app`), non un'automazione da riattivare qualificandola** | subscription | ✓ arriva |
+| piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log -- **`(abbonamento)` NON e' un ambito reale (nessuna cartella `hiris/app/abbonamento/` esiste, e non e' un refuso da correggere in un nome di cartella vero come `riga (nucleo) -> riga (casa)` qui sopra): il senso *subscription* di `piano` non vive in un sottosistema unico, e' sparso fra file di radice e `api/` (`api/handlers_chat.py`, `api/handlers_models.py::_clean_subscription_model`, `migrazione_opzioni.py`, `agent/runner.py`, `instradamento.py`). Questa riga resta di proposito irraggiungibile da `Glossario.per("piano", ambito)` per qualunque `--ambito` reale: e' una documentazione del significato deciso, da applicare A MANO ovunque questo senso di `piano` compaia (sempre dentro un composto finora, mai nudo -- verificato con `tokenize` su `hiris/app`), non un'automazione da riattivare qualificandola** | subscription | ✓ arriva |
 | piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i livelli verticali di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
 | plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ✓ arriva |
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
@@ -616,7 +616,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > sostantivo generico "origine di qualcosa", e' la parola che classifica un valore persistito (se
 > un'azione l'ha fatta un umano), e per questo porta un significato costruito da HIRIS, non un
 > equivalente diretto. Una regola ribaltata e' comunque una decisione scritta: questa nota lo e'.
-> Stesso ragionamento, dedotto con lo stesso criterio, per `segno` (da `_SEGNI_MIGRAZIONE`): i
+> Stesso ragionamento, dedotto con lo stesso criterio, per `segno` (da `_MIGRATION_FLAGS`): i
 > valori che classifica (`seminato`, `catena_seminata`, `piano_seminato`) sono marcatori specifici
 > del progetto, non un sostantivo generico.
 
@@ -669,7 +669,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > non era mai stata cercata.** `raw` e' gia' un identificatore vivo in `hiris/app` per un concetto
 > **diverso**, "il valore non ancora decodificato di un input": `raw = getattr(runner,
 > "last_tool_calls", None)` (`api/handlers_chat.py:1045`), `def _clean_provider_models(raw)`
-> (`api/handlers_models.py:37`), `def _pulisci_ponte(raw)` (`api/handlers_models.py:139`), piu'
+> (`api/handlers_models.py:37`), `def _clean_bridge(raw)` (`api/handlers_models.py:139`), piu'
 > occorrenze non-prosa in `env_util.py`, `impostazioni_chat.py`, `claude_runner.py` -- **circa 24
 > righe non-prosa su 6 file**. Per la regola meccanica del documento (sopra, «Il controllo di
 > collisione...») questo blocca **esattamente come ha bloccato `build`** (44 occorrenze, scartato
@@ -2140,7 +2140,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `nucleo_testo`/`_nucleo_riepilogo -> briefing_text`/`_briefing_summary`, `id_turno ->
   exchange_id`, `_via -> _route` (`via` mai decisa: il nome dice cosa il valore SCEGLIE -- il
   canale che servira' il turno -- non traduce la parola).
-- **Residui dichiarati, con la loro ragione**: `_PREDEFINITI_ARCHIVIO` (importato da
+- **Residui dichiarati, con la loro ragione**: `_STORE_DEFAULTS` (importato da
   `api/handlers_models.py`, l'ultimo file riservato di `api/`); `nota_ripiego` e le sue due parole
   chiave (`decisione_modelli.py`, radice); `risolvi_ripiego`/`reclama_scaduto`/`has_pending_chat`
   (`reasoning/queue.py`, mai convertito); `giorni`/`giorni_conservazione` (la decisione del lotto
@@ -2148,6 +2148,70 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   (`tests/test_schedulatore_wiring.py:315`) -- i nomi dei test sono prosa italiana in tutti e 172
   i file, e rinominarne uno perche' contiene un nome convertito sarebbe arbitrario finche' non si
   converte `tests/` per intero.
+
+**Decisioni del lotto 13 (`api/handlers_models.py`), l'ultimo di `api/`.**
+
+- **Tre nomi che il join meccanico avrebbe fatto mentire, tutti da parole SINGOLE gia' decise,
+  quindi applicate senza nessuna proposta**: `guasto -> fault` su `guasto = path + ".corrotto"`
+  (e' il PERCORSO del file messo da parte, non un guasto: deciso `corrupted_path`);
+  `grezzo -> reading` su `grezzo = json.load(fh)` (la riga `grezzo` descrive «un cambiamento di
+  stato registrato come Home Assistant lo riporta» -- qui e' il JSON non validato di un file di
+  configurazione: deciso `raw`, la parola che questo stesso file usa gia' per l'ingresso non
+  validato in `_clean_bridge(raw)` e `_store_keys(raw)`); e `archivio -> store` su
+  `archivio = load_models_config(...)`, che invece **e' stato TENUTO**: li' «archivio» e' davvero
+  il magazzino su disco di questa pagina, lo stesso concetto delle altre quattro voci del file
+  (`_STORE_DEFAULTS`, `_store_keys`, `_read_raw_store`, `_set_aside_unreadable_store`), e la
+  coerenza dentro il file batte un micro-miglioramento su una riga.
+- **`_metti_da_parte_l_archivio_illeggibile -> _set_aside_unreadable_store`**: il suggerimento
+  meccanico (`metti_da_part_l_store_unreadable`) e' il caso limite di cio' che lo strumento non
+  sa fare, e serve come esempio. Il nome scelto non traduce le sei parole: usa il verbo che il
+  docstring usa gia' («messo da parte»), che e' anche l'inglese naturale.
+- **`_PREDEFINITI_ARCHIVIO`/`_PREDEFINITI_SEMINA -> _STORE_DEFAULTS`/`_SEED_DEFAULTS`**: due
+  costanti che il suggerimento appiattiva entrambe su `default_*`. La distinzione e' quella che il
+  commento gia' spiega -- i predefiniti DELL'ARCHIVIO contro quelli della SEMINA
+  (`migrazione_opzioni._PREDEFINITI`, importato con `as`) -- e in inglese la porta il sostantivo
+  che li qualifica. `_PREDEFINITI`, il nome VERO dentro `migrazione_opzioni.py` (file di radice
+  mai convertito), resta italiano: si rinomina l'alias, mai l'importato.
+- **`_CHIAVI_NOSTRE -> _OUR_KEYS`, e `nostro (api)` NON e' stata aggiunta al glossario**: `nostro`
+  e' qualificato `(casa)`, quindi cieco in `api` (vedi «Il limite della qualificazione per
+  ambito»). Qui il senso e' identico a quello di `casa` -- «cio' che appartiene a noi, non a Home
+  Assistant» -- ma la costante e' UNA, privata, senza chiamanti, e qualificare una parola per un
+  ambito intero per un solo composto privato allarga il raggio d'azione piu' di quanto serva:
+  deciso a mano, riusando lo stesso inglese della riga esistente.
+- **`segni -> flags`, e i suoi NOVE chiamanti**: `save_models_config(..., *, segni=False)` e' una
+  parola chiave usata da `server.py` (3 volte) e da quattro file di test (6 volte). **Trovati tutti
+  e nove dal controllo di chiusura**, non a mano: e' il primo file convertito con quella rete
+  attiva. Otto erano marcati «certi» e uno («ambiguo») era il falso positivo previsto.
+- **`nascondi_gratuiti`: il caso in cui la stessa parola e' insieme mia e altrui.** E' la parola
+  chiave del MIO `_fetch_openrouter_models` (rinominata `hide_free_models`, 7 chiamanti nei test
+  aggiornati), **e** la parola chiave di `decisione_modelli.componi_pannello` (file di radice, 6
+  chiamanti che restano italiani), **e** una chiave dell'archivio JSON (`models_config[
+  "nascondi_gratuiti"]`, invariata ovunque, frontend compreso). Tre cose con lo stesso nome, due
+  che non si toccano: il controllo di chiusura le ha elencate tutte e dodici lasciando a chi legge
+  la separazione, che e' esattamente cio' che dichiara di fare. Il parametro NON e' diventato
+  `hide_free` perche' quel nome e' gia' la locale a due righe di distanza (`hide_free =
+  bool(...)`, la coercizione): due nomi per l'ingresso grezzo e per il valore validato sono la
+  stessa disciplina di `raw` e delle sue versioni pulite in questo file, un solo nome sarebbe
+  stato `hide_free = bool(hide_free)`.
+- Composti ad hoc, tutti privati e senza chiamanti esterni: `_pulisci_ponte -> _clean_bridge`,
+  `_pulisci_ollama -> _clean_ollama`, `_pulisci_modello_del_piano -> _clean_subscription_model`
+  (`piano (abbonamento)`, applicata a mano come nel lotto 12), `_chiavi_archivio -> _store_keys`,
+  `_leggi_archivio_grezzo -> _read_raw_store`, `_credenziali_dei_cinque ->
+  _credentials_of_the_five`, `_modelli_in_uso -> _models_in_use`, `_SEGNI_MIGRAZIONE ->
+  _MIGRATION_FLAGS`, `_ponte_acceso -> _bridge_on`, `_scadenza_ponte -> _bridge_deadline`,
+  `_timeout_ollama -> _ollama_timeout`, `modello_ollama`/`modello_piano`/`modello_scelto ->
+  `ollama_model`/`subscription_model`/`chosen_model`, `voluto -> requested` (riusando la riga
+  `richiesto`, gia' decisa: e' il provider chiesto esplicitamente nella query),
+  `in_uso -> in_use`, `nascondi -> hide_free`, `ricalcola -> recompute`,
+  `strategia -> strategy`, `scrivibili -> writable`.
+- **Cio' che resta italiano, e non e' un residuo**: ogni parola chiave verso
+  `decisione_modelli.componi_adesso`/`componi_topologia`/`componi_pannello` (`catena`,
+  `credenziali`, `modelli`, `ponte_attivo`, `scadenza_ponte_min`, `esiti`, `adesso`, `valori`,
+  `fonte`, `scelto`, `auto_risolto`, `indirizzo`, `timeout_ollama_s`, `nascondi_gratuiti`) e i
+  nomi importati da li' (`FINE_CATENA`, `modello_cli`, `piano_ha_il_token`): sono firme di un
+  modulo di RADICE che questa fetta non converte. `registro_esiti.tutti()` e' protetto due volte
+  -- e' un plurale, quindi mai applicato da solo, ed e' nella guardia `_METODI_REGISTRO_ESITI`
+  aggiunta dal lotto 12.
 
 ## I nomi degli strumenti
 
@@ -2577,7 +2641,7 @@ per usarla.)
 | `OPERATIONS` (ex `_GESTI`, rinominata dal Task 7 -- solo il nome della costante, non i valori; invisibile agli Step 1/2 perche' plurale, trovata solo eseguendo lo strumento sull'ambito `azione`) | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
 | `_TIPI_COMPORTAMENTO` | automazione · script | `casa/domande.py:68` — i tipi di comportamento della casa |  |
 | `HUMAN_ACTORS` (ex `ORIGINI_UMANE`, rinominata dal Task 7 -- solo il nome della costante, non i valori; stessa invisibilita' di `OPERATIONS` sopra, stessa riga) | pagina | `azione/costruzione/officina.py:54` — l'origine di un'azione quando e' un umano a farla |  |
-| `_SEGNI_MIGRAZIONE` | seminato · catena_seminata · piano_seminato | `api/handlers_models.py:94` — i segni lasciati da una migrazione gia' avvenuta |  |
+| `_MIGRATION_FLAGS` | seminato · catena_seminata · piano_seminato | `api/handlers_models.py:94` — i segni lasciati da una migrazione gia' avvenuta |  |
 | `_LEGAMI_COMPRIMARI` | entita · automazione · scena · script | `server.py:807` — i tipi di comprimari a cui una promessa puo' legarsi |  |
 
 > Perche' `tipo` non compare come riga nuova per `_TIPI_COMPORTAMENTO`: non e' mai uscito

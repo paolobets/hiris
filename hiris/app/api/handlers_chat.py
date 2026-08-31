@@ -5,7 +5,7 @@ import time
 
 from aiohttp import web
 
-from ..api.handlers_models import _PREDEFINITI_ARCHIVIO
+from ..api.handlers_models import _STORE_DEFAULTS
 from ..casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..chat_store import (
     _is_toxic_assistant,
@@ -19,7 +19,7 @@ from ..chat_store import (
 # del piano»: servivano a comporre il modello del ponte da
 # `provider_models["claude"]`, e adesso quel modello e' un campo che si legge.
 # `modello_cli` ha un solo chiamante rimasto -- il validatore del campo, in
-# `handlers_models._pulisci_modello_del_piano` -- e questo import in meno
+# `handlers_models._clean_subscription_model` -- e questo import in meno
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
@@ -348,7 +348,7 @@ async def _enqueue_chat_job(
     # l'utente cambiava non era quella che il turno subiva.
     _deadline_min = ((request.app.get("models_config") or {})
                      .get("ponte", {}).get("scadenza_min",
-                                      _PREDEFINITI_ARCHIVIO["ponte"]["scadenza_min"]))
+                                      _STORE_DEFAULTS["ponte"]["scadenza_min"]))
     deadline = now + int(_deadline_min) * 60
     context = {
         "history": sanitized_history,
@@ -382,7 +382,7 @@ async def _enqueue_chat_job(
         # Fino alla 3.1.0 qui si componeva
         # `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`,
         # e lo stesso identico calcolo viveva anche in
-        # `handlers_models._modelli_in_uso`: due implementazioni della stessa
+        # `handlers_models._models_in_use`: due implementazioni della stessa
         # regola, libere di divergere. Peggio della duplicazione era cio' che
         # diceva -- il modello del piano era un effetto collaterale del modello
         # di CLAUDE API, cioe' di un altro provider, con l'incentivo opposto:
@@ -391,9 +391,9 @@ async def _enqueue_chat_job(
         # a girare con `haiku`.
         #
         # La traduzione ai tre alias non e' sparita, e' salita all'INGRESSO del
-        # campo (`handlers_models._pulisci_modello_del_piano`): cio' che si
+        # campo (`handlers_models._clean_subscription_model`): cio' che si
         # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
-        # Il predefinito `"sonnet"` e' quello di `_PREDEFINITI_ARCHIVIO` e vale
+        # Il predefinito `"sonnet"` e' quello di `_STORE_DEFAULTS` e vale
         # solo per un'app senza archivio (i test): sull'impianto la semina
         # (`migrazione_opzioni.semina_modello_del_piano`) ha gia' scritto il
         # campo prima che un turno possa arrivare qui.

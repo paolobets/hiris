@@ -173,7 +173,7 @@ async def test_il_filtro_dei_gratuiti_viene_DALL_ARGOMENTO_non_dall_ambiente(mon
     session_cm = _mock_openrouter_response(payload)
     with patch("aiohttp.ClientSession", return_value=session_cm):
         models, fonte = await handlers_models._fetch_openrouter_models(
-            "sk-or-test", nascondi_gratuiti=True)
+            "sk-or-test", hide_free_models=True)
 
     assert fonte == "viva"
     assert "openrouter:anthropic/claude-sonnet-4-6" in models
@@ -196,7 +196,7 @@ async def test_senza_la_casella_i_gratuiti_restano_anche_con_l_ambiente_acceso(m
     session_cm = _mock_openrouter_response(payload)
     with patch("aiohttp.ClientSession", return_value=session_cm):
         models, _ = await handlers_models._fetch_openrouter_models(
-            "sk-or-test", nascondi_gratuiti=False)
+            "sk-or-test", hide_free_models=False)
 
     assert "openrouter:meta-llama/llama-3.3-70b-instruct:free" in models
 
@@ -237,7 +237,7 @@ async def test_una_lettura_riuscita_si_dichiara_viva():
     session_cm = _mock_openrouter_response(payload)
     with patch("aiohttp.ClientSession", return_value=session_cm):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
-            "k", nascondi_gratuiti=False)
+            "k", hide_free_models=False)
     assert fonte == "viva"
     assert modelli
 
@@ -249,7 +249,7 @@ async def test_una_lettura_fallita_dichiara_la_riserva_invece_di_fingere():
     comunque."""
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
-            "k", nascondi_gratuiti=False)
+            "k", hide_free_models=False)
     assert fonte == "riserva"
     assert modelli == handlers_models._OPENROUTER_PRESETS
 
@@ -268,7 +268,7 @@ async def test_sulla_riserva_non_c_e_piu_niente_che_contraddica_la_casella():
     indovina -- vedi `decisione_modelli.componi_pannello`)."""
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
-            "k", nascondi_gratuiti=True)
+            "k", hide_free_models=True)
     assert fonte == "riserva"
     assert not any(m.endswith(":free") for m in modelli)
 
@@ -355,7 +355,7 @@ async def test_openai_che_risponde_MALE_dichiara_la_riserva():
 async def test_openrouter_che_risponde_MALE_dichiara_la_riserva():
     with patch("aiohttp.ClientSession", return_value=_mock_stato(429)):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
-            "k", nascondi_gratuiti=False)
+            "k", hide_free_models=False)
     assert fonte == "riserva"
     assert modelli == handlers_models._OPENROUTER_PRESETS
 
@@ -476,7 +476,7 @@ async def test_nascondi_gratuiti_toglie_i_free_anche_dall_elenco_vivo():
     session_cm = _mock_openrouter_response(payload)
     with patch("aiohttp.ClientSession", return_value=session_cm):
         modelli, _ = await handlers_models._fetch_openrouter_models(
-            "sk-or-test", nascondi_gratuiti=True)
+            "sk-or-test", hide_free_models=True)
 
     assert modelli == ["openrouter:a/pagante"]
 

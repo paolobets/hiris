@@ -10,7 +10,7 @@ def test_defaults_when_absent(tmp_path):
     strada, l'archivio smetterebbe di essere la fonte di verita' in silenzio.
     Tre -- `seminato`, `catena_seminata` e `piano_seminato` -- non sono
     decisioni ma SEGNI di migrazione: stanno nell'archivio, si leggono sempre,
-    e li scrive solo l'avvio (`_SEGNI_MIGRAZIONE`).
+    e li scrive solo l'avvio (`_MIGRATION_FLAGS`).
 
     `ponte.modello` e' arrivato con la fetta «il modello del piano»: il modello
     del Piano Claude Max, che fino alla 3.1.0 era un effetto collaterale di
@@ -194,7 +194,7 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     """**C1 della revisione finale, meta' backend.**
 
     `seminato`, `catena_seminata` e `piano_seminato` non sono decisioni: sono i
-    segni che le tre migrazioni sono avvenute. Stavano in `_CHIAVI_NOSTRE`, cioe'
+    segni che le tre migrazioni sono avvenute. Stavano in `_OUR_KEYS`, cioe'
     una PUT poteva riscriverli -- e la pagina lo faceva davvero: dopo un GET
     fallito i tre bottoni «Rifai la catena» restavano a schermo e mandavano lo
     `state.cfg` DI DEFAULT DEL MODULO, `seminato: false` compreso.
@@ -211,13 +211,13 @@ def test_una_put_non_puo_riscrivere_i_segni_della_migrazione(tmp_path):
     `ponte.modello` col valore derivato da Claude API, cioe' cancella la scelta
     che l'utente ha appena fatto sulla riga del piano.
 
-    Rimettere i tre nomi in `_CHIAVI_NOSTRE` fa cadere questo test."""
-    save_models_config(str(tmp_path), {"chain_order": ["claude"]}, segni=True)
+    Rimettere i tre nomi in `_OUR_KEYS` fa cadere questo test."""
+    save_models_config(str(tmp_path), {"chain_order": ["claude"]}, flags=True)
     save_models_config(
         str(tmp_path),
         {"seminato": True, "catena_seminata": True, "piano_seminato": True,
          "chain_order": ["claude"]},
-        segni=True,
+        flags=True,
     )
     assert load_models_config(str(tmp_path))["seminato"] is True
 

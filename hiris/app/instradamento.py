@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 
-from .api.handlers_models import _PREDEFINITI_ARCHIVIO
+from .api.handlers_models import _STORE_DEFAULTS
 from .decisione_modelli import piano_ha_il_token
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def _piano_puo_rispondere(app) -> tuple[bool, str]:
         return False, "manca il token"
     tetto = int((app.get("models_config") or {})
                 .get("ponte", {}).get("tetto_giornaliero",
-                                      _PREDEFINITI_ARCHIVIO["ponte"]["tetto_giornaliero"]))
+                                      _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
     if app["reasoning_queue"].count_turni_oggi() >= tetto:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "

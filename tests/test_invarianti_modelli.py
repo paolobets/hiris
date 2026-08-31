@@ -341,7 +341,7 @@ def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
 
 def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
     """Dalla fetta «il modello del piano» c'e' una terza superficie: il campo
-    `ponte.modello`, che `_pulisci_ponte` valida.
+    `ponte.modello`, che `_clean_bridge` valida.
 
     Le tre devono essere lo stesso insieme. Se il pannello offrisse una voce
     che il salvataggio riduce a un'altra, avremmo un controllo che non fa
@@ -353,7 +353,7 @@ def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
 
     offerti = [v for v, _ in ALIAS_DEL_PIANO]
     for alias in offerti:
-        assert handlers_models._pulisci_ponte({"modello": alias})["modello"] == alias, (
+        assert handlers_models._clean_bridge({"modello": alias})["modello"] == alias, (
             f"il pannello offre {alias!r} e il salvataggio non lo tiene"
         )
     assert sorted(offerti) == ["haiku", "opus", "sonnet"]
