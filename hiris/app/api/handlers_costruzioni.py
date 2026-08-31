@@ -34,48 +34,48 @@ from aiohttp import web
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
 # incoerenza da mantenere sincronizzata a mano per sempre.
-_NON_TROVATA = "non ho nessuna costruzione con quell'identificatore."
+_NOT_FOUND = "non ho nessuna costruzione con quell'identificatore."
 
 
-def _archivio(request):
+def _store(request):
     return request.app.get("costruzioni")
 
 
-async def handle_get_costruzioni(request: web.Request) -> web.Response:
-    archivio = _archivio(request)
-    if archivio is None:
+async def handle_get_constructions(request: web.Request) -> web.Response:
+    store = _store(request)
+    if store is None:
         return web.json_response(
             {"costruzioni": [], "errore": "archivio non disponibile"}, status=503)
     # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
     # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
     # bottone mentirebbe.
-    archivio.scadi(time.time())
-    solo_aperte = request.query.get("in_attesa") in ("1", "true", "si")
+    store.scadi(time.time())
+    pending_only = request.query.get("in_attesa") in ("1", "true", "si")
     return web.json_response(
-        {"costruzioni": archivio.list(pending_only=solo_aperte, limit=200)})
+        {"costruzioni": store.list(pending_only=pending_only, limit=200)})
 
 
-async def handle_get_costruzione(request: web.Request) -> web.Response:
-    archivio = _archivio(request)
-    if archivio is None:
+async def handle_get_construction(request: web.Request) -> web.Response:
+    store = _store(request)
+    if store is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
-    riga = archivio.read(request.match_info["id"])
-    if riga is None:
-        return web.json_response({"errore": _NON_TROVATA}, status=404)
-    return web.json_response({"costruzione": riga})
+    row = store.read(request.match_info["id"])
+    if row is None:
+        return web.json_response({"errore": _NOT_FOUND}, status=404)
+    return web.json_response({"costruzione": row})
 
 
-async def _agisci(request: web.Request, verbo: str) -> web.Response:
-    archivio = _archivio(request)
-    officina = request.app.get("officina")
-    if archivio is None or officina is None:
+async def _act(request: web.Request, verb: str) -> web.Response:
+    store = _store(request)
+    workshop = request.app.get("officina")
+    if store is None or workshop is None:
         return web.json_response({"errore": "officina non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.read(ident) is None:
-        return web.json_response({"errore": _NON_TROVATA}, status=404)
-    metodo = getattr(officina, verbo)
-    esito = await metodo(ident, actor="pagina", exchange=None, now=time.time())
-    if "errore" in esito:
+    if store.read(ident) is None:
+        return web.json_response({"errore": _NOT_FOUND}, status=404)
+    method = getattr(workshop, verb)
+    occurrence = await method(ident, actor="pagina", exchange=None, now=time.time())
+    if "errore" in occurrence:
         # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
         # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la
         # stessa indisponibilita' che le due GET, qui sopra, dichiarano con
@@ -83,33 +83,33 @@ async def _agisci(request: web.Request, verbo: str) -> web.Response:
         # anche quando la causa era Home Assistant irraggiungibile. Il flag
         # e' interno (`Workshop._fallita`/`_rete`): non deve uscire nel corpo
         # della risposta.
-        status = 503 if esito.pop("guasto_rete", False) else 409
-        return web.json_response(esito, status=status)
-    return web.json_response(esito)
+        status = 503 if occurrence.pop("guasto_rete", False) else 409
+        return web.json_response(occurrence, status=status)
+    return web.json_response(occurrence)
 
 
-async def handle_conferma_costruzione(request: web.Request) -> web.Response:
-    return await _agisci(request, "apply")
+async def handle_confirm_construction(request: web.Request) -> web.Response:
+    return await _act(request, "apply")
 
 
-async def handle_ripristina_costruzione(request: web.Request) -> web.Response:
-    return await _agisci(request, "restore")
+async def handle_restore_construction(request: web.Request) -> web.Response:
+    return await _act(request, "restore")
 
 
-async def handle_rifiuta_costruzione(request: web.Request) -> web.Response:
+async def handle_reject_construction(request: web.Request) -> web.Response:
     """Il «no»: si scrive nell'archivio e basta.
 
     Non passa dall'officina, e non e' una svista: non c'e' niente da scrivere
     su Home Assistant, e farlo passare da li' darebbe a un rifiuto la stessa
     superficie di rischio di una conferma.
     """
-    archivio = _archivio(request)
-    if archivio is None:
+    store = _store(request)
+    if store is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.read(ident) is None:
-        return web.json_response({"errore": _NON_TROVATA}, status=404)
-    esito = archivio.mark_cancelled(ident, now=time.time())
-    if "errore" in esito:
-        return web.json_response(esito, status=409)
-    return web.json_response(esito)
+    if store.read(ident) is None:
+        return web.json_response({"errore": _NOT_FOUND}, status=404)
+    occurrence = store.mark_cancelled(ident, now=time.time())
+    if "errore" in occurrence:
+        return web.json_response(occurrence, status=409)
+    return web.json_response(occurrence)

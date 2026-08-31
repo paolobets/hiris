@@ -88,10 +88,10 @@ def test_le_cinque_rotte_sono_registrate():
     sorgente = inspect.getsource(server)
     righe = [r.strip() for r in sorgente.splitlines()]
     for attesa in (
-        'app.router.add_get("/api/costruzioni", handle_get_costruzioni)',
-        'app.router.add_get("/api/costruzioni/{id}", handle_get_costruzione)',
-        'app.router.add_post("/api/costruzioni/{id}/conferma", handle_conferma_costruzione)',
-        'app.router.add_post("/api/costruzioni/{id}/ripristina", handle_ripristina_costruzione)',
-        'app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_rifiuta_costruzione)',
+        'app.router.add_get("/api/costruzioni", handle_get_constructions)',
+        'app.router.add_get("/api/costruzioni/{id}", handle_get_construction)',
+        'app.router.add_post("/api/costruzioni/{id}/conferma", handle_confirm_construction)',
+        'app.router.add_post("/api/costruzioni/{id}/ripristina", handle_restore_construction)',
+        'app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_reject_construction)',
     ):
         assert attesa in righe, f"rotta non registrata (o commentata): {attesa}"

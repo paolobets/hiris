@@ -1110,6 +1110,7 @@ al Task 6 invece che deciso qui.
 | aggiorna | refresh |
 | aggiornato | updated |
 | aggiungi | add |
+| agisci | act |
 | albero | tree |
 | altro | other |
 | ambiente | environment |
@@ -1234,6 +1235,7 @@ al Task 6 invece che deciso qui.
 | mantieni | keep |
 | massimo | maximum |
 | messaggio | message |
+| metodo | method |
 | minimo | minimum |
 | misura | measurement |
 | modelli | models |
@@ -1290,6 +1292,7 @@ al Task 6 invece che deciso qui.
 | ricordo | memory |
 | ricostruisci | rebuild |
 | riepilogo | summary |
+| rifiuta | reject |
 | riga | row |
 | riga (api) | row |
 | riga (casa) | line |
@@ -1672,6 +1675,47 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `_accaduto`), `entities` dove e' una lista (`_verifica_da_confrontare`, `_istantanea`) --
   l'italiano non flette la parola fra singolare e plurale, l'inglese si', e la forma del
   parametro (`list` contro stringa) dice quale delle due serve.
+
+**Decisioni del Task 9 (`api/`), non parole del vocabolario generale.**
+
+- `handle_get_promesse`/`handle_get_costruzioni` (le due rotte che tornano una LISTA) ->
+  `handle_get_agenda`/`handle_get_constructions`: `promesse` (plurale) e' un concetto collettivo
+  gia' deciso a se' (`promesse -> agenda`, distinto da `promessa -> promise`), mentre
+  `costruzioni` non ha una riga propria -- e' il semplice plurale di `costruzione -> construction`
+  gia' deciso, senza bisogno di un sostantivo collettivo diverso come per `promesse`.
+- `tutte` (`handlers_promesse.py`, il flag booleano `?tutte=1`) -> parola ordinaria decisa
+  `tutte -> all`, ma applicata a mano come **`show_all`**, non `all` nudo: `all` e' un builtin
+  Python, la stessa guardia di `classe`/`class` che lo strumento applica gia' alle parole che
+  decide da solo.
+- `esito` (`handlers_promesse.py`/`handlers_costruzioni.py`, il dict `{"errore": ...}`/`{...}`
+  che un tentativo di operazione restituisce) -> **`occurrence`**, la riga gia' decisa: verificato
+  contro il codice prima di applicarla (non per fiducia nel suggerimento), perche' la descrizione
+  della riga parla di "un tentativo" in un senso che in `azione/porta.py` e
+  `azione/costruzione/officina.py` (gia' chiusi) e' esattamente questo stesso idioma -- non una
+  collisione di senso come `grezzo`/`reading`.
+- `_NON_TROVATA` (`handlers_costruzioni.py`, il testo del 404 condiviso da lettura e azione) ->
+  **`_NOT_FOUND`**: composto ad hoc, non una parola del vocabolario generale -- `non` e' un
+  prefisso di negazione che in altri composti gia' decisi (`non_disponibili -> unavailable`) non
+  si traduce affatto con "not_", quindi non e' stata scritta una riga generale per `non`; `trovata`
+  e' la forma femminile di `trovato -> found`, mai aliasata perche' non ricorre altrove.
+- `solo_aperte` (`handlers_costruzioni.py`, il flag booleano `?in_attesa=1`) -> non tradotta parola
+  per parola (`solo`/`aperte` non sono mai state decise): rinominata **`pending_only`**, lo stesso
+  nome del parametro keyword-only VERO di `ConstructionStore.list` che riceve (gia' inglese) --
+  stesso principio di `metodo`/`method` sotto, riusare il nome dell'interfaccia che si sta gia'
+  chiamando invece di inventarne uno diverso per lo stesso fatto.
+- `agisci`/`verbo`/`metodo` (`handlers_costruzioni.py::_agisci`, il dispatcher privato che sceglie
+  fra `officina.apply`/`.restore` con `getattr`) -> **`_act`/`verb`/`method`**, tre parole
+  ordinarie nuove (sotto, in "Le parole ordinarie"): nessuna collisione nel resto di `hiris/app`
+  (scansione `tokenize`, `metodo` ricorre anche in `api/handlers_mcp.py` col senso di "nome del
+  metodo JSON-RPC richiesto" -- stesso concetto generale, non un secondo senso).
+- `store.scadi(...)` (`handlers_costruzioni.py`, verso `ConstructionStore.scadi`,
+  `azione/costruzione/versioni.py:295`) **lasciato intatto di proposito**: `scadi` e' un metodo
+  PUBBLICO ancora italiano in un ambito gia' chiuso (`azione/`), mai deciso nel glossario --
+  invisibile allo strumento per costruzione (nessun pezzo di `scadi` e' mai stato tradotto), la
+  stessa classe di residuo gia' tracciata per `AgendaStore.list::solo_in_sospeso`
+  (`schedulatore/`, vedi `tests/test_rinomina_applica.py`). Non tracciato li' perche' fuori dal
+  perimetro-file di questo lotto: segnalato qui perche' chi apre `azione/costruzione/versioni.py`
+  lo sappia prima di scoprirlo per caso.
 
 ## I nomi degli strumenti
 

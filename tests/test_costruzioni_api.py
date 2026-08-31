@@ -6,11 +6,11 @@ import pytest_asyncio
 from aiohttp import web
 
 from hiris.app.api.handlers_costruzioni import (
-    handle_conferma_costruzione,
-    handle_get_costruzione,
-    handle_get_costruzioni,
-    handle_rifiuta_costruzione,
-    handle_ripristina_costruzione,
+    handle_confirm_construction,
+    handle_get_construction,
+    handle_get_constructions,
+    handle_reject_construction,
+    handle_restore_construction,
 )
 from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.azione.costruzione.versioni import ConstructionStore
@@ -100,9 +100,9 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     righe = [{"id": "a", "stato": "in_attesa"}, {"id": "b", "stato": "applicata"}]
     archivio = FintoArchivio(righe)
     app = _app(archivio)
-    tutte = await handle_get_costruzioni(FintaRichiesta(app))
+    tutte = await handle_get_constructions(FintaRichiesta(app))
     assert b'"b"' in tutte.body
-    aperte = await handle_get_costruzioni(FintaRichiesta(app, query={"in_attesa": "1"}))
+    aperte = await handle_get_constructions(FintaRichiesta(app, query={"in_attesa": "1"}))
     assert b'"b"' not in aperte.body
     # La pagina non deve mai mostrare come «da approvare» una proposta che
     # l'officina rifiuterebbe perche' scaduta.
@@ -111,14 +111,14 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
 
 @pytest.mark.asyncio
 async def test_senza_archivio_si_dichiara_indisponibile_e_non_si_finge_vuoto():
-    risposta = await handle_get_costruzioni(FintaRichiesta(_app()))
+    risposta = await handle_get_constructions(FintaRichiesta(_app()))
     assert risposta.status == 503
 
 
 @pytest.mark.asyncio
 async def test_una_costruzione_che_non_esiste_da_404():
     app = _app(FintoArchivio([]))
-    risposta = await handle_get_costruzione(FintaRichiesta(app, ident="zzz"))
+    risposta = await handle_get_construction(FintaRichiesta(app, ident="zzz"))
     assert risposta.status == 404
 
 
@@ -127,7 +127,7 @@ async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
     """La pagina E' un umano che ha cliccato: nessun turno da distinguere."""
     officina = FintaOfficina({"applicata": True, "esecuzione_id": "e1"})
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
-    risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 200
     _, proposta_id, origine, turno = officina.chiamate[0]
     assert (proposta_id, origine, turno) == ("p1", "pagina", None)
@@ -137,7 +137,7 @@ async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
 async def test_una_conferma_rifiutata_non_risponde_200():
     officina = FintaOfficina({"errore": "quella proposta e' gia' applicata."})
     app = _app(FintoArchivio([{"id": "p1", "stato": "applicata"}]), officina)
-    risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 409
 
 
@@ -150,7 +150,7 @@ async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
     officina = FintaOfficina({"errore": "Home Assistant non ha risposto: timeout",
                               "guasto_rete": True})
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
-    risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 503
     # Il flag e' interno: non deve trapelare nel corpo della risposta.
     assert b"guasto_rete" not in risposta.body
@@ -160,7 +160,7 @@ async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
 async def test_ripristinare_passa_dall_officina():
     officina = FintaOfficina({"applicata": True, "esecuzione_id": "e2"})
     app = _app(FintoArchivio([{"id": "c1", "stato": "applicata"}]), officina)
-    risposta = await handle_ripristina_costruzione(FintaRichiesta(app, ident="c1"))
+    risposta = await handle_restore_construction(FintaRichiesta(app, ident="c1"))
     assert risposta.status == 200
     assert officina.chiamate[0][0] == "restore"
 
@@ -168,12 +168,12 @@ async def test_ripristinare_passa_dall_officina():
 @pytest.mark.asyncio
 async def test_confermare_senza_officina_da_503():
     """Il ramo 503 di `_agisci` non aveva un test proprio -- era coperto
-    solo dal lato GET (`handle_get_costruzioni`/`handle_get_costruzione`).
+    solo dal lato GET (`handle_get_constructions`/`handle_get_construction`).
     Un archivio presente ma un'officina assente non e' un caso remoto: e'
     esattamente la finestra fra la creazione dell'app e il momento in cui
     `_on_startup` monta `app["officina"]`."""
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]))
-    risposta = await handle_conferma_costruzione(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 503
     assert b"officina non disponibile" in risposta.body
 
@@ -184,7 +184,7 @@ async def test_rifiutare_dalla_pagina_non_tocca_home_assistant():
     officina = FintaOfficina({"applicata": True})
     archivio = FintoArchivio([{"id": "p1", "stato": "in_attesa"}])
     app = _app(archivio, officina)
-    risposta = await handle_rifiuta_costruzione(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_reject_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 200
     assert officina.chiamate == [], "il rifiuto non deve passare dall'officina"
     assert archivio.disdette == ["p1"]
@@ -194,7 +194,7 @@ async def test_rifiutare_dalla_pagina_non_tocca_home_assistant():
 async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
     archivio = FintoArchivio([{"id": "p1", "stato": "applicata"}],
                              esito_disdetta={"errore": "quella proposta non e' piu' in attesa"})
-    risposta = await handle_rifiuta_costruzione(
+    risposta = await handle_reject_construction(
         FintaRichiesta(_app(archivio, FintaOfficina({})), ident="p1"))
     assert risposta.status == 409
 
