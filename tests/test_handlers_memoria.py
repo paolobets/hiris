@@ -7,9 +7,9 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_memoria import (
-    handle_delete_memoria,
-    handle_get_memoria,
-    handle_patch_memoria,
+    handle_delete_memory,
+    handle_get_memories,
+    handle_patch_memory,
 )
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.memoria.archivio import MemoryStore
@@ -21,9 +21,9 @@ def _app(archivio_memoria=None, archivio_casa=None) -> web.Application:
     app = web.Application()
     app["archivio_memoria"] = archivio_memoria
     app["archivio_casa"] = archivio_casa
-    app.router.add_get("/api/memoria", handle_get_memoria)
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
-    app.router.add_delete("/api/memoria/{id}", handle_delete_memoria)
+    app.router.add_get("/api/memoria", handle_get_memories)
+    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
+    app.router.add_delete("/api/memoria/{id}", handle_delete_memory)
     return app
 
 

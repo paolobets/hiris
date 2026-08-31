@@ -213,7 +213,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     """
     from aiohttp import web
 
-    from hiris.app.api.handlers_memoria import handle_patch_memoria
+    from hiris.app.api.handlers_memoria import handle_patch_memory
     from hiris.app.memoria.archivio import MemoryStore
 
     casa_archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
@@ -228,7 +228,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     app["archivio_memoria"] = memoria
     app["archivio_casa"] = casa_archivio
     app["entity_cache"] = _SpecchioFinto()
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
+    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
     client = await aiohttp_client(app)
 
     resp = await client.patch(f"/api/memoria/{id_ricordo}",

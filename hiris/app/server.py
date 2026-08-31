@@ -3662,13 +3662,13 @@ def create_app() -> web.Application:
     # del progetto della memoria. Nessun frontend in questo task: si guarda
     # dal browser come /api/casa.
     from .api.handlers_memoria import (
-        handle_delete_memoria,
-        handle_get_memoria,
-        handle_patch_memoria,
+        handle_delete_memory,
+        handle_get_memories,
+        handle_patch_memory,
     )
-    app.router.add_get("/api/memoria", handle_get_memoria)
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memoria)
-    app.router.add_delete("/api/memoria/{id}", handle_delete_memoria)
+    app.router.add_get("/api/memoria", handle_get_memories)
+    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
+    app.router.add_delete("/api/memoria/{id}", handle_delete_memory)
 
     # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
     # legge di qui, e disdice di qui. Le stesse due operazioni che il

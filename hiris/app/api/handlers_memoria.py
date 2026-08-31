@@ -45,7 +45,7 @@ from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 # metodo sostituisce per intero (`ancore`, `condizioni`). Duplicato qui
 # apposta invece di importare il nome con l'underscore da un altro modulo:
 # quel prefisso e' gia' il segnale "non e' superficie pubblica".
-_CAMPI_CORREGGIBILI = {
+_CORRECTABLE_FIELDS = {
     "detto_da", "forza", "grandezza", "minimo", "massimo", "unita",
     "ancore", "condizioni",
 }
@@ -53,10 +53,10 @@ _CAMPI_CORREGGIBILI = {
 # Quanti ricordi mostra al massimo il GET. Non e' un tetto silenzioso: la
 # risposta porta sempre `totale` (vedi handle_get_memoria), cosi' chi guarda
 # sa se sta vedendo tutto o solo la coda piu' recente.
-_LIMITE_RICORDI_MOSTRATI = 200
+_MEMORIES_SHOWN_LIMIT = 200
 
 
-def _anagrafe_letta(casa_archivio) -> bool:
+def _topology_loaded(home_space_store) -> bool:
     """Vero solo se l'anagrafe e' stata DAVVERO letta almeno una volta.
 
     `create_app()` istanzia sempre `archivio_casa`: in produzione non e'
@@ -67,10 +67,10 @@ def _anagrafe_letta(casa_archivio) -> bool:
     valida al primo avvio, che e' esattamente il bug che questa funzione
     esiste per evitare.
     """
-    return casa_archivio is not None and casa_archivio.updated_at() is not None
+    return home_space_store is not None and home_space_store.updated_at() is not None
 
 
-def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict, dict, dict]:
+def _page_mirror(request) -> tuple[dict, dict, dict, dict, dict, dict]:
     """Lo specchio dello stato per questa pagina:
     `(stato, nomi, unita, classi, da_quando, attributi)`.
 
@@ -97,7 +97,7 @@ def _specchio_della_pagina(request) -> tuple[dict, dict, dict, dict, dict, dict]
         return {}, {}, {}, {}, {}, {}
 
 
-def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str]:
+def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[str]:
     """I tipi di ancora (`area`/`entita`/`dispositivo`) per cui l'anagrafe
     non puo' dare una risposta affidabile in questo momento.
 
@@ -107,14 +107,14 @@ def _tipi_non_verificabili(casa_archivio, anagrafe_letta: bool) -> frozenset[str
     aree e' caduto ma quello delle entita' no), e' solo il tipo di quel
     registro: gli altri restano verificabili normalmente.
     """
-    if not anagrafe_letta:
+    if not topology_loaded:
         return frozenset(STORE_KEY_PER_TYPE)
-    chiavi_non_disponibili = set(casa_archivio.unavailable())
-    return frozenset(tipo for tipo, chiave in STORE_KEY_PER_TYPE.items()
-                      if chiave in chiavi_non_disponibili)
+    unavailable_keys = set(home_space_store.unavailable())
+    return frozenset(kind for kind, key in STORE_KEY_PER_TYPE.items()
+                      if key in unavailable_keys)
 
 
-def _risolvi_ancora(ancora: dict, indice, non_verificabili: frozenset[str]) -> dict:
+def _risolvi_ancora(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
     """Un'ancora arricchita col nome che l'anagrafe conosce OGGI.
 
     "non ho potuto controllare" (`indice is None`, l'anagrafe non e' mai
@@ -125,90 +125,90 @@ def _risolvi_ancora(ancora: dict, indice, non_verificabili: frozenset[str]) -> d
     sarebbe lo stesso silenzio non dichiarato che questo ramo ha gia'
     pagato quattordici volte.
     """
-    if indice is None or ancora["tipo"] in non_verificabili:
-        return {**ancora, "nome_attuale": None, "esiste": None}
-    voce = indice.verify(ancora["tipo"], ancora["riferimento"])
-    return {**ancora, "nome_attuale": voce.get("nome") if voce else None,
-            "esiste": voce is not None}
+    if lookup is None or tether["tipo"] in unverifiable:
+        return {**tether, "nome_attuale": None, "esiste": None}
+    entry = lookup.verify(tether["tipo"], tether["riferimento"])
+    return {**tether, "nome_attuale": entry.get("nome") if entry else None,
+            "esiste": entry is not None}
 
 
-async def handle_get_memoria(request: web.Request) -> web.Response:
-    archivio = request.app.get("archivio_memoria")
-    if archivio is None:
+async def handle_get_memories(request: web.Request) -> web.Response:
+    store = request.app.get("archivio_memoria")
+    if store is None:
         # Stessa convenzione di handle_get_casa (handlers_casa.py): senza
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
         # mancare -- `disponibile` lo dice, `ricordi: []` resta un
         # contenitore naturale, non l'affermazione di un fatto.
         return web.json_response({"disponibile": False, "ricordi": []})
 
-    casa_archivio = request.app.get("archivio_casa")
-    anagrafe_letta = _anagrafe_letta(casa_archivio)
+    home_space_store = request.app.get("archivio_casa")
+    topology_loaded = _topology_loaded(home_space_store)
     # Coi NOMI DI RIPIEGO, come in chat. Senza, un ricordo ancorato a
     # un'entita' che nel registro non ha nome usciva su questa pagina col suo
     # entity_id crudo, mentre in chat HIRIS la chiama «Abat-jour sinistra»:
     # due nomi per la stessa cosa, e l'utente senza modo di capire se il
     # ricordo sia ancorato bene. Lo specchio si legge gia' quattro righe piu'
     # in la' per le unita': mancava solo passarne i nomi.
-    stato_vivo = _specchio_della_pagina(request)
-    indice = (costruisci_indice(casa_archivio.read(), stato_vivo[1])
-              if anagrafe_letta else None)
-    non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
+    live_state = _page_mirror(request)
+    lookup = (costruisci_indice(home_space_store.read(), live_state[1])
+              if topology_loaded else None)
+    unverifiable = _unverifiable_types(home_space_store, topology_loaded)
 
-    ricordi = archivio.fetch(limit=_LIMITE_RICORDI_MOSTRATI)
-    for r in ricordi:
+    memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
+    for r in memories:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
-        r["ancore"] = [_risolvi_ancora(a, indice, non_verificabili) for a in r["ancore"]]
+        r["ancore"] = [_risolvi_ancora(a, lookup, unverifiable) for a in r["ancore"]]
     return web.json_response({
         "disponibile": True,
-        "ricordi": ricordi,
+        "ricordi": memories,
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
         # ricordi oltre `_LIMITE_RICORDI_MOSTRATI` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
         # memoria non evapora (memoria/archivio.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
-        "totale": archivio.count(),
-        "mostrati": len(ricordi),
+        "totale": store.count(),
+        "mostrati": len(memories),
     })
 
 
-async def handle_patch_memoria(request: web.Request) -> web.Response:
-    archivio = request.app.get("archivio_memoria")
-    if archivio is None:
+async def handle_patch_memory(request: web.Request) -> web.Response:
+    store = request.app.get("archivio_memoria")
+    if store is None:
         return web.json_response(
             {"errore": "l'archivio della memoria non e' disponibile"}, status=503)
     try:
-        id_ricordo = int(request.match_info["id"])
+        memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
         return web.json_response({"errore": "id non valido"}, status=400)
 
     # Verificato PRIMA di validare il corpo: un ricordo cancellato da
     # un'altra scheda (o mai esistito) non e' un problema del corpo della
     # richiesta, e' l'assenza del ricordo stesso -- 404, non 400.
-    esistente = archivio.get(id_ricordo)
-    if esistente is None:
+    existing = store.get(memory_id)
+    if existing is None:
         return web.json_response(
-            {"errore": f"nessun ricordo con id {id_ricordo}"}, status=404)
+            {"errore": f"nessun ricordo con id {memory_id}"}, status=404)
 
     try:
-        corpo = await request.json()
+        body = await request.json()
     except Exception:
         return web.json_response(
             {"errore": "corpo della richiesta non valido: atteso JSON"}, status=400)
-    if not isinstance(corpo, dict):
+    if not isinstance(body, dict):
         return web.json_response(
             {"errore": "corpo della richiesta non valido: atteso un oggetto"}, status=400)
 
     # I campi della richiesta che non sono correggibili non si applicano in
     # silenzio (il testo, per esempio, resta giustamente intatto), ma la
     # risposta lo dichiara -- vedi `ignorati` piu' sotto.
-    ignorati = sorted(set(corpo) - _CAMPI_CORREGGIBILI)
-    campi = {k: v for k, v in corpo.items() if k in _CAMPI_CORREGGIBILI}
-    if not campi:
+    ignored = sorted(set(body) - _CORRECTABLE_FIELDS)
+    fields = {k: v for k, v in body.items() if k in _CORRECTABLE_FIELDS}
+    if not fields:
         return web.json_response(
             {"errore": "nessun campo correggibile nella richiesta"}, status=400)
 
-    casa_archivio = request.app.get("archivio_casa")
-    anagrafe_letta = _anagrafe_letta(casa_archivio)
+    home_space_store = request.app.get("archivio_casa")
+    topology_loaded = _topology_loaded(home_space_store)
     # L'anagrafe puo' mancare o non essere ancora stata letta (Home
     # Assistant non ancora pronto): un indice costruito su una casa vuota
     # non verifica NESSUNA ancora, che e' il comportamento giusto in
@@ -217,15 +217,15 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`tipi_non_verificabili`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    stato_vivo = _specchio_della_pagina(request)
-    indice = (costruisci_indice(casa_archivio.read(), stato_vivo[1])
-              if anagrafe_letta else costruisci_indice({}))
-    tipi_non_verificabili = _tipi_non_verificabili(casa_archivio, anagrafe_letta)
+    live_state = _page_mirror(request)
+    lookup = (costruisci_indice(home_space_store.read(), live_state[1])
+              if topology_loaded else costruisci_indice({}))
+    unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
     # Le unita' vive, dalla stessa fonte che usa `ricorda` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
     # stesso fatto con due forme a seconda della porta.
-    unita_vive = stato_vivo[2]
+    reported_units = live_state[2]
 
     # Un intervallo e' una coppia, non due campi indipendenti: se la
     # richiesta tocca solo `minimo` o solo `massimo`, la coerenza (minimo
@@ -233,8 +233,8 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # capo, non contro `None` -- altrimenti "fra 19 e 20" corretto con
     # `{"minimo": 25}` (refuso per 15) si archivierebbe come (25.0, 20.0)
     # senza che `_validate_intervallo` lo veda mai.
-    minimo_richiesto = campi.get("minimo") if "minimo" in campi else esistente["minimo"]
-    massimo_richiesto = campi.get("massimo") if "massimo" in campi else esistente["massimo"]
+    requested_minimum = fields.get("minimo") if "minimo" in fields else existing["minimo"]
+    requested_maximum = fields.get("massimo") if "massimo" in fields else existing["massimo"]
 
     # `validate()` e' il CANCELLO gia' scritto per l'interpretazione del
     # modello (interpretazione.py): qui si riusa per la correzione umana,
@@ -244,17 +244,17 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
     # `_validate_conditions`), cosi' ogni problema dichiarato viene sempre da
     # un campo che l'utente ha davvero toccato in questa richiesta (le
     # eccezioni sono `minimo`/`massimo`, sopra, apposta).
-    interpretazione = {
-        "forza": campi.get("forza"),
-        "grandezza": campi.get("grandezza"),
-        "minimo": minimo_richiesto,
-        "massimo": massimo_richiesto,
-        "ancore": campi.get("ancore") or [],
-        "condizioni": campi.get("condizioni") or [],
+    interpretation = {
+        "forza": fields.get("forza"),
+        "grandezza": fields.get("grandezza"),
+        "minimo": requested_minimum,
+        "massimo": requested_maximum,
+        "ancore": fields.get("ancore") or [],
+        "condizioni": fields.get("condizioni") or [],
     }
-    pulita, problemi, correzioni = validate(
-        interpretazione, indice, tipi_non_verificabili, unita_vive)
-    if problemi:
+    cleaned, problems, corrections = validate(
+        interpretation, lookup, unverifiable_types, reported_units)
+    if problems:
         # Rifiutata con la ragione, non accettata a meta' (regola 2 di
         # MemoryStore): nessuna delle correzioni si scrive, il ricordo
         # resta esattamente com'era.
@@ -266,69 +266,69 @@ async def handle_patch_memoria(request: web.Request) -> web.Response:
         # mandato intero veniva accettato. Due comportamenti opposti per la
         # stessa situazione, a seconda di come arrivava.
         return web.json_response(
-            {"errore": "; ".join(problemi), "problemi": problemi}, status=400)
+            {"errore": "; ".join(problems), "problemi": problems}, status=400)
 
-    aggiornamenti: dict = {}
-    if "detto_da" in campi:
-        aggiornamenti["detto_da"] = campi["detto_da"]
-    if "forza" in campi:
-        aggiornamenti["forza"] = pulita["forza"]
-    if "grandezza" in campi:
-        aggiornamenti["grandezza"] = pulita["grandezza"]
-    if "minimo" in campi or "massimo" in campi:
+    updates: dict = {}
+    if "detto_da" in fields:
+        updates["detto_da"] = fields["detto_da"]
+    if "forza" in fields:
+        updates["forza"] = cleaned["forza"]
+    if "grandezza" in fields:
+        updates["grandezza"] = cleaned["grandezza"]
+    if "minimo" in fields or "massimo" in fields:
         # Si scrivono ENTRAMBI i capi, anche quando la richiesta ne
         # toccava uno solo: e' la coppia (gia' raddrizzata/dichiarata da
         # `_validate_intervallo` se serviva) che va archiviata, non il campo
         # isolato -- altrimenti un raddrizzamento sarebbe scritto a meta'.
-        aggiornamenti["minimo"] = pulita["minimo"]
-        aggiornamenti["massimo"] = pulita["massimo"]
-    if "unita" in campi:
+        updates["minimo"] = cleaned["minimo"]
+        updates["massimo"] = cleaned["massimo"]
+    if "unita" in fields:
         # `validate()` non prende `unita` in input: la deduce sempre da ancora
         # + grandezza (interpretazione.deduci_unit), perche' quel percorso
         # e' per il modello ("l'unita' non si chiede, si deduce"). Qui invece
         # e' una correzione umana diretta a un campo che MemoryStore.
         # correggi() gia' accetta -- passa cosi' com'e', senza dedurla.
-        aggiornamenti["unita"] = campi["unita"]
-    elif "grandezza" in campi or "ancore" in campi:
+        updates["unita"] = fields["unita"]
+    elif "grandezza" in fields or "ancore" in fields:
         # L'utente non ha toccato `unita` direttamente, ma ha corretto cio'
         # da cui si deduce (grandezza o ancore): senza rideduzione, resta
         # quella vecchia -- "umidita' 19-20 °C" dopo aver corretto la
         # grandezza da temperatura a umidita'. Si deduce dal valore NUOVO
         # se toccato in questa richiesta, altrimenti da quello archiviato.
-        ancore_per_deduzione = pulita["ancore"] if "ancore" in campi else esistente["ancore"]
-        grandezza_per_deduzione = pulita["grandezza"] if "grandezza" in campi \
-            else esistente["grandezza"]
-        aggiornamenti["unita"] = deduci_unit(
-            ancore_per_deduzione, grandezza_per_deduzione, indice, unita_vive)
-    if "ancore" in campi:
-        aggiornamenti["ancore"] = pulita["ancore"]
-    if "condizioni" in campi:
-        aggiornamenti["condizioni"] = pulita["condizioni"]
+        tethers_for_deduction = cleaned["ancore"] if "ancore" in fields else existing["ancore"]
+        quantity_for_deduction = cleaned["grandezza"] if "grandezza" in fields \
+            else existing["grandezza"]
+        updates["unita"] = deduci_unit(
+            tethers_for_deduction, quantity_for_deduction, lookup, reported_units)
+    if "ancore" in fields:
+        updates["ancore"] = cleaned["ancore"]
+    if "condizioni" in fields:
+        updates["condizioni"] = cleaned["condizioni"]
 
-    trovato = archivio.correggi(id_ricordo, **aggiornamenti)
-    if not trovato:
+    found = store.correggi(memory_id, **updates)
+    if not found:
         # Sparito fra il controllo di sopra e la scrittura (un'altra
         # scheda l'ha cancellato nel frattempo): stesso 404, stessa
         # ragione onesta -- non e' un "ok" travestito.
         return web.json_response(
-            {"errore": f"nessun ricordo con id {id_ricordo}"}, status=404)
+            {"errore": f"nessun ricordo con id {memory_id}"}, status=404)
 
-    risposta: dict = {"ok": True}
-    if ignorati:
-        risposta["ignorati"] = ignorati
-    if correzioni:
-        risposta["correzioni"] = correzioni
-    return web.json_response(risposta)
+    answer: dict = {"ok": True}
+    if ignored:
+        answer["ignorati"] = ignored
+    if corrections:
+        answer["correzioni"] = corrections
+    return web.json_response(answer)
 
 
-async def handle_delete_memoria(request: web.Request) -> web.Response:
-    archivio = request.app.get("archivio_memoria")
-    if archivio is None:
+async def handle_delete_memory(request: web.Request) -> web.Response:
+    store = request.app.get("archivio_memoria")
+    if store is None:
         return web.json_response(
             {"errore": "l'archivio della memoria non e' disponibile"}, status=503)
     try:
-        id_ricordo = int(request.match_info["id"])
+        memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
         return web.json_response({"errore": "id non valido"}, status=400)
-    archivio.dimentica(id_ricordo)
+    store.dimentica(memory_id)
     return web.Response(status=204)

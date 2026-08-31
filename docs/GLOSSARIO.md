@@ -342,6 +342,15 @@ in §4①:
 | `campi` | `campo` |
 | `modi` | `modo` |
 | `nuove` | `nuovo` |
+| `problemi` | `problema` |
+| `pulita` | `pulito` |
+| `correggibili` | `correggibile` |
+| `aggiornamenti` | `aggiornamento` |
+| `correzioni` | `correzione` |
+| `ignorati` | `ignorato` |
+| `letta` | `letto` |
+| `disponibili` | `disponibile` |
+| `verificabili` | `verificabile` |
 | `nostri` | `nostro` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
@@ -367,6 +376,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
 | ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede | anchor | ~ parziale |
 | ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto | tether | ~ parziale |
+| ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memoria.py::_risolvi_ancora` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce, non un secondo senso -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito | tether | ~ parziale |
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
@@ -457,7 +467,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools | ~ parziale |
 | tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | historian | arbitrato del proprietario |
 | tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ✓ arriva |
-| turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) | exchange | ~ parziale |
+| turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) -- **`turni` in `api/handlers_impostazioni.py::validate` (Task 9, lotto 8) NON e' questo concetto**: e' il conteggio di `max_chat_turns` (gia' inglese con la parola "turns"), non lo scambio col modello del reasoning delle promesse. Deciso a mano `turni -> turns`, MAI applicato alla cieca il suggerimento meccanico (`exchange`, questa riga). **Non qualificare `turno (api)`**: la collisione e' di SENSO, non di ambito -- `api/handlers_chat.py` usera' `turno` nel senso VERO di questa riga, nello stesso ambito `api` di `handlers_impostazioni.py` -- una riga per ambito qui risolverebbe meta' dei casi e sbaglierebbe l'altra meta'. `classifica('turni','api')` resta `Proposta(suggerito='exchange')` di proposito: e' la forma corretta, decidere ogni occorrenza guardando il codice, non un'automazione da attivare | exchange | ~ parziale |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
 | verifica (azione) | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio (`azione/verifica.py`) | verification | ✓ arriva |
 | verifica (memoria) | il metodo di `Indice`/`Lookup` che controlla se l'identificatore che il modello ha proposto esiste davvero nell'anagrafe, con quel tipo (`Indice.verifica`, ora `Lookup.verify`) -- un VERBO (un'azione: "verifica che..."), non il sostantivo che descrive il modulo della riga sopra. Scoperto rinominando `memoria/` (Task 5, review): applicare alla cieca `verification` avrebbe prodotto `lookup.verification(tipo, riferimento)`, grammaticalmente sbagliato per un metodo che si chiama come un imperativo | verify | ✓ arriva |
@@ -1112,6 +1122,7 @@ al Task 6 invece che deciso qui.
 | adesso | now |
 | affidabile | reliable |
 | aggiorna | refresh |
+| aggiornamento | update |
 | aggiornato | updated |
 | aggiungi | add |
 | agisci | act |
@@ -1163,7 +1174,9 @@ al Task 6 invece che deciso qui.
 | conteggio | counts |
 | coppia | pair |
 | corpo | body |
+| correggibile | correctable |
 | corrente | current |
+| correzione | correction |
 | costo | cost |
 | crea | create |
 | credenziale | credential |
@@ -1214,6 +1227,7 @@ al Task 6 invece che deciso qui.
 | guasto | fault |
 | identificatore | identifier |
 | identita | identity |
+| ignorato | ignored |
 | illeggibile | unreadable |
 | impronta | fingerprint |
 | inaffidabile | unreliable |
@@ -1286,6 +1300,7 @@ al Task 6 invece che deciso qui.
 | proprio | own |
 | protagonista | protagonist |
 | pulisci | clean |
+| pulito | cleaned |
 | punto | point |
 | quale | which |
 | quando | when |
@@ -1298,6 +1313,7 @@ al Task 6 invece che deciso qui.
 | resto | rest |
 | restrizione | restriction |
 | richiesta | request |
+| richiesto | requested |
 | ricordo | memory |
 | ricostruisci | rebuild |
 | riepilogo | summary |
@@ -1735,18 +1751,27 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   la stessa guardia di `classe`/`class` -- lo strumento lo segnala come proposta invece di
   applicarlo, e la scelta a mano riusa il nome del campo JSON che la variabile alimenta
   (`"input_tokens"`), la stessa disciplina gia' vista per `pending_only`.
-- **`sezioni`/`totali` (`handlers_usage.py`, verso `UsageStore.sezioni`/`.totali`) e `storia`
-  (verso `UsageStore.storia`) NON decise come parole generali**, a differenza di `ingresso`:
-  sono metodi PUBBLICI di un ambito gia' chiuso (`consumi/`) mai tradotti -- terzo/quarto/quinto
-  caso della stessa famiglia di `scadi`/`solo_in_sospeso`/`concludi`. Qui pero' la scoperta e'
-  arrivata PRIMA di romperli (dry-run su questo stesso file, che chiama tutti e tre): la guardia
-  di `scripts/rinomina.py` e' stata estesa con `_METODI_USAGE_STORE`, sullo stesso modello di
-  `_METODI_HA_CLIENT`, cosi' un domani in cui `sezione -> section` venisse decisa per un'altra
-  ragione non romperebbe silenziosamente queste tre chiamate. Le variabili LOCALI che ricevono i
-  risultati sono comunque tradotte a mano (`sections`, `totals`) senza toccare le chiamate
-  protette -- la funzione `handle_storia_usage -> handle_usage_history` (il nome della rotta,
-  mio) e' tradotta lo stesso, senza mai scrivere una riga generale `storia -> history` che
-  romperebbe la guardia appena descritta se applicata a un `def storia(` non protetto.
+- **`sezioni`/`totali` (`handlers_usage.py`, verso `UsageStore.sezioni`/`.totali`), `storia`
+  (verso `UsageStore.storia`) e `sposta_anchor` (verso `UsageStore.sposta_anchor`,
+  `handlers_usage.py:218`, `handle_reset_usage`) NON decise come parole generali**, a differenza
+  di `ingresso`: sono QUATTRO metodi PUBBLICI di un ambito gia' chiuso (`consumi/`) mai tradotti
+  -- terzo/quarto/quinto/sesto caso della stessa famiglia di `scadi`/`solo_in_sospeso`/`concludi`
+  (`sposta_anchor` mancava dal primo giro di questa nota: lo stesso lotto lo chiama, e non era
+  stato scritto qui -- corretto dopo il rilievo del coordinatore, Round 4). Qui pero' la scoperta
+  e' arrivata PRIMA di romperli (dry-run su questo stesso file, che chiama tutti e quattro): la
+  guardia di `scripts/rinomina.py` e' stata estesa con `_METODI_USAGE_STORE` (che include gia'
+  `sposta_anchor` fra le sue voci), sullo stesso modello di `_METODI_HA_CLIENT`, cosi' un domani
+  in cui `sezione -> section` venisse decisa per un'altra ragione non romperebbe silenziosamente
+  queste quattro chiamate. Le variabili LOCALI che ricevono i risultati sono comunque tradotte a
+  mano (`sections`, `totals`) senza toccare le chiamate protette -- la funzione
+  `handle_storia_usage -> handle_usage_history` (il nome della rotta, mio) e' tradotta lo stesso,
+  senza mai scrivere una riga generale `storia -> history` che romperebbe la guardia appena
+  descritta se applicata a un `def storia(` non protetto. **Gli stessi metodi portano anche
+  keyword-only ancora italiani nella FIRMA**, mai decisi ne' tradotti: `da`/`a` di
+  `UsageStore.storia` e `da_anchor` di `.sezioni`/`.totali` -- gia' protetti dalla guardia
+  generale sulle parole chiave in una chiamata (mai applicate da sole), qui elencati per
+  completezza dell'inventario, non perche' rischino qualcosa in piu' della protezione gia' in
+  vigore.
 - `_MSG_NESSUN_PROVIDER -> _NO_PROVIDER_MSG`, `_GIORNI_STORIA -> _HISTORY_DAYS` (composto ad hoc,
   non una parola generale: vedi sopra il perche' di `storia`), `_puo_rispondere -> _can_respond`,
   `_non_misurata -> _unmeasured`, `_modello_fuori -> _model_out` (`fuori` qui e' il senso

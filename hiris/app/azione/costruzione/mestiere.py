@@ -29,7 +29,7 @@ def consiglia(intent: dict) -> dict:
     parametri = intent.get("parametri") or []
     riuso = bool(intent.get("riuso"))
     ricorrente = bool(intent.get("ricorrente"))
-    richiesto = intent.get("richiesto")
+    requested = intent.get("richiesto")
 
     strutture: list[str] = []
     reasons: list[str] = []
@@ -85,9 +85,9 @@ def consiglia(intent: dict) -> dict:
                 reasons.append("gli stati vengono ristabiliti in una scena che lo script "
                               "accende")
 
-    dissenso = bool(richiesto) and richiesto not in strutture
+    dissenso = bool(requested) and requested not in strutture
     if dissenso:
-        reasons.append(f"hai chiesto «{richiesto}», e secondo me qui serve "
+        reasons.append(f"hai chiesto «{requested}», e secondo me qui serve "
                       f"{' e '.join(strutture)}; dimmi tu")
 
     return {"strutture": strutture, "motivo": "; ".join(reasons), "dissenso": dissenso}
