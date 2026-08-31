@@ -81,9 +81,9 @@ async def handle_list_entities(request: web.Request) -> web.Response:
     cache = request.app.get("entity_cache")
     if cache is not None and not hasattr(cache, "all_states"):
         cache = None
-    guasto = inventario_non_leggibile(cache)
-    if guasto is not None:
-        return web.json_response(guasto, status=503)
+    fault = inventario_non_leggibile(cache)
+    if fault is not None:
+        return web.json_response(fault, status=503)
     ents = filter_entities(cache.all_states(),
                            _csv(request.query.get("domain")),
                            _csv(request.query.get("device_class")),
