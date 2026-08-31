@@ -27,7 +27,7 @@ la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
 `STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
-`costruisci_dispatcher_strumenti(app, turno=id_turno)`, la stessa funzione del
+`costruisci_dispatcher_strumenti(app, turno=exchange_id)`, la stessa funzione del
 turno sincrono -- con l'identita' di `X-HIRIS-Turno` ripropagata, dalla fetta
 «costruire».
 
@@ -91,17 +91,17 @@ logger = logging.getLogger(__name__)
 # da configurare. Il Task 3 la riusa per la voce di `--mcp-config` e per il
 # prefisso `mcp__hiris__` con cui la CLI presenta gli strumenti al modello: un
 # nome solo, in un posto solo.
-NOME_SERVER_MCP = "hiris"
+MCP_SERVER_NAME = "hiris"
 
 # La versione di protocollo che dichiariamo quando il client non ne manda una.
 # Nel caso normale `initialize` rimanda indietro **quella ricevuta**: e' il
 # client (la CLI `claude`) a sapere quale sa parlare, e negoziare al ribasso una
 # versione che non ci serve sarebbe un modo in piu' di non partire.
-PROTOCOLLO_PREDEFINITO = "2025-06-18"
+DEFAULT_PROTOCOL = "2025-06-18"
 
 # I tre metodi che questa rotta conosce. Serve anche a scrivere un errore
 # `-32601` che DICE cosa esiste, invece di un "method not found" nudo.
-METODI = ("initialize", "tools/list", "tools/call")
+METHODS = ("initialize", "tools/list", "tools/call")
 
 # Task 6 della fetta ("il ponte riceve gli strumenti", parita' B): il tetto ai
 # giri di strumento PER TURNO -- l'unico freno che l'abbonamento abbia.
@@ -143,7 +143,7 @@ METODI = ("initialize", "tools/list", "tools/call")
 # tenuto a mente leggendo l'uno alla luce dell'altro. `MAX_TOOL_ITERATIONS`
 # (sincrono) conta un giro per RISPOSTA del modello: N blocchi `tool_use`
 # nella stessa risposta costano una sola iterazione (vedi il for su
-# `response.content` in `claude_runner.chat()`). `MAX_GIRI_STRUMENTI` (qui)
+# `response.content` in `claude_runner.chat()`). `MAX_TOOL_ROUNDS` (qui)
 # conta un giro per OGNI singola `tools/call` che arriva su questa rotta,
 # comprese quelle parallele della stessa risposta della CLI: 8 `guarda`
 # richiesti insieme dal modello costano comunque 8 giri qui, non 1. Stesso
@@ -157,7 +157,7 @@ METODI = ("initialize", "tools/list", "tools/call")
 # traduzioni, il lettore Python), e qui non c'e' niente che l'utente debba
 # toccare oggi -- se un giorno servira' configurarla, si fara' il giro dei
 # cinque posti allora.
-MAX_GIRI_STRUMENTI = 50
+MAX_TOOL_ROUNDS = 50
 
 # Quante identita' di turno diverse restano tracciate insieme. Piccolo di
 # proposito (Step 2 del brief, "N piccolo"): serve solo a impedire che il
@@ -166,28 +166,28 @@ MAX_GIRI_STRUMENTI = 50
 # `agent/runner.py::_reason_chat`, la sua identita' non serve piu' un istante
 # dopo, e tenerne migliaia sarebbe una perdita di memoria scritta apposta.
 # L'espulsione e' **LRU, non FIFO** (l'etichetta era sbagliata fino alla
-# review totale della fetta, M-1): `_conta_giro` fa `move_to_end` a ogni
+# review totale della fetta, M-1): `_count_round` fa `move_to_end` a ogni
 # chiamata, quindi l'`OrderedDict` e' ordinato per ULTIMO USO e
 # `popitem(last=False)` scarta il turno che tace da piu' tempo, non quello
 # iniziato per primo. La differenza non e' terminologica: e' cio' che rende
 # vera la proprieta' portante di questo tetto -- **un turno ancora attivo non
 # viene mai espulso**, per quanti altri turni gli passino accanto. Con una
-# FIFO vera un turno lungo verrebbe scartato dopo `_MAX_TURNI_TRACCIATI`
+# FIFO vera un turno lungo verrebbe scartato dopo `_MAX_TRACKED_EXCHANGES`
 # turni altrui e il suo contatore ripartirebbe da zero, cioe' il tetto si
 # potrebbe aggirare semplicemente durando. La proprieta' e' pinnata in
 # `tests/test_rotta_mcp.py::test_un_turno_attivo_non_viene_mai_espulso`.
-_MAX_TURNI_TRACCIATI = 64
+_MAX_TRACKED_EXCHANGES = 64
 
 # La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
 # stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
-# (`_conta_giro`) devono per forza nominare la stessa cosa.
-CHIAVE_GIRI_PER_TURNO = "mcp_giri_per_turno"
+# (`_count_round`) devono per forza nominare la stessa cosa.
+ROUNDS_PER_EXCHANGE_KEY = "mcp_giri_per_turno"
 
 
-def prepara_contatori(app) -> None:
+def create_rounds_per_exchange(app) -> None:
     """Crea la struttura dei contatori **prima che l'app parta**.
 
-    M-2 della review totale della fetta. Prima, `_conta_giro` la creava con
+    M-2 della review totale della fetta. Prima, `_count_round` la creava con
     `app.setdefault(...)` alla prima `tools/call` servita: aiohttp lo vede
     come una modifica dello stato di un'applicazione gia' avviata ed emette
     «Changing state of started or joined application is deprecated» -- oggi un
@@ -197,14 +197,14 @@ def prepara_contatori(app) -> None:
 
     Non e' `setdefault`: chiamarla due volte sulla stessa app azzererebbe i
     contatori, e non esiste nessun motivo per chiamarla due volte."""
-    app[CHIAVE_GIRI_PER_TURNO] = OrderedDict()
+    app[ROUNDS_PER_EXCHANGE_KEY] = OrderedDict()
 
 
-def _risposta(id_richiesta, risultato: dict) -> web.Response:
-    return web.json_response({"jsonrpc": "2.0", "id": id_richiesta, "result": risultato})
+def _answer(request_id, result: dict) -> web.Response:
+    return web.json_response({"jsonrpc": "2.0", "id": request_id, "result": result})
 
 
-def _errore(codice: int, messaggio: str, id_richiesta=None, *, stato: int = 200) -> web.Response:
+def _error(code: int, message: str, request_id=None, *, status: int = 200) -> web.Response:
     """Un errore JSON-RPC che dice **cosa** e' successo.
 
     Un codice generico su una chiamata malformata e' un silenzio travestito: chi
@@ -212,13 +212,13 @@ def _errore(codice: int, messaggio: str, id_richiesta=None, *, stato: int = 200)
     campo mancava senza rileggere questo file.
     """
     return web.json_response(
-        {"jsonrpc": "2.0", "id": id_richiesta,
-         "error": {"code": codice, "message": messaggio}},
-        status=stato,
+        {"jsonrpc": "2.0", "id": request_id,
+         "error": {"code": code, "message": message}},
+        status=status,
     )
 
 
-def _promessa_del_turno(request: web.Request) -> str:
+def _exchange_promise_id(request: web.Request) -> str:
     """L'id della promessa che questo turno sta mantenendo, oppure `""`.
 
     `X-HIRIS-Promessa` e' l'intestazione che `agent/runner.py::config_mcp`
@@ -237,14 +237,14 @@ def _promessa_del_turno(request: web.Request) -> str:
     ident = (request.headers.get("X-HIRIS-Promessa") or "").strip()
     if not ident:
         return ""
-    archivio = request.app.get("promesse")
-    if archivio is None:
+    store = request.app.get("promesse")
+    if store is None:
         return ""
-    riga = archivio.read(ident)
-    return ident if riga and riga.get("stato") == "in_corso" else ""
+    row = store.read(ident)
+    return ident if row and row.get("stato") == "in_corso" else ""
 
 
-def catalogo_mcp(definizioni: list[dict] | None = None) -> list[dict]:
+def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
     """Un catalogo di strumenti nella grafia di MCP: `input_schema` -> `inputSchema`.
 
     Trasformazione **meccanica**, e deve restare tale: nessun testo nuovo,
@@ -257,18 +257,18 @@ def catalogo_mcp(definizioni: list[dict] | None = None) -> list[dict]:
     trasformazione, non una seconda: due funzioni che riformattano cataloghi
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
-    voci: list[dict] = []
-    for definizione in (KNOWLEDGE_TOOLS if definizioni is None else definizioni):
-        voce = {chiave: valore for chiave, valore in definizione.items()
-                if chiave != "input_schema"}
-        if "input_schema" in definizione:
-            voce["inputSchema"] = definizione["input_schema"]
-        voci.append(voce)
-    return voci
+    entries: list[dict] = []
+    for definition in (KNOWLEDGE_TOOLS if definitions is None else definitions):
+        entry = {key: value for key, value in definition.items()
+                 if key != "input_schema"}
+        if "input_schema" in definition:
+            entry["inputSchema"] = definition["input_schema"]
+        entries.append(entry)
+    return entries
 
 
-def _conta_giro(app, id_turno: str) -> int:
-    """Incrementa il contatore dei giri di strumento del turno `id_turno` e
+def _count_round(app, exchange_id: str) -> int:
+    """Incrementa il contatore dei giri di strumento del turno `exchange_id` e
     restituisce il valore **prima** dell'incremento (quanti giri erano gia'
     passati per questo turno).
 
@@ -283,38 +283,38 @@ def _conta_giro(app, id_turno: str) -> int:
     lock, e va scritta perche' e' cio' che rende la struttura sicura SENZA
     sincronizzazione, non un'omissione.
 
-    **Dimensione limitata** (`_MAX_TURNI_TRACCIATI`, "le ultime N identita' di
+    **Dimensione limitata** (`_MAX_TRACKED_EXCHANGES`, "le ultime N identita' di
     turno" del brief): quando arriva un'identita' MAI vista e il dizionario e'
     gia' pieno, si scarta quella usata da PIU' TEMPO -- LRU e non FIFO, ed e'
     il `move_to_end` qui sotto a farne la differenza. Un turno che continua a
     chiamare si rimette in coda a ogni giro e non puo' essere espulso: se lo
     fosse, il suo contatore ripartirebbe da zero e il tetto si aggirerebbe
-    durando (vedi il commento su `_MAX_TURNI_TRACCIATI`).
+    durando (vedi il commento su `_MAX_TRACKED_EXCHANGES`).
 
     **La struttura la crea `server.create_app()`**, non questa funzione (M-2
     della review totale): scriverla qui, a richiesta gia' servita, faceva
     emettere ad aiohttp «Changing state of started or joined application»,
     che con aiohttp 4 diventa un errore. Lo stato di un'app aiohttp si compone
     prima che l'app parta."""
-    contatori: OrderedDict[str, int] = app[CHIAVE_GIRI_PER_TURNO]
-    if id_turno in contatori:
-        contatori.move_to_end(id_turno)
-        giri = contatori[id_turno]
+    rounds_per_exchange: OrderedDict[str, int] = app[ROUNDS_PER_EXCHANGE_KEY]
+    if exchange_id in rounds_per_exchange:
+        rounds_per_exchange.move_to_end(exchange_id)
+        rounds = rounds_per_exchange[exchange_id]
     else:
-        giri = 0
-        if len(contatori) >= _MAX_TURNI_TRACCIATI:
-            contatori.popitem(last=False)  # il piu' vecchio
-    contatori[id_turno] = giri + 1
-    return giri
+        rounds = 0
+        if len(rounds_per_exchange) >= _MAX_TRACKED_EXCHANGES:
+            rounds_per_exchange.popitem(last=False)  # il piu' vecchio
+    rounds_per_exchange[exchange_id] = rounds + 1
+    return rounds
 
 
-def _rifiuto_tetto_raggiunto(nome: str) -> dict:
+def _ceiling_rejection(name: str) -> dict:
     """Il `content` che il modello vede quando il tetto per-turno e' pieno.
 
     **La forma scelta, motivata (non un dettaglio di stile).** Resta una
     risposta JSON-RPC 2.0 NORMALE (`result`, non un `error` di protocollo
     `-32xxx`): esattamente la stessa scelta che questo file fa gia' per un
-    guasto DICHIARATO del dispatcher (vedi `_chiama_strumento`, il ramo
+    guasto DICHIARATO del dispatcher (vedi `_call_tool`, il ramo
     `isError`) contro un guasto VERO (l'`except` di `handle_mcp`, che quello
     si' risponde `-32603`). Il tetto raggiunto non e' un guasto del
     protocollo -- la richiesta era benformata e la rotta funziona -- e' un
@@ -338,46 +338,46 @@ def _rifiuto_tetto_raggiunto(nome: str) -> dict:
     protocollo non esiste in questo prodotto (tre bastano: riuscita, fallita,
     mai risolta -- Task 5) e non lo si inventa qui: si dichiara nel contenuto,
     dove sia il modello sia un umano che legga il log lo trovano."""
-    risultato = {
+    result = {
         "errore": (
-            f"hai raggiunto il tetto di {MAX_GIRI_STRUMENTI} chiamate di "
-            f"strumento per questo turno (l'ultima tentata: «{nome}»): non "
+            f"hai raggiunto il tetto di {MAX_TOOL_ROUNDS} chiamate di "
+            f"strumento per questo turno (l'ultima tentata: «{name}»): non "
             "chiamare altri strumenti, rispondi con cio' che hai gia' "
             "raccolto.")
     }
     return {
-        "content": [{"type": "text", "text": json.dumps(risultato, ensure_ascii=False)}],
+        "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
         "isError": True,
     }
 
 
-async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> web.Response:
+async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     """`tools/call`: il nome nudo, gli argomenti, e il dispatcher che c'e' gia'."""
-    if not isinstance(parametri, dict):
-        return _errore(
+    if not isinstance(params, dict):
+        return _error(
             -32602,
             "«tools/call» richiede un oggetto «params» con «name» e «arguments»; "
-            f"ricevuto invece {type(parametri).__name__}.",
-            id_richiesta,
+            f"ricevuto invece {type(params).__name__}.",
+            request_id,
         )
-    nome = parametri.get("name")
-    if not isinstance(nome, str) or not nome.strip():
-        return _errore(
+    name = params.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return _error(
             -32602,
             "«tools/call» richiede «params.name», il nome NUDO dello strumento "
             f"(uno fra {', '.join(sorted(d['name'] for d in KNOWLEDGE_TOOLS))}); "
-            f"ricevuto invece {nome!r}.",
-            id_richiesta,
+            f"ricevuto invece {name!r}.",
+            request_id,
         )
-    argomenti = parametri.get("arguments")
-    if argomenti is None:
-        argomenti = {}
-    if not isinstance(argomenti, dict):
-        return _errore(
+    arguments = params.get("arguments")
+    if arguments is None:
+        arguments = {}
+    if not isinstance(arguments, dict):
+        return _error(
             -32602,
-            f"«params.arguments» di «{nome}» dev'essere un oggetto; "
-            f"ricevuto invece {type(argomenti).__name__}.",
-            id_richiesta,
+            f"«params.arguments» di «{name}» dev'essere un oggetto; "
+            f"ricevuto invece {type(arguments).__name__}.",
+            request_id,
         )
 
     # Task 6, Step 2 e 3: il tetto per-turno, DOPO la validazione (una
@@ -394,8 +394,8 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # (Task 4: oggi non succede -- il ritentativo riparte sempre senza
     # strumenti -- ma se succedesse, questo e' cio' che impedirebbe al tetto
     # di raddoppiare in silenzio).
-    id_turno = request.headers.get("X-HIRIS-Turno")
-    if not id_turno:
+    exchange_id = request.headers.get("X-HIRIS-Turno")
+    if not exchange_id:
         # Silenzio dichiarato (5) della fetta: un chiamante che non propaga
         # questa intestazione (una CLI diversa dal ponte, un test, un
         # chiamante futuro) non e' un guasto -- rifiutare lo strumento
@@ -406,11 +406,11 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         logger.warning(
             "MCP tools/call «%s» senza l'intestazione X-HIRIS-Turno: non "
             "viene contata nel tetto per-turno (%d/turno) -- il chiamante "
-            "non la propaga", nome, MAX_GIRI_STRUMENTI)
+            "non la propaga", name, MAX_TOOL_ROUNDS)
     else:
-        giri_gia_fatti = _conta_giro(request.app, id_turno)
-        if giri_gia_fatti >= MAX_GIRI_STRUMENTI:
-            if giri_gia_fatti == MAX_GIRI_STRUMENTI:
+        rounds_so_far = _count_round(request.app, exchange_id)
+        if rounds_so_far >= MAX_TOOL_ROUNDS:
+            if rounds_so_far == MAX_TOOL_ROUNDS:
                 # Un log.warning al PRIMO superamento per turno (Step 3 del
                 # brief), non a ogni chiamata successiva: il turno e' gia'
                 # dichiarato pieno, ripeterlo per ogni ulteriore tentativo
@@ -418,8 +418,8 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
                 logger.warning(
                     "MCP: tetto di %d chiamate di strumento raggiunto per il "
                     "turno %s -- «%s» NON viene eseguita, il dispatcher non "
-                    "e' invocato", MAX_GIRI_STRUMENTI, id_turno, nome)
-            return _risposta(id_richiesta, _rifiuto_tetto_raggiunto(nome))
+                    "e' invocato", MAX_TOOL_ROUNDS, exchange_id, name)
+            return _answer(request_id, _ceiling_rejection(name))
 
     # Il nome accettato e' quello nudo (`cerca`, ...): il prefisso
     # `mcp__hiris__` lo mette la CLI dal lato modello, non arriva nel
@@ -427,17 +427,17 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
     # qui a indovinare.
     #
-    # fetta «costruire»: si ripropone al dispatcher la STESSA `id_turno` gia'
+    # fetta «costruire»: si ripropone al dispatcher la STESSA `exchange_id` gia'
     # letta sopra da `X-HIRIS-Turno` per il tetto dei giri -- non se ne conia
     # una seconda. E' l'identita' che la guardia dell'officina usa per
     # rifiutare una `conferma` nello stesso turno della `costruisci` che
-    # l'ha proposta. Quando l'intestazione manca (`id_turno` e' `None`, il
+    # l'ha proposta. Quando l'intestazione manca (`exchange_id` e' `None`, il
     # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
     # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
     # non esiste.
-    dispatcher = costruisci_dispatcher_strumenti(request.app, turno=id_turno)
-    id_promessa = _promessa_del_turno(request)
-    if id_promessa:
+    dispatcher = costruisci_dispatcher_strumenti(request.app, turno=exchange_id)
+    promise_id = _exchange_promise_id(request)
+    if promise_id:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
         # `SOLA_LETTURA` e' un elenco di AMMISSIONE, e con due implementazioni
         # uno strumento nuovo che scrive entrerebbe da solo in una delle due il
@@ -445,9 +445,9 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # nel dispatcher della chat: lo serve il wrapper, ed e' li' che il
         # turno finisce.
         dispatcher = PromiseDispatcher(dispatcher)
-    risultato = await dispatcher.dispatch(nome, argomenti)
+    result = await dispatcher.dispatch(name, arguments)
 
-    if id_promessa and dispatcher.conclusione is not None:
+    if promise_id and dispatcher.conclusione is not None:
         # Il turno ha chiamato `concludi`: la promessa si chiude ADESSO, e la
         # notifica parte adesso. Non si aspetta la consegna del job -- se la
         # CLI morisse dopo aver concluso, la decisione del modello sarebbe gia'
@@ -457,25 +457,25 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # A concludere e' l'orologio, non questa rotta: un secondo punto che
         # decide se notificare e con quali parole sarebbe libero di divergere
         # dal primo, sul gesto piu' visibile che il prodotto compia.
-        orologio = request.app.get("orologio")
-        promessa = (request.app.get("promesse") or None)
-        riga = promessa.read(id_promessa) if promessa is not None else None
-        if orologio is None or riga is None:
+        sweeper = request.app.get("orologio")
+        store = (request.app.get("promesse") or None)
+        row = store.read(promise_id) if store is not None else None
+        if sweeper is None or row is None:
             # Silenzio dichiarato: il modello ha concluso e noi non abbiamo di
             # che chiudere. Non si finge che sia andata: lo si dice a lui, che
             # e' l'unico che puo' ancora fare qualcosa (riprovare, o dirlo nel
             # testo), e lo si scrive nel log per chi indaga.
             logger.error(
                 "MCP «concludi» per la promessa %s: orologio o archivio "
-                "assenti, la promessa NON e' stata chiusa", id_promessa)
-            risultato = {"errore": ("ho ricevuto la conclusione ma non ho "
-                                    "potuto chiudere la promessa.")}
+                "assenti, la promessa NON e' stata chiusa", promise_id)
+            result = {"errore": ("ho ricevuto la conclusione ma non ho "
+                                 "potuto chiudere la promessa.")}
         else:
-            await orologio.concludi_chiedi(
-                riga, dispatcher.conclusione, now=time.time())
+            await sweeper.concludi_chiedi(
+                row, dispatcher.conclusione, now=time.time())
 
-    contenuto: dict = {
-        "content": [{"type": "text", "text": json.dumps(risultato, ensure_ascii=False)}],
+    content: dict = {
+        "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
     }
     # Un guasto dello strumento (archivi non ancora caricati, argomenti
     # mancanti, nome sconosciuto) e' un `errore` dichiarato dal dispatcher, mai
@@ -484,8 +484,8 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
     # modo di distinguere una chiamata fallita da una riuscita. Senza questa
     # riga il fallimento arriverebbe travestito da successo: il difetto numero
     # uno di questo prodotto.
-    if isinstance(risultato, dict) and "errore" in risultato:
-        contenuto["isError"] = True
+    if isinstance(result, dict) and "errore" in result:
+        content["isError"] = True
         # A livello DEBUG, non `info`: il testo dell'errore lo compongono i
         # gestori (`casa/strumenti.py`, `azione/porta.py`) e puo' contenere
         # dati di casa -- id di entita', nomi di aree, frammenti di frase. Un
@@ -493,8 +493,8 @@ async def _chiama_strumento(request: web.Request, parametri, id_richiesta) -> we
         # predefinito dell'add-on non e' `debug`. Che la chiamata sia fallita
         # lo dice comunque `isError` al modello, che e' chi deve saperlo.
         logger.debug("MCP tools/call «%s» ha dichiarato un errore: %s",
-                     nome, risultato.get("errore"))
-    return _risposta(id_richiesta, contenuto)
+                     name, result.get("errore"))
+    return _answer(request_id, content)
 
 
 async def handle_mcp(request: web.Request) -> web.Response:
@@ -531,89 +531,89 @@ async def handle_mcp(request: web.Request) -> web.Response:
         return web.json_response({"error": "unauthorized"}, status=401)
 
     try:
-        corpo = await request.json()
-    except Exception as errore:
-        return _errore(
+        body = await request.json()
+    except Exception as error:
+        return _error(
             -32700,
             f"il corpo della richiesta non e' JSON valido "
-            f"({type(errore).__name__}: {errore}).",
-            stato=400,
+            f"({type(error).__name__}: {error}).",
+            status=400,
         )
 
-    if not isinstance(corpo, dict):
-        return _errore(
+    if not isinstance(body, dict):
+        return _error(
             -32600,
             "il corpo dev'essere un singolo oggetto JSON-RPC 2.0; ricevuto "
-            f"invece {type(corpo).__name__} (i batch non sono supportati).",
-            stato=400,
+            f"invece {type(body).__name__} (i batch non sono supportati).",
+            status=400,
         )
 
-    metodo = corpo.get("method")
-    id_richiesta = corpo.get("id")
+    method = body.get("method")
+    request_id = body.get("id")
     # Notifica = richiesta **senza** il membro `id` (JSON-RPC 2.0). Non
     # `id is None`: un `id` esplicitamente nullo resta una richiesta.
-    e_notifica = "id" not in corpo
+    is_notification = "id" not in body
 
-    if not isinstance(metodo, str) or not metodo:
-        if e_notifica:
+    if not isinstance(method, str) or not method:
+        if is_notification:
             # Anche una notifica malformata non riceve un corpo (per
             # protocollo), ma il guasto si dichiara nel log invece di sparire.
-            logger.warning("MCP: notifica senza «method» utilizzabile: %r", metodo)
+            logger.warning("MCP: notifica senza «method» utilizzabile: %r", method)
             return web.Response(status=202)
-        return _errore(
+        return _error(
             -32600,
-            f"campo «method» assente o non testuale (ricevuto: {metodo!r}); "
-            f"i metodi conosciuti sono {', '.join(METODI)}.",
-            id_richiesta,
-            stato=400,
+            f"campo «method» assente o non testuale (ricevuto: {method!r}); "
+            f"i metodi conosciuti sono {', '.join(METHODS)}.",
+            request_id,
+            status=400,
         )
 
-    if e_notifica:
+    if is_notification:
         # `notifications/initialized` e compagne: si accettano e basta. Non
         # abbiamo stato di sessione da aggiornare, e rispondere a una notifica
         # sarebbe una violazione del protocollo.
-        logger.debug("MCP: notifica «%s» accettata", metodo)
+        logger.debug("MCP: notifica «%s» accettata", method)
         return web.Response(status=202)
 
     try:
-        if metodo == "initialize":
-            return _risposta(id_richiesta, {
+        if method == "initialize":
+            return _answer(request_id, {
                 # Si rimanda indietro la versione ricevuta: e' il client a
                 # sapere quale sa parlare. Nessun `Mcp-Session-Id` richiesto ne'
                 # emesso -- non abbiamo stato di sessione da difendere, e
                 # pretenderlo sarebbe solo un modo in piu' di non partire.
-                "protocolVersion": (corpo.get("params") or {}).get(
-                    "protocolVersion") or PROTOCOLLO_PREDEFINITO,
+                "protocolVersion": (body.get("params") or {}).get(
+                    "protocolVersion") or DEFAULT_PROTOCOL,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": NOME_SERVER_MCP, "version": read_version()},
+                "serverInfo": {"name": MCP_SERVER_NAME, "version": read_version()},
             })
-        if metodo == "tools/list":
-            _promessa = _promessa_del_turno(request)
+        if method == "tools/list":
+            _promise_id = _exchange_promise_id(request)
             # Il turno di una promessa vede il catalogo della promessa:
             # i sei lettori piu' `concludi`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
             # di `STRUMENTI_CONOSCENZA` (tools_promise le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
             # entrambe le strade.
-            return _risposta(id_richiesta, {"tools": catalogo_mcp(
-                tools_promise() if _promessa else None)})
-        if metodo == "tools/call":
-            return await _chiama_strumento(request, corpo.get("params") or {}, id_richiesta)
-        return _errore(
+            return _answer(request_id, {"tools": mcp_catalog(
+                tools_promise() if _promise_id else None)})
+        if method == "tools/call":
+            return await _call_tool(request, body.get("params") or {}, request_id)
+        return _error(
             -32601,
-            f"metodo «{metodo}» sconosciuto: questa rotta e' un adattatore di "
-            f"tre metodi ({', '.join(METODI)}) piu' le notifiche.",
-            id_richiesta,
+            f"metodo «{method}» sconosciuto: questa rotta e' un adattatore di "
+            f"tre metodi ({', '.join(METHODS)}) piu' le notifiche.",
+            request_id,
         )
-    except Exception as errore:
+    except Exception as error:
         # Stessa proprieta' di `DispatcherStrumenti.dispatch`: da qui non
         # risale mai un'eccezione, e non esce mai un 500 nudo. Un turno del
         # ponte spezzato da una traccia Python sarebbe indistinguibile, per
         # l'utente, da una risposta che non arriva.
-        logger.exception("MCP: «%s» ha sollevato", metodo)
-        return _errore(
+        logger.exception("MCP: «%s» ha sollevato", method)
+        return _error(
             -32603,
-            f"«{metodo}» ha incontrato un problema interno "
-            f"({type(errore).__name__}: {errore}).",
-            id_richiesta,
+            f"«{method}» ha incontrato un problema interno "
+            f"({type(error).__name__}: {error}).",
+            request_id,
         )

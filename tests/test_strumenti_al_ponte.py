@@ -181,9 +181,9 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
     # solo -- e il prompt, che nomina i nomi prefissati, resterebbe vero.
-    assert runner._nome_server_mcp() is handlers_mcp.NOME_SERVER_MCP
+    assert runner._nome_server_mcp() is handlers_mcp.MCP_SERVER_NAME
     for nome in nomi:
-        assert nome.startswith(f"mcp__{handlers_mcp.NOME_SERVER_MCP}__")
+        assert nome.startswith(f"mcp__{handlers_mcp.MCP_SERVER_NAME}__")
 
 
 def test_toolsearch_non_e_vietato_o_gli_strumenti_sono_irraggiungibili():
@@ -202,7 +202,7 @@ def test_config_mcp_e_json_valido_con_la_url_e_le_due_intestazioni():
     testo = runner.config_mcp("http://127.0.0.1:8099", "IL-TOKEN")
     config = json.loads(testo)
 
-    voce = config["mcpServers"][handlers_mcp.NOME_SERVER_MCP]
+    voce = config["mcpServers"][handlers_mcp.MCP_SERVER_NAME]
     assert voce["type"] == "http"
     assert voce["url"] == "http://127.0.0.1:8099/api/mcp"
     # ENTRAMBE: il token apre la rotta, l'X-Requested-With soddisfa il CSRF.
@@ -222,7 +222,7 @@ def test_config_mcp_aggiunge_x_hiris_turno_quando_l_identita_e_valorizzata():
     testo = runner.config_mcp("http://127.0.0.1:8099", "IL-TOKEN", "IDENTITA-DEL-TURNO")
     config = json.loads(testo)
 
-    voce = config["mcpServers"][handlers_mcp.NOME_SERVER_MCP]
+    voce = config["mcpServers"][handlers_mcp.MCP_SERVER_NAME]
     assert voce["headers"]["X-HIRIS-Turno"] == "IDENTITA-DEL-TURNO"
     assert voce["headers"]["X-HIRIS-Internal-Token"] == "IL-TOKEN"
     assert voce["headers"]["X-Requested-With"] == "hiris-mcp"
@@ -238,7 +238,7 @@ def test_config_mcp_senza_id_turno_non_aggiunge_l_intestazione():
     testo = runner.config_mcp("http://127.0.0.1:8099", "IL-TOKEN")
     config = json.loads(testo)
 
-    voce = config["mcpServers"][handlers_mcp.NOME_SERVER_MCP]
+    voce = config["mcpServers"][handlers_mcp.MCP_SERVER_NAME]
     assert "X-HIRIS-Turno" not in voce["headers"]
 
 

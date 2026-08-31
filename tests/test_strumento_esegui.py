@@ -5,7 +5,7 @@ Il punto di questo file non e' che `esegui` funzioni -- il lavoro vero
 test. Qui si pinnano tre cose che nessun altro test copre:
 
 1. `esegui` sta nel catalogo UNICO, e da li' arriva da solo a `nomi_mcp()`
-   (l'argv del ponte) e a `catalogo_mcp()` (la rotta MCP). Se uno di quei due
+   (l'argv del ponte) e a `mcp_catalog()` (la rotta MCP). Se uno di quei due
    test cade, qualcuno ha ricopiato i nomi a mano da qualche parte;
 2. il dispatcher passa alla porta e DICHIARA l'origine (`"chat"`): la porta
    non sa chi la chiama, e domani lo schedulatore passera' un'altra origine
@@ -53,8 +53,8 @@ def test_esegui_si_propaga_ai_nomi_mcp():
 
 
 def test_esegui_si_propaga_al_catalogo_del_ponte():
-    from hiris.app.api.handlers_mcp import catalogo_mcp
-    assert "esegui" in [d["name"] for d in catalogo_mcp()]
+    from hiris.app.api.handlers_mcp import mcp_catalog
+    assert "esegui" in [d["name"] for d in mcp_catalog()]
 
 
 @pytest.mark.asyncio

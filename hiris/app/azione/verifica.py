@@ -115,7 +115,7 @@ from ..casa.anagrafe import domain_of
 _DOMINI_UNIVERSALI = frozenset({"homeassistant"})
 
 
-def _declare_target(definizione: dict) -> bool:
+def _declare_target(definition: dict) -> bool:
     """Vero se questo servizio si aspetta un bersaglio (entita', area...).
 
     Review finale, rilievo CRITICO ①. Il campo e' `target` di
@@ -144,7 +144,7 @@ def _declare_target(definizione: dict) -> bool:
     allargherebbe su qualunque servizio senza `target`, non solo su chi
     serve davvero.
     """
-    return isinstance(definizione.get("target"), dict)
+    return isinstance(definition.get("target"), dict)
 
 
 # I domini "di recapito": la SOLA famiglia per cui un bersaglio vuoto e'
@@ -160,7 +160,7 @@ def _declare_target(definizione: dict) -> bool:
 _DOMINI_DI_RECAPITO = frozenset({"notify", "persistent_notification"})
 
 
-def _allows_empty_target(domain: str, definizione: dict) -> bool:
+def _allows_empty_target(domain: str, definition: dict) -> bool:
     """Vero se un bersaglio vuoto e' la forma giusta per QUESTA chiamata.
 
     Combina le due condizioni che, insieme, restano dentro il perimetro
@@ -168,7 +168,7 @@ def _allows_empty_target(domain: str, definizione: dict) -> bool:
     il suo dominio e' uno dei recapiti (`_DOMINI_DI_RECAPITO`). La prima da
     sola era troppo larga -- vedi il docstring del modulo.
     """
-    return domain in _DOMINI_DI_RECAPITO and not _declare_target(definizione)
+    return domain in _DOMINI_DI_RECAPITO and not _declare_target(definition)
 
 
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
@@ -329,8 +329,8 @@ def verification(call: dict, registry, states: dict[str, dict],
     # -- per un servizio che ESISTE ma non dichiara ne' campi ne' bersaglio.
     # Con la verita' booleana HIRIS rifiuterebbe una chiamata legittima, e
     # col motivo sbagliato («non esiste» invece di niente).
-    definizione = registry.service(domain, name)
-    if definizione is None:
+    definition = registry.service(domain, name)
+    if definition is None:
         return _no(f"«{reading}» non esiste. I servizi di «{domain}» sono: "
                    f"{_list(registry.services_for(domain))}.")
 
@@ -342,7 +342,7 @@ def verification(call: dict, registry, states: dict[str, dict],
         return _no(f"questo bersaglio non si legge: {'; '.join(illeggibili)}. "
                    f"Ogni voce dev'essere un identificatore, o un elenco di "
                    f"identificatori.")
-    if not target_ha and not _allows_empty_target(domain, definizione):
+    if not target_ha and not _allows_empty_target(domain, definition):
         return _no("serve un bersaglio: «entita» con gli id esatti, oppure "
                    "«aree», «piani», «etichette» o «dispositivi» -- Home "
                    "Assistant risolve da se' cosa contengono, e non serve "
@@ -374,12 +374,12 @@ def verification(call: dict, registry, states: dict[str, dict],
     # mappa di nomi, o `None` quando c'era ma in una forma che nessuno ha
     # saputo leggere. Il controllo `isinstance` qui non e' una ripetizione di
     # quello: e' cio' che rende vera, da sola, la promessa del docstring della
-    # porta -- «non solleva mai». Prima era `set(definizione.get("fields") or
+    # porta -- «non solleva mai». Prima era `set(definition.get("fields") or
     # {})`, e un `fields` che fosse una lista di oggetti faceva risalire un
     # `TypeError` fino al modello, che riceveva `unhashable type: 'dict'` come
     # motivo del rifiuto. Un registro costruito altrove, o una forma futura,
     # non deve poter riaprire quella strada.
-    fields = definizione.get("fields", {})
+    fields = definition.get("fields", {})
     if isinstance(fields, dict):
         names = {c for c in fields if isinstance(c, str)}
         for key in data:

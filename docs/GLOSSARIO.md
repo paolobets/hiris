@@ -352,6 +352,7 @@ in §4①:
 | `disponibili` | `disponibile` |
 | `verificabili` | `verificabile` |
 | `nostri` | `nostro` |
+| `strumento` | `strumenti` |
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -1154,7 +1155,9 @@ al Task 6 invece che deciso qui.
 | carattere | character |
 | carica | load |
 | cartella | folder |
+| catalogo | catalog |
 | categoria | category |
+| chiama | call |
 | chiamata | call |
 | chiave | key |
 | chiudi | close |
@@ -1172,6 +1175,7 @@ al Task 6 invece che deciso qui.
 | consumi | usage |
 | conta | count |
 | conteggio | counts |
+| contenuto | content |
 | coppia | pair |
 | corpo | body |
 | correggibile | correctable |
@@ -1183,6 +1187,7 @@ al Task 6 invece che deciso qui.
 | dati | data |
 | dedotto | deduced |
 | denominatore | denominator |
+| definizione | definition |
 | dettaglio | detail |
 | diagnosi | diagnosis |
 | dichiara | declare |
@@ -1271,6 +1276,7 @@ al Task 6 invece che deciso qui.
 | normalizza | normalize |
 | nostro (casa) | our |
 | nota | note |
+| notifica | notification |
 | numeratore | numerator |
 | nuovo | new |
 | oggetto | object |
@@ -1299,6 +1305,7 @@ al Task 6 invece che deciso qui.
 | proposta | proposal |
 | proprio | own |
 | protagonista | protagonist |
+| protocollo | protocol |
 | pulisci | clean |
 | pulito | cleaned |
 | punto | point |
@@ -1369,6 +1376,7 @@ al Task 6 invece che deciso qui.
 | tipo | type |
 | titolo | title |
 | totale | total |
+| tracciato | tracked |
 | tradotto | translated |
 | traduci | translate |
 | traduzione | translation |
@@ -1466,17 +1474,21 @@ al Task 6 invece che deciso qui.
 > per il senso principale, lo stato di un'entita' di Home Assistant (`casa/domande.py`,
 > `casa/nucleo.py`, e la colonna `stato` di `costruzioni`/`promesse` che tiene i valori di
 > `STATI_SOSPESO`/`STATI_CONCLUSI` — quello e' ancora «lo stato di qualcosa», `state` non mente).
-> Ma **non e' l'unico senso**: in `api/handlers_mcp.py:207` (`def _errore(..., *, stato: int =
-> 200)`, passato a `web.json_response(..., status=stato)`, e usato con `stato=400` alle righe 540,
-> 548, 568) `stato` e' uno **status HTTP**, un intero, non lo stato di un'entita' — `state: int =
-> 200` sarebbe un nome che mente. E in `costo_stato` (`agent/runner.py:1123`,
+> Ma **non e' l'unico senso**: in `api/handlers_mcp.py:207` (oggi `def _error(..., *, status:
+> int = 200)`, passato a `web.json_response(..., status=status)`, e usato con `status=400` alle
+> righe 540, 548, 568) `stato` e' uno **status HTTP**, un intero, non lo stato di un'entita' —
+> `state: int = 200` sarebbe un nome che mente. **Fatto nel lotto 10 (Task 9), esattamente come
+> quest'istruzione lo prescriveva, e con l'inciampo che prevedeva:** lo strumento aveva applicato
+> `stato -> state` alla `def` e lasciato intatti i tre `stato=400` (parole chiave in una chiamata,
+> mai applicate da sole) -- una divergenza fra firma e chiamanti che nessun cancello avrebbe
+> visto, chiusa a mano su entrambe le sponde con `status`. E in `costo_stato` (`agent/runner.py:1123`,
 > `backends/openai_compat_runner.py:394,408`, `claude_runner.py:741,755`,
 > `consumi/archivio.py` — colonna e funzioni, alimentato da `consumi/vocabolario.py:
 > stato_e_costo()`) `stato` e' una **classificazione del costo di una chiamata** (`compreso`,
 > `gratuito`, `reale`, `misurato`, `non_noto`), non uno stato nel senso HA ne' un codice HTTP.
-> La tabella sopra fissa `state` come equivalente di default per il caso principale; chi rinomina
-> `api/handlers_mcp.py:207` e i dintorni di `stato=400/540/548/568` deve usare `status` (il nome
-> che HTTP e aiohttp usano gia'), e chi rinomina `costo_stato` deve usare qualcosa come
+> La tabella sopra fissa `state` come equivalente di default per il caso principale;
+> `api/handlers_mcp.py:207` e i dintorni di `status=400/540/548/568` usano `status` (il nome che
+> HTTP e aiohttp usano gia') dal lotto 10, e chi rinomina `costo_stato` deve usare qualcosa come
 > `cost_status`/`cost_state` **deciso insieme al resto del vocabolario dei costi**, non `state`
 > applicato alla cieca.
 
@@ -1815,6 +1827,84 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   avrebbe reintrodotto anche `inizio -> start`, il residuo deliberatamente lasciato italiano
   dal fix I2 del Task 8): rinominate le due occorrenze private di `carattere`, la guardia torna
   verde. Nessun altro pezzo di `memoria/resolver.py` toccato.
+
+**Decisioni del lotto 10 (`api/handlers_mcp.py`), non parole del vocabolario generale.**
+
+- **`stato` -> `status`, non `state`**: la decisione era gia' scritta accanto alla riga `stato`
+  (vedi la nota «`stato`: tre significati, non uno», sopra) e questo lotto l'ha solo eseguita.
+  Vale la pena registrare COME il difetto si presenta a chi arriva: lo strumento applica
+  `stato -> state` alla `def _error(..., *, stato: int = 200)` ma NON ai tre `stato=400` dei
+  chiamanti (parole chiave in una chiamata, protette per costruzione) -- il risultato intermedio
+  e' una firma e tre chiamate che non si parlano piu', e la suite non lo vede perche' entrambe le
+  sponde vivono nello stesso file mio. Si chiude a mano su entrambe le sponde, mai su una sola.
+- **`turno` -> `exchange` qui SI'** (a differenza di `turni -> turns` del lotto 8): l'identita' di
+  `X-HIRIS-Turno` che questa rotta legge e' esattamente lo scambio applicativo della riga
+  `turno`, ed e' lo STESSO valore che `azione/costruzione/officina.py` e `casa/strumenti.py`
+  (ambiti gia' chiusi) chiamano gia' `exchange`. Verificato leggendo quei due file, non dedotto
+  dal suggerimento meccanico. Il keyword `turno=` della chiamata a
+  `costruisci_dispatcher_strumenti` (`api/handlers_chat.py`, NON convertito) resta italiano: e'
+  il nome del parametro altrui.
+- **`id_turno`/`id_richiesta`/`id_promessa` -> `exchange_id`/`request_id`/`promise_id`**:
+  l'inglese mette l'`id` in coda, ed e' gia' la convenzione misurata nel codice convertito
+  (`execution_id` 32, `promise_id` 10, `entity_id` 94, `proposal_id` 9 -- contro zero
+  identificatori nella forma `id_<cosa>` fuori dai file ancora italiani).
+- **`prepara_contatori` -> `create_rounds_per_exchange`, e ne' `prepare` ne' `counter` sono
+  entrati nel glossario.** Due blocchi veri della regola di collisione, non una preferenza:
+  `prepare` cade su un identificatore non-prosa (`stream_resp.prepare(request)`,
+  `api/handlers_chat.py:933`) e `counter` e' un **dominio di Home Assistant** (`casa/nucleo.py:138`
+  lo mappa proprio su `("contatore", "contatori")`, e `proxy/ha_client.py:576` lo elenca fra i
+  domini) -- chiamare `counter` un dizionario di conteggi in un prodotto che parla con HA sarebbe
+  la peggiore collisione possibile. Il nome scelto dice cosa la funzione CREA (`crea -> create`,
+  riga gia' decisa) e combacia con la costante che nomina la stessa struttura,
+  `ROUNDS_PER_EXCHANGE_KEY`. `prepara` resta undecided: ricorre ancora in `prepara_token_interno`
+  (`server.py`, `token_interno.py`), fuori dal perimetro di questo lotto.
+- **`_rifiuto_tetto_raggiunto` -> `_ceiling_rejection`**: `rifiuto -> rejection` e `tetto ->
+  ceiling` sono gia' decise, `raggiunto` NO e non e' stata decisa -- `reached` cade su un
+  identificatore non-prosa (`var reached = current >= max`, `static/chat/agents.js:44`), quindi
+  la regola blocca. Il participio sparisce nel nome, come le preposizioni di `nomi_di_ripiego`:
+  cio' che il rifiuto sia «del tetto raggiunto» lo dice il docstring, non serve nel nome.
+- **`parametri` -> `params`, non `parameters`**: e' il membro `params` di JSON-RPC 2.0 che la
+  funzione riceve, riusato invece che tradotto -- stessa disciplina di `pending_only`
+  (lotto 5), `input_tokens` (lotto 7) e `turns` (lotto 8). `parametro` resta undecided.
+- **`giri_gia_fatti` -> `rounds_so_far`**: composto ad hoc (`gia`/`fatti` mai decise), il nome di
+  cio' che il valore E' -- quanti giri erano gia' passati PRIMA dell'incremento, cioe' il valore
+  che `_count_round` restituisce.
+- **`promessa` (la variabile locale) -> `store`, non `promise`**: il valore e'
+  `request.app.get("promesse")`, cioe' l'`AgendaStore`, non una promessa -- lo strumento
+  applicava `promise` da solo (parola singola gia' decisa) e il nome avrebbe mentito, la stessa
+  famiglia di `fuori -> outside` sul dizionario delle categorie (vedi «Il limite della
+  qualificazione per ambito»). Corretto a mano in `store`, lo stesso nome che la funzione gemella
+  `_exchange_promise_id` usa gia' per lo stesso oggetto.
+- **`_promessa_del_turno` -> `_exchange_promise_id`**: la preposizione sparisce e l'`id` compare,
+  perche' la funzione restituisce un id (una stringa), non una promessa -- il nome originale non
+  lo diceva e il docstring si'.
+- **Nomi composti accettati senza correzione semantica**: `MCP_SERVER_NAME`, `DEFAULT_PROTOCOL`,
+  `METHODS`, `MAX_TOOL_ROUNDS` (l'ordine e' quello di `MAX_TOOL_ITERATIONS`, il tetto gemello del
+  ramo sincrono in `claude_runner.py`: due tetti con lo stesso mestiere portano ora la stessa
+  forma di nome), `_MAX_TRACKED_EXCHANGES`, `ROUNDS_PER_EXCHANGE_KEY`, `mcp_catalog`,
+  `_count_round`, `_call_tool`, `is_notification`, `arguments`, `entries`, `definitions`,
+  `rounds`, `rounds_per_exchange`, `content`.
+- **Il valore della chiave d'applicazione NON cambia**: `ROUNDS_PER_EXCHANGE_KEY` vale ancora
+  `"mcp_giri_per_turno"`, ed e' letto per stringa da `tests/test_rotta_mcp.py`
+  (`client.app["mcp_giri_per_turno"]`). E' un accesso dinamico -- il §5 della spec: la costante e'
+  un identificatore e si rinomina, la stringa e' un contratto interno fra `server.create_app()` e
+  questa rotta e si tocca solo in una fetta che tocchi entrambe le sponde.
+- **Sette parole nuove nel glossario** (`catalogo -> catalog`, `chiama -> call`,
+  `contenuto -> content`, `definizione -> definition`, `notifica -> notification`,
+  `protocollo -> protocol`, `tracciato -> tracked`) e **un alias di forma**
+  (`strumento -> strumenti`, il lemma e' il plurale perche' il concetto e' «l'insieme dei nomi»).
+  `chiama` e `chiamata` puntano entrambe a `call`: non e' un difetto ma la stessa coppia
+  verbo/sostantivo gia' presente in `scrivi`/`scrittura`, `elenca`/`elenco`, `raggruppa`/`gruppo`.
+  Una sola ha avuto un effetto fuori dal file: vedi sotto.
+- **Effetto collaterale reale, chiuso subito**: `definizione -> definition` si applica anche a
+  `azione/verifica.py` (6 occorrenze: i parametri di `_declare_target`/`_allows_empty_target` e
+  una locale di `verification`, tutti privati, nessun chiamante per keyword -- verificato con
+  grep). Misurato PRIMA di applicare il file, rieseguendo la guardia di idempotenza sui sei ambiti
+  chiusi: `azione` compariva fra i cambiati insieme al residuo noto `costruzione/composer.py`.
+  Corretto lasciando che lo strumento lo applicasse a quel solo file (il risultato coincide con la
+  correzione a mano: `_sostituzioni_di_identificatori` mostra la sola coppia
+  `('definizione', 'definition')`), piu' l'unica citazione fra backtick che diventava falsa nello
+  stesso file. Stessa famiglia di `carattere` (lotto 8) e `richiesto` (lotto 9).
 
 ## I nomi degli strumenti
 

@@ -69,12 +69,12 @@ manda anche `X-HIRIS-Turno` dentro la `--mcp-config` (`config_mcp`), un
 `secrets.token_urlsafe` mintato UNA volta per turno (non per invocazione
 della CLI), a prescindere da quante invocazioni il turno finira' per avere
 (Task 4). E' il gancio con cui `api/handlers_mcp.py` tiene
-il tetto ai giri di strumento per turno (`MAX_GIRI_STRUMENTI`): il freno che
+il tetto ai giri di strumento per turno (`MAX_TOOL_ROUNDS`): il freno che
 sostituisce un `--max-turns` che la CLI non
 ha (verificato su `claude --help`) -- l'unico che l'abbonamento abbia, visto
 che `chat_daily_cap` conta i turni accodati e non i giri dentro ciascuno.
 
-Fix "il ponte muore a 9" (2026-08-21): `MAX_GIRI_STRUMENTI` era rimasto a 10
+Fix "il ponte muore a 9" (2026-08-21): `MAX_TOOL_ROUNDS` era rimasto a 10
 mentre la fetta "i riferimenti" alzava a 50 solo `MAX_TOOL_ITERATIONS` del
 ramo sincrono -- un turno reale (8 stanze + 1 `cerca` + la `prometti`
 finale) moriva sul ponte esattamente come sarebbe morto il sincrono col
@@ -85,7 +85,7 @@ sincrono conta un giro per risposta del modello (N blocchi `tool_use`
 paralleli costano una iterazione sola), questo tetto del ponte conta un
 giro per OGNI `tools/call` che arriva sulla rotta, comprese quelle
 parallele della stessa risposta della CLI -- vedi il commento su
-`MAX_GIRI_STRUMENTI` in `api/handlers_mcp.py` per il dettaglio.
+`MAX_TOOL_ROUNDS` in `api/handlers_mcp.py` per il dettaglio.
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
@@ -183,8 +183,8 @@ def _nome_server_mcp() -> str:
     finisce sia in `--allowedTools` sia nel TESTO del prompt che il modello
     legge. Due copie divergerebbero in silenzio, e il sintomo sarebbe un modello
     che chiama nomi che non esistono."""
-    from ..api.handlers_mcp import NOME_SERVER_MCP
-    return NOME_SERVER_MCP
+    from ..api.handlers_mcp import MCP_SERVER_NAME
+    return MCP_SERVER_NAME
 
 
 def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
@@ -226,7 +226,7 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     l'intestazione `X-HIRIS-Turno` che la CLI ripete su OGNI `tools/call`
     verso `/api/mcp`: e' cosi' che quella rotta sa QUALE turno sta chiamando
     e puo' tenere il tetto ai giri di strumento per turno
-    (`api/handlers_mcp.MAX_GIRI_STRUMENTI`) -- il freno che sostituisce un
+    (`api/handlers_mcp.MAX_TOOL_ROUNDS`) -- il freno che sostituisce un
     `--max-turns` che la CLI non ha (verificato su `claude --help`). Non e'
     un'autenticazione (quella resta il token qui sopra) e non va scambiata
     per tale: un turno sbagliato o assente non lascia entrare nessuno che
@@ -234,7 +234,7 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     contare**: e' anche l'UNICA identita' su cui la guardia dell'officina
     (`azione/costruzione/officina.py`) rifiuta di confermare una proposta
     nel turno stesso in cui e' stata creata -- consumata da
-    `api/handlers_mcp.py::_chiama_strumento`, che la ripropone al dispatcher
+    `api/handlers_mcp.py::_call_tool`, che la ripropone al dispatcher
     invariata. Toglierla o smettere di propagarla non e' piu' un dettaglio
     del conteggio: apre il cancello del consenso in silenzio, lasciando
     passare una `conferma` nello stesso turno della `costruisci` che l'ha
@@ -1240,7 +1240,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     response_mode = context.get("response_mode") or ""
     job_id = (job or {}).get("job_id")
     # Task 6: l'identita' del turno per il tetto ai giri di strumento, che
-    # vive nella rotta (`api/handlers_mcp.py::MAX_GIRI_STRUMENTI`), non qui.
+    # vive nella rotta (`api/handlers_mcp.py::MAX_TOOL_ROUNDS`), non qui.
     # Si conia UNA sola volta per TURNO -- questa chiamata di `_reason_chat`,
     # cioe' un job -- e non per invocazione della CLI: se il turno si
     # sdoppia in una seconda invocazione (Task 4: l'`init` smentisce la
