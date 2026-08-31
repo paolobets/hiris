@@ -241,6 +241,24 @@ singolo residuo, esattamente come gia' fatto per `spazio_precedente` sopra. La r
 resta corretta per tutti gli altri usi del file (composti, mai applicati da soli): il residuo era
 uno solo, ed era nella forma che il meccanismo si fida di piu'.
 
+**Quarto caso, di meccanismo non di significato: una riga ambito-qualificata spegne la riga nuda
+per OGNI ALTRO ambito, non solo per il proprio.** Trovato convertendo `api/handlers_promesse.py`
+(Task 9 di questa fetta): `Glossario.per()` cerca prima in `omonimi`, e `leggi_glossario()` toglie
+la parola da `mappa` (la riga nuda) nel momento stesso in cui legge la PRIMA riga qualificata per
+quella parola, qualunque sia l'ambito -- verificato chiamando `Glossario.per("riga", ...)` da
+codice: `per("riga", "nucleo")` → `line` (corretto), ma `per("riga", "api")` e perfino
+`per("riga", "casa")` → `None`, nonostante la riga nuda `riga | row` sia ancora scritta nella
+tabella due righe sopra. La riga nuda non e' quindi un ripiego che "resta valido per tutti gli
+altri ambiti" quando ne esiste una qualificata da qualche parte -- e' spenta ovunque, e ogni
+ambito che vuole quel senso deve avere la propria riga qualificata esplicita, anche se il senso e'
+identico a quello che la riga nuda intendeva dare di default. E' per questo che esiste, qui sotto,
+`riga (api) | row`: non un secondo senso di `riga` scoperto in `api/`, ma la stessa riga nuda
+`riga | row` resa di nuovo raggiungibile per questo ambito. **Chi trova `per(parola, ambito)` che
+torna `None` per una parola che il glossario sembra gia' dare per scontata non deve fidarsi della
+riga nuda**: va verificato con `Glossario.per()` da codice se quella parola ha gia' una riga
+qualificata altrove per un ambito diverso -- se si', la riga nuda e' gia' spenta anche per il
+proprio ambito, silenziosamente.
+
 ## Parole scartate durante l'estrazione
 
 Una regola esclusa non e' silenzio, e' una decisione scritta. Lo script di estrazione (Step 1 del
@@ -1244,6 +1262,7 @@ al Task 6 invece che deciso qui.
 | ricostruisci | rebuild |
 | riepilogo | summary |
 | riga | row |
+| riga (api) | row |
 | riga (nucleo) | line |
 | rileggi | reread |
 | ripara | repair |
@@ -1299,6 +1318,7 @@ al Task 6 invece che deciso qui.
 | troncato | truncated |
 | trova | find |
 | trovato | found |
+| tutte | all |
 | unita | unit |
 | valida | validate |
 | valore | value |

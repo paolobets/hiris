@@ -3678,17 +3678,17 @@ def create_app() -> web.Application:
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
     from .api.handlers_promesse import (
-        handle_delete_promessa,
-        handle_get_esecuzione,
-        handle_get_promesse,
+        handle_delete_promise,
+        handle_get_agenda,
+        handle_get_execution,
     )
-    app.router.add_get("/api/promesse", handle_get_promesse)
-    app.router.add_delete("/api/promesse/{id}", handle_delete_promessa)
+    app.router.add_get("/api/promesse", handle_get_agenda)
+    app.router.add_delete("/api/promesse/{id}", handle_delete_promise)
     # La cronaca si chiede A PARTE, per identificatore (review finale,
     # rilievo ①): la promessa porta solo `esecuzione_id`, mai i fatti
     # dell'esecuzione ricopiati. Rotta di lettura -- niente csrf_middleware
     # da rispettare, stessa esenzione di GET /api/promesse.
-    app.router.add_get("/api/esecuzioni/{id}", handle_get_esecuzione)
+    app.router.add_get("/api/esecuzioni/{id}", handle_get_execution)
 
     # Task 10 SDD costruire: la faccia dell'officina -- guardare le proposte,
     # aprirne una, confermare, rimettere com'era. Le due GET sono metodi

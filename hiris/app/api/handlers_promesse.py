@@ -29,31 +29,31 @@ import time
 from aiohttp import web
 
 
-async def handle_get_promesse(request: web.Request) -> web.Response:
-    archivio = request.app.get("promesse")
-    if archivio is None:
+async def handle_get_agenda(request: web.Request) -> web.Response:
+    store = request.app.get("promesse")
+    if store is None:
         return web.json_response({"promesse": [], "errore": "archivio non disponibile"},
                                  status=503)
-    tutte = request.query.get("tutte") in ("1", "true", "si")
-    return web.json_response({"promesse": archivio.list(solo_in_sospeso=not tutte,
+    show_all = request.query.get("tutte") in ("1", "true", "si")
+    return web.json_response({"promesse": store.list(solo_in_sospeso=not show_all,
                                                        limit=200)})
 
 
-async def handle_delete_promessa(request: web.Request) -> web.Response:
-    archivio = request.app.get("promesse")
-    if archivio is None:
+async def handle_delete_promise(request: web.Request) -> web.Response:
+    store = request.app.get("promesse")
+    if store is None:
         return web.json_response({"errore": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if archivio.read(ident) is None:
+    if store.read(ident) is None:
         return web.json_response({"errore": "non ho nessuna promessa con quell'identificatore."},
                                  status=404)
-    esito = archivio.cancel(ident, now=time.time())
-    if "errore" in esito:
-        return web.json_response(esito, status=409)
-    return web.json_response(esito)
+    occurrence = store.cancel(ident, now=time.time())
+    if "errore" in occurrence:
+        return web.json_response(occurrence, status=409)
+    return web.json_response(occurrence)
 
 
-async def handle_get_esecuzione(request: web.Request) -> web.Response:
+async def handle_get_execution(request: web.Request) -> web.Response:
     """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Journal.read`.
 
     404 «non ne ho piu' il dettaglio» copre sia l'id sbagliato sia la riga
@@ -61,13 +61,13 @@ async def handle_get_esecuzione(request: web.Request) -> web.Response:
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
     """
-    cronaca = request.app.get("cronaca")
-    if cronaca is None:
+    journal = request.app.get("cronaca")
+    if journal is None:
         return web.json_response({"errore": "cronaca non disponibile"}, status=503)
     ident = request.match_info["id"]
-    riga = cronaca.read(ident)
-    if riga is None:
+    row = journal.read(ident)
+    if row is None:
         return web.json_response(
             {"errore": "non ho nessuna esecuzione con quell'identificatore."},
             status=404)
-    return web.json_response({"esecuzione": riga})
+    return web.json_response({"esecuzione": row})
