@@ -1,5 +1,51 @@
 # HIRIS — Changelog
 
+## [3.14.5] — Tutti e sei i sottosistemi parlano inglese (2026-08-31)
+
+**Non cambia niente che si possa vedere usando HIRIS.** Nessun comportamento diverso, nessuna rotta,
+nessun campo JSON, e **il database e' intatto** — schema SQLite confrontato byte a byte, e provato per
+mutazione: rinominando una colonna dentro le query, undici test diventano rossi.
+
+Con questa versione **tutti e sei i sottosistemi con nome italiano** — `consumi`, `schedulatore`,
+`memoria`, `cervello`, `azione`, `casa` — hanno identificatori inglesi. Commenti, docstring e le
+frasi che HIRIS dice a chi vive in casa restano in italiano: e' il perimetro deciso dal proprietario,
+e lo strumento lo rende **strutturale** lavorando sui soli token di tipo nome.
+
+**Il contratto con Home Assistant e con il modello e' provato, non dichiarato.** I nomi dei servizi,
+i domini, le chiavi dei bersagli, lo YAML delle automazioni: byte-identici. Le tredici definizioni
+degli strumenti che il modello legge: 29.798 byte, identiche. E il dispatcher e' stato **costruito ed
+eseguito** su tutti e tredici i nomi, non solo riletto.
+
+**Cosa e' costato, ed e' la parte che vale la pena raccontare.**
+
+Lo strumento ha avuto **nove difetti**, e nessuno era visibile leggendo il codice: sono usciti tutti
+puntandolo su codice vero. Quattro erano la stessa famiglia — il nome veniva *ricostruito* invece che
+conservato nella sua forma: una costante TUTTA MAIUSCOLA diventava `Pascalcase`, un aiutante privato
+`_fuso` perdeva il trattino e diventava interfaccia pubblica, un `gamba_` perdeva quello finale. Due
+di questi **non avrebbero rotto niente**: sarebbero stati sbagliati in silenzio.
+
+**Ma il difetto piu' costoso non era nella rinomina: era nella rete che doveva sorvegliarla.** In un
+sottosistema **tre funzioni erano morte con la suite verde** — fra cui il punto che scrive le
+automazioni in Home Assistant. Il motivo: il test double era stato rinominato **insieme al suo
+chiamante**, entrambi sulla firma vecchia mentre l'implementazione vera passava a quella nuova. Il
+test verificava un contratto che non esisteva piu', e passava.
+
+La cura non e' stata correggere le tre chiamate. E' `tests/_contratti.py`: **nessun doppio puo' piu'
+divergere in silenzio da cio' che imita**, e la guardia diventa rossa se le firme si allontanano.
+Sulla stessa strada e' emerso che un `AsyncMock()` senza `spec=` risponde educatamente a qualunque
+cosa — dimostrato inserendo una chiamata a un metodo inesistente dentro la funzione che gira a ogni
+avvio, e vedendo 2.922 test restare verdi.
+
+**Una regola che questa fetta ha pagato due volte e ora e' scritta:** *una verifica dichiarata non e'
+una verifica eseguita*. Quando un rapporto dice «verificato», dev'essere il nome di un comando che
+qualcuno ha lanciato.
+
+**Cosa NON e' in questa versione, misurato e non stimato:** `api/` (528 identificatori italiani),
+`proxy/` (304), `agent/` (215), `backends/` (54), i moduli alla radice e `server.py` (611 insieme),
+le rotte HTTP, i 13 nomi degli strumenti, il frontend, e i nomi dei file di modulo. **Il piano di
+questa fetta aveva classificato quelle cartelle come gia' inglesi guardandone il nome invece di
+contarne il contenuto** — l'errore che la fetta stessa ha corretto una decina di volte altrove.
+
 ## [3.14.4] — Il cancello aveva quattro ante e ne guardavo due (2026-08-29)
 
 **Riparazione: la 3.14.3 e' uscita con il CI rosso.** Solo test, nessun codice di prodotto — l'add-on
