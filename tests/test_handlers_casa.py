@@ -9,7 +9,7 @@ il secondo modo di fare la stessa cosa che questo refactor vuole eliminare.
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import handle_get_casa, handle_get_nucleo
+from hiris.app.api.handlers_casa import handle_get_home_space, handle_get_nucleo
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.memoria.archivio import MemoryStore
 
@@ -38,7 +38,7 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
     })
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/casa")
@@ -58,7 +58,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     non 500 -- chi guarda deve poter distinguere «vuota» da «rotta»."""
     app = web.Application()
     app["archivio_casa"] = None
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/casa")
@@ -93,7 +93,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     )
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/casa")
@@ -128,7 +128,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     ])
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     resp = await client.get("/api/casa")
@@ -337,7 +337,7 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     }, [])
     app = web.Application()
     app["archivio_casa"] = casa
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/casa")).json()
@@ -374,7 +374,7 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
     }, [])
     app = web.Application()
     app["archivio_casa"] = casa
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/casa")).json()
@@ -388,7 +388,7 @@ async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
     abbiamo letto niente». La stessa distinzione di `non_disponibili`."""
     app = web.Application()
     app["archivio_casa"] = None
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/casa")).json()

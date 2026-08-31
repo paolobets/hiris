@@ -3655,8 +3655,8 @@ def create_app() -> web.Application:
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
     # Dalla fetta E5 Task 8 e' anche la fonte della home della
     # configurazione: vedi il commento di /api/nucleo piu' sotto.
-    from .api.handlers_casa import handle_get_casa
-    app.router.add_get("/api/casa", handle_get_casa)
+    from .api.handlers_casa import handle_get_home_space
+    app.router.add_get("/api/casa", handle_get_home_space)
 
     # Task 4 SDD memoria: la pagina "cio' che HIRIS sa" -- la decisione (5)
     # del progetto della memoria. Nessun frontend in questo task: si guarda

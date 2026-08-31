@@ -40,7 +40,7 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import costruisci_nucleo, handle_get_casa
+from hiris.app.api.handlers_casa import costruisci_nucleo, handle_get_home_space
 from hiris.app.casa.anagrafe import (
     choose_sample,
     compare_with_home_assistant,
@@ -483,7 +483,7 @@ async def test_api_casa_mostra_la_divergenza_sull_albero(aiohttp_client, tmp_pat
                                "guardate": [{"area": "cucina", "nome": "Cucina",
                                              "mancanti": [], "in_piu": ["light.fantasma"],
                                              "assente_in_ha": False}]}
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/casa")).json()
@@ -500,7 +500,7 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
     archivio = _archivio_con_una_casa(tmp_path)
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_casa)
+    app.router.add_get("/api/casa", handle_get_home_space)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/casa")).json()

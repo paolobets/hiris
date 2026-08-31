@@ -22,8 +22,8 @@ from ..casa.nucleo import compose
 from ..proxy.entity_cache import inventario_leggibile
 
 
-def _mappa_categorie(casa: dict) -> dict[str, dict[str, str]]:
-    """`{ambito: {category_id: nome}}` per chi disegna l'albero.
+def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
+    """`{scope: {category_id: name}}` per chi disegna l'albero.
 
     Esce la MAPPA e non il nome ripetuto su ogni entita' categorizzata: li'
     sarebbe lo stesso fatto scritto mille volte. Stessa scelta delle
@@ -35,15 +35,15 @@ def _mappa_categorie(casa: dict) -> dict[str, dict[str, str]]:
     ognuna per conto proprio sarebbero due nomi diversi per la stessa
     categoria a seconda della porta.
     """
-    mappa: dict[str, dict[str, str]] = {}
-    for (ambito, categoria_id), nome in category_names(casa).items():
-        mappa.setdefault(ambito, {})[categoria_id] = nome
-    return mappa
+    categories: dict[str, dict[str, str]] = {}
+    for (scope, category_id), name in category_names(home_space).items():
+        categories.setdefault(scope, {})[category_id] = name
+    return categories
 
 
-async def handle_get_casa(request: web.Request) -> web.Response:
-    archivio = request.app.get("archivio_casa")
-    if archivio is None:
+async def handle_get_home_space(request: web.Request) -> web.Response:
+    store = request.app.get("archivio_casa")
+    if store is None:
         # Difesa, non stato atteso: in produzione questo ramo non dovrebbe mai
         # scattare. Se `_on_startup` fallisce, l'add-on non parte affatto; un
         # Home Assistant non ancora pronto all'avvio produce un archivio
@@ -82,25 +82,25 @@ async def handle_get_casa(request: web.Request) -> web.Response:
                               "problemi": None, "file_non_letti": None, "voci": []},
             "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
         })
-    casa = archivio.read()
-    non_disponibili = archivio.unavailable()
-    voci_comportamento = archivio.behavior()
-    conteggi_comportamento: dict[str, int] = {}
-    for v in voci_comportamento:
-        conteggi_comportamento[v["tipo"]] = conteggi_comportamento.get(v["tipo"], 0) + 1
+    home_space = store.read()
+    unavailable = store.unavailable()
+    behavior_entries = store.behavior()
+    behavior_counts: dict[str, int] = {}
+    for v in behavior_entries:
+        behavior_counts[v["tipo"]] = behavior_counts.get(v["tipo"], 0) + 1
     return web.json_response({
-        "anagrafe_letta_il": archivio.updated_at(),
+        "anagrafe_letta_il": store.updated_at(),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
         # campo una casa senza piani e un registro dei piani caduto sarebbero
         # la stessa schermata.
-        "non_disponibili": non_disponibili,
-        "conteggi": {chiave: len(valore) for chiave, valore in casa.items()},
+        "non_disponibili": unavailable,
+        "conteggi": {key: len(value) for key, value in home_space.items()},
         # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
         # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
         # sono due case diverse a seconda della porta da cui entri.
-        "sistema_di_riferimento": archivio.reference_frame(),
-        "piani": hierarchy(casa, non_disponibili),
+        "sistema_di_riferimento": store.reference_frame(),
+        "piani": hierarchy(home_space, unavailable),
         # I NOMI delle etichette, id -> nome.
         #
         # `gerarchia()` mette sulle aree e sulle entita' i soli `label_id` --
@@ -115,7 +115,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
         # mappa, una volta, e chi disegna la applica.
         "etichette": {e["id"]: e.get("nome") or e["id"]
-                      for e in casa.get("etichette") or [] if e.get("id")},
+                      for e in home_space.get("etichette") or [] if e.get("id")},
         # Le CATEGORIE, con la stessa forma e per la stessa ragione -- ma
         # annidate per AMBITO, perche' il registro di Home Assistant e'
         # partizionato (`automation`, `script`, `scene`, `helpers`) e due
@@ -130,7 +130,7 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # pagina. E' il pattern che la review ha nominato («una fetta unifica
         # una regola e salta una porta»), ricomparso dentro una fetta scritta
         # apposta per non ripeterlo.
-        "categorie": _mappa_categorie(casa),
+        "categorie": _categories_by_scope(home_space),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
         # (`server.giro_di_confronto_albero`, verdetto in
@@ -151,31 +151,31 @@ async def handle_get_casa(request: web.Request) -> web.Response:
         # e non c'era niente da dire».
         "confronto": request.app.get("confronto_albero"),
         "comportamento": {
-            "letto_il": archivio.behavior_loaded_at(),
-            "conteggi": conteggi_comportamento,
+            "letto_il": store.behavior_loaded_at(),
+            "conteggi": behavior_counts,
             # Il campo che conta di piu': quante voci HIRIS conosce solo di
             # nome. Le automazioni scritte a mano non stanno nei file, e di
             # quelle sa il nome e non il corpo -- e' la misura onesta di
             # quanto sa davvero della casa. `corpo is None` e non falsy:
             # un corpo vuoto (`{}`, presente ma senza niente dentro) e' un
             # fatto diverso da un corpo assente, e non va confuso con esso.
-            "senza_corpo": sum(1 for v in voci_comportamento if v["corpo"] is None),
+            "senza_corpo": sum(1 for v in behavior_entries if v["corpo"] is None),
             # Cio' che l'ultima lettura NON ha potuto concludere con
             # certezza (id duplicati, script vuoti, voci malformate) e i
             # file che non si sono letti, con la ragione. Costruiti con
             # cura da comportamento.compose()/reread() -- prima morivano in
             # una riga di log, invisibili a chi guarda solo /api/casa.
-            "problemi": archivio.behavior_problems(),
-            "file_non_letti": archivio.unloaded_files(),
-            "voci": voci_comportamento,
+            "problemi": store.behavior_problems(),
+            "file_non_letti": store.unloaded_files(),
+            "voci": behavior_entries,
         },
         "plance": {
-            "lette_il": archivio.dashboards_loaded_at(),
+            "lette_il": store.dashboards_loaded_at(),
             # Le plance/percorsi che l'ultima lettura non e' riuscita a
             # risolvere -- stesso principio di "non_disponibili" sopra,
             # applicato alle plance invece che ai registri.
-            "non_disponibili": archivio.unavailable_dashboards(),
-            "voci": archivio.dashboards(),
+            "non_disponibili": store.unavailable_dashboards(),
+            "voci": store.dashboards(),
         },
     })
 
@@ -198,47 +198,47 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     request in corso (nessuno oggi, ma non c'e' motivo di legarla) puo'
     comunque chiamarla.
 
-    Il resto del ragionamento -- perche' `non_disponibili` va propagato,
+    Il resto del ragionamento -- perche' `unavailable` va propagato,
     perche' `MemoryStore.fetch(limit=count())` e non il default,
-    perche' `stato_affidabile` richiede ENTRAMBI l'archivio e un inventario
+    perche' `reliable_state` richiede ENTRAMBI l'archivio e un inventario
     vivo pronto -- e' invariato da prima di questo refactor: vedi i
     commenti storici in git blame su questa funzione (era il corpo di
     `handle_get_nucleo`) per il dettaglio di ciascuna scelta.
     """
-    archivio_casa = app.get("archivio_casa")
-    archivio_memoria = app.get("archivio_memoria")
+    home_space_store = app.get("archivio_casa")
+    memory_store = app.get("archivio_memoria")
     cache = app.get("entity_cache")
     # Stessa difesa di `handle_list_entities`: una cache finta senza
     # `all_states` (o assente) non e' un inventario leggibile.
     if cache is not None and not hasattr(cache, "all_states"):
         cache = None
 
-    if archivio_casa is None:
-        # Difesa, non stato atteso: come in `handle_get_casa` qui sopra,
+    if home_space_store is None:
+        # Difesa, non stato atteso: come in `handle_get_home_space` qui sopra,
         # in produzione questo ramo non dovrebbe mai scattare (se
         # `_on_startup` fallisce, l'add-on non parte affatto). Senza
         # archivio non c'e' una casa da comporre -- `componi()` riceve una
         # casa vuota, non inventata -- ma soprattutto lo stato non puo'
-        # essere dichiarato affidabile: vedi `stato_affidabile` sotto.
-        casa: dict = {}
-        non_disponibili: tuple[str, ...] = ()
-        comportamento: list[dict] = []
+        # essere dichiarato affidabile: vedi `reliable_state` sotto.
+        home_space: dict = {}
+        unavailable: tuple[str, ...] = ()
+        behavior: list[dict] = []
         behavior_problems: tuple[str, ...] = ()
-        file_non_letti_comportamento: dict[str, str] = {}
-        sistema_di_riferimento: dict = {}
+        unloaded_behavior_files: dict[str, str] = {}
+        reference_frame: dict = {}
     else:
-        casa = archivio_casa.read()
-        non_disponibili = tuple(archivio_casa.unavailable())
-        comportamento = archivio_casa.behavior()
+        home_space = home_space_store.read()
+        unavailable = tuple(home_space_store.unavailable())
+        behavior = home_space_store.behavior()
         # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
         # sconosciuta (id duplicato, file malformato) non arrivava mai al
         # modello -- `/api/casa` li espone gia', `componi()` non aveva un
         # parametro per riceverli.
-        behavior_problems = tuple(archivio_casa.behavior_problems())
-        file_non_letti_comportamento = archivio_casa.unloaded_files()
+        behavior_problems = tuple(home_space_store.behavior_problems())
+        unloaded_behavior_files = home_space_store.unloaded_files()
         # Unita', fuso, valuta, lingua: senza, il modello legge "72" senza
         # sapere in che scala e "alle 8" senza sapere in che fuso.
-        sistema_di_riferimento = archivio_casa.reference_frame()
+        reference_frame = home_space_store.reference_frame()
 
     # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
     # Con `conta()` (scritto apposta per dichiarare questa differenza) si
@@ -248,10 +248,10 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # oltre il ventesimo sparivano PRIMA ancora di arrivare a `componi()`,
     # e il riepilogo giurava "ricordi_esclusi: 0" su una casa con 200
     # ricordi veri e solo 20 nel nucleo.
-    if archivio_memoria is not None:
-        ricordi = archivio_memoria.fetch(limit=archivio_memoria.count())
+    if memory_store is not None:
+        memories = memory_store.fetch(limit=memory_store.count())
     else:
-        ricordi = []
+        memories = []
 
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
     # `casa.anagrafe.specchio_vivo` e' la stessa che usano `guarda`, `cerca` e
@@ -261,18 +261,18 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # arrivata qui, e il modello avrebbe letto nel digesto stati che non
     # coincidono con quelli che ottiene chiamando `guarda`.
     #
-    # `classi_vive` e' la ragione per cui questo cablaggio conta davvero: il
+    # `reported_classes` e' la ragione per cui questo cablaggio conta davvero: il
     # registro delle entita' non manda `device_class`, quindi senza queste
     # nessun allagamento e nessun allarme monossido entra in «Notevole adesso»
     # (vedi `anagrafe.classe_effettiva`).
-    stato: dict[str, str] = {}
-    classi_vive: dict[str, str] = {}
+    state: dict[str, str] = {}
+    reported_classes: dict[str, str] = {}
     if cache is not None:
         try:
-            stato, _nomi, _unita, classi_vive, _da_quando, _attributi = live_mirror(
+            state, _names, _units, reported_classes, _since_when, _attributes = live_mirror(
                 cache.all_states())
         except Exception:
-            stato, classi_vive = {}, {}
+            state, reported_classes = {}, {}
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -290,7 +290,7 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
     # `componi()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
     # o in una lista vuota affermerebbe che la casa non ha guasti.
-    problemi = app.get("problemi_ha")
+    problems = app.get("problemi_ha")
 
     # L'esito dell'ultimo giro di verifica dell'albero (`server.giro_di_confronto_albero`).
     #
@@ -305,25 +305,25 @@ def costruisci_nucleo(app) -> tuple[str, dict]:
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
     # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
     # `componi()`, che sa distinguerlo da «guardato e combacia».
-    confronto = app.get("confronto_albero")
+    comparison = app.get("confronto_albero")
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
     # due sole non basta: un archivio letto ma una cache non ancora caricata
     # produrrebbe uno stato vuoto che "Notevole adesso" leggerebbe come
     # "niente acceso" invece di "non ho potuto guardare".
-    stato_affidabile = archivio_casa is not None and inventario_leggibile(cache)
+    reliable_state = home_space_store is not None and inventario_leggibile(cache)
 
     return compose(
-        casa, comportamento, ricordi, stato,
-        unavailable=non_disponibili,
-        reliable_state=stato_affidabile,
+        home_space, behavior, memories, state,
+        unavailable=unavailable,
+        reliable_state=reliable_state,
         behavior_problems=behavior_problems,
-        unloaded_behavior_files=file_non_letti_comportamento,
-        reference_frame=sistema_di_riferimento,
-        reported_classes=classi_vive,
-        problems=problemi,
-        comparison=confronto,
+        unloaded_behavior_files=unloaded_behavior_files,
+        reference_frame=reference_frame,
+        reported_classes=reported_classes,
+        problems=problems,
+        comparison=comparison,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/nucleo passano tutti di qua), perche'
         # `componi` e' pura e non legge nulla da sola. Senza questa riga il
@@ -349,5 +349,5 @@ async def handle_get_nucleo(request: web.Request) -> web.Response:
     sottile che la chiama e la serializza, cosi' i due punti non possono
     raccontare due nuclei diversi della stessa casa.
     """
-    testo, riepilogo = costruisci_nucleo(request.app)
-    return web.json_response({"testo": testo, "riepilogo": riepilogo})
+    text, summary = costruisci_nucleo(request.app)
+    return web.json_response({"testo": text, "riepilogo": summary})

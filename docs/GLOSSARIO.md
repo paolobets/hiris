@@ -1906,6 +1906,55 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `('definizione', 'definition')`), piu' l'unica citazione fra backtick che diventava falsa nello
   stesso file. Stessa famiglia di `carattere` (lotto 8) e `richiesto` (lotto 9).
 
+**Decisioni del lotto 11 (`api/handlers_casa.py`), non parole del vocabolario generale.**
+
+- **`costruisci_nucleo` e `handle_get_nucleo` LASCIATE italiane, di proposito.** Non sono
+  invisibili allo strumento (le propone entrambe) e non sono difficili: escono insieme a
+  `api/handlers_chat.py`, che le tiene per un'importazione vera (`from .handlers_casa import
+  costruisci_nucleo`, riga 28) e per una citazione fra backtick (riga 220). `costruisci_nucleo` e'
+  importata per nome anche da `schedulatore/turno.py` (ambito chiuso, righe 128 e 259) e citata fra
+  backtick in una ventina di punti fra `casa/nucleo.py`, `casa/strumenti.py`,
+  `impostazioni_chat.py`, `proxy/entity_cache.py`, `server.py` e otto file di test: rinominarla e'
+  un giro suo, e il suo commit naturale e' quello di `handlers_chat.py`. Il suggerimento meccanico
+  sarebbe per giunta SBAGLIATO: `propose_briefing` (`costruisci -> propose`, il verbo dello
+  strumento che propone una costruzione) mentirebbe -- questa funzione non propone niente, compone
+  (`casa/nucleo.compose`). `build_briefing` e' escluso a sua volta: `build` e' gia' bloccato dalla
+  regola di collisione (vedi `build` per `costruzione`, sopra).
+- **`_mappa_categorie` -> `_categories_by_scope`, e `mappa` resta undecided**: il nome dice cosa la
+  funzione RESTITUISCE (le categorie indicizzate per ambito), non come e' fatta dentro. `mappa` non
+  e' stata decisa perche' non serviva: la variabile locale che la teneva e' diventata `categories`,
+  il nome del suo contenuto.
+- **Riuso del nome del parametro che si sta gia' alimentando**, la disciplina di `pending_only`
+  (lotto 5) applicata cinque volte in un colpo: le locali di `costruisci_nucleo` che finiscono
+  dritte nei keyword di `casa/nucleo.compose` prendono il nome del keyword --
+  `non_disponibili -> unavailable`, `stato_affidabile -> reliable_state`,
+  `file_non_letti_comportamento -> unloaded_behavior_files`,
+  `sistema_di_riferimento -> reference_frame`, `classi_vive -> reported_classes`. Nessuna e' una
+  traduzione parola per parola (`classi_vive` letterale sarebbe `class_reported`, l'ordine
+  italiano), e nessuna richiede una riga nuova.
+- **`stato -> state` qui SI'** (a differenza di `api/handlers_mcp.py`, dove e' `status`): la
+  variabile e' lo specchio degli stati vivi delle entita' di Home Assistant, cioe' il senso
+  principale della riga `stato`. Le due decisioni opposte nello stesso ambito `api` sono la prova
+  che la nota «`stato`: tre significati, non uno» va letta ogni volta, non applicata una volta
+  sola.
+- **`stato, _nomi, _unita, classi_vive, _da_quando, _attributi` -> `state, _names, _units,
+  reported_classes, _since_when, _attributes`**: gli stessi nomi che `casa/strumenti.py:1349`
+  (ambito gia' chiuso) usa gia' per lo stesso identico spacchettamento di
+  `anagrafe.live_mirror()`. Lo strumento aveva applicato `_unita -> _unit` (singolare: `unita` e'
+  invariante in italiano, l'inglese no) -- corretto a mano in `_units` guardando il chiamante
+  gemello, non il suggerimento.
+- **`archivio_casa`/`archivio_memoria` -> `home_space_store`/`memory_store`**: le VARIABILI, non le
+  chiavi d'applicazione `app["archivio_casa"]`/`app["archivio_memoria"]` che restano identiche --
+  sono l'accesso dinamico del §5 della spec (41 occorrenze per la sola prima), e la loro rinomina
+  e' una fetta a se'. `home_space_store` e' lo stesso nome gia' scelto dal lotto 9 per lo stesso
+  oggetto (`handlers_memoria.py`).
+- **`inventario_leggibile` lasciata intatta**: e' importata da `proxy/entity_cache.py`, ambito che
+  questa fetta non converte -- stessa trappola di `inventario_non_leggibile` (lotto 3), protetta
+  per costruzione (composto, mai applicato da solo).
+- Nessuna parola nuova nel glossario per questo lotto: l'insieme dei file che lo strumento
+  riscriverebbe nei sei ambiti chiusi e' rimasto identico (`resolver.py`, `composer.py`,
+  `strumenti.py`), misurato prima del commit come prescritto sotto.
+
 ## I nomi degli strumenti
 
 **Non sono identificatori qualunque: sono la parte di codice che un modello linguistico legge per

@@ -649,7 +649,7 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
     passare da `costruisci_dispatcher_strumenti`, questo test cadrebbe.
 
     fetta «costruire», review indipendente (I3): il cablaggio della guardia
-    non era pinnato da nessun test -- cancellare `turno=id_turno` dalla
+    non era pinnato da nessun test -- cancellare `turno=exchange_id` dalla
     chiamata in `handlers_mcp.py` avrebbe reso ogni proposta nata dal ponte
     inconfermabile, e nessun test se ne sarebbe accorto. Qui si verifica che
     il `turno` ricevuto dal costruttore sia DAVVERO il valore

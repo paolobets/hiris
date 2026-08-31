@@ -144,7 +144,7 @@ window.HirisAlberoRoute = (function () {
 
   /* I NOMI delle etichette (`casa.etichette`, `GET /api/casa`): mappa
      id -> nome, risolta una volta sola dal backend -- vedi
-     `handlers_casa.handle_get_casa`. `gerarchia()` mette su aree ed
+     `handlers_casa.handle_get_home_space`. `gerarchia()` mette su aree ed
      entita' i soli `label_id` (cosi' li manda Home Assistant): senza
      questa funzione l'albero mostrerebbe lo slug («da_controllare»)
      invece del nome che l'utente ha scritto («Da controllare»).
