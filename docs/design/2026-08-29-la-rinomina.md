@@ -147,7 +147,34 @@ risparmiare tempo.
 | 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
 | 7 | i moduli alla radice, `server.py`, il frontend JS | 3.818 righe di solo `server.py` (elenco sotto) | → **rilascio** |
 | 8 | le 14 rotte HTTP e i campi JSON, col frontend che le chiama | 14 rotte | un commit solo, le due sponde insieme |
-| 9 | i 13 nomi degli strumenti | 13 nomi | → **rilascio**, con verifica dal vivo |
+| 9 | `api/` | 17 file, 4.609 righe | **mancava da questa tabella** -- vedi la nota sotto |
+| 10 | `agent/` | 3 file, 2.181 righe | **mancava da questa tabella** |
+| 11 | `proxy/` | 4 file, 2.494 righe | **mancava da questa tabella** |
+| 12 | `backends/` | 7 file, 1.637 righe | **mancava da questa tabella** |
+| 13 | `reasoning/` | 2 file, 345 righe | **mancava da questa tabella** |
+| 14 | le 14 rotte HTTP e i campi JSON, col frontend che le chiama | 14 rotte | un commit solo, le due sponde insieme |
+| 15 | i 13 nomi degli strumenti | 13 nomi | → **rilascio**, con verifica dal vivo |
+
+**Corretto il 31/08, durante il Task 9 (`api/`), dopo un rilievo della review: cinque sottosistemi
+su undici non erano in questa tabella, e non per svista -- per un criterio sbagliato applicato con
+coerenza.** Le fette 2-6 elencano i sottosistemi col NOME DI CARTELLA italiano (`consumi`,
+`schedulatore`, `memoria`, `cervello`, `azione`, `casa`), e la fetta 7 i moduli di radice. I cinque
+con nome di cartella INGLESE -- `api/`, `agent/`, `proxy/`, `backends/`, `reasoning/` -- non
+comparivano da nessuna parte: **11.266 righe, un terzo del Python del progetto, classificate per il
+nome del contenitore invece che per cio' che contengono.** E' la stessa classe di difetto che
+questa fetta esiste per curare, applicata al piano della fetta stessa.
+
+Che l'assunzione fosse falsa e' misurato, non temuto: `reasoning/queue.py` ha quattro metodi
+PUBBLICI ancora italiani (`reclama_scaduto`, `risolvi_ripiego`, `fallisci_ripieghi_bloccati`,
+`count_turni_oggi`) chiamati da `api/handlers_chat.py`, `api/handlers_reasoning.py`,
+`schedulatore/turno.py`, `instradamento.py` e `server.py`; `backends/` porta 30 identificatori che
+il glossario di oggi tocca (`_codice_di`, `_modello_scelto`, `registra_consumo`, `famiglia_errore`,
+`stato_circuito`, ...). Le due cartelle sono inglesi di nome e miste di contenuto.
+
+**Le fette 8 e 9 originali sono diventate 14 e 15**: le rotte e i nomi degli strumenti restano per
+ultimi, e per le stesse ragioni scritte sotto. `api/` porta il numero 9 perche' e' la fetta che si
+sta convertendo mentre questa riga viene scritta -- non era numerata affatto, e i suoi rapporti la
+chiamano «Task 9».
 
 **I moduli italiani alla radice** (fetta 7), per non lasciarli impliciti: `instradamento.py`,
 `impostazioni_chat.py`, `decisione_modelli.py`, `esiti_provider.py`, `migrazione_opzioni.py`,

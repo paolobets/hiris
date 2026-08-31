@@ -136,8 +136,8 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # casa che gira interamente sul Piano Claude Max le promesse morivano su
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
-    via, reason_downgrade = chi_risponde(app)
-    if via == "ponte":
+    route, reason_downgrade = chi_risponde(app)
+    if route == "ponte":
         return _accoda_al_bridge(app, promise)
 
     runner = app.get("llm_router") or app.get("claude_runner")

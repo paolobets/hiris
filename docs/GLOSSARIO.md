@@ -347,13 +347,44 @@ proprio file e ne aveva mancata una **nello stesso file** (`handlers_memoria.py:
 ne ha lasciata una in un test (`tests/test_rotta_mcp.py:652`), trovata solo dal lotto 11 col
 criterio corretto. Non e' distrazione: e' il criterio sbagliato.
 
-**Il frontend conta.** Le citazioni vivono anche nei commenti JavaScript (`hiris/app/static/`), che
-nessun cancello Python guarda: la ricerca si fa su `hiris/` e `tests/` interi, non sui soli `.py`.
+**Il frontend conta, e il confine che ha fatto sfuggire la prima citazione non e' la cartella:
+e' l'ESTENSIONE.** Le citazioni vivono anche nei commenti JavaScript, e questa riga diceva gia'
+«la ricerca si fa su `hiris/` e `tests/` interi, non sui soli `.py`». Non e' bastato: il lotto 11
+ha corretto `hiris/app/static/config/albero-route.js:147` e mancato il suo gemello in
+`tests/js/dashboard-conoscenza.test.mjs:44`, perche' la scansione elencava le estensioni a mano
+(`.py`, `.js`, `.css`, `.html`) e **`.mjs` non era nell'elenco** -- e i 24 file di `tests/js/` sono
+tutti `.mjs`. Una regola giusta si e' fermata al primo confine di estensione, non al primo caso
+difficile.
+
+**La forma che regge:** si elencano le estensioni da ESCLUDERE (binari e immagini), non quelle da
+includere -- misurato oggi, il progetto porta `py`, `mjs`, `js`, `yaml`, `css`, `html`, `md`,
+`txt`, `sh`, e ogni elenco per inclusione ne dimentichera' una la prossima volta che ne nasce
+un'altra.
 
 **La protezione e' per la PROSA italiana, non per un identificatore nudo.** Un nome di funzione
 scritto senza backtick in un commento -- `# vedi handle_get_memoria` -- e' formalmente esente da
 questa regola e sostanzialmente falso allo stesso modo: si corregge. La regola dei backtick decide
 cosa e' certamente un riferimento, non cosa e' lecito lasciare falso.
+
+### Quali documenti si correggono, e quali sono verbali che non si toccano
+
+**Aggiunto durante il Task 9 (lotto 12) su richiesta del coordinatore, dopo che la review aveva
+trovato citazioni stantie anche sotto `docs/design/` e nessuna riga diceva cosa farne.** La regola
+sopra («un identificatore fra backtick segue il codice») vale per i documenti VIVI, non per i
+verbali.
+
+- **Si correggono sempre, perche' descrivono cio' che il codice E' oggi**: `docs/GLOSSARIO.md`
+  (questo documento -- «non e' storia: e' la regola», in testa), la specifica della fetta IN CORSO
+  (`docs/design/<data>-<fetta>.md` finche' la fetta e' aperta), e `CLAUDE.md`.
+- **Non si correggono mai, perche' sono il verbale di cio' che si e' deciso QUEL giorno**: ogni
+  altro documento sotto `docs/design/`. Portano una data nel nome, ed e' quella la loro natura:
+  `docs/design/2026-08-15-come-sta-la-casa.md` racconta la fetta del 15 agosto coi nomi del 15
+  agosto. Correggerlo riscriverebbe la storia -- e la storia serve esattamente a spiegare perche'
+  oggi il codice e' com'e'. Un verbale aggiornato non e' piu' un verbale.
+
+Lo stesso vale per i rapporti sotto `.superpowers/`: si scrivono in coda, non si riscrivono a
+monte -- salvo per correggere un dato MISURATO che si e' rivelato falso (un conteggio, un esito),
+mai per allineare un nome.
 
 ## «Ambito chiuso» significa chiuso rispetto al glossario di QUEL giorno
 
@@ -1426,7 +1457,7 @@ al Task 6 invece che deciso qui.
 | riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
-| risposta | answer |
+| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa |
 | risultato | result |
 | ritardo | delay |
 | rivendica | claim |
@@ -1478,6 +1509,7 @@ al Task 6 invece che deciso qui.
 | tutte | all |
 | unita | unit |
 | valida | validate |
+| via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
 | valore | value |
 | verbo | verb |
 | verificabile | verifiable |

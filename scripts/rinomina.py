@@ -184,6 +184,37 @@ class Collisione:
     suggerito: str
 
 
+@dataclass
+class FirmaScollegata:
+    """Un parametro rinominato in una `def`, e un `vecchio=` rimasto in una
+    chiamata dello STESSO file: la firma e i suoi chiamanti hanno smesso di
+    parlarsi.
+
+    **Lo strumento aveva gia' i due fatti e non li incrociava.** `riscrivi`
+    sa quali token ha rinominato (fra cui i parametri di una `def`) e sa
+    quali token stanno in posizione di parola chiave in una chiamata (li
+    salta di proposito, e la ragione scritta in
+    `_righe_di_percorso_e_parola_chiave` resta buona: non puo' sapere a
+    quale firma quella chiamata risolva). Mancava solo l'intersezione fra i
+    due insiemi, che e' gratis e chiude l'intera classe dentro il file.
+
+    **Non e' un errore: e' una domanda.** Il `vecchio=` puo' essere giusto
+    com'e' -- la parola chiave di una firma ALTRUI non ancora convertita che
+    si chiama per caso come il parametro appena rinominato. Misurato dal
+    vivo (Task 9, lotto 12): `nota_ripiego(motivo=reason, ...)` convive
+    nella stessa riga col `reason=` appena rinominato, e li' l'italiano e'
+    corretto. Distinguere i due casi richiede di sapere a quale funzione
+    ogni chiamata risolve, cioe' cio' che questo strumento non sa e non deve
+    indovinare: quindi elenca e si ferma, come per i composti.
+
+    **Il caso FRA FILE non lo copre**, per costruzione: vedi
+    `chiamanti_orfani`, il secondo strato.
+    """
+    vecchio: str
+    nuovo: str
+    righe: list[int]
+
+
 def spezza(nome: str) -> list[str]:
     """I pezzi di un identificatore, senza i trattini bassi di convenzione."""
     return [p for p in re.split(r"_+|(?<=[a-z0-9])(?=[A-Z])", nome) if p]
@@ -405,7 +436,8 @@ _METODI_IMPOSTAZIONI_CHAT = frozenset({
 # `RegistroEsiti` (`esiti_provider.py`, un altro file di RADICE) e' l'unico
 # ricevitore di tutto `api/` su cui una parola GIA' DECISA si applicherebbe da
 # sola. `esito -> occurrence` e' deciso da sempre («I concetti»), e
-# `handlers_chat.py:303` scrive `registro.esito(nome_backend)`: senza questa
+# `handlers_chat.py:303` scrive `occurrence_registry.esito(backend_name)` (era
+# `registro.esito(nome_backend)` prima del lotto 12): senza questa
 # voce il join meccanico produce `registry.occurrence(...)` -- un
 # `AttributeError` alla prima chat che ripiega dal piano alla catena, cioe'
 # proprio sul percorso che la fetta «la catena diventa l'unica verita'» esiste
@@ -558,9 +590,10 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
     return percorso, parola_chiave, confine_ha
 
 
-def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Proposta | Collisione]]:
-    """Il sorgente coi soli token NAME rinominati, piu' i composti (e le
-    collisioni) da decidere.
+def riscrivi(sorgente: str, g: Glossario, ambito: str
+             ) -> tuple[str, list[Proposta | Collisione | FirmaScollegata]]:
+    """Il sorgente coi soli token NAME rinominati, piu' i composti, le
+    collisioni e le firme scollegate da decidere.
 
     Si sostituisce sul TESTO alle posizioni dei token, da destra a sinistra:
     `tokenize.untokenize` rigenererebbe il file e ne perderebbe la
@@ -580,6 +613,10 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
     percorso, parola_chiave, confine_ha = _righe_di_percorso_e_parola_chiave(tokens)
 
     grezzi, proposte = [], []
+    # `indice del token -> inglese applicato`, per il controllo di chiusura
+    # in fondo: `grezzi` porta gli OFFSET nel testo, che non bastano a
+    # ritrovare il token nella lista.
+    applicati: dict[int, str] = {}
     visti = set()
     for i, t in enumerate(tokens):
         if t.type != tokenize.NAME:
@@ -613,6 +650,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
                 visti.add(proposta.nome)
                 proposte.append(proposta)
             continue
+        applicati[i] = esito
         grezzi.append((offset(t.start), offset(t.end), t.string, esito))
 
     # Guardia sulle collisioni: se due nomi ORIGINALI diversi finirebbero
@@ -632,6 +670,25 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str) -> tuple[str, list[Propos
             proposte.append(Collisione(nomi=sorted(nomi), suggerito=nuovo))
 
     cambi = [(i, j, nuovo) for i, j, _, nuovo in grezzi if nuovo not in collisi]
+
+    # Il controllo di chiusura, primo strato: dentro QUESTO file.
+    #
+    # I due fatti erano gia' qui e non si incontravano -- `parametri_def`
+    # sa quali token sono il nome di un parametro in una firma, e
+    # `parola_chiave` sa quali token sono un `foo=` in una chiamata. Se un
+    # parametro e' stato rinominato e nello stesso file resta un `vecchio=`,
+    # la firma e la chiamata hanno smesso di parlarsi: si dichiara, non si
+    # corregge (vedi `FirmaScollegata` per il perche' correggere sarebbe
+    # sbagliato).
+    parametri_def = _posizioni_parametri_def(tokens)
+    nomi_chiave = {tokens[i].string for i in parola_chiave}
+    rinominati = {tokens[i].string: nuovo for i, nuovo in applicati.items()
+                  if i in parametri_def and nuovo not in collisi}
+    for vecchio, nuovo in sorted(rinominati.items()):
+        if vecchio in nomi_chiave:
+            righe = sorted({tokens[i].start[0] for i in parola_chiave
+                            if tokens[i].string == vecchio})
+            proposte.append(FirmaScollegata(vecchio=vecchio, nuovo=nuovo, righe=righe))
 
     fuori = sorgente
     for i, j, nuovo in sorted(cambi, reverse=True):
@@ -665,7 +722,184 @@ def _scrivi_grezzo(f: Path, testo: str) -> None:
         fh.write(testo)
 
 
-def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta | Collisione]:
+def _posizioni_parametri_def(tokens: list) -> set[int]:
+    """Gli INDICI dei token che sono il NOME di un parametro in una `def`.
+
+    Non e' un doppione di `_righe_di_percorso_e_parola_chiave`: quella
+    risponde a «questo token si puo' toccare?», questa a «questo token e' un
+    parametro di una firma?». Sono due domande diverse sullo stesso flusso, e
+    solo la seconda serve al controllo di chiusura qui sotto.
+
+    Riconosciuto per struttura, mai per elenco: un NAME che sta dentro la
+    parentesi di una `def` (la stessa pila di `_righe_di_percorso_e_parola_
+    chiave`, con lo stesso criterio per distinguerla da una chiamata) e che
+    segue `(`, `,`, `*`, `**` oppure `/`. Cio' che segue `:` o `=` e' invece
+    un'annotazione o un valore predefinito, e non e' il nome del parametro --
+    la profondita' della pila basta a distinguerli, perche' `dict[str, int]`
+    apre una parentesi quadra e la sua virgola non e' mai al livello della
+    `def`.
+    """
+    posizioni: set[int] = set()
+    pila: list[str] = []
+    precedente = None
+    precedente_precedente = None
+
+    for i, t in enumerate(tokens):
+        if t.type == tokenize.OP and t.string == "(":
+            e_def = (precedente is not None and precedente.type == tokenize.NAME
+                     and precedente_precedente is not None
+                     and precedente_precedente.type == tokenize.NAME
+                     and precedente_precedente.string == "def")
+            pila.append("def" if e_def else "altro")
+        elif t.type == tokenize.OP and t.string in ("[", "{"):
+            pila.append("altro")
+        elif t.type == tokenize.OP and t.string in (")", "]", "}") and pila:
+            pila.pop()
+        elif (t.type == tokenize.NAME and pila and pila[-1] == "def"
+                and precedente is not None and precedente.type == tokenize.OP
+                and precedente.string in ("(", ",", "*", "**", "/")):
+            posizioni.add(i)
+
+        if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                          tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+            precedente_precedente = precedente
+            precedente = t
+
+    return posizioni
+
+
+def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
+    """`{nome vecchio: nome nuovo}` per i soli parametri di `def` che
+    `riscrivi()` rinomina in questo sorgente.
+
+    E' la META' MANCANTE della guardia sulle parole chiave. Quella guardia
+    (`_righe_di_percorso_e_parola_chiave`, e la ragione scritta li') salta di
+    proposito i token in posizione `foo=` dentro una chiamata: lo strumento
+    non sa da quale oggetto quella chiamata passi, e rinominare la parola
+    chiave di una firma altrui la romperebbe in silenzio. La regola resta
+    giusta. Ma ha una conseguenza inevitabile che nessuna riga diceva: **ogni
+    volta che un parametro viene rinominato in una `def`, tutti i `vecchio=`
+    dei suoi chiamanti restano indietro**, e la firma e le chiamate smettono
+    di parlarsi.
+
+    Misurato quattro volte in due lotti (Task 9): `stato` in
+    `api/handlers_mcp.py` (tre chiamanti nello stesso file), `motivo` e
+    `turno` in `api/handlers_chat.py` -- e per `turno` **uno dei chiamanti era
+    in un altro file gia' convertito** (`api/handlers_mcp.py:438`), fuori dal
+    perimetro che il lotto stava guardando. Prese a mano quattro volte su
+    quattro, il che e' la definizione di un difetto in attesa della prima
+    volta che nessuno guarda: nessun cancello lo vede (Python non controlla i
+    nomi delle parole chiave all'import) e la rete e' la sola copertura del
+    percorso chiamante, che e' parziale per costruzione.
+    """
+    tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+    percorso, parola_chiave, confine = _righe_di_percorso_e_parola_chiave(tokens)
+    rinominati: dict[str, str] = {}
+    for i in _posizioni_parametri_def(tokens):
+        if i in percorso or i in parola_chiave or i in confine:
+            continue
+        t = tokens[i]
+        esito = classifica(t.string, g, ambito)
+        if isinstance(esito, str) and esito != t.string:
+            rinominati[t.string] = esito
+    return rinominati
+
+
+def parametri_dichiarati(radice: Path | None = None) -> set[str]:
+    """Ogni nome di parametro dichiarato da una `def` del repo, oggi.
+
+    Serve a separare i chiamanti orfani CERTI dagli ambigui: se nessuna firma
+    del progetto porta piu' quel nome, un `vecchio=` non puo' risolvere a
+    niente -- o e' rotto, o non e' un parametro (una chiave di dizionario in
+    un costruttore `**kwargs`, il caso 2 di `chiamanti_orfani`). Se invece il
+    nome e' ancora dichiarato da qualche parte, la chiamata puo' benissimo
+    essere corretta e puntare a quella firma.
+    """
+    dichiarati: set[str] = set()
+    for f in file_py(radice or ROOT):
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(_leggi_grezzo(f)).readline))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+        for i in _posizioni_parametri_def(tokens):
+            dichiarati.add(tokens[i].string)
+    return dichiarati
+
+
+def chiamanti_orfani(nomi: dict[str, str],
+                     radice: Path | None = None) -> list[tuple[Path, int, str, str]]:
+    """I siti di chiamata, su TUTTO il repo, che passano ancora una parola
+    chiave con un nome che una `def` non porta piu'.
+
+    **La radice predefinita e' l'intero progetto, non l'ambito in
+    lavorazione, ed e' il punto**: il chiamante orfano che ha motivato questo
+    controllo viveva in un file di un lotto PRECEDENTE, gia' chiuso e gia'
+    verde. Cercarlo solo dentro il `--percorso` corrente lo lascerebbe
+    esattamente dov'era.
+
+    **Dichiara, non corregge**, e la ragione non e' prudenza: **tre forme
+    diverse producono lo stesso `vecchio=`, e due sono giuste.** Misurate
+    rilanciando questo controllo sull'intera fetta (192 parametri di firma
+    rinominati in 50 commit, 555 occorrenze trovate):
+
+    1. **La parola chiave di una firma ALTRUI, non ancora convertita.**
+       `nota_ripiego(motivo=...)` verso `decisione_modelli.py` conviveva,
+       nella stessa riga, col `reason=` appena rinominato: giusta cosi'.
+    2. **Una CHIAVE DI DIZIONARIO passata a un costruttore `**kwargs`.** E'
+       la forma piu' frequente nei test (`_intento(gesto="modifica")`,
+       `_fai(frase=...)`, `_entita(disabilitata=1)`, `dict(_REGISTRI,
+       piani=[])`): quel nome non e' un parametro, e' una chiave di dominio o
+       una colonna del database -- entrambe deliberatamente italiane, con la
+       ragione scritta nel glossario. Rinominarle romperebbe il dato, non la
+       firma. **Sono 24 delle 24 «certe» trovate nella scansione retroattiva,
+       e non una era un difetto.**
+    3. **Il parametro di una `lambda` dentro una chiamata**
+       (`MagicMock(side_effect=lambda k, d=None: ...)`): la guardia sulle
+       parole chiave lo scambia per un `d=` di chiamata. La sbaglia nella
+       direzione sicura (protegge invece di rinominare), ma qui compare come
+       falso positivo e va saputo.
+
+    Distinguere i tre casi richiede di sapere a quale funzione ogni chiamata
+    risolva, cioe' esattamente cio' che questo strumento non sa e non deve
+    indovinare. Quindi elenca e si ferma, come per i composti: la legge del
+    glossario applicata a un'altra domanda.
+
+    **Il filtro che rende l'elenco leggibile** e' `parametri_dichiarati()`:
+    un `vecchio=` il cui nome NON e' piu' dichiarato da nessuna `def` del
+    repo e' certo, gli altri sono ambigui. Sulla fetta intera ha portato 555
+    occorrenze a 24 da guardare -- senza di lui nessuno leggerebbe l'elenco,
+    ed e' la differenza fra un controllo che si usa e uno che si salta.
+    """
+    trovati: list[tuple[Path, int, str, str]] = []
+    if not nomi:
+        return trovati
+    for f in file_py(radice or ROOT):
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(_leggi_grezzo(f)).readline))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+        _, parola_chiave, _ = _righe_di_percorso_e_parola_chiave(tokens)
+        for i in sorted(parola_chiave):
+            t = tokens[i]
+            if t.string in nomi:
+                trovati.append((f, t.start[0], t.string, nomi[t.string]))
+    return trovati
+
+
+def _elenco_file(base: Path) -> list[Path]:
+    """I file `.py` di un percorso, che sia una cartella o un file solo.
+
+    Misurato: `file_py()` usa `rglob`, che su un percorso-FILE non trova
+    nulla. Vive qui e non dentro `applica` perche' `main` ha bisogno dello
+    stesso elenco per il controllo di chiusura, e due modi di decidere quali
+    file sono «quelli di questo lotto» sarebbero due elenchi liberi di
+    divergere.
+    """
+    return [base] if base.is_file() else file_py(base)
+
+
+def applica(base: Path, ambito: str, *,
+            scrivi: bool = True) -> list[Proposta | Collisione | FirmaScollegata]:
     """Tutto il sottosistema, oppure un file solo. Un file illeggibile si
     riporta e si va avanti.
 
@@ -675,8 +909,8 @@ def applica(base: Path, ambito: str, *, scrivi: bool = True) -> list[Proposta | 
     zero file senza errore: il difetto peggiore, perche' ha l'aspetto
     esatto di un successo.
     """
-    file = [base] if base.is_file() else file_py(base)
-    tutte: list[Proposta | Collisione] = []
+    file = _elenco_file(base)
+    tutte: list[Proposta | Collisione | FirmaScollegata] = []
     for f in file:
         sorgente = _leggi_grezzo(f)
         try:
@@ -724,18 +958,61 @@ def main(argv=None) -> int:
         print(f"percorso inesistente: {a.percorso}")
         return 1
 
+    # I parametri di firma che stanno per essere rinominati, letti PRIMA che
+    # `applica` riscriva i file: dopo, sul disco c'e' gia' il nome nuovo e non
+    # c'e' piu' niente da confrontare. Serve al secondo strato del controllo
+    # di chiusura (`chiamanti_orfani`, su tutto il repo); il primo strato --
+    # dentro il file stesso -- lo fa gia' `riscrivi`.
+    parametri: dict[str, str] = {}
+    for f in _elenco_file(base):
+        try:
+            parametri.update(parametri_def_rinominati(
+                _leggi_grezzo(f), g_corrente(), a.ambito))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+
     proposte = applica(base, a.ambito, scrivi=not a.dry_run)
     composti = [p for p in proposte if isinstance(p, Proposta)]
     collisioni = [p for p in proposte if isinstance(p, Collisione)]
+    scollegate = [p for p in proposte if isinstance(p, FirmaScollegata)]
     msg = f"{a.percorso} (ambito «{a.ambito}»): {len(composti)} composti da decidere"
     if collisioni:
         msg += f", {len(collisioni)} collisioni"
+    if scollegate:
+        msg += f", {len(scollegate)} firme scollegate"
     print(msg)
     for pr in sorted(composti, key=lambda x: x.nome):
         print(f"  {pr.nome:38} pezzi={'+'.join(pr.pezzi):30} suggerito={pr.suggerito}")
     for c in sorted(collisioni, key=lambda x: x.suggerito):
         print(f"  COLLISIONE {'/'.join(c.nomi):30} -> suggerito={c.suggerito} "
               f"(nessuno dei due si applica)")
+    for s in sorted(scollegate, key=lambda x: x.vecchio):
+        righe = ", ".join(str(r) for r in s.righe)
+        print(f"  FIRMA SCOLLEGATA {s.vecchio} -> {s.nuovo}: la «def» e' "
+              f"rinominata, ma nello stesso file resta «{s.vecchio}=» "
+              f"alle righe {righe} (guardale: potrebbe essere la parola "
+              f"chiave di una firma altrui, e allora e' giusta cosi')")
+
+    # Secondo strato: i chiamanti orfani in TUTTO il repo, non solo
+    # nell'ambito in lavorazione -- il caso che ha motivato questo controllo
+    # (Task 9, lotto 12) aveva il chiamante in un file di un lotto
+    # precedente, gia' chiuso e gia' verde.
+    orfani = [(f, riga, vecchio, nuovo)
+              for f, riga, vecchio, nuovo in chiamanti_orfani(parametri)
+              if rel(f) not in {rel(x) for x in _elenco_file(base)}]
+    if orfani:
+        dichiarati = parametri_dichiarati()
+        certi = [o for o in orfani if o[2] not in dichiarati]
+        ambigui = len(orfani) - len(certi)
+        print(f"  -- {len(orfani)} chiamanti con la parola chiave vecchia FUORI "
+              f"da {a.percorso} ({len(certi)} certi, {ambigui} ambigui):")
+        for f, riga, vecchio, nuovo in certi:
+            print(f"     CERTO   {rel(f)}:{riga}  {vecchio}=  (la firma ora dice "
+                  f"{nuovo}, e nessuna «def» del repo dichiara piu' «{vecchio}»)")
+        if ambigui:
+            print(f"     (gli altri {ambigui} portano un nome che QUALCHE «def» "
+                  "dichiara ancora: possono essere firme altrui, chiavi di "
+                  "dizionario o parametri di lambda -- vedi «chiamanti_orfani»)")
     return 0
 
 

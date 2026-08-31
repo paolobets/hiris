@@ -533,6 +533,55 @@ async def test_un_batch_json_rpc_viene_rifiutato_dicendolo(rotta):
     assert "batch" in corpo["error"]["message"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corpo, come", [
+    ({"jsonrpc": "2.0", "id": 1}, "assente"),
+    ({"jsonrpc": "2.0", "id": 2, "method": 123}, "non testuale"),
+    ({"jsonrpc": "2.0", "id": 3, "method": ""}, "vuoto"),
+    ({"jsonrpc": "2.0", "id": 4, "method": None}, "nullo"),
+])
+async def test_un_method_malformato_e_32600_e_non_un_500(rotta, corpo, come):
+    """Il ramo `-32600` per un «method» che non e' una stringa utilizzabile.
+
+    **Scritto perche' non c'era**, e la sua assenza e' stata misurata dalla
+    review dei lotti 10-11 di Task 9 con una mutazione: riportare la sola
+    riga `status=400` di questo ramo al vecchio `stato=400` -- cioe' rompere
+    la firma di `_error` e la sua chiamata -- lasciava `ruff` verde e la suite
+    INTERA verde, 2933 passed. Nessun altro test attraversa questa riga.
+
+    Cio' che si perde senza: un `TypeError` qui non diventa un `-32600`
+    leggibile, diventa un **500 nudo** -- ed e' esattamente la proprieta' che
+    il docstring di `handle_mcp` promette di non violare mai («da qui non
+    risale mai un'eccezione, e non esce mai un 500 nudo»). Una promessa
+    scritta e non provata e' il difetto numero uno di questo prodotto.
+
+    E' un difetto del PRODOTTO trovato dalla rinomina, non della rinomina:
+    il ramo era scoperto da prima, e la fetta l'ha solo reso visibile.
+    """
+    client, _ = rotta
+    risposta = await _jsonrpc(client, corpo)
+    assert risposta.status == 400, f"«method» {come}: atteso 400, non un 500"
+    fuori = await risposta.json()
+    assert fuori["error"]["code"] == -32600
+    assert fuori["id"] == corpo["id"], "l'id della richiesta torna indietro"
+    assert "method" in fuori["error"]["message"]
+    for metodo in handlers_mcp.METHODS:
+        assert metodo in fuori["error"]["message"], (
+            "l'errore DICE quali metodi esistono, invece di negare e basta")
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_con_method_malformato_riceve_202_e_non_un_errore(rotta):
+    """Il gemello del test qui sopra sull'altro ramo dello stesso `if`: senza
+    il membro `id` la richiesta e' una NOTIFICA, e per protocollo una notifica
+    non riceve mai un corpo -- nemmeno quando e' malformata. Il guasto si
+    dichiara nel log, non nella risposta."""
+    client, _ = rotta
+    risposta = await _jsonrpc(client, {"jsonrpc": "2.0", "method": None})
+    assert risposta.status == 202
+    assert (await risposta.read()) == b""
+
+
 # ---------------------------------------------------------------------------
 # ⑦ -- l'autenticazione E il CSRF, con le valvole della suite rimosse
 # ---------------------------------------------------------------------------

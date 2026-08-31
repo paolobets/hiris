@@ -352,6 +352,111 @@ def test_un_metodo_che_non_e_di_usagestore_si_applica_normalmente():
     assert proposte == []
 
 
+def test_una_firma_rinominata_con_un_chiamante_rimasto_indietro_si_dichiara():
+    """Il controllo di chiusura, primo strato: dentro lo stesso file.
+
+    E' il caso `stato` misurato dal vivo (Task 9, lotto 10): lo strumento
+    rinomina il parametro nella `def` (`stato -> state`) e lascia intatto il
+    `stato=400` del chiamante, perche' una parola chiave in una chiamata e'
+    protetta di proposito -- non sa a quale firma risolva. La regola resta
+    buona; cio' che mancava era DIRE che la firma e la chiamata hanno smesso
+    di parlarsi. I due fatti erano gia' dentro `riscrivi`: mancava solo
+    l'intersezione."""
+    gf = rinomina.Glossario(mappa={"stato": "state"})
+    dentro = ("def _errore(codice, *, stato: int = 200):\n"
+              "    return risposta(x, status=stato)\n"
+              "\n"
+              "def chiama():\n"
+              "    return _errore(1, stato=400)\n")
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert "*, state: int = 200" in fuori, "la def si rinomina come sempre"
+    assert "stato=400" in fuori, "la parola chiave del chiamante NON si tocca"
+    scollegate = [p for p in proposte if isinstance(p, rinomina.FirmaScollegata)]
+    assert len(scollegate) == 1, f"attesa una firma scollegata, trovate {scollegate}"
+    assert scollegate[0].vecchio == "stato"
+    assert scollegate[0].nuovo == "state"
+    assert scollegate[0].righe == [5], "la riga del chiamante rimasto indietro"
+
+
+def test_una_firma_rinominata_senza_chiamanti_indietro_non_dichiara_niente():
+    """La controprova: il controllo parla solo quando c'e' davvero una
+    divergenza. Un parametro rinominato i cui chiamanti passano per POSIZIONE
+    non ha nessun `vecchio=` da segnalare, e il rumore di un avviso che non
+    corrisponde a niente farebbe smettere di leggerli tutti."""
+    gf = rinomina.Glossario(mappa={"stato": "state"})
+    dentro = ("def _errore(codice, stato=200):\n"
+              "    return risposta(codice, stato)\n"
+              "\n"
+              "def chiama():\n"
+              "    return _errore(1, 400)\n")
+    _, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
+    assert [p for p in proposte if isinstance(p, rinomina.FirmaScollegata)] == []
+
+
+def test_i_parametri_di_una_def_si_distinguono_dalle_annotazioni_e_dai_default():
+    """`_posizioni_parametri_def` riconosce il NOME del parametro, non tutto
+    cio' che sta dentro le parentesi di una `def`: un'annotazione
+    (`dict[str, int]`) porta una virgola che NON apre un parametro nuovo, e un
+    valore predefinito (`= _MAX`) e' un nome che non va rinominato come se
+    fosse la firma. Senza questa distinzione il controllo di chiusura
+    segnalerebbe firme che nessuno ha toccato."""
+    dentro = "def f(primo: dict[str, int], *args, secondo=_MAX, **kw) -> None:\n    pass\n"
+    tokens = list(tokenize.generate_tokens(io.StringIO(dentro).readline))
+    nomi = {tokens[i].string for i in rinomina._posizioni_parametri_def(tokens)}
+    assert nomi == {"primo", "args", "secondo", "kw"}, nomi
+
+
+def test_il_controllo_di_chiusura_trova_un_chiamante_orfano_in_UN_ALTRO_file(tmp_path):
+    """Il secondo strato, e la ragione per cui esiste: il chiamante rimasto
+    indietro puo' vivere in un file che il lotto in corso non guarda affatto.
+
+    Misurato dal vivo (Task 9, lotto 12): rinominato `turno -> exchange` nella
+    `def` di `api/handlers_chat.py`, uno dei tre chiamanti era in
+    `api/handlers_mcp.py:438` -- un file di un lotto PRECEDENTE, gia' chiuso e
+    gia' verde. Cercare solo dentro il `--percorso` corrente lo avrebbe
+    lasciato dov'era."""
+    (tmp_path / "firma.py").write_text(
+        "def costruisci(app, turno=None):\n    return (app, turno)\n".replace("\n", "\n"),
+        encoding="utf-8")
+    (tmp_path / "altro_file.py").write_text(
+        "from firma import costruisci\n\nd = costruisci(app, turno=x)\n",
+        encoding="utf-8")
+    trovati = rinomina.chiamanti_orfani({"turno": "exchange"}, radice=tmp_path)
+    nomi = {(f.name, riga, vecchio, nuovo) for f, riga, vecchio, nuovo in trovati}
+    assert ("altro_file.py", 3, "turno", "exchange") in nomi, nomi
+
+
+def test_il_controllo_di_chiusura_non_segnala_una_parola_chiave_mai_rinominata(tmp_path):
+    """La controprova del secondo strato: si cercano SOLO le parole chiave
+    che corrispondono a un parametro davvero rinominato. Ogni altro `foo=` del
+    repo -- e sono migliaia -- non e' affar suo."""
+    (tmp_path / "altro_file.py").write_text(
+        "d = costruisci(app, origine=x)\n", encoding="utf-8")
+    assert rinomina.chiamanti_orfani({"turno": "exchange"}, radice=tmp_path) == []
+    assert rinomina.chiamanti_orfani({}, radice=tmp_path) == []
+
+
+def test_il_filtro_separa_i_chiamanti_orfani_certi_dagli_ambigui(tmp_path):
+    """`parametri_dichiarati` e' cio' che rende leggibile l'elenco del secondo
+    strato: sulla fetta intera ha portato 555 occorrenze a 24 da guardare.
+
+    Un `vecchio=` il cui nome NESSUNA `def` del repo dichiara piu' e' certo;
+    se invece una firma qualunque lo porta ancora, la chiamata puo' puntare a
+    quella ed e' ambigua. Senza questa distinzione l'elenco e' rumore, e un
+    controllo che nessuno legge non protegge niente."""
+    (tmp_path / "firme.py").write_text(
+        "def altra_funzione(app, motivo=None):\n    return motivo\n", encoding="utf-8")
+    (tmp_path / "chiamate.py").write_text(
+        "a = f(motivo=1)\nb = g(gesto=2)\n", encoding="utf-8")
+    dichiarati = rinomina.parametri_dichiarati(tmp_path)
+    assert "motivo" in dichiarati, "una def del repo lo dichiara ancora"
+    assert "gesto" not in dichiarati, "nessuna def lo dichiara: orfano certo"
+    orfani = rinomina.chiamanti_orfani(
+        {"motivo": "reason", "gesto": "operation"}, radice=tmp_path)
+    certi = {v for _, _, v, _ in orfani if v not in dichiarati}
+    assert certi == {"gesto"}, certi
+
+
 def test_un_metodo_di_registroesiti_non_si_applica_da_solo():
     """Quarta voce della guardia (Task 9, `api/handlers_chat.py`), e la sola
     delle quattro che previene un difetto ATTIVO invece che futuro:

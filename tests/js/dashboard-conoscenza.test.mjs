@@ -41,7 +41,7 @@ function casaLetta(modifiche = {}) {
    separate e' il punto: la seconda e' quella che il tester incontra davvero.
 
    (a) Archivio ASSENTE: tutti i campi a tre stati sono `null`. E' la forma
-       letterale del ramo di difesa di `handlers_casa.handle_get_casa`, che
+       letterale del ramo di difesa di `handlers_casa.handle_get_home_space`, che
        dichiara di se stesso (`:25-31`): «difesa, non stato atteso: in
        produzione questo ramo non dovrebbe mai scattare». */
 const CASA_ARCHIVIO_ASSENTE = {
