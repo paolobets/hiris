@@ -155,7 +155,7 @@ class ObservationsStore:
                  device_class, state_class, source_type))
             self._conn.commit()
 
-    def readings(self, *, da_ts: float, a_ts: float, subject: str | None = None,
+    def readings(self, *, from_ts: float, to_ts: float, subject: str | None = None,
               source: str | None = None, limit: int = 200_000) -> list[dict]:
         """I cambi di una finestra, **dal piu' vecchio**.
 
@@ -163,8 +163,8 @@ class ObservationsStore:
         qui chi legge ricostruisce cose che cominciano e finiscono, e le vuole
         in ordine di accadimento.
 
-        **La finestra e' semi-aperta: `[da_ts, a_ts)`** -- `da_ts` incluso,
-        `a_ts` escluso. E' la convenzione che fa combaciare i giorni adiacenti
+        **La finestra e' semi-aperta: `[from_ts, to_ts)`** -- `from_ts` incluso,
+        `to_ts` escluso. E' la convenzione che fa combaciare i giorni adiacenti
         senza sovrapporli: con due estremi inclusivi, un cambio esattamente a
         mezzanotte finirebbe contato in entrambi i giorni che lo interrogano.
 
@@ -178,7 +178,7 @@ class ObservationsStore:
         ~14.600 cambi, e l'aggregazione deve vederla intera.
         """
         sql = "SELECT * FROM cambi WHERE quando_ts >= ? AND quando_ts < ?"
-        args: list = [float(da_ts), float(a_ts)]
+        args: list = [float(from_ts), float(to_ts)]
         if subject is not None:
             sql += " AND soggetto = ?"
             args.append(subject)

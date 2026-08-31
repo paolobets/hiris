@@ -12,7 +12,7 @@ import pytest
 from hiris.app.api import handlers_chat
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.schedulatore.turno import SOLA_LETTURA, tools_promise
+from hiris.app.schedulatore.turno import SOLA_LETTURA, promise_tools
 from tests._contratti import assert_stessa_firma
 
 
@@ -71,7 +71,7 @@ def test_i_due_lettori_entrano_nel_turno_delle_promesse():
     """`andamento` e `accaduto` LEGGONO e basta: escluderli sarebbe la scelta
     opposta a quella presa per `costruisci`, e per la ragione opposta."""
     assert "andamento" in SOLA_LETTURA and "accaduto" in SOLA_LETTURA
-    nomi = {d["name"] for d in tools_promise()}
+    nomi = {d["name"] for d in promise_tools()}
     assert {"andamento", "accaduto"} <= nomi
 
 

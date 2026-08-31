@@ -44,7 +44,7 @@ Chi chiama `get()` porta tre cose:
   dizionari diversi possono avere lo stesso numero di voci, e una chiave che
   non li distingue servirebbe un indice vecchio: il difetto esatto per cui
   questo task esiste. Usa un'impronta del CONTENUTO (`_fingerprint_nomi`).
-- `behavior_loaded_il` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
+- `behavior_loaded_at` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
   la data dell'ultima rilettura di automazioni/script
   (`ArchivioCasa.comportamento_letto_il()`), o `None` quando non e' mai stata
   letta. Da quando `costruisci_indice()` indicizza anche il comportamento
@@ -125,7 +125,7 @@ class LookupCache:
                aggiornata_il: str | None,
                nomi_di_ripiego: dict[str, str] | None = None,
                behavior: list[dict] | None = None,
-               behavior_loaded_il: str | None = None) -> Lookup:
+               behavior_loaded_at: str | None = None) -> Lookup:
         """Il `Lookup` per questo `slot`, ricostruito solo se la chiave e'
         cambiata rispetto all'ultima voce salvata per questo stesso spazio.
 
@@ -138,18 +138,18 @@ class LookupCache:
         `_cecita()`) -- li' non c'e' niente da rimandare. Se invece la
         lettura serve SOLO a costruire l'indice, vedi `get_lazy()`.
 
-        `comportamento`/`behavior_loaded_il` (T7, R2): automazioni e
+        `comportamento`/`behavior_loaded_at` (T7, R2): automazioni e
         script da indicizzare, e la data della loro ultima lettura -- vedi
         "## La chiave" sopra per perche' la seconda non e' opzionale quando
         si passa la prima."""
         return self.get_lazy(slot, lambda: home_space, aggiornata_il, nomi_di_ripiego,
-                                  behavior, behavior_loaded_il)
+                                  behavior, behavior_loaded_at)
 
     def get_lazy(self, slot: str, build_home_space,
                       aggiornata_il: str | None,
                       nomi_di_ripiego: dict[str, str] | None = None,
                       behavior: list[dict] | None = None,
-                      behavior_loaded_il: str | None = None) -> Lookup:
+                      behavior_loaded_at: str | None = None) -> Lookup:
         """Come `get()`, ma la casa si legge SOLO su un miss.
 
         Fix della review indipendente del Task B7: `_ricorda` non ha bisogno
@@ -171,7 +171,7 @@ class LookupCache:
         `memoria/interpretazione.VOCABULARY`), e su quello spazio la sua
         assenza dalla chiave non cambia nulla: non essendo mai indicizzato,
         non puo' mai andare stantio."""
-        key = (aggiornata_il, behavior_loaded_il, _fingerprint_nomi(nomi_di_ripiego))
+        key = (aggiornata_il, behavior_loaded_at, _fingerprint_nomi(nomi_di_ripiego))
         entry = self._voci.get(slot)
         if entry is not None and entry[0] == key:
             return entry[1]

@@ -731,9 +731,9 @@ class ClaudeRunner:
         """
         if self._registra_consumo is None:
             return
-        from .consumi.vocabulary import state_e_cost
+        from .consumi.vocabulary import cost_state_and_value
 
-        stato, costo_usd = state_e_cost(
+        stato, costo_usd = cost_state_and_value(
             "claude", modello, cost_dichiarato=None, cost_da_listino=costo)
         self._registra_consumo(
             "claude", modello, token_in=inp, token_out=out,

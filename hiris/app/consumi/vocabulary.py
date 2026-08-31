@@ -51,7 +51,7 @@ def piu_debole(a: str, b: str) -> str:
     return min(a, b, key=lambda s: STATES.index(s) if s in STATES else 0)
 
 
-def state_e_cost(provider: str, model: str, *,
+def cost_state_and_value(provider: str, model: str, *,
                   cost_dichiarato: float | None,
                   cost_da_listino: float | None) -> tuple[str, float | None]:
     """Lo stato del costo di UNA chiamata, e il costo che le corrisponde.

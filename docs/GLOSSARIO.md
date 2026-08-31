@@ -1570,7 +1570,7 @@ al Task 6 invece che deciso qui.
 > (`_home_space_rows` -> `_home_space_lines`, `_behavior_rows` -> `_behavior_lines`, `_gap_rows`
 > -> `_gap_lines`, `_highlight_rows` -> `_highlight_lines`, `_memory_rows` -> `_memory_lines`,
 > `_reference_frame_rows` -> `_reference_frame_lines`, `_now_row` -> `_now_line`,
-> `unreachable_row` -> `unreachable_line`, `rows_pool` -> `lines_pool`, il bare `row`/`rows` ->
+> `unreachable_row` -> `unreachable_line`, `rows_pool` -> `pool_lines`, il bare `row`/`rows` ->
 > `line`/`lines` -- 99 occorrenze in tutto, non le "~30" stimate prima di contarle davvero) --
 > non solo la variabile locale mostrata come esempio: lasciare meta' famiglia `row` e meta' `line`
 > nello stesso file sarebbe stata l'incoerenza che questa correzione esiste per togliere.
@@ -1777,7 +1777,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `scripts/rinomina.py`). Non e' la stessa cosa del concetto `indice -> lookup` di `memoria/`: qui
   e' descrittiva di una variabile locale, non il nome di una struttura del prodotto.
 - `_assembla` -> **`_assemble`** (e le sue variabili locali `blocchi`/`blocco` -> `blocks`/`block`),
-  `rango` (`_severity_rank`) -> **`rank`**, `righe_pool` -> **`lines_pool`** (corretto dopo il
+  `rango` (`_severity_rank`) -> **`rank`**, `righe_pool` -> **`pool_lines`** (corretto dopo il
   lotto di `riga (nucleo) -> line`: era `rows_pool` quando questa riga fu scritta, prima che
   l'omonimia per ambito fosse arbitrata -- vedi la nota su `riga` sopra), `tagliato` (il
   flag per-iterazione del taglio, distinto da `troncato` -- il flag dell'intero giro) -> **`cut`**:
@@ -1904,10 +1904,13 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   senza mai scrivere una riga generale `storia -> history` che romperebbe la guardia appena
   descritta se applicata a un `def storia(` non protetto. **Gli stessi metodi portano anche
   keyword-only ancora italiani nella FIRMA**, mai decisi ne' tradotti: `da`/`a` di
-  `UsageStore.storia` e `da_anchor` di `.sezioni`/`.totali` -- gia' protetti dalla guardia
+  `UsageStore.storia` -- gia' protetti dalla guardia
   generale sulle parole chiave in una chiamata (mai applicate da sole), qui elencati per
   completezza dell'inventario, non perche' rischino qualcosa in piu' della protezione gia' in
-  vigore.
+  vigore. **`da_anchor` di `.sezioni`/`.totali` era il terzo di questo elenco e non c'e' piu'**:
+  la misura ordine e preposizioni (31/08) l'ha corretto in `from_anchor`, insieme ai suoi
+  chiamanti per parola chiave -- una preposizione italiana innestata su una testa inglese non
+  e' un residuo coerente, e' il difetto che il cancello sulle preposizioni vieta.
 - `_MSG_NESSUN_PROVIDER -> _NO_PROVIDER_MSG`, `_GIORNI_STORIA -> _HISTORY_DAYS` (composto ad hoc,
   non una parola generale: vedi sopra il perche' di `storia`), `_puo_rispondere -> _can_respond`,
   `_non_misurata -> _unmeasured`, `_modello_fuori -> _model_out` (`fuori` qui e' il senso
@@ -2133,7 +2136,9 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   _downgrade_to_chain` (con la parola nuova `ripiega -> downgrade`, verbo del gia' deciso `ripiego
   -> downgrade`: vedi «Verbo e sostantivo possono condividere lo stesso inglese»),
   `_nota_di_chi_ha_risposto -> _who_answered_note`, `_motivo_ripiego -> _downgrade_reason`
-  (l'aggettivo prima del nome, non l'ordine italiano `reason_downgrade` del suggerimento),
+  (l'aggettivo prima del nome, non l'ordine italiano `reason_downgrade` del suggerimento -- il
+  gemello di `schedulatore/turno.py`, che quell'ordine l'aveva accettato, e' stato allineato a
+  `downgrade_reason` dalla misura ordine e preposizioni),
   `_motivo_del_piano -> _subscription_reason` (`piano (abbonamento)`, la riga annotata come
   irraggiungibile e applicata a mano), `_scadenza_min -> _deadline_min`,
   `nome_backend -> backend_name`, `dispatcher_strumenti -> tool_dispatcher`,

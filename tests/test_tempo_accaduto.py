@@ -40,8 +40,8 @@ class _FintaCronaca:
         self._righe = righe
         self.chiamate = []
 
-    def list(self, *, da_ts, a_ts, entity=None, limit=200):
-        self.chiamate.append((da_ts, a_ts, entity))
+    def list(self, *, from_ts, to_ts, entity=None, limit=200):
+        self.chiamate.append((from_ts, to_ts, entity))
         return list(self._righe)
 
 
@@ -153,9 +153,9 @@ async def test_the_journal_is_queried_on_the_same_window_as_the_diary():
     cronaca = _FintaCronaca([])
     await logbook(ha=ha, journal=cronaca, entity="light.cucina", hours=1000,
                    now_ts=NOW)
-    da_ts, a_ts, entity = cronaca.chiamate[0]
-    assert a_ts == NOW
-    assert da_ts == pytest.approx(NOW - 168 * 3600)
+    from_ts, to_ts, entity = cronaca.chiamate[0]
+    assert to_ts == NOW
+    assert from_ts == pytest.approx(NOW - 168 * 3600)
     assert entity == "light.cucina"
 
 
@@ -177,7 +177,7 @@ class _FintaCronacaCheSolleva:
     """Un archivio che non risponde: l'attribuzione e' un di piu', non deve
     togliere all'utente la risposta sulla casa."""
 
-    def list(self, *, da_ts, a_ts, entity=None, limit=200):
+    def list(self, *, from_ts, to_ts, entity=None, limit=200):
         raise RuntimeError("database della cronaca non raggiungibile")
 
 

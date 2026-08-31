@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from .promise import TOLLERANZA_S, reason_delay
+from .promise import TOLLERANZA_S, delay_reason
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +40,9 @@ class Sweeper:
             # racconterebbe un'altra storia.
             if delay > self._tolleranza:
                 self._store.concludi(promise["id"], state="saltata",
-                                        reason=reason_delay(delay), now=now)
+                                        reason=delay_reason(delay), now=now)
                 logger.info("promessa %s saltata: %s", promise["id"],
-                            reason_delay(delay))
+                            delay_reason(delay))
                 continue
             if not self._store.prendi(promise["id"], now=now):
                 continue  # qualcun altro l'ha presa: mai due volte

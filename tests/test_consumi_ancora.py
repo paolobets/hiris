@@ -30,7 +30,7 @@ def test_azzerare_porta_i_totali_a_zero_senza_cancellare_niente(archivio):
 
     archivio.sposta_anchor(POMERIGGIO)
 
-    assert archivio.totali(da_anchor=True)["richieste"] == 0, (
+    assert archivio.totali(from_anchor=True)["richieste"] == 0, (
         "il pulsante deve portare a zero: e' cio' che chi lo preme si aspetta")
     assert archivio.totali()["richieste"] == 5, "e la storia deve restare intera"
 
@@ -42,8 +42,8 @@ def test_dopo_l_ancora_il_consumo_nuovo_si_conta(archivio):
     archivio.log("claude", "m", richieste=2, cost_usd=1.0,
                       cost_state="misurato", now=POMERIGGIO)
 
-    assert archivio.totali(da_anchor=True)["richieste"] == 2
-    assert archivio.totali(da_anchor=True)["costo_usd"] == 1.0
+    assert archivio.totali(from_anchor=True)["richieste"] == 2
+    assert archivio.totali(from_anchor=True)["costo_usd"] == 1.0
     assert archivio.totali()["richieste"] == 7
 
 
@@ -51,12 +51,12 @@ def test_l_ancora_vale_anche_sui_giorni_successivi(archivio):
     archivio.log("claude", "m", richieste=5, cost_state="misurato", now=MATTINA)
     archivio.sposta_anchor(POMERIGGIO)
     archivio.log("claude", "m", richieste=3, cost_state="misurato", now=DOMANI)
-    assert archivio.totali(da_anchor=True)["richieste"] == 3
+    assert archivio.totali(from_anchor=True)["richieste"] == 3
 
 
 def test_senza_ancora_da_ancora_e_da_sempre_coincidono(archivio):
     archivio.log("claude", "m", richieste=4, cost_state="misurato", now=MATTINA)
-    assert archivio.totali(da_anchor=True) == archivio.totali()
+    assert archivio.totali(from_anchor=True) == archivio.totali()
     assert archivio.anchor() == 0.0
 
 
@@ -71,7 +71,7 @@ def test_le_sezioni_da_ancora_non_mostrano_cio_che_e_prima(archivio):
     archivio.log("openrouter", "x", richieste=1, cost_usd=0.5,
                       cost_state="reale", now=POMERIGGIO)
 
-    sezioni = archivio.sezioni(da_anchor=True)
+    sezioni = archivio.sezioni(from_anchor=True)
     per_nome = {s["provider"]: s for s in sezioni}
     assert per_nome["openrouter"]["richieste"] == 1
     assert per_nome["claude"]["richieste"] == 0, (

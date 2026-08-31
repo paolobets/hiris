@@ -703,10 +703,10 @@ class ActionActuator:
             # aspetta: quella misura e' presa durante l'esecuzione, cioe' nel
             # momento giusto per costruzione. Si aspettano le altre --
             # sull'impianto del proprietario, tutte.
-            fingerprints_ha = _reported_fingerprints(riportati)
+            ha_fingerprints = _reported_fingerprints(riportati)
             if listening:
                 await listen.attendi(
-                    [e for e in verdict.entity if e not in fingerprints_ha], pending)
+                    [e for e in verdict.entity if e not in ha_fingerprints], pending)
         finally:
             if listening:
                 self._close_listen(listen)
@@ -729,7 +729,7 @@ class ActionActuator:
         for e in verdict.entity:
             fingerprint = listen.udite.get(e)
             if fingerprint is None:
-                fingerprint = fingerprints_ha.get(e)
+                fingerprint = ha_fingerprints.get(e)
             if fingerprint is None and states_after is not None:
                 fingerprint = _fingerprint(states_after.get(e))
             dopo[e] = fingerprint
@@ -745,7 +745,7 @@ class ActionActuator:
         # dall'altra: e' la differenza fra «non ha detto niente» e «ha detto
         # che e' cambiato qualcosa che non so mostrare».
         annunciate = [e for e in verdict.entity if e in listen.udite]
-        riportate_qui = [e for e in verdict.entity if e in fingerprints_ha]
+        riportate_qui = [e for e in verdict.entity if e in ha_fingerprints]
 
         occurrence = {"eseguito": True,
                  "servizio": f"{verdict.domain}.{verdict.service}",

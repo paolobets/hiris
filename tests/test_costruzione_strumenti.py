@@ -4,7 +4,7 @@ import pytest
 from hiris.app.agent.runner import nomi_mcp
 from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
-from hiris.app.schedulatore.turno import tools_promise
+from hiris.app.schedulatore.turno import promise_tools
 from tests._contratti import assert_stessa_firma
 
 
@@ -51,7 +51,7 @@ def test_i_nomi_mcp_li_portano_al_ponte():
 
 def test_il_turno_di_una_promessa_non_li_riceve():
     """`SOLA_LETTURA`: un turno che gira senza nessuno davanti non costruisce."""
-    nomi = [d["name"] for d in tools_promise()]
+    nomi = [d["name"] for d in promise_tools()]
     assert "costruisci" not in nomi
     assert "conferma" not in nomi
     assert "mcp__hiris__costruisci" not in nomi_mcp(per_promessa=True)

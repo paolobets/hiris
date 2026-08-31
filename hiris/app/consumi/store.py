@@ -153,7 +153,7 @@ class UsageStore:
     def _where(self, da: str) -> tuple[str, tuple]:
         return ("WHERE giorno >= ?", (da,)) if da else ("", ())
 
-    def sezioni(self, *, da: str = "", da_anchor: bool = False) -> list[dict]:
+    def sezioni(self, *, da: str = "", from_anchor: bool = False) -> list[dict]:
         """Una voce per provider USATO, coi suoi modelli dentro.
 
         I provider mai usati non compaiono: e' un'ASSENZA, non uno zero -- ed
@@ -161,7 +161,7 @@ class UsageStore:
         """
         from .vocabulary import LABEL, NOTE
 
-        if da_anchor:
+        if from_anchor:
             da = self._anchor_day() or da
         where, arg = self._where(da)
         somme = ", ".join(f"SUM({c}) AS {c}" for c in CAMPI)
@@ -208,12 +208,12 @@ class UsageStore:
                 "ultimo_uso": r["ultimo_uso"],
                 **{c: r[c] or 0 for c in CAMPI},
             })
-        if da_anchor:
+        if from_anchor:
             self._sottrai_saldo(per_provider)
         return list(per_provider.values())
 
-    def totali(self, *, da: str = "", da_anchor: bool = False) -> dict:
-        sezioni = self.sezioni(da=da, da_anchor=da_anchor)
+    def totali(self, *, da: str = "", from_anchor: bool = False) -> dict:
+        sezioni = self.sezioni(da=da, from_anchor=from_anchor)
         fuori = {c: sum(s[c] for s in sezioni) for c in CAMPI}
         fuori["costo_usd"] = sum(s["costo_usd"] or 0.0 for s in sezioni)
         # Se anche un solo modello e' senza prezzo, il totale non e' il costo:
@@ -325,7 +325,7 @@ class UsageStore:
         import os
         from datetime import datetime
 
-        _DAL_NAME = {"_openai": "openai", "_openrouter": "openrouter",
+        _PROVIDER_BY_SUFFIX = {"_openai": "openai", "_openrouter": "openrouter",
                      "_ollama": "ollama"}
         importati = 0
         for path in percorsi:
@@ -345,7 +345,7 @@ class UsageStore:
                                "il file resta dov'e'", path, exc)
                 continue
             base = os.path.splitext(os.path.basename(path))[0]
-            provider = next((p for suff, p in _DAL_NAME.items()
+            provider = next((p for suff, p in _PROVIDER_BY_SUFFIX.items()
                              if base.endswith(suff)), "claude")
             when = now
             try:

@@ -23,8 +23,8 @@ concreti e li chiude cosi'):
    finto che aggiunge un default dove il vero lo pretende obbligatorio e'
    PIU' permissivo del vero, e questo e' pericoloso nella direzione giusta
    da temere -- lascia verde un chiamante che omette un parametro che in
-   produzione servirebbe (provato: dare a un finto `list(*, da_ts=None,
-   ...)` quando il vero vuole `da_ts` obbligatorio resta verde senza
+   produzione servirebbe (provato: dare a un finto `list(*, from_ts=None,
+   ...)` quando il vero vuole `from_ts` obbligatorio resta verde senza
    questo controllo).
 4. **Ordine dei nomi posizionali, ma SOLO quando ce ne sono due o piu'
    oltre `self`**: con un solo posizionale non esiste "ordine" da violare,

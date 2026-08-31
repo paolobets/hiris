@@ -75,7 +75,7 @@ ARTICOLO_DETERMINATIVO = {"automation": "l'automazione", "script": "lo script",
 # trovato a fuoriuscire grezzo in un messaggio d'errore. `.get(stato, stato)`
 # tiene la mappa un ripiego, non un obbligo di completezza: uno stato nuovo
 # non ancora tradotto resta comunque leggibile, solo con l'underscore.
-STATE_READABLE = {
+READABLE_STATE = {
     "applicata": "applicata",
     "rifiutata": "rifiutata",
     "scaduta": "scaduta",
@@ -83,8 +83,8 @@ STATE_READABLE = {
 }
 
 
-def _state_readable(state: str) -> str:
-    return STATE_READABLE.get(state, state)
+def _readable_state(state: str) -> str:
+    return READABLE_STATE.get(state, state)
 
 
 # Punto 4 (residuo): il messaggio grezzo di `_rete` (sotto) finisce in quattro
@@ -331,7 +331,7 @@ class Workshop:
         if proposal is None:
             return {"errore": "non ho nessuna proposta con quell'identificatore."}
         if proposal["stato"] != "in_attesa":
-            return {"errore": f"quella proposta e' gia' {_state_readable(proposal['stato'])}."}
+            return {"errore": f"quella proposta e' gia' {_readable_state(proposal['stato'])}."}
         cancello = self._cancello(proposal, actor, exchange)
         if cancello is not None:
             return {"errore": cancello}

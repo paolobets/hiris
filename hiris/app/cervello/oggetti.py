@@ -260,7 +260,7 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     ogni serata in due, e la fetta dello schedulatore ha gia' pagato un difetto
     di orologi diversi.
 
-    **La finestra di `archivio.cambi` e' semi-aperta (`[da_ts, a_ts)`)**, e
+    **La finestra di `archivio.cambi` e' semi-aperta (`[from_ts, to_ts)`)**, e
     questi confini ci contano sopra cosi' come sono: un `-1` o un `-0.001` "per
     stare sicuri" riaprirebbe un buco di un secondo a ogni mezzanotte, e con
     due confini inclusivi un cambio esattamente a mezzanotte finirebbe contato
@@ -665,8 +665,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     entrare non ha nessuna forma
     migliore di quella che gia' aveva.
     """
-    da_ts, a_ts = day_boundaries(day, timezone)
-    rows = store.readings(da_ts=da_ts, a_ts=a_ts)
+    from_ts, to_ts = day_boundaries(day, timezone)
+    rows = store.readings(from_ts=from_ts, to_ts=to_ts)
 
     # Solo i bilanci VALIDI (con almeno un totale) sopprimono i loro membri
     # -- vedi il docstring di `balances` sopra: un bilancio vuoto sarebbe un
@@ -816,7 +816,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # Il limite superiore delle misure di un comprimario e' l'inizio del
     # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata
     # SOLO se non ce n'e' uno (correzione del giro di review, punto 5). Prima
-    # di questa correzione il limite era sempre `a_ts`: un riscaldamento
+    # di questa correzione il limite era sempre `to_ts`: un riscaldamento
     # acceso 15:30-17:05 e di nuovo 19:00-20:00, con la temperatura misurata
     # fino alle 23:00, faceva riportare al PRIMO episodio come temperatura
     # finale quella delle 23:00 -- il clima del secondo episodio e oltre.
@@ -826,7 +826,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
 
     def upper_limit(protagonist: str, start: float) -> float:
         later = [i for i in next_starts.get(protagonist, []) if i > start]
-        return min(later) if later else a_ts
+        return min(later) if later else to_ts
 
     built: list[dict] = []
     for e in episodes:
@@ -870,7 +870,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     for b in valid_balances:
         built.append({
             "genere": "bilancio", "protagonista": b["dispositivo_id"],
-            "inizio_ts": da_ts, "fine_ts": a_ts,
+            "inizio_ts": from_ts, "fine_ts": to_ts,
             "corpo": {**b["corpo"], "dispositivo": b.get("nome"),
                      "entita": sorted(b.get("entita") or [])},
         })

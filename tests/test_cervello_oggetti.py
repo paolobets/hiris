@@ -195,7 +195,7 @@ def test_senza_fuso_noto_non_si_inventa(archivio):
 
 def test_un_cambio_a_mezzanotte_appartiene_al_giorno_che_comincia(archivio):
     """MEZZANOTTE e' l'istante esatto in cui G comincia. Con la finestra
-    semi-aperta di `archivio.cambi` (`[da_ts, a_ts)`) un cambio a quell'
+    semi-aperta di `archivio.cambi` (`[from_ts, to_ts)`) un cambio a quell'
     istante deve finire SOLO in G, mai nel giorno che finisce in quell'
     istante, e mai in entrambi -- altrimenti sarebbe contato due volte."""
     archivio.record(quando_ts=MEZZANOTTE, source="entita",
@@ -361,7 +361,7 @@ def test_le_misure_non_sconfinano_nel_prossimo_episodio_dello_stesso_protagonist
     temperatura finale quella delle 23:00 -- e' il clima del secondo
     episodio e oltre. Il limite superiore vero e' l'inizio del prossimo
     oggetto dello STESSO protagonista, non la fine della giornata.
-    Mutazione: usare sempre `a_ts` come limite superiore -- il primo
+    Mutazione: usare sempre `to_ts` come limite superiore -- il primo
     episodio finirebbe con "a": "17.0" invece di "19.0"."""
     archivio.record(quando_ts=ts(15, 30), source="entita",
                     subject="climate.camera_t", da="off", a="heat")
@@ -496,7 +496,7 @@ def test_comprimari_riceve_il_soggetto_giusto_non_uno_qualunque(archivio):
 
 def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte(archivio):
     """MEZZANOTTE - 1 e' l'ultimo istante del giorno che finisce: deve
-    restare FUORI da G. Mutazione: `da_ts - 1` dentro `day_boundaries` ("per
+    restare FUORI da G. Mutazione: `from_ts - 1` dentro `day_boundaries` ("per
     stare sicuri") -- l'istante entrerebbe in G per errore, e il conteggio
     di G tornerebbe 1 invece di 0."""
     archivio.record(quando_ts=MEZZANOTTE - 1, source="entita",

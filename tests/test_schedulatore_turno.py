@@ -5,7 +5,7 @@ from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.schedulatore.turno import (
     SOLA_LETTURA,
     PromiseDispatcher,
-    tools_promise,
+    promise_tools,
 )
 
 # Marcatore applicato ai singoli test asincroni sotto, non al modulo: un
@@ -14,7 +14,7 @@ from hiris.app.schedulatore.turno import (
 
 
 def test_il_catalogo_non_contiene_gli_strumenti_che_scrivono():
-    nomi = {d["name"] for d in tools_promise()}
+    nomi = {d["name"] for d in promise_tools()}
     assert "esegui" not in nomi
     assert "ricorda" not in nomi
     assert "prometti" not in nomi
@@ -22,7 +22,7 @@ def test_il_catalogo_non_contiene_gli_strumenti_che_scrivono():
 
 
 def test_il_catalogo_contiene_i_lettori_e_concludi():
-    nomi = {d["name"] for d in tools_promise()}
+    nomi = {d["name"] for d in promise_tools()}
     assert nomi == set(SOLA_LETTURA) | {"concludi"}
 
 
@@ -41,8 +41,8 @@ def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
     `runner.chat`, lo stesso ciclo di `claude_runner.py`
     (`BASE_REGOLE_STRUMENTI`) che conta un giro per risposta, non per
     chiamata."""
-    from hiris.app.schedulatore.turno import _prompt_di_system
-    testo = _prompt_di_system()
+    from hiris.app.schedulatore.turno import _system_prompt
+    testo = _system_prompt()
     assert "(id: X)" in testo, "il prompt non spiega piu' gli id fra parentesi dell'albero"
     assert "IN PARALLELO" in testo, "il prompt non insegna piu' il parallelismo"
     assert "il ciclo conta un giro per risposta, non per chiamata" in testo, (
@@ -76,9 +76,9 @@ def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
     «concludi» e la propria risposta. Il modello sceglieva la seconda, e il
     turno moriva senza conclusione. Il prompt PUNTA al meccanismo, non lo
     ricopia: la sua casa e' `CONCLUDI_TOOL_DEF` (fondamenta n.2)."""
-    from hiris.app.schedulatore.turno import _prompt_di_system
+    from hiris.app.schedulatore.turno import _system_prompt
 
-    testo = _prompt_di_system()
+    testo = _system_prompt()
     assert "nel campo `testo` di «concludi»" in testo, (
         "«nel testo» da solo si legge come «nella tua risposta»")
     assert "leggi cosa fa `avvisare`" in testo, (

@@ -105,7 +105,7 @@ def openai_runner(tmp_path):
     )
 
 
-async def _tools_di_chat_claude(runner, **kw) -> set:
+async def _claude_chat_tools(runner, **kw) -> set:
     catturati: dict = {}
 
     async def capture(**kwargs):
@@ -132,7 +132,7 @@ def _risposta_openai_senza_tool():
     return resp
 
 
-async def _tools_di_chat_openai(runner, **kw) -> set:
+async def _openai_chat_tools(runner, **kw) -> set:
     catturati: dict = {}
 
     async def capture(**kwargs):
@@ -156,13 +156,13 @@ async def _tools_di_chat_openai(runner, **kw) -> set:
 
 @pytest.mark.asyncio
 async def test_claude_senza_strumenti_non_offre_alcun_tool(claude_runner):
-    nomi = await _tools_di_chat_claude(claude_runner)
+    nomi = await _claude_chat_tools(claude_runner)
     assert nomi == set()
 
 
 @pytest.mark.asyncio
 async def test_openai_senza_strumenti_non_offre_alcun_tool(openai_runner):
-    nomi = await _tools_di_chat_openai(openai_runner)
+    nomi = await _openai_chat_tools(openai_runner)
     assert nomi == set()
 
 
@@ -181,13 +181,13 @@ _NOMI_DEL_CATALOGO = {d["name"] for d in KNOWLEDGE_TOOLS}
 
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_offre_esattamente_quelli(claude_runner):
-    nomi = await _tools_di_chat_claude(claude_runner, strumenti=KNOWLEDGE_TOOLS)
+    nomi = await _claude_chat_tools(claude_runner, strumenti=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
 @pytest.mark.asyncio
 async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
-    nomi = await _tools_di_chat_openai(openai_runner, strumenti=KNOWLEDGE_TOOLS)
+    nomi = await _openai_chat_tools(openai_runner, strumenti=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
@@ -206,7 +206,7 @@ async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
 
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
-    nomi = await _tools_di_chat_claude(
+    nomi = await _claude_chat_tools(
         claude_runner,
         strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
     )
@@ -215,7 +215,7 @@ async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
 
 @pytest.mark.asyncio
 async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
-    nomi = await _tools_di_chat_openai(
+    nomi = await _openai_chat_tools(
         openai_runner,
         strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
     )

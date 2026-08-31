@@ -9,7 +9,7 @@ from hiris.app.schedulatore.promise import (
     STATES_CONCLUSI,
     STATES_SOSPESO,
     TOLLERANZA_S,
-    reason_delay,
+    delay_reason,
     serializza,
     validate,
 )
@@ -116,7 +116,7 @@ def test_serializza_decodifica_il_json_e_non_lo_lascia_stringa():
 
 
 def test_il_motivo_del_ritardo_dice_i_minuti_misurati():
-    phrase = reason_delay(41 * 60)
+    phrase = delay_reason(41 * 60)
     assert "41" in phrase
     assert "non eseguita" in phrase
 

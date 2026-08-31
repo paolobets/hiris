@@ -11,9 +11,9 @@ import pytest
 
 from hiris.app.consumi.vocabulary import (
     STATES,
+    cost_state_and_value,
     local_day,
     piu_debole,
-    state_e_cost,
 )
 
 
@@ -33,7 +33,7 @@ def test_una_riga_non_puo_affermare_piu_della_chiamata_peggiore(a, b, atteso):
 
 
 def test_openrouter_col_costo_dichiarato_e_reale():
-    stato, costo = state_e_cost("openrouter", "anthropic/claude-sonnet-4-6",
+    stato, costo = cost_state_and_value("openrouter", "anthropic/claude-sonnet-4-6",
                                  cost_dichiarato=0.0031, cost_da_listino=0.0)
     assert stato == "reale"
     assert costo == 0.0031
@@ -42,14 +42,14 @@ def test_openrouter_col_costo_dichiarato_e_reale():
 def test_openrouter_senza_costo_dichiarato_e_non_noto_e_il_costo_e_None():
     """Il difetto da cui nasce l'intera fetta. Se questa finta smettesse di
     produrre `None` il test non varrebbe niente."""
-    stato, costo = state_e_cost("openrouter", "un/modello-mai-visto",
+    stato, costo = cost_state_and_value("openrouter", "un/modello-mai-visto",
                                  cost_dichiarato=None, cost_da_listino=0.0)
     assert stato == "non_noto"
     assert costo is None, "0.0 direbbe «misurato, e non e' costato niente»"
 
 
 def test_un_modello_a_listino_e_misurato():
-    stato, costo = state_e_cost("claude", "claude-sonnet-4-6",
+    stato, costo = cost_state_and_value("claude", "claude-sonnet-4-6",
                                  cost_dichiarato=None, cost_da_listino=1.25)
     assert stato == "misurato"
     assert costo == 1.25
@@ -60,7 +60,7 @@ def test_un_modello_claude_fuori_listino_e_non_noto():
     proprietario era `claude-opus-4-8`, che in `pricing.py` non c'e'. Anche la
     sezione Anthropic puo' avere righe senza prezzo -- non e' un caso
     esotico di OpenRouter."""
-    stato, costo = state_e_cost("claude", "claude-opus-4-8",
+    stato, costo = cost_state_and_value("claude", "claude-opus-4-8",
                                  cost_dichiarato=None, cost_da_listino=0.0)
     assert stato == "non_noto"
     assert costo is None
@@ -71,14 +71,14 @@ def test_un_modello_claude_fuori_listino_e_non_noto():
     ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
 ])
 def test_i_gratuiti_hanno_uno_zero_DICHIARATO(provider, model):
-    stato, costo = state_e_cost(provider, model,
+    stato, costo = cost_state_and_value(provider, model,
                                  cost_dichiarato=None, cost_da_listino=0.0)
     assert stato == "gratuito"
     assert costo == 0.0, "qui lo zero e' vero, e va detto come numero"
 
 
 def test_il_ponte_e_compreso_e_non_ha_un_costo():
-    stato, costo = state_e_cost("ponte", "sonnet",
+    stato, costo = cost_state_and_value("ponte", "sonnet",
                                  cost_dichiarato=None, cost_da_listino=0.0)
     assert stato == "compreso"
     assert costo is None, (

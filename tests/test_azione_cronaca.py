@@ -108,7 +108,7 @@ def test_elenca_restituisce_solo_la_finestra_chiesta(cronaca):
                      entity=["light.cucina"], executed=True, now=1000.0)
     cronaca.log(actor="chat", service="light.turn_off",
                      entity=["light.cucina"], executed=True, now=5000.0)
-    righe = cronaca.list(da_ts=4000.0, a_ts=6000.0)
+    righe = cronaca.list(from_ts=4000.0, to_ts=6000.0)
     assert [r["servizio"] for r in righe] == ["light.turn_off"]
 
 
@@ -116,7 +116,7 @@ def test_elenca_torna_dalla_piu_recente(cronaca):
     for ts in (1000.0, 2000.0, 3000.0):
         cronaca.log(actor="chat", service=f"light.s{int(ts)}",
                          entity=["light.cucina"], executed=True, now=ts)
-    righe = cronaca.list(da_ts=0.0, a_ts=9999.0)
+    righe = cronaca.list(from_ts=0.0, to_ts=9999.0)
     assert [r["quando_ts"] for r in righe] == [3000.0, 2000.0, 1000.0]
 
 
@@ -128,7 +128,7 @@ def test_elenca_filtra_per_entita_senza_confondere_i_prefissi(cronaca):
                      entity=["light.cucina"], executed=True, now=1000.0)
     cronaca.log(actor="chat", service="light.turn_on",
                      entity=["light.cucina_2"], executed=True, now=2000.0)
-    righe = cronaca.list(da_ts=0.0, a_ts=9999.0, entity="light.cucina")
+    righe = cronaca.list(from_ts=0.0, to_ts=9999.0, entity="light.cucina")
     assert len(righe) == 1
     assert righe[0]["entita"] == ["light.cucina"]
 
@@ -140,7 +140,7 @@ def test_elenca_vede_anche_le_costruzioni(cronaca):
     cronaca.log_construction(actor="chat", operation="crea", domain="automation",
                                  key="abc", entity=["automation.sveglia"],
                                  executed=True, now=1000.0)
-    righe = cronaca.list(da_ts=0.0, a_ts=9999.0)
+    righe = cronaca.list(from_ts=0.0, to_ts=9999.0)
     assert righe[0]["genere"] == "costruzione"
     assert righe[0]["oggetto"] == "automation.abc"
 
@@ -149,8 +149,8 @@ def test_elenca_ha_un_tetto(cronaca):
     for i in range(300):
         cronaca.log(actor="chat", service="light.turn_on",
                          entity=["light.cucina"], executed=True, now=float(i))
-    assert len(cronaca.list(da_ts=0.0, a_ts=9999.0)) == 200
-    assert len(cronaca.list(da_ts=0.0, a_ts=9999.0, limit=10)) == 10
+    assert len(cronaca.list(from_ts=0.0, to_ts=9999.0)) == 200
+    assert len(cronaca.list(from_ts=0.0, to_ts=9999.0, limit=10)) == 10
 
 
 def test_elenca_moltiplica_il_limite_per_10_con_filtro_entita(cronaca):
@@ -170,7 +170,7 @@ def test_elenca_moltiplica_il_limite_per_10_con_filtro_entita(cronaca):
     # Con limit=10 e moltiplicazione per 10, leggiamo 100 righe e troviamo
     # la riga di light.cucina. Senza il moltiplicatore (solo 10 righe),
     # vedremmo solo le ultime 10 di light.cucina_2.
-    righe = cronaca.list(da_ts=0.0, a_ts=9999.0, entity="light.cucina", limit=10)
+    righe = cronaca.list(from_ts=0.0, to_ts=9999.0, entity="light.cucina", limit=10)
     assert len(righe) == 1
     assert righe[0]["quando_ts"] == 999.0
 
@@ -190,5 +190,5 @@ def test_elenca_il_moltiplicatore_ha_un_confine(cronaca):
                      entity=["light.cucina"], executed=True, now=50.0)
     # Con limit=10 e moltiplicazione per 10, leggiamo 100 righe, tutte di
     # light.cucina_2. La riga di light.cucina non entra nel risultato.
-    righe = cronaca.list(da_ts=0.0, a_ts=9999.0, entity="light.cucina", limit=10)
+    righe = cronaca.list(from_ts=0.0, to_ts=9999.0, entity="light.cucina", limit=10)
     assert len(righe) == 0  # La riga e' fuori dal tetto di lettura

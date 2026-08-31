@@ -334,7 +334,7 @@ def verification(call: dict, registry, states: dict[str, dict],
         return _no(f"«{reading}» non esiste. I servizi di «{domain}» sono: "
                    f"{_list(registry.services_for(domain))}.")
 
-    target_ha, illeggibili = translate_target(call.get("bersaglio"))
+    ha_target, illeggibili = translate_target(call.get("bersaglio"))
     if illeggibili:
         # Prima di dire «non c'e' niente»: un bersaglio scritto meta' bene si
         # rifiuta INTERO. Tradurne la meta' buona e tacere l'altra vorrebbe
@@ -342,12 +342,12 @@ def verification(call: dict, registry, states: dict[str, dict],
         return _no(f"questo bersaglio non si legge: {'; '.join(illeggibili)}. "
                    f"Ogni voce dev'essere un identificatore, o un elenco di "
                    f"identificatori.")
-    if not target_ha and not _allows_empty_target(domain, definition):
+    if not ha_target and not _allows_empty_target(domain, definition):
         return _no("serve un bersaglio: «entita» con gli id esatti, oppure "
                    "«aree», «piani», «etichette» o «dispositivi» -- Home "
                    "Assistant risolve da se' cosa contengono, e non serve "
                    "elencare le entita' a mano.")
-    # Se `target_ha` e' vuoto ED e' arrivato fin qui, il servizio non
+    # Se `ha_target` e' vuoto ED e' arrivato fin qui, il servizio non
     # dichiara un target ED e' un recapito (review indipendente, punto ①):
     # non si rifiuta subito, si scende fino in fondo alla funzione -- che
     # riconosce questo caso all'UNICO altro punto in cui puo' arrivarci
@@ -359,7 +359,7 @@ def verification(call: dict, registry, states: dict[str, dict],
     # sua affermazione sbagliata, e il rifiuto che dice quale glielo fa
     # correggere. Le entita' che escono da un'area sono un'altra cosa -- le
     # dice Home Assistant, non lui -- e si filtrano piu' sotto.
-    nominate = target_ha.get("entity_id") or []
+    nominate = ha_target.get("entity_id") or []
     for eid in nominate:
         if eid not in states:
             return _no(f"l'entita' «{eid}» non esiste in questa casa.")
@@ -396,7 +396,7 @@ def verification(call: dict, registry, states: dict[str, dict],
     # da cui si corregge: e' la stessa regola gia' dichiarata qui sopra per i
     # valori dei parametri.
 
-    if not target_ha:
+    if not ha_target:
         # Ci si arriva SOLO se il controllo sopra ha gia' lasciato passare
         # perche' il servizio non dichiara un target ED e' un recapito: un
         # bersaglio vuoto e' la forma giusta per chiamarlo, non un errore
@@ -404,18 +404,18 @@ def verification(call: dict, registry, states: dict[str, dict],
         return Verdict(ok=True, domain=domain, service=name,
                         entity=(), target={}, no_target=True)
 
-    if set(target_ha) == {"entity_id"}:
+    if set(ha_target) == {"entity_id"}:
         # Il caso di sempre: il modello ha detto esattamente cosa toccare, e
         # non c'e' niente da risolvere.
         return Verdict(ok=True, domain=domain, service=name,
-                        entity=tuple(nominate), target=target_ha)
+                        entity=tuple(nominate), target=ha_target)
 
     if resolved is None:
         # Negativo, non «in attesa»: chi non sa risolvere non esegue. Il
         # motivo non e' scritto per il modello -- non gli arriva mai, la porta
         # risolve e richiama -- ma per chi cablasse questa funzione altrove.
         return Verdict(ok=False, domain=domain, service=name,
-                        target=target_ha, da_risolvere=True,
+                        target=ha_target, da_risolvere=True,
                         reason="questo bersaglio nomina aree, piani, etichette o "
                                "dispositivi: va risolto da Home Assistant prima "
                                "di poter essere eseguito.")
@@ -460,5 +460,5 @@ def verification(call: dict, registry, states: dict[str, dict],
                    f"toccare e poi rileggere.")
 
     return Verdict(ok=True, domain=domain, service=name, entity=tuple(tenute),
-                    target=target_ha, scartate=tuple(scartate),
+                    target=ha_target, scartate=tuple(scartate),
                     sconosciute=tuple(sconosciute))

@@ -127,7 +127,7 @@ from ..chat_store import (
     SENTINELLA_VUOTO,
 )
 from ..decisione_modelli import ALIAS_DEL_PIANO
-from ..schedulatore.turno import tools_promise
+from ..schedulatore.turno import promise_tools
 from . import prompts
 
 log = logging.getLogger("hiris.agent")
@@ -214,7 +214,7 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `concludi`, cioe' senza nessun modo di finire.
-    definizioni = tools_promise() if per_promessa else KNOWLEDGE_TOOLS
+    definizioni = promise_tools() if per_promessa else KNOWLEDGE_TOOLS
     return tuple(f"{prefisso}{d['name']}" for d in definizioni)
 
 
@@ -291,7 +291,7 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `tools_promise()` (i sei lettori piu' `concludi`) e dispaccia
+    # `promise_tools()` (i sei lettori piu' `concludi`) e dispaccia
     # con `PromiseDispatcher`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.
@@ -513,7 +513,7 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     # stessa cosa che il turno usera': con l'intestazione della promessa la
     # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
-    definizioni = tools_promise() if id_promessa else KNOWLEDGE_TOOLS
+    definizioni = promise_tools() if id_promessa else KNOWLEDGE_TOOLS
     attesi = {d["name"] for d in definizioni}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 

@@ -44,7 +44,7 @@ from ..storage import connect, init_schema
 # conserva un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
 # Si possono cambiare separatamente, in futuro, senza che l'altro se ne
 # accorga.
-RETENTION_EXECUTIONS_S = 90 * 86400
+EXECUTIONS_RETENTION_S = 90 * 86400
 
 # Quante righe torna UNA interrogazione. La cronaca conserva 90 giorni: senza
 # tetto, «cosa hai fatto» su una casa attiva restituirebbe l'intero trimestre
@@ -118,7 +118,7 @@ class Journal:
         with self._lock:
             self._conn.execute(
                 "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (now - RETENTION_EXECUTIONS_S,))
+                (now - EXECUTIONS_RETENTION_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
@@ -151,7 +151,7 @@ class Journal:
         with self._lock:
             self._conn.execute(
                 "DELETE FROM esecuzioni WHERE quando_ts < ?",
-                (now - RETENTION_EXECUTIONS_S,))
+                (now - EXECUTIONS_RETENTION_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
                 "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
@@ -172,7 +172,7 @@ class Journal:
                 "SELECT * FROM esecuzioni WHERE id=?", (execution_id,)).fetchone()
         return None if r is None else _row(r)
 
-    def list(self, *, da_ts: float, a_ts: float, entity: str | None = None,
+    def list(self, *, from_ts: float, to_ts: float, entity: str | None = None,
                limit: int = MAX_LIST_ROWS) -> list[dict]:
         """Gli atti di HIRIS in una finestra, dal piu' recente.
 
@@ -207,7 +207,7 @@ class Journal:
             rows = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE quando_ts >= ? AND quando_ts <= ? "
                 "ORDER BY quando_ts DESC LIMIT ?",
-                (da_ts, a_ts, int(max(1, limit)) if entity is None
+                (from_ts, to_ts, int(max(1, limit)) if entity is None
                  else int(max(1, limit)) * 10)).fetchall()
         occurrences = [_row(r) for r in rows]
         if entity is not None:

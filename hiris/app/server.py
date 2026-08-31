@@ -1260,7 +1260,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     for giorno in giorni:
         da_ts, a_ts = day_boundaries(giorno, fuso)
         soggetti.update(r["soggetto"] for r
-                        in app["osservazioni"].readings(da_ts=da_ts, a_ts=a_ts))
+                        in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts))
     try:
         mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
         # Le direzioni dell'energia si leggono UNA volta per i due giorni
@@ -2667,7 +2667,7 @@ async def _on_startup(app: web.Application) -> None:
             # migliaia di richieste (Task 6, `costruisci_comprimari`).
             da_ts, a_ts = day_boundaries(ieri, fuso)
             soggetti = sorted({r["soggetto"] for r
-                               in app["osservazioni"].readings(da_ts=da_ts, a_ts=a_ts)})
+                               in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts)})
             # Il conteggio dei falliti si ignora apposta (`_`): questo giro
             # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
             # il parziale, come dice il docstring di `costruisci_comprimari`.

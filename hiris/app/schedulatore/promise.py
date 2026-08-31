@@ -137,7 +137,7 @@ def serializza(row) -> dict:
     return fuori
 
 
-def reason_delay(delay_s: float) -> str:
+def delay_reason(delay_s: float) -> str:
     """Cio' che si e' MISURATO, non una causa inventata (spec §7).
 
     HIRIS non sa perche' era ferma. Sa di quanto e' in ritardo, e dice solo

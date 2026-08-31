@@ -220,12 +220,12 @@ class Watcher:
             # estremo destro", invece di un `adesso + margine` arbitrario che
             # lascerebbe fuori in silenzio una riga con un istante piu' avanti
             # dell'orologio di questo processo. `readings()` lo accetta
-            # (converte con `float(a_ts)`, e SQLite confronta `+Inf`
+            # (converte con `float(to_ts)`, e SQLite confronta `+Inf`
             # correttamente). Il `limit` e' esplicito e largo apposta: dice
             # al lettore che il tetto e' stato pensato per il volume delle
             # righe di SISTEMA, non ereditato dal default pensato per quello
             # delle entita'.
-            rows = self._store.readings(da_ts=0.0, a_ts=float("inf"),
+            rows = self._store.readings(from_ts=0.0, to_ts=float("inf"),
                                          source="sistema", limit=20_000)
         except Exception as error:
             logger.warning(

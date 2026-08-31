@@ -39,8 +39,8 @@ async def rebuild(client, store) -> dict:
     # "categorie:script" fallisce per un solo ambito, non per l'intero
     # registro "categorie": si confronta il nome del registro (prima dei
     # due punti), non la stringa intera.
-    registries_failed = {name.split(":", 1)[0] for name in unavailable}
-    if unavailable and registries_failed >= set(registries):
+    failed_registries = {name.split(":", 1)[0] for name in unavailable}
+    if unavailable and failed_registries >= set(registries):
         logger.warning(
             "lettura dei registri fallita per intero (%s): la casa precedente resta "
             "quella di prima, non sostituita da un vuoto", unavailable)
@@ -487,7 +487,7 @@ _CLASS_MEANING: dict[str, tuple[str, str]] = {
 # (`components/climate/const.py`), verificati: il dominio non ha una
 # `device_class` propria (a differenza di sensori e binary_sensor), quindi
 # questa tabella si applica per DOMINIO, non per classe.
-_HVAC_MODE_READABLE = {
+_READABLE_HVAC_MODE = {
     "off": "spento", "heat": "riscaldamento", "cool": "raffrescamento",
     "heat_cool": "riscaldamento/raffrescamento", "auto": "automatica",
     "dry": "deumidificazione", "fan_only": "sola ventilazione",
@@ -497,7 +497,7 @@ _HVAC_MODE_READABLE = {
 # termostato senza questo attributo (integrazioni che non lo mandano) resta
 # onesto per omissione -- vedi `_stato_leggibile_climate` sotto, che senza
 # azione nota dice solo l'impostazione e non inventa un funzionamento.
-_HVAC_ACTION_READABLE = {
+_READABLE_HVAC_ACTION = {
     "heating": "sta scaldando", "cooling": "sta raffrescando",
     "drying": "sta deumidificando", "fan": "sta ventilando",
     "preheating": "sta preriscaldando", "idle": "fermo", "off": "spento",
@@ -515,12 +515,12 @@ def _readable_climate_state(value, hvac_action: str | None) -> str:
     suggerisce un funzionamento che nessuno ha confermato.
     """
     v = str(value).lower()
-    mode = _HVAC_MODE_READABLE.get(v)
+    mode = _READABLE_HVAC_MODE.get(v)
     if mode is None:
         return str(value)
     if v == "off":
         return mode
-    action = _HVAC_ACTION_READABLE.get(str(hvac_action).lower()) if hvac_action else None
+    action = _READABLE_HVAC_ACTION.get(str(hvac_action).lower()) if hvac_action else None
     if action:
         return f"impostato su {mode}, {action}"
     return f"impostato su {mode}"

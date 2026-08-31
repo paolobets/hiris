@@ -1569,14 +1569,14 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     truncated = False
     excluded_per_pool: dict[str, int] = {}
 
-    def _pop(pool_name: str, lines_pool: list[str], pool_weights: list[int], reserve: int) -> None:
+    def _pop(pool_name: str, pool_lines: list[str], pool_weights: list[int], reserve: int) -> None:
         # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
         # rappresenta davvero -- per "notevole" raggruppato puo' essere
         # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
         # volte sulla lacuna piu' calda della casa e' peggio di non
         # dichiararlo affatto: sembra onesto e non lo e'.
         nonlocal truncated
-        lines_pool.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
+        pool_lines.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
         weight = pool_weights.pop()
         truncated = True
         excluded_per_pool[pool_name] = excluded_per_pool.get(pool_name, 0) + weight
@@ -1588,9 +1588,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             # toglie a sua volta. Non conta come elemento escluso: le aree
             # che c'erano sotto sono gia' state contate ai loro rispettivi
             # pop, questo e' solo il titolo rimasto orfano.
-            while (len(lines_pool) > reserve and lines_pool
-                   and lines_pool[-1].endswith(":") and not lines_pool[-1].startswith("  ")):
-                lines_pool.pop()
+            while (len(pool_lines) > reserve and pool_lines
+                   and pool_lines[-1].endswith(":") and not pool_lines[-1].startswith("  ")):
+                pool_lines.pop()
                 pool_weights.pop()
 
     # IMPORTANT ④: il budget per casa/notevole/comportamento/ricordi non e'
@@ -1612,9 +1612,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     gap_reserve = max(_GAP_SECTION_RESERVE, known_gaps_length + _GAP_SECTION_RESERVE)
     budget = max(0, ceiling - gap_reserve - faults_length)
 
-    for pool_name, lines_pool, pool_weights, reserve in cut_order:
-        while len(lines_pool) > reserve and len(_assemble(print_order)) > budget:
-            _pop(pool_name, lines_pool, pool_weights, reserve)
+    for pool_name, pool_lines, pool_weights, reserve in cut_order:
+        while len(pool_lines) > reserve and len(_assemble(print_order)) > budget:
+            _pop(pool_name, pool_lines, pool_weights, reserve)
         if len(_assemble(print_order)) <= budget:
             break
 
@@ -1663,9 +1663,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     while len(text) > int(ceiling * 1.1):
         cut = False
-        for pool_name, lines_pool, pool_weights, reserve in safety_pools:
-            if len(lines_pool) > reserve:
-                _pop(pool_name, lines_pool, pool_weights, reserve)
+        for pool_name, pool_lines, pool_weights, reserve in safety_pools:
+            if len(pool_lines) > reserve:
+                _pop(pool_name, pool_lines, pool_weights, reserve)
                 cut = True
                 break
         if not cut:
@@ -1679,12 +1679,12 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
         text = _assemble(_with_faults(print_order) + [gap_section])
 
-    memories_excluded = excluded_per_pool.get("ricordi", 0)
+    excluded_memories = excluded_per_pool.get("ricordi", 0)
 
     summary = {
         "caratteri": len(text),
         "troncato": truncated,
-        "ricordi_esclusi": memories_excluded,
+        "ricordi_esclusi": excluded_memories,
         # Due chiavi come le due sezioni, e per la stessa ragione: `guasti`
         # sono fatti sulla CASA, `avvisi` sono i limiti di cio' che HIRIS sa.
         # Tenerli in un elenco solo qui rimetterebbe in piedi la confusione che

@@ -146,7 +146,7 @@ def home_space_zone(timezone: str | None):
 
 
 def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, str]:
-    """`(da_iso, a_iso)` nel fuso della casa, con l'offset SEMPRE scritto.
+    """`(from_iso, to_iso)` nel fuso della casa, con l'offset SEMPRE scritto.
 
     Un istante senza fuso e' la stessa classe di difetto di un numero senza
     unita': «alle 17» di quale fuso? E' la stessa regola che `instant_epoch`,
@@ -188,7 +188,7 @@ _BAND_NOTE = (
 # F1 (onda finale): un `inizio` che non si legge come ISO-8601 col fuso NON e'
 # «nessuna registrazione» -- e' una forma che questo modulo non sa leggere.
 # Prima dell'onda finale l'`or 0.0` sulla riga qui sotto trasformava
-# `instant_epoch(None)` in zero, il confronto con `da_ts` (~1,7 miliardi)
+# `instant_epoch(None)` in zero, il confronto con `from_ts` (~1,7 miliardi)
 # scartava la fascia come "prima della finestra", e un'entita' con dati VERI
 # finiva su «Home Assistant non ha registrazioni». Non e' un'ipotesi di
 # scuola: alcune versioni del recorder rendono `start` come epoch in
@@ -227,7 +227,7 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
     `_NO_RECORDING_NOTE` su un'entita' che invece ha dati veri.
     """
     hours = normalize_hours(hours)
-    da_iso, a_iso = window(hours=hours, now_ts=now_ts, timezone=timezone)
+    from_iso, to_iso = window(hours=hours, now_ts=now_ts, timezone=timezone)
     surface = choose_surface(hours=hours, has_statistics=has_statistics)
     base = {"entita": entity, "unita": unit, "finestra_chiesta_ore": hours}
 
@@ -240,16 +240,16 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
         # (`+02:00` d'estate a Roma). Due ISO-8601 con offset diversi non sono
         # ordinabili come testo -- «2026-08-23T13:00:00+00:00» sembra maggiore
         # di «2026-08-23T14:00:00+02:00» e sono lo stesso istante.
-        da_ts = instant_epoch(da_iso) or 0.0
-        bands_all = occurrence["serie"].get(entity, [])
+        from_ts = instant_epoch(from_iso) or 0.0
+        all_bands = occurrence["serie"].get(entity, [])
         # Si separa PRIMA «non si legge» da «e' prima della finestra»: un
         # `or 0.0` unico per i due casi (come c'era) confonde un istante
         # illeggibile con un istante fuori finestra, e il secondo scarta la
         # fascia in silenzio mentre il primo deve fermare la risposta.
-        unreadable = [f for f in bands_all if instant_epoch(f.get("inizio")) is None]
+        unreadable = [f for f in all_bands if instant_epoch(f.get("inizio")) is None]
         if unreadable:
             return {**base, "errore": _UNREADABLE_BAND_ERROR}
-        bands = [f for f in bands_all if instant_epoch(f.get("inizio")) >= da_ts]
+        bands = [f for f in all_bands if instant_epoch(f.get("inizio")) >= from_ts]
         if not bands:
             return {**base, "grana": "oraria", "finestra_coperta": None,
                     "punti": [], "nota": _NO_RECORDING_NOTE}
@@ -269,13 +269,13 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
             notes = (f"{_BAND_NOTE} {len(bands)} fasce nella finestra, ridotte "
                     f"a {len(sampled)} distribuite nel tempo.")
         return {**base, "grana": "oraria",
-                "finestra_coperta": _covered(bands, "inizio", a_iso),
+                "finestra_coperta": _covered(bands, "inizio", to_iso),
                 # Stesso motivo del ramo dettaglio: le statistiche tornano in
                 # UTC e la finestra nasce nel fuso della casa. Due offset nella
                 # stessa risposta sono la fondamenta 3 rotta in un dizionario.
-                "punti": _in_timezone(sampled, ("inizio", "fine"), a_iso), "nota": notes}
+                "punti": _in_timezone(sampled, ("inizio", "fine"), to_iso), "nota": notes}
 
-    occurrence = await ha.storico([entity], da_iso, a_iso)
+    occurrence = await ha.storico([entity], from_iso, to_iso)
     if "serie" not in occurrence:
         return {**base, "errore": occurrence.get("errore", "storico non disponibile")}
     points = occurrence["serie"].get(entity, [])
@@ -309,7 +309,7 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
             "puo' portare: sono stati tenuti i piu' recenti, e la finestra "
             "davvero coperta e' percio' piu' corta di quella chiesta.")
     return {**base, "grana": "dettaglio",
-            "finestra_coperta": _covered(points, "quando", a_iso),
+            "finestra_coperta": _covered(points, "quando", to_iso),
             # Gli istanti dei punti si riscrivono nel fuso della casa, come
             # gia' fa `_covered` per gli estremi della finestra. Visto dal
             # vivo il 24/08/2026: `finestra_coperta` diceva `14:18+02:00` e
@@ -318,7 +318,7 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
             # persona) puo' concluderne che i dati cominciano due ore dopo
             # l'apertura della finestra. E' la fondamenta 3 dentro una sola
             # risposta, e costa una riscrittura.
-            "punti": _in_timezone(sampled, ("quando",), a_iso), "nota": notes}
+            "punti": _in_timezone(sampled, ("quando",), to_iso), "nota": notes}
 
 
 def instant_epoch(raw) -> float | None:
@@ -342,8 +342,8 @@ def instant_epoch(raw) -> float | None:
     return None if moment.tzinfo is None else moment.timestamp()
 
 
-def _in_timezone(points: list[dict], keys: tuple[str, ...], a_iso: str) -> list[dict]:
-    """Le chiavi temporali di `punti` (`chiavi`) riscritte nel fuso di `a_iso`.
+def _in_timezone(points: list[dict], keys: tuple[str, ...], to_iso: str) -> list[dict]:
+    """Le chiavi temporali di `punti` (`chiavi`) riscritte nel fuso di `to_iso`.
 
     Lo storico di Home Assistant torna in UTC, la finestra nasce nel fuso
     della casa: senza questa riscrittura la stessa risposta porta due offset
@@ -367,7 +367,7 @@ def _in_timezone(points: list[dict], keys: tuple[str, ...], a_iso: str) -> list[
     """
     zone = None
     try:
-        zone = datetime.fromisoformat(a_iso).tzinfo
+        zone = datetime.fromisoformat(to_iso).tzinfo
     except ValueError:
         return list(points)
     rewritten = []
@@ -381,7 +381,7 @@ def _in_timezone(points: list[dict], keys: tuple[str, ...], a_iso: str) -> list[
     return rewritten
 
 
-def _covered(points: list[dict], key: str, a_iso: str) -> dict | None:
+def _covered(points: list[dict], key: str, to_iso: str) -> dict | None:
     """La finestra che i dati coprono DAVVERO -- dal primo istante tornato.
 
     `da` si riscrive nel fuso di `a`: le statistiche tornano in UTC e la
@@ -398,13 +398,13 @@ def _covered(points: list[dict], key: str, a_iso: str) -> dict | None:
     raw = points[0].get(key)
     when = instant_epoch(raw)
     if when is None:
-        return {"da": raw if raw is None else str(raw), "a": a_iso}
+        return {"da": raw if raw is None else str(raw), "a": to_iso}
     try:
-        zone = datetime.fromisoformat(a_iso).tzinfo
+        zone = datetime.fromisoformat(to_iso).tzinfo
         start = datetime.fromtimestamp(when, tz=zone).isoformat()
     except ValueError:
         start = raw
-    return {"da": start, "a": a_iso}
+    return {"da": start, "a": to_iso}
 
 
 def _sample(points: list[dict], count: int) -> list[dict]:
@@ -481,8 +481,8 @@ async def logbook(*, ha, journal, entity: str | None, hours,
         logger.debug("accaduto: nessuna cronaca disponibile, attribuzione persa")
     else:
         try:
-            acts = journal.list(da_ts=now_ts - real_hours * 3600,
-                                  a_ts=now_ts, entity=entity)
+            acts = journal.list(from_ts=now_ts - real_hours * 3600,
+                                  to_ts=now_ts, entity=entity)
             journal_loaded = True
         except Exception as error:
             # L'attribuzione e' un di piu': un archivio che non risponde non

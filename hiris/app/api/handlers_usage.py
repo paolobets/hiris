@@ -116,9 +116,9 @@ async def handle_usage(request: web.Request) -> web.Response:
     # dall'ancora, che e' cio' che la pagina mostra per primo. Il parametro
     # esiste perche' l'interruttore «da ultimo azzeramento / da sempre» possa
     # davvero cambiare qualcosa: senza, sarebbe un pulsante che non fa niente.
-    da_anchor = request.query.get("da") != "sempre"
-    sections = store.sezioni(da_anchor=da_anchor)
-    totals = store.totali(da_anchor=da_anchor)
+    from_anchor = request.query.get("da") != "sempre"
+    sections = store.sezioni(from_anchor=from_anchor)
+    totals = store.totali(from_anchor=from_anchor)
 
     # `input_tokens` in cima e' INCLUSIVO della cache: e' la stessa quantita'
     # che la pagina e il riquadro della chat mostravano prima di questa fetta.

@@ -71,7 +71,7 @@ CONCLUDI_TOOL_DEF = {
 }
 
 
-def tools_promise() -> list[dict]:
+def promise_tools() -> list[dict]:
     """Il catalogo di questo turno, DERIVATO da quello della chat.
 
     Le definizioni sono gli STESSI dizionari di `STRUMENTI_CONOSCENZA`, non
@@ -136,7 +136,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # casa che gira interamente sul Piano Claude Max le promesse morivano su
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
-    route, reason_downgrade = chi_risponde(app)
+    route, downgrade_reason = chi_risponde(app)
     if route == "ponte":
         return _accoda_al_bridge(app, promise)
 
@@ -158,14 +158,14 @@ async def interpreta_promise(app, promise: dict) -> dict:
     try:
         answer = await runner.chat(
             user_message=_domanda(promise),
-            system_prompt=_prompt_di_system(),
+            system_prompt=_system_prompt(),
             context_str=briefing,
             conversation_history=[],
             model="auto",
             max_tokens=2000,
             agent_type="promessa",
             thinking_budget=0,
-            strumenti=tools_promise(),
+            strumenti=promise_tools(),
             dispatcher=dispatcher,
         )
     except Exception as error:
@@ -179,7 +179,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
                        promise["id"], len(answer or ""))
         return {"errore": _senza_conclusione(answer)}
     conclusione = dict(dispatcher.conclusione)
-    note = _note_del_downgrade(reason_downgrade)
+    note = _downgrade_note(downgrade_reason)
     if note:
         conclusione["nota"] = note
     return conclusione
@@ -215,7 +215,7 @@ def _senza_conclusione(answer) -> str:
     return f"il turno non ha concluso. Aveva risposto a parole: «{detto}»"
 
 
-def _note_del_downgrade(reason: str) -> str:
+def _downgrade_note(reason: str) -> str:
     """La riga che dichiara un ripiego dal piano alla catena, o "" se non ce n'e'.
 
     Il ripiego si annuncia OGNI VOLTA (decisione del proprietario, 13 agosto):
@@ -283,7 +283,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
             # entra come l'unico messaggio dell'utente -- che e' esattamente
             # cio' che e': qualcuno, tempo fa, ha chiesto questo.
             "history": [{"role": "user", "content": _domanda(promise)}],
-            "system_prompt": _prompt_di_system(),
+            "system_prompt": _system_prompt(),
             "contesto": briefing,
         },
         now + deadline_min * 60,
@@ -294,7 +294,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     return {"accodata": True}
 
 
-def _prompt_di_system() -> str:
+def _system_prompt() -> str:
     # Fix finale ④ (review 2026-08-20): questo turno riceve lo STESSO nucleo
     # della chat (`compose_briefing`, vedi `interpreta_promise` sopra), coi
     # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza

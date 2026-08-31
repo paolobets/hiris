@@ -28,7 +28,7 @@ def archivio(tmp_path):
 def test_un_cambio_si_rilegge_intero(archivio):
     archivio.record(quando_ts=ADESSO, source="entita",
                     subject="climate.camera_t", da="off", a="heat")
-    righe = archivio.readings(da_ts=0.0, a_ts=ADESSO + 1)
+    righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
                       "device_class": None, "state_class": None, "source_type": None}]
@@ -41,7 +41,7 @@ def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
     archivio.record(quando_ts=ADESSO, source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
                     device_class="smoke", state_class=None, source_type=None)
-    riga = archivio.readings(da_ts=0.0, a_ts=ADESSO + 1)[0]
+    riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] == "smoke"
     assert riga["state_class"] is None
     assert riga["source_type"] is None
@@ -53,7 +53,7 @@ def test_annota_senza_classi_scrive_none(archivio):
     far sollevare `annota`."""
     archivio.record(quando_ts=ADESSO, source="sistema",
                     subject="problema:sonos.x", da=None, a="aperto")
-    riga = archivio.readings(da_ts=0.0, a_ts=ADESSO + 1)[0]
+    riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
     assert riga["device_class"] is None
     assert riga["state_class"] is None
     assert riga["source_type"] is None
@@ -64,24 +64,24 @@ def test_i_cambi_tornano_dal_PIU_VECCHIO(archivio):
     in ordine di accadimento, non a rovescio come la cronaca degli atti."""
     for ts in (ADESSO + 30, ADESSO, ADESSO + 10):
         archivio.record(quando_ts=ts, source="entita", subject="x", da=None, a="1")
-    assert [r["quando_ts"] for r in archivio.readings(da_ts=0.0, a_ts=ADESSO + 99)] == \
+    assert [r["quando_ts"] for r in archivio.readings(from_ts=0.0, to_ts=ADESSO + 99)] == \
         [ADESSO, ADESSO + 10, ADESSO + 30]
 
 
 def test_si_puo_chiedere_un_soggetto_solo(archivio):
     archivio.record(quando_ts=ADESSO, source="entita", subject="a", da=None, a="1")
     archivio.record(quando_ts=ADESSO, source="entita", subject="b", da=None, a="1")
-    righe = archivio.readings(da_ts=0.0, a_ts=ADESSO + 1, subject="a")
+    righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1, subject="a")
     assert [r["soggetto"] for r in righe] == ["a"]
 
 
 def test_cambi_finestra_semiaperta_da_incluso_a_escluso(archivio):
-    """La finestra e' [da_ts, a_ts): da_ts dentro, a_ts fuori. E' la
+    """La finestra e' [from_ts, to_ts): from_ts dentro, to_ts fuori. E' la
     convenzione che fa combaciare i giorni adiacenti senza sovrapporli --
     altrimenti il cambio esattamente a mezzanotte finirebbe in entrambi."""
     archivio.record(quando_ts=ADESSO, source="entita", subject="x", da=None, a="sul-da_ts")
     archivio.record(quando_ts=ADESSO + 100, source="entita", subject="x", da=None, a="sul-a_ts")
-    righe = archivio.readings(da_ts=ADESSO, a_ts=ADESSO + 100)
+    righe = archivio.readings(from_ts=ADESSO, to_ts=ADESSO + 100)
     assert [r["a"] for r in righe] == ["sul-da_ts"]
 
 
@@ -92,7 +92,7 @@ def test_la_potatura_tiene_ventidue_giorni(archivio):
     archivio.record(quando_ts=vecchio, source="entita", subject="x", da=None, a="1")
     archivio.record(quando_ts=dentro, source="entita", subject="x", da=None, a="1")
     assert archivio.prune(ADESSO) == 1
-    assert [r["quando_ts"] for r in archivio.readings(da_ts=0.0, a_ts=ADESSO)] == [dentro]
+    assert [r["quando_ts"] for r in archivio.readings(from_ts=0.0, to_ts=ADESSO)] == [dentro]
 
 
 def test_la_potatura_non_tocca_la_riga_esattamente_alla_soglia(archivio):
@@ -101,7 +101,7 @@ def test_la_potatura_non_tocca_la_riga_esattamente_alla_soglia(archivio):
     soglia = ADESSO - READING_RETENTION_S
     archivio.record(quando_ts=soglia, source="entita", subject="x", da=None, a="soglia")
     archivio.prune(ADESSO)
-    righe = archivio.readings(da_ts=0.0, a_ts=ADESSO + 1)
+    righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)
     assert [r["a"] for r in righe] == ["soglia"]
 
 
@@ -232,7 +232,7 @@ def test_ENTRAMBE_le_fonti_ammesse_entrano(archivio):
                     subject="climate.camera", da="off", a="heat")
     archivio.record(quando_ts=ADESSO + 1, source="sistema",
                     subject="problema:sonos.subscriptions_failed", da=None, a="aperto")
-    assert ([r["fonte"] for r in archivio.readings(da_ts=0.0, a_ts=ADESSO + 2)]
+    assert ([r["fonte"] for r in archivio.readings(from_ts=0.0, to_ts=ADESSO + 2)]
             == ["entita", "sistema"])
 
 
@@ -253,7 +253,7 @@ def test_cambi_filtro_per_fonte(archivio):
                     subject="problema:sonos.subscriptions_failed", da=None, a="aperto")
     archivio.record(quando_ts=ADESSO + 2, source="entita",
                     subject="light.salotto", da="off", a="on")
-    righe = archivio.readings(da_ts=0.0, a_ts=ADESSO + 3, source="sistema")
+    righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 3, source="sistema")
     assert [r["soggetto"] for r in righe] == ["problema:sonos.subscriptions_failed"]
 
 
@@ -276,14 +276,14 @@ def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
 
     a = ObservationsStore(percorso)
     try:
-        riga = a.readings(da_ts=0.0, a_ts=ADESSO + 1)[0]
+        riga = a.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]
         assert riga["soggetto"] == "climate.vecchio"
         assert riga["device_class"] is None
         # E la scrittura nuova, con le classi, deve funzionare sullo stesso db.
         a.record(quando_ts=ADESSO + 1, source="entita",
                 subject="binary_sensor.fumo", da="off", a="on",
                 device_class="smoke")
-        riga_nuova = a.readings(da_ts=0.0, a_ts=ADESSO + 2, subject="binary_sensor.fumo")[0]
+        riga_nuova = a.readings(from_ts=0.0, to_ts=ADESSO + 2, subject="binary_sensor.fumo")[0]
         assert riga_nuova["device_class"] == "smoke"
     finally:
         a.close()

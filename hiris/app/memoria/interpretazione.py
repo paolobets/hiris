@@ -268,12 +268,12 @@ def deduci_unit(ancore: list[dict], grandezza, lookup,
             # in `casa.anagrafe.area_effettiva`, la stessa che usa `gerarchia()`
             # per costruire l'albero: qui prima si confrontava il solo
             # `area_id` proprio, e su una casa vera non si trovava mai niente.
-            area_del_device = {d["id"]: d.get("area_id")
+            device_area = {d["id"]: d.get("area_id")
                                     for d in lookup.tutti("dispositivo") if d.get("id")}
             for entity in lookup.tutti("entita"):
                 if entity.get("classe") != grandezza:
                     continue
-                if actual_area(entity, area_del_device) != area_id:
+                if actual_area(entity, device_area) != area_id:
                     continue
                 unit = actual_unit(entity.get("unita"), reported.get(entity.get("id")))
                 if unit is not None:

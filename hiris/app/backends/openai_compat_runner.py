@@ -381,10 +381,10 @@ class OpenAICompatRunner:
         # il difetto da cui nasce l'intera fetta.
         if self._registra_consumo is None:
             return
-        from ..consumi.vocabulary import state_e_cost
+        from ..consumi.vocabulary import cost_state_and_value
 
         dichiarato = getattr(usage, "cost", None)
-        stato, costo = state_e_cost(self.provider_nome, model,
+        stato, costo = cost_state_and_value(self.provider_nome, model,
                                      cost_dichiarato=dichiarato,
                                      cost_da_listino=cost)
         self._registra_consumo(
