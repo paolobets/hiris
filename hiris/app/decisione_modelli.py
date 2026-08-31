@@ -533,7 +533,7 @@ def componi_topologia(
     esiti: dict[str, dict],
     adesso: float,
     scadenza_ponte_min: int = 5,
-    timeout_ollama_s: int = 120,
+    ollama_timeout_s: int = 120,
 ) -> tuple[list[dict], list[dict]]:
     """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.
 
@@ -690,7 +690,7 @@ def componi_topologia(
             # perso», e finché è stato vero è stato giusto dirlo.
             return f"se non risponde entro {int(scadenza_ponte_min)} min"
         if pid == "ollama":
-            return f"se non risponde entro {int(timeout_ollama_s)} s"
+            return f"se non risponde entro {int(ollama_timeout_s)} s"
         return "se rifiuta, subito"
 
     def connettore_nota(pid: str) -> str:

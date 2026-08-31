@@ -449,7 +449,7 @@ def test_il_connettore_mostra_un_numero_solo_quando_quel_numero_e_una_decisione(
     cred = dict(CRED, ollama=True)
     catena, _ = componi_topologia(chain_order=["claude", "ollama"],
                                   credenziali=cred, modelli=MOD,
-                                  ponte_attivo=False, timeout_ollama_s=300)
+                                  ponte_attivo=False, ollama_timeout_s=300)
     per_id = {r["id"]: r for r in catena}
     assert per_id["ollama"]["connettore"] == "se non risponde entro 300 s"
     assert per_id["claude"]["connettore"] == "se rifiuta, subito"

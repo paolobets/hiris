@@ -2204,6 +2204,20 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `richiesto`, gia' decisa: e' il provider chiesto esplicitamente nella query),
   `in_uso -> in_use`, `nascondi -> hide_free`, `ricalcola -> recompute`,
   `strategia -> strategy`, `scrivibili -> writable`.
+- **L'ordine delle parole, applicato a ogni nome di questo lotto dopo un rilievo della misura
+  dedicata.** L'inglese mette il modificatore PRIMA della testa; l'italiano dopo. E' il difetto n.1
+  del par. 2 della specifica -- previsto per iscritto il 29/08 e mai verificato da nessuno, perche'
+  **un nome fatto di parole inglesi in ordine italiano non stona mai abbastanza da fermare chi
+  legge**. Due casi trovati proprio qui, e corretti insieme perche' sono lo stesso concetto con e
+  senza suffisso di unita': `_timeout_ollama -> _ollama_timeout` (locale, `handlers_models.py:526`)
+  e `timeout_ollama_s -> ollama_timeout_s`, che e' un parametro di
+  `decisione_modelli.componi_topologia` -- quindi corretto su tutte e tre le sponde (la `def`, la
+  chiamata qui, e `tests/test_decisione_modelli.py:452`), col controllo di chiusura a confermare
+  zero chiamanti rimasti indietro. **Il secondo e' il caso istruttivo**: `ollama_timeout_s` e' fatto
+  di parole gia' inglesi, quindi nessun dry-run lo avrebbe mai segnalato -- solo una misura
+  sull'ORDINE poteva trovarlo. Nella stessa firma resta `scadenza_ponte_min`, che invece e' italiano
+  di parole E di ordine e uscira' quando si convertira' quel modulo di radice: due difetti diversi
+  nella stessa riga, e solo uno visibile allo strumento.
 - **Cio' che resta italiano, e non e' un residuo**: ogni parola chiave verso
   `decisione_modelli.componi_adesso`/`componi_topologia`/`componi_pannello` (`catena`,
   `credenziali`, `modelli`, `ponte_attivo`, `scadenza_ponte_min`, `esiti`, `adesso`, `valori`,

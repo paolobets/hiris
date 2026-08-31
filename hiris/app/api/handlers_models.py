@@ -561,7 +561,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # in cui «3 min fa» è una cosa che si possa provare.
         adesso=time.time(),
         scadenza_ponte_min=_bridge_deadline,
-        timeout_ollama_s=_ollama_timeout,
+        ollama_timeout_s=_ollama_timeout,
     )
     # Cosa c'è dopo l'ultimo anello: una frase sulla catena, non su una riga.
     # Quale riga sia l'ultima cambia con un gesto, e la pagina riordina da sé
