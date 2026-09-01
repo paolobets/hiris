@@ -95,6 +95,11 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--legami", required=True, help="il JSON di legami_js.mjs")
     p.add_argument("--percorso", default="", help="filtra: es. 'config' o 'chat'")
+    p.add_argument("--json", metavar="FILE",
+                   help="scrive le decisioni in JSON, con gli OFFSET esatti che "
+                        "`acorn` ha dato per ogni legame. Non applica niente: chi "
+                        "applica e' un altro passo, e la separazione e' il punto -- "
+                        "questo strumento propone, e un test lo pinna")
     p.add_argument("--ambito", default="static",
                    help="l'ambito con cui interrogare il glossario. Il valore giusto per "
                         "questo albero e' `static`, e non e' un dettaglio: otto parole sono "
@@ -139,10 +144,11 @@ def main(argv=None) -> int:
                 collisioni.append((rel, nome, nuovo,
                                    f"esiste in {len(altrove)} altri ambiti del file"))
                 continue
-            applicabili.append((rel, nome, nuovo, len(l["dich"]), len(l["rif"])))
+            applicabili.append((rel, nome, nuovo, len(l["dich"]), len(l["rif"]),
+                                sorted(l["dich"] + l["rif"])))
 
     print(f"== APPLICABILI: {len(applicabili)} legami")
-    for rel, vecchio, nuovo, nd, nr in applicabili[:200]:
+    for rel, vecchio, nuovo, nd, nr, _pos in applicabili[:200]:
         print(f"   {rel}: {vecchio} -> {nuovo}  ({nd} dich, {nr} rif)")
     print(f"\n== PROPOSTE (composti: lo strumento non indovina): {len(proposte)}")
     for rel, nome, ragione, nr in proposte[:60]:
@@ -157,6 +163,13 @@ def main(argv=None) -> int:
     for n in sorted(cieche):
         print(f"   {n}")
     print("\nnessuna riga e' stata scritta: questo strumento non applica.")
+    if a.json:
+        Path(a.json).write_text(json.dumps({
+            "applicabili": [{"file": r, "vecchio": v, "nuovo": n, "posizioni": pos}
+                            for r, v, n, _nd, _nr, pos in applicabili],
+            "cieche": sorted(cieche),
+        }), encoding="utf-8")
+        print(f"decisioni scritte in {a.json} -- ma NON nei sorgenti.")
     return 0
 
 
