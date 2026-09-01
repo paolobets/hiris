@@ -1,10 +1,71 @@
 # HIRIS — Changelog
 
-## [Non rilasciato]
+## [3.15.0] — Tutto il Python di HIRIS parla inglese (2026-09-01)
 
-**Un cambio di comportamento, dichiarato qui perche' e' nato dentro una rinomina e li' nessuno lo
-cercherebbe.** Una riga del registro dei dispositivi di Home Assistant **senza `id`** non fa piu'
-saltare l'albero della casa: viene omessa.
+**Non cambia niente che si possa vedere usando HIRIS**, e in un rilascio di 54 commit vale la pena
+dirlo per primo. Il prodotto parla ancora italiano: le frasi che HIRIS dice in chat, le parole della
+pagina Modelli, i nomi delle aree e dei dispositivi. Non cambia **nessuna rotta**, **nessun campo
+JSON**, **nessuno dei tredici nomi degli strumenti** che il modello legge, e **il database e'
+intatto** — stesse tabelle, stesse colonne, stesso file su disco. Chi aggiorna non deve fare niente
+e non si accorge di niente.
+
+**Cosa e' cambiato davvero.** Gli identificatori del codice — nomi di funzioni, di variabili, di
+costanti — sono passati all'inglese. Con questa versione **tutto il Python del progetto** ha finito:
+gli undici sottosistemi (`casa`, `cervello`, `memoria`, `consumi`, `azione`, `schedulatore`, gia'
+usciti con la 3.14.5, piu' `api`, `proxy`, `agent`, `backends`, `reasoning`) e i moduli di radice,
+`server.py` compreso. **2.096 righe** di `hiris/app/` portano un identificatore rinominato, per
+**567 parole distinte**. Commenti e docstring restano in italiano, byte per byte: e' il perimetro
+deciso, e lo strumento lo rende strutturale lavorando sui soli token di tipo nome.
+
+Restano **22 righe italiane in tutto il prodotto**, in tre file, ognuna dichiarata e sorvegliata da
+un test che si accorge se cresce: `casa/strumenti.py` (dove applicarla romperebbe un import),
+`memoria/resolver.py` e `azione/costruzione/composer.py`.
+
+**Il database e le rotte sono rimasti fuori per DECISIONE, non per dimenticanza** — e' la domanda
+che viene naturale leggendo un rilascio come questo. I nomi delle tabelle e delle colonne non sono
+codice nostro da riscrivere: sono il dato che c'e' gia' sul disco di chi usa HIRIS, e rinominarlo
+vuol dire migrarlo. Le quattordici rotte HTTP e i campi JSON sono il contratto con la pagina web, e
+si cambiano insieme a lei, in un rilascio suo. Le stesse tre cose che la 3.14.5 aveva lasciato
+fuori, per la stessa ragione.
+
+### I tre difetti veri trovati mentre si convertiva
+
+Convertire vuol dire leggere ogni riga, e leggendo sono usciti tre guasti che nessuno stava
+cercando. Sono la parte di questo rilascio che tocca il prodotto. **Il primo l'avevamo introdotto
+noi, e questo rilascio lo chiude.**
+
+**1. Le proposte di automazione rimaste a meta' non venivano piu' chiuse, dal 29 agosto.** All'avvio
+HIRIS controlla se una proposta di modifica alla casa era stata presa in carico e mai conclusa --
+succede quando l'add-on si ferma proprio mentre la sta scrivendo su Home Assistant -- e la dichiara
+incerta, cosi' che non resti in mezzo. **Dal 29 agosto quel controllo si fermava con un errore
+prima di fare qualunque cosa**: la conversione aveva cambiato il nome di un parametro dentro la
+funzione e non nella riga che la chiama. L'errore finiva in una riga di log e l'avvio proseguiva,
+quindi non si vedeva da fuori -- ma una proposta rimasta «in corso» restava li' per sempre:
+invisibile nell'elenco, non piu' applicabile, e cancellata in silenzio dopo novanta giorni. **Da
+questa versione il controllo riparte**, e alla prima accensione chiude le proposte eventualmente
+rimaste appese in questi giorni. Il test che avrebbe dovuto accorgersene guardava solo che la riga
+esistesse, non che funzionasse: adesso la esegue davvero.
+
+**2. HIRIS diceva «nessun errore» a una casa che ne aveva sedici.** `HAClient.get_error_log()`
+chiedeva `GET /api/error_log`, un endpoint che su Home Assistant 2026.8.3 **non esiste piu'** e
+risponde 404 — provato sulla casa vera con un token valido, mentre `/api/`, `/api/config` e
+`/api/logbook` rispondono 200. Il metodo inghiottiva il 404 e restituiva `{"errors": 0,
+"warnings": 0}`: collegato a uno strumento avrebbe affermato «zero errori» su una casa che ne aveva
+**6 piu' 11 warning**. Un guasto che non si vede mai, perche' il modo in cui fallisce e' identico al
+modo in cui va tutto bene. Non era riparabile — era il metodo intero a essere sbagliato, e non aveva
+nessun chiamante vivo — quindi e' stato **cancellato**. La via giusta (`system_log/list` sul
+WebSocket) sara' una fetta a se': meglio niente di una risposta che mente.
+
+**3. Il ponte MCP rispondeva 500 nudo dove prometteva una spiegazione.** Una richiesta JSON-RPC con
+un `method` malformato doveva ricevere un errore strutturato `-32600` — lo dice il docstring della
+rotta — e invece sollevava un `TypeError` che diventava un **500 senza corpo**. Nessun test copriva
+quel ramo, quindi il difetto era vivo e invisibile: adesso ci sono cinque casi che lo coprono,
+provati per mutazione.
+
+### Un cambio di comportamento, dichiarato
+
+**Una riga del registro dei dispositivi di Home Assistant senza `id` non fa piu' saltare l'albero
+della casa**: viene omessa.
 
 Prima esistevano due copie della stessa mappa «dispositivo → area», con due nomi diversi
 (`device_area` in `casa/anagrafe.py`, `area_del_device` in `memoria/interpretazione.py`) — ed e'
@@ -13,28 +74,16 @@ sollevava `KeyError`. **Il comportamento precedente non era una decisione: era l
 delle due copie si eseguiva** — la stessa riga malformata faceva esplodere il briefing della casa e
 passare indenne la deduzione dell'unita' di misura di un ricordo.
 
-Unificarle in una sola funzione (`casa.anagrafe.device_areas`) **obbligava** a scegliere, e la
-scelta e' l'omissione: quella mappa serve solo a essere interrogata per `dispositivo_id`, e un
-dispositivo senza `id` non puo' essere il bersaglio di nessuna entita' — tenerlo dentro non
-aggiunge una risposta, aggiunge una chiave che nessuno puo' chiedere. E far esplodere l'intero
-briefing per una riga malformata e' peggio che ometterla.
+Unificarle in una sola funzione **obbligava** a scegliere, e la scelta e' l'omissione: quella mappa
+serve solo a essere interrogata per il `dispositivo_id`, e un dispositivo senza `id` non puo' essere
+il bersaglio di nessuna entita' — tenerlo dentro non aggiunge una risposta, aggiunge una chiave che
+nessuno puo' chiedere. E far esplodere l'intero briefing per una riga malformata e' peggio che
+ometterla. Provato per mutazione: tolta la guardia, due test diventano rossi.
 
-Provato per mutazione: tolta la guardia, due test diventano rossi con `KeyError`.
-
-**E c'e' un SECONDO cambio, piu' piccolo e nella stessa direzione** (aggiunto dopo la review, che l'aveva trovato mentre il changelog nominava solo il primo): la funzione unificata accetta anche un registro **assente** — `device_areas(None)` restituisce `{}` invece di sollevare. Prima, `home_space.get("dispositivi", [])` copriva la chiave mancante ma non un valore `None` esplicito. E' strettamente piu' tollerante, va nella stessa direzione della guardia sull'`id` — un registro che non ha risposto e' gia' dichiarato altrove, e non deve portarsi via l'albero — ed e' coperto da un test.
-
-**Un metodo cancellato, e non era una rinomina.** `HAClient.get_error_log()` chiedeva
-`GET /api/error_log`, che su Home Assistant 2026.8.3 risponde **404** — provato sulla casa vera
-con un token valido, mentre `/api/`, `/api/config` e `/api/logbook` rispondono 200. Il metodo
-inghiottiva il 404 e restituiva `{"errors": 0, "warnings": 0}`: collegato a uno strumento
-avrebbe detto «zero errori» su una casa che ne aveva 6 e 11 warning. Non era riparabile — era
-il metodo intero a essere sbagliato — e non aveva nessun chiamante vivo. La via viva
-(`system_log/list` sul WebSocket) e' una fetta a se'.
-
-Il resto del lavoro di questo giro non si vede usando HIRIS — 25 identificatori con parole inglesi
-in ordine italiano o tenute insieme da una preposizione italiana, un cancello che vieta quella
-forma per sempre su tutto il Python del progetto, e un esempio falso corretto nella specifica della
-fetta **e** nel docstring dello strumento, dove era stato copiato.
+**Nella stessa direzione, piu' piccolo**: la funzione unificata accetta anche un registro **assente**
+e restituisce una mappa vuota invece di sollevare. Prima, una chiave mancante era coperta ma un
+valore `None` esplicito no. Un registro che non ha risposto e' gia' dichiarato altrove, e non deve
+portarsi via l'albero.
 
 ## [3.14.5] — Tutti e sei i sottosistemi parlano inglese (2026-08-31)
 
