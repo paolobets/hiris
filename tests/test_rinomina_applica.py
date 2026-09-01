@@ -1604,3 +1604,128 @@ def test_la_settima_rete_non_guarda_ogni_stringa_del_repo(tmp_path):
         'x = chiamata("famiglia")\n', encoding="utf-8")
     assert rinomina.accessi_dinamici({"famiglia": "family", "codice": "code"},
                                      radice=tmp_path) == []
+
+
+def test_le_reti_alimentate_dal_glossario_sono_cieche_su_cio_che_si_fa_a_mano():
+    """**Il quasi-incidente dell'01/09, e la sua cura, nello stesso test.**
+
+    Le sette reti sono nate dando per scontato che a rinominare fosse lo
+    strumento, quindi si alimentavano da `classifica()`. Ma da `api/` in poi
+    ogni lotto ha una parte fatta A MANO -- le trappole di senso, gli omonimi,
+    i nomi che il glossario farebbe mentire -- e su quella parte erano CIECHE.
+
+    Misurato su `decisione_modelli.py`: 27 nomi esportati rinominati, di cui il
+    glossario ne spiegava 6; la terza rete alimentata dal glossario dichiarava
+    4 sponde, alimentata dalle coppie vere ne dichiarava 40, e fra le 36
+    mancanti c'era l'import di `server.py:59` -- l'add-on che non parte.
+
+    Qui il caso e' ridotto all'osso: `piano_ha_il_token` non e' nel glossario
+    (`piano (abbonamento)` e' irraggiungibile per costruzione, con la sua
+    ragione scritta accanto alla riga), quindi il glossario NON lo vede; le
+    coppie del lavoro si'. **La mutazione e' il primo assert**: togliendo
+    `coppie=` alla chiamata, il secondo assert torna vuoto.
+    """
+    sorgente = ("VARIABILE = 1\n"
+                "def piano_ha_il_token():\n"
+                "    return VARIABILE\n")
+    g = rinomina.g_corrente()
+    esportati_glossario = rinomina.nomi_esportati(sorgente, g, "radice")
+    assert "piano_ha_il_token" not in esportati_glossario
+
+    applicate = {"piano_ha_il_token": "subscription_has_token"}
+    esportati_applicate = rinomina.nomi_esportati(sorgente, g, "radice", coppie=applicate)
+    assert esportati_applicate == {"piano_ha_il_token": "subscription_has_token"}
+
+
+def test_le_coppie_del_lavoro_si_leggono_dai_token_e_non_si_indovinano():
+    """Due versioni dello stesso file: se i flussi di token NAME hanno la
+    stessa lunghezza, la coppia i-esima si legge senza interpretare niente."""
+    prima = "def componi_topologia(catena, esiti):\n    return catena, esiti\n"
+    dopo = "def compose_topology(chain, occurrences):\n    return chain, occurrences\n"
+    assert rinomina.coppie_misurate(prima, dopo) == {
+        "componi_topologia": "compose_topology",
+        "catena": "chain",
+        "esiti": "occurrences"}
+
+
+def test_un_file_che_non_e_una_pura_rinomina_si_dichiara_invece_di_indovinarlo():
+    """**La guardia che rende il confronto onesto.** Se nello stesso giro
+    qualcuno ha aggiunto o tolto codice, i due flussi non si allineano piu' e
+    ogni coppia dopo il punto di scarto sarebbe inventata -- il modo peggiore
+    di sbagliare, perche' ha l'aspetto di una misura. Si torna `None` e il
+    chiamante mette il file fra quelli che le reti NON coprono.
+    """
+    prima = "def f(catena):\n    return catena\n"
+    dopo = "def f(chain):\n    x = 1\n    return chain\n"
+    assert rinomina.coppie_misurate(prima, dopo) is None
+
+
+def test_l_ottava_rete_vede_una_parola_chiave_scritta_come_stringa(tmp_path):
+    """L'OTTAVA specie, e come la settima l'ha trovata la suite andando rossa.
+
+    `tests/test_decisione_modelli.py` aveva un involucro `def
+    componi_topologia(**kw)` che faceva `kw.setdefault("esiti", {})` prima di
+    inoltrare `**kw`. Rinominato il parametro, la chiave letterale e' rimasta
+    indietro: `TypeError: got an unexpected keyword argument 'esiti'`. Non e'
+    un attributo (`accessi_dinamici` guarda `getattr` e compagni), non e' una
+    parola chiave per sintassi (`chiamanti_orfani` guarda `nome=`).
+    """
+    (tmp_path / "involucro.py").write_text(
+        "def componi(**kw):\n"
+        '    kw.setdefault("esiti", {})\n'
+        '    kw["adesso"] = 0\n'
+        "    return vero(**kw)\n", encoding="utf-8")
+    trovati = rinomina.chiavi_inoltrate({"esiti": "occurrences", "adesso": "now"},
+                                         radice=tmp_path)
+    assert sorted((r, v, n) for _, r, v, n, _ in trovati) == [
+        (2, "esiti", "occurrences"), (3, "adesso", "now")], trovati
+
+
+def test_l_ottava_rete_chiede_l_INOLTRO_e_non_solo_la_chiave(tmp_path):
+    """**La meta' che rende la specie una specie, e il conto che l'ha decisa.**
+
+    Il criterio largo -- «ogni stringa letterale uguale a un nome rinominato»
+    -- da' **1.424 occorrenze** sul solo lotto di `decisione_modelli.py`
+    (`nome` da solo ne fa 391): le chiavi JSON di questo prodotto portano di
+    proposito i nomi italiani, e una rete cosi' e' gia' spenta -- lo stesso
+    incidente di `nomi_esportati` prima della cura. Il criterio stretto ne
+    trova **cinque in tutto il repo**. Chiedere anche l'inoltro costa una riga
+    e toglie il 99,6% del rumore.
+
+    Provato per mutazione: togliendo il controllo `inoltra` da
+    `_letterali_inoltrati`, questo test va rosso su tutte e tre le forme.
+    """
+    (tmp_path / "non_inoltra.py").write_text(
+        "def legge(**kw):\n"
+        '    return kw.get("esiti")\n'
+        "def senza_kwargs(d):\n"
+        '    return d["esiti"]\n'
+        'JSON = {"esiti": 1}\n', encoding="utf-8")
+    assert rinomina.chiavi_inoltrate({"esiti": "occurrences"},
+                                      radice=tmp_path) == []
+
+
+def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
+    """Il perimetro si misura come il contenuto (regola scritta il 01/09 dopo
+    il caso di `buchi`). Cinque involucri con `**kwargs` inoltrato in tutto il
+    repo: tre `kwargs.get("model")` (`claude_runner.py`, `llm_router.py` due
+    volte) e i due dell'involucro di `tests/test_decisione_modelli.py`. Se ne
+    nasce un sesto, questo test lo dice: e' un posto dove una rinomina futura
+    puo' rompersi in silenzio.
+    """
+    import ast
+
+    trovati = []
+    for f in rinomina.file_py(rinomina.ROOT):
+        try:
+            albero = ast.parse(rinomina._leggi_grezzo(f))
+        except (SyntaxError, ValueError):
+            continue
+        trovati += [(rinomina.rel(f), chiave)
+                    for chiave, _, _ in rinomina._letterali_inoltrati(albero)]
+    assert sorted(trovati) == [
+        ("hiris/app/claude_runner.py", "model"),
+        ("hiris/app/llm_router.py", "model"),
+        ("hiris/app/llm_router.py", "model"),
+        ("tests/test_decisione_modelli.py", "now"),
+        ("tests/test_decisione_modelli.py", "occurrences")], trovati

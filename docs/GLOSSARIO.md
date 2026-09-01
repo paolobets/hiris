@@ -288,6 +288,18 @@ guardando il codice se il senso e' lo stesso di un ambito gia' qualificato o un 
 aggiungere la riga `parola (proprio_ambito)` di conseguenza -- esattamente il passo gia' fatto per
 `riga (api)` sopra.
 
+**Una coppia muta puo' vivere in un ambito che non la scrive, e sparisce convertendo un ALTRO
+file** (misurato il 01/09, e va letto da chi apre il prossimo ambito). Il cancello
+`test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato` elenca le coppie
+`(parola, ambito)` dove una parola qualificata e' cieca; l'intuito dice che una coppia sparisce
+quando si converte QUELL'ambito. E' falso. `piano in api` e `piano in agent` erano dichiarate
+mute, e sono sparite convertendo `decisione_modelli.py`, un file di RADICE: `api/` portava
+`piano` solo dentro `piano_ha_il_token` e `agent/` solo dentro `ALIAS_DEL_PIANO`, **due nomi che
+quei due ambiti IMPORTAVANO invece di scrivere**. Il cancello guarda i pezzi degli
+identificatori che un ambito USA, e un import e' un uso. Conseguenza pratica: chi converte un
+modulo esportatore deve aspettarsi che l'elenco delle mute cali in ambiti che non ha toccato, e
+chi apre un ambito non deve dare per scontato che le sue mute dipendano da lui.
+
 ## Verbo e sostantivo possono condividere lo stesso inglese: e' una classe ACCETTATA
 
 **Scritta durante il Task 9 (lotto 12) su richiesta del coordinatore, dopo che era gia' successa

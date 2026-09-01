@@ -57,6 +57,16 @@ creava), `_INTESTAZIONE_NON_RILASCIATO` (`scripts/release.py`), `doppi_di` e
 `_moduli_di_test`, `_ARTICOLO_I_SCOPERTO` e `scoperti_i`. Il debito vecchio
 non lo fa arrossire mai, per costruzione: sta nell'istantanea.
 
+**Quinta occasione, 01/09, e la piu' istruttiva perche' arriva DENTRO l'attrezzo che
+rinomina.** Scrivendo l'ottava rete e l'alimentazione dalle coppie applicate ho battezzato
+cinque nomi in un colpo, tutti con una preposizione: `chiavi_di_inoltro`, `coppie_del_lavoro`,
+`coppie_fra_sorgenti` e due locali di test (`dal_glossario`, `dal_lavoro`). `scripts/rinomina.py`
+e' in italiano per decisione -- e' il dominio -- e i suoi nomi vecchi lo dimostrano senza una
+sola preposizione (`chiamanti_orfani`, `sponde_per_nome`, `accessi_dinamici`, `triage_orfani`):
+non serviva un'eccezione, serviva scriverli meglio. Sono diventati `chiavi_inoltrate`,
+`coppie_applicate`, `coppie_misurate`, `esportati_glossario`, `esportati_applicate`.
+**Cinque occasioni su cinque, il nome era del giorno stesso.**
+
 Da cui una conseguenza operativa: **quando arrossisce, il nome da guardare e'
 quasi sempre quello che hai appena scritto tu.**
 

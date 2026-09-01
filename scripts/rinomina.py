@@ -872,7 +872,33 @@ def _posizioni_nomi_def(tokens: list) -> set[int]:
     return posizioni
 
 
-def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
+def _nuovo_nome(nome: str, g: Glossario, ambito: str,
+                coppie: dict[str, str] | None) -> str | None:
+    """Il nome nuovo di un identificatore, letto dal GLOSSARIO oppure dalle
+    COPPIE GIA' APPLICATE. `None` se non cambia.
+
+    **La differenza fra i due non e' un dettaglio: e' il quasi-incidente
+    dell'01/09.** Le reti nascono dando per scontato che a rinominare sia lo
+    strumento, quindi si alimentano da `classifica()`. Ma da `api/` in poi
+    ogni lotto ha una parte fatta A MANO -- le trappole di senso, gli omonimi,
+    i nomi che il glossario farebbe mentire -- e su quella parte le reti sono
+    CIECHE. Misurato su `decisione_modelli.py`: 27 nomi esportati rinominati,
+    di cui il glossario ne spiegava 6; la terza rete alimentata dal glossario
+    dichiarava 4 sponde, alimentata dalle coppie vere ne dichiarava 40, e fra
+    le 36 mancanti c'era l'import di `server.py:59` -- cioe' l'add-on che non
+    parte.
+
+    **Le reti vanno alimentate da cio' che il commit ha cambiato, non da cio'
+    che lo strumento avrebbe cambiato.** Questa funzione e' il punto dove la
+    scelta si fa una volta sola, per tutte e quattro.
+    """
+    if coppie is not None:
+        nuovo = coppie.get(nome)
+        return nuovo if nuovo and nuovo != nome else None
+    esito = classifica(nome, g, ambito)
+    return esito if isinstance(esito, str) and esito != nome else None
+def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str, *,
+                             coppie: dict[str, str] | None = None) -> dict[str, str]:
     """`{nome vecchio: nome nuovo}` per i soli parametri di `def` che
     `riscrivi()` rinomina in questo sorgente.
 
@@ -903,13 +929,14 @@ def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[s
         if i in percorso or i in parola_chiave or i in confine:
             continue
         t = tokens[i]
-        esito = classifica(t.string, g, ambito)
-        if isinstance(esito, str) and esito != t.string:
-            rinominati[t.string] = esito
+        nuovo = _nuovo_nome(t.string, g, ambito, coppie)
+        if nuovo:
+            rinominati[t.string] = nuovo
     return rinominati
 
 
-def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
+def firme_rinominate(sorgente: str, g: Glossario, ambito: str, *,
+                     coppie: dict[str, str] | None = None) -> set[str]:
     """I NOMI delle `def` di questo sorgente che perdono almeno un parametro
     a favore dell'inglese.
 
@@ -942,8 +969,7 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
             continue
         if i not in parametri or i in percorso or i in parola_chiave or i in confine:
             continue
-        esito = classifica(t.string, g, ambito)
-        if isinstance(esito, str) and esito != t.string and ultima_def:
+        if _nuovo_nome(t.string, g, ambito, coppie) and ultima_def:
             # **Un costruttore non si chiama col suo nome.** `__init__` non
             # compare mai in un sito di chiamata: li' c'e' il nome della
             # CLASSE (`ReasoningQueue(leggi_fuso=...)`). Senza questa riga
@@ -1101,7 +1127,8 @@ def nomi_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
     return fuori
 
 
-def nomi_esportati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
+def nomi_esportati(sorgente: str, g: Glossario, ambito: str, *,
+                   coppie: dict[str, str] | None = None) -> dict[str, str]:
     """`{vecchio: nuovo}` per i soli nomi che questo file ESPORTA e che
     `riscrivi()` rinomina: funzioni e classi di modulo, membri di classe,
     costanti di modulo. **Non le variabili locali.**
@@ -1176,10 +1203,78 @@ def nomi_esportati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
             nomi.add(nodo.attr)
     fuori: dict[str, str] = {}
     for nome in sorted(nomi):
-        esito = classifica(nome, g, ambito)
-        if isinstance(esito, str) and esito != nome:
-            fuori[nome] = esito
+        nuovo = _nuovo_nome(nome, g, ambito, coppie)
+        if nuovo:
+            fuori[nome] = nuovo
     return fuori
+
+
+def coppie_applicate(percorsi, rev: str = "HEAD"
+                      ) -> tuple[dict[str, str], list[Path]]:
+    """`({vecchio: nuovo}, [file non confrontabili])` -- cio' che il lavoro in
+    corso ha DAVVERO rinominato, letto confrontando i token NAME della
+    revisione `rev` con quelli sul disco.
+
+    **E' l'alimentazione giusta per tutte le reti**, e la ragione sta nel
+    docstring di `_nuovo_nome`: il glossario dice cio' che lo strumento
+    avrebbe fatto, questo dice cio' che il commit fa. La differenza e' la
+    parte fatta a mano, che in un file intrecciato e' la maggioranza.
+
+    Il confronto e' posizionale e per questo non indovina: due flussi di token
+    NAME della stessa lunghezza sono la stessa struttura con nomi diversi.
+    Se le lunghezze differiscono il file non e' una pura rinomina -- qualcuno
+    ha aggiunto o tolto codice nello stesso giro -- e **il file si DICHIARA
+    invece di essere interpretato**: e' la stessa forma delle altre reti.
+    Un nome che risulta rinominato in due modi diversi in due file e' lo
+    stesso caso, e finisce nello stesso elenco.
+    """
+    doppi: dict[str, set[str]] = {}
+    saltati: list[Path] = []
+    for f in percorsi:
+        prima = subprocess.run(["git", "cat-file", "-p", f"{rev}:{rel(f)}"],
+                               cwd=ROOT, capture_output=True, check=False)
+        if prima.returncode:
+            saltati.append(f)
+            continue
+        coppie = coppie_misurate(prima.stdout.decode("utf-8-sig"),
+                                     _leggi_grezzo(f))
+        if coppie is None:
+            saltati.append(f)
+            continue
+        for vecchio, nuovo in coppie.items():
+            doppi.setdefault(vecchio, set()).add(nuovo)
+    fuori = {v: next(iter(n)) for v, n in doppi.items() if len(n) == 1}
+    ambigui = [v for v, n in doppi.items() if len(n) > 1]
+    if ambigui:
+        print(f"  ! nomi rinominati in due modi diversi, esclusi dalle reti: "
+              f"{', '.join(sorted(ambigui))}")
+    return fuori, saltati
+
+
+def coppie_misurate(prima: str, dopo: str) -> dict[str, str] | None:
+    """`{vecchio: nuovo}` fra due versioni dello stesso file, oppure `None` se
+    le due non sono una PURA rinomina.
+
+    Il confronto e' posizionale sui soli token NAME: due flussi della stessa
+    lunghezza sono la stessa struttura con nomi diversi, e allora la coppia
+    i-esima si legge senza indovinare niente. Lunghezze diverse vogliono dire
+    che qualcuno ha aggiunto o tolto codice nello stesso giro, e li' non c'e'
+    niente da dedurre: si torna `None` e il chiamante DICHIARA il file invece
+    di interpretarlo.
+    """
+    try:
+        a = _nomi_tokenizzati(prima)
+        b = _nomi_tokenizzati(dopo)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+    if len(a) != len(b):
+        return None
+    return {x: y for x, y in zip(a, b) if x != y}
+
+
+def _nomi_tokenizzati(sorgente: str) -> list[str]:
+    return [t.string for t in tokenize.generate_tokens(io.StringIO(sorgente).readline)
+            if t.type == tokenize.NAME]
 
 
 def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
@@ -1375,21 +1470,16 @@ def accessi_dinamici(nomi: dict[str, str], radice: Path | None = None, *,
     appartenga. Ma un elenco di ventotto righe si legge, e un `grep` che
     nessuno lancia no.
 
-    **Cio' che questa rete NON copre, misurato il 01/09.** `_FORME_DINAMICHE`
-    e' un elenco di forme che leggono un ATTRIBUTO. Una stringa puo' anche
-    diventare una PAROLA CHIAVE, e li' questa rete tace: in
-    `tests/test_decisione_modelli.py:347` un involucro `def
-    componi_topologia(**kw)` faceva `kw.setdefault("esiti", {})` prima di
-    inoltrare `**kw` alla funzione vera. Rinominato il parametro, la chiave
-    letterale e' rimasta indietro e il turno e' morto con
-    `TypeError: got an unexpected keyword argument 'esiti'`. Non e' un
-    attributo, quindi `getattr` e compagni non c'entrano; non e' una parola
-    chiave per sintassi, quindi `chiamanti_orfani` non la vede. **L'ha presa
-    la suite andando rossa -- di nuovo fortuna e non rete**, e resta scritto
-    qui invece di essere coperto perche' una rete nuova senza prova per
-    mutazione sarebbe una speranza, non una protezione. Chi converte una firma
-    con involucri `**kwargs` cerchi a mano le chiavi letterali che li
-    attraversano.
+    **Cio' che questa rete non copre, e chi lo copre adesso.**
+    `_FORME_DINAMICHE` e' un elenco di forme che leggono un ATTRIBUTO. Una
+    stringa puo' anche diventare una PAROLA CHIAVE, ed e' successo:
+    `tests/test_decisione_modelli.py:347` aveva un involucro `def
+    componi_topologia(**kw)` con `kw.setdefault("esiti", {})`, e rinominato
+    il parametro la chiave letterale e' rimasta indietro. **L'ha presa la
+    suite andando rossa, di nuovo fortuna e non rete** -- per un giorno. Ora
+    e' l'OTTAVA rete, `chiavi_inoltrate`, scritta dopo aver misurato che il
+    criterio stretto (la chiave piu' l'INOLTRO di `**kw`) trova cinque siti
+    in tutto il repo mentre quello largo ne trovava 1.424.
     """
     base = radice or ROOT
     saltati = {e.replace("\\", "/") for e in escludi}
@@ -1417,6 +1507,97 @@ def accessi_dinamici(nomi: dict[str, str], radice: Path | None = None, *,
                         and arg.value in nomi):
                     fuori.append((f, arg.lineno, arg.value, nomi[arg.value],
                                   chiamato))
+    return fuori
+
+
+def chiavi_inoltrate(nomi: dict[str, str], radice: Path | None = None, *,
+                      escludi: tuple[str, ...] = ()
+                      ) -> list[tuple[Path, int, str, str, str]]:
+    """L'OTTAVA specie: una PAROLA CHIAVE scritta come stringa letterale,
+    dentro il `**kwargs` di una funzione che poi lo inoltra.
+    `(file, riga, vecchio, nuovo, la forma che la scrive)`.
+
+    **Trovata dalla suite andando rossa, come la settima, e scritta solo dopo
+    averla MISURATA.** Il caso: `tests/test_decisione_modelli.py` aveva un
+    involucro `def componi_topologia(**kw)` che faceva `kw.setdefault("esiti",
+    {})` prima di `return _componi_topologia(**kw)`. Rinominato il parametro
+    `esiti -> occurrences`, la chiave letterale e' rimasta indietro e il turno
+    e' morto con `TypeError: got an unexpected keyword argument 'esiti'`. Non
+    e' un attributo (`accessi_dinamici` guarda `getattr` e compagni), non e'
+    una parola chiave per sintassi (`chiamanti_orfani` guarda `nome=`): nessuna
+    delle sette reti la vedeva.
+
+    **Il criterio largo era inservibile, e il conto lo dice.** «Ogni stringa
+    letterale del repo uguale a un nome rinominato» da' **1.424 occorrenze**
+    sul lotto di `decisione_modelli.py` (`nome` da solo ne fa 391), perche' le
+    chiavi JSON di questo prodotto portano di proposito i nomi italiani: una
+    rete cosi' e' gia' spenta, ed e' il difetto n.1 applicato al rimedio --
+    lo stesso incidente di `nomi_esportati` prima della cura.
+
+    **Il criterio stretto ne trova CINQUE in tutto il repo**, misurati: tre
+    `kwargs["model"]` (`claude_runner.py:1087`, `llm_router.py:200,254`) e i
+    due di quel test. La differenza fra i due conti e' la definizione stessa
+    della specie: una stringa e' una parola chiave solo se il dizionario che
+    la porta viene INOLTRATO con `**`. Chiedere anche l'inoltro costa una
+    riga e toglie il 99,6% del rumore.
+
+    **Dichiara e non corregge**, come tutte: un involucro puo' inoltrare a una
+    funzione ALTRUI, e allora la chiave italiana e' giusta.
+    """
+    base = radice or ROOT
+    saltati = {e.replace("\\", "/") for e in escludi}
+    fuori: list[tuple[Path, int, str, str, str]] = []
+    if not nomi:
+        return fuori
+    import ast
+    for f in file_py(base):
+        if f.relative_to(base).as_posix() in saltati:
+            continue
+        try:
+            albero = ast.parse(_leggi_grezzo(f))
+        except (SyntaxError, ValueError):
+            continue
+        for chiave, riga, forma in _letterali_inoltrati(albero):
+            if chiave in nomi:
+                fuori.append((f, riga, chiave, nomi[chiave], forma))
+    return fuori
+
+
+def _letterali_inoltrati(albero) -> list[tuple[str, int, str]]:
+    """`[(chiave, riga, forma)]` per ogni `def f(**kw)` che INOLTRA `**kw` a
+    qualcuno e nel frattempo nomina una sua chiave con una stringa letterale.
+
+    L'inoltro e' la meta' che rende la specie una specie: senza, `kw["x"]` e'
+    una chiave di dizionario come tutte le altre e non diventa mai il nome di
+    un parametro.
+    """
+    import ast
+    fuori: list[tuple[str, int, str]] = []
+    for f in ast.walk(albero):
+        if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        kw = f.args.kwarg
+        if kw is None:
+            continue
+        inoltra = any(
+            isinstance(c, ast.Call)
+            and any(k.arg is None and isinstance(k.value, ast.Name)
+                    and k.value.id == kw.arg for k in c.keywords)
+            for c in ast.walk(f))
+        if not inoltra:
+            continue
+        for n in ast.walk(f):
+            if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+                    and n.value.id == kw.arg and isinstance(n.slice, ast.Constant)
+                    and isinstance(n.slice.value, str)):
+                fuori.append((n.slice.value, n.lineno, f"{kw.arg}[...]"))
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.value.id == kw.arg and n.args
+                    and isinstance(n.args[0], ast.Constant)
+                    and isinstance(n.args[0].value, str)):
+                fuori.append((n.args[0].value, n.args[0].lineno,
+                              f"{kw.arg}.{n.func.attr}"))
     return fuori
 
 
@@ -1652,6 +1833,87 @@ def _albero_pulito() -> bool:
     return not fuori.stdout.strip()
 
 
+def reti(percorso: str, rev: str = "HEAD") -> int:
+    """Tutte le reti FRA FILE, alimentate da cio' che il lavoro in corso ha
+    davvero rinominato. Si lancia su un albero SPORCO, a conversione fatta --
+    automatica piu' quella a mano -- e prima del commit.
+
+    **E' il modo giusto, e `main()` non lo era.** `main()` fa girare le reti
+    subito dopo `applica()`, cioe' PRIMA che l'umano abbia scritto la sua
+    parte: per costruzione non puo' vederla. Finche' i lotti erano piccoli la
+    differenza si notava poco; su `decisione_modelli.py` valeva 36 sponde su
+    40, l'import di `server.py:59` compreso. Le due strade restano entrambe:
+    quella di `main()` avvisa mentre si applica, questa verifica prima di
+    consegnare.
+    """
+    base = ROOT / percorso
+    if not base.exists():
+        print(f"percorso inesistente: {percorso}")
+        return 1
+    file = _elenco_file(base)
+    applicate, saltati = coppie_applicate(file, rev)
+    print(f"{percorso}: {len(applicate)} nomi rinominati rispetto a «{rev}»")
+    if saltati:
+        print(f"  ! {len(saltati)} file non confrontabili (non sono una pura "
+              f"rinomina, o non esistono a «{rev}»): "
+              f"{', '.join(rel(f) for f in saltati)} -- le reti NON li coprono")
+    if not applicate:
+        return 0
+
+    parametri: dict[str, str] = {}
+    metodi: set[str] = set()
+    ogni_nome: dict[str, str] = {}
+    for f in file:
+        prima = subprocess.run(["git", "cat-file", "-p", f"{rev}:{rel(f)}"],
+                               cwd=ROOT, capture_output=True, check=False)
+        if prima.returncode:
+            continue
+        sorgente = prima.stdout.decode("utf-8-sig")
+        try:
+            parametri.update(parametri_def_rinominati(
+                sorgente, g_corrente(), "", coppie=applicate))
+            metodi |= firme_rinominate(sorgente, g_corrente(), "", coppie=applicate)
+            ogni_nome.update(nomi_esportati(
+                sorgente, g_corrente(), "", coppie=applicate))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+
+    # **I nomi delle firme si dichiarano in tutt'e due le lingue.** L'asse
+    # del chiamato chiede «il nome chiamato e' una firma che questo lotto ha
+    # cambiato?», e la risposta dipende da QUANDO si guarda: `main()` gira
+    # mentre i chiamanti portano ancora il nome vecchio, questo modo gira
+    # quando molti lo portano gia' nuovo. Un solo elenco dei due sbaglia meta'
+    # dei casi, e sbaglia in silenzio: si dichiarano entrambi, come per
+    # `__init__` e il nome della classe.
+    metodi |= {applicate.get(m, m) for m in metodi}
+
+    fuori = {rel(x) for x in file}
+    trovato = 0
+    orfani = [o for o in chiamanti_orfani(parametri) if rel(o[0]) not in fuori]
+    if orfani:
+        certi, mai_dichiarati, ambigui = triage_orfani(
+            orfani, metodi, parametri_dichiarati())
+        print(f"  -- 2a rete: {len(orfani)} parole chiave vecchie fuori dal "
+              f"lotto ({len(certi)} verso una firma di questo lotto, "
+              f"{len(mai_dichiarati)} senza nessuna «def», {len(ambigui)} ambigue)")
+        for f, riga, vecchio, nuovo, chiamato in certi + mai_dichiarati:
+            print(f"     {rel(f)}:{riga}  {chiamato}({vecchio}=...) -> {nuovo}=")
+        trovato += len(certi) + len(mai_dichiarati)
+    for etichetta, siti in (
+            ("3a rete (import/attributo)", sponde_per_nome(ogni_nome, escludi=tuple(fuori))),
+            ("7a rete (attributo per nome)", accessi_dinamici(ogni_nome, escludi=tuple(fuori))),
+            ("8a rete (chiave inoltrata)", chiavi_inoltrate(applicate, escludi=tuple(fuori)))):
+        if not siti:
+            continue
+        print(f"  -- {etichetta}: {len(siti)} da leggere")
+        for f, riga, vecchio, nuovo, specie in siti:
+            print(f"     {rel(f)}:{riga}  {vecchio} -> {nuovo}  [{specie}]")
+        trovato += len(siti)
+    if not trovato:
+        print("  nessuna sponda aperta: le quattro reti tacciono")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Rinomina gli identificatori di un sottosistema.")
     p.add_argument("--percorso", help="es. hiris/app/consumi")
@@ -1664,7 +1926,20 @@ def main(argv=None) -> int:
                         "NON riscrive niente: la distinzione fra un puntatore "
                         "(segue il codice) e un verbale (resta) la fa un umano, "
                         "frase per frase")
+    p.add_argument("--reti", metavar="PERCORSO",
+                   help="modo VERIFICA: fa girare tutte le reti FRA FILE "
+                        "alimentandole con cio' che il lavoro in corso ha "
+                        "davvero rinominato (i token NAME contro «--rev»), "
+                        "non con cio' che il glossario avrebbe rinominato. "
+                        "Si lancia su un albero sporco, a conversione fatta "
+                        "-- automatica PIU' quella a mano -- e prima del "
+                        "commit")
+    p.add_argument("--rev", default="HEAD",
+                   help="la revisione con cui confrontare in modo --reti")
     a = p.parse_args(argv)
+
+    if a.reti:
+        return reti(a.reti, a.rev)
 
     if a.citazioni:
         import json
