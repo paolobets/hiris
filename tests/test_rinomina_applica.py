@@ -647,6 +647,13 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # la specifica ne' il piano avevano mai nominato -- scoperto a meta'
     # fetta -- ed e' il primo aperto con tutte e quattro le reti in piedi.
     ("reasoning", "reasoning", frozenset()),
+    # `agent` entra il 01/09, senza residui, al SECONDO tentativo: il primo e'
+    # stato annullato perche' la mappa conteneva nomi che sembravano suoi e non
+    # lo erano (cinque costanti importate da `chat_store.py`, la famiglia dei
+    # runner). Le nove proposte che restano nel dry-run sono tutte di ALTRI
+    # moduli -- cinque nomi importati, due parole chiave di firme altrui -- e
+    # non sono residui: sono nomi che questo ambito non possiede.
+    ("agent", "agent", frozenset()),
     # `backends` entra il 01/09 con UN residuo dichiarato, e la ragione non e'
     # lavoro rimandato: `openai_compat_runner.py` condivide con
     # `claude_runner.py` (modulo di RADICE, non ancora convertito)
@@ -1025,16 +1032,22 @@ _MUTE_VOLUTE = {
     # `verifica` e' qualificata `(azione)`/`(memoria)`; in `casa/strumenti.py`
     # c'e' un'occorrenza sola, dentro il residuo dichiarato di quel file.
     ("verifica", "casa"),
+    # `piano` in `agent/` compare SOLO dentro `ALIAS_DEL_PIANO`, che
+    # `agent/runner.py` IMPORTA da `decisione_modelli.py`: non e' un nome suo,
+    # e `piano (abbonamento)` resta irraggiungibile per costruzione.
+    ("piano", "agent"),
 }
 
 # ── 2. DA CONVERTIRE: la parola e' muta solo perche' il suo sottosistema non
 # e' ancora stato convertito. **Questo insieme si esaurisce**, e ogni fetta lo
 # fa calare: quando `agent/` sara' convertito queste righe spariscono, o
 # diventano volute con una ragione scritta.
-_MUTE_PROVVISORIE = {
-    ("senza", "agent"), ("piano", "agent"), ("riga", "agent"),
-    ("verifica", "agent"),
-}
+# **Vuoto dal 01/09**: `agent/` era l'ultimo dei tre, e convertendolo le
+# quattro coppie sono sparite -- cioe' l'insieme si e' esaurito come la sua
+# definizione prometteva. Resta scritto, e non cancellato, perche' i moduli
+# di radice ne porteranno altre: un insieme vuoto DICHIARATO dice una cosa
+# che un insieme cancellato non direbbe piu'.
+_MUTE_PROVVISORIE: set[tuple[str, str]] = set()
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE
 
@@ -1354,6 +1367,13 @@ def test_chiudi_sponde_chiude_i_nomi_importati_e_gli_attributi_approvati(tmp_pat
 
     E gli import si toccano per POSIZIONE SINTATTICA: il giro annullato di
     `agent/` e' finito male su una regex sulle righe di import, troppo larga.
+
+    **Il terzo cambio e' la QUARTA posizione, e mancava**: in un file che fa
+    `from X import vecchio`, ogni `vecchio` NUDO e' quel nome -- e' il legame
+    dell'import a renderlo certo. Chiudendo i soli import, il lotto di `agent/`
+    ha prodotto 38 errori `F401`/`F821` (import rinominato, usi rimasti
+    indietro). Fuori da un file che importa, un nome nudo resta ambiguo e la
+    rete non lo segnala nemmeno.
     """
     f = tmp_path / "usa.py"
     f.write_text("from pacchetto.modulo import vecchio_nome\n"
@@ -1361,11 +1381,11 @@ def test_chiudi_sponde_chiude_i_nomi_importati_e_gli_attributi_approvati(tmp_pat
                  "vecchio_nome = 1\n", encoding="utf-8")
     siti = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
     assert {s[4] for s in siti} == {"import", "attributo"}, siti
-    assert rinomina.chiudi_sponde(siti) == 2
+    assert rinomina.chiudi_sponde(siti) == 3
     dopo = f.read_text(encoding="utf-8")
     assert dopo == ("from pacchetto.modulo import new_name\n"
                     "x = oggetto.new_name\n"
-                    "vecchio_nome = 1\n"), dopo
+                    "new_name = 1\n"), dopo
 
 
 def test_chiudi_sponde_non_tocca_un_sito_che_non_e_stato_approvato(tmp_path):

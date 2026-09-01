@@ -46,8 +46,8 @@ def test_esegui_e_nel_catalogo_unico():
 
 
 def test_esegui_si_propaga_ai_nomi_mcp():
-    from hiris.app.agent.runner import nomi_mcp
-    assert "mcp__hiris__esegui" in nomi_mcp(), (
+    from hiris.app.agent.runner import mcp_names
+    assert "mcp__hiris__esegui" in mcp_names(), (
         "i nomi MCP si DERIVANO dal catalogo: se questo cade, "
         "qualcuno ha scritto i nomi a mano da qualche parte")
 

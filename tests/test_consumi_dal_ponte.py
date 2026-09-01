@@ -14,19 +14,19 @@ from hiris.app.agent import runner as ponte
 @pytest.fixture
 def registro():
     scritte: list[tuple] = []
-    ponte.imposta_registro_consumi(
+    ponte.set_usage_logger(
         lambda provider, model, **kw: scritte.append((provider, model, kw)))
     try:
         yield scritte
     finally:
-        ponte.imposta_registro_consumi(None)
+        ponte.set_usage_logger(None)
 
 
 def _esito(usage=None, risultato=None):
-    e = ponte.EsitoFlusso()
+    e = ponte.StreamOccurrence()
     e.usage = usage if usage is not None else {}
-    e.risultato = risultato
-    e.num_turni = 1
+    e.result = risultato
+    e.num_exchanges = 1
     return e
 
 
@@ -74,7 +74,7 @@ def test_senza_il_modello_vero_l_alias_si_dichiara_come_alias(registro):
 def test_senza_registro_il_ponte_logga_e_basta_come_prima():
     """Il percorso a processo separato (`main()`, il gateway esterno) non ha
     `/data`: li' il registro resta `None` e il turno non deve rompersi."""
-    ponte.imposta_registro_consumi(None)
+    ponte.set_usage_logger(None)
     ponte._logga_uso(_esito({"input_tokens": 1}), "job-5")
 
 

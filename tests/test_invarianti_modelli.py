@@ -326,15 +326,15 @@ def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
     piu' fallire. Verifica il COMPORTAMENTO -- che ogni alias offerto
     sopravviva davvero al passaggio, e che un nome estraneo ricada
     dichiaratamente su `sonnet` invece di far fallire il turno."""
-    from hiris.app.agent.runner import modello_cli
+    from hiris.app.agent.runner import cli_model
     from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
 
     for alias, _descrizione in ALIAS_DEL_PIANO:
-        assert modello_cli(alias) == alias
+        assert cli_model(alias) == alias
         # Anche nella forma completa con cui arriva da `resolve_model`.
-        assert modello_cli(f"claude-{alias}-4-5-20250101") == alias
+        assert cli_model(f"claude-{alias}-4-5-20250101") == alias
 
-    assert modello_cli("gpt-4o") == "sonnet", (
+    assert cli_model("gpt-4o") == "sonnet", (
         "un modello non-Anthropic non deve far fallire il turno: si ricade "
         "sull'alias con meno modi di essere rifiutato, dichiarandolo")
 
@@ -455,11 +455,11 @@ def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
     i due elenchi coincidono, questo prova che scegliere una voce del pannello
     e' davvero la voce che arriva alla CLI. Senza, `ALIAS_DEL_PIANO` potrebbe
     contenere `Sonnet` maiuscolo e i due test sarebbero d'accordo su niente."""
-    from hiris.app.agent.runner import modello_cli
+    from hiris.app.agent.runner import cli_model
     from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
 
     assert alias in {v for v, _ in ALIAS_DEL_PIANO}
-    assert modello_cli(alias) == alias
+    assert cli_model(alias) == alias
 
 
 def test_ogni_codice_di_credenziale_ha_la_sua_causa():

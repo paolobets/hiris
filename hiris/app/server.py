@@ -1596,7 +1596,7 @@ def _governa_lavoratore_del_ponte(app) -> None:
             # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
             # processo separato (`main()`) `/data` non e' di quel processo, e
             # li' il registro resta `None` -- dichiarato, non dimenticato.
-            _agent_runner.imposta_registro_consumi(app["consumi"].log)
+            _agent_runner.set_usage_logger(app["consumi"].log)
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
@@ -2400,9 +2400,9 @@ async def _on_startup(app: web.Application) -> None:
     # per evitare.
     from .migrazione_opzioni import semina_modello_del_piano
     if not app["models_config"].get("piano_seminato"):
-        from .agent.runner import modello_cli
+        from .agent.runner import cli_model
         from .claude_runner import resolve_model
-        _alias_di_oggi = modello_cli(resolve_model(
+        _alias_di_oggi = cli_model(resolve_model(
             "auto", "chat",
             app["models_config"].get("provider_models", {}).get("claude", ""),
         ))
@@ -3856,7 +3856,7 @@ async def _handle_health(request: web.Request) -> web.Response:
     # chiesto, non cosa gira) e se il ponte parli con l'abbonamento invece che
     # con una chiave a consumo (`apiKeySource: none` = abbonamento). E' `null`
     # finche' nessun turno e' passato: «non ancora visto» non e' «assente».
-    from .agent.runner import ultimo_init_del_ponte
+    from .agent.runner import last_bridge_init
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
-                              "ponte": ultimo_init_del_ponte()})
+                              "ponte": last_bridge_init()})

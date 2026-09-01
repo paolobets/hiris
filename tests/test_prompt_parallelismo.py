@@ -42,14 +42,14 @@ non un comportamento osservabile da un altro lato. Dichiararlo qui perche' un
 domani chi legge sappia perche' un assert cosi' semplice sopravvive in questo
 progetto.
 """
-from hiris.app.agent.prompts import _GUIDA_CON_STRUMENTI
+from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS
 from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
 
 
 def _le_due_guide() -> dict[str, str]:
     return {
         "sincrono (BASE_REGOLE_STRUMENTI)": BASE_REGOLE_STRUMENTI,
-        "ponte (_GUIDA_CON_STRUMENTI)": _GUIDA_CON_STRUMENTI,
+        "ponte (_GUIDA_CON_STRUMENTI)": _GUIDE_WITH_TOOLS,
     }
 
 
@@ -105,10 +105,10 @@ def test_solo_il_ponte_insegna_ogni_chiamata_conta():
     ("un giro per risposta, non per chiamata") -- deve dire che ogni
     chiamata conta, e che il risparmio vero e' il batch di `cerca` piu' la
     parsimonia."""
-    assert "il ciclo conta un giro per risposta, non per" not in _GUIDA_CON_STRUMENTI, (
+    assert "il ciclo conta un giro per risposta, non per" not in _GUIDE_WITH_TOOLS, (
         "la guida del ponte ripete ancora la giustificazione falsa: sul "
         "ponte ogni chiamata (anche parallela) consuma un giro del tetto MCP")
-    basso = _GUIDA_CON_STRUMENTI.lower()
+    basso = _GUIDE_WITH_TOOLS.lower()
     assert "ogni chiamata conta" in basso
     assert "parsimoni" in basso
 

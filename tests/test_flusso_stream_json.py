@@ -113,13 +113,13 @@ def _reason_full(stdout, rc=0, stderr="", job=None, **kw):
 # ── ① il flusso normale ──────────────────────────────────────────────────────
 
 def test_flusso_normale_da_testo_e_usage():
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), _assistant("sto guardando"), _result("2 luci accese")))
 
-    assert esito.testo == "2 luci accese"
-    assert esito.risultato_presente is True
-    assert esito.righe_saltate == 0
-    assert esito.righe_lette == 3
+    assert esito.text == "2 luci accese"
+    assert esito.has_result is True
+    assert esito.lines_skipped == 0
+    assert esito.lines_read == 3
     assert esito.usage == {"input_tokens": 12,
                            "cache_creation_input_tokens": 4096,
                            "cache_read_input_tokens": 8192,
@@ -127,7 +127,7 @@ def test_flusso_normale_da_testo_e_usage():
     # `num_turns` sta in cima all'evento result, non dentro usage: se qualcuno
     # lo cercasse solo in `usage`, la riga di misura del Task 2 (Step 4)
     # loggherebbe `None` a ogni turno e la domanda aperta 2 resterebbe aperta.
-    assert esito.num_turni == 1
+    assert esito.num_exchanges == 1
     # l'evento init e' tenuto INTERO: il Task 4 ci decidera' sopra
     assert esito.init is not None and esito.init["subtype"] == "init"
 
@@ -140,23 +140,23 @@ def test_flusso_normale_la_reply_e_il_testo_del_risultato():
 # ── ② una riga non-JSON in mezzo: si salta e si CONTA ────────────────────────
 
 def test_riga_non_json_non_fa_cadere_il_flusso_e_viene_contata():
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(),
         "questa riga non e' JSON",
         _assistant("sto guardando"),
         _result("2 luci accese")))
 
-    assert esito.testo == "2 luci accese"   # il testo arriva LO STESSO
-    assert esito.righe_saltate == 1
-    assert esito.righe_lette == 4
+    assert esito.text == "2 luci accese"   # il testo arriva LO STESSO
+    assert esito.lines_skipped == 1
+    assert esito.lines_read == 4
 
 
 def test_riga_json_ma_non_oggetto_conta_come_saltata():
     # JSON valido che non e' un evento: stessa sorte di una riga illeggibile.
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), "[1, 2, 3]", "42", _result("ok")))
-    assert esito.righe_saltate == 2
-    assert esito.testo == "ok"
+    assert esito.lines_skipped == 2
+    assert esito.text == "ok"
 
 
 def test_le_righe_saltate_sono_dichiarate_nel_log(caplog):
@@ -174,11 +174,11 @@ def test_le_righe_saltate_sono_dichiarate_nel_log(caplog):
 # ── ③ il flusso SENZA evento finale: il silenzio dichiarato della fetta ──────
 
 def test_flusso_senza_result_non_diventa_una_stringa_vuota():
-    esito = runner.leggi_flusso(_flusso(_init(), _assistant("sto guar")))
+    esito = runner.read_stream(_flusso(_init(), _assistant("sto guar")))
 
-    assert esito.risultato_presente is False
-    assert esito.risultato is None
-    assert esito.testo == ""      # vuoto, ma il chiamante SA che manca il finale
+    assert esito.has_result is False
+    assert esito.result is None
+    assert esito.text == ""      # vuoto, ma il chiamante SA che manca il finale
     assert esito.usage == {}
 
 
@@ -192,7 +192,7 @@ def test_flusso_senza_result_e_dichiarato_nel_log_e_nella_reply(caplog):
     assert any("J-1" in m for m in righe), righe
 
     # e nella reply, perche' un log che nessuno legge non e' una dichiarazione
-    assert reply.startswith(runner._SENTINELLA_FLUSSO_INCOMPLETO)
+    assert reply.startswith(runner._INCOMPLETE_STREAM_SENTINEL)
     assert "non e' una risposta completa" in reply
     # e non e' il testo parziale spacciato per risposta: il pezzo grezzo c'e',
     # ma etichettato come tale
@@ -203,20 +203,20 @@ def test_flusso_vuoto_e_flusso_di_solo_rumore_sono_entrambi_dichiarati():
     # Due modi diversi di non avere una risposta, nessuno dei due muto.
     for stdout in ("", "   \n\n", "boom\nboom\n"):
         reply = _reason(stdout)
-        assert reply.startswith(runner._SENTINELLA_FLUSSO_INCOMPLETO), stdout
+        assert reply.startswith(runner._INCOMPLETE_STREAM_SENTINEL), stdout
 
     # e restano distinguibili nell'esito letto: 0 righe contro 2 di rumore
-    assert runner.leggi_flusso("").righe_lette == 0
-    assert runner.leggi_flusso("boom\nboom\n").righe_saltate == 2
+    assert runner.read_stream("").lines_read == 0
+    assert runner.read_stream("boom\nboom\n").lines_skipped == 2
 
 
 def test_riga_finale_troncata_a_meta_e_dichiarata():
     # Il processo ucciso mentre scriveva l'evento finale: l'ultima riga e' JSON
     # a meta'. Non deve ne' sollevare ne' passare per una risposta.
     troncato = _flusso(_init(), _assistant("x")) + '{"type":"result","resu'
-    esito = runner.leggi_flusso(troncato)
-    assert esito.righe_saltate == 1 and esito.risultato_presente is False
-    assert _reason(troncato).startswith(runner._SENTINELLA_FLUSSO_INCOMPLETO)
+    esito = runner.read_stream(troncato)
+    assert esito.lines_skipped == 1 and esito.has_result is False
+    assert _reason(troncato).startswith(runner._INCOMPLETE_STREAM_SENTINEL)
 
 
 # ── ④ l'init con il server MCP fallito: riportato FEDELMENTE ────────────────
@@ -224,14 +224,14 @@ def test_riga_finale_troncata_a_meta_e_dichiarata():
 def test_init_con_server_mcp_failed_arriva_intero():
     # E' il dato su cui il Task 4 decidera' se ricomporre il prompt senza
     # strumenti. Qui si pinna SOLO che arrivi intero: nessuna decisione.
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(mcp_servers=[{"name": "hiris", "status": "failed"}],
               tools=["Task", "mcp__hiris__guarda"]),
         _result("rispondo senza strumenti")))
 
     assert esito.init["mcp_servers"] == [{"name": "hiris", "status": "failed"}]
     assert esito.init["tools"] == ["Task", "mcp__hiris__guarda"]
-    assert esito.testo == "rispondo senza strumenti"
+    assert esito.text == "rispondo senza strumenti"
 
 
 def test_init_e_loggato_ma_non_agito(caplog):
@@ -418,18 +418,18 @@ def test_leggi_flusso_non_solleva_mai():
     # La firma del contratto: qualunque spazzatura entri, esce un EsitoFlusso.
     for spazzatura in ("", "\x00\x01", "null", "{", "[]", '{"type": null}',
                        '"solo una stringa"', "\n\n\n", '{"type":"result"}'):
-        esito = runner.leggi_flusso(spazzatura)
-        assert isinstance(esito, runner.EsitoFlusso)
-        assert isinstance(esito.testo, str) and isinstance(esito.usage, dict)
+        esito = runner.read_stream(spazzatura)
+        assert isinstance(esito, runner.StreamOccurrence)
+        assert isinstance(esito.text, str) and isinstance(esito.usage, dict)
 
 
 def test_ultimo_result_e_primo_init_vincono():
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(mcp_servers=[{"name": "hiris", "status": "connected"}]),
         _init(mcp_servers=[{"name": "altro", "status": "failed"}]),
         _result("primo"), _result("secondo")))
     assert esito.init["mcp_servers"][0]["name"] == "hiris"
-    assert esito.testo == "secondo"
+    assert esito.text == "secondo"
 
 
 def test_il_sentinella_del_flusso_incompleto_e_filtrato_dalla_cronologia():
@@ -456,7 +456,7 @@ def test_leggi_flusso_estrae_i_tool_use_in_ordine():
     # costruito a mano. Entrambi RISOLTI (un `tool_result` con `is_error:
     # false` per ciascuno): qui si prova l'ORDINE, non lo stato di
     # risoluzione -- quello ha i suoi test dedicati piu' sotto (fix round 1).
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(),
         _tool_use("mcp__hiris__guarda", {"cosa": "salotto"}, id_="t1"),
         _tool_result("t1", is_error=False),
@@ -474,15 +474,15 @@ def test_flusso_senza_tool_use_tools_called_e_lista_vuota_non_none():
     # Step 6, ② del brief: nessuno strumento chiamato -> lista VUOTA, mai
     # `None`. Una lista vuota dice "nessuno strumento chiamato"; `None`
     # direbbe "non lo so" -- e non e' quello il caso qui.
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), _assistant("sto guardando"), _result("ok")))
     assert esito.tools_called == []
     assert esito.tools_called is not None
     assert isinstance(esito.tools_called, list)
 
     # e vale anche per il flusso completamente vuoto/di rumore.
-    assert runner.leggi_flusso("").tools_called == []
-    assert runner.leggi_flusso("boom\nboom\n").tools_called == []
+    assert runner.read_stream("").tools_called == []
+    assert runner.read_stream("boom\nboom\n").tools_called == []
 
 
 def test_il_nome_e_grezzo_e_non_normalizzato():
@@ -492,7 +492,7 @@ def test_il_nome_e_grezzo_e_non_normalizzato():
     # modello chiama qualcosa che non gli abbiamo dato") che riscrivere il
     # nome nasconderebbe. Risolta (con esito, per isolare cio' che questo
     # test prova: il nome, non lo stato).
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), _tool_use("Bash", {"command": "rm -rf /"}, id_="t1"),
         _tool_result("t1", is_error=False), _result("ok")))
     assert esito.tools_called == [{"tool": "Bash", "input": {"command": "rm -rf /"}}]
@@ -504,7 +504,7 @@ def test_la_forma_e_identica_a_quella_del_ramo_sincrono():
     # "input": t.get("input")} ...]`) -- una forma sola per la UI della E5.
     # Risolta con successo: e' la forma del caso comune, quella che deve
     # combaciare col ramo sincrono bit-per-bit.
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), _tool_use("mcp__hiris__cerca", {"query": "termosifone"}, id_="t1"),
         _tool_result("t1", is_error=False), _result("ok")))
     voce = esito.tools_called[0]
@@ -518,7 +518,7 @@ def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
     # caso che rende osservabile un guasto. Il `tool_result` (evento "user")
     # con `is_error: true`, abbinato per `tool_use_id`, e' l'unico segnale che
     # lo dice.
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(),
         _tool_use("mcp__hiris__ricorda", {"testo": "ok"}, id_="t-ok"),
         _tool_result("t-ok", is_error=False),
@@ -543,7 +543,7 @@ def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
     # `tool_result` -- quello spaiato non conta come suo -- quindi resta
     # SENZA esito confermato: fix round 1, e' esattamente il caso che
     # l'Important ha trovato mancante (vedi il test gemello sotto).
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(),
         _tool_use("mcp__hiris__guarda", {}, id_="t1"),
         _tool_result("id-mai-visto", is_error=True),
@@ -565,10 +565,10 @@ def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     Qui il flusso si tronca DAVVERO subito dopo il `tool_use` (nessun evento
     `result` finale): e' il caso (3) gia' dichiarato da
     `risultato_presente`, incontrato ora anche da `tools_called`."""
-    esito = runner.leggi_flusso(_flusso(
+    esito = runner.read_stream(_flusso(
         _init(), _tool_use("mcp__hiris__ricorda", {"testo": "mai confermato"}, id_="t1")))
 
-    assert esito.risultato_presente is False  # il troncamento vero, non simulato
+    assert esito.has_result is False  # il troncamento vero, non simulato
     mai_risolta = esito.tools_called[0]
     riuscita = {"tool": "mcp__hiris__ricorda", "input": {"testo": "mai confermato"}}
 
@@ -709,5 +709,5 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     # la reply che l'utente legge resta quella del SECONDO giro (Task 4: mai
     # promettere strumenti che non c'erano) -- questo task non cambia quella
     # disciplina, la affianca.
-    assert decisione["reply"].startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert decisione["reply"].startswith(runner.MISSING_TOOLS_NOTICE)
     assert "ok, senza strumenti" in decisione["reply"]

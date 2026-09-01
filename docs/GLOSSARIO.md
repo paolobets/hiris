@@ -552,7 +552,12 @@ in §4①:
 | `attesi` | `atteso` |
 | `orarie` | `orario` |
 | `comandi` | `comando` |
+| `definizioni` | `definizione` |
 | `estesa` | `esteso` |
+| `forme` | `forma` |
+| `invocazioni` | `invocazione` |
+| `sentinelle` | `sentinella` |
+| `turni` | `turno` |
 | `fasce` | `fascia` |
 | `tradotte` | `tradotto` |
 | `validi` | `valido` |
@@ -690,6 +695,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) -- **`turni` in `api/handlers_impostazioni.py::validate` (Task 9, lotto 8) NON e' questo concetto**: e' il conteggio di `max_chat_turns` (gia' inglese con la parola "turns"), non lo scambio col modello del reasoning delle promesse. Deciso a mano `turni -> turns`, MAI applicato alla cieca il suggerimento meccanico (`exchange`, questa riga). **Non qualificare `turno (api)`**: la collisione e' di SENSO, non di ambito -- `api/handlers_chat.py` usera' `turno` nel senso VERO di questa riga, nello stesso ambito `api` di `handlers_impostazioni.py` -- una riga per ambito qui risolverebbe meta' dei casi e sbaglierebbe l'altra meta'. `classifica('turni','api')` resta `Proposta(suggerito='exchange')` di proposito: e' la forma corretta, decidere ogni occorrenza guardando il codice, non un'automazione da attivare | exchange | ~ parziale |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
 | verifica (azione) | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio (`azione/verifica.py`) | verification | ✓ arriva |
+| verifica (agent) | il VERBO, non il sostantivo: `verify_init` (`agent/runner.py`) chiede alla riga di init della CLI se dichiara davvero cio' che prometteva -- gli strumenti attivi, il modello, il permesso di agire. Stesso inglese di `(memoria)`, diverso da `(azione) -> verification` che nomina invece il referto | verify | ✓ arriva |
 | verifica (memoria) | il metodo di `Indice`/`Lookup` che controlla se l'identificatore che il modello ha proposto esiste davvero nell'anagrafe, con quel tipo (`Indice.verifica`, ora `Lookup.verify`) -- un VERBO (un'azione: "verifica che..."), non il sostantivo che descrive il modulo della riga sopra. Scoperto rinominando `memoria/` (Task 5, review): applicare alla cieca `verification` avrebbe prodotto `lookup.verification(tipo, riferimento)`, grammaticalmente sbagliato per un metodo che si chiama come un imperativo | verify | ✓ arriva |
 | versioni | l'archivio che tiene lo stato di ogni proposta di scrittura -- in attesa, in corso, applicata, rifiutata, scaduta -- insieme al corpo di prima e a quello di dopo, e conserva per sempre l'ultima copia precedente di ogni oggetto scritto perche' e' l'unica esistente al mondo e permette di tornare indietro | revisions | ✓ arriva |
 | vive | il valore che Home Assistant sta dichiarando in questo momento per un'entita' -- la sua unita', la sua classe, l'istante dell'ultimo cambiamento -- letto dallo specchio dello stato invece che dal registro statico, per i casi in cui i due possono non coincidere | reported | ✓ arriva |
@@ -1437,6 +1443,7 @@ al Task 6 invece che deciso qui.
 | errore | error |
 | escluso | excluded |
 | esecuzione | execution |
+| eccezione | exception |
 | eseguito | executed |
 | esistente | existing |
 | esteso | extended | il campo che Home Assistant aggiunge a una riga di registro quando lo si chiede esplicitamente (gli alias di un'entita'), oltre a quelli che il registro porta sempre: `_add_extended_fields` (`proxy/ha_client.py`). Le quattro forme (`esteso`/`estesa`/`estesi`/`estese`) vivono oggi in quel solo file -- misurato con `tokenize` su tutto `hiris/app` prima di scrivere questa riga, zero collisioni altrove |
@@ -1561,6 +1568,7 @@ al Task 6 invece che deciso qui.
 | riga | row |
 | riga (api) | row |
 | riga (casa) | line |
+| riga (agent) | line | una riga di STDOUT della CLI (`agent/runner.py::read_stream`, `stdout.splitlines()`): e' una linea di testo, lo stesso senso di `riga (casa)` e non quello di `(api)`/`(proxy)`, che sono record di un registro. Quarta qualificazione della stessa parola, e la piu' facile da sbagliare proprio perche' le altre tre dicono `row` |
 | riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (casa)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `consumi/store.py`, `memoria/archivio.py`, `schedulatore/archivio.py`, `schedulatore/turno.py`, `azione/costruzione/officina.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
 | rileggi | reread |
 | ripara | repair |
@@ -1578,6 +1586,7 @@ al Task 6 invece che deciso qui.
 | scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `schedulatore/archivio.py` e `schedulatore/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
 | scadenza | deadline |
 | scegli | choose |
+| sentinella | sentinel |
 | scelto | chosen |
 | scena | scene |
 | sconosciuto | unknown |
@@ -1595,6 +1604,7 @@ al Task 6 invece che deciso qui.
 | significato | meaning |
 | singolare | singular |
 | sistema | system |
+| sonda | probe |
 | soggetto | subject |
 | soglia | threshold |
 | sostituisci | replace |

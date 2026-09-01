@@ -39,7 +39,7 @@ def test_prima_di_ogni_turno_e_none_non_un_valore_inventato():
     guasto, e un chiamante che li confondesse leggerebbe un allarme dove c'e'
     solo un processo giovane.
     """
-    assert runner.ultimo_init_del_ponte() is None
+    assert runner.last_bridge_init() is None
 
 
 def test_dopo_un_turno_la_cli_e_la_fonte_della_chiave_si_rileggono():
@@ -49,7 +49,7 @@ def test_dopo_un_turno_la_cli_e_la_fonte_della_chiave_si_rileggono():
     il numero pinnato nel `Dockerfile` passerebbe anche se il codice
     restituisse una costante, e si romperebbe a ogni bump legittimo.
     """
-    esito = runner.EsitoFlusso()
+    esito = runner.StreamOccurrence()
     esito.init = {"claude_code_version": "2.1.999",
                   "apiKeySource": "none",
                   "tools": [],
@@ -57,7 +57,7 @@ def test_dopo_un_turno_la_cli_e_la_fonte_della_chiave_si_rileggono():
 
     runner._logga_init(esito, job_id="prova")
 
-    visto = runner.ultimo_init_del_ponte()
+    visto = runner.last_bridge_init()
     assert visto["cli"] == "2.1.999"
     # `none` e' l'UNICA prova a runtime che si stia usando l'abbonamento e non
     # una chiave a consumo: la denylist dei due nomi non puo' provare cio' che
@@ -70,24 +70,24 @@ def test_un_init_che_non_arriva_non_cancella_quello_che_si_era_visto():
     """Un turno morto prima dell'`init` non deve trasformare in «mai visto» un
     container che una CLI l'aveva gia' dichiarata: cancellare qui renderebbe la
     lettura un rumore che dipende dall'ultimo turno andato male."""
-    primo = runner.EsitoFlusso()
+    primo = runner.StreamOccurrence()
     primo.init = {"claude_code_version": "2.1.999", "apiKeySource": "none",
                   "tools": [], "mcp_servers": []}
     runner._logga_init(primo, job_id="uno")
 
-    runner._logga_init(runner.EsitoFlusso(), job_id="due")  # init assente
+    runner._logga_init(runner.StreamOccurrence(), job_id="due")  # init assente
 
-    assert runner.ultimo_init_del_ponte()["cli"] == "2.1.999"
+    assert runner.last_bridge_init()["cli"] == "2.1.999"
 
 
 def test_chi_legge_non_puo_sporcare_lo_stato_conservato():
     """Si restituisce una copia. Un chiamante che modificasse il dizionario
     ricevuto riscriverebbe la misura di tutti gli altri."""
-    esito = runner.EsitoFlusso()
+    esito = runner.StreamOccurrence()
     esito.init = {"claude_code_version": "2.1.999", "apiKeySource": "none",
                   "tools": [], "mcp_servers": []}
     runner._logga_init(esito, job_id="prova")
 
-    runner.ultimo_init_del_ponte()["cli"] = "manomessa"
+    runner.last_bridge_init()["cli"] = "manomessa"
 
-    assert runner.ultimo_init_del_ponte()["cli"] == "2.1.999"
+    assert runner.last_bridge_init()["cli"] == "2.1.999"

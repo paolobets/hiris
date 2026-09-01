@@ -1278,6 +1278,14 @@ def chiudi_sponde(siti) -> int:
             inizi.append(inizi[-1] + len(r))
         nomi = {v for _, v, _ in bersagli}
         cambi = []
+        # Un nome IMPORTATO chiuso qui porta con se' i suoi usi NUDI: in un
+        # file che fa `from X import vecchio`, ogni `vecchio` nudo E' quel
+        # nome, senza ambiguita' -- e' il legame dell'import a renderlo certo.
+        # **Questa e' la quarta posizione, e mancava**: chiudendo i soli
+        # import, `agent/` ha prodotto 38 errori `F401`/`F821` (import
+        # rinominato, usi rimasti indietro). Fuori da un file che importa,
+        # invece, un nome nudo resta ambiguo e la rete non lo segnala nemmeno.
+        importati = {v for (_, v, s) in bersagli if s == "import"}
         for indice, vecchio, specie in _sponde_tokenizzate(tokens, nomi):
             t = tokens[indice]
             nuovo = bersagli.get((t.start[0], vecchio, specie))
@@ -1285,6 +1293,23 @@ def chiudi_sponde(siti) -> int:
                 continue
             cambi.append((inizi[t.start[0] - 1] + t.start[1],
                           inizi[t.end[0] - 1] + t.end[1], nuovo))
+        if importati:
+            percorso, _, _, _ = _righe_di_percorso_e_parola_chiave(tokens)
+            visti = {i for i, _, _ in _sponde_tokenizzate(tokens, importati)}
+            precedente = None
+            for indice, t in enumerate(tokens):
+                if (t.type == tokenize.NAME and t.string in importati
+                        and indice not in percorso and indice not in visti
+                        and not (precedente is not None
+                                 and precedente.type == tokenize.OP
+                                 and precedente.string == ".")):
+                    nuovo = next(n for (_, v, s), n in bersagli.items()
+                                 if v == t.string and s == "import")
+                    cambi.append((inizi[t.start[0] - 1] + t.start[1],
+                                  inizi[t.end[0] - 1] + t.end[1], nuovo))
+                if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                                  tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+                    precedente = t
         for i, j, nuovo in sorted(cambi, reverse=True):
             sorgente = sorgente[:i] + nuovo + sorgente[j:]
         if cambi:

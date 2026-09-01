@@ -110,7 +110,7 @@ from ..claude_runner import (
 # timbra (`casa/nucleo.py::componi` e' pura e non compone nessuna data): un
 # orario nel prompt sarebbe inventato, mentre "in questo turno" e' l'unica
 # formulazione che non puo' diventare falsa.
-_GUIDA_SENZA_STRUMENTI = (
+_GUIDE_WITHOUT_TOOLS = (
     "In questa conversazione NON hai alcuno strumento di HIRIS: non puoi "
     "guardare adesso lo stato della casa (entita', aree, dispositivi, meteo, "
     "storico) e non puoi salvare nuovi ricordi ne' andare a cercarne altri "
@@ -220,7 +220,7 @@ _GUIDA_SENZA_STRUMENTI = (
 #   cinque (nessuna regola del giro in due tempi da ripetere): guardano
 #   INDIETRO nel tempo invece che lo stato di adesso, ed e' l'unica cosa
 #   che questo testo -- quello dei NOMI -- deve dire su di loro.
-_GUIDA_CON_STRUMENTI = (
+_GUIDE_WITH_TOOLS = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
     "l'unica forma in cui puoi chiamarli: `mcp__hiris__cerca` e "
@@ -364,7 +364,7 @@ _CHAT_INSTRUCTION = (
 
 def build_chat_messages(system_prompt: str, history: list, *,
                         contesto: str = "",
-                        strumenti_attivi: bool = False,
+                        active_tools: bool = False,
                         restrict_to_home: bool = False,
                         response_mode: str = "") -> tuple[str, str]:
     """Chat-via-abbonamento: separa il SYSTEM prompt (BASE + persona HIRIS +
@@ -435,7 +435,7 @@ def build_chat_messages(system_prompt: str, history: list, *,
     si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""
     # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
     # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
-    base = BASE_IDENTITA + BASE_REGOLE_STRUMENTI if strumenti_attivi else BASE_IDENTITA
+    base = BASE_IDENTITA + BASE_REGOLE_STRUMENTI if active_tools else BASE_IDENTITA
     system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())
@@ -448,7 +448,7 @@ def build_chat_messages(system_prompt: str, history: list, *,
         system_parts.append(COMPACT_PROMPT)
     elif response_mode == "minimal":
         system_parts.append(MINIMAL_PROMPT)
-    guida = _GUIDA_CON_STRUMENTI if strumenti_attivi else _GUIDA_SENZA_STRUMENTI
+    guida = _GUIDE_WITH_TOOLS if active_tools else _GUIDE_WITHOUT_TOOLS
     contesto = (contesto or "").strip()
     system_parts.append(
         guida + "\n" + (_CONTESTO_PRESENTE if contesto else _CONTESTO_ASSENTE))

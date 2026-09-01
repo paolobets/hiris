@@ -87,10 +87,10 @@ def test_un_kind_davvero_sconosciuto_resta_dichiarato(caplog):
 
 
 def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
-    from hiris.app.agent.runner import nomi_mcp
+    from hiris.app.agent.runner import mcp_names
 
-    chat = set(nomi_mcp())
-    promessa = set(nomi_mcp(per_promessa=True))
+    chat = set(mcp_names())
+    promessa = set(mcp_names(by_promise=True))
 
     assert any(n.endswith("__concludi") for n in promessa), (
         "senza «concludi» fra i nomi permessi il turno non ha modo di finire")
@@ -102,18 +102,18 @@ def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
 
 def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
     """Il punto esatto in cui il turno moriva: 9 attesi contro 5 risolti."""
-    from hiris.app.agent.runner import EsitoFlusso, nomi_mcp, verifica_init
+    from hiris.app.agent.runner import StreamOccurrence, mcp_names, verify_init
 
-    esito = EsitoFlusso()
+    esito = StreamOccurrence()
     esito.init = {
         "mcp_servers": [{"name": "hiris", "status": "connected"}],
-        "tools": list(nomi_mcp(per_promessa=True)),
+        "tools": list(mcp_names(by_promise=True)),
     }
 
-    ok, motivo = verifica_init(esito, per_promessa=True)
+    ok, motivo = verify_init(esito, by_promise=True)
     assert ok is True, motivo
 
-    ok_chat, _motivo_chat = verifica_init(esito, per_promessa=False)
+    ok_chat, _motivo_chat = verify_init(esito, by_promise=False)
     n_promessa = len(esito.init["tools"])
     assert ok_chat is False, (
         f"col catalogo della chat quegli stessi {n_promessa} strumenti del turno "
@@ -124,8 +124,8 @@ def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
 def test_l_argv_permette_concludi_su_un_turno_di_promessa():
     from hiris.app.agent.runner import _chat_claude_args
 
-    argv = _chat_claude_args("sys", "user", "sonnet", strumenti_attivi=True,
-                             mcp_config="{}", per_promessa=True)
+    argv = _chat_claude_args("sys", "user", "sonnet", active_tools=True,
+                             mcp_config="{}", by_promise=True)
     permessi = argv[argv.index("--allowedTools") + 1]
     assert "__concludi" in permessi
     assert "__esegui" not in permessi

@@ -49,18 +49,18 @@ def test_auto_senza_models_config_da_sonnet():
     # o provider_models["claude"] vuoto) risolve via AUTO_MODEL_MAP["chat"]
     # -> "claude-sonnet-4-6", che modello_cli traduce nell'alias "sonnet".
     modello_risolto = resolve_model("auto", "chat", "")
-    assert runner.modello_cli(modello_risolto) == "sonnet"
+    assert runner.cli_model(modello_risolto) == "sonnet"
 
 
 def test_modello_opus_esplicito_da_opus():
     modello_risolto = resolve_model("claude-opus-4-7", "chat", "")
     assert modello_risolto == "claude-opus-4-7"  # resolve_model non tocca un modello non "auto"
-    assert runner.modello_cli(modello_risolto) == "opus"
+    assert runner.cli_model(modello_risolto) == "opus"
 
 
 def test_modello_haiku_esplicito_da_haiku():
     modello_risolto = resolve_model("claude-haiku-4-5-20251001", "chat", "")
-    assert runner.modello_cli(modello_risolto) == "haiku"
+    assert runner.cli_model(modello_risolto) == "haiku"
 
 
 def test_modello_non_anthropic_ricade_su_sonnet_e_lo_dichiara_nel_log(caplog):
@@ -73,7 +73,7 @@ def test_modello_non_anthropic_ricade_su_sonnet_e_lo_dichiara_nel_log(caplog):
     assert modello_risolto == "gpt-4o"
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        esito = runner.modello_cli(modello_risolto)
+        esito = runner.cli_model(modello_risolto)
 
     assert esito == "sonnet"
     rec = [r for r in caplog.records if r.name == "hiris.agent"]

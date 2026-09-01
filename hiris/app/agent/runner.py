@@ -167,7 +167,7 @@ _LOCAL_TOOLS_DENY = (
 # invocazioni per turno, ed e' asserito.
 
 
-def _nome_server_mcp() -> str:
+def _mcp_server_name() -> str:
     """Il nome con cui il server MCP si presenta alla CLI, dall'UNICA fonte.
 
     L'import e' DIFFERITO -- dentro la funzione e non in cima al file -- per un
@@ -187,7 +187,7 @@ def _nome_server_mcp() -> str:
     return MCP_SERVER_NAME
 
 
-def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
+def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
     Attraverso MCP la CLI prefissa ogni strumento col nome del server: `cerca`
@@ -202,7 +202,7 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     E' una funzione e non una costante di modulo per la stessa ragione
     dell'import differito qui sopra: il prefisso ha bisogno del nome del server,
     che a import-time non si puo' ancora leggere."""
-    prefisso = f"mcp__{_nome_server_mcp()}__"
+    prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
     # promessa ne vede sette -- i sei lettori piu' `concludi` -- e i due
     # elenchi non sono l'uno il sottoinsieme dell'altro: `concludi` esiste solo
@@ -214,12 +214,12 @@ def nomi_mcp(per_promessa: bool = False) -> tuple[str, ...]:
     # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `concludi`, cioe' senza nessun modo di finire.
-    definizioni = promise_tools() if per_promessa else KNOWLEDGE_TOOLS
-    return tuple(f"{prefisso}{d['name']}" for d in definizioni)
+    definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
+    return tuple(f"{prefix}{d['name']}" for d in definitions)
 
 
-def config_mcp(base_url: str, token: str, id_turno: str = "",
-               id_promessa: str = "") -> str:
+def config_mcp(base_url: str, token: str, exchange_id: str = "",
+               promise_id: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
     `id_turno` (Task 6 della fetta, facoltativo e vuoto per default) diventa
@@ -286,8 +286,8 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
         "X-HIRIS-Internal-Token": token,
         "X-Requested-With": "hiris-mcp",
     }
-    if id_turno:
-        intestazioni["X-HIRIS-Turno"] = id_turno
+    if exchange_id:
+        intestazioni["X-HIRIS-Turno"] = exchange_id
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
@@ -300,11 +300,11 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
     # promessa non e' un segreto, ma la disciplina di redazione dell'eco
     # (`reda_segreti` su `forme_del_token`) resta quella di sempre, e questa
     # chiave non la indebolisce -- non contiene il token.
-    if id_promessa:
-        intestazioni["X-HIRIS-Promessa"] = id_promessa
+    if promise_id:
+        intestazioni["X-HIRIS-Promessa"] = promise_id
     return json.dumps({
         "mcpServers": {
-            _nome_server_mcp(): {
+            _mcp_server_name(): {
                 "type": "http",
                 "url": f"{(base_url or '').rstrip('/')}/api/mcp",
                 "headers": intestazioni,
@@ -316,7 +316,7 @@ def config_mcp(base_url: str, token: str, id_turno: str = "",
 REDATTO = "***"
 
 
-def reda_segreti(testo: str, *segreti: str) -> str:
+def reda_segreti(text: str, *segreti: str) -> str:
     """Il token fuori da tutto cio' che esce dal sottoprocesso.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 1,
@@ -347,11 +347,11 @@ def reda_segreti(testo: str, *segreti: str) -> str:
     # seconda lasciando in giro il resto.
     for segreto in sorted(set(segreti), key=len, reverse=True):
         if segreto:
-            testo = testo.replace(segreto, REDATTO)
-    return testo
+            text = text.replace(segreto, REDATTO)
+    return text
 
 
-def forme_del_token(token: str, profondita: int = 2) -> tuple[str, ...]:
+def token_forms(token: str, profondita: int = 2) -> tuple[str, ...]:
     r"""Tutte le forme in cui QUESTO token puo' comparire nell'eco della CLI.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 3, fix round 2).
@@ -393,19 +393,19 @@ def forme_del_token(token: str, profondita: int = 2) -> tuple[str, ...]:
     difese in profondita' servono esattamente quando la prima cede."""
     if not token:
         return ()
-    forme, corrente = [token], token
+    forms, current = [token], token
     for _ in range(profondita):
-        corrente = json.dumps(corrente)[1:-1]
-        forme.append(corrente)
+        current = json.dumps(current)[1:-1]
+        forms.append(current)
     viste, uniche = set(), []
-    for forma in forme:
-        if forma not in viste:
-            viste.add(forma)
-            uniche.append(forma)
+    for form in forms:
+        if form not in viste:
+            viste.add(form)
+            uniche.append(form)
     return tuple(uniche)
 
 
-def _reda_struttura(valore, *segreti: str):
+def _reda_struttura(value, *segreti: str):
     """`reda_segreti`, applicata dentro una struttura JSON qualunque
     (dict/list/str/altro), non solo su una stringa.
 
@@ -418,16 +418,16 @@ def _reda_struttura(valore, *segreti: str):
     scrive in un `ricorda`, per dire), non deve uscire comunque. Nessuna
     prova nota lo fa succedere oggi: e' difesa in profondita', non una
     riparazione di un buco osservato."""
-    if isinstance(valore, str):
-        return reda_segreti(valore, *segreti)
-    if isinstance(valore, dict):
-        return {k: _reda_struttura(v, *segreti) for k, v in valore.items()}
-    if isinstance(valore, list):
-        return [_reda_struttura(v, *segreti) for v in valore]
-    return valore
+    if isinstance(value, str):
+        return reda_segreti(value, *segreti)
+    if isinstance(value, dict):
+        return {k: _reda_struttura(v, *segreti) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_reda_struttura(v, *segreti) for v in value]
+    return value
 
 
-def _motivo_eccezione(exc: BaseException, token: str | None = None) -> str:
+def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     """Il messaggio di un'eccezione reso stampabile: tipo + testo REDATTO.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 4, nit 1 della
@@ -460,11 +460,11 @@ def _motivo_eccezione(exc: BaseException, token: str | None = None) -> str:
     in `tests/test_token_interno.py`, file che questa fetta non tocca."""
     if token is None:
         token = os.environ.get("INTERNAL_TOKEN", "")
-    return f"{type(exc).__name__}: {reda_segreti(str(exc), *forme_del_token(token))}"
+    return f"{type(exc).__name__}: {reda_segreti(str(exc), *token_forms(token))}"
 
 
-def sonda_strumenti(client, base_url: str, headers: dict,
-                    *, job_id=None, id_promessa: str = "") -> tuple[bool, str]:
+def probe_tools(client, base_url: str, headers: dict,
+                *, job_id=None, promise_id: str = "") -> tuple[bool, str]:
     """Difesa (1) del progetto: gli strumenti ci sono DAVVERO, in questo turno?
 
     Un `POST /api/mcp` con `tools/list` sullo STESSO `httpx.Client` e con gli
@@ -513,23 +513,23 @@ def sonda_strumenti(client, base_url: str, headers: dict,
     # stessa cosa che il turno usera': con l'intestazione della promessa la
     # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
-    definizioni = promise_tools() if id_promessa else KNOWLEDGE_TOOLS
-    attesi = {d["name"] for d in definizioni}
+    definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
+    awaited = {d["name"] for d in definitions}
     url = f"{(base_url or '').rstrip('/')}/api/mcp"
 
-    def _no(motivo: str) -> tuple[bool, str]:
+    def _no(reason: str) -> tuple[bool, str]:
         log.warning(
             "sonda degli strumenti fallita (job_id=%s): %s -- questo turno del "
             "ponte va SENZA strumenti, il prompt torna a negarli e la reply lo "
-            "dichiara all'utente", job_id, motivo)
-        return False, motivo
+            "dichiara all'utente", job_id, reason)
+        return False, reason
 
     try:
-        intestazioni_sonda = dict(headers or {})
-        if id_promessa:
-            intestazioni_sonda["X-HIRIS-Promessa"] = id_promessa
-        risposta = client.post(
-            url, headers=intestazioni_sonda,
+        probe_headers = dict(headers or {})
+        if promise_id:
+            probe_headers["X-HIRIS-Promessa"] = promise_id
+        answer = client.post(
+            url, headers=probe_headers,
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             timeout=15)
     except Exception as exc:
@@ -537,33 +537,33 @@ def sonda_strumenti(client, base_url: str, headers: dict,
         # passare qualunque client, e una difesa che solleva non e' una difesa.
         return _no(f"{url} non ha risposto ({type(exc).__name__}: {exc})")
 
-    codice = getattr(risposta, "status_code", None)
-    if codice != 200:
-        return _no(f"{url} ha risposto {codice} invece di 200 (autenticazione, "
+    status_code = getattr(answer, "status_code", None)
+    if status_code != 200:
+        return _no(f"{url} ha risposto {status_code} invece di 200 (autenticazione, "
                    f"o rotta non registrata)")
     try:
-        corpo = risposta.json()
+        body = answer.json()
     except Exception as exc:
         return _no(f"{url} ha risposto 200 ma il corpo non e' JSON "
                    f"({type(exc).__name__}: {exc})")
 
-    voci = ((corpo or {}).get("result") or {}).get("tools")
-    if not isinstance(voci, list):
-        errore = (corpo or {}).get("error")
+    entries = ((body or {}).get("result") or {}).get("tools")
+    if not isinstance(entries, list):
+        error = (body or {}).get("error")
         return _no(f"{url} ha risposto 200 ma senza result.tools "
-                   f"(error={errore!r})")
-    trovati = {v.get("name") for v in voci if isinstance(v, dict)}
-    mancanti = attesi - trovati
-    if mancanti:
-        return _no(f"tools/list non porta {sorted(mancanti)}: il ponte avrebbe "
+                   f"(error={error!r})")
+    found = {v.get("name") for v in entries if isinstance(v, dict)}
+    missing = awaited - found
+    if missing:
+        return _no(f"tools/list non porta {sorted(missing)}: il ponte avrebbe "
                    f"strumenti a meta', e il prompt li afferma tutti")
     return True, ""
 
 
 def _chat_claude_args(system: str, user: str, model: str, *,
-                      strumenti_attivi: bool = False,
+                      active_tools: bool = False,
                       mcp_config: str = "",
-                      per_promessa: bool = False) -> list:
+                      by_promise: bool = False) -> list:
     """L'argv del ponte.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 2): il formato
@@ -621,13 +621,13 @@ def _chat_claude_args(system: str, user: str, model: str, *,
             # Su entrambi i rami: vedi I-1 nel docstring.
             "--strict-mcp-config",
             "--output-format", "stream-json", "--verbose"]
-    if strumenti_attivi:
+    if active_tools:
         argv += ["--mcp-config", mcp_config,
-                 "--allowedTools", ",".join(nomi_mcp(per_promessa))]
+                 "--allowedTools", ",".join(mcp_names(by_promise))]
     return argv
 
 
-def modello_cli(modello_risolto: str) -> str:
+def cli_model(resolved_model: str) -> str:
     """Traduce il modello GIA' RISOLTO della chat (`resolve_model`, che puo'
     restituire un modello di QUALUNQUE provider configurato in
     `provider_models` -- claude, openai, openrouter) in un alias della CLI
@@ -644,7 +644,7 @@ def modello_cli(modello_risolto: str) -> str:
     nessuno dei tre alias non fallisce muto: e' il silenzio dichiarato ②
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
-    nome = (modello_risolto or "").lower()
+    name = (resolved_model or "").lower()
     # I tre alias vengono da `decisione_modelli.ALIAS_DEL_PIANO`, che e' anche
     # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
     # in ordine diverso e senza nessun test che li legasse. Un quarto alias
@@ -652,14 +652,14 @@ def modello_cli(modello_risolto: str) -> str:
     # COME `sonnet` da questa funzione, con un warning che nessuno legge: il
     # radio sarebbe tornato indietro da solo, senza spiegazione.
     for alias, _descrizione in ALIAS_DEL_PIANO:
-        if alias in nome:
+        if alias in name:
             return alias
     log.warning(
         "modello configurato per la chat (%r) non e' un alias Claude "
         "riconosciuto (ne' opus, ne' haiku, ne' sonnet): il ponte parla "
         "SOLO con la CLI dell'abbonamento Claude Max, non puo' inoltrarlo "
         "a un provider diverso -- ricado su 'sonnet'",
-        modello_risolto)
+        resolved_model)
     return "sonnet"
 
 
@@ -711,7 +711,7 @@ def _safe_subprocess_env() -> dict:
 # la', e l'elenco e' gia' andato fuori sincrono una volta. Sta in `chat_store`
 # e non qui perche' quello e' una foglia -- lo puo' importare chiunque senza
 # rischiare un ciclo, il contrario no.
-_SENTINELLA_FLUSSO_INCOMPLETO = SENTINELLA_FLUSSO_INCOMPLETO
+_INCOMPLETE_STREAM_SENTINEL = SENTINELLA_FLUSSO_INCOMPLETO
 
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 3), difesa (3) del
 # progetto: la riga rivolta ALL'UTENTE quando gli strumenti erano attesi e la
@@ -728,7 +728,7 @@ _SENTINELLA_FLUSSO_INCOMPLETO = SENTINELLA_FLUSSO_INCOMPLETO
 # QUESTO TURNO" -- NON ha un terzo testo di prompt. `_GUIDA_SENZA_STRUMENTI` e'
 # gia' vera anche qui; cio' che distingue il terzo stato dal secondo e' proprio
 # questa riga.
-AVVISO_STRUMENTI_ASSENTI = (
+MISSING_TOOLS_NOTICE = (
     "In questo turno non ho potuto usare gli strumenti per guardare la casa: "
     "rispondo con cio' che so dal nucleo e dalla conversazione.")
 
@@ -743,11 +743,11 @@ AVVISO_STRUMENTI_ASSENTI = (
 #
 # Costante di modulo, non opzione dell'add-on (regole della fetta): se un
 # giorno servira' configurarla, si fara' il giro dei cinque posti allora.
-MAX_INVOCAZIONI_PER_TURNO = 2
+MAX_INVOCATIONS_PER_EXCHANGE = 2
 
 
 @dataclass
-class EsitoFlusso:
+class StreamOccurrence:
     """Cio' che si ricava da uno stdout `stream-json`.
 
     - `testo`: il campo `result` dell'evento finale `{"type": "result"}`;
@@ -798,24 +798,24 @@ class EsitoFlusso:
       cose insieme): tre stati, tre forme, e nessuno dei tre si confonde con
       un altro."""
 
-    testo: str = ""
+    text: str = ""
     init: dict | None = None
     usage: dict = field(default_factory=dict)
-    righe_saltate: int = 0
-    righe_lette: int = 0
-    risultato: dict | None = None
-    num_turni: int | None = None
+    lines_skipped: int = 0
+    lines_read: int = 0
+    result: dict | None = None
+    num_exchanges: int | None = None
     tools_called: list = field(default_factory=list)
 
     @property
-    def risultato_presente(self) -> bool:
+    def has_result(self) -> bool:
         """False = flusso troncato, processo ucciso a meta', o formato cambiato
         da un aggiornamento della CLI. Chi legge DEVE dichiararlo."""
-        return self.risultato is not None
+        return self.result is not None
 
 
 @dataclass
-class Invocazione:
+class Invocation:
     """Una singola invocazione della CLI, gia' letta e gia' REDATTA.
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 4). Esiste perche'
@@ -831,80 +831,80 @@ class Invocazione:
     rc: int = 0
     stdout: str = ""
     stderr: str = ""
-    esito: EsitoFlusso = field(default_factory=EsitoFlusso)
+    occurrence: StreamOccurrence = field(default_factory=StreamOccurrence)
 
 
-def leggi_flusso(stdout: str) -> EsitoFlusso:
+def read_stream(stdout: str) -> StreamOccurrence:
     """Legge l'NDJSON di `claude --output-format stream-json --verbose`.
 
     Non solleva mai: ogni modo di essere malformato (riga non-JSON, JSON che
     non e' un oggetto, flusso vuoto, flusso senza evento finale) diventa un
     campo dell'`EsitoFlusso`, mai un'eccezione che risale a `_reason_chat`."""
-    esito = EsitoFlusso()
+    occurrence = StreamOccurrence()
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): gli id dei
     # `tool_use` visti finora, per abbinare il `tool_result` che arriva DOPO
     # (un evento `user` successivo, con lo stesso `tool_use_id`) alla voce
     # gia' accodata in `esito.tools_called`. Un dizionario e non una ricerca
     # lineare: un turno puo' avere piu' chiamate in parallelo, e cercarle a
     # ogni `tool_result` sarebbe quadratico per niente.
-    chiamate_per_id: dict[str, dict] = {}
-    for riga in (stdout or "").splitlines():
-        riga = riga.strip()
-        if not riga:
+    calls_by_id: dict[str, dict] = {}
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
             continue
-        esito.righe_lette += 1
+        occurrence.lines_read += 1
         try:
-            evento = json.loads(riga)
+            event = json.loads(line)
         except (ValueError, TypeError):
-            esito.righe_saltate += 1
+            occurrence.lines_skipped += 1
             continue
-        if not isinstance(evento, dict):
+        if not isinstance(event, dict):
             # JSON valido ma non un evento (una lista, un numero): stessa sorte
             # di una riga illeggibile -- si conta e si va avanti.
-            esito.righe_saltate += 1
+            occurrence.lines_skipped += 1
             continue
-        tipo = evento.get("type")
-        if tipo == "system" and evento.get("subtype") == "init":
-            if esito.init is None:   # il PRIMO init: arriva prima del primo token
-                esito.init = evento
-        elif tipo == "result":
-            esito.risultato = evento  # l'ULTIMO result e' quello finale
-        elif tipo == "assistant":
+        kind = event.get("type")
+        if kind == "system" and event.get("subtype") == "init":
+            if occurrence.init is None:   # il PRIMO init: arriva prima del primo token
+                occurrence.init = event
+        elif kind == "result":
+            occurrence.result = event  # l'ULTIMO result e' quello finale
+        elif kind == "assistant":
             # I blocchi `tool_use` dentro il messaggio dell'assistente:
             # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
             # a blocchi `text`/`thinking` che si ignorano qui (non sono lo
             # strumento).
-            blocchi = ((evento.get("message") or {}).get("content")
-                      if isinstance(evento.get("message"), dict) else None)
-            for blocco in (blocchi or []):
-                if not (isinstance(blocco, dict) and blocco.get("type") == "tool_use"):
+            blocchi = ((event.get("message") or {}).get("content")
+                      if isinstance(event.get("message"), dict) else None)
+            for block in (blocchi or []):
+                if not (isinstance(block, dict) and block.get("type") == "tool_use"):
                     continue
-                nome = blocco.get("name")
+                name = block.get("name")
                 # Il nome grezzo, MAI normalizzato (vedi il docstring di
                 # `EsitoFlusso.tools_called`): riscriverlo nasconderebbe
                 # proprio il caso -- il modello che chiama uno strumento che
                 # non gli abbiamo dato -- che questo campo esiste per rendere
                 # visibile.
-                voce = {"tool": nome if isinstance(nome, str) else "",
-                       "input": blocco.get("input")}
-                esito.tools_called.append(voce)
-                id_chiamata = blocco.get("id")
-                if isinstance(id_chiamata, str):
-                    chiamate_per_id[id_chiamata] = voce
-        elif tipo == "user":
+                entry = {"tool": name if isinstance(name, str) else "",
+                       "input": block.get("input")}
+                occurrence.tools_called.append(entry)
+                call_id = block.get("id")
+                if isinstance(call_id, str):
+                    calls_by_id[call_id] = entry
+        elif kind == "user":
             # L'esito che torna al modello, riecheggiato nel flusso come
             # messaggio "user": `{"type":"tool_result","tool_use_id":...,
             # "is_error":...}`. E' l'UNICO punto in cui una chiamata fallita
             # si distingue da una riuscita -- senza, "ricorda" fallito e
             # "ricorda" riuscito produrrebbero la stessa identica voce.
-            blocchi = ((evento.get("message") or {}).get("content")
-                      if isinstance(evento.get("message"), dict) else None)
-            for blocco in (blocchi or []):
-                if not (isinstance(blocco, dict) and blocco.get("type") == "tool_result"):
+            blocchi = ((event.get("message") or {}).get("content")
+                      if isinstance(event.get("message"), dict) else None)
+            for block in (blocchi or []):
+                if not (isinstance(block, dict) and block.get("type") == "tool_result"):
                     continue
-                id_chiamata = blocco.get("tool_use_id")
-                voce = chiamate_per_id.get(id_chiamata) if isinstance(id_chiamata, str) else None
-                if voce is None:
+                call_id = block.get("tool_use_id")
+                entry = calls_by_id.get(call_id) if isinstance(call_id, str) else None
+                if entry is None:
                     continue
                 # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
                 # SEMPRE (`_risolto`), non solo quando e' un errore. E'
@@ -912,13 +912,13 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
                 # distingue "arrivato e riuscito" da "mai arrivato": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
                 # docstring di `EsitoFlusso.tools_called`).
-                voce["_risolto"] = True
-                if blocco.get("is_error"):
+                entry["_risolto"] = True
+                if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
                     # arrivato, senza errore) resta bit-per-bit
                     # {"tool":..., "input":...}, identica alla forma del
                     # ramo sincrono (Step 2 del brief).
-                    voce["is_error"] = True
+                    entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
     # arrivato (flusso troncato, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
@@ -928,24 +928,24 @@ def leggi_flusso(stdout: str) -> EsitoFlusso:
     # dichiarato (6) della fetta: senza questa marcatura un `ricorda`
     # fallito il cui esito si perde nel troncamento sarebbe apparso, nel
     # dato, come un ricordo salvato.
-    for voce in esito.tools_called:
-        if not voce.pop("_risolto", False):
-            voce["esito"] = "sconosciuto"
-    risultato = esito.risultato or {}
-    testo = risultato.get("result")
-    esito.testo = testo if isinstance(testo, str) else ""
-    uso = risultato.get("usage")
-    esito.usage = uso if isinstance(uso, dict) else {}
+    for entry in occurrence.tools_called:
+        if not entry.pop("_risolto", False):
+            entry["esito"] = "sconosciuto"
+    result = occurrence.result or {}
+    text = result.get("result")
+    occurrence.text = text if isinstance(text, str) else ""
+    uso = result.get("usage")
+    occurrence.usage = uso if isinstance(uso, dict) else {}
     # `num_turns` sta in cima all'evento `result`, non dentro `usage` (verificato
     # sul flusso vero): si legge di la', con `usage` come ripiego.
-    turni = risultato.get("num_turns")
-    if turni is None:
-        turni = esito.usage.get("num_turns")
-    esito.num_turni = turni if isinstance(turni, int) else None
-    return esito
+    exchanges = result.get("num_turns")
+    if exchanges is None:
+        exchanges = occurrence.usage.get("num_turns")
+    occurrence.num_exchanges = exchanges if isinstance(exchanges, int) else None
+    return occurrence
 
 
-def _server_dichiarati(esito: EsitoFlusso) -> list:
+def _declared_servers(occurrence: StreamOccurrence) -> list:
     """Nome e stato di ogni server MCP dell'`init`, e NIENT'ALTRO.
 
     E' l'unica forma in cui l'evento `init` esce da questo modulo -- verso un
@@ -953,17 +953,17 @@ def _server_dichiarati(esito: EsitoFlusso) -> list:
     `--mcp-config` porta gli header di autenticazione, e un `%r` generoso e'
     il modo classico di far finire un token nel log."""
     return [{"name": s.get("name"), "status": s.get("status")}
-            for s in ((esito.init or {}).get("mcp_servers") or [])
+            for s in ((occurrence.init or {}).get("mcp_servers") or [])
             if isinstance(s, dict)]
 
 
-def _strumenti_risolti(esito: EsitoFlusso) -> set:
+def _resolved_tools(occurrence: StreamOccurrence) -> set:
     """I nomi di strumento che la CLI dichiara di aver risolto in questo turno.
     Solo stringhe: una voce di altro tipo non e' un nome e non conta."""
-    voci = (esito.init or {}).get("tools")
-    if not isinstance(voci, list):
+    entries = (occurrence.init or {}).get("tools")
+    if not isinstance(entries, list):
         return set()
-    return {v for v in voci if isinstance(v, str)}
+    return {v for v in entries if isinstance(v, str)}
 
 
 # L'ultimo `init` del ponte che sia davvero passato di qui. Vive quanto il
@@ -979,7 +979,7 @@ def _strumenti_risolti(esito: EsitoFlusso) -> set:
 _ULTIMO_INIT: dict = {}
 
 
-def ultimo_init_del_ponte() -> dict | None:
+def last_bridge_init() -> dict | None:
     """L'ultimo `init` osservato, o `None` se nessun turno e' ancora passato.
 
     `None` significa **non ancora visto**, non «assente»: sono due fatti
@@ -989,7 +989,7 @@ def ultimo_init_del_ponte() -> dict | None:
     return dict(_ULTIMO_INIT) if _ULTIMO_INIT else None
 
 
-def _logga_init(esito: EsitoFlusso, job_id) -> None:
+def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     """L'`init` letto e loggato. Dal Task 4 ci si DECIDE anche sopra:
     `verifica_init` qui sotto e' la difesa (2) del progetto, e questa riga
     resta la misura -- il log dice cosa la CLI ha collegato, in ogni turno,
@@ -1022,7 +1022,7 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
     guardare e' `rc` -- e l'implementer del Task 7 ci ha perso un giro di
     diagnosi dal vivo. Il messaggio elenca le cause senza sceglierne una:
     affermarne una sola e' esattamente il modo in cui questa riga sviava."""
-    if esito.init is None:
+    if occurrence.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): l'init "
             "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
@@ -1032,27 +1032,27 @@ def _logga_init(esito: EsitoFlusso, job_id) -> None:
             "Quando gli strumenti erano attesi questa assenza NON e' una "
             "conferma e vale come guasto: la decide `verifica_init`", job_id)
         return
-    strumenti = esito.init.get("tools")
+    tools = occurrence.init.get("tools")
     # Si conserva PRIMA di loggare: la riga di log e' la misura di questo
     # turno, questo e' lo stato leggibile dopo. Le chiavi restano quelle della
     # CLI (`claude_code_version`, `apiKeySource`): e' un confine, e rinominarle
     # qui creerebbe la traduzione che non serve a nessuno.
     _ULTIMO_INIT.update({
-        "cli": esito.init.get("claude_code_version"),
-        "apiKeySource": esito.init.get("apiKeySource"),
+        "cli": occurrence.init.get("claude_code_version"),
+        "apiKeySource": occurrence.init.get("apiKeySource"),
         "visto_ts": time.time(),
     })
     log.info(
         "init del ponte (job_id=%s): cli=%s, apiKeySource=%s, mcp_servers=%s, "
         "strumenti risolti=%d",
         job_id,
-        esito.init.get("claude_code_version"),
-        esito.init.get("apiKeySource"),
-        _server_dichiarati(esito),
-        len(strumenti) if isinstance(strumenti, list) else 0)
+        occurrence.init.get("claude_code_version"),
+        occurrence.init.get("apiKeySource"),
+        _declared_servers(occurrence),
+        len(tools) if isinstance(tools, list) else 0)
 
 
-def verifica_init(esito: EsitoFlusso, per_promessa: bool = False) -> tuple[bool, str]:
+def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
     `sonda_strumenti` (difesa 1) prova che la rotta risponde con tutti i nomi
@@ -1082,18 +1082,18 @@ def verifica_init(esito: EsitoFlusso, per_promessa: bool = False) -> tuple[bool,
     motivo)`, dove il motivo porta lo stato dei server e i nomi mancanti,
     perche' «non ha funzionato» senza il PERCHE' e' un silenzio con una riga
     di log intorno."""
-    nome = _nome_server_mcp()
-    if esito.init is None:
+    name = _mcp_server_name()
+    if occurrence.init is None:
         return False, ("il flusso non porta l'evento system/init: un'assenza "
                        "non e' una conferma (CLI piu' vecchia, --verbose non "
                        "arrivato, o formato cambiato)")
-    server = _server_dichiarati(esito)
-    stato = next((s.get("status") for s in server if s.get("name") == nome), None)
-    mancanti = sorted(set(nomi_mcp(per_promessa)) - _strumenti_risolti(esito))
-    if str(stato or "").strip().lower() != "connected" or mancanti:
-        return False, (f"mcp_servers={server}; server {nome!r} stato={stato!r} "
+    server = _declared_servers(occurrence)
+    state = next((s.get("status") for s in server if s.get("name") == name), None)
+    missing = sorted(set(mcp_names(by_promise)) - _resolved_tools(occurrence))
+    if str(state or "").strip().lower() != "connected" or missing:
+        return False, (f"mcp_servers={server}; server {name!r} stato={state!r} "
                        f"(atteso 'connected'); strumenti non risolti dalla CLI="
-                       f"{mancanti}")
+                       f"{missing}")
     return True, ""
 
 
@@ -1101,10 +1101,10 @@ def verifica_init(esito: EsitoFlusso, per_promessa: bool = False) -> tuple[bool,
 # nel percorso a PROCESSO SEPARATO (`main()`, il gateway esterno), dove `/data`
 # non e' di questo processo: li' l'uso continua a finire solo nel log, ed e'
 # dichiarato invece che dimenticato.
-_registra_consumo = None
+_log_usage = None
 
 
-def imposta_registro_consumi(fn) -> None:
+def set_usage_logger(fn) -> None:
     """Collega (o scollega) l'archivio dei consumi al ponte.
 
     Un attributo di modulo e non un parametro passato di mano in mano perche'
@@ -1113,25 +1113,25 @@ def imposta_registro_consumi(fn) -> None:
     di conoscere i consumi: infilarcelo vorrebbe dire allargare cinque firme
     per un dato che riguarda solo l'ultima.
     """
-    global _registra_consumo
-    _registra_consumo = fn
+    global _log_usage
+    _log_usage = fn
 
 
-def _logga_uso(esito: EsitoFlusso, job_id) -> None:
+def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
     """La misura che chiudera' la domanda aperta 2 (Task 2, Step 4).
 
     Non e' telemetria e non esce dall'add-on: e' una riga di log per turno,
     l'unico modo perche' "quanto costa il prefisso" smetta di essere
     un'opinione dopo la prima settimana di UAT. Solo conteggi: nessun valore di
     prompt, nessun testo di risposta, nessun segreto."""
-    uso = esito.usage
+    uso = occurrence.usage
     log.info(
         "uso del ponte (job_id=%s): input_tokens=%s "
         "cache_creation_input_tokens=%s cache_read_input_tokens=%s "
         "output_tokens=%s num_turns=%s",
         job_id, uso.get("input_tokens"), uso.get("cache_creation_input_tokens"),
         uso.get("cache_read_input_tokens"), uso.get("output_tokens"),
-        esito.num_turni)
+        occurrence.num_exchanges)
 
     # Fetta «i consumi, per modello» (22/08/2026). Fino a qui questi numeri
     # esistevano e nessuna porta del prodotto poteva chiederli: la fondamenta
@@ -1139,14 +1139,14 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
     #
     # Il costo esce `compreso`, non zero: l'abbonamento non espone il prezzo
     # del singolo turno, e uno zero direbbe «gratis», che e' un'altra cosa.
-    if _registra_consumo is None or not uso:
+    if _log_usage is None or not uso:
         # Senza `usage` non c'e' niente da contare, e una riga di zeri direbbe
         # «questo modello ha risposto e non e' costato niente»: lo stesso zero
         # che afferma da cui nasce l'intera fetta. Il log qui sopra dichiara
         # comunque il turno.
         return
-    _registra_consumo(
-        "ponte", modello_del_turno(esito),
+    _log_usage(
+        "ponte", exchange_model(occurrence),
         richieste=1,
         token_in=int(uso.get("input_tokens") or 0),
         token_out=int(uso.get("output_tokens") or 0),
@@ -1155,7 +1155,7 @@ def _logga_uso(esito: EsitoFlusso, job_id) -> None:
         cost_usd=None, cost_state="compreso", now=time.time())
 
 
-def modello_del_turno(esito: EsitoFlusso) -> str:
+def exchange_model(occurrence: StreamOccurrence) -> str:
     """Il modello che ha davvero risposto a questo turno del ponte.
 
     La CLI puo' dichiararlo nell'evento `result` -- e' cio' che va creduto,
@@ -1168,15 +1168,15 @@ def modello_del_turno(esito: EsitoFlusso) -> str:
     a chi legge che quel nome e' cio' che abbiamo CHIESTO, non cio' che
     abbiamo misurato.
     """
-    risultato = esito.risultato or {}
-    vero = risultato.get("model") or risultato.get("modelUsage")
+    result = occurrence.result or {}
+    vero = result.get("model") or result.get("modelUsage")
     if isinstance(vero, dict) and vero:
         # `modelUsage` e' una mappa id-del-modello -> conteggi: il nome vero
         # e' la sua chiave.
         return str(next(iter(vero)))
     if isinstance(vero, str) and vero.strip():
         return vero.strip()
-    alias = (esito.usage or {}).get("model") or ""
+    alias = (occurrence.usage or {}).get("model") or ""
     return (f"{alias} (alias)") if alias else "sonnet (alias)"
 
 
@@ -1259,26 +1259,26 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # tetto: e' anche l'UNICA identita' su cui la guardia dell'officina
     # rifiuta di confermare una proposta nel turno che l'ha creata -- vedi il
     # docstring di `config_mcp`.
-    id_turno = secrets.token_urlsafe(9)
+    exchange_id = secrets.token_urlsafe(9)
     # Fetta «le promesse seguono la catena»: un job `kind="promessa"` porta
     # l'id della promessa che questo turno sta mantenendo. Vuoto per un turno
     # di chat -- e' la stessa macchina, con un contenuto diverso.
-    id_promessa = (context.get("promessa_id") or "") if isinstance(context, dict) else ""
+    promise_id = (context.get("promessa_id") or "") if isinstance(context, dict) else ""
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
     # `/api/mcp` da mettere nella mcp-config, quindi non c'e' nessun guasto da
     # dichiarare -- e' il vecchio comportamento, non un degrado nuovo.
-    attesi = client is not None and bool(base_url)
+    awaited = client is not None and bool(base_url)
     intestazioni = headers if headers is not None else build_headers()
-    if attesi:
-        strumenti, _motivo = sonda_strumenti(client, base_url, intestazioni,
-                                             job_id=job_id,
-                                             id_promessa=id_promessa)
+    if awaited:
+        tools, _reason = probe_tools(client, base_url, intestazioni,
+                                     job_id=job_id,
+                                     promise_id=promise_id)
     else:
-        strumenti = False
+        tools = False
     token = intestazioni.get("X-HIRIS-Internal-Token", "")
-    forme = forme_del_token(token)
+    forms = token_forms(token)
 
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): l'accumulo per
     # TUTTO il turno, non per la sola invocazione che finisce nella reply.
@@ -1309,9 +1309,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
     # della fetta A l'aveva appena tolto dal `context`.
-    tools_called_turno: list = []
+    tools_called_in_exchange: list = []
 
-    def _reply(testo: str) -> dict:
+    def _reply(text: str) -> dict:
         """L'UNICO modo in cui una risposta esce da questa funzione.
 
         fix round 2, seconda meta' della difesa: redigere il solo stdout GREZZO
@@ -1344,8 +1344,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         strumenti"). Passa dallo STESSO cancello (`_reda_struttura`, sopra):
         l'`input` e' testo del modello, non nostro, e la regola del progetto
         e' che il token non compare in NESSUN canale nuovo."""
-        return {"reply": reda_segreti(testo, *forme),
-               "tools_called": _reda_struttura(tools_called_turno, *forme)}
+        return {"reply": reda_segreti(text, *forms),
+               "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4): il modello non
     # e' piu' `HIRIS_AGENT_CHAT_MODEL` (env mai esportata da run.sh --
@@ -1360,9 +1360,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # esattamente il comportamento di prima di questo task, non un
     # degrado nuovo, quindi non e' uno dei silenzi dichiarati della fetta.
     model = context.get("model") or "sonnet"
-    invocazioni = 0
+    invocations = 0
 
-    def _invoca(strumenti_attivi: bool) -> Invocazione | None:
+    def _invoca(active_tools: bool) -> Invocation | None:
         """UN'invocazione intera della CLI, composta dal SOLO `strumenti_attivi`.
 
         fetta "il ponte riceve gli strumenti" (parita' B, Task 4). Prima di
@@ -1376,8 +1376,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
         `None` = esito (5): la CLI non parte, non c'e', o non finisce in tempo.
         E' l'unico ramo che non ha nemmeno uno stdout da leggere."""
-        nonlocal invocazioni
-        if invocazioni >= MAX_INVOCAZIONI_PER_TURNO:
+        nonlocal invocations
+        if invocations >= MAX_INVOCATIONS_PER_EXCHANGE:
             # Irraggiungibile per costruzione oggi (i due punti di chiamata
             # sono in fila, non in un ciclo). Sta qui perche' il tetto non
             # dipenda dalla FORMA del codice: il giorno in cui qualcuno
@@ -1385,27 +1385,27 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # resterebbe due invocazioni invece di diventare illimitato.
             log.warning(
                 "tetto di invocazioni della CLI raggiunto (job_id=%s, max=%d): "
-                "nessun terzo tentativo", job_id, MAX_INVOCAZIONI_PER_TURNO)
+                "nessun terzo tentativo", job_id, MAX_INVOCATIONS_PER_EXCHANGE)
             return None
-        invocazioni += 1
+        invocations += 1
         # `id_turno` e' lo STESSO a ogni chiamata di `_invoca` in questo
         # turno (mintato una volta sola sopra, prima di questa funzione): e'
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
-        mcp_config = (config_mcp(base_url, token, id_turno, id_promessa)
-                      if strumenti_attivi else "")
+        mcp_config = (config_mcp(base_url, token, exchange_id, promise_id)
+                      if active_tools else "")
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono
         # divergere: se un giorno queste due righe si allontanano, e' li' che
         # rientra il difetto numero uno di questo prodotto.
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
-            strumenti_attivi=strumenti_attivi,
+            active_tools=active_tools,
             restrict_to_home=restrict_to_home, response_mode=response_mode)
         argv = _chat_claude_args(system, user, model,
-                                 strumenti_attivi=strumenti_attivi,
+                                 active_tools=active_tools,
                                  mcp_config=mcp_config,
-                                 per_promessa=bool(id_promessa))
+                                 by_promise=bool(promise_id))
         try:
             # check=False esplicito: `proc.returncode` viaggia intatto dentro
             # `Invocazione.rc` e lo leggono i chiamanti (compreso il ramo di
@@ -1438,39 +1438,39 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # Si reda anche al SECONDO giro, dove il token non e' mai entrato
         # nell'argv: costa una `str.replace` su una stringa che non lo
         # contiene, e vale la regola «nessun canale che possa dimenticarsi».
-        stdout = reda_segreti(proc.stdout or "", *forme)
-        stderr = reda_segreti(proc.stderr or "", *forme)
+        stdout = reda_segreti(proc.stdout or "", *forms)
+        stderr = reda_segreti(proc.stderr or "", *forms)
 
         # UNA sola lettura del flusso, prima di qualunque ramo: e' cosi' che il
         # ramo d'errore e quello felice non possono divergere nel modo di
         # leggere la stessa risposta.
-        esito = leggi_flusso(stdout)
+        occurrence = read_stream(stdout)
         # Task 5: si accumula QUI, sull'esito di OGNI invocazione -- anche
         # quella che il ramo dell'`init` (sotto) sta per buttare. Vedi il
         # commento su `tools_called_turno`, sopra: una chiamata MCP di
         # un'invocazione buttata e' gia' successa per davvero.
-        tools_called_turno.extend(esito.tools_called)
-        _logga_init(esito, job_id)   # la misura, a ogni giro
-        _logga_uso(esito, job_id)    # Step 4: la misura per la domanda aperta 2
-        if esito.righe_saltate:
+        tools_called_in_exchange.extend(occurrence.tools_called)
+        _logga_init(occurrence, job_id)   # la misura, a ogni giro
+        _logga_uso(occurrence, job_id)    # Step 4: la misura per la domanda aperta 2
+        if occurrence.lines_skipped:
             # Una riga di rumore non fa cadere il flusso, ma non sparisce: se
             # la CLI cambia formato, il conto sale prima che qualcosa si rompa.
             log.warning(
                 "flusso stream-json con %d riga/righe non-JSON saltate su %d "
                 "(job_id=%s): la risposta e' stata letta lo stesso, ma il "
                 "formato della CLI non e' piu' esattamente quello atteso",
-                esito.righe_saltate, esito.righe_lette, job_id)
-        return Invocazione(rc=proc.returncode, stdout=stdout, stderr=stderr,
-                           esito=esito)
+                occurrence.lines_skipped, occurrence.lines_read, job_id)
+        return Invocation(rc=proc.returncode, stdout=stdout, stderr=stderr,
+                          occurrence=occurrence)
 
     # Il degrado dichiarato: gli strumenti erano attesi e non ci sono. Il log
     # l'ha gia' detto (silenzio (1), dentro `sonda_strumenti`); qui si prepara
     # a dirlo anche all'utente, in testa alla risposta che il modello riuscira'
     # comunque a dare sul solo nucleo.
-    degrado = attesi and not strumenti
+    degrado = awaited and not tools
 
-    invocazione = _invoca(strumenti)
-    if invocazione is None:
+    invocation = _invoca(tools)
+    if invocation is None:
         return _reply(SENTINELLA_RUNNER_ASSENTE)
 
     # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
@@ -1491,9 +1491,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # smentita da leggere, e ritentare pagherebbe un secondo timeout da 300s
     # per un guasto che il ritentativo non ripara (la CLI non c'e').
     ritentato = False
-    if strumenti:
-        confermato, motivo = verifica_init(invocazione.esito,
-                                           per_promessa=bool(id_promessa))
+    if tools:
+        confermato, reason = verify_init(invocation.occurrence,
+                                         by_promise=bool(promise_id))
         if not confermato:
             # Silenzio dichiarato ② della fetta. Il motivo si reda come tutto
             # cio' che nasce dal sottoprocesso: non c'e' una seconda via.
@@ -1503,44 +1503,44 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                 "questa invocazione si BUTTA e se ne ricompone una senza "
                 "strumenti (una sola volta, mai una terza); la reply lo "
                 "dichiara anche all'utente",
-                job_id, reda_segreti(motivo, *forme))
-            strumenti = False
+                job_id, reda_segreti(reason, *forms))
+            tools = False
             degrado = True
             ritentato = True
-            invocazione = _invoca(strumenti)
-            if invocazione is None:
+            invocation = _invoca(tools)
+            if invocation is None:
                 return _reply(SENTINELLA_RUNNER_ASSENTE)
 
     # Da qui in giu' si legge UNA invocazione: la prima se e' bastata, la
     # seconda se la prima e' stata buttata. I rami sono gli stessi.
-    esito = invocazione.esito
-    stdout, stderr = invocazione.stdout, invocazione.stderr
+    occurrence = invocation.occurrence
+    stdout, stderr = invocation.stdout, invocation.stderr
     # Step 4 del brief: se si e' arrivati a un esito d'errore DOPO un
     # ri-tentativo, il log lo dice -- o «claude rc=1» sembrerebbe il primo
     # guasto del turno invece dell'ultimo di due.
-    coda_log = (" [secondo e ULTIMO tentativo: il primo e' stato buttato perche' "
+    log_tail = (" [secondo e ULTIMO tentativo: il primo e' stato buttato perche' "
                 "l'init smentiva la sonda]" if ritentato else "")
 
-    if invocazione.rc != 0:
+    if invocation.rc != 0:
         # Esito (1). `claude -p` mette gli errori (auth 401, quota, ecc.) su
         # STDOUT come JSON, non su stderr: la nota vale ancora con stream-json,
         # dove l'errore arriva nell'evento `result` con `is_error: true`. Logga
         # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
         # nascondere la causa dietro un numero.
-        log.warning("claude rc=%s stderr=%r stdout=%r%s", invocazione.rc,
-                    stderr[:300], stdout[:500], coda_log)
-        risultato = esito.risultato or {}
-        dettaglio = (esito.testo or risultato.get("error")
-                     or risultato.get("subtype") or "")
-        if not dettaglio:
+        log.warning("claude rc=%s stderr=%r stdout=%r%s", invocation.rc,
+                    stderr[:300], stdout[:500], log_tail)
+        result = occurrence.result or {}
+        detail = (occurrence.text or result.get("error")
+                  or result.get("subtype") or "")
+        if not detail:
             # Nessun evento finale da cui ricavarlo (processo morto a meta'):
             # meglio il flusso grezzo che un silenzio.
-            dettaglio = (stdout or stderr).strip()
+            detail = (stdout or stderr).strip()
         return _reply(
-            f"{PREFISSO_ERRORE_RUNNER}{invocazione.rc}] "
-            f"{str(dettaglio)[:300]}".strip())
+            f"{PREFISSO_ERRORE_RUNNER}{invocation.rc}] "
+            f"{str(detail)[:300]}".strip())
 
-    if not esito.risultato_presente:
+    if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
         # 0 ma il flusso si e' chiuso senza l'evento finale: troncato, ucciso,
         # o formato cambiato da un aggiornamento della CLI. Restituire "" qui
@@ -1552,13 +1552,13 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "flusso stream-json chiuso senza evento finale type=result "
             "(job_id=%s, rc=%s): righe lette=%d, righe non-JSON saltate=%d -- "
             "il ponte NON ha una risposta completa e lo dichiara nella reply%s",
-            job_id, invocazione.rc, esito.righe_lette, esito.righe_saltate,
-            coda_log)
+            job_id, invocation.rc, occurrence.lines_read, occurrence.lines_skipped,
+            log_tail)
         # Quarto canale dello stdout grezzo (introdotto dal Task 2): anche
         # questa coda passa dalla copia redatta, non da `proc.stdout`.
-        coda = stdout.strip()[-200:]
-        avviso = (
-            f"{_SENTINELLA_FLUSSO_INCOMPLETO} In questo turno la risposta si e' "
+        tail = stdout.strip()[-200:]
+        notice = (
+            f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "
             "arrivato non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
@@ -1567,12 +1567,12 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un
         # cambio di formato durante l'UAT. Compromesso dichiarato: e' brutto da
         # leggere, ma un ramo muto sarebbe peggio.
-        return _reply(f"{avviso} (ultimo pezzo di flusso letto: {coda})"
-                      if coda else avviso)
+        return _reply(f"{notice} (ultimo pezzo di flusso letto: {tail})"
+                      if tail else notice)
 
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
-    testo = esito.testo.strip()
-    if not testo:
+    text = occurrence.text.strip()
+    if not text:
         return _reply(SENTINELLA_VUOTO)
     if degrado:
         # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
@@ -1582,8 +1582,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # renderebbe invisibili a quel filtro, e tornerebbero al modello a ogni
         # turno successivo. Questo caso e' l'opposto: sotto c'e' una risposta
         # vera, che va conservata.
-        return _reply(f"{AVVISO_STRUMENTI_ASSENTI}\n\n{testo}")
-    return _reply(testo)
+        return _reply(f"{MISSING_TOOLS_NOTICE}\n\n{text}")
+    return _reply(text)
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
            headers: dict | None = None) -> dict:
@@ -1684,7 +1684,7 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
                 # portano, e un valore non consegnabile risale col valore
                 # dentro). Si passa da `_motivo_eccezione`: tipo + messaggio
                 # REDATTO, cosi' il log resta diagnosticabile.
-                log.warning("run_once errore: %s", _motivo_eccezione(exc))
+                log.warning("run_once errore: %s", _exception_reason(exc))
             await asyncio.sleep(poll_seconds)
 
 
@@ -1706,7 +1706,7 @@ def main() -> None:
                 # chiusura. Sono due punti perche' questo `main()` e' il
                 # runner come processo a se' (il gateway esterno), e
                 # `run_loop` e' quello in-addon.
-                log.warning("run_once errore: %s", _motivo_eccezione(exc))
+                log.warning("run_once errore: %s", _exception_reason(exc))
             time.sleep(interval)
 
 if __name__ == "__main__":

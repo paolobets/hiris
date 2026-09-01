@@ -546,7 +546,7 @@ def test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_cl
         cattivo = "abc\r\ndef-SEGRETO"
         # (a) il client solleva, e il motivo porta il valore: e' il guasto
         with httpx.Client(timeout=5) as http_client:
-            ok, motivo = agent_runner.sonda_strumenti(
+            ok, motivo = agent_runner.probe_tools(
                 http_client, f"http://127.0.0.1:{porta}",
                 {"X-HIRIS-Internal-Token": cattivo})
         assert ok is False

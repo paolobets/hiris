@@ -1,7 +1,7 @@
 """I due strumenti: `costruisci` propone, `conferma` applica. E il catalogo."""
 import pytest
 
-from hiris.app.agent.runner import nomi_mcp
+from hiris.app.agent.runner import mcp_names
 from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.schedulatore.turno import promise_tools
@@ -45,8 +45,8 @@ def test_i_due_strumenti_sono_nel_catalogo():
 
 def test_i_nomi_mcp_li_portano_al_ponte():
     """Difetto 3.10.1: i nomi si DERIVANO dal catalogo, non si riscrivono."""
-    assert "mcp__hiris__costruisci" in nomi_mcp()
-    assert "mcp__hiris__conferma" in nomi_mcp()
+    assert "mcp__hiris__costruisci" in mcp_names()
+    assert "mcp__hiris__conferma" in mcp_names()
 
 
 def test_il_turno_di_una_promessa_non_li_riceve():
@@ -54,7 +54,7 @@ def test_il_turno_di_una_promessa_non_li_riceve():
     nomi = [d["name"] for d in promise_tools()]
     assert "costruisci" not in nomi
     assert "conferma" not in nomi
-    assert "mcp__hiris__costruisci" not in nomi_mcp(per_promessa=True)
+    assert "mcp__hiris__costruisci" not in mcp_names(by_promise=True)
 
 
 @pytest.mark.asyncio

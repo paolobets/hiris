@@ -130,10 +130,10 @@ def _clean_subscription_model(value, default: str) -> str:
     importa `handlers_chat`; un import in cima chiude il cerchio e rompe
     l'avvio con `ImportError ... partially initialized module`.
     """
-    from ..agent.runner import modello_cli
+    from ..agent.runner import cli_model
     if not isinstance(value, str) or not value.strip():
         return default
-    return modello_cli(value)
+    return cli_model(value)
 
 
 def _clean_bridge(raw) -> dict:

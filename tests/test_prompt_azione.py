@@ -33,7 +33,7 @@ e' solo la via d'accesso.
 import pytest
 
 from hiris.app.agent import prompts
-from hiris.app.agent.prompts import _GUIDA_CON_STRUMENTI, _GUIDA_SENZA_STRUMENTI
+from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _GUIDE_WITHOUT_TOOLS
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
 
 
@@ -44,7 +44,7 @@ def _prompt_del_ponte() -> str:
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nBagno: luce spenta.",
-        strumenti_attivi=True)
+        active_tools=True)
     return system
 
 
@@ -60,7 +60,7 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
 # -- 1. `esegui` esiste -----------------------------------------------------
 
 def test_la_guida_nomina_esegui():
-    assert "esegui" in _GUIDA_CON_STRUMENTI
+    assert "esegui" in _GUIDE_WITH_TOOLS
 
 
 def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
@@ -148,7 +148,7 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
 # -- 2. Gli id, non i nomi --------------------------------------------------
 
 def test_la_guida_chiede_gli_id_non_i_nomi():
-    basso = _GUIDA_CON_STRUMENTI.lower()
+    basso = _GUIDE_WITH_TOOLS.lower()
     assert "cerca" in basso and "id" in basso
 
 
@@ -245,7 +245,7 @@ def test_entrambi_i_percorsi_dicono_di_agire_sulla_lettura_piu_naturale():
 
 
 def test_la_guida_non_promette_una_conferma_che_non_esiste():
-    basso = _GUIDA_CON_STRUMENTI.lower()
+    basso = _GUIDE_WITH_TOOLS.lower()
     for parola in ("chiedi conferma", "chiedere conferma", "previa conferma"):
         assert parola not in basso, (
             f"il prompt promette «{parola}» ma nessun meccanismo di conferma "
@@ -295,7 +295,7 @@ def test_entrambi_i_percorsi_dicono_che_il_ricordo_e_una_preferenza_non_una_sost
 def test_la_guida_senza_strumenti_non_dice_piu_che_hiris_non_agisce():
     """Senza strumenti HIRIS non PUO' agire in quel turno -- ma «non agisce»
     come proprieta' del prodotto non e' piu' vero, e il testo non deve dirlo."""
-    basso = _GUIDA_SENZA_STRUMENTI.lower()
+    basso = _GUIDE_WITHOUT_TOOLS.lower()
     assert "non agisc" not in basso and "non agire" not in basso
 
 
@@ -304,7 +304,7 @@ def test_la_guida_senza_strumenti_continua_a_dire_cio_che_in_quel_turno_manca():
     falsita' SPECULARE: sul ramo di degrado gli strumenti non ci sono davvero,
     e un modello che si credesse capace di agire annuncerebbe accensioni mai
     avvenute -- il «preso nota» senza aver salvato, in un'altra forma."""
-    guida = _GUIDA_SENZA_STRUMENTI
+    guida = _GUIDE_WITHOUT_TOOLS
     assert "NON hai alcuno strumento" in guida
     basso = guida.lower()
     assert "non puoi accendere" in basso, (
@@ -456,7 +456,7 @@ def test_l_eccezione_sta_dove_stanno_le_regole_dell_azione():
     quattro regole dell'azione."""
     from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
     assert "automation.turn_off" in BASE_REGOLE_STRUMENTI
-    assert "automation.turn_off" not in _GUIDA_SENZA_STRUMENTI, (
+    assert "automation.turn_off" not in _GUIDE_WITHOUT_TOOLS, (
         "un percorso senza strumenti non deve ricevere una regola su come "
         "usarli: e' la meta' falsa che la fetta «parita'» ha tolto")
 
@@ -487,7 +487,7 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     # accorgeva.
     guide = {
         "sincrono": BASE_SYSTEM_PROMPT,
-        "ponte": _GUIDA_CON_STRUMENTI,
+        "ponte": _GUIDE_WITH_TOOLS,
     }
     for percorso, testo in guide.items():
         basso = testo.lower()
@@ -522,7 +522,7 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
     """
     from hiris.app.agent import prompts as _p
 
-    ponte = (_p._CONTESTO_PRESENTE + _p._GUIDA_CON_STRUMENTI).lower()
+    ponte = (_p._CONTESTO_PRESENTE + _p._GUIDE_WITH_TOOLS).lower()
     # Due asserzioni SEPARATE, non un `or`.
     #
     # La prima stesura diceva `"chiamali" in ponte or "guarda." in ponte`, e

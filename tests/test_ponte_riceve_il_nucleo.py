@@ -87,7 +87,7 @@ def test_il_contesto_entra_nel_system_prompt_del_ponte():
 def test_il_contesto_sta_in_coda_e_dopo_la_guida():
     system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
 
-    assert system.index(prompts._GUIDA_SENZA_STRUMENTI) < system.index(_CONTESTO)
+    assert system.index(prompts._GUIDE_WITHOUT_TOOLS) < system.index(_CONTESTO)
     assert system.rstrip().endswith(_CONTESTO), (
         "il contesto e' il blocco volatile: nel ramo sincrono sta in fondo, "
         "dopo tutti i blocchi stabili (claude_runner.py::ClaudeRunner.chat, "
@@ -109,7 +109,7 @@ def test_ordine_dei_blocchi_uguale_al_ramo_sincrono():
 
     i_base = system.index(BASE_IDENTITA.strip())
     i_persona = system.index(persona)
-    i_guida = system.index(prompts._GUIDA_SENZA_STRUMENTI)
+    i_guida = system.index(prompts._GUIDE_WITHOUT_TOOLS)
     i_contesto = system.index(_CONTESTO)
 
     assert i_base < i_persona < i_guida < i_contesto
@@ -176,7 +176,7 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
     adiacenti e il blocco e' byte per byte `BASE_SYSTEM_PROMPT`, cioe' quello
     che il ramo sincrono compone gia' oggi."""
     system, _user = prompts.build_chat_messages(
-        "Sei HIRIS.", [], contesto=_CONTESTO, strumenti_attivi=True)
+        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=True)
 
     assert BASE_SYSTEM_PROMPT.strip() in system
     assert "Usa SEMPRE gli strumenti" in system
@@ -213,8 +213,8 @@ def test_la_memoria_nella_fotografia_non_viene_negata():
 def test_il_ramo_senza_strumenti_li_nega():
     system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
 
-    assert prompts._GUIDA_SENZA_STRUMENTI in system
-    assert prompts._GUIDA_CON_STRUMENTI not in system
+    assert prompts._GUIDE_WITHOUT_TOOLS in system
+    assert prompts._GUIDE_WITH_TOOLS not in system
     assert "NON hai alcuno strumento" in system
 
 
@@ -230,23 +230,23 @@ def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
     finche' l'argv non porta `--mcp-config` ne' `--allowedTools`, nessuna
     produzione puo' arrivare qui."""
     system, _user = prompts.build_chat_messages(
-        "Sei HIRIS.", [], contesto=_CONTESTO, strumenti_attivi=True)
+        "Sei HIRIS.", [], contesto=_CONTESTO, active_tools=True)
 
-    assert prompts._GUIDA_CON_STRUMENTI in system
-    assert prompts._GUIDA_SENZA_STRUMENTI not in system
+    assert prompts._GUIDE_WITH_TOOLS in system
+    assert prompts._GUIDE_WITHOUT_TOOLS not in system
     # li afferma tutti, non li nega -- e l'elenco si DERIVA dal catalogo
     # unico (fetta «comandare», Task 7): scritto a mano restava a quattro
     # mentre il catalogo ne aveva cinque, ed e' esattamente la dichiarazione
     # che invecchia in silenzio di cui questo file e' pieno di lapidi.
     for voce in KNOWLEDGE_TOOLS:
-        assert f"`{voce['name']}`" in prompts._GUIDA_CON_STRUMENTI
+        assert f"`{voce['name']}`" in prompts._GUIDE_WITH_TOOLS
     assert "HAI gli strumenti di HIRIS" in system
     assert "NON hai alcuno strumento" not in system
     # riserva 1 del piano della fetta B: attraverso MCP il modello vede i nomi
     # PREFISSATI dal server. Il prefisso esatto e' una decisione della B --
     # qui si pinna solo che il testo prepara il modello a vederli prefissati,
     # invece di nominare dei nomi nudi che non comparirebbero mai.
-    assert "mcp__hiris__" in prompts._GUIDA_CON_STRUMENTI
+    assert "mcp__hiris__" in prompts._GUIDE_WITH_TOOLS
 
 
 def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
@@ -266,7 +266,7 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
     **Cosa pinna adesso.** La stessa cosa vista dall'altro verso: che
     l'interruttore ci sia, che sia UNO SOLO, e che il prompt e l'argv lo
     leggano dalla STESSA variabile. Un secondo booleano -- o due chiamate a
-    `sonda_strumenti` -- sarebbero due decisioni da tenere allineate, cioe'
+    `probe_tools` -- sarebbero due decisioni da tenere allineate, cioe'
     esattamente cio' che questa fetta esiste per rendere impossibile. ──"""
     import inspect
 
@@ -274,7 +274,7 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
     # il default resta False perche' False e' il ramo di DEGRADO: cio' che si
     # ottiene quando non si sa. Un default True prometterebbe strumenti a chi
     # non li ha chiesti.
-    assert firma.parameters["strumenti_attivi"].default is False
+    assert firma.parameters["active_tools"].default is False
     assert firma.parameters["contesto"].default == ""
     # i due primi parametri restano POSIZIONALI (i pin esistenti li passano
     # cosi': tests/test_agent_runner_inaddon.py::test_build_chat_messages_available)
@@ -283,12 +283,12 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
     assert posizionali == ["system_prompt", "history"]
 
     sorgente = inspect.getsource(runner._reason_chat)
-    assert "strumenti_attivi" in sorgente, (
+    assert "active_tools" in sorgente, (
         "il runner del ponte non gira piu' l'interruttore degli strumenti: il "
         "ponte e' tornato cieco senza che nessuno lo abbia deciso")
     # UNA sola sonda per turno: due chiamate sarebbero due decisioni, e due
     # decisioni possono divergere (il prompt composto su una, l'argv sull'altra).
-    assert sorgente.count("sonda_strumenti(") == 1, (
+    assert sorgente.count("probe_tools(") == 1, (
         "la sonda degli strumenti viene chiamata piu' di una volta in "
         "_reason_chat: e' il modo in cui il prompt e l'argv tornano a essere "
         "due decisioni invece di una")
@@ -302,16 +302,16 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
     # Le due letture ora nominano il PARAMETRO di `_invoca`, ed e' una garanzia
     # piu' forte di prima: non c'e' piu' un punto del corpo in cui il prompt
     # possa restare avanti all'argv, perche' nascono nella stessa chiamata.
-    assert "def _invoca(strumenti_attivi: bool)" in sorgente, (
+    assert "def _invoca(active_tools: bool)" in sorgente, (
         "la composizione non passa piu' da un solo punto parametrico: se il "
         "prompt e l'argv tornano a comporsi in due posti, il secondo giro del "
         "Task 4 puo' ricomporne uno solo dei due")
-    assert sorgente.count("strumenti_attivi=strumenti_attivi") == 2, (
+    assert sorgente.count("active_tools=active_tools") == 2, (
         "il prompt e l'argv non leggono piu' la stessa variabile: e' il punto "
         "in cui rientra un prompt che promette cio' che l'argv non da'")
     # ...e il chiamante passa UN booleano, quello deciso dalla sonda (primo
     # giro) o messo a False dalla difesa (2) (secondo giro).
-    assert sorgente.count("_invoca(strumenti)") == 2, (
+    assert sorgente.count("_invoca(tools)") == 2, (
         "le invocazioni di `_invoca` non leggono piu' l'unico booleano del "
         "turno: sono due decisioni da tenere allineate, cioe' esattamente "
         "cio' che questa fetta esiste per rendere impossibile")
@@ -344,9 +344,9 @@ def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumen
 
     system = _cattura_system(job)
 
-    assert prompts._GUIDA_SENZA_STRUMENTI in system, (
+    assert prompts._GUIDE_WITHOUT_TOOLS in system, (
         "il ponte non emette piu' la guida che nega gli strumenti")
-    assert prompts._GUIDA_CON_STRUMENTI not in system, (
+    assert prompts._GUIDE_WITH_TOOLS not in system, (
         "il ponte afferma gli strumenti in un turno in cui non ha nemmeno "
         "potuto sondarli (nessun client, nessuna base_url): il prompt promette "
         "cio' che l'argv non puo' dare -- e l'argv non lo da', perche' senza "
@@ -587,7 +587,7 @@ def test_i_modificatori_stanno_fra_la_persona_e_la_guida():
     i_persona = system.index(persona)
     i_restrict = system.index(RESTRICT_PROMPT)
     i_compact = system.index(COMPACT_PROMPT)
-    i_guida = system.index(prompts._GUIDA_SENZA_STRUMENTI)
+    i_guida = system.index(prompts._GUIDE_WITHOUT_TOOLS)
 
     assert i_persona < i_restrict < i_compact < i_guida
 

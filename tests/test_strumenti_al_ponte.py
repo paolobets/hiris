@@ -121,13 +121,13 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
     entrambe le direzioni."""
     system, _user = prompts.build_chat_messages(
         "Sei HIRIS.", [], contesto="## La casa\nSalotto: luce accesa.",
-        strumenti_attivi=strumenti_attivi)
+        active_tools=strumenti_attivi)
     argv = runner._chat_claude_args(
-        "SYS", "USER", "sonnet", strumenti_attivi=strumenti_attivi,
+        "SYS", "USER", "sonnet", active_tools=strumenti_attivi,
         mcp_config=runner.config_mcp("http://127.0.0.1:8099", "TOK"))
 
     nell_argv = "mcpconfig" in _normalizza(argv)
-    nel_prompt = prompts._GUIDA_CON_STRUMENTI in system
+    nel_prompt = prompts._GUIDE_WITH_TOOLS in system
 
     assert nell_argv == nel_prompt, (
         f"l'argv {'porta' if nell_argv else 'NON porta'} --mcp-config mentre il "
@@ -136,16 +136,16 @@ def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
         "impossibile. La risposta giusta e' guardare l'unico booleano di "
         "runner._reason_chat, non allentare questo assert.")
     # e il verso complementare, sull'altra guida: le due non convivono mai
-    assert (prompts._GUIDA_SENZA_STRUMENTI in system) == (not nell_argv)
+    assert (prompts._GUIDE_WITHOUT_TOOLS in system) == (not nell_argv)
 
 
 def test_le_due_guide_non_convivono_mai_nello_stesso_prompt():
     """Il corollario: un prompt che contenesse entrambe direbbe al modello una
     cosa e il suo contrario, e vincerebbe l'ultima letta."""
     for attivi in (True, False):
-        system, _u = prompts.build_chat_messages("Sei HIRIS.", [], strumenti_attivi=attivi)
-        assert (prompts._GUIDA_CON_STRUMENTI in system) != (
-            prompts._GUIDA_SENZA_STRUMENTI in system)
+        system, _u = prompts.build_chat_messages("Sei HIRIS.", [], active_tools=attivi)
+        assert (prompts._GUIDE_WITH_TOOLS in system) != (
+            prompts._GUIDE_WITHOUT_TOOLS in system)
 
 
 def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
@@ -174,14 +174,14 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     passando per `casa/tempo.py`, LEGGONO e basta, ed entrano invece nello
     stesso elenco di ammissione del turno delle promesse, per la ragione
     opposta a `costruisci`/`conferma`."""
-    nomi = runner.nomi_mcp()
+    nomi = runner.mcp_names()
 
     assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
     # solo -- e il prompt, che nomina i nomi prefissati, resterebbe vero.
-    assert runner._nome_server_mcp() is handlers_mcp.MCP_SERVER_NAME
+    assert runner._mcp_server_name() is handlers_mcp.MCP_SERVER_NAME
     for nome in nomi:
         assert nome.startswith(f"mcp__{handlers_mcp.MCP_SERVER_NAME}__")
 
@@ -288,7 +288,7 @@ def test_config_mcp_non_scrive_nessun_file(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def _sonda_con(client, caplog=None):
-    return runner.sonda_strumenti(client, "http://127.0.0.1:8099",
+    return runner.probe_tools(client, "http://127.0.0.1:8099",
                                   {"X-HIRIS-Internal-Token": "TOK"},
                                   job_id="J-1")
 
@@ -378,7 +378,7 @@ def test_il_token_non_compare_mai_nel_motivo_ne_nel_log(caplog):
     client = _ClientFinto(solleva=httpx.ConnectError("rifiutata"))
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
-        ok, motivo = runner.sonda_strumenti(
+        ok, motivo = runner.probe_tools(
             client, "http://127.0.0.1:8099",
             {"X-HIRIS-Internal-Token": segreto, "X-Requested-With": "hiris-agent"},
             job_id="J-2")
@@ -478,7 +478,7 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_pred
 
     with httpx.Client(timeout=30) as http:
         ok, motivo = await asyncio.to_thread(
-            runner.sonda_strumenti, http, _base_url(client), intestazioni)
+            runner.probe_tools, http, _base_url(client), intestazioni)
 
     assert ok is True, f"la sonda ha detto no contro il server vero: {motivo}"
     assert motivo == ""
@@ -493,7 +493,7 @@ async def test_la_sonda_vera_dice_no_col_token_sbagliato(ponte_con_configurazion
 
     with httpx.Client(timeout=30) as http:
         ok, motivo = await asyncio.to_thread(
-            runner.sonda_strumenti, http, _base_url(client),
+            runner.probe_tools, http, _base_url(client),
             {"X-HIRIS-Internal-Token": "sbagliato"})
 
     assert ok is False
@@ -522,7 +522,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
 
     with httpx.Client(timeout=30) as http:
         ok, _motivo = await asyncio.to_thread(
-            runner.sonda_strumenti, http, _base_url(client), runner.build_headers())
+            runner.probe_tools, http, _base_url(client), runner.build_headers())
         assert ok is True
 
         risposta = await asyncio.to_thread(
@@ -614,7 +614,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
         assert "--mcp-config" in visto["argv"]
         system = visto["argv"][visto["argv"].index("--system-prompt") + 1]
-        assert prompts._GUIDA_CON_STRUMENTI in system
+        assert prompts._GUIDE_WITH_TOOLS in system
 
         # la callback e' stata servita, e ha portato i nomi del catalogo
         assert visto["nomi"] == _NOMI_NUDI
@@ -658,11 +658,11 @@ def _riga_init(*, stato: str = "connected", nomi=None) -> str:
     MCP) e perche' un `tools` con SOLO i nostri nomi renderebbe il test piu'
     facile del reale."""
     if nomi is None:
-        nomi = list(runner.nomi_mcp())
+        nomi = list(runner.mcp_names())
     return json.dumps({
         "type": "system", "subtype": "init",
         "tools": ["ToolSearch", *nomi],
-        "mcp_servers": [{"name": runner._nome_server_mcp(), "status": stato}]})
+        "mcp_servers": [{"name": runner._mcp_server_name(), "status": stato}]})
 
 
 _RIGA_RESULT = json.dumps({
@@ -713,7 +713,7 @@ def test_il_turno_senza_strumenti_lo_dichiara_all_utente_e_nel_log(caplog):
             headers={"X-HIRIS-Internal-Token": "TOK"})
 
     reply = esito["reply"]
-    assert reply.startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert reply.startswith(runner.MISSING_TOOLS_NOTICE)
     assert "non ho potuto usare gli strumenti" in reply
     # la risposta vera non si perde: la riga la PRECEDE, non la sostituisce --
     # ed e' il motivo per cui non e' fra i `_TOXIC_ASSISTANT_PREFIXES`.
@@ -747,7 +747,7 @@ def test_il_turno_con_gli_strumenti_non_dichiara_nessun_degrado(caplog):
             headers={"X-HIRIS-Internal-Token": "TOK"})
 
     assert esito["reply"] == "in cucina una luce e' accesa"
-    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    assert runner.MISSING_TOOLS_NOTICE not in esito["reply"]
     assert not [r for r in caplog.records if r.name == "hiris.agent"]
     # e la mcp-config nell'argv porta la URL vera e il token ricevuto
     config = json.loads(catturato["argv"][catturato["argv"].index("--mcp-config") + 1])
@@ -798,7 +798,7 @@ def test_la_riga_di_degrado_non_precede_i_sentinella_di_guasto():
             headers={"X-HIRIS-Internal-Token": "TOK"})
 
     assert esito["reply"].startswith("[errore runner rc=7]")
-    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    assert runner.MISSING_TOOLS_NOTICE not in esito["reply"]
 
 
 # ---------------------------------------------------------------------------
@@ -826,7 +826,7 @@ def test_il_blocco_del_contesto_non_contraddice_nessuno_dei_due_rami(strumenti_a
     assunta: e' il test qui sotto."""
     system, _u = prompts.build_chat_messages(
         "Sei HIRIS.", [], contesto="## La casa\nSalotto: luce accesa.",
-        strumenti_attivi=strumenti_attivi)
+        active_tools=strumenti_attivi)
 
     for clausola in _CONTRORDINI:
         assert clausola not in system, (
@@ -851,10 +851,10 @@ def test_la_ridondanza_che_ha_permesso_di_togliere_le_due_clausole():
       «Usala per rispondere»), e il divieto di negare la memoria e' intatto."""
     system, _u = prompts.build_chat_messages(
         "Sei HIRIS.", [], contesto="## Cio' che le persone hanno detto\n- la caldaia perde",
-        strumenti_attivi=False)
+        active_tools=False)
 
     # cio' che copre la prima clausola tolta
-    assert "non puoi guardare adesso lo stato della casa" in prompts._GUIDA_SENZA_STRUMENTI
+    assert "non puoi guardare adesso lo stato della casa" in prompts._GUIDE_WITHOUT_TOOLS
     assert "servirebbe un valore aggiornato ADESSO, DILLO" in system
     # cio' che copre la seconda
     assert "ricordi e sessioni precedenti compresi" in system
@@ -870,9 +870,9 @@ def test_il_blocco_del_contesto_resta_uno_solo_su_entrambi_i_rami():
     STESSO `_CONTESTO_PRESENTE` che esce sui due rami. Se un giorno diventasse
     condizionale, sarebbero due testi da tenere veri invece di uno."""
     with_, _u = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
-                                            strumenti_attivi=True)
+                                            active_tools=True)
     without, _u2 = prompts.build_chat_messages("Sei HIRIS.", [], contesto="X",
-                                               strumenti_attivi=False)
+                                               active_tools=False)
     assert prompts._CONTESTO_PRESENTE in with_
     assert prompts._CONTESTO_PRESENTE in without
 
@@ -989,7 +989,7 @@ def test_forme_del_token_copre_i_due_livelli_di_annidamento():
     """La misura che ha chiuso il giro: il token compare a tre profondita' --
     grezza, dentro la stringa JSON di `--mcp-config`, e dentro l'evento
     `stream-json` che a sua volta cita quella config."""
-    forme = runner.forme_del_token(_TOKEN_ROTTO)
+    forme = runner.token_forms(_TOKEN_ROTTO)
 
     assert forme[0] == _TOKEN_ROTTO
     assert forme[1] == json.dumps(_TOKEN_ROTTO)[1:-1]
@@ -997,8 +997,8 @@ def test_forme_del_token_copre_i_due_livelli_di_annidamento():
     assert len(forme) == 3
     # per un token urlsafe le tre forme COINCIDONO: una sola, senza doppioni --
     # ed e' il motivo per cui il difetto era invisibile ai test di prima.
-    assert runner.forme_del_token(_TOKEN_URLSAFE) == (_TOKEN_URLSAFE,)
-    assert runner.forme_del_token("") == ()
+    assert runner.token_forms(_TOKEN_URLSAFE) == (_TOKEN_URLSAFE,)
+    assert runner.token_forms("") == ()
 
 
 def test_la_forma_nell_argv_non_e_quella_grezza_per_un_token_con_virgolette():
@@ -1138,7 +1138,7 @@ def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, 
     monkeypatch.setenv("INTERNAL_TOKEN", token)
     exc = httpx.LocalProtocolError(f"Illegal header value b'{token}'")
 
-    motivo = runner._motivo_eccezione(exc)
+    motivo = runner._exception_reason(exc)
 
     assert not _ricostruibile(token, motivo), (
         "il token e' nel log del giro, cioe' nel file che si incolla in una "
@@ -1156,7 +1156,7 @@ def test_i_due_giri_del_runner_loggano_l_eccezione_redatta():
     quelli del catalogo."""
     import inspect
 
-    atteso = 'log.warning("run_once errore: %s", _motivo_eccezione(exc))'
+    atteso = 'log.warning("run_once errore: %s", _exception_reason(exc))'
     for funzione in (runner.run_loop, runner.main):
         assert atteso in inspect.getsource(funzione), (
             f"{funzione.__name__} logga l'eccezione GREZZA: con un token non "
@@ -1212,7 +1212,7 @@ class _CliFinta:
         return self.procs[min(len(self.argv) - 1, len(self.procs) - 1)]
 
     @property
-    def invocazioni(self) -> int:
+    def invocations(self) -> int:
         return len(self.argv)
 
     def system(self, n: int) -> str:
@@ -1245,7 +1245,7 @@ def _messaggi(caplog) -> str:
 
 @pytest.mark.parametrize("init_rotto, come", [
     (_riga_init(stato="failed"), "server-failed"),
-    (_riga_init(nomi=list(runner.nomi_mcp())[:3]), "lista-strumenti-incompleta"),
+    (_riga_init(nomi=list(runner.mcp_names())[:3]), "lista-strumenti-incompleta"),
     ("", "init-assente"),
 ], ids=["server-failed", "lista-strumenti-incompleta", "init-assente"])
 def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, caplog):
@@ -1290,7 +1290,7 @@ def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, cap
         esito, client = _turno(cli, job_id=f"J-{come}")
 
     # (b) l'invocazione si e' BUTTATA e se n'e' composta un'altra
-    assert cli.invocazioni == 2
+    assert cli.invocations == 2
 
     # L'INVARIANTE del fix: UNA identita' sola per l'intero turno, non una
     # per invocazione della CLI. Se `id_turno = secrets.token_urlsafe(9)`
@@ -1311,12 +1311,12 @@ def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, cap
     assert "mcpconfig" in _normalizza(cli.argv[0])
     assert "mcpconfig" not in _normalizza(cli.argv[1])
     assert "allowedtools" not in _normalizza(cli.argv[1])
-    assert prompts._GUIDA_CON_STRUMENTI in cli.system(0)
-    assert prompts._GUIDA_SENZA_STRUMENTI in cli.system(1)
-    assert prompts._GUIDA_CON_STRUMENTI not in cli.system(1)
+    assert prompts._GUIDE_WITH_TOOLS in cli.system(0)
+    assert prompts._GUIDE_WITHOUT_TOOLS in cli.system(1)
+    assert prompts._GUIDE_WITH_TOOLS not in cli.system(1)
 
     # (d) l'utente lo legge, e sotto resta la risposta vera
-    assert esito["reply"].startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert esito["reply"].startswith(runner.MISSING_TOOLS_NOTICE)
     assert "in cucina una luce e' accesa" in esito["reply"]
 
     # il silenzio (2), dichiarato: job_id + il motivo, e il motivo dice cosa
@@ -1336,8 +1336,8 @@ def test_il_motivo_del_silenzio_2_nomina_lo_stato_e_i_nomi_mancanti(caplog):
     intorno. Il motivo deve portare lo stato dei server e i nomi che la CLI non
     ha risolto: sono le due sole informazioni da cui, davanti al log di un
     utente UAT, si capisce da che parte guardare."""
-    mancante = min(runner.nomi_mcp())
-    nomi = [n for n in runner.nomi_mcp() if n != mancante]
+    mancante = min(runner.mcp_names())
+    nomi = [n for n in runner.mcp_names() if n != mancante]
     cli = _CliFinta(_proc(0, _riga_init(nomi=nomi) + "\n" + _RIGA_RESULT + "\n"),
                     _ProcFelice())
 
@@ -1362,9 +1362,9 @@ def test_l_init_regolare_non_fa_ricomporre_niente(caplog):
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         esito, _client = _turno(cli, job_id="J-buono")
 
-    assert cli.invocazioni == 1
+    assert cli.invocations == 1
     assert esito["reply"] == "in cucina una luce e' accesa"
-    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    assert runner.MISSING_TOOLS_NOTICE not in esito["reply"]
     assert not [r for r in caplog.records if r.name == "hiris.agent"]
 
 
@@ -1384,7 +1384,7 @@ def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     ):
         esito = runner._reason_chat(job, "live")
 
-    assert cli.invocazioni == 1
+    assert cli.invocations == 1
     assert esito["reply"] == "in cucina una luce e' accesa"
     assert "smentisce la sonda" not in _messaggi(caplog)
 
@@ -1407,12 +1407,12 @@ def test_mai_piu_di_due_invocazioni_nemmeno_quando_anche_la_seconda_fallisce(cap
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         esito, _client = _turno(cli, job_id="J-due-volte")
 
-    assert cli.invocazioni == 2 == runner.MAX_INVOCAZIONI_PER_TURNO
+    assert cli.invocations == 2 == runner.MAX_INVOCATIONS_PER_EXCHANGE
     # Step 4: si restituisce l'esito d'errore del Task 2, senza un terzo giro
     assert esito["reply"].startswith("[errore runner rc=1]")
     # ...e il sentinella resta il PRIMO carattere della reply: anteporre
     # l'avviso lo renderebbe invisibile a `chat_store._TOXIC_ASSISTANT_PREFIXES`
-    assert runner.AVVISO_STRUMENTI_ASSENTI not in esito["reply"]
+    assert runner.MISSING_TOOLS_NOTICE not in esito["reply"]
     # il log dice che si e' arrivati qui DOPO un ri-tentativo: senza, «claude
     # rc=1» sembrerebbe il primo guasto del turno invece dell'ultimo di due
     assert "secondo e ULTIMO tentativo" in _messaggi(caplog)
@@ -1424,7 +1424,7 @@ def test_il_tetto_e_un_contatore_non_una_forma():
     la pinna, perche' il giorno in cui qualcuno trasformasse quella sequenza in
     un ciclo il costo per turno resti due invocazioni invece di diventare
     illimitato."""
-    assert runner.MAX_INVOCAZIONI_PER_TURNO == 2
+    assert runner.MAX_INVOCATIONS_PER_EXCHANGE == 2
 
 
 # -- (d) una sola formulazione per un solo fatto ---------------------------
@@ -1441,7 +1441,7 @@ def test_le_due_difese_dicono_all_utente_la_stessa_identica_riga():
 
     prima = dalla_sonda["reply"].split("\n\n")[0]
     assert prima == dall_init["reply"].split("\n\n")[0]
-    assert prima == runner.AVVISO_STRUMENTI_ASSENTI
+    assert prima == runner.MISSING_TOOLS_NOTICE
 
 
 # -- (e) il token non entra nei percorsi nuovi -----------------------------
@@ -1464,7 +1464,7 @@ def test_il_token_non_esce_dal_percorso_di_ri_invocazione(caplog, token):
     with caplog.at_level(logging.DEBUG):
         esito, _client = _turno(cli, token=token, job_id="J-eco-init")
 
-    assert cli.invocazioni == 2
+    assert cli.invocations == 2
     assert _ricostruibile(token, " ".join(cli.argv[0])), (
         "il token non e' nell'argv del primo tentativo: questo test non sta "
         "provando niente")
@@ -1480,20 +1480,20 @@ def test_verifica_init_pretende_entrambe_le_condizioni():
     **insieme**: un server connesso senza gli strumenti e uno strumento risolto
     da un server `failed` sono lo stesso guasto visto da due lati."""
     def esito(riga):
-        return runner.leggi_flusso(riga + "\n")
+        return runner.read_stream(riga + "\n")
 
-    ok, motivo = runner.verifica_init(esito(_riga_init()))
+    ok, motivo = runner.verify_init(esito(_riga_init()))
     assert ok is True and motivo == ""
 
-    ok, motivo = runner.verifica_init(esito(_riga_init(stato="failed")))
+    ok, motivo = runner.verify_init(esito(_riga_init(stato="failed")))
     assert ok is False and "failed" in motivo
 
-    tolto = list(runner.nomi_mcp())[-1]
-    ok, motivo = runner.verifica_init(
-        esito(_riga_init(nomi=list(runner.nomi_mcp())[:3])))
+    tolto = list(runner.mcp_names())[-1]
+    ok, motivo = runner.verify_init(
+        esito(_riga_init(nomi=list(runner.mcp_names())[:3])))
     assert ok is False and tolto in motivo
 
-    ok, motivo = runner.verifica_init(runner.EsitoFlusso())
+    ok, motivo = runner.verify_init(runner.StreamOccurrence())
     assert ok is False and "non e' una conferma" in motivo
 
 
@@ -1504,8 +1504,8 @@ def test_verifica_init_non_confonde_un_altro_server_col_nostro():
     connesso" direbbe di si' mentre HIRIS non c'e'."""
     evento = json.loads(_riga_init())
     evento["mcp_servers"] = [{"name": "qualcun-altro", "status": "connected"}]
-    esito = runner.leggi_flusso(json.dumps(evento) + "\n")
+    esito = runner.read_stream(json.dumps(evento) + "\n")
 
-    ok, motivo = runner.verifica_init(esito)
+    ok, motivo = runner.verify_init(esito)
     assert ok is False
-    assert runner._nome_server_mcp() in motivo
+    assert runner._mcp_server_name() in motivo

@@ -342,7 +342,7 @@ _NOTE_ITALIANE = frozenset({
     "_CHIAVI_NOMINATE_DAL_PROMPT", "_CLASSI_SENZA_REGOLA_PER_SCELTA",
     "_DOMINI_DI_RECAPITO", "_DOMINI_NON_PIATTAFORMA",
     "_FALSITA_IN_ENTRAMBE_LE_VOCI", "_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE",
-    "_GUIDA_CON_STRUMENTI", "_GUIDA_SENZA_STRUMENTI", "_LETTURE_VIVE_DELLA_CREDENZIALE",
+    "_LETTURE_VIVE_DELLA_CREDENZIALE",
     "_MARK_DOPO_VAULT", "_NOMI_DEL_CATALOGO", "_NON_SLUG", "_SENZA_RECAPITO",
     "_accoda_al_bridge", "_accoda_e_prendi", "_alias_di_oggi", "_annuncia_fra_poco",
     "_app_col_ponte", "_app_come_in_produzione", "_archivio_con_una_casa",
@@ -381,11 +381,11 @@ _NOTE_ITALIANE = frozenset({
     "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
     "e_alias", "e_contenitore", "e_def", "e_intestazione", "entita_del_dispositivo",
-    "famiglia_da_codice", "forme_del_token", "fra_parentesi",
+    "famiglia_da_codice", "fra_parentesi",
     "giro_di_confronto_albero", "grave_piu_un_taciuto", "guarda_condizioni_di_sistema",
     "i_non_letta", "ids_da_leggere", "il_file_non_porta_i_giorni", "il_piano_puo_rispondere",
     "in_fuori", "kwargs_con", "kwargs_senza", "l_altro_ieri", "legami_a_self_ha",
-    "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_del_turno", "modello_di",
+    "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_di",
     "motivo_token_non_valido", "nei_preset", "nei_test", "nel_prompt", "nell_argv",
     "nomi_di_ripiego", "non_c_e", "non_chiesto", "non_disponibili", "non_esiste", "non_letti",
     "non_letto", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
@@ -397,7 +397,7 @@ _NOTE_ITALIANE = frozenset({
     "senza_accenti", "senza_area", "senza_causa", "senza_id", "senza_modello",
     "senza_registro_caduto", "senza_stato_vivo", "senza_token", "specchio_al_ritorno",
     "strumenti_che_scrivono", "su_disco", "tipi_non_verificabili", "toks_dopo", "toks_prima",
-    "ultimo_init_del_ponte", "uno_grave", "uno_oltre_il_tetto", "usa_e_getta",
+    "uno_grave", "uno_oltre_il_tetto", "usa_e_getta",
 })
 
 

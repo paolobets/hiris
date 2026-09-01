@@ -154,9 +154,9 @@ def _init_col_server_collegato() -> str:
 
     I nomi si derivano da `runner.nomi_mcp()`: un elenco ricopiato qui
     sarebbe il secondo catalogo."""
-    nomi = ", ".join(f'"{n}"' for n in runner.nomi_mcp())
+    nomi = ", ".join(f'"{n}"' for n in runner.mcp_names())
     return ('{"type":"system","subtype":"init","tools":["Task", ' + nomi + '],'
-            '"mcp_servers":[{"name":"' + runner._nome_server_mcp() +
+            '"mcp_servers":[{"name":"' + runner._mcp_server_name() +
             '","status":"connected"}]}')
 
 
@@ -235,12 +235,12 @@ def test_run_once_dichiara_all_utente_il_turno_senza_strumenti():
 
     assert out == "done"
     reply = c.submitted[0]["decision"]["reply"]
-    assert reply.startswith(runner.AVVISO_STRUMENTI_ASSENTI)
+    assert reply.startswith(runner.MISSING_TOOLS_NOTICE)
     assert "2 luci accese" in reply
     # e il prompt e' tornato a negarli, insieme all'argv: un solo booleano
     assert "--mcp-config" not in catturato["argv"]
     system = catturato["argv"][catturato["argv"].index("--system-prompt") + 1]
-    assert prompts._GUIDA_SENZA_STRUMENTI in system
+    assert prompts._GUIDE_WITHOUT_TOOLS in system
 
 
 @pytest.mark.asyncio
@@ -390,7 +390,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nSalotto: luce accesa.",
-        strumenti_attivi=False)
+        active_tools=False)
 
     # dice il vero su cio' che NON ha
     assert "NON hai alcuno strumento" in system
@@ -515,14 +515,14 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
         [], contesto="## La casa\nSalotto: luce accesa.",
-        strumenti_attivi=True)
+        active_tools=True)
 
     # dice il vero su cio' che HA
     assert "HAI gli strumenti di HIRIS" in system
     assert "NON hai alcuno strumento" not in system
     # i nomi VERI, derivati dal catalogo e non scritti a mano qui: sono gli
     # stessi che finiscono in --allowedTools (runner.nomi_mcp()).
-    for nome in runner.nomi_mcp():
+    for nome in runner.mcp_names():
         assert f"`{nome}`" in system, (
             f"il prompt afferma gli strumenti ma non nomina {nome!r}, che e' "
             "il nome con cui la CLI li serve al modello: il modello leggerebbe "
@@ -594,7 +594,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # DEGRADO. La smentita resta necessaria esattamente li': quando gli
     # strumenti non ci sono, la persona continua a nominarli.
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
-                                                strumenti_attivi=False)
+                                                active_tools=False)
 
     assert "cerca" in DEFAULT_SYSTEM_PROMPT and "guarda" in DEFAULT_SYSTEM_PROMPT
     assert "quelle istruzioni non si applicano" in system
@@ -613,7 +613,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # test e' vivo e invariato: cambia solo la via d'accesso, quindi il test
     # si adegua invece di essere cancellato (verificato prima dell'adeguamento
     # che falliva con AttributeError, cioe' per costruzione).
-    guida = prompts._GUIDA_SENZA_STRUMENTI
+    guida = prompts._GUIDE_WITHOUT_TOOLS
     assert "`cerca`" in guida and "`guarda`" in guida
     assert "`ricorda`" in guida and "`richiama`" in guida
     assert guida in system
@@ -631,11 +631,11 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
-                                                strumenti_attivi=True)
-    guida = prompts._GUIDA_CON_STRUMENTI
+                                                active_tools=True)
+    guida = prompts._GUIDE_WITH_TOOLS
 
     assert guida in system
-    assert prompts._GUIDA_SENZA_STRUMENTI not in system
+    assert prompts._GUIDE_WITHOUT_TOOLS not in system
     # la smentita del ramo di degrado non deve poter comparire qui: sarebbe
     # falsa, e la falsita' speculare e' lo stesso difetto.
     assert "quelle istruzioni non si applicano" not in guida
@@ -713,7 +713,7 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     meno. Il nome del test non conta piu' «i quattro»: contava un numero che
     non conta, ed e' cambiato una volta gia' (fetta «comandare»)."""
     argv = runner._chat_claude_args("SYS", "USER", "sonnet",
-                                    strumenti_attivi=True,
+                                    active_tools=True,
                                     mcp_config=runner.config_mcp("http://x", "TOK"))
     opzioni = _normalizza(argv)
 
@@ -746,9 +746,9 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
     # che la fetta E2 e' esistita per chiudere -- e resterebbe verde se qui si
     # controllasse solo che l'opzione c'e'.
     passati = set(argv[argv.index("--allowedTools") + 1].split(","))
-    assert passati == set(runner.nomi_mcp()), (
+    assert passati == set(runner.mcp_names()), (
         f"i nomi passati ad --allowedTools ({sorted(passati)!r}) non sono "
-        f"quelli derivati da STRUMENTI_CONOSCENZA ({sorted(runner.nomi_mcp())!r})")
+        f"quelli derivati da STRUMENTI_CONOSCENZA ({sorted(runner.mcp_names())!r})")
     assert passati == {f"mcp__hiris__{d['name']}" for d in KNOWLEDGE_TOOLS}
 
     # e i tool LOCALI del CLI restano esplicitamente vietati (shell/fs del
@@ -813,7 +813,7 @@ def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():
     # ottiene quando non si sa: un default True prometterebbe strumenti a chi
     # non li ha chiesti.
     assert argv == runner._chat_claude_args("SYS", "USER", "sonnet",
-                                            strumenti_attivi=False)
+                                            active_tools=False)
 
 
 # ── fetta "il ponte riceve gli strumenti" (parita' B, Task 2) ────────────────
