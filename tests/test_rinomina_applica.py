@@ -1290,3 +1290,92 @@ def test_le_citazioni_si_cercano_in_ogni_estensione_di_testo(tmp_path):
     (tmp_path / "c.png").write_bytes(b"`storico`")
     trovate = rinomina.citazioni({"storico": "history"}, radice=tmp_path)
     assert {f.name for f, _, _, _, _ in trovate} == {"a.mjs", "b.txt"}
+
+
+def test_i_nomi_ESPORTATI_non_sono_le_variabili_locali():
+    """La cura che ha riportato la terza rete da 192 segnalazioni a 35.
+
+    `sponde_per_nome` cerca un nome vecchio letto altrove come import o come
+    attributo. Alimentata con TUTTO cio' che un lotto rinomina -- locali
+    comprese -- su un file che usa parole comuni (`esito`, `nome`, `codice`)
+    spara centinaia di volte, perche' un attributo omonimo di un ALTRO oggetto
+    e' legittimo e frequente. **Una rete che spara 192 volte e' gia' spenta.**
+
+    Una variabile locale non puo' essere una sponda per costruzione: nessuno la
+    importa e nessuno la legge per attributo. Non appartiene alla domanda.
+
+    Misurato su `agent/`: 192 -> 35, e zero sui tre sottosistemi gia'
+    convertiti (dove non c'e' piu' niente da rinominare).
+    """
+    gf = rinomina.Glossario(mappa={"esito": "occurrence", "nome": "name",
+                                   "archivio": "store"})
+    dentro = ("ARCHIVIO = 1\n"
+              "\n"
+              "def nome(x):\n"
+              "    esito = x + 1\n"
+              "    return esito\n"
+              "\n"
+              "class Archivio:\n"
+              "    nome = 'a'\n"
+              "\n"
+              "    def esito(self):\n"
+              "        nome = 2\n"
+              "        return nome\n")
+    esportati = rinomina.nomi_esportati(dentro, gf, "qualunque")
+    assert esportati == {"ARCHIVIO": "STORE", "nome": "name",
+                         "Archivio": "Store", "esito": "occurrence"}, esportati
+
+
+def test_una_definizione_annidata_in_una_funzione_non_e_esportata():
+    """Una classe definita dentro il corpo di una funzione non la esporta
+    nessuno: nessun import puo' nominarla, nessun attributo puo' leggerla da
+    fuori. Resta fuori dalla domanda -- ed e' la ragione per cui questa
+    funzione legge l'AST e non i token: «e' al livello del modulo o della
+    classe» e' una domanda sulla STRUTTURA."""
+    gf = rinomina.Glossario(mappa={"esito": "occurrence"})
+    dentro = ("def prova():\n"
+              "    class esito:\n"
+              "        pass\n"
+              "    return esito\n")
+    assert rinomina.nomi_esportati(dentro, gf, "qualunque") == {}
+
+
+def test_chiudi_sponde_chiude_i_nomi_importati_e_gli_attributi_approvati(tmp_path):
+    """L'altra meta' della terza rete: la stessa rilevazione, applicata ai siti
+    che un umano ha approvato.
+
+    Erano due meta' che non si parlavano -- `sponde_per_nome` segnalava i nomi
+    importati e nessuno li chiudeva -- ed e' la SECONDA volta che questa forma
+    di difetto compare nello stesso strumento (la prima fu
+    `parametri_def_rinominati`/`chiamanti_orfani`, uniti al round 8).
+
+    Un sito approvato e un sito applicato non possono divergere: sono lo stesso
+    calcolo (`_sponde_tokenizzate`).
+
+    E gli import si toccano per POSIZIONE SINTATTICA: il giro annullato di
+    `agent/` e' finito male su una regex sulle righe di import, troppo larga.
+    """
+    f = tmp_path / "usa.py"
+    f.write_text("from pacchetto.modulo import vecchio_nome\n"
+                 "x = oggetto.vecchio_nome\n"
+                 "vecchio_nome = 1\n", encoding="utf-8")
+    siti = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
+    assert {s[4] for s in siti} == {"import", "attributo"}, siti
+    assert rinomina.chiudi_sponde(siti) == 2
+    dopo = f.read_text(encoding="utf-8")
+    assert dopo == ("from pacchetto.modulo import new_name\n"
+                    "x = oggetto.new_name\n"
+                    "vecchio_nome = 1\n"), dopo
+
+
+def test_chiudi_sponde_non_tocca_un_sito_che_non_e_stato_approvato(tmp_path):
+    """La controprova, ed e' cio' che rende usabile la coppia: la rete dichiara
+    TUTTO, l'umano ne approva una parte, e si chiude solo quella. Un attributo
+    omonimo di un altro oggetto resta dov'e'."""
+    f = tmp_path / "usa.py"
+    f.write_text("a = mio.vecchio_nome\n" "b = altrui.vecchio_nome\n", encoding="utf-8")
+    siti = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
+    approvati = [s for s in siti if s[1] == 1]
+    assert rinomina.chiudi_sponde(approvati) == 1
+    assert f.read_text(encoding="utf-8") == ("a = mio.new_name\n"
+                                             "b = altrui.vecchio_nome\n")

@@ -452,3 +452,58 @@ def test_il_glossario_vero_non_ha_conflitti_silenziosi(g):
     non e' completa."""
     assert g.omonimi["guarda"] == {"cervello": "watch", "casa": "view"}
     assert "guarda" not in g.mappa
+
+
+# L'unica coppia il cui INGLESE il glossario stesso rilegge come ITALIANO.
+# `codice -> code`, e `code` e' il plurale di `coda -> tail`: il nome prodotto
+# **sembra corretto in inglese**, ed e' proprio questo che lo rende insidioso.
+# Misurato su tutto il glossario: e' l'unica.
+_RITORNANTI_NOTE = {("codice", "code", "tail")}
+
+
+def test_nessuna_parola_produce_un_inglese_che_il_glossario_rilegge_da_capo():
+    """Il TERZO posto in cui lo strumento sapeva due cose e non le univa.
+
+    Sapeva quale inglese produce e sapeva come si legge una parola italiana, e
+    non si e' mai chiesto se il nome che PRODUCE sia a sua volta leggibile come
+    ingresso. Misurato dal vivo (fetta «la rinomina», lotto di `backends/`):
+    `_codice_di` e' diventato `_code_of`, e il dry-run successivo proponeva
+    `_code_of -> tail_of`, perche' **`code` e' italiano** -- plurale di `coda`.
+
+    E' la seconda trappola della famiglia di `rotta` (una parola che il
+    glossario legge nel senso sbagliato) e la piu' insidiosa finora, perche'
+    il nome prodotto sembra corretto in inglese: nessuna review si ferma su
+    `_code_of`.
+
+    Non rompe niente il giorno che nasce -- resta una proposta per sempre e
+    confonde chi legge -- quindi il rimedio non e' vietarla ma DICHIARARLA:
+    l'istantanea ha una voce sola, e una seconda va guardata prima di
+    accettarla.
+
+    Provato per mutazione: aggiunta una riga `mano -> hand` (e `hand` non e'
+    italiano) resta verde; aggiunta `pesce -> pesci` (dove `pesci` si
+    rileggerebbe) arrossisce.
+    """
+    g = rinomina.leggi_glossario()
+    trovate = set()
+    for italiano, inglese in g.mappa.items():
+        if inglese == italiano:
+            continue
+        esito = rinomina.classifica(inglese, g, "qualunque")
+        if esito is None:
+            continue
+        riletto = esito if isinstance(esito, str) else esito.suggerito
+        if riletto != inglese:
+            trovate.add((italiano, inglese, riletto))
+    nuove = sorted(trovate - _RITORNANTI_NOTE)
+    sparite = sorted(_RITORNANTI_NOTE - trovate)
+    assert not nuove, (
+        "parole il cui inglese il glossario rilegge come italiano: "
+        + ", ".join(f"{i} -> {e} (che rileggerebbe come {r})" for i, e, r in nuove)
+        + " -- il nome prodotto SEMBRA inglese corretto e nessuna review si "
+          "ferma su di lui, ma il dry-run successivo continuera' a proporlo. "
+          "Scegli un altro inglese, oppure dichiaralo qui con la ragione")
+    assert not sparite, (
+        "coppie dichiarate che non ritornano piu': "
+        + ", ".join(f"{i} -> {e}" for i, e, _ in sparite)
+        + " -- bene: togli la riga da `_RITORNANTI_NOTE`")

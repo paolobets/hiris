@@ -1084,6 +1084,59 @@ def nomi_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
     return fuori
 
 
+def nomi_esportati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
+    """`{vecchio: nuovo}` per i soli nomi che questo file ESPORTA e che
+    `riscrivi()` rinomina: funzioni e classi di modulo, membri di classe,
+    costanti di modulo. **Non le variabili locali.**
+
+    **Serve a non spegnere la terza rete.** `sponde_per_nome` cerca un nome
+    vecchio letto altrove come import o come attributo: alimentata con TUTTO
+    cio' che un lotto rinomina -- locali comprese -- su un file che usa parole
+    comuni (`esito`, `nome`, `codice`) spara centinaia di volte, perche' un
+    attributo omonimo di un ALTRO oggetto e' legittimo e frequente. Misurato:
+    **192 segnalazioni su `agent/`**, contro una precisione perfetta su
+    `proxy/` e `reasoning/`, dove i nomi erano distintivi. Una rete che spara
+    192 volte e' gia' spenta -- e' il difetto n.1 del progetto applicato al
+    rimedio.
+
+    E' la stessa cura del filtro sui chiamanti orfani: **guardare l'asse
+    giusto invece di affinare quello sbagliato**. Una variabile locale non puo'
+    essere una sponda per costruzione -- nessuno la importa e nessuno la legge
+    per attributo -- quindi non appartiene alla domanda.
+
+    Si legge con l'AST e non coi token: «e' definito al livello del modulo o
+    della classe» e' una domanda sulla STRUTTURA, e la pila di parentesi non
+    la sa rispondere. Le definizioni annidate dentro una funzione restano
+    fuori, ed e' giusto: non le esporta nessuno.
+    """
+    import ast
+    try:
+        albero = ast.parse(sorgente)
+    except SyntaxError:
+        return {}
+    nomi: set[str] = set()
+
+    def raccogli(corpo) -> None:
+        for nodo in corpo:
+            if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                nomi.add(nodo.name)
+            elif isinstance(nodo, ast.ClassDef):
+                nomi.add(nodo.name)
+                raccogli(nodo.body)
+            elif isinstance(nodo, ast.Assign):
+                nomi.update(t.id for t in nodo.targets if isinstance(t, ast.Name))
+            elif isinstance(nodo, ast.AnnAssign) and isinstance(nodo.target, ast.Name):
+                nomi.add(nodo.target.id)
+
+    raccogli(albero.body)
+    fuori: dict[str, str] = {}
+    for nome in sorted(nomi):
+        esito = classifica(nome, g, ambito)
+        if isinstance(esito, str) and esito != nome:
+            fuori[nome] = esito
+    return fuori
+
+
 def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
                     escludi: tuple[str, ...] = ()
                     ) -> list[tuple[Path, int, str, str, str]]:
@@ -1143,28 +1196,101 @@ def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
         # parametro `strumenti` di `chat()` produceva **34 segnalazioni, 32
         # delle quali erano `casa.strumenti`** in trenta file. Un elenco cosi'
         # non si legge: e' il difetto n.1 del progetto applicato al rimedio.
-        percorso, _, _, _ = _righe_di_percorso_e_parola_chiave(tokens)
-        precedente = None
-        nome_importato = False
-        for indice, t in enumerate(tokens):
-            if t.type == tokenize.NEWLINE:
-                nome_importato = False
-            elif t.type == tokenize.NAME and t.string == "import":
-                nome_importato = True
-            elif t.type == tokenize.NAME and t.string in nomi and indice not in percorso:
-                if nome_importato:
-                    specie = "import"
-                elif (precedente is not None and precedente.type == tokenize.OP
-                        and precedente.string == "."):
-                    specie = "attributo"
-                else:
-                    specie = ""
-                if specie:
-                    trovati.append((f, t.start[0], t.string, nomi[t.string], specie))
-            if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
-                              tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
-                precedente = t
+        for indice, vecchio, specie in _sponde_tokenizzate(tokens, nomi):
+            trovati.append((f, tokens[indice].start[0], vecchio,
+                            nomi[vecchio], specie))
     return trovati
+
+
+def _sponde_tokenizzate(tokens: list, nomi) -> list[tuple[int, str, str]]:
+    """`[(indice del token, nome vecchio, specie), ...]` -- la rilevazione
+    delle sponde, in un posto solo.
+
+    **Vive qui perche' due funzioni la usano e non devono riscriverla**:
+    `sponde_per_nome` la DICHIARA, `chiudi_sponde` la APPLICA ai siti che un
+    umano ha approvato. Erano due meta' che non si parlavano -- una segnalava i
+    nomi importati e l'altra non li chiudeva -- ed e' la seconda volta che
+    questa forma di difetto compare nello stesso strumento (la prima fu
+    `parametri_def_rinominati` e `chiamanti_orfani`, uniti al round 8).
+
+    I segmenti di un PERCORSO di import non sono sponde: `from
+    ..casa.strumenti import X` porta `.strumenti` in posizione di attributo, ma
+    quello e' il nome di un MODULO -- e un modulo si rinomina con `git mv`.
+    Misurato aprendo `backends/`: senza, rinominare il parametro `strumenti`
+    di `chat()` dava 34 segnalazioni, 32 delle quali `casa.strumenti`.
+    """
+    percorso, _, _, _ = _righe_di_percorso_e_parola_chiave(tokens)
+    fuori: list[tuple[int, str, str]] = []
+    precedente = None
+    nome_importato = False
+    for indice, t in enumerate(tokens):
+        if t.type == tokenize.NEWLINE:
+            nome_importato = False
+        elif t.type == tokenize.NAME and t.string == "import":
+            nome_importato = True
+        elif t.type == tokenize.NAME and t.string in nomi and indice not in percorso:
+            if nome_importato:
+                fuori.append((indice, t.string, "import"))
+            elif (precedente is not None and precedente.type == tokenize.OP
+                    and precedente.string == "."):
+                fuori.append((indice, t.string, "attributo"))
+        if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                          tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+            precedente = t
+    return fuori
+
+
+def chiudi_sponde(siti) -> int:
+    """Rinomina i token nei SITI che `sponde_per_nome` ha dichiarato e che un
+    umano ha approvato. Restituisce quanti ne ha chiusi.
+
+    **L'altra meta' della terza rete.** La rete dichiara e non corregge, e la
+    ragione resta buona: un attributo omonimo di un ALTRO oggetto e' legittimo,
+    e solo chi legge sa distinguerlo. Ma dopo la lettura serviva un modo di
+    APPLICARE esattamente cio' che si e' approvato, e non c'era: i nomi
+    importati si chiudevano a mano, e il giro annullato di `agent/` e' finito
+    male proprio li' -- una regex sulle righe di import, troppo larga, che ha
+    toccato file che non c'entravano.
+
+    **Gli import si toccano per posizione sintattica, o non si toccano.**
+    Questa funzione riconosce il sito con lo stesso codice che l'ha dichiarato
+    (`_sponde_tokenizzate`): un sito approvato e un sito applicato non possono
+    divergere, perche' sono lo stesso calcolo.
+
+    `siti` e' cio' che `sponde_per_nome` restituisce, filtrato: le tuple
+    `(file, riga, vecchio, nuovo, specie)`. Un sito che non si ritrova piu' --
+    perche' il file e' cambiato nel frattempo -- non si applica e non si
+    inventa: si conta soltanto cio' che si e' chiuso davvero.
+    """
+    per_file: dict[Path, dict] = {}
+    for f, riga, vecchio, nuovo, specie in siti:
+        per_file.setdefault(f, {})[(riga, vecchio, specie)] = nuovo
+    chiusi = 0
+    for f, bersagli in per_file.items():
+        sorgente = _leggi_grezzo(f)
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+        righe = sorgente.splitlines(keepends=True)
+        inizi = [0]
+        for r in righe:
+            inizi.append(inizi[-1] + len(r))
+        nomi = {v for _, v, _ in bersagli}
+        cambi = []
+        for indice, vecchio, specie in _sponde_tokenizzate(tokens, nomi):
+            t = tokens[indice]
+            nuovo = bersagli.get((t.start[0], vecchio, specie))
+            if nuovo is None:
+                continue
+            cambi.append((inizi[t.start[0] - 1] + t.start[1],
+                          inizi[t.end[0] - 1] + t.end[1], nuovo))
+        for i, j, nuovo in sorted(cambi, reverse=True):
+            sorgente = sorgente[:i] + nuovo + sorgente[j:]
+        if cambi:
+            _scrivi_grezzo(f, sorgente)
+            chiusi += len(cambi)
+    return chiusi
 
 
 # Le estensioni che NON portano prosa: si elencano quelle da ESCLUDERE, mai
@@ -1372,7 +1498,7 @@ def main(argv=None) -> int:
             sorgente = _leggi_grezzo(f)
             parametri.update(parametri_def_rinominati(sorgente, g_corrente(), a.ambito))
             metodi |= firme_rinominate(sorgente, g_corrente(), a.ambito)
-            ogni_nome.update(nomi_rinominati(sorgente, g_corrente(), a.ambito))
+            ogni_nome.update(nomi_esportati(sorgente, g_corrente(), a.ambito))
         except (tokenize.TokenError, IndentationError, SyntaxError):
             continue
 
