@@ -46,6 +46,35 @@ disciplina di `_SORVEGLIATI` in `test_rinomina_applica.py`:
 La differenza che conta: un elenco di PERCORSI dimenticato tace; un'istantanea
 di CASI dimenticata grida.
 
+## Cosa protegge davvero, misurato invece che promesso
+
+**Questo cancello non protegge il debito passato -- quello lo traccia --
+protegge da chi lavora oggi.** Non e' una formulazione modesta: e' il conto.
+In quattro occasioni ha fatto arrossire un nome, e **quattro volte su quattro
+era un nome scritto quel giorno dall'autore del commit in corso**, mai uno
+vecchio: `_identificatori_con_giuntura` e `a_preposizione` (nel commit che lo
+creava), `_INTESTAZIONE_NON_RILASCIATO` (`scripts/release.py`), `doppi_di` e
+`_moduli_di_test`, `_ARTICOLO_I_SCOPERTO` e `scoperti_i`. Il debito vecchio
+non lo fa arrossire mai, per costruzione: sta nell'istantanea.
+
+Da cui una conseguenza operativa: **quando arrossisce, il nome da guardare e'
+quasi sempre quello che hai appena scritto tu.**
+
+## Il rosso ATTESO, e perche' regge (finora)
+
+E' l'unico cancello del progetto che si pretende rosso in condizioni normali:
+convertire un sottosistema fa sparire dei nomi dall'istantanea, e il ramo
+«spariti» arrossisce **apposta**. Chi converte vede fallire un test che non ha
+rotto, e la tentazione di leggerlo come rumore c'e'.
+
+Regge per una ragione sola, e va detta perche' non e' un accidente: il
+messaggio di quel ramo **ha il tono di una ricevuta**, non di un allarme --
+«sono stati corretti (bene): toglili». Se un domani quel ramo dovesse
+arrossire anche per un'altra ragione, il tono diventerebbe una trappola e
+questo cancello morirebbe li': non per un difetto suo, ma perche' un rosso
+atteso e generico si impara a saltare. Chi aggiunge un caso a quel ramo deve
+quindi dargli un messaggio proprio, non riusare questo.
+
 ## Le tre regole, e perche' non sono una sola
 
 **1. Le forme piane** (`_PIANE`): preposizioni proprie, articolate e

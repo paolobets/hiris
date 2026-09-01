@@ -224,6 +224,33 @@ class FirmaScollegata:
     righe: list[int]
 
 
+@dataclass
+class DefinizioneProtetta:
+    """La `def` di un metodo che sta in `_METODI_ESTERNI_PROTETTI` e' stata
+    rinominata: le CHIAMATE erano protette, la definizione no.
+
+    **Il buco che questa dichiarazione chiude, misurato dal vivo** (fetta «la
+    rinomina», lotto 17 di `proxy/`): `_righe_di_percorso_e_parola_chiave`
+    riconosce un metodo protetto per STRUTTURA -- un NAME preceduto da un
+    punto -- e **una `def` non ha un punto davanti**. Puntando lo strumento su
+    `proxy/ha_client.py`, `async def statistiche` e `async def legami` sono
+    stati rinominati in silenzio mentre ogni `ha.statistiche(...)` dei sei
+    ambiti restava intatto: un `AttributeError` in produzione con tutti e
+    quattro i cancelli verdi, se la suite non avesse toccato quel ramo.
+
+    **Perche' DICHIARA invece di proteggere.** Proteggere anche la `def`
+    renderebbe lo strumento incapace di convertire il file che DEFINISCE la
+    classe -- cioe' l'unico lavoro per cui serve davvero. E' la stessa forma
+    del controllo di chiusura: la rinomina si applica, e accanto compare la
+    domanda -- **o chiudi tutte le chiamate nello stesso commit, o non
+    farlo**. Decidere quale delle due sia giusta richiede di sapere se il
+    lotto in corso e' quello che possiede la classe, e lo strumento non lo sa.
+    """
+    nome: str
+    nuovo: str
+    riga: int
+
+
 def spezza(nome: str) -> list[str]:
     """I pezzi di un identificatore, senza i trattini bassi di convenzione."""
     return [p for p in re.split(r"_+|(?<=[a-z0-9])(?=[A-Z])", nome) if p]
@@ -478,8 +505,9 @@ _METODI_ESTERNI_PROTETTI = (
 )
 
 
-def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int], set[int]]:
-    """Tre insiemi di INDICI nella lista `tokens`: quelli che sono un
+def _righe_di_percorso_e_parola_chiave(
+        tokens: list) -> tuple[set[int], set[int], set[int], dict[int, str]]:
+    """Tre insiemi di INDICI nella lista `tokens` piu' una mappa: quelli che sono un
     segmento di un percorso di IMPORT, quelli che sono il nome di una
     PAROLA CHIAVE (keyword argument) in una chiamata, e quelli che sono un
     METODO DI HACLIENT letto per attributo (`ha.storico(...)`).
@@ -517,14 +545,30 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
     GIA' CHIUSO puo' avere metodi pubblici mai decisi quanto uno non
     ancora toccato, e il rischio per lo strumento e' identico (Task 9).
     Trattato come una parola chiave: si segnala, non si applica.
+
+    **Il quarto valore, `chiamati`**: per ogni indice di parola chiave, il
+    NOME della funzione chiamata (`f` in `f(x=1)`, `storico` in
+    `ha.storico(entita=...)`), o la stringa vuota se la parentesi non e' stata
+    aperta da un nome (una chiamata incatenata, `f()(x=1)`). Costa nulla --
+    la pila delle parentesi sa gia' chi ha aperto ognuna -- e serve al
+    controllo di chiusura: senza di lui, l'unico modo di distinguere una
+    sponda vera da un `vecchio=` omonimo verso una firma altrui e' chiedersi
+    se QUALCHE `def` del repo dichiari ancora quel nome, cioe' un rilevatore
+    di RARITA' della parola, non di verita' della chiamata. Misurato:
+    su un sottosistema con parole comuni quel filtro marca «certe» zero
+    segnalazioni su 120, mentre le sponde vere erano 15.
     """
     percorso: set[int] = set()
     parola_chiave: set[int] = set()
     confine_ha: set[int] = set()
+    chiamati: dict[int, str] = {}
 
     modo = None  # None | "percorso_from" | "percorso_import" | "alias_in_arrivo"
     inizio_riga = True
     pila_parentesi: list[str] = []
+    # Chi ha aperto ogni parentesi ancora aperta, in parallelo a
+    # `pila_parentesi`: il nome della funzione chiamata, o "" se non e' un nome.
+    pila_chiamato: list[str] = []
     precedente = None
     precedente_precedente = None
 
@@ -535,15 +579,20 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
                          and precedente_precedente.type == tokenize.NAME
                          and precedente_precedente.string == "def")
                 pila_parentesi.append("def" if e_def else "chiamata")
+                pila_chiamato.append(precedente.string)
             elif precedente is not None and precedente.type == tokenize.OP \
                     and precedente.string in (")", "]"):
                 pila_parentesi.append("chiamata")
+                pila_chiamato.append("")
             else:
                 pila_parentesi.append("altro")
+                pila_chiamato.append("")
         elif t.type == tokenize.OP and t.string in ("[", "{"):
             pila_parentesi.append("altro")
+            pila_chiamato.append("")
         elif t.type == tokenize.OP and t.string in (")", "]", "}") and pila_parentesi:
             pila_parentesi.pop()
+            pila_chiamato.pop()
 
         if t.type == tokenize.NAME:
             if modo == "percorso_from":
@@ -569,6 +618,7 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
                     and tokens[i + 1].type == tokenize.OP
                     and tokens[i + 1].string == "="):
                 parola_chiave.add(i)
+                chiamati[i] = pila_chiamato[-1] if pila_chiamato else ""
             elif (t.string in _METODI_ESTERNI_PROTETTI
                     and precedente is not None
                     and precedente.type == tokenize.OP
@@ -596,7 +646,7 @@ def _righe_di_percorso_e_parola_chiave(tokens: list) -> tuple[set[int], set[int]
             precedente_precedente = precedente
             precedente = t
 
-    return percorso, parola_chiave, confine_ha
+    return percorso, parola_chiave, confine_ha, chiamati
 
 
 def riscrivi(sorgente: str, g: Glossario, ambito: str
@@ -619,7 +669,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str
         return inizi[riga - 1] + col
 
     tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
-    percorso, parola_chiave, confine_ha = _righe_di_percorso_e_parola_chiave(tokens)
+    percorso, parola_chiave, confine_ha, _ = _righe_di_percorso_e_parola_chiave(tokens)
 
     grezzi, proposte = [], []
     # `indice del token -> inglese applicato`, per il controllo di chiusura
@@ -699,6 +749,16 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str
                             if tokens[i].string == vecchio})
             proposte.append(FirmaScollegata(vecchio=vecchio, nuovo=nuovo, righe=righe))
 
+    # La `def` di un metodo protetto e' stata rinominata: le chiamate no.
+    # Si dichiara e si va avanti -- vedi `DefinizioneProtetta` per il perche'
+    # proteggerla sarebbe la cura sbagliata.
+    for i in sorted(_posizioni_nomi_def(tokens)):
+        nuovo = applicati.get(i)
+        if (nuovo is not None and nuovo not in collisi
+                and tokens[i].string in _METODI_ESTERNI_PROTETTI):
+            proposte.append(DefinizioneProtetta(
+                nome=tokens[i].string, nuovo=nuovo, riga=tokens[i].start[0]))
+
     fuori = sorgente
     for i, j, nuovo in sorted(cambi, reverse=True):
         fuori = fuori[:i] + nuovo + fuori[j:]
@@ -777,6 +837,27 @@ def _posizioni_parametri_def(tokens: list) -> set[int]:
     return posizioni
 
 
+def _posizioni_nomi_def(tokens: list) -> set[int]:
+    """Gli INDICI dei token che sono il NOME di una `def` -- non i suoi
+    parametri (quelli li da' `_posizioni_parametri_def`, che risponde a
+    un'altra domanda sullo stesso flusso).
+
+    Riconosciuto per struttura e non per elenco: un NAME preceduto
+    immediatamente da `def`. La forma `async def` non ha bisogno di un caso
+    suo, perche' il token subito prima del nome resta `def` in entrambe.
+    """
+    posizioni: set[int] = set()
+    precedente = None
+    for i, t in enumerate(tokens):
+        if (t.type == tokenize.NAME and precedente is not None
+                and precedente.type == tokenize.NAME and precedente.string == "def"):
+            posizioni.add(i)
+        if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                          tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+            precedente = t
+    return posizioni
+
+
 def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
     """`{nome vecchio: nome nuovo}` per i soli parametri di `def` che
     `riscrivi()` rinomina in questo sorgente.
@@ -802,7 +883,7 @@ def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[s
     percorso chiamante, che e' parziale per costruzione.
     """
     tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
-    percorso, parola_chiave, confine = _righe_di_percorso_e_parola_chiave(tokens)
+    percorso, parola_chiave, confine, _ = _righe_di_percorso_e_parola_chiave(tokens)
     rinominati: dict[str, str] = {}
     for i in _posizioni_parametri_def(tokens):
         if i in percorso or i in parola_chiave or i in confine:
@@ -812,6 +893,37 @@ def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[s
         if isinstance(esito, str) and esito != t.string:
             rinominati[t.string] = esito
     return rinominati
+
+
+def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
+    """I NOMI delle `def` di questo sorgente che perdono almeno un parametro
+    a favore dell'inglese.
+
+    E' l'altra meta' di `parametri_def_rinominati`: quella dice QUALI parole
+    chiave sono rimaste indietro, questa dice DOVE andavano a finire. Insieme
+    permettono al controllo di chiusura di distinguere una sponda vera (`
+    ha.storico(entita=...)`, dove `storico` e' una firma appena cambiata) da
+    un omonimo (`nota_ripiego(motivo=...)`, dove `motivo` e' la parola chiave
+    di una funzione che nessuno ha toccato) -- la domanda che
+    `parametri_dichiarati` non sa porre, perche' guarda la rarita' del nome e
+    non la funzione chiamata.
+    """
+    tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+    percorso, parola_chiave, confine, _ = _righe_di_percorso_e_parola_chiave(tokens)
+    parametri = _posizioni_parametri_def(tokens)
+    nomi_def = _posizioni_nomi_def(tokens)
+    trovati: set[str] = set()
+    ultima_def = ""
+    for i, t in enumerate(tokens):
+        if i in nomi_def:
+            ultima_def = t.string
+            continue
+        if i not in parametri or i in percorso or i in parola_chiave or i in confine:
+            continue
+        esito = classifica(t.string, g, ambito)
+        if isinstance(esito, str) and esito != t.string and ultima_def:
+            trovati.add(ultima_def)
+    return trovati
 
 
 def parametri_dichiarati(radice: Path | None = None) -> set[str]:
@@ -836,7 +948,8 @@ def parametri_dichiarati(radice: Path | None = None) -> set[str]:
 
 
 def chiamanti_orfani(nomi: dict[str, str],
-                     radice: Path | None = None) -> list[tuple[Path, int, str, str]]:
+                     radice: Path | None = None
+                     ) -> list[tuple[Path, int, str, str, str]]:
     """I siti di chiamata, su TUTTO il repo, che passano ancora una parola
     chiave con un nome che una `def` non porta piu'.
 
@@ -878,8 +991,40 @@ def chiamanti_orfani(nomi: dict[str, str],
     repo e' certo, gli altri sono ambigui. Sulla fetta intera ha portato 555
     occorrenze a 24 da guardare -- senza di lui nessuno leggerebbe l'elenco,
     ed e' la differenza fra un controllo che si usa e uno che si salta.
+
+    **E ha un limite che l'ha reso inutile una volta, misurato su TUTTA la
+    fetta** (66 commit, ricostruendo le coppie dal diff di ognuno):
+    **208 parametri di firma rinominati, 549 occorrenze di parola chiave col
+    nome vecchio, 25 marcate «certe».** Il filtro chiede «QUALCHE `def` del
+    repo dichiara ancora questo nome?», cioe' e' un rilevatore della RARITA'
+    della parola, non della verita' della chiamata -- e infatti **125 dei 208
+    nomi non sono dichiarati da nessuna firma** (quelli rari, che pero' non
+    hanno quasi occorrenze) mentre le occorrenze si ammassano sugli altri 83:
+    `archivio` e' dichiarato da 211 firme, `memoria` da 47, `casa` da 38,
+    `testo` da 27, `nome` da 22. Su parole rare funziona benissimo
+    (`api/handlers_models.py`: 22 segnalazioni, 1 falso positivo); su parole
+    comuni non e' debole, e' **cieco esattamente dove stanno le segnalazioni**
+    -- su `proxy/ha_client.py` ha marcato zero certe su 120 mentre le sponde
+    vere erano quindici.
+
+    **La taratura, quindi, non e' rendere quel filtro piu' furbo: e' che
+    guardava l'asse sbagliato.** Il nome CHIAMATO (quinto valore, sotto)
+    rimisurato sullo stesso caso restituisce **esattamente le 15 sponde vere**
+    -- tutte `diario(entita=...)` in `tests/test_ha_client_diagnostics.py` --
+    cioe' riproduce il triage che il lotto 16 aveva fatto a mano con uno
+    script usa-e-getta. I due assi restano entrambi, col nome chiamato per
+    primo: sono complementari, non alternativi -- il vecchio prende un
+    `vecchio=` che non risolve piu' a NIENTE, il nuovo prende un `vecchio=`
+    che risolve alla firma sbagliata.
+
+    **Il quinto valore di ogni riga e' il NOME CHIAMATO**, ed e' il secondo
+    asse -- quello che risponde alla domanda giusta. Un `vecchio=` dentro una
+    chiamata a un metodo la cui firma e' appena cambiata E' una sponda; lo
+    stesso `vecchio=` dentro la chiamata a qualunque altra cosa non lo e'.
+    Il triage a mano del lotto 16 (120 -> 15) era esattamente questo, fatto
+    con uno script usa-e-getta: ora lo fa il controllo.
     """
-    trovati: list[tuple[Path, int, str, str]] = []
+    trovati: list[tuple[Path, int, str, str, str]] = []
     if not nomi:
         return trovati
     for f in file_py(radice or ROOT):
@@ -887,11 +1032,107 @@ def chiamanti_orfani(nomi: dict[str, str],
             tokens = list(tokenize.generate_tokens(io.StringIO(_leggi_grezzo(f)).readline))
         except (tokenize.TokenError, IndentationError, SyntaxError):
             continue
-        _, parola_chiave, _ = _righe_di_percorso_e_parola_chiave(tokens)
+        _, parola_chiave, _, chiamati = _righe_di_percorso_e_parola_chiave(tokens)
         for i in sorted(parola_chiave):
             t = tokens[i]
             if t.string in nomi:
-                trovati.append((f, t.start[0], t.string, nomi[t.string]))
+                trovati.append((f, t.start[0], t.string, nomi[t.string],
+                                chiamati.get(i, "")))
+    return trovati
+
+
+def nomi_rinominati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
+    """`{vecchio: nuovo}` per ogni identificatore che `riscrivi()` rinomina in
+    questo sorgente -- parametri, locali, nomi di funzione, costanti.
+
+    Non e' un doppione di `parametri_def_rinominati`, che filtra i soli
+    parametri di firma: serve a `sponde_per_nome`, a cui interessa ogni nome
+    che potrebbe essere letto da un altro file.
+    """
+    tokens = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+    percorso, parola_chiave, confine, _ = _righe_di_percorso_e_parola_chiave(tokens)
+    fuori: dict[str, str] = {}
+    for i, t in enumerate(tokens):
+        if (t.type != tokenize.NAME or i in percorso
+                or i in parola_chiave or i in confine):
+            continue
+        esito = classifica(t.string, g, ambito)
+        if isinstance(esito, str) and esito != t.string:
+            fuori[t.string] = esito
+    return fuori
+
+
+def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
+                    escludi: tuple[str, ...] = ()
+                    ) -> list[tuple[Path, int, str, str, str]]:
+    """Le DUE sponde che nessun altro meccanismo copre: un nome vecchio letto
+    da un altro file **come nome importato** o **come attributo**.
+
+    `(file, riga, vecchio, nuovo, specie)` con specie `"import"` o
+    `"attributo"`. I file in `escludi` (i percorsi relativi del lotto in
+    corso) non si guardano: li' il nome nuovo c'e' gia'.
+
+    **Perche' esiste, e perche' non poteva farlo nessuno degli altri due.**
+    Entrambe le specie sono state trovate A MANO, due volte, e l'unica ragione
+    per cui non sono diventate un guasto e' che qualcuno ha pensato di
+    cercarle:
+
+    1. **Il nome importato** (lotto 15): `inventario_leggibile` era importata
+       per nome da CINQUE file, tre dei quali in ambiti dichiarati stabili.
+       La guardia dei percorsi di import non la protegge -- il nome arriva
+       DOPO `import`, e li' `_righe_di_percorso_e_parola_chiave` ha gia'
+       chiuso il percorso -- e il controllo di chiusura non la vede, perche'
+       guarda le parole chiave di una chiamata, non gli import.
+    2. **L'attributo di modulo** (lotto 18): `tests/test_ha_client_call_
+       service.py` fa `import ... as modulo` e poi scrive
+       `modulo._forma_cambiati_dichiarata = False`. Non e' una chiamata, non
+       e' una parola chiave, non e' un import: e' un attributo, e nessuna
+       delle due reti guardava li'.
+
+    **Dichiara, non corregge**, come gli altri due strati, e per la stessa
+    ragione: un attributo che si chiama come un nome appena rinominato puo'
+    benissimo appartenere a un altro oggetto (`msg.result`, `p.state`). La
+    specie `"attributo"` va quindi letta, non applicata -- ma un attributo di
+    MODULO e un nome importato, che sono i due casi veri, stanno in un elenco
+    che si legge in dieci secondi invece che in un `grep` che nessuno lancia.
+    """
+    trovati: list[tuple[Path, int, str, str, str]] = []
+    if not nomi:
+        return trovati
+    base = radice or ROOT
+    saltati = {e.replace("\\", "/") for e in escludi}
+    for f in file_py(base):
+        # Il percorso si calcola sulla RADICE data, non su `ROOT`: questa
+        # funzione si prova su alberi che non sono il repo vero (una copia di
+        # un commit passato, una cartella temporanea di un test), e un
+        # `escludi` che non combacia salta zero file in silenzio -- cioe' ha
+        # l'aspetto esatto di un elenco piu' lungo del vero.
+        if f.relative_to(base).as_posix() in saltati:
+            continue
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(_leggi_grezzo(f)).readline))
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            continue
+        precedente = None
+        nome_importato = False
+        for t in tokens:
+            if t.type == tokenize.NEWLINE:
+                nome_importato = False
+            elif t.type == tokenize.NAME and t.string == "import":
+                nome_importato = True
+            elif t.type == tokenize.NAME and t.string in nomi:
+                if nome_importato:
+                    specie = "import"
+                elif (precedente is not None and precedente.type == tokenize.OP
+                        and precedente.string == "."):
+                    specie = "attributo"
+                else:
+                    specie = ""
+                if specie:
+                    trovati.append((f, t.start[0], t.string, nomi[t.string], specie))
+            if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                              tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+                precedente = t
     return trovati
 
 
@@ -973,10 +1214,14 @@ def main(argv=None) -> int:
     # di chiusura (`chiamanti_orfani`, su tutto il repo); il primo strato --
     # dentro il file stesso -- lo fa gia' `riscrivi`.
     parametri: dict[str, str] = {}
+    metodi: set[str] = set()
+    ogni_nome: dict[str, str] = {}
     for f in _elenco_file(base):
         try:
-            parametri.update(parametri_def_rinominati(
-                _leggi_grezzo(f), g_corrente(), a.ambito))
+            sorgente = _leggi_grezzo(f)
+            parametri.update(parametri_def_rinominati(sorgente, g_corrente(), a.ambito))
+            metodi |= firme_rinominate(sorgente, g_corrente(), a.ambito)
+            ogni_nome.update(nomi_rinominati(sorgente, g_corrente(), a.ambito))
         except (tokenize.TokenError, IndentationError, SyntaxError):
             continue
 
@@ -984,11 +1229,14 @@ def main(argv=None) -> int:
     composti = [p for p in proposte if isinstance(p, Proposta)]
     collisioni = [p for p in proposte if isinstance(p, Collisione)]
     scollegate = [p for p in proposte if isinstance(p, FirmaScollegata)]
+    protette = [p for p in proposte if isinstance(p, DefinizioneProtetta)]
     msg = f"{a.percorso} (ambito «{a.ambito}»): {len(composti)} composti da decidere"
     if collisioni:
         msg += f", {len(collisioni)} collisioni"
     if scollegate:
         msg += f", {len(scollegate)} firme scollegate"
+    if protette:
+        msg += f", {len(protette)} definizioni protette rinominate"
     print(msg)
     for pr in sorted(composti, key=lambda x: x.nome):
         print(f"  {pr.nome:38} pezzi={'+'.join(pr.pezzi):30} suggerito={pr.suggerito}")
@@ -1001,27 +1249,61 @@ def main(argv=None) -> int:
               f"rinominata, ma nello stesso file resta «{s.vecchio}=» "
               f"alle righe {righe} (guardale: potrebbe essere la parola "
               f"chiave di una firma altrui, e allora e' giusta cosi')")
+    for d in sorted(protette, key=lambda x: x.nome):
+        print(f"  DEFINIZIONE PROTETTA {d.nome} -> {d.nuovo} (riga {d.riga}): "
+              f"«{d.nome}» sta in _METODI_ESTERNI_PROTETTI, quindi ogni "
+              f"CHIAMATA «.{d.nome}(...)» del repo e' rimasta com'era mentre "
+              f"la sua «def» e' stata rinominata. O chiudi tutte le chiamate "
+              f"nello stesso commit, o rimetti a mano il nome vecchio: "
+              f"questo strumento non sa se il lotto in corso possiede la "
+              f"classe, e non lo indovina")
 
     # Secondo strato: i chiamanti orfani in TUTTO il repo, non solo
     # nell'ambito in lavorazione -- il caso che ha motivato questo controllo
     # (Task 9, lotto 12) aveva il chiamante in un file di un lotto
     # precedente, gia' chiuso e gia' verde.
-    orfani = [(f, riga, vecchio, nuovo)
-              for f, riga, vecchio, nuovo in chiamanti_orfani(parametri)
-              if rel(f) not in {rel(x) for x in _elenco_file(base)}]
+    file_lotto = {rel(x) for x in _elenco_file(base)}
+    orfani = [o for o in chiamanti_orfani(parametri) if rel(o[0]) not in file_lotto]
     if orfani:
+        # **Due assi, e il primo e' quello che risponde alla domanda giusta.**
+        # (1) il NOME CHIAMATO e' una firma che questo lotto ha davvero
+        # cambiato -> e' una sponda vera, quasi sempre; (2) nessuna «def» del
+        # repo dichiara piu' quel nome -> e' orfano di sicuro. Il secondo asse
+        # da solo e' un rilevatore della RARITA' della parola: su parole
+        # comuni marca zero certi mentre le sponde vere sono quindici (vedi
+        # `chiamanti_orfani`). Si tengono entrambi, col primo per primo.
         dichiarati = parametri_dichiarati()
-        certi = [o for o in orfani if o[2] not in dichiarati]
-        ambigui = len(orfani) - len(certi)
+        certi = [o for o in orfani if o[4] in metodi]
+        restanti = [o for o in orfani if o not in certi]
+        mai_dichiarati = [o for o in restanti if o[2] not in dichiarati]
+        ambigui = len(restanti) - len(mai_dichiarati)
         print(f"  -- {len(orfani)} chiamanti con la parola chiave vecchia FUORI "
-              f"da {a.percorso} ({len(certi)} certi, {ambigui} ambigui):")
-        for f, riga, vecchio, nuovo in certi:
+              f"da {a.percorso} ({len(certi)} verso una firma di questo lotto, "
+              f"{len(mai_dichiarati)} senza nessuna «def» che li dichiari, "
+              f"{ambigui} ambigui):")
+        for f, riga, vecchio, nuovo, chiamato in certi:
+            print(f"     SPONDA  {rel(f)}:{riga}  {chiamato}({vecchio}=...)  "
+                  f"(la firma di «{chiamato}» ora dice «{nuovo}»)")
+        for f, riga, vecchio, nuovo, _ in mai_dichiarati:
             print(f"     CERTO   {rel(f)}:{riga}  {vecchio}=  (la firma ora dice "
                   f"{nuovo}, e nessuna «def» del repo dichiara piu' «{vecchio}»)")
         if ambigui:
             print(f"     (gli altri {ambigui} portano un nome che QUALCHE «def» "
-                  "dichiara ancora: possono essere firme altrui, chiavi di "
-                  "dizionario o parametri di lambda -- vedi «chiamanti_orfani»)")
+                  "dichiara ancora e non chiamano nessuna firma di questo "
+                  "lotto: possono essere firme altrui, chiavi di dizionario o "
+                  "parametri di lambda -- vedi «chiamanti_orfani»)")
+
+    # Terzo strato: le due sponde che nessuno degli altri due copre -- un nome
+    # vecchio letto altrove come NOME IMPORTATO o come ATTRIBUTO. Entrambe
+    # trovate a mano, due volte, prima che questa esistesse.
+    sponde = sponde_per_nome(ogni_nome, escludi=tuple(file_lotto))
+    if sponde:
+        print(f"  -- {len(sponde)} letture di un nome vecchio FUORI da "
+              f"{a.percorso}, come import o come attributo (leggile: un "
+              f"attributo omonimo di un ALTRO oggetto e' legittimo, un nome "
+              f"importato non lo e' quasi mai):")
+        for f, riga, vecchio, nuovo, specie in sponde:
+            print(f"     {specie.upper():9} {rel(f)}:{riga}  {vecchio} -> {nuovo}")
     return 0
 
 

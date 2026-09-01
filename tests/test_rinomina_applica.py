@@ -422,8 +422,9 @@ def test_il_controllo_di_chiusura_trova_un_chiamante_orfano_in_UN_ALTRO_file(tmp
         "from firma import costruisci\n\nd = costruisci(app, turno=x)\n",
         encoding="utf-8")
     trovati = rinomina.chiamanti_orfani({"turno": "exchange"}, radice=tmp_path)
-    nomi = {(f.name, riga, vecchio, nuovo) for f, riga, vecchio, nuovo in trovati}
-    assert ("altro_file.py", 3, "turno", "exchange") in nomi, nomi
+    nomi = {(f.name, riga, vecchio, nuovo, chiamato)
+            for f, riga, vecchio, nuovo, chiamato in trovati}
+    assert ("altro_file.py", 3, "turno", "exchange", "costruisci") in nomi, nomi
 
 
 def test_il_controllo_di_chiusura_non_segnala_una_parola_chiave_mai_rinominata(tmp_path):
@@ -453,7 +454,7 @@ def test_il_filtro_separa_i_chiamanti_orfani_certi_dagli_ambigui(tmp_path):
     assert "gesto" not in dichiarati, "nessuna def lo dichiara: orfano certo"
     orfani = rinomina.chiamanti_orfani(
         {"motivo": "reason", "gesto": "operation"}, radice=tmp_path)
-    certi = {v for _, _, v, _ in orfani if v not in dichiarati}
+    certi = {v for _, _, v, _, _ in orfani if v not in dichiarati}
     assert certi == {"gesto"}, certi
 
 
@@ -827,3 +828,117 @@ def test_un_import_nudo_non_azzera_il_riconoscimento_del_resto_del_file():
     assert fuori == "import re\n\nactor = 1\n", (
         "un import nudo non deve spegnere il riconoscimento del resto del file")
     assert proposte == []
+
+
+def test_la_def_di_un_metodo_protetto_si_rinomina_ma_si_DICHIARA():
+    """Il buco che `_METODI_ESTERNI_PROTETTI` non copriva, e la sua cura.
+
+    La guardia riconosce un metodo protetto per STRUTTURA -- un NAME preceduto
+    da un punto -- e **una `def` non ha un punto davanti**. Misurato dal vivo
+    (fetta «la rinomina», lotto 17 di `proxy/`): puntando lo strumento su
+    `proxy/ha_client.py`, `async def statistiche` e' stato rinominato in
+    silenzio mentre ogni `ha.statistiche(...)` dei sei ambiti restava intatto.
+
+    La cura NON e' proteggere anche la `def`: renderebbe lo strumento incapace
+    di convertire il file che definisce la classe, cioe' l'unico lavoro per cui
+    serve. Quindi si applica e si dichiara, come il controllo di chiusura.
+
+    Provato per mutazione: tolto il blocco che emette `DefinizioneProtetta` da
+    `riscrivi`, questo test va rosso mentre TUTTI gli altri restano verdi --
+    cioe' nessun cancello esistente vedeva il difetto.
+    """
+    gf = rinomina.Glossario(mappa={"statistiche": "statistics"})
+    dentro = ("class HAClient:\n"
+              "    async def statistiche(self, ids):\n"
+              "        return ids\n")
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "proxy")
+    assert "async def statistics(self, ids):" in fuori, (
+        "la `def` si rinomina davvero: il lotto che possiede la classe deve "
+        "poterlo fare")
+    dichiarate = [p for p in proposte if isinstance(p, rinomina.DefinizioneProtetta)]
+    assert len(dichiarate) == 1, proposte
+    assert (dichiarate[0].nome, dichiarate[0].nuovo, dichiarate[0].riga) == (
+        "statistiche", "statistics", 2)
+
+
+def test_una_def_che_non_e_un_metodo_protetto_non_dichiara_niente():
+    """La controprova. Un controllo che parla dove non c'e' niente si smette di
+    leggere: `statistiche` sta in `_METODI_ESTERNI_PROTETTI`, `statistica` no,
+    e la seconda si rinomina in silenzio come qualunque altro nome."""
+    gf = rinomina.Glossario(mappa={"statistica": "statistic"})
+    dentro = "def statistica(x):\n    return x\n"
+    fuori, proposte = rinomina.riscrivi(dentro, gf, "proxy")
+    assert fuori.startswith("def statistic(x):")
+    assert [p for p in proposte if isinstance(p, rinomina.DefinizioneProtetta)] == []
+
+
+def test_il_nome_di_una_def_non_si_confonde_coi_suoi_parametri():
+    """`_posizioni_nomi_def` e `_posizioni_parametri_def` rispondono a due
+    domande diverse sullo stesso flusso, e la prima non deve rispondere alla
+    seconda: senza la distinzione, un parametro chiamato come un metodo
+    protetto (`def f(self, storico)`) verrebbe dichiarato come se fosse una
+    definizione."""
+    dentro = "async def diario(self, storico, ore):\n    return ore\n"
+    tokens = list(tokenize.generate_tokens(io.StringIO(dentro).readline))
+    nomi = {tokens[i].string for i in rinomina._posizioni_nomi_def(tokens)}
+    parametri = {tokens[i].string for i in rinomina._posizioni_parametri_def(tokens)}
+    assert nomi == {"diario"}, nomi
+    assert parametri == {"self", "storico", "ore"}, parametri
+
+
+def test_il_controllo_di_chiusura_dice_QUALE_firma_e_stata_chiamata(tmp_path):
+    """Il secondo asse, e la ragione per cui il primo non bastava.
+
+    `parametri_dichiarati` chiede «QUALCHE `def` del repo dichiara ancora
+    questo nome?»: e' un rilevatore della RARITA' della parola. Misurato dal
+    vivo (lotto 16 di `proxy/`): su `nome`/`chiave`/`dominio`/`entita`, che
+    decine di firme non convertite dichiarano, ha marcato **zero segnalazioni
+    su 120 come certe mentre le sponde vere erano quindici**.
+
+    Il nome CHIAMATO risponde invece alla domanda giusta: un `vecchio=` dentro
+    una chiamata a una firma che questo lotto ha cambiato e' una sponda; lo
+    stesso `vecchio=` verso qualunque altra cosa non lo e'.
+    """
+    (tmp_path / "chiamate.py").write_text(
+        "a = ha.storico(entita=[1])\n"
+        "b = nota_ripiego(entita=2)\n", encoding="utf-8")
+    trovati = rinomina.chiamanti_orfani({"entita": "entities"}, radice=tmp_path)
+    chiamati = {chiamato for _, _, _, _, chiamato in trovati}
+    assert chiamati == {"storico", "nota_ripiego"}, chiamati
+
+
+def test_sponde_per_nome_trova_l_import_per_nome_e_l_attributo_di_modulo(tmp_path):
+    """Le due sponde che nessun altro strato copre, provate insieme perche'
+    insieme sono state trovate a mano -- lotto 15 la prima, lotto 18 la
+    seconda, entrambe per fortuna.
+
+    Provato per mutazione: tolto il ramo `nome_importato`, sparisce la riga
+    `import` e resta l'attributo; tolto il ramo dell'attributo, il contrario.
+    """
+    (tmp_path / "importa.py").write_text(
+        "from pacchetto.modulo import vecchio_nome\n", encoding="utf-8")
+    (tmp_path / "attributo.py").write_text(
+        "import pacchetto.modulo as modulo\n"
+        "modulo.vecchio_nome = False\n", encoding="utf-8")
+    trovati = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
+    per_specie = {(f.name, specie) for f, _, _, _, specie in trovati}
+    assert ("importa.py", "import") in per_specie, per_specie
+    assert ("attributo.py", "attributo") in per_specie, per_specie
+
+
+def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
+    """La controprova, e serve: un nome vecchio NUDO in un altro file e' quasi
+    sempre una variabile locale che si chiama uguale (`esito`, `righe`, `voci`
+    vivono in decine di funzioni indipendenti). Segnalarli renderebbe l'elenco
+    illeggibile -- il difetto numero uno di questo progetto -- e le due specie
+    che contano si perderebbero dentro.
+
+    E i file del lotto in corso si saltano: li' il nome nuovo c'e' gia'. Il
+    percorso si calcola sulla RADICE data, non su `ROOT`, o `escludi` non
+    combacia mai e salta zero file in silenzio.
+    """
+    (tmp_path / "nudo.py").write_text("vecchio_nome = 1\n", encoding="utf-8")
+    (tmp_path / "file_lotto.py").write_text(
+        "from x import vecchio_nome\n", encoding="utf-8")
+    assert rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path,
+                                    escludi=("file_lotto.py",)) == []
