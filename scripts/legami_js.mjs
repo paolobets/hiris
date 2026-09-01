@@ -234,7 +234,21 @@ for (const f of tuttiIFile(STATIC)) {
   const sorgente = readFileSync(f, 'utf8');
   prossimoId = 0;
   try {
-    fuori[rel] = analizza(sorgente);
+    const esito = analizza(sorgente);
+    /* **La misura del testo che ho letto, perche' chi applica possa
+     * verificare di leggere lo STESSO testo.** Gli offset qui sotto sono
+     * indici dentro questa stringa: se chi li usa apre il file in un modo che
+     * la cambia -- la lettura universale di Python normalizza i `
+` e
+     * accorcia di una posizione per riga -- ogni offset scivola, e senza
+     * questa misura il primo segnale arriva solo al momento di scrivere.
+     * Successo davvero: all'offset 10666 di `osservatore-route.js` c'era
+     * `' num'` invece di `'riga'`. `unita` conta le unita' UTF-16 (la base
+     * degli offset di acorn), `punti` i punti di codice (la base di Python):
+     * se differiscono, il file porta un carattere fuori dal piano base e gli
+     * offset non si possono usare da Python senza conversione. */
+    esito.misura = { unita: sorgente.length, punti: [...sorgente].length };
+    fuori[rel] = esito;
   } catch (e) {
     fuori[rel] = { errore: String(e && e.message) };
   }

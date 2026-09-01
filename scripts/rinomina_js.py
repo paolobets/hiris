@@ -21,6 +21,25 @@ tutti e quattro hanno la stessa forma, OGNI lettura in posizione di verita'
 (`!x`, `x ||`, `x ? :`), dove `undefined` diventa semplicemente `false`. Il
 predicato le trova con l'AST, e questo strumento le DICHIARA senza applicarle.
 
+**VINCOLO DI PROGETTO: questo strumento tocca i LEGAMI, mai le chiavi.**
+Non e' una limitazione da togliere quando ci sara' tempo, e' cio' che tiene in
+piedi due proprieta' che il progetto ha misurato.
+
+La prima: le chiavi di un oggetto letterale e le proprieta' lette per punto
+sono, quasi sempre, i campi che viaggiano sul filo -- e quelli li decide la
+fetta delle rotte, non questa. Su `models-route.js` le 29 occorrenze di
+`riordinabile`, `connettore`, `provenienza` sono rimaste intatte mentre la
+variabile che le porta diventava `data`, ed e' esattamente il confine giusto.
+
+La seconda, misurata: i commenti di `static/` citano fra backtick soprattutto
+il filo. Su `models-route.js` sedici citazioni nominano una parola che questa
+fetta ha rinominato e **nessuna e' scaduta**, perche' citano campi del payload
+(`dove`, `rifiuta`, `diagnosi[].testo`) o chiavi ancora intatte
+(`{ id, dati, errore, filtro }`, riga 422). Il giorno in cui questo strumento
+imparasse a toccare le chiavi, quelle sedici diventerebbero **sedici puntatori
+falsi in un colpo**, e la nona rete (`rinomina.citazioni`) andrebbe puntata sul
+JavaScript prima, non dopo.
+
 Uso:
     node scripts/legami_js.mjs > /tmp/legami.json
     python scripts/rinomina_js.py --legami /tmp/legami.json [--percorso config]
@@ -168,6 +187,11 @@ def main(argv=None) -> int:
             "applicabili": [{"file": r, "vecchio": v, "nuovo": n, "posizioni": pos}
                             for r, v, n, _nd, _nr, pos in applicabili],
             "cieche": sorted(cieche),
+            # La misura del testo che `legami_js.mjs` ha letto viaggia INSIEME
+            # agli offset, non in un secondo file: chi applica non deve poter
+            # ricevere una coppia disallineata. Un offset senza la misura del
+            # testo su cui e' stato calcolato e' un numero senza unita'.
+            "misure": {r: v["misura"] for r, v in dati.items() if "misura" in v},
         }), encoding="utf-8")
         print(f"decisioni scritte in {a.json} -- ma NON nei sorgenti.")
     return 0
