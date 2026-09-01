@@ -13,65 +13,65 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 const RISPOSTA = {
-  misurata: true,
+  measured: true,
   total_requests: 1204,
   input_tokens: 8300000,
   output_tokens: 412000,
   cost_usd: 26.28,
   cost_eur: 24.18,
-  costo_parziale: true,
+  partial_cost: true,
   rate_limit_errors: 3,
   last_reset: '2026-07-14T09:22:00Z',
-  fuso: 'Europe/Rome',
-  fuso_noto: true,
-  sezioni: [
+  timezone: 'Europe/Rome',
+  timezone_known: true,
+  sections: [
     {
-      provider: 'claude', etichetta: 'API Anthropic',
-      nota: 'Costo calcolato sul listino Anthropic.',
-      richieste: 980, token_in: 2600000, token_out: 380000,
-      cache_lettura: 4200000, cache_scrittura: 310000,
-      costo_usd: 20.78, cost_eur: 19.1183, costo_parziale: false,
-      modelli: [{
-        modello: 'claude-sonnet-4-6', richieste: 980,
+      provider: 'claude', label: 'API Anthropic',
+      note: 'Costo calcolato sul listino Anthropic.',
+      requests: 980, token_in: 2600000, token_out: 380000,
+      cache_read: 4200000, cache_write: 310000,
+      cost_usd: 20.78, cost_eur: 19.1183, partial_cost: false,
+      models: [{
+        model: 'claude-sonnet-4-6', requests: 980,
         token_in: 2600000, token_out: 380000,
-        cache_lettura: 4200000, cache_scrittura: 310000,
-        costo_usd: 20.78, cost_eur: 19.1183, costo_stato: 'misurato',
-        errori_rate_limit: 3, primo_uso: '2026-08-02', ultimo_uso: '2026-08-21',
+        cache_read: 4200000, cache_write: 310000,
+        cost_usd: 20.78, cost_eur: 19.1183, cost_state: 'misurato',
+        rate_limit_errors: 3, first_use: '2026-08-02', last_use: '2026-08-21',
       }],
     },
     {
-      provider: 'openrouter', etichetta: 'OpenRouter',
-      nota: 'Costo dichiarato da OpenRouter.',
-      richieste: 23, token_in: 110000, token_out: 5000,
-      cache_lettura: 0, cache_scrittura: 0,
-      costo_usd: 3.41, cost_eur: 3.1402, costo_parziale: true,
-      modelli: [
+      provider: 'openrouter', label: 'OpenRouter',
+      note: 'Costo dichiarato da OpenRouter.',
+      requests: 23, token_in: 110000, token_out: 5000,
+      cache_read: 0, cache_write: 0,
+      cost_usd: 3.41, cost_eur: 3.1402, partial_cost: true,
+      models: [
         {
-          modello: 'anthropic/claude-sonnet-4-6', richieste: 18,
-          token_in: 88000, token_out: 3900, cache_lettura: 0, cache_scrittura: 0,
-          costo_usd: 3.41, cost_eur: 3.1402, costo_stato: 'reale',
-          errori_rate_limit: 0, primo_uso: '2026-08-19', ultimo_uso: '2026-08-21',
+          model: 'anthropic/claude-sonnet-4-6', requests: 18,
+          token_in: 88000, token_out: 3900, cache_read: 0, cache_write: 0,
+          cost_usd: 3.41, cost_eur: 3.1402, cost_state: 'reale',
+          rate_limit_errors: 0, first_use: '2026-08-19', last_use: '2026-08-21',
         },
         {
-          modello: 'meta-llama/llama-3.3-70b:free', richieste: 5,
-          token_in: 22000, token_out: 1100, cache_lettura: 0, cache_scrittura: 0,
-          costo_usd: 0.0, cost_eur: 0.0, costo_stato: 'gratuito',
-          errori_rate_limit: 0, primo_uso: '2026-08-20', ultimo_uso: '2026-08-20',
+          model: 'meta-llama/llama-3.3-70b:free', requests: 5,
+          token_in: 22000, token_out: 1100, cache_read: 0, cache_write: 0,
+          cost_usd: 0.0, cost_eur: 0.0, cost_state: 'gratuito',
+          rate_limit_errors: 0, first_use: '2026-08-20', last_use: '2026-08-20',
         },
       ],
     },
     {
-      provider: 'ponte', etichetta: 'Abbonamento Claude',
-      nota: "L'abbonamento non espone il prezzo del singolo turno.",
-      richieste: 128, token_in: 2100000, token_out: 94000,
-      cache_lettura: 1400000, cache_scrittura: 210000,
-      costo_usd: 0.0, cost_eur: null, costo_parziale: false,
-      modelli: [{
-        modello: 'sonnet (alias)', richieste: 128,
+      provider: 'ponte', label: 'Abbonamento Claude',
+      note: "L'abbonamento non espone il prezzo del singolo turno.",
+      requests: 128, token_in: 2100000, token_out: 94000,
+      cache_read: 1400000, cache_write: 210000,
+      cost_usd: 0.0, cost_eur: null, partial_cost: false,
+      models: [{
+        model: 'sonnet (alias)', requests: 128,
         token_in: 2100000, token_out: 94000,
-        cache_lettura: 1400000, cache_scrittura: 210000,
-        costo_usd: null, cost_eur: null, costo_stato: 'compreso',
-        errori_rate_limit: 0, primo_uso: '2026-08-04', ultimo_uso: '2026-08-21',
+        cache_read: 1400000, cache_write: 210000,
+        cost_usd: null, cost_eur: null, cost_state: 'compreso',
+        rate_limit_errors: 0, first_use: '2026-08-04', last_use: '2026-08-21',
       }],
     },
   ],
@@ -79,10 +79,10 @@ const RISPOSTA = {
 
 const STORIA = {
   da: '2026-07-23', a: '2026-08-21',
-  giorni: [
-    { giorno: '2026-08-20', per_provider: { claude: { cost_eur: 1.02, richieste: 41 } } },
-    { giorno: '2026-08-21', per_provider: { claude: { cost_eur: 0.44, richieste: 17 },
-                                            openrouter: { cost_eur: 0.21, richieste: 3 } } },
+  days: [
+    { day: '2026-08-20', per_provider: { claude: { cost_eur: 1.02, requests: 41 } } },
+    { day: '2026-08-21', per_provider: { claude: { cost_eur: 0.44, requests: 17 },
+                                            openrouter: { cost_eur: 0.21, requests: 3 } } },
   ],
 };
 
@@ -96,7 +96,7 @@ async function monta(usage = RISPOSTA, storia = STORIA) {
   ctx.window.fetch = (u, opzioni) => {
     chiamate.push({ url: String(u), opzioni: opzioni });
     if (String(u).includes('storia')) return Promise.resolve(rispondi(storia));
-    if (String(u).includes('reset')) return Promise.resolve(rispondi({ last_reset: 'x', cancellato: false }));
+    if (String(u).includes('reset')) return Promise.resolve(rispondi({ last_reset: 'x', deleted: false }));
     return Promise.resolve(rispondi(usage));
   };
   ctx.window.HirisUsageRoute.mount();
@@ -117,8 +117,8 @@ test('le sezioni compaiono solo per i provider usati', async () => {
 
 test('un modello senza prezzo NON scrive uno zero, e nemmeno un trattino', async () => {
   const usage = JSON.parse(JSON.stringify(RISPOSTA));
-  usage.sezioni[1].modelli[0].costo_stato = 'non_noto';
-  usage.sezioni[1].modelli[0].cost_eur = null;
+  usage.sections[1].models[0].cost_state = 'non_noto';
+  usage.sections[1].models[0].cost_eur = null;
 
   const { testo } = await monta(usage);
 
@@ -147,8 +147,8 @@ test('il totale a cui manca un prezzo si dichiara un pavimento', async () => {
 
 test('senza righe ignote il totale non si scusa', async () => {
   const usage = JSON.parse(JSON.stringify(RISPOSTA));
-  usage.costo_parziale = false;
-  usage.sezioni[1].costo_parziale = false;
+  usage.partial_cost = false;
+  usage.sections[1].partial_cost = false;
 
   const { testo } = await monta(usage);
 
@@ -197,9 +197,9 @@ test('la storia si chiede alla SUA rotta, non a quella del riepilogo', async () 
 
 test('quando non si misura, la pagina lo dice e toglie il pulsante', async () => {
   const { outlet, testo } = await monta({
-    misurata: false, motivo: 'nessun_provider',
-    messaggio: 'Nessun provider AI configurato e nessun consumo mai registrato.',
-    sezioni: [],
+    measured: false, reason: 'nessun_provider',
+    message: 'Nessun provider AI configurato e nessun consumo mai registrato.',
+    sections: [],
   });
 
   assert.match(testo, /Nessun provider AI configurato/);

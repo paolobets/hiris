@@ -114,15 +114,15 @@ def test_il_taglio_non_e_mai_silenzioso():
              for i in range(200)]
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, tanti, _STATO, ceiling=2000)
     assert len(testo) <= 2000 * 1.1
-    assert riepilogo["troncato"] is True
-    assert riepilogo["ricordi_esclusi"] > 0
+    assert riepilogo["truncated"] is True
+    assert riepilogo["excluded_memories"] > 0
     # MINOR ⑨: `"non" in testo.lower()` reggeva per coincidenza del corpus
     # (tre lettere comunissime in italiano) -- non dimostrava che il taglio
     # fosse scritto DENTRO il nucleo. Qui si verifica la frase vera, dentro
     # la sezione dedicata, col conteggio giusto.
     sezione_lacune = testo.split("## Cio' che HIRIS ignora")[1]
     assert "ricordi non inclusi" in sezione_lacune or "ricordo non incluso" in sezione_lacune
-    assert str(riepilogo["ricordi_esclusi"]) in sezione_lacune
+    assert str(riepilogo["excluded_memories"]) in sezione_lacune
 
 
 def test_una_casa_vuota_non_produce_un_nucleo_bugiardo():
@@ -143,7 +143,7 @@ def test_una_casa_vuota_non_produce_un_nucleo_bugiardo():
     """
     vuota = {chiave: [] for chiave in _CASA}
     testo, riepilogo = compose(vuota, [], [], {})
-    assert riepilogo["troncato"] is False
+    assert riepilogo["truncated"] is False
     sezione_casa = testo.split("## La casa")[1].split("## ")[0]
     assert "Nessun piano registrato." in sezione_casa
     # Nessun conteggio: una casa vuota non ha niente da contare, e una cifra
@@ -182,7 +182,7 @@ def test_un_registro_caduto_si_dichiara_nel_nucleo():
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                                unavailable=("aree", "dispositivi"))
     assert "aree" in testo and "dispositivi" in testo
-    assert any("non hanno risposto" in a for a in riepilogo["avvisi"])
+    assert any("non hanno risposto" in a for a in riepilogo["notices"])
     # CRITICAL ①: non basta che l'avviso lo dica due paragrafi dopo -- «La
     # casa» stessa (la prima cosa che il modello legge) non deve affermare
     # che il registro delle aree e' andato bene quando e' caduto. Con un
@@ -200,7 +200,7 @@ def test_un_registro_caduto_si_dichiara_nel_nucleo():
 
 def test_senza_registri_caduti_non_si_inventa_un_avviso():
     _, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    assert not any("non hanno risposto" in a for a in riepilogo["avvisi"])
+    assert not any("non hanno risposto" in a for a in riepilogo["notices"])
 
 
 def test_registro_aree_caduto_non_dice_senza_area():
@@ -305,7 +305,7 @@ def test_stato_vuoto_non_e_niente_di_notevole():
     guardato e' diverso da ho guardato e va tutto bene."""
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, {})
     assert "Niente di notevole al momento." not in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["avvisi"])
+    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 def test_tutte_entita_unknown_non_e_niente_di_notevole():
@@ -379,7 +379,7 @@ def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
     ]
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, ricordi_in_ordine_sbagliato, _STATO,
                                ceiling=1100)
-    assert riepilogo["ricordi_esclusi"] >= 1
+    assert riepilogo["excluded_memories"] >= 1
     assert "RICORDO-VECCHISSIMO" not in testo
     assert "RICORDO-FRESCHISSIMO" in testo
 
@@ -489,7 +489,7 @@ def test_registro_entita_caduto_rende_lo_stato_inaffidabile():
     testo, riepilogo = compose(casa, [], [], stato_vivo, unavailable=("entita",),
                                reliable_state=True)
     assert "Niente di notevole al momento." not in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["avvisi"])
+    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 def test_avviso_corpi_mancanti_conta_non_elenca():
@@ -503,7 +503,7 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
         for i in range(100)
     ]
     testo, riepilogo = compose(_CASA, comportamento, [], {})
-    avviso = next(a for a in riepilogo["avvisi"] if "senza corpo" in a)
+    avviso = next(a for a in riepilogo["notices"] if "senza corpo" in a)
     assert avviso == "100 voci di comportamento senza corpo disponibile (solo il nome)."
     # I nomi restano visibili riga per riga in "Cio' che la casa fa gia' da
     # sola" (`_righe_comportamento` marca ogni voce senza corpo in linea):
@@ -526,7 +526,7 @@ def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
     ]
     testo, riepilogo = compose(_CASA, comportamento, [], {}, ceiling=6000)
     assert len(testo) <= 6000 * 1.1
-    assert riepilogo["troncato"] is True
+    assert riepilogo["truncated"] is True
 
 
 def test_intestazione_dei_notevoli_raggruppati_torna_dopo_il_taglio():
@@ -543,7 +543,7 @@ def test_intestazione_dei_notevoli_raggruppati_torna_dopo_il_taglio():
         for i in range(20)
     ]
     testo, riepilogo = compose(casa, comportamento, [], stato, ceiling=6000)
-    assert riepilogo["troncato"] is True
+    assert riepilogo["truncated"] is True
     sezione = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
     import re
     righe_non_vuote = [r for r in sezione.strip().splitlines() if r]
@@ -564,8 +564,8 @@ def test_taglio_dei_notevoli_raggruppati_conta_elementi_non_righe():
     casa = _casa_grande(30, 5)
     stato = {e["id"]: "on" for e in casa["entita"]}
     _testo, riepilogo = compose(casa, [], [], stato, ceiling=1500)
-    assert riepilogo["troncato"] is True
-    avviso = next(a for a in riepilogo["avvisi"] if "elementi notevoli non inclusi" in a
+    assert riepilogo["truncated"] is True
+    avviso = next(a for a in riepilogo["notices"] if "elementi notevoli non inclusi" in a
                   or "elemento notevole non incluso" in a)
     import re
     n_esclusi = int(re.search(r"(\d+) element", avviso).group(1))
@@ -599,7 +599,7 @@ def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi()
                     "detto_da": "paolo", "ancore": [], "condizioni": [], "forza": "preferenza"}
                for i in range(200)]
     testo, riepilogo = compose(casa, comportamento, ricordi, stato)  # tetto di default
-    assert riepilogo["troncato"] is True
+    assert riepilogo["truncated"] is True
     sezione_casa = testo.split("## Notevole adesso")[0]
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
     assert len(righe_area) >= 1, "la mappa non deve mai sparire per intero, se c'e' una casa"
@@ -850,7 +850,7 @@ def test_col_registro_dispositivi_caduto_il_nucleo_non_annota_e_lo_dichiara():
         "  - Esterno (id: esterno): 2 tapparelle, 1 sensore, 4 valvole"
     assert "Irrigazione giardino" not in testo
     assert "(id: dev_irr)" not in testo
-    assert any("dispositivi" in a for a in riepilogo["avvisi"])
+    assert any("dispositivi" in a for a in riepilogo["notices"])
 
 
 def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():

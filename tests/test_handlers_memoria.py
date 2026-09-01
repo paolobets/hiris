@@ -55,8 +55,8 @@ async def test_api_memoria_mostra_la_frase_e_cosa_hiris_ha_capito(aiohttp_client
     resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
-    assert body["disponibile"] is True
-    r = body["ricordi"][0]
+    assert body["available"] is True
+    r = body["memories"][0]
     assert r["testo"] == _PHRASE
     assert r["detto_da"] == "paolo"
     assert r["forza"] == "preferenza"
@@ -73,8 +73,8 @@ async def test_api_memoria_mostra_la_frase_e_cosa_hiris_ha_capito(aiohttp_client
     assert rimossa["esiste"] is False
     assert rimossa["nome_attuale"] is None
 
-    assert body["totale"] == 1
-    assert body["mostrati"] == 1
+    assert body["total"] == 1
+    assert body["shown"] == 1
 
     home_space.close()
     memory.close()
@@ -91,8 +91,8 @@ async def test_api_memoria_senza_archivio_risponde_lo_stesso(aiohttp_client):
     resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
-    assert body["disponibile"] is False
-    assert body["ricordi"] == []
+    assert body["available"] is False
+    assert body["memories"] == []
 
 
 @pytest.mark.asyncio
@@ -133,7 +133,7 @@ async def test_una_correzione_con_un_ancora_inesistente_viene_rifiutata(aiohttp_
     })
     assert resp.status == 400
     body = await resp.json()
-    assert body["errore"]        # la ragione, non un rifiuto muto
+    assert body["error"]        # la ragione, non un rifiuto muto
 
     r = memory.fetch()[0]
     assert r["ancore"] == []      # il ricordo resta com'era: nessuna scrittura a meta'
@@ -154,9 +154,9 @@ async def test_il_taglio_a_200_ricordi_e_dichiarato(aiohttp_client, tmp_path):
 
     resp = await client.get("/api/memories")
     body = await resp.json()
-    assert body["totale"] == 5
-    assert body["mostrati"] == 5
-    assert len(body["ricordi"]) == 5
+    assert body["total"] == 5
+    assert body["shown"] == 5
+    assert len(body["memories"]) == 5
 
     memory.close()
 
@@ -172,7 +172,7 @@ async def test_correggere_un_id_inesistente_risponde_404(aiohttp_client, tmp_pat
     resp = await client.patch("/api/memories/9999", json={"forza": "preferenza"})
     assert resp.status == 404
     body = await resp.json()
-    assert body["errore"]
+    assert body["error"]
 
     memory.close()
 
@@ -220,7 +220,7 @@ async def test_get_con_anagrafe_mai_letta_non_dichiara_le_ancore_sparite(
     resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
-    tether = body["ricordi"][0]["ancore"][0]
+    tether = body["memories"][0]["ancore"][0]
     assert tether["esiste"] is None
     assert tether["nome_attuale"] is None
 
@@ -243,7 +243,7 @@ async def test_una_condizione_senza_valore_viene_rifiutata(aiohttp_client, tmp_p
     })
     assert resp.status == 400
     body = await resp.json()
-    assert body["errore"]
+    assert body["error"]
 
     r = memory.fetch()[0]
     assert r["condizioni"] == []          # nessuna scrittura a meta'

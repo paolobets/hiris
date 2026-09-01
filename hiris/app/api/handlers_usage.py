@@ -68,9 +68,9 @@ def _can_respond(app) -> bool:
 
 def _unmeasured() -> dict:
     return {
-        "misurata": False,
-        "motivo": "nessun_provider",
-        "messaggio": _NO_PROVIDER_MSG,
+        "measured": False,
+        "reason": "nessun_provider",
+        "message": _NO_PROVIDER_MSG,
         # `null`, non `0`: vedi la docstring del modulo.
         "total_requests": None,
         "input_tokens": None,
@@ -78,10 +78,10 @@ def _unmeasured() -> dict:
         "total_tokens": None,
         "cost_usd": None,
         "cost_eur": None,
-        "costo_parziale": False,
+        "partial_cost": False,
         "rate_limit_errors": None,
         "last_reset": None,
-        "sezioni": [],
+        "sections": [],
     }
 
 
@@ -90,20 +90,56 @@ def _iso(ts: float) -> str | None:
 
 
 def _model_out(m: dict) -> dict:
-    """Una riga di modello come la legge la pagina. `token_in` resta PURO."""
+    """Una riga di modello come la legge la pagina. `token_in` resta PURO.
+
+    A sinistra il nome HTTP, a destra il nome della COLONNA (`consumi/store.py`):
+    e' il confine, e la legge del progetto lo vuole cosi' -- il dominio in
+    italiano, il confine nella lingua del sistema esterno, che qui e' il
+    browser. Il database non si tocca: `richieste` resta una colonna e diventa
+    `requests` solo uscendo di qui.
+    """
     return {
-        "modello": m["modello"],
-        "richieste": m["richieste"],
+        "model": m["modello"],
+        "requests": m["richieste"],
         "token_in": m["token_in"],
         "token_out": m["token_out"],
-        "cache_lettura": m["cache_lettura"],
-        "cache_scrittura": m["cache_scrittura"],
-        "costo_usd": m["costo_usd"],
+        "cache_read": m["cache_lettura"],
+        "cache_write": m["cache_scrittura"],
+        "cost_usd": m["costo_usd"],
         "cost_eur": _euro(m["costo_usd"]),
-        "costo_stato": m["costo_stato"],
-        "errori_rate_limit": m["errori_rate_limit"],
-        "primo_uso": m["primo_uso"],
-        "ultimo_uso": m["ultimo_uso"],
+        "cost_state": m["costo_stato"],
+        # Il doppione che questa fetta chiude: lo STESSO numero usciva come
+        # `rate_limit_errors` in cima alla risposta e `errori_rate_limit`
+        # dentro una sezione. Una cosa, un nome.
+        "rate_limit_errors": m["errori_rate_limit"],
+        "first_use": m["primo_uso"],
+        "last_use": m["ultimo_uso"],
+    }
+
+
+def _bucket_out(b: dict) -> dict:
+    """Un secchiello giornaliero come lo legge il grafico.
+
+    **Esisteva come `{**b, ...}`, uno spread crudo della riga di archivio**, ed
+    era il motivo per cui le colonne di `consumo_giorno` uscivano su HTTP coi
+    loro nomi italiani senza che nessuno l'avesse deciso. Una rotta non deve
+    versare fuori la forma della propria tabella senza saperlo: aggiungere una
+    colonna la faceva comparire nella risposta da sola, e toglierne una la
+    faceva sparire senza che niente diventasse rosso.
+
+    Stessi nomi di `_model_out` -- e' lo stesso fatto, contato per giorno
+    invece che per modello, e due nomi per la stessa quantita' sono il
+    doppione che questa fetta e' venuta a togliere.
+    """
+    return {
+        "requests": b["richieste"],
+        "token_in": b["token_in"],
+        "token_out": b["token_out"],
+        "cache_read": b["cache_lettura"],
+        "cache_write": b["cache_scrittura"],
+        "rate_limit_errors": b["errori_rate_limit"],
+        "cost_usd": b["costo_usd"],
+        "cost_eur": _euro(b["costo_usd"]),
     }
 
 
@@ -139,7 +175,7 @@ async def handle_usage(request: web.Request) -> web.Response:
     timezone = _timezone_from_home_space_store(request.app.get("archivio_casa")) or ""
 
     return web.json_response({
-        "misurata": True,
+        "measured": True,
         "total_requests": totals["richieste"],
         "input_tokens": input_tokens,
         "output_tokens": totals["token_out"],
@@ -148,26 +184,26 @@ async def handle_usage(request: web.Request) -> web.Response:
         "cost_eur": _euro(totals["costo_usd"]),
         # Se anche un solo modello e' senza prezzo, il totale NON e' il costo:
         # e' un pavimento, e la pagina lo scrive con un «>=».
-        "costo_parziale": totals["costo_parziale"],
+        "partial_cost": totals["costo_parziale"],
         "rate_limit_errors": totals["errori_rate_limit"],
         "last_reset": _iso(store.anchor()),
-        "fuso": timezone or "UTC",
-        "fuso_noto": bool(timezone),
-        "sezioni": [{
+        "timezone": timezone or "UTC",
+        "timezone_known": bool(timezone),
+        "sections": [{
             "provider": s["provider"],
-            "etichetta": s["etichetta"],
-            "nota": s["nota"],
-            "richieste": s["richieste"],
+            "label": s["etichetta"],
+            "note": s["nota"],
+            "requests": s["richieste"],
             "token_in": s["token_in"],
             "token_out": s["token_out"],
-            "cache_lettura": s["cache_lettura"],
-            "cache_scrittura": s["cache_scrittura"],
+            "cache_read": s["cache_lettura"],
+            "cache_write": s["cache_scrittura"],
             # `None` attraversa: una sezione senza nessun costo noto -- il
             # ponte -- non deve uscire di qui con uno zero che afferma.
-            "costo_usd": None if s["costo_usd"] is None else round(s["costo_usd"], 6),
+            "cost_usd": None if s["costo_usd"] is None else round(s["costo_usd"], 6),
             "cost_eur": _euro(s["costo_usd"]),
-            "costo_parziale": s["costo_parziale"],
-            "modelli": [_model_out(m) for m in s["modelli"]],
+            "partial_cost": s["costo_parziale"],
+            "models": [_model_out(m) for m in s["modelli"]],
         } for s in sections],
     })
 
@@ -183,24 +219,23 @@ async def handle_usage_history(request: web.Request) -> web.Response:
     """
     store = request.app.get("consumi")
     if store is None:
-        return web.json_response({"giorni": [], "da": "", "a": ""})
+        return web.json_response({"days": [], "from": "", "to": ""})
 
     today = datetime.fromtimestamp(time.time(), UTC)
-    a = request.query.get("to") or today.strftime("%Y-%m-%d")
-    da = request.query.get("from") or (
+    to = request.query.get("to") or today.strftime("%Y-%m-%d")
+    since = request.query.get("from") or (
         datetime.fromtimestamp(time.time() - _HISTORY_DAYS * 86400, UTC)
         .strftime("%Y-%m-%d"))
 
-    giorni = []
-    for g in store.storia(da=da, a=a):
-        giorni.append({
-            "giorno": g["giorno"],
+    days = []
+    for g in store.storia(da=since, a=to):
+        days.append({
+            "day": g["giorno"],
             "per_provider": {
-                name: {**data, "cost_eur": _euro(data["costo_usd"])}
-                for name, data in g["per_provider"].items()
+                name: _bucket_out(data) for name, data in g["per_provider"].items()
             },
         })
-    return web.json_response({"giorni": giorni, "da": da, "a": a})
+    return web.json_response({"days": days, "from": since, "to": to})
 
 
 async def handle_reset_usage(request: web.Request) -> web.Response:
@@ -213,7 +248,7 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
     store = request.app.get("consumi")
     if store is None:
         body = _unmeasured()
-        body["cancellato"] = False
+        body["deleted"] = False
         return web.json_response(body, status=409)
     when = store.sposta_anchor(time.time())
-    return web.json_response({"last_reset": _iso(when), "cancellato": False})
+    return web.json_response({"last_reset": _iso(when), "deleted": False})

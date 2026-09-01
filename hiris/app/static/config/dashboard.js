@@ -333,11 +333,11 @@ window.HirisDashboard = (function () {
   /* -------------------------------------------------------------- nucleo */
 
   function rendiNucleo(outlet, nucleo) {
-    var riepilogo = nucleo.riepilogo || {};
+    var riepilogo = nucleo.summary || {};
     var corpo = sezione(outlet, 'Il nucleo, come lo vede il modello',
       'Il testo esatto che HIRIS ha davanti a ogni turno di chat — non una sua descrizione, né un secondo conto.');
 
-    var avvisi = riepilogo.avvisi || [];
+    var avvisi = riepilogo.notices || [];
     var titoloLacune = el('div', null, 'Ciò che HIRIS ignora');
     titoloLacune.style.cssText = 'font-weight:500;margin-bottom:4px';
     corpo.appendChild(titoloLacune);
@@ -356,12 +356,12 @@ window.HirisDashboard = (function () {
       if (sotto) t.appendChild(el('div', 'st-delta', sotto));
       misure.appendChild(t);
     }
-    misura('Caratteri', String(riepilogo.caratteri != null ? riepilogo.caratteri : '—'), 'del nucleo');
-    misura('Troncato', riepilogo.troncato ? 'Sì' : 'No', 'per il tetto di lunghezza');
-    misura('Ricordi esclusi', String(riepilogo.ricordi_esclusi != null ? riepilogo.ricordi_esclusi : '—'), 'fuori dal nucleo');
+    misura('Caratteri', String(riepilogo.chars != null ? riepilogo.chars : '—'), 'del nucleo');
+    misura('Troncato', riepilogo.truncated ? 'Sì' : 'No', 'per il tetto di lunghezza');
+    misura('Ricordi esclusi', String(riepilogo.excluded_memories != null ? riepilogo.excluded_memories : '—'), 'fuori dal nucleo');
     corpo.appendChild(misure);
 
-    var pre = el('pre', null, nucleo.testo || '');
+    var pre = el('pre', null, nucleo.text || '');
     pre.style.cssText = 'margin-top:12px;max-height:420px;overflow:auto;white-space:pre-wrap;' +
       'font-family:var(--font-mono,monospace);font-size:12px;line-height:1.5;' +
       'background:var(--bg-2,var(--hover));padding:12px;border-radius:8px';

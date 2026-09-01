@@ -19,7 +19,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
        `console.error`, senza mai dire perché.
 
    La riparazione: `api/handlers_usage.py` risponde **200** con
-   `misurata: false` e la frase che spiega il perché (vedi la docstring del
+   `measured: false` e la frase che spiega il perché (vedi la docstring del
    modulo per la motivazione della forma scelta). Qui si pinnano i due fatti
    che ne discendono lato frontend, e che erano il difetto vero:
 
@@ -84,9 +84,9 @@ const MODULI = [
 ];
 
 const NON_MISURATA = {
-  misurata: false,
-  motivo: 'abbonamento',
-  messaggio: "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.",
+  measured: false,
+  reason: 'abbonamento',
+  message: "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.",
 };
 
 function jsonResponse(body) {
@@ -154,7 +154,7 @@ test('C-1: un guasto passeggero NON spegne il timer — la differenza fra «non 
 test('C-1: la frase del server compare sullo schermo, e le righe dei numeri escono di scena', async () => {
   const { document } = await avviaChat(() => jsonResponse(NON_MISURATA));
 
-  assert.equal(document.getElementById('usage-last-reset').textContent, NON_MISURATA.messaggio,
+  assert.equal(document.getElementById('usage-last-reset').textContent, NON_MISURATA.message,
     'la frase è quella del server, non una parafrasi del frontend');
   const righe = [...document.querySelectorAll('#usage-widget .usage-row')];
   assert.ok(righe.length > 0, 'precondizione: la fixture ha le righe');
@@ -166,7 +166,7 @@ test('C-1: la frase del server compare sullo schermo, e le righe dei numeri esco
 
 test('C-1: con i consumi misurati non cambia niente — i numeri si vedono e le righe restano', async () => {
   const { document, fermati } = await avviaChat(() => jsonResponse({
-    misurata: true, total_requests: 42, input_tokens: 1200, output_tokens: 800,
+    measured: true, total_requests: 42, input_tokens: 1200, output_tokens: 800,
     cost_eur: 0.1234, last_reset: '2026-07-01T00:00:00Z',
   }));
 

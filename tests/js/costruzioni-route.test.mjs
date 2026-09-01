@@ -21,7 +21,7 @@ function montaCon(risposta) {
 }
 
 test('le proposte in attesa hanno il bottone di conferma, le applicate no', async () => {
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
       chiave: '1771', anteprima: 'Creo un automazione', prima: null,
       dopo: { alias: 'Tapparelle' }, creata_ts: 1756000000 },
@@ -45,7 +45,7 @@ test('una modifica a un oggetto non creato da HIRIS lo dichiara', async () => {
   // verde (ondata finale, punto 4 -- il difetto n.1: un test che non puo'
   // fallire). Una `crea`, per contrasto, non deve MAI portare questa
   // dichiarazione: non ha toccato niente che esistesse gia'.
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 'c1', stato: 'applicata', gesto: 'modifica', dominio: 'automation',
       chiave: '1772', anteprima: '', prima: { alias: 'la tua automazione' },
       dopo: { alias: 'modificata' }, creata_ts: 1756000000 },
@@ -73,7 +73,7 @@ test('il sorgente non usa innerHTML, in nessuna forma', () => {
 });
 
 test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
   ] });
@@ -87,7 +87,7 @@ test('il no del proprietario non si mostra come un fallimento', async () => {
   // uguali: la prima e' l'utente che ha deciso, la seconda e' HIRIS che non
   // ce l'ha fatta. Se il vocabolario le confondesse, la pagina punirebbe
   // l'unica cosa che deve essere facile fare.
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
       motivo: 'rifiutata dal proprietario' },
@@ -105,7 +105,7 @@ test('il no del proprietario non si mostra come un fallimento', async () => {
 });
 
 test('solo le costruzioni applicate offrono il ripristino', async () => {
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
   ] });
@@ -121,7 +121,7 @@ test('una scena mostra il conteggio e gli entity_id anche se `entities` è un di
   // pannello mostrava "entità: undefined" e gli entity_id non comparivano
   // mai -- proprio per il dominio in cui quella lista è tutto il contenuto
   // dell'oggetto (guida §3).
-  const { dom } = montaCon({ costruzioni: [
+  const { dom } = montaCon({ constructions: [
     { id: 's1', stato: 'applicata', gesto: 'modifica', dominio: 'scene',
       chiave: 'scena_sera', anteprima: '',
       prima: { alias: 'Scena sera', entities: { 'light.cucina': { state: 'on' } } },
@@ -157,7 +157,7 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   global.document = dom.window.document;
   dom.window.fetch = async (url, _opzioni) => {
     if (String(url).indexOf('/confirm') !== -1) return new Promise(() => {});
-    return { ok: true, status: 200, json: async () => ({ costruzioni: [
+    return { ok: true, status: 200, json: async () => ({ constructions: [
       { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
         chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
     ] }) };

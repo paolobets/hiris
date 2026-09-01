@@ -141,7 +141,7 @@
       if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
       var dati = await r.json();
       state.maxChatTurns = dati.max_chat_turns || 0;
-      updateAgentPill(dati.nome);
+      updateAgentPill(dati.name);
     } catch (e) {
       console.error('loadSettings failed', e);
     }

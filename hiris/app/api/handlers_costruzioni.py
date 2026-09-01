@@ -31,6 +31,8 @@ import time
 
 from aiohttp import web
 
+from .boundary import occurrence_out
+
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
 # incoerenza da mantenere sincronizzata a mano per sempre.
@@ -45,34 +47,34 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
         return web.json_response(
-            {"costruzioni": [], "errore": "archivio non disponibile"}, status=503)
+            {"constructions": [], "error": "archivio non disponibile"}, status=503)
     # Le scadute si segnano PRIMA di elencare, o la pagina mostrerebbe come
     # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
     # bottone mentirebbe.
     store.scadi(time.time())
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
-        {"costruzioni": store.list(pending_only=pending_only, limit=200)})
+        {"constructions": store.list(pending_only=pending_only, limit=200)})
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:
     store = _store(request)
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return web.json_response({"error": "archivio non disponibile"}, status=503)
     row = store.read(request.match_info["id"])
     if row is None:
-        return web.json_response({"errore": _NOT_FOUND}, status=404)
-    return web.json_response({"costruzione": row})
+        return web.json_response({"error": _NOT_FOUND}, status=404)
+    return web.json_response({"construction": row})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:
     store = _store(request)
     workshop = request.app.get("officina")
     if store is None or workshop is None:
-        return web.json_response({"errore": "officina non disponibile"}, status=503)
+        return web.json_response({"error": "officina non disponibile"}, status=503)
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"errore": _NOT_FOUND}, status=404)
+        return web.json_response({"error": _NOT_FOUND}, status=404)
     method = getattr(workshop, verb)
     occurrence = await method(ident, actor="pagina", exchange=None, now=time.time())
     if "errore" in occurrence:
@@ -84,8 +86,8 @@ async def _act(request: web.Request, verb: str) -> web.Response:
         # e' interno (`Workshop._fallita`/`_rete`): non deve uscire nel corpo
         # della risposta.
         status = 503 if occurrence.pop("guasto_rete", False) else 409
-        return web.json_response(occurrence, status=status)
-    return web.json_response(occurrence)
+        return web.json_response(occurrence_out(occurrence), status=status)
+    return web.json_response(occurrence_out(occurrence))
 
 
 async def handle_confirm_construction(request: web.Request) -> web.Response:
@@ -105,11 +107,11 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     """
     store = _store(request)
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return web.json_response({"error": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"errore": _NOT_FOUND}, status=404)
+        return web.json_response({"error": _NOT_FOUND}, status=404)
     occurrence = store.mark_cancelled(ident, now=time.time())
     if "errore" in occurrence:
-        return web.json_response(occurrence, status=409)
-    return web.json_response(occurrence)
+        return web.json_response(occurrence_out(occurrence), status=409)
+    return web.json_response(occurrence_out(occurrence))

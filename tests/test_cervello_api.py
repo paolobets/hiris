@@ -48,7 +48,7 @@ async def test_osservate_porta_la_provenienza_di_ogni_voce():
     senza, non c'e' modo di distinguere pavimento da obiettivo (spec §7)."""
     r = await handle_watching(_richiesta({"osservatore": _FintoOsservatore()}))
     corpo = _corpo(r)
-    assert corpo["osservate"][0]["provenienza"] == "pavimento"
+    assert corpo["watching"][0]["provenienza"] == "pavimento"
 
 
 @pytest.mark.asyncio

@@ -67,7 +67,7 @@ async def test_get_promesse_torna_le_in_sospeso(client):
     risposta = await client.get("/api/agenda")
     assert risposta.status == 200
     corpo = await risposta.json()
-    assert len(corpo["promesse"]) == 1
+    assert len(corpo["agenda"]) == 1
 
 
 @pytest.mark.asyncio
@@ -79,9 +79,9 @@ async def test_get_promesse_tutte_include_le_concluse(client):
     archivio.concludi(ident, state="mantenuta", now=2.0)
 
     corpo = await (await client.get("/api/agenda?all=1")).json()
-    assert len(corpo["promesse"]) == 1
+    assert len(corpo["agenda"]) == 1
     corpo = await (await client.get("/api/agenda")).json()
-    assert corpo["promesse"] == []
+    assert corpo["agenda"] == []
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
 
     secondo = await client.delete(f"/api/agenda/{ident}")
     assert secondo.status == 409
-    assert "errore" in await secondo.json()
+    assert "error" in await secondo.json()
 
 
 @pytest.mark.asyncio
@@ -142,14 +142,32 @@ async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, 
 
 @pytest.mark.asyncio
 async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
-    """Fondamenta n.3: una promessa vista dalla chat e dalla pagina e' la stessa."""
+    """Fondamenta n.3: una promessa vista dalla chat e dalla pagina e' la stessa.
+
+    **Cosa questo test prova, e cosa NON prova piu' (fetta «la rinomina»,
+    lotto dei campi JSON).** Prova la PROMESSA: `serializza()` e' una sola, e i
+    suoi diciassette campi escono identici dalle due porte -- e' questo che la
+    fondamenta n.3 protegge, ed e' rimasto intatto.
+
+    Non prova piu' l'INVOLUCRO, e la divergenza e' voluta e temporanea: la
+    rotta dice `agenda` (il collettivo, come il percorso `/api/agenda`), lo
+    strumento dice ancora `promesse` perche' i tredici nomi degli strumenti
+    sono congelati fino alla fetta successiva, che li convertira' con la sua
+    verifica dal vivo. I due involucri sono due dict LETTERALI in due file
+    diversi (`api/handlers_promesse.py` e `casa/strumenti.py::_list_agenda`),
+    mai lo stesso oggetto: nessuno dei due si porta dietro l'altro.
+
+    Quando gli strumenti usciranno, questa asserzione torna a confrontare i
+    due corpi interi -- e se non lo facesse, vorrebbe dire che l'involucro
+    dello strumento e' rimasto indietro.
+    """
     from hiris.app.casa.strumenti import ToolDispatcher
 
     archivio = client.app["promesse"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "?"}, now=1.0)
 
-    da_http = (await (await client.get("/api/agenda")).json())["promesse"][0]
+    da_http = (await (await client.get("/api/agenda")).json())["agenda"][0]
     d = ToolDispatcher(None, None, agenda=archivio)
     da_strumento = (await d.dispatch("promesse", {}))["promesse"][0]
 
@@ -180,9 +198,9 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
     # (mutazione: se la rotta smettesse di usare `Journal.read` e
     # ricostruisse a mano un sottoinsieme dei campi, questo confronto lo
     # vedrebbe subito).
-    assert corpo["esecuzione"] == journal.read(ident)
-    assert corpo["esecuzione"]["servizio"] == "light.turn_on"
-    assert corpo["esecuzione"]["cambiato"] == ["light.studio"]
+    assert corpo["execution"] == journal.read(ident)
+    assert corpo["execution"]["servizio"] == "light.turn_on"
+    assert corpo["execution"]["cambiato"] == ["light.studio"]
 
 
 @pytest.mark.asyncio
@@ -190,7 +208,7 @@ async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
     risposta = await client.get("/api/executions/mai-esistita")
     assert risposta.status == 404
     corpo = await risposta.json()
-    assert corpo["errore"] == "non ho nessuna esecuzione con quell'identificatore."
+    assert corpo["error"] == "non ho nessuna esecuzione con quell'identificatore."
 
 
 @pytest.mark.asyncio
@@ -210,7 +228,7 @@ async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
     c = await aiohttp_client(app)
     risposta = await c.get("/api/executions/qualsiasi")
     assert risposta.status == 503
-    assert "errore" in await risposta.json()
+    assert "error" in await risposta.json()
 
 
 @pytest.mark.asyncio

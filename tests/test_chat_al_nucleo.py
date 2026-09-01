@@ -635,8 +635,8 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     resp_memoria = await client.get("/api/memories")
     assert resp_memoria.status == 200
     corpo_memoria = await resp_memoria.json()
-    assert corpo_memoria["disponibile"] is True
-    testi_salvati = [r["testo"] for r in corpo_memoria["ricordi"]]
+    assert corpo_memoria["available"] is True
+    testi_salvati = [r["testo"] for r in corpo_memoria["memories"]]
     assert frase in testi_salvati, (
         "il difetto originale -- 'preso nota' senza salvare niente -- tornerebbe "
         "esattamente qui: la frase deve trovarsi DAVVERO nell'archivio della memoria"

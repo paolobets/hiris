@@ -114,7 +114,7 @@ def test_una_casa_che_combacia_non_produce_nessun_avviso():
     assert esito["guardate"][0]["in_piu"] == []
     testo, riepilogo = _nucleo(esito, casa)
     assert "Confronto con Home Assistant" not in testo
-    assert not any("Confronto con Home Assistant" in a for a in riepilogo["avvisi"])
+    assert not any("Confronto con Home Assistant" in a for a in riepilogo["notices"])
 
 
 def test_hiris_ne_ha_di_meno_si_dichiara():
@@ -195,8 +195,8 @@ def test_nessuno_ha_chiesto_non_e_un_albero_verificato():
     afferma niente. Non va confuso con «guardato e combacia»."""
     testo, riepilogo = _nucleo(None)
     assert "Confronto con Home Assistant" not in testo
-    assert riepilogo["avvisi"] == [] or all(
-        "Confronto" not in a for a in riepilogo["avvisi"])
+    assert riepilogo["notices"] == [] or all(
+        "Confronto" not in a for a in riepilogo["notices"])
 
 
 # --------------------------------------------------------------------------
@@ -336,7 +336,7 @@ def test_il_giro_non_letto_non_e_un_albero_verificato():
     che l'albero combacia, si sta dicendo che non si e' potuto controllare."""
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
     assert "non si e' potuto controllare" in testo
-    assert any("non si e' potuto controllare" in a for a in riepilogo["avvisi"])
+    assert any("non si e' potuto controllare" in a for a in riepilogo["notices"])
 
 
 def test_un_area_sparita_dall_albero_e_un_confronto_perso():
@@ -526,7 +526,7 @@ def test_componi_resta_pura(confronto):
         return _nucleo(confronto)
 
     testo, riepilogo = asyncio.run(_dentro_un_loop())
-    assert isinstance(testo, str) and "caratteri" in riepilogo
+    assert isinstance(testo, str) and "chars" in riepilogo
 
 
 def test_gerarchia_resta_pura_e_non_sa_niente_del_confronto():

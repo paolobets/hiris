@@ -58,7 +58,7 @@ function montaConServer(opts = {}) {
       if (opts.getRotto) throw new Error('rete giu\'');
       const corpo = getCount === 1 || !opts.getSuccessivo ? opts.get : opts.getSuccessivo;
       return jsonResponse(corpo !== undefined ? corpo : {
-        disponibile: true, ricordi: [RICORDO], totale: 1, mostrati: 1,
+        available: true, memories: [RICORDO], total: 1, shown: 1,
       });
     }
     if (method === 'PATCH') {
@@ -139,7 +139,7 @@ test('«esiste: null» non si legge come un\'ancora cancellata (non ho potuto co
 
 test('quando mostrati < totale, la pagina lo dichiara', async () => {
   const { window, document } = montaConServer({
-    get: { disponibile: true, ricordi: [RICORDO], totale: 5, mostrati: 1 },
+    get: { available: true, memories: [RICORDO], total: 5, shown: 1 },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -150,7 +150,7 @@ test('quando mostrati < totale, la pagina lo dichiara', async () => {
 
 test('quando mostrati === totale, non si inventa un taglio che non c\'è', async () => {
   const { window, document } = montaConServer({
-    get: { disponibile: true, ricordi: [RICORDO], totale: 1, mostrati: 1 },
+    get: { available: true, memories: [RICORDO], total: 1, shown: 1 },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -166,7 +166,7 @@ test('quando mostrati === totale, non si inventa un taglio che non c\'è', async
 
 test('nessun ricordo: lo dice, distinto da "non disponibile" e da "errore"', async () => {
   const { window, document } = montaConServer({
-    get: { disponibile: true, ricordi: [], totale: 0, mostrati: 0 },
+    get: { available: true, memories: [], total: 0, shown: 0 },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -174,9 +174,9 @@ test('nessun ricordo: lo dice, distinto da "non disponibile" e da "errore"', asy
   assert.match(document.getElementById('route-outlet').textContent, /Nessun ricordo salvato/);
 });
 
-test('archivio non disponibile: non si afferma "zero ricordi" come un fatto accertato', async () => {
+test('archivio non available: non si afferma "zero ricordi" come un fatto accertato', async () => {
   const { window, document } = montaConServer({
-    get: { disponibile: false, ricordi: [] },
+    get: { available: false, memories: [] },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -231,7 +231,7 @@ test('«Correggi» apre un modulo senza campo per il testo, e Salva manda un PAT
 test('un PATCH rifiutato (400) mostra la ragione del server, non un errore generico', async () => {
   const { window, document } = montaConServer({
     patchStatus: 400,
-    patchBody: { errore: 'ancora area «veranda» non esiste nell\'anagrafe -- scartata', problemi: ['x'] },
+    patchBody: { error: 'ancora area «veranda» non esiste nell\'anagrafe -- scartata', problemi: ['x'] },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -250,8 +250,8 @@ test('un PATCH rifiutato (400) mostra la ragione del server, non un errore gener
 test('un PATCH su un ricordo sparito (404) lo dice e ricarica la lista', async () => {
   const { window, document } = montaConServer({
     patchStatus: 404,
-    patchBody: { errore: 'nessun ricordo con id 7' },
-    getSuccessivo: { disponibile: true, ricordi: [], totale: 0, mostrati: 0 },
+    patchBody: { error: 'nessun ricordo con id 7' },
+    getSuccessivo: { available: true, memories: [], total: 0, shown: 0 },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);
@@ -307,7 +307,7 @@ test('«Dimentica» chiede conferma mostrando la frase esatta, e annullare non m
 
 test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricarica', async () => {
   const { window, document, chiamate } = montaConServer({
-    getSuccessivo: { disponibile: true, ricordi: [], totale: 0, mostrati: 0 },
+    getSuccessivo: { available: true, memories: [], total: 0, shown: 0 },
   });
   window.HirisMemoriaRoute.mount();
   await tick(20);

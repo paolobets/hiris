@@ -25,14 +25,14 @@ function jsonResponse(body, status) {
 }
 
 const IMPOSTAZIONI = {
-  nome: 'HIRIS',
+  name: 'HIRIS',
   system_prompt: 'Il prompt salvato dall\'utente.',
   response_mode: 'compact',
   thinking_budget: 2048,
   max_chat_turns: 4,
   restrict_to_home: true,
-  giorni_conservazione: 30,
-  modi_risposta: ['auto', 'compact', 'minimal'],
+  retention_days: 30,
+  response_modes: ['auto', 'compact', 'minimal'],
   default_system_prompt: 'IL PROMPT PREDEFINITO NEL CODICE.',
 };
 
@@ -118,7 +118,7 @@ test('un GET fallito lo dice, invece di lasciare una pagina vuota', async () => 
 // Il salvataggio
 // ---------------------------------------------------------------------------
 
-test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', async () => {
+test('«Salva» manda un PUT con X-Requested-With e i nomi dei campi del contratto', async () => {
   const { window, document, chiamate } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
@@ -136,13 +136,13 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', 
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
   assert.deepEqual(Object.keys(corpo).sort(), [
-    'giorni_conservazione', 'max_chat_turns', 'nome', 'response_mode',
-    'restrict_to_home', 'system_prompt', 'thinking_budget',
+    'max_chat_turns', 'name', 'response_mode', 'restrict_to_home',
+    'retention_days', 'system_prompt', 'thinking_budget',
   ]);
-  assert.equal(corpo.nome, 'Casa');
+  assert.equal(corpo.name, 'Casa');
   assert.equal(corpo.max_chat_turns, 9);
   assert.equal(corpo.restrict_to_home, true);
-  assert.equal(corpo.giorni_conservazione, 7);
+  assert.equal(corpo.retention_days, 7);
 });
 
 test('un esito riuscito si vede, e la pagina si riallinea a cio\' che il server ha davvero salvato', async () => {
@@ -309,7 +309,7 @@ test('salvare 0 giorni di conservazione manda davvero 0, non il valore corrente'
 
   const put = chiamate.find((c) => c.opts.method === 'PUT');
   const corpo = JSON.parse(put.opts.body);
-  assert.equal(corpo.giorni_conservazione, 0,
+  assert.equal(corpo.retention_days, 0,
     '0 è un valore valido ("non cancella mai niente"), non deve ricadere sul valore corrente ' +
     'con un controllo di verita\' (0 è falsy in JS) al posto di NaN');
 });

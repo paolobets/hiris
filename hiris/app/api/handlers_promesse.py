@@ -28,29 +28,31 @@ import time
 
 from aiohttp import web
 
+from .boundary import occurrence_out
+
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
     store = request.app.get("promesse")
     if store is None:
-        return web.json_response({"promesse": [], "errore": "archivio non disponibile"},
+        return web.json_response({"agenda": [], "error": "archivio non disponibile"},
                                  status=503)
     show_all = request.query.get("all") in ("1", "true", "si")
-    return web.json_response({"promesse": store.list(solo_in_sospeso=not show_all,
-                                                       limit=200)})
+    return web.json_response({"agenda": store.list(solo_in_sospeso=not show_all,
+                                                    limit=200)})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
     store = request.app.get("promesse")
     if store is None:
-        return web.json_response({"errore": "archivio non disponibile"}, status=503)
+        return web.json_response({"error": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"errore": "non ho nessuna promessa con quell'identificatore."},
+        return web.json_response({"error": "non ho nessuna promessa con quell'identificatore."},
                                  status=404)
     occurrence = store.cancel(ident, now=time.time())
     if "errore" in occurrence:
-        return web.json_response(occurrence, status=409)
-    return web.json_response(occurrence)
+        return web.json_response(occurrence_out(occurrence), status=409)
+    return web.json_response(occurrence_out(occurrence))
 
 
 async def handle_get_execution(request: web.Request) -> web.Response:
@@ -63,11 +65,11 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     """
     journal = request.app.get("cronaca")
     if journal is None:
-        return web.json_response({"errore": "cronaca non disponibile"}, status=503)
+        return web.json_response({"error": "cronaca non disponibile"}, status=503)
     ident = request.match_info["id"]
     row = journal.read(ident)
     if row is None:
         return web.json_response(
-            {"errore": "non ho nessuna esecuzione con quell'identificatore."},
+            {"error": "non ho nessuna esecuzione con quell'identificatore."},
             status=404)
-    return web.json_response({"esecuzione": row})
+    return web.json_response({"execution": row})

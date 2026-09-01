@@ -5,7 +5,7 @@
    /data/impostazioni_chat.json: questa pagina e le due rotte
    GET/PUT api/chat-settings sono la loro prima interfaccia.
 
-   fetta "Modelli" (2.0), Task 12: settimo campo, `giorni_conservazione` --
+   fetta "Modelli" (2.0), Task 12: settimo campo, `retention_days` --
    arrivato da `history_retention_days` (l'opzione dell'add-on). Non e'
    aspetto, non e' una chiave, non e' rete: e' una decisione sulla
    conversazione, come le altre.
@@ -35,7 +35,7 @@ window.HirisImpostazioniRoute = (function () {
   var URL_IMPOSTAZIONI = 'api/chat-settings';
 
   /* Etichette italiane dei modi di risposta. Le CHIAVI ammesse arrivano dal
-     server (payload `modi_risposta`), non sono scritte qui: se il backend ne
+     server (payload `response_modes`), non sono scritte qui: se il backend ne
      aggiunge una e questa mappa non la conosce, si mostra la chiave grezza
      invece di far sparire l'opzione. */
   var ETICHETTE_MODO = {
@@ -101,7 +101,7 @@ window.HirisImpostazioniRoute = (function () {
     var body = el('div', 'sc-body');
 
     var nome = campo(body, 'Nome',
-      'Come si chiama l\'assistente nell\'interfaccia.', input('text', dati.nome));
+      'Come si chiama l\'assistente nell\'interfaccia.', input('text', dati.name));
 
     var prompt = el('textarea');
     prompt.value = dati.system_prompt || '';
@@ -124,8 +124,8 @@ window.HirisImpostazioniRoute = (function () {
     });
     body.appendChild(ripristina);
 
-    var modi = (dati.modi_risposta && dati.modi_risposta.length)
-      ? dati.modi_risposta : ['auto'];
+    var modi = (dati.response_modes && dati.response_modes.length)
+      ? dati.response_modes : ['auto'];
     var selModo = el('select');
     selModo.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
     modi.forEach(function (m) {
@@ -168,7 +168,7 @@ window.HirisImpostazioniRoute = (function () {
       'Ogni notte cancella i messaggi più vecchi di questo numero di giorni. ' +
       'Lo stesso numero limita quanto HIRIS rilegge della conversazione in ' +
       'corso: abbassarlo gli fa dimenticare prima. 0 = non cancella mai niente.',
-      input('number', dati.giorni_conservazione));
+      input('number', dati.retention_days));
     conservazione.min = '0';
 
     var riga = el('label');
@@ -204,18 +204,18 @@ window.HirisImpostazioniRoute = (function () {
 
     salva.addEventListener('click', function () {
       var corpo = {
-        nome: nome.value,
+        name: nome.value,
         system_prompt: prompt.value,
         response_mode: selModo.value,
         /* I tre interi passano da parseInt: un campo number svuotato produce
-           '' e Number('') sarebbe 0 -- per giorni_conservazione "non cancella
+           '' e Number('') sarebbe 0 -- per retention_days "non cancella
            mai niente", non solo per i due tetti -- senza che l'utente lo
            abbia chiesto. Con NaN si manda il valore corrente, che il PUT
            conserva. */
         thinking_budget: numero(thinking.value, dati.thinking_budget),
         max_chat_turns: numero(turni.value, dati.max_chat_turns),
         restrict_to_home: !!casa.checked,
-        giorni_conservazione: numero(conservazione.value, dati.giorni_conservazione)
+        retention_days: numero(conservazione.value, dati.retention_days)
       };
       salva.disabled = true;
       mostraEsito('Salvataggio…');
@@ -231,13 +231,13 @@ window.HirisImpostazioniRoute = (function () {
                prompt puo' essere tornato al default): si aggiorna la vista
                con QUELLI, non con cio' che si era digitato. */
             dati = esito.corpo;
-            nome.value = dati.nome || '';
+            nome.value = dati.name || '';
             prompt.value = dati.system_prompt || '';
             selModo.value = dati.response_mode || 'auto';
             thinking.value = String(dati.thinking_budget);
             turni.value = String(dati.max_chat_turns);
             casa.checked = !!dati.restrict_to_home;
-            conservazione.value = String(dati.giorni_conservazione);
+            conservazione.value = String(dati.retention_days);
             mostraEsito('Salvato. Vale dal prossimo messaggio.');
             return;
           }

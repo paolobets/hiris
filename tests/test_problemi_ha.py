@@ -63,7 +63,7 @@ def test_un_guasto_diagnosticato_arriva_al_modello():
     assert "zwave_js" in testo
     assert "ozw_migration" in testo
     assert "critical" in testo
-    assert any("zwave_js" in g for g in riepilogo["guasti"])
+    assert any("zwave_js" in g for g in riepilogo["faults"])
 
 
 def test_un_guasto_di_lettura_non_e_una_casa_sana():
@@ -73,7 +73,7 @@ def test_un_guasto_di_lettura_non_e_una_casa_sana():
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
     assert "Home Assistant non ha risposto" in testo
     assert "non si e' potuto guardare" in testo
-    assert any("non si e' potuto guardare" in g for g in riepilogo["guasti"])
+    assert any("non si e' potuto guardare" in g for g in riepilogo["faults"])
 
 
 def test_il_registro_non_letto_non_e_il_registro_vuoto():
@@ -83,11 +83,11 @@ def test_il_registro_non_letto_non_e_il_registro_vuoto():
     non_chiesto, riepilogo_non_chiesto = _nucleo(None)
     non_letto, riepilogo_non_letto = _nucleo({"errore": "rifiutato"})
     assert non_chiesto != non_letto
-    assert riepilogo_non_chiesto["guasti"] == []
+    assert riepilogo_non_chiesto["faults"] == []
     # «Non ho potuto leggere i guasti» e' esso stesso un fatto sulla salute
     # della casa, non un limite generico di cio' che HIRIS sa: sta fra i
     # guasti, dove chi chiede «come sta la casa» lo trova.
-    assert any("rifiutato" in g for g in riepilogo_non_letto["guasti"])
+    assert any("rifiutato" in g for g in riepilogo_non_letto["faults"])
 
 
 def test_una_severita_che_non_si_sa_giudicare_non_si_tace():
@@ -129,7 +129,7 @@ def test_un_registro_vuoto_non_produce_nessuna_riga():
     riga per dirlo. Stessa scelta di `_avviso_integrazioni` su una casa sana."""
     testo, riepilogo = _nucleo({"problemi": []})
     assert "Riparazioni" not in testo
-    assert riepilogo["guasti"] == []
+    assert riepilogo["faults"] == []
 
 
 def test_i_guasti_hanno_una_SEZIONE_PROPRIA_prima_di_notevole_adesso():
@@ -173,7 +173,7 @@ def test_una_casa_sana_non_ha_la_sezione_dei_guasti():
     Smette di essere letta, e il giorno del guasto vero non si distingue."""
     testo, riepilogo = _nucleo({"problemi": []})
     assert "## Cosa non va in casa" not in testo
-    assert riepilogo["guasti"] == []
+    assert riepilogo["faults"] == []
 
 
 def test_il_tetto_conta_cio_che_non_elenca():
@@ -393,4 +393,4 @@ def test_componi_resta_pura(problemi):
         return _nucleo(problemi)
 
     testo, riepilogo = asyncio.run(_dentro_un_loop())
-    assert isinstance(testo, str) and "caratteri" in riepilogo
+    assert isinstance(testo, str) and "chars" in riepilogo

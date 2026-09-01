@@ -254,7 +254,7 @@ window.HirisPromesseRoute = (function () {
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json().then(function (corpo) {
-          rendiDettaglioEsecuzione(pannello, corpo.esecuzione);
+          rendiDettaglioEsecuzione(pannello, corpo.execution);
           caricato = true;
         });
       }).then(function () {
@@ -316,7 +316,7 @@ window.HirisPromesseRoute = (function () {
                (non esiste vs. gia' concluso) e l'utente deve poterle
                distinguere. */
             setStatus(esito.res.ok ? 'Promessa disdetta.' :
-              ((esito.corpo && esito.corpo.errore) || ('Errore HTTP ' + esito.res.status)));
+              ((esito.corpo && esito.corpo.error) || ('Errore HTTP ' + esito.res.status)));
             ricarica();
           }, function () {
             btn.disabled = false;
@@ -427,7 +427,7 @@ window.HirisPromesseRoute = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {
-      var tutte = dati.promesse || [];
+      var tutte = dati.agenda || [];
       var sospeso = tutte.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) !== -1; });
       var storico = tutte.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) === -1; });
       rendiSospeso(sospesoCorpo, sospesoDesc, sospeso, carica);

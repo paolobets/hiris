@@ -80,16 +80,16 @@ function montaConServer(opts = {}) {
       esecuzioneCount += 1;
       if (opts.esecuzioneRotta) throw new Error('rete giu\'');
       if (opts.esecuzione404) {
-        return jsonResponse({ errore: 'non ho nessuna esecuzione con quell\'identificatore.' }, 404);
+        return jsonResponse({ error: 'non ho nessuna esecuzione con quell\'identificatore.' }, 404);
       }
-      return jsonResponse(opts.esecuzione !== undefined ? opts.esecuzione : { esecuzione: esecuzione() });
+      return jsonResponse(opts.execution !== undefined ? opts.execution : { execution: esecuzione() });
     }
     if (method === 'GET') {
       getCount += 1;
       if (opts.getRotto) throw new Error('rete giu\'');
-      if (opts.get503) return jsonResponse({ promesse: [], errore: 'archivio non disponibile' }, 503);
+      if (opts.get503) return jsonResponse({ agenda: [], error: 'archivio non disponibile' }, 503);
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
-      return jsonResponse(corpo !== undefined ? corpo : { promesse: PROMESSE });
+      return jsonResponse(corpo !== undefined ? corpo : { agenda: PROMESSE });
     }
     if (method === 'DELETE') {
       if (opts.deleteRotto) throw new Error('rete giu\'');
@@ -143,7 +143,7 @@ test('solo le in sospeso hanno il bottone per disdire', async () => {
 });
 
 test('senza promesse la pagina lo dice invece di restare bianca', async () => {
-  const { document } = await monta({ get: { promesse: [] } });
+  const { document } = await monta({ get: { agenda: [] } });
   assert.ok(document.body.textContent.trim().length > 0);
   assert.match(document.body.textContent, /nessuna promessa/i);
 });
@@ -157,7 +157,7 @@ test('senza promesse la pagina lo dice invece di restare bianca', async () => {
 test('in_corso sta in "In sospeso" insieme a in_attesa, ma senza il bottone per disdire', async () => {
   const { document } = await monta({
     get: {
-      promesse: [
+      agenda: [
         PROMESSE[0], // p1, in_attesa
         { ...PROMESSE[0], id: 'p5', frase: 'sto accendendo il forno', stato: 'in_corso' },
       ],
@@ -188,7 +188,7 @@ test('in_corso sta in "In sospeso" insieme a in_attesa, ma senza il bottone per 
 test('una promessa mantenuta con motivo resta badge verde, ma il motivo si vede comunque', async () => {
   const { document } = await monta({
     get: {
-      promesse: [{
+      agenda: [{
         ...PROMESSE[0], id: 'p6', specie: 'fai', frase: 'accendi le luci del giardino',
         stato: 'mantenuta',
         motivo: 'nessun modo di avvisarti: non avevi lasciato un canale per farlo.',
@@ -213,7 +213,7 @@ test('una promessa mantenuta con motivo resta badge verde, ma il motivo si vede 
 
 test('una promessa fallita dice «Non riuscita», mai «Non eseguita»', async () => {
   const { document } = await monta({
-    get: { promesse: [{ ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' }] },
+    get: { agenda: [{ ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' }] },
   });
   const testo = document.body.textContent;
   assert.match(testo, /Non riuscita/);
@@ -236,7 +236,7 @@ test('il badge di "Non eseguita" non e\' rosso: e\' una scelta del prodotto, non
 test('in sospeso l\'ordine e\' per quando_ts crescente (la prossima prima)', async () => {
   const { document } = await monta({
     get: {
-      promesse: [
+      agenda: [
         { ...PROMESSE[0], id: 'a', frase: 'la piu\' tardiva', quando_ts: 1755700000 },
         { ...PROMESSE[0], id: 'b', frase: 'la piu\' vicina', quando_ts: 1755600000 },
       ],
@@ -288,7 +288,7 @@ test('la DELETE riuscita (200, non 204) ricarica l\'elenco e conferma sulla riga
     // fra le in sospeso (l'archivio ora la darebbe 'disdetta'). Il PRIMO
     // GET (al mount) deve invece portare ancora p1 in_attesa, altrimenti
     // il bottone da cliccare non esiste nemmeno.
-    getSuccessivo: { promesse: [] },
+    getSuccessivo: { agenda: [] },
   });
   document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
@@ -306,7 +306,7 @@ test('la DELETE riuscita (200, non 204) ricarica l\'elenco e conferma sulla riga
 test('la DELETE 404 mostra il testo esatto del server, poi ricarica comunque', async () => {
   const { window, document, chiamate } = await monta({
     deleteStatus: 404,
-    deleteBody: { errore: 'non ho nessuna promessa con quell\'identificatore.' },
+    deleteBody: { error: 'non ho nessuna promessa con quell\'identificatore.' },
   });
   document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
@@ -321,7 +321,7 @@ test('la DELETE 404 mostra il testo esatto del server, poi ricarica comunque', a
 test('la DELETE 409 mostra il testo esatto del server (gia\' concluso: non si disdice)', async () => {
   const { window, document } = await monta({
     deleteStatus: 409,
-    deleteBody: { errore: 'quella promessa e\' gia\' mantenuta: non si disdice, si legge.' },
+    deleteBody: { error: 'quella promessa e\' gia\' mantenuta: non si disdice, si legge.' },
   });
   document.querySelector('[data-disdici="p1"]').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
@@ -336,7 +336,7 @@ test('la DELETE senza risposta di rete si dichiara, non un catch muto', async ()
 });
 
 // ---------------------------------------------------------------------------
-// Gli errori della GET: 503 con `promesse: []' nel corpo non e' una lista vuota vera
+// Gli errori della GET: 503 con `agenda: []' nel corpo non e' una lista vuota vera
 // ---------------------------------------------------------------------------
 
 test('un GET fallito mostra un errore con "Riprova", non una lista vuota silenziosa', async () => {
@@ -346,7 +346,7 @@ test('un GET fallito mostra un errore con "Riprova", non una lista vuota silenzi
   assert.ok(retry, 'deve esserci un modo di riprovare');
 });
 
-test('il 503 "archivio non disponibile" (con promesse:[] nel corpo) non si legge come lista vuota vera', async () => {
+test('il 503 "archivio non disponibile" (con agenda:[] nel corpo) non si legge come lista vuota vera', async () => {
   const { document } = await monta({ get503: true });
   const testo = document.body.textContent;
   assert.match(testo, /Non è stato possibile leggere le promesse/);
@@ -375,7 +375,7 @@ function contaGetEsecuzioni(chiamate) {
 test('il bottone "Cosa è cambiato" compare SOLO su un fai mantenuta con esecuzione_id', async () => {
   const { document } = await monta({
     get: {
-      promesse: [
+      agenda: [
         FAI_MANTENUTA,
         PROMESSE[1], // chiedi, saltata: mai un fai mantenuta
         PROMESSE[2], // chiedi, mantenuta CON esecuzione_id: ha gia' la sua risposta (§6)
@@ -389,15 +389,15 @@ test('il bottone "Cosa è cambiato" compare SOLO su un fai mantenuta con esecuzi
 });
 
 test('non si chiede la cronaca finche\' l\'utente non apre la riga (niente richiesta per riga all\'apertura pagina)', async () => {
-  const { chiamate } = await monta({ get: { promesse: [FAI_MANTENUTA] } });
+  const { chiamate } = await monta({ get: { agenda: [FAI_MANTENUTA] } });
   assert.equal(contaGetEsecuzioni(chiamate), 0,
     'il caricamento della pagina non deve gia\' aver chiesto la cronaca');
 });
 
 test('un click sul bottone chiede la cronaca e mostra cosa è cambiato', async () => {
   const { window, document, chiamate } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
-    esecuzione: { esecuzione: esecuzione({ cambiato: ['light.studio'] }) },
+    get: { agenda: [FAI_MANTENUTA] },
+    execution: { execution: esecuzione({ cambiato: ['light.studio'] }) },
   });
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
   btn.dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -410,8 +410,8 @@ test('un click sul bottone chiede la cronaca e mostra cosa è cambiato', async (
 
 test('riaprire la riga non richiede una seconda GET: il dettaglio resta in cache', async () => {
   const { window, document, chiamate } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
-    esecuzione: { esecuzione: esecuzione() },
+    get: { agenda: [FAI_MANTENUTA] },
+    execution: { execution: esecuzione() },
   });
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
   btn.dispatchEvent(new window.Event('click', { bubbles: true })); // apre
@@ -427,9 +427,9 @@ test('riaprire la riga non richiede una seconda GET: il dettaglio resta in cache
 
 test('un "cambiato" vuoto NON diventa "niente è cambiato": si vede l\'avviso della porta, verbatim', async () => {
   const { window, document } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
-    esecuzione: {
-      esecuzione: esecuzione({
+    get: { agenda: [FAI_MANTENUTA] },
+    execution: {
+      execution: esecuzione({
         cambiato: [],
         avviso: 'la chiamata è andata a buon fine, ho aspettato 2 secondi che Home ' +
           'Assistant annunciasse un cambiamento di stato su queste entità, e in ' +
@@ -448,9 +448,9 @@ test('un "cambiato" vuoto NON diventa "niente è cambiato": si vede l\'avviso de
 
 test('un\'esecuzione fallita mostra l\'errore, non un pannello silenzioso', async () => {
   const { window, document } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
-    esecuzione: {
-      esecuzione: esecuzione({
+    get: { agenda: [FAI_MANTENUTA] },
+    execution: {
+      execution: esecuzione({
         eseguito: false, cambiato: null, avviso: null,
         errore: 'Home Assistant ha rifiutato la chiamata: 500',
       }),
@@ -464,7 +464,7 @@ test('un\'esecuzione fallita mostra l\'errore, non un pannello silenzioso', asyn
 
 test('un 404 sulla cronaca (riga potata, o mai esistita) si dichiara onestamente', async () => {
   const { window, document } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
+    get: { agenda: [FAI_MANTENUTA] },
     esecuzione404: true,
   });
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
@@ -479,7 +479,7 @@ test('un 404 sulla cronaca (riga potata, o mai esistita) si dichiara onestamente
 test('un guasto di rete sulla cronaca passa dalla riga di stato di pagina, e il bottone si può ' +
   'ricliccare per riprovare', async () => {
   const { window, document, chiamate } = await monta({
-    get: { promesse: [FAI_MANTENUTA] },
+    get: { agenda: [FAI_MANTENUTA] },
     esecuzioneRotta: true,
   });
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
@@ -493,7 +493,7 @@ test('un guasto di rete sulla cronaca passa dalla riga di stato di pagina, e il 
 });
 
 test('il bottone è raggiungibile da tastiera: un <button> vero, non un div con onclick', async () => {
-  const { document } = await monta({ get: { promesse: [FAI_MANTENUTA] } });
+  const { document } = await monta({ get: { agenda: [FAI_MANTENUTA] } });
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
   assert.equal(btn.tagName, 'BUTTON', 'un <button> e\' nativamente raggiungibile da tastiera e ha un focus visibile');
   assert.equal(btn.type, 'button');

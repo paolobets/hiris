@@ -175,15 +175,15 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    testo = corpo["testo"]
-    riepilogo = corpo["riepilogo"]
+    testo = corpo["text"]
+    riepilogo = corpo["summary"]
     assert "Cucina" in testo
     assert "Faretti" in testo                     # accesa: e' notevole
     assert "fra 19 e 20 gradi" in testo            # i ricordi entrano interi
     # Il riepilogo non puo' mentire su cio' che il testo contiene davvero.
-    assert riepilogo["caratteri"] == len(testo)
-    assert riepilogo["troncato"] is False
-    assert riepilogo["ricordi_esclusi"] == 0
+    assert riepilogo["chars"] == len(testo)
+    assert riepilogo["truncated"] is False
+    assert riepilogo["excluded_memories"] == 0
     archivio_casa.close()
     archivio_memoria.close()
 
@@ -203,11 +203,11 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    testo = corpo["testo"]
-    riepilogo = corpo["riepilogo"]
+    testo = corpo["text"]
+    riepilogo = corpo["summary"]
     # "Notevole adesso" dice "non ho guardato", non "niente di notevole".
     assert "non si e' potuto guardare" in testo or "non si e’ potuto guardare" in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["avvisi"])
+    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 @pytest.mark.asyncio
@@ -234,10 +234,10 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    sezione_casa = corpo["testo"].split("## Notevole adesso")[0]
+    sezione_casa = corpo["text"].split("## Notevole adesso")[0]
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
-    assert any("aree" in a and "non hanno risposto" in a for a in corpo["riepilogo"]["avvisi"])
+    assert any("aree" in a and "non hanno risposto" in a for a in corpo["summary"]["notices"])
     archivio_casa.close()
 
 
@@ -271,12 +271,12 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    riepilogo = corpo["riepilogo"]
-    n_righe_ricordo = corpo["testo"].count('" (detto da')
+    riepilogo = corpo["summary"]
+    n_righe_ricordo = corpo["text"].count('" (detto da')
     # 201 ricordi in tutto: il taglio (non l'handler) decide quanti entrano,
     # e dichiara sempre il resto -- MAI un default silenzioso a 20.
-    assert n_righe_ricordo + riepilogo["ricordi_esclusi"] == 201
-    assert riepilogo["ricordi_esclusi"] > 0  # con 201 ricordi lunghi, il tetto di default taglia
+    assert n_righe_ricordo + riepilogo["excluded_memories"] == 201
+    assert riepilogo["excluded_memories"] > 0  # con 201 ricordi lunghi, il tetto di default taglia
     # Il PIU' VECCHIO (il primo scritto) e' anche il primo a saltare per la
     # regola "il piu' vecchio prima" -- ma la sua assenza deve essere
     # CONTATA in ricordi_esclusi, mai un'invisibilita' gratuita come prima.
@@ -313,7 +313,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
-    avvisi = corpo["riepilogo"]["avvisi"]
+    avvisi = corpo["summary"]["notices"]
     assert any("problema" in a and "comportamento" in a for a in avvisi)
     assert any("scripts.yaml" in a for a in avvisi)
     archivio_casa.close()

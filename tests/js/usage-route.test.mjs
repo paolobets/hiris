@@ -11,7 +11,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    superstiti ridotta a un vicolo cieco su un add-on perfettamente sano.
 
    Il fatto è legittimo — in abbonamento i consumi non si misurano — e adesso
-   arriva come 200 con `misurata: false` più la frase che lo spiega. Questi
+   arriva come 200 con `measured: false` più la frase che lo spiega. Questi
    test pinnano che la pagina lo DICA, e che continui a distinguere quel
    fatto da un guasto vero. */
 
@@ -39,7 +39,7 @@ test('C-1: in abbonamento la pagina Consumi DICE perché non ci sono numeri, inv
   const { testo } = await monta(() => ({
     ok: true,
     status: 200,
-    json: () => Promise.resolve({ misurata: false, motivo: 'abbonamento', messaggio: MESSAGGIO }),
+    json: () => Promise.resolve({ measured: false, reason: 'abbonamento', message: MESSAGGIO }),
   }));
 
   assert.ok(testo.includes(MESSAGGIO), 'la frase del server deve comparire per intero');
@@ -51,7 +51,7 @@ test('C-1: senza contatori non si offre di azzerarli', async () => {
   const { outlet } = await monta(() => ({
     ok: true,
     status: 200,
-    json: () => Promise.resolve({ misurata: false, motivo: 'nessun_provider', messaggio: MESSAGGIO }),
+    json: () => Promise.resolve({ measured: false, reason: 'nessun_provider', message: MESSAGGIO }),
   }));
 
   /* Dalla fetta «i consumi, per modello» il pulsante non si nasconde: non
@@ -73,9 +73,9 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
     ok: true,
     status: 200,
     json: () => Promise.resolve({
-      misurata: true, total_requests: 42, input_tokens: 1200,
+      measured: true, total_requests: 42, input_tokens: 1200,
       output_tokens: 800, cost_eur: 1.5, last_reset: '2026-07-01T00:00:00Z',
-      costo_parziale: false, sezioni: [],
+      partial_cost: false, sections: [],
     }),
   }));
 
@@ -97,7 +97,7 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
 
 test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', async () => {
   const DATI = {
-    misurata: true, total_requests: 128,
+    measured: true, total_requests: 128,
     input_tokens: 1284000, output_tokens: 92100,
     cost_eur: 3.21492, last_reset: '2026-08-01T09:12:00Z',
   };
@@ -140,7 +140,7 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
 
 test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', async () => {
   const { testo } = await monta(() => ({
-    ok: true, status: 200, json: () => Promise.resolve({ misurata: true, total_requests: 0 }),
+    ok: true, status: 200, json: () => Promise.resolve({ measured: true, total_requests: 0 }),
   }));
   assert.doesNotMatch(testo, /Chatbot/,
     'la 2.0 ha una chat sola: «Chatbot» è il vocabolario del prodotto vecchio');

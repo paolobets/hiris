@@ -16,9 +16,9 @@ chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 shell dentro il container, quei campi erano di fatto costanti.
 
 **Il contratto e' nuovo, non la superficie di compatibilita' inglese che
-c'era.** Il payload usa i nomi italiani dei campi del dataclass (`nome`,
+c'era.** Il payload porta i sette campi del dataclass (`name`,
 `system_prompt`, `response_mode`, `thinking_budget`, `max_chat_turns`,
-`restrict_to_home`, `giorni_conservazione`). `GET /api/chatbots`
+`restrict_to_home`, `retention_days`). `GET /api/chatbots`
 (`handlers_chatbots.py`) parlava inglese per la card Lovelace e la pagina
 chat: questo file non l'ha mai usata, ed e' uscita per intero al Task 10 di
 questa fetta, col resto dei suoi ultimi chiamanti in `static/`.
@@ -29,7 +29,7 @@ mai un 500 e mai un salvataggio a meta': la validazione avviene per intero
 PRIMA di toccare il disco, e l'oggetto scritto e' sempre completo (i campi
 assenti conservano il valore corrente -- un client che manda meno campi non
 azzera gli altri). I tre interi hanno come solo limite `>= 0` perche' i limiti
-veri stanno gia' a valle e dipendono dal modello (o, per `giorni_conservazione`,
+veri stanno gia' a valle e dipendono dal modello (o, per `retention_days`,
 non esistono affatto -- vedi sotto):
 `claude_runner._thinking_param` disattiva un `thinking_budget` sotto i 1024 o
 su un modello non capace e lo clampa contro `max_tokens`; `max_chat_turns` a 0
@@ -37,7 +37,7 @@ significa "nessun tetto" (`handlers_chat.py`). Duplicare qui una soglia
 numerica che vale solo per un backend sarebbe una dichiarazione falsa al
 presente non appena il modello cambia.
 
-**`giorni_conservazione` (Task 12).** Arrivato da `history_retention_days`,
+**`retention_days` (Task 12).** Arrivato da `history_retention_days`,
 l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
 una decisione sulla conversazione, come le altre sei. Fa DUE lavori: la
 potatura notturna (`server.py::_run_retention`) e quanto HIRIS rilegge della
@@ -84,6 +84,15 @@ from aiohttp import web
 
 from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 
+# I nomi di HTTP e i nomi del FILE non sono piu' gli stessi, e la differenza e'
+# voluta (fetta «la rinomina», lotto dei campi JSON). Il payload e' il confine e
+# parla inglese; `impostazioni_chat.json` sul disco resta com'e' -- e' un
+# archivio di un utente vero, stessa classe di `models_config.json` e del
+# database, e rinominarlo vorrebbe dire scrivere una migrazione del suo dato.
+# La traduzione vive dove viveva gia': `ChatSettings.load`/`.salva`
+# (`impostazioni_chat.py`) mappano `nome`/`giorni_conservazione` del file su
+# `name`/`retention_days` del codice, e questo modulo mappa il codice su HTTP.
+# Due salti, nessuno dei due nuovo: prima coincidevano per caso.
 logger = logging.getLogger(__name__)
 
 # I sette campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
@@ -92,13 +101,13 @@ logger = logging.getLogger(__name__)
 # invece di `model` -- verrebbe altrimenti accettata e ignorata, e l'utente
 # leggerebbe "salvato" senza che nulla sia cambiato).
 FIELDS = (
-    "nome",
+    "name",
     "system_prompt",
     "response_mode",
     "thinking_budget",
     "max_chat_turns",
     "restrict_to_home",
-    "giorni_conservazione",
+    "retention_days",
 )
 
 # I tre valori che il codice a valle distingue davvero: `prompts.py:315-317`,
@@ -210,9 +219,9 @@ def validate(current: ChatSettings, body) -> ChatSettings:
                 ", ".join(unknown_fields), ", ".join(FIELDS)),
         )
 
-    name = _text(body, "nome", current.name).strip()
+    name = _text(body, "name", current.name).strip()
     if not name:
-        raise Rejection("nome", "«nome» non può essere vuoto.")
+        raise Rejection("name", "«name» non può essere vuoto.")
 
     prompt = _text(body, "system_prompt", current.system_prompt).strip()
     if len(prompt) > MAX_PROMPT_CHARS:
@@ -253,8 +262,8 @@ def validate(current: ChatSettings, body) -> ChatSettings:
     # (`int(0,3650)`) solo perche' e' l'opzione dell'add-on -- qui, come per
     # `thinking_budget`/`max_chat_turns`, il limite vero non esiste o non e'
     # di competenza di questa validazione.
-    giorni_conservazione = _non_negative_integer(
-        body, "giorni_conservazione", current.retention_days)
+    retention_days = _non_negative_integer(
+        body, "retention_days", current.retention_days)
 
     return ChatSettings(
         name=name,
@@ -263,7 +272,7 @@ def validate(current: ChatSettings, body) -> ChatSettings:
         thinking_budget=thinking,
         max_chat_turns=turns,
         restrict_to_home=restriction,
-        retention_days=giorni_conservazione,
+        retention_days=retention_days,
     )
 
 
@@ -273,14 +282,14 @@ def _payload(settings: ChatSettings) -> dict:
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
     return {
-        "nome": settings.name,
+        "name": settings.name,
         "system_prompt": settings.system_prompt,
         "response_mode": settings.response_mode,
         "thinking_budget": settings.thinking_budget,
         "max_chat_turns": settings.max_chat_turns,
         "restrict_to_home": settings.restrict_to_home,
-        "giorni_conservazione": settings.retention_days,
-        "modi_risposta": list(RESPONSE_MODES),
+        "retention_days": settings.retention_days,
+        "response_modes": list(RESPONSE_MODES),
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     }
 
@@ -299,7 +308,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response(
-            {"error": "Il corpo della richiesta non è JSON valido.", "campo": ""},
+            {"error": "Il corpo della richiesta non è JSON valido.", "field": ""},
             status=400,
         )
 
@@ -312,7 +321,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         # che questo task esiste per non introdurre.
         logger.info("Impostazioni chat rifiutate: %s", rejection.reason)
         return web.json_response(
-            {"error": rejection.reason, "campo": rejection.field}, status=400,
+            {"error": rejection.reason, "field": rejection.field}, status=400,
         )
 
     data_dir = request.app.get("data_dir") or "/data"
@@ -329,7 +338,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         )
         return web.json_response(
             {"error": "Non è stato possibile scrivere le impostazioni su disco. "
-                      "Controlla il log dell'add-on.", "campo": ""},
+                      "Controlla il log dell'add-on.", "field": ""},
             status=500,
         )
 

@@ -110,7 +110,7 @@ function _mostraRigheConsumi(visibili) {
 
 /* Restituisce `false` quando il server ha DICHIARATO che su questa
    configurazione i consumi non si misurano (GET api/usage -> 200 con
-   `misurata: false`, vedi api/handlers_usage.py): e' un fatto della
+   `measured: false`, vedi api/handlers_usage.py): e' un fatto della
    configurazione, non un guasto passeggero, e non cambia senza un riavvio
    dell'add-on. Chi chiama a intervalli usa questo `false` per SMETTERE di
    chiamare -- prima il riquadro della chat ripeteva la stessa domanda ogni
@@ -127,9 +127,9 @@ async function loadUsage() {
     var r = await fetch('api/usage');
     if (!r.ok) { console.error('loadUsage failed', r.status); return true; }
     var d = await r.json();
-    if (d.misurata === false) {
+    if (d.measured === false) {
       _mostraRigheConsumi(false);
-      _setUsageText('usage-last-reset', d.messaggio || 'I consumi non si misurano su questa configurazione.');
+      _setUsageText('usage-last-reset', d.message || 'I consumi non si misurano su questa configurazione.');
       return false;
     }
     _mostraRigheConsumi(true);

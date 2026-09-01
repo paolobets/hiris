@@ -86,7 +86,7 @@ const FRASI_TUTTO_A_POSTO = [
   /Tutte le plance hanno risposto/,
 ];
 
-const NUCLEO_VUOTO = { testo: '', riepilogo: { caratteri: 0, troncato: false, ricordi_esclusi: 0, avvisi: [] } };
+const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded_memories: 0, notices: [] } };
 
 /* Monta la pagina con le due risposte date e restituisce il testo reso. */
 async function rendi(casa, nucleo = NUCLEO_VUOTO) {
@@ -336,8 +336,8 @@ test('e7: «niente in sospeso» non compare più una riga sopra l’elenco dei f
 
 test('il nucleo mostra «ciò che HIRIS ignora» con gli avvisi reali del riepilogo', async () => {
   const { testo } = await rendi(casaLetta(), {
-    testo: '## La casa\n- una riga',
-    riepilogo: { caratteri: 24, troncato: true, ricordi_esclusi: 5, avvisi: ['Il registro dei piani non ha risposto.'] },
+    text: '## La casa\n- una riga',
+    summary: { chars: 24, truncated: true, excluded_memories: 5, notices: ['Il registro dei piani non ha risposto.'] },
   });
   assert.match(testo, /Ciò che HIRIS ignora/);
   assert.match(testo, /Il registro dei piani non ha risposto\./);

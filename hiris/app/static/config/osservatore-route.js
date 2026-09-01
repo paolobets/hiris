@@ -905,7 +905,7 @@ window.HirisOsservatoreRoute = (function () {
     return leggi('api/mind/watching').then(function (esito) {
       clearEl(corpo);
       if (!esito.ok) { rendiOsservateErrore(corpo, esito.status, ricarica); return; }
-      rendiOsservate(corpo, esito.corpo.osservate || []);
+      rendiOsservate(corpo, esito.corpo.watching || []);
     }, function () {
       clearEl(corpo);
       rendiOsservateErrore(corpo, null, ricarica);
@@ -929,7 +929,7 @@ window.HirisOsservatoreRoute = (function () {
       if (miaGenerazione !== generazioneOggetti) return; // superata da un cambio di giorno più recente
       clearEl(corpo);
       if (!esito.ok) { rendiOggettiErrore(corpo, esito.status, ricarica); return; }
-      rendiOggetti(corpo, esito.corpo.oggetti || [], giorno);
+      rendiOggetti(corpo, esito.corpo.facts || [], giorno);
     }, function () {
       if (miaGenerazione !== generazioneOggetti) return;
       clearEl(corpo);

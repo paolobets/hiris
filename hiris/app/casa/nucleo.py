@@ -1682,15 +1682,15 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     excluded_memories = excluded_per_pool.get("ricordi", 0)
 
     summary = {
-        "caratteri": len(text),
-        "troncato": truncated,
-        "ricordi_esclusi": excluded_memories,
+        "chars": len(text),
+        "truncated": truncated,
+        "excluded_memories": excluded_memories,
         # Due chiavi come le due sezioni, e per la stessa ragione: `guasti`
         # sono fatti sulla CASA, `avvisi` sono i limiti di cio' che HIRIS sa.
         # Tenerli in un elenco solo qui rimetterebbe in piedi la confusione che
         # nel testo e' appena stata sciolta -- e il riepilogo non puo'
         # raccontare una forma diversa da quella che il testo ha.
-        "guasti": home_space_faults,
-        "avvisi": notices,
+        "faults": home_space_faults,
+        "notices": notices,
     }
     return text, summary

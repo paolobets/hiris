@@ -68,13 +68,13 @@ async def test_get_su_data_vuota_restituisce_i_default_nel_codice(client):
     assert resp.status == 200
     body = await resp.json()
     default = ChatSettings()
-    assert body["nome"] == default.name
+    assert body["name"] == default.name
     assert body["system_prompt"] == DEFAULT_SYSTEM_PROMPT
     assert body["response_mode"] == default.response_mode
     assert body["thinking_budget"] == default.thinking_budget
     assert body["max_chat_turns"] == default.max_chat_turns
     assert body["restrict_to_home"] == default.restrict_to_home
-    assert body["giorni_conservazione"] == default.retention_days
+    assert body["retention_days"] == default.retention_days
 
 
 @pytest.mark.asyncio
@@ -83,7 +83,7 @@ async def test_get_porta_anche_i_modi_ammessi_e_il_prompt_di_default(client):
     `response_mode` ne' del prompt di default: invecchierebbero al primo
     cambiamento nel codice. Viaggiano nel payload."""
     body = await (await client.get(ROTTA)).json()
-    assert body["modi_risposta"] == list(RESPONSE_MODES)
+    assert body["response_modes"] == list(RESPONSE_MODES)
     assert body["default_system_prompt"] == DEFAULT_SYSTEM_PROMPT
 
 
@@ -94,7 +94,7 @@ async def test_get_mostra_cio_che_la_chat_sta_usando_non_il_disco(client):
     diverso da cio' che e' in vigore."""
     client.app["impostazioni_chat"] = ChatSettings(name="Solo in memoria")
     body = await (await client.get(ROTTA)).json()
-    assert body["nome"] == "Solo in memoria"
+    assert body["name"] == "Solo in memoria"
 
 
 # ---------------------------------------------------------------------------
@@ -104,13 +104,13 @@ async def test_get_mostra_cio_che_la_chat_sta_usando_non_il_disco(client):
 @pytest.mark.asyncio
 async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client):
     nuove = {
-        "nome": "Casa",
+        "name": "Casa",
         "system_prompt": "Sei utile e conciso.",
         "response_mode": "compact",
         "thinking_budget": 1024,
         "max_chat_turns": 5,
         "restrict_to_home": True,
-        "giorni_conservazione": 30,
+        "retention_days": 30,
     }
     resp = await client.put(ROTTA, json=nuove)
     assert resp.status == 200
@@ -128,15 +128,30 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     assert in_memoria.restrict_to_home is True
     assert in_memoria.retention_days == 30
 
-    # (b) persistenza: il file c'e' ed e' completo.
-    assert _su_disco(client) == nuove
+    # (b) persistenza: il file c'e' ed e' completo -- **con le chiavi del FILE,
+    # non con quelle di HTTP**. Fino alla fetta «la rinomina» (lotto dei campi
+    # JSON) i due insiemi coincidevano per caso, e questa riga confrontava due
+    # contratti diversi come se fossero uno solo. Non lo sono: il payload HTTP
+    # e' il confine e parla inglese, `impostazioni_chat.json` e' un archivio
+    # sul disco di un utente vero e resta com'e' -- stessa classe di
+    # `models_config.json` e del database. La traduzione vive in
+    # `ChatSettings.load`/`.salva`, ed e' questa riga a pinzarla.
+    assert _su_disco(client) == {
+        "nome": "Casa",
+        "system_prompt": "Sei utile e conciso.",
+        "response_mode": "compact",
+        "thinking_budget": 1024,
+        "max_chat_turns": 5,
+        "restrict_to_home": True,
+        "giorni_conservazione": 30,
+    }
 
 
 @pytest.mark.asyncio
 async def test_put_sopravvive_al_riavvio(client, tmp_path):
     """Il "riavvio" e' esattamente cio' che fa `server._on_startup`:
     `ChatSettings.load(data_dir)` su una `/data` che ha gia' il file."""
-    await client.put(ROTTA, json={"nome": "Dopo il riavvio", "max_chat_turns": 7})
+    await client.put(ROTTA, json={"name": "Dopo il riavvio", "max_chat_turns": 7})
     dopo_riavvio = ChatSettings.load(str(tmp_path))
     assert dopo_riavvio.name == "Dopo il riavvio"
     assert dopo_riavvio.max_chat_turns == 7
@@ -149,17 +164,23 @@ async def test_put_scrive_in_modo_atomico_e_non_lascia_il_temporaneo(client):
     prova che il `os.replace` non e' avvenuto e che il file finale puo' essere
     stato scritto sul posto (quindi troncabile a meta')."""
     import os
-    await client.put(ROTTA, json={"nome": "Atomico"})
+    await client.put(ROTTA, json={"name": "Atomico"})
     assert os.path.exists(_file(client))
     assert not os.path.exists(_file(client) + ".tmp")
     # Rileggibile come JSON completo: tutti e sette i campi, mai un troncone.
-    assert sorted(_su_disco(client)) == sorted(FIELDS)
+    # I nomi sono quelli del FILE, non quelli di `FIELDS` (che e' l'elenco dei
+    # campi ACCETTATI DA HTTP): due contratti, due elenchi -- vedi la nota in
+    # `test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria`.
+    assert sorted(_su_disco(client)) == sorted([
+        "nome", "system_prompt", "response_mode", "thinking_budget",
+        "max_chat_turns", "restrict_to_home", "giorni_conservazione",
+    ])
 
 
 @pytest.mark.asyncio
 async def test_put_di_un_solo_campo_non_azzera_gli_altri(client):
-    await client.put(ROTTA, json={"nome": "Primo", "max_chat_turns": 9})
-    await client.put(ROTTA, json={"nome": "Secondo"})
+    await client.put(ROTTA, json={"name": "Primo", "max_chat_turns": 9})
+    await client.put(ROTTA, json={"name": "Secondo"})
     corrente = client.app["impostazioni_chat"]
     assert corrente.name == "Secondo"
     assert corrente.max_chat_turns == 9, "un campo assente conserva il valore corrente"
@@ -170,10 +191,10 @@ async def test_put_giorni_conservazione_a_zero_e_valido_non_un_rifiuto(client):
     """Task 12: `0` e' un valore AMMESSO ("non cancella e non limita mai
     niente"), non un errore -- a differenza di un numero negativo, che resta
     nella tabella `CORPI_RIFIUTATI` sotto."""
-    resp = await client.put(ROTTA, json={"giorni_conservazione": 0})
+    resp = await client.put(ROTTA, json={"retention_days": 0})
     assert resp.status == 200
     assert client.app["impostazioni_chat"].retention_days == 0
-    assert (await resp.json())["giorni_conservazione"] == 0
+    assert (await resp.json())["retention_days"] == 0
 
 
 @pytest.mark.asyncio
@@ -213,7 +234,7 @@ async def test_put_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf
     """La rotta nuova passa dallo stesso `csrf_middleware` delle altre: non ha
     un'autenticazione propria. E' anche il motivo per cui la pagina manda
     sempre l'header (impostazioni-route.js, `api()`)."""
-    resp = await client.put(ROTTA, json={"nome": "Da un sito ostile"})
+    resp = await client.put(ROTTA, json={"name": "Da un sito ostile"})
     assert resp.status == 403
     assert (await resp.json())["error"] == "csrf_required"
     assert _su_disco(client) is None, "un 403 non deve aver toccato il disco"
@@ -221,7 +242,7 @@ async def test_put_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf
 
 @pytest.mark.asyncio
 async def test_put_con_x_requested_with_passa_anche_a_csrf_stretto(client, csrf_stretto):
-    resp = await client.put(ROTTA, json={"nome": "Dalla pagina"},
+    resp = await client.put(ROTTA, json={"name": "Dalla pagina"},
                             headers={"X-Requested-With": "fetch"})
     assert resp.status == 200
     assert client.app["impostazioni_chat"].name == "Dalla pagina"
@@ -237,14 +258,14 @@ CORPI_RIFIUTATI = [
     ("thinking_budget", {"thinking_budget": True}, "numero intero"),
     ("max_chat_turns", {"max_chat_turns": -5}, "negativo"),
     ("max_chat_turns", {"max_chat_turns": 3.5}, "numero intero"),
-    ("giorni_conservazione", {"giorni_conservazione": -1}, "negativo"),
-    ("giorni_conservazione", {"giorni_conservazione": "90"}, "numero intero"),
-    ("giorni_conservazione", {"giorni_conservazione": True}, "numero intero"),
+    ("retention_days", {"retention_days": -1}, "negativo"),
+    ("retention_days", {"retention_days": "90"}, "numero intero"),
+    ("retention_days", {"retention_days": True}, "numero intero"),
     ("restrict_to_home", {"restrict_to_home": "si"}, "true o false"),
     ("restrict_to_home", {"restrict_to_home": 1}, "true o false"),
     ("response_mode", {"response_mode": "prolisso"}, "ammette solo"),
-    ("nome", {"nome": "   "}, "non può essere vuoto"),
-    ("nome", {"nome": 42}, "deve essere testo"),
+    ("name", {"name": "   "}, "non può essere vuoto"),
+    ("name", {"name": 42}, "deve essere testo"),
     ("system_prompt", {"system_prompt": "x" * (MAX_PROMPT_CHARS + 1)}, "supera i"),
     ("modello", {"modello": "claude-opus-4-7"}, "Campi non riconosciuti"),
 ]
@@ -259,13 +280,13 @@ async def test_put_malformato_e_400_parlante_e_non_tocca_il_file(
     (2) NOMINARE il campo che non va e dire cosa non va; (3) lasciare il file su
     disco esattamente com'era -- la validazione avviene per intero prima di
     qualunque scrittura, quindi non esiste un salvataggio a meta'."""
-    await client.put(ROTTA, json={"nome": "Valore precedente"})
+    await client.put(ROTTA, json={"name": "Valore precedente"})
     prima = _su_disco(client)
 
     resp = await client.put(ROTTA, json=corpo)
     assert resp.status == 400
     body = await resp.json()
-    assert body["campo"] == campo
+    assert body["field"] == campo
     assert frammento in body["error"], body["error"]
     assert campo in body["error"], "il messaggio deve nominare il campo"
 
@@ -298,7 +319,7 @@ async def test_un_errore_di_scrittura_non_dice_salvato(client, monkeypatch):
         raise OSError("disco pieno")
 
     monkeypatch.setattr(ChatSettings, "save", esplodi)
-    resp = await client.put(ROTTA, json={"nome": "Non arrivera' mai"})
+    resp = await client.put(ROTTA, json={"name": "Non arrivera' mai"})
     assert resp.status == 500
     assert "non è stato possibile" in (await resp.json())["error"].lower()
     assert client.app["impostazioni_chat"].name == "HIRIS"
@@ -354,13 +375,13 @@ _SURROGATO = chr(92) + "ud800"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("campo", ["system_prompt", "nome"])
+@pytest.mark.parametrize("campo", ["system_prompt", "name"])
 async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo):
     """Prima del fix round 1 questo era l'UNICO buco nella promessa «ogni
     corpo sbagliato produce un 400 che dice quale campo»: `valida()` verificava
     il tipo e non la codificabilita', e l'`UnicodeEncodeError` di `json.dump`
     (che NON e' un `OSError`) usciva come 500 col traceback."""
-    await client.put(ROTTA, json={"nome": "Valore precedente"})
+    await client.put(ROTTA, json={"name": "Valore precedente"})
     prima = _su_disco(client)
 
     corpo = '{"' + campo + '": "A' + _SURROGATO + 'B"}'
@@ -368,7 +389,7 @@ async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo
                             headers={"Content-Type": "application/json"})
     assert resp.status == 400, f"atteso 400, ricevuto {resp.status}"
     body = await resp.json()
-    assert body["campo"] == campo
+    assert body["field"] == campo
     assert "UTF-8" in body["error"]
     assert campo in body["error"]
     # Del carattere si dice la posizione, mai il valore.
@@ -404,7 +425,7 @@ async def test_un_put_che_prova_a_fissare_il_modello_viene_rifiutato_col_motivo(
     resp = await client.put(ROTTA, json={"model": "gpt-4o"})
     assert resp.status == 400
     body = await resp.json()
-    assert body["campo"] == "model"
+    assert body["field"] == "model"
     assert "Campi non riconosciuti: model" in body["error"], body["error"]
 
 
@@ -418,7 +439,7 @@ async def test_il_get_non_porta_piu_un_modello(client):
     ESATTO delle chiavi, non l'assenza di una: un campo aggiunto in silenzio è
     lo stesso difetto della prossima volta."""
     body = await (await client.get(ROTTA)).json()
-    assert set(body) == set(FIELDS) | {"modi_risposta", "default_system_prompt"}
+    assert set(body) == set(FIELDS) | {"response_modes", "default_system_prompt"}
 
 
 def test_model_non_e_piu_un_campo_ammesso():
@@ -428,7 +449,7 @@ def test_model_non_e_piu_un_campo_ammesso():
     da solo se il valore non fosse pinnato qui."""
     assert "model" not in FIELDS
     assert FIELDS == (
-        "nome", "system_prompt", "response_mode",
+        "name", "system_prompt", "response_mode",
         "thinking_budget", "max_chat_turns", "restrict_to_home",
-        "giorni_conservazione",
+        "retention_days",
     )

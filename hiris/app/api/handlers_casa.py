@@ -350,4 +350,4 @@ async def handle_get_briefing(request: web.Request) -> web.Response:
     raccontare due nuclei diversi della stessa casa.
     """
     text, summary = compose_briefing(request.app)
-    return web.json_response({"testo": text, "riepilogo": summary})
+    return web.json_response({"text": text, "summary": summary})

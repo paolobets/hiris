@@ -39,13 +39,13 @@ function montaConServer(opts = {}) {
     if (u.indexOf('api/mind/watching') === 0) {
       if (opts.osservateRotto) throw new Error('rete giu\'');
       return jsonResponse(
-        opts.osservate !== undefined ? opts.osservate : { osservate: [] },
+        opts.watching !== undefined ? opts.watching : { watching: [] },
         opts.osservateStatus);
     }
     if (u.indexOf('api/mind/facts') === 0) {
       if (opts.oggettiRotto) throw new Error('rete giu\'');
       return jsonResponse(
-        opts.oggetti !== undefined ? opts.oggetti : { oggetti: [] },
+        opts.facts !== undefined ? opts.facts : { facts: [] },
         opts.oggettiStatus);
     }
     throw new Error('url inatteso: ' + u);
@@ -192,7 +192,7 @@ test('seam _rendiOsservate: una voce "obiettivo" resta distinguibile e dice che 
 
 test('mount: la descrizione della sezione 01 spiega «di serie» invece di ripeterlo su ogni riga', async () => {
   const { window, document } = montaConServer({
-    osservate: { osservate: [{ soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' }] },
+    watching: { watching: [{ soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' }] },
   });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
@@ -323,7 +323,7 @@ test('CSS: il selettore che azzera min-width sugli span corrisponde a uno span c
 // ---------------------------------------------------------------------------
 
 test('un errore nel leggere "cosa sto guardando" (503) offre Riprova, e il testo del messaggio non cambia', async () => {
-  const { window, document } = montaConServer({ osservateStatus: 503, osservate: {} });
+  const { window, document } = montaConServer({ osservateStatus: 503, watching: {} });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -349,7 +349,7 @@ test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rila
 });
 
 test('un errore nel leggere "cosa è successo" (503) offre Riprova', async () => {
-  const { window, document } = montaConServer({ oggettiStatus: 503, oggetti: {} });
+  const { window, document } = montaConServer({ oggettiStatus: 503, facts: {} });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -380,7 +380,7 @@ test('un guasto di rete su "cosa è successo" offre Riprova, e il bottone rilanc
 // ---------------------------------------------------------------------------
 
 test('nessun episodio per IERI: dice quando tornare (00:20), niente data ISO, niente ipotesi debole', async () => {
-  const { window, document } = montaConServer({ oggetti: { oggetti: [] } });
+  const { window, document } = montaConServer({ facts: { facts: [] } });
   window.HirisOsservatoreRoute.mount();
   await tick(20); // il campo nasce su "ieri" di default
 
@@ -394,7 +394,7 @@ test('nessun episodio per IERI: dice quando tornare (00:20), niente data ISO, ni
 });
 
 test('nessun episodio per OGGI: stesso trattamento del primo giorno (ieri/oggi sono lo stesso caso)', async () => {
-  const { window, document } = montaConServer({ oggetti: { oggetti: [] } });
+  const { window, document } = montaConServer({ facts: { facts: [] } });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -409,7 +409,7 @@ test('nessun episodio per OGGI: stesso trattamento del primo giorno (ieri/oggi s
 });
 
 test('nessun episodio per un giorno VECCHIO: l\'ipotesi doppia resta, ma la data è in gg/mm/aaaa', async () => {
-  const { window, document } = montaConServer({ oggetti: { oggetti: [] } });
+  const { window, document } = montaConServer({ facts: { facts: [] } });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -426,7 +426,7 @@ test('nessun episodio per un giorno VECCHIO: l\'ipotesi doppia resta, ma la data
 });
 
 test('nessun episodio SENZA filtro (bottone "più recenti"): parla di episodi', async () => {
-  const { window, document } = montaConServer({ oggetti: { oggetti: [] } });
+  const { window, document } = montaConServer({ facts: { facts: [] } });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -1063,7 +1063,7 @@ test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore
 });
 
 test('mount: un bilancio nella lista di "cosa è successo" si legge, non resta "(nessun dettaglio)"', async () => {
-  const { window, document } = montaConServer({ oggetti: { oggetti: [bilancioFixture()] } });
+  const { window, document } = montaConServer({ facts: { facts: [bilancioFixture()] } });
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
@@ -1083,13 +1083,13 @@ test('due cambi rapidi di giorno: la risposta più lenta e superata non deve vin
   await tick(20);
 
   const risposte = {};
-  risposte[IERI] = { oggetti: [{ id: 1, genere: 'funzionamento', protagonista: 'light.vecchio_giorno', inizio_ts: 1, fine_ts: 2, corpo: { stato: 'on' } }] };
-  risposte[OGGI] = { oggetti: [{ id: 2, genere: 'funzionamento', protagonista: 'light.giorno_giusto', inizio_ts: 1, fine_ts: 2, corpo: { stato: 'on' } }] };
+  risposte[IERI] = { facts: [{ id: 1, genere: 'funzionamento', protagonista: 'light.vecchio_giorno', inizio_ts: 1, fine_ts: 2, corpo: { stato: 'on' } }] };
+  risposte[OGGI] = { facts: [{ id: 2, genere: 'funzionamento', protagonista: 'light.giorno_giusto', inizio_ts: 1, fine_ts: 2, corpo: { stato: 'on' } }] };
 
   window.fetch = (url) => {
     const u = String(url);
     if (u.indexOf('api/mind/watching') === 0) {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ osservate: [] }) });
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ watching: [] }) });
     }
     const m = u.match(/day=([\d-]+)/);
     const giorno = m ? decodeURIComponent(m[1]) : null;

@@ -85,11 +85,11 @@ def app(tmp_path):
 
 def test_i_campi_che_la_chat_legge_non_cambiano(app):
     corpo = _corpo(_chiama(handle_usage, app))
-    for campo in ("misurata", "total_requests", "input_tokens", "output_tokens",
+    for campo in ("measured", "total_requests", "input_tokens", "output_tokens",
                   "cost_usd", "cost_eur", "last_reset"):
         assert campo in corpo, (
             f"«{campo}» lo legge il riquadro della chat: toglierlo lo spegne")
-    assert corpo["misurata"] is True
+    assert corpo["measured"] is True
     assert corpo["total_requests"] == 2
 
 
@@ -104,31 +104,31 @@ def test_input_tokens_in_cima_e_INCLUSIVO_della_cache(app):
 
 def test_il_totale_si_dichiara_un_pavimento_quando_manca_un_prezzo(app):
     corpo = _corpo(_chiama(handle_usage, app))
-    assert corpo["costo_parziale"] is True
+    assert corpo["partial_cost"] is True
 
 
 def test_le_sezioni_ci_sono_solo_per_i_provider_usati(app):
     corpo = _corpo(_chiama(handle_usage, app))
-    nomi = [s["provider"] for s in corpo["sezioni"]]
+    nomi = [s["provider"] for s in corpo["sections"]]
     assert nomi == ["claude", "openrouter"]
     assert "openai" not in nomi, "mai usato: e' un'assenza, non uno zero"
 
 
 def test_una_sezione_porta_etichetta_nota_e_modelli(app):
-    sezione = _corpo(_chiama(handle_usage, app))["sezioni"][0]
-    assert sezione["etichetta"] == "API Anthropic"
-    assert sezione["nota"]
+    sezione = _corpo(_chiama(handle_usage, app))["sections"][0]
+    assert sezione["label"] == "API Anthropic"
+    assert sezione["note"]
     assert sezione["cost_eur"] > 0
-    model = sezione["modelli"][0]
-    assert model["modello"] == "claude-sonnet-4-6"
-    assert model["costo_stato"] == "misurato"
-    assert model["primo_uso"] == "2026-08-21"
+    model = sezione["models"][0]
+    assert model["model"] == "claude-sonnet-4-6"
+    assert model["cost_state"] == "misurato"
+    assert model["first_use"] == "2026-08-21"
 
 
 def test_un_modello_senza_prezzo_esce_con_costo_NULLO(app):
-    openrouter = _corpo(_chiama(handle_usage, app))["sezioni"][1]
-    model = openrouter["modelli"][0]
-    assert model["costo_stato"] == "non_noto"
+    openrouter = _corpo(_chiama(handle_usage, app))["sections"][1]
+    model = openrouter["models"][0]
+    assert model["cost_state"] == "non_noto"
     assert model["cost_eur"] is None, (
         "0.0 direbbe «misurato, e non e' costato niente»: e' la bugia che "
         "l'intera fetta esiste per togliere")
@@ -136,8 +136,8 @@ def test_un_modello_senza_prezzo_esce_con_costo_NULLO(app):
 
 def test_il_fuso_si_dichiara(app):
     corpo = _corpo(_chiama(handle_usage, app))
-    assert corpo["fuso"] == ROMA
-    assert corpo["fuso_noto"] is True
+    assert corpo["timezone"] == ROMA
+    assert corpo["timezone_known"] is True
 
 
 # ── il caso vero di «non si misura» ─────────────────────────────────────────
@@ -149,9 +149,9 @@ def test_senza_provider_e_senza_righe_si_dichiara_che_non_si_misura(tmp_path):
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
         corpo = _corpo(_chiama(handle_usage, {"consumi": empty}))
-        assert corpo["misurata"] is False
-        assert corpo["motivo"] == "nessun_provider"
-        assert "provider" in corpo["messaggio"].lower()
+        assert corpo["measured"] is False
+        assert corpo["reason"] == "nessun_provider"
+        assert "provider" in corpo["message"].lower()
         for campo in ("total_requests", "input_tokens", "cost_eur"):
             assert corpo[campo] is None, "0 direbbe «misurato, e non hai consumato»"
     finally:
@@ -164,7 +164,7 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
         corpo = _corpo(_chiama(handle_usage, {"consumi": empty, "ponte_attivo": True}))
-        assert corpo["misurata"] is True
+        assert corpo["measured"] is True
         assert corpo["total_requests"] == 0
     finally:
         empty.close()
@@ -175,14 +175,14 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
 def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     corpo = _corpo(_chiama(handle_usage_history, app,
                            {"from": "2026-08-21", "to": "2026-08-22"}))
-    assert [g["giorno"] for g in corpo["giorni"]] == ["2026-08-21", "2026-08-22"]
-    assert corpo["giorni"][0]["per_provider"]["claude"]["cost_eur"] > 0
+    assert [g["day"] for g in corpo["days"]] == ["2026-08-21", "2026-08-22"]
+    assert corpo["days"][0]["per_provider"]["claude"]["cost_eur"] > 0
 
 
 def test_la_storia_senza_parametri_da_gli_ultimi_trenta_giorni(app):
     corpo = _corpo(_chiama(handle_usage_history, app))
-    assert "da" in corpo and "a" in corpo
-    assert isinstance(corpo["giorni"], list)
+    assert "from" in corpo and "to" in corpo
+    assert isinstance(corpo["days"], list)
 
 
 # ── l'ancora ────────────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ def test_azzerare_sposta_l_ancora_e_NON_cancella(app):
     risposta = _chiama(handle_reset_usage, app)
     assert risposta.status == 200
     corpo = _corpo(risposta)
-    assert corpo["cancellato"] is False
+    assert corpo["deleted"] is False
     assert corpo["last_reset"]
 
     dopo = _corpo(_chiama(handle_usage, app))

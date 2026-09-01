@@ -267,7 +267,7 @@ window.HirisMemoriaRoute = (function () {
             /* Rifiutata con la ragione (regola 2): il messaggio del server
                dice QUALE ancora o intervallo non va, non un generico
                "errore". */
-            mostraErroreCard(cardErr, (esito.json && esito.json.errore) || ('Errore HTTP ' + esito.res.status));
+            mostraErroreCard(cardErr, (esito.json && esito.json.error) || ('Errore HTTP ' + esito.res.status));
             return;
           }
           var nota = 'Correzione salvata.';
@@ -359,7 +359,7 @@ window.HirisMemoriaRoute = (function () {
       api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
         if (res.status === 204) { setStatus('Ricordo cancellato.'); ricarica(); return; }
         return res.json().catch(function () { return {}; }).then(function (corpo) {
-          mostraErroreCard(cardErr, (corpo && corpo.errore) || ('Errore HTTP ' + res.status));
+          mostraErroreCard(cardErr, (corpo && corpo.error) || ('Errore HTTP ' + res.status));
         });
       }, function () {
         mostraErroreCard(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
@@ -390,9 +390,9 @@ window.HirisMemoriaRoute = (function () {
 
   function rendiLista(lista, dati, ricarica) {
     clearEl(lista);
-    var ricordi = dati.ricordi || [];
-    var totale = dati.totale != null ? dati.totale : ricordi.length;
-    var mostrati = dati.mostrati != null ? dati.mostrati : ricordi.length;
+    var ricordi = dati.memories || [];
+    var totale = dati.total != null ? dati.total : ricordi.length;
+    var mostrati = dati.shown != null ? dati.shown : ricordi.length;
 
     if (!ricordi.length) {
       lista.appendChild(el('p', 'field-hint',
@@ -419,7 +419,7 @@ window.HirisMemoriaRoute = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {
-      if (!dati.disponibile) { rendiNonDisponibile(lista); return; }
+      if (!dati.available) { rendiNonDisponibile(lista); return; }
       rendiLista(lista, dati, carica);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);

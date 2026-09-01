@@ -38,7 +38,7 @@ def test_un_integrazione_caduta_si_dichiara_col_motivo():
     assert "timeout durante la connessione" in testo
     # Fra i GUASTI, non fra gli avvisi: sono un fatto sulla casa, non un
     # limite di cio' che HIRIS sa.
-    assert any("Reolink" in g for g in riepilogo["guasti"])
+    assert any("Reolink" in g for g in riepilogo["faults"])
     assert "## Cosa non va in casa" in testo
 
 

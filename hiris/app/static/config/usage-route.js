@@ -50,41 +50,41 @@
      i due stati non convivono mai nella stessa sezione, perche' e' il
      provider a determinarli. */
   function costoDiRiga(m) {
-    if (m.costo_stato === 'misurato' || m.costo_stato === 'reale') {
+    if (m.cost_state === 'misurato' || m.cost_state === 'reale') {
       return '<span class="umr-costo">' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    if (m.costo_stato === 'non_noto' && m.cost_eur != null && m.cost_eur > 0) {
+    if (m.cost_state === 'non_noto' && m.cost_eur != null && m.cost_eur > 0) {
       /* Il pavimento a scala di riga: «questo l'ho pagato di sicuro, piu'
          qualcosa che non so». Un concetto solo, a due scale. */
       return '<span class="umr-costo umr-ignoto">≥ ' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    var classe = m.costo_stato === 'non_noto' ? 'umr-costo umr-ignoto'
-               : m.costo_stato === 'compreso' ? 'umr-costo umr-compreso'
+    var classe = m.cost_state === 'non_noto' ? 'umr-costo umr-ignoto'
+               : m.cost_state === 'compreso' ? 'umr-costo umr-compreso'
                : 'umr-costo umr-gratuito';
     return '<span class="' + classe + '">'
-      + escHtml(PAROLA[m.costo_stato] || m.costo_stato) + '</span>';
+      + escHtml(PAROLA[m.cost_state] || m.cost_state) + '</span>';
   }
 
   function rigaCache(m) {
-    if (!m.cache_lettura && !m.cache_scrittura) return '';
-    return ' · cache ' + fmtNum(m.cache_lettura) + ' letti / '
-      + fmtNum(m.cache_scrittura) + ' scritti';
+    if (!m.cache_read && !m.cache_write) return '';
+    return ' · cache ' + fmtNum(m.cache_read) + ' letti / '
+      + fmtNum(m.cache_write) + ' scritti';
   }
 
   function rigaModello(m, provider) {
-    var quando = m.primo_uso === m.ultimo_uso
-      ? 'il ' + escHtml(m.primo_uso)
-      : 'dal ' + escHtml(m.primo_uso) + ' al ' + escHtml(m.ultimo_uso);
+    var quando = m.first_use === m.last_use
+      ? 'il ' + escHtml(m.first_use)
+      : 'dal ' + escHtml(m.first_use) + ' al ' + escHtml(m.last_use);
     /* I rifiuti si mostrano SOLO se ce ne sono: lo stato-non-evento si omette,
        non si scrive a zero. */
-    var rifiuti = m.errori_rate_limit
-      ? ' · ' + m.errori_rate_limit + ' rifiuti per limite di frequenza'
+    var rifiuti = m.rate_limit_errors
+      ? ' · ' + m.rate_limit_errors + ' rifiuti per limite di frequenza'
       : '';
     var unita = provider === 'ponte' ? 'turni' : 'richieste';
     return '<div class="usage-model-row">'
-      + '<div class="umr-top"><span class="umr-nome">' + escHtml(m.modello) + '</span>'
+      + '<div class="umr-top"><span class="umr-nome">' + escHtml(m.model) + '</span>'
       + costoDiRiga(m) + '</div>'
-      + '<div class="umr-meta">' + m.richieste + ' ' + unita + ' · '
+      + '<div class="umr-meta">' + m.requests + ' ' + unita + ' · '
       + fmtNum(m.token_in) + ' IN · ' + fmtNum(m.token_out) + ' OUT'
       + rigaCache(m) + '</div>'
       + '<div class="umr-foot">' + quando + rifiuti + '</div>'
@@ -96,25 +96,25 @@
       return '<span class="usec-costo umr-compreso">Compreso</span>';
     }
     var testo = fmtEuro(s.cost_eur, 2);
-    return '<span class="usec-costo">' + (s.costo_parziale ? '≥ ' : '') + testo + '</span>';
+    return '<span class="usec-costo">' + (s.partial_cost ? '≥ ' : '') + testo + '</span>';
   }
 
   function sezione(s) {
     return '<section class="usage-provider">'
-      + '<div class="usec-testa"><h3 class="usec-nome">' + escHtml(s.etichetta) + '</h3>'
+      + '<div class="usec-testa"><h3 class="usec-nome">' + escHtml(s.label) + '</h3>'
       + totaleSezione(s) + '</div>'
-      + '<p class="sc-desc">' + escHtml(s.nota) + '</p>'
-      + s.modelli.map(function(m) { return rigaModello(m, s.provider); }).join('')
+      + '<p class="sc-desc">' + escHtml(s.note) + '</p>'
+      + s.models.map(function(m) { return rigaModello(m, s.provider); }).join('')
       + '</section>';
   }
 
   /* ---- il riepilogo ------------------------------------------------- */
 
   function riepilogo(u) {
-    var costo = (u.costo_parziale ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
+    var costo = (u.partial_cost ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
     /* Il simbolo da solo e' criptico per chi apre la pagina dal telefono: la
        frase lo accompagna SEMPRE. */
-    var nota = u.costo_parziale
+    var nota = u.partial_cost
       ? '<div class="st-delta st-avviso">cifra minima — manca il prezzo di almeno un modello</div>'
       : '';
     return '<div class="stat-grid" id="usage-riepilogo">'
@@ -175,7 +175,7 @@
         y -= h;
         barre += '<rect x="' + (sinistra + i * passo).toFixed(1) + '" y="' + y.toFixed(1)
           + '" width="' + Math.max(1, passo - 2).toFixed(1) + '" height="' + h.toFixed(1)
-          + '" fill="var(--consumo-' + p + ')"><title>' + escHtml(g.giorno) + ' · '
+          + '" fill="var(--consumo-' + p + ')"><title>' + escHtml(g.day) + ' · '
           + escHtml(p) + '</title></rect>';
       });
     });
@@ -197,7 +197,7 @@
 
   function tabellaEquivalente(giorni, provider, chiave, etichette) {
     var righe = giorni.map(function(g) {
-      return '<tr><td>' + escHtml(g.giorno) + '</td>' + provider.map(function(p) {
+      return '<tr><td>' + escHtml(g.day) + '</td>' + provider.map(function(p) {
         var v = ((g.per_provider || {})[p] || {})[chiave];
         return '<td>' + (v == null ? '' : (chiave === 'cost_eur' ? fmtEuro(v, 2) : v)) + '</td>';
       }).join('') + '</tr>';
@@ -211,10 +211,10 @@
   function grafici(storia, sezioni) {
     var etichette = {};
     var presenti = [];
-    sezioni.forEach(function(s) { etichette[s.provider] = s.etichetta; });
+    sezioni.forEach(function(s) { etichette[s.provider] = s.label; });
     ORDINE.forEach(function(p) { if (etichette[p]) presenti.push(p); });
 
-    var giorni = (storia.giorni || []).slice(-stato.giorni);
+    var giorni = (storia.days || []).slice(-stato.giorni);
     var conCosto = presenti.filter(function(p) { return p !== 'ponte'; });
     var fuori = presenti.indexOf('ponte') >= 0
       ? '<p class="hint">L\'abbonamento non compare qui: non ha un costo da '
@@ -231,9 +231,9 @@
       + legenda(conCosto, etichette) + fuori
       + tabellaEquivalente(giorni, conCosto, 'cost_eur', etichette)
       + '<h3>Richieste al giorno</h3>'
-      + svgBarre(giorni, presenti, 'richieste', 'Richieste al giorno per provider')
+      + svgBarre(giorni, presenti, 'requests', 'Richieste al giorno per provider')
       + legenda(presenti, etichette)
-      + tabellaEquivalente(giorni, presenti, 'richieste', etichette)
+      + tabellaEquivalente(giorni, presenti, 'requests', etichette)
       + '</div>';
   }
 
@@ -243,21 +243,21 @@
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
 
-    if (u.misurata === false) {
+    if (u.measured === false) {
       /* Il server DICHIARA che su questa configurazione i consumi non si
-         misurano (200 con `misurata: false`): non e' un guasto, ed e' un caso
+         misurano (200 con `measured: false`): non e' un guasto, ed e' un caso
          solo -- non e' mai stato usato niente e non c'e' niente che possa
          rispondere. Il pulsante non si mostra: non c'e' nessuna ancora da
          spostare. */
       outlet.innerHTML = '<div class="page-title">Consumi</div>'
         + '<p class="page-subtitle st-avviso">'
-        + escHtml(u.messaggio || 'I consumi non si misurano su questa configurazione.')
+        + escHtml(u.message || 'I consumi non si misurano su questa configurazione.')
         + '</p>';
       return;
     }
 
-    var fuso = u.fuso_noto
-      ? 'Giorni e orari nel fuso della casa (' + escHtml(u.fuso) + ').'
+    var fuso = u.timezone_known
+      ? 'Giorni e orari nel fuso della casa (' + escHtml(u.timezone) + ').'
       : 'Il fuso della casa non è ancora noto: i giorni sono contati in UTC.';
 
     outlet.innerHTML = '<div class="page-title">Consumi</div>'
@@ -265,9 +265,9 @@
       + 'costato. ' + fuso + '</p>'
       + barra(u)
       + riepilogo(u)
-      + grafici(storia, u.sezioni || [])
+      + grafici(storia, u.sections || [])
       + '<div class="usage-sezioni">'
-      + (u.sezioni || []).map(sezione).join('')
+      + (u.sections || []).map(sezione).join('')
       + '</div>';
 
     collega();

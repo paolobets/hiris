@@ -8,7 +8,7 @@ qualcuno aggiunge un campo da una parte sola (fondamenta 3).
 
 **503, non un elenco vuoto, quando manca il collaboratore.** Spec §7: la
 pagina esiste perche' il proprietario possa vedere «cosa sto guardando e
-perche'» in ogni momento -- un `{"osservate": []}` direbbe «HIRIS non guarda
+perche'» in ogni momento -- un `{"watching": []}` direbbe «HIRIS non guarda
 niente», mentre l'osservatore assente e' un'altra cosa (l'add-on e' partito
 senza di lui). E' la stessa distinzione a tre stati che il resto del prodotto
 difende ovunque (`casa.non_disponibili`, `casa.etichette`, eccetera): un
@@ -31,8 +31,8 @@ async def handle_watching(request: web.Request) -> web.Response:
     watcher = request.app.get("osservatore")
     if watcher is None:
         return web.json_response(
-            {"osservate": [], "errore": "osservatore non disponibile"}, status=503)
-    return web.json_response({"osservate": watcher.watching()})
+            {"watching": [], "error": "osservatore non disponibile"}, status=503)
+    return web.json_response({"watching": watcher.watching()})
 
 
 async def handle_facts(request: web.Request) -> web.Response:
@@ -51,6 +51,6 @@ async def handle_facts(request: web.Request) -> web.Response:
     store = request.app.get("osservazioni")
     if store is None:
         return web.json_response(
-            {"oggetti": [], "errore": "archivio non disponibile"}, status=503)
+            {"facts": [], "error": "archivio non disponibile"}, status=503)
     day = request.query.get("day") or None
-    return web.json_response({"oggetti": store.facts(day=day)})
+    return web.json_response({"facts": store.facts(day=day)})

@@ -358,7 +358,7 @@ window.HirisCostruzioni = (function () {
         if (esito.res.ok) { ricarica(); return; }
         /* guida §7: si legge `errore` verbatim, mai un messaggio sintetico
            per casi che il server ha gia' separato (404/409/503). */
-        statusEl.textContent = (esito.corpo && esito.corpo.errore) ||
+        statusEl.textContent = (esito.corpo && esito.corpo.error) ||
           ('Errore HTTP ' + esito.res.status);
         bottoni.forEach(function (b) { b.disabled = false; });
       }, function () {
@@ -538,7 +538,7 @@ window.HirisCostruzioni = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {
-      var tutte = (dati && dati.costruzioni) || [];
+      var tutte = (dati && dati.constructions) || [];
       var aperte = tutte.filter(function (c) { return STATO_APERTI.indexOf(c.stato) !== -1; });
       var storico = tutte.filter(function (c) { return STATO_APERTI.indexOf(c.stato) === -1; });
       rendiSezione(apertaCorpo, aperte,

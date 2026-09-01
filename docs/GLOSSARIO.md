@@ -2943,6 +2943,61 @@ Il record no, e per la ragione gia' accettata per il database: `{"forza": ..., "
 indietro l'archivio intero. Rinominarle vuol dire mentire sul contenuto o scrivere una migrazione
 del dato di casa altrui.
 
+### Cosa e' cambiato dentro il corpo, e cosa no -- l'elenco
+
+Applicata il 01/09, lotto 2. **136 chiavi convertite, 453 invariate, ZERO
+cambiate senza che fosse previsto** (misurato registrando ogni corpo che gli
+handler producono durante la suite, prima e dopo, e accoppiandoli con la mappa
+dichiarata).
+
+Involucri: `sezioni -> sections`, `promesse -> agenda`,
+`costruzioni -> constructions`, `costruzione -> construction`,
+`esecuzione -> execution`, `ricordi -> memories`, `osservate -> watching`,
+`oggetti -> facts`, `testo -> text`, `riepilogo -> summary`,
+`disponibile -> available`, `totale -> total`, `mostrati -> shown`,
+`giorni -> days`, `misurata -> measured`.
+
+**Due doppioni chiusi, ed erano vivi.** `errore -> error`: la stessa risposta
+usciva con `error` da cinque handler e `errore` da altri quattro, e il
+frontend leggeva tutti e due. `messaggio -> message`, per la stessa ragione.
+Non producono una chiave nuova -- il nome inglese c'era gia' -- ed e'
+esattamente il punto: **una cosa, un nome**.
+
+**Il terzo doppione, dentro una rotta sola**: `/api/usage` scriveva lo stesso
+numero come `rate_limit_errors` in cima e `errori_rate_limit` dentro una
+sezione, e cosi' `cost_usd`/`costo_usd` e `total_requests`/`richieste`. La
+meta' inglese era gia' una traduzione a mano scritta nel 2026-08; la meta'
+italiana era la colonna che usciva cruda. Ora la traduzione e' una sola.
+
+**`giorno` mostra perche' la regola e' PER CONTESTO e non per parola**:
+diventa `day` sotto `/api/usage/history`, dove e' l'etichetta del secchiello,
+e resta `giorno` sotto `/api/mind/facts`, dove e' una colonna di `oggetti`.
+Una mappa piatta per nome sbaglierebbe proprio li' -- e nel primo giro di
+verifica l'ha fatto.
+
+### Cio' che NON cambia dentro il corpo, e la ragione
+
+| cosa | perche' |
+|---|---|
+| il record di `/api/memories` (`forza`, `grandezza`, `minimo`, `massimo`, `unita`, `testo`, `detto_da`, `detto_il`, `corretto_da_utente`) | sono le colonne di `ricordi`, sono i campi del corpo PATCH, e `grandezza` e' una chiave di `REMEMBER_TOOL_DEF` -- congelata fino alla fetta degli strumenti |
+| il record di `/api/agenda` | `schedulatore/promise.py::serializza`, la stessa forma che esce dallo strumento del modello |
+| il record di `/api/constructions` e di `/api/executions` | colonne di `costruzioni` e di `esecuzioni`; `errore` di un'esecuzione e' una COLONNA e resta italiano anche ora che l'involucro dice `error` |
+| il record di `/api/mind/facts` | `_fact_row`, colonne di `oggetti` |
+| tutto `/api/models` e `/api/models/config` | sono `models_config.json` sul disco di un utente vero, e la PUT rimanda indietro l'archivio intero |
+| `impostazioni_chat.json` | stessa classe: il FILE tiene `nome`/`giorni_conservazione`, HTTP dice `name`/`retention_days`, e la traduzione vive in `ChatSettings.load`/`.salva`. **Prima coincidevano per caso**, e un test li confrontava come se fossero un contratto solo |
+| `/api/health` `.ponte` | rinominarlo in `bridge` CREEREBBE un doppione: `/api/models/config` dice `ponte` ed e' l'archivio, che non si tocca. Una cosa, un nome -- e oggi quel nome e' `ponte`. Si riapre con l'archivio, non prima |
+| ogni chiave di `app[...]` | `app["costruzioni"]`, `app["consumi"]`, `app["archivio_casa"]`: non sono JSON |
+
+### Il confine, e dove vive
+
+`api/boundary.py::occurrence_out` traduce la sola chiave `errore` di
+un'occorrenza del dominio mentre esce su HTTP. Non e' una regola nuova: e' la
+legge del progetto -- **il dominio in italiano, il confine nella lingua del
+sistema esterno** -- applicata alle tre rotte che inoltrano tal quale il dict
+di `azione/porta.py`. Senza, sarebbero le uniche tre su diciassette a scrivere
+`errore`. Si traduce la CHIAVE e non il valore: il messaggio e' scritto per
+una persona, e a una persona questo prodotto parla italiano.
+
 ### Il corpo di `/api/home-space` ha un APPUNTAMENTO, non una condanna
 
 Il percorso cambia in questo lotto; le sue 125 chiavi no. **Il vincolo non e' permanente come per il

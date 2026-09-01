@@ -139,7 +139,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
         # mancare -- `disponibile` lo dice, `ricordi: []` resta un
         # contenitore naturale, non l'affermazione di un fatto.
-        return web.json_response({"disponibile": False, "ricordi": []})
+        return web.json_response({"available": False, "memories": []})
 
     home_space_store = request.app.get("archivio_casa")
     topology_loaded = _topology_loaded(home_space_store)
@@ -159,15 +159,15 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
         r["ancore"] = [_resolve_tether(a, lookup, unverifiable) for a in r["ancore"]]
     return web.json_response({
-        "disponibile": True,
-        "ricordi": memories,
+        "available": True,
+        "memories": memories,
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
         # ricordi oltre `_MEMORIES_SHOWN_LIMIT` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
         # memoria non evapora (memoria/archivio.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
-        "totale": store.count(),
-        "mostrati": len(memories),
+        "total": store.count(),
+        "shown": len(memories),
     })
 
 
@@ -175,11 +175,11 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     store = request.app.get("archivio_memoria")
     if store is None:
         return web.json_response(
-            {"errore": "l'archivio della memoria non e' disponibile"}, status=503)
+            {"error": "l'archivio della memoria non e' disponibile"}, status=503)
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
-        return web.json_response({"errore": "id non valido"}, status=400)
+        return web.json_response({"error": "id non valido"}, status=400)
 
     # Verificato PRIMA di validare il corpo: un ricordo cancellato da
     # un'altra scheda (o mai esistito) non e' un problema del corpo della
@@ -187,16 +187,16 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     existing = store.get(memory_id)
     if existing is None:
         return web.json_response(
-            {"errore": f"nessun ricordo con id {memory_id}"}, status=404)
+            {"error": f"nessun ricordo con id {memory_id}"}, status=404)
 
     try:
         body = await request.json()
     except Exception:
         return web.json_response(
-            {"errore": "corpo della richiesta non valido: atteso JSON"}, status=400)
+            {"error": "corpo della richiesta non valido: atteso JSON"}, status=400)
     if not isinstance(body, dict):
         return web.json_response(
-            {"errore": "corpo della richiesta non valido: atteso un oggetto"}, status=400)
+            {"error": "corpo della richiesta non valido: atteso un oggetto"}, status=400)
 
     # I campi della richiesta che non sono correggibili non si applicano in
     # silenzio (il testo, per esempio, resta giustamente intatto), ma la
@@ -205,7 +205,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     fields = {k: v for k, v in body.items() if k in _CORRECTABLE_FIELDS}
     if not fields:
         return web.json_response(
-            {"errore": "nessun campo correggibile nella richiesta"}, status=400)
+            {"error": "nessun campo correggibile nella richiesta"}, status=400)
 
     home_space_store = request.app.get("archivio_casa")
     topology_loaded = _topology_loaded(home_space_store)
@@ -266,7 +266,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         # mandato intero veniva accettato. Due comportamenti opposti per la
         # stessa situazione, a seconda di come arrivava.
         return web.json_response(
-            {"errore": "; ".join(problems), "problemi": problems}, status=400)
+            {"error": "; ".join(problems), "problemi": problems}, status=400)
 
     updates: dict = {}
     if "detto_da" in fields:
@@ -311,7 +311,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         # scheda l'ha cancellato nel frattempo): stesso 404, stessa
         # ragione onesta -- non e' un "ok" travestito.
         return web.json_response(
-            {"errore": f"nessun ricordo con id {memory_id}"}, status=404)
+            {"error": f"nessun ricordo con id {memory_id}"}, status=404)
 
     answer: dict = {"ok": True}
     if ignored:
@@ -325,10 +325,10 @@ async def handle_delete_memory(request: web.Request) -> web.Response:
     store = request.app.get("archivio_memoria")
     if store is None:
         return web.json_response(
-            {"errore": "l'archivio della memoria non e' disponibile"}, status=503)
+            {"error": "l'archivio della memoria non e' disponibile"}, status=503)
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
-        return web.json_response({"errore": "id non valido"}, status=400)
+        return web.json_response({"error": "id non valido"}, status=400)
     store.dimentica(memory_id)
     return web.Response(status=204)
