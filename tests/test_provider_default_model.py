@@ -194,7 +194,7 @@ def test_la_lettura_regge_un_archivio_che_non_c_e_ancora():
 # ---------------------------------------------------------------------------
 
 
-def test_applica_timeout_rifa_il_client_col_numero_nuovo(tmp_path):
+def test_apply_timeout_rifa_il_client_col_numero_nuovo(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         timeout_s=120)
@@ -207,7 +207,7 @@ def test_applica_timeout_rifa_il_client_col_numero_nuovo(tmp_path):
     assert runner._client.max_retries == 0, "il locale resta fail-fast"
 
 
-def test_applica_timeout_non_chiude_il_client_vecchio(tmp_path):
+def test_apply_timeout_non_chiude_il_client_vecchio(tmp_path):
     """Una richiesta puo' essere in volo sul client di prima proprio adesso:
     chiuderlo la ucciderebbe a meta' turno. Il vecchio resta al garbage
     collector, che lo raccoglie quando l'ultima richiesta finisce."""
@@ -219,7 +219,7 @@ def test_applica_timeout_non_chiude_il_client_vecchio(tmp_path):
     assert vecchio.is_closed() is False
 
 
-def test_applica_timeout_e_un_no_op_quando_il_numero_non_cambia(tmp_path):
+def test_apply_timeout_e_un_no_op_quando_il_numero_non_cambia(tmp_path):
     """Senza questa guardia OGNI salvataggio della pagina Modelli lascerebbe
     dietro un pool di connessioni -- anche quando l'utente ha solo riordinato
     la catena, che e' il gesto piu' frequente della pagina."""
@@ -244,7 +244,7 @@ def test_senza_un_numero_restano_i_due_predefiniti_di_sempre(tmp_path, locale, a
 # ---------------------------------------------------------------------------
 # Il modello che ESCE VERAMENTE verso il provider
 #
-# `_resolve_modello_corrente()` rende osservabile la lettura, ma e' un metodo
+# `_resolve_current_model()` rende osservabile la lettura, ma e' un metodo
 # che esiste per i test: da solo non prova che sia lo stesso valore a finire
 # nella richiesta. Queste due prove guardano il `model=` della chiamata.
 # ---------------------------------------------------------------------------

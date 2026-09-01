@@ -518,7 +518,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # appena qualcuno salvava da questa pagina. Adesso il numero è uno solo, e
     # questa lettura è la STESSA che il turno subisce: `_enqueue_chat_job`
     # legge `ponte.scadenza_min` e il runner locale riceve `ollama.timeout_s`
-    # (via `applica_timeout`, rifatto a ogni salvataggio).
+    # (via `apply_timeout`, rifatto a ogni salvataggio).
     #
     # I valori arrivano già riportati dentro gli estremi da `load_models_config`
     # (`_clamp_int`), quindi qui non si ripulisce una seconda volta.
@@ -985,7 +985,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
             return (values, source, provider_models.get("openrouter", ""),
                     in_use["openrouter"])
         # Ollama. Nessuna voce «auto»: il runner locale usa SEMPRE il modello
-        # scelto (`locale=True` fa vincere `_modello_scelto()` su ogni altro
+        # scelto (`local=True` fa vincere `_modello_scelto()` su ogni altro
         # ramo di `_resolve_model`),
         # perché quell'istanza ne ha scaricato uno solo e chiedergliene un
         # altro fallirebbe.

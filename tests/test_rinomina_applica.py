@@ -1146,12 +1146,24 @@ def test_una_sponda_verso_un_COSTRUTTORE_porta_il_nome_della_classe():
     dopo. Provato per mutazione: tolta la traduzione, `firme_rinominate`
     restituisce `{'__init__'}` e nessuna delle tre chiamate a
     `ReasoningQueue(leggi_fuso=...)` verrebbe classificata come sponda.
+
+    **La prima stesura SOSTITUIVA `__init__` col nome della classe, e la frase
+    che la giustificava era falsa alla lettera**: `super().__init__` e
+    `Exception.__init__` compaiono in otto siti del repo, uno dei quali in
+    `backends/openrouter_runner.py:69` -- l'ambito appena convertito. Cosi'
+    l'asse nuovo diventava cieco sulle sponde via `super()`, cioe' la STESSA
+    classe di cecita' che la cura esisteva per chiudere. Si dichiarano
+    entrambi.
     """
     gf = rinomina.Glossario(mappa={"fuso": "timezone"})
     dentro = ("class Coda:\n"
               "    def __init__(self, db, *, fuso=None):\n"
               "        self.f = fuso\n")
-    assert rinomina.firme_rinominate(dentro, gf, "reasoning") == {"Coda"}
+    assert rinomina.firme_rinominate(dentro, gf, "reasoning") == {"Coda", "__init__"}, (
+        "l'UNIONE, non la sostituzione: `super().__init__(db, fuso=...)` e "
+        "`Exception.__init__` esistono davvero -- uno in "
+        "`backends/openrouter_runner.py` -- e sostituire `__init__` col nome "
+        "della classe chiuderebbe una cecita' aprendone un'altra")
     assert rinomina.parametri_def_rinominati(dentro, gf, "reasoning") == {"fuso": "timezone"}
 
 
@@ -1399,3 +1411,29 @@ def test_chiudi_sponde_non_tocca_un_sito_che_non_e_stato_approvato(tmp_path):
     assert rinomina.chiudi_sponde(approvati) == 1
     assert f.read_text(encoding="utf-8") == ("a = mio.new_name\n"
                                              "b = altrui.vecchio_nome\n")
+
+
+def test_una_parola_scartata_non_si_raggiunge_per_singolarizzazione():
+    """`g.per` torna `None` sia per «non decisa» sia per «SCARTATA», e senza la
+    distinzione l'euristica del plurale scavalca la decisione.
+
+    Misurato dal vivo (fetta «la rinomina», review del lotto di `backends/`):
+    `code` e' scartata perche' e' INGLESE -- il campo `exc.status_code` -- ma
+    `_radici_plurali("code")` la riporta a `coda -> tail`, e il dry-run
+    proponeva `status_tail`. Correggere il NOME (`_code_of -> _status_code`) ha
+    peggiorato il conto, da uno a due composti falsi: **la cura apparteneva al
+    glossario, non a un'altra rinomina**.
+
+    Provato per mutazione: tolta la condizione `chiave not in g.scartate`,
+    questo test va rosso e `_status_code` torna a proporre `status_tail`.
+    """
+    gf = rinomina.Glossario(mappa={"coda": "tail"}, scartate={"code"})
+    assert rinomina.classifica("code", gf, "qualunque") is None
+    assert rinomina.classifica("_status_code", gf, "qualunque") is None
+    # la controprova: un plurale NON scartato si raggiunge ancora, e resta
+    # una PROPOSTA -- una singolarizzazione e' una supposizione morfologica,
+    # mai una lettura diretta del glossario
+    proposta = rinomina.classifica(
+        "code", rinomina.Glossario(mappa={"coda": "tail"}), "qualunque")
+    assert isinstance(proposta, rinomina.Proposta)
+    assert proposta.suggerito == "tail"

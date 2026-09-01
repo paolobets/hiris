@@ -283,7 +283,7 @@ class OpenAICompatRunner:
         # fetta «la catena diventa l'unica verita'» (Task 10): `fixed_model`
         # era UN parametro per TRE cose insieme -- «questo e' Ollama»,
         # «valida l'URL», «usa sempre questo modello». Le prime due sono la
-        # MODALITA' e restano legate a `locale`; la terza e' una DECISIONE
+        # MODALITA' e restano legate a `local`; la terza e' una DECISIONE
         # dell'utente, cambia da una PUT all'altra e adesso si LEGGE al
         # momento dell'uso (`leggi_modello`) invece di essere cotta nel
         # costruttore -- era il motivo per cui cambiare il modello di Ollama
@@ -570,7 +570,7 @@ class OpenAICompatRunner:
         # "intentionally ignored here (no warning: legitimately unused)": la
         # seconda meta' e' diventata falsa nel momento in cui l'utente ha
         # potuto impostare quel valore dalla pagina. Vedi
-        # `avvisa_thinking_ignorato` in cima al file.
+        # `warn_thinking_ignored` in cima al file.
         warn_thinking_ignored(self._backend_noun, thinking_budget)
         del thinking_budget
         import openai as _openai

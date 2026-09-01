@@ -18,7 +18,7 @@ from hiris.app.claude_runner import RunnerBackendError
 
 
 def test_init_openai_cloud_does_not_raise(tmp_path):
-    """Cloud variant (locale=False) must construct a valid httpx.Timeout."""
+    """Cloud variant (local=False) must construct a valid httpx.Timeout."""
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
@@ -565,7 +565,7 @@ def test_openai_compat_runner_ollama_is_not_cloud(tmp_path):
 
 
 def test_openai_compat_runner_cloud_is_cloud(tmp_path):
-    """OpenAI cloud runner (locale=False) must declare _is_cloud=True."""
+    """OpenAI cloud runner (local=False) must declare _is_cloud=True."""
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
@@ -1016,7 +1016,7 @@ def test_il_circuito_resta_aperto_per_tutto_il_raffreddamento(monkeypatch):
 
 def test_sotto_la_soglia_il_circuito_non_si_apre(monkeypatch):
     """Due errori di connessione non bastano: la soglia e' tre. Un
-    `stato_circuito` che restituisse un numero prima della soglia farebbe
+    `circuit_state` che restituisse un numero prima della soglia farebbe
     dire alla pagina «lo sto saltando» di un provider che il prodotto sta
     ancora interrogando -- una parola piu' larga del fatto."""
     orologio = [100.0]
@@ -1029,7 +1029,7 @@ def test_sotto_la_soglia_il_circuito_non_si_apre(monkeypatch):
 
 
 def test_lo_stato_del_circuito_e_letto_da_una_parte_sola(monkeypatch):
-    """`_circuit_is_open` DERIVA da `stato_circuito`: e' il confronto
+    """`_circuit_is_open` DERIVA da `circuit_state`: e' il confronto
     sull'orologio scritto una volta. Due confronti sullo stesso numero
     sarebbero due rappresentazioni della stessa cosa, e la rotta che la
     espone potrebbe dire il contrario del ramo che salta la rete."""

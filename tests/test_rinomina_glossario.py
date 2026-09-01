@@ -454,11 +454,17 @@ def test_il_glossario_vero_non_ha_conflitti_silenziosi(g):
     assert "guarda" not in g.mappa
 
 
-# L'unica coppia il cui INGLESE il glossario stesso rilegge come ITALIANO.
-# `codice -> code`, e `code` e' il plurale di `coda -> tail`: il nome prodotto
-# **sembra corretto in inglese**, ed e' proprio questo che lo rende insidioso.
-# Misurato su tutto il glossario: e' l'unica.
-_RITORNANTI_NOTE = {("codice", "code", "tail")}
+# **Vuoto dal 01/09, e il vuoto e' il risultato.** L'unica coppia che
+# ritornava era `codice -> code` (`code` e' il plurale di `coda -> tail`), e
+# la cura NON e' stata rinominare: e' stata decidere `code` nel glossario,
+# come parola SCARTATA perche' e' inglese. Rinominare `_code_of` in
+# `_status_code` aveva PEGGIORATO il conto -- `classifica('_status_code')`
+# proponeva `status_tail`, e i composti falsi erano passati da uno a due.
+#
+# La lezione, che vale piu' della riga: **quando l'inglese prodotto e'
+# leggibile come italiano, la cura appartiene al glossario, non a un'altra
+# rinomina** -- altrimenti si insegue un nome con un altro nome.
+_RITORNANTI_NOTE: set[tuple[str, str, str]] = set()
 
 
 def test_nessuna_parola_produce_un_inglese_che_il_glossario_rilegge_da_capo():

@@ -1680,7 +1680,7 @@ def _ricalcola_catena(app) -> None:
     if ollama is not None:
         # L'unico valore della fetta che non si può leggere al momento
         # dell'uso: `AsyncOpenAI` cuoce il timeout nel client alla costruzione
-        # (vedi `OpenAICompatRunner.applica_timeout`, che è un no-op quando il
+        # (vedi `OpenAICompatRunner.apply_timeout`, che è un no-op quando il
         # numero non è cambiato).
         ollama.apply_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
 

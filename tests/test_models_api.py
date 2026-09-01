@@ -907,7 +907,7 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
 @pytest.mark.asyncio
 async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client, monkeypatch):
     """L'altro dei due numeri che il Task 8 aveva lasciato all'ambiente. Adesso
-    e' il runner locale a riceverlo dall'archivio (`applica_timeout`, rifatto a
+    e' il runner locale a riceverlo dall'archivio (`apply_timeout`, rifatto a
     ogni salvataggio), quindi la pagina lo legge dalla stessa casa: se lo
     prendesse ancora da `OLLAMA_REQUEST_TIMEOUT` prometterebbe un'attesa che
     nessuna richiesta subisce.

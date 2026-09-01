@@ -279,7 +279,7 @@ def test_openrouter_runner_init(tmp_path):
         api_key="sk-or-test",
     )
     assert "openrouter.ai/api/v1" in str(runner._client.base_url)
-    # locale=False -> cloud retry profile
+    # local=False -> cloud retry profile
     assert runner._client.max_retries == 2
 
 

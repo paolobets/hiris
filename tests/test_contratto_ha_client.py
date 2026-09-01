@@ -41,11 +41,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _sorgenti_prova():
-    """I file `tests/test_*.py`, letti dal disco: `buchi` fa AST sul SORGENTE,
-    non introspezione, perche' due dei tre buchi vivono in una classe definita
-    dentro una funzione di test."""
-    return [f for f in sorted(ROOT.joinpath("tests").glob("test_*.py"))
-            if f.stem != Path(__file__).stem]
+    """OGNI file `.py` sotto `tests/`, letto dal disco: `buchi` fa AST sul
+    SORGENTE, non introspezione, perche' due dei tre buchi vivono in una classe
+    definita dentro una funzione di test.
+
+    **Il perimetro e' `rglob("*.py")` e non `glob("test_*.py")`, ed e' una
+    correzione**: la prima stesura diceva «misurato su tutta la suite» e
+    guardava i soli `test_*.py`, lasciando fuori `_contratti.py`, `conftest.py`
+    e i file di `tests/js/`. Oggi nessun buco vive li' -- il conto non cambia --
+    ma in un file la cui tesi e' «l'elenco si deriva, non si trascrive» il
+    PERIMETRO merita la stessa onesta' del contenuto.
+    """
+    return [f for f in sorted(ROOT.joinpath("tests").rglob("*.py"))
+            if f.stem != Path(__file__).stem and "__pycache__" not in f.parts]
 
 
 def _moduli():

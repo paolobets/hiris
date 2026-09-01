@@ -319,7 +319,16 @@ def classifica(nome: str, g: Glossario, ambito: str):
             tradotti.append(g.per(lemma, ambito))
             continue
         trovato = g.per(chiave, ambito)
-        if trovato is None:
+        if trovato is None and chiave not in g.scartate:
+            # **Una parola SCARTATA non si raggiunge per singolarizzazione.**
+            # `g.per` torna `None` sia per «non decisa» sia per «scartata», e
+            # senza questa distinzione l'euristica scavalca la decisione:
+            # `code` e' scartata perche' e' INGLESE, ma `_radici_plurali` la
+            # riporta a `coda -> tail` e il dry-run propone `status_tail`.
+            # Misurato dal vivo: `_codice_di -> _code_of` (lotto di
+            # `backends/`) generava due composti falsi permanenti dove prima
+            # ce n'era uno, e la cura appartiene al glossario, non a un'altra
+            # rinomina.
             for candidato in _radici_plurali(chiave):
                 trovato = g.per(candidato, ambito)
                 if trovato is not None:
@@ -943,8 +952,16 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
             # sottosistema che espone una classe sola -- misurato aprendo
             # `reasoning/`, il primo ambito convertito con tutte e quattro le
             # reti in piedi.
-            trovati.add(ultima_classe if ultima_def == "__init__" and ultima_classe
-                        else ultima_def)
+            # **L'UNIONE, non la sostituzione.** «`__init__` non compare mai
+            # in un sito di chiamata» e' falso alla lettera: `super().__init__`
+            # e `Exception.__init__` esistono, e uno vive proprio in
+            # `backends/openrouter_runner.py`. Sostituire `__init__` col nome
+            # della classe chiudeva una cecita' aprendone un'altra -- e una
+            # cecita' SOSTITUITA e' peggio di una scoperta, perche' sembra
+            # risolta. Si dichiarano entrambi.
+            trovati.add(ultima_def)
+            if ultima_def == "__init__" and ultima_classe:
+                trovati.add(ultima_classe)
     return trovati
 
 
