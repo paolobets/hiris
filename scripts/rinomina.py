@@ -1135,14 +1135,23 @@ def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
             tokens = list(tokenize.generate_tokens(io.StringIO(_leggi_grezzo(f)).readline))
         except (tokenize.TokenError, IndentationError, SyntaxError):
             continue
+        # I segmenti di un PERCORSO di import non sono sponde: `from
+        # ..casa.strumenti import X` porta `.strumenti` in posizione di
+        # attributo, ma quello e' il nome di un MODULO -- e un modulo si
+        # rinomina con `git mv`, non riscrivendo la stringa dell'import.
+        # Misurato aprendo `backends/`: senza questa riga, rinominare il
+        # parametro `strumenti` di `chat()` produceva **34 segnalazioni, 32
+        # delle quali erano `casa.strumenti`** in trenta file. Un elenco cosi'
+        # non si legge: e' il difetto n.1 del progetto applicato al rimedio.
+        percorso, _, _, _ = _righe_di_percorso_e_parola_chiave(tokens)
         precedente = None
         nome_importato = False
-        for t in tokens:
+        for indice, t in enumerate(tokens):
             if t.type == tokenize.NEWLINE:
                 nome_importato = False
             elif t.type == tokenize.NAME and t.string == "import":
                 nome_importato = True
-            elif t.type == tokenize.NAME and t.string in nomi:
+            elif t.type == tokenize.NAME and t.string in nomi and indice not in percorso:
                 if nome_importato:
                     specie = "import"
                 elif (precedente is not None and precedente.type == tokenize.OP

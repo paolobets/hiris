@@ -1141,3 +1141,26 @@ def test_un_metodo_normale_porta_il_proprio_nome_non_quello_della_classe():
               "    def leggi(self, fuso=None):\n"
               "        return fuso\n")
     assert rinomina.firme_rinominate(dentro, gf, "reasoning") == {"leggi"}
+
+
+def test_sponde_per_nome_non_scambia_un_percorso_di_import_per_un_attributo(tmp_path):
+    """`from ..casa.strumenti import X` porta `.strumenti` in posizione di
+    attributo, ma quello e' il nome di un MODULO -- e un modulo si rinomina con
+    `git mv`, non riscrivendo la stringa dell'import.
+
+    Misurato aprendo `backends/`, dove il parametro `strumenti` di `chat()`
+    doveva diventare `tools`: senza questa distinzione la terza rete dava **34
+    segnalazioni, 32 delle quali erano `casa.strumenti`** in trenta file. Un
+    elenco cosi' non si legge -- ed e' il difetto n.1 del progetto («un elenco
+    che dice sempre qualcosa») applicato al rimedio invece che al male.
+
+    Provato per mutazione: tolto il filtro sul percorso, questo test vede
+    ricomparire la riga dell'import.
+    """
+    (tmp_path / "importa.py").write_text(
+        "from pacchetto.strumenti import qualcosa\n"
+        "import pacchetto.strumenti\n", encoding="utf-8")
+    (tmp_path / "vero.py").write_text(
+        "x = oggetto.strumenti\n", encoding="utf-8")
+    trovati = rinomina.sponde_per_nome({"strumenti": "tools"}, radice=tmp_path)
+    assert {f.name for f, _, _, _, _ in trovati} == {"vero.py"}, trovati
