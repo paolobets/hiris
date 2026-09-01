@@ -66,10 +66,10 @@ window.HirisMemoriaRoute = (function () {
   ];
   var TIPO_ANCORA_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
 
-  function el(tag, cls, testo) {
+  function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
-    if (testo != null) e.textContent = testo;
+    if (text != null) e.textContent = text;
     return e;
   }
   function clearEl(node) {
@@ -109,14 +109,14 @@ window.HirisMemoriaRoute = (function () {
     return null;
   }
 
-  function mostraErroreCard(nodo, testo) {
-    nodo.textContent = testo;
+  function mostraErroreCard(nodo, text) {
+    nodo.textContent = text;
     nodo.style.display = '';
   }
 
-  function setStatus(testo) {
+  function setStatus(text) {
     var s = byId('memoria-status');
-    if (s) s.textContent = testo || '';
+    if (s) s.textContent = text || '';
   }
 
   /* ── Ancore: tre resi diversi per tre fatti diversi (regola 1) ────────── */
@@ -127,15 +127,15 @@ window.HirisMemoriaRoute = (function () {
     var ul = el('ul');
     ul.style.cssText = 'margin:0 0 8px;padding-left:18px;font-size:var(--fs-13);color:var(--text-2)';
     ancore.forEach(function (a) {
-      var nome = a.nome_attuale || a.nome_visto || a.riferimento;
-      var testo, tono;
-      if (a.esiste === true) { testo = nome; tono = ''; }
+      var name = a.nome_attuale || a.nome_visto || a.riferimento;
+      var text, tone;
+      if (a.esiste === true) { text = name; tone = ''; }
       /* `--err-ink`/`--warn-ink` e non `--err`/`--warn`: e' testo, e sul tema
          chiaro i due originali stanno sotto AA (4.05:1 e 2.04:1). */
-      else if (a.esiste === false) { testo = nome + ' — non esiste più nell’anagrafe'; tono = 'var(--err-ink)'; }
-      else { testo = nome + ' — non è stato possibile verificarlo'; tono = 'var(--warn-ink)'; }
-      var li = el('li', null, (TIPO_ANCORA_LABELS[a.tipo] || a.tipo) + ': ' + testo);
-      if (tono) li.style.color = tono;
+      else if (a.esiste === false) { text = name + ' — non esiste più nell’anagrafe'; tone = 'var(--err-ink)'; }
+      else { text = name + ' — non è stato possibile verificarlo'; tone = 'var(--warn-ink)'; }
+      var li = el('li', null, (TIPO_ANCORA_LABELS[a.tipo] || a.tipo) + ': ' + text);
+      if (tone) li.style.color = tone;
       ul.appendChild(li);
     });
     corpo.appendChild(ul);
@@ -147,10 +147,10 @@ window.HirisMemoriaRoute = (function () {
     wrap.style.cssText = 'border-top:1px solid var(--border);padding-top:10px;' +
       'display:flex;flex-direction:column;gap:8px;max-width:360px';
 
-    function campo(etichetta, input) {
+    function field(label, input) {
       var f = el('div');
       f.style.cssText = 'display:flex;flex-direction:column;gap:2px';
-      var l = el('label', null, etichetta);
+      var l = el('label', null, label);
       l.style.cssText = 'font-size:var(--fs-12);color:var(--text-3)';
       f.appendChild(l);
       f.appendChild(input);
@@ -177,9 +177,9 @@ window.HirisMemoriaRoute = (function () {
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.
     if (r.forza && !FORZA_OPZIONI.some(function (v) { return v[0] === r.forza; })) {
-      var sconosciuta = el('option', null, FORZA_LABELS[r.forza] || r.forza);
-      sconosciuta.value = r.forza;
-      selForza.appendChild(sconosciuta);
+      var unknown = el('option', null, FORZA_LABELS[r.forza] || r.forza);
+      unknown.value = r.forza;
+      selForza.appendChild(unknown);
     }
     selForza.value = r.forza || '';
 
@@ -198,25 +198,25 @@ window.HirisMemoriaRoute = (function () {
        cambia cio' che l'utente si aspettava di cambiare e' esattamente il
        silenzio che questo prodotto paga da sempre. Ora la regola sta sullo
        schermo, sopra i campi. */
-    var ambito = el('p', 'sc-desc',
+    var scope = el('p', 'sc-desc',
       'Da qui si corregge solo come HIRIS ha interpretato il ricordo. ' +
       'La frase, le ancore («Riguarda:») e le condizioni («Quando vale:») ' +
       'sono in sola lettura: si cambiano parlando in chat.');
-    ambito.style.cssText = 'margin:0;font-size:var(--fs-12);color:var(--text-3)';
-    wrap.appendChild(ambito);
+    scope.style.cssText = 'margin:0;font-size:var(--fs-12);color:var(--text-3)';
+    wrap.appendChild(scope);
 
-    wrap.appendChild(campo('Forza', selForza));
-    wrap.appendChild(campo('Grandezza (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));
-    wrap.appendChild(campo('Minimo', inpMinimo));
-    wrap.appendChild(campo('Massimo', inpMassimo));
-    wrap.appendChild(campo('Unità', inpUnita));
-    wrap.appendChild(campo('Detto da', inpDettoDa));
+    wrap.appendChild(field('Forza', selForza));
+    wrap.appendChild(field('Grandezza (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));
+    wrap.appendChild(field('Minimo', inpMinimo));
+    wrap.appendChild(field('Massimo', inpMassimo));
+    wrap.appendChild(field('Unità', inpUnita));
+    wrap.appendChild(field('Detto da', inpDettoDa));
 
-    var salva = el('button', 'btn btn-primary btn-sm', 'Salva correzione');
-    salva.type = 'button';
-    wrap.appendChild(salva);
+    var save = el('button', 'btn btn-primary btn-sm', 'Salva correzione');
+    save.type = 'button';
+    wrap.appendChild(save);
 
-    salva.addEventListener('click', function () {
+    save.addEventListener('click', function () {
       /* Solo i campi TOCCATI entrano nel corpo: un PATCH parziale lascia
          intatto ciò che l'utente non ha guardato (es. non rimanda `unita`
          se ha corretto solo `grandezza` — il server la rideduce da sé,
@@ -245,16 +245,16 @@ window.HirisMemoriaRoute = (function () {
         return;
       }
       cardErr.style.display = 'none';
-      salva.disabled = true;
+      save.disabled = true;
       api('api/memories/' + encodeURIComponent(r.id), { method: 'PATCH', body: JSON.stringify(corpo) })
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (json) {
             return { res: res, json: json };
           });
         })
-        .then(function (esito) {
-          salva.disabled = false;
-          if (esito.res.status === 404) {
+        .then(function (occurrence) {
+          save.disabled = false;
+          if (occurrence.res.status === 404) {
             /* Il ricaricamento sotto ricostruisce l'intera lista (compresa
                questa card, che sparisce): il messaggio va sulla riga di
                stato di pagina, che il ricaricamento NON tocca, altrimenti
@@ -263,21 +263,21 @@ window.HirisMemoriaRoute = (function () {
             dopoSalvataggio();
             return;
           }
-          if (!esito.res.ok) {
+          if (!occurrence.res.ok) {
             /* Rifiutata con la ragione (regola 2): il messaggio del server
                dice QUALE ancora o intervallo non va, non un generico
                "errore". */
-            mostraErroreCard(cardErr, (esito.json && esito.json.error) || ('Errore HTTP ' + esito.res.status));
+            mostraErroreCard(cardErr, (occurrence.json && occurrence.json.error) || ('Errore HTTP ' + occurrence.res.status));
             return;
           }
-          var nota = 'Correzione salvata.';
-          if (esito.json.correzioni && esito.json.correzioni.length) {
-            nota += ' ' + esito.json.correzioni.join('; ') + '.';
+          var note = 'Correzione salvata.';
+          if (occurrence.json.correzioni && occurrence.json.correzioni.length) {
+            note += ' ' + occurrence.json.correzioni.join('; ') + '.';
           }
-          setStatus(nota);
+          setStatus(note);
           dopoSalvataggio();
         }, function () {
-          salva.disabled = false;
+          save.disabled = false;
           mostraErroreCard(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
         });
     });
@@ -286,29 +286,29 @@ window.HirisMemoriaRoute = (function () {
   }
 
   /* ── Una card per ricordo ──────────────────────────────────────────────── */
-  function costruisciCard(r, ricarica) {
+  function costruisciCard(r, reload) {
     var card = el('div', 'section-card');
     card.style.cssText = 'margin-bottom:10px';
     var body = el('div', 'sc-body');
 
-    var testa = el('div');
-    testa.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px';
-    var quando = fmtQuando(r.detto_il);
-    testa.appendChild(el('span', 'field-hint', (quando || 'data non disponibile') + (r.detto_da ? ' · ' + r.detto_da : '')));
-    if (r.forza) testa.appendChild(el('span', 'agent-badge badge-off', FORZA_LABELS[r.forza] || r.forza));
-    if (r.corretto_da_utente) testa.appendChild(el('span', 'agent-badge badge-on', 'corretto da te'));
-    body.appendChild(testa);
+    var head = el('div');
+    head.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px';
+    var when = fmtQuando(r.detto_il);
+    head.appendChild(el('span', 'field-hint', (when || 'data non disponibile') + (r.detto_da ? ' · ' + r.detto_da : '')));
+    if (r.forza) head.appendChild(el('span', 'agent-badge badge-off', FORZA_LABELS[r.forza] || r.forza));
+    if (r.corretto_da_utente) head.appendChild(el('span', 'agent-badge badge-on', 'corretto da te'));
+    body.appendChild(head);
 
-    var frase = el('p', null, r.testo);
-    frase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0 0 8px';
-    body.appendChild(frase);
+    var phrase = el('p', null, r.testo);
+    phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0 0 8px';
+    body.appendChild(phrase);
 
-    var interpretazione = [];
-    if (r.grandezza) interpretazione.push(r.grandezza);
-    var intervallo = formattaIntervallo(r);
-    if (intervallo) interpretazione.push(intervallo);
-    body.appendChild(el('p', 'sc-desc', interpretazione.length
-      ? 'HIRIS ha capito: ' + interpretazione.join(' · ')
+    var interpretation = [];
+    if (r.grandezza) interpretation.push(r.grandezza);
+    var interval = formattaIntervallo(r);
+    if (interval) interpretation.push(interval);
+    body.appendChild(el('p', 'sc-desc', interpretation.length
+      ? 'HIRIS ha capito: ' + interpretation.join(' · ')
       : 'Nessuna struttura riconosciuta — resta solo la frase.'));
 
     if (r.ancore && r.ancore.length) rendiAncore(body, r.ancore);
@@ -317,8 +317,8 @@ window.HirisMemoriaRoute = (function () {
         r.condizioni.map(function (c) { return c.tipo + ': ' + c.valore; }).join(' · ')));
     }
 
-    var barra = el('div');
-    barra.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap';
+    var bar = el('div');
+    bar.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap';
     var btnCorreggi = el('button', 'btn btn-ghost btn-sm', 'Correggi');
     btnCorreggi.type = 'button';
     /* «Dimentica» era l'unico elemento della riga che sembrasse un bottone --
@@ -327,9 +327,9 @@ window.HirisMemoriaRoute = (function () {
        rosso di questo arriva col passaggio del mouse (`.btn-ghost-danger`). */
     var btnCancella = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Dimentica');
     btnCancella.type = 'button';
-    barra.appendChild(btnCorreggi);
-    barra.appendChild(btnCancella);
-    body.appendChild(barra);
+    bar.appendChild(btnCorreggi);
+    bar.appendChild(btnCancella);
+    body.appendChild(bar);
 
     var formWrap = el('div');
     formWrap.style.display = 'none';
@@ -340,10 +340,10 @@ window.HirisMemoriaRoute = (function () {
     body.appendChild(cardErr);
 
     btnCorreggi.addEventListener('click', function () {
-      var aperto = formWrap.style.display !== 'none';
+      var open = formWrap.style.display !== 'none';
       clearEl(formWrap);
-      if (aperto) { formWrap.style.display = 'none'; return; }
-      formWrap.appendChild(costruisciModuloCorrezione(r, cardErr, ricarica));
+      if (open) { formWrap.style.display = 'none'; return; }
+      formWrap.appendChild(costruisciModuloCorrezione(r, cardErr, reload));
       formWrap.style.display = '';
     });
 
@@ -357,7 +357,7 @@ window.HirisMemoriaRoute = (function () {
       if (!window.confirm(msg)) return;
       cardErr.style.display = 'none';
       api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
-        if (res.status === 204) { setStatus('Ricordo cancellato.'); ricarica(); return; }
+        if (res.status === 204) { setStatus('Ricordo cancellato.'); reload(); return; }
         return res.json().catch(function () { return {}; }).then(function (corpo) {
           mostraErroreCard(cardErr, (corpo && corpo.error) || ('Errore HTTP ' + res.status));
         });
@@ -372,30 +372,30 @@ window.HirisMemoriaRoute = (function () {
 
   /* ── I tre stati della lista: vuota, illeggibile, piena (ambiguità
      risolta nel brief: sono due fatti diversi e vanno detti diversamente) */
-  function rendiNonDisponibile(lista) {
-    clearEl(lista);
-    lista.appendChild(el('p', 'proposals-error',
+  function rendiNonDisponibile(list) {
+    clearEl(list);
+    list.appendChild(el('p', 'proposals-error',
       'L’archivio della memoria non è disponibile in questo momento. Non significa che non ci ' +
       'siano ricordi: la richiesta non ha trovato l’archivio.'));
   }
 
-  function rendiErrore(lista, ricarica) {
-    clearEl(lista);
-    lista.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere i ricordi. Riprova più tardi.'));
+  function rendiErrore(list, reload) {
+    clearEl(list);
+    list.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere i ricordi. Riprova più tardi.'));
     var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
     retry.type = 'button';
-    retry.addEventListener('click', ricarica);
-    lista.appendChild(retry);
+    retry.addEventListener('click', reload);
+    list.appendChild(retry);
   }
 
-  function rendiLista(lista, dati, ricarica) {
-    clearEl(lista);
-    var ricordi = dati.memories || [];
-    var totale = dati.total != null ? dati.total : ricordi.length;
-    var mostrati = dati.shown != null ? dati.shown : ricordi.length;
+  function rendiLista(list, data, reload) {
+    clearEl(list);
+    var memories = data.memories || [];
+    var total = data.total != null ? data.total : memories.length;
+    var show = data.shown != null ? data.shown : memories.length;
 
-    if (!ricordi.length) {
-      lista.appendChild(el('p', 'field-hint',
+    if (!memories.length) {
+      list.appendChild(el('p', 'field-hint',
         'Nessun ricordo salvato — quando dici a HIRIS «ricordati che…», comparirà qui.'));
       return;
     }
@@ -403,27 +403,27 @@ window.HirisMemoriaRoute = (function () {
     /* Il taglio a `_MEMORIES_SHOWN_LIMIT` si dichiara: senza questa
        riga un ricordo oltre il taglio è invisibile, indistinguibile da uno
        cancellato (handlers_memoria.py, regola 3). */
-    lista.appendChild(el('p', 'field-hint', mostrati < totale
-      ? ('Stai vedendo i ' + mostrati + ' ricordi più recenti su ' + totale + ' in tutto.')
-      : (totale === 1 ? '1 ricordo.' : totale + ' ricordi.')));
+    list.appendChild(el('p', 'field-hint', show < total
+      ? ('Stai vedendo i ' + show + ' ricordi più recenti su ' + total + ' in tutto.')
+      : (total === 1 ? '1 ricordo.' : total + ' ricordi.')));
 
-    ricordi.forEach(function (r) { lista.appendChild(costruisciCard(r, ricarica)); });
+    memories.forEach(function (r) { list.appendChild(costruisciCard(r, reload)); });
   }
 
-  function carica() {
-    var lista = byId('memoria-list');
-    if (!lista) return;
-    clearEl(lista);
-    lista.appendChild(el('p', 'field-hint', 'Caricamento…'));
+  function load() {
+    var list = byId('memoria-list');
+    if (!list) return;
+    clearEl(list);
+    list.appendChild(el('p', 'field-hint', 'Caricamento…'));
     return fetch('api/memories').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    }).then(function (dati) {
-      if (!dati.available) { rendiNonDisponibile(lista); return; }
-      rendiLista(lista, dati, carica);
+    }).then(function (data) {
+      if (!data.available) { rendiNonDisponibile(list); return; }
+      rendiLista(list, data, load);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);
-      rendiErrore(lista, carica);
+      rendiErrore(list, load);
     });
   }
 
@@ -438,10 +438,10 @@ window.HirisMemoriaRoute = (function () {
     var status = el('p', 'sc-desc', '');
     status.id = 'memoria-status';
     outlet.appendChild(status);
-    var lista = el('div');
-    lista.id = 'memoria-list';
-    outlet.appendChild(lista);
-    carica();
+    var list = el('div');
+    list.id = 'memoria-list';
+    outlet.appendChild(list);
+    load();
   }
 
   return { mount: mount };
