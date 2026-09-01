@@ -10,11 +10,11 @@ import aiohttp
 from aiohttp import web
 
 from ..decisione_modelli import (
-    FINE_CATENA,
-    componi_adesso,
-    componi_pannello,
-    componi_topologia,
-    piano_ha_il_token,
+    CHAIN_END,
+    compose_now,
+    compose_panel,
+    compose_topology,
+    subscription_has_token,
 )
 from ..migrazione_opzioni import _PREDEFINITI as _SEED_DEFAULTS
 
@@ -369,7 +369,7 @@ _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollam
 def _config_has_credential(request: web.Request, provider_id: str) -> bool:
     """Boolean-only credential presence check — NEVER return the secret value."""
     if provider_id == "subscription":
-        return piano_ha_il_token()
+        return subscription_has_token()
     if provider_id == "claude":
         if os.environ.get("CLAUDE_API_KEY", "").strip():
             return True
@@ -402,7 +402,7 @@ def _credentials_of_the_five(request: web.Request) -> dict[str, bool]:
     pagina, che adesso disegna la prima.
 
     Resta il fatto grezzo, che non è una rappresentazione dello stato ma la sua
-    misura, e serve a `componi_adesso` e a `componi_topologia`: entrambe la
+    misura, e serve a `compose_now` e a `compose_topology`: entrambe la
     ricevono dallo stesso dizionario, perché due misure degli stessi fatti
     nello stesso handler sarebbero lo stesso difetto un piano più sotto.
     """
@@ -524,25 +524,25 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # (`_clamp_int`), quindi qui non si ripulisce una seconda volta.
     _bridge_deadline = payload["ponte"]["scadenza_min"]
     _ollama_timeout = payload["ollama"]["timeout_s"]
-    payload["adesso"] = componi_adesso(
-        catena=_chain,
-        credenziali=_credentials,
-        modelli=_models,
-        ponte_attivo=_bridge_on,
+    payload["adesso"] = compose_now(
+        chain=_chain,
+        credentials=_credentials,
+        models=_models,
+        bridge_active=_bridge_on,
         # La STESSA lettura che `handlers_chat._enqueue_chat_job` fa a ogni
         # turno per scrivere la scadenza (`now + ponte.scadenza_min * 60`), e
         # lo STESSO numero che va ai connettori qui sotto: la frase in cima e
         # la riga sotto il piano non possono dire due minuti diversi.
-        scadenza_ponte_min=_bridge_deadline,
+        bridge_deadline_min=_bridge_deadline,
     )
     # La topologia: chi è in catena, in che ordine, e chi ne sta fuori. La
     # pagina RICEVE due liste già ordinate e non ne calcola nessuna --
     # invariante 2 della spec.
-    payload["catena"], payload["fuori_catena"] = componi_topologia(
+    payload["catena"], payload["fuori_catena"] = compose_topology(
         chain_order=_chain,
-        credenziali=_credentials,
-        modelli=_models,
-        ponte_attivo=_bridge_on,
+        credentials=_credentials,
+        models=_models,
+        bridge_active=_bridge_on,
         # Che cosa è successo DAVVERO, per provider (Task 11). Non una sonda:
         # `RegistroEsiti` è alimentato dal ciclo di ripiego del router, cioè
         # dal traffico vero. Sondare cinque provider a ogni apertura della
@@ -554,20 +554,20 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # una app che non ne ha uno (una fixture che non fa girare
         # `create_app`), e produce esattamente ciò che è vero in quel caso --
         # nessuna osservazione, e la pagina lo dice.
-        esiti=(request.app["registro_esiti"].occurrences()
+        occurrences=(request.app["registro_esiti"].occurrences()
                if request.app.get("registro_esiti") is not None else {}),
         # L'orologio di parete, letto QUI e passato: `decisione_modelli` è un
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
         # in cui «3 min fa» è una cosa che si possa provare.
-        adesso=time.time(),
-        scadenza_ponte_min=_bridge_deadline,
+        now=time.time(),
+        bridge_deadline_min=_bridge_deadline,
         ollama_timeout_s=_ollama_timeout,
     )
     # Cosa c'è dopo l'ultimo anello: una frase sulla catena, non su una riga.
     # Quale riga sia l'ultima cambia con un gesto, e la pagina riordina da sé
     # fra il gesto e la risposta del server -- attaccata a una riga, dopo un
     # riordino direbbe «ultimo della catena» di uno che non lo è più.
-    payload["fine_catena"] = FINE_CATENA if payload["catena"] else ""
+    payload["fine_catena"] = CHAIN_END if payload["catena"] else ""
     return web.json_response(payload)
 
 
@@ -614,7 +614,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
 # un difetto -- `resolve_model("auto", "chat", "auto")` restituisce "auto" e la
 # richiesta parte con `model="auto"` verso un provider che quel nome non lo
 # conosce. Nell'archivio «auto» è la STRINGA VUOTA, e il pannello la offre come
-# prima voce con la sua nota (`decisione_modelli.NOTA_AUTO`), che dice anche a
+# prima voce con la sua nota (`decisione_modelli.AUTO_NOTE`), che dice anche a
 # quale modello si risolve oggi.
 _CLAUDE_MODELS = [
     "claude-haiku-4-5-20251001",
@@ -642,7 +642,7 @@ _OPENAI_SKIP = re.compile(r"instruct|embed|vision|realtime|audio|transcribe|tts|
 # validità. Da qui si poteva stare davanti a un elenco che sembra vero, per un
 # provider che non risponderebbe comunque. Il valore torna al chiamante e
 # arriva fino al pannello, che lo dice con le parole di
-# `decisione_modelli.provenienza`.
+# `decisione_modelli.provenance`.
 async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
@@ -937,7 +937,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
     local_url = request.app.get("local_model_url", "")
 
     async def read(pid: str) -> tuple[list[str], str, str, str]:
-        """`(values, source, chosen, auto_risolto)` per un provider.
+        """`(values, source, chosen, auto_resolved)` per un provider.
 
         La fonte "assente" non è un errore: è «non c'è nessun elenco da
         leggere, e il perché è la credenziale». Serve perché un pannello che si
@@ -1005,9 +1005,9 @@ async def handle_list_models(request: web.Request) -> web.Response:
         # forma piccola del difetto che questa fetta chiude.
         if not requested and source == "assente":
             continue
-        providers.append(componi_pannello(
-            provider_id=pid, valori=values, fonte=source, scelto=chosen,
-            auto_risolto=auto, indirizzo=local_url, nascondi_gratuiti=hide_free,
+        providers.append(compose_panel(
+            provider_id=pid, values=values, source=source, chosen=chosen,
+            auto_resolved=auto, address=local_url, hide_free_models=hide_free,
         ))
 
     return web.json_response({"providers": providers})

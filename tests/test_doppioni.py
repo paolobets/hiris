@@ -145,7 +145,7 @@ def test_un_vocabolario_a_meta_nel_javascript_non_e_un_parallelo(tmp_path):
 def test_un_vocabolario_gia_legato_da_una_prova_non_si_segnala(tmp_path):
     """La raffinatura che conta: un duplicato non e' un difetto se qualcosa si
     rompe quando i due divergono. Il difetto e' la divergenza SILENZIOSA --
-    `ORDINE_FISSO` e' duplicato da sempre ed e' in regola, perche' una prova lo
+    `FIXED_ORDER` e' duplicato da sempre ed e' in regola, perche' una prova lo
     confronta col JavaScript."""
     py = _scrivi(tmp_path, "a.py", 'VOCI = ("alfa", "beta", "gamma")\n')
     js = _scrivi(tmp_path, "p.js", "var L = ['alfa', 'beta', 'gamma'];\n")

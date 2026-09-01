@@ -227,7 +227,7 @@ test('e la risposta arriva comunque intera', async (t) => {
 // invadente. La ragione è dei soldi: un ripiego silenzioso dal forfait al
 // consumo si scopre a fine mese.
 //
-// La riga arriva GIÀ SCRITTA dal server (`decisione_modelli.nota_ripiego`):
+// La riga arriva GIÀ SCRITTA dal server (`decisione_modelli.downgrade_note`):
 // qui non si compone niente, e infatti nessuno di questi test conosce una
 // parola del prodotto oltre a quella che il finto server ha appena mandato.
 // I test sono a COPPIE, come quelli degli strumenti qui sopra: senza il
@@ -300,7 +300,7 @@ test('appendNota con una nota vuota non disegna niente', (t) => {
      faceva cadere niente, perché send.js chiama `appendNota` solo dentro un
      `if (data.nota)`. Ma `appendNota` è esportata su `window.HirisChatMessages`
      e la nota è un campo FACOLTATIVO: la stringa vuota è il valore che
-     `nota_ripiego` restituisce quando non può parlare (motivo sconosciuto,
+     `downgrade_note` restituisce quando non può parlare (motivo sconosciuto,
      natura sconosciuta), ed è precisamente il caso in cui non si deve vedere
      niente. Una guardia che nessuno prova insegna a fidarsi delle guardie:
      o si toglie, o si prova. */

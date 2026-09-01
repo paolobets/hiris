@@ -6,15 +6,15 @@ complesso.
 """
 import pytest
 
-from hiris.app.decisione_modelli import ORDINE_FISSO, componi_adesso, natura, nome
+from hiris.app.decisione_modelli import FIXED_ORDER, compose_now, display_name, nature
 
 
 def test_il_primo_della_catena_e_quello_che_risponde():
-    d = componi_adesso(
-        catena=["claude", "openrouter"],
-        credenziali={"claude": True, "openrouter": True, "subscription": False},
-        modelli={"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6"},
-        ponte_attivo=False,
+    d = compose_now(
+        chain=["claude", "openrouter"],
+        credentials={"claude": True, "openrouter": True, "subscription": False},
+        models={"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6"},
+        bridge_active=False,
     )
     assert d["chi"] == "claude"
     assert d["via"] == "catena"
@@ -27,12 +27,12 @@ def test_col_ponte_acceso_il_piano_prova_per_primo_e_la_catena_lo_segue():
     consultata», ed era vero -- il ponte era un bivio a monte del router. Un
     test che tiene il nome di ieri quando il comportamento è cambiato è una
     dichiarazione falsa nel posto peggiore."""
-    d = componi_adesso(
-        catena=["claude", "openrouter"],
-        credenziali={"claude": True, "openrouter": True, "subscription": True},
-        modelli={"claude": "claude-opus-4-7", "subscription": "opus"},
-        ponte_attivo=True,
-        scadenza_ponte_min=5,
+    d = compose_now(
+        chain=["claude", "openrouter"],
+        credentials={"claude": True, "openrouter": True, "subscription": True},
+        models={"claude": "claude-opus-4-7", "subscription": "opus"},
+        bridge_active=True,
+        bridge_deadline_min=5,
     )
     assert d["chi"] == "subscription"
     assert d["via"] == "ponte"
@@ -48,11 +48,11 @@ def test_col_ponte_acceso_il_piano_prova_per_primo_e_la_catena_lo_segue():
 def test_il_piano_pagato_e_fuori_dalla_catena_e_uno_spreco_dichiarato():
     """Il caso del proprietario: token presente, piano pagato, ponte spento.
     È la riga che costa di più, ed è quella che porta l'azione consigliata."""
-    d = componi_adesso(
-        catena=["claude", "openrouter"],
-        credenziali={"claude": True, "openrouter": True, "subscription": True},
-        modelli={"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6"},
-        ponte_attivo=False,
+    d = compose_now(
+        chain=["claude", "openrouter"],
+        credentials={"claude": True, "openrouter": True, "subscription": True},
+        models={"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6"},
+        bridge_active=False,
     )
     spreco = [x for x in d["diagnosi"] if x["gravita"] == "spreco"]
     assert len(spreco) == 1
@@ -76,11 +76,11 @@ def test_lo_spreco_del_piano_porta_il_gesto_che_lo_ripara():
     sapere che cosa sta accendendo. E' la stessa disciplina di `dove` nel
     pannello del modello (Task 9), ed e' cio' che tiene la topologia fuori dal
     frontend (invariante 2)."""
-    d = componi_adesso(
-        catena=["claude"],
-        credenziali={"claude": True, "subscription": True},
-        modelli={"claude": "claude-opus-4-7"},
-        ponte_attivo=False,
+    d = compose_now(
+        chain=["claude"],
+        credentials={"claude": True, "subscription": True},
+        models={"claude": "claude-opus-4-7"},
+        bridge_active=False,
     )
     spreco = next(x for x in d["diagnosi"] if x["gravita"] == "spreco")
     assert spreco["azione"] == {
@@ -99,11 +99,11 @@ def test_col_ponte_acceso_il_gesto_e_quello_INVERSO():
     Sta su una riga che non denuncia niente (`fatto`): il ponte acceso con dei
     provider sotto e' uno stato sano, e il gesto va dove sta il fatto che si
     vuole cambiare, non dove c'e' un guasto."""
-    d = componi_adesso(
-        catena=["claude"],
-        credenziali={"claude": True, "subscription": True},
-        modelli={"claude": "claude-opus-4-7"},
-        ponte_attivo=True,
+    d = compose_now(
+        chain=["claude"],
+        credentials={"claude": True, "subscription": True},
+        models={"claude": "claude-opus-4-7"},
+        bridge_active=True,
     )
     fatto = next(x for x in d["diagnosi"] if x["gravita"] == "fatto")
     assert fatto["azione"] == {
@@ -118,11 +118,11 @@ def test_col_ponte_acceso_e_nessuno_sotto_non_si_offre_nessun_gesto():
     acceso e la catena vuota, spegnere il ponte lascerebbe HIRIS senza nessuno
     a cui chiedere. Offrire li' il gesto sarebbe consigliare di peggiorare, e
     un'azione che compare sempre e' un'azione che non significa niente."""
-    d = componi_adesso(
-        catena=[],
-        credenziali={"subscription": True},
-        modelli={},
-        ponte_attivo=True,
+    d = compose_now(
+        chain=[],
+        credentials={"subscription": True},
+        models={},
+        bridge_active=True,
     )
     assert [x["azione"] for x in d["diagnosi"]] == [None]
 
@@ -130,17 +130,17 @@ def test_col_ponte_acceso_e_nessuno_sotto_non_si_offre_nessun_gesto():
 def test_senza_token_del_piano_non_si_dichiara_nessuno_spreco():
     """La prova gemella della precedente: la diagnosi è un'affermazione su una
     cosa MISURATA (il token c'è), non un consiglio che si dà sempre."""
-    d = componi_adesso(
-        catena=["claude"],
-        credenziali={"claude": True, "subscription": False},
-        modelli={"claude": "claude-opus-4-7"},
-        ponte_attivo=False,
+    d = compose_now(
+        chain=["claude"],
+        credentials={"claude": True, "subscription": False},
+        models={"claude": "claude-opus-4-7"},
+        bridge_active=False,
     )
     assert [x for x in d["diagnosi"] if x["gravita"] == "spreco"] == []
 
 
 def test_catena_vuota_e_ponte_spento_lo_dice_invece_di_tacere():
-    d = componi_adesso(catena=[], credenziali={}, modelli={}, ponte_attivo=False)
+    d = compose_now(chain=[], credentials={}, models={}, bridge_active=False)
     assert d["chi"] is None
     assert d["nome"] == "" and d["natura"] == "" and d["via"] == ""
     assert d["frase"] == "HIRIS non può ancora rispondere: la catena è vuota."
@@ -148,9 +148,9 @@ def test_catena_vuota_e_ponte_spento_lo_dice_invece_di_tacere():
 
 
 def test_un_provider_senza_modello_noto_non_inventa_un_modello():
-    d = componi_adesso(
-        catena=["ollama"], credenziali={"ollama": True}, modelli={"ollama": ""},
-        ponte_attivo=False,
+    d = compose_now(
+        chain=["ollama"], credentials={"ollama": True}, models={"ollama": ""},
+        bridge_active=False,
     )
     assert d["modello"] == ""
     assert d["frase"] == "Il prossimo messaggio va a Ollama (in casa), in casa."
@@ -160,9 +160,9 @@ def test_le_sette_chiavi_ci_sono_sempre():
     """Il frontend disegna quello che riceve: una chiave assente sarebbe un
     `undefined` a schermo."""
     for d in (
-        componi_adesso(catena=[], credenziali={}, modelli={}, ponte_attivo=False),
-        componi_adesso(catena=["claude"], credenziali={"claude": True},
-                       modelli={"claude": "x"}, ponte_attivo=False),
+        compose_now(chain=[], credentials={}, models={}, bridge_active=False),
+        compose_now(chain=["claude"], credentials={"claude": True},
+                       models={"claude": "x"}, bridge_active=False),
     ):
         assert set(d) == {"chi", "nome", "modello", "natura", "via", "frase", "diagnosi"}
 
@@ -178,7 +178,7 @@ def test_un_nome_per_provider_mai_due(pid, atteso):
     """Oggi coesistono «Abbonamento (Claude Max)», «Abbonamento Claude
     (subscription)» e «Piano Claude Max»: tre nomi per una cosa, uno per ogni
     file. Da qui in poi il nome è uno, e sta qui."""
-    assert nome(pid) == atteso
+    assert display_name(pid) == atteso
 
 
 @pytest.mark.parametrize("pid,atteso", [
@@ -188,7 +188,7 @@ def test_un_nome_per_provider_mai_due(pid, atteso):
 def test_le_quattro_nature_e_non_un_prezzo(pid, atteso):
     """HIRIS non ha una fonte di prezzi e un prezzo vecchio è peggio di nessun
     prezzo. Le nature bastano per ordinare una catena (progetto §12.1)."""
-    assert natura(pid) == atteso
+    assert nature(pid) == atteso
 
 
 def test_ponte_acceso_senza_token_risponde_la_catena_e_il_costo_si_dichiara():
@@ -202,12 +202,12 @@ def test_ponte_acceso_senza_token_risponde_la_catena_e_il_costo_si_dichiara():
     ogni turno si paga a consumo. È la stessa ragione per cui la chat annuncia
     ogni ripiego -- un passaggio silenzioso dal forfait al consumo si scopre a
     fine mese."""
-    d = componi_adesso(
-        catena=["claude"],
-        credenziali={"claude": True, "subscription": False},
-        modelli={"claude": "claude-opus-4-7", "subscription": "sonnet"},
-        ponte_attivo=True,
-        scadenza_ponte_min=5,
+    d = compose_now(
+        chain=["claude"],
+        credentials={"claude": True, "subscription": False},
+        models={"claude": "claude-opus-4-7", "subscription": "sonnet"},
+        bridge_active=True,
+        bridge_deadline_min=5,
     )
     assert d["chi"] == "claude"
     assert d["via"] == "catena"
@@ -224,9 +224,9 @@ def test_ponte_acceso_senza_token_risponde_la_catena_e_il_costo_si_dichiara():
 def test_ponte_acceso_senza_token_e_senza_catena_non_puo_rispondere_nessuno():
     """La prova gemella della precedente: senza il token il turno passa alla
     catena, ma se sotto non c'è nessuno non c'è nessun ripiego da fare."""
-    d = componi_adesso(
-        catena=[], credenziali={"subscription": False}, modelli={},
-        ponte_attivo=True, scadenza_ponte_min=5,
+    d = compose_now(
+        chain=[], credentials={"subscription": False}, models={},
+        bridge_active=True, bridge_deadline_min=5,
     )
     assert d["chi"] is None
     assert d["frase"] == (
@@ -244,28 +244,28 @@ def test_ponte_acceso_senza_token_e_senza_catena_non_puo_rispondere_nessuno():
 def test_la_scadenza_dichiarata_e_quella_configurata_non_un_cinque_scritto_a_mano():
     """Il numero è quello che il turno subisce (`ponte.scadenza_min`, letto da
     `_enqueue_chat_job` a ogni accodamento), non un default scritto qui."""
-    d = componi_adesso(
-        catena=["claude"], credenziali={"claude": True, "subscription": True},
-        modelli={"subscription": "opus"},
-        ponte_attivo=True, scadenza_ponte_min=20,
+    d = compose_now(
+        chain=["claude"], credentials={"claude": True, "subscription": True},
+        models={"subscription": "opus"},
+        bridge_active=True, bridge_deadline_min=20,
     )
     assert "entro 20 minuti" in d["diagnosi"][0]["testo"]
 
-    vuota = componi_adesso(
-        catena=[], credenziali={"subscription": True},
-        modelli={"subscription": "opus"},
-        ponte_attivo=True, scadenza_ponte_min=20,
+    vuota = compose_now(
+        chain=[], credentials={"subscription": True},
+        models={"subscription": "opus"},
+        bridge_active=True, bridge_deadline_min=20,
     )
     assert "entro 20 minuti" in vuota["diagnosi"][0]["testo"]
 
 
 def test_col_token_presente_il_ponte_torna_a_essere_uno_che_risponde():
     """La prova gemella: la diagnosi non è un avviso che si dà sempre."""
-    d = componi_adesso(
-        catena=["claude"],
-        credenziali={"claude": True, "subscription": True},
-        modelli={"subscription": "opus"},
-        ponte_attivo=True,
+    d = compose_now(
+        chain=["claude"],
+        credentials={"claude": True, "subscription": True},
+        models={"subscription": "opus"},
+        bridge_active=True,
     )
     assert d["chi"] == "subscription"
     assert not [x for x in d["diagnosi"]
@@ -288,11 +288,11 @@ def test_col_ponte_acceso_e_una_catena_sotto_non_c_e_nessuno_spreco_da_dichiarar
     per giunta contro l'utente, che ha costruito la rete giusta. Resta un
     FATTO da dire (quanto si aspetta prima che la rete entri in funzione), e si
     dice in tondo."""
-    d = componi_adesso(
-        catena=["claude", "openrouter"],
-        credenziali={"claude": True, "openrouter": True, "subscription": True},
-        modelli={"subscription": "opus"},
-        ponte_attivo=True,
+    d = compose_now(
+        chain=["claude", "openrouter"],
+        credentials={"claude": True, "openrouter": True, "subscription": True},
+        models={"subscription": "opus"},
+        bridge_active=True,
     )
     assert len(d["diagnosi"]) == 1
     assert d["diagnosi"][0]["gravita"] == "fatto"
@@ -304,11 +304,11 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
     cui il ponte non risponde, non risponde nessuno. La prova gemella della
     precedente -- una gravità costante ne fa cadere sempre una -- e la frase
     non promette un successivo che non esiste."""
-    d = componi_adesso(
-        catena=[],
-        credenziali={"subscription": True},
-        modelli={"subscription": "opus"},
-        ponte_attivo=True,
+    d = compose_now(
+        chain=[],
+        credentials={"subscription": True},
+        models={"subscription": "opus"},
+        bridge_active=True,
     )
     assert d["chi"] == "subscription"
     assert len(d["diagnosi"]) == 1
@@ -317,23 +317,23 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 
 
 # ---------------------------------------------------------------------------
-# `componi_topologia`: chi e' in catena, in che ordine, e chi ne sta fuori.
+# `compose_topology`: chi e' in catena, in che ordine, e chi ne sta fuori.
 # La pagina riceve DUE liste gia' ordinate e non ne calcola nessuna: e'
 # l'invariante 2 della spec, applicato alla forma della catena come il
 # riquadro «Adesso» lo applica alla frase.
 # ---------------------------------------------------------------------------
 
 from hiris.app.decisione_modelli import (
-    componi_pannello,
-    e_alias,
-    provenienza,
-    spiegazione,
+    compose_panel,
+    explanation,
+    is_alias,
+    provenance,
 )
-from hiris.app.decisione_modelli import componi_topologia as _componi_topologia
+from hiris.app.decisione_modelli import compose_topology as _compose_topology
 
 
-def componi_topologia(**kw):
-    """I due parametri del Task 11 (`esiti`, `adesso`) sono OBBLIGATORI in
+def compose_topology(**kw):
+    """I due parametri del Task 11 (`occurrences`, `now`) sono OBBLIGATORI in
     produzione -- un valore di comodo lascerebbe passare in silenzio un
     chiamante che non li passa, e la pagina non direbbe mai niente sugli esiti.
 
@@ -344,9 +344,9 @@ def componi_topologia(**kw):
     hanno i loro test, in `tests/test_esiti_provider.py` e piu' sotto in
     questo stesso file.
     """
-    kw.setdefault("esiti", {})
-    kw.setdefault("adesso", 1000.0)
-    return _componi_topologia(**kw)
+    kw.setdefault("occurrences", {})
+    kw.setdefault("now", 1000.0)
+    return _compose_topology(**kw)
 
 CRED = {"claude": True, "openrouter": True, "openai": False,
         "ollama": False, "subscription": True}
@@ -355,8 +355,8 @@ MOD = {"claude": "claude-opus-4-7", "openrouter": "anthropic/claude-sonnet-4-6",
 
 
 def test_la_catena_porta_posizione_nome_modello_e_natura():
-    catena, _ = componi_topologia(chain_order=["claude", "openrouter"],
-                                  credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    catena, _ = compose_topology(chain_order=["claude", "openrouter"],
+                                  credentials=CRED, models=MOD, bridge_active=False)
     assert [r["id"] for r in catena] == ["claude", "openrouter"]
     assert [r["posizione"] for r in catena] == [1, 2]
     assert catena[0] == {"id": "claude", "nome": "Claude API",
@@ -376,16 +376,16 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
 
 
 def test_fuori_catena_ci_sta_tutto_il_resto_in_ordine_fisso():
-    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                 modelli=MOD, ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=["claude"], credentials=CRED,
+                                 models=MOD, bridge_active=False)
     assert [r["id"] for r in fuori] == ["subscription", "openrouter", "openai", "ollama"]
     assert all(r["posizione"] is None for r in fuori)
     assert [r["ha_credenziale"] for r in fuori] == [True, True, False, False]
 
 
 def test_col_ponte_acceso_il_piano_e_il_primo_della_catena_e_non_e_piu_fuori():
-    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
-                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    catena, fuori = compose_topology(chain_order=["claude", "openrouter"],
+                                      credentials=CRED, models=MOD, bridge_active=True)
     assert catena[0]["id"] == "subscription"
     assert catena[0]["posizione"] == 1
     assert [r["posizione"] for r in catena] == [1, 2, 3]
@@ -398,8 +398,8 @@ def test_il_piano_non_e_riordinabile_e_gli_altri_quattro_si():
     seconda di dove la catena si rompe. Il campo viaggia nel payload perché la
     pagina non offra un riordino che il backend rifiuterebbe -- che è
     esattamente il difetto che questa fetta esiste per chiudere."""
-    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
-                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    catena, fuori = compose_topology(chain_order=["claude", "openrouter"],
+                                      credentials=CRED, models=MOD, bridge_active=True)
     per_id = {r["id"]: r for r in catena + fuori}
     assert per_id["subscription"]["riordinabile"] is False
     for pid in ("claude", "openrouter", "openai", "ollama"):
@@ -416,9 +416,9 @@ def test_il_connettore_del_ponte_dichiara_il_ripiego_adesso_che_esiste():
     disegna un anello senza che nessuno tocchi il frontend. Nessun test di
     `tests/js/` e' cambiato con lei, ed e' la prova che il progetto §11.1
     chiedeva."""
-    catena, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                  modelli=MOD, ponte_attivo=True,
-                                  scadenza_ponte_min=5)
+    catena, _ = compose_topology(chain_order=["claude"], credentials=CRED,
+                                  models=MOD, bridge_active=True,
+                                  bridge_deadline_min=5)
     piano = catena[0]
     assert piano["id"] == "subscription"
     assert piano["connettore"] == "se non risponde entro 5 min"
@@ -432,9 +432,9 @@ def test_col_ripiego_il_piano_e_un_anello_e_la_catena_continua_sotto_di_lui():
     fra lui e la riga sotto, e questo test tiene insieme le due cose -- una
     posizione senza il connettore giusto sarebbe di nuovo una pagina vera riga
     per riga e falsa nel complesso."""
-    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
-                                      credenziali=CRED, modelli=MOD,
-                                      ponte_attivo=True, scadenza_ponte_min=5)
+    catena, fuori = compose_topology(chain_order=["claude", "openrouter"],
+                                      credentials=CRED, models=MOD,
+                                      bridge_active=True, bridge_deadline_min=5)
     assert [r["id"] for r in catena] == ["subscription", "claude", "openrouter"]
     assert [r["posizione"] for r in catena] == [1, 2, 3]
     assert catena[0]["connettore"] == "se non risponde entro 5 min"
@@ -447,9 +447,9 @@ def test_il_connettore_mostra_un_numero_solo_quando_quel_numero_e_una_decisione(
     che nessuno ha scelto (i tre tentativi su un 429 di Claude, 5+15+45 secondi)
     non si inventa qui: lo raccontera' la riga di stato dopo che e' successo."""
     cred = dict(CRED, ollama=True)
-    catena, _ = componi_topologia(chain_order=["claude", "ollama"],
-                                  credenziali=cred, modelli=MOD,
-                                  ponte_attivo=False, ollama_timeout_s=300)
+    catena, _ = compose_topology(chain_order=["claude", "ollama"],
+                                  credentials=cred, models=MOD,
+                                  bridge_active=False, ollama_timeout_s=300)
     per_id = {r["id"]: r for r in catena}
     assert per_id["ollama"]["connettore"] == "se non risponde entro 300 s"
     assert per_id["claude"]["connettore"] == "se rifiuta, subito"
@@ -468,17 +468,17 @@ def test_sopra_i_cinque_minuti_il_connettore_dichiara_il_tetto_che_lo_schema_non
     e il turno non passa al successivo affatto. La nota diceva «la risposta la
     trovi ricaricando» -- vero allora (il worker del ponte poteva ancora
     rispondere), falso adesso per il ripiego, che non avviene."""
-    sopra, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                 modelli=MOD, ponte_attivo=True,
-                                 scadenza_ponte_min=7)
+    sopra, _ = compose_topology(chain_order=["claude"], credentials=CRED,
+                                 models=MOD, bridge_active=True,
+                                 bridge_deadline_min=7)
     assert sopra[0]["connettore_nota"] == (
         "sopra i 5 minuti la chat smette di aspettare prima della scadenza, e "
         "il turno non passa al successivo")
     assert "7 min" in sopra[0]["connettore"]
 
-    sotto, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                 modelli=MOD, ponte_attivo=True,
-                                 scadenza_ponte_min=5)
+    sotto, _ = compose_topology(chain_order=["claude"], credentials=CRED,
+                                 models=MOD, bridge_active=True,
+                                 bridge_deadline_min=5)
     assert sotto[0]["connettore_nota"] == "", (
         "sotto il tetto non succede niente: dirlo sempre sarebbe un avviso per "
         "uno stato che non c'e'"
@@ -486,8 +486,8 @@ def test_sopra_i_cinque_minuti_il_connettore_dichiara_il_tetto_che_lo_schema_non
 
 
 def test_chi_sta_fuori_dalla_catena_non_ha_un_dopo():
-    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                 modelli=MOD, ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=["claude"], credentials=CRED,
+                                 models=MOD, bridge_active=False)
     for r in fuori:
         assert r["connettore"] == "", r["id"]
         assert r["connettore_nota"] == "", r["id"]
@@ -496,14 +496,14 @@ def test_chi_sta_fuori_dalla_catena_non_ha_un_dopo():
 def test_quando_manca_la_credenziale_il_payload_dice_QUALE():
     """Sono tre credenziali diverse -- un token, una chiave, un indirizzo -- e
     la parola che le distingue e' un'affermazione sul prodotto: sta dove stanno
-    le altre (i nomi del Task 5, le frasi di `componi_adesso`), non nella
+    le altre (i nomi del Task 5, le frasi di `compose_now`), non nella
     pagina. Scritta nella pagina sarebbe una seconda descrizione della regola
     di credenziale, in un altro linguaggio, libera di divergere da
     `_config_has_credential` senza che nessun test se ne accorga."""
     senza = {"claude": False, "openrouter": False, "openai": False,
              "ollama": False, "subscription": False}
-    _, fuori = componi_topologia(chain_order=[], credenziali=senza, modelli=MOD,
-                                 ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=[], credentials=senza, models=MOD,
+                                 bridge_active=False)
     per_id = {r["id"]: r for r in fuori}
     assert per_id["subscription"]["manca"] == "manca il token"
     assert per_id["claude"]["manca"] == "manca la chiave"
@@ -515,9 +515,9 @@ def test_quando_manca_la_credenziale_il_payload_dice_QUALE():
 def test_chi_ha_la_credenziale_non_dice_che_ne_manca_una():
     """`manca` e' vuoto quando non manca niente: la pagina disegna solo cio'
     che non e' vuoto, e non ha nessuna condizione da valutare."""
-    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
-                                      credenziali=CRED, modelli=MOD,
-                                      ponte_attivo=False)
+    catena, fuori = compose_topology(chain_order=["claude", "openrouter"],
+                                      credentials=CRED, models=MOD,
+                                      bridge_active=False)
     per_id = {r["id"]: r for r in catena + fuori}
     assert per_id["claude"]["manca"] == ""
     assert per_id["openrouter"]["manca"] == ""
@@ -531,13 +531,13 @@ def test_il_piano_dice_perche_non_si_sposta_e_perche_non_si_mette_in_catena():
     non e' un membro di `chain_order`, la sua presenza discende dal ponte -- e
     il giorno in cui la regola cambia (Task 13 e 14) cambia questa stringa, in
     un posto solo, senza che la pagina venga toccata."""
-    dentro, _ = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                  modelli=MOD, ponte_attivo=True)
+    dentro, _ = compose_topology(chain_order=["claude"], credentials=CRED,
+                                  models=MOD, bridge_active=True)
     assert dentro[0]["id"] == "subscription"
     assert "In testa o fuori" in dentro[0]["nota"]
 
-    _, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                 modelli=MOD, ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=["claude"], credentials=CRED,
+                                 models=MOD, bridge_active=False)
     piano = {r["id"]: r for r in fuori}["subscription"]
     assert "ponte" in piano["nota"], (
         "col token in mano e fuori dalla catena, la riga deve dire COME ci "
@@ -559,8 +559,8 @@ def test_la_riga_del_piano_manda_DOVE_il_gesto_esiste_davvero(ponte):
     Il commento sopra `nota()` prometteva che sarebbe cambiata «senza che la
     pagina venga toccata»: questo test e' la prova che la promessa e' stata
     mantenuta, e la rete che impedisce alla stringa vecchia di tornare."""
-    catena, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                      modelli=MOD, ponte_attivo=ponte)
+    catena, fuori = compose_topology(chain_order=["claude"], credentials=CRED,
+                                      models=MOD, bridge_active=ponte)
     piano = {r["id"]: r for r in catena + fuori}["subscription"]
     assert "Configurazione add-on" not in piano["nota"], piano["nota"]
     assert "riquadro in cima" in piano["nota"], (
@@ -573,9 +573,9 @@ def test_gli_altri_quattro_non_portano_nessuna_nota():
     """La nota e' l'eccezione, non l'arredamento: quattro righe su cinque
     offrono tutti i gesti e non hanno niente da spiegare. Se la nota comparisse
     su tutte, la riga che conta non si distinguerebbe piu'."""
-    catena, fuori = componi_topologia(chain_order=["claude", "openrouter"],
-                                      credenziali=CRED, modelli=MOD,
-                                      ponte_attivo=True)
+    catena, fuori = compose_topology(chain_order=["claude", "openrouter"],
+                                      credentials=CRED, models=MOD,
+                                      bridge_active=True)
     per_id = {r["id"]: r for r in catena + fuori}
     for pid in ("claude", "openrouter", "openai", "ollama"):
         assert per_id[pid]["nota"] == "", pid
@@ -585,8 +585,8 @@ def test_un_subscription_finito_in_chain_order_non_conta():
     """`chain_order` porta solo i quattro backend del router. La presenza del
     piano in testa discende da `ponte.attivo`, non dall'appartenenza: se
     qualcuno scrivesse `subscription` nella catena, non deve succedere niente."""
-    catena, fuori = componi_topologia(chain_order=["subscription", "claude"],
-                                      credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    catena, fuori = compose_topology(chain_order=["subscription", "claude"],
+                                      credentials=CRED, models=MOD, bridge_active=False)
     assert [r["id"] for r in catena] == ["claude"]
     assert "subscription" in [r["id"] for r in fuori]
 
@@ -596,8 +596,8 @@ def test_un_subscription_in_chain_order_non_si_sdoppia_col_ponte_acceso():
     il piano viene messo in testa, e se `chain_order` lo portasse ANCORA
     comparirebbe due volte in catena -- due righe per lo stesso provider, cioe'
     la seconda rappresentazione dello stato, in miniatura e a schermo."""
-    catena, fuori = componi_topologia(chain_order=["subscription", "claude"],
-                                      credenziali=CRED, modelli=MOD, ponte_attivo=True)
+    catena, fuori = compose_topology(chain_order=["subscription", "claude"],
+                                      credentials=CRED, models=MOD, bridge_active=True)
     assert [r["id"] for r in catena] == ["subscription", "claude"]
     assert [r["posizione"] for r in catena] == [1, 2]
     assert "subscription" not in [r["id"] for r in fuori]
@@ -607,25 +607,25 @@ def test_un_provider_in_chain_order_senza_credenziale_finisce_fuori_non_in_caten
     """È la stessa regola di `provider_in_catena`, vista dal lato della pagina:
     non esiste una riga «in catena ma non può» -- sarebbe la seconda
     rappresentazione dello stato che questa fetta toglie."""
-    catena, fuori = componi_topologia(chain_order=["ollama", "claude"],
-                                      credenziali=CRED, modelli=MOD, ponte_attivo=False)
+    catena, fuori = compose_topology(chain_order=["ollama", "claude"],
+                                      credentials=CRED, models=MOD, bridge_active=False)
     assert [r["id"] for r in catena] == ["claude"]
     assert "ollama" in [r["id"] for r in fuori]
 
 
 def test_una_catena_vuota_lascia_tutti_e_cinque_fuori():
-    catena, fuori = componi_topologia(chain_order=[], credenziali=CRED,
-                                      modelli=MOD, ponte_attivo=False)
+    catena, fuori = compose_topology(chain_order=[], credentials=CRED,
+                                      models=MOD, bridge_active=False)
     assert catena == []
-    assert [r["id"] for r in fuori] == list(ORDINE_FISSO)
+    assert [r["id"] for r in fuori] == list(FIXED_ORDER)
 
 
 def test_nessuna_riga_porta_la_parola_vietata():
     """Invariante 3: «Attivo» significa «interruttore acceso e credenziale
     presente» e si legge «funziona». Non deve rientrare da nessuna porta --
     nemmeno da un campo del payload."""
-    catena, fuori = componi_topologia(chain_order=["claude"], credenziali=CRED,
-                                      modelli=MOD, ponte_attivo=True)
+    catena, fuori = compose_topology(chain_order=["claude"], credentials=CRED,
+                                      models=MOD, bridge_active=True)
     for r in catena + fuori:
         assert "attivo" not in " ".join(str(v) for v in r.values()).lower()
         assert "active" not in set(r.keys())
@@ -641,12 +641,12 @@ def test_nessuna_riga_porta_la_parola_vietata():
 
 
 def test_una_lettura_riuscita_nomina_chi_ha_risposto():
-    assert provenienza("openrouter", "viva") == "Letti da openrouter.ai adesso."
-    assert provenienza("openai", "viva") == "Letti da api.openai.com adesso."
+    assert provenance("openrouter", "viva") == "Letti da openrouter.ai adesso."
+    assert provenance("openai", "viva") == "Letti da api.openai.com adesso."
 
 
 def test_una_lettura_fallita_nomina_chi_NON_ha_risposto_e_dice_il_dubbio():
-    riga = provenienza("openrouter", "riserva")
+    riga = provenance("openrouter", "riserva")
     assert "Elenco di riserva" in riga
     assert "openrouter.ai" in riga
     assert "potrebbe non esistere più" in riga
@@ -654,9 +654,9 @@ def test_una_lettura_fallita_nomina_chi_NON_ha_risposto_e_dice_il_dubbio():
 
 def test_ollama_dice_su_QUALE_macchina_sono_scaricati():
     """«in casa» e' una natura, e diventa concreta solo col nome della casa."""
-    assert provenienza("ollama", "viva", indirizzo="http://192.168.1.42:11434") == (
+    assert provenance("ollama", "viva", address="http://192.168.1.42:11434") == (
         "Scaricati su http://192.168.1.42:11434 — letti adesso.")
-    riga = provenienza("ollama", "riserva", indirizzo="http://192.168.1.42:11434")
+    riga = provenance("ollama", "riserva", address="http://192.168.1.42:11434")
     assert "192.168.1.42" in riga
     assert "chiave rifiutata" not in riga, "Ollama non ha una chiave da rifiutare"
 
@@ -670,10 +670,10 @@ def test_claude_api_nomina_l_ospite_come_gli_altri_due():
 
     Il percorso generico produce gia' le due frasi giuste: serviva solo una
     riga in `_OSPITI`. Un caso particolare cancellato, non uno aggiunto."""
-    riga = provenienza("claude", "riserva")
+    riga = provenance("claude", "riserva")
     assert "api.anthropic.com" in riga
     assert "potrebbe non esistere più" in riga
-    assert provenienza("claude", "viva") == "Letti da api.anthropic.com adesso."
+    assert provenance("claude", "viva") == "Letti da api.anthropic.com adesso."
 
 
 def test_il_difetto_gemello_si_LEGGE_invece_di_essere_taciuto():
@@ -681,8 +681,8 @@ def test_il_difetto_gemello_si_LEGGE_invece_di_essere_taciuto():
     ricompaiono anche con la casella spuntata. Non si corregge (filtrarli
     renderebbe la riserva una lista diversa da quella del sorgente, cioe' una
     terza cosa): si dichiara, dove l'utente sta guardando."""
-    muta = provenienza("openrouter", "riserva", avviso_gratuiti=False)
-    parlante = provenienza("openrouter", "riserva", avviso_gratuiti=True)
+    muta = provenance("openrouter", "riserva", free_models_notice=False)
+    parlante = provenance("openrouter", "riserva", free_models_notice=True)
     assert "nascondi i gratuiti" not in muta
     assert "nascondi i gratuiti" in parlante
     assert "non ha effetto" in parlante
@@ -695,12 +695,12 @@ def test_il_pannello_di_openrouter_lo_dice_solo_quando_la_casella_e_spuntata():
     # su cio' che l'utente ha davanti (fetta OpenRouter, 22/08/2026: la
     # riserva e' stata potata dei nomi morti, che erano tutti `:free`).
     con_free = ["openrouter:a/b:free", "openrouter:c/d"]
-    acceso = componi_pannello(provider_id="openrouter", valori=con_free,
-                              fonte="riserva", scelto="", nascondi_gratuiti=True)
-    spento = componi_pannello(provider_id="openrouter", valori=con_free,
-                              fonte="riserva", scelto="", nascondi_gratuiti=False)
-    viva = componi_pannello(provider_id="openrouter", valori=con_free,
-                            fonte="viva", scelto="", nascondi_gratuiti=True)
+    acceso = compose_panel(provider_id="openrouter", values=con_free,
+                              source="riserva", chosen="", hide_free_models=True)
+    spento = compose_panel(provider_id="openrouter", values=con_free,
+                              source="riserva", chosen="", hide_free_models=False)
+    viva = compose_panel(provider_id="openrouter", values=con_free,
+                            source="viva", chosen="", hide_free_models=True)
     assert "non ha effetto" in acceso["provenienza"]
     assert "non ha effetto" not in spento["provenienza"]
     assert "non ha effetto" not in viva["provenienza"], (
@@ -709,9 +709,9 @@ def test_il_pannello_di_openrouter_lo_dice_solo_quando_la_casella_e_spuntata():
 
 
 def test_i_gratuiti_si_riconoscono_nella_voce_e_non_nella_pagina():
-    p = componi_pannello(
-        provider_id="openrouter", fonte="viva", scelto="",
-        valori=["openrouter:openai/gpt-4.1",
+    p = compose_panel(
+        provider_id="openrouter", source="viva", chosen="",
+        values=["openrouter:openai/gpt-4.1",
                 "openrouter:google/gemma-3-27b-it:free"])
     assert [v["nota"] for v in p["modelli"]] == ["", "gratuito"]
 
@@ -720,13 +720,13 @@ def test_la_voce_auto_c_e_solo_dove_auto_esiste():
     """Ollama usa SEMPRE il modello scelto (`fixed_model` vince su ogni altro
     ramo di `_resolve_model`): una voce «scelto da HIRIS» li' prometterebbe una
     scelta che il runner non fa."""
-    con = componi_pannello(provider_id="claude", valori=["claude-opus-4-7"],
-                           fonte="riserva", scelto="",
-                           auto_risolto="claude-sonnet-4-6")
+    con = compose_panel(provider_id="claude", values=["claude-opus-4-7"],
+                           source="riserva", chosen="",
+                           auto_resolved="claude-sonnet-4-6")
     assert con["modelli"][0] == {"valore": "",
                                  "nota": "scelto da HIRIS: oggi claude-sonnet-4-6"}
-    senza = componi_pannello(provider_id="ollama", valori=["llama3.1:8b"],
-                             fonte="viva", scelto="llama3.1:8b")
+    senza = compose_panel(provider_id="ollama", values=["llama3.1:8b"],
+                             source="viva", chosen="llama3.1:8b")
     assert [v["valore"] for v in senza["modelli"]] == ["llama3.1:8b"]
 
 
@@ -739,12 +739,12 @@ def test_dove_si_scrive_e_un_percorso_e_ANCHE_il_piano_ne_ha_uno():
 
     Questa e' la riga che accende i tre radio: con `dove` vuoto il frontend
     calcola `scrivibile = false` e li disabilita."""
-    assert componi_pannello(provider_id="ollama", valori=[], fonte="viva",
-                            scelto="")["dove"] == ["ollama", "modello"]
-    assert componi_pannello(provider_id="openai", valori=[], fonte="viva",
-                            scelto="")["dove"] == ["provider_models", "openai"]
-    assert componi_pannello(provider_id="subscription", valori=[], fonte="fissa",
-                            scelto="opus")["dove"] == ["ponte", "modello"]
+    assert compose_panel(provider_id="ollama", values=[], source="viva",
+                            chosen="")["dove"] == ["ollama", "modello"]
+    assert compose_panel(provider_id="openai", values=[], source="viva",
+                            chosen="")["dove"] == ["provider_models", "openai"]
+    assert compose_panel(provider_id="subscription", values=[], source="fissa",
+                            chosen="opus")["dove"] == ["ponte", "modello"]
 
 
 def test_solo_il_piano_dichiara_l_elenco_completo():
@@ -754,12 +754,12 @@ def test_solo_il_piano_dichiara_l_elenco_completo():
     dall'elenco -- cioe' se il pannello deve offrire un campo dove incollare un
     identificatore. Possono divergere il giorno in cui un provider avesse un
     insieme chiuso di identificatori veri: per questo sono due campi."""
-    piano = componi_pannello(provider_id="subscription", valori=[],
-                             fonte="fissa", scelto="opus")
+    piano = compose_panel(provider_id="subscription", values=[],
+                             source="fissa", chosen="opus")
     assert piano["elenco_completo"] is True
     for pid in ("claude", "openai", "openrouter", "ollama"):
-        voce = componi_pannello(provider_id=pid, valori=["x"], fonte="viva",
-                                scelto="x")
+        voce = compose_panel(provider_id=pid, values=["x"], source="viva",
+                                chosen="x")
         assert voce["elenco_completo"] is False, pid
 
 
@@ -767,15 +767,15 @@ def test_la_spiegazione_del_piano_non_manda_piu_a_claude_api():
     """Diventerebbe falsa nel momento esatto in cui la fetta funziona: il
     modello del piano non segue piu' quello di Claude API, e mandare li'
     sarebbe mandare a cambiare il valore sbagliato."""
-    testo = spiegazione("subscription")
+    testo = explanation("subscription")
     assert "Claude API" not in testo
     assert testo, "e non diventa vuota: la forma del pannello va spiegata comunque"
 
 
 def test_il_piano_e_l_unico_che_sceglie_un_ALIAS():
-    assert e_alias("subscription") is True
+    assert is_alias("subscription") is True
     for pid in ("claude", "openai", "openrouter", "ollama"):
-        assert e_alias(pid) is False, pid
+        assert is_alias(pid) is False, pid
 
 
 def test_su_ollama_senza_modello_la_riga_dice_cosa_manca_e_non_offre_il_gesto():
@@ -783,17 +783,17 @@ def test_su_ollama_senza_modello_la_riga_dice_cosa_manca_e_non_offre_il_gesto():
     pallino resta acceso, e a mancare e' il modello: entrare in catena
     produrrebbe un anello che il router salta in silenzio."""
     cred = {**CRED, "ollama": True}
-    _, fuori = componi_topologia(chain_order=["claude"], credenziali=cred,
-                                 modelli={**MOD, "ollama": ""}, ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=["claude"], credentials=cred,
+                                 models={**MOD, "ollama": ""}, bridge_active=False)
     riga = {r["id"]: r for r in fuori}["ollama"]
     assert riga["ha_credenziale"] is True
     assert riga["manca"] == ""
     assert riga["riordinabile"] is False
     assert "il modello no" in riga["nota"]
 
-    _, fuori = componi_topologia(chain_order=["claude"], credenziali=cred,
-                                 modelli={**MOD, "ollama": "llama3.1:8b"},
-                                 ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=["claude"], credentials=cred,
+                                 models={**MOD, "ollama": "llama3.1:8b"},
+                                 bridge_active=False)
     riga = {r["id"]: r for r in fuori}["ollama"]
     assert riga["riordinabile"] is True
     assert riga["nota"] == ""
@@ -803,8 +803,8 @@ def test_senza_indirizzo_la_riga_dice_QUELLO_e_non_il_modello():
     """Un impedimento alla volta, e il piu' esterno per primo: «manca il
     modello» sopra un Ollama che non ha nemmeno un indirizzo manderebbe a
     risolvere la cosa sbagliata."""
-    _, fuori = componi_topologia(chain_order=[], credenziali=CRED,
-                                 modelli={**MOD, "ollama": ""}, ponte_attivo=False)
+    _, fuori = compose_topology(chain_order=[], credentials=CRED,
+                                 models={**MOD, "ollama": ""}, bridge_active=False)
     riga = {r["id"]: r for r in fuori}["ollama"]
     assert riga["manca"] == "manca l'indirizzo"
     assert riga["nota"] == ""
@@ -833,10 +833,10 @@ def test_il_caso_del_proprietario_si_legge_sulla_riga():
     balance too low`, e per giorni la pagina l'ha mostrata come funzionante
     mentre OpenRouter serviva ogni turno al posto suo. Adesso le due righe
     dicono due cose diverse, ed e' la verita' misurata."""
-    catena, _ = _componi_topologia(
-        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO,
-        esiti={"claude": CREDITO_FINITO, "openrouter": HA_RISPOSTO})
+    catena, _ = _compose_topology(
+        chain_order=["claude", "openrouter"], credentials=CRED, models=MOD,
+        bridge_active=False, now=ADESSO,
+        occurrences={"claude": CREDITO_FINITO, "openrouter": HA_RISPOSTO})
     righe = {r["id"]: r for r in catena}
     assert righe["claude"]["stato_testo"] == (
         "ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa")
@@ -847,16 +847,16 @@ def test_il_fatto_grezzo_viaggia_accanto_alla_frase():
     """La pagina disegna diverso cio' che ha rifiutato -- pallino grigio-ambra,
     nome che perde peso -- e per farlo legge `esito.tipo`, non il testo.
     Dedurre una regola da una frase e' come ricostruirla."""
-    catena, _ = _componi_topologia(
-        chain_order=["claude"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO, esiti={"claude": CREDITO_FINITO})
+    catena, _ = _compose_topology(
+        chain_order=["claude"], credentials=CRED, models=MOD,
+        bridge_active=False, now=ADESSO, occurrences={"claude": CREDITO_FINITO})
     assert catena[0]["esito"] == CREDITO_FINITO
 
 
 def test_chi_non_e_stato_osservato_porta_esito_None_e_non_un_finto_successo():
-    catena, fuori = _componi_topologia(
-        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO, esiti={"claude": CREDITO_FINITO})
+    catena, fuori = _compose_topology(
+        chain_order=["claude", "openrouter"], credentials=CRED, models=MOD,
+        bridge_active=False, now=ADESSO, occurrences={"claude": CREDITO_FINITO})
     righe = {r["id"]: r for r in catena + fuori}
     assert righe["openrouter"]["esito"] is None
     assert righe["openrouter"]["stato_testo"] == "non è mai servito ripiegare qui"
@@ -867,9 +867,9 @@ def test_mai_provato_dice_due_cose_diverse_in_prima_e_in_seconda_posizione():
     allarmante (chi dovrebbe rispondere a ogni messaggio non ha mai risposto a
     nessuno), in seconda e' la notizia buona (il ripiego non e' mai servito).
     UNA regola sola, ed e' la posizione."""
-    catena, _ = _componi_topologia(
-        chain_order=["claude", "openrouter"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO, esiti={})
+    catena, _ = _compose_topology(
+        chain_order=["claude", "openrouter"], credentials=CRED, models=MOD,
+        bridge_active=False, now=ADESSO, occurrences={})
     assert [r["stato_testo"] for r in catena] == [
         "non l'hai ancora usato", "non è mai servito ripiegare qui"]
 
@@ -879,9 +879,9 @@ def test_senza_credenziale_e_senza_osservazioni_la_riga_di_stato_tace():
     perche' non e' mai stata interrogata. «Non l'hai ancora usato» sotto
     sarebbe la stessa cosa detta due volte, la seconda con meno
     informazione."""
-    _, fuori = _componi_topologia(
-        chain_order=["claude"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO, esiti={})
+    _, fuori = _compose_topology(
+        chain_order=["claude"], credentials=CRED, models=MOD,
+        bridge_active=False, now=ADESSO, occurrences={})
     riga = {r["id"]: r for r in fuori}["openai"]
     assert riga["ha_credenziale"] is False
     assert riga["manca"] == "manca la chiave"
@@ -893,10 +893,10 @@ def test_un_esito_sopravvive_alla_credenziale_tolta():
     quella riga E' STATA interrogata davvero, e il fatto resta. Tacere qui
     sarebbe cancellare un'osservazione per una ragione di configurazione."""
     senza = {**CRED, "openrouter": False}
-    _, fuori = _componi_topologia(
-        chain_order=["claude"], credenziali=senza, modelli=MOD,
-        ponte_attivo=False, adesso=ADESSO,
-        esiti={"openrouter": dict(CREDITO_FINITO, famiglia="irraggiungibile",
+    _, fuori = _compose_topology(
+        chain_order=["claude"], credentials=senza, models=MOD,
+        bridge_active=False, now=ADESSO,
+        occurrences={"openrouter": dict(CREDITO_FINITO, famiglia="irraggiungibile",
                                   codice=None, da_quante=2)})
     riga = {r["id"]: r for r in fuori}["openrouter"]
     assert riga["stato_testo"] == (
@@ -909,9 +909,9 @@ def test_l_eta_della_riga_cresce_col_solo_passare_del_tempo():
     registro non ringiovanisce da solo, vista dal punto in cui la pagina la
     legge."""
     def _riga(adesso):
-        catena, _ = _componi_topologia(
-            chain_order=["claude"], credenziali=CRED, modelli=MOD,
-            ponte_attivo=False, adesso=adesso, esiti={"claude": CREDITO_FINITO})
+        catena, _ = _compose_topology(
+            chain_order=["claude"], credentials=CRED, models=MOD,
+            bridge_active=False, now=adesso, occurrences={"claude": CREDITO_FINITO})
         return catena[0]["stato_testo"]
 
     assert _riga(ADESSO).endswith("3 min fa")
@@ -923,9 +923,9 @@ def test_anche_il_piano_ha_la_sua_riga_di_stato():
     """Il piano e' un provider come gli altri per cio' che riguarda cosa e'
     successo: se il ponte ha risposto, la riga lo dice. La sua eccezione e'
     solo dove si entra in catena, non cosa si e' osservato."""
-    catena, _ = _componi_topologia(
-        chain_order=["claude"], credenziali=CRED, modelli=MOD,
-        ponte_attivo=True, adesso=ADESSO, esiti={"subscription": HA_RISPOSTO})
+    catena, _ = _compose_topology(
+        chain_order=["claude"], credentials=CRED, models=MOD,
+        bridge_active=True, now=ADESSO, occurrences={"subscription": HA_RISPOSTO})
     assert catena[0]["id"] == "subscription"
     assert catena[0]["stato_testo"] == "ha risposto 3 min fa"
 
@@ -936,8 +936,8 @@ def test_i_due_parametri_nuovi_sono_obbligatori():
     test se ne accorgerebbe. E' la forma di guasto peggiore che questa fetta
     conosca, ed e' la ragione per cui il Task 14 dipende da questo."""
     with pytest.raises(TypeError):
-        _componi_topologia(chain_order=["claude"], credenziali=CRED,
-                           modelli=MOD, ponte_attivo=False)
+        _compose_topology(chain_order=["claude"], credentials=CRED,
+                           models=MOD, bridge_active=False)
 
 
 # ── La nota del ripiego (Task 14) ─────────────────────────────────────────
@@ -946,11 +946,11 @@ def test_i_due_parametri_nuovi_sono_obbligatori():
 # ogni volta (decisione del proprietario, 13 agosto), e cio' che la riga dice
 # e' l'unica cosa che l'utente vedra' mai di tutta questa fetta.
 
-from hiris.app.decisione_modelli import nota_ripiego
+from hiris.app.decisione_modelli import downgrade_note
 
 
 def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():
-    assert nota_ripiego(motivo="scadenza", chi_ha_risposto="openrouter") == (
+    assert downgrade_note(reason="scadenza", who_answered="openrouter") == (
         "Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRouter, "
         "a consumo.")
 
@@ -958,12 +958,12 @@ def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():
 def test_i_tre_motivi_sono_tre_fatti_diversi():
     """Tre fatti osservati, non una diagnosi: «non ha risposto in tempo» non e'
     «non ha un token», e chi legge fa due cose diverse."""
-    assert "non ha un token" in nota_ripiego(
-        motivo="manca il token", chi_ha_risposto="claude")
-    assert "tetto di messaggi per oggi" in nota_ripiego(
-        motivo="tetto giornaliero", chi_ha_risposto="claude")
-    assert "non ha risposto in tempo" in nota_ripiego(
-        motivo="scadenza", chi_ha_risposto="claude")
+    assert "non ha un token" in downgrade_note(
+        reason="manca il token", who_answered="claude")
+    assert "tetto di messaggi per oggi" in downgrade_note(
+        reason="tetto giornaliero", who_answered="claude")
+    assert "non ha risposto in tempo" in downgrade_note(
+        reason="scadenza", who_answered="claude")
 
 
 @pytest.mark.parametrize("motivo", ["scadenza", "manca il token", "tetto giornaliero"])
@@ -974,7 +974,7 @@ def test_la_nota_non_diagnostica_e_non_allarma(motivo):
     la trasforma in una diagnosi inventata: e' successo davvero, il giorno in
     cui HIRIS, davanti a un comando riuscito, si invento' un guasto del
     dispositivo e mando' il proprietario a cercarlo."""
-    testo = nota_ripiego(motivo=motivo, chi_ha_risposto="openrouter")
+    testo = downgrade_note(reason=motivo, who_answered="openrouter")
     for vietata in ("attenzione", "errore", "problema", "probabilmente", "forse",
                     "sembra", "potrebbe", "verifica", "controlla"):
         assert vietata not in testo.lower(), (vietata, testo)
@@ -985,7 +985,7 @@ def test_la_natura_di_chi_risponde_e_sempre_dichiarata():
     cui la nota esiste."""
     for pid, attesa in (("openrouter", "a consumo"), ("ollama", "in casa"),
                         ("claude", "a consumo"), ("openai", "a consumo")):
-        assert attesa in nota_ripiego(motivo="scadenza", chi_ha_risposto=pid), pid
+        assert attesa in downgrade_note(reason="scadenza", who_answered=pid), pid
 
 
 def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
@@ -993,7 +993,7 @@ def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
     meta' per cui esiste, e «ha risposto pinco, .» sarebbe una riga rotta che
     parla di soldi: meglio non scriverla. Stessa regola di
     `_who_answered_note` quando non sa chi ha risposto."""
-    assert nota_ripiego(motivo="scadenza", chi_ha_risposto="pinco") == ""
+    assert downgrade_note(reason="scadenza", who_answered="pinco") == ""
 
 
 def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
@@ -1001,16 +1001,16 @@ def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
     produrrebbe, con un ripiego del tipo «se non so niente, comportati come
     prima», una frase generica su un ripiego di cui non si sa il perche': si
     tace, e il test che lega le due estremita' (`_piano_puo_rispondere` ->
-    `_MOTIVI_RIPIEGO`) sta in test_chat_subscription_path.py."""
-    assert nota_ripiego(motivo="boh", chi_ha_risposto="openrouter") == ""
+    `_DOWNGRADE_REASONS`) sta in test_chat_subscription_path.py."""
+    assert downgrade_note(reason="boh", who_answered="openrouter") == ""
 
 
 def test_la_nota_nomina_il_piano_con_il_nome_che_ha_in_tutto_il_prodotto():
     """Un nome per provider, mai due (Task 5). La nota non se ne inventa uno
-    suo: se `NOMI` cambiasse, cambierebbe anche qui."""
-    testo = nota_ripiego(motivo="scadenza", chi_ha_risposto="openrouter")
-    assert testo.startswith("Il " + nome("subscription") + " ")
-    assert nome("openrouter") in testo
+    suo: se `DISPLAY_NAMES` cambiasse, cambierebbe anche qui."""
+    testo = downgrade_note(reason="scadenza", who_answered="openrouter")
+    assert testo.startswith("Il " + display_name("subscription") + " ")
+    assert display_name("openrouter") in testo
 
 
 def test_l_avviso_sui_gratuiti_segue_il_CONTENUTO_dell_elenco():
@@ -1020,14 +1020,14 @@ def test_l_avviso_sui_gratuiti_segue_il_CONTENUTO_dell_elenco():
     riserva conteneva cinque `:free`; falso dal momento in cui e' stata potata
     dei nomi morti, che erano tutti gratuiti. Una riga che dice il falso su
     cio' che si sta guardando e' il difetto n.1 di questo prodotto."""
-    from hiris.app.decisione_modelli import componi_pannello
+    from hiris.app.decisione_modelli import compose_panel
 
-    con_gratuiti = componi_pannello(
-        provider_id="openrouter", valori=["openrouter:a/b:free", "openrouter:c/d"],
-        fonte="riserva", scelto="", nascondi_gratuiti=True)
-    senza = componi_pannello(
-        provider_id="openrouter", valori=["openrouter:c/d"],
-        fonte="riserva", scelto="", nascondi_gratuiti=True)
+    con_gratuiti = compose_panel(
+        provider_id="openrouter", values=["openrouter:a/b:free", "openrouter:c/d"],
+        source="riserva", chosen="", hide_free_models=True)
+    senza = compose_panel(
+        provider_id="openrouter", values=["openrouter:c/d"],
+        source="riserva", chosen="", hide_free_models=True)
 
     assert "non ha effetto" in con_gratuiti["provenienza"], (
         "l'elenco ne contiene uno: l'avviso e' vero e va detto")

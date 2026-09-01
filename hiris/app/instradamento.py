@@ -27,8 +27,8 @@ che nascesse domani non potrebbe inventarsene una terza senza accorgersene.
   volta** (decisione del proprietario, 13 agosto): un passaggio silenzioso a
   un provider a pagamento si scopre a fine mese.
 
-Il motivo e' una **chiave** di `decisione_modelli._MOTIVI_RIPIEGO`, mai una
-frase: la frase la compone `nota_ripiego`, e un motivo fuori vocabolario non
+Il motivo e' una **chiave** di `decisione_modelli._DOWNGRADE_REASONS`, mai una
+frase: la frase la compone `downgrade_note`, e un motivo fuori vocabolario non
 produce un errore -- produce silenzio, cioe' esattamente il prelievo non
 annunciato che la regola esiste per evitare.
 
@@ -42,7 +42,7 @@ from __future__ import annotations
 import logging
 
 from .api.handlers_models import _STORE_DEFAULTS
-from .decisione_modelli import piano_ha_il_token
+from .decisione_modelli import subscription_has_token
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     Il tetto si legge dall'ARCHIVIO (`ponte.tetto_giornaliero`), dove l'utente
     lo cambia: quella che si cambia dev'essere quella che il turno subisce.
     """
-    if not piano_ha_il_token():
+    if not subscription_has_token():
         return False, "manca il token"
     ceiling = int(
         (app.get("models_config") or {})
@@ -89,7 +89,7 @@ def chi_risponde(app) -> tuple[str, str]:
     """`("ponte", "")` oppure `("catena", motivo)`.
 
     Il motivo e' vuoto quando non c'e' nessun ripiego da dichiarare, ed e' una
-    chiave di `_MOTIVI_RIPIEGO` quando ce n'e' uno. Vedi il docstring del
+    chiave di `_DOWNGRADE_REASONS` quando ce n'e' uno. Vedi il docstring del
     modulo per la distinzione, che non e' una sfumatura: e' la differenza fra
     una configurazione e un prelievo.
     """

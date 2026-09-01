@@ -56,22 +56,22 @@ import os
 # stessa credenziale «sarebbero la seconda rappresentazione in miniatura»:
 # c'erano entrambe, e il commento descriveva il difetto al presente credendo
 # di descriverne l'assenza.
-VARIABILE_TOKEN_DEL_PIANO = "CLAUDE_CODE_OAUTH_TOKEN"
+SUBSCRIPTION_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
 
 
-def piano_ha_il_token() -> bool:
+def subscription_has_token() -> bool:
     """Vero se la credenziale dell'abbonamento Claude c'e'.
 
     Solo la PRESENZA, mai il valore: chi chiama non deve poterlo stampare per
     sbaglio in un log o in una risposta.
     """
-    return bool(os.environ.get(VARIABILE_TOKEN_DEL_PIANO, "").strip())
+    return bool(os.environ.get(SUBSCRIPTION_TOKEN_VAR, "").strip())
 
 # Un nome per provider, mai due. Prima di questa fetta l'abbonamento ne aveva
 # tre -- «Abbonamento (Claude Max)» (models-route.js), «Abbonamento Claude
 # (subscription)» (handlers_models.py), «Piano Claude Max» (translations) --
 # uno per ogni file che aveva bisogno di nominarlo.
-NOMI: dict[str, str] = {
+DISPLAY_NAMES: dict[str, str] = {
     "subscription": "Piano Claude Max",
     "claude": "Claude API",
     "openrouter": "OpenRouter",
@@ -82,7 +82,7 @@ NOMI: dict[str, str] = {
 # Quattro categorie, non un prezzo: HIRIS non ha una fonte di listini, e un
 # prezzo vecchio è una bugia che sembra un servizio (progetto §12.1). Sono
 # l'unica cosa che serve per decidere l'ordine di una catena.
-NATURE: dict[str, str] = {
+NATURES: dict[str, str] = {
     "subscription": "nel piano",
     "claude": "a consumo",
     "openrouter": "a consumo",
@@ -93,12 +93,12 @@ NATURE: dict[str, str] = {
 # Che cosa manca, quando manca. Sono TRE credenziali diverse e la parola le
 # distingue: il piano ha un token OAuth, tre provider hanno una chiave, Ollama
 # ha un indirizzo. Stanno qui e non nel frontend per la stessa ragione dei nomi
-# (Task 5) e delle frasi di `componi_adesso`: sono affermazioni sul prodotto, e
+# (Task 5) e delle frasi di `compose_now`: sono affermazioni sul prodotto, e
 # ognuna corrisponde a un ramo di `api/handlers_models._config_has_credential`.
 # Scritte nella pagina sarebbero una seconda descrizione della regola di
 # credenziale, in un altro linguaggio, libera di divergere dalla prima -- che è
 # la forma esatta del difetto che questa fetta chiude.
-MANCANZE: dict[str, str] = {
+MISSING_REASONS: dict[str, str] = {
     "subscription": "manca il token",
     "claude": "manca la chiave",
     "openrouter": "manca la chiave",
@@ -112,13 +112,13 @@ MANCANZE: dict[str, str] = {
 # ritroverebbe in mezzo, a dire «ultimo della catena» di uno che non lo è più.
 # Resta vera anche dopo il Task 14: l'ultimo che non risponde è la fine della
 # strada, col ponte o senza.
-FINE_CATENA = "ultimo della catena: se non risponde, la chat dà errore"
+CHAIN_END = "ultimo della catena: se non risponde, la chat dà errore"
 
 # L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
 # quindi non può contraddire niente. È lo STESSO di `config.yaml` (l'ordine di
 # ripiego di `balanced`, con il piano subito dopo Claude API): una terza lista
 # con un terzo ordine sarebbe la stessa incoerenza che questa fetta chiude.
-ORDINE_FISSO: tuple[str, ...] = (
+FIXED_ORDER: tuple[str, ...] = (
     "claude", "subscription", "openrouter", "openai", "ollama",
 )
 
@@ -131,7 +131,7 @@ ORDINE_FISSO: tuple[str, ...] = (
 # trovati e tolti dalla riga del piano).
 #
 # `dove` e' il PERCORSO nell'archivio, non un nome di comando, per la stessa
-# ragione per cui `componi_pannello` manda un percorso invece del nome di una
+# ragione per cui `compose_panel` manda un percorso invece del nome di una
 # chiave (Task 9): cosi' la pagina non sa che cosa sta accendendo. Applica un
 # valore a una posizione e rilegge -- nessun `tipo` da riconoscere, nessun
 # `if (id === 'subscription')`, nessuna parola del prodotto scritta in
@@ -141,28 +141,28 @@ ORDINE_FISSO: tuple[str, ...] = (
 # Sono DUE e non uno: togliere `ponte.attivo` dalle opzioni dell'add-on toglie
 # anche l'unico modo che c'era di SPEGNERE il ponte. Un interruttore che si
 # accende e non si spegne e' peggio di nessun interruttore.
-AZIONE_METTI_IL_PIANO_IN_TESTA = {
+ACTION_PUT_SUBSCRIPTION_FIRST = {
     "etichetta": "Mettilo primo",
     "dove": ["ponte", "attivo"],
     "valore": True,
 }
-AZIONE_TOGLI_IL_PIANO = {
+ACTION_REMOVE_SUBSCRIPTION = {
     "etichetta": "Togli il piano dalla catena",
     "dove": ["ponte", "attivo"],
     "valore": False,
 }
 
 
-def nome(provider_id: str) -> str:
-    return NOMI.get(provider_id, provider_id)
+def display_name(provider_id: str) -> str:
+    return DISPLAY_NAMES.get(provider_id, provider_id)
 
 
-def natura(provider_id: str) -> str:
-    return NATURE.get(provider_id, "")
+def nature(provider_id: str) -> str:
+    return NATURES.get(provider_id, "")
 
 
-def manca(provider_id: str) -> str:
-    return MANCANZE.get(provider_id, "manca la credenziale")
+def missing_reason(provider_id: str) -> str:
+    return MISSING_REASONS.get(provider_id, "manca la credenziale")
 
 
 # ── La riga di stato: l'ultimo esito osservato, in parole ──────────────────
@@ -177,7 +177,7 @@ def manca(provider_id: str) -> str:
 # pure, nessun orologio, nessun `os.environ`).
 
 
-def _eta(secondi: float) -> str:
+def _age(seconds: float) -> str:
     """Quanto tempo fa, in parole, senza dire più di quanto si sa.
 
     Si arrotonda SEMPRE PER DIFETTO: a 90 minuti si dice «1 h fa», perché «2 h
@@ -197,7 +197,7 @@ def _eta(secondi: float) -> str:
     Una guardia che non guarda niente è una riga che insegna a fidarsi delle
     guardie.)
     """
-    s = float(secondi)
+    s = float(seconds)
     if s < 60:
         return "poco fa"
     if s < 3600:
@@ -209,7 +209,7 @@ def _eta(secondi: float) -> str:
     return f"{int(s // 86400)} giorni fa"
 
 
-def _quante(da_quante: int) -> str:
+def _count(from_count: int) -> str:
     """«L'ultima richiesta» oppure «le ultime N richieste».
 
     Il conteggio è la metà che conta: «ha rifiutato le ultime 40 richieste»
@@ -217,8 +217,8 @@ def _quante(da_quante: int) -> str:
     incidente, è lo stato. Nel caso del proprietario è la differenza fra «ah,
     un errore» e «ah, sto buttando via una chiamata a messaggio da settimane».
     """
-    return "l'ultima richiesta" if int(da_quante) <= 1 else (
-        f"le ultime {int(da_quante)} richieste")
+    return "l'ultima richiesta" if int(from_count) <= 1 else (
+        f"le ultime {int(from_count)} richieste")
 
 
 # La causa in parole, per la famiglia `credenziale`. Quattro codici, due azioni
@@ -227,7 +227,7 @@ def _quante(da_quante: int) -> str:
 # OpenRouter 402), 401 e 403 dicono che la chiave non va bene. Chiamarle tutte
 # «credito esaurito» sarebbe un'ipotesi sulla causa, che è la cosa che questo
 # prodotto ha smesso di fare.
-_CAUSA_CREDENZIALE: dict[int, str] = {
+_CREDENTIAL_CAUSE: dict[int, str] = {
     400: "credito esaurito",
     402: "credito esaurito",
     401: "la chiave non è accettata",
@@ -235,7 +235,7 @@ _CAUSA_CREDENZIALE: dict[int, str] = {
 }
 
 
-def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> str:
+def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:
     """L'ultimo esito osservato, detto a chi guarda la riga (progetto §4.3).
 
     `esito` è il dizionario di `esiti_provider.RegistroEsiti.esito`, oppure
@@ -253,25 +253,25 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
     Nessuna previsione e nessuna diagnosi: si dice che cosa è successo, con che
     codice, e quanto tempo fa. Perché sia successo non lo sa nessuno qui.
     """
-    if esito is None:
-        if posizione is None or int(posizione) <= 1:
+    if occurrence is None:
+        if position is None or int(position) <= 1:
             return "non l'hai ancora usato"
         return "non è mai servito ripiegare qui"
 
-    eta = _eta(float(adesso) - float(esito["quando"]))
-    if esito["tipo"] == "risposto":
-        return "ha risposto " + eta
+    age = _age(float(now) - float(occurrence["quando"]))
+    if occurrence["tipo"] == "risposto":
+        return "ha risposto " + age
 
-    famiglia = esito.get("famiglia") or "altro"
-    codice = esito.get("codice")
-    fra_parentesi = f" ({codice})" if isinstance(codice, int) else ""
+    family = occurrence.get("famiglia") or "altro"
+    code = occurrence.get("codice")
+    fra_parentesi = f" ({code})" if isinstance(code, int) else ""
 
-    if famiglia == "modello":
+    if family == "modello":
         # Quante volte HIRIS abbia chiesto un modello che non esiste non
         # aggiunge niente: il fatto è che non esiste. Il conteggio serve dove
         # distingue l'incidente dallo stato, non dove lo stato è ovvio.
-        return f"il modello non esiste più{fra_parentesi}, {eta}"
-    if famiglia == "scaduto":
+        return f"il modello non esiste più{fra_parentesi}, {age}"
+    if family == "scaduto":
         # Il Piano Claude Max, e per ora solo lui: e' l'unico anello che non
         # risponde in linea -- il turno passa da una coda, e un worker altrove
         # lo serve (o non lo serve). «Ha rifiutato» sarebbe piu' largo del
@@ -282,12 +282,12 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # modulo: due scadenze di fila su un piano acceso vogliono dire che il
         # worker non gira, e la pagina lo fa vedere senza dirlo.
         return "non ha risposto in tempo — {}, {}".format(
-            _quante(esito["da_quante"]), eta)
-    if famiglia == "irraggiungibile":
+            _count(occurrence["da_quante"]), age)
+    if family == "irraggiungibile":
         # Nessun codice, perché non c'è stata nessuna risposta da cui prenderlo:
         # «non risponde all'indirizzo» è tutto ciò che si è potuto vedere.
-        return "non risponde all'indirizzo — ultimo tentativo " + eta
-    if famiglia == "credenziale":
+        return "non risponde all'indirizzo — ultimo tentativo " + age
+    if family == "credenziale":
         # Nessuna causa PREDEFINITA: se il codice non è fra quelli di cui
         # sappiamo il perché, si dice il numero e ci si ferma.
         #
@@ -301,20 +301,20 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
         # È esattamente ciò che il ramo `altro` qui sotto dichiara di non
         # voler fare: «inventare una causa qui sarebbe rifare l'errore da cui è
         # nata la regola». Valeva per un ramo e non per l'altro.
-        causa = _CAUSA_CREDENZIALE.get(codice if isinstance(codice, int) else 0)
-        if causa is None:
+        cause = _CREDENTIAL_CAUSE.get(code if isinstance(code, int) else 0)
+        if cause is None:
             return "ha rifiutato {}{}, {}".format(
-                _quante(esito["da_quante"]), fra_parentesi, eta)
+                _count(occurrence["da_quante"]), fra_parentesi, age)
         return "ha rifiutato {} — {}{}, {}".format(
-            _quante(esito["da_quante"]), causa, fra_parentesi, eta)
+            _count(occurrence["da_quante"]), cause, fra_parentesi, age)
     # `altro`: il ramo di ciò che NON si è saputo classificare. Riporta il
     # numero e si ferma lì. Inventare una causa qui sarebbe rifare l'errore da
     # cui è nata la regola -- il giorno in cui HIRIS, davanti a un comando
     # riuscito, si inventò un guasto del dispositivo e mandò il proprietario a
     # cercarlo.
     if fra_parentesi:
-        return f"ha rifiutato {_quante(esito['da_quante'])} — errore {codice}, {eta}"
-    return "ha rifiutato {}, {}".format(_quante(esito["da_quante"]), eta)
+        return f"ha rifiutato {_count(occurrence['da_quante'])} — errore {code}, {age}"
+    return "ha rifiutato {}, {}".format(_count(occurrence["da_quante"]), age)
 
 
 # ── La nota del ripiego: una riga che dice cosa e' successo, non perche' ──
@@ -331,14 +331,14 @@ def frase_esito(esito: dict | None, *, posizione: int | None, adesso: float) -> 
 # che `_downgrade_to_chain` passa: la corrispondenza e' pinnata da un test,
 # perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
 # -- produrrebbe silenzio, che e' peggio.
-_MOTIVI_RIPIEGO: dict[str, str] = {
+_DOWNGRADE_REASONS: dict[str, str] = {
     "scadenza": "non ha risposto in tempo",
     "manca il token": "non ha un token con cui rispondere",
     "tetto giornaliero": "ha raggiunto il suo tetto di messaggi per oggi",
 }
 
 
-def nota_ripiego(*, motivo: str, chi_ha_risposto: str) -> str:
+def downgrade_note(*, reason: str, who_answered: str) -> str:
     """La riga che dichiara un ripiego dal piano a forfait alla catena.
 
     E' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa:
@@ -362,20 +362,21 @@ def nota_ripiego(*, motivo: str, chi_ha_risposto: str) -> str:
     si ridice perche' questa funzione puo' essere chiamata da chiunque, e una
     regola che vale solo se il chiamante se la ricorda non e' una regola.
     """
-    fatto = _MOTIVI_RIPIEGO.get(motivo)
-    quale_natura = natura(chi_ha_risposto)
-    if not fatto or not quale_natura:
+    what_happened = _DOWNGRADE_REASONS.get(reason)
+    which_nature = nature(who_answered)
+    if not what_happened or not which_nature:
         return ""
-    return f"Il Piano Claude Max {fatto}: ha risposto {nome(chi_ha_risposto)}, {quale_natura}."
+    return (f"Il Piano Claude Max {what_happened}: ha risposto "
+            f"{display_name(who_answered)}, {which_nature}.")
 
 
-def componi_adesso(
+def compose_now(
     *,
-    catena: list[str],
-    credenziali: dict[str, bool],
-    modelli: dict[str, str],
-    ponte_attivo: bool,
-    scadenza_ponte_min: int = 5,
+    chain: list[str],
+    credentials: dict[str, bool],
+    models: dict[str, str],
+    bridge_active: bool,
+    bridge_deadline_min: int = 5,
 ) -> dict:
     """Chi risponde al prossimo messaggio, e perché.
 
@@ -383,27 +384,28 @@ def componi_adesso(
     stessa lista che `server.py` passa a `LLMRouter(model_chain=...)` e
     pubblica su `app["catena_modelli"]`, non una seconda derivazione.
 
-    `ponte_attivo` è `app["ponte_attivo"]`. Quando è vero E c'è il token, il
-    turno parte dal piano: `api/handlers_chat.handle_chat` lo accoda invece di
+    `bridge_active` è `app["ponte_attivo"]` -- il parametro segue la
+    conversione, la CHIAVE dell'app resta italiana. Quando è vero E c'è il
+    token, il turno parte dal piano: `api/handlers_chat.handle_chat` lo accoda invece di
     prendere il router. Dal Task 14 quella strada ha un RITORNO -- se il piano
     non risponde entro la scadenza, la rotta di poll rifà il turno sulla catena
     -- quindi il piano è il primo anello e non più un bivio: la frase cambia
     soggetto perché è lui a provare per primo, non perché la catena non esista.
 
-    `scadenza_ponte_min` sono i minuti dopo i quali un turno accodato sul ponte
+    `bridge_deadline_min` sono i minuti dopo i quali un turno accodato sul ponte
     passa al successivo della catena. Lo passa il chiamante perché questo
     modulo non legge `os.environ`: il numero è LO STESSO che
     `api/handlers_chat._enqueue_chat_job` usa per scrivere la scadenza (dal
     Task 10 dall'archivio, `ponte.scadenza_min`), non un secondo default che
     può divergere da quello vero.
     """
-    ponte_ha_token = bool(credenziali.get("subscription"))
-    diagnosi: list[dict] = []
+    bridge_has_token = bool(credentials.get("subscription"))
+    diagnosis: list[dict] = []
 
-    ponte_muto = ponte_attivo and not ponte_ha_token
-    if ponte_attivo and ponte_ha_token:
-        chi = "subscription"
-        via = "ponte"
+    bridge_silent = bridge_active and not bridge_has_token
+    if bridge_active and bridge_has_token:
+        who = "subscription"
+        route = "ponte"
     else:
         # Anche quando il ponte è acceso SENZA token. Fino al Task 14 questo
         # era il quarto stato -- «non può rispondere» -- perché il turno veniva
@@ -413,14 +415,14 @@ def componi_adesso(
         # nella stessa richiesta. Chi risponde è quindi il primo della catena,
         # come col ponte spento -- e ciò che resta da dichiarare non è più un
         # guasto, è un costo (vedi la diagnosi più sotto).
-        chi = catena[0] if catena else None
-        via = "catena" if chi else ""
+        who = chain[0] if chain else None
+        route = "catena" if who else ""
 
-    if chi is None:
-        if ponte_muto:
-            frase = ("HIRIS non può rispondere: il ponte è acceso, manca il "
-                     "token del Piano Claude Max, e sotto di lui non c'è nessuno.")
-            diagnosi.append({
+    if who is None:
+        if bridge_silent:
+            phrase = ("HIRIS non può rispondere: il ponte è acceso, manca il "
+                      "token del Piano Claude Max, e sotto di lui non c'è nessuno.")
+            diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso ma manca il token: nessun "
                           "messaggio arriva al Piano Claude Max, e in catena "
@@ -428,24 +430,24 @@ def componi_adesso(
                 "azione": None,
             })
         else:
-            frase = "HIRIS non può ancora rispondere: la catena è vuota."
-            diagnosi.append({
+            phrase = "HIRIS non può ancora rispondere: la catena è vuota."
+            diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Non c'è nessun provider in catena: non c'è niente a "
                           "cui chiedere una risposta."),
                 "azione": None,
             })
         return {"chi": None, "nome": "", "modello": "", "natura": "", "via": "",
-                "frase": frase, "diagnosi": diagnosi}
+                "frase": phrase, "diagnosi": diagnosis}
 
-    modello = modelli.get(chi, "")
-    pezzi = ["Il prossimo messaggio va a " + nome(chi)]
-    if modello:
-        pezzi.append("con " + modello)
-    pezzi.append(natura(chi))
-    frase = ", ".join(pezzi) + "."
+    model = models.get(who, "")
+    pezzi = ["Il prossimo messaggio va a " + display_name(who)]
+    if model:
+        pezzi.append("con " + model)
+    pezzi.append(nature(who))
+    phrase = ", ".join(pezzi) + "."
 
-    if ponte_attivo and ponte_ha_token:
+    if bridge_active and bridge_has_token:
         # Il piano risponde davvero, ed è il PRIMO ANELLO -- non più un bivio.
         # La gravità resta un fatto misurato sulla catena, non un'ipotesi, ma
         # i due fatti sono cambiati insieme al comportamento: con dei provider
@@ -457,11 +459,11 @@ def componi_adesso(
         # promette un successivo che non c'è: il Task 1 lasciò questa riga
         # senza test, le due prove gemelle stanno in
         # `tests/test_decisione_modelli.py`.
-        if catena:
-            diagnosi.append({
+        if chain:
+            diagnosis.append({
                 "gravita": "fatto",
                 "testo": ("Il ponte è acceso: il Piano Claude Max prova per "
-                          f"primo, e se non risponde entro {int(scadenza_ponte_min)} minuti "
+                          f"primo, e se non risponde entro {int(bridge_deadline_min)} minuti "
                           "il turno "
                           "passa al successivo della catena."
                           ),
@@ -471,33 +473,33 @@ def componi_adesso(
                 # denuncia niente -- il ponte acceso con dei provider sotto e'
                 # uno stato sano -- perche' il gesto va dove sta il fatto che
                 # si vuole cambiare, non dove c'e' un guasto.
-                "azione": dict(AZIONE_TOGLI_IL_PIANO),
+                "azione": dict(ACTION_REMOVE_SUBSCRIPTION),
             })
         else:
-            diagnosi.append({
+            diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
                           "c'è nessun altro: "
-                          f"se non risponde entro {int(scadenza_ponte_min)} minuti, "
+                          f"se non risponde entro {int(bridge_deadline_min)} minuti, "
                           "il turno non ha dove andare."
                           ),
                 "azione": None,
             })
-    elif ponte_muto:
+    elif bridge_silent:
         # Il ponte acceso senza token non è più un turno perso (invariante 5,
         # chiuso al Task 3 come silenzio e chiuso qui come perdita): è un turno
         # che passa alla catena. Resta però un fatto che costa, e si dice --
         # per la stessa ragione per cui la chat lo annuncia a ogni risposta
-        # (`nota_ripiego`): un ripiego silenzioso dal forfait al consumo si
+        # (`downgrade_note`): un ripiego silenzioso dal forfait al consumo si
         # scopre a fine mese.
-        diagnosi.append({
+        diagnosis.append({
             "gravita": "spreco",
             "testo": ("Il ponte è acceso ma manca il token: nessun messaggio "
                       "arriva al Piano Claude Max, e ogni turno passa alla "
                       "catena — dal forfait al consumo."),
             "azione": None,
         })
-    elif ponte_ha_token:
+    elif bridge_has_token:
         # La riga che costa di più: un abbonamento pagato e non usato costa
         # soldi ogni mese, un provider che fallisce costa un secondo di
         # latenza a messaggio. L'azione consigliata è una sola e sta qui
@@ -513,26 +515,26 @@ def componi_adesso(
         # la PUT lo scrive, `_ricalcola_catena` lo rimette in vigore a caldo
         # (compreso il lavoratore che risponde sul piano) e la rilettura mostra
         # il piano in testa. La metà che mancava è arrivata.
-        diagnosi.append({
+        diagnosis.append({
             "gravita": "spreco",
             "testo": "Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.",
-            "azione": dict(AZIONE_METTI_IL_PIANO_IN_TESTA),
+            "azione": dict(ACTION_PUT_SUBSCRIPTION_FIRST),
         })
 
-    return {"chi": chi, "nome": nome(chi), "modello": modello,
-            "natura": natura(chi), "via": via, "frase": frase,
-            "diagnosi": diagnosi}
+    return {"chi": who, "nome": display_name(who), "modello": model,
+            "natura": nature(who), "via": route, "frase": phrase,
+            "diagnosi": diagnosis}
 
 
-def componi_topologia(
+def compose_topology(
     *,
     chain_order: list[str],
-    credenziali: dict[str, bool],
-    modelli: dict[str, str],
-    ponte_attivo: bool,
-    esiti: dict[str, dict],
-    adesso: float,
-    scadenza_ponte_min: int = 5,
+    credentials: dict[str, bool],
+    models: dict[str, str],
+    bridge_active: bool,
+    occurrences: dict[str, dict],
+    now: float,
+    bridge_deadline_min: int = 5,
     ollama_timeout_s: int = 120,
 ) -> tuple[list[dict], list[dict]]:
     """La topologia effettiva: chi è in catena, in che ordine, e chi ne sta fuori.
@@ -561,7 +563,7 @@ def componi_topologia(
     server accetta con 200 e butta via -- un bottone che non fa niente, cioè il
     difetto che questa fetta esiste per chiudere, ricomparso nell'interfaccia.
     Il piano entrerà in catena da un'AZIONE dichiarata dal backend
-    (`componi_adesso` -> `diagnosi[].azione`, oggi `None`), quando ci sarà
+    (`compose_now` -> `diagnosi[].azione`, oggi `None`), quando ci sarà
     qualcosa da fare: Task 13 (`ponte.attivo` letto dall'archivio) e Task 14
     (il ripiego).
 
@@ -583,11 +585,11 @@ def componi_topologia(
 
     Il connettore di una riga dice cosa succede se QUELLA riga non risponde, e
     non presume niente su chi viene dopo: la pagina lo disegna fra una riga e
-    la successiva, e dopo l'ultima disegna `FINE_CATENA`. La divisione non è
+    la successiva, e dopo l'ultima disegna `CHAIN_END`. La divisione non è
     estetica -- è ciò che permette alla pagina di riordinare da sé fra un gesto
     e la risposta del server senza che una frase finisca a dire il falso.
 
-    `connettore_nota` è il tetto utile che nessuno schema dichiara: la scadenza
+    `note_connector` è il tetto utile che nessuno schema dichiara: la scadenza
     del ponte accetta 1..120 minuti, ma la chat smette di interrogare a
     `CHAT_POLL_MAX_MS` (5 minuti, `static/chat/send.js`), una costante
     indipendente e non collegata. Sopra i cinque il browser dichiara scaduta
@@ -624,12 +626,12 @@ def componi_topologia(
     # nomi, il piano non c'è); qui si ridice, perché questa funzione riceve una
     # lista e non il disco, e una lista può arrivare da chiunque -- il gateway
     # MCP fa PUT su questa rotta.
-    dentro = [p for p in provider_in_catena(chain_order, credenziali)
+    dentro = [p for p in provider_in_catena(chain_order, credentials)
               if p != "subscription"]
-    if ponte_attivo:
+    if bridge_active:
         dentro = ["subscription"] + dentro
 
-    def senza_modello(pid: str) -> bool:
+    def without_model(pid: str) -> bool:
         """Ollama con l'indirizzo e senza un modello scelto.
 
         La credenziale di Ollama è il SOLO indirizzo (fetta «la catena è
@@ -648,9 +650,9 @@ def componi_topologia(
         finché non c'è un modello. Le parole lo dicono, e `server.py` filtra la
         catena effettiva con lo stesso fatto.
         """
-        return pid == "ollama" and not modelli.get(pid, "")
+        return pid == "ollama" and not models.get(pid, "")
 
-    def nota(pid: str, in_catena: bool, ha_credenziale: bool) -> str:
+    def note(pid: str, in_chain: bool, has_credential: bool) -> str:
         """La parola che spiega perché quella riga non ha i gesti delle altre.
 
         Cambia con la regola, non con la pagina. Il Task 14 ha fatto del piano
@@ -664,19 +666,19 @@ def componi_topologia(
         ancora l'utente lì sarebbe mandarlo a cercare un campo che non esiste,
         cioè lo stesso difetto del messaggio di primo avvio che il Task 15 ha
         chiuso. Il gesto sta nel riquadro in cima, dove la diagnosi lo porta
-        (`AZIONE_METTI_IL_PIANO_IN_TESTA` / `AZIONE_TOGLI_IL_PIANO`), e la
+        (`ACTION_PUT_SUBSCRIPTION_FIRST` / `ACTION_REMOVE_SUBSCRIPTION`), e la
         parola qui rimanda LÌ e non a una pagina esterna.
         """
-        if ha_credenziale and senza_modello(pid):
+        if has_credential and without_model(pid):
             return ("L'indirizzo c'è, il modello no: finché manca non c'è "
                     "niente a cui chiedere, e in catena non ci può stare. Si "
                     "sceglie qui accanto.")
         if pid != "subscription":
             return ""
-        if in_catena:
+        if in_chain:
             return ("In testa o fuori: ci sta perché il ponte è acceso, e si "
                     "toglie dal riquadro in cima.")
-        if ha_credenziale:
+        if has_credential:
             return ("Entra in catena quando il ponte è acceso, e il ponte si "
                     "accende dal riquadro in cima.")
         return ""
@@ -688,12 +690,12 @@ def componi_topologia(
             # un vicolo cieco senza che nessuno tocchi il frontend. Diceva «il
             # ponte non ripiega: se non risponde entro N min il messaggio va
             # perso», e finché è stato vero è stato giusto dirlo.
-            return f"se non risponde entro {int(scadenza_ponte_min)} min"
+            return f"se non risponde entro {int(bridge_deadline_min)} min"
         if pid == "ollama":
             return f"se non risponde entro {int(ollama_timeout_s)} s"
         return "se rifiuta, subito"
 
-    def connettore_nota(pid: str) -> str:
+    def note_connector(pid: str) -> str:
         """Il tetto utile che nessuno schema dichiara, e che il ripiego ha reso
         più caro invece che meno.
 
@@ -709,12 +711,12 @@ def componi_topologia(
         Si dichiara, come il Task 6 ha dichiarato il tetto: è un fatto, non un
         divieto, ed è composta con lo STESSO numero del connettore -- due
         letture non potrebbero divergere."""
-        if pid != "subscription" or int(scadenza_ponte_min) <= 5:
+        if pid != "subscription" or int(bridge_deadline_min) <= 5:
             return ""
         return ("sopra i 5 minuti la chat smette di aspettare prima della "
                 "scadenza, e il turno non passa al successivo")
 
-    def stato(pid: str, posizione: int | None, ha_credenziale: bool) -> str:
+    def state(pid: str, position: int | None, has_credential: bool) -> str:
         """La riga di stato: l'ultimo esito osservato, e quanto è vecchio.
 
         Tace SOLO quando non c'è credenziale E non c'è nessuna osservazione:
@@ -727,18 +729,18 @@ def componi_topologia(
         quella riga è stata interrogata davvero, e togliere la chiave a un
         provider non cancella cosa aveva risposto.
         """
-        misurato = esiti.get(pid)
-        if misurato is None and not ha_credenziale:
+        misurato = occurrences.get(pid)
+        if misurato is None and not has_credential:
             return ""
-        return frase_esito(misurato, posizione=posizione, adesso=adesso)
+        return occurrence_phrase(misurato, position=position, now=now)
 
-    def riga(pid: str, posizione: int | None) -> dict:
-        ha_credenziale = bool(credenziali.get(pid))
-        in_catena = posizione is not None
+    def row(pid: str, position: int | None) -> dict:
+        has_credential = bool(credentials.get(pid))
+        in_chain = position is not None
         return {
             "id": pid,
-            "nome": nome(pid),
-            "modello": modelli.get(pid, ""),
+            "nome": display_name(pid),
+            "modello": models.get(pid, ""),
             # Alias o identificatore: la differenza di NATURA fra i due si
             # legge prima di essere spiegata, e la porta il carattere
             # (progetto §6.2). Sta nel payload e non nella pagina per la stessa
@@ -746,13 +748,13 @@ def componi_topologia(
             # sceglie un alias che SEGUE il modello corrente, gli altri un nome
             # che punta a una cosa fissa -- e un `if (id === 'subscription')`
             # nel frontend sarebbe la regola scritta una seconda volta.
-            "modello_alias": e_alias(pid),
-            "natura": natura(pid),
-            "manca": "" if ha_credenziale else manca(pid),
-            "nota": nota(pid, in_catena, ha_credenziale),
-            "connettore": connettore(pid) if in_catena else "",
-            "connettore_nota": connettore_nota(pid) if in_catena else "",
-            "ha_credenziale": ha_credenziale,
+            "modello_alias": is_alias(pid),
+            "natura": nature(pid),
+            "manca": "" if has_credential else missing_reason(pid),
+            "nota": note(pid, in_chain, has_credential),
+            "connettore": connettore(pid) if in_chain else "",
+            "connettore_nota": note_connector(pid) if in_chain else "",
+            "ha_credenziale": has_credential,
             # Il fatto grezzo e la frase che lo racconta, accanto. Il fatto
             # viaggia perché la pagina possa DISEGNARE diverso ciò che ha
             # rifiutato (il pallino grigio-ambra, il nome che perde peso) senza
@@ -760,9 +762,9 @@ def componi_topologia(
             # ricostruirla, e questa fetta esiste per non farlo più. `None`
             # quando non c'è mai stata un'osservazione: «non ha risposto» e
             # «non l'ho interrogato» restano due cose diverse fino allo schermo.
-            "esito": esiti.get(pid),
-            "stato_testo": stato(pid, posizione, ha_credenziale),
-            "posizione": posizione,
+            "esito": occurrences.get(pid),
+            "stato_testo": state(pid, position, has_credential),
+            "posizione": position,
             # `riordinabile` governa TUTTI E QUATTRO i gesti che scrivono
             # `chain_order` (frecce, ✕, «Usa»): dice «la presenza e la
             # posizione di questa riga si decidono da chain_order». Per il
@@ -775,18 +777,18 @@ def componi_topologia(
             # quindi il modello mancante si dichiara solo quando è davvero
             # LUI l'unica cosa che manca.
             "riordinabile": (pid != "subscription"
-                             and not (ha_credenziale and senza_modello(pid))),
+                             and not (has_credential and without_model(pid))),
         }
 
-    catena = [riga(pid, i + 1) for i, pid in enumerate(dentro)]
-    fuori = [riga(pid, None) for pid in ORDINE_FISSO if pid not in dentro]
-    return catena, fuori
+    chain = [row(pid, i + 1) for i, pid in enumerate(dentro)]
+    fuori = [row(pid, None) for pid in FIXED_ORDER if pid not in dentro]
+    return chain, fuori
 
 
 # ── Il pannello del modello (progetto §6) ──────────────────────────────────
 #
 # Le parole del pannello stanno QUI per la stessa ragione delle altre: sono
-# affermazioni sul prodotto. `provenienza` sarebbe già falsa domani se fosse
+# affermazioni sul prodotto. `provenance` sarebbe già falsa domani se fosse
 # scritta nella pagina: dipende da un fatto misurato ADESSO, se la lettura
 # dell'elenco è riuscita o no. E `quando` è la prova che il posto era giusto:
 # era la confessione dell'invariante 4, ha smesso di essere vera il giorno
@@ -801,18 +803,18 @@ def componi_topologia(
 # non conosce altri nomi. Offrire `claude-opus-4-7` sul piano sarebbe una
 # precisione finta: sul ponte `claude-opus-4-7` e `claude-opus-4-1` producono
 # lo stesso identico comportamento (misurato, progetto §0.4).
-ALIAS_DEL_PIANO: tuple[tuple[str, str], ...] = (
+SUBSCRIPTION_ALIAS: tuple[tuple[str, str], ...] = (
     ("haiku", "il più rapido"),
     ("sonnet", "l'equilibrato"),
     ("opus", "il più capace"),
 )
 
-# Gli ospiti che si interrogano davvero. Servono a `provenienza` per nominare
+# Gli ospiti che si interrogano davvero. Servono a `provenance` per nominare
 # CHI non ha risposto: «non ho potuto leggere» senza il nome di chi non ha
 # risposto è meno di quanto il sistema sa.
 _OSPITI: dict[str, str] = {
     # Claude API è entrata qui con la fetta «il modello del piano». Prima aveva
-    # un ramo tutto suo in `provenienza`, con una frase che dichiarava
+    # un ramo tutto suo in `provenance`, con una frase che dichiarava
     # inesistente la rotta di elenco di Anthropic: falso, `GET /v1/models`
     # esiste. Cancellato il ramo, il percorso generico produce già le due frasi
     # giuste -- serviva solo il nome dell'ospite. Un caso particolare in meno,
@@ -840,7 +842,7 @@ _OSPITI: dict[str, str] = {
 # è tutto ciò che serve al frontend per accendere i tre radio: `dove` non
 # vuoto → `scrivibile` vero. Nessuna riga di JavaScript ha dovuto imparare
 # niente -- è ciò per cui `dove` è un percorso e non un nome.
-_DOVE_SI_SCRIVE: dict[str, tuple[str, ...]] = {
+_WHERE_WRITTEN: dict[str, tuple[str, ...]] = {
     "claude": ("provider_models", "claude"),
     "openai": ("provider_models", "openai"),
     "openrouter": ("provider_models", "openrouter"),
@@ -854,10 +856,10 @@ _DOVE_SI_SCRIVE: dict[str, tuple[str, ...]] = {
 # restituisce "auto" e la richiesta parte con `model="auto"` verso un provider
 # che quel nome non lo conosce. Fino a questa fetta `_CLAUDE_MODELS` apriva con
 # "auto" e il picker uscito col Task 8 lo offriva come qualunque altro.
-NOTA_AUTO = "scelto da HIRIS: oggi {}"
+AUTO_NOTE = "scelto da HIRIS: oggi {}"
 
 
-def e_alias(provider_id: str) -> bool:
+def is_alias(provider_id: str) -> bool:
     """Il valore mostrato per questo provider è un ALIAS o un IDENTIFICATORE?
 
     Un identificatore punta a una cosa fissa; un alias SEGUE il modello
@@ -868,8 +870,8 @@ def e_alias(provider_id: str) -> bool:
     return provider_id == "subscription"
 
 
-def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
-                avviso_gratuiti: bool = False) -> str:
+def provenance(provider_id: str, source: str, *, address: str = "",
+               free_models_notice: bool = False) -> str:
     """Da dove viene l'elenco che il pannello sta mostrando.
 
     È il quinto punto del progetto §6.3, quello che il codice ha imposto: le
@@ -879,14 +881,14 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
     sembra vero, che viene da una costante di due anni fa, per un provider che
     non risponderebbe comunque -- e nessuna parte dello schermo lo dice.
     """
-    if fonte == "assente":
+    if source == "assente":
         # Non è un errore: è «non c'è niente da leggere, e il perché è la
         # credenziale». Un pannello che si apre deve SEMPRE dare una risposta:
         # nascondere è comodo per chi capisce e crudele per chi non capisce
         # perché una cosa è sparita. La parola è la stessa della riga
-        # (`MANCANZE`), perché è lo stesso fatto detto nello stesso vocabolario.
-        return f"Non c'è nessun elenco da leggere: {manca(provider_id)}."
-    if fonte == "fissa":
+        # (`MISSING_REASONS`), perché è lo stesso fatto detto nello stesso vocabolario.
+        return f"Non c'è nessun elenco da leggere: {missing_reason(provider_id)}."
+    if source == "fissa":
         # Il piano. Non è un ripiego e non si chiama così: i tre alias non
         # possono invecchiare, perché non descrivono il catalogo di qualcun
         # altro -- sono l'insieme esatto che `modello_cli` sa produrre.
@@ -904,27 +906,27 @@ def provenienza(provider_id: str, fonte: str, *, indirizzo: str = "",
     # sorgente, commenti compresi: un grep assoluto è una trappola più forte di
     # uno che deve distinguere una citazione da un'affermazione -- per questo
     # qui è parafrasata.
-    ospite = _OSPITI.get(provider_id) or indirizzo or nome(provider_id)
-    if fonte == "viva":
+    ospite = _OSPITI.get(provider_id) or address or display_name(provider_id)
+    if source == "viva":
         if provider_id == "ollama":
             return f"Scaricati su {ospite} — letti adesso."
         return f"Letti da {ospite} adesso."
-    causa = ("spento? indirizzo sbagliato?" if provider_id == "ollama"
+    cause = ("spento? indirizzo sbagliato?" if provider_id == "ollama"
              else "chiave rifiutata? rete?")
-    riga = (f"Elenco di riserva: non ho potuto leggere {ospite} ({causa}). Quello che vedi "
-            "qui potrebbe non esistere più.")
-    if avviso_gratuiti:
+    row = (f"Elenco di riserva: non ho potuto leggere {ospite} ({cause}). Quello che vedi "
+           "qui potrebbe non esistere più.")
+    if free_models_notice:
         # Il difetto gemello, DICHIARATO invece che nascosto: quando la lettura
         # fallisce il ripiego restituisce i preset non filtrati, quindi i
         # gratuiti ricompaiono anche con la casella spuntata. Non si corregge
         # qui -- filtrarli renderebbe la riserva una lista diversa da quella
         # scritta nel sorgente, cioè una terza cosa -- si rende leggibile.
-        riga += (" E la casella «nascondi i gratuiti» qui non ha effetto: "
-                 "l'elenco di riserva li contiene comunque.")
-    return riga
+        row += (" E la casella «nascondi i gratuiti» qui non ha effetto: "
+                "l'elenco di riserva li contiene comunque.")
+    return row
 
 
-def spiegazione(provider_id: str) -> str:
+def explanation(provider_id: str) -> str:
     """La riga che serve solo a chi si chiede perché il pannello è così povero.
 
     Per il piano è la forma stessa del pannello a spiegare (progetto §10.1);
@@ -950,15 +952,15 @@ def spiegazione(provider_id: str) -> str:
     return ""
 
 
-def componi_pannello(
+def compose_panel(
     *,
     provider_id: str,
-    valori: list[str],
-    fonte: str,
-    scelto: str,
-    auto_risolto: str = "",
-    indirizzo: str = "",
-    nascondi_gratuiti: bool = False,
+    values: list[str],
+    source: str,
+    chosen: str,
+    auto_resolved: str = "",
+    address: str = "",
+    hide_free_models: bool = False,
 ) -> dict:
     """Il pannello del modello, già composto: la pagina lo disegna e basta.
 
@@ -974,23 +976,23 @@ def componi_pannello(
     dentro l'oggetto che la pagina già salva, così la pagina non ha bisogno di
     sapere che il modello di Ollama non vive in `provider_models`.
     """
-    if fonte == "assente":
+    if source == "assente":
         # Nessuna voce, mai: un elenco dichiarato inesistente e disegnato lo
         # stesso sarebbe la pagina che si contraddice in due righe.
-        voci: list[dict] = []
-    elif e_alias(provider_id):
-        voci = [{"valore": v, "nota": n} for v, n in ALIAS_DEL_PIANO]
+        entries: list[dict] = []
+    elif is_alias(provider_id):
+        entries = [{"valore": v, "nota": n} for v, n in SUBSCRIPTION_ALIAS]
     else:
-        voci = []
-        if auto_risolto:
-            voci.append({"valore": "", "nota": NOTA_AUTO.format(auto_risolto)})
-        for v in valori:
-            voci.append({"valore": v,
-                         "nota": "gratuito" if v.endswith(":free") else ""})
+        entries = []
+        if auto_resolved:
+            entries.append({"valore": "", "nota": AUTO_NOTE.format(auto_resolved)})
+        for v in values:
+            entries.append({"valore": v,
+                            "nota": "gratuito" if v.endswith(":free") else ""})
     return {
         "id": provider_id,
-        "nome": nome(provider_id),
-        "alias": e_alias(provider_id),
+        "nome": display_name(provider_id),
+        "alias": is_alias(provider_id),
         # L'insieme è CHIUSO? Non è la stessa domanda di `alias`, benché oggi
         # le due risposte coincidano: `alias` dice di che NATURA è il valore (e
         # decide il carattere della riga), `elenco_completo` dice se c'è altro
@@ -1009,10 +1011,10 @@ def componi_pannello(
         #
         # Due campi e non uno perché il giorno in cui un provider avesse un
         # insieme chiuso di identificatori veri le due risposte divergono.
-        "elenco_completo": e_alias(provider_id),
-        "fonte": fonte,
-        "provenienza": provenienza(
-            provider_id, fonte, indirizzo=indirizzo,
+        "elenco_completo": is_alias(provider_id),
+        "fonte": source,
+        "provenienza": provenance(
+            provider_id, source, address=address,
             # L'avviso si lega a CIO' CHE C'E' NELL'ELENCO, non a una
             # condizione che lo indovina. Fino al 22/08/2026 bastavano
             # «openrouter + riserva + casella spuntata» per affermare che
@@ -1021,10 +1023,10 @@ def componi_pannello(
             # nomi morti (che erano tutti `:free`) quella condizione avrebbe
             # continuato ad affermarlo su un elenco che non ne ha piu' nemmeno
             # uno: una riga che dice il falso su cio' che si sta guardando.
-            avviso_gratuiti=(provider_id == "openrouter"
-                             and fonte == "riserva" and bool(nascondi_gratuiti)
-                             and any(str(v).endswith(":free") for v in valori))),
-        "spiegazione": spiegazione(provider_id),
+            free_models_notice=(provider_id == "openrouter"
+                                and source == "riserva" and bool(hide_free_models)
+                                and any(str(v).endswith(":free") for v in values))),
+        "spiegazione": explanation(provider_id),
         # Da quando ha effetto la scelta: NIENTE, perché ha effetto dal
         # prossimo messaggio, e questo vale per OGNI provider e per ogni campo
         # di questa pagina. Qui viveva `quando()`, la confessione
@@ -1037,8 +1039,8 @@ def componi_pannello(
         # backend tace -- ma oggi il backend tace su tutti e cinque:
         # l'assenza di didascalia È l'affermazione.
         "quando": "",
-        "dove": list(_DOVE_SI_SCRIVE.get(provider_id, ())),
-        "scelto": scelto,
+        "dove": list(_WHERE_WRITTEN.get(provider_id, ())),
+        "scelto": chosen,
         # La casella vive SULLA LISTA CHE FILTRA e non in una pagina di
         # impostazioni: si auto-documenta, e non serve una descrizione per
         # capire cosa fa una casella che sta sotto l'elenco che modifica
@@ -1047,5 +1049,5 @@ def componi_pannello(
         "casella": ({"etichetta": "nascondi i gratuiti",
                      "dove": ["nascondi_gratuiti"]}
                     if provider_id == "openrouter" else None),
-        "modelli": voci,
+        "modelli": entries,
     }

@@ -13,7 +13,7 @@ regalare una freschezza che la produzione non ha.
 """
 import pytest
 
-from hiris.app.decisione_modelli import frase_esito
+from hiris.app.decisione_modelli import occurrence_phrase
 from hiris.app.esiti_provider import FAMILIES, OccurrenceRegistry, error_family, family_from_code
 
 
@@ -122,7 +122,7 @@ def test_un_esito_vecchio_resta_vecchio_e_lo_dichiara():
     adesso[0] += 7200                      # due ore dopo, e NESSUNA nuova chiamata
     e = r.occurrence("claude")
     assert e["quando"] == 1000.0, "il registro non deve ringiovanire da solo"
-    assert frase_esito(e, posizione=1, adesso=adesso[0]) == (
+    assert occurrence_phrase(e, position=1, now=adesso[0]) == (
         "ha rifiutato l'ultima richiesta — credito esaurito (400), 2 h fa")
 
 
@@ -138,7 +138,7 @@ def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
 
 
 def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
-    """`FAMIGLIE` è l'elenco, e non è decorativo: `frase_esito` ha un ramo per
+    """`FAMIGLIE` è l'elenco, e non è decorativo: `occurrence_phrase` ha un ramo per
     ognuna, e una famiglia introdotta di soppiatto finirebbe nel ramo di
     scorta senza che nessuno se ne accorga.
 
@@ -166,7 +166,7 @@ def test_una_scadenza_non_si_legge_come_un_rifiuto():
     esito = {"tipo": "rifiutato", "famiglia": "scaduto", "codice": None,
              "messaggio": "nessuna risposta entro la scadenza del ponte",
              "quando": 1000.0, "da_quante": 3, "durata_s": 300.0}
-    frase = frase_esito(esito, posizione=1, adesso=1000.0 + 600)
+    frase = occurrence_phrase(esito, position=1, now=1000.0 + 600)
     assert frase == "non ha risposto in tempo — le ultime 3 richieste, 10 min fa"
     assert "rifiutato" not in frase
 
@@ -222,7 +222,7 @@ def test_un_errore_di_connessione_resta_irraggiungibile_anche_col_codice():
 
 # ── L'età, e i cinque stati ────────────────────────────────────────────────
 #
-# `_eta` è la funzione che rende un'affermazione più precisa di quanto il
+# `_age` è la funzione che rende un'affermazione più precisa di quanto il
 # sistema sa, se sbagliata: si guarda sui CONFINI, dove un `<` al posto di un
 # `<=` sposta una frase di un'unità intera.
 
@@ -244,8 +244,8 @@ def test_un_errore_di_connessione_resta_irraggiungibile_anche_col_codice():
     (172800, "2 giorni fa"),
 ])
 def test_l_eta_sui_confini(secondi, attesa):
-    from hiris.app.decisione_modelli import _eta
-    assert _eta(secondi) == attesa
+    from hiris.app.decisione_modelli import _age
+    assert _age(secondi) == attesa
 
 
 def test_un_orologio_che_va_all_indietro_non_produce_un_futuro():
@@ -253,28 +253,28 @@ def test_un_orologio_che_va_all_indietro_non_produce_un_futuro():
     orologio, e su un sistema che si sincronizza con NTP la seconda può
     risultare PRIMA della prima. «fra 3 min» sarebbe una previsione, e questa
     pagina non ne fa."""
-    from hiris.app.decisione_modelli import _eta
-    assert _eta(-5) == "poco fa"
+    from hiris.app.decisione_modelli import _age
+    assert _age(-5) == "poco fa"
 
 
 def test_le_frasi_dei_cinque_stati():
     a = 10_000.0
-    assert frase_esito(None, posizione=1, adesso=a) == "non l'hai ancora usato"
-    assert frase_esito(None, posizione=3, adesso=a) == "non è mai servito ripiegare qui"
-    assert frase_esito({"tipo": "risposto", "famiglia": "", "codice": None,
+    assert occurrence_phrase(None, position=1, now=a) == "non l'hai ancora usato"
+    assert occurrence_phrase(None, position=3, now=a) == "non è mai servito ripiegare qui"
+    assert occurrence_phrase({"tipo": "risposto", "famiglia": "", "codice": None,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
-                        "durata_s": 0.0}, posizione=2, adesso=a) == "ha risposto 3 min fa"
-    assert frase_esito({"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
+                        "durata_s": 0.0}, position=2, now=a) == "ha risposto 3 min fa"
+    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale", "codice": 400,
                         "messaggio": "credit balance too low", "quando": a - 180,
-                        "da_quante": 40, "durata_s": 0.4}, posizione=1, adesso=a) == (
+                        "da_quante": 40, "durata_s": 0.4}, position=1, now=a) == (
         "ha rifiutato le ultime 40 richieste — credito esaurito (400), 3 min fa")
-    assert frase_esito({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
+    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
-                        "durata_s": 0.2}, posizione=1, adesso=a) == (
+                        "durata_s": 0.2}, position=1, now=a) == (
         "il modello non esiste più (404), 3 min fa")
-    assert frase_esito({"tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
+    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
                         "messaggio": "", "quando": a - 7200, "da_quante": 3,
-                        "durata_s": 5.0}, posizione=3, adesso=a) == (
+                        "durata_s": 5.0}, position=3, now=a) == (
         "non risponde all'indirizzo — ultimo tentativo 2 h fa")
 
 
@@ -282,7 +282,7 @@ def test_mai_provato_fuori_dalla_catena_non_e_un_ripiego_mancato():
     """Chi sta FUORI dalla catena non ha una posizione: «non è mai servito
     ripiegare qui» direbbe che è un anello di riserva, e non lo è. Stesso
     fatto, la frase di chi non è mai stato usato."""
-    assert frase_esito(None, posizione=None, adesso=10_000.0) == "non l'hai ancora usato"
+    assert occurrence_phrase(None, position=None, now=10_000.0) == "non l'hai ancora usato"
 
 
 def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
@@ -294,9 +294,9 @@ def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
     a = 10_000.0
 
     def _f(codice):
-        return frase_esito({"tipo": "rifiutato", "famiglia": "credenziale",
+        return occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale",
                             "codice": codice, "messaggio": "", "quando": a - 180,
-                            "da_quante": 1, "durata_s": 0.1}, posizione=1, adesso=a)
+                            "da_quante": 1, "durata_s": 0.1}, position=1, now=a)
 
     assert _f(402) == "ha rifiutato l'ultima richiesta — credito esaurito (402), 3 min fa"
     assert _f(401) == "ha rifiutato l'ultima richiesta — la chiave non è accettata (401), 3 min fa"
@@ -311,9 +311,9 @@ def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():
     a = 10_000.0
 
     def _f(codice, quante=1):
-        return frase_esito({"tipo": "rifiutato", "famiglia": "altro", "codice": codice,
+        return occurrence_phrase({"tipo": "rifiutato", "famiglia": "altro", "codice": codice,
                             "messaggio": "boom", "quando": a - 180, "da_quante": quante,
-                            "durata_s": 0.1}, posizione=1, adesso=a)
+                            "durata_s": 0.1}, position=1, now=a)
 
     assert _f(500) == "ha rifiutato l'ultima richiesta — errore 500, 3 min fa"
     assert _f(429, quante=7) == "ha rifiutato le ultime 7 richieste — errore 429, 3 min fa"
@@ -325,7 +325,7 @@ def test_il_modello_inesistente_non_conta_le_richieste():
     niente: il fatto è che non esiste. Il conteggio serve dove distingue
     l'incidente dallo stato (il credito), non dove lo stato è ovvio."""
     a = 10_000.0
-    assert frase_esito({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
+    assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "modello", "codice": 404,
                         "messaggio": "", "quando": a - 3600, "da_quante": 12,
-                        "durata_s": 0.2}, posizione=2, adesso=a) == (
+                        "durata_s": 0.2}, position=2, now=a) == (
         "il modello non esiste più (404), 1 h fa")

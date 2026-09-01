@@ -29,8 +29,8 @@
 
    LA REGOLA DI QUESTO FILE: la pagina disegna ciò che le viene detto e non
    calcola niente. `catena[]` e `fuori_catena[]` arrivano già ordinate da
-   `decisione_modelli.componi_topologia`, la frase in cima da
-   `componi_adesso`, e ogni parola che afferma qualcosa sul prodotto (i nomi,
+   `decisione_modelli.compose_topology`, la frase in cima da
+   `compose_now`, e ogni parola che afferma qualcosa sul prodotto (i nomi,
    le nature, «manca il token», il perché una riga non si sposta) viene dal
    payload. Se qui dentro comparisse un `.sort()`, un confronto fra
    `chain_order` e le credenziali, o un `if (id === 'subscription')`, il
@@ -81,7 +81,7 @@
   }
 
   /* L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
-     quindi non può contraddire niente. DUPLICA `decisione_modelli.ORDINE_FISSO`
+     quindi non può contraddire niente. DUPLICA `decisione_modelli.FIXED_ORDER`
      (il frontend non importa Python): le due liste sono tenute legate da un
      test che si rompe -- test_models_frontend_wiring.py. */
   var ORDINE_FISSO = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
@@ -181,7 +181,7 @@
      niente -- dice cosa succede.
 
      Non compone NESSUNA frase: `adesso.frase` e ogni `diagnosi[].testo`
-     arrivano già scritti da `decisione_modelli.componi_adesso`. È l'invariante
+     arrivano già scritti da `decisione_modelli.compose_now`. È l'invariante
      2 della spec applicato al testo e non solo all'ordine: se le parole si
      componessero qui, esisterebbero due posti che affermano cose sul
      prodotto, e uno dei due prima o poi affermerebbe più di quanto il sistema
@@ -356,7 +356,7 @@
 
     /* Una riga che non offre i gesti delle altre deve dire perché, altrimenti
        l'assenza si legge come un guasto. La parola arriva dal payload
-       (`componi_topologia`), perché è una regola del prodotto e cambia con
+       (`compose_topology`), perché è una regola del prodotto e cambia con
        lei. */
     /* La riga di stato: l'ultimo esito OSSERVATO, e quanto è vecchio. È ciò
        che chiude il caso del proprietario -- fino a questa fetta la pagina
@@ -364,7 +364,7 @@
        quaranta richieste», mentre una chiave a credito zero veniva mostrata
        come funzionante.
 
-       La frase arriva dal payload (`decisione_modelli.frase_esito`) e non si
+       La frase arriva dal payload (`decisione_modelli.occurrence_phrase`) e non si
        compone qui: dice quanto tempo fa, con quale codice e da quante
        richieste, cioè tre affermazioni sul prodotto. È anche il motivo per cui
        questa riga non ha bisogno di essere toccata dal Task 14: quando il
@@ -743,9 +743,9 @@
      va perso -- e un «se non risponde, si passa al successivo» disegnato fra il
      piano e la riga sotto prometterebbe un ripiego che il prodotto non fa: il
      difetto 3, ricomparso come didascalia. Il giorno del ripiego (Task 14)
-     cambia una stringa in `componi_topologia` e questa pagina dice la cosa
+     cambia una stringa in `compose_topology` e questa pagina dice la cosa
      nuova senza essere toccata.
-     `connettore_nota` è il tetto utile che nessuno schema dichiara (la chat
+     `note_connector` è il tetto utile che nessuno schema dichiara (la chat
      smette di aspettare a 5 minuti): sta FUORI dal connettore perché il
      connettore è la frase, e la frase è il numero.
 

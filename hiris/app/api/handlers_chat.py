@@ -23,7 +23,7 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..decisione_modelli import nota_ripiego
+from ..decisione_modelli import downgrade_note
 from ..instradamento import chi_risponde
 from .handlers_casa import compose_briefing
 
@@ -302,7 +302,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     for backend_name in (request.app.get("catena_modelli") or []):
         occurrence = occurrence_registry.occurrence(backend_name)
         if occurrence and occurrence["tipo"] == "risposto":
-            return nota_ripiego(motivo=reason, chi_ha_risposto=backend_name)
+            return downgrade_note(reason=reason, who_answered=backend_name)
     return ""
 
 
@@ -460,7 +460,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # fatto già avvenuto e non dipende da come andrà il ripiego.
     #
     # La famiglia è `scaduto` e non `altro`: il ramo di scorta di
-    # `frase_esito` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
+    # `occurrence_phrase` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
     # ha risposto. È la stessa parola più larga del fatto che questa fetta
     # esiste per togliere.
     occurrence_registry = request.app.get("registro_esiti")
@@ -468,7 +468,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         occurrence_registry.fallimento(
             "subscription", family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
-            # che l'utente vede la compone `decisione_modelli.frase_esito`.
+            # che l'utente vede la compone `decisione_modelli.occurrence_phrase`.
             message="nessuna risposta entro la scadenza del ponte",
             # Quanto il piano ha AVUTO, misurato sul job e non riletto
             # dall'archivio: la scadenza può essere stata cambiata mentre il

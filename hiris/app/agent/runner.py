@@ -126,7 +126,7 @@ from ..chat_store import (
     SENTINELLA_RUNNER_ASSENTE,
     SENTINELLA_VUOTO,
 )
-from ..decisione_modelli import ALIAS_DEL_PIANO
+from ..decisione_modelli import SUBSCRIPTION_ALIAS
 from ..schedulatore.turno import promise_tools
 from . import prompts
 
@@ -645,13 +645,13 @@ def cli_model(resolved_model: str) -> str:
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
     name = (resolved_model or "").lower()
-    # I tre alias vengono da `decisione_modelli.ALIAS_DEL_PIANO`, che e' anche
+    # I tre alias vengono da `decisione_modelli.SUBSCRIPTION_ALIAS`, che e' anche
     # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
     # in ordine diverso e senza nessun test che li legasse. Un quarto alias
     # aggiunto la' sarebbe stato offerto all'utente, scelto, e poi ARCHIVIATO
     # COME `sonnet` da questa funzione, con un warning che nessuno legge: il
     # radio sarebbe tornato indietro da solo, senza spiegazione.
-    for alias, _descrizione in ALIAS_DEL_PIANO:
+    for alias, _descrizione in SUBSCRIPTION_ALIAS:
         if alias in name:
             return alias
     log.warning(

@@ -1125,6 +1125,20 @@ def nomi_esportati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
     della classe» e' una domanda sulla STRUTTURA, e la pila di parentesi non
     la sa rispondere. Le definizioni annidate dentro una funzione restano
     fuori, ed e' giusto: non le esporta nessuno.
+
+    **Il perimetro, misurato il 01/09 su `decisione_modelli.py`: vede solo
+    cio' che rinomina il GLOSSARIO.** Il filtro e' `riscrivi(sorgente, g,
+    ambito)`, quindi un lotto che applica una MAPPA A MANO -- come ogni lotto
+    con dei composti, cioe' quasi tutti -- riceve una rete cieca sulla parte
+    fatta a mano. Il conto di quel file: 27 nomi esportati rinominati in
+    tutto, di cui il glossario ne spiega 6; alimentando la terza rete coi 6
+    dichiarava 4 sponde vere, alimentandola coi 27 ne dichiarava 40. **Le 36
+    che mancavano non erano rumore**: fra loro i cinque import di
+    `api/handlers_models.py`, quello di `agent/runner.py`, quello di
+    `schedulatore/turno.py` e quello di `server.py:59` -- cioe' l'add-on che
+    non parte. Chi chiama questa funzione per alimentare `sponde_per_nome` le
+    passi le coppie DAVVERO applicate (si ricavano confrontando i token NAME
+    del file prima e dopo), non solo quelle del glossario.
     """
     import ast
     try:
@@ -1360,6 +1374,22 @@ def accessi_dinamici(nomi: dict[str, str], radice: Path | None = None, *,
     "nome")` e' legittimo, e solo chi legge sa a quale oggetto quella stringa
     appartenga. Ma un elenco di ventotto righe si legge, e un `grep` che
     nessuno lancia no.
+
+    **Cio' che questa rete NON copre, misurato il 01/09.** `_FORME_DINAMICHE`
+    e' un elenco di forme che leggono un ATTRIBUTO. Una stringa puo' anche
+    diventare una PAROLA CHIAVE, e li' questa rete tace: in
+    `tests/test_decisione_modelli.py:347` un involucro `def
+    componi_topologia(**kw)` faceva `kw.setdefault("esiti", {})` prima di
+    inoltrare `**kw` alla funzione vera. Rinominato il parametro, la chiave
+    letterale e' rimasta indietro e il turno e' morto con
+    `TypeError: got an unexpected keyword argument 'esiti'`. Non e' un
+    attributo, quindi `getattr` e compagni non c'entrano; non e' una parola
+    chiave per sintassi, quindi `chiamanti_orfani` non la vede. **L'ha presa
+    la suite andando rossa -- di nuovo fortuna e non rete**, e resta scritto
+    qui invece di essere coperto perche' una rete nuova senza prova per
+    mutazione sarebbe una speranza, non una protezione. Chi converte una firma
+    con involucri `**kwargs` cerchi a mano le chiavi letterali che li
+    attraversano.
     """
     base = radice or ROOT
     saltati = {e.replace("\\", "/") for e in escludi}

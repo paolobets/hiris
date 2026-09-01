@@ -1143,31 +1143,31 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     """Il test che lega i due file.
 
     `_piano_puo_rispondere` restituisce una PAROLA, e quella parola dev'essere
-    una chiave di `decisione_modelli._MOTIVI_RIPIEGO`, o la nota non si scrive.
+    una chiave di `decisione_modelli._DOWNGRADE_REASONS`, o la nota non si scrive.
     Non produrrebbe un errore: produrrebbe silenzio, cioe' un ripiego dal
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
-    from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
+    from hiris.app.decisione_modelli import _DOWNGRADE_REASONS
     from hiris.app.instradamento import _subscription_can_answer
 
     app, _q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
 
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     puo, motivo = _subscription_can_answer(app)
-    assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
+    assert puo is False and motivo in _DOWNGRADE_REASONS, motivo
 
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
     app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
     puo, motivo = _subscription_can_answer(app)
-    assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
+    assert puo is False and motivo in _DOWNGRADE_REASONS, motivo
 
     app["models_config"] = {"ponte": {"tetto_giornaliero": 50}}
     assert _subscription_can_answer(app) == (True, "")
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
     # `_piano_puo_rispondere`: la scrive `_downgrade_to_chain`.
-    assert "scadenza" in _MOTIVI_RIPIEGO
+    assert "scadenza" in _DOWNGRADE_REASONS
 
 
 # ── L'annuncio: il ripiego si dichiara, ogni volta ─────────────────────────
@@ -1397,7 +1397,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     E la famiglia e' `scaduto`, non il ramo di scorta: quello direbbe «ha
     rifiutato», che e' piu' largo del fatto -- il piano non ha rifiutato, non
     ha risposto."""
-    from hiris.app.decisione_modelli import frase_esito
+    from hiris.app.decisione_modelli import occurrence_phrase
 
     app, q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
@@ -1413,7 +1413,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     # prima della scadenza), non riletto dall'archivio -- che l'utente puo'
     # aver cambiato mentre il turno era in volo.
     assert 298 < esito["durata_s"] < 302, esito["durata_s"]
-    frase = frase_esito(esito, posizione=1, adesso=esito["quando"] + 120)
+    frase = occurrence_phrase(esito, position=1, now=esito["quando"] + 120)
     assert frase == "non ha risposto in tempo — l'ultima richiesta, 2 min fa"
     assert "rifiutato" not in frase
 

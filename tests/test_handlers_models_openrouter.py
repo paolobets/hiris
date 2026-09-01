@@ -265,7 +265,7 @@ async def test_sulla_riserva_non_c_e_piu_niente_che_contraddica_la_casella():
     da OpenRouter. Potata la riserva, non ne resta nemmeno uno: la casella non
     puo' piu' essere contraddetta, e l'avviso che lo diceva non deve piu'
     comparire (e' legato al CONTENUTO dell'elenco, non a una condizione che lo
-    indovina -- vedi `decisione_modelli.componi_pannello`)."""
+    indovina -- vedi `decisione_modelli.compose_panel`)."""
     with patch("aiohttp.ClientSession", return_value=_mock_che_solleva()):
         modelli, fonte = await handlers_models._fetch_openrouter_models(
             "k", hide_free_models=True)

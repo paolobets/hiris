@@ -56,7 +56,7 @@ from .cervello.oggetti import (
     day_boundaries,
 )
 from .cervello.osservatore import Watcher
-from .decisione_modelli import piano_ha_il_token
+from .decisione_modelli import subscription_has_token
 from .env_util import env_bool
 from .esiti_provider import OccurrenceRegistry
 from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
@@ -1376,7 +1376,7 @@ def should_start_agent_worker(ponte_attivo: bool) -> bool:
     a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
     (`_ricalcola_catena`). Il token resta letto qui: e' una credenziale, e le
     credenziali stanno ancora nelle opzioni dell'add-on."""
-    return ponte_attivo and piano_ha_il_token()
+    return ponte_attivo and subscription_has_token()
 
 
 def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
@@ -2325,7 +2325,7 @@ async def _on_startup(app: web.Application) -> None:
     # stato di un provider. Adesso l'unica cosa che si misura qui e' se la
     # credenziale c'e'; chi la USA lo dice `chain_order`.
     _credenziali = {
-        "subscription": piano_ha_il_token(),
+        "subscription": subscription_has_token(),
         "claude": bool(api_key),
         "openai": bool(openai_api_key),
         "openrouter": bool(openrouter_api_key),

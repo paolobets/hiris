@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.api import handlers_models
-from hiris.app.decisione_modelli import provenienza
+from hiris.app.decisione_modelli import provenance
 
 # La fixture `client` (app vera via `create_app()`), la stessa che
 # `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.
@@ -105,13 +105,13 @@ def test_la_provenienza_nomina_l_ospite_che_non_ha_risposto():
     una frase propria che diceva il falso: e' USCITO, e il percorso generico
     produce gia' le due frasi giuste. L'unica cosa che serviva era una riga in
     `_OSPITI`."""
-    riga = provenienza("claude", "riserva")
+    riga = provenance("claude", "riserva")
     assert "api.anthropic.com" in riga
     assert "non ho potuto leggere" in riga.lower()
 
 
 def test_e_quando_la_lettura_riesce_lo_dice():
-    assert provenienza("claude", "viva") == "Letti da api.anthropic.com adesso."
+    assert provenance("claude", "viva") == "Letti da api.anthropic.com adesso."
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_senza_chiave_claude_api_non_ha_nessun_elenco_da_leggere(client):
     assert voce["id"] == "claude"
     assert voce["fonte"] == "assente"
     assert voce["modelli"] == []
-    assert voce["provenienza"] == provenienza("claude", "assente")
+    assert voce["provenienza"] == provenance("claude", "assente")
     assert "manca la chiave" in voce["provenienza"]
 
 

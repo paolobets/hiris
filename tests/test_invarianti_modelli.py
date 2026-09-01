@@ -313,23 +313,23 @@ def test_i_blocchi_a_tutta_larghezza_restano_a_tutta_larghezza(classe):
 # ── I tre alias del piano e la CLI che li produce ──────────────────────────
 
 def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
-    """`decisione_modelli.ALIAS_DEL_PIANO` (quello che il pannello offre) e
+    """`decisione_modelli.SUBSCRIPTION_ALIAS` (quello che il pannello offre) e
     `agent/runner.modello_cli` (quello che la CLI accetta) erano due liste
     digitate a mano in due file, in ordine diverso: un quarto alias aggiunto
     la' sarebbe stato offerto, scelto, e poi ARCHIVIATO COME `sonnet` con un
     warning che nessuno legge -- il radio tornava indietro da solo, senza
     spiegazione.
 
-    Adesso `modello_cli` ITERA `ALIAS_DEL_PIANO`, quindi non esiste piu' una
+    Adesso `modello_cli` ITERA `SUBSCRIPTION_ALIAS`, quindi non esiste piu' una
     seconda lista. Questa prova non cerca piu' i letterali nel sorgente: quel
     difetto non puo' piu' esistere, e una prova che lo cercasse non potrebbe
     piu' fallire. Verifica il COMPORTAMENTO -- che ogni alias offerto
     sopravviva davvero al passaggio, e che un nome estraneo ricada
     dichiaratamente su `sonnet` invece di far fallire il turno."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
 
-    for alias, _descrizione in ALIAS_DEL_PIANO:
+    for alias, _descrizione in SUBSCRIPTION_ALIAS:
         assert cli_model(alias) == alias
         # Anche nella forma completa con cui arriva da `resolve_model`.
         assert cli_model(f"claude-{alias}-4-5-20250101") == alias
@@ -349,9 +349,9 @@ def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
     piu' sotto: li' era il pannello contro la CLI, qui il pannello contro il
     posto in cui la scelta si ferma."""
     from hiris.app.api import handlers_models
-    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
 
-    offerti = [v for v, _ in ALIAS_DEL_PIANO]
+    offerti = [v for v, _ in SUBSCRIPTION_ALIAS]
     for alias in offerti:
         assert handlers_models._clean_bridge({"modello": alias})["modello"] == alias, (
             f"il pannello offre {alias!r} e il salvataggio non lo tiene"
@@ -426,22 +426,22 @@ def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
     peggiore del precedente, perche' ogni parola sarebbe vera.
 
     I due gesti citati sono quelli che la pagina disegna DAVVERO: «Mettilo
-    primo» arriva da `AZIONE_METTI_IL_PIANO_IN_TESTA`, «Usa» e' l'etichetta del
+    primo» arriva da `ACTION_PUT_SUBSCRIPTION_FIRST`, «Usa» e' l'etichetta del
     bottone che mette una riga in catena."""
-    from hiris.app.decisione_modelli import AZIONE_METTI_IL_PIANO_IN_TESTA
+    from hiris.app.decisione_modelli import ACTION_PUT_SUBSCRIPTION_FIRST
 
     testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
     blocco = re.search(
         r'"Nessun provider AI configurato.*?sta in catena\."', testo, flags=re.DOTALL)
     frase = re.sub(r'"\s*\n\s*"', "", blocco.group(0))
     citate = re.findall(r"«([^»]+)»", frase)
-    assert AZIONE_METTI_IL_PIANO_IN_TESTA["etichetta"] in citate, (
+    assert ACTION_PUT_SUBSCRIPTION_FIRST["etichetta"] in citate, (
         "il messaggio nomina un gesto che la pagina non offre con quel nome"
     )
     js = (BASE / "app" / "static" / "config" / "models-route.js").read_text(
         encoding="utf-8")
     for gesto in citate:
-        if gesto.startswith("Provider · ") or gesto == AZIONE_METTI_IL_PIANO_IN_TESTA["etichetta"]:
+        if gesto.startswith("Provider · ") or gesto == ACTION_PUT_SUBSCRIPTION_FIRST["etichetta"]:
             continue
         assert "'" + gesto + "'" in js, (
             f"il messaggio manda a cercare il gesto «{gesto}», che la pagina "
@@ -453,28 +453,28 @@ def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
 def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
     """Il gemello di comportamento del precedente: leggere il sorgente prova che
     i due elenchi coincidono, questo prova che scegliere una voce del pannello
-    e' davvero la voce che arriva alla CLI. Senza, `ALIAS_DEL_PIANO` potrebbe
+    e' davvero la voce che arriva alla CLI. Senza, `SUBSCRIPTION_ALIAS` potrebbe
     contenere `Sonnet` maiuscolo e i due test sarebbero d'accordo su niente."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.decisione_modelli import ALIAS_DEL_PIANO
+    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
 
-    assert alias in {v for v, _ in ALIAS_DEL_PIANO}
+    assert alias in {v for v, _ in SUBSCRIPTION_ALIAS}
     assert cli_model(alias) == alias
 
 
 def test_ogni_codice_di_credenziale_ha_la_sua_causa():
     """`esiti_provider._CREDENZIALE` decide la FAMIGLIA di un esito,
-    `decisione_modelli._CAUSA_CREDENZIALE` decide la FRASE: due elenchi dello
+    `decisione_modelli._CREDENTIAL_CAUSE` decide la FRASE: due elenchi dello
     stesso insieme chiuso, in due moduli.
 
     Se il primo guadagna un codice e il secondo no, la pagina afferma una causa
     che nessuno ha misurato -- e nel caso concreto (un 429 di quota aggiunto
     per farlo comparire come problema di credito) manderebbe l'utente a
     rigenerare una chiave che funziona."""
-    from hiris.app.decisione_modelli import _CAUSA_CREDENZIALE
+    from hiris.app.decisione_modelli import _CREDENTIAL_CAUSE
     from hiris.app.esiti_provider import _CREDENTIAL
 
-    senza_causa = sorted(c for c in _CREDENTIAL if c not in _CAUSA_CREDENZIALE)
+    senza_causa = sorted(c for c in _CREDENTIAL if c not in _CREDENTIAL_CAUSE)
     assert senza_causa == [], f"codici senza una causa dichiarata: {senza_causa}"
 
 
@@ -482,12 +482,12 @@ def test_un_codice_senza_causa_non_ne_inventa_una():
     """La rete di sicurezza sotto la prova qui sopra: anche se i due elenchi
     divergessero, HIRIS dice il numero e si ferma invece di affermare un
     perche' che non ha misurato. E' la stessa disciplina del ramo `altro`."""
-    from hiris.app.decisione_modelli import frase_esito
+    from hiris.app.decisione_modelli import occurrence_phrase
 
-    frase = frase_esito(
+    frase = occurrence_phrase(
         {"tipo": "rifiutato", "famiglia": "credenziale", "codice": 429,
          "da_quante": 3, "quando": 0.0},
-        posizione=1, adesso=0.0)
+        position=1, now=0.0)
     assert "429" in frase
     assert "credenziale non è accettata" not in frase
     assert "chiave" not in frase

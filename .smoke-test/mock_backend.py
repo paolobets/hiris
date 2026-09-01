@@ -161,7 +161,7 @@ ENTITIES = [
 # GET /api/models — dalla fetta «la catena e' l'unica verita'» (Task 9) questa
 # rotta serve UN solo cliente, il pannello del modello della pagina Modelli, e
 # risponde per un provider alla volta (?provider=<id>). La forma e' quella
-# composta da `decisione_modelli.componi_pannello`: se qui restasse quella
+# composta da `decisione_modelli.compose_panel`: se qui restasse quella
 # vecchia ({label, models:[{id,label}]}) lo smoke test mostrerebbe un pannello
 # vuoto e nessuna suite se ne accorgerebbe.
 MODELS = {

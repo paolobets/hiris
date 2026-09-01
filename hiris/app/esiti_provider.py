@@ -38,7 +38,7 @@ e nei test è una lista mutabile che avanza solo quando il test lo dice: con un
 `time.time()` cotto dentro, «3 min fa» non sarebbe provabile.
 
 Le parole che l'utente legge NON stanno qui: stanno in
-`decisione_modelli.frase_esito`, dove stanno tutte le altre affermazioni sul
+`decisione_modelli.occurrence_phrase`, dove stanno tutte le altre affermazioni sul
 prodotto. Qui ci sono solo i fatti misurati.
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ import time
 # ponte sta girando -- ed e' per questo che e' separata.
 FAMILIES = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
 
-# La sola tabella di questo modulo, e sta qui e non in `frase_esito` perché è
+# La sola tabella di questo modulo, e sta qui e non in `occurrence_phrase` perché è
 # una MISURA (che cosa ha risposto il server), non una parola. 402 è il codice
 # canonico del credito; Anthropic risponde 400 con «credit balance too low»,
 # che è il caso del proprietario; 401 e 403 sono la chiave rifiutata. Tutti e

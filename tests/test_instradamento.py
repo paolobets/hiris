@@ -17,13 +17,13 @@ scende alla catena:
     ripiego da dichiarare, e' la configurazione. Motivo vuoto.
   - il ponte c'e' ma NON PUO' rispondere -- quello e' un ripiego vero, dal
     forfait al consumo, e si dichiara. Il motivo e' una CHIAVE di
-    `decisione_modelli._MOTIVI_RIPIEGO`, non una frase: la frase la compone
-    `nota_ripiego`, e un motivo fuori vocabolario non produce un errore,
+    `decisione_modelli._DOWNGRADE_REASONS`, non una frase: la frase la compone
+    `downgrade_note`, e un motivo fuori vocabolario non produce un errore,
     produce SILENZIO -- cioe' un prelievo non annunciato.
 """
 import pytest
 
-from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO, VARIABILE_TOKEN_DEL_PIANO
+from hiris.app.decisione_modelli import _DOWNGRADE_REASONS, SUBSCRIPTION_TOKEN_VAR
 from hiris.app.instradamento import chi_risponde
 
 
@@ -49,12 +49,12 @@ def _app(*, ponte=True, coda=None, tetto=150):
 def col_token(monkeypatch):
     # La costante, non il nome scritto a mano: se qualcuno rinomina la
     # variabile del token questi test devono seguirlo, non passare a vuoto.
-    monkeypatch.setenv(VARIABILE_TOKEN_DEL_PIANO, "un-token-qualunque")
+    monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
 
 
 @pytest.fixture
 def senza_token(monkeypatch):
-    monkeypatch.delenv(VARIABILE_TOKEN_DEL_PIANO, raising=False)
+    monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
 
 
 def test_col_ponte_acceso_e_il_piano_capace_risponde_il_ponte(col_token):
@@ -79,7 +79,7 @@ def test_senza_il_token_del_piano_e_un_ripiego_e_si_dichiara(senza_token):
     via, motivo = chi_risponde(_app())
     assert via == "catena"
     assert motivo == "manca il token"
-    assert motivo in _MOTIVI_RIPIEGO, (
+    assert motivo in _DOWNGRADE_REASONS, (
         "un motivo fuori vocabolario non produce un errore: produce silenzio, "
         "cioe' un passaggio dal forfait al consumo che nessuno annuncia")
 
@@ -88,7 +88,7 @@ def test_a_tetto_pieno_e_un_ripiego_e_si_dichiara(col_token):
     via, motivo = chi_risponde(_app(coda=_CodaFinta(oggi=150)))
     assert via == "catena"
     assert motivo == "tetto giornaliero"
-    assert motivo in _MOTIVI_RIPIEGO
+    assert motivo in _DOWNGRADE_REASONS
 
 
 def test_sotto_il_tetto_di_uno_il_ponte_risponde_ancora(col_token):

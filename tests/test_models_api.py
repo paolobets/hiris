@@ -187,7 +187,7 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     sono PAROLE o FATTI: quale credenziale manca (`manca`), perche' una riga
     non offre i gesti che offrono le altre (`nota`), cosa succede se quella
     riga non risponde (`connettore`), il tetto dei cinque minuti quando c'e'
-    (`connettore_nota`) e -- col Task 9 -- se il modello di quella riga e' un
+    (`note_connector`) e -- col Task 9 -- se il modello di quella riga e' un
     ALIAS o un IDENTIFICATORE (`modello_alias`), che e' la differenza di natura
     che la pagina rende col carattere (progetto §6.2) e che senza questo campo
     dovrebbe dedurre da un `if (id === 'subscription')`. Il numero sale quando
@@ -793,7 +793,7 @@ async def test_un_pannello_chiesto_risponde_SEMPRE_anche_senza_credenziale(clien
     """Nascondere e' comodo per chi capisce e crudele per chi non capisce
     perche' una cosa e' sparita. Il modello e' cliccabile su ogni riga, quindi
     ogni click deve produrre una risposta -- e la risposta la scrive il
-    backend, con la stessa parola della riga (`MANCANZE`), non la pagina."""
+    backend, con la stessa parola della riga (`MISSING_REASONS`), non la pagina."""
     body = await (await client.get("/api/models?provider=openrouter")).json()
     assert len(body["providers"]) == 1
     p = body["providers"][0]
@@ -890,7 +890,7 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     client.app["models_config"] = {"chain_order": ["claude", "openrouter"]}
     client.app["catena_modelli"] = ["claude", "openrouter"]
     # Le due credenziali che il GET misura per disegnare le righe: senza,
-    # `componi_topologia` sposterebbe OpenRouter fra chi sta fuori e la prova
+    # `compose_topology` sposterebbe OpenRouter fra chi sta fuori e la prova
     # guarderebbe un'altra cosa.
     client.app["openrouter_api_key"] = "sk-or-presente"
 
@@ -987,7 +987,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
 async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypatch):
     """Nessuna nuova chiamata fra le due letture: cambia SOLO l'orologio di
     parete che l'handler legge, e la riga invecchia. Se `adesso` fosse cotto
-    dentro `componi_topologia` (o peggio, se il registro si aggiornasse da
+    dentro `compose_topology` (o peggio, se il registro si aggiornasse da
     solo), la riga direbbe per sempre «poco fa» -- che e' esattamente la
     freschezza finta che ha fatto sopravvivere il difetto piu' grave della
     settimana a 1207 test."""

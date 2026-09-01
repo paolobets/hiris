@@ -79,7 +79,7 @@ def test_la_pagina_riceve_la_frase_e_non_la_compone():
         "la frase a schermo dev'essere quella del backend, non una composta qui"
     )
     assert "adesso-card" in js
-    # Le parole del prodotto stanno in `decisione_modelli.componi_adesso` e in
+    # Le parole del prodotto stanno in `decisione_modelli.compose_now` e in
     # nessun altro posto: se l'incipit della frase ricompare nel frontend,
     # esistono due file che affermano cose sul prodotto (invariante 3).
     assert "Il prossimo messaggio va a" not in js
@@ -123,7 +123,7 @@ def test_la_pagina_non_conosce_il_caso_del_piano_ma_obbedisce_a_un_campo():
     dove il backend dice `riordinabile`, e in nessun altro modo. Un
     `if (id === 'subscription')` qui dentro sarebbe una regola del prodotto
     scritta una seconda volta, in un altro linguaggio, libera di divergere da
-    `componi_topologia` -- che e' la forma esatta del difetto di questa fetta.
+    `compose_topology` -- che e' la forma esatta del difetto di questa fetta.
 
     I due test JS gemelli (OpenRouter non riordinabile) provano il
     COMPORTAMENTO; questo impedisce la scrittura che li farebbe passare per la
@@ -191,9 +191,9 @@ def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
     """Due liste con lo stesso nome in due linguaggi sono la miniatura del
     difetto che questa fetta chiude. Non si possono fondere (il frontend non
     importa Python), ma si possono tenere legate da un test che si rompe."""
-    from hiris.app.decisione_modelli import ORDINE_FISSO
+    from hiris.app.decisione_modelli import FIXED_ORDER
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    atteso = "var ORDINE_FISSO = [" + ", ".join(f"'{p}'" for p in ORDINE_FISSO) + "];"
+    atteso = "var ORDINE_FISSO = [" + ", ".join(f"'{p}'" for p in FIXED_ORDER) + "];"
     assert atteso in js, f"atteso in models-route.js: {atteso}"
 
 
@@ -219,7 +219,7 @@ def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso()
 
     I QUATTRO id compaiono nel codice esattamente quattro volte ciascuno, e
     sono le due liste che il prodotto tiene legate al backend da un test
-    (`ORDINE_FISSO`, una volta; i tre preset, tre volte). Un quinto sarebbe un
+    (`FIXED_ORDER`, una volta; i tre preset, tre volte). Un quinto sarebbe un
     caso particolare riconosciuto per nome -- ed e' cosi' che il difetto di
     questa fetta rientrerebbe."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")

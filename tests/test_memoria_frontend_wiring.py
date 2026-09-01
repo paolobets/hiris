@@ -2,7 +2,7 @@
 
 Non si possono fondere -- il frontend non importa Python -- ma si possono
 legare con una prova che si rompe. E' lo stesso schema gia' applicato a
-`ORDINE_FISSO` e ai tre preset in `test_models_frontend_wiring.py`; a `forza`
+`FIXED_ORDER` e ai tre preset in `test_models_frontend_wiring.py`; a `forza`
 non era mai stato applicato, e quella e' la differenza fra una tendina
 incompleta e la perdita di un dato:
 

@@ -1013,6 +1013,12 @@ _MUTE_VOLUTE = {
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "azione"), ("note", "consumi"),
     ("note", "schedulatore"),
+    # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
+    # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
+    # cancello lo vede perche' guarda i PEZZI, e `note` e' anche un plurale
+    # italiano: e' lo stesso incrocio gia' descritto per `officina.py` accanto
+    # alla riga `note (casa)` del glossario, misurato una seconda volta.
+    ("note", "radice"),
     # `dopo (casa)` e' l'ordine temporale. In `azione/` `dopo` e' la CHIAVE
     # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
     # italiano per decisione (vedi la riga `primo` del glossario).
@@ -1026,16 +1032,9 @@ _MUTE_VOLUTE = {
     # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
     # stanno in una riga sola, e non sono state decise per quell'ambito.
     ("loro", "azione"), ("nostro", "azione"),
-    # `piano (abbonamento)` E' irraggiungibile per costruzione, con la ragione
-    # scritta accanto alla riga: si applica a mano. Qui non e' una scoperta.
-    ("piano", "api"),
     # `verifica` e' qualificata `(azione)`/`(memoria)`; in `casa/strumenti.py`
     # c'e' un'occorrenza sola, dentro il residuo dichiarato di quel file.
     ("verifica", "casa"),
-    # `piano` in `agent/` compare SOLO dentro `ALIAS_DEL_PIANO`, che
-    # `agent/runner.py` IMPORTA da `decisione_modelli.py`: non e' un nome suo,
-    # e `piano (abbonamento)` resta irraggiungibile per costruzione.
-    ("piano", "agent"),
 }
 
 # ── 2. DA CONVERTIRE: la parola e' muta solo perche' il suo sottosistema non
@@ -1055,8 +1054,15 @@ _MUTE_PROVVISORIE = {
     # costata un nome rimasto italiano (`cache_lettura`, `claude_runner.py`).
     # Ognuna va decisa quando tocchera' al suo file: qualificarla `(radice)`, o
     # dichiararla voluta con la ragione.
+    # **`senza` e' sparita il 01/09** convertendo `decisione_modelli.py`: la
+    # portava `senza_modello`, diventato `without_model`. E con lei sono
+    # sparite `("piano", "api")` e `("piano", "agent")`, che stavano fra le
+    # VOLUTE: le portavano `piano_ha_il_token` e `ALIAS_DEL_PIANO`, due nomi
+    # importati da questo stesso file. **La lezione e' che una coppia muta puo'
+    # vivere in un ambito che non la scrive**: spariscono convertendo un altro
+    # file, non il loro.
     ("fuori", "radice"), ("guarda", "radice"), ("piano", "radice"),
-    ("riga", "radice"), ("senza", "radice"),
+    ("riga", "radice"),
 }
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE

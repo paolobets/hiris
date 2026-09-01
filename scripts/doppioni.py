@@ -319,7 +319,7 @@ def _costanti_gia_legate(test: list[Path]) -> set[str]:
 
     Un vocabolario che vive in Python e in JavaScript non e' un difetto se
     esiste qualcosa che si rompe quando i due divergono: il difetto e' la
-    divergenza SILENZIOSA. `ORDINE_FISSO` e i tre preset sono duplicati da
+    divergenza SILENZIOSA. `FIXED_ORDER` e i tre preset sono duplicati da
     sempre, e sono in regola, perche' `test_models_frontend_wiring.py`
     confronta la stringa JS con la lista Python; `VOCABOLARIO["forza"]` non lo
     era, e l'ha pagata cancellando la forza dei ricordi.
@@ -376,7 +376,7 @@ def cerca_vocabolari_paralleli(files: list[Path], js: list[Path],
     #
     # Al primo giro questo controllo ha prodotto dieci righe per una causa
     # sola: sette costanti Python diverse -- `_VALID_BACKENDS`, `_OSPITI`,
-    # `NOMI`, `ORDINE_FISSO`, ... -- costruite tutte sugli stessi cinque
+    # `DISPLAY_NAMES`, `FIXED_ORDER`, ... -- costruite tutte sugli stessi cinque
     # identificatori di provider, piu' la pagina che li nomina per renderli.
     # Dieci righe da leggere per decidere una cosa sola sono gia' il rumore
     # che questo strumento esiste per non produrre: il fatto e' «il

@@ -101,7 +101,7 @@
      una riga di registro. Dichiara che il turno ha RIPIEGATO -- il Piano
      Claude Max non ha risposto, e ha risposto qualcun altro, con la sua natura
      (a consumo / in casa). Il testo arriva GIA' SCRITTO dal server
-     (`decisione_modelli.nota_ripiego`): qui non si compone niente, per la
+     (`decisione_modelli.downgrade_note`): qui non si compone niente, per la
      stessa ragione per cui la pagina Modelli non compone le sue frasi -- sono
      affermazioni sul prodotto, e due posti che le fanno prima o poi ne fanno
      due diverse.

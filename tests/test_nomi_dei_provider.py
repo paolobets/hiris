@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.decisione_modelli import NOMI
+from hiris.app.decisione_modelli import DISPLAY_NAMES
 
 BASE = Path(__file__).resolve().parents[1] / "hiris"
 
@@ -51,7 +51,7 @@ def test_nessun_nome_ritirato_sopravvive(percorso, ritirato):
 
 
 def test_i_cinque_nomi_sono_quelli_e_solo_quelli():
-    assert NOMI == {
+    assert DISPLAY_NAMES == {
         "subscription": "Piano Claude Max",
         "claude": "Claude API",
         "openrouter": "OpenRouter",

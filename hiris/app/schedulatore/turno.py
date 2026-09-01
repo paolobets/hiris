@@ -20,7 +20,7 @@ import logging
 import time
 
 from ..casa.strumenti import KNOWLEDGE_TOOLS
-from ..decisione_modelli import _MOTIVI_RIPIEGO
+from ..decisione_modelli import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def _downgrade_note(reason: str) -> str:
 
     Il ripiego si annuncia OGNI VOLTA (decisione del proprietario, 13 agosto):
     un passaggio dal forfait al consumo che nessuno dichiara si scopre a fine
-    mese. In chat lo dice una nota in coda alla risposta (`nota_ripiego`); una
+    mese. In chat lo dice una nota in coda alla risposta (`downgrade_note`); una
     promessa non ha una risposta in cui metterla -- ha il suo motivo, che si
     legge dalla pagina.
 
@@ -230,7 +230,7 @@ def _downgrade_note(reason: str) -> str:
     silenzio -- questa riga parla di soldi. Si dice cio' che si sa per certo:
     il piano non ha risposto, e ha risposto la catena, a consumo.
     """
-    fatto = _MOTIVI_RIPIEGO.get(reason)
+    fatto = _DOWNGRADE_REASONS.get(reason)
     if not fatto:
         return ""
     return (f"Il Piano Claude Max {fatto}: questo turno l'ha mantenuto la catena, "
