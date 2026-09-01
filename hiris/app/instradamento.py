@@ -75,7 +75,7 @@ def _piano_puo_rispondere(app) -> tuple[bool, str]:
     tetto = int((app.get("models_config") or {})
                 .get("ponte", {}).get("tetto_giornaliero",
                                       _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
-    if app["reasoning_queue"].count_turni_oggi() >= tetto:
+    if app["reasoning_queue"].count_exchanges_today() >= tetto:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "
             "alla catena.", tetto)

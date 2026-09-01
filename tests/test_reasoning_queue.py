@@ -139,7 +139,7 @@ def test_reclamare_uno_scaduto_lo_marca_ripiego_e_restituisce_il_contesto(q):
     domanda leggermente diversa. E' l'unico momento in cui si puo': appena il
     job si chiude, il contesto viene azzerato."""
     jid = _scaduto(q)
-    job = q.reclama_scaduto(jid, now=200.0)
+    job = q.reclaim_expired(jid, now=200.0)
     assert job is not None
     assert job["status"] == "ripiego"
     assert job["context"]["history"] == [{"role": "user", "content": "ciao"}]
@@ -152,7 +152,7 @@ def test_un_job_non_ancora_scaduto_non_si_reclama(q):
     l'attesa. Finche' la scadenza non e' passata, il piano ha la sua
     occasione."""
     jid = _scaduto(q, scade=100.0)
-    assert q.reclama_scaduto(jid, now=99.0) is None
+    assert q.reclaim_expired(jid, now=99.0) is None
     assert q.get(jid)["status"] == "pending"
 
 
@@ -160,8 +160,8 @@ def test_lo_stesso_job_si_reclama_una_volta_sola(q):
     """La mutua esclusione: due poll concorrenti non possono ripiegare due
     volte lo stesso turno."""
     jid = _scaduto(q)
-    assert q.reclama_scaduto(jid, now=200.0) is not None
-    assert q.reclama_scaduto(jid, now=201.0) is None
+    assert q.reclaim_expired(jid, now=200.0) is not None
+    assert q.reclaim_expired(jid, now=201.0) is None
 
 
 def test_un_job_gia_deciso_o_scaduto_non_si_reclama(q):
@@ -172,12 +172,12 @@ def test_un_job_gia_deciso_o_scaduto_non_si_reclama(q):
     deciso = _scaduto(q)
     preso = q.claim(now=1.0)
     q.submit(deciso, preso["nonce"], {"reply": "ok"}, now=2.0)
-    assert q.reclama_scaduto(deciso, now=200.0) is None
+    assert q.reclaim_expired(deciso, now=200.0) is None
 
     scaduto = _scaduto(q)
     q.sweep_expired(now=200.0)
     assert q.get(scaduto)["status"] == "expired"
-    assert q.reclama_scaduto(scaduto, now=201.0) is None
+    assert q.reclaim_expired(scaduto, now=201.0) is None
 
 
 def test_solo_i_turni_di_chat_si_ripiegano(q):
@@ -185,7 +185,7 @@ def test_solo_i_turni_di_chat_si_ripiegano(q):
     non ha una conversazione dietro, e ripiegarlo manderebbe al modello un
     contesto che non e' un turno."""
     jid = _scaduto(q, kind="holistic")
-    assert q.reclama_scaduto(jid, now=200.0) is None
+    assert q.reclaim_expired(jid, now=200.0) is None
 
 
 def test_risolvere_un_ripiego_lo_chiude_e_azzera_il_contesto(q):
@@ -193,8 +193,8 @@ def test_risolvere_un_ripiego_lo_chiude_e_azzera_il_contesto(q):
     nucleo per intero -- aree, dispositivi, cio' che le persone hanno detto --
     e non deve restare su disco fino alla potatura a 7 giorni."""
     jid = _scaduto(q)
-    q.reclama_scaduto(jid, now=200.0)
-    assert q.risolvi_ripiego(jid, {"reply": "risposto io", "nota": "n"}, now=210.0) is True
+    q.reclaim_expired(jid, now=200.0)
+    assert q.resolve_downgrade(jid, {"reply": "risposto io", "nota": "n"}, now=210.0) is True
     job = q.get(jid)
     assert job["status"] == "decided"
     assert job["decision"] == {"reply": "risposto io", "nota": "n"}
@@ -206,7 +206,7 @@ def test_non_si_risolve_un_ripiego_che_non_e_stato_reclamato(q):
     chiudere, e chiudere comunque significherebbe scrivere una risposta sopra
     un turno che il piano sta ancora servendo."""
     jid = _scaduto(q)
-    assert q.risolvi_ripiego(jid, {"reply": "x"}, now=210.0) is False
+    assert q.resolve_downgrade(jid, {"reply": "x"}, now=210.0) is False
     assert q.get(jid)["status"] == "pending"
 
 
@@ -216,10 +216,10 @@ def test_un_ripiego_conta_come_risposta_in_volo(q):
     intanto metterebbe due risposte in volo sulla stessa conversazione."""
     jid = _scaduto(q)
     assert q.has_pending_chat(now=200.0) is False
-    q.reclama_scaduto(jid, now=200.0)
+    q.reclaim_expired(jid, now=200.0)
     assert q.has_pending_chat(now=200.0) is True
     assert q.has_pending_chat(now=10_000.0) is True
-    q.risolvi_ripiego(jid, {"reply": "x"}, now=210.0)
+    q.resolve_downgrade(jid, {"reply": "x"}, now=210.0)
     assert q.has_pending_chat(now=220.0) is False
 
 
@@ -228,11 +228,11 @@ def test_un_ripiego_schiantato_diventa_failed_e_la_potatura_lo_prende(q):
     resterebbe in volo per sempre: 'ripiego' non e' fra gli stati che `prune`
     cancella, e tiene bloccata la conversazione sul 409."""
     jid = _scaduto(q)
-    q.reclama_scaduto(jid, now=200.0)
-    assert q.fallisci_ripieghi_bloccati(before_ts=199.0) == 0, (
+    q.reclaim_expired(jid, now=200.0)
+    assert q.fail_stuck_downgrades(before_ts=199.0) == 0, (
         "il confine e' il momento del RECLAMO: un ripiego appena cominciato "
         "non e' uno schianto")
-    assert q.fallisci_ripieghi_bloccati(before_ts=200.0) == 1
+    assert q.fail_stuck_downgrades(before_ts=200.0) == 1
     job = q.get(jid)
     assert job["status"] == "failed"
     assert job["context"] == {}
@@ -246,7 +246,7 @@ def test_lo_sweep_non_ruba_il_lavoro_al_poll(q):
     glielo rubasse, l'utente leggerebbe «la risposta non e' arrivata in tempo»
     mentre la catena sta scrivendo la sua."""
     jid = _scaduto(q)
-    q.reclama_scaduto(jid, now=200.0)
+    q.reclaim_expired(jid, now=200.0)
     assert q.sweep_expired(now=10_000.0) == []
     assert q.get(jid)["status"] == "ripiego"
 
@@ -259,7 +259,7 @@ def test_il_giorno_del_tetto_finisce_a_mezzanotte_DI_CASA(tmp_path):
     Il timestamp e' scelto apposta perche' un fuso sbagliato produca il
     GIORNO sbagliato (22:30 del 26, non solo un'ora diversa nello stesso
     26/08) e non solo l'ora: cosi' il test non puo' passare per caso."""
-    coda = ReasoningQueue(str(tmp_path / "r.db"), leggi_fuso=lambda: "Europe/Rome")
+    coda = ReasoningQueue(str(tmp_path / "r.db"), read_timezone=lambda: "Europe/Rome")
 
     mezzanotte_e_mezza_roma = 1787783400.0  # 26/08 22:30Z = 27/08 00:30 a Roma
     ieri_sera_roma = 1787778600.0           # 26/08 21:10Z = 26/08 23:10 a Roma
@@ -270,7 +270,7 @@ def test_il_giorno_del_tetto_finisce_a_mezzanotte_DI_CASA(tmp_path):
                  now=ieri_sera_roma)
 
     # Due turni accodati, ma uno solo appartiene a «oggi» nel fuso della casa.
-    assert coda.count_turni_oggi(now=mezzanotte_e_mezza_roma) == 1
+    assert coda.count_exchanges_today(now=mezzanotte_e_mezza_roma) == 1
 
 
 def test_il_giorno_del_tetto_non_sfora_di_un_ora_al_cambio_ora(tmp_path):
@@ -288,7 +288,7 @@ def test_il_giorno_del_tetto_non_sfora_di_un_ora_al_cambio_ora(tmp_path):
     secondi invece che il calendario del fuso -- quindi il test non puo'
     passare per caso, solo se il conto usa davvero la mezzanotte locale del
     giorno SUCCESSIVO."""
-    coda = ReasoningQueue(str(tmp_path / "r.db"), leggi_fuso=lambda: "Europe/Rome")
+    coda = ReasoningQueue(str(tmp_path / "r.db"), read_timezone=lambda: "Europe/Rome")
 
     mattina_29 = 1774771200.0     # 29/03/2026 10:00 CET (fuso ancora +01:00)
     notte_30_oltre_confine = 1774823400.0  # 30/03/2026 00:30 CEST -- gia' domani
@@ -297,7 +297,7 @@ def test_il_giorno_del_tetto_non_sfora_di_un_ora_al_cambio_ora(tmp_path):
     coda.enqueue("chat", {}, {}, deadline_ts=notte_30_oltre_confine + 600,
                  now=notte_30_oltre_confine)
 
-    assert coda.count_turni_oggi(now=mattina_29) == 1, (
+    assert coda.count_exchanges_today(now=mattina_29) == 1, (
         "il turno delle 00:30 del 30/03 appartiene a domani: un day_end "
         "calcolato come day_start + 86400 secondi lo conterebbe ancora "
         "dentro il 29/03, un giorno che quell'anno dura solo 23 ore")

@@ -25,7 +25,7 @@ New in this task:
   the queue class's natural home. What stays here are the HTTP-level 409
   integration tests below (handle_chat's use of the guard), unaffected by
   the signature change.
-- ReasoningQueue.count_turni_oggi(now=None) -> int: kind="chat" jobs whose
+- ReasoningQueue.count_exchanges_today(now=None) -> int: kind="chat" jobs whose
   created_ts falls on the same local calendar day as `now` (defaults to
   time.time()). Takes an explicit `now` -- like every other method on this
   class (enqueue/claim/submit/sweep_expired) -- so tests don't depend on wall
@@ -127,12 +127,12 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# ReasoningQueue.count_turni_oggi
+# ReasoningQueue.count_exchanges_today
 # ---------------------------------------------------------------------------
 
 def test_conta_turni_oggi_zero_when_no_jobs(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    assert q.count_turni_oggi(now=1_700_000_000.0) == 0
+    assert q.count_exchanges_today(now=1_700_000_000.0) == 0
 
 
 def test_conta_turni_oggi_counts_jobs_created_same_day(tmp_path):
@@ -140,7 +140,7 @@ def test_conta_turni_oggi_counts_jobs_created_same_day(tmp_path):
     base = 1_700_000_000.0  # arbitrary anchor timestamp
     q.enqueue("chat", {}, {"chatbot_id": "a1"}, deadline_ts=base + 300, now=base)
     q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base + 60)
-    assert q.count_turni_oggi(now=base + 120) == 2
+    assert q.count_exchanges_today(now=base + 120) == 2
 
 
 def test_conta_turni_oggi_excludes_other_days(tmp_path):
@@ -149,7 +149,7 @@ def test_conta_turni_oggi_excludes_other_days(tmp_path):
     yesterday = base - 86400
     q.enqueue("chat", {}, {"chatbot_id": "a1"}, deadline_ts=yesterday + 300, now=yesterday)
     q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base)
-    assert q.count_turni_oggi(now=base) == 1
+    assert q.count_exchanges_today(now=base) == 1
 
 
 def test_il_tetto_conta_ANCHE_le_promesse(tmp_path):
@@ -164,7 +164,7 @@ def test_il_tetto_conta_ANCHE_le_promesse(tmp_path):
     base = 1_700_000_000.0
     q.enqueue("chat", {}, {}, deadline_ts=base + 300, now=base)
     q.enqueue("promessa", {}, {"promessa_id": "p1"}, deadline_ts=base + 300, now=base + 60)
-    assert q.count_turni_oggi(now=base + 120) == 2
+    assert q.count_exchanges_today(now=base + 120) == 2
 
 
 def test_conta_turni_oggi_counts_regardless_of_status(tmp_path):
@@ -177,7 +177,7 @@ def test_conta_turni_oggi_counts_regardless_of_status(tmp_path):
     q.submit(claimed["job_id"], claimed["nonce"], {"reply": "x"}, now=base + 2)
     q.enqueue("chat", {}, {"chatbot_id": "a2"}, deadline_ts=base + 300, now=base + 3)
     q.sweep_expired(now=base + 10_000_000)  # would expire a2 if far enough, unrelated to count
-    assert q.count_turni_oggi(now=base) == 2
+    assert q.count_exchanges_today(now=base) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -1367,6 +1367,7 @@ al Task 6 invece che deciso qui.
 | attributo | attribute |
 | automazione | automation |
 | avviso | notice |
+| bloccato | stuck | **Non `blocked`**: in `reasoning/queue.py::fail_stuck_downgrades` un ripiego «bloccato» non e' stato fermato da qualcuno -- e' un lavoro preso in carico e mai finito, perche' il processo e' caduto a meta'. `blocked` direbbe che qualcosa lo trattiene, `stuck` dice che e' rimasto li'. Il verbo `blocca -> block` resta quello che e' |
 | blocco | block |
 | cambiato | changed |
 | cambio | change |
@@ -1440,6 +1441,7 @@ al Task 6 invece che deciso qui.
 | eta | age |
 | etichetta | label |
 | evento | event |
+| fallisci | fail |
 | fallito | failed |
 | fascia | band |
 | finale | final |
@@ -1450,7 +1452,7 @@ al Task 6 invece che deciso qui.
 | fresco | fresh |
 | fuori (casa) | outside |
 | gerarchia | hierarchy |
-| giorno | day |
+| giorno | day | **`giorno_start -> midnight`** (`reasoning/queue.py::count_exchanges_today`): non `day_start`, che nello stesso metodo e' gia' il TIMESTAMP di quel momento. Il `datetime` consapevole del fuso e il numero che ne esce sono due cose, e chiamarle quasi uguali era il modo di confonderle. `mezzanotte` non prende una riga: e' l'unica occorrenza del progetto |
 | giro | round |
 | grana | granularity |
 | gratuito | free | **`free` e' preso da QUESTO senso -- «senza costo» -- e non e' disponibile per `libero`, «non vincolato».** Misurato nel lotto 14 (`proxy/_sanitize.py`): `MAX_TESTO_LIBERO` andava all'inglese e il suggerimento meccanico era `max_text_libero`, meta' nome. Scrivere `libero -> free` avrebbe messo due parole italiane di senso diverso sullo stesso inglese in modo PERMANENTE -- la collisione che `Collisione` ferma dentro un file, resa regola. Risolto riusando il nome dell'interfaccia che la costante alimenta (`sanitize_ha_free_text` -> `MAX_FREE_TEXT`), e `libero` resta undecided: chi la incontra decide guardando il codice, non traducendo |
@@ -1543,6 +1545,7 @@ al Task 6 invece che deciso qui.
 | gruppo | group |
 | raggruppato | grouped |
 | rango | rank |
+| reclama | reclaim |
 | registra | log |
 | resto | rest |
 | restrizione | restriction |
@@ -1570,6 +1573,7 @@ al Task 6 invece che deciso qui.
 | rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento proponeva `_rotta_config -> broken_config` (il nome vero, dal lotto 18 di `proxy/`, e' `_config_route`: qui resta il nome di allora perche' e' la misura che ha motivato questa riga), e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
 | rotta (participio) | broken | **Annotazione, non una riga raggiungibile**: `(participio)` non e' un ambito reale e nessun `--ambito` la trovera' mai, esattamente come `piano (abbonamento)`. Serve a tenere scritto il senso -- `porta_rotta` e' una porta GUASTA -- accanto a quello che gli somiglia, perche' chi legge solo la riga giusta non capisce perche' esiste. Si applica a mano, se mai servira' |
 | sanificato | sanitized |
+| scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `schedulatore/archivio.py` e `schedulatore/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
 | scadenza | deadline |
 | scegli | choose |
 | scelto | chosen |

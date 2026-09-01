@@ -447,7 +447,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     """
     queue = request.app["reasoning_queue"]
     now = time.time()
-    job = queue.reclama_scaduto(job_id, now)
+    job = queue.reclaim_expired(job_id, now)
     if job is None:
         return None
 
@@ -485,7 +485,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # risposto nessuno. La nota parla di CHI ha risposto al posto del piano.
         # Il job si chiude comunque, altrimenti resterebbe in 'ripiego' fino
         # allo sweep e ogni poll ritenterebbe.
-        queue.risolvi_ripiego(job_id, {"reply": ""}, time.time())
+        queue.resolve_downgrade(job_id, {"reply": ""}, time.time())
         return web.json_response({
             "status": "error",
             "message": ("Il Piano Claude Max non ha risposto in tempo, e non c'è "
@@ -557,7 +557,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
-    queue.risolvi_ripiego(job_id, {"reply": answer, "nota": note}, time.time())
+    queue.resolve_downgrade(job_id, {"reply": answer, "nota": note}, time.time())
     if not _is_toxic_assistant(answer):
         # SOLO la risposta: il turno dell'utente è già in cronologia da prima
         # dell'accodamento (`_enqueue_chat_job`), e riscriverlo lo
@@ -623,7 +623,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # e si aspetta come si aspettava il piano. Quando finisce, il job è
         # 'decided' con la sua `reply` e questo poll passa oltre; se non
         # finisce mai (processo caduto a metà chiamata) lo raccoglie
-        # `fallisci_ripieghi_bloccati`, chiamata dallo sweep, che lo porta a
+        # `fail_stuck_downgrades`, chiamata dallo sweep, che lo porta a
         # 'failed' -- e 'failed' esce dal ramo di errore qui sopra.
         return web.json_response({"status": "pending"})
     payload = {"status": "done", "reply": reply}
@@ -657,7 +657,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
                                if isinstance(t, dict)))
     # fetta «la catena diventa l'unica verità» (Task 14): un turno ripiegato
     # porta anche la nota che lo dichiara. Sta nel `decision` del job -- ce
-    # l'ha scritta `risolvi_ripiego` -- quindi un poll che arriva DOPO il
+    # l'ha scritta `resolve_downgrade` -- quindi un poll che arriva DOPO il
     # ripiego, o un ricaricamento della pagina, la ritrova invariata.
     # Esattamente come `tools_called` qui accanto, e per lo stesso motivo: ciò
     # che il turno ha prodotto vive nel job, non nella richiesta che per caso

@@ -33,7 +33,7 @@ class _CodaFinta:
     def __init__(self, oggi: int = 0) -> None:
         self._oggi = oggi
 
-    def count_turni_oggi(self, now=None) -> int:
+    def count_exchanges_today(self, now=None) -> int:
         return self._oggi
 
 

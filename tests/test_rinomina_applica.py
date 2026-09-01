@@ -643,6 +643,10 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # sottosistema che entra qui completo alla prima -- gli altri sei ci
     # sono arrivati con un residuo dichiarato o dopo una correzione.
     ("proxy", "proxy", frozenset()),
+    # `reasoning` entra il 01/09, senza residui. E' il sottosistema che ne
+    # la specifica ne' il piano avevano mai nominato -- scoperto a meta'
+    # fetta -- ed e' il primo aperto con tutte e quattro le reti in piedi.
+    ("reasoning", "reasoning", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("consumi", "consumi", frozenset()),
     ("cervello", "cervello", frozenset()),
@@ -1101,3 +1105,39 @@ def test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato():
           "`_MUTE_PROVVISORIE` e' l'esito atteso di una conversione; se "
           "viene da `_MUTE_VOLUTE`, guarda perche': quell'insieme non "
           "dovrebbe calare da solo.")
+
+
+def test_una_sponda_verso_un_COSTRUTTORE_porta_il_nome_della_classe():
+    """Un costruttore non si chiama col suo nome, e l'asse del nome chiamato
+    deve saperlo.
+
+    `__init__` non compare mai in un sito di chiamata: li' c'e' il nome della
+    CLASSE (`ReasoningQueue(leggi_fuso=...)`). Senza questa traduzione l'asse
+    nuovo del controllo di chiusura non riconoscerebbe MAI una sponda verso un
+    costruttore -- e in un sottosistema che espone una classe sola sono le
+    uniche che ci siano.
+
+    Trovato aprendo `reasoning/`, il primo ambito convertito con tutte e
+    quattro le reti in piedi: la rete lo ha rivelato prima di sbagliare, non
+    dopo. Provato per mutazione: tolta la traduzione, `firme_rinominate`
+    restituisce `{'__init__'}` e nessuna delle tre chiamate a
+    `ReasoningQueue(leggi_fuso=...)` verrebbe classificata come sponda.
+    """
+    gf = rinomina.Glossario(mappa={"fuso": "timezone"})
+    dentro = ("class Coda:\n"
+              "    def __init__(self, db, *, fuso=None):\n"
+              "        self.f = fuso\n")
+    assert rinomina.firme_rinominate(dentro, gf, "reasoning") == {"Coda"}
+    assert rinomina.parametri_def_rinominati(dentro, gf, "reasoning") == {"fuso": "timezone"}
+
+
+def test_un_metodo_normale_porta_il_proprio_nome_non_quello_della_classe():
+    """La controprova: la traduzione vale SOLO per `__init__`. Un metodo
+    qualunque si chiama col proprio nome anche nel sito di chiamata, e
+    sostituirlo con quello della classe renderebbe l'asse cieco su tutto il
+    resto."""
+    gf = rinomina.Glossario(mappa={"fuso": "timezone"})
+    dentro = ("class Coda:\n"
+              "    def leggi(self, fuso=None):\n"
+              "        return fuso\n")
+    assert rinomina.firme_rinominate(dentro, gf, "reasoning") == {"leggi"}

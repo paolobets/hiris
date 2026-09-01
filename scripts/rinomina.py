@@ -919,7 +919,15 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
     nomi_def = _posizioni_nomi_def(tokens)
     trovati: set[str] = set()
     ultima_def = ""
+    ultima_classe = ""
+    precedente = None
     for i, t in enumerate(tokens):
+        if (t.type == tokenize.NAME and precedente is not None
+                and precedente.type == tokenize.NAME and precedente.string == "class"):
+            ultima_classe = t.string
+        if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.ENCODING,
+                          tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE):
+            precedente = t
         if i in nomi_def:
             ultima_def = t.string
             continue
@@ -927,7 +935,16 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
             continue
         esito = classifica(t.string, g, ambito)
         if isinstance(esito, str) and esito != t.string and ultima_def:
-            trovati.add(ultima_def)
+            # **Un costruttore non si chiama col suo nome.** `__init__` non
+            # compare mai in un sito di chiamata: li' c'e' il nome della
+            # CLASSE (`ReasoningQueue(leggi_fuso=...)`). Senza questa riga
+            # l'asse del nome chiamato non riconoscerebbe MAI una sponda verso
+            # un costruttore, e quelle sono le piu' frequenti in un
+            # sottosistema che espone una classe sola -- misurato aprendo
+            # `reasoning/`, il primo ambito convertito con tutte e quattro le
+            # reti in piedi.
+            trovati.add(ultima_classe if ultima_def == "__init__" and ultima_classe
+                        else ultima_def)
     return trovati
 
 

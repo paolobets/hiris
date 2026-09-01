@@ -1109,7 +1109,7 @@ async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_pat
     runner.chat.assert_awaited_once()
     # E niente e' stato accodato: non si mette un messaggio in una coda che
     # nessuno servira'.
-    assert q.count_turni_oggi() == 0
+    assert q.count_exchanges_today() == 0
 
 
 @pytest.mark.asyncio
@@ -1428,7 +1428,7 @@ async def test_mentre_ripiega_la_conversazione_e_occupata(tmp_path):
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q)
     assert q.has_pending_chat() is False, "scaduto e non ancora reclamato: libera"
-    assert q.reclama_scaduto(jid, time.time()) is not None
+    assert q.reclaim_expired(jid, time.time()) is not None
     assert q.has_pending_chat() is True
 
     async with TestClient(TestServer(app)) as client:
@@ -1445,7 +1445,7 @@ async def test_un_ripiego_in_corso_si_aspetta_e_non_si_ritenta(tmp_path):
     ancora scrivendo la sua risposta."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q)
-    q.reclama_scaduto(jid, time.time())
+    q.reclaim_expired(jid, time.time())
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "pending"}

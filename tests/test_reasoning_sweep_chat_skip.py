@@ -187,7 +187,7 @@ async def test_lo_sweep_non_tocca_un_ripiego_in_corso(tmp_path, monkeypatch):
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("chat", {}, {"history": []}, now - 10, job_id="chat-job", now=now - 100)
-    assert q.reclama_scaduto("chat-job", now) is not None
+    assert q.reclaim_expired("chat-job", now) is not None
 
     sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
     await sweep()
@@ -212,10 +212,10 @@ async def test_lo_sweep_raccoglie_i_ripieghi_schiantati(tmp_path, monkeypatch):
     # reclamato 11 minuti fa: e' uno schianto.
     q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="vecchio",
               now=now - 16 * 60)
-    q.reclama_scaduto("vecchio", now - 11 * 60)
+    q.reclaim_expired("vecchio", now - 11 * 60)
     # E questo un minuto fa: sta ancora lavorando, e non si tocca.
     q.enqueue("chat", {}, {"history": []}, now - 60, job_id="fresco", now=now - 6 * 60)
-    q.reclama_scaduto("fresco", now - 60)
+    q.reclaim_expired("fresco", now - 60)
 
     sweep = _load_real_reasoning_sweep(q, scadenza_min=5)
     await sweep()
@@ -238,7 +238,7 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
     q = ReasoningQueue(str(tmp_path / "r.db"))
     now = _time.time()
     q.enqueue("chat", {}, {"history": []}, now - 11 * 60, job_id="j", now=now - 71 * 60)
-    q.reclama_scaduto("j", now - 11 * 60)
+    q.reclaim_expired("j", now - 11 * 60)
 
     # Scadenza 60 minuti -> confine a 120 minuti fa: undici minuti non bastano.
     await _load_real_reasoning_sweep(q, scadenza_min=60)()

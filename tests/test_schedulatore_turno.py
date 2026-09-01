@@ -315,7 +315,7 @@ class _CodaFinta:
     def __init__(self):
         self.accodati = []
 
-    def count_turni_oggi(self, now=None):
+    def count_exchanges_today(self, now=None):
         return 0
 
     def enqueue(self, kind, wake, context, deadline_ts, *, job_id=None, now):

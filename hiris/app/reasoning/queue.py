@@ -39,7 +39,7 @@ def _row(r) -> dict:
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"]}
 
 class ReasoningQueue:
-    def __init__(self, db_path: str, *, leggi_fuso=None) -> None:
+    def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=1)
@@ -47,7 +47,7 @@ class ReasoningQueue:
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
         # `app["consumi"]`).
-        self._leggi_fuso = leggi_fuso or (lambda: None)
+        self._read_timezone = read_timezone or (lambda: None)
 
     def close(self) -> None:
         with self._lock:
@@ -161,10 +161,10 @@ class ReasoningQueue:
     # Lo stato nuovo si chiama 'ripiego' e NON e' uno stato terminale: `prune`
     # cancella 'decided', 'expired' e 'failed', mai lui. Un ripiego che si
     # schianta a meta' (processo caduto durante la chiamata al modello) resta
-    # quindi in volo per sempre, ed e' `fallisci_ripieghi_bloccati` -- chiamata
+    # quindi in volo per sempre, ed e' `fail_stuck_downgrades` -- chiamata
     # dallo sweep di `server.py` -- a raccoglierlo.
 
-    def reclama_scaduto(self, job_id: str, now: float) -> dict | None:
+    def reclaim_expired(self, job_id: str, now: float) -> dict | None:
         """Prende in carico un job di chat scaduto, per ripiegarlo sulla catena.
 
         Atomico: due poll concorrenti (il browser ne fa uno ogni 3,5 s, e due
@@ -182,7 +182,7 @@ class ReasoningQueue:
 
         `claimed_ts` viene riscritto: il reclamo E' una presa in carico, ed e'
         da quel momento che si conta per decidere se un ripiego si e'
-        schiantato (vedi `fallisci_ripieghi_bloccati`). Il `nonce` va a NULL
+        schiantato (vedi `fail_stuck_downgrades`). Il `nonce` va a NULL
         perche' non c'e' piu' nessun worker a cui appartenga questo job: il
         reclamo ha gia' fatto il lavoro che il nonce faceva -- la mutua
         esclusione -- e lasciarlo li' significherebbe che una `submit` in
@@ -205,7 +205,7 @@ class ReasoningQueue:
         out["nonce"] = None
         return out
 
-    def risolvi_ripiego(self, job_id: str, decision: dict, now: float) -> bool:
+    def resolve_downgrade(self, job_id: str, decision: dict, now: float) -> bool:
         """Chiude un job in 'ripiego' con la risposta arrivata dalla catena.
 
         Stesso azzeramento di `submit`/`sweep_expired` (vedi il commento sopra
@@ -220,10 +220,10 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount > 0
 
-    def fallisci_ripieghi_bloccati(self, before_ts: float) -> int:
+    def fail_stuck_downgrades(self, before_ts: float) -> int:
         """Chiude come 'failed' i ripieghi presi in carico e mai finiti.
 
-        Un job resta in 'ripiego' finche' `risolvi_ripiego` non lo chiude: se
+        Un job resta in 'ripiego' finche' `resolve_downgrade` non lo chiude: se
         il processo cade a meta' della chiamata al modello, nessuno lo chiude
         piu'. E 'ripiego' non e' fra gli stati che `prune` cancella, quindi
         quella riga -- col suo contesto, cioe' col nucleo -- resterebbe su
@@ -271,7 +271,7 @@ class ReasoningQueue:
         app["ponte_attivo"]) never ran or is off. Without this, an
         expired-but-unswept job would 409 the conversation forever with no
         way to clear it. Takes an explicit `now`, like every other method on
-        this class (enqueue/claim/submit/sweep_expired/count_turni_oggi),
+        this class (enqueue/claim/submit/sweep_expired/count_exchanges_today),
         defaulting to time.time() only when the caller (production code)
         doesn't pass one.
 
@@ -283,7 +283,7 @@ class ReasoningQueue:
         in volo sulla stessa conversazione -- che e' esattamente cio' che
         questa guardia esiste per impedire. Il rischio simmetrico (un ripiego
         schiantato che tiene bloccata la conversazione per sempre) e' chiuso
-        da `fallisci_ripieghi_bloccati`, non da un filtro sul tempo qui."""
+        da `fail_stuck_downgrades`, non da un filtro sul tempo qui."""
         ts = time.time() if now is None else now
         with self._lock:
             row = self._conn.execute(
@@ -293,7 +293,7 @@ class ReasoningQueue:
                 (ts,)).fetchone()
         return row is not None
 
-    def count_turni_oggi(self, now: float | None = None) -> int:
+    def count_exchanges_today(self, now: float | None = None) -> int:
         """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.
 
         Fino al 22/08/2026 si chiamava `count_chat_today` e filtrava
@@ -316,7 +316,7 @@ class ReasoningQueue:
         (`zona_casa` ricade su UTC quando il fuso non si sa, e non lo
         inventa mai)."""
         ts = time.time() if now is None else now
-        dt = datetime.fromtimestamp(ts, home_space_zone(self._leggi_fuso()))
+        dt = datetime.fromtimestamp(ts, home_space_zone(self._read_timezone()))
         # M-3 (review finale «il linter e le best practice»): NON
         # `day_start + 86400`. Un giorno locale non dura sempre 86400
         # secondi -- due volte l'anno a Roma dura 23 o 25 ore (l'ora legale
@@ -325,9 +325,9 @@ class ReasoningQueue:
         # Aggiungere un giorno al DATETIME consapevole del fuso lascia
         # all'aritmetica del calendario, non a un conteggio di secondi, il
         # compito di trovare la mezzanotte successiva.
-        giorno_start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_start = giorno_start.timestamp()
-        day_end = (giorno_start + timedelta(days=1)).timestamp()
+        midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = midnight.timestamp()
+        day_end = (midnight + timedelta(days=1)).timestamp()
         with self._lock:
             r = self._conn.execute(
                 "SELECT COUNT(*) AS c FROM reasoning_jobs "

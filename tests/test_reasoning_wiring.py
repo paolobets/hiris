@@ -11,28 +11,28 @@ def test_reasoning_queue_importable():
     assert ReasoningQueue is not None
 
 
-# ── Il cablaggio di `leggi_fuso` non era sorvegliato da nessun test ─────────
+# ── Il cablaggio di `read_timezone` non era sorvegliato da nessun test ─────────
 #
 # Review finale della fetta «il linter e le best practice», I-3: provato per
-# mutazione che togliendo `leggi_fuso=lambda: _fuso_da_archivio_casa(
+# mutazione che togliendo `read_timezone=lambda: _fuso_da_archivio_casa(
 # archivio_casa)` dalla costruzione di `ReasoningQueue` in `server.py`,
 # l'intera suite restava verde. Il gemello nello stesso commit -- la
 # costruzione di `Workshop` -- quella mutazione la prende
 # (`tests/test_costruzione_wiring.py::
 # test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta`), perche' quel test
 # confronta il TESTO esatto della chiamata. Qui si sceglie una forma diversa
-# apposta: un test che confronta il sorgente vedrebbe la stringa "leggi_fuso="
+# apposta: un test che confronta il sorgente vedrebbe la stringa "read_timezone="
 # comparire da qualche parte, ma non che il collaboratore FUNZIONI -- e
 # questo progetto ha gia' pagato quell'errore tre volte (vedi la lezione in
 # `hiris/app/server.py`, `_on_startup`, cerca "STRINGA comparisse").
 #
 # Il sito scoperto e' il tetto giornaliero dei turni (`ReasoningQueue.
-# count_turni_oggi`), la difesa dell'abbonamento: se qualcuno toglie quel
+# count_exchanges_today`), la difesa dell'abbonamento: se qualcuno toglie quel
 # kwarg il giorno torna ad azzerarsi all'ora del container (UTC), non a
 # mezzanotte della casa, e nessuno se ne accorge.
 #
 # La forma buona: uno SPY su `ReasoningQueue.__init__` che verifica che
-# `leggi_fuso` arrivi davvero e che, chiamandolo, restituisca il fuso della
+# `read_timezone` arrivi davvero e che, chiamandolo, restituisca il fuso della
 # casa -- non il testo della chiamata.
 
 import inspect
@@ -66,15 +66,15 @@ def _estrai_costruzione_reasoning_queue():
 class _SpiaReasoningQueue:
     """Un doppio che registra COME e' stato costruito, invece di lasciare
     che un test legga il testo della chiamata. Se la finta ignorasse
-    `leggi_fuso` (invece di conservarlo) nessun test potrebbe mai vedere
+    `read_timezone` (invece di conservarlo) nessun test potrebbe mai vedere
     l'errore -- qui lo conserva ed espone, cosi' il test puo' chiamarlo
     davvero e vedere cosa risponde."""
 
     ultima_istanza = None
 
-    def __init__(self, db_path, *, leggi_fuso=None):
+    def __init__(self, db_path, *, read_timezone=None):
         self.db_path = db_path
-        self.leggi_fuso = leggi_fuso
+        self.read_timezone = read_timezone
         type(self).ultima_istanza = self
 
 
@@ -92,13 +92,13 @@ def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_pat
 
         istanza = app["reasoning_queue"]
         assert isinstance(istanza, _SpiaReasoningQueue)
-        assert istanza.leggi_fuso is not None, (
-            "ReasoningQueue deve ricevere leggi_fuso -- senza, il tetto "
+        assert istanza.read_timezone is not None, (
+            "ReasoningQueue deve ricevere read_timezone -- senza, il tetto "
             "giornaliero dei turni si azzera all'ora del container invece "
             "che a mezzanotte della casa")
         # Non basta che arrivi: deve FUNZIONARE, cioe' restituire il fuso
         # vero della casa quando chiamato -- non un valore qualunque.
-        assert istanza.leggi_fuso() == "Europe/Rome"
+        assert istanza.read_timezone() == "Europe/Rome"
     finally:
         archivio_casa.close()
 

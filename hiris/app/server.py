@@ -2928,7 +2928,7 @@ async def _on_startup(app: web.Application) -> None:
 
     reasoning_queue = ReasoningQueue(
         os.path.join(data_dir, "reasoning.db"),
-        leggi_fuso=lambda: _fuso_da_archivio_casa(archivio_casa))
+        read_timezone=lambda: _fuso_da_archivio_casa(archivio_casa))
     app["reasoning_queue"] = reasoning_queue
 
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
@@ -3084,7 +3084,7 @@ async def _on_startup(app: web.Application) -> None:
         # bloccata sul 409 (`has_pending_chat` conta i ripieghi come in volo).
         # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
         # scadenza: il margine e' il tempo che la catena ha per rispondere.
-        reasoning_queue.fallisci_ripieghi_bloccati(
+        reasoning_queue.fail_stuck_downgrades(
             _time.time() - 2 * 60 * int(
                 (app.get("models_config") or {}).get("ponte", {}).get("scadenza_min", 5)))
         reasoning_queue.prune(_time.time() - 7 * 86400)
