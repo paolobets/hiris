@@ -130,7 +130,7 @@ def test_la_pagina_non_conosce_il_caso_del_piano_ma_obbedisce_a_un_campo():
     ragione sbagliata su un altro provider."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
-    assert "dati.riordinabile" in corpo
+    assert "data.riordinabile" in corpo
     for sospetta in ("=== 'subscription'", '=== "subscription"',
                      "!== 'subscription'", ".subscription"):
         assert sospetta not in corpo, (
@@ -167,10 +167,10 @@ def test_le_parole_del_prodotto_non_vivono_nella_pagina():
         assert parola not in corpo, (
             f"«{parola}» e' una parola del prodotto: viene dal payload"
         )
-    assert "dati.connettore" in corpo
-    assert "dati.manca" in corpo
-    assert "dati.nota" in corpo
-    assert "dati.stato_testo" in corpo
+    assert "data.connettore" in corpo
+    assert "data.manca" in corpo
+    assert "data.nota" in corpo
+    assert "data.stato_testo" in corpo
 
 
 def test_la_parola_attivo_non_torna_da_nessuna_porta():
@@ -224,7 +224,7 @@ def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso()
     questa fetta rientrerebbe."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
-    assert "dati.dove" in corpo
+    assert "data.dove" in corpo
     assert "scriviPercorso" in corpo and "leggiPercorso" in corpo
     for pid in ("'claude'", "'openrouter'", "'openai'", "'ollama'"):
         assert corpo.count(pid) == 4, (
@@ -248,9 +248,9 @@ def test_le_parole_del_pannello_non_vivono_nella_pagina():
         assert parola not in corpo, (
             f"«{parola}» e' una parola del prodotto: viene dal payload"
         )
-    assert "dati.provenienza" in corpo
-    assert "dati.spiegazione" in corpo
-    assert "dati.quando" in corpo
+    assert "data.provenienza" in corpo
+    assert "data.spiegazione" in corpo
+    assert "data.quando" in corpo
     assert "casella.etichetta" in corpo
 
 
@@ -274,7 +274,7 @@ def test_il_modello_e_un_bottone_e_non_uno_span_con_un_listener():
     controllo invisibile a chi non usa il mouse."""
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
-    assert "var modello = el('button'," in corpo, (
+    assert "var model = el('button'," in corpo, (
         "uno <span> con un listener supera ogni test JS -- jsdom esegue il "
         "click lo stesso -- e non e' raggiungibile da tastiera: la differenza "
         "si vede solo guardando il file"
