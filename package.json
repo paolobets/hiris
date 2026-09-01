@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/js/*.test.mjs",
-    "lint": "oxlint --deny-warnings hiris/app/static tests/js"
+    "test": "node --test --test-force-exit tests/js/*.test.mjs",
+    "lint": "oxlint --deny-warnings hiris/app/static tests/js",
+    "sponde": "python scripts/sponde_js.py"
   },
   "devDependencies": {
     "jsdom": "^25.0.0",

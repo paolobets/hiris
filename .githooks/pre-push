@@ -52,6 +52,17 @@ python -m ruff check hiris scripts tests conftest.py .smoke-test || {
     exit 1
 }
 
+# Le sponde fra file del frontend: un secondo, e vede la sola specie che
+# `no-undef` non puo' vedere per costruzione -- una funzione dichiarata in un
+# file e usata in un altro senza import. Sta qui e non solo in pytest (che il
+# CI esegue comunque) perche' costa quanto il linter e chiude il buco LOCALE:
+# senza, una mezza rinomina fra file arriva sul remoto e la scopre il CI.
+python scripts/sponde_js.py || {
+    echo "HIRIS: le sponde fra file del frontend non tornano."
+    echo "       Per vederle:  python scripts/sponde_js.py"
+    exit 1
+}
+
 # Un clone senza `npm install` non ha oxlint: non lo si blocca per uno
 # strumento che non ha. Il CI e' il cancello vero su questo strato, questo e'
 # la comodita' veloce.

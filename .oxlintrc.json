@@ -1,0 +1,100 @@
+{
+  // HIRIS -- il cancello sugli identificatori del frontend.
+  //
+  // `hiris/app/static/` non ha moduli: 22 file caricati con `<script src>` in
+  // ordine fisso, che si parlano per variabile globale. Senza questa
+  // configurazione `no-undef` e' spento e una mezza rinomina passa muta.
+  // Misurato: `var lastResolvedHash` rinominato nella dichiarazione e in 2 usi
+  // su 4 lascia due assegnamenti orfani che in JS non-strict CREANO UNA
+  // GLOBALE IMPLICITA invece di fallire -- `npm run lint` di prima usciva 0,
+  // zero righe. E' la classe di `server.py` del 1 settembre, in JavaScript.
+  //
+  // COSA QUESTO CANCELLO NON COPRE, ed e' per costruzione.
+  // La specie fra file: una funzione dichiarata in un file e usata in un altro
+  // senza import. `no-undef` lavora un file per volta, quindi per restare
+  // verde su un albero sano gli si deve DICHIARARE che `HirisRouter` e
+  // `fmtNum` esistono -- e quella dichiarazione e' esattamente cio' che lo
+  // acceca il giorno in cui qualcuno rinomina chi li produce. Provato:
+  // rinominato `window.HirisRouter` da un lato solo, oxlint tace col cancello
+  // come senza. Non e' un difetto da sanare qui: nessuna configurazione lo
+  // sana. Quel lavoro lo fa `scripts/sponde_js.py`, che guarda i file
+  // INSIEME, e i due si sorvegliano a vicenda -- la lista `globals` qui sotto
+  // smette di essere una concessione al linter e diventa una dichiarazione
+  // che qualcuno verifica.
+  "env": { "browser": true, "es2021": true },
+
+  // I 25 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 19 namespace pubblicati su `window` e 6 funzioni nude di `config/api.js`.
+  //
+  // `config/api.js` ne dichiara OTTO di funzioni nude, ma `_setUsageText` e
+  // `_mostraRigheConsumi` NON stanno qui, ed e' deliberato: nessun altro file
+  // le legge, quindi restano sorvegliate dall'analisi di ambito. Aggiungerle
+  // sarebbe un buco -- il giorno in cui qualcuno rinominasse la loro `function`
+  // lasciando indietro la chiamata, `no-undef` tacerebbe perche' gliel'avremmo
+  // detto noi che quel nome esiste. Un globale dichiarato senza bisogno non e'
+  // prudenza, e' una rinuncia.
+  "globals": {
+    "HirisAlberoRoute": "readonly",
+    "HirisBuildCheck": "readonly",
+    "HirisChatAgents": "readonly",
+    "HirisChatKeyboard": "readonly",
+    "HirisChatMessages": "readonly",
+    "HirisChatSend": "readonly",
+    "HirisChatSidebar": "readonly",
+    "HirisChatState": "readonly",
+    "HirisChatTheme": "readonly",
+    "HirisCostruzioni": "readonly",
+    "HirisDashboard": "readonly",
+    "HirisImpostazioniRoute": "readonly",
+    "HirisMemoriaRoute": "readonly",
+    "HirisModelsRoute": "readonly",
+    "HirisOsservatoreRoute": "readonly",
+    "HirisPromesseRoute": "readonly",
+    "HirisRouter": "readonly",
+    "HirisState": "readonly",
+    "HirisUsageRoute": "readonly",
+    "applyTheme": "readonly",
+    "esc": "readonly",
+    "fmtDataOra": "readonly",
+    "fmtEuro": "readonly",
+    "fmtNum": "readonly",
+    "loadUsage": "readonly"
+  },
+  "rules": { "no-undef": "error" },
+  "overrides": [
+    {
+      // La suite gira su Node e MONTA i globali del browser nel proprio realm
+      // (vedi `tests/js/helpers/dom.mjs`): qui `process`/`global` esistono, e i
+      // 25 si scrivono invece di leggersi soltanto.
+      "files": ["tests/js/**"],
+      "env": { "browser": true, "es2021": true, "node": true },
+      "globals": {
+        "HirisAlberoRoute": "writable",
+        "HirisBuildCheck": "writable",
+        "HirisChatAgents": "writable",
+        "HirisChatKeyboard": "writable",
+        "HirisChatMessages": "writable",
+        "HirisChatSend": "writable",
+        "HirisChatSidebar": "writable",
+        "HirisChatState": "writable",
+        "HirisChatTheme": "writable",
+        "HirisCostruzioni": "writable",
+        "HirisDashboard": "writable",
+        "HirisImpostazioniRoute": "writable",
+        "HirisMemoriaRoute": "writable",
+        "HirisModelsRoute": "writable",
+        "HirisOsservatoreRoute": "writable",
+        "HirisPromesseRoute": "writable",
+        "HirisRouter": "writable",
+        "HirisState": "writable",
+        "HirisUsageRoute": "writable",
+        "applyTheme": "writable",
+        "esc": "writable",
+        "fmtDataOra": "writable",
+        "fmtEuro": "writable",
+        "fmtNum": "writable",
+        "loadUsage": "writable"
+      }
+    }
+  ]
+}
