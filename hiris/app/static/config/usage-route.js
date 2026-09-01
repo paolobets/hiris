@@ -32,7 +32,7 @@
 
   /* Le parole dei cinque stati. Vivono qui e non nel server perche' sono
      TESTO DI PAGINA -- il server manda lo stato, che e' il fatto. */
-  var PAROLA = {
+  var Word = {
     gratuito: 'Gratuito',
     compreso: "Compreso nell'abbonamento",
     non_noto: 'Prezzo sconosciuto'
@@ -40,9 +40,9 @@
 
   /* L'ordine con cui i provider entrano nel grafico e nella legenda: fisso,
      cosi' due case identiche disegnano la stessa figura. */
-  var ORDINE = ['claude', 'openai', 'openrouter', 'ollama', 'ponte'];
+  var Order = ['claude', 'openai', 'openrouter', 'ollama', 'ponte'];
 
-  var stato = { daAncora: true, giorni: 30, ultimo: null };
+  var state = { daAncora: true, giorni: 30, ultimo: null };
 
   /* Il costo di una riga, con le parole giuste per il suo stato.
      `misurato` e `reale` sono entrambi NUMERI: la differenza fra i due si
@@ -62,7 +62,7 @@
                : m.cost_state === 'compreso' ? 'umr-costo umr-compreso'
                : 'umr-costo umr-gratuito';
     return '<span class="' + classe + '">'
-      + escHtml(PAROLA[m.cost_state] || m.cost_state) + '</span>';
+      + escHtml(Word[m.cost_state] || m.cost_state) + '</span>';
   }
 
   function rigaCache(m) {
@@ -72,22 +72,22 @@
   }
 
   function rigaModello(m, provider) {
-    var quando = m.first_use === m.last_use
+    var when = m.first_use === m.last_use
       ? 'il ' + escHtml(m.first_use)
       : 'dal ' + escHtml(m.first_use) + ' al ' + escHtml(m.last_use);
     /* I rifiuti si mostrano SOLO se ce ne sono: lo stato-non-evento si omette,
        non si scrive a zero. */
-    var rifiuti = m.rate_limit_errors
+    var refusals = m.rate_limit_errors
       ? ' · ' + m.rate_limit_errors + ' rifiuti per limite di frequenza'
       : '';
-    var unita = provider === 'ponte' ? 'turni' : 'richieste';
+    var unit = provider === 'ponte' ? 'turni' : 'richieste';
     return '<div class="usage-model-row">'
       + '<div class="umr-top"><span class="umr-nome">' + escHtml(m.model) + '</span>'
       + costoDiRiga(m) + '</div>'
-      + '<div class="umr-meta">' + m.requests + ' ' + unita + ' · '
+      + '<div class="umr-meta">' + m.requests + ' ' + unit + ' · '
       + fmtNum(m.token_in) + ' IN · ' + fmtNum(m.token_out) + ' OUT'
       + rigaCache(m) + '</div>'
-      + '<div class="umr-foot">' + quando + rifiuti + '</div>'
+      + '<div class="umr-foot">' + when + refusals + '</div>'
       + '</div>';
   }
 
@@ -95,11 +95,11 @@
     if (s.provider === 'ponte') {
       return '<span class="usec-costo umr-compreso">Compreso</span>';
     }
-    var testo = fmtEuro(s.cost_eur, 2);
-    return '<span class="usec-costo">' + (s.partial_cost ? '≥ ' : '') + testo + '</span>';
+    var text = fmtEuro(s.cost_eur, 2);
+    return '<span class="usec-costo">' + (s.partial_cost ? '≥ ' : '') + text + '</span>';
   }
 
-  function sezione(s) {
+  function section(s) {
     return '<section class="usage-provider">'
       + '<div class="usec-testa"><h3 class="usec-nome">' + escHtml(s.label) + '</h3>'
       + totaleSezione(s) + '</div>'
@@ -110,16 +110,16 @@
 
   /* ---- il riepilogo ------------------------------------------------- */
 
-  function riepilogo(u) {
-    var costo = (u.partial_cost ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
+  function summary(u) {
+    var cost = (u.partial_cost ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
     /* Il simbolo da solo e' criptico per chi apre la pagina dal telefono: la
        frase lo accompagna SEMPRE. */
-    var nota = u.partial_cost
+    var note = u.partial_cost
       ? '<div class="st-delta st-avviso">cifra minima — manca il prezzo di almeno un modello</div>'
       : '';
     return '<div class="stat-grid" id="usage-riepilogo">'
       + '<div class="stat-tile"><div class="st-label">Costo</div>'
-      + '<div class="st-value">' + costo + '</div>' + nota + '</div>'
+      + '<div class="st-value">' + cost + '</div>' + note + '</div>'
       + '<div class="stat-tile"><div class="st-label">Richieste</div>'
       + '<div class="st-value">' + u.total_requests + '</div></div>'
       + '<div class="stat-tile"><div class="st-label">Token IN</div>'
@@ -129,13 +129,13 @@
       + '</div>';
   }
 
-  function barra(u) {
+  function bar(u) {
     var da = fmtDataOra(u.last_reset);
     return '<div class="usage-barra">'
       + '<div class="usage-quando" role="group" aria-label="Da quando contare">'
-      + '<button class="btn btn-ghost' + (stato.daAncora ? ' attivo' : '') + '" '
+      + '<button class="btn btn-ghost' + (state.daAncora ? ' attivo' : '') + '" '
       + 'id="usage-da-ancora">da ultimo azzeramento</button>'
-      + '<button class="btn btn-ghost' + (stato.daAncora ? '' : ' attivo') + '" '
+      + '<button class="btn btn-ghost' + (state.daAncora ? '' : ' attivo') + '" '
       + 'id="usage-da-sempre">da sempre</button>'
       + '</div>'
       + '<div class="usage-riparti-blocco">'
@@ -153,70 +153,70 @@
      il grafico che risponde a «quanto sto usando cosa» anche dove il costo
      non esiste. Nessun terzo grafico per i token: quel dettaglio vive gia' in
      ogni riga. */
-  function svgBarre(giorni, provider, chiave, titolo) {
-    var L = 640, A = 120, base = A - 18, sinistra = 4;
+  function svgBarre(giorni, provider, key, title) {
+    var L = 640, A = 120, base = A - 18, left = 4;
     if (!giorni.length) {
       return '<p class="hint">Nessun consumo nel periodo scelto.</p>';
     }
     var totali = giorni.map(function(g) {
       return provider.reduce(function(acc, p) {
-        return acc + (((g.per_provider || {})[p] || {})[chiave] || 0);
+        return acc + (((g.per_provider || {})[p] || {})[key] || 0);
       }, 0);
     });
-    var massimo = Math.max.apply(null, totali.concat([0.000001]));
-    var passo = (L - sinistra * 2) / giorni.length;
-    var barre = '';
+    var maximum = Math.max.apply(null, totali.concat([0.000001]));
+    var passo = (L - left * 2) / giorni.length;
+    var bar = '';
     giorni.forEach(function(g, i) {
       var y = base;
       provider.forEach(function(p) {
-        var v = ((g.per_provider || {})[p] || {})[chiave] || 0;
+        var v = ((g.per_provider || {})[p] || {})[key] || 0;
         if (!v) return;
-        var h = (v / massimo) * (base - 6);
+        var h = (v / maximum) * (base - 6);
         y -= h;
-        barre += '<rect x="' + (sinistra + i * passo).toFixed(1) + '" y="' + y.toFixed(1)
+        bar += '<rect x="' + (left + i * passo).toFixed(1) + '" y="' + y.toFixed(1)
           + '" width="' + Math.max(1, passo - 2).toFixed(1) + '" height="' + h.toFixed(1)
           + '" fill="var(--consumo-' + p + ')"><title>' + escHtml(g.day) + ' · '
           + escHtml(p) + '</title></rect>';
       });
     });
     return '<svg class="usage-grafico" viewBox="0 0 ' + L + ' ' + A + '" role="img" '
-      + 'aria-label="' + escHtml(titolo) + '">'
-      + '<title>' + escHtml(titolo) + '</title>'
+      + 'aria-label="' + escHtml(title) + '">'
+      + '<title>' + escHtml(title) + '</title>'
       + '<desc>Barre impilate per giorno. Gli stessi numeri sono nella tabella '
-      + 'qui sotto.</desc>' + barre
+      + 'qui sotto.</desc>' + bar
       + '<line x1="0" y1="' + base + '" x2="' + L + '" y2="' + base
       + '" stroke="var(--border)"></line></svg>';
   }
 
-  function legenda(provider, etichette) {
+  function legend(provider, labels) {
     return '<div class="usage-legenda">' + provider.map(function(p) {
       return '<span class="ulg"><i style="background:var(--consumo-' + p + ')"></i>'
-        + escHtml(etichette[p] || p) + '</span>';
+        + escHtml(labels[p] || p) + '</span>';
     }).join('') + '</div>';
   }
 
-  function tabellaEquivalente(giorni, provider, chiave, etichette) {
-    var righe = giorni.map(function(g) {
+  function tabellaEquivalente(giorni, provider, key, labels) {
+    var line = giorni.map(function(g) {
       return '<tr><td>' + escHtml(g.day) + '</td>' + provider.map(function(p) {
-        var v = ((g.per_provider || {})[p] || {})[chiave];
-        return '<td>' + (v == null ? '' : (chiave === 'cost_eur' ? fmtEuro(v, 2) : v)) + '</td>';
+        var v = ((g.per_provider || {})[p] || {})[key];
+        return '<td>' + (v == null ? '' : (key === 'cost_eur' ? fmtEuro(v, 2) : v)) + '</td>';
       }).join('') + '</tr>';
     }).join('');
     return '<details class="usage-section"><summary>I numeri del grafico</summary>'
       + '<table class="usage-tabella"><thead><tr><th>Giorno</th>'
-      + provider.map(function(p) { return '<th>' + escHtml(etichette[p] || p) + '</th>'; }).join('')
-      + '</tr></thead><tbody>' + righe + '</tbody></table></details>';
+      + provider.map(function(p) { return '<th>' + escHtml(labels[p] || p) + '</th>'; }).join('')
+      + '</tr></thead><tbody>' + line + '</tbody></table></details>';
   }
 
-  function grafici(storia, sezioni) {
-    var etichette = {};
-    var presenti = [];
-    sezioni.forEach(function(s) { etichette[s.provider] = s.label; });
-    ORDINE.forEach(function(p) { if (etichette[p]) presenti.push(p); });
+  function charts(storia, sezioni) {
+    var labels = {};
+    var present = [];
+    sezioni.forEach(function(s) { labels[s.provider] = s.label; });
+    Order.forEach(function(p) { if (labels[p]) present.push(p); });
 
-    var giorni = (storia.days || []).slice(-stato.giorni);
-    var conCosto = presenti.filter(function(p) { return p !== 'ponte'; });
-    var fuori = presenti.indexOf('ponte') >= 0
+    var giorni = (storia.days || []).slice(-state.giorni);
+    var conCosto = present.filter(function(p) { return p !== 'ponte'; });
+    var outside = present.indexOf('ponte') >= 0
       ? '<p class="hint">L\'abbonamento non compare qui: non ha un costo da '
         + 'impilare. I suoi turni sono nel grafico sotto.</p>'
       : '';
@@ -224,22 +224,22 @@
     return '<div class="usage-grafici">'
       + '<div class="usage-testa-grafico"><h3>Costo al giorno</h3>'
       + '<div class="usage-quando"><button class="btn btn-ghost'
-      + (stato.giorni === 7 ? ' attivo' : '') + '" id="usage-7">7 giorni</button>'
-      + '<button class="btn btn-ghost' + (stato.giorni === 30 ? ' attivo' : '')
+      + (state.giorni === 7 ? ' attivo' : '') + '" id="usage-7">7 giorni</button>'
+      + '<button class="btn btn-ghost' + (state.giorni === 30 ? ' attivo' : '')
       + '" id="usage-30">30 giorni</button></div></div>'
       + svgBarre(giorni, conCosto, 'cost_eur', 'Costo al giorno per provider')
-      + legenda(conCosto, etichette) + fuori
-      + tabellaEquivalente(giorni, conCosto, 'cost_eur', etichette)
+      + legend(conCosto, labels) + outside
+      + tabellaEquivalente(giorni, conCosto, 'cost_eur', labels)
       + '<h3>Richieste al giorno</h3>'
-      + svgBarre(giorni, presenti, 'requests', 'Richieste al giorno per provider')
-      + legenda(presenti, etichette)
-      + tabellaEquivalente(giorni, presenti, 'requests', etichette)
+      + svgBarre(giorni, present, 'requests', 'Richieste al giorno per provider')
+      + legend(present, labels)
+      + tabellaEquivalente(giorni, present, 'requests', labels)
       + '</div>';
   }
 
   /* ---- il montaggio -------------------------------------------------- */
 
-  function disegna(u, storia) {
+  function draw(u, storia) {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
 
@@ -256,32 +256,32 @@
       return;
     }
 
-    var fuso = u.timezone_known
+    var timezone = u.timezone_known
       ? 'Giorni e orari nel fuso della casa (' + escHtml(u.timezone) + ').'
       : 'Il fuso della casa non è ancora noto: i giorni sono contati in UTC.';
 
     outlet.innerHTML = '<div class="page-title">Consumi</div>'
       + '<p class="page-subtitle">Quanto ha consumato ogni modello, e quanto è '
-      + 'costato. ' + fuso + '</p>'
-      + barra(u)
-      + riepilogo(u)
-      + grafici(storia, u.sections || [])
+      + 'costato. ' + timezone + '</p>'
+      + bar(u)
+      + summary(u)
+      + charts(storia, u.sections || [])
       + '<div class="usage-sezioni">'
-      + (u.sections || []).map(sezione).join('')
+      + (u.sections || []).map(section).join('')
       + '</div>';
 
-    collega();
+    connect();
   }
 
-  function collega() {
+  function connect() {
     var per = function(id, fn) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('click', fn);
     };
-    per('usage-da-ancora', function() { stato.daAncora = true; mount(); });
-    per('usage-da-sempre', function() { stato.daAncora = false; mount(); });
-    per('usage-7', function() { stato.giorni = 7; mount(); });
-    per('usage-30', function() { stato.giorni = 30; mount(); });
+    per('usage-da-ancora', function() { state.daAncora = true; mount(); });
+    per('usage-da-sempre', function() { state.daAncora = false; mount(); });
+    per('usage-7', function() { state.giorni = 7; mount(); });
+    per('usage-30', function() { state.giorni = 30; mount(); });
     /* Nessun `confirm()`: il gesto e' reversibile dall'interfaccia stessa
        (basta «da sempre») e non distrugge niente. La frase che lo dice e'
        SEMPRE visibile sotto il pulsante, non nascosta in un blocco modale che
@@ -304,16 +304,16 @@
        anche il riquadro della chat a intervalli, e trenta giorni di serie
        storica li' sarebbero un peso che la chat non chiede mai. */
     Promise.all([
-      fetch('api/usage' + (stato.daAncora ? '' : '?from=sempre')).then(function(r) {
+      fetch('api/usage' + (state.daAncora ? '' : '?from=sempre')).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       }),
       fetch('api/usage/history').then(function(r) {
         return r.ok ? r.json() : { days: [] };
       }).catch(function() { return { days: [] }; })
-    ]).then(function(esiti) {
-      stato.ultimo = esiti[0];
-      disegna(esiti[0], esiti[1]);
+    ]).then(function(occurrence) {
+      state.ultimo = occurrence[0];
+      draw(occurrence[0], occurrence[1]);
     }).catch(function(err) {
       console.error('usage fetch failed', err);
       var outlet2 = document.getElementById('route-outlet');
