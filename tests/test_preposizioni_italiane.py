@@ -103,42 +103,40 @@ corretti per prenderne due; ma la ragione giusta e' un rapporto misurato
 `a` che precede qualcosa e' invece la preposizione (`a_ts`, `a_iso`,
 `_chiamate_a_salva`, `CLIMA_A_21`): una preposizione unisce cio' che la SEGUE.
 
-## Le QUATTRO forme escluse, ognuna con il suo conto
+## Le QUATTRO forme escluse -- e i conti NON sono scritti qui
 
 Il metro e' sempre lo stesso, e va applicato a tutte o non e' un metro:
 **quanti difetti veri cattura questa forma, contro quanti nomi inglesi
-corretti farebbe arrossire.**
+corretti farebbe arrossire.** `per`, `in`, `i` e `o` colpiscono nomi inglesi
+corretti (`AREAS_PER_ROUND`, `_models_in_use`, `i_alias` che e' un
+`X.index(...)`, `O_CREAT` che e' una costante di `os` e apre una famiglia di
+altre dieci) e non catturano difetti che le altre giunture non prendano gia'.
 
-- **`per` -- FUORI.** Difetti veri: 0. Nomi corretti colpiti: 12+
-  (`AREAS_PER_ROUND`, `MAX_POINTS_PER_ANSWER`, `ROUNDS_PER_EXCHANGE_KEY`,
-  `STORE_KEY_PER_TYPE`, `_RESOURCE_PER_TOOL`, `_count_per_domain`,
-  `_per_domain`, `_per_type`, `_per_provider`, `answers_per_command`,
-  `areas_per_floor`, `area_per_entity`).
-- **`in` -- FUORI.** Difetti veri: 0. Nomi corretti colpiti: 7+
-  (`_in_timezone`, `_models_in_use`, `_MAX_DEVICE_NAMES_IN_LINE`, `in_domain`,
-  `in_baseline`, `entities_in_balance`, `breaks_in_ha_version`).
-- **`i` -- FUORI.** Difetti veri: 0. Nomi corretti colpiti: 12, e **dieci sono
-  letteralmente `X.index(...)`** (`i_alias`, `i_base`, `i_cerca`, `i_compact`,
-  `i_contesto`, `i_guida`, `i_letta_vuota`, `i_persona`, `i_restrict`,
-  `i_ricorda`, `i_scarti`), piu' `_solo_i_nostri`/`interroga_i_registri`/
-  `leggi_i_file`, dove l'articolo c'e' ma il nome e' gia' italiano per intero e
-  altre giunture lo prendono comunque.
-- **`o` -- FUORI.** Difetti veri: 0. Nomi corretti colpiti: 3, e sono una
-  FAMIGLIA APERTA -- `O_CREAT`/`O_TRUNC`/`O_WRONLY` sono costanti di `os`, e le
-  altre dieci (`O_RDONLY`, `O_APPEND`, `O_EXCL`, ...) arrossirebbero il giorno
-  in cui qualcuno le usasse.
+**I NUMERI di questo conto non stanno in questo docstring, e la ragione e' un
+difetto pagato tre volte in tre giorni**: una cifra dichiarata «misurata»
+scritta a mano si stacca dal codice appena il codice si muove, e nessuno se ne
+accorge. La versione precedente di queste righe diceva «12 nomi, dieci dei
+quali `X.index(...)`, difetti veri: 0» ed elencava undici nomi fra parentesi:
+tre cifre in disaccordo fra loro e col codice, dentro il commit che correggeva
+lo stesso difetto due paragrafi sopra. **I conti li deriva e li stampa
+`test_il_conto_delle_forme_escluse_si_deriva_dal_codice`**, qui sotto: un
+numero calcolato non puo' mentire, uno trascritto mente da solo.
 
-**`i` e `o` sono usciti il 31/08, dopo la review**, e non perche' fossero
-fastidiosi: perche' misurati col metro gia' applicato a `in` e `per` davano lo
-stesso verdetto, e **un criterio applicato a tre parole e non alla quarta non
-e' un criterio**. Il costo concreto che `i` avrebbe avuto: un futuro
-`i_start`/`i_end` -- inglese perfettamente corretto -- avrebbe fatto arrossire
-il cancello.
+**`i` ha tre FALSI NEGATIVI dichiarati**, e sono nell'insieme
+`_ARTICOLI_SCOPERTI` qui sotto -- nomi in cui `i` e' davvero l'articolo e
+nessun'altra giuntura li prende. La frase precedente diceva che «altre giunture
+lo prendono comunque»: **e' falsa, misurata** (`giunture('_solo_i_nostri')` e'
+la lista vuota), e con lei era falso il «difetti veri: 0» della riga sopra --
+sono tre. La decisione di tenere `i` fuori RESTA lo stesso: i tre nomi
+esistono gia' ed entrerebbero nell'istantanea una volta sola, mentre un futuro
+`i_start`/`i_end` -- inglese corretto -- farebbe arrossire il cancello per
+sempre. Vale la pena saperlo: `_semina_gli_archivi` e' tracciato perche' porta
+l'articolo `gli`, e `_solo_i_nostri` e' invisibile perche' porta `i`; stessa
+classe grammaticale, due sorti diverse, e questa e' la ragione.
 
-**`e` invece RESTA, e la differenza e' misurata, non stilistica**: `e` ha
-catturato un difetto vero (`state_e_cost`, uno dei 25 della misura) e non
-colpisce nessun nome inglese; `i` e `o` non ne catturano nessuno. Stessa forma
--- una lettera sola -- conti opposti.
+**`e` invece RESTA**: ha catturato un difetto vero (`state_e_cost`, uno dei 25
+della misura del 31/08, oggi corretto in `cost_state_and_value`) e non colpisce
+nessun nome inglese.
 
 `in_use` e `solo_in_sospeso` portano lo stesso pezzo e uno solo dei due e' un
 difetto: la forma da sola non lo dice. **Un cancello che arrossisce su un
@@ -194,6 +192,18 @@ _PIANE = frozenset([
     "il", "lo", "la", "gli", "le", "un", "uno", "una",
     # congiunzioni e negazione
     "e", "ed", "che", "come", "non",
+    # Terza chiusura della lista (01/09). Le due volte precedenti mancavano
+    # forme CON occorrenze (`a` nuda e le elisioni la prima, `non`/`senza`/
+    # `che`/`come`/`oltre`/`durante` la seconda); questa volta le forme
+    # aggiunte hanno **zero occorrenze oggi**, ed e' il punto: il docstring
+    # gia' diceva che le forme senza occorrenze «costano nulla e chiudono la
+    # lista invece di aspettare la terza volta», e la terza volta e' arrivata
+    # lo stesso. Si chiude la CLASSE GRAMMATICALE, non i casi incontrati.
+    "ma", "se", "oppure", "pero", "quindi", "dunque", "anche", "pure",
+    "poiche", "benche", "sebbene", "finche", "mentre", "cioe", "invece",
+    "ne", "neanche", "nemmeno", "neppure", "anzi", "ossia", "nonche",
+    "insieme", "accanto", "vicino", "intorno", "rispetto", "riguardo",
+    "eccetto", "escluso", "incluso", "compreso",
 ])
 
 # Elisioni: valgono SOLO davanti a vocale, perche' e' cio' che l'elisione e'.
@@ -216,8 +226,17 @@ def giunture(nome: str) -> list[str]:
     return fuori
 
 
-def _scansione() -> dict[str, str]:
-    """`{nome: "file:riga" del primo sito}` su tutto il Python del progetto."""
+def _nomi() -> dict[str, str]:
+    """`{nome: "file:riga" del primo sito}` per OGNI identificatore del Python
+    del progetto, tranne i nomi `test_*`.
+
+    Non filtra: il filtro e' di chi chiama. `_scansione` prende i nomi con una
+    giuntura (il cancello), `test_il_conto_delle_forme_escluse_si_deriva_dal_
+    codice` prende quelli che portano una forma ESCLUSA (la taratura). Due
+    passate separate sugli stessi file darebbero due popolazioni libere di
+    divergere, ed e' esattamente cio' che ha reso false le cifre scritte a
+    mano nel docstring.
+    """
     trovati: dict[str, str] = {}
     for base in ("hiris", "tests", "scripts"):
         for f in sorted((ROOT / base).rglob("*.py")):
@@ -234,10 +253,14 @@ def _scansione() -> dict[str, str]:
                     continue
                 if t.string.lstrip("_").startswith("test_"):
                     continue
-                if giunture(t.string):
-                    trovati.setdefault(
-                        t.string, f"{f.relative_to(ROOT).as_posix()}:{t.start[0]}")
+                trovati.setdefault(
+                    t.string, f"{f.relative_to(ROOT).as_posix()}:{t.start[0]}")
     return trovati
+
+
+def _scansione() -> dict[str, str]:
+    """I soli nomi con una giuntura italiana: cio' che il cancello guarda."""
+    return {n: dove for n, dove in _nomi().items() if giunture(n)}
 
 
 # L'ISTANTANEA DEL DEBITO -- ogni identificatore che oggi porta una giuntura
@@ -369,6 +392,60 @@ def test_nessuna_giuntura_italiana_nuova_in_un_identificatore():
         + " -- sono stati corretti (bene): toglili da `_NOTE_ITALIANE`. "
           "L'istantanea e' un debito che cala, e un'eccezione dimenticata "
           "sarebbe silenziosa quanto il difetto che copriva.")
+
+
+# Le quattro forme tenute FUORI dalle giunture, e i tre nomi in cui `i` e'
+# davvero l'articolo e nessun'altra giuntura li prende. **Sono falsi negativi
+# dichiarati, non un elenco di eccezioni da far crescere**: un quarto nome di
+# questa specie fa arrossire il test qui sotto, e allora si decide -- si
+# corregge il nome, oppure si scrive qui perche' no.
+_ESCLUSE = ("in", "per", "i", "o")
+_ARTICOLI_SCOPERTI = frozenset({
+    "_solo_i_nostri", "interroga_i_registri", "leggi_i_file",
+})
+
+
+def _pezzi(nome: str) -> list[str]:
+    return [p for p in nome.lower().split("_") if p]
+
+
+def test_il_conto_delle_forme_escluse_si_deriva_dal_codice():
+    """I numeri della taratura si CALCOLANO qui e si stampano, non si
+    trascrivono nel docstring.
+
+    Tre volte in tre giorni una cifra dichiarata «misurata» si e' staccata dal
+    codice senza che nessuno se ne accorgesse -- l'ultima dentro il commit che
+    correggeva la penultima. Un numero derivato non puo' mentire.
+
+    Cosa asserisce davvero, oltre a stampare: (a) ogni forma esclusa colpisce
+    ancora nomi veri, cioe' l'esclusione ha ancora un costo che la giustifica
+    -- se ne colpisse zero, tenerla fuori sarebbe gratis e andrebbe rimessa
+    dentro; (b) i falsi negativi di `i` sono esattamente i tre dichiarati.
+
+    Provato per mutazione: aggiunto `interroga_i_file` a un file di prova, la
+    (b) va rossa nominandolo; tolto, torna verde.
+    """
+    nomi = _nomi()
+    for forma in _ESCLUSE:
+        colpiti = [n for n in nomi if forma in _pezzi(n) and len(_pezzi(n)) >= 2]
+        in_testa = [n for n in colpiti if _pezzi(n)[0] == forma]
+        scoperti = [n for n in colpiti if n not in in_testa and not giunture(n)]
+        print(f"«{forma}»: {len(colpiti)} nomi la portano come pezzo, "
+              f"{len(in_testa)} in testa (dove non e' una giuntura ma un "
+              f"prefisso), {len(scoperti)} scoperti da ogni altra giuntura")
+        assert colpiti, (
+            f"la forma «{forma}» non colpisce piu' nessun nome: l'esclusione "
+            "e' diventata gratis, quindi non e' piu' giustificata -- "
+            "rimettila fra le giunture o cancella la sua riga dal docstring")
+
+    scoperti_articolo = {n for n in nomi
+                  if "i" in _pezzi(n) and len(_pezzi(n)) >= 2
+                  and _pezzi(n)[0] != "i" and not giunture(n)}
+    assert scoperti_articolo == _ARTICOLI_SCOPERTI, (
+        f"i falsi negativi dell'articolo «i» sono {sorted(scoperti_articolo)}, "
+        f"dichiarati {sorted(_ARTICOLI_SCOPERTI)} -- se ne e' nato uno "
+        "nuovo, correggilo o dichiaralo qui con la sua ragione; se ne e' "
+        "sparito uno, toglilo, come per l'istantanea")
 
 
 def test_la_regola_vede_i_nomi_che_la_misura_ha_trovato():

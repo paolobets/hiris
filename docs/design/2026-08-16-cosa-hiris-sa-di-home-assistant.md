@@ -58,6 +58,18 @@ monossido** è scritta `co` invece di `carbon_monoxide` (§3.0).
 > chiamante vero (`casa/tempo.py`). `render_template` resta orfano, per motivi
 > suoi.
 
+> **`get_error_log` non esiste piu', dal 01/09/2026** (fetta «la rinomina»,
+> commit `c6d0591`). La riga sopra dice che «esiste nel client», ed era vero
+> quel giorno: oggi il metodo e' cancellato, insieme al suo test e alla sua
+> voce nella guardia di `scripts/rinomina.py`. La ragione non e' che fosse
+> orfano -- lo erano anche altri -- ma che **mentiva**: l'endpoint
+> `GET /api/error_log` risponde 404 su Home Assistant 2026.8.3, e il metodo
+> inghiottiva il 404 restituendo `{"errors": 0, "warnings": 0}`, cioe' «nessun
+> errore» invece di «non lo so». E' lo zero che AFFERMA, la stessa famiglia del
+> «0%/Attenzione» di altri prodotti. Chi riprendera' le tracce e i log parte
+> quindi da zero metodi, non da uno da collegare -- ed e' un'informazione che
+> cambia il piano, non un dettaglio di manutenzione.
+
 ---
 
 ## 3. I buchi in ordine di danno

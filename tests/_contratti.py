@@ -47,6 +47,33 @@ concreti e li chiude cosi'):
 Deciso di restare ciechi sui nomi dei posizionali SOLO nel caso a un
 parametro (punto 4): e' la scelta esplicita richiesta dalla review, scritta
 qui perche' chi legge sappia cosa questa guardia non promette.
+
+5. **Un finto che dichiara `**kwargs` esce dal confronto dei keyword-only**
+   (aggiunto 01/09, review del lotto 16). Non e' un'attenuazione: un finto
+   che accetta qualunque parola chiave NON puo' sollevare il `TypeError` che
+   questa guardia esiste per prevenire, quindi pretendere che elenchi gli
+   stessi keyword-only del vero segnalerebbe un finto CORRETTO --
+   `FintoHA.valida_config(self, **kw)` contro `HAClient.valida_config(self,
+   *, triggers=None, conditions=None, actions=None)`. Il costo e'
+   dichiarato: su un finto cosi' i nomi dei keyword-only non li confronta
+   piu' nessuno. E' la stessa scelta del punto 4 -- meglio cieco che
+   rumoroso -- con la stessa scritta accanto.
+
+## `doppi`: l'elenco dei doppi si DERIVA, non si trascrive
+
+`assert_stessa_firma` va chiamata una volta per coppia, e per tre giorni
+quell'elenco e' stato scritto a mano: sui doppi di `HAClient` ne copriva
+**sei**, e non i piu' pericolosi -- il lotto 16 della rinomina ha riscritto
+20 firme finte passando accanto alla guardia che esisteva proprio per quel
+caso, e sono rimaste allineate perche' qualcuno e' stato attento, non perche'
+una rete lo garantisse.
+
+`doppi` non tiene nessun elenco: legge le classi dei moduli e trova i
+doppi da se'. Un elenco scritto a mano e' silenziosamente incompleto per
+costruzione -- la stessa frase che `scripts/rinomina.py` dice di se' sui
+percorsi di import e che `tests/test_preposizioni_italiane.py` dice dei
+sottosistemi -- mentre una derivazione dimenticata non esiste: una finta
+nuova, in un file nuovo, e' coperta senza che nessuno se ne ricordi.
 """
 import inspect
 
@@ -84,6 +111,53 @@ def _default(parametro: inspect.Parameter):
     return _VUOTO if parametro.default is inspect.Parameter.empty else parametro.default
 
 
+def _accetta_qualunque_chiave(func) -> bool:
+    """Vero se `func` dichiara `**kwargs`: vedi il punto 5 del docstring."""
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD
+               for p in inspect.signature(func).parameters.values())
+
+
+def doppi(reale, moduli) -> list[tuple[str, str]]:
+    """`[(«modulo.Classe», «metodo»), ...]` per ogni doppio di `reale` che
+    vive nei `moduli` dati, piu' l'asserzione gia' fatta su ognuno.
+
+    **Derivato, non elencato** -- vedi il docstring del modulo. Il criterio e'
+    strutturale: una classe DEFINITA in uno di quei moduli (non importata:
+    `cls.__module__` deve combaciare, o lo stesso doppio si conterebbe una
+    volta per ogni file che lo importa) che non erediti da `reale` (una
+    sottoclasse non e' un doppio, e' la cosa vera) e che porti un attributo
+    chiamabile col nome di un metodo di `reale`.
+
+    **`__init__` e' l'unica esclusione, ed e' l'unica che serve**: ce l'hanno
+    tutte le classi del mondo -- una finta della cache, di una sessione, di un
+    messaggio WS -- e il costruttore di una finta non ha nessun obbligo di
+    somigliare a quello del vero. Senza questa riga l'enumerazione raccoglie
+    ogni classe di ogni file di test; con questa riga raccoglie solo chi
+    imita davvero un metodo. Nessun'altra esclusione e' stata necessaria:
+    verificato eseguendo, non presunto -- il conto vero lo stampa
+    `tests/test_contratto_ha_client.py`, che e' il posto dove non puo'
+    invecchiare.
+    """
+    metodi = {nome for nome, valore in vars(reale).items()
+              if callable(valore) and nome != "__init__"}
+    trovati = []
+    for modulo in moduli:
+        for nome_cls, cls in vars(modulo).items():
+            if not inspect.isclass(cls) or cls.__module__ != modulo.__name__:
+                continue
+            if issubclass(cls, reale):
+                continue
+            for nome_metodo in sorted(vars(cls)):
+                if nome_metodo not in metodi or not callable(vars(cls)[nome_metodo]):
+                    continue
+                assert_stessa_firma(
+                    getattr(reale, nome_metodo), getattr(cls, nome_metodo),
+                    nome=f"{reale.__name__}.{nome_metodo} contro "
+                         f"{modulo.__name__}.{nome_cls}.{nome_metodo}")
+                trovati.append((f"{modulo.__name__}.{nome_cls}", nome_metodo))
+    return trovati
+
+
 def assert_stessa_firma(reale, finto, *, nome: str = "") -> None:
     """Solleva con un messaggio leggibile se `finto` non chiama `reale` come
     `reale` si aspetta di essere chiamato: stesso numero di posizionali,
@@ -111,6 +185,12 @@ def assert_stessa_firma(reale, finto, *, nome: str = "") -> None:
             f"{etichetta}: il posizionale «{p_reale.name}» ha default "
             f"{_default(p_reale)!r} nel vero e {_default(p_finta)!r} nel finto")
 
+    if _accetta_qualunque_chiave(finto):
+        # Punto 5 del docstring: un finto con `**kwargs` non puo' rompere
+        # nessuna chiamata per parola chiave, quindi non c'e' niente da
+        # confrontare. Si esce QUI e non prima: i posizionali e il loro
+        # ordine, sopra, valgono lo stesso.
+        return
     assert kwonly(reale) == kwonly(finto), (
         f"{etichetta}: il finto porta {sorted(kwonly(finto))}, "
         f"il vero si aspetta {sorted(kwonly(reale))}")
