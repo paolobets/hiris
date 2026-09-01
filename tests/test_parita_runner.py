@@ -1,8 +1,12 @@
 """La parita' fra i due runner: una regola del progetto che nessuno difendeva.
 
 **La regola esiste da prima di questa fetta** -- «ogni kwarg nuovo di
-`ClaudeRunner` dev'essere accettato anche dal runner compatibile» -- e viveva
-solo nella memoria di chi la ricordava. Il router (`instradamento.py`) sceglie
+`ClaudeRunner` dev'essere accettato anche dal runner compatibile» -- ed **era
+gia' difesa, piu' debolmente**, da `tests/test_runner_catalogo.py:59,69`, che
+pretende che i due runner accettino `tools` e `dispatcher`. Questo cancello non
+e' nuovo: e' piu' forte, perche' confronta le firme INTERE (ordine, nomi,
+default) invece di due nomi, e perche' i metodi li DERIVA invece di
+elencarli. Il router (`instradamento.py`) sceglie
 fra i due per DUCK-TYPING: chiama `chat(...)` su qualunque runner la catena gli
 metta davanti, e se le due firme divergono il ripiego da un provider all'altro
 si rompe **sul percorso che esiste apposta per non rompersi**.
@@ -28,7 +32,7 @@ from tests._contratti import assert_stessa_firma
 # I kwarg che la regola del progetto nomina: chi ne aggiunge uno a
 # `ClaudeRunner` deve aggiungerlo anche qui, e questo elenco e' il posto dove
 # lo si scrive.
-_KWARG_CONDIVISI = ("leggi_modello", "registra_consumo")
+_KWARG_CONDIVISI = ("read_model", "log_usage")
 
 
 def _metodi_condivisi() -> list[str]:

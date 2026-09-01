@@ -51,8 +51,8 @@ class _RispostaClaude:
 @pytest.mark.asyncio
 async def test_claude_scrive_il_modello_i_token_e_la_cache(monkeypatch):
     registro = Registro()
-    runner = ClaudeRunner(api_key="x", registra_consumo=registro,
-                          leggi_modello=lambda: "claude-sonnet-4-6")
+    runner = ClaudeRunner(api_key="x", log_usage=registro,
+                          read_model=lambda: "claude-sonnet-4-6")
 
     async def _finta(**kwargs):
         return _RispostaClaude()
@@ -77,8 +77,8 @@ async def test_un_modello_claude_fuori_listino_esce_non_noto(monkeypatch):
     `claude-opus-4-8`, che in pricing.py non c'e'. Il suo costo NON deve
     uscire come uno zero."""
     registro = Registro()
-    runner = ClaudeRunner(api_key="x", registra_consumo=registro,
-                          leggi_modello=lambda: "claude-opus-4-8")
+    runner = ClaudeRunner(api_key="x", log_usage=registro,
+                          read_model=lambda: "claude-opus-4-8")
 
     async def _finta(**kwargs):
         return _RispostaClaude()
@@ -92,9 +92,9 @@ async def test_un_modello_claude_fuori_listino_esce_non_noto(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_senza_archivio_il_runner_funziona_lo_stesso(monkeypatch):
-    """`registra_consumo=None` e' il ramo di libreria e dei test: non deve
+    """`log_usage=None` e' il ramo di libreria e dei test: non deve
     diventare un AttributeError dentro il ciclo del modello."""
-    runner = ClaudeRunner(api_key="x", leggi_modello=lambda: "claude-sonnet-4-6")
+    runner = ClaudeRunner(api_key="x", read_model=lambda: "claude-sonnet-4-6")
 
     async def _finta(**kwargs):
         return _RispostaClaude()
@@ -122,7 +122,7 @@ def test_openrouter_scrive_il_costo_REALE_dichiarato_dalla_risposta():
     """Il difetto da cui nasce la fetta: la risposta di OpenRouter porta
     SEMPRE `usage.cost`, e non lo leggevamo."""
     registro = Registro()
-    runner = OpenRouterRunner(api_key="x", registra_consumo=registro)
+    runner = OpenRouterRunner(api_key="x", log_usage=registro)
 
     runner._track_usage(_Risposta(_Uso(cost=0.0031)), "anthropic/claude-sonnet-4-6")
 
@@ -134,7 +134,7 @@ def test_openrouter_scrive_il_costo_REALE_dichiarato_dalla_risposta():
 
 def test_openrouter_senza_cost_dichiara_non_noto_e_non_zero():
     registro = Registro()
-    runner = OpenRouterRunner(api_key="x", registra_consumo=registro)
+    runner = OpenRouterRunner(api_key="x", log_usage=registro)
 
     runner._track_usage(_Risposta(_Uso()), "un/modello-mai-visto")
 
@@ -145,7 +145,7 @@ def test_openrouter_senza_cost_dichiara_non_noto_e_non_zero():
 def test_openai_resta_openai():
     registro = Registro()
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="x",
-                                registra_consumo=registro)
+                                log_usage=registro)
 
     runner._track_usage(_Risposta(_Uso()), "gpt-4o")
 
@@ -157,7 +157,7 @@ def test_ollama_dichiara_lo_zero_invece_di_calcolarlo():
     registro = Registro()
     runner = OpenAICompatRunner(base_url="http://localhost:11434/v1",
                                 api_key="ollama", local=True,
-                                registra_consumo=registro)
+                                log_usage=registro)
 
     runner._track_usage(_Risposta(_Uso()), "qwen2.5:7b")
 
@@ -171,7 +171,7 @@ def test_una_risposta_senza_usage_non_scrive_niente():
     da contare, e inventare uno zero sarebbe peggio del silenzio."""
     registro = Registro()
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="x",
-                                registra_consumo=registro)
+                                log_usage=registro)
 
     runner._track_usage(_Risposta(None), "gpt-4o")
 

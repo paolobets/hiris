@@ -1146,6 +1146,20 @@ def nomi_esportati(sorgente: str, g: Glossario, ambito: str) -> dict[str, str]:
                 nomi.add(nodo.target.id)
 
     raccogli(albero.body)
+    # **Gli attributi d'istanza sono ESPORTATI quanto un metodo**: `self.x =
+    # ...` assegnato dentro un metodo si legge da fuori come `oggetto.x`, e la
+    # terza rete e' l'UNICA che vede gli attributi. Senza questa riga la mappa
+    # non li porta e la rete tace su di loro.
+    #
+    # Non e' costato niente fino a `agent/` (zero attributi `self.` in tutto il
+    # sottosistema) e costa sui moduli di RADICE: `RunnerBackendError.codice` e
+    # `.famiglia` (`claude_runner.py`) sono letti da fuori in otto siti, e la
+    # rete non li avrebbe dichiarati.
+    for nodo in ast.walk(albero):
+        if not isinstance(nodo, ast.Attribute) or not isinstance(nodo.ctx, ast.Store):
+            continue
+        if isinstance(nodo.value, ast.Name) and nodo.value.id in ("self", "cls"):
+            nomi.add(nodo.attr)
     fuori: dict[str, str] = {}
     for nome in sorted(nomi):
         esito = classifica(nome, g, ambito)
@@ -1257,6 +1271,65 @@ def _sponde_tokenizzate(tokens: list, nomi) -> list[tuple[int, str, str]]:
     return fuori
 
 
+def _binding_concorrenti(sorgente: str) -> set[str]:
+    """I nomi che, in questo file, sono legati a QUALCOS'ALTRO oltre che
+    all'import: un parametro di funzione, una variabile locale, un `except as`.
+
+    **Serve a `chiudi_sponde`, e la regola che rende necessaria e' stata
+    dimostrata falsa da un caso** (review del 01/09). Il ramo dei nomi nudi
+    diceva: «in un file che fa `from X import v`, ogni `v` nudo E' quel nome,
+    perche' e' il legame dell'import a renderlo certo». Non vale quando nello
+    stesso file esiste un binding diverso collo stesso nome:
+
+        from pacchetto.modulo import esito
+        def altrui(esito=None): return esito
+        x = altrui(esito=1)
+
+    li' i tre `esito` non sono l'import, e chiuderli riscrive **la firma di
+    qualcun altro e la chiave di una chiamata altrui**. Misurato: 63 siti nel
+    repo dove un nome importato ha anche un binding diverso nello stesso file.
+
+    **Un `global` fa eccezione, ed e' l'unica**: `global v` seguito da
+    `v = ...` dentro una funzione lega proprio il nome di modulo, quindi non
+    e' concorrente. E' il caso del riassegnamento che ombreggia un import, gia'
+    provato.
+
+    Conservativa per scelta: senza analisi di scope non c'e' modo di essere
+    precisi, e **chiudere di meno e dirlo e' meglio che riscrivere la firma di
+    un altro**.
+    """
+    import ast
+    try:
+        albero = ast.parse(sorgente)
+    except SyntaxError:
+        return set()
+    concorrenti: set[str] = set()
+
+    class _Visita(ast.NodeVisitor):
+        def _funzione(self, nodo) -> None:
+            globali = {n for x in ast.walk(nodo) if isinstance(x, ast.Global)
+                       for n in x.names}
+            a = nodo.args
+            for arg in (list(a.posonlyargs) + list(a.args) + list(a.kwonlyargs)
+                        + ([a.vararg] if a.vararg else [])
+                        + ([a.kwarg] if a.kwarg else [])):
+                concorrenti.add(arg.arg)
+            for x in ast.walk(nodo):
+                if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store):
+                    if x.id not in globali:
+                        concorrenti.add(x.id)
+                elif isinstance(x, ast.ExceptHandler) and x.name:
+                    concorrenti.add(x.name)
+            self.generic_visit(nodo)
+
+        visit_FunctionDef = _funzione
+        visit_AsyncFunctionDef = _funzione
+        visit_Lambda = _funzione
+
+    _Visita().visit(albero)
+    return concorrenti
+
+
 def chiudi_sponde(siti) -> int:
     """Rinomina i token nei SITI che `sponde_per_nome` ha dichiarato e che un
     umano ha approvato. Restituisce quanti ne ha chiusi.
@@ -1303,6 +1376,9 @@ def chiudi_sponde(siti) -> int:
         # rinominato, usi rimasti indietro). Fuori da un file che importa,
         # invece, un nome nudo resta ambiguo e la rete non lo segnala nemmeno.
         importati = {v for (_, v, s) in bersagli if s == "import"}
+        # Un nome che ha un binding CONCORRENTE in questo file non si chiude
+        # nei suoi usi nudi: vedi `_binding_concorrenti`.
+        importati -= _binding_concorrenti(sorgente)
         for indice, vecchio, specie in _sponde_tokenizzate(tokens, nomi):
             t = tokens[indice]
             nuovo = bersagli.get((t.start[0], vecchio, specie))

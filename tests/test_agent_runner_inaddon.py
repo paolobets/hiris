@@ -8,7 +8,7 @@ import pytest
 
 from hiris.app.agent import prompts, runner
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
-from hiris.app.claude_runner import BASE_IDENTITA, BASE_REGOLE_STRUMENTI
+from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 
 
 def test_build_chat_messages_available():
@@ -420,19 +420,19 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # DISPOSIZIONE strumenti»). La rete non era stata tagliata: era stata
     # aggirata. Le negative vanno quindi sui PEZZI CHE CONTANO, presi dal
     # testo reale della meta' che il ponte non deve emettere
-    # (`claude_runner.BASE_REGOLE_STRUMENTI`), e applicate al `system`
+    # (`claude_runner.BASE_TOOL_RULES`), e applicate al `system`
     # COMPOSTO -- non alla costante.
     for ordine in ("Hai a disposizione strumenti", "Usa SEMPRE gli strumenti",
                    "chiama ricorda subito"):
-        assert ordine in BASE_REGOLE_STRUMENTI, (
-            f"{ordine!r} non e' piu' nel testo di BASE_REGOLE_STRUMENTI: "
+        assert ordine in BASE_TOOL_RULES, (
+            f"{ordine!r} non e' piu' nel testo di BASE_TOOL_RULES: "
             "questa negativa non sta piu' sorvegliando niente")
         assert ordine not in system, (
             f"il prompt del ponte ORDINA {ordine!r} a un percorso che non ha "
             "strumenti: e' il caso 'preso nota senza aver salvato'")
     # e la meta' vera c'e', cosi' la negativa qui sopra non passa perche' BASE
     # e' sparito del tutto
-    assert BASE_IDENTITA.strip() in system
+    assert BASE_IDENTITY.strip() in system
 
     # ── fix round 1, Important 1: la falsita' speculare era stata corretta
     # per la casa («leggere» -> «guardare adesso») e lasciata in piedi per la

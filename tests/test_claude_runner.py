@@ -104,7 +104,7 @@ def runner(mock_ha, rifiuti):
         rifiuti.append({"provider": provider, "modello": modello, **kw})
 
     with patch("anthropic.AsyncAnthropic"):
-        r = ClaudeRunner(api_key="test-key", registra_consumo=_registra)
+        r = ClaudeRunner(api_key="test-key", log_usage=_registra)
     r._ha = mock_ha  # shortcut for tests
     return r
 
@@ -800,8 +800,8 @@ async def test_un_credito_esaurito_arriva_al_router_come_credenziale_400(runner)
     ):
         await runner.chat("Ciao")
 
-    assert info.value.famiglia == "credenziale"
-    assert info.value.codice == 400
+    assert info.value.family == "credenziale"
+    assert info.value.code == 400
     # La frase per l'utente NON cambia: e' cio' che legge in chat, e la chat
     # non e' il posto dove si spiega un guasto di configurazione.
     assert info.value.friendly_message == (
@@ -829,7 +829,7 @@ async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
     ):
         await runner.chat("Ciao")
 
-    assert info.value.famiglia == "modello" and info.value.codice == 404
+    assert info.value.family == "modello" and info.value.code == 404
 
 
 @pytest.mark.asyncio
@@ -852,4 +852,4 @@ async def test_anthropic_irraggiungibile_non_porta_un_codice_inventato(runner):
     ):
         await runner.chat("Ciao")
 
-    assert info.value.famiglia == "irraggiungibile" and info.value.codice is None
+    assert info.value.family == "irraggiungibile" and info.value.code is None

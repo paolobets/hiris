@@ -1149,21 +1149,21 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
     from hiris.app.decisione_modelli import _MOTIVI_RIPIEGO
-    from hiris.app.instradamento import _piano_puo_rispondere
+    from hiris.app.instradamento import _subscription_can_answer
 
     app, _q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
 
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    puo, motivo = _piano_puo_rispondere(app)
+    puo, motivo = _subscription_can_answer(app)
     assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
 
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
     app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
-    puo, motivo = _piano_puo_rispondere(app)
+    puo, motivo = _subscription_can_answer(app)
     assert puo is False and motivo in _MOTIVI_RIPIEGO, motivo
 
     app["models_config"] = {"ponte": {"tetto_giornaliero": 50}}
-    assert _piano_puo_rispondere(app) == (True, "")
+    assert _subscription_can_answer(app) == (True, "")
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
     # `_piano_puo_rispondere`: la scrive `_downgrade_to_chain`.

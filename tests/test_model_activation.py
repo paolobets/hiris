@@ -472,7 +472,7 @@ def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
         "la verifica di raggiungibilita' parla del MODELLO scaricato: senza un "
         "modello scelto non c'e' niente da verificare"
     )
-    assert "leggi_modello=_modello_locale," in blocco
+    assert "read_model=_modello_locale," in blocco
     assert "local=True," in blocco
 
 
@@ -492,4 +492,4 @@ def test_ogni_runner_riceve_la_lettura_del_SUO_provider():
                                   ("openrouter", "openrouter_runner = OpenRouterRunner(")):
         i = src.index(costruttore)
         blocco = src[i:src.index("        )", i)]
-        assert f'leggi_modello=_modello_di("{provider}")' in blocco, blocco
+        assert f'read_model=_modello_di("{provider}")' in blocco, blocco

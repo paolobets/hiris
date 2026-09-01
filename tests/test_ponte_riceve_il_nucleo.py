@@ -43,9 +43,9 @@ from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import (
-    BASE_IDENTITA,
-    BASE_REGOLE_STRUMENTI,
+    BASE_IDENTITY,
     BASE_SYSTEM_PROMPT,
+    BASE_TOOL_RULES,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
@@ -107,7 +107,7 @@ def test_ordine_dei_blocchi_uguale_al_ramo_sincrono():
     persona = "Sei HIRIS, la persona della chat."
     system, _user = prompts.build_chat_messages(persona, [], contesto=_CONTESTO)
 
-    i_base = system.index(BASE_IDENTITA.strip())
+    i_base = system.index(BASE_IDENTITY.strip())
     i_persona = system.index(persona)
     i_guida = system.index(prompts._GUIDE_WITHOUT_TOOLS)
     i_contesto = system.index(_CONTESTO)
@@ -121,8 +121,8 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     divergerebbe in silenzio: i due percorsi di chat direbbero al modello due
     cose diverse su chi e'. Vale anche dopo il taglio in due meta' (fix round
     1): si importano, non si riscrivono."""
-    assert prompts.BASE_IDENTITA is BASE_IDENTITA
-    assert prompts.BASE_REGOLE_STRUMENTI is BASE_REGOLE_STRUMENTI
+    assert prompts.BASE_IDENTITY is BASE_IDENTITY
+    assert prompts.BASE_TOOL_RULES is BASE_TOOL_RULES
     # fix della review totale della fetta (m-3): l'assert su
     # `prompts.BASE_SYSTEM_PROMPT` e' uscito, e con lui l'import in
     # `prompts.py`. Non pinnava niente di vivo: il codice di `prompts.py` non
@@ -139,7 +139,7 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     # valido qualunque sia l'a-capo scelto.
     inizio = sorgente.index("from ..claude_runner import")
     blocco_import = sorgente[inizio:sorgente.index(")", inizio) + 1]
-    assert "BASE_IDENTITA" in blocco_import
+    assert "BASE_IDENTITY" in blocco_import
     assert "Sei HIRIS, assistente AI integrata in Home Assistant" not in sorgente, (
         "il testo di BASE e' stato RICOPIATO in prompts.py invece che importato")
 
@@ -154,15 +154,15 @@ def test_base_system_prompt_e_importato_non_ricopiato():
 # qui non esiste. Il caso peggiore -- l'utente dice "ricordati che la caldaia
 # perde", il modello obbedisce a BASE, lo strumento non c'e', e risponde
 # "preso nota" -- e' il bug misurato in produzione da cui `ricorda` e' nato
-# (vedi il commento sopra BASE_IDENTITA in claude_runner.py). Un ordine non
+# (vedi il commento sopra BASE_IDENTITY in claude_runner.py). Un ordine non
 # emesso e' un meccanismo; una frase che lo contraddice e' una speranza.
 # ---------------------------------------------------------------------------
 
 def test_senza_strumenti_il_ponte_non_emette_le_regole_sugli_strumenti():
     system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
 
-    assert BASE_IDENTITA.strip() in system, "la meta' VERA di BASE deve esserci"
-    assert BASE_REGOLE_STRUMENTI not in system
+    assert BASE_IDENTITY.strip() in system, "la meta' VERA di BASE deve esserci"
+    assert BASE_TOOL_RULES not in system
     # i quattro pezzi che sul ponte sarebbero falsi o ineseguibili, uno per uno
     assert "Usa SEMPRE gli strumenti" not in system
     assert "chiama ricorda subito" not in system

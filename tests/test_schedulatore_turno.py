@@ -200,7 +200,7 @@ async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
     # il catalogo che arriva al runner e' quello RISTRETTO (SOLA_LETTURA +
     # concludi), non il catalogo intero della chat -- e' la garanzia
     # strutturale della spec (§6.2), non solo un fatto su questo test
-    assert ({d["name"] for d in runner.chiamato_con["strumenti"]}
+    assert ({d["name"] for d in runner.chiamato_con["tools"]}
             == set(SOLA_LETTURA) | {"concludi"})
     assert runner.chiamato_con["agent_type"] == "promessa"
 

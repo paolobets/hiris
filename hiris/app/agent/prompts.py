@@ -20,18 +20,18 @@ da CLAUDE.md:70-72. (Nessun ciclo: `claude_runner.py` importa solo stdlib,
 `anthropic` e `.backends.pricing` -- mai `agent/`.)
 
 Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
-`build_chat_messages` e il commento sopra `BASE_IDENTITA` in claude_runner.py.
+`build_chat_messages` e il commento sopra `BASE_IDENTITY` in claude_runner.py.
 """
 # fix della review totale della fetta (m-3): `BASE_SYSTEM_PROMPT` NON e' piu'
 # importata. Questo file non la usa -- il ternario di `build_chat_messages`
-# compone `BASE_IDENTITA + BASE_REGOLE_STRUMENTI` -- e l'unico lettore che le
+# compone `BASE_IDENTITY + BASE_TOOL_RULES` -- e l'unico lettore che le
 # restava era un assert (`prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT`,
 # tests/test_ponte_riceve_il_nucleo.py), cioe' un import tenuto in vita dal
 # test che lo pinnava. I due assert sulle META' restano, e sono quelli che
 # contano: sono i simboli che il ponte compone davvero.
 from ..claude_runner import (
-    BASE_IDENTITA,
-    BASE_REGOLE_STRUMENTI,
+    BASE_IDENTITY,
+    BASE_TOOL_RULES,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
@@ -92,7 +92,7 @@ from ..claude_runner import (
 # `BASE_SYSTEM_PROMPT`, che il Task 2 aveva cominciato a passare INTERO al
 # ponte -- ordini come «Usa SEMPRE gli strumenti per dati sulla casa» e
 # «chiama ricorda subito» rivolti a un percorso senza strumenti. Non piu': la
-# meta' che nomina gli strumenti (`BASE_REGOLE_STRUMENTI`) qui NON viene
+# meta' che nomina gli strumenti (`BASE_TOOL_RULES`) qui NON viene
 # emessa affatto (vedi `build_chat_messages`). La smentita di testo restava
 # l'unica difesa contro un ORDINE di chiamare uno strumento inesistente, ed e'
 # esattamente il bug per cui `ricorda` e' nato: un ordine non emesso e' una
@@ -188,9 +188,9 @@ _GUIDE_WITHOUT_TOOLS = (
 #   passata come id) ed e' un problema di NOMI, cioe' materia di questa
 #   guida. Le altre regole dell'azione -- raccontare cosa e' successo,
 #   l'ambiguita', il ricordo-preferenza -- NON stanno qui ma in
-#   `claude_runner.BASE_REGOLE_STRUMENTI`, che su questo ramo e' emessa e sul
+#   `claude_runner.BASE_TOOL_RULES`, che su questo ramo e' emessa e sul
 #   percorso sincrono pure: scriverle qui le avrebbe date al ponte e negate
-#   alla chat vera (vedi il commento sopra `BASE_IDENTITA` in claude_runner.py).
+#   alla chat vera (vedi il commento sopra `BASE_IDENTITY` in claude_runner.py).
 #
 # Cio' che NON cambia: «non dire di aver guardato o di aver preso nota se non
 # hai chiamato lo strumento» -- che acquista un terzo caso, «di aver acceso
@@ -209,7 +209,7 @@ _GUIDE_WITHOUT_TOOLS = (
 #   di nuovo lo stesso ricollegamento nome nudo -> nome prefissato, non un
 #   secondo giro di logica. Le REGOLE del giro in due tempi (mostra
 #   l'anteprima, aspetta il turno successivo, non concatenare) stanno SOLO in
-#   `claude_runner.BASE_REGOLE_STRUMENTI`, che questo ramo compone comunque
+#   `claude_runner.BASE_TOOL_RULES`, che questo ramo compone comunque
 #   (vedi `build_chat_messages`): ripeterle qui sarebbe il secondo posto da
 #   tenere allineato che questo modulo esiste per evitare. Qui basta che il
 #   modello sappia CON CHE NOME chiamarli, come per gli altri nove.
@@ -348,10 +348,10 @@ _CONTESTO_ASSENTE = (
 # Fix della review totale della fetta (m-2): questa istruzione diceva
 # «Rispondi SEMPRE in italiano». Era l'UNICA istruzione di lingua che il ponte
 # riceveva -- "Rispondi nella lingua dell'utente" viveva in
-# `BASE_REGOLE_STRUMENTI`, la meta' che il ponte non emette -- e imponeva al
+# `BASE_TOOL_RULES`, la meta' che il ponte non emette -- e imponeva al
 # ponte una lingua che il percorso sincrono non impone: un utente che scrive
 # in inglese riceveva inglese di la' e italiano di qua. Ora quella riga sta in
-# `BASE_IDENTITA` (vedi il commento del taglio in claude_runner.py) e arriva
+# `BASE_IDENTITY` (vedi il commento del taglio in claude_runner.py) e arriva
 # a ENTRAMBI i percorsi: lasciare qui «SEMPRE in italiano» significherebbe
 # contraddirla dentro lo stesso prompt -- il system dice una cosa, l'ultima
 # riga dell'utente ne dice un'altra, e vince l'ultima letta. Allineata.
@@ -411,9 +411,9 @@ def build_chat_messages(system_prompt: str, history: list, *,
     `strumenti_attivi` sceglie DUE cose insieme, non una (fix round 1,
     Critical 1 della review indipendente):
 
-    1. **quanto di BASE viene emesso.** `BASE_IDENTITA` (chi e' HIRIS, cosa
+    1. **quanto di BASE viene emesso.** `BASE_IDENTITY` (chi e' HIRIS, cosa
        conosce) e' vera su entrambi i percorsi ed entra sempre.
-       `BASE_REGOLE_STRUMENTI` -- «Usa SEMPRE gli strumenti per dati sulla
+       `BASE_TOOL_RULES` -- «Usa SEMPRE gli strumenti per dati sulla
        casa», «chiama ricorda subito», «se hai chiamato uno strumento con
        successo l'azione e' reale» -- e' un ORDINE DI CHIAMARE UNO STRUMENTO
        che sul ponte non esiste, e sul ponte non viene emessa affatto. La
@@ -435,7 +435,7 @@ def build_chat_messages(system_prompt: str, history: list, *,
     si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""
     # Con gli strumenti attivi le due meta' tornano adiacenti e il blocco e'
     # esattamente `BASE_SYSTEM_PROMPT`: nessuna terza variante da mantenere.
-    base = BASE_IDENTITA + BASE_REGOLE_STRUMENTI if active_tools else BASE_IDENTITA
+    base = BASE_IDENTITY + BASE_TOOL_RULES if active_tools else BASE_IDENTITY
     system_parts = [base.strip()]
     if system_prompt:
         system_parts.append(system_prompt.strip())

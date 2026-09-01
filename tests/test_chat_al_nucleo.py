@@ -194,7 +194,7 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
     assert resp.status == 200
 
     call_kwargs = mock_runner.chat.call_args.kwargs
-    nomi = {t["name"] for t in call_kwargs["strumenti"]}
+    nomi = {t["name"] for t in call_kwargs["tools"]}
     # Derivati, non ricopiati: cio' che questo test prova e' che la rotta
     # passi al runner IL catalogo (`STRUMENTI_CONOSCENZA`), non un elenco
     # suo -- e quella proprieta' non dipende da quante voci abbia.
@@ -269,7 +269,7 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
     assert resp.status == 200
     await resp.text()
 
-    nomi = {t["name"] for t in catturati["strumenti"]}
+    nomi = {t["name"] for t in catturati["tools"]}
     assert nomi == {d["name"] for d in KNOWLEDGE_TOOLS}
     assert isinstance(catturati["dispatcher"], ToolDispatcher)
 

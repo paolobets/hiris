@@ -3169,8 +3169,8 @@ async def _on_startup(app: web.Application) -> None:
     if api_key and _credenziali["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            leggi_modello=_modello_di("claude"),
-            registra_consumo=app["consumi"].log,
+            read_model=_modello_di("claude"),
+            log_usage=app["consumi"].log,
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
@@ -3192,8 +3192,8 @@ async def _on_startup(app: web.Application) -> None:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
-            leggi_modello=_modello_di("openai"),
-            registra_consumo=app["consumi"].log,
+            read_model=_modello_di("openai"),
+            log_usage=app["consumi"].log,
         )
 
     ollama_runner = None
@@ -3215,8 +3215,8 @@ async def _on_startup(app: web.Application) -> None:
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
-            leggi_modello=_modello_locale,
-            registra_consumo=app["consumi"].log,
+            read_model=_modello_locale,
+            log_usage=app["consumi"].log,
         )
     if _risponde["ollama"]:
         # Quick reachability check — warn but don't abort startup.
@@ -3249,8 +3249,8 @@ async def _on_startup(app: web.Application) -> None:
     if openrouter_api_key and _credenziali["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            leggi_modello=_modello_di("openrouter"),
-            registra_consumo=app["consumi"].log,
+            read_model=_modello_di("openrouter"),
+            log_usage=app["consumi"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 

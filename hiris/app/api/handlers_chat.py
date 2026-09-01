@@ -544,7 +544,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             # dichiarato inapplicabile, con un log, al momento
             # dell'accodamento.
             thinking_budget=0,
-            strumenti=KNOWLEDGE_TOOLS,
+            tools=KNOWLEDGE_TOOLS,
             dispatcher=create_tool_dispatcher(request.app, exchange=exchange_id),
         )
     except RunnerBackendError as exc:
@@ -948,7 +948,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             # done-event SSE (uscito anche lui, nessun lettore in static/).
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
-            strumenti=KNOWLEDGE_TOOLS,
+            tools=KNOWLEDGE_TOOLS,
             dispatcher=tool_dispatcher,
         ):
             await stream_resp.write(chunk.encode())
@@ -998,7 +998,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             # Vedi il commento gemello sul ramo streaming sopra.
             response_mode=agent_response_mode,
             thinking_budget=agent_thinking_budget,
-            strumenti=KNOWLEDGE_TOOLS,
+            tools=KNOWLEDGE_TOOLS,
             dispatcher=tool_dispatcher,
         )
     except RunnerBackendError as exc:

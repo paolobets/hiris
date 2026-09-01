@@ -59,7 +59,7 @@ def _bridge_on(app) -> bool:
     return app.get("reasoning_queue") is not None
 
 
-def _piano_puo_rispondere(app) -> tuple[bool, str]:
+def _subscription_can_answer(app) -> tuple[bool, str]:
     """Il piano puo' servire un turno adesso? E, se no, con quali parole.
 
     Le due condizioni sono quelle che fino alla 2.4.1 facevano finire il turno
@@ -95,7 +95,7 @@ def chi_risponde(app) -> tuple[str, str]:
     """
     if not (app.get("ponte_attivo") and _bridge_on(app)):
         return "catena", ""
-    puo, reason = _piano_puo_rispondere(app)
+    puo, reason = _subscription_can_answer(app)
     if not puo:
         return "catena", reason
     return "ponte", ""

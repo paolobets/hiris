@@ -165,7 +165,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
             max_tokens=2000,
             agent_type="promessa",
             thinking_budget=0,
-            strumenti=promise_tools(),
+            tools=promise_tools(),
             dispatcher=dispatcher,
         )
     except Exception as error:

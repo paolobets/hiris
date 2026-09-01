@@ -228,8 +228,8 @@ class LLMRouter:
                 logger.warning("Backend %s failed, trying next: %s", backend_name, exc)
                 if self._registry is not None:
                     self._registry.fallimento(
-                        backend_name, family=getattr(exc, "famiglia", "altro"),
-                        code=getattr(exc, "codice", None), message=str(exc),
+                        backend_name, family=getattr(exc, "family", "altro"),
+                        code=getattr(exc, "code", None), message=str(exc),
                         durata_s=time.monotonic() - start)
                 last_friendly = exc.friendly_message
             except Exception as exc:

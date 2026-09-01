@@ -1026,7 +1026,7 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
 
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError(
-        "giu'", famiglia="modello", codice=404))
+        "giu'", family="modello", code=404))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="ok")
     router = LLMRouter(claude=rotto, openrouter=buono,

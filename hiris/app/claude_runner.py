@@ -70,12 +70,12 @@ class RunnerBackendError(Exception):
     `esiti_provider.famiglia_da_codice(None)` restituisce la stessa cosa.
     """
 
-    def __init__(self, friendly_message: str, *, famiglia: str = "altro",
-                 codice: int | None = None) -> None:
+    def __init__(self, friendly_message: str, *, family: str = "altro",
+                 code: int | None = None) -> None:
         super().__init__(friendly_message)
         self.friendly_message = friendly_message
-        self.famiglia = famiglia
-        self.codice = codice
+        self.family = family
+        self.code = code
 
     def __str__(self) -> str:  # so `str(exc)` == the friendly text everywhere
         return self.friendly_message
@@ -187,11 +187,11 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # strumenti, ed entrambe quando li avra' (fetta B): la parte falsa non viene
 # proprio emessa.
 #
-# Il criterio del taglio: in `BASE_IDENTITA` cio' che e' vero su ENTRAMBI i
-# percorsi (chi e' HIRIS, cosa conosce); in `BASE_REGOLE_STRUMENTI` tutto cio'
+# Il criterio del taglio: in `BASE_IDENTITY` cio' che e' vero su ENTRAMBI i
+# percorsi (chi e' HIRIS, cosa conosce); in `BASE_TOOL_RULES` tutto cio'
 # che nomina, ordina o presuppone la chiamata a uno strumento. Le due meta'
 # sono PUBBLICHE (senza underscore) perche' attraversano un confine di modulo:
-# `agent/prompts.py` importa `BASE_IDENTITA`.
+# `agent/prompts.py` importa `BASE_IDENTITY`.
 #
 # Fix della review totale della fetta (m-2): "Rispondi nella lingua
 # dell'utente" stava nella meta' SBAGLIATA, e il commento del taglio lo
@@ -202,9 +202,9 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # una ragione che il criterio dichiarato qui sopra non contiene: il commento
 # descriveva un taglio diverso da quello reale.
 #
-# La conseguenza non era cosmetica. Stando in `BASE_REGOLE_STRUMENTI`, la riga
+# La conseguenza non era cosmetica. Stando in `BASE_TOOL_RULES`, la riga
 # sul ponte non veniva emessa affatto (il ponte compone la sola
-# `BASE_IDENTITA`), e l'unica istruzione di lingua che gli restava era
+# `BASE_IDENTITY`), e l'unica istruzione di lingua che gli restava era
 # `prompts._CHAT_INSTRUCTION`, che imponeva SEMPRE l'italiano: un utente che
 # scrive in inglese riceveva inglese dal percorso sincrono e italiano dal
 # ponte. In una fetta che si chiama "parita'" quella e' una divergenza, non un
@@ -218,7 +218,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # invece che in coda all'elenco "## Regole fondamentali", dove peraltro era
 # l'unico trattino che non parlava di strumenti. Pinnata da
 # `tests/test_base_prompt_diviso.py`, cosi' non migra piu' in silenzio.
-BASE_IDENTITA = (
+BASE_IDENTITY = (
     "Sei HIRIS, assistente AI integrata in Home Assistant: conosci la casa"
     " (aree, entità, dispositivi, automazioni e script) e la memoria di ciò"
     " che le persone ti hanno detto.\n"
@@ -246,7 +246,7 @@ BASE_IDENTITA = (
 # riportato cambiamenti), e la riga dopo vieta esplicitamente la deduzione
 # sulla causa nominando le tre ragioni banali che la rendono inutile. E' la
 # stessa disciplina del «preso nota»: non dire di sapere cio' che non sai.
-BASE_REGOLE_STRUMENTI = (
+BASE_TOOL_RULES = (
     "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
     " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
     " far succedere qualcosa: `esegui` chiama un servizio di Home Assistant"
@@ -331,7 +331,7 @@ BASE_REGOLE_STRUMENTI = (
     " un'automazione), riferiscila."
 )
 
-BASE_SYSTEM_PROMPT = BASE_IDENTITA + BASE_REGOLE_STRUMENTI
+BASE_SYSTEM_PROMPT = BASE_IDENTITY + BASE_TOOL_RULES
 
 # fetta E3 Task 8: `EVALUATION_TOOL_DEFS` (ex `ALL_TOOL_DEFS`, il catalogo da
 # 34) e `EVALUATION_ONLY_TOOLS` (le 18 letture concesse alla Sentinella) sono
@@ -372,7 +372,7 @@ CHAT_MAX_TOKENS = 16000
 # processa piu' blocchi tool_use della stessa risposta in una sola iterazione
 # (vedi il for interno su response.content in chat()); il tetto contava i
 # round-trip, non le chiamate. Decisione del proprietario: il parallelismo si
-# insegna nel prompt (BASE_REGOLE_STRUMENTI) E il tetto sale, da 10 a 50 --
+# insegna nel prompt (BASE_TOOL_RULES) E il tetto sale, da 10 a 50 --
 # piu' raro restare senza margine, il messaggio di esaurimento resta
 # necessario (R4) ma non e' piu' la prima difesa.
 MAX_TOOL_ITERATIONS = 50
@@ -642,8 +642,8 @@ class ClaudeRunner:
     def __init__(
         self,
         api_key: str,
-        leggi_modello=None,
-        registra_consumo=None,
+        read_model=None,
+        log_usage=None,
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
@@ -651,7 +651,7 @@ class ClaudeRunner:
         # tiene i runner provabili senza costruire mezzo add-on.
         # `None` e' il ramo di libreria e dei test: non deve diventare un
         # AttributeError dentro il ciclo del modello.
-        self._registra_consumo = registra_consumo
+        self._log_usage = log_usage
         # fetta «la catena diventa l'unica verita'» (Task 10): il modello NON e'
         # piu' un valore ricevuto alla costruzione. Era la meta' nascosta del
         # difetto peggiore trovato dal progetto: lo STESSO valore aveva effetto
@@ -663,7 +663,7 @@ class ClaudeRunner:
         # didascalie e' la cosa piu' onesta che la pagina possa dire di se'.
         # `None` = nessuna lettura, cioe' il comportamento che aveva
         # `default_model=""` (ripiego su AUTO_MODEL_MAP).
-        self._leggi_modello = leggi_modello
+        self._read_model = read_model
         # Fetta "esce il documentale": qui c'era `self._is_cloud = True`, con
         # accanto la dichiarazione (gia' corretta dalla fetta E4 Task 9) che
         # nessuno lo leggeva e che serviva a un "always pseudonymize
@@ -690,16 +690,16 @@ class ClaudeRunner:
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.
 
-    def _modello_scelto(self) -> str:
+    def _chosen_model(self) -> str:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
-        return (self._leggi_modello() if self._leggi_modello else "") or ""
+        return (self._read_model() if self._read_model else "") or ""
 
     def _resolve_current_model(self) -> str:
         """Il modello che questo runner userebbe adesso con `model="auto"`.
 
         Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
         di provarla sarebbe intercettare la chiamata all'API."""
-        return resolve_model("auto", "chat", self._modello_scelto())
+        return resolve_model("auto", "chat", self._chosen_model())
 
     # fetta E4 Task 6 ("un bot solo"): il costruttore perdeva un `dispatcher`
     # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
@@ -715,9 +715,9 @@ class ClaudeRunner:
     # (zero chiamanti di produzione, inoltrava a un metodo che nessun
     # dispatcher di produzione ha mai avuto).
 
-    def _scrivi_consumo(self, modello: str, inp: int, out: int,
-                        cache_scrittura: int, cache_lettura: int,
-                        costo: float) -> None:
+    def _write_usage(self, model: str, inp: int, out: int,
+                     cache_write: int, cache_read: int,
+                     cost: float) -> None:
         """Una risposta entra nell'archivio dei consumi, col NOME del modello.
 
         Fino a questa fetta il nome era qui, in mano, e finiva solo dentro il
@@ -729,18 +729,18 @@ class ClaudeRunner:
         `pricing.py`) ed e' il numero che dice se il prefisso sta lavorando.
         Il totale che la pagina mostra resta la somma dei tre.
         """
-        if self._registra_consumo is None:
+        if self._log_usage is None:
             return
         from .consumi.vocabulary import cost_state_and_value
 
-        stato, costo_usd = cost_state_and_value(
-            "claude", modello, cost_dichiarato=None, cost_da_listino=costo)
-        self._registra_consumo(
-            "claude", modello, token_in=inp, token_out=out,
-            cache_read=cache_lettura, cache_write=cache_scrittura,
-            cost_usd=costo_usd, cost_state=stato, now=time.time())
+        state, cost_usd = cost_state_and_value(
+            "claude", model, cost_dichiarato=None, cost_da_listino=cost)
+        self._log_usage(
+            "claude", model, token_in=inp, token_out=out,
+            cache_read=cache_read, cache_write=cache_write,
+            cost_usd=cost_usd, cost_state=state, now=time.time())
 
-    def _scrivi_rifiuto(self, modello: str) -> None:
+    def _write_rejection(self, model: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
 
         `richieste=0`: un rifiuto non e' una richiesta servita. Prima di questa
@@ -748,10 +748,10 @@ class ClaudeRunner:
         dicevano CHI stesse rifiutando -- l'unica cosa che serva sapere quando
         succede.
         """
-        if self._registra_consumo is None:
+        if self._log_usage is None:
             return
-        self._registra_consumo(
-            "claude", modello, richieste=0, errori_rate_limit=1,
+        self._log_usage(
+            "claude", model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
@@ -785,7 +785,7 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        strumenti: list[dict] | None = None,
+        tools: list[dict] | None = None,
         dispatcher: Any | None = None,
     ) -> str:
         self.last_tool_calls = []
@@ -833,11 +833,11 @@ class ClaudeRunner:
         system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
         if context_str:
             system_blocks.append({"type": "text", "text": context_str})
-        effective_model = resolve_model(model, agent_type, self._modello_scelto())
-        if strumenti is not None:
+        effective_model = resolve_model(model, agent_type, self._chosen_model())
+        if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. gli
             # strumenti di DispatcherStrumenti, casa/strumenti.py).
-            tools = list(strumenti)
+            tools = list(tools)
         else:
             # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui
             # pescare qui. `EVALUATION_TOOL_DEFS`/`EVALUATION_ONLY_TOOLS`
@@ -903,11 +903,11 @@ class ClaudeRunner:
                 # «Attivo». `status_code` è l'attributo di `anthropic.APIError`
                 # (assente su `APIConnectionError`, che infatti è
                 # «irraggiungibile» per un'altra strada).
-                _codice = getattr(exc, "status_code", None)
+                _code = getattr(exc, "status_code", None)
                 raise RunnerBackendError(
                     "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    famiglia=error_family(exc),
-                    codice=_codice if isinstance(_codice, int) else None,
+                    family=error_family(exc),
+                    code=_code if isinstance(_code, int) else None,
                 ) from exc
 
             for block in response.content:
@@ -925,8 +925,8 @@ class ClaudeRunner:
                 + cache_read * prices.get("cache_read", prices["input"] * 0.1)
                 + out * prices["output"]
             ) / 1_000_000
-            self._scrivi_consumo(effective_model, inp, out,
-                                 cache_creation, cache_read, cost)
+            self._write_usage(effective_model, inp, out,
+                              cache_creation, cache_read, cost)
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]
@@ -999,7 +999,7 @@ class ClaudeRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        strumenti: list[dict] | None = None,
+        tools: list[dict] | None = None,
         dispatcher: Any | None = None,
     ):
         """Async generator yielding SSE-formatted lines for the chat response.
@@ -1055,7 +1055,7 @@ class ClaudeRunner:
                 restrict_to_home=restrict_to_home,
                 response_mode=response_mode,
                 thinking_budget=thinking_budget,
-                strumenti=strumenti,
+                tools=tools,
                 dispatcher=dispatcher,
             )
         except Exception as exc:
@@ -1084,7 +1084,7 @@ class ClaudeRunner:
                 return await self._client.messages.create(**kwargs)
             except anthropic.APIStatusError as exc:
                 if exc.status_code in (429, 529) and attempt < MAX_RETRIES:
-                    self._scrivi_rifiuto(kwargs.get('model') or '')
+                    self._write_rejection(kwargs.get('model') or '')
                     delay = RETRY_DELAYS[attempt]
                     logger.warning(
                         "Rate limit (attempt %d/%d), retry in %ds", attempt + 1, MAX_RETRIES, delay

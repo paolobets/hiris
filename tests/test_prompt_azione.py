@@ -14,14 +14,14 @@ qui sotto guardano il testo che il modello legge DAVVERO su ciascuno:
   `backends/openai_compat_runner.py`) compone `BASE_SYSTEM_PROMPT` e NON
   vede mai le guide di `agent/prompts.py`;
 - il PONTE (chat via abbonamento, `agent/prompts.build_chat_messages`)
-  compone `BASE_IDENTITA` + -- solo quando gli strumenti ci sono davvero --
-  `BASE_REGOLE_STRUMENTI`, e poi una delle due guide.
+  compone `BASE_IDENTITY` + -- solo quando gli strumenti ci sono davvero --
+  `BASE_TOOL_RULES`, e poi una delle due guide.
 
 Le quattro cose che questo task deve dire (`esegui` esiste; gli id e non i
 nomi; racconta cosa e' SUCCESSO; come si tratta l'ambiguita') sono regole del
 PRODOTTO, non del ponte: se vivessero nella sola `_GUIDA_CON_STRUMENTI` il
 percorso sincrono -- quello che oggi porta la chat vera -- agirebbe senza
-nessuna di esse. Stanno quindi in `BASE_REGOLE_STRUMENTI`, l'unico testo che
+nessuna di esse. Stanno quindi in `BASE_TOOL_RULES`, l'unico testo che
 viene emesso SE E SOLO SE gli strumenti esistono, su entrambi i percorsi.
 Alla guida del ponte resta il suo mestiere di sempre: i nomi PREFISSATI, gli
 unici che la CLI accetta.
@@ -277,7 +277,7 @@ def test_entrambi_i_percorsi_dicono_che_il_ricordo_e_una_preferenza_non_una_sost
 
     Il brief chiedeva questo test sulla sola `_GUIDA_CON_STRUMENTI`; guarda
     entrambi i percorsi per la ragione dichiarata in cima al file -- il
-    paragrafo dell'ambiguita' vive in `BASE_REGOLE_STRUMENTI`, l'unico testo
+    paragrafo dell'ambiguita' vive in `BASE_TOOL_RULES`, l'unico testo
     che raggiunge chi puo' agire su ENTRAMBI i rami."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
         basso = testo.lower()
@@ -454,8 +454,8 @@ def test_l_eccezione_sta_dove_stanno_le_regole_dell_azione():
     la chat vera -- le guide di `agent/prompts.py` non le vede mai. E' la
     stessa correzione al piano che il Task 6 aveva gia' dovuto fare per le
     quattro regole dell'azione."""
-    from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
-    assert "automation.turn_off" in BASE_REGOLE_STRUMENTI
+    from hiris.app.claude_runner import BASE_TOOL_RULES
+    assert "automation.turn_off" in BASE_TOOL_RULES
     assert "automation.turn_off" not in _GUIDE_WITHOUT_TOOLS, (
         "un percorso senza strumenti non deve ricevere una regola su come "
         "usarli: e' la meta' falsa che la fetta «parita'» ha tolto")
@@ -545,8 +545,8 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
 
 
 def test_il_prompt_dice_che_costruire_e_in_due_tempi():
-    from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
-    assert "costruisci" in BASE_REGOLE_STRUMENTI
-    assert "conferma" in BASE_REGOLE_STRUMENTI
+    from hiris.app.claude_runner import BASE_TOOL_RULES
+    assert "costruisci" in BASE_TOOL_RULES
+    assert "conferma" in BASE_TOOL_RULES
     # La regola che conta: non si concatena la conferma alla proposta.
-    assert "stesso turno" in BASE_REGOLE_STRUMENTI
+    assert "stesso turno" in BASE_TOOL_RULES

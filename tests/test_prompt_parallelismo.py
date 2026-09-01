@@ -6,16 +6,16 @@ piu' blocchi `tool_use` di una risposta in un solo giro).
 
 Questo file pinna le istruzioni nuove -- "risolvi piu' nomi con UNA chiamata
 cerca" e la riga raccolta dal Task 4 che lega gli id `(id: X)` dell'albero
-agli strumenti -- su ENTRAMBE le guide: `claude_runner.BASE_REGOLE_STRUMENTI`
+agli strumenti -- su ENTRAMBE le guide: `claude_runner.BASE_TOOL_RULES`
 (il percorso sincrono, con chiave API) e `agent.prompts._GUIDA_CON_STRUMENTI`
 (il ponte, chat in abbonamento) -- guardare `tests/test_prompt_azione.py` per
-il perche' un'istruzione di prodotto deve stare in BASE_REGOLE_STRUMENTI e non
+il perche' un'istruzione di prodotto deve stare in BASE_TOOL_RULES e non
 nella sola guida del ponte.
 
 Fix finale ② (review 2026-08-20): il parallelismo NON e' piu' un'istruzione
 identica sulle due guide, perche' la sua giustificazione non e' vera nello
 stesso modo sui due percorsi:
-- sincrono (`BASE_REGOLE_STRUMENTI`): il ciclo di `claude_runner.py` conta
+- sincrono (`BASE_TOOL_RULES`): il ciclo di `claude_runner.py` conta
   UN giro per risposta, non per chiamata -- N `tool_use` nella stessa
   risposta costano un'iterazione sola. La giustificazione e' vera, e resta;
 - ponte (`_GUIDA_CON_STRUMENTI`): il tetto vero e' quello del server MCP
@@ -43,12 +43,12 @@ domani chi legge sappia perche' un assert cosi' semplice sopravvive in questo
 progetto.
 """
 from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS
-from hiris.app.claude_runner import BASE_REGOLE_STRUMENTI
+from hiris.app.claude_runner import BASE_TOOL_RULES
 
 
 def _le_due_guide() -> dict[str, str]:
     return {
-        "sincrono (BASE_REGOLE_STRUMENTI)": BASE_REGOLE_STRUMENTI,
+        "sincrono (BASE_TOOL_RULES)": BASE_TOOL_RULES,
         "ponte (_GUIDA_CON_STRUMENTI)": _GUIDE_WITH_TOOLS,
     }
 
@@ -93,8 +93,8 @@ def test_il_sincrono_insegna_il_parallelismo_col_conteggio_vero():
     """Sul percorso sincrono la giustificazione e' vera (il ciclo di
     `claude_runner.py` conta un giro per risposta, non per chiamata): resta
     l'istruzione originale, invariata."""
-    assert "IN PARALLELO" in BASE_REGOLE_STRUMENTI
-    assert "il ciclo conta un giro per risposta, non per" in BASE_REGOLE_STRUMENTI
+    assert "IN PARALLELO" in BASE_TOOL_RULES
+    assert "il ciclo conta un giro per risposta, non per" in BASE_TOOL_RULES
 
 
 def test_solo_il_ponte_insegna_ogni_chiamata_conta():

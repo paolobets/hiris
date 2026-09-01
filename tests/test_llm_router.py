@@ -457,7 +457,7 @@ async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
-        famiglia="credenziale", codice=400))
+        family="credenziale", code=400))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
@@ -480,7 +480,7 @@ async def test_il_registro_distingue_openai_da_openrouter():
     toglierne uno. Le due finte sono di classi che si somigliano APPOSTA."""
     class _Compat:
         async def chat(self, **k):
-            raise RunnerBackendError("giu'", famiglia="modello", codice=404)
+            raise RunnerBackendError("giu'", family="modello", code=404)
 
     class _Router(_Compat):
         pass
@@ -542,7 +542,7 @@ async def test_quaranta_turni_di_rifiuto_si_leggono_come_quaranta():
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
-        famiglia="credenziale", codice=400))
+        family="credenziale", code=400))
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,

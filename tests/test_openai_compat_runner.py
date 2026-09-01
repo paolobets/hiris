@@ -38,7 +38,7 @@ def test_init_ollama_local_does_not_raise(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
         timeout_s=90,
     )
     assert isinstance(runner._client.timeout, httpx.Timeout)
@@ -64,7 +64,7 @@ def test_circuit_open_message_names_local_backend(tmp_path):
     """Backlog #7 (local variant): Ollama keeps the 'backend locale' wording."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     assert runner._backend_noun == "Il backend locale"
 
@@ -74,7 +74,7 @@ def test_ollama_disables_sdk_retry(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        local=True, leggi_modello=lambda: "gemma4:e4b",
+        local=True, read_model=lambda: "gemma4:e4b",
     )
     assert runner._client.max_retries == 0
 
@@ -94,7 +94,7 @@ async def test_ollama_chat_passes_think_false(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        local=True, leggi_modello=lambda: "gemma4:e4b",
+        local=True, read_model=lambda: "gemma4:e4b",
     )
     # Mock the API to return a plain stop response
     msg = MagicMock()
@@ -256,7 +256,7 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     la chat non offre piu' nessun tool, quindi `tool_name_set` sarebbe vuoto e
     la fuga non verrebbe piu' riconosciuta. Il soggetto del test -- la
     detection end-to-end -- e' vivo (e' cosi' che funziona in produzione,
-    dove la chat passa sempre `strumenti=STRUMENTI_CONOSCENZA`): si sposta su
+    dove la chat passa sempre `tools=STRUMENTI_CONOSCENZA`): si sposta su
     `strumenti`, con due tool_def minimi locali (stesso pattern di
     test_runner_catalogo.py's _FINTO_HTTP_REQUEST_TOOL_DEF)."""
     runner = OpenAICompatRunner(
@@ -280,7 +280,7 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     out = await runner.chat(
         user_message="check health",
         model="mistralai/mistral-large",
-        strumenti=finti_tool_def,
+        tools=finti_tool_def,
     )
     assert out == TOOL_LEAK_USER_MSG
     assert "get_ha_health" not in out  # No leak in returned text
@@ -513,7 +513,7 @@ async def test_simple_chat_circuit_breaker_skips_dead_backend(tmp_path):
     from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
     runner._client.chat.completions.create = create
@@ -532,7 +532,7 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
     open, recovers cleanly)."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     ok = MagicMock()
     ok.choices = [MagicMock(message=MagicMock(content="hi"))]
@@ -559,7 +559,7 @@ def test_openai_compat_runner_ollama_is_not_cloud(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     assert runner._is_cloud is False
 
@@ -844,7 +844,7 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
     timeout on every turn."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -861,7 +861,7 @@ async def test_chat_stream_short_circuits_when_breaker_open(tmp_path):
     error event instead of calling the network."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -885,7 +885,7 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
     from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        local=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, read_model=lambda: "llama3.1:8b",
     )
     conn_err = _openai.APIConnectionError(request=MagicMock())
     runner._client.chat.completions.create = AsyncMock(side_effect=conn_err)
@@ -1061,8 +1061,8 @@ async def test_il_circuito_aperto_rifiuta_dicendo_che_non_ha_interrogato(monkeyp
 
     with pytest.raises(RunnerBackendError) as info:
         await r.chat(user_message="ciao")
-    assert info.value.famiglia == "irraggiungibile"
-    assert info.value.codice is None
+    assert info.value.family == "irraggiungibile"
+    assert info.value.code is None
     # La frase per l'utente NON cambia: questa fetta non tocca cio' che si
     # legge in chat.
     assert "circuito aperto" in info.value.friendly_message
@@ -1089,7 +1089,7 @@ async def test_un_404_del_provider_arriva_al_router_come_famiglia_modello(tmp_pa
     with pytest.raises(RunnerBackendError) as info:
         await runner.chat(user_message="hi", model="gpt-4o")
 
-    assert info.value.famiglia == "modello" and info.value.codice == 404
+    assert info.value.family == "modello" and info.value.code == 404
     assert info.value.friendly_message == (
         "Errore temporaneo del servizio AI. Riprova tra poco."
     )
@@ -1114,7 +1114,7 @@ async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
     with pytest.raises(RunnerBackendError) as info:
         await runner.chat(user_message="hi", model="gpt-4o")
 
-    assert info.value.famiglia == "credenziale" and info.value.codice == 402
+    assert info.value.family == "credenziale" and info.value.code == 402
 
 
 def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():

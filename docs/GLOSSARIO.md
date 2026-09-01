@@ -559,6 +559,7 @@ in §4①:
 | `estesa` | `esteso` |
 | `forme` | `forma` |
 | `invocazioni` | `invocazione` |
+| `regole` | `regola` |
 | `sentinelle` | `sentinella` |
 | `turni` | `turno` |
 | `fasce` | `fascia` |
@@ -1558,6 +1559,7 @@ al Task 6 invece che deciso qui.
 | raggruppato | grouped |
 | rango | rank |
 | reclama | reclaim |
+| regola | rule |
 | registra | log |
 | resto | rest |
 | restrizione | restriction |

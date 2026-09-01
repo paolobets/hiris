@@ -53,8 +53,8 @@ class OpenRouterRunner(OpenAICompatRunner):
         self,
         api_key: str,
         *,
-        leggi_modello=None,
-        registra_consumo=None,
+        read_model=None,
+        log_usage=None,
     ) -> None:
         # `local=False`: OpenRouter expects a different model per request,
         # selected by the user via the Designer model field. Default agent
@@ -69,8 +69,8 @@ class OpenRouterRunner(OpenAICompatRunner):
         super().__init__(
             base_url=_OPENROUTER_BASE_URL,
             api_key=api_key,
-            leggi_modello=leggi_modello,
-            registra_consumo=registra_consumo,
+            read_model=read_model,
+            log_usage=log_usage,
         )
         # OpenRouter is always a US cloud proxy — override the parent default
         # (_is_cloud = not local would yield True since local=False here too,
@@ -88,6 +88,6 @@ class OpenRouterRunner(OpenAICompatRunner):
             # sensible built-in default (Claude Sonnet via OpenRouter — paid
             # but reliable). Strip in both cases since the stored default may
             # carry the HIRIS 'openrouter:' tag (same format as the picker).
-            default = self._modello_scelto() or AUTO_OPENROUTER
+            default = self._chosen_model() or AUTO_OPENROUTER
             return _strip_openrouter_prefix(default)
         return _strip_openrouter_prefix(model)

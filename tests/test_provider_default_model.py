@@ -63,7 +63,7 @@ def _lettura(app, provider):
 def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio(tmp_path):
     app = _archivio(claude="claude-opus-4-7")
     runner = ClaudeRunner(api_key="sk-test",
-                          leggi_modello=_lettura(app, "claude"))
+                          read_model=_lettura(app, "claude"))
     assert runner._resolve_current_model() == "claude-opus-4-7"
 
     app["models_config"] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
@@ -76,7 +76,7 @@ def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio(tmp_path):
 def test_il_modello_di_openai_cambia_dal_turno_dopo(tmp_path):
     app = _archivio(openai="gpt-4.1")
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test",
-                                leggi_modello=_lettura(app, "openai"))
+                                read_model=_lettura(app, "openai"))
     assert runner._resolve_current_model() == "gpt-4.1"
     app["models_config"] = {"provider_models": {"openai": "gpt-4o-mini"}}
     assert runner._resolve_current_model() == "gpt-4o-mini"
@@ -85,7 +85,7 @@ def test_il_modello_di_openai_cambia_dal_turno_dopo(tmp_path):
 def test_il_modello_di_openrouter_cambia_dal_turno_dopo(tmp_path):
     app = _archivio(openrouter="openrouter:openai/gpt-4.1")
     runner = OpenRouterRunner(api_key="sk-or-test",
-                              leggi_modello=_lettura(app, "openrouter"))
+                              read_model=_lettura(app, "openrouter"))
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
     assert runner._resolve_current_model() == "openai/gpt-4.1"
     app["models_config"] = {"provider_models": {"openrouter": ""}}
@@ -100,7 +100,7 @@ def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
-        leggi_modello=lambda: (
+        read_model=lambda: (
             (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
         ),
     )
@@ -113,7 +113,7 @@ def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
 
 
 def test_senza_lettura_il_comportamento_e_quello_di_prima(tmp_path):
-    """`leggi_modello=None` deve valere quanto valeva `default_model=""`: e' il
+    """`read_model=None` deve valere quanto valeva `default_model=""`: e' il
     ramo di libreria (chiunque costruisca un runner senza passare da
     `server.py`), e cambiarlo in silenzio sarebbe un ripiego nuovo."""
     claude = ClaudeRunner(api_key="sk-test")
@@ -128,7 +128,7 @@ def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
     restituisse `None` (una chiave assente letta male), il runner deve ripiegare
     come se non ci fosse scelta, non mandare `None` al provider."""
     runner = ClaudeRunner(api_key="sk-test",
-                          leggi_modello=lambda: None)
+                          read_model=lambda: None)
     assert runner._resolve_current_model() == AUTO_MODEL_MAP["chat"]
 
 
@@ -256,7 +256,7 @@ async def test_la_chiamata_a_claude_parte_col_modello_LETTO_ADESSO(tmp_path):
 
     app = _archivio(claude="claude-opus-4-7")
     runner = ClaudeRunner(api_key="sk-test",
-                          leggi_modello=_lettura(app, "claude"))
+                          read_model=_lettura(app, "claude"))
     blocco = MagicMock(type="text", text="ok")
     msg = MagicMock(stop_reason="end_turn", content=[blocco])
     msg.usage = MagicMock(input_tokens=1, output_tokens=1,
@@ -280,7 +280,7 @@ async def test_la_chiamata_a_ollama_parte_col_modello_LETTO_ADESSO(tmp_path):
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
-        leggi_modello=lambda: (
+        read_model=lambda: (
             (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
         ),
     )
@@ -306,10 +306,10 @@ def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider(tmp_path):
     a "" per tutti e due i runner, cosi' il ripiego esiste sempre."""
     locale = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
-        leggi_modello=lambda: None)
-    assert locale._modello_scelto() == ""
+        read_model=lambda: None)
+    assert locale._chosen_model() == ""
     assert locale._resolve_current_model() == ""
 
     claude = ClaudeRunner(api_key="sk-test",
-                          leggi_modello=lambda: None)
-    assert claude._modello_scelto() == ""
+                          read_model=lambda: None)
+    assert claude._chosen_model() == ""

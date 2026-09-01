@@ -276,9 +276,9 @@ class OpenAICompatRunner:
         api_key: str,
         *,
         local: bool = False,
-        leggi_modello=None,
+        read_model=None,
         timeout_s: float = 0.0,
-        registra_consumo=None,
+        log_usage=None,
     ) -> None:
         # fetta «la catena diventa l'unica verita'» (Task 10): `fixed_model`
         # era UN parametro per TRE cose insieme -- «questo e' Ollama»,
@@ -294,13 +294,13 @@ class OpenAICompatRunner:
         self._api_key = api_key
         self._base_url = base_url
         self._local = local
-        self._leggi_modello = leggi_modello
+        self._read_model = read_model
         self._is_cloud = not local  # True = cloud (OpenAI); False = local (Ollama)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
         # Stessa disciplina di `leggi_modello`. Ed e' la regola non negoziabile
         # di CLAUDE.md: un kwarg nuovo di `ClaudeRunner` lo accetta ANCHE
         # questa classe, o i backend non-Claude si rompono in silenzio.
-        self._registra_consumo = registra_consumo
+        self._log_usage = log_usage
         # Il nome AUTOREVOLE del provider. `type(self).__name__` non lo
         # distingue: `OpenRouterRunner` e' una sottoclasse di questa classe, e
         # un consumo di OpenRouter finirebbe scritto sulla riga di OpenAI --
@@ -379,7 +379,7 @@ class OpenAICompatRunner:
         # fatto quella che era una stima, e la stima valeva ZERO: `_prezzo` non
         # conosce nessun identificativo OpenRouter e cadeva su `_default`. E'
         # il difetto da cui nasce l'intera fetta.
-        if self._registra_consumo is None:
+        if self._log_usage is None:
             return
         from ..consumi.vocabulary import cost_state_and_value
 
@@ -387,13 +387,13 @@ class OpenAICompatRunner:
         state, cost = cost_state_and_value(self.provider_name, model,
                                      cost_dichiarato=declared,
                                      cost_da_listino=cost)
-        self._registra_consumo(
+        self._log_usage(
             self.provider_name, model, token_in=inp, token_out=out,
             cache_read=getattr(usage, "cached_tokens", 0) or 0,
             cache_write=getattr(usage, "cache_write_tokens", 0) or 0,
             cost_usd=cost, cost_state=state, now=time.time())
 
-    def _scrivi_rifiuto(self, modello: str) -> None:
+    def _write_rejection(self, model: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
 
         `richieste=0`: un rifiuto non e' una richiesta servita. Oggi
@@ -401,19 +401,19 @@ class OpenAICompatRunner:
         non dice CHI stia rifiutando -- che e' l'unica cosa che serve sapere
         quando succede.
         """
-        if self._registra_consumo is None:
+        if self._log_usage is None:
             return
-        self._registra_consumo(
-            self.provider_name, modello, richieste=0, errori_rate_limit=1,
+        self._log_usage(
+            self.provider_name, model, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     # ------------------------------------------------------------------
     # Model resolution
     # ------------------------------------------------------------------
 
-    def _modello_scelto(self) -> str:
+    def _chosen_model(self) -> str:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
-        return (self._leggi_modello() if self._leggi_modello else "") or ""
+        return (self._read_model() if self._read_model else "") or ""
 
     def _resolve_current_model(self) -> str:
         """Il modello che questo runner userebbe adesso con `model="auto"`.
@@ -428,11 +428,11 @@ class OpenAICompatRunner:
         # self._fixed_model` come primo ramo) e resta, perche' l'istanza locale
         # ne ha scaricato uno solo e chiedergliene un altro fallirebbe. La sola
         # differenza e' che adesso il valore si LEGGE.
-        scelto = self._modello_scelto()
+        chosen = self._chosen_model()
         if self._local:
-            return scelto
+            return chosen
         if model == "auto":
-            return scelto or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
+            return chosen or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
         return model
 
     def apply_timeout(self, seconds: float) -> None:
@@ -520,7 +520,7 @@ class OpenAICompatRunner:
                 # Cloud: lo stesso "gpt-4o-mini" scritto qui da sempre (questa
                 # chiamata non passa da `_resolve_model` e non ha un
                 # agent_type). Locale: il modello scelto, letto adesso.
-                "model": (self._modello_scelto() if self._local else "") or "gpt-4o-mini",
+                "model": (self._chosen_model() if self._local else "") or "gpt-4o-mini",
                 "messages": msgs,
                 "max_tokens": 1024,
             }
@@ -557,7 +557,7 @@ class OpenAICompatRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        strumenti: list[dict] | None = None,
+        tools: list[dict] | None = None,
         dispatcher: Any | None = None,
     ) -> str:
         # thinking_budget is part of the runner contract since v0.9.5 because
@@ -590,7 +590,7 @@ class OpenAICompatRunner:
             raise RunnerBackendError(
                 f"{self._backend_noun} non risponde da diversi tentativi "
                 "consecutivi (circuito aperto). Riprova tra qualche istante.",
-                famiglia="irraggiungibile", codice=None,
+                family="irraggiungibile", code=None,
             )
 
         self.last_tool_calls = []
@@ -647,10 +647,10 @@ class OpenAICompatRunner:
         messages.append({"role": "user", "content": user_message})
 
         # Build tool list
-        if strumenti is not None:
+        if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante. Stessa regola di
             # ClaudeRunner.chat() (vedi il suo commento gemello).
-            tools = list(strumenti)
+            tools = list(tools)
         else:
             # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
             # vedi il commento gemello in claude_runner.chat().
@@ -710,7 +710,7 @@ class OpenAICompatRunner:
                         ),
                     )
             except _openai.RateLimitError as exc:
-                self._scrivi_rifiuto(effective_model)
+                self._write_rejection(effective_model)
                 logger.error("OpenAI rate limit: %s", exc)
                 upstream = parse_upstream_rate_limit(exc)
                 # Un 429 è famiglia `altro`: è un guasto vero, ma non dice a
@@ -719,8 +719,8 @@ class OpenAICompatRunner:
                 # invece si porta, perché è un fatto.
                 raise RunnerBackendError(
                     upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    famiglia=error_family(exc),
-                    codice=_status_code(exc) or 429,
+                    family=error_family(exc),
+                    code=_status_code(exc) or 429,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -746,8 +746,8 @@ class OpenAICompatRunner:
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
                             f"Riduci max_tokens dell'agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai.",
-                            famiglia=error_family(retry_exc),
-                            codice=_status_code(retry_exc),
+                            family=error_family(retry_exc),
+                            code=_status_code(retry_exc),
                         ) from retry_exc
                 else:
                     # review M3/#2: connection-class failures (dead endpoint)
@@ -763,8 +763,8 @@ class OpenAICompatRunner:
                     # finito» diventavano la stessa identica riga.
                     raise RunnerBackendError(
                         "Errore temporaneo del servizio AI. Riprova tra poco.",
-                        famiglia=error_family(exc),
-                        codice=_status_code(exc),
+                        family=error_family(exc),
+                        code=_status_code(exc),
                     ) from exc
 
             self._record_success()
@@ -885,7 +885,7 @@ class OpenAICompatRunner:
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
-        strumenti: list[dict] | None = None,
+        tools: list[dict] | None = None,
         dispatcher: Any | None = None,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
@@ -954,10 +954,10 @@ class OpenAICompatRunner:
             messages.append({"role": msg["role"], "content": str(msg["content"])})
         messages.append({"role": "user", "content": user_message})
 
-        if strumenti is not None:
+        if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante -- stessa regola di
             # chat() (vedi il suo commento gemello).
-            tools = list(strumenti)
+            tools = list(tools)
         else:
             # fetta E3 Task 8: nessun catalogo di scorta da cui pescare --
             # vedi il commento gemello in claude_runner.chat(). Lo streaming
@@ -991,7 +991,7 @@ class OpenAICompatRunner:
                 try:
                     stream = await self._client.chat.completions.create(**kwargs)
                 except _openai.RateLimitError as exc:
-                    self._scrivi_rifiuto(effective_model)
+                    self._write_rejection(effective_model)
                     logger.error("OpenAI rate limit (stream): %s", exc)
                     upstream = parse_upstream_rate_limit(exc)
                     err_msg = upstream or "Rate limit — riprova tra poco."

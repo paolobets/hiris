@@ -657,17 +657,14 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # moduli -- cinque nomi importati, due parole chiave di firme altrui -- e
     # non sono residui: sono nomi che questo ambito non possiede.
     ("agent", "agent", frozenset()),
-    # `backends` entra il 01/09 con UN residuo dichiarato, e la ragione non e'
-    # lavoro rimandato: `openai_compat_runner.py` condivide con
-    # `claude_runner.py` (modulo di RADICE, non ancora convertito)
-    # un'interfaccia duck-typed -- `chat(..., strumenti=..., dispatcher=...)`
-    # e i kwarg `leggi_modello=`/`registra_consumo=` del costruttore, piu' i
-    # quattro aiutanti privati paralleli (`_leggi_modello`, `_registra_consumo`,
-    # `_modello_scelto`, `_scrivi_rifiuto`). **Tradurne meta' e' il difetto che
-    # questa fetta ha gia' pagato**: il router sceglie fra i due runner per
-    # duck-typing, e nessun cancello confronta le loro firme fra loro.
-    # Escono insieme, col lotto che convertira' i moduli di radice.
-    ("backends", "backends", frozenset({Path("openai_compat_runner.py")})),
+    # `backends` e' entrato il 01/09 con un residuo dichiarato -- le tre
+    # parole della famiglia dei runner, che non si potevano tradurre a meta'
+    # perche' `claude_runner.py` portava la stessa interfaccia duck-typed.
+    # **Il residuo e' USCITO col lotto dei moduli di radice**, che ha
+    # convertito i due runner nello stesso commit: qui resta la riga senza
+    # eccezioni, e il canarino a grana fine e' stato tolto invece che
+    # aggiornato -- e' la disciplina scritta per `memoria/resolver.py`.
+    ("backends", "backends", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("consumi", "consumi", frozenset()),
     ("cervello", "cervello", frozenset()),
@@ -1205,35 +1202,6 @@ def test_sponde_per_nome_non_scambia_un_percorso_di_import_per_un_attributo(tmp_
     assert {f.name for f, _, _, _, _ in trovati} == {"vero.py"}, trovati
 
 
-def test_il_residuo_di_backends_e_solo_la_famiglia_dei_runner(tmp_path):
-    """La grana FINE del residuo di `backends/openai_compat_runner.py`.
-
-    Un'eccezione a grana di file nasconderebbe un secondo debito nato dopo per
-    un'altra ragione -- e' successo con `memoria/resolver.py`. Qui l'insieme
-    atteso ha tre coppie, ed e' ESATTO: sono le tre parole che compongono
-    l'interfaccia duck-typed condivisa con `claude_runner.py`.
-
-    Quando i moduli di radice verranno convertiti, questo test si rompe e va
-    TOLTO -- non allargato -- perche' il residuo sara' sparito.
-    """
-    import shutil
-
-    from _comune import ROOT
-    base = ROOT / "hiris" / "app" / "backends" / "openai_compat_runner.py"
-    copia = tmp_path / "openai_compat_runner.py"
-    shutil.copy(base, copia)
-    prima = copia.read_text(encoding="utf-8")
-    rinomina.applica(copia, "backends", scrivi=True)
-    dopo = copia.read_text(encoding="utf-8")
-    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
-    assert sostituzioni == {("modello", "model"), ("scelto", "chosen"),
-                            ("strumenti", "tools")}, (
-        f"backends/openai_compat_runner.py diverge su {sostituzioni}, attese "
-        "solo le tre parole della famiglia dei runner -- un nome nuovo e' "
-        "comparso: decidilo davvero invece di lasciarlo dentro un'eccezione "
-        "a grana di file")
-
-
 def test_il_triage_degli_orfani_mette_l_asse_del_NOME_CHIAMATO_per_primo():
     """Il cancello che mancava alla ritaratura del filtro.
 
@@ -1492,3 +1460,74 @@ def test_chiudi_sponde_non_segue_un_nome_nudo_in_un_file_che_non_lo_importa(tmp_
     assert rinomina.chiudi_sponde(siti) == 1
     assert f.read_text(encoding="utf-8") == ("vecchio_nome = 1\n"
                                              "x = oggetto.new_name\n")
+
+
+def test_chiudi_sponde_non_tocca_un_binding_DIVERSO_collo_stesso_nome(tmp_path):
+    """«Ogni `vecchio` nudo E' quel nome» e' FALSO, e questo e' il caso che lo
+    dimostra.
+
+    La regola del ramo dei nomi nudi era: in un file che fa `from X import v`,
+    ogni `v` nudo e' quel nome, perche' e' il legame dell'import a renderlo
+    certo. **Non e' vero quando nello stesso file esiste un binding DIVERSO
+    collo stesso nome**: un parametro di un'altra funzione, o una parola chiave
+    verso una firma altrui. Li' `chiudi_sponde` riscriveva la firma di
+    qualcun altro e la chiave di una chiamata altrui -- cinque token invece di
+    uno.
+
+    **Misurato: 63 siti nel repo** in cui un nome importato e' anche un binding
+    diverso nello stesso file (`client`, `csrf_stretto`, `reference_frame`...).
+    Bastava un lotto che rinominasse uno di quei nomi.
+
+    La cura e' conservativa e la ragione e' che non c'e' modo di essere
+    precisi senza analisi di scope: **se il file contiene un binding
+    concorrente per quel nome, i nomi nudi NON si toccano** e resta solo cio'
+    che la rete ha dichiarato (l'import). Meglio chiudere di meno e dirlo, che
+    riscrivere la firma di un altro.
+    """
+    f = tmp_path / "ambiguo.py"
+    f.write_text("from pacchetto.modulo import esito\n"
+                 "\n"
+                 "def altrui(esito=None):\n"
+                 "    return esito\n"
+                 "\n"
+                 "x = altrui(esito=1)\n"
+                 "y = esito\n", encoding="utf-8")
+    siti = rinomina.sponde_per_nome({"esito": "occurrence"}, radice=tmp_path)
+    assert [s[4] for s in siti] == ["import"], siti
+    assert rinomina.chiudi_sponde(siti) == 1, (
+        "con un binding concorrente nello stesso file si chiude SOLO l'import: "
+        "gli usi nudi diventano ambigui, e la firma di `altrui` non e' nostra")
+    assert f.read_text(encoding="utf-8") == (
+        "from pacchetto.modulo import occurrence\n"
+        "\n"
+        "def altrui(esito=None):\n"
+        "    return esito\n"
+        "\n"
+        "x = altrui(esito=1)\n"
+        "y = esito\n")
+
+
+def test_gli_attributi_d_istanza_sono_ESPORTATI_quanto_un_metodo():
+    """`self.x = ...` assegnato dentro un metodo si legge da fuori come
+    `oggetto.x`, e la terza rete e' l'UNICA che vede gli attributi: se la mappa
+    non li porta, la rete tace su di loro.
+
+    **Non e' costato niente fino ad `agent/`** (zero attributi `self.` in tutto
+    il sottosistema) **e costa sui moduli di radice**:
+    `RunnerBackendError.codice` e `.famiglia` (`claude_runner.py`) sono letti da
+    fuori in otto siti di due file di test. La rete 1 vede il costruttore, la
+    rete 3 -- l'unica che vede gli attributi -- non li avrebbe dichiarati.
+
+    Le variabili LOCALI restano fuori, che e' il punto di `nomi_esportati`:
+    `locale` qui non e' esportato da niente.
+    """
+    gf = rinomina.Glossario(mappa={"codice": "code", "famiglia": "family",
+                                   "locale": "local"})
+    dentro = ("class ErroreRunner(Exception):\n"
+              "    def __init__(self, msg, *, famiglia=None, codice=None):\n"
+              "        self.famiglia = famiglia\n"
+              "        self.codice = codice\n"
+              "        locale = 1\n"
+              "        return locale\n")
+    esportati = rinomina.nomi_esportati(dentro, gf, "radice")
+    assert esportati == {"famiglia": "family", "codice": "code"}, esportati

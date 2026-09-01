@@ -62,8 +62,8 @@ def test_i_due_runner_accettano_gli_stessi_argomenti():
     dei due cambia il test cade invece di lasciare divergere."""
     a = set(inspect.signature(ClaudeRunner.chat).parameters)
     b = set(inspect.signature(OpenAICompatRunner.chat).parameters)
-    assert {"strumenti", "dispatcher"} <= a
-    assert {"strumenti", "dispatcher"} <= b
+    assert {"tools", "dispatcher"} <= a
+    assert {"tools", "dispatcher"} <= b
 
 
 def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
@@ -77,8 +77,8 @@ def test_i_due_runner_accettano_gli_stessi_argomenti_anche_in_streaming():
     gemello sopra, sul metodo streaming."""
     a = set(inspect.signature(ClaudeRunner.chat_stream).parameters)
     b = set(inspect.signature(OpenAICompatRunner.chat_stream).parameters)
-    assert {"strumenti", "dispatcher"} <= a
-    assert {"strumenti", "dispatcher"} <= b
+    assert {"tools", "dispatcher"} <= a
+    assert {"tools", "dispatcher"} <= b
 
 
 # --- fixture condivise, stesso pattern di test_claude_runner.py / -----------
@@ -150,7 +150,7 @@ async def _openai_chat_tools(runner, **kw) -> set:
 # (la Sentinella, uscita al Task 7). L'"additivita'" che questi due test
 # pinnavano -- "senza `strumenti` tutto resta com'era prima" -- non descrive
 # piu' nessun chiamante reale: chatbot_engine.py e api/handlers_chat.py
-# passano sempre `strumenti=STRUMENTI_CONOSCENZA`. Il nuovo comportamento e'
+# passano sempre `tools=STRUMENTI_CONOSCENZA`. Il nuovo comportamento e'
 # piu' semplice da dichiarare che da giustificare: senza `strumenti`, nessun
 # tool.
 
@@ -181,13 +181,13 @@ _NOMI_DEL_CATALOGO = {d["name"] for d in KNOWLEDGE_TOOLS}
 
 @pytest.mark.asyncio
 async def test_claude_con_strumenti_offre_esattamente_quelli(claude_runner):
-    nomi = await _claude_chat_tools(claude_runner, strumenti=KNOWLEDGE_TOOLS)
+    nomi = await _claude_chat_tools(claude_runner, tools=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
 @pytest.mark.asyncio
 async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
-    nomi = await _openai_chat_tools(openai_runner, strumenti=KNOWLEDGE_TOOLS)
+    nomi = await _openai_chat_tools(openai_runner, tools=KNOWLEDGE_TOOLS)
     assert nomi == _NOMI_DEL_CATALOGO
 
 
@@ -208,7 +208,7 @@ async def test_openai_con_strumenti_offre_esattamente_quelli(openai_runner):
 async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
     nomi = await _claude_chat_tools(
         claude_runner,
-        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
+        tools=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
     )
     assert nomi == {"http_request", "recall_memory"}
 
@@ -217,7 +217,7 @@ async def test_claude_con_strumenti_nessun_filtro_si_applica(claude_runner):
 async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
     nomi = await _openai_chat_tools(
         openai_runner,
-        strumenti=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
+        tools=[_FINTO_HTTP_REQUEST_TOOL_DEF, _FINTO_RECALL_MEMORY_TOOL_DEF],
     )
     assert nomi == {"http_request", "recall_memory"}
 
@@ -243,7 +243,7 @@ async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_r
 
     claude_runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     result = await claude_runner.chat(
-        "cerca il bagno", strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
+        "cerca il bagno", tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     )
 
     assert result == "trovato"
@@ -276,7 +276,7 @@ async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_r
     openai_runner._client.chat.completions.create = AsyncMock(side_effect=[resp1, resp2])
     result = await openai_runner.chat(
         user_message="cerca il bagno", model="gpt-4o",
-        strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
+        tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     )
 
     assert result == "trovato"
@@ -332,7 +332,7 @@ async def test_openai_stream_con_strumenti_offre_esattamente_quelli(openai_runne
 
     openai_runner._client.chat.completions.create = capture
     async for _ in openai_runner.chat_stream(
-        user_message="ciao", model="gpt-4o", strumenti=KNOWLEDGE_TOOLS,
+        user_message="ciao", model="gpt-4o", tools=KNOWLEDGE_TOOLS,
     ):
         pass
 
@@ -357,7 +357,7 @@ async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(o
     openai_runner._client.chat.completions.create = capture
     async for _ in openai_runner.chat_stream(
         user_message="cerca il bagno", model="gpt-4o",
-        strumenti=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
+        tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
     ):
         pass
 
