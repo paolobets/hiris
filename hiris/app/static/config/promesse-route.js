@@ -81,10 +81,10 @@ window.HirisPromesseRoute = (function () {
   };
   var STATI_SOSPESO = ['in_attesa', 'in_corso'];
 
-  function el(tag, cls, testo) {
+  function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
-    if (testo != null) e.textContent = testo;
+    if (text != null) e.textContent = text;
     return e;
   }
   function clearEl(node) {
@@ -101,9 +101,9 @@ window.HirisPromesseRoute = (function () {
     return fetch(path, opts);
   }
 
-  function setStatus(testo) {
+  function setStatus(text) {
     var s = byId('promesse-status');
-    if (s) s.textContent = testo || '';
+    if (s) s.textContent = text || '';
   }
 
   /* ── Date e ore (guida §4): sempre da `quando_ts`, mai da `quando_detto`
@@ -116,15 +116,15 @@ window.HirisPromesseRoute = (function () {
   }
 
   function eOggi(d) {
-    var ora = new Date();
-    return d.getFullYear() === ora.getFullYear() && d.getMonth() === ora.getMonth() &&
-      d.getDate() === ora.getDate();
+    var hour = new Date();
+    return d.getFullYear() === hour.getFullYear() && d.getMonth() === hour.getMonth() &&
+      d.getDate() === hour.getDate();
   }
 
   function fmtAssoluto(ts) {
     var d = new Date(ts * 1000);
-    var ora = fmtOraAssoluta(d);
-    return eOggi(d) ? ('oggi alle ' + ora) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + ora);
+    var hour = fmtOraAssoluta(d);
+    return eOggi(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
   }
 
   /* Intl.RelativeTimeFormat, API nativa (nessuna libreria, nessun build
@@ -148,19 +148,19 @@ window.HirisPromesseRoute = (function () {
      (guida §3, stesso principio di rendiAncore in memoria-route.js): rosso
      solo per un vero fallimento, ambra per tutto il resto (compresa la
      nota su una "mantenuta" con motivo -- §6 della spec). */
-  function coloreMotivo(stato) {
-    return stato === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)';
+  function coloreMotivo(state) {
+    return state === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)';
   }
 
-  function formattaIstantanea(istantanea) {
-    if (!istantanea || !istantanea.length) return null;
-    return istantanea.map(function (m) {
+  function formattaIstantanea(snapshot) {
+    if (!snapshot || !snapshot.length) return null;
+    return snapshot.map(function (m) {
       return (m.entita || '?') + ' ' + m.valore + (m.unita ? ' ' + m.unita : '');
     }).join(' · ');
   }
 
-  function formattaElencoEntita(elenco) {
-    return (elenco && elenco.length) ? elenco.join(', ') : null;
+  function formattaElencoEntita(list) {
+    return (list && list.length) ? list.join(', ') : null;
   }
 
   /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
@@ -176,32 +176,32 @@ window.HirisPromesseRoute = (function () {
      qualcosa che non so mostrare), e si mostra SEMPRE quando c'e', verbatim
      e senza riformularlo -- riformularlo rischierebbe di appiattire
      esattamente la distinzione per cui quel campo esiste. */
-  function rendiDettaglioEsecuzione(pannello, esecuzione) {
-    clearEl(pannello);
-    if (esecuzione.errore) {
-      var errore = el('p', null, esecuzione.errore);
-      errore.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
-      pannello.appendChild(errore);
+  function rendiDettaglioEsecuzione(panel, execution) {
+    clearEl(panel);
+    if (execution.errore) {
+      var error = el('p', null, execution.errore);
+      error.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
+      panel.appendChild(error);
     }
-    var cambiate = formattaElencoEntita(esecuzione.cambiato);
-    if (cambiate) {
-      var riga1 = el('p', null, 'Cambiate: ' + cambiate);
+    var changed = formattaElencoEntita(execution.cambiato);
+    if (changed) {
+      var riga1 = el('p', null, 'Cambiate: ' + changed);
       riga1.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin:4px 0 0';
-      pannello.appendChild(riga1);
+      panel.appendChild(riga1);
     }
-    if (esecuzione.avviso) {
-      var avviso = el('p', null, esecuzione.avviso);
-      avviso.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
-      pannello.appendChild(avviso);
-    } else if (!cambiate && !esecuzione.errore) {
+    if (execution.avviso) {
+      var notice = el('p', null, execution.avviso);
+      notice.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
+      panel.appendChild(notice);
+    } else if (!changed && !execution.errore) {
       // Difensivo: nella porta attuale (`azione/porta.py`) un `cambiato`
       // vuoto porta SEMPRE un `avviso` -- questo ramo non dovrebbe mai
       // rendersi oggi, ma se un domani smettesse di esserlo, tacere
       // sarebbe di nuovo il difetto che questo rilievo chiude.
-      pannello.appendChild(el('p', 'field-hint', 'Nessuna nota su cosa sia cambiato.'));
+      panel.appendChild(el('p', 'field-hint', 'Nessuna nota su cosa sia cambiato.'));
     }
-    var toccate = formattaElencoEntita(esecuzione.entita);
-    if (toccate) pannello.appendChild(el('div', 'field-hint', 'Toccate: ' + toccate));
+    var touched = formattaElencoEntita(execution.entita);
+    if (touched) panel.appendChild(el('div', 'field-hint', 'Toccate: ' + touched));
   }
 
   /* Il bottone «Cosa è cambiato» di una riga storico `fai` mantenuta
@@ -211,34 +211,34 @@ window.HirisPromesseRoute = (function () {
      mantenuta mostra gia' la sua risposta (§6), e per un `fai` `fallita` il
      `motivo` che l'utente vede e' gia' `esito.errore` (`orologio.py::
      _mantieni_fai`): la stessa frase, non un secondo dettaglio da aprire. */
-  function aggiungiDettaglioEsecuzione(riga, p) {
+  function aggiungiDettaglioEsecuzione(line, p) {
     if (!(p.specie === 'fai' && p.stato === 'mantenuta' && p.esecuzione_id)) return;
 
-    var gruppo = el('div', 'field-group');
-    gruppo.style.marginTop = '8px';
+    var group = el('div', 'field-group');
+    group.style.marginTop = '8px';
     var testoChiuso = 'Cosa è cambiato';
     var testoAperto = 'Nascondi il dettaglio';
     var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
-    var pannello = el('div');
-    pannello.style.marginTop = '6px';
-    pannello.hidden = true;
+    var panel = el('div');
+    panel.style.marginTop = '6px';
+    panel.hidden = true;
     var idPannello = 'esec-' + p.id;
-    pannello.id = idPannello;
+    panel.id = idPannello;
     btn.setAttribute('aria-controls', idPannello);
-    var caricato = false;
+    var loaded = false;
 
     btn.addEventListener('click', function () {
-      var aperto = btn.getAttribute('aria-expanded') === 'true';
-      if (aperto) {
-        pannello.hidden = true;
+      var open = btn.getAttribute('aria-expanded') === 'true';
+      if (open) {
+        panel.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
         btn.textContent = testoChiuso;
         return;
       }
-      if (caricato) {
-        pannello.hidden = false;
+      if (loaded) {
+        panel.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
         btn.textContent = testoAperto;
         return;
@@ -247,19 +247,19 @@ window.HirisPromesseRoute = (function () {
       btn.textContent = 'Verifica…';
       fetch('api/executions/' + encodeURIComponent(p.esecuzione_id)).then(function (res) {
         if (res.status === 404) {
-          clearEl(pannello);
-          pannello.appendChild(el('p', 'field-hint', 'Non ne ho più il dettaglio.'));
-          caricato = true;
+          clearEl(panel);
+          panel.appendChild(el('p', 'field-hint', 'Non ne ho più il dettaglio.'));
+          loaded = true;
           return;
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json().then(function (corpo) {
-          rendiDettaglioEsecuzione(pannello, corpo.execution);
-          caricato = true;
+          rendiDettaglioEsecuzione(panel, corpo.execution);
+          loaded = true;
         });
       }).then(function () {
         btn.disabled = false;
-        pannello.hidden = false;
+        panel.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
         btn.textContent = testoAperto;
       }, function () {
@@ -272,24 +272,24 @@ window.HirisPromesseRoute = (function () {
       });
     });
 
-    gruppo.appendChild(btn);
-    gruppo.appendChild(pannello);
-    riga.appendChild(gruppo);
+    group.appendChild(btn);
+    group.appendChild(panel);
+    line.appendChild(group);
   }
 
   /* ── Una riga «in sospeso» (guida §2, §5) ────────────────────────────── */
-  function costruisciRigaSospeso(p, ricarica) {
-    var riga = el('div');
-    riga.style.cssText = 'border-top:1px solid var(--border);padding:10px 0;' +
+  function costruisciRigaSospeso(p, reload) {
+    var line = el('div');
+    line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0;' +
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
     var corpo = el('div');
     corpo.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts) + ' · ' + fmtRelativo(p.quando_ts)));
-    var frase = el('p', null, p.frase);
-    frase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
-    corpo.appendChild(frase);
+    var phrase = el('p', null, p.frase);
+    phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
+    corpo.appendChild(phrase);
     corpo.appendChild(el('div', 'field-hint', p.specie));
-    riga.appendChild(corpo);
+    line.appendChild(corpo);
 
     /* Condizione ESATTA `stato === 'in_attesa'`, non "riga in questa
        sezione": `in_corso` ci sta (non e' ancora concluso) ma non e'
@@ -306,7 +306,7 @@ window.HirisPromesseRoute = (function () {
               return { res: res, corpo: corpo2 };
             });
           })
-          .then(function (esito) {
+          .then(function (occurrence) {
             /* Trappola dichiarata dalla guida: la DELETE riuscita risponde
                200 con un corpo, MAI 204 come /api/memories/{id} -- si
                guarda `res.ok`, non uno status specifico. 404 e 409
@@ -315,36 +315,36 @@ window.HirisPromesseRoute = (function () {
                verbatim, non un errore generico -- dicono cose diverse
                (non esiste vs. gia' concluso) e l'utente deve poterle
                distinguere. */
-            setStatus(esito.res.ok ? 'Promessa disdetta.' :
-              ((esito.corpo && esito.corpo.error) || ('Errore HTTP ' + esito.res.status)));
-            ricarica();
+            setStatus(occurrence.res.ok ? 'Promessa disdetta.' :
+              ((occurrence.corpo && occurrence.corpo.error) || ('Errore HTTP ' + occurrence.res.status)));
+            reload();
           }, function () {
             btn.disabled = false;
             setStatus('HIRIS non ha risposto. Riprova più tardi.');
           });
       });
-      riga.appendChild(btn);
+      line.appendChild(btn);
     }
-    return riga;
+    return line;
   }
 
   /* ── Una riga «storico» (guida §2, §3, §6) ───────────────────────────── */
   function costruisciRigaStorico(p) {
-    var riga = el('div');
-    riga.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
+    var line = el('div');
+    line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
-    riga.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts)));
-    var frase = el('p', null, p.frase);
-    frase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
-    riga.appendChild(frase);
+    line.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts)));
+    var phrase = el('p', null, p.frase);
+    phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
+    line.appendChild(phrase);
 
-    riga.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[p.stato] || 'badge-off'),
+    line.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[p.stato] || 'badge-off'),
       STATO_LABEL[p.stato] || p.stato));
 
     if (p.motivo) {
-      var motivo = el('p', null, p.motivo);
-      motivo.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + coloreMotivo(p.stato);
-      riga.appendChild(motivo);
+      var reason = el('p', null, p.motivo);
+      reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + coloreMotivo(p.stato);
+      line.appendChild(reason);
     }
 
     /* Il blocco risposta di un `chiedi` mantenuto: e' cio' che l'utente e'
@@ -353,50 +353,50 @@ window.HirisPromesseRoute = (function () {
        (`avvisare:false`): questa pagina e' di sola lettura, quindi non
        importa se non e' arrivata una notifica. */
     if (p.specie === 'chiedi' && p.stato === 'mantenuta' && p.testo) {
-      var gruppo = el('div', 'field-group');
-      gruppo.style.marginTop = '8px';
-      gruppo.appendChild(el('div', 'fg-label', 'HIRIS ha risposto'));
-      var risposta = el('p', null, p.testo);
-      risposta.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin-top:4px';
-      gruppo.appendChild(risposta);
+      var group = el('div', 'field-group');
+      group.style.marginTop = '8px';
+      group.appendChild(el('div', 'fg-label', 'HIRIS ha risposto'));
+      var answer = el('p', null, p.testo);
+      answer.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin-top:4px';
+      group.appendChild(answer);
       var basatoSu = formattaIstantanea(p.istantanea);
-      if (basatoSu) gruppo.appendChild(el('div', 'field-hint', 'Basato su: ' + basatoSu));
-      riga.appendChild(gruppo);
+      if (basatoSu) group.appendChild(el('div', 'field-hint', 'Basato su: ' + basatoSu));
+      line.appendChild(group);
     }
 
-    aggiungiDettaglioEsecuzione(riga, p);
+    aggiungiDettaglioEsecuzione(line, p);
 
-    return riga;
+    return line;
   }
 
-  function ordinaSospeso(lista) {
-    return lista.slice().sort(function (a, b) { return a.quando_ts - b.quando_ts; });
+  function ordinaSospeso(list) {
+    return list.slice().sort(function (a, b) { return a.quando_ts - b.quando_ts; });
   }
-  function ordinaStorico(lista) {
-    return lista.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
+  function ordinaStorico(list) {
+    return list.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
   }
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
   function descrizioneStorico(n) { return n === 0 ? 'Nessuna promessa nello storico.' : (n + ' nello storico.'); }
 
-  function rendiSospeso(corpo, desc, lista, ricarica) {
+  function rendiSospeso(corpo, desc, list, reload) {
     clearEl(corpo);
-    desc.textContent = descrizioneSospeso(lista.length);
-    if (!lista.length) {
+    desc.textContent = descrizioneSospeso(list.length);
+    if (!list.length) {
       corpo.appendChild(el('p', 'field-hint',
         'Nessuna promessa in sospeso — quando dici a HIRIS «fra un\'ora…» o «alle…», comparirà qui.'));
       return;
     }
-    ordinaSospeso(lista).forEach(function (p) { corpo.appendChild(costruisciRigaSospeso(p, ricarica)); });
+    ordinaSospeso(list).forEach(function (p) { corpo.appendChild(costruisciRigaSospeso(p, reload)); });
   }
 
-  function rendiStorico(corpo, desc, lista) {
+  function rendiStorico(corpo, desc, list) {
     clearEl(corpo);
-    desc.textContent = descrizioneStorico(lista.length);
-    if (!lista.length) {
+    desc.textContent = descrizioneStorico(list.length);
+    if (!list.length) {
       corpo.appendChild(el('p', 'field-hint', 'Nessuna promessa nello storico.'));
       return;
     }
-    ordinaStorico(lista).forEach(function (p) { corpo.appendChild(costruisciRigaStorico(p)); });
+    ordinaStorico(list).forEach(function (p) { corpo.appendChild(costruisciRigaStorico(p)); });
   }
 
   /* Un errore di lettura e una lista vuota vera NON hanno lo stesso testo
@@ -404,18 +404,18 @@ window.HirisPromesseRoute = (function () {
      anche il 503 di `handle_get_promesse` (archivio non disponibile), che
      manda gia' `promesse: []` dentro un corpo comunque non-2xx: basta
      guardare `r.ok`, non serve leggere un campo apposito. */
-  function rendiErrore(sospesoCorpo, storicoCorpo, ricarica) {
+  function rendiErrore(sospesoCorpo, storicoCorpo, reload) {
     [sospesoCorpo, storicoCorpo].forEach(function (nodo) {
       clearEl(nodo);
       nodo.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere le promesse. Riprova più tardi.'));
       var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
       retry.type = 'button';
-      retry.addEventListener('click', ricarica);
+      retry.addEventListener('click', reload);
       nodo.appendChild(retry);
     });
   }
 
-  function carica() {
+  function load() {
     var sospesoCorpo = byId('promesse-sospeso-body');
     var storicoCorpo = byId('promesse-storico-body');
     var sospesoDesc = byId('promesse-sospeso-desc');
@@ -426,15 +426,15 @@ window.HirisPromesseRoute = (function () {
     return fetch('api/agenda?all=1').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    }).then(function (dati) {
-      var tutte = dati.agenda || [];
-      var sospeso = tutte.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) !== -1; });
-      var storico = tutte.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) === -1; });
-      rendiSospeso(sospesoCorpo, sospesoDesc, sospeso, carica);
-      rendiStorico(storicoCorpo, storicoDesc, storico);
+    }).then(function (data) {
+      var all = data.agenda || [];
+      var pending = all.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) !== -1; });
+      var history = all.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) === -1; });
+      rendiSospeso(sospesoCorpo, sospesoDesc, pending, load);
+      rendiStorico(storicoCorpo, storicoDesc, history);
     }).catch(function (err) {
       console.error('[promesse] caricamento fallito', err);
-      rendiErrore(sospesoCorpo, storicoCorpo, carica);
+      rendiErrore(sospesoCorpo, storicoCorpo, load);
     });
   }
 
@@ -443,11 +443,11 @@ window.HirisPromesseRoute = (function () {
      `#promesse-storico-body` ricevono `gap:0` da hiris-config.css, stesso
      trattamento di `#catena-body`/`#fuori-body`: le righe si separano con
      un `border-top` proprio (guida §2), non col gap del flex. ────────── */
-  function buildSectionShell(num, idPrefix, sezioneAttr, titolo) {
+  function buildSectionShell(num, idPrefix, sezioneAttr, title) {
     var section = el('section', 'section-card');
     var head = el('div', 'sc-header');
     head.appendChild(el('span', 'sc-num', num));
-    head.appendChild(el('h2', 'sc-title', titolo));
+    head.appendChild(el('h2', 'sc-title', title));
     section.appendChild(head);
     var desc = el('p', 'sc-desc', '');
     desc.id = 'promesse-' + idPrefix + '-desc';
@@ -477,7 +477,7 @@ window.HirisPromesseRoute = (function () {
     outlet.appendChild(buildSectionShell('01', 'sospeso', 'in-sospeso', 'In sospeso'));
     outlet.appendChild(buildSectionShell('02', 'storico', 'storico', 'Storico'));
 
-    carica();
+    load();
   }
 
   return { mount: mount };
