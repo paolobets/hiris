@@ -87,7 +87,7 @@ window.HirisDashboard = (function () {
 
   /* I registri caduti, per NOME: `non_disponibili` porta voci come "piani" o
      "categorie:script" (il perche' dopo i due punti, vedi
-     `ha_client.leggi_registri`). Qui serve solo il nome del registro. */
+     `ha_client.read_registries`). Qui serve solo il nome del registro. */
   function registriCaduti(nonDisponibili) {
     if (!nonDisponibili) return null;   // null = non si sa, diverso da nessuno
     return nonDisponibili.map(function (v) { return String(v).split(':')[0]; });
@@ -230,7 +230,7 @@ window.HirisDashboard = (function () {
 
   /* I registri caduti, in italiano. `non_disponibili` porta il nome grezzo
      della tabella e, per le categorie, l'ambito che ha fallito
-     (`categorie:script` -- vedi `ha_client.leggi_registri`): l'ambito NON si
+     (`categorie:script` -- vedi `ha_client.read_registries`): l'ambito NON si
      butta, è il dettaglio che dice quale delle quattro chiamate è caduta. */
   function nomiRegistriInItaliano(voci) {
     return voci.map(function (voce) {

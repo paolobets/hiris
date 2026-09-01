@@ -834,7 +834,7 @@ LOGBOOK_TOOL_DEF = {
     "description": (
         # F5 (onda finale): la versione precedente prometteva «quale
         # automazione, quale persona» come se fossero sempre disponibili. Il
-        # diario di Home Assistant (`ha_client.diario`) oggi scarta i campi
+        # diario di Home Assistant (`ha_client.logbook`) oggi scarta i campi
         # `context_*` -- il posto dove vive quella paternita' -- e la loro
         # forma vera non e' mai stata misurata dal vivo (spec §7): la
         # promessa era piu' grande di cio' che il codice consegna. Questa
@@ -1365,7 +1365,7 @@ class ToolDispatcher:
         serve, e la risposta vive il tempo di un turno.
 
         Qui dentro c'e' solo il collegamento: la traduzione dei tipi e la
-        forma della risposta stanno in `domande.legami`, che e' pura e si
+        forma della risposta stanno in `domande.related`, che e' pura e si
         prova senza rete.
         """
         kind = arguments.get("tipo")
@@ -1381,7 +1381,7 @@ class ToolDispatcher:
             available = ", ".join(_OUR_LINK_TYPES)
             return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
                               f"i legami ({available})."}
-        response = await self._ha_channel().legami(ha_kind, str(reference))
+        response = await self._ha_channel().related(ha_kind, str(reference))
         return _readable_links(response, kind, reference)
 
     # -- ricorda -----------------------------------------------------------

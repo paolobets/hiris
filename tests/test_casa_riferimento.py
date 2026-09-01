@@ -117,7 +117,7 @@ def _client(registries=None, unavailable=(), config=_CONFIG,
     `test_casa_anagrafe.py::_client` (review lotto 5: un `AsyncMock()` nudo
     non si accorge di un metodo chiamato per errore che `HAClient` non ha)."""
     client = create_autospec(HAClient, instance=True)
-    client.leggi_registri.return_value = (registries or {"entita": []}, list(unavailable))
+    client.read_registries.return_value = (registries or {"entita": []}, list(unavailable))
     if get_config_error is not None:
         client.get_config.side_effect = get_config_error
     else:

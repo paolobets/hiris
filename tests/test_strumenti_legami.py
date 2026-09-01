@@ -1,6 +1,6 @@
 """«Chi tocca questa cosa»: i legami arrivano fino al modello.
 
-La porta verso Home Assistant (`HAClient.legami`) esisteva gia' ed e' provata
+La porta verso Home Assistant (`HAClient.related`) esisteva gia' ed e' provata
 altrove (`tests/test_ha_client_legami_problemi.py`). Qui si prova il tratto
 che mancava: dal client al modello, cioe' il vocabolario, la forma della
 risposta e -- soprattutto -- le due distinzioni che questo progetto paga da
@@ -29,7 +29,7 @@ from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests.test_cervello_comprimari import _ClienteLegami
 
-# La finta di `HAClient.legami` usata qui e' `_ClienteLegami`, importata da
+# La finta di `HAClient.related` usata qui e' `_ClienteLegami`, importata da
 # `test_cervello_comprimari.py` -- l'UNICA del progetto (vedi il suo
 # docstring). Prima di questa correzione questo file ne aveva una propria
 # (`_FintoHA`), che accettava QUALUNQUE `tipo` e rispondeva sempre la stessa

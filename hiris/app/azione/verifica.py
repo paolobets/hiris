@@ -35,7 +35,7 @@ qui; se ne perdeva uno -- e su una cucina con quindici entita' ne perdeva uno
 risposta sbagliata detta con sicurezza.
 
 A risolverli e' Home Assistant (`extract_from_target`, vedi
-`proxy/ha_client.estrai_dal_bersaglio`), che questa funzione -- pura -- non
+`proxy/ha_client.extract_from_target`), che questa funzione -- pura -- non
 puo' chiamare. Quindi il giro e' in due tempi, e la parte che dice di no
 resta UNA:
 
@@ -193,7 +193,7 @@ TARGETS = {
 }
 
 # Come si nomina, in un rifiuto, cio' che il bersaglio ha chiesto e non
-# esiste. La chiave e' quella con cui `ha_client.estrai_dal_bersaglio`
+# esiste. La chiave e' quella con cui `ha_client.extract_from_target`
 # restituisce i mancanti; l'ordine e' quello in cui il rifiuto li elenca.
 _MANCANTI = (
     ("piani_mancanti", "piani"),
@@ -310,7 +310,7 @@ def _list(entries, count: int = 12) -> str:
 def verification(call: dict, registry, states: dict[str, dict],
              *, resolved: dict | None = None) -> Verdict:
     """Il verdetto su una chiamata. `risolto` e' cio' che Home Assistant ha
-    risposto su questo bersaglio (`ha_client.estrai_dal_bersaglio`), e serve
+    risposto su questo bersaglio (`ha_client.extract_from_target`), e serve
     solo ai bersagli che nominano aree, piani, etichette o dispositivi: su un
     bersaglio di sole entita' non si chiede niente a nessuno, ed e' voluto --
     un giro di rete per una cosa gia' scritta nella chiamata sarebbe un costo

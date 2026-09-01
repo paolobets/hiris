@@ -21,7 +21,7 @@ def _finto_ws_batch(answers_per_command: dict) -> AsyncMock:
     """Fake di `_ws_batch` che risponde in base al TIPO di comando e
     all'url_path (non alla posizione nella lista o al numero di chiamate).
 
-    `leggi_plance()` legge prima l'elenco e SOLO DOPO — perche' i percorsi
+    `read_dashboards()` legge prima l'elenco e SOLO DOPO — perche' i percorsi
     delle plance aggiuntive li scopre li' — sa quali comandi `lovelace/config`
     interrogare: sono due chiamate a `_ws_batch` in sequenza, non una sola. Un
     fake che restituisce sempre la STESSA lista fissa (`AsyncMock(return_value=...)`)
@@ -62,7 +62,7 @@ async def test_the_default_dashboard_is_not_lost():
         ("lovelace/config", "cucina"): _msg(_CONFIG_CUCINA),
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     paths = [p["url_path"] for p in plance]
     assert None in paths          # la predefinita
     assert "cucina" in paths
@@ -79,7 +79,7 @@ async def test_an_unreadable_dashboard_is_declared():
         # "cucina" assente: nessuna risposta -> richiesta fallita.
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     cucina = next(p for p in plance if p["url_path"] == "cucina")
     assert cucina["config"] is None
     assert "cucina" in unavailable
@@ -88,7 +88,7 @@ async def test_an_unreadable_dashboard_is_declared():
 @pytest.mark.asyncio
 async def test_dashboards_are_kept_and_reread(archivio):
     client = AsyncMock()
-    client.leggi_plance = AsyncMock(return_value=(
+    client.read_dashboards = AsyncMock(return_value=(
         [{"url_path": None, "title": "Principale", "mode": "storage",
           "config": _CONFIG_DEFAULT}], []))
     esito = await reread_dashboards(client, archivio)
@@ -103,7 +103,7 @@ async def test_the_shown_entities_are_extracted(archivio):
     """A cosa serve davvero: sapere QUALI entita' una plancia mostra, per
     poter dire «questa la vedi gia' in Cucina» invece di riproporla."""
     client = AsyncMock()
-    client.leggi_plance = AsyncMock(return_value=(
+    client.read_dashboards = AsyncMock(return_value=(
         [{"url_path": None, "title": "Principale", "mode": "storage",
           "config": _CONFIG_DEFAULT}], []))
     await reread_dashboards(client, archivio)
@@ -115,11 +115,11 @@ async def test_a_completely_failed_read_does_not_delete_the_dashboards(archivio)
     """Stessa regola dell'anagrafe: una replica vecchia e dichiarata e' meglio
     di una vuota e falsa."""
     client = AsyncMock()
-    client.leggi_plance = AsyncMock(return_value=(
+    client.read_dashboards = AsyncMock(return_value=(
         [{"url_path": None, "title": "Principale", "mode": "storage",
           "config": _CONFIG_DEFAULT}], []))
     await reread_dashboards(client, archivio)
-    client.leggi_plance = AsyncMock(return_value=([], ["principale"]))
+    client.read_dashboards = AsyncMock(return_value=([], ["principale"]))
     await reread_dashboards(client, archivio)
     assert archivio.dashboards()[0]["titolo"] == "Principale"
 
@@ -147,7 +147,7 @@ async def test_two_dashboards_with_the_same_path_do_not_stop_the_update():
         ("lovelace/config", "cucina"): _msg(_CONFIG_CUCINA),
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     paths = [p["url_path"] for p in plance]
     assert paths.count("cucina") == 1
     assert any("cucina" in nd for nd in unavailable)
@@ -163,7 +163,7 @@ async def test_a_dashboard_named_like_the_default_key_does_not_displace_it():
         ("lovelace/config", None): _msg(_CONFIG_DEFAULT),
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     paths = [p["url_path"] for p in plance]
     assert paths == [None]  # solo la predefinita e' sopravvissuta
     assert plance[0]["config"] == _CONFIG_DEFAULT
@@ -181,7 +181,7 @@ async def test_a_dashboard_with_an_empty_path_does_not_disappear():
         ("lovelace/config", ""): _msg(_CONFIG_CUCINA),
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     paths = [p["url_path"] for p in plance]
     assert "" in paths
     vuota = next(p for p in plance if p["url_path"] == "")
@@ -201,7 +201,7 @@ async def test_a_listing_that_never_arrives_is_distinguished_from_an_empty_listi
         # risposta -> il comando risulta fallito, non vuoto-e-riuscito.
     })
     with patch.object(HAClient, "_ws_batch", finto):
-        plance, unavailable = await _client().leggi_plance()
+        plance, unavailable = await _client().read_dashboards()
     assert any(nd.startswith("elenco:") for nd in unavailable)
     paths = [p["url_path"] for p in plance]
     assert paths == [None]  # solo la predefinita, letta da un'altra connessione
@@ -216,7 +216,7 @@ async def test_a_failed_listing_does_not_delete_the_additional_dashboards(archiv
     sola predefinita: Cucina sparirebbe senza finire nemmeno fra i non
     disponibili, perche' l'elenco che l'avrebbe nominata non e' mai arrivato."""
     client = AsyncMock()
-    client.leggi_plance = AsyncMock(return_value=(
+    client.read_dashboards = AsyncMock(return_value=(
         [{"url_path": None, "title": "Principale", "mode": "storage",
           "config": _CONFIG_DEFAULT},
          {"url_path": "cucina", "title": "Cucina", "mode": "storage",
@@ -226,7 +226,7 @@ async def test_a_failed_listing_does_not_delete_the_additional_dashboards(archiv
     assert {p["titolo"] for p in archivio.dashboards()} == {"Principale", "Cucina"}
 
     # Ora l'elenco va in timeout: solo la predefinita risulta leggibile.
-    client.leggi_plance = AsyncMock(return_value=(
+    client.read_dashboards = AsyncMock(return_value=(
         [{"url_path": None, "title": "Principale", "mode": "storage",
           "config": _CONFIG_DEFAULT}],
         ["elenco: lovelace/dashboards/list non ha risposto"]))

@@ -6,7 +6,7 @@ e' l'innesco di `automation.interruttore_gruppo_lifx`. Quelle quattro entita'
 nascoste sono UN SISTEMA SOLO.
 
 **La finta e' stata riscritta per essere fedele al contratto VERO di
-`HAClient.legami`** (`proxy/ha_client.py`), non a come lo descriveva il
+`HAClient.related`** (`proxy/ha_client.py`), non a come lo descriveva il
 mandato originale del Task 6 (correzione del Critical trovato dalla review
 de «l'osservatore», 26/08/2026). La finta precedente accettava QUALUNQUE
 `tipo` e rispondeva gia' nella busta TRADOTTA `{"legami": {...}}` -- che e'
@@ -45,7 +45,7 @@ class _ClienteLegami:
     n'erano quattro, indipendenti, fra questo file e quello -- una delle
     quali definita due volte nello stesso file -- e potevano divergere dal
     contratto vero ciascuna per conto proprio. E' esattamente cosi' che la
-    finta infedele originale (quella che accettava `legami("entita", ...)`,
+    finta infedele originale (quella che accettava `related("entita", ...)`,
     la chiave ITALIANA che il client vero rifiuta, e rispondeva gia' nella
     busta tradotta `{"legami": {...}}`) e' sopravvissuta abbastanza a lungo
     da rendere invisibile il Critical dei comprimari: nessuna delle quattro
@@ -56,7 +56,7 @@ class _ClienteLegami:
     `HAClient.RELATED_ITEM_TYPES`, importati -- non ricopiati) e risponde nella
     forma GREZZA del client: chiavi inglesi, nessuna busta `{"legami": ...}`.
 
-    Costruita sui quattro esiti che `HAClient.legami` produce davvero:
+    Costruita sui quattro esiti che `HAClient.related` produce davvero:
 
     - **risposta buona**: `mappa[identifier]` un dizionario grezzo
       (es. `{"entity": ["sensor.x"]}`);
@@ -65,7 +65,7 @@ class _ClienteLegami:
       non si passa `mappa`: un client che non fallisce mai e non ha niente
       da dire, per i test che vogliono la riparazione INCONDIZIONATA
       (nessun soggetto fallito). Deliberatamente non e' `ha_client=None`:
-      con `None`, `costruisci_comprimari` chiamerebbe `None.legami(...)`,
+      con `None`, `costruisci_comprimari` chiamerebbe `None.related(...)`,
       prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni
       soggetto come fallito -- il contrario di "incondizionata";
     - **dizionario d'errore**: `mappa[identifier] = {"errore": ...}`, o
@@ -79,11 +79,11 @@ class _ClienteLegami:
       `TypeError` vero dalla catena vera, senza monkeypatch.
 
     **Cresciuta il 27/08/2026 (mandato "le direzioni dell'energia") per
-    fingere anche `direzioni_energia()`**, non una seconda finta a fianco:
+    fingere anche `energy_directions()`**, non una seconda finta a fianco:
     e' la stessa disciplina "una sola finta per `HAClient`" del paragrafo
     sopra, e i due lavori dell'aggregazione (`_aggrega_ieri`,
     `riaggrega_gli_ultimi_due_giorni`) chiamano ORA entrambi i metodi sullo
-    STESSO client. `direzioni` e' la mappa che `direzioni_energia()` torna
+    STESSO client. `direzioni` e' la mappa che `energy_directions()` torna
     (default vuota: nessuna direzione nota, non un guasto); `direzioni_errore`
     -- se dato -- la fa rispondere `{"errore": ...}`, fedele al contratto
     vero (mai un dizionario vuoto travestito da «non ho potuto leggere»)."""
@@ -102,17 +102,17 @@ class _ClienteLegami:
         self._direzioni = direzioni or {}
         self._direzioni_errore = direzioni_errore
         # `statistiche` -- **cresciuta il 27/08/2026 (mandato «il bilancio
-        # dell'energia») per fingere anche `statistiche_orarie()`**, stessa
+        # dell'energia») per fingere anche `hourly_statistics()`**, stessa
         # disciplina "una sola finta" del paragrafo sopra: `{statistic_id:
         # [punto, ...]}` gia' nella forma TRADOTTA (chiavi italiane, come le
         # manda `HAClient._request_statistics` per davvero) -- fedele al
         # contratto vero: `costruisci_bilanci` (server.py) legge SOLO il
-        # ritorno di `statistiche_orarie`, mai la richiesta grezza a HA.
+        # ritorno di `hourly_statistics`, mai la richiesta grezza a HA.
         self._statistiche = statistiche or {}
         self._statistiche_errore = statistiche_errore
         # `statistiche_per_finestra` -- **la decima finta corretta per
         # mutazione (mandato, punto 4, 27/08/2026)**: prima di questa
-        # correzione `statistiche_orarie` REGISTRAVA `da_iso`/`a_iso` in
+        # correzione `hourly_statistics` REGISTRAVA `da_iso`/`a_iso` in
         # `statistiche_chieste` (sotto) ma li IGNORAVA nel calcolo della
         # risposta -- tornava sempre `self._statistiche`, qualunque fosse la
         # finestra chiesta. Mutazione ESEGUITA dal revisore: far leggere alla
@@ -136,24 +136,24 @@ class _ClienteLegami:
         self.direzioni_chieste = 0
         self.statistiche_chieste: list[tuple[list[str], str, str]] = []
 
-    async def legami(self, tipo, identifier):
-        self.chiesti.append((tipo, identifier))
-        if tipo not in HAClient.RELATED_ITEM_TYPES:
-            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
+    async def related(self, item_type, identifier):
+        self.chiesti.append((item_type, identifier))
+        if item_type not in HAClient.RELATED_ITEM_TYPES:
+            return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
         return self._mappa.get(identifier, self._default)
 
-    async def direzioni_energia(self):
+    async def energy_directions(self):
         self.direzioni_chieste += 1
         if self._direzioni_errore is not None:
             return {"errore": self._direzioni_errore}
         return dict(self._direzioni)
 
-    async def statistiche_orarie(self, identificatori, da_iso, a_iso):
-        self.statistiche_chieste.append((list(identificatori), da_iso, a_iso))
+    async def hourly_statistics(self, identifiers, from_iso, to_iso):
+        self.statistiche_chieste.append((list(identifiers), from_iso, to_iso))
         if self._statistiche_errore is not None:
             return {"errore": self._statistiche_errore}
-        fonte = self._statistiche_per_finestra.get((da_iso, a_iso), self._statistiche)
-        return {"serie": {k: v for k, v in fonte.items() if k in identificatori}}
+        fonte = self._statistiche_per_finestra.get((from_iso, to_iso), self._statistiche)
+        return {"serie": {k: v for k, v in fonte.items() if k in identifiers}}
 
 
 @pytest.mark.asyncio

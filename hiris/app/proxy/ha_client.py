@@ -147,7 +147,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 
     **L'UNICO punto che traduce le chiavi di `recorder/statistics_during_
     period`** (`HAClient._richiedi_statistiche`, l'UNICO chiamante):
-    `statistiche()` e `statistiche_orarie()` condividono questa funzione
+    `statistics()` e `hourly_statistics()` condividono questa funzione
     invece di avere ciascuna la propria copia -- una seconda tabella di
     traduzione sarebbe il doppione che questo progetto ha gia' pagato altrove
     (fondamenta 2).
@@ -315,9 +315,9 @@ class HAClient:
         self._session: aiohttp.ClientSession | None = None
         self._ws_task: asyncio.Task | None = None
         self._state_listeners: list[Callable[[dict], None]] = []
-        self._anagrafe_listeners: list[Callable[[str], None]] = []
-        self._plance_listeners: list[Callable[[dict], None]] = []
-        self._servizi_listeners: list[Callable[[str], None]] = []
+        self._topology_listeners: list[Callable[[str], None]] = []
+        self._dashboard_listeners: list[Callable[[dict], None]] = []
+        self._service_listeners: list[Callable[[str], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -358,7 +358,7 @@ class HAClient:
     # verificato di nuovo, zero chiamanti in tutto il repo.
     #
     # 24/08/2026, fetta «HIRIS e il tempo»: lo storico dettagliato e' TORNATO, come
-    # `storico()` qui sotto, e questa volta con un chiamante vero (`casa/tempo.py`).
+    # `history()` qui sotto, e questa volta con un chiamante vero (`casa/tempo.py`).
     # La rimozione raccontata sopra resta vera come storia -- usci' perche' nessuno
     # leggeva -- ma non descrive piu' lo stato di adesso.
 
@@ -456,7 +456,7 @@ class HAClient:
     # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
     # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a
     # queste tre non deve aggirarla.
-    async def leggi_configurazione(self, domain: str, key: str) -> dict:
+    async def read_configuration(self, domain: str, key: str) -> dict:
         """Il corpo scritto di un oggetto, letto dalla stessa rotta dell'editor.
 
         Serve al «prima» di una modifica e di una cancellazione (spec §6): HA
@@ -481,7 +481,7 @@ class HAClient:
                 return {"errore": await self._http_reason(resp)}
             return {"corpo": await resp.json()}
 
-    async def salva_configurazione(self, domain: str, key: str, body: dict) -> dict:
+    async def save_configuration(self, domain: str, key: str, body: dict) -> dict:
         """Scrive un oggetto di configurazione. La primitiva che COSTRUISCE.
 
         **Non chiamarla direttamente.** L'unico chiamante di produzione e'
@@ -509,7 +509,7 @@ class HAClient:
                 return {"errore": await self._http_reason(resp)}
             return {"salvato": True}
 
-    async def cancella_configurazione(self, domain: str, key: str) -> dict:
+    async def delete_configuration(self, domain: str, key: str) -> dict:
         """Cancella un oggetto di configurazione.
 
         Il `post_write_hook` di Home Assistant toglie anche l'entita' dal
@@ -528,8 +528,8 @@ class HAClient:
                 return {"errore": await self._http_reason(resp)}
             return {"cancellato": True}
 
-    async def valida_config(self, *, triggers=None, conditions=None,
-                            actions=None) -> dict:
+    async def validate_config(self, *, triggers=None, conditions=None,
+                              actions=None) -> dict:
         """La prova a vuoto: valido o no, secondo QUESTA casa, senza salvare.
 
         E' il comando WS `validate_config` (`components/websocket_api/
@@ -588,7 +588,7 @@ class HAClient:
             return {"errore": "Home Assistant ha rifiutato il comando"}
         return {key: msg.get("result")}
 
-    async def crea_helper(self, domain: str, data: dict) -> dict:
+    async def create_helper(self, domain: str, data: dict) -> dict:
         """Crea un helper. Primitiva nuda: un solo chiamante, l'officina.
 
         Gli helper sono nel perimetro della fetta perche' meta' delle
@@ -602,7 +602,7 @@ class HAClient:
         return self._ws_occurrence(
             await self._ws_command(f"{domain}/create", dict(data)), "helper")
 
-    async def cancella_helper(self, domain: str, helper_id: str) -> dict:
+    async def delete_helper(self, domain: str, helper_id: str) -> dict:
         """Cancella un helper. Serve alla DISFATTA (spec §3.1): se l'automazione
         viene rifiutata dopo che gli helper sono nati, l'officina li toglie."""
         if domain not in self.HELPER_DOMAINS:
@@ -611,7 +611,7 @@ class HAClient:
         occurrence = self._ws_occurrence(msg, "_")
         return {"errore": occurrence["errore"]} if "errore" in occurrence else {"cancellato": True}
 
-    async def elenca_etichette(self) -> dict:
+    async def list_labels(self) -> dict:
         """Le etichette del registro di Home Assistant."""
         occurrence = self._ws_occurrence(
             await self._ws_command("config/label_registry/list"), "etichette")
@@ -620,7 +620,7 @@ class HAClient:
         rows = occurrence["etichette"]
         return {"etichette": rows if isinstance(rows, list) else []}
 
-    async def crea_etichetta(self, name: str) -> dict:
+    async def create_label(self, name: str) -> dict:
         """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
         QUI, nel registro di Home Assistant, e non in una tabella nostra: e'
         un fatto che HA sa gia' tenere, e duplicarlo sarebbe la fondamenta 2
@@ -629,7 +629,7 @@ class HAClient:
             await self._ws_command("config/label_registry/create", {"name": name}),
             "etichetta")
 
-    async def aggiungi_etichetta_a(self, entity_id: str, label_id: str) -> dict:
+    async def add_label_to(self, entity_id: str, label_id: str) -> dict:
         """Aggiunge un'etichetta a un'entita', SENZA togliere le altre.
 
         `config/entity_registry/update` **sostituisce** la lista `labels`: chi
@@ -668,7 +668,7 @@ class HAClient:
     # "carbon_monoxide", non "co").
     TARGET_FIELDS = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
 
-    async def estrai_dal_bersaglio(self, target: dict) -> dict:
+    async def extract_from_target(self, target: dict) -> dict:
         """Cosa contiene un bersaglio -- e a dirlo e' HOME ASSISTANT, non HIRIS.
 
         E' il comando `extract_from_target` (websocket_api/commands.py):
@@ -777,10 +777,10 @@ class HAClient:
 
     # Review finale fetta E2, I-2: `list_dashboards` e' uscito -- orfano dal
     # Task 7 (il suo ultimo chiamante di produzione, `tools/dispatcher.py`,
-    # e' stato cancellato). `leggi_plance()` sotto usa lo stesso comando WS
+    # e' stato cancellato). `read_dashboards()` sotto usa lo stesso comando WS
     # (`lovelace/dashboards/list`) per il percorso ancora vivo.
 
-    async def leggi_plance(self) -> tuple[list[dict], list[str]]:
+    async def read_dashboards(self) -> tuple[list[dict], list[str]]:
         """Le plance con la loro configurazione. Due connessioni, N comandi:
         prima l'elenco (`lovelace/dashboards/list`), poi — solo dopo, perche'
         e' li' che si scoprono i percorsi da interrogare — un'unica
@@ -937,7 +937,7 @@ class HAClient:
                 health[str(domain)] = entries
         return health
 
-    async def storico(self, entities: list[str], da_iso: str, a_iso: str) -> dict:
+    async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
         GET /api/history/period/<da>.
 
@@ -974,8 +974,8 @@ class HAClient:
             logger.warning("storico: entita' non valide: %r", invalid)
             return {"errore": _truncate(f"entita' non valide: {invalid!r}", 200)}
         entity_filter = quote(",".join(entities), safe="")
-        url = (f"{self._base_url}/api/history/period/{da_iso}"
-               f"?end_time={quote(a_iso, safe='')}"
+        url = (f"{self._base_url}/api/history/period/{from_iso}"
+               f"?end_time={quote(to_iso, safe='')}"
                f"&filter_entity_id={entity_filter}"
                f"&minimal_response&no_attributes")
         try:
@@ -1032,7 +1032,7 @@ class HAClient:
             series[entity_id] = points[-MAX_HISTORY_POINTS:]
         return {"serie": series, "troncato": truncated}
 
-    async def diario(self, entity: str | None, ore: int) -> dict:
+    async def logbook(self, entity: str | None, hours: int) -> dict:
         """Cronologia eventi via GET /api/logbook/<ISO start>.
 
         `entity` filtra su una singola entita' (None = tutta la casa), `ore`
@@ -1059,7 +1059,7 @@ class HAClient:
         if entity is not None and not _ENTITY_ID_RE.match(str(entity)):
             logger.warning("diario: entita' non valida: %r", entity)
             return {"errore": _truncate(f"entita' non valida: {entity!r}", 200)}
-        window = int(normalize_hours(ore, ceiling=MAX_LOGBOOK_HOURS,
+        window = int(normalize_hours(hours, ceiling=MAX_LOGBOOK_HOURS,
                                       default=DEFAULT_LOGBOOK_HOURS))
         now = datetime.now(UTC)
         start = (now - timedelta(hours=window)).isoformat()
@@ -1164,7 +1164,7 @@ class HAClient:
     # `get_updates` sono usciti. Erano gia' ORFANI DICHIARATI dal Task 11
     # (l'HealthMonitor/SupervisorClient che li leggeva e' uscito per intero):
     # verificato di nuovo qui, zero chiamanti in tutto il repo.
-    # `leggi_registri` (sopra) non li richiama: chiede il comando delle
+    # `read_registries` (sopra) non li richiama: chiede il comando delle
     # integrazioni direttamente nel suo batch WS, non passando da
     # `get_config_entries`. Il nome del comando era sbagliato fino al Task
     # B6 ("config/config_entries/get_entries", che non esiste in HA): vedi
@@ -1246,33 +1246,33 @@ class HAClient:
         result = await self._ws_request(msg_type, timeout=timeout)
         return result if isinstance(result, list) else []
 
-    async def statistiche(self, identificatori: list[str], periodo: str,
-                          giorni: int) -> dict:
+    async def statistics(self, identifiers: list[str], period: str,
+                         days: int) -> dict:
         """Le statistiche a lungo termine, N giorni indietro da adesso.
 
         `periodo`: "5minute" | "hour" | "day" | "week" | "month". Comoda per
         una domanda umana ("l'ultima settimana") -- per una finestra
         ESPLICITA, un giorno preciso sul fuso della casa, vedi la sorella
-        `statistiche_orarie` qui sotto (nata per il bilancio dell'energia,
+        `hourly_statistics` qui sotto (nata per il bilancio dell'energia,
         mandato 27/08/2026).
 
         Costruisce la richiesta e traduce la risposta con `_richiedi_
         statistiche`: vedi il SUO docstring per la forma esatta, misurata, e
         per la ragione per cui la traduzione vive in un posto solo.
         """
-        start = (datetime.now(UTC) - timedelta(days=giorni)).isoformat()
+        start = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         return await self._request_statistics(
-            identificatori, {"start_time": start, "period": periodo})
+            identifiers, {"start_time": start, "period": period})
 
-    async def statistiche_orarie(self, identificatori: list[str],
-                                 da_iso: str, a_iso: str) -> dict:
+    async def hourly_statistics(self, identifiers: list[str],
+                                from_iso: str, to_iso: str) -> dict:
         """Le statistiche ORARIE di una finestra ESPLICITA -- nata per il
         bilancio dell'energia (mandato 27/08/2026), che ha bisogno di UN
         giorno preciso, gia' chiuso, e non di «N giorni indietro da adesso»
         (`statistiche` sopra).
 
         `da_iso`/`a_iso` sono istanti ISO gia' calcolati dal chiamante --
-        stesso contratto di `storico()` qui sopra: il fuso della casa e il
+        stesso contratto di `history()` qui sopra: il fuso della casa e il
         confine di un «giorno» sono decisioni di CHI CHIAMA (`cervello/
         oggetti.py::day_boundaries`), non di questo client, che parla solo
         di istanti espliciti.
@@ -1287,9 +1287,9 @@ class HAClient:
         o `{"errore": ...}`.
         """
         return await self._request_statistics(
-            identificatori, {"start_time": da_iso, "end_time": a_iso, "period": "hour"})
+            identifiers, {"start_time": from_iso, "end_time": to_iso, "period": "hour"})
 
-    async def _request_statistics(self, identificatori: list[str],
+    async def _request_statistics(self, identifiers: list[str],
                                   window: dict) -> dict:
         """`recorder/statistics_during_period` -> `{"serie": ...}` o
         `{"errore": ...}`. L'UNICO punto che parla con questo comando WS e
@@ -1337,7 +1337,7 @@ class HAClient:
         """
         raw = await self._ws_request(
             "recorder/statistics_during_period",
-            extra={"statistic_ids": list(identificatori), **window},
+            extra={"statistic_ids": list(identifiers), **window},
         )
         if not isinstance(raw, dict):
             return {"errore": "Home Assistant non ha risposto alla richiesta di statistiche"}
@@ -1349,7 +1349,7 @@ class HAClient:
                           "device", "entity", "floor", "group", "integration",
                           "label", "person", "scene", "script", "script_blueprint")
 
-    async def legami(self, tipo: str, identifier: str) -> dict:
+    async def related(self, item_type: str, identifier: str) -> dict:
         """Chi tocca questa cosa, secondo Home Assistant.
 
         `search/related` e' calcolato da HA su TUTTO cio' che ha caricato,
@@ -1374,13 +1374,13 @@ class HAClient:
         ogni HA con interfaccia -- ma un rifiuto va comunque distinto da un
         «niente».
         """
-        if tipo not in self.RELATED_ITEM_TYPES:
-            return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
+        if item_type not in self.RELATED_ITEM_TYPES:
+            return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
         try:
             msg = await self._ws_batch(
-                [("search/related", {"item_type": tipo, "item_id": identifier})])
+                [("search/related", {"item_type": item_type, "item_id": identifier})])
         except Exception as e:
-            logger.debug("legami di %s/%s non letti: %s", tipo, identifier, e)
+            logger.debug("legami di %s/%s non letti: %s", item_type, identifier, e)
             return {"errore": "Home Assistant non ha risposto"}
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
@@ -1398,7 +1398,7 @@ class HAClient:
     # digesto, che si dichiara puro.
     PROBLEM_SEVERITY = PROBLEM_SEVERITY
 
-    async def problemi(self) -> dict:
+    async def problems(self) -> dict:
         """I guasti che Home Assistant ha GIA' diagnosticato.
 
         `repairs/list_issues`. Oggi, alla domanda «c'e' qualcosa che non va in
@@ -1442,7 +1442,7 @@ class HAClient:
     # dell'energia (`power_generating`, non `power_generating_today`). E'
     # un ARRICCHIMENTO specifico di questa integrazione: su un impianto con
     # un altro inverter nessuna di queste chiavi comparira' mai, e non deve
-    # rompere niente -- `direzioni_energia`, sotto, lo tratta come «non
+    # rompere niente -- `energy_directions`, sotto, lo tratta come «non
     # trovato», non come un guasto.
     _DIRECTION_BY_TRANSLATION_KEY: ClassVar[dict[str, str]] = {
         "energy_generating_today": "produzione", "power_generating": "produzione",
@@ -1454,7 +1454,7 @@ class HAClient:
         "energy_autoconsuming_today": "autoconsumo", "power_autoconsuming": "autoconsumo",
     }
 
-    async def direzioni_energia(self) -> dict:
+    async def energy_directions(self) -> dict:
         """Le direzioni dell'energia: chi produce, chi preleva, chi immette,
         chi carica, chi scarica -- lette da dove Home Assistant le dichiara,
         mai indovinate dal nome del sensore (`CLAUDE.md`, «su Home Assistant
@@ -1513,14 +1513,14 @@ class HAClient:
         for energy_source in prefs.get("energy_sources") or []:
             if not isinstance(energy_source, dict):
                 continue
-            tipo = energy_source.get("type")
-            if tipo == "grid":
+            kind = energy_source.get("type")
+            if kind == "grid":
                 _declare(energy_source.get("stat_energy_from"), "prelievo")
                 _declare(energy_source.get("stat_energy_to"), "immissione")
-            elif tipo == "solar":
+            elif kind == "solar":
                 _declare(energy_source.get("stat_energy_from"), "produzione")
                 _declare(energy_source.get("stat_rate"), "produzione")
-            elif tipo == "battery":
+            elif kind == "battery":
                 _declare(energy_source.get("stat_energy_from"), "scarica")
                 _declare(energy_source.get("stat_energy_to"), "carica")
 
@@ -1544,10 +1544,10 @@ class HAClient:
         qui si LEGGE soltanto, cosi' il client non ha un'opinione su cosa
         della casa valga la pena tenere.
 
-        NON e' un registro e non passa da `leggi_registri`: quello lavora su
+        NON e' un registro e non passa da `read_registries`: quello lavora su
         liste di righe (`isinstance(risultato, list)`), questo torna un
         dizionario. Infilarcelo avrebbe voluto dire allargare la forma di
-        `leggi_registri` per un solo caso speciale -- CONSISTENZA: una
+        `read_registries` per un solo caso speciale -- CONSISTENZA: una
         funzione che restituisce registri restituisce registri.
 
         Il comando esiste in `websocket_api/commands.py` (`handle_get_config`)
@@ -1558,12 +1558,12 @@ class HAClient:
 
     # `get_area_registry` e `get_entity_registry` SONO usciti (review dei
     # doppioni, 17/08). Emettevano gli stessi identici comandi WS che
-    # `leggi_registri` manda gia' in batch: una seconda porta per un fatto che
+    # `read_registries` manda gia' in batch: una seconda porta per un fatto che
     # ne ha gia' una, viva solo nei test -- e i test che le esercitavano davano
     # l'impressione che la lettura dei registri fosse coperta da due lati,
     # mentre il percorso vero (`_ws_batch` piu' la gestione di
     # `non_disponibili`) ha una sola implementazione. Chi avesse aggiunto una
-    # normalizzazione in `leggi_registri` non l'avrebbe vista applicata dalle
+    # normalizzazione in `read_registries` non l'avrebbe vista applicata dalle
     # prove che passavano di qui.
 
     # Gli ambiti delle categorie di Home Assistant. Sono partizionate per
@@ -1592,7 +1592,7 @@ class HAClient:
         for scope in _CATEGORY_SCOPES
     ]
 
-    async def leggi_registri(self) -> tuple[dict[str, list[dict]], list[str]]:
+    async def read_registries(self) -> tuple[dict[str, list[dict]], list[str]]:
         """Tutti i registri della casa, su una connessione sola.
 
         Restituisce `(registri, non_disponibili)`. Un registro che manca o
@@ -1609,11 +1609,11 @@ class HAClient:
         `non_disponibili` riporta quale (es. `categorie:script`), non un
         generico `categorie`.
         """
-        commands = [(tipo, extra) for _, tipo, extra in self._REGISTRIES]
+        commands = [(msg_type, extra) for _, msg_type, extra in self._REGISTRIES]
         replies = await self._ws_batch(commands)
         registries: dict[str, list[dict]] = {}
         unavailable: list[str] = []
-        for (key, tipo, extra), msg in zip(self._REGISTRIES, replies):
+        for (key, msg_type, extra), msg in zip(self._REGISTRIES, replies):
             result = msg.get("result") if msg else None
             if not isinstance(result, list):
                 scope = extra.get("scope") if extra else None
@@ -1628,18 +1628,18 @@ class HAClient:
                     # suo, non il nome del comando che gia' sapevamo.
                     reason = error.get("message") or error.get("code") or error
                     logger.debug("registro %s rifiutato da Home Assistant: %s (%s)",
-                                 name, reason, tipo)
+                                 name, reason, msg_type)
                 elif msg is not None:
                     # HA e' arrivato, non ha rifiutato nulla, ma `result` non
                     # e' la lista attesa: guasto diverso dal rifiuto.
                     logger.debug("registro %s risposta in forma inattesa (%s): %r",
-                                 name, tipo, result)
+                                 name, msg_type, result)
                 else:
                     # Il comando non ha mai avuto risposta -- la connessione
                     # non si e' aperta o la risposta non e' arrivata: nessun
                     # `error` da mostrare perche' HA non ha mai parlato.
                     logger.debug("registro %s non disponibile: nessuna risposta dal comando (%s)",
-                                 name, tipo)
+                                 name, msg_type)
                 unavailable.append(name)
                 result = []
             if key == "categorie" and extra:
@@ -1746,23 +1746,23 @@ class HAClient:
         except ValueError:
             pass
 
-    def add_anagrafe_listener(self, callback: Callable[[str], None]) -> None:
+    def add_topology_listener(self, callback: Callable[[str], None]) -> None:
         """callback(tipo_evento) a ogni cambio di registro: la casa e' cambiata."""
-        self._anagrafe_listeners.append(callback)
+        self._topology_listeners.append(callback)
 
-    def add_servizi_listener(self, callback: Callable[[str], None]) -> None:
+    def add_service_listener(self, callback: Callable[[str], None]) -> None:
         """callback(tipo_evento) quando un servizio compare o sparisce, e a ogni
         riconnessione. Chi ascolta INVALIDA il registro dei servizi: non lo
         rilegge subito -- installare un'integrazione emette una raffica di
         eventi, e una lettura per ognuno sarebbe una tempesta per un dato che
         serve solo al prossimo comando."""
-        self._servizi_listeners.append(callback)
+        self._service_listeners.append(callback)
 
-    def add_plance_listener(self, callback: Callable[[dict], None]) -> None:
+    def add_dashboard_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(dati_evento) a ogni cambio di una plancia (DASHBOARD_EVENT).
         `dati_evento` porta il `url_path` di quella cambiata, ma chi ascolta
         rilegge tutte le plance — vedi DASHBOARD_EVENT."""
-        self._plance_listeners.append(callback)
+        self._dashboard_listeners.append(callback)
 
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -1829,19 +1829,19 @@ class HAClient:
                     # emessi mentre la connessione era giu' non tornano, e un
                     # registro dei servizi stantio direbbe «non esiste in questa
                     # casa» di un servizio che esiste.
-                    for cb in self._servizi_listeners:
+                    for cb in self._service_listeners:
                         try:
                             cb("riconnessione")
                         except Exception:
                             logger.exception("servizi_listener callback raised")
-                    for cb in self._anagrafe_listeners:
+                    for cb in self._topology_listeners:
                         try:
                             cb("riconnessione")
                         except Exception:
                             logger.exception("anagrafe_listener callback raised")
                     # Stessa logica per le plance: una disconnessione perde per
                     # sempre un eventuale DASHBOARD_EVENT emesso nel frattempo.
-                    for cb in self._plance_listeners:
+                    for cb in self._dashboard_listeners:
                         try:
                             cb({})
                         except Exception:
@@ -1865,13 +1865,13 @@ class HAClient:
                                 # event["data"], ma non lo si usa per filtrare:
                                 # chi ascolta rilegge tutte le plance (vedi
                                 # DASHBOARD_EVENT e rileggi_plance).
-                                for cb in self._plance_listeners:
+                                for cb in self._dashboard_listeners:
                                     try:
                                         cb(event.get("data", {}))
                                     except Exception:
                                         logger.exception("plance_listener callback raised")
                             if event_type in SERVICE_EVENTS:
-                                for cb in self._servizi_listeners:
+                                for cb in self._service_listeners:
                                     try:
                                         cb(event_type)
                                     except Exception:
@@ -1881,7 +1881,7 @@ class HAClient:
                                 # qualsiasi registro): l'anagrafe va rifatta. Nessun
                                 # filtro per action ne' per tipo di registro — vedi
                                 # TOPOLOGY_EVENTS in cima al modulo.
-                                for cb in self._anagrafe_listeners:
+                                for cb in self._topology_listeners:
                                     try:
                                         cb(event_type)
                                     except Exception:

@@ -974,7 +974,7 @@ def _problems_notice(problems: dict | None) -> str | None:
       lettura non e' una casa sana, e un elenco vuoto qui significherebbe
       «non c'e' niente che non va»;
     - `{"problemi": [...]}`: le righe come HA le manda, gia' senza le ignorate
-      dall'utente (`HAClient.problemi`).
+      dall'utente (`HAClient.problems`).
     """
     if problems is None:
         return None
@@ -1087,7 +1087,7 @@ def _comparison_notice(comparison: dict | None) -> str | None:
     """L'albero raccontato da HIRIS contro la casa che Home Assistant risolve.
 
     Fino a questa fetta `gerarchia()` era un'AFFERMAZIONE che niente
-    verificava. `HAClient.estrai_dal_bersaglio` chiede a Home Assistant cosa
+    verificava. `HAClient.extract_from_target` chiede a Home Assistant cosa
     contiene un'area davvero, e `anagrafe.confronta_con_home_assistant` mette
     le due liste una accanto all'altra su un campione di aree.
 
@@ -1323,7 +1323,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     vedi `_stato_inaffidabile`.
 
     `problemi` sono i guasti che Home Assistant ha GIA' diagnosticato
-    (`repairs/list_issues`, letti da `HAClient.problemi()`), nella forma in cui
+    (`repairs/list_issues`, letti da `HAClient.problems()`), nella forma in cui
     quella funzione li restituisce: `{"problemi": [...]}` o `{"errore": ...}`.
     Arrivano come ARGOMENTO, come `stato` e `sistema_di_riferimento`, perche'
     questa funzione non apre connessioni. `None` significa «il chiamante non ha

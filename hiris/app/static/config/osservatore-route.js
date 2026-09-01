@@ -47,7 +47,7 @@
    genere copre anche l'energia PRODOTTA da un impianto fotovoltaico.
    **Dal 27/08/2026 (mandato «le direzioni dell'energia») un episodio di
    energia porta anche `direzione`/`provenienza`, QUANDO si conoscono**
-   (`HAClient.direzioni_energia`, `energy/get_prefs` + `translation_key`):
+   (`HAClient.energy_directions`, `energy/get_prefs` + `translation_key`):
    il campo manca del tutto se non si conosce, mai una "sconosciuta"
    travestita da dato -- `frasePrincipale`/`badgeProvenienzaDirezione` sotto
    lo mostrano solo quando c'e'. La gamba resta "energia" (vedi
@@ -136,7 +136,7 @@ window.HirisOsservatoreRoute = (function () {
 
   /* Le sette direzioni dell'energia (mandato «le direzioni dell'energia»,
      27/08/2026) -- letterali, identiche a quelle che
-     `HAClient.direzioni_energia()` scrive in `corpo.direzione`. Una
+     `HAClient.energy_directions()` scrive in `corpo.direzione`. Una
      direzione non in questa mappa (un genere futuro che il backend sapesse
      dire e questa pagina non ancora) mostra comunque la sua parola grezza,
      mai "undefined" -- stessa regola di `ETICHETTA_GAMBA`/`ETICHETTA_GENERE`. */

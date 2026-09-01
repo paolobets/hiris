@@ -11,7 +11,7 @@ all'utente. Tutte le fette di conoscenza fatte finora hanno reso l'albero piu'
 RICCO; questa e' la prima che lo rende CONTROLLABILE.
 
 Il secondo parere e' di Home Assistant su se stesso: `extract_from_target`
-(`HAClient.estrai_dal_bersaglio`, fetta 1) RISOLVE un'area invece di dedurla.
+(`HAClient.extract_from_target`, fetta 1) RISOLVE un'area invece di dedurla.
 
 Le prove sono in cinque parti:
 
@@ -77,7 +77,7 @@ def _casa(entita, aree=("cucina", "bagno")):
 
 
 def _risposta(entita=(), aree_mancanti=()):
-    """La risposta di `estrai_dal_bersaglio` nella sua forma piena.
+    """La risposta di `extract_from_target` nella sua forma piena.
 
     I nomi delle chiavi sono quelli veri di quella funzione -- `entita`,
     `aree_mancanti` -- non quelli di Home Assistant: la traduzione la fa il
@@ -181,7 +181,7 @@ def test_un_area_che_in_ha_non_esiste_piu_si_dice_in_una_parola():
     """La forma piu' pura del caso peggiore: HIRIS ha una STANZA che
     l'originale non ha. Dirlo elencando le sue entita' sarebbe la stessa
     notizia detta a pezzi -- ed e' la distinzione fra «l'area e' vuota» e
-    «quell'area non c'e'» che `estrai_dal_bersaglio` porta gia'."""
+    «quell'area non c'e'» che `extract_from_target` porta gia'."""
     casa = _casa([_entita("light.cucina", area="cucina")])
     esito = _confronto(casa, {"cucina": _risposta([], aree_mancanti=["cucina"])})
 
@@ -366,14 +366,14 @@ def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():
 class _ClienteFinto:
     """Home Assistant visto da `giro_di_confronto_albero`: risponde per area,
     e per le aree che non conosce restituisce un errore invece di una lista
-    corta -- come fa `estrai_dal_bersaglio` davvero."""
+    corta -- come fa `extract_from_target` davvero."""
 
     def __init__(self, per_area: dict, guasto: str | None = None) -> None:
         self.per_area = per_area
         self.guasto = guasto
         self.chieste: list[str] = []
 
-    async def estrai_dal_bersaglio(self, target):
+    async def extract_from_target(self, target):
         identificativo = target["area_id"][0]
         self.chieste.append(identificativo)
         if self.guasto:
@@ -438,7 +438,7 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
 
 
 def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
-    """Un client vecchio o un finto di prova senza `estrai_dal_bersaglio`: la
+    """Un client vecchio o un finto di prova senza `extract_from_target`: la
     chiave resta assente, e il nucleo tace invece di affermare che l'albero e'
     verificato -- l'unico caso in cui tacere non afferma nulla."""
 

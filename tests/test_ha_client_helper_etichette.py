@@ -25,7 +25,7 @@ async def test_crea_helper_usa_il_comando_del_dominio(monkeypatch):
     finto, visti = _finto_ws({"input_boolean/create": {
         "success": True, "result": {"id": "modalita_notte", "name": "Modalita notte"}}})
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.crea_helper("input_boolean", {"name": "Modalita notte"})
+    esito = await c.create_helper("input_boolean", {"name": "Modalita notte"})
     assert visti[0] == ("input_boolean/create", {"name": "Modalita notte"})
     assert esito["helper"]["id"] == "modalita_notte"
 
@@ -35,7 +35,7 @@ async def test_un_dominio_che_non_e_un_helper_non_si_crea(monkeypatch):
     c = _client()
     finto, visti = _finto_ws({})
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.crea_helper("light", {"name": "X"})
+    esito = await c.create_helper("light", {"name": "X"})
     assert visti == []
     assert "light" in esito["errore"]
 
@@ -47,7 +47,7 @@ async def test_cancella_helper_nomina_la_chiave_del_dominio(monkeypatch):
     c = _client()
     finto, visti = _finto_ws({"timer/delete": {"success": True, "result": None}})
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.cancella_helper("timer", "cottura")
+    esito = await c.delete_helper("timer", "cottura")
     assert visti[0] == ("timer/delete", {"timer_id": "cottura"})
     assert esito == {"cancellato": True}
 
@@ -58,7 +58,7 @@ async def test_un_comando_ws_fallito_non_diventa_un_successo(monkeypatch):
     finto, _ = _finto_ws({"counter/create": {
         "success": False, "error": {"code": "invalid_format", "message": "name is required"}}})
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.crea_helper("counter", {})
+    esito = await c.create_helper("counter", {})
     assert "helper" not in esito
     assert "name is required" in esito["errore"]
 
@@ -73,8 +73,8 @@ async def test_l_etichetta_si_crea_e_si_elenca(monkeypatch):
             "label_id": "hiris", "name": "HIRIS"}},
     })
     monkeypatch.setattr(c, "_ws_command", finto)
-    assert (await c.elenca_etichette())["etichette"][0]["label_id"] == "hiris"
-    assert (await c.crea_etichetta("HIRIS"))["etichetta"]["label_id"] == "hiris"
+    assert (await c.list_labels())["etichette"][0]["label_id"] == "hiris"
+    assert (await c.create_label("HIRIS"))["etichetta"]["label_id"] == "hiris"
     assert visti[1] == ("config/label_registry/create", {"name": "HIRIS"})
 
 
@@ -89,7 +89,7 @@ async def test_applicare_l_etichetta_non_cancella_quelle_dell_utente(monkeypatch
         "config/entity_registry/update": {"success": True, "result": {}},
     })
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.aggiungi_etichetta_a("automation.tapparelle", "hiris")
+    esito = await c.add_label_to("automation.tapparelle", "hiris")
     tipo, extra = visti[1]
     assert tipo == "config/entity_registry/update"
     assert sorted(extra["labels"]) == ["casa", "hiris", "mattina"]
@@ -102,6 +102,6 @@ async def test_se_non_si_riesce_a_leggere_le_etichette_non_si_sovrascrive(monkey
     c = _client()
     finto, visti = _finto_ws({"config/entity_registry/get": None})
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.aggiungi_etichetta_a("automation.x", "hiris")
+    esito = await c.add_label_to("automation.x", "hiris")
     assert [t for t, _ in visti] == ["config/entity_registry/get"]
     assert "errore" in esito

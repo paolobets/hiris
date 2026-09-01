@@ -1,4 +1,4 @@
-"""`HAClient.direzioni_energia()`: le direzioni vere dell'energia, lette da
+"""`HAClient.energy_directions()`: le direzioni vere dell'energia, lette da
 Home Assistant -- non indovinate dal nome del sensore.
 
 Due fonti, sulla STESSA connessione (`_ws_batch` con due comandi):
@@ -66,7 +66,7 @@ def _riga(entity_id, translation_key=None, platform="zcsazzurro"):
 @pytest.mark.asyncio
 async def test_manda_i_due_comandi_giusti_su_una_connessione_sola():
     finto = _Finto([_prefs(), _registro()])
-    await _client(finto).direzioni_energia()
+    await _client(finto).energy_directions()
     assert finto.comandi == [("energy/get_prefs", None),
                              ("config/entity_registry/list", None)]
 
@@ -83,7 +83,7 @@ async def test_grid_produce_prelievo_e_immissione_dai_campi_scalari():
                     "stat_energy_from": "sensor.ze1_energia_importata_oggi",
                     "stat_energy_to": "sensor.ze1_energia_esportata_oggi"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito["sensor.ze1_energia_importata_oggi"] == {
         "direzione": "prelievo", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_energia_esportata_oggi"] == {
@@ -99,7 +99,7 @@ async def test_solar_produce_produzione_sia_da_energia_sia_da_potenza():
                     "stat_energy_from": "sensor.ze1_energia_prodotta_oggi",
                     "stat_rate": "sensor.ze1_potenza_prodotta"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito["sensor.ze1_energia_prodotta_oggi"] == {
         "direzione": "produzione", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_potenza_prodotta"] == {
@@ -112,7 +112,7 @@ async def test_battery_produce_scarica_da_from_e_carica_da_to():
                     "stat_energy_from": "sensor.ze1_energia_scarica_oggi",
                     "stat_energy_to": "sensor.ze1_energia_carica_oggi"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito["sensor.ze1_energia_scarica_oggi"] == {
         "direzione": "scarica", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_energia_carica_oggi"] == {
@@ -130,7 +130,7 @@ async def test_le_tre_sorgenti_insieme_come_misurato_sulla_casa_vera():
         {"type": "battery", "stat_energy_from": "sensor.scar", "stat_energy_to": "sensor.car"},
     )
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert len(esito) == 6
     assert {v["direzione"] for v in esito.values()} == {
         "prelievo", "immissione", "produzione", "scarica", "carica"}
@@ -142,7 +142,7 @@ async def test_una_dashboard_non_configurata_non_e_un_guasto():
     """`energy_sources: []` e' un esito legittimo (nessuna dashboard), non un
     errore -- come un elenco di legami vuoto per un'entita' senza legami."""
     finto = _Finto([_prefs(), _registro()])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito == {}
     assert "errore" not in esito
 
@@ -160,7 +160,7 @@ async def test_la_dedotta_riempie_dove_la_dichiarata_non_arriva():
         _riga("sensor.ze1_energia_autoconsumata_oggi", "energy_autoconsuming_today"),
     )
     finto = _Finto([_prefs(), registro])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito["sensor.ze1_potenza_consumata"] == {
         "direzione": "consumo", "provenienza": "dedotta"}
     assert esito["sensor.ze1_energia_consumata_oggi"] == {
@@ -193,7 +193,7 @@ async def test_le_sette_direzioni_dedotte_al_completo():
         righe.append(_riga(f"sensor.{chiave_potenza}_power", chiave_potenza))
         righe.append(_riga(f"sensor.{chiave_energia}_energy", chiave_energia))
     finto = _Finto([_prefs(), _registro(*righe)])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert len(esito) == 14
     for chiave_potenza, chiave_energia, direzione in coppie:
         assert esito[f"sensor.{chiave_potenza}_power"]["direzione"] == direzione
@@ -212,7 +212,7 @@ async def test_un_translation_key_non_riconosciuto_non_produce_niente():
         _riga("sensor.altro_3", "power", platform="tuya"),
     )
     finto = _Finto([_prefs(), registro])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito == {}
 
 
@@ -228,7 +228,7 @@ async def test_la_dichiarata_vince_sempre_anche_se_la_dedotta_direbbe_altro():
     prefs = _prefs({"type": "solar", "stat_energy_from": entity_id})
     registro = _registro(_riga(entity_id, "energy_consuming_today"))
     finto = _Finto([prefs, registro])
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert esito[entity_id] == {"direzione": "produzione", "provenienza": "dichiarata"}
 
 
@@ -245,5 +245,5 @@ async def test_la_dichiarata_vince_sempre_anche_se_la_dedotta_direbbe_altro():
     (_Finto([_prefs(), {"result": "non una lista"}]), "registro in forma inattesa"),
 ])
 async def test_un_guasto_non_diventa_un_dizionario_vuoto(finto, perche):
-    esito = await _client(finto).direzioni_energia()
+    esito = await _client(finto).energy_directions()
     assert "errore" in esito, perche

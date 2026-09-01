@@ -294,20 +294,26 @@ def test_una_parola_chiave_ripetuta_produce_una_sola_proposta():
 
 
 def test_un_metodo_di_haclient_non_si_applica_da_solo():
-    """`ha.statistiche(...)`: `statistiche` e' una parola gia' decisa nel
-    glossario, ma l'oggetto e' `HAClient` (`proxy/`, un ambito che questa
-    fetta non converte affatto) -- lo strumento non puo' sapere se quel
-    preciso attributo appartiene a un ambito gia' convertito o no. Misurato
-    dal vivo (review Task 8): senza questa guardia, `ha.statistiche(...)`
-    dentro `casa/tempo.py::trend` diventava `ha.statistics(...)`, un
-    `AttributeError` in produzione perche' `HAClient.statistiche` resta
-    cosi' finche' `proxy/` non e' convertito."""
-    gf = rinomina.Glossario(mappa={"statistiche": "statistics"})
-    dentro = 'esito = await ha.statistiche([entita], "hour", 3)\n'
+    """Un attributo che appartiene a `HAClient` non si applica da solo: lo
+    strumento non puo' sapere se quel preciso attributo sia di un ambito gia'
+    convertito o no.
+
+    **Il caso misurato dal vivo era `ha.statistiche(...)`** (review Task 8):
+    senza questa guardia diventava `ha.statistics(...)` dentro
+    `casa/tempo.py::trend`, un `AttributeError` in produzione perche'
+    `HAClient.statistiche` restava italiano. **Quel caso oggi non esiste
+    piu'**: dal lotto 19 `proxy/` e' convertito e quel metodo si chiama
+    `statistics` per davvero. La guardia serve identica nel verso opposto --
+    il giorno in cui una parola inglese di `HAClient` entrasse nel glossario
+    come traduzione di qualcos'altro -- e il glossario di questa prova e'
+    sintetico apposta, cosi' misura il MECCANISMO e non lo stato di
+    conversione di `proxy/`."""
+    gf = rinomina.Glossario(mappa={"related": "linked"})
+    dentro = 'esito = await ha.related("area", identifier)\n'
     fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
     assert fuori == dentro, "il metodo di HAClient non si applica da solo"
-    assert [p.nome for p in proposte] == ["statistiche"]
-    assert proposte[0].suggerito == "statistics"
+    assert [p.nome for p in proposte] == ["related"]
+    assert proposte[0].suggerito == "linked"
 
 
 def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
@@ -631,6 +637,12 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # lo strumento non tocca nulla.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("schedulatore", "schedulatore", frozenset()),
+    # `proxy` entra il 01/09 col lotto 19c, e **senza residui**: zero
+    # composti da decidere e zero applicazioni su tutti e quattro i suoi
+    # file, misurato prima di scrivere questa riga. E' il primo
+    # sottosistema che entra qui completo alla prima -- gli altri sei ci
+    # sono arrivati con un residuo dichiarato o dopo una correzione.
+    ("proxy", "proxy", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("consumi", "consumi", frozenset()),
     ("cervello", "cervello", frozenset()),
@@ -843,22 +855,26 @@ def test_la_def_di_un_metodo_protetto_si_rinomina_ma_si_DICHIARA():
     di convertire il file che definisce la classe, cioe' l'unico lavoro per cui
     serve. Quindi si applica e si dichiara, come il controllo di chiusura.
 
+    Il nome protetto di questa prova e' `related`, non `statistiche`: dal lotto
+    19 quel metodo si chiama `statistics` per davvero, e il caso storico non si
+    puo' piu' costruire. Il meccanismo e' lo stesso.
+
     Provato per mutazione: tolto il blocco che emette `DefinizioneProtetta` da
     `riscrivi`, questo test va rosso mentre TUTTI gli altri restano verdi --
     cioe' nessun cancello esistente vedeva il difetto.
     """
-    gf = rinomina.Glossario(mappa={"statistiche": "statistics"})
+    gf = rinomina.Glossario(mappa={"related": "linked"})
     dentro = ("class HAClient:\n"
-              "    async def statistiche(self, ids):\n"
-              "        return ids\n")
+              "    async def related(self, item_type, identifier):\n"
+              "        return item_type\n")
     fuori, proposte = rinomina.riscrivi(dentro, gf, "proxy")
-    assert "async def statistics(self, ids):" in fuori, (
+    assert "async def linked(self, item_type, identifier):" in fuori, (
         "la `def` si rinomina davvero: il lotto che possiede la classe deve "
         "poterlo fare")
     dichiarate = [p for p in proposte if isinstance(p, rinomina.DefinizioneProtetta)]
     assert len(dichiarate) == 1, proposte
     assert (dichiarate[0].nome, dichiarate[0].nuovo, dichiarate[0].riga) == (
-        "statistiche", "statistics", 2)
+        "related", "linked", 2)
 
 
 def test_una_def_che_non_e_un_metodo_protetto_non_dichiara_niente():

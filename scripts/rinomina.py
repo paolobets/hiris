@@ -386,9 +386,9 @@ import tokenize
 
 from _comune import file_py, rel
 
-# Il confine di HAClient (`proxy/ha_client.py`): un ambito che questa fetta
-# non converte affatto, ma che OGNI sottosistema convertito puo' chiamare
-# per attributo (`ha.storico(...)`, `ha.statistiche(...)`...). Una parola
+# Il confine di HAClient (`proxy/ha_client.py`): un ambito che OGNI
+# sottosistema convertito puo' chiamare
+# per attributo (`ha.history(...)`, `ha.statistics(...)`...). Una parola
 # gia' decisa nel glossario (`statistiche -> statistics`) non sa
 # distinguere "un metodo mio che si chiama cosi'" da "un metodo DI
 # HACLIENT che si chiama cosi' per caso" -- l'attributo dopo il punto e'
@@ -398,7 +398,12 @@ from _comune import file_py, rel
 # un `AttributeError` in produzione alla prima domanda di andamento sopra
 # le 24 ore, perche' `HAClient.statistiche` resta cosi' finche' `proxy/`
 # non viene convertito, e nessun test lo vedeva perche' il finto che lo
-# imitava era stato rinominato insieme al chiamante.
+# imitava era stato rinominato insieme al chiamante. **Le due frasi qui
+# sopra sono il verbale di quella misura e portano i nomi di ALLORA**:
+# `proxy/` e' convertito dal lotto 19, `statistiche` si chiama `statistics`
+# per davvero, e questa lista porta i nomi nuovi. La guardia non e' scaduta
+# con la conversione -- serve identica il giorno in cui una parola inglese
+# di `HAClient` finisse nel glossario come traduzione di qualcos'altro.
 #
 # Elenco letto a mano da `proxy/ha_client.py` (non importato: questo
 # script non dipende dal resto del pacchetto) -- va aggiornato se quel
@@ -408,17 +413,17 @@ from _comune import file_py, rel
 # richiederebbe di ricordarsi di questa lista.
 _METODI_HA_CLIENT = frozenset({
     "start", "stop", "get_states", "get_services", "call_service",
-    "_config_route", "_http_reason", "leggi_configurazione",
-    "salva_configurazione", "cancella_configurazione", "valida_config",
-    "_ws_occurrence", "crea_helper", "cancella_helper", "elenca_etichette",
-    "crea_etichetta", "aggiungi_etichetta_a", "estrai_dal_bersaglio",
-    "leggi_plance", "_health_value", "get_system_health",
-    "storico", "diario", "render_template", "_ws_batch", "_ws_request",
-    "_ws_command", "_ws_call", "statistiche", "statistiche_orarie",
-    "_request_statistics", "legami", "problemi", "direzioni_energia",
-    "_declare", "get_config", "leggi_registri", "_add_extended_fields",
-    "add_state_listener", "remove_state_listener", "add_anagrafe_listener",
-    "add_servizi_listener", "add_plance_listener", "start_websocket",
+    "_config_route", "_http_reason", "read_configuration",
+    "save_configuration", "delete_configuration", "validate_config",
+    "_ws_occurrence", "create_helper", "delete_helper", "list_labels",
+    "create_label", "add_label_to", "extract_from_target",
+    "read_dashboards", "_health_value", "get_system_health",
+    "history", "logbook", "render_template", "_ws_batch", "_ws_request",
+    "_ws_command", "_ws_call", "statistics", "hourly_statistics",
+    "_request_statistics", "related", "problems", "energy_directions",
+    "_declare", "get_config", "read_registries", "_add_extended_fields",
+    "add_state_listener", "remove_state_listener", "add_topology_listener",
+    "add_service_listener", "add_dashboard_listener", "start_websocket",
     "_ws_loop",
 })
 
@@ -510,7 +515,7 @@ def _righe_di_percorso_e_parola_chiave(
     """Tre insiemi di INDICI nella lista `tokens` piu' una mappa: quelli che sono un
     segmento di un percorso di IMPORT, quelli che sono il nome di una
     PAROLA CHIAVE (keyword argument) in una chiamata, e quelli che sono un
-    METODO DI HACLIENT letto per attributo (`ha.storico(...)`).
+    METODO DI HACLIENT letto per attributo (`ha.history(...)`).
 
     Un percorso di import (`from ..casa.anagrafe import X`, `import
     hiris.app.memoria.archivio`) e' un indirizzo verso UN ALTRO modulo, mai
@@ -535,7 +540,7 @@ def _righe_di_percorso_e_parola_chiave(
     `def` -- una parentesi di raggruppamento o di definizione lascia il
     nome cosi' com'e' (e' la propria firma, o non e' affatto una chiamata).
 
-    Un metodo di `HAClient` (`ha.storico(...)`, `self._ha.statistiche(...)`)
+    Un metodo di `HAClient` (`ha.history(...)`, `self._ha.statistics(...)`)
     e' un attributo di un oggetto che arriva da un ambito -- `proxy/` --
     che questa fetta non converte affatto: riconosciuto per struttura (un
     NAME preceduto da un singolo `.`) e per appartenenza a
@@ -547,8 +552,8 @@ def _righe_di_percorso_e_parola_chiave(
     Trattato come una parola chiave: si segnala, non si applica.
 
     **Il quarto valore, `chiamati`**: per ogni indice di parola chiave, il
-    NOME della funzione chiamata (`f` in `f(x=1)`, `storico` in
-    `ha.storico(entita=...)`), o la stringa vuota se la parentesi non e' stata
+    NOME della funzione chiamata (`f` in `f(x=1)`, `logbook` in
+    `ha.logbook(ore=...)`), o la stringa vuota se la parentesi non e' stata
     aperta da un nome (una chiamata incatenata, `f()(x=1)`). Costa nulla --
     la pila delle parentesi sa gia' chi ha aperto ognuna -- e serve al
     controllo di chiusura: senza di lui, l'unico modo di distinguere una
@@ -902,7 +907,7 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str) -> set[str]:
     E' l'altra meta' di `parametri_def_rinominati`: quella dice QUALI parole
     chiave sono rimaste indietro, questa dice DOVE andavano a finire. Insieme
     permettono al controllo di chiusura di distinguere una sponda vera (`
-    ha.storico(entita=...)`, dove `storico` e' una firma appena cambiata) da
+    ha.logbook(ore=...)`, dove `logbook` e' una firma appena cambiata) da
     un omonimo (`nota_ripiego(motivo=...)`, dove `motivo` e' la parola chiave
     di una funzione che nessuno ha toccato) -- la domanda che
     `parametri_dichiarati` non sa porre, perche' guarda la rarita' del nome e

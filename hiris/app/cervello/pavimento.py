@@ -66,7 +66,7 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # sdoppiarla («la direzione e' DENTRO l'episodio, non e' una gamba nuova»).
 # La distinzione vera vive ora un livello sopra, nel CORPO di ogni episodio
 # di energia (`cervello/oggetti.py::aggregate_day`, parametro `direzioni`):
-# `HAClient.direzioni_energia()` legge due fonti, sulla stessa connessione
+# `HAClient.energy_directions()` legge due fonti, sulla stessa connessione
 # --
 #
 # - **dichiarata** (`energy/get_prefs`, la dashboard Energia dell'utente):

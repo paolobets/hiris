@@ -38,7 +38,7 @@ async def test_i_legami_arrivano_ordinati():
     risposte diverse e nessuno capisce perche'."""
     finto = _Finto({"result": {"automation": ["automation.b", "automation.a"],
                                "scene": []}})
-    esito = await _client(finto).legami("entity", "light.corridoio")
+    esito = await _client(finto).related("entity", "light.corridoio")
     assert esito == {"automation": ["automation.a", "automation.b"]}
     assert finto.comandi[0] == ("search/related",
                                 {"item_type": "entity", "item_id": "light.corridoio"})
@@ -50,7 +50,7 @@ async def test_un_tipo_che_home_assistant_non_conosce_si_rifiuta_prima():
     inventato produrrebbe un rifiuto di HA che arriva come «errore generico»:
     meglio dire subito qual e' il problema."""
     finto = _Finto({"result": {}})
-    esito = await _client(finto).legami("stanza", "cucina")
+    esito = await _client(finto).related("stanza", "cucina")
     assert "errore" in esito
     assert finto.comandi == [], "non si chiama HA per un tipo che non accetta"
 
@@ -62,7 +62,7 @@ async def test_un_tipo_che_home_assistant_non_conosce_si_rifiuta_prima():
     (_Finto({"result": "non un dizionario"}), "forma inattesa"),
 ])
 async def test_un_legame_non_letto_non_diventa_un_elenco_vuoto(finto, perche):
-    esito = await _client(finto).legami("entity", "light.x")
+    esito = await _client(finto).related("entity", "light.x")
     assert "errore" in esito, perche
 
 
@@ -77,7 +77,7 @@ async def test_i_problemi_arrivano_come_home_assistant_li_manda():
         {"domain": "reolink", "issue_id": "x", "severity": "error",
          "is_fixable": True, "breaks_in_ha_version": "2026.9", "ignored": False},
     ]}})
-    esito = await _client(finto).problemi()
+    esito = await _client(finto).problems()
     assert esito["problemi"][0]["severity"] == "error"
     assert esito["problemi"][0]["breaks_in_ha_version"] == "2026.9"
 
@@ -91,7 +91,7 @@ async def test_un_problema_IGNORATO_non_esce():
         {"domain": "a", "issue_id": "1", "severity": "warning", "ignored": True},
         {"domain": "b", "issue_id": "2", "severity": "warning", "ignored": False},
     ]}})
-    esito = await _client(finto).problemi()
+    esito = await _client(finto).problems()
     assert [p["domain"] for p in esito["problemi"]] == ["b"]
 
 
@@ -104,6 +104,6 @@ async def test_un_problema_IGNORATO_non_esce():
 async def test_un_guasto_di_lettura_non_diventa_una_casa_sana(finto, perche):
     """La prova che conta: `{"problemi": []}` significa «non c'e' niente che
     non va», ed e' la bugia piu' facile da dire davanti a un guasto."""
-    esito = await _client(finto).problemi()
+    esito = await _client(finto).problems()
     assert "errore" in esito, perche
     assert "problemi" not in esito

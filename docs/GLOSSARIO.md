@@ -506,6 +506,7 @@ in §4①:
 | `citate` | `citato` |
 | `sconosciute` | `sconosciuto` |
 | `attesi` | `atteso` |
+| `orarie` | `orario` |
 | `comandi` | `comando` |
 | `estesa` | `esteso` |
 | `fasce` | `fascia` |
@@ -555,7 +556,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
-| bersaglio | cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
+| bersaglio | **`extract_from_target -> extract_from_target`**: il nome del comando websocket che il metodo manda (`extract_from_target`), non la traduzione della frase italiana -- legge del confine. E `estrai` NON prende una riga: nuda si applicherebbe a `azione/porta.py::estrai`, ambito stabile. Cio' che un comando proposto dichiara di voler toccare, nello stesso vocabolario con cui Home Assistant accetta le sue chiamate di servizio -- identificatori precisi, oppure aree, piani ed etichette ancora da risolvere -- confrontato con lo stato vivo della casa prima di lasciarlo procedere, e legittimamente assente solo per i servizi che non si rivolgono a nessuna entita' | target | ✓ arriva |
 | cambi | la tabella che tiene per 22 giorni le singole registrazioni descritte alla voce `grezzo` -- non un concetto a se', ma la sua forma persistita: la finestra di 22 giorni e' cio' che permette di rifare un giudizio sbagliato senza aver perso il materiale di partenza | reading | ~ parziale |
 | caricatore | la sottoclasse del parser YAML che tollera i tag propri di Home Assistant (`!secret`, `!include`, `!input`) trasformando ognuno in un segnaposto leggibile invece di sollevare un'eccezione, restando pero' un parser sicuro che rifiuta i tag pericolosi del linguaggio stesso | loader | ~ parziale |
 | casa | la rappresentazione strutturata a quattro livelli (piano, area, dispositivo, entita') degli spazi fisici su cui HIRIS ragiona, costruita a partire dai registri di Home Assistant | home_space | ~ parziale |
@@ -568,7 +569,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction | ~ parziale |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
-| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **La mappa che `proxy/ha_client.py::direzioni_energia` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memoria/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
+| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **`energy_directions -> energy_directions` e' un nome deciso a mano, e `energia` NON prende una riga**: nuda si applicherebbe a `cervello/pavimento.py::_ENERGIA`, ambito stabile, che questa fetta non ha mandato di toccare -- un nome di una parola sola si applica DA SOLO, senza passare da una proposta. **La mappa che `proxy/ha_client.py::energy_directions` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memoria/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
 | dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ✓ arriva |
@@ -588,7 +589,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | intento | la struttura con cui una richiesta di nuova costruzione descrive se stessa -- che cosa la fa scattare, quali passi compie, quali stati verifica, quali parametri porta, se va riusata o si ripete, se e' stata chiesta esplicitamente -- da cui si decide quale oggetto serve davvero | intent | ✓ arriva |
 | interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation | ~ parziale |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation | ~ parziale |
-| legame | la relazione fra una cosa della casa e le altre che la nominano o dove sta, nel vocabolario dei quattordici tipi che Home Assistant riconosce per l'API di ricerca -- il tipo di legame, non il legame stesso: `legami()` ("I nomi degli strumenti") ne restituisce l'elenco, questa e' la parola con cui una singola voce di quell'elenco si nomina. **`TIPI_LEGAME -> RELATED_ITEM_TYPES`** (`proxy/ha_client.py`): non `LINK_TYPES` -- quei valori sono le stringhe di `ItemType` che il comando `search/related` di Home Assistant accetta, quindi prendono il nome del comando che li riceve, non la traduzione della parola italiana | link | ~ parziale |
+| legame | la relazione fra una cosa della casa e le altre che la nominano o dove sta, nel vocabolario dei quattordici tipi che Home Assistant riconosce per l'API di ricerca -- il tipo di legame, non il legame stesso: `related()` ("I nomi degli strumenti") ne restituisce l'elenco, questa e' la parola con cui una singola voce di quell'elenco si nomina. **`TIPI_LEGAME -> RELATED_ITEM_TYPES`** (`proxy/ha_client.py`): non `LINK_TYPES` -- quei valori sono le stringhe di `ItemType` che il comando `search/related` di Home Assistant accetta, quindi prendono il nome del comando che li riceve, non la traduzione della parola italiana | link | ~ parziale |
 | letto | il participio passato di `leggi`: non l'atto di leggere ma il RISULTATO, cio' che e' stato letto e tenuto -- `sistema_letto`, `specchio_letto`, `comportamento_letto_il`. Il glossario aveva risolto sia `leggi` sia `letto` con lo stesso inglese (`read`): la guardia sulle collisioni dello strumento di rinomina (Task 4bis) l'ha trovato prima che potesse fondere l'atto e il risultato in un nome solo, su `casa/strumenti.py` e `azione/costruzione/officina.py`, dove le due forme convivono. `leggi` resta `read`: e' il verbo, il nome giusto per un metodo (`casa.leggi()`). `letto` e' il participio, quindi diventa un aggettivo in inglese: `loaded` | loaded | ✓ arriva |
 | lettura (casa) | trasforma il testo di un file di configurazione di Home Assistant nella struttura che rappresenta, sollevando quando il testo e' davvero malformato invece di restituire un risultato vuoto indistinguibile da un file senza contenuto | parse | ✓ arriva |
 | lettura (consumi) | i token che una chiamata ha RICEVUTO dalla cache del provider invece di generarli da capo -- un significato distinto da «trasformare il testo di un file di configurazione» (la riga sopra): scoperto rinominando `consumi/` (Task 4), dove applicare alla cieca `parse` avrebbe prodotto un nome semanticamente falso per `cache_lettura`. La stessa codebase aveva gia' scelto `cache_read`/`cache_write` altrove (`backends/pricing.py`) prima che questo glossario lo dicesse | read | ✓ arriva |
@@ -1328,6 +1329,7 @@ al Task 6 invece che deciso qui.
 | campione | sample |
 | campo | field |
 | candidato | candidate |
+| cancella | delete |
 | carattere | character |
 | carica | load |
 | cartella | folder |
@@ -1357,7 +1359,7 @@ al Task 6 invece che deciso qui.
 | coppia | pair |
 | corpo | body |
 | correggibile | correctable |
-| corrente | current | **`attuale` NON prende una riga, pur essendo un sinonimo**: `current` e' gia' l'inglese di `corrente`, e due parole italiane sullo stesso inglese sono la collisione permanente che questo glossario evita (vedi `libero`/`gratuito` sotto `gratuito`). L'unica occorrenza (`attuali`, le etichette gia' presenti su un'entita' in `proxy/ha_client.py::aggiungi_etichetta_a`) si chiama `current_labels`, cioe' prende il nome del campo di Home Assistant che alimenta |
+| corrente | current | **`attuale` NON prende una riga, pur essendo un sinonimo**: `current` e' gia' l'inglese di `corrente`, e due parole italiane sullo stesso inglese sono la collisione permanente che questo glossario evita (vedi `libero`/`gratuito` sotto `gratuito`). L'unica occorrenza (`attuali`, le etichette gia' presenti su un'entita' in `proxy/ha_client.py::add_label_to`) si chiama `current_labels`, cioe' prende il nome del campo di Home Assistant che alimenta |
 | correzione | correction |
 | costo | cost |
 | crea | create |
@@ -1382,7 +1384,7 @@ al Task 6 invece che deciso qui.
 | effettivo | actual |
 | elenca | list |
 | elencato | listed |
-| elenco | list | **`list` e' un builtin Python**, quindi su un nome NUDO non si applica (`_pericoloso`, la stessa guardia di `classe`/`class` e di `ingresso -> input_tokens`): il nome scelto e' `listing`. Non `listed`, che e' gia' l'inglese di `elencato`, ne' `catalog`, gia' quello di `catalogo` -- due collisioni permanenti evitate riusando la forma sostantivata dello stesso verbo. Misurato dal vivo su `proxy/ha_client.py::leggi_plance` (`elenco`/`elenco_arrivato` -> `listing`/`listing_arrived`) |
+| elenco | list | **`list` e' un builtin Python**, quindi su un nome NUDO non si applica (`_pericoloso`, la stessa guardia di `classe`/`class` e di `ingresso -> input_tokens`): il nome scelto e' `listing`. Non `listed`, che e' gia' l'inglese di `elencato`, ne' `catalog`, gia' quello di `catalogo` -- due collisioni permanenti evitate riusando la forma sostantivata dello stesso verbo. Misurato dal vivo su `proxy/ha_client.py::read_dashboards` (`elenco`/`elenco_arrivato` -> `listing`/`listing_arrived`) |
 | entita | entity |
 | episodio | episode |
 | errore | error |
@@ -1398,7 +1400,7 @@ al Task 6 invece che deciso qui.
 | fascia | band |
 | finale | final |
 | finestra | window |
-| fonte | source | **`sorgente` NON prende una riga, per la stessa ragione**: `source` e' gia' l'inglese di `fonte`. L'unica occorrenza (`sorgente` in `proxy/ha_client.py::direzioni_energia`) si chiama `energy_source`, che e' il nome che Home Assistant stesso da' a quelle voci (`energy/get_prefs` -> `energy_sources`) |
+| fonte | source | **`sorgente` NON prende una riga, per la stessa ragione**: `source` e' gia' l'inglese di `fonte`. L'unica occorrenza (`sorgente` in `proxy/ha_client.py::energy_directions`) si chiama `energy_source`, che e' il nome che Home Assistant stesso da' a quelle voci (`energy/get_prefs` -> `energy_sources`) |
 | forma | form |
 | frase | phrase |
 | fresco | fresh |
@@ -1463,6 +1465,7 @@ al Task 6 invece che deciso qui.
 | ogni | every |
 | opzioni | options |
 | ora | hour |
+| orario | hourly |
 | ordine | order |
 | ordinato | sorted |
 | ottieni | get |
@@ -1516,7 +1519,7 @@ al Task 6 invece che deciso qui.
 | riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
-| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `leggi_plance`, `leggi_registri`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
+| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `read_dashboards`, `read_registries`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
 | risultato | result |
 | ritardo | delay |
 | rivendica | claim |
@@ -1570,7 +1573,7 @@ al Task 6 invece che deciso qui.
 | tutte | all |
 | unita | unit |
 | valida | validate |
-| valido | valid | **Il femminile `valida` NON e' aliasato, ed e' una decisione**: `valida` e' il VERBO «convalida» (`valida_config`, in `proxy/ha_client.py` e `azione/costruzione/officina.py`), non l'aggettivo. Un alias `valida -> valido` trasformerebbe un metodo pubblico in un aggettivo. Stessa forma della nota su `prima` sotto `primo` |
+| valido | valid | **Il femminile `valida` NON e' aliasato, ed e' una decisione**: `valida` e' il VERBO «convalida» (`validate_config`, in `proxy/ha_client.py` e `azione/costruzione/officina.py`), non l'aggettivo. Un alias `valida -> valido` trasformerebbe un metodo pubblico in un aggettivo. Stessa forma della nota su `prima` sotto `primo` |
 | via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
 | valore | value |
 | verbo | verb |
@@ -1737,7 +1740,7 @@ al Task 6 invece che deciso qui.
 > proposito.** L'estrazione allargata ha fatto uscire `vivi` (masch. plur. — `casa/domande.py:209,
 > 437,464,543,603,764` `attributi_vivi`, `casa/strumenti.py:1158` `nomi_vivi`) e `direzioni`
 > (plur. — `server.py:917`, `cervello/oggetti.py:570`, `proxy/ha_client.py:1482`
-> `direzioni_energia`): la stessa radice, la stessa cosa, di due voci gia' in «I concetti» (`vive`,
+> `energy_directions`): la stessa radice, la stessa cosa, di due voci gia' in «I concetti» (`vive`,
 > `direzione`). Non le ho aggiunte qui come ordinarie ne' come nuove voci in «I concetti»: dare un
 > secondo inglese alla stessa radice violerebbe la fondamenta n.3 (stessa cosa, stessa forma) — ed
 > e' esattamente il difetto che questa fetta esiste per chiudere. **Chi decidera' l'inglese di
@@ -1749,7 +1752,7 @@ al Task 6 invece che deciso qui.
 > la review finale del ramo dopo che una prima stesura li aveva fusi per errore con `registro` e
 > `interpretazione` -- lo stesso fenomeno gia' trattato per `ancora` e `piano`, sopra.**
 > `registri` (plur. — `casa/archivio.py:245` `sostituisci(self, registri: dict[...], ...)`,
-> `proxy/ha_client.py:1618-1622` `leggi_registri()`, *«Tutti i registri della casa»*,
+> `proxy/ha_client.py:1618-1622` `read_registries()`, *«Tutti i registri della casa»*,
 > `proxy/ha_client.py:1676-1680` `config/entity_registry/list`) sono **i quattro registri di
 > Home Assistant** -- piani, aree, dispositivi, entita' -- esattamente cio' che la riga `anagrafe`
 > (sopra, `topology`) descrive: *«il modulo che legge i quattro registri grezzi di Home Assistant
@@ -1846,7 +1849,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   letture dirette del glossario (`taglio -> cut`, `raggruppa -> group`, ecc.), non nuove decisioni,
   ma invisibili allo strumento perche' nessuna e' un composto.
 - `problemi`, il parametro pubblico di `compose()` e di `_problems_notice()` -> **`problems`**:
-  MAI lo stesso nome del metodo di `HAClient.problemi()` che lo alimenta (protetto a parte in
+  MAI lo stesso nome del metodo di `HAClient.problems()` che lo alimenta (protetto a parte in
   `_METODI_HA_CLIENT`) -- qui non c'e' un punto davanti, e' un parametro, non un attributo.
 - `detto_da` (`_memory_lines`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
   `"detto_da"`, la stessa colonna di `memoria/archivio.py` -- resta italiana PER SEMPRE, come ogni
@@ -2442,7 +2445,7 @@ codice:
 | costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose | ~ parziale |
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
 | andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend | ~ parziale |
-| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca. **`diario` NON prende una riga, e il metodo `HAClient.diario` si chiama comunque `logbook` (deciso a mano, lotto 19 di `proxy/`)**: `logbook` e' gia' l'inglese di `accaduto`, e una riga `diario -> logbook` renderebbe la collisione PERMANENTE e automatica. Ma i due nomi non sono due concetti: sono lo STESSO concetto a due strati -- `proxy/ha_client.py::logbook` e' la chiamata grezza a `GET /api/logbook`, `casa/tempo.py::logbook` e' la risposta che ci si costruisce sopra confrontandola con la cronaca. La legge del confine dice che al confine si prende il nome del sistema esterno, e Home Assistant quella cosa la chiama logbook a tutti e due gli strati. Chi legge deve saperlo, ed e' scritto qui invece che in un rapporto | logbook | ~ parziale |
+| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca. **`diario` NON prende una riga, e il metodo `HAClient.logbook` si chiama comunque `logbook` (deciso a mano, lotto 19 di `proxy/`)**: `logbook` e' gia' l'inglese di `accaduto`, e una riga `diario -> logbook` renderebbe la collisione PERMANENTE e automatica. Ma i due nomi non sono due concetti: sono lo STESSO concetto a due strati -- `proxy/ha_client.py::logbook` e' la chiamata grezza a `GET /api/logbook`, `casa/tempo.py::logbook` e' la risposta che ci si costruisce sopra confrontandola con la cronaca. La legge del confine dice che al confine si prende il nome del sistema esterno, e Home Assistant quella cosa la chiama logbook a tutti e due gli strati. Chi legge deve saperlo, ed e' scritto qui invece che in un rapporto | logbook | ~ parziale |
 
 > **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
 > «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
@@ -2597,7 +2600,7 @@ codice:
 > `ricorda` scrive una frase che una PERSONA ha detto, con la sua interpretazione facoltativa
 > (`casa/strumenti.py:357-364`) -- una memoria **dichiarata**, mai generata da sola; `accaduto`
 > legge il diario che Home Assistant tiene **da solo**, per ogni cambiamento di stato, senza che
-> nessuno lo dichiari (`casa/strumenti.py:833-855`, `ha_client.diario()`). La differenza da rendere
+> nessuno lo dichiari (`casa/strumenti.py:833-855`, `ha_client.logbook()`). La differenza da rendere
 > esplicita in inglese: **dichiarata da una persona** (`remember`) contro **registrata in
 > automatico dal sistema** (`logbook`). E' salita da un rischio isolato (un lettore su due, primo
 > giro) a un rischio maggioritario (tre su quattro, secondo giro): la ri-prova non l'ha solo
@@ -2612,7 +2615,7 @@ codice:
 >
 > **Perche' `accaduto` -> `logbook` e non `history`:** stessa logica, ma con un secondo passo che
 > vale la pena raccontare perche' e' il controllo di collisione a fare il lavoro. `accaduto` legge
-> `ha_client.diario()` (`proxy/ha_client.py:1060`, `GET /api/logbook/<ISO start>` a riga 1094) --
+> `ha_client.logbook()` (`proxy/ha_client.py:1060`, `GET /api/logbook/<ISO start>` a riga 1094) --
 > il nome nativo di Home Assistant per questa funzione e' `logbook`, non `history`. `history` era
 > il primo candidato (e' anche il nome dell'API usata da `andamento`, sotto), ma **collide nel
 > codice**: `history` e' gia' una chiave/parametro non-prosa usata ovunque per la cronologia dei

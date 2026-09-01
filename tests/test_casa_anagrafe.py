@@ -44,7 +44,7 @@ def _client(registries, unavailable=(), config=_CONFIG):
     chiamare un attributo che la classe vera non ha solleva
     `AttributeError` invece di restituire un altro Mock qualunque."""
     client = create_autospec(HAClient, instance=True)
-    client.leggi_registri.return_value = (registries, list(unavailable))
+    client.read_registries.return_value = (registries, list(unavailable))
     client.get_config.return_value = config
     return client
 
@@ -85,7 +85,7 @@ async def test_una_lettura_del_tutto_fallita_non_cancella_la_casa(archivio):
     prima = archivio.updated_at()
 
     vuoti = {chiave: [] for chiave in _REGISTRI}
-    client.leggi_registri.return_value = (vuoti, list(_REGISTRI))
+    client.read_registries.return_value = (vuoti, list(_REGISTRI))
     esito = await rebuild(client, archivio)
 
     assert archivio.read()["aree"]           # la casa di ieri e' ancora li'

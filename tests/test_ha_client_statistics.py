@@ -15,7 +15,7 @@ async def test_statistiche_returns_dict(monkeypatch):
                                  "mean": 21.6, "min": 19.1, "max": 24.3}]}
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche(["sensor.temp"], periodo="day", giorni=30)
+    out = await ha.statistics(["sensor.temp"], period="day", days=30)
     assert captured["msg_type"] == "recorder/statistics_during_period"
     assert captured["extra"]["statistic_ids"] == ["sensor.temp"]
     assert captured["extra"]["period"] == "day"
@@ -32,14 +32,14 @@ async def test_statistiche_un_guasto_non_e_una_serie_vuota(monkeypatch):
         return None
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche(["sensor.temp"], periodo="hour", giorni=1)
+    out = await ha.statistics(["sensor.temp"], period="hour", days=1)
     assert "serie" not in out
     assert "errore" in out
 
 
 # --------------------------------------------------------------------------
 # Il bilancio dell'energia (mandato 27/08/2026): `state`/`change` tradotti
-# ora, e la sorella `statistiche_orarie` con la finestra ESPLICITA.
+# ora, e la sorella `hourly_statistics` con la finestra ESPLICITA.
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_stato_e_cambio_sono_tradotti(monkeypatch):
              "last_reset": None}]}
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche(["sensor.energia_prodotta_oggi"], periodo="hour", giorni=1)
+    out = await ha.statistics(["sensor.energia_prodotta_oggi"], period="hour", days=1)
     [voce] = out["serie"]["sensor.energia_prodotta_oggi"]
     assert voce["stato"] == 0.27
     assert voce["cambio"] == 0.27
@@ -89,7 +89,7 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
              "sum": None, "state": None, "change": None}]}
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche(["sensor.potenza"], periodo="hour", giorni=1)
+    out = await ha.statistics(["sensor.potenza"], period="hour", days=1)
     [voce] = out["serie"]["sensor.potenza"]
     assert "stato" not in voce
     assert "cambio" not in voce
@@ -99,8 +99,8 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_statistiche_orarie_manda_la_finestra_esplicita(monkeypatch):
-    """`statistiche_orarie` non calcola nessuna finestra da sola: prende
-    `da_iso`/`a_iso` gia' pronti dal chiamante (come `storico()`), e chiede
+    """`hourly_statistics` non calcola nessuna finestra da sola: prende
+    `da_iso`/`a_iso` gia' pronti dal chiamante (come `history()`), e chiede
     sempre `period="hour"`."""
     ha = HAClient("http://ha.local:8123", "tok")
     captured = {}
@@ -111,7 +111,7 @@ async def test_statistiche_orarie_manda_la_finestra_esplicita(monkeypatch):
         return {}
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche_orarie(
+    out = await ha.hourly_statistics(
         ["sensor.a", "sensor.b"], "2026-08-26T00:00:00+02:00", "2026-08-27T00:00:00+02:00")
     assert captured["msg_type"] == "recorder/statistics_during_period"
     assert captured["extra"] == {
@@ -131,7 +131,7 @@ async def test_statistiche_orarie_un_guasto_e_dichiarato(monkeypatch):
         return None
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    out = await ha.statistiche_orarie(["sensor.a"], "2026-08-26T00:00:00+00:00",
+    out = await ha.hourly_statistics(["sensor.a"], "2026-08-26T00:00:00+00:00",
                                       "2026-08-27T00:00:00+00:00")
     assert "serie" not in out
     assert "errore" in out
@@ -151,7 +151,7 @@ async def test_statistiche_e_statistiche_orarie_condividono_la_traduzione(monkey
         return {"sensor.x": [dict(fascia)]}
 
     monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
-    a = await ha.statistiche(["sensor.x"], periodo="hour", giorni=1)
-    b = await ha.statistiche_orarie(["sensor.x"], "2026-08-26T00:00:00+00:00",
+    a = await ha.statistics(["sensor.x"], period="hour", days=1)
+    b = await ha.hourly_statistics(["sensor.x"], "2026-08-26T00:00:00+00:00",
                                     "2026-08-27T00:00:00+00:00")
     assert a["serie"] == b["serie"]

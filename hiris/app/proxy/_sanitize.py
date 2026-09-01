@@ -290,7 +290,7 @@ def sanitize_ha_value(v) -> str:
 # every right to be there.
 #
 # 500, not "as large as possible": `messaggio` is capped per-entry but NOT
-# per-call -- `diario()` returns up to MAX_LOGBOOK_ENTRIES (200) entries in one
+# per-call -- `logbook()` returns up to MAX_LOGBOOK_ENTRIES (200) entries in one
 # response, so this cap multiplies straight into the prompt budget. At 500
 # chars the worst case (200 entries every one of them at the cap) is ~100 KB
 # of text, tens of thousands of tokens -- large, but still a bounded slice of

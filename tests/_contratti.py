@@ -53,8 +53,9 @@ qui perche' chi legge sappia cosa questa guardia non promette.
    che accetta qualunque parola chiave NON puo' sollevare il `TypeError` che
    questa guardia esiste per prevenire, quindi pretendere che elenchi gli
    stessi keyword-only del vero segnalerebbe un finto CORRETTO --
-   `FintoHA.valida_config(self, **kw)` contro `HAClient.valida_config(self,
-   *, triggers=None, conditions=None, actions=None)`. Il costo e'
+   `FintoHA.validate_config(self, **kw)` contro
+   `HAClient.validate_config(self, *, triggers=None, conditions=None,
+   actions=None)`. Il costo e'
    dichiarato: su un finto cosi' i nomi dei keyword-only non li confronta
    piu' nessuno. E' la stessa scelta del punto 4 -- meglio cieco che
    rumoroso -- con la stessa scritta accanto.

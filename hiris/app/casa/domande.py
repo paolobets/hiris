@@ -17,7 +17,7 @@ pagina) lo chiede esplicitamente:
   un'entita' col suo stato e la sua classe, un'automazione o uno script col
   loro corpo, un dispositivo con le sue entita', un ricordo con la sua
   interpretazione.
-- `legami(risposta, tipo, riferimento)` -- CHI tocca questa cosa, secondo
+- `related(risposta, tipo, riferimento)` -- CHI tocca questa cosa, secondo
   Home Assistant. Non e' un terzo modo di guardare la stessa cosa: `guarda`
   porta il CORPO (cosa fa quell'automazione), `legami` porta i LEGAMI (quali
   automazioni, script, scene o gruppi nominano questa entita'). Sono due
@@ -828,7 +828,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
     il riferimento non c'e' (le cinque funzioni qui sopra), oppure il TIPO
     non e' fra quelli che HIRIS sa aprire -- e allora esce anche
-    `non_so_guardare: True`, perche' una scena o un gruppo che `legami()`
+    `non_so_guardare: True`, perche' una scena o un gruppo che `related()`
     ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una
     risposta sbagliata detta con sicurezza.
 
@@ -931,7 +931,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
 def related(answer: dict, kind: str, reference) -> dict:
     """Chi tocca questa cosa, nella forma che il modello legge.
 
-    Prende la risposta GIA' ottenuta da `HAClient.legami()` -- questa
+    Prende la risposta GIA' ottenuta da `HAClient.related()` -- questa
     funzione e' pura come le altre due, la rete la fa il chiamante
     (`casa/strumenti.py`) -- e fa tre cose sole: distingue il guasto dal
     niente, traduce i tipi nel vocabolario di HIRIS, e ordina.
@@ -940,7 +940,7 @@ def related(answer: dict, kind: str, reference) -> dict:
     «questa cosa non la tocca nessuno e non sta da nessuna parte». Se Home
     Assistant non ha risposto, quell'affermazione nessuno ha il diritto di
     farla, e la risposta esce con `errore` -- una chiave diversa, non un
-    elenco piu' corto. E' lo stesso principio con cui `HAClient.legami`
+    elenco piu' corto. E' lo stesso principio con cui `HAClient.related`
     rifiuta di restituire `{}` su un rifiuto, portato fino al modello: un
     guasto dichiarato al client e appiattito qui sarebbe un guasto taciuto.
 

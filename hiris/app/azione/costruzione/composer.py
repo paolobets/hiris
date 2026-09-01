@@ -147,7 +147,7 @@ def state_problems(states: list) -> list[str]:
 
 
 def parts_to_validate(domain: str, body: dict) -> dict:
-    """I kwarg da passare a `HAClient.valida_config` per questo corpo.
+    """I kwarg da passare a `HAClient.validate_config` per questo corpo.
 
     Una **scena non si valida**: non ha inneschi ne' azioni, e chiedere a
     `validate_config` di validare tre liste vuote tornerebbe «valido» su

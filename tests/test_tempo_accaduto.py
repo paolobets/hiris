@@ -24,7 +24,7 @@ class _FintoHA:
     def __init__(self, risposta):
         self._risposta = risposta
 
-    async def diario(self, entity, ore):
+    async def logbook(self, entity, hours):
         return self._risposta
 
 
@@ -32,7 +32,7 @@ class _FintoHA:
 # firma (o una finta futura la seguisse a ruota rinominandosi come il
 # chiamante, gia' successo una volta in questa fetta -- review Task 8),
 # questa riga cade prima che la produzione veda un `AttributeError`.
-assert_stessa_firma(HAClient.diario, _FintoHA.diario, nome="diario")
+assert_stessa_firma(HAClient.logbook, _FintoHA.logbook, nome="diario")
 
 
 class _FintaCronaca:

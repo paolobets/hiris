@@ -8,7 +8,10 @@ fetta, ha riscritto **20 firme finte** senza che nessuna di quelle venti
 passasse per la guardia: `call_service` (cinque finte, otto firme riscritte a
 mano), `salva_configurazione`, `_ws_request`, `statistiche_orarie`, `legami`,
 `crea_helper`, `cancella_helper`, `leggi_configurazione`,
-`cancella_configurazione`, `aggiungi_etichetta_a`, `_ws_batch`. Erano tutte
+`cancella_configurazione`, `aggiungi_etichetta_a`, `_ws_batch`. **Sono i nomi
+di ALLORA**: il lotto 19 li ha portati tutti all'inglese, e qui restano cosi'
+perche' questo paragrafo registra una misura, non punta al codice di oggi.
+Erano tutte
 allineate -- verificate una per una dal revisore -- **ma lo erano perche'
 qualcuno e' stato attento, non perche' una rete lo garantisse.**
 

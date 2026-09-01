@@ -53,7 +53,7 @@ def _client_vero(finto):
 @pytest.mark.asyncio
 async def test_gli_alias_arrivano_dal_comando_esteso():
     finto = _Client(estese={"light.salotto": {"aliases": ["lampada della nonna"]}})
-    registri, non_disponibili = await _client_vero(finto).leggi_registri()
+    registri, non_disponibili = await _client_vero(finto).read_registries()
     assert registri["entita"][0]["aliases"] == ["lampada della nonna"]
     assert non_disponibili == []
     assert finto.chiamate[0][0] == "config/entity_registry/get_entries"
@@ -66,14 +66,14 @@ async def test_un_comando_esteso_fallito_si_dichiara():
     registro delle entita' non ha risposto», e farebbe credere alla casa di non
     avere entita' affatto."""
     finto = _Client(solleva=True)
-    _registri, non_disponibili = await _client_vero(finto).leggi_registri()
+    _registri, non_disponibili = await _client_vero(finto).read_registries()
     assert non_disponibili == ["entita:alias"]
 
 
 @pytest.mark.asyncio
 async def test_un_entita_senza_alias_non_ne_guadagna_uno_vuoto():
     finto = _Client(estese={"light.salotto": {"aliases": []}})
-    registri, _ = await _client_vero(finto).leggi_registri()
+    registri, _ = await _client_vero(finto).read_registries()
     assert "aliases" not in registri["entita"][0]
 
 
@@ -118,7 +118,7 @@ async def test_il_None_di_home_assistant_non_e_un_alias():
     """
     finto = _Client(estese={"light.salotto": {
         "aliases": [None, "lampada della nonna", "  ", 42]}})
-    registri, _ = await _client_vero(finto).leggi_registri()
+    registri, _ = await _client_vero(finto).read_registries()
     assert registri["entita"][0]["aliases"] == ["lampada della nonna"]
 
 
@@ -127,7 +127,7 @@ async def test_una_lista_di_sole_sentinelle_non_diventa_un_alias_vuoto():
     """`[None]` deve sparire del tutto, non diventare `[]` salvato: la chiave
     resta assente, come per un'entita' che alias non ne ha."""
     finto = _Client(estese={"light.salotto": {"aliases": [None]}})
-    registri, _ = await _client_vero(finto).leggi_registri()
+    registri, _ = await _client_vero(finto).read_registries()
     assert "aliases" not in registri["entita"][0]
 
 

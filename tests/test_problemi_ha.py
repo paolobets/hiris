@@ -3,7 +3,7 @@
 Fino a questa fetta HIRIS sapeva contare le entita' non disponibili. Home
 Assistant tiene un registro dei problemi che ha GIA' diagnosticato, con la
 severita', se sa ripararli da solo e in quale versione qualcosa si rompera':
-`repairs/list_issues`, letto da `HAClient.problemi()`.
+`repairs/list_issues`, letto da `HAClient.problems()`.
 
 Queste prove sorvegliano tre difetti, e sono tre difetti diversi:
 
@@ -340,7 +340,7 @@ def test_rileggi_problemi_mette_la_fotografia_in_ram():
     emette -- lo annuncerebbe per ore dopo che l'utente l'ha riparato."""
 
     class _ClienteFinto:
-        async def problemi(self):
+        async def problems(self):
             return {"problemi": [_p(domain="caldaia", issue_id="x")]}
 
     app: dict = {}
@@ -354,7 +354,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     un'eccezione da far sparire nello schedulatore."""
 
     class _ClienteRotto:
-        async def problemi(self):
+        async def problems(self):
             return {"errore": "Home Assistant non ha risposto"}
 
     app: dict = {}

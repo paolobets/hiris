@@ -635,13 +635,13 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     si riapre; la lettura periodica non andra' buttata, e' il ripiego che copre
     un HA che si riavvia e perde le sottoscrizioni.
 
-    Non solleva mai: `HAClient.problemi()` restituisce gia' `{"errore": ...}`
+    Non solleva mai: `HAClient.problems()` restituisce gia' `{"errore": ...}`
     sui guasti, e quell'errore e' un'informazione da portare al modello, non
     un'eccezione da propagare in uno schedulatore.
     """
     if ha_client is None:
         return None
-    lettore = getattr(ha_client, "problemi", None)
+    lettore = getattr(ha_client, "problems", None)
     if lettore is None:
         # Un client vecchio o un finto di prova che non dichiara `problemi`:
         # non si scrive niente, cosi' `app["problemi_ha"]` resta `None` e il
@@ -649,7 +649,7 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
         return None
     try:
         esito = await lettore()
-    except Exception as exc:  # non previsto: `problemi()` cattura gia' da se'
+    except Exception as exc:  # non previsto: `problems()` cattura gia' da se'
         logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
         esito = {"errore": "Home Assistant non ha risposto"}
     app["problemi_ha"] = esito
@@ -662,7 +662,7 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
 
     **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
-    (`task-5-correzioni.md`, punto A.1). `HAClient.problemi()` torna
+    (`task-5-correzioni.md`, punto A.1). `HAClient.problems()` torna
     `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
     dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
     «non c'e' niente che non va». `Watcher.watch_system` chiude ogni
@@ -670,7 +670,7 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     letto come lista vuota scriverebbe «chiuso» su OGNI guasto aperto alla
     prima disconnessione da Home Assistant: l'archivio registrerebbe che tutto
     si e' risolto nel momento esatto in cui abbiamo smesso di poterlo vedere.
-    Vale identico per `leggi_registri`: se `"integrazioni"` compare in
+    Vale identico per `read_registries`: se `"integrazioni"` compare in
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene. Meglio un buco nella storia che una bugia nella storia.
 
@@ -686,13 +686,13 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     osservatore = app.get("osservatore")
     if osservatore is None:
         return None
-    esito_problemi = await ha_client.problemi()
+    esito_problemi = await ha_client.problems()
     if "errore" in esito_problemi:
         logger.warning(
             "cervello: condizioni di sistema non lette, problemi() ha "
             "fallito (%s) -- giro saltato", esito_problemi["errore"])
         return None
-    registri, non_disponibili = await ha_client.leggi_registri()
+    registri, non_disponibili = await ha_client.read_registries()
     if "integrazioni" in non_disponibili:
         logger.warning(
             "cervello: condizioni di sistema non lette, il registro delle "
@@ -710,7 +710,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
     **Cosa fa, in una riga.** `casa/anagrafe.gerarchia()` e' una replica che
     HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
     verificava. Qui la stessa domanda va all'originale --
-    `HAClient.estrai_dal_bersaglio({"area_id": [...]}) `, che e' Home Assistant
+    `HAClient.extract_from_target({"area_id": [...]}) `, che e' Home Assistant
     a risolvere -- e le due liste si mettono una accanto all'altra
     (`anagrafe.confronta_con_home_assistant`, pura).
 
@@ -740,7 +740,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
     fa. Il prezzo -- si vedono tre aree per volta -- e' dichiarato dentro
     l'esito stesso (`aree_totali`) e detto in ogni frase che il nucleo scrive.
 
-    **Non solleva mai**: `estrai_dal_bersaglio` risponde gia' `{"errore": ...}`
+    **Non solleva mai**: `extract_from_target` risponde gia' `{"errore": ...}`
     sui guasti, e un'area che non si e' potuta leggere e' un'informazione da
     portare al modello -- non un'eccezione da propagare in uno schedulatore, e
     soprattutto non un'area che combacia.
@@ -755,7 +755,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
     async def giro() -> dict | None:
         if ha_client is None:
             return None
-        lettore = getattr(ha_client, "estrai_dal_bersaglio", None)
+        lettore = getattr(ha_client, "extract_from_target", None)
         if lettore is None:
             # Un client vecchio o un finto di prova che non dichiara il
             # comando: non si scrive niente, cosi' la chiave resta assente e
@@ -815,11 +815,11 @@ async def costruisci_comprimari(
     lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
     un sistema solo, e solo `legami` lo sa dire.
 
-    **Il contratto vero di `HAClient.legami`, non quello immaginato**
+    **Il contratto vero di `HAClient.related`, non quello immaginato**
     (correzione trovata dalla review de «l'osservatore», 26/08/2026 --
     prima di questa correzione questa funzione era INERTE in produzione:
     zero chiamate di rete, `mappa` sempre vuota, e nessuna riga di log lo
-    diceva). `HAClient.legami(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
+    diceva). `HAClient.related(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
     contro `RELATED_ITEM_TYPES`, che ha i valori INGLESI di Home Assistant
     (`"entity"`, non `"entita"`); un tipo che non riconosce lo rifiuta con
     `{"errore": ...}` **prima di toccare la rete**. E la risposta buona non
@@ -853,7 +853,7 @@ async def costruisci_comprimari(
     **Cosa e' contenuto qui dentro, e cosa no** (corretto in questo stesso
     giro, review de «l'osservatore», 26/08/2026 -- qui c'era scritto «nessuna
     `Exception` esce mai da qui», falso). Un guasto di RETE o di Home
-    Assistant -- `HAClient.legami` che rifiuta il `tipo` o non risponde -- e'
+    Assistant -- `HAClient.related` che rifiuta il `tipo` o non risponde -- e'
     contenuto per intero, sempre: e' il `try/except` qui sopra, che mette
     `mappa[soggetto] = []` e conta un fallito. La TRADUZIONE di una risposta
     BUONA (`_legami_leggibili`, cioe' `casa/domande.py::legami`, chiamata
@@ -886,7 +886,7 @@ async def costruisci_comprimari(
                 ("problema:", "integrazione:")):
             continue
         try:
-            grezzo = await ha_client.legami(tipo_ha, soggetto)
+            grezzo = await ha_client.related(tipo_ha, soggetto)
         except Exception as errore:
             logger.debug("cervello: comprimari di %s non letti (%s: %s)",
                         soggetto, type(errore).__name__, errore)
@@ -926,7 +926,7 @@ async def costruisci_bilanci(
 
     **Il raggruppamento per dispositivo non costa nessuna rete**: il legame
     entita'->dispositivo lo dichiara HA nel registro delle entita', gia'
-    replicato in `archivio_casa` (`leggi_registri()` lo alimenta da tempo --
+    replicato in `archivio_casa` (`read_registries()` lo alimenta da tempo --
     fondamenta 2, nessun doppione: interrogare di nuovo `config/entity_
     registry/list` qui sarebbe una seconda porta per un fatto che ne ha gia'
     una). **Non si congela il dispositivo nel grezzo** (mandato, punto 3):
@@ -945,7 +945,7 @@ async def costruisci_bilanci(
     comprimari e le direzioni sono una connessione sola per il giro): tutti
     gli `entity_id` utili -- le dimensioni scelte piu' l'eventuale entita'
     batteria di ogni dispositivo -- finiscono in UNA chiamata a
-    `HAClient.statistiche_orarie()`. Se quella chiamata fallisce (un
+    `HAClient.hourly_statistics()`. Se quella chiamata fallisce (un
     `{"errore": ...}` vero, es. il websocket giu'), FALLISCONO TUTTI i
     dispositivi candidati insieme (`bilanci` vuota, `falliti =
     len(candidati)`).
@@ -1044,7 +1044,7 @@ async def costruisci_bilanci(
     da_ts, a_ts = day_boundaries(giorno, fuso)
     da_iso = datetime.fromtimestamp(da_ts, tz=UTC).isoformat()
     a_iso = datetime.fromtimestamp(a_ts, tz=UTC).isoformat()
-    esito = await ha_client.statistiche_orarie(ids_da_leggere, da_iso, a_iso)
+    esito = await ha_client.hourly_statistics(ids_da_leggere, da_iso, a_iso)
     if "errore" in esito:
         logger.warning(
             "cervello: statistiche del bilancio non lette per %d dispositivi -- "
@@ -1192,7 +1192,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     grilletto non lo preme nessuno», review de «l'osservatore», 26/08/2026 --
     grilletto-brief.md). La prima stesura di questa cura avvolgeva la
     chiamata a `costruisci_comprimari` in un `try/except` e saltava solo se
-    SOLLEVAVA -- ma `HAClient.legami` (`proxy/ha_client.py`) non solleva mai
+    SOLLEVAVA -- ma `HAClient.related` (`proxy/ha_client.py`) non solleva mai
     su un guasto di rete: lo CONTIENE e torna `{"errore": ...}`, e
     `costruisci_comprimari` fa lo stesso con quella risposta (mette `[]`,
     conta un fallito, non rilancia). Il `try/except` avvolgeva quindi una
@@ -1266,11 +1266,11 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         # Le direzioni dell'energia si leggono UNA volta per i due giorni
         # insieme, come i comprimari qui sopra (mandato «le direzioni
         # dell'energia», 27/08/2026): una connessione sola, non una per
-        # giorno. `HAClient.direzioni_energia()` non solleva mai per un
+        # giorno. `HAClient.energy_directions()` non solleva mai per un
         # guasto di rete (stesso contratto di `legami`/`problemi`: torna
         # `{"errore": ...}`) -- il `try` resta comunque, difesa in
         # profondita', per lo stesso motivo del commento sotto.
-        mappa_direzioni = await ha_client.direzioni_energia()
+        mappa_direzioni = await ha_client.energy_directions()
     except Exception as errore:
         # Difesa in profondita': un guasto di RETE o di Home Assistant e'
         # gia' contenuto dentro `costruisci_comprimari` (mette `[]`, conta un
@@ -1529,7 +1529,7 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
 
     Gemello di `programma_ricostruzione_anagrafe` -- stesso antirimbalzo,
     stessa tolleranza ai guasti, stesso evento (TOPOLOGY_EVENTS, via
-    `add_anagrafe_listener`: nessun meccanismo nuovo). Aggiungere o togliere
+    `add_topology_listener`: nessun meccanismo nuovo). Aggiungere o togliere
     un'automazione cambia il registro delle entita', ma NON tocca sempre
     `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
     innesco, quel cambiamento resterebbe invisibile a `/api/casa` finche'
@@ -1796,7 +1796,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Prima di questa riga la chiave non esiste, e `componi()` lo legge come
     # «non ho chiesto» -- non come «non c'e' niente di rotto». Se Home
-    # Assistant e' giu' proprio adesso, `problemi()` risponde `{"errore": ...}`
+    # Assistant e' giu' proprio adesso, `problems()` risponde `{"errore": ...}`
     # e il nucleo lo dichiara: la finestra in cui HIRIS tace su questo e' larga
     # quanto il boot.
     await rileggi_problemi_ha(app, ha_client)
@@ -1990,7 +1990,7 @@ async def _on_startup(app: web.Application) -> None:
         await rebuild(ha_client, archivio_casa)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
-    ha_client.add_anagrafe_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
+    ha_client.add_topology_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
 
     # La verifica dell'albero: `gerarchia()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
@@ -2030,7 +2030,7 @@ async def _on_startup(app: web.Application) -> None:
         await guarda_comportamento()
     except Exception as exc:
         logger.warning("prima lettura del comportamento fallita: %s", exc)
-    ha_client.add_anagrafe_listener(
+    ha_client.add_topology_listener(
         programma_rilettura_comportamento(guarda_comportamento))
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
@@ -2042,7 +2042,7 @@ async def _on_startup(app: web.Application) -> None:
         await reread_dashboards(ha_client, archivio_casa)
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
-    ha_client.add_plance_listener(programma_rilettura_plance(ha_client, archivio_casa))
+    ha_client.add_dashboard_listener(programma_rilettura_plance(ha_client, archivio_casa))
 
     # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
     # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
@@ -2054,7 +2054,7 @@ async def _on_startup(app: web.Application) -> None:
     # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
     # qualcuno chiede di agire.
     _registro_servizi = app["registro_servizi"]
-    ha_client.add_servizi_listener(lambda _tipo: _registro_servizi.invalidate())
+    ha_client.add_service_listener(lambda _tipo: _registro_servizi.invalidate())
 
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
     # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
@@ -2678,7 +2678,7 @@ async def _on_startup(app: web.Application) -> None:
             # episodio senza `direzione` e' comunque meglio di nessun
             # episodio. La riparazione all'avvio, che SOSTITUISCE, non
             # tollera invece nessun guasto (vedi il suo docstring).
-            mappa_direzioni = await ha_client.direzioni_energia()
+            mappa_direzioni = await ha_client.energy_directions()
             if "errore" in mappa_direzioni:
                 mappa_direzioni = {}
             # I bilanci, stessa disciplina (mandato «il bilancio

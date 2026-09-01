@@ -34,7 +34,7 @@ from hiris.app.casa.domande import view
 from hiris.app.memoria.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
-# `ha_client.leggi_registri`, che chiede il registro una volta per ambito e
+# `ha_client.read_registries`, che chiede il registro una volta per ambito e
 # marca le righe con quello che ha chiesto (vedi `_CATEGORY_SCOPES`).
 # `01luci` compare DUE volte con due nomi diversi apposta: e' cio' che
 # distingue una chiave (ambito, id) da una chiave sul solo id.

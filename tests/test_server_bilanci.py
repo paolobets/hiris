@@ -17,7 +17,7 @@ G = "2026-08-24"
 
 def _casa(tmp_path, *, entita, dispositivi):
     """Un `ArchivioCasa` reale, seminato coi registri GREZZI (chiavi
-    inglesi, come li manderebbe `HAClient.leggi_registri()`): fedele al
+    inglesi, come li manderebbe `HAClient.read_registries()`): fedele al
     contratto vero di `ArchivioCasa.sostituisci`, non una finta a parte."""
     a = HomeSpaceStore(str(tmp_path / "casa.db"))
     a.replace({"dispositivi": dispositivi, "entita": entita}, [],

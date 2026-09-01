@@ -591,7 +591,7 @@ class HomeSpaceStore:
         """Le plance con la loro configurazione, coi campi JSON gia' sciolti.
 
         La predefinita torna con `percorso` a `None`, come l'ha data
-        `leggi_plance()`: la chiave esplicita usata per archiviarla e' un
+        `read_dashboards()`: la chiave esplicita usata per archiviarla e' un
         dettaglio di storage, non deve trapelare verso l'esterno.
         """
         entries = []

@@ -372,7 +372,7 @@ async def reread_dashboards(client, store) -> dict:
 
     Restituisce `{"conteggi": {"plance": n}, "non_disponibili": [...]}`.
     """
-    dashboards, unavailable = await client.leggi_plance()
+    dashboards, unavailable = await client.read_dashboards()
     # L'elenco stesso ("lovelace/dashboards/list") puo' fallire (timeout,
     # disconnessione) mentre la config della predefinita si legge lo stesso —
     # e' un'altra connessione WS. Senza distinguere questo caso, `plance`

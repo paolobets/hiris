@@ -2,7 +2,7 @@
 
 Due meta'. La prima prova `build_balance_body` -- pura, nessuna
 lettura di rete: le statistiche orarie arrivano gia' lette e tradotte
-(come le manderebbe `HAClient.statistiche_orarie()`, chiavi italiane). La
+(come le manderebbe `HAClient.hourly_statistics()`, chiavi italiane). La
 seconda prova `aggregate_day(balances=...)`: il punto per cui questa fetta
 esiste -- le entita' di un bilancio VALIDO smettono di produrre il loro
 episodio di energia individuale, quelle fuori continuano come prima.
@@ -30,7 +30,7 @@ def archivio(tmp_path):
 
 
 def _punto(ora, cambio, media=None):
-    """Un punto orario tradotto, come lo manda `HAClient.statistiche_orarie()`."""
+    """Un punto orario tradotto, come lo manda `HAClient.hourly_statistics()`."""
     return {"inizio": f"2026-08-24T{ora:02d}:00:00+00:00",
             "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
             "minimo": None, "massimo": None, "media": media,

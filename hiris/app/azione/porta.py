@@ -476,7 +476,7 @@ class ActionActuator:
     async def _resolve(self, target: dict) -> dict:
         """Cosa contiene questo bersaglio, chiesto a Home Assistant.
 
-        Restituisce cio' che ha risposto (`ha_client.estrai_dal_bersaglio`),
+        Restituisce cio' che ha risposto (`ha_client.extract_from_target`),
         oppure `{"errore": "..."}` gia' scritto per il modello. Non ha una
         terza uscita, ed e' il punto: non esiste un ramo in cui un bersaglio
         non risolto diventi un elenco piu' corto.
@@ -486,7 +486,7 @@ class ActionActuator:
         uno che non sappia risolvere i bersagli deve produrre un rifiuto
         onesto invece di un `AttributeError` travestito da risposta.
         """
-        estrai = getattr(self._ha, "estrai_dal_bersaglio", None)
+        estrai = getattr(self._ha, "extract_from_target", None)
         if not callable(estrai):
             logger.warning("questo client di Home Assistant non sa risolvere i "
                            "bersagli: solo le entita' nominate sono eseguibili")

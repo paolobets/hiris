@@ -232,7 +232,7 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
     base = {"entita": entity, "unita": unit, "finestra_chiesta_ore": hours}
 
     if surface == "statistiche":
-        occurrence = await ha.statistiche([entity], "hour", int(hours / 24) + 1)
+        occurrence = await ha.statistics([entity], "hour", int(hours / 24) + 1)
         if "serie" not in occurrence:
             return {**base, "errore": occurrence.get("errore", "statistiche non disponibili")}
         # Il confronto passa per l'epoch, MAI per le stringhe: le statistiche
@@ -275,14 +275,14 @@ async def trend(*, ha, entity: str, hours, unit: str | None,
                 # stessa risposta sono la fondamenta 3 rotta in un dizionario.
                 "punti": _in_timezone(sampled, ("inizio", "fine"), to_iso), "nota": notes}
 
-    occurrence = await ha.storico([entity], from_iso, to_iso)
+    occurrence = await ha.history([entity], from_iso, to_iso)
     if "serie" not in occurrence:
         return {**base, "errore": occurrence.get("errore", "storico non disponibile")}
     points = occurrence["serie"].get(entity, [])
     if not points:
         return {**base, "grana": "dettaglio", "finestra_coperta": None,
                 "punti": [], "nota": _NO_RECORDING_NOTE}
-    # F2 (onda finale): `ha.storico` promette nel proprio docstring che
+    # F2 (onda finale): `ha.history` promette nel proprio docstring che
     # `troncato` c'e' SEMPRE, apposta perche' «chi legge deve poter sapere
     # che e' scattato». Non leggerlo qui butta via quella promessa: dopo il
     # cap del client `len(punti)` e' un PAVIMENTO (il client tiene la CODA --
@@ -461,7 +461,7 @@ async def logbook(*, ha, journal, entity: str | None, hours,
     c'era, solo illeggibile.
     """
     hours = normalize_hours(hours)
-    occurrence = await ha.diario(entity, int(hours))
+    occurrence = await ha.logbook(entity, int(hours))
     if "voci" not in occurrence:
         return {"errore": occurrence.get("errore", "il diario non e' disponibile")}
     # La finestra dell'abbinamento e' quella che il diario ha DAVVERO coperto

@@ -286,18 +286,18 @@ class _OsservatoreFinto:
 
 
 class _ClienteFinto:
-    """Un `HAClient` finto: `problemi_esito` e' cio' che torna `problemi()`,
+    """Un `HAClient` finto: `problemi_esito` e' cio' che torna `problems()`,
     `registri_esito` la coppia `(registri, non_disponibili)` di
-    `leggi_registri()`."""
+    `read_registries()`."""
 
     def __init__(self, problemi_esito, registri_esito):
         self._problemi_esito = problemi_esito
         self._registri_esito = registri_esito
 
-    async def problemi(self):
+    async def problems(self):
         return self._problemi_esito
 
-    async def leggi_registri(self):
+    async def read_registries(self):
         return self._registri_esito
 
 
@@ -306,11 +306,11 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
     `casa/anagrafe.py`): un finto duck-typed puo' rinominare i suoi
     parametri o cambiarne il conteggio senza che nessuno se ne accorga,
     perche' Python non controlla un'interfaccia -- solo che il nome
-    esista. Qui `leggi_registri` non ha parametri oltre `self`, quindi il
+    esista. Qui `read_registries` non ha parametri oltre `self`, quindi il
     rischio e' basso, ma la guardia costa una riga e vale per ogni
-    modifica futura a `HAClient.leggi_registri`."""
+    modifica futura a `HAClient.read_registries`."""
     from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.leggi_registri, _ClienteFinto.leggi_registri,
+    assert_stessa_firma(HAClient.read_registries, _ClienteFinto.read_registries,
                         nome="HAClient.leggi_registri")
 
 
@@ -331,7 +331,7 @@ def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono(
 
 def test_un_errore_di_problemi_salta_il_giro_per_intero():
     """La prova per mutazione (task-5-correzioni.md, punto A.1): con
-    `problemi()` che torna `{"errore": ...}`, `watch_system` non viene
+    `problems()` che torna `{"errore": ...}`, `watch_system` non viene
     chiamato. La mutazione (passare `[]` invece di saltare il giro) e' stata
     provata a mano durante l'implementazione e fa arrossire questa prova --
     non e' un'affermazione a vuoto."""
@@ -348,7 +348,7 @@ def test_un_errore_di_problemi_salta_il_giro_per_intero():
 
 
 def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero():
-    """Identico per `leggi_registri`: se `"integrazioni"` e' in
+    """Identico per `read_registries`: se `"integrazioni"` e' in
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene -- passarla cosi' com'e' chiuderebbe ogni integrazione gia'
     rotta come se si fosse appena risolta."""
@@ -448,7 +448,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     torna vuoto (nessun legame, non un guasto -- vedi il suo docstring),
     quindi nessun soggetto fallisce e la riparazione gira per intero come se
     fosse incondizionata. Deliberatamente non e' `ha_client=None`: con
-    `None`, `costruisci_comprimari` chiamerebbe `None.legami(...)`,
+    `None`, `costruisci_comprimari` chiamerebbe `None.related(...)`,
     prenderebbe `AttributeError`, la CONTERREBBE e conterebbe ogni soggetto
     come fallito -- il contrario di "incondizionata" (correzione del
     CRITICAL, grilletto-brief.md).
@@ -608,7 +608,7 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
     **L'innesco e' producibile SENZA monkeypatch.** Un client che risponde
     `{"entity": 5}` -- un intero al posto della lista che Home Assistant
     manda sempre -- fa uscire un `TypeError` VERO dalla catena vera: non da
-    `costruisci_comprimari` (che CONTIENE solo il guasto di `HAClient.legami`
+    `costruisci_comprimari` (che CONTIENE solo il guasto di `HAClient.related`
     stesso, non la forma della sua risposta buona), ma da
     `casa/domande.py::legami` (`_legami_leggibili`, chiamata da
     `costruisci_comprimari` FUORI dal suo `try/except` interno): `list(5)`
@@ -1086,7 +1086,7 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
 # --------------------------------------------------------------------------
 
 def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
-    """`_aggrega_ieri` chiama `ha_client.direzioni_energia()` -- una volta
+    """`_aggrega_ieri` chiama `ha_client.energy_directions()` -- una volta
     sola per il giro, non per soggetto -- e la usa per gli episodi di
     energia del giorno."""
     from datetime import datetime, timedelta
@@ -1131,7 +1131,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
 def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_path):
     """**Chi costruisce dal nulla tollera il parziale**, identico alla regola
     gia' presa per i comprimari (vedi i test gemelli piu' sopra): un guasto
-    di `direzioni_energia()` non deve fermare la notte. L'episodio nasce
+    di `energy_directions()` non deve fermare la notte. L'episodio nasce
     comunque, senza `direzione`/`provenienza` -- non un oggetto in meno,
     solo un oggetto piu' povero."""
     from datetime import datetime, timedelta
@@ -1211,7 +1211,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
     chi sostituisce non tollera nessun guasto, nemmeno uno dei due letture.
 
     Mutazione ESEGUITA: nel corpo di `riaggrega_gli_ultimi_due_giorni`, il
-    controllo sull'esito di `direzioni_energia()` sostituito con un `pass`
+    controllo sull'esito di `energy_directions()` sostituito con un `pass`
     (ignorare il guasto). Arrossisce: l'oggetto ricco (con `direzione`) viene
     sostituito da uno senza -- `dopo != prima`. Ripristinato subito dopo."""
     from datetime import datetime, timedelta
@@ -1373,7 +1373,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
 def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_falliscono(tmp_path):
     """**Chi costruisce dal nulla tollera il parziale**, identica alla
     regola gia' presa per comprimari e direzioni: un guasto di
-    `statistiche_orarie()` non deve fermare la notte -- l'entita' torna
+    `hourly_statistics()` non deve fermare la notte -- l'entita' torna
     semplicemente a produrre il suo episodio individuale, come se questa
     fetta non esistesse."""
     from datetime import datetime, timedelta
@@ -1507,7 +1507,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
 
 def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_errore(tmp_path):
     """**Gemello del test sopra per il punto 3 del mandato (MEDIO,
-    27/08/2026)**: qui `HAClient.statistiche_orarie()` NON solleva nessun
+    27/08/2026)**: qui `HAClient.hourly_statistics()` NON solleva nessun
     `errore` -- la richiesta riesce, ma la serie torna vuota per il
     dispositivo candidato (identificatori rinominati, recorder ripartito).
     Prima di questa correzione `bilanci_falliti` restava a zero e la
@@ -1554,7 +1554,7 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
 
 def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path):
     """**Punto 4 del mandato (MEDIO, 27/08/2026), provato per mutazione**:
-    `_ClienteLegami.statistiche_orarie` accettava la finestra `da_iso`/
+    `_ClienteLegami.hourly_statistics` accettava la finestra `da_iso`/
     `a_iso` e la ignorava -- la registrava soltanto. Nessun test di
     cablaggio rileggeva la finestra per i due giorni della riparazione, e
     la mutazione "leggi sempre il primo giorno per entrambi" produceva un

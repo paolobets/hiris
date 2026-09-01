@@ -56,7 +56,7 @@ def _client():
 async def test_salva_compone_la_rotta_dell_editor():
     c = _client()
     c._session = FintaSessione({"result": "ok"})
-    esito = await c.salva_configurazione("automation", "1771346155970", {"alias": "X"})
+    esito = await c.save_configuration("automation", "1771346155970", {"alias": "X"})
     metodo, url, corpo = c._session.chiamate[0]
     assert metodo == "POST"
     assert url == "http://ha.local:8123/api/config/automation/config/1771346155970"
@@ -71,7 +71,7 @@ async def test_il_rifiuto_di_home_assistant_torna_col_motivo_non_come_eccezione(
     c._session = FintaSessione(
         {"message": "Message malformed: required key not provided @ data['triggers']"},
         stato=400)
-    esito = await c.salva_configurazione("automation", "123", {})
+    esito = await c.save_configuration("automation", "123", {})
     assert "salvato" not in esito
     assert "triggers" in esito["errore"]
 
@@ -80,7 +80,7 @@ async def test_il_rifiuto_di_home_assistant_torna_col_motivo_non_come_eccezione(
 async def test_una_chiave_ostile_non_arriva_mai_nell_url():
     c = _client()
     c._session = FintaSessione({"result": "ok"})
-    esito = await c.salva_configurazione("automation", "../../core/config", {})
+    esito = await c.save_configuration("automation", "../../core/config", {})
     assert c._session.chiamate == []
     assert "chiave" in esito["errore"]
 
@@ -89,7 +89,7 @@ async def test_una_chiave_ostile_non_arriva_mai_nell_url():
 async def test_un_dominio_fuori_dai_tre_non_si_scrive():
     c = _client()
     c._session = FintaSessione({"result": "ok"})
-    esito = await c.salva_configurazione("light", "x", {})
+    esito = await c.save_configuration("light", "x", {})
     assert c._session.chiamate == []
     assert "light" in esito["errore"]
 
@@ -98,7 +98,7 @@ async def test_un_dominio_fuori_dai_tre_non_si_scrive():
 async def test_leggi_restituisce_il_corpo():
     c = _client()
     c._session = FintaSessione({"id": "123", "alias": "Tapparelle"})
-    assert (await c.leggi_configurazione("automation", "123"))["corpo"]["alias"] == "Tapparelle"
+    assert (await c.read_configuration("automation", "123"))["corpo"]["alias"] == "Tapparelle"
 
 
 @pytest.mark.asyncio
@@ -108,9 +108,9 @@ async def test_leggi_distingue_il_non_c_e_dal_non_ho_potuto_leggere():
     Home Assistant sta rispondendo male."""
     c = _client()
     c._session = FintaSessione({"message": "not found"}, stato=404)
-    assert await c.leggi_configurazione("automation", "999") == {"assente": True}
+    assert await c.read_configuration("automation", "999") == {"assente": True}
     c._session = FintaSessione({"message": "boom"}, stato=500)
-    esito = await c.leggi_configurazione("automation", "999")
+    esito = await c.read_configuration("automation", "999")
     assert "errore" in esito
     assert "assente" not in esito
 
@@ -119,7 +119,7 @@ async def test_leggi_distingue_il_non_c_e_dal_non_ho_potuto_leggere():
 async def test_cancella_usa_il_metodo_delete():
     c = _client()
     c._session = FintaSessione({"result": "ok"})
-    esito = await c.cancella_configurazione("script", "buonanotte")
+    esito = await c.delete_configuration("script", "buonanotte")
     metodo, url, _ = c._session.chiamate[0]
     assert metodo == "DELETE"
     assert url == "http://ha.local:8123/api/config/script/config/buonanotte"
@@ -138,7 +138,7 @@ async def test_valida_manda_solo_le_chiavi_presenti_e_riporta_l_esito(monkeypatc
             "triggers": {"valid": False, "error": "Unknown trigger 'quando'"}}}
 
     monkeypatch.setattr(c, "_ws_command", finto)
-    esito = await c.valida_config(triggers=[{"trigger": "quando"}])
+    esito = await c.validate_config(triggers=[{"trigger": "quando"}])
     assert visti["tipo"] == "validate_config"
     assert visti["extra"] == {"triggers": [{"trigger": "quando"}]}
     assert "conditions" not in visti["extra"]
@@ -154,6 +154,6 @@ async def test_valida_senza_risposta_non_dichiara_valido(monkeypatch):
         return None
 
     monkeypatch.setattr(c, "_ws_command", muto)
-    esito = await c.valida_config(actions=[{"action": "light.turn_on"}])
+    esito = await c.validate_config(actions=[{"action": "light.turn_on"}])
     assert "errore" in esito
     assert "valid" not in str(esito.get("actions", ""))

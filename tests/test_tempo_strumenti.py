@@ -180,13 +180,13 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
         def __init__(self):
             self.chiamate = []
 
-        async def storico(self, entities, da_iso, a_iso):
+        async def history(self, entities, from_iso, to_iso):
             self.chiamate.append("storico")
             return {"serie": {entities[0]: [
                 {"quando": "2026-08-24T08:00:00+02:00", "valore": "180"}]},
                 "troncato": False}
 
-        async def statistiche(self, identificatori, periodo, giorni):
+        async def statistics(self, identifiers, period, days):
             self.chiamate.append("statistiche")
             return {"serie": {}}
 
@@ -195,8 +195,8 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
     # ruota rinominandosi come il chiamante, gia' successo una volta in
     # questa fetta -- review Task 8), questa riga cade prima che la
     # produzione veda un `AttributeError`.
-    assert_stessa_firma(HAClient.storico, _HA.storico, nome="storico")
-    assert_stessa_firma(HAClient.statistiche, _HA.statistiche, nome="statistiche")
+    assert_stessa_firma(HAClient.history, _HA.history, nome="storico")
+    assert_stessa_firma(HAClient.statistics, _HA.statistics, nome="statistiche")
 
     ha = _HA()
     d = ToolDispatcher(None, None, cache=_Cache(), ha=ha)

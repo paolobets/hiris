@@ -19,7 +19,7 @@ promessa:
    sa leggere si dichiara invece di sparire;
 2. **il verdetto** (`verifica.verification`, pura): cosa si tocca, cosa resta
    fuori e con che parola lo si dice -- senza rete, in millisecondi;
-3. **il client** (`ha_client.estrai_dal_bersaglio`): il comando che parte
+3. **il client** (`ha_client.extract_from_target`): il comando che parte
    davvero, e le due meta' della risposta;
 4. **la porta**: la sequenza intera, e i due modi in cui la domanda a Home
    Assistant puo' non arrivare -- che non devono MAI diventare un bersaglio
@@ -90,7 +90,7 @@ STATI_CUCINA = {eid: {"id": eid, "state": "on", "attributes": {}}
 
 
 def _risolto(entita, **resto) -> dict:
-    """La risposta di `estrai_dal_bersaglio` nella sua forma piena.
+    """La risposta di `extract_from_target` nella sua forma piena.
 
     Le sette chiavi ci sono SEMPRE, come le mette il client vero: un test che
     ne omettesse una proverebbe il codice contro una risposta che nessuno
@@ -331,7 +331,7 @@ async def test_un_bersaglio_di_sole_entita_non_chiede_niente_a_nessuno():
 # ── 3. Il client: il comando che parte davvero ─────────────────────────────
 
 class FintoWs:
-    """Il websocket di Home Assistant visto da `estrai_dal_bersaglio`.
+    """Il websocket di Home Assistant visto da `extract_from_target`.
 
     Registra il messaggio INTERO che gli si manda: e' l'unico modo di provare
     che i due parametri partono davvero, e non che il codice li nomina in un
@@ -377,7 +377,7 @@ async def test_il_comando_e_quello_di_home_assistant_coi_suoi_due_parametri():
     che parte.
     """
     client, ws = _client(_successo())
-    await client.estrai_dal_bersaglio({"area_id": ["cucina"]})
+    await client.extract_from_target({"area_id": ["cucina"]})
     tipo, extra = ws.mandati[0]
     assert tipo == "extract_from_target"
     assert extra["target"] == {"area_id": ["cucina"]}
@@ -395,7 +395,7 @@ async def test_le_due_meta_arrivano_tradotte_e_in_ordine():
         referenced_areas=["cucina"],
         missing_areas=["tinello"], missing_floors=["attico"],
         missing_labels=["notturne"]))
-    risolto = await client.estrai_dal_bersaglio({"area_id": ["cucina", "tinello"]})
+    risolto = await client.extract_from_target({"area_id": ["cucina", "tinello"]})
     assert risolto["entita"] == ["light.cucina_1", "light.cucina_2"]
     assert risolto["aree"] == ["cucina"]
     assert risolto["aree_mancanti"] == ["tinello"]
@@ -413,7 +413,7 @@ async def test_un_dispositivo_che_non_esiste_non_finisce_fra_quelli_toccati():
     resta intero fra i mancanti."""
     client, _ = _client(_successo(referenced_devices=["vero", "fantasma"],
                                   missing_devices=["fantasma"]))
-    risolto = await client.estrai_dal_bersaglio({"device_id": ["vero", "fantasma"]})
+    risolto = await client.extract_from_target({"device_id": ["vero", "fantasma"]})
     assert risolto["dispositivi"] == ["vero"]
     assert risolto["dispositivi_mancanti"] == ["fantasma"]
 
@@ -426,7 +426,7 @@ async def test_un_rifiuto_di_home_assistant_e_un_errore_non_un_bersaglio_vuoto()
     client, _ = _client({"id": 1, "success": False,
                          "error": {"code": "unknown_command",
                                    "message": "non conosco questo comando"}})
-    risolto = await client.estrai_dal_bersaglio({"area_id": ["cucina"]})
+    risolto = await client.extract_from_target({"area_id": ["cucina"]})
     assert "errore" in risolto
     assert "unknown_command" in risolto["errore"]
     assert "entita" not in risolto
@@ -435,7 +435,7 @@ async def test_un_rifiuto_di_home_assistant_e_un_errore_non_un_bersaglio_vuoto()
 @pytest.mark.asyncio
 async def test_nessuna_risposta_e_un_errore_non_un_bersaglio_vuoto():
     client, _ = _client(None)
-    risolto = await client.estrai_dal_bersaglio({"area_id": ["cucina"]})
+    risolto = await client.extract_from_target({"area_id": ["cucina"]})
     assert "errore" in risolto and "entita" not in risolto
 
 
@@ -458,7 +458,7 @@ class FintoClientPorta:
     async def get_services(self):
         return RISPOSTA_HA
 
-    async def estrai_dal_bersaglio(self, target):
+    async def extract_from_target(self, target):
         self.sequenza.append(("risolvi", target))
         if self._solleva:
             raise RuntimeError("websocket caduto")
@@ -481,7 +481,7 @@ class FintoClientSenzaBocca(FintoClientPorta):
     """Il client che non sa risolvere i bersagli -- chi cablasse questa porta
     su un altro client di Home Assistant. `None` e non un metodo: e'
     esattamente cio' che `getattr` trova e cio' che `callable` rifiuta."""
-    estrai_dal_bersaglio = None
+    extract_from_target = None
 
 
 class FintaCache:
@@ -568,6 +568,16 @@ async def test_un_client_che_non_sa_risolvere_non_esegue_e_lo_dichiara():
     entita' nominate, che qui sono zero -- sarebbe una chiamata su niente
     raccontata come riuscita."""
     client = FintoClientSenzaBocca()
+    # La finta deve DAVVERO non avere la bocca, o questo test non prova
+    # niente. Provato per mutazione durante la fetta «la rinomina» (lotto
+    # 19c): rinominato `HAClient.estrai_dal_bersaglio` in
+    # `extract_from_target`, questo attributo e' rimasto indietro e la
+    # finta ha ricominciato a EREDITARE il metodo vero da
+    # `FintoClientPorta` -- e il test e' rimasto verde lo stesso, cioe'
+    # non misurava piu' cio' che il suo docstring promette.
+    assert not callable(getattr(client, "extract_from_target", None)), (
+        "la finta ha di nuovo una bocca: questo test non sta piu' "
+        "provando il ramo del client che non sa risolvere")
     porta = await _porta(client)
     esito = await porta.execute({"servizio": "light.turn_off",
                                 "bersaglio": {"aree": ["cucina"]}}, actor="prova")

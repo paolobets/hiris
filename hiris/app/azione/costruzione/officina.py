@@ -13,8 +13,8 @@ difetto, non un'ottimizzazione.
 suoi chiamanti sono uno strumento che parla a un modello e una rotta HTTP.
 
 **Dove vive la rete (ondata finale, punto 1).** Le primitive REST di
-`HAClient` (`leggi_configurazione`, `salva_configurazione`,
-`cancella_configurazione`) sollevano quello che rompe il trasporto -- e'
+`HAClient` (`read_configuration`, `save_configuration`,
+`delete_configuration`) sollevano quello che rompe il trasporto -- e'
 scritto nel loro stesso docstring, e resta vero: quella frase non cambia.
 La guardia vive QUI, all'unico chiamante (`_rete`, sotto): un
 `ClientConnectorError` o un timeout durante un'`apply` diventano
@@ -166,9 +166,9 @@ class Workshop:
         if operation in ("modifica", "cancella"):
             if not key:
                 return {"errore": f"per {operation} serve la chiave dell'oggetto da toccare."}
-            loaded = await self._rete(self._ha.leggi_configurazione(domain, key))
+            loaded = await self._rete(self._ha.read_configuration(domain, key))
             if loaded.get("assente"):
-                # `leggi_configurazione` ha TRE forme (`corpo`, `errore`,
+                # `read_configuration` ha TRE forme (`corpo`, `errore`,
                 # `assente`), non due: indicizzare `letto["corpo"]` su questo
                 # ramo solleverebbe `KeyError` fuori dal modulo, raggiungibile
                 # con argomenti perfettamente validi -- il modello propone una
@@ -217,7 +217,7 @@ class Workshop:
         `automations.yaml`, vista dall'altro lato, e l'unica difesa e' chiedere
         prima.
 
-        Si distingue `assente` da `errore` (vedi `leggi_configurazione`): se
+        Si distingue `assente` da `errore` (vedi `read_configuration`): se
         Home Assistant non risponde **non si dichiara libera** nessuna chiave.
         """
         alias = intent.get("alias") or ""
@@ -227,7 +227,7 @@ class Workshop:
         else:
             candidata = composer.new_id(occupate, seme=_seme_da(intent))
         for _ in range(5):
-            loaded = await self._rete(self._ha.leggi_configurazione(domain, candidata))
+            loaded = await self._rete(self._ha.read_configuration(domain, candidata))
             if loaded.get("assente"):
                 return {"chiave": candidata}
             if "errore" in loaded:
@@ -275,7 +275,7 @@ class Workshop:
         parts = composer.parts_to_validate(domain, body)
         if not parts:
             return None
-        occurrence = await self._ha.valida_config(**parts)
+        occurrence = await self._ha.validate_config(**parts)
         if "errore" in occurrence:
             return f"non ho potuto far validare la configurazione: {occurrence['errore']}"
         guasti = [f"{key}: {entry.get('error')}"
@@ -351,7 +351,7 @@ class Workshop:
         nati: list[tuple[str, str]] = []
         senza_id: list[str] = []
         for helper in proposal["helper"]:
-            occurrence = await self._ha.crea_helper(helper.get("dominio"),
+            occurrence = await self._ha.create_helper(helper.get("dominio"),
                                                helper.get("dati") or {})
             if "errore" in occurrence:
                 note = await self._disfa(nati, senza_id)
@@ -370,11 +370,11 @@ class Workshop:
                 senza_id.append(str(helper.get("dominio")))
 
         if operation == "cancella":
-            written = await self._rete(self._ha.cancella_configurazione(domain, key))
+            written = await self._rete(self._ha.delete_configuration(domain, key))
             riuscito = "cancellato" in written
         else:
             written = await self._rete(
-                self._ha.salva_configurazione(domain, key, proposal["dopo"]))
+                self._ha.save_configuration(domain, key, proposal["dopo"]))
             riuscito = "salvato" in written
 
         if not riuscito:
@@ -403,7 +403,7 @@ class Workshop:
             # cronaca, l'archivio delle versioni, la pagina.
             for entity_id in entity:
                 await self._label(entity_id)
-        # Gli helper sono SEMPRE nati -- `crea_helper` non e' altro --
+        # Gli helper sono SEMPRE nati -- `create_helper` non e' altro --
         # indipendentemente dal gesto sul dominio principale: una
         # `modifica` puo' portarsi dietro un helper nuovo tanto quanto un
         # `crea`. Spec §5, testuale: l'etichetta si applica «all'entita'
@@ -467,8 +467,8 @@ class Workshop:
         """Esegue una chiamata alle primitive REST di `HAClient`, catturando i
         guasti di TRASPORTO (ondata finale, punto 1).
 
-        `leggi_configurazione`, `salva_configurazione` e
-        `cancella_configurazione` sollevano quello che rompe il trasporto --
+        `read_configuration`, `save_configuration` e
+        `delete_configuration` sollevano quello che rompe il trasporto --
         e' scritto nel loro docstring (`proxy/ha_client.py`), e resta cosi':
         la guardia vive qui, all'unico chiamante, non li'. Senza di lei, un
         Home Assistant irraggiungibile durante un'`apply` salterebbe
@@ -509,7 +509,7 @@ class Workshop:
         Senza questa disfatta ogni tentativo fallito lascia rifiuti in casa
         dell'utente -- ed e' il modo esatto in cui si accumula la spazzatura
         che nessuno cancella piu'. Ma disfare in silenzio non basta: se anche
-        `cancella_helper` fallisce a sua volta, o un helper non e' mai entrato
+        `delete_helper` fallisce a sua volta, o un helper non e' mai entrato
         fra i disfabili (nessun `id` restituito alla creazione), tacerlo
         lascerebbe l'archivio dire «non e' successo niente» mentre in casa
         resta un orfano che nessuno pulira' piu'. Restituisce il pezzo di
@@ -519,7 +519,7 @@ class Workshop:
         disfatti: list[str] = []
         rimasti: list[str] = []
         for domain, helper_id in reversed(nati):
-            occurrence = await self._ha.cancella_helper(domain, helper_id)
+            occurrence = await self._ha.delete_helper(domain, helper_id)
             if "errore" in occurrence:
                 logger.warning("helper %s.%s creato e NON disfatto: %s",
                                domain, helper_id, occurrence["errore"])
@@ -588,7 +588,7 @@ class Workshop:
     async def _label(self, entity_id: str) -> None:
         if self._label_id is None and not await self._resolve_label():
             return
-        occurrence = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        occurrence = await self._ha.add_label_to(entity_id, self._label_id)
         if "errore" not in occurrence:
             return
         # Il `label_id` in cache potrebbe non esistere piu' in Home Assistant
@@ -601,7 +601,7 @@ class Workshop:
         self._label_id = None
         if not await self._resolve_label():
             return
-        occurrence = await self._ha.aggiungi_etichetta_a(entity_id, self._label_id)
+        occurrence = await self._ha.add_label_to(entity_id, self._label_id)
         if "errore" in occurrence:
             logger.warning("etichetta non applicata a %s nemmeno al secondo tentativo: %s",
                            entity_id, occurrence["errore"])
@@ -610,7 +610,7 @@ class Workshop:
         """Trova o crea il `label_id` di HIRIS in Home Assistant, aggiornando
         la cache dell'istanza. Restituisce True se una `label_id` valida e'
         nota dopo la chiamata."""
-        response = await self._ha.elenca_etichette()
+        response = await self._ha.list_labels()
         if "errore" in response:
             logger.debug("etichette non lette: %s", response["errore"])
             return False
@@ -619,7 +619,7 @@ class Workshop:
                 self._label_id = entry.get("label_id")
                 break
         if self._label_id is None:
-            creata = await self._ha.crea_etichetta(LABEL_NAME)
+            creata = await self._ha.create_label(LABEL_NAME)
             if "errore" in creata:
                 logger.debug("etichetta non creata: %s", creata["errore"])
                 return False

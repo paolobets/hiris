@@ -120,10 +120,15 @@ FALSI NEGATIVI dichiarati, perche' la frase che la giustificava era piu'
 larga del vero.
 
 Diceva: «`a` in coda e' SEMPRE un'etichetta di enumerazione». **E' falso, ed
-e' stato misurato**: su otto `a` in coda, sei lo sono (`call_a`, `text_a`,
-`tools_a`, ...) e **due sono la preposizione vera** -- `aggiungi_etichetta_a`
-(`proxy/ha_client.py:632`, chiamata da `azione/costruzione/officina.py:591`:
-«aggiungi etichetta A qualcosa») e `_caricato_a` (`azione/registro.py:113`).
+e' stato misurato**: su otto `a` in coda, sei lo erano (`call_a`, `text_a`,
+`tools_a`, ...) e **due erano la preposizione vera** -- `aggiungi_etichetta_a`
+(`proxy/ha_client.py`, «aggiungi etichetta A qualcosa») e `_caricato_a`
+(`azione/registro.py:113`). **Rimisurato dopo il lotto 19c: sei a UNO.**
+`aggiungi_etichetta_a` si chiama ora `add_label_to` -- non perche' questo
+cancello l'abbia segnalato (non poteva: la regola lo lascia passare) ma
+perche' la conversione di `proxy/` e' arrivata a quel metodo. Uno dei due
+falsi negativi si e' chiuso da solo, e resta il conto vero: la regola non li
+vede, li vede solo la lettura.
 La regola RESTA, perche' vietare `a` in coda arrossirebbe su sei nomi
 corretti per prenderne due; ma la ragione giusta e' un rapporto misurato
 (6 a 2), non una legge senza eccezioni. I due sono difetti che questo cancello
@@ -376,7 +381,7 @@ _NOTE_ITALIANE = frozenset({
     "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
     "e_alias", "e_contenitore", "e_def", "e_intestazione", "entita_del_dispositivo",
-    "estrai_dal_bersaglio", "famiglia_da_codice", "forme_del_token", "fra_parentesi",
+    "famiglia_da_codice", "forme_del_token", "fra_parentesi",
     "giro_di_confronto_albero", "grave_piu_un_taciuto", "guarda_condizioni_di_sistema",
     "i_non_letta", "ids_da_leggere", "il_file_non_porta_i_giorni", "il_piano_puo_rispondere",
     "in_fuori", "kwargs_con", "kwargs_senza", "l_altro_ieri", "legami_a_self_ha",

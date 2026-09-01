@@ -27,7 +27,7 @@ async def test_leggi_registri_chiede_tutti_i_registri_in_un_colpo():
     client = _client()
     finto = AsyncMock(return_value=[_msg([{"a": 1}]) for _ in range(10)])
     with patch.object(HAClient, "_ws_batch", finto):
-        registri, _ = await client.leggi_registri()
+        registri, _ = await client.read_registries()
     (comandi,), _ = finto.call_args
     tipi = [t for t, _ in comandi]
     assert tipi == [
@@ -51,7 +51,7 @@ async def test_un_registro_mancante_diventa_lista_vuota_non_un_guasto():
     """Un HA senza piani risponde comunque: il resto dell'anagrafe deve reggere."""
     risposte = [None] + [_msg([{"a": 1}]) for _ in range(9)]
     with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        registri, _ = await _client().leggi_registri()
+        registri, _ = await _client().read_registries()
     assert registri["piani"] == []
     assert registri["aree"] == [{"a": 1}]
 
@@ -62,7 +62,7 @@ async def test_un_registro_caduto_si_distingue_da_uno_vuoto():
     vuota: solo `non_disponibili` dice quale dei due e' successo."""
     risposte = [None] + [_msg([]) for _ in range(9)]
     with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        registri, non_disponibili = await _client().leggi_registri()
+        registri, non_disponibili = await _client().read_registries()
     assert registri["piani"] == []
     assert "piani" in non_disponibili
     assert "aree" not in non_disponibili
@@ -72,7 +72,7 @@ async def test_un_registro_caduto_si_distingue_da_uno_vuoto():
 async def test_una_casa_sana_non_ha_registri_non_disponibili():
     with patch.object(HAClient, "_ws_batch",
                       AsyncMock(return_value=[_msg([{"a": 1}]) for _ in range(10)])):
-        _, non_disponibili = await _client().leggi_registri()
+        _, non_disponibili = await _client().read_registries()
     assert non_disponibili == []
 
 
@@ -80,7 +80,7 @@ async def test_una_casa_sana_non_ha_registri_non_disponibili():
 async def test_le_categorie_si_chiedono_per_tutti_gli_ambiti():
     finto = AsyncMock(return_value=[_msg([]) for _ in range(10)])
     with patch.object(HAClient, "_ws_batch", finto):
-        await _client().leggi_registri()
+        await _client().read_registries()
     (comandi,), _ = finto.call_args
     ambiti = [extra["scope"] for tipo, extra in comandi
               if tipo == "config/category_registry/list"]
@@ -92,7 +92,7 @@ async def test_ogni_categoria_porta_il_proprio_ambito():
     risposte = [_msg([]) for _ in range(6)]                       # i sei registri non-categoria
     risposte += [_msg([{"category_id": f"c{i}", "name": f"C{i}"}]) for i in range(4)]
     with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        registri, _ = await _client().leggi_registri()
+        registri, _ = await _client().read_registries()
     assert [c["ambito"] for c in registri["categorie"]] == [
         "automation", "script", "scene", "helpers"]
 
@@ -102,7 +102,7 @@ async def test_un_ambito_di_categorie_caduto_si_dice_quale():
     risposte = [_msg([]) for _ in range(6)]
     risposte += [_msg([]), None, _msg([]), _msg([])]
     with patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)):
-        _, non_disponibili = await _client().leggi_registri()
+        _, non_disponibili = await _client().read_registries()
     assert non_disponibili == ["categorie:script"]
 
 
@@ -128,7 +128,7 @@ async def test_registro_rifiutato_il_log_porta_il_motivo_di_ha(caplog):
         patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
-        _, non_disponibili = await _client().leggi_registri()
+        _, non_disponibili = await _client().read_registries()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("Unknown command." in r for r in righe), caplog.text
@@ -143,7 +143,7 @@ async def test_registro_forma_inattesa_il_log_lo_dice(caplog):
         patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
-        _, non_disponibili = await _client().leggi_registri()
+        _, non_disponibili = await _client().read_registries()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("non-sono-una-lista" in r for r in righe), caplog.text
@@ -160,7 +160,7 @@ async def test_registro_mai_partito_il_log_lo_dice(caplog):
         patch.object(HAClient, "_ws_batch", AsyncMock(return_value=risposte)),
         caplog.at_level(logging.DEBUG, logger="hiris.app.proxy.ha_client"),
     ):
-        _, non_disponibili = await _client().leggi_registri()
+        _, non_disponibili = await _client().read_registries()
     assert "piani" in non_disponibili
     righe = [r.getMessage() for r in caplog.records]
     assert any("nessuna risposta" in r for r in righe), caplog.text
@@ -178,7 +178,7 @@ async def test_registro_mai_partito_il_log_lo_dice(caplog):
 #
 # fetta E3 Task 12: test_get_config_entries_restituisce_tutto_non_solo_gli_
 # errori e' cancellato -- testava `HAClient.get_config_entries()` in
-# isolamento, un metodo diverso da `leggi_registri()` sopra (che chiede
+# isolamento, un metodo diverso da `read_registries()` sopra (che chiede
 # "config/config_entries/get_entries" direttamente nel proprio batch WS, non
 # passando da `get_config_entries`). `get_config_entries` era gia' ORFANO
 # DICHIARATO dal Task 11 (l'HealthMonitor che lo leggeva e' uscito):

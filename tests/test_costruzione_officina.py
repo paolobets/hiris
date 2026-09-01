@@ -45,8 +45,8 @@ class FintoHA:
         # Assistant e' irraggiungibile durante un'`apply` -- il difetto n.1
         # (`test_che_non_possono_fallire`) applicato al livello della finta
         # intera, non della singola asserzione. `self._solleva` e' l'insieme
-        # dei nomi dei metodi REST (`leggi_configurazione`,
-        # `salva_configurazione`, `cancella_configurazione`) che devono
+        # dei nomi dei metodi REST (`read_configuration`,
+        # `save_configuration`, `delete_configuration`) che devono
         # sollevare invece di rispondere, fedele a cio' che il client vero fa
         # su un guasto di trasporto (`ClientConnectorError`, timeout).
         self._solleva: set[str] = set()
@@ -55,11 +55,11 @@ class FintoHA:
         if nome in self._solleva:
             raise ConnectionError(f"finta interruzione di rete durante {nome}")
 
-    async def valida_config(self, **kw):
+    async def validate_config(self, **kw):
         return self._override.get("valida", {
             k: {"valid": True, "error": None} for k in kw})
 
-    async def salva_configurazione(self, domain, key, body):
+    async def save_configuration(self, domain, key, body):
         self._forse_solleva("salva_configurazione")
         if "salva" in self._override:
             return self._override["salva"]
@@ -77,12 +77,12 @@ class FintoHA:
             self.stati[0]["attributes"]["id"] = key
         return {"salvato": True}
 
-    async def cancella_configurazione(self, domain, key):
+    async def delete_configuration(self, domain, key):
         self._forse_solleva("cancella_configurazione")
         self.cancellate.append((domain, key))
         return {"cancellato": True}
 
-    async def leggi_configurazione(self, domain, key):
+    async def read_configuration(self, domain, key):
         self._forse_solleva("leggi_configurazione")
         if "leggi" in self._override:
             return self._override["leggi"]
@@ -97,25 +97,25 @@ class FintoHA:
             return {"corpo": {"id": key, "alias": "com'era"}}
         return {"assente": True}
 
-    async def crea_helper(self, domain, data):
+    async def create_helper(self, domain, data):
         if "crea_helper" in self._override:
             return self._override["crea_helper"]
         self.helper_creati.append((domain, data))
         return {"helper": {"id": "modalita_notte"}}
 
-    async def cancella_helper(self, domain, helper_id):
+    async def delete_helper(self, domain, helper_id):
         if "cancella_helper" in self._override:
             return self._override["cancella_helper"]
         self.helper_cancellati.append((domain, helper_id))
         return {"cancellato": True}
 
-    async def elenca_etichette(self):
+    async def list_labels(self):
         return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
 
-    async def crea_etichetta(self, name):
+    async def create_label(self, name):
         return {"etichetta": {"label_id": "hiris", "name": name}}
 
-    async def aggiungi_etichetta_a(self, entity_id, label_id):
+    async def add_label_to(self, entity_id, label_id):
         self.etichettate.append((entity_id, label_id))
         return {"applicata": True}
 
@@ -360,7 +360,7 @@ async def test_il_consiglio_del_mestiere_viaggia_nell_preview(banco):
 
 @pytest.mark.asyncio
 async def test_modificare_un_oggetto_sparito_si_rifiuta_invece_di_esplodere(banco):
-    """CRITICAL: `leggi_configurazione` ha tre forme (`corpo`, `errore`,
+    """CRITICAL: `read_configuration` ha tre forme (`corpo`, `errore`,
     `assente`), non due. Una `modifica` su una chiave che HA non trova piu'
     (l'utente l'ha cancellata nel frattempo) deve tornare un rifiuto motivato,
     non sollevare `KeyError: 'corpo'` fuori dal modulo."""
@@ -432,7 +432,7 @@ async def test_la_disfatta_dell_helper_e_dichiarata_nel_motivo(banco):
 
 @pytest.mark.asyncio
 async def test_se_la_disfatta_fallisce_lo_dice_invece_di_tacere(banco):
-    """IMPORTANT 2: se anche `cancella_helper` fallisce, l'archivio non deve
+    """IMPORTANT 2: se anche `delete_helper` fallisce, l'archivio non deve
     dire «non e' successo niente» mentre in casa resta un helper orfano che
     nessuno pulira' piu'."""
     officina, ha, _archivio, _ = banco
@@ -585,7 +585,7 @@ async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     faccia su questo campo -- `HAClient._KEY_RE.match(key or "")`
     riceve un intero intatto (e' truthy: `or ""` non lo tocca) e solleva
     `TypeError`. La finta ora e' fedele su questo punto (vedi
-    `FintoHA.leggi_configurazione`), quindi questo test misura il codice
+    `FintoHA.read_configuration`), quindi questo test misura il codice
     vero, non un fake troppo permissivo."""
     officina, ha, _archivio, _ = banco
     esito = await officina.propose(_intento(gesto="modifica", chiave=1771),
@@ -696,7 +696,7 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
-    """Punto 1, il terzo sito guardato (`cancella_configurazione`,
+    """Punto 1, il terzo sito guardato (`delete_configuration`,
     officina.py:305): stessa protezione sul gesto distruttivo."""
     officina, ha, archivio, _ = banco
     p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
@@ -746,7 +746,7 @@ async def test_un_guasto_di_rete_durante_proponi_una_modifica_non_solleva(banco)
 @pytest.mark.asyncio
 async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banco):
     """Punto 3: spec §5 testuale, «l'etichetta si applica all'entita' nata,
-    helper compresi». Un helper creato da `crea_helper` e' SEMPRE nato,
+    helper compresi». Un helper creato da `create_helper` e' SEMPRE nato,
     indipendentemente dal gesto sul dominio principale -- una `modifica`
     all'automazione non rende meno nuovo l'`input_boolean` che nasce insieme.
     Prima di questa correzione `_rileggi` filtrava per `{dominio}.`, quindi
@@ -812,8 +812,8 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
 # ---------------------------------------------------------------------------
 # Punto 1 (residuo) -- IMPORTANT, il solo che conta davvero.
 #
-# Oggi i quattro siti che chiamano `leggi_configurazione`/
-# `salva_configurazione`/`cancella_configurazione` sono tutti avvolti in
+# Oggi i quattro siti che chiamano `read_configuration`/
+# `save_configuration`/`delete_configuration` sono tutti avvolti in
 # `self._rete(...)`: e' cio' che trasforma un guasto di TRASPORTO in
 # `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire come
 # eccezione fuori dall'officina (il modulo dichiara "non solleva mai"). Ma
@@ -827,11 +827,11 @@ async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
 # d'altri punti del file (docstring comprese). Serve legare OGNI occorrenza
 # delle tre primitive alla presenza dell'involucro -- qui strutturalmente,
 # con l'AST, non per posizione testuale: cosi' non importa se la chiamata
-# sta su una riga sola o e' spezzata su piu' righe (`salva_configurazione`,
+# sta su una riga sola o e' spezzata su piu' righe (`save_configuration`,
 # in `apply`, lo e').
 # ---------------------------------------------------------------------------
 
-_PRIMITIVE_REST = ("leggi_configurazione", "salva_configurazione", "cancella_configurazione")
+_PRIMITIVE_REST = ("read_configuration", "save_configuration", "delete_configuration")
 
 
 def _e_chiamata_a_primitiva_rest(nodo: ast.AST) -> bool:
@@ -869,7 +869,7 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
     # Secondo giro di review: `_e_chiamata_a_primitiva_rest` riconosce SOLO
     # `self._ha.<primitiva>(...)` letterale -- un Attribute su un Name che si
     # chiama esattamente "self". Un alias di comodo (`ha = self._ha`, poi
-    # `ha.salva_configurazione(...)`) cambia `func.value` in `Name(id="ha")`:
+    # `ha.save_configuration(...)`) cambia `func.value` in `Name(id="ha")`:
     # zero corrispondenze, ne' fra le protette ne' fra le nude. Quella
     # chiamata sparirebbe dal controllo invece di finirci come violazione --
     # e il guardrail sul numero minimo di siti (sotto) non se ne
@@ -898,8 +898,8 @@ def test_le_tre_primitive_rest_non_compaiono_mai_fuori_da_rete():
     tutte = [n for n in ast.walk(albero) if _e_chiamata_a_primitiva_rest(n)]
     # Se questa lista fosse vuota il test passerebbe SEMPRE, a vuoto: un
     # test che non trova mai niente da controllare non protegge niente. I
-    # quattro siti di oggi (due `leggi_configurazione`, una
-    # `salva_configurazione`, una `cancella_configurazione`) la tengono
+    # quattro siti di oggi (due `read_configuration`, una
+    # `save_configuration`, una `delete_configuration`) la tengono
     # popolata.
     assert len(tutte) >= 4, (
         "le primitive REST non compaiono piu' nel sorgente atteso: "
@@ -939,7 +939,7 @@ async def test_un_guasto_di_rete_con_404_nel_messaggio_non_diventa_una_bugia(ban
     async def _guasto_con_404(dominio, chiave, corpo):
         raise ConnectionError(
             "Cannot connect to host 192.168.1.95:8404 ssl:default [Connect call failed]")
-    ha.salva_configurazione = _guasto_con_404
+    ha.save_configuration = _guasto_con_404
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -988,7 +988,7 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
 
     async def _guasto_lungo(dominio, chiave, corpo):
         raise ConnectionError(lunghissimo)
-    ha.salva_configurazione = _guasto_lungo
+    ha.save_configuration = _guasto_lungo
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)

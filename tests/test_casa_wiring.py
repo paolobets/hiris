@@ -31,26 +31,26 @@ def archivio(tmp_path):
 @pytest.mark.asyncio
 async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
     client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=(_VUOTI, []))
+    client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.leggi_registri.await_count == 1
+    assert client.read_registries.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     client = AsyncMock()
-    client.leggi_registri = AsyncMock(return_value=(_VUOTI, []))
+    client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.leggi_registri.await_count == 2
+    assert client.read_registries.await_count == 2
     # Contare le chiamate non basta: `_fra_poco` ingoia ogni eccezione per non
     # uccidere l'ascoltatore, quindi due ricostruzioni FALLITE darebbero lo
     # stesso conteggio. Solo l'archivio scritto prova che sono riuscite.
@@ -60,14 +60,14 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
 @pytest.mark.asyncio
 async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     client = AsyncMock()
-    client.leggi_registri = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
+    client.read_registries = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
     client.get_config = AsyncMock(return_value=_CONFIG)
     innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
-    assert client.leggi_registri.await_count == 2
+    assert client.read_registries.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -173,7 +173,7 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
     client._session = _FintaSessioneEventi(ws)
 
     anagrafe_chiamate: list[str] = []
-    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
     await asyncio.sleep(0.05)
@@ -204,8 +204,8 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
 
     anagrafe_chiamate: list[str] = []
     plance_chiamate: list[dict] = []
-    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
-    client.add_plance_listener(lambda dati: plance_chiamate.append(dati))
+    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+    client.add_dashboard_listener(lambda dati: plance_chiamate.append(dati))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
     await asyncio.sleep(0.05)
@@ -253,8 +253,8 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 
     servizi_chiamate: list[str] = []
     anagrafe_chiamate: list[str] = []
-    client.add_servizi_listener(lambda tipo: servizi_chiamate.append(tipo))
-    client.add_anagrafe_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+    client.add_service_listener(lambda tipo: servizi_chiamate.append(tipo))
+    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
     await asyncio.sleep(0.05)
@@ -331,7 +331,7 @@ def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    assert "add_servizi_listener" in src, (
+    assert "add_service_listener" in src, (
         "nessuno registra l'ascoltatore dei servizi: gli eventi arrivano e "
         "non invalidano niente")
     assert ".invalidate()" in src, (

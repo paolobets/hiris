@@ -31,7 +31,7 @@ async def rebuild(client, store) -> dict:
     riconnessione) non basta a farla ritentare subito. Una replica vecchia e
     dichiarata stantia e' meglio di una vuota spacciata per fresca.
     """
-    registries, unavailable = await client.leggi_registri()
+    registries, unavailable = await client.read_registries()
     frame, frame_loaded = await _read_reference_frame(client)
     if not frame_loaded:
         unavailable = list(unavailable) + ["sistema_di_riferimento"]
@@ -342,7 +342,7 @@ def category_names(home_space: dict) -> dict[tuple[str, str], str]:
     La chiave e' la COPPIA, non il solo id. Il registro delle categorie di
     Home Assistant e' partizionato per ambito (`automation`, `script`,
     `scene`, `helpers`: e' il parametro obbligatorio `scope` del comando) e le
-    righe che torna NON lo riportano -- lo aggiunge `ha_client.leggi_registri`
+    righe che torna NON lo riportano -- lo aggiunge `ha_client.read_registries`
     marcando ogni riga col proprio. Due categorie omonime in ambiti diversi
     sono due cose diverse, e indicizzarle per il solo id lascerebbe che l'una
     rispondesse per l'altra.
@@ -906,7 +906,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 # risposta davanti all'utente.
 #
 # Il secondo parere e' di Home Assistant su se stesso: `extract_from_target`
-# (`HAClient.estrai_dal_bersaglio`) RISOLVE un'area invece di dedurla. Le
+# (`HAClient.extract_from_target`) RISOLVE un'area invece di dedurla. Le
 # funzioni qui sotto sono la meta' pura di quel confronto: la rete la fa il
 # chiamante (`server.giro_di_confronto_albero`), qui arrivano solo le risposte
 # gia' lette -- la stessa disciplina di `componi()`, che riceve `stato` e
@@ -1018,7 +1018,7 @@ def _excluded_from_comparison(entity: dict | None) -> bool:
       sotto, non dall'albero di `gerarchia()`);
     - **di servizio** (`entity_category`, cioe' `config`/`diagnostic`): lo
       stesso `_include_entry` le scarta quando `primary_entities_only` e'
-      vero, ed e' vero -- `estrai_dal_bersaglio` lo passa esplicito, perche'
+      vero, ed e' vero -- `extract_from_target` lo passa esplicito, perche'
       cosi' fa una chiamata di servizio reale. Nell'anagrafe e' la colonna
       `categoria`, da non confondere con `categorie` (la tassonomia
       dell'utente);
@@ -1072,7 +1072,7 @@ def _compare_area(area: dict | None, identifier: str, answer,
     # «quell'area non c'e'» spiega in una parola cio' che altrimenti
     # arriverebbe come un elenco di entita' che non si toccano -- la stessa
     # distinzione fra «l'area e' vuota» e «quell'area non c'e'» che
-    # `estrai_dal_bersaglio` porta gia' nelle sue due meta'.
+    # `extract_from_target` porta gia' nelle sue due meta'.
     entry["assente_in_ha"] = identifier in (answer.get("aree_mancanti") or [])
 
     ours = {e.get("id") for e in area.get("entita") or []
@@ -1088,7 +1088,7 @@ def compare_with_home_assistant(floors: list[dict], home_space: dict,
                                 answers: dict[str, dict]) -> dict:
     """Il giro di confronto, in forma pura: albero + risposte di HA -> esito.
 
-    `risposte` e' `{area_id: cio' che ha risposto estrai_dal_bersaglio}`, nello
+    `risposte` e' `{area_id: cio' che ha risposto extract_from_target}`, nello
     stesso ordine in cui le aree sono state chieste. Restituisce::
 
         {"aree_totali": 16, "guardate": [{...}, {...}, {...}]}

@@ -38,25 +38,25 @@ class _FintoHA:
         self._statistiche = statistiche if statistiche is not None else {"serie": {}}
         self.calls = []
 
-    async def storico(self, entities, da_iso, a_iso):
-        self.calls.append(("storico", tuple(entities), da_iso, a_iso))
+    async def history(self, entities, from_iso, to_iso):
+        self.calls.append(("storico", tuple(entities), from_iso, to_iso))
         return self._storico
 
-    async def statistiche(self, identificatori, periodo, giorni):
-        self.calls.append(("statistiche", tuple(identificatori), periodo, giorni))
+    async def statistics(self, identifiers, period, days):
+        self.calls.append(("statistiche", tuple(identifiers), period, days))
         return self._statistiche
 
 
 # `HAClient` e' un ambito che questa fetta non converte: i suoi metodi
 # restano in italiano, e questa finta li imita col loro nome vero. Se
-# `HAClient.storico`/`.statistiche` cambiassero firma (o qualcuno li
+# `HAClient.history`/`.statistiche` cambiassero firma (o qualcuno li
 # rinominasse insieme al chiamante, come e' gia' successo una volta in
-# questa fetta -- review Task 8, `ha.statistiche()` diventato
+# questa fetta -- review Task 8, `ha.statistics()` diventato
 # `ha.statistics()` nel sorgente mentre la finta seguiva a ruota), questa
 # riga cade invece di lasciare la suite verde su un contratto che non
 # esiste piu'.
-assert_stessa_firma(HAClient.storico, _FintoHA.storico, nome="storico")
-assert_stessa_firma(HAClient.statistiche, _FintoHA.statistiche, nome="statistiche")
+assert_stessa_firma(HAClient.history, _FintoHA.history, nome="storico")
+assert_stessa_firma(HAClient.statistics, _FintoHA.statistics, nome="statistiche")
 
 
 @pytest.mark.asyncio
@@ -88,7 +88,7 @@ async def test_forty_eight_hours_of_a_sensor_receive_hourly_bands():
     assert occurrence["punti"][0]["media"] == 26.5
     assert ha.calls[0][0] == "statistiche"
     # M5: un refuso su "hour" o nel calcolo dei giorni passerebbe inosservato
-    # se nessuno guardasse cosa arriva davvero a `ha.statistiche`.
+    # se nessuno guardasse cosa arriva davvero a `ha.statistics`.
     assert ha.calls[0][2] == "hour"
     assert ha.calls[0][3] == int(48 / 24) + 1
 
@@ -289,7 +289,7 @@ def test_covered_with_missing_instant_stays_none():
 
 @pytest.mark.asyncio
 async def test_the_client_truncation_becomes_a_declared_floor():
-    """`ha.storico` promette `troncato` SEMPRE, apposta perche' «chi legge
+    """`ha.history` promette `troncato` SEMPRE, apposta perche' «chi legge
     deve poter sapere che e' scattato». Se `tempo.andamento` non lo legge, il
     conteggio nella nota e' un pavimento spacciato per esatto: su 12.000
     cambi veri direbbe «5000 cambi», non «almeno 5000»."""

@@ -316,7 +316,7 @@ def _difference(initial, final) -> float | None:
 # 17:05», sbagliato per «com'e' andata l'energia della casa ieri», che e'
 # una QUANTITA' CON UNA FORMA, un giorno intero, non un apri/chiudi. E OGNI
 # GENERE PORTA CON SE' LA SUA FONTE (spec §4): qui non e' il grezzo -- e'
-# `HAClient.statistiche_orarie()`, che HA gia' tiene, corretta per gli
+# `HAClient.hourly_statistics()`, che HA gia' tiene, corretta per gli
 # azzeramenti dei contatori, e conservata piu' a lungo dei nostri 22 giorni.
 #
 # Le funzioni qui sotto sono PURE (nessuna lettura di rete, nessun accesso
@@ -477,7 +477,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
     """Il corpo di un bilancio, dalle statistiche orarie GIA' lette e tradotte.
 
     **Pura**: nessuna lettura di rete. `serie` arriva gia' risolta dal
-    chiamante (`HAClient.statistiche_orarie()`, chiavi italiane) -- stessa
+    chiamante (`HAClient.hourly_statistics()`, chiavi italiane) -- stessa
     disciplina di `companions`/`directions` in `aggregate_day`.
 
     `entity_per_dimension`: `{"produzione": "sensor.x", ...}`, quale
@@ -511,7 +511,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
     esiste (spec §1, §3). **La chiave nuova e' `ora`** (lo stesso nome gia'
     usato da `picco_produzione` in `_balance_moments` -- fondamenta 3,
     consistenza), un ISO-8601 con fuso preso da `inizio` dello stesso punto
-    -- l'istante GIA' letto e tradotto da `HAClient.statistiche_orarie()`,
+    -- l'istante GIA' letto e tradotto da `HAClient.hourly_statistics()`,
     non ricalcolato. Non porta anche `fine`: la grana e' fissa a un'ora
     (`period="hour"`, l'unico chiamante), la durata e' sempre la stessa, e
     raddoppiare il payload per dirla a ogni punto non permetterebbe nessuna
@@ -588,7 +588,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     `directions(subject) -> dict | None` dice la direzione di un contatore di
     energia -- `{"direzione": ..., "provenienza": "dichiarata" | "dedotta"}`,
     o `None` se non si conosce. **Stessa forma di `companions`, stessa
-    ragione**: nella vita vera lo chiede a `HAClient.direzioni_energia()`
+    ragione**: nella vita vera lo chiede a `HAClient.energy_directions()`
     (due letture di rete, `energy/get_prefs` + il registro entita'), nei
     test no. **Non si scrive nel grezzo** (mandato «le direzioni
     dell'energia», 27/08/2026, punto 2): la direzione e' una CONFIGURAZIONE
@@ -636,7 +636,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     stesso dispositivo diventano UN oggetto, di genere `"bilancio"`. Ogni
     elemento e' `{"dispositivo_id", "nome", "entita": [...], "corpo": {...}}`
     -- gia' costruito dal chiamante (`server.py::costruisci_bilanci`, che
-    legge `HAClient.statistiche_orarie()`: **il bilancio non dipende dal
+    legge `HAClient.hourly_statistics()`: **il bilancio non dipende dal
     grezzo**, viene dalle statistiche di HA, che sono piu' corrette
     (gestiscono gli azzeramenti) e piu' durature dei nostri 22 giorni). E'
     lo STESSO principio di `companions`/`directions`: la rete sta fuori da
