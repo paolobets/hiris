@@ -62,6 +62,65 @@ import rinomina
 VOCABOLARIO_FRONTEND: dict[str, str] = {}
 
 
+# **La guardia sulla FORMA NUDA, che il gemello Python chiama `_pericoloso`.**
+# Il glossario decide `classe -> class`, e la decisione e' giusta: e' la parola
+# inglese per quel concetto. Ma applicata a un identificatore NUDO produce
+# `var class = ...`, che in JavaScript non e' un nome ombreggiato -- e' un
+# errore di sintassi. Misurato dal vivo il 02/09 su `config/usage-route.js:61`:
+# tre cancelli sono andati rossi insieme (`node --check`, oxlint, la suite), il
+# che e' un buon segno, ma un'ora prima la stessa parola sarebbe passata in un
+# file che nessun test carica. La stessa classe era gia' costata un guasto nel
+# Python (`cervello/pavimento.py`, `class = _text(...)`, trovato solo da
+# `py_compile`): li' esiste `_pericoloso`, qui mancava.
+#
+# Due insiemi, e la distinzione conta. Le PAROLE RISERVATE non si possono usare
+# e basta. I GLOBALI del browser si possono usare -- `var name = 'x'` e'
+# legale -- ma ombreggiano qualcosa che il codice intorno potrebbe leggere,
+# ed e' la meta' silenziosa del difetto: `name`, `status`, `length`, `top`,
+# `parent`, `event`, `origin`, `closed` sono proprieta' di `window` e un
+# ombreggiamento non fa arrossire niente.
+_RISERVATE = frozenset([
+    "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends",
+    "false", "finally", "for", "function", "if", "implements", "import",
+    "in", "instanceof", "interface", "let", "new", "null", "package",
+    "private", "protected", "public", "return", "static", "super",
+    "switch", "this", "throw", "true", "try", "typeof", "var", "void",
+    "while", "with", "yield", "await", "eval", "arguments",
+])
+
+_GLOBALI_PERICOLOSI = frozenset([
+    "window", "document", "console", "location", "history", "navigator",
+    "screen", "top", "parent", "self", "frames", "event", "name",
+    "status", "length", "closed", "origin", "opener", "alert", "confirm",
+    "prompt", "fetch", "localStorage", "sessionStorage", "Array",
+    "Object", "String", "Number", "Boolean", "Function", "Date", "RegExp",
+    "Math", "JSON", "Promise", "Map", "Set", "Symbol", "Error",
+    "Infinity", "NaN", "undefined", "setTimeout", "setInterval",
+    "clearTimeout", "clearInterval",
+])
+
+
+def pericoloso(nome: str, globale: bool) -> str:
+    """La ragione per cui `nome` non si puo' usare qui, o stringa vuota.
+
+    **`globale` cambia il verdetto, e la prima stesura non lo guardava.** Una
+    parola riservata non si puo' usare mai. Un globale del browser, invece,
+    dipende da DOVE: `var name` dentro una funzione e' un ombreggiamento
+    locale, legale e innocuo -- rifiutarlo vorrebbe dire rifiutare ogni
+    `nome -> name`, che e' la rinomina piu' comune della fetta. Al livello di
+    modulo, in uno script classico, lo stesso `var name` non ombreggia niente:
+    ASSEGNA a `window.name`, e quello e' il difetto. La differenza la sa
+    `acorn`, non io, ed e' il campo `globale` dei legami.
+    """
+    if nome in _RISERVATE:
+        return "e' una parola riservata di JavaScript: `var " + nome + "` non compila"
+    if globale and nome in _GLOBALI_PERICOLOSI:
+        return ("al livello di modulo `var " + nome + "` non ombreggia il globale "
+                "del browser: gli si SCRIVE sopra")
+    return ""
+
+
 def _pezzi_decisi(nome: str, g: rinomina.Glossario, ambito: str):
     """(inglese, ragione) -- `None` se lo strumento non e' autorizzato."""
     pezzi = rinomina.spezza(nome)
@@ -152,6 +211,11 @@ def main(argv=None) -> int:
                     proposte.append((rel, nome, ragione, len(l["rif"])))
                 continue
             if nuovo == nome:
+                continue
+            # 0. il nome nuovo e' usabile nudo in JavaScript?
+            perche = pericoloso(nuovo, l.get("globale", False))
+            if perche:
+                collisioni.append((rel, nome, nuovo, perche))
                 continue
             # 1. il nome nuovo e' gia' legato nello STESSO ambito?
             if nuovo in per_ambito[l["ambito"]]:

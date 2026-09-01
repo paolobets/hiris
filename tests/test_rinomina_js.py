@@ -126,3 +126,57 @@ def _scrivi(dati):
     f = Path(tempfile.mkdtemp()) / "legami.json"
     f.write_text(json.dumps(dati), encoding="utf-8")
     return str(f)
+
+
+def test_una_parola_riservata_di_javascript_non_si_applica_mai(capsys):
+    """La guardia sulla FORMA NUDA, e il suo caso e' vero.
+
+    Il glossario decide `classe -> class`, e la decisione e' giusta. Applicata
+    a un identificatore nudo produce `var class = ...`, che in JavaScript non
+    e' un nome ombreggiato: e' un errore di sintassi. Successo il 02/09 su
+    `config/usage-route.js:61` -- tre cancelli rossi insieme, ma un'ora prima
+    la stessa parola sarebbe passata in un file che nessun test carica. La
+    stessa classe era gia' costata un guasto nel Python (`class = _text(...)`
+    in `cervello/pavimento.py`, trovato solo da `py_compile`)."""
+    dati = _legami({"nome": "classe", "specie": "var", "ambito": 0,
+                    "dich": [0], "rif": [10], "globale": False})
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "APPLICABILI: 0" in fuori
+    assert "parola riservata" in fuori
+
+
+def test_un_nome_che_ombreggia_un_globale_del_browser_non_si_applica(capsys):
+    """La meta' silenziosa della stessa guardia, e conta DOVE.
+
+    Al livello di modulo, in uno script classico, `var name` non ombreggia il
+    globale del browser: gli scrive sopra. Dentro una funzione lo stesso nome
+    e' un ombreggiamento locale e innocuo -- il test gemello qui sotto lo
+    verifica, ed e' la ragione per cui la prima stesura di questa guardia era
+    sbagliata: rifiutava ogni `nome -> name`, la rinomina piu' comune della
+    fetta."""
+    dati = _legami({"nome": "nome", "specie": "var", "ambito": 0,
+                    "dich": [0], "rif": [], "globale": True})
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "APPLICABILI: 0" in fuori
+    assert "gli si SCRIVE sopra" in fuori
+
+
+def test_lo_stesso_nome_dentro_una_funzione_e_solo_un_ombreggiamento(capsys):
+    """La mutazione che separa le due meta': stesso nome, `globale` falso."""
+    dati = _legami({"nome": "nome", "specie": "var", "ambito": 3,
+                    "dich": [0], "rif": [], "globale": False})
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "APPLICABILI: 1" in fuori and "nome -> name" in fuori
+
+
+def test_la_guardia_non_blocca_un_nome_innocuo(capsys):
+    """La prova per mutazione al contrario: se la guardia bloccasse tutto
+    sarebbe verde per la ragione sbagliata."""
+    dati = _legami({"nome": "pannello", "specie": "var", "ambito": 0,
+                    "dich": [0], "rif": [], "globale": False})
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "APPLICABILI: 1" in fuori and "pannello -> panel" in fuori
