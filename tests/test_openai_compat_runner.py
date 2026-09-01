@@ -27,7 +27,7 @@ def test_init_openai_cloud_does_not_raise(tmp_path):
 
 
 def test_init_ollama_local_does_not_raise(tmp_path):
-    """Ollama variant (locale=True) must construct a valid httpx.Timeout.
+    """Ollama variant (local=True) must construct a valid httpx.Timeout.
 
     Il numero NON viene piu' da `OLLAMA_REQUEST_TIMEOUT`: lo passa il
     chiamante, che lo legge dall'archivio (`ollama.timeout_s`) -- la stessa
@@ -38,7 +38,7 @@ def test_init_ollama_local_does_not_raise(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
         timeout_s=90,
     )
     assert isinstance(runner._client.timeout, httpx.Timeout)
@@ -64,7 +64,7 @@ def test_circuit_open_message_names_local_backend(tmp_path):
     """Backlog #7 (local variant): Ollama keeps the 'backend locale' wording."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     assert runner._backend_noun == "Il backend locale"
 
@@ -74,7 +74,7 @@ def test_ollama_disables_sdk_retry(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        locale=True, leggi_modello=lambda: "gemma4:e4b",
+        local=True, leggi_modello=lambda: "gemma4:e4b",
     )
     assert runner._client.max_retries == 0
 
@@ -94,7 +94,7 @@ async def test_ollama_chat_passes_think_false(tmp_path):
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        locale=True, leggi_modello=lambda: "gemma4:e4b",
+        local=True, leggi_modello=lambda: "gemma4:e4b",
     )
     # Mock the API to return a plain stop response
     msg = MagicMock()
@@ -513,7 +513,7 @@ async def test_simple_chat_circuit_breaker_skips_dead_backend(tmp_path):
     from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     create = AsyncMock(side_effect=httpx.ConnectError("name does not resolve"))
     runner._client.chat.completions.create = create
@@ -532,7 +532,7 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
     open, recovers cleanly)."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     ok = MagicMock()
     ok.choices = [MagicMock(message=MagicMock(content="hi"))]
@@ -555,11 +555,11 @@ async def test_simple_chat_circuit_resets_on_success(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_openai_compat_runner_ollama_is_not_cloud(tmp_path):
-    """Ollama runner (locale=True) must declare _is_cloud=False."""
+    """Ollama runner (local=True) must declare _is_cloud=False."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1",
         api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     assert runner._is_cloud is False
 
@@ -844,7 +844,7 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
     timeout on every turn."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -861,7 +861,7 @@ async def test_chat_stream_short_circuits_when_breaker_open(tmp_path):
     error event instead of calling the network."""
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     runner._circuit_open_until = time.monotonic() + 60
     create = AsyncMock()
@@ -885,7 +885,7 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
     from hiris.app.backends.openai_compat_runner import _CIRCUIT_THRESHOLD
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama",
-        locale=True, leggi_modello=lambda: "llama3.1:8b",
+        local=True, leggi_modello=lambda: "llama3.1:8b",
     )
     conn_err = _openai.APIConnectionError(request=MagicMock())
     runner._client.chat.completions.create = AsyncMock(side_effect=conn_err)
@@ -940,10 +940,10 @@ def test_thinking_budget_ignorato_lo_dice_nel_log(caplog):
     valore si poteva cambiare solo scrivendo a mano il JSON in /data. Dal Task
     2 della fetta E5 l'utente lo imposta dalla pagina, legge «Salvato», e su
     OpenAI/OpenRouter/Ollama non succedeva niente e nessuno lo diceva."""
-    from hiris.app.backends.openai_compat_runner import avvisa_thinking_ignorato
+    from hiris.app.backends.openai_compat_runner import warn_thinking_ignored
 
     with caplog.at_level("WARNING"):
-        avvisa_thinking_ignorato("Il backend locale", 8000)
+        warn_thinking_ignored("Il backend locale", 8000)
     detto = " ".join(r.getMessage() for r in caplog.records)
     assert "thinking_budget=8000" in detto, (
         "il valore scartato va detto, non genericamente 'ignorato'"
@@ -956,10 +956,10 @@ def test_thinking_budget_ignorato_lo_dice_nel_log(caplog):
 def test_thinking_budget_a_zero_non_dice_niente(caplog):
     """A 0 non c'e' niente da dichiarare: e' il default, e un warning per turno
     su ogni installazione sarebbe rumore che insegna a ignorare i log."""
-    from hiris.app.backends.openai_compat_runner import avvisa_thinking_ignorato
+    from hiris.app.backends.openai_compat_runner import warn_thinking_ignored
 
     with caplog.at_level("WARNING"):
-        avvisa_thinking_ignorato("Il servizio AI", 0)
+        warn_thinking_ignored("Il servizio AI", 0)
     assert not [r for r in caplog.records if "thinking_budget" in r.getMessage()]
 
 
@@ -978,7 +978,7 @@ def test_entrambi_i_percorsi_del_runner_avvisano():
     chiamate = [
         n for n in ast.walk(albero)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        and n.func.id == "avvisa_thinking_ignorato"
+        and n.func.id == "warn_thinking_ignored"
     ]
     assert len(chiamate) == 2, (
         "ogni punto che scarta thinking_budget deve dichiararlo: attesi 2 "
@@ -1007,11 +1007,11 @@ def test_il_circuito_resta_aperto_per_tutto_il_raffreddamento(monkeypatch):
     r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
     for _ in range(3):
         r._record_conn_failure()
-    assert r.stato_circuito() == 60.0
+    assert r.circuit_state() == 60.0
     orologio[0] += 59
-    assert r.stato_circuito() == 1.0, "a 59 secondi il circuito e' ancora aperto"
+    assert r.circuit_state() == 1.0, "a 59 secondi il circuito e' ancora aperto"
     orologio[0] += 2
-    assert r.stato_circuito() == 0.0
+    assert r.circuit_state() == 0.0
 
 
 def test_sotto_la_soglia_il_circuito_non_si_apre(monkeypatch):
@@ -1025,7 +1025,7 @@ def test_sotto_la_soglia_il_circuito_non_si_apre(monkeypatch):
     r = OpenAICompatRunner(base_url="http://x/v1", api_key="k")
     r._record_conn_failure()
     r._record_conn_failure()
-    assert r.stato_circuito() == 0.0
+    assert r.circuit_state() == 0.0
 
 
 def test_lo_stato_del_circuito_e_letto_da_una_parte_sola(monkeypatch):
@@ -1041,7 +1041,7 @@ def test_lo_stato_del_circuito_e_letto_da_una_parte_sola(monkeypatch):
         r._record_conn_failure()
     for salto in (0, 59, 2):
         orologio[0] += salto
-        assert r._circuit_is_open() == (r.stato_circuito() > 0.0)
+        assert r._circuit_is_open() == (r.circuit_state() > 0.0)
     assert r._circuit_is_open() is False
 
 
@@ -1118,10 +1118,10 @@ async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
 
 
 def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():
-    """`_codice_di` e' il punto in cui il numero smette di andare perso.
+    """`_status_code` e' il punto in cui il numero smette di andare perso.
     `APIConnectionError` non ne ha uno -- una risposta non c'e' mai stata --
     e il `None` di quel caso e' il fatto, non un valore di comodo."""
-    from hiris.app.backends.openai_compat_runner import _codice_di
+    from hiris.app.backends.openai_compat_runner import _status_code
 
     class _Api(Exception):
         status_code = 402
@@ -1138,10 +1138,10 @@ def test_il_codice_di_un_errore_d_api_si_legge_e_quello_di_una_connessione_no():
         # uno nuovo.
         status_code = "402"
 
-    assert _codice_di(_Api()) == 402
-    assert _codice_di(_Conn()) is None
-    assert _codice_di(Exception("nudo")) is None
-    assert _codice_di(_Strano()) is None
+    assert _status_code(_Api()) == 402
+    assert _status_code(_Conn()) is None
+    assert _status_code(Exception("nudo")) is None
+    assert _status_code(_Strano()) is None
 
 
 # --- un messaggio non afferma cio' che non sa --------------------------------

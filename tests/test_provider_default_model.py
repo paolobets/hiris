@@ -64,10 +64,10 @@ def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio(tmp_path):
     app = _archivio(claude="claude-opus-4-7")
     runner = ClaudeRunner(api_key="sk-test",
                           leggi_modello=_lettura(app, "claude"))
-    assert runner._resolve_modello_corrente() == "claude-opus-4-7"
+    assert runner._resolve_current_model() == "claude-opus-4-7"
 
     app["models_config"] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
-    assert runner._resolve_modello_corrente() == "claude-haiku-4-5-20251001", (
+    assert runner._resolve_current_model() == "claude-haiku-4-5-20251001", (
         "il runner deve LEGGERE il modello al momento dell'uso, non averlo "
         "ricevuto alla costruzione"
     )
@@ -77,9 +77,9 @@ def test_il_modello_di_openai_cambia_dal_turno_dopo(tmp_path):
     app = _archivio(openai="gpt-4.1")
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test",
                                 leggi_modello=_lettura(app, "openai"))
-    assert runner._resolve_modello_corrente() == "gpt-4.1"
+    assert runner._resolve_current_model() == "gpt-4.1"
     app["models_config"] = {"provider_models": {"openai": "gpt-4o-mini"}}
-    assert runner._resolve_modello_corrente() == "gpt-4o-mini"
+    assert runner._resolve_current_model() == "gpt-4o-mini"
 
 
 def test_il_modello_di_openrouter_cambia_dal_turno_dopo(tmp_path):
@@ -87,9 +87,9 @@ def test_il_modello_di_openrouter_cambia_dal_turno_dopo(tmp_path):
     runner = OpenRouterRunner(api_key="sk-or-test",
                               leggi_modello=_lettura(app, "openrouter"))
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
-    assert runner._resolve_modello_corrente() == "openai/gpt-4.1"
+    assert runner._resolve_current_model() == "openai/gpt-4.1"
     app["models_config"] = {"provider_models": {"openrouter": ""}}
-    assert runner._resolve_modello_corrente() == AUTO_OPENROUTER.split("openrouter:")[-1]
+    assert runner._resolve_current_model() == AUTO_OPENROUTER.split("openrouter:")[-1]
 
 
 def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
@@ -99,16 +99,16 @@ def test_il_modello_di_ollama_cambia_dal_turno_dopo(tmp_path):
     adesso e' di una lettura, ed e' l'unica differenza."""
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         leggi_modello=lambda: (
             (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
         ),
     )
-    assert runner._resolve_modello_corrente() == "llama3.1:8b"
+    assert runner._resolve_current_model() == "llama3.1:8b"
     assert runner._resolve_model("gpt-4o", "chat") == "llama3.1:8b"
 
     archivio["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
-    assert runner._resolve_modello_corrente() == "qwen2.5:14b"
+    assert runner._resolve_current_model() == "qwen2.5:14b"
     assert runner._resolve_model("gpt-4o", "chat") == "qwen2.5:14b"
 
 
@@ -117,10 +117,10 @@ def test_senza_lettura_il_comportamento_e_quello_di_prima(tmp_path):
     ramo di libreria (chiunque costruisca un runner senza passare da
     `server.py`), e cambiarlo in silenzio sarebbe un ripiego nuovo."""
     claude = ClaudeRunner(api_key="sk-test")
-    assert claude._resolve_modello_corrente() == AUTO_MODEL_MAP["chat"]
+    assert claude._resolve_current_model() == AUTO_MODEL_MAP["chat"]
 
     openai = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-test")
-    assert openai._resolve_modello_corrente() == AUTO_COMPAT["chat"]
+    assert openai._resolve_current_model() == AUTO_COMPAT["chat"]
 
 
 def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
@@ -129,7 +129,7 @@ def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
     come se non ci fosse scelta, non mandare `None` al provider."""
     runner = ClaudeRunner(api_key="sk-test",
                           leggi_modello=lambda: None)
-    assert runner._resolve_modello_corrente() == AUTO_MODEL_MAP["chat"]
+    assert runner._resolve_current_model() == AUTO_MODEL_MAP["chat"]
 
 
 # ---------------------------------------------------------------------------
@@ -196,12 +196,12 @@ def test_la_lettura_regge_un_archivio_che_non_c_e_ancora():
 
 def test_applica_timeout_rifa_il_client_col_numero_nuovo(tmp_path):
     runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         timeout_s=120)
     assert runner._client.timeout.read == 120.0
     vecchio = runner._client
 
-    runner.applica_timeout(300)
+    runner.apply_timeout(300)
     assert runner._client is not vecchio
     assert runner._client.timeout.read == 300.0
     assert runner._client.max_retries == 0, "il locale resta fail-fast"
@@ -212,10 +212,10 @@ def test_applica_timeout_non_chiude_il_client_vecchio(tmp_path):
     chiuderlo la ucciderebbe a meta' turno. Il vecchio resta al garbage
     collector, che lo raccoglie quando l'ultima richiesta finisce."""
     runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         timeout_s=120)
     vecchio = runner._client
-    runner.applica_timeout(300)
+    runner.apply_timeout(300)
     assert vecchio.is_closed() is False
 
 
@@ -224,11 +224,11 @@ def test_applica_timeout_e_un_no_op_quando_il_numero_non_cambia(tmp_path):
     dietro un pool di connessioni -- anche quando l'utente ha solo riordinato
     la catena, che e' il gesto piu' frequente della pagina."""
     runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         timeout_s=120)
     stesso = runner._client
-    runner.applica_timeout(120)
-    runner.applica_timeout(120.0)
+    runner.apply_timeout(120)
+    runner.apply_timeout(120.0)
     assert runner._client is stesso
 
 
@@ -237,7 +237,7 @@ def test_senza_un_numero_restano_i_due_predefiniti_di_sempre(tmp_path, locale, a
     runner = OpenAICompatRunner(
         base_url=("http://192.168.1.50:11434/v1" if locale
                   else "https://api.openai.com/v1"),
-        api_key="k", locale=locale)
+        api_key="k", local=locale)
     assert runner._client.timeout.read == atteso
 
 
@@ -279,7 +279,7 @@ async def test_la_chiamata_a_ollama_parte_col_modello_LETTO_ADESSO(tmp_path):
 
     archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         leggi_modello=lambda: (
             (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
         ),
@@ -305,10 +305,10 @@ def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider(tmp_path):
     finirebbe dritto nel `model=` della richiesta. `_modello_scelto` normalizza
     a "" per tutti e due i runner, cosi' il ripiego esiste sempre."""
     locale = OpenAICompatRunner(
-        base_url="http://192.168.1.50:11434/v1", api_key="ollama", locale=True,
+        base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         leggi_modello=lambda: None)
     assert locale._modello_scelto() == ""
-    assert locale._resolve_modello_corrente() == ""
+    assert locale._resolve_current_model() == ""
 
     claude = ClaudeRunner(api_key="sk-test",
                           leggi_modello=lambda: None)

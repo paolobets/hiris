@@ -282,7 +282,7 @@ class _RunnerLocale(_Runner):
     def __init__(self):
         self.timeout_applicati = []
 
-    def applica_timeout(self, secondi):
+    def apply_timeout(self, secondi):
         self.timeout_applicati.append(secondi)
 
 
@@ -473,7 +473,7 @@ def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
         "modello scelto non c'e' niente da verificare"
     )
     assert "leggi_modello=_modello_locale," in blocco
-    assert "locale=True," in blocco
+    assert "local=True," in blocco
 
 
 def test_ogni_runner_riceve_la_lettura_del_SUO_provider():

@@ -1366,6 +1366,7 @@ al Task 6 invece che deciso qui.
 | attivo | active |
 | attributo | attribute |
 | automazione | automation |
+| avvisa | warn | il verbo, distinto dal sostantivo `avviso -> notice`: e' la classe verbo/sostantivo gia' accettata (`elenca`/`elenco`). `warn_thinking_ignored` (`backends/`) SCRIVE un avviso nel log, non ne restituisce uno |
 | avviso | notice |
 | bloccato | stuck | **Non `blocked`**: in `reasoning/queue.py::fail_stuck_downgrades` un ripiego «bloccato» non e' stato fermato da qualcuno -- e' un lavoro preso in carico e mai finito, perche' il processo e' caduto a meta'. `blocked` direbbe che qualcosa lo trattiene, `stuck` dice che e' rimasto li'. Il verbo `blocca -> block` resta quello che e' |
 | blocco | block |
@@ -1383,6 +1384,7 @@ al Task 6 invece che deciso qui.
 | chiama | call |
 | chiamata | call |
 | chiave | key |
+| circuito | circuit |
 | chiudi | close |
 | citato | cited |
 | classe | class |
@@ -1397,7 +1399,7 @@ al Task 6 invece che deciso qui.
 | conoscenza | knowledge |
 | conosciuto | known |
 | conservazione | retention |
-| consumi | usage |
+| consumi | usage | **Il singolare `consumo` NON e' aliasato, ed e' una decisione**: `cervello/oggetti.py::consumo` e' una variabile di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). `registra_consumo -> log_usage` (`backends/`) si applica a mano. Stessa forma delle note su `prima`, `valida` e `scadute` |
 | conta | count |
 | conteggio | counts |
 | contenuto | content |

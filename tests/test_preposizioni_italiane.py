@@ -353,7 +353,7 @@ _NOTE_ITALIANE = frozenset({
     "_casa_sala_da_pranzo",
     "_casa_senza_nomi", "_catena_di_oggi", "_che_solleva", "_chiamate_a_salva",
     "_chiavi_lette_da_run_sh", "_chiavi_prodotte_dalla_porta", "_classi_disegnate_dalla_pagina",
-    "_codice_di", "_codice_senza_commenti", "_con_registro", "_con_strumenti_e_processo",
+    "_codice_senza_commenti", "_con_registro", "_con_strumenti_e_processo",
     "_cosa_non_esiste", "_da_consegnare", "_da_quando", "_da_rileggere", "_da_salvare",
     "_da_salvare_p", "_dentro_un_loop", "_e_carattere_di_parola", "_e_chiamata_a_primitiva_rest",
     "_e_chiamata_a_rete", "_e_risorsa_della_card", "_e_self_ha", "_eco_della_cli",

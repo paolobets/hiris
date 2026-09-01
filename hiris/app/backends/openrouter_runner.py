@@ -79,7 +79,7 @@ class OpenRouterRunner(OpenAICompatRunner):
         # Il nome col quale i consumi finiscono nell'archivio. Senza questa
         # riga sarebbero scritti sulla riga di OpenAI: questa classe eredita
         # da `OpenAICompatRunner`, che si dichiara `"openai"`.
-        self.provider_nome = "openrouter"
+        self.provider_name = "openrouter"
 
     def _resolve_model(self, model: str, agent_type: str) -> str:
         """Strip 'openrouter:' / 'openrouter/' prefix before sending to OR."""

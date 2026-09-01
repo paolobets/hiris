@@ -156,7 +156,7 @@ def test_openai_resta_openai():
 def test_ollama_dichiara_lo_zero_invece_di_calcolarlo():
     registro = Registro()
     runner = OpenAICompatRunner(base_url="http://localhost:11434/v1",
-                                api_key="ollama", locale=True,
+                                api_key="ollama", local=True,
                                 registra_consumo=registro)
 
     runner._track_usage(_Risposta(_Uso()), "qwen2.5:7b")

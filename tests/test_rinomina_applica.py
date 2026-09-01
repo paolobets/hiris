@@ -647,6 +647,17 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # la specifica ne' il piano avevano mai nominato -- scoperto a meta'
     # fetta -- ed e' il primo aperto con tutte e quattro le reti in piedi.
     ("reasoning", "reasoning", frozenset()),
+    # `backends` entra il 01/09 con UN residuo dichiarato, e la ragione non e'
+    # lavoro rimandato: `openai_compat_runner.py` condivide con
+    # `claude_runner.py` (modulo di RADICE, non ancora convertito)
+    # un'interfaccia duck-typed -- `chat(..., strumenti=..., dispatcher=...)`
+    # e i kwarg `leggi_modello=`/`registra_consumo=` del costruttore, piu' i
+    # quattro aiutanti privati paralleli (`_leggi_modello`, `_registra_consumo`,
+    # `_modello_scelto`, `_scrivi_rifiuto`). **Tradurne meta' e' il difetto che
+    # questa fetta ha gia' pagato**: il router sceglie fra i due runner per
+    # duck-typing, e nessun cancello confronta le loro firme fra loro.
+    # Escono insieme, col lotto che convertira' i moduli di radice.
+    ("backends", "backends", frozenset({Path("openai_compat_runner.py")})),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("consumi", "consumi", frozenset()),
     ("cervello", "cervello", frozenset()),
@@ -1164,3 +1175,32 @@ def test_sponde_per_nome_non_scambia_un_percorso_di_import_per_un_attributo(tmp_
         "x = oggetto.strumenti\n", encoding="utf-8")
     trovati = rinomina.sponde_per_nome({"strumenti": "tools"}, radice=tmp_path)
     assert {f.name for f, _, _, _, _ in trovati} == {"vero.py"}, trovati
+
+
+def test_il_residuo_di_backends_e_solo_la_famiglia_dei_runner(tmp_path):
+    """La grana FINE del residuo di `backends/openai_compat_runner.py`.
+
+    Un'eccezione a grana di file nasconderebbe un secondo debito nato dopo per
+    un'altra ragione -- e' successo con `memoria/resolver.py`. Qui l'insieme
+    atteso ha tre coppie, ed e' ESATTO: sono le tre parole che compongono
+    l'interfaccia duck-typed condivisa con `claude_runner.py`.
+
+    Quando i moduli di radice verranno convertiti, questo test si rompe e va
+    TOLTO -- non allargato -- perche' il residuo sara' sparito.
+    """
+    import shutil
+
+    from _comune import ROOT
+    base = ROOT / "hiris" / "app" / "backends" / "openai_compat_runner.py"
+    copia = tmp_path / "openai_compat_runner.py"
+    shutil.copy(base, copia)
+    prima = copia.read_text(encoding="utf-8")
+    rinomina.applica(copia, "backends", scrivi=True)
+    dopo = copia.read_text(encoding="utf-8")
+    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
+    assert sostituzioni == {("modello", "model"), ("scelto", "chosen"),
+                            ("strumenti", "tools")}, (
+        f"backends/openai_compat_runner.py diverge su {sostituzioni}, attese "
+        "solo le tre parole della famiglia dei runner -- un nome nuovo e' "
+        "comparso: decidilo davvero invece di lasciarlo dentro un'eccezione "
+        "a grana di file")

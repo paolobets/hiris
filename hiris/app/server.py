@@ -1682,7 +1682,7 @@ def _ricalcola_catena(app) -> None:
         # dell'uso: `AsyncOpenAI` cuoce il timeout nel client alla costruzione
         # (vedi `OpenAICompatRunner.applica_timeout`, che è un no-op quando il
         # numero non è cambiato).
-        ollama.applica_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
+        ollama.apply_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
 
 
 def _leggi_statici(app) -> None:
@@ -3210,7 +3210,7 @@ async def _on_startup(app: web.Application) -> None:
         ollama_runner = OpenAICompatRunner(
             base_url=local_model_url.rstrip("/") + "/v1",
             api_key="ollama",
-            locale=True,
+            local=True,
             # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).

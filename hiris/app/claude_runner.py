@@ -694,7 +694,7 @@ class ClaudeRunner:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
         return (self._leggi_modello() if self._leggi_modello else "") or ""
 
-    def _resolve_modello_corrente(self) -> str:
+    def _resolve_current_model(self) -> str:
         """Il modello che questo runner userebbe adesso con `model="auto"`.
 
         Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo

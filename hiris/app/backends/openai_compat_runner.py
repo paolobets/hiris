@@ -37,7 +37,7 @@ _CIRCUIT_COOLDOWN_SEC = 60
 # con lei, vedi il commento su `_track_usage` piu' sotto.
 
 
-def _codice_di(exc: Exception) -> int | None:
+def _status_code(exc: Exception) -> int | None:
     """Lo stato HTTP di un errore d'API, o `None` se non ne porta uno.
 
     `openai.APIError` espone `status_code` sulle sottoclassi che nascono da una
@@ -45,8 +45,8 @@ def _codice_di(exc: Exception) -> int | None:
     c'è mai stata. Il `None` di quel caso NON è un valore di comodo: è il fatto,
     e la pagina lo dice con parole diverse («non risponde all'indirizzo»).
     """
-    codice = getattr(exc, "status_code", None)
-    return codice if isinstance(codice, int) else None
+    status_code = getattr(exc, "status_code", None)
+    return status_code if isinstance(status_code, int) else None
 
 
 def _is_conn_error(exc: Exception) -> bool:
@@ -79,7 +79,7 @@ def _is_conn_error(exc: Exception) -> bool:
 logger = logging.getLogger(__name__)
 
 
-def avvisa_thinking_ignorato(backend_noun: str, thinking_budget: int) -> None:
+def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
     """Dice nel log che `thinking_budget` non viene applicato su questo backend.
 
     fetta E5 Task 2, fix round 1 (I-2). Fino a qui le due `del
@@ -275,7 +275,7 @@ class OpenAICompatRunner:
         base_url: str,
         api_key: str,
         *,
-        locale: bool = False,
+        local: bool = False,
         leggi_modello=None,
         timeout_s: float = 0.0,
         registra_consumo=None,
@@ -288,14 +288,14 @@ class OpenAICompatRunner:
         # momento dell'uso (`leggi_modello`) invece di essere cotta nel
         # costruttore -- era il motivo per cui cambiare il modello di Ollama
         # non poteva avere effetto senza riavviare l'add-on.
-        if locale:
+        if local:
             from ..backends.ollama import _validate_ollama_url
             _validate_ollama_url(base_url)
         self._api_key = api_key
         self._base_url = base_url
-        self._locale = locale
+        self._local = local
         self._leggi_modello = leggi_modello
-        self._is_cloud = not locale  # True = cloud (OpenAI); False = local (Ollama)
+        self._is_cloud = not local  # True = cloud (OpenAI); False = local (Ollama)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
         # Stessa disciplina di `leggi_modello`. Ed e' la regola non negoziabile
         # di CLAUDE.md: un kwarg nuovo di `ClaudeRunner` lo accetta ANCHE
@@ -307,7 +307,7 @@ class OpenAICompatRunner:
         # lo stesso difetto che `LLMRouter._ordered_backends_con_nome` e' gia'
         # stato scritto per evitare nel registro degli esiti, e per la stessa
         # ragione.
-        self.provider_nome = "ollama" if locale else "openai"
+        self.provider_name = "ollama" if local else "openai"
         # Circuit-breaker message noun, so a cloud backend doesn't report
         # itself as "il backend locale" (review backlog #7).
         self._backend_noun = "Il servizio AI" if self._is_cloud else "Il backend locale"
@@ -319,7 +319,7 @@ class OpenAICompatRunner:
         # SECONDA rappresentazione dello stesso numero accanto alla copia
         # d'archivio (invariante 1), e le due potevano dire cose diverse.
         self._timeout_s = 0.0
-        self.applica_timeout(float(timeout_s) if timeout_s else (120.0 if locale else 600.0))
+        self.apply_timeout(float(timeout_s) if timeout_s else (120.0 if local else 600.0))
         # Circuit-breaker state for connection-class failures (dead endpoint).
         self._conn_fail_count = 0
         self._circuit_open_until = 0.0
@@ -383,15 +383,15 @@ class OpenAICompatRunner:
             return
         from ..consumi.vocabulary import cost_state_and_value
 
-        dichiarato = getattr(usage, "cost", None)
-        stato, costo = cost_state_and_value(self.provider_nome, model,
-                                     cost_dichiarato=dichiarato,
+        declared = getattr(usage, "cost", None)
+        state, cost = cost_state_and_value(self.provider_name, model,
+                                     cost_dichiarato=declared,
                                      cost_da_listino=cost)
         self._registra_consumo(
-            self.provider_nome, model, token_in=inp, token_out=out,
+            self.provider_name, model, token_in=inp, token_out=out,
             cache_read=getattr(usage, "cached_tokens", 0) or 0,
             cache_write=getattr(usage, "cache_write_tokens", 0) or 0,
-            cost_usd=costo, cost_state=stato, now=time.time())
+            cost_usd=cost, cost_state=state, now=time.time())
 
     def _scrivi_rifiuto(self, modello: str) -> None:
         """Un 429 si conta sulla riga del modello che l'ha preso.
@@ -404,7 +404,7 @@ class OpenAICompatRunner:
         if self._registra_consumo is None:
             return
         self._registra_consumo(
-            self.provider_nome, modello, richieste=0, errori_rate_limit=1,
+            self.provider_name, modello, richieste=0, errori_rate_limit=1,
             cost_usd=None, cost_state="non_noto", now=time.time())
 
     # ------------------------------------------------------------------
@@ -415,7 +415,7 @@ class OpenAICompatRunner:
         """Il modello scelto ADESSO, letto dove vive (l'archivio)."""
         return (self._leggi_modello() if self._leggi_modello else "") or ""
 
-    def _resolve_modello_corrente(self) -> str:
+    def _resolve_current_model(self) -> str:
         """Il modello che questo runner userebbe adesso con `model="auto"`.
 
         Esiste per rendere OSSERVABILE la lettura a caldo: senza, l'unico modo
@@ -429,13 +429,13 @@ class OpenAICompatRunner:
         # ne ha scaricato uno solo e chiedergliene un altro fallirebbe. La sola
         # differenza e' che adesso il valore si LEGGE.
         scelto = self._modello_scelto()
-        if self._locale:
+        if self._local:
             return scelto
         if model == "auto":
             return scelto or AUTO_MODEL_MAP.get(agent_type, "gpt-4o-mini")
         return model
 
-    def applica_timeout(self, secondi: float) -> None:
+    def apply_timeout(self, seconds: float) -> None:
         """Rifa' il client con un nuovo timeout.
 
         E' l'unico valore di questa fetta che non si puo' leggere al momento
@@ -452,11 +452,11 @@ class OpenAICompatRunner:
         senza quella guardia ogni salvataggio della pagina Modelli lascerebbe
         dietro un pool di connessioni, anche quando l'utente ha solo riordinato
         la catena."""
-        secondi = float(secondi)
-        if secondi == self._timeout_s:
+        seconds = float(seconds)
+        if seconds == self._timeout_s:
             return
         import openai as _openai
-        self._timeout_s = secondi
+        self._timeout_s = seconds
         # Ollama: disabilita auto-retry SDK. Default openai 2.x = 2 retry, che
         # cumulativamente possono superare il wrapper chatbot_engine 300s
         # producendo "Timeout dopo 300s" generico senza log specifici. Con
@@ -464,15 +464,15 @@ class OpenAICompatRunner:
         # Cloud OpenAI: lascia il default (2) — la rete cloud è meno volatile.
         self._client = _openai.AsyncOpenAI(
             api_key=self._api_key, base_url=self._base_url,
-            timeout=_httpx.Timeout(secondi, connect=5.0),
-            max_retries=0 if self._locale else 2,
+            timeout=_httpx.Timeout(seconds, connect=5.0),
+            max_retries=0 if self._local else 2,
         )
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def stato_circuito(self) -> float:
+    def circuit_state(self) -> float:
         """Secondi che mancano alla riapertura, 0 se il circuito è chiuso.
 
         Esiste da prima di questa fetta (`_circuit_open_until`, soglia 3,
@@ -488,7 +488,7 @@ class OpenAICompatRunner:
         return max(0.0, self._circuit_open_until - time.monotonic())
 
     def _circuit_is_open(self) -> bool:
-        return self.stato_circuito() > 0.0
+        return self.circuit_state() > 0.0
 
     def _record_conn_failure(self) -> None:
         self._conn_fail_count += 1
@@ -520,11 +520,11 @@ class OpenAICompatRunner:
                 # Cloud: lo stesso "gpt-4o-mini" scritto qui da sempre (questa
                 # chiamata non passa da `_resolve_model` e non ha un
                 # agent_type). Locale: il modello scelto, letto adesso.
-                "model": (self._modello_scelto() if self._locale else "") or "gpt-4o-mini",
+                "model": (self._modello_scelto() if self._local else "") or "gpt-4o-mini",
                 "messages": msgs,
                 "max_tokens": 1024,
             }
-            if self._locale:
+            if self._local:
                 kwargs["extra_body"] = {"think": False}
             resp = await self._client.chat.completions.create(**kwargs)
             self._record_success()
@@ -571,7 +571,7 @@ class OpenAICompatRunner:
         # seconda meta' e' diventata falsa nel momento in cui l'utente ha
         # potuto impostare quel valore dalla pagina. Vedi
         # `avvisa_thinking_ignorato` in cima al file.
-        avvisa_thinking_ignorato(self._backend_noun, thinking_budget)
+        warn_thinking_ignored(self._backend_noun, thinking_budget)
         del thinking_budget
         import openai as _openai
 
@@ -660,14 +660,14 @@ class OpenAICompatRunner:
 
         # I modelli locali (Ollama) tendono a inventare nomi di tool non presenti nello schema.
         # Iniettare la lista esplicita nel system prompt riduce fortemente le allucinazioni.
-        if self._locale and tools:
+        if self._local and tools:
             tool_names = ", ".join(t["name"] for t in tools)
             messages[0]["content"] += (
                 f"\n\n---\n\nTool disponibili: {tool_names}.\n"
                 "NON chiamare tool non presenti in questa lista."
             )
 
-        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._locale else MAX_TOOL_ITERATIONS
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._local else MAX_TOOL_ITERATIONS
         for iter_idx in range(max_iter):
             try:
                 kwargs: dict = {
@@ -686,9 +686,9 @@ class OpenAICompatRunner:
                 # specifici. `think: false` e' un parametro non-OpenAI che
                 # viene passato via extra_body al body JSON: i modelli senza
                 # thinking lo ignorano, quelli con thinking lo disattivano.
-                if self._locale:
+                if self._local:
                     kwargs["extra_body"] = {"think": False}
-                if self._locale:
+                if self._local:
                     msg_chars = sum(len(str(m.get("content", ""))) for m in messages)
                     logger.info(
                         "Ollama call: model=%s iter=%d/%d tools=%d msg_chars=%d",
@@ -696,7 +696,7 @@ class OpenAICompatRunner:
                         len(oai_tools or []), msg_chars,
                     )
                 response = await self._client.chat.completions.create(**kwargs)
-                if self._locale:
+                if self._local:
                     _content = (
                         (response.choices[0].message.content or "") if response.choices else ""
                     )
@@ -720,7 +720,7 @@ class OpenAICompatRunner:
                 raise RunnerBackendError(
                     upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
                     famiglia=famiglia_errore(exc),
-                    codice=_codice_di(exc) or 429,
+                    codice=_status_code(exc) or 429,
                 ) from exc
             except _openai.APIError as exc:
                 # OpenRouter 402: the API key has insufficient credit for the
@@ -747,7 +747,7 @@ class OpenAICompatRunner:
                             f"Riduci max_tokens dell'agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai.",
                             famiglia=famiglia_errore(retry_exc),
-                            codice=_codice_di(retry_exc),
+                            codice=_status_code(retry_exc),
                         ) from retry_exc
                 else:
                     # review M3/#2: connection-class failures (dead endpoint)
@@ -764,7 +764,7 @@ class OpenAICompatRunner:
                     raise RunnerBackendError(
                         "Errore temporaneo del servizio AI. Riprova tra poco.",
                         famiglia=famiglia_errore(exc),
-                        codice=_codice_di(exc),
+                        codice=_status_code(exc),
                     ) from exc
 
             self._record_success()
@@ -907,7 +907,7 @@ class OpenAICompatRunner:
         # See chat() for rationale on accepting+ignoring thinking_budget here
         # -- avviso incluso (fix round 1, I-2): il ramo SSE serve la card
         # Lovelace, dove il silenzio sarebbe identico.
-        avvisa_thinking_ignorato(self._backend_noun, thinking_budget)
+        warn_thinking_ignored(self._backend_noun, thinking_budget)
         del thinking_budget
         import openai as _openai
 
@@ -966,14 +966,14 @@ class OpenAICompatRunner:
         oai_tools = _to_openai_tools(tools) if tools else None
         tool_name_set = frozenset(t["name"] for t in tools)
 
-        if self._locale and tools:
+        if self._local and tools:
             tool_names = ", ".join(t["name"] for t in tools)
             messages[0]["content"] += (
                 f"\n\n---\n\nTool disponibili: {tool_names}.\n"
                 "NON chiamare tool non presenti in questa lista."
             )
 
-        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._locale else MAX_TOOL_ITERATIONS
+        max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._local else MAX_TOOL_ITERATIONS
         try:
             for _ in range(max_iter):
                 kwargs: dict = {
@@ -985,7 +985,7 @@ class OpenAICompatRunner:
                 if oai_tools:
                     kwargs["tools"] = oai_tools
                 # Ollama-specific: vedi commento in chat() per think:false.
-                if self._locale:
+                if self._local:
                     kwargs["extra_body"] = {"think": False}
 
                 try:
