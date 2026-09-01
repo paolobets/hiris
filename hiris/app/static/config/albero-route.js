@@ -112,11 +112,11 @@ window.HirisAlberoRoute = (function () {
   };
 
   function nomiRegistriInItaliano(voci) {
-    return voci.map(function (voce) {
-      var pezzi = String(voce).split(':');
-      var nome = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
-      var ambito = pezzi.slice(1).join(':');
-      return ambito ? nome + ' (ambito «' + ambito + '»)' : nome;
+    return voci.map(function (entry) {
+      var pezzi = String(entry).split(':');
+      var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
+      var scope = pezzi.slice(1).join(':');
+      return scope ? name + ' (ambito «' + scope + '»)' : name;
     });
   }
 
@@ -133,13 +133,13 @@ window.HirisAlberoRoute = (function () {
     volume: 'volume', wind_speed: 'vento', accumulated_precipitation: 'pioggia', area: 'area'
   };
 
-  function misureCasa(unita) {
-    if (!unita) return [];
+  function misureCasa(unit) {
+    if (!unit) return [];
     var chiavi = CHIAVI_MISURA_NOTE.slice();
-    Object.keys(unita).forEach(function (k) { if (chiavi.indexOf(k) === -1) chiavi.push(k); });
+    Object.keys(unit).forEach(function (k) { if (chiavi.indexOf(k) === -1) chiavi.push(k); });
     return chiavi
-      .filter(function (k) { return unita[k]; })
-      .map(function (k) { return (NOMI_MISURA[k] || k) + ' ' + unita[k]; });
+      .filter(function (k) { return unit[k]; })
+      .map(function (k) { return (NOMI_MISURA[k] || k) + ' ' + unit[k]; });
   }
 
   /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
@@ -157,85 +157,85 @@ window.HirisAlberoRoute = (function () {
      anche quando `mappa` e' `null` (l'archivio manca, stessa disciplina
      a tre stati di `non_disponibili`): un lookup su `null` non trova
      niente, e la stessa riga sotto ripiega sull'id grezzo. */
-  function nomeEtichetta(id, mappa) {
-    if (mappa && Object.prototype.hasOwnProperty.call(mappa, id)) return mappa[id];
+  function nomeEtichetta(id, map) {
+    if (map && Object.prototype.hasOwnProperty.call(map, id)) return map[id];
     return id;
   }
 
-  function el(tag, cls, testo) {
+  function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
-    if (testo != null) e.textContent = testo;
+    if (text != null) e.textContent = text;
     return e;
   }
 
-  function riga(padre, testo, stile) {
-    var p = el('p', 'sc-desc', testo);
-    if (stile) p.style.cssText = stile;
-    padre.appendChild(p);
+  function line(parent, text, style) {
+    var p = el('p', 'sc-desc', text);
+    if (style) p.style.cssText = style;
+    parent.appendChild(p);
     return p;
   }
 
-  function elenco(padre, voci) {
+  function list(parent, voci) {
     var ul = el('ul');
     ul.style.cssText = 'margin:4px 0 0;padding-left:20px;color:var(--text-2);font-size:var(--fs-13)';
     voci.forEach(function (v) { ul.appendChild(el('li', null, v)); });
-    padre.appendChild(ul);
+    parent.appendChild(ul);
     return ul;
   }
 
-  function sezione(outlet, titolo, sottotitolo) {
+  function section(outlet, title, subtitle) {
     var card = el('section', 'section-card');
-    var testa = el('div', 'sc-header');
-    testa.appendChild(el('div', 'sc-title', titolo));
-    if (sottotitolo) testa.appendChild(el('div', 'sc-desc', sottotitolo));
-    card.appendChild(testa);
-    var corpo = el('div', 'sc-body');
-    card.appendChild(corpo);
+    var head = el('div', 'sc-header');
+    head.appendChild(el('div', 'sc-title', title));
+    if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
+    card.appendChild(head);
+    var body = el('div', 'sc-body');
+    card.appendChild(body);
     outlet.appendChild(card);
-    return corpo;
+    return body;
   }
 
   /* --------------------------------------------------------- sistema di riferimento */
 
-  function rendiSistema(corpo, sistema) {
-    var titolo = el('div', null, 'Sistema di riferimento');
-    titolo.style.cssText = 'font-weight:500;margin-top:14px';
-    corpo.appendChild(titolo);
+  function rendiSistema(body, system) {
+    var title = el('div', null, 'Sistema di riferimento');
+    title.style.cssText = 'font-weight:500;margin-top:14px';
+    body.appendChild(title);
 
-    if (!sistema || !Object.keys(sistema).length) {
-      riga(corpo, 'Non letto: fuso, unità, valuta e lingua della casa non sono disponibili.', TONO_IGNOTO);
+    if (!system || !Object.keys(system).length) {
+      line(body, 'Non letto: fuso, unità, valuta e lingua della casa non sono disponibili.', TONO_IGNOTO);
       return;
     }
 
-    var identita = [];
-    if (sistema.nome) identita.push('casa «' + sistema.nome + '»');
-    if (sistema.fuso) identita.push('fuso ' + sistema.fuso);
-    if (sistema.lingua) identita.push('lingua ' + sistema.lingua);
-    if (sistema.valuta) identita.push('valuta ' + sistema.valuta);
-    if (sistema.paese) identita.push('paese ' + sistema.paese);
-    if (sistema.versione_ha) identita.push('Home Assistant ' + sistema.versione_ha);
-    riga(corpo, identita.length ? identita.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONO_QUIETO);
+    var identity = [];
+    if (system.nome) identity.push('casa «' + system.nome + '»');
+    if (system.fuso) identity.push('fuso ' + system.fuso);
+    if (system.lingua) identity.push('lingua ' + system.lingua);
+    if (system.valuta) identity.push('valuta ' + system.valuta);
+    if (system.paese) identity.push('paese ' + system.paese);
+    if (system.versione_ha) identity.push('Home Assistant ' + system.versione_ha);
+    line(body, identity.length ? identity.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONO_QUIETO);
 
-    var misure = misureCasa(sistema.unita);
-    if (misure.length) {
-      riga(corpo, 'Unità con cui ragiona la casa: ' + misure.join(', ') +
+    var measurements = misureCasa(system.unita);
+    if (measurements.length) {
+      line(body, 'Unità con cui ragiona la casa: ' + measurements.join(', ') +
         ' (ogni entità porta la propria: se manca, manca — non è questa).', TONO_QUIETO);
     }
   }
 
   /* --------------------------------------------------------------------- entità */
 
-  function rigaEntita(ul, e, disabilitata, mappaEtichette) {
+  function rigaEntita(ul, e, disabled, mappaEtichette) {
     var li = el('li');
     /* `overflow-wrap:anywhere` anche qui (non solo sull'id): alias ed
        etichette penzolanti sono a loro volta slug senza spazi, stesso
        rischio di sfondare la larghezza. */
     li.style.cssText = 'margin-bottom:8px;font-size:var(--fs-13);overflow-wrap:anywhere';
 
-    var testa = el('span', null, (e.nome || e.id || '?') + ' ');
-    testa.style.fontWeight = '500';
-    li.appendChild(testa);
+    var head = el('span', null, (e.nome || e.id || '?') + ' ');
+    head.style.fontWeight = '500';
+    li.appendChild(head);
 
     if (e.id) {
       /* C2 (audit 2026-08-24): gli entity_id lunghi (es.
@@ -253,7 +253,7 @@ window.HirisAlberoRoute = (function () {
     /* Le due marcature non si nascondono l'un l'altra e non si nascondono
        l'entità: "disabilitata" (registro) e "nascosta" (Home Assistant)
        sono fatti diversi, e un'entità puo' portarli entrambi. */
-    if (disabilitata) {
+    if (disabled) {
       var d = el('span', null, ' [disabilitata]');
       d.style.cssText = TONO_IGNOTO + ';font-size:var(--fs-12)';
       li.appendChild(d);
@@ -264,13 +264,13 @@ window.HirisAlberoRoute = (function () {
       li.appendChild(n);
     }
 
-    var dettagli = [];
-    if (e.piattaforma) dettagli.push('piattaforma ' + e.piattaforma);
-    if (e.categoria) dettagli.push('categoria ' + e.categoria);
-    if (e.classe) dettagli.push('classe ' + e.classe);
-    if (e.unita) dettagli.push('unità ' + e.unita);
-    if (dettagli.length) {
-      var dl = el('div', null, dettagli.join(' · '));
+    var details = [];
+    if (e.piattaforma) details.push('piattaforma ' + e.piattaforma);
+    if (e.categoria) details.push('categoria ' + e.categoria);
+    if (e.classe) details.push('classe ' + e.classe);
+    if (e.unita) details.push('unità ' + e.unita);
+    if (details.length) {
+      var dl = el('div', null, details.join(' · '));
       dl.style.cssText = 'font-size:var(--fs-12);color:var(--text-2)';
       li.appendChild(dl);
     }
@@ -293,16 +293,16 @@ window.HirisAlberoRoute = (function () {
   /* ------------------------------------------------------------------------ aree */
 
   function etichettaConteggioEntita(area) {
-    var attive = (area.entita || []).length;
-    var disabilitate = (area.entita_disabilitate || []).length;
-    var nascoste = (area.entita_nascoste || []).length;
-    var base = attive + ' entità';
-    if (disabilitate) base += ', ' + disabilitate + ' disabilitata'.concat(disabilitate === 1 ? '' : 'e');
+    var active = (area.entita || []).length;
+    var disabled = (area.entita_disabilitate || []).length;
+    var hidden = (area.entita_nascoste || []).length;
+    var base = active + ' entità';
+    if (disabled) base += ', ' + disabled + ' disabilitata'.concat(disabled === 1 ? '' : 'e');
     /* Stessa disciplina delle disabilitate (fetta "nascoste fuori dagli
        elenchi", 2026-08-25): questa pagina esiste per non far sparire
        niente -- un'area con quattro luci nascoste e tre attive deve
        leggersi come "3 entità, 4 nascoste", non come "3 entità" secco. */
-    if (nascoste) base += ', ' + nascoste + ' nascosta'.concat(nascoste === 1 ? '' : 'e');
+    if (hidden) base += ', ' + hidden + ' nascosta'.concat(hidden === 1 ? '' : 'e');
     return base;
   }
 
@@ -317,140 +317,140 @@ window.HirisAlberoRoute = (function () {
        aprire il resto, non e' un limite, solo non nasce gia' tutto steso. */
     det.open = false;
 
-    var sommario = el('summary', null, area.nome + ' — ' + etichettaConteggioEntita(area));
-    sommario.style.cssText = 'cursor:pointer;font-weight:500';
-    det.appendChild(sommario);
+    var summary = el('summary', null, area.nome + ' — ' + etichettaConteggioEntita(area));
+    summary.style.cssText = 'cursor:pointer;font-weight:500';
+    det.appendChild(summary);
 
-    var corpo = el('div');
-    corpo.style.cssText = 'padding:6px 0 10px 18px;border-left:2px solid var(--border);margin-left:4px';
+    var body = el('div');
+    body.style.cssText = 'padding:6px 0 10px 18px;border-left:2px solid var(--border);margin-left:4px';
 
-    var spiegazione = SPIEGAZIONE_AREA[area.id];
-    if (spiegazione) riga(corpo, spiegazione.testo, spiegazione.tono + ';font-size:var(--fs-13)');
+    var explanation = SPIEGAZIONE_AREA[area.id];
+    if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
     if (area.entita_temperatura) {
-      riga(corpo, 'Temperatura di quest’area: ' + area.entita_temperatura, 'font-size:var(--fs-12);color:var(--text-3)');
+      line(body, 'Temperatura di quest’area: ' + area.entita_temperatura, 'font-size:var(--fs-12);color:var(--text-3)');
     }
     if (area.entita_umidita) {
-      riga(corpo, 'Umidità di quest’area: ' + area.entita_umidita, 'font-size:var(--fs-12);color:var(--text-3)');
+      line(body, 'Umidità di quest’area: ' + area.entita_umidita, 'font-size:var(--fs-12);color:var(--text-3)');
     }
 
-    var attive = area.entita || [];
-    var disabilitate = area.entita_disabilitate || [];
+    var active = area.entita || [];
+    var disabled = area.entita_disabilitate || [];
     /* `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25):
        da quando `gerarchia()` le toglie da `entita` per STRUTTURA (la stessa
        ragione per cui la chat non le nomina piu' di sua iniziativa), questa
        pagina -- che esiste apposta per non far sparire niente -- le rende in
        una sezione propria, come gia' faceva per le disabilitate. */
-    var nascoste = area.entita_nascoste || [];
+    var hidden = area.entita_nascoste || [];
 
-    if (!attive.length && !disabilitate.length && !nascoste.length) {
-      riga(corpo, 'Nessuna entità.', TONO_QUIETO);
+    if (!active.length && !disabled.length && !hidden.length) {
+      line(body, 'Nessuna entità.', TONO_QUIETO);
     }
-    if (attive.length) {
+    if (active.length) {
       var ul = el('ul');
       ul.style.cssText = 'margin:4px 0;padding-left:18px';
-      attive.forEach(function (e) { rigaEntita(ul, e, false, mappaEtichette); });
-      corpo.appendChild(ul);
+      active.forEach(function (e) { rigaEntita(ul, e, false, mappaEtichette); });
+      body.appendChild(ul);
     }
-    if (disabilitate.length) {
+    if (disabled.length) {
       /* Presenti e marcate, MAI nascoste: questo titolo compare SEMPRE che
          ce ne sia almeno una, anche se `attive` è vuoto -- un'area con tre
          luci disabilitate e zero attive non deve leggersi come vuota. */
       var titoloDis = el('div', null,
-        disabilitate.length === 1 ? 'Entità disabilitata' : 'Entità disabilitate (' + disabilitate.length + ')');
+        disabled.length === 1 ? 'Entità disabilitata' : 'Entità disabilitate (' + disabled.length + ')');
       titoloDis.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
-      corpo.appendChild(titoloDis);
+      body.appendChild(titoloDis);
       var ulD = el('ul');
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
-      disabilitate.forEach(function (e) { rigaEntita(ulD, e, true, mappaEtichette); });
-      corpo.appendChild(ulD);
+      disabled.forEach(function (e) { rigaEntita(ulD, e, true, mappaEtichette); });
+      body.appendChild(ulD);
     }
-    if (nascoste.length) {
+    if (hidden.length) {
       /* Stessa disciplina delle disabilitate qui sopra, per lo stesso
          motivo: "questa luce c'è ma l'hai nascosta" è informazione, non
          un'assenza -- questa pagina audita cosa HIRIS sa, non filtra cosa
          mostrare come farebbe una risposta in chat. */
       var titoloNas = el('div', null,
-        nascoste.length === 1 ? 'Entità nascosta' : 'Entità nascoste (' + nascoste.length + ')');
+        hidden.length === 1 ? 'Entità nascosta' : 'Entità nascoste (' + hidden.length + ')');
       titoloNas.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
-      corpo.appendChild(titoloNas);
+      body.appendChild(titoloNas);
       var ulN = el('ul');
       ulN.style.cssText = 'margin:4px 0;padding-left:18px';
-      nascoste.forEach(function (e) { rigaEntita(ulN, e, false, mappaEtichette); });
-      corpo.appendChild(ulN);
+      hidden.forEach(function (e) { rigaEntita(ulN, e, false, mappaEtichette); });
+      body.appendChild(ulN);
     }
 
-    det.appendChild(corpo);
+    det.appendChild(body);
     container.appendChild(det);
   }
 
   /* ----------------------------------------------------------------------- piani */
 
-  function etichettaConteggioAree(piano) {
-    var n = (piano.aree || []).length;
-    var parola = piano.id === ID_FUORI_DALLE_AREE ? (n === 1 ? 'gruppo' : 'gruppi') : (n === 1 ? 'area' : 'aree');
-    return n + ' ' + parola;
+  function etichettaConteggioAree(floor) {
+    var n = (floor.aree || []).length;
+    var word = floor.id === ID_FUORI_DALLE_AREE ? (n === 1 ? 'gruppo' : 'gruppi') : (n === 1 ? 'area' : 'aree');
+    return n + ' ' + word;
   }
 
-  function rendiPiano(container, piano, mappaEtichette) {
+  function rendiPiano(container, floor, mappaEtichette) {
     var det = el('details');
     /* Primo livello: resta aperto (vedi il commento in rendiArea per il
        perche' le aree, sotto, non lo sono piu'). */
     det.open = true;
 
-    var titoloPiano = piano.nome + (piano.livello != null ? ' (livello ' + piano.livello + ')' : '');
-    var sommario = el('summary', null, titoloPiano + ' — ' + etichettaConteggioAree(piano));
-    sommario.style.cssText = 'cursor:pointer;font-weight:600;font-size:var(--fs-15)';
-    det.appendChild(sommario);
+    var titoloPiano = floor.nome + (floor.livello != null ? ' (livello ' + floor.livello + ')' : '');
+    var summary = el('summary', null, titoloPiano + ' — ' + etichettaConteggioAree(floor));
+    summary.style.cssText = 'cursor:pointer;font-weight:600;font-size:var(--fs-15)';
+    det.appendChild(summary);
 
-    var corpo = el('div');
-    corpo.style.cssText = 'padding:8px 0 12px 12px';
+    var body = el('div');
+    body.style.cssText = 'padding:8px 0 12px 12px';
 
-    var spiegazione = SPIEGAZIONE_PIANO[piano.id];
-    if (spiegazione) riga(corpo, spiegazione.testo, spiegazione.tono + ';font-size:var(--fs-13)');
+    var explanation = SPIEGAZIONE_PIANO[floor.id];
+    if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
-    (piano.aree || []).forEach(function (area) { rendiArea(corpo, area, mappaEtichette); });
+    (floor.aree || []).forEach(function (area) { rendiArea(body, area, mappaEtichette); });
 
-    det.appendChild(corpo);
+    det.appendChild(body);
     container.appendChild(det);
   }
 
   /* --------------------------------------------------------------------- albero */
 
-  function rendiAlbero(outlet, casa) {
-    var corpo = sezione(outlet, 'Albero della casa',
+  function rendiAlbero(outlet, home_space) {
+    var body = section(outlet, 'Albero della casa',
       'Piani, aree ed entità come HIRIS li ha ricostruiti — con ogni silenzio dichiarato per nome, ' +
       'non appiattito in un unico «non si sa».');
 
     /* Regola non negoziabile: una casa non letta non è una casa vuota.
        Niente albero (nemmeno vuoto) su una lettura mai avvenuta -- lo
        stesso principio di dashboard.js applicato qui. */
-    if (casa.anagrafe_letta_il == null) {
-      riga(corpo,
+    if (home_space.anagrafe_letta_il == null) {
+      line(body,
         'L’anagrafe non è ancora stata letta: qui non c’è un albero vuoto, c’è una casa che HIRIS non ha ancora guardato.',
         TONO_IGNOTO);
       return;
     }
 
-    riga(corpo, 'Letta il ' + casa.anagrafe_letta_il + '.', TONO_QUIETO);
+    line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONO_QUIETO);
 
     /* `non_disponibili` a tre stati: null = non si sa quali registri hanno
        risposto; [] = tutti hanno risposto; pieno = una lettura a metà, che
        NON deve sembrare una casa piccola. */
-    if (casa.non_disponibili == null) {
-      riga(corpo,
+    if (home_space.non_disponibili == null) {
+      line(body,
         'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo. ' +
         'L’albero qui sotto potrebbe essere letto solo in parte.', TONO_IGNOTO);
-    } else if (casa.non_disponibili.length) {
-      riga(corpo,
+    } else if (home_space.non_disponibili.length) {
+      line(body,
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
         TONO_PROBLEMA);
-      elenco(corpo, nomiRegistriInItaliano(casa.non_disponibili));
+      list(body, nomiRegistriInItaliano(home_space.non_disponibili));
     } else {
-      riga(corpo, 'Tutti i registri hanno risposto.', TONO_QUIETO);
+      line(body, 'Tutti i registri hanno risposto.', TONO_QUIETO);
     }
 
-    rendiSistema(corpo, casa.sistema_di_riferimento);
+    rendiSistema(body, home_space.sistema_di_riferimento);
 
     /* `etichette` (`casa.etichette`) e' a tre stati come `non_disponibili`:
        `null` = l'archivio manca, nessun nome risolvibile (nella pratica
@@ -460,35 +460,35 @@ window.HirisAlberoRoute = (function () {
        gli id grezzi invece di un nome inventato, e lo DICHIAREREBBE, non lo
        tacerebbe); `{}` = il registro ha risposto senza etichette; pieno = la
        mappa che `nomeEtichetta()` usa per tradurre gli slug sotto. */
-    var mappaEtichette = casa.etichette;
+    var mappaEtichette = home_space.etichette;
     if (mappaEtichette == null) {
-      riga(corpo,
+      line(body,
         'I nomi delle etichette non sono stati letti: dove un’entità o un’area ne porta una, ' +
         'resta visibile il solo identificativo grezzo.', TONO_IGNOTO);
     }
 
     var titoloAlbero = el('div', null, 'L’albero');
     titoloAlbero.style.cssText = 'font-weight:600;margin-top:16px;font-size:var(--fs-15)';
-    corpo.appendChild(titoloAlbero);
+    body.appendChild(titoloAlbero);
 
-    var piani = casa.piani || [];
-    if (!piani.length) {
-      riga(corpo, 'La lettura non ha prodotto nessun piano né area.', TONO_QUIETO);
+    var floor = home_space.piani || [];
+    if (!floor.length) {
+      line(body, 'La lettura non ha prodotto nessun piano né area.', TONO_QUIETO);
       return;
     }
-    piani.forEach(function (piano) { rendiPiano(corpo, piano, mappaEtichette); });
+    floor.forEach(function (floor) { rendiPiano(body, floor, mappaEtichette); });
   }
 
   function rendiErrore(outlet, err) {
     console.error('[albero-della-casa] lettura fallita', err);
-    var corpo = sezione(outlet, 'Albero della casa', null);
-    riga(corpo,
+    var body = section(outlet, 'Albero della casa', null);
+    line(body,
       'Non è stato possibile leggere l’albero della casa. Questo non significa che la casa sia vuota: ' +
       'la richiesta non è andata a buon fine.', TONO_PROBLEMA);
   }
 
-  function leggi(percorso) {
-    return fetch(percorso).then(function (r) {
+  function read(path) {
+    return fetch(path).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     });
@@ -499,26 +499,26 @@ window.HirisAlberoRoute = (function () {
     if (!outlet) return;
     outlet.innerHTML = '';
 
-    var testa = el('div');
-    testa.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap';
+    var head = el('div');
+    head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap';
     var intro = el('div');
     intro.appendChild(el('div', 'page-title', 'Albero della casa'));
     intro.appendChild(el('p', 'page-subtitle',
       'Come HIRIS vede piani, aree ed entità — non la dashboard di Home Assistant: la sua conoscenza.'));
-    testa.appendChild(intro);
-    var indietro = el('a', 'btn', 'Cosa HIRIS sa');
-    indietro.href = '#/';
-    testa.appendChild(indietro);
-    outlet.appendChild(testa);
+    head.appendChild(intro);
+    var back = el('a', 'btn', 'Cosa HIRIS sa');
+    back.href = '#/';
+    head.appendChild(back);
+    outlet.appendChild(head);
 
-    var caricamento = el('p', 'page-subtitle', 'Caricamento…');
-    outlet.appendChild(caricamento);
+    var loading = el('p', 'page-subtitle', 'Caricamento…');
+    outlet.appendChild(loading);
 
-    return leggi('api/home-space').then(function (casa) {
-      if (caricamento.parentNode) caricamento.parentNode.removeChild(caricamento);
-      rendiAlbero(outlet, casa);
+    return read('api/home-space').then(function (home_space) {
+      if (loading.parentNode) loading.parentNode.removeChild(loading);
+      rendiAlbero(outlet, home_space);
     }, function (err) {
-      if (caricamento.parentNode) caricamento.parentNode.removeChild(caricamento);
+      if (loading.parentNode) loading.parentNode.removeChild(loading);
       rendiErrore(outlet, err);
     });
   }
