@@ -505,6 +505,9 @@ in §4①:
 | `vivi` | `vive` |
 | `citate` | `citato` |
 | `sconosciute` | `sconosciuto` |
+| `estesa` | `esteso` |
+| `estese` | `esteso` |
+| `estesi` | `esteso` |
 | `campi` | `campo` |
 | `modi` | `modo` |
 | `nuove` | `nuovo` |
@@ -599,7 +602,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
 | piano (abbonamento) | il canale a forfait alimentato dall'abbonamento Claude Max, riconosciuto dalla sola presenza di una credenziale dedicata -- mai dal suo valore, cosi' che nessun chiamante possa stamparla per sbaglio in un log -- **`(abbonamento)` NON e' un ambito reale (nessuna cartella `hiris/app/abbonamento/` esiste, e non e' un refuso da correggere in un nome di cartella vero come `riga (nucleo) -> riga (casa)` qui sopra): il senso *subscription* di `piano` non vive in un sottosistema unico, e' sparso fra file di radice e `api/` (`api/handlers_chat.py`, `api/handlers_models.py::_clean_subscription_model`, `migrazione_opzioni.py`, `agent/runner.py`, `instradamento.py`). Questa riga resta di proposito irraggiungibile da `Glossario.per("piano", ambito)` per qualunque `--ambito` reale: e' una documentazione del significato deciso, da applicare A MANO ovunque questo senso di `piano` compaia (sempre dentro un composto finora, mai nudo -- verificato con `tokenize` su `hiris/app`), non un'automazione da riattivare qualificandola** | subscription | ✓ arriva |
 | piano (casa) | il livello piu' alto della gerarchia della casa, letto dal registro che Home Assistant stesso tiene per i livelli verticali di un edificio, sopra le aree e i dispositivi | floor | ~ parziale |
-| plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca | dashboards | ✓ arriva |
+| plance | le pagine visive che Home Assistant lascia comporre all'utente stesso, con percorso, titolo, modalita' e viste proprie, lette dallo stesso catalogo con cui l'installazione le elenca -- **il singolare `plancia` e' `dashboard`**: la riga nomina il concetto al plurale perche' cosi' lo nomina l'installazione, ma un nome che parla di UNA plancia prende il singolare inglese (`_MAIN_DASHBOARD_KEY`, `proxy/ha_client.py`), che e' grammatica inglese, non una seconda decisione | dashboards | ✓ arriva |
 | ponte | il percorso che risponde a un turno usando l'abbonamento a forfait del modello invece della chiave a consumo, mettendo in coda il lavoro per un processo separato che lo prende in carico e lo restituisce quando e' pronto | bridge | ~ parziale |
 | porta | il modulo che e' l'unico punto del prodotto da cui parte, verso Home Assistant, una chiamata di servizio, e che ne osserva l'esito aspettando l'annuncio del cambiamento di stato prima di dichiarare cosa e' successo davvero | actuator | ~ parziale |
 | promessa | l'impegno per un momento futuro che l'utente ha chiesto -- fare qualcosa, oppure controllare qualcosa e riferire -- con la sua scadenza, la sua tolleranza al ritardo, e lo stato con cui si conclude | promise | ✓ arriva |
@@ -1304,6 +1307,7 @@ al Task 6 invece che deciso qui.
 | applica | apply |
 | area | area |
 | argomento | argument |
+| arrivato | arrived |
 | assegnato | assigned |
 | assembla | assemble |
 | assicura | ensure |
@@ -1370,7 +1374,7 @@ al Task 6 invece che deciso qui.
 | effettivo | actual |
 | elenca | list |
 | elencato | listed |
-| elenco | list |
+| elenco | list | **`list` e' un builtin Python**, quindi su un nome NUDO non si applica (`_pericoloso`, la stessa guardia di `classe`/`class` e di `ingresso -> input_tokens`): il nome scelto e' `listing`. Non `listed`, che e' gia' l'inglese di `elencato`, ne' `catalog`, gia' quello di `catalogo` -- due collisioni permanenti evitate riusando la forma sostantivata dello stesso verbo. Misurato dal vivo su `proxy/ha_client.py::leggi_plance` (`elenco`/`elenco_arrivato` -> `listing`/`listing_arrived`) |
 | entita | entity |
 | episodio | episode |
 | errore | error |
@@ -1378,6 +1382,7 @@ al Task 6 invece che deciso qui.
 | esecuzione | execution |
 | eseguito | executed |
 | esistente | existing |
+| esteso | extended | il campo che Home Assistant aggiunge a una riga di registro quando lo si chiede esplicitamente (gli alias di un'entita'), oltre a quelli che il registro porta sempre: `_add_extended_fields` (`proxy/ha_client.py`). Le quattro forme (`esteso`/`estesa`/`estesi`/`estese`) vivono oggi in quel solo file -- misurato con `tokenize` su tutto `hiris/app` prima di scrivere questa riga, zero collisioni altrove |
 | eta | age |
 | etichetta | label |
 | evento | event |
@@ -1464,6 +1469,7 @@ al Task 6 invece che deciso qui.
 | pota | prune |
 | prefisso | prefix |
 | predefinito | default |
+| primo | first | **Il femminile `prima` NON e' aliasato, ed e' una decisione, non una dimenticanza**: in `azione/porta.py`, `azione/costruzione/officina.py` e `azione/costruzione/versioni.py` `prima` e' l'AVVERBIO («prima e dopo» di un confronto di stati, ed e' anche la chiave JSON `"prima"`/`"dopo"`, un valore di dominio deliberatamente italiano), non l'ordinale. Un alias `prima -> primo` tradurrebbe tre ambiti stabili con il senso sbagliato. L'ordinale femminile si applica A MANO (`prima_voce -> first_entry`, `proxy/ha_client.py`) |
 | principale | main |
 | problema | problem |
 | programma | schedule |
@@ -1495,17 +1501,18 @@ al Task 6 invece che deciso qui.
 | riga | row |
 | riga (api) | row |
 | riga (casa) | line |
+| riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (casa)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `consumi/store.py`, `memoria/archivio.py`, `schedulatore/archivio.py`, `schedulatore/turno.py`, `azione/costruzione/officina.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
 | rileggi | reread |
 | ripara | repair |
 | ripristina | restore |
 | riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
-| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa |
+| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `leggi_plance`, `leggi_registri`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
 | risultato | result |
 | ritardo | delay |
 | rivendica | claim |
-| rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento propone `_rotta_config -> broken_config`, e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
+| rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento proponeva `_rotta_config -> broken_config` (il nome vero, dal lotto 18 di `proxy/`, e' `_config_route`: qui resta il nome di allora perche' e' la misura che ha motivato questa riga), e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
 | rotta (participio) | broken | **Annotazione, non una riga raggiungibile**: `(participio)` non e' un ambito reale e nessun `--ambito` la trovera' mai, esattamente come `piano (abbonamento)`. Serve a tenere scritto il senso -- `porta_rotta` e' una porta GUASTA -- accanto a quello che gli somiglia, perche' chi legge solo la riga giusta non capisce perche' esiste. Si applica a mano, se mai servira' |
 | sanificato | sanitized |
 | scadenza | deadline |

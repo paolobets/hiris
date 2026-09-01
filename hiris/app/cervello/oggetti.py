@@ -321,7 +321,7 @@ def _difference(initial, final) -> float | None:
 #
 # Le funzioni qui sotto sono PURE (nessuna lettura di rete, nessun accesso
 # all'archivio): prendono le statistiche GIA' lette e tradotte
-# (`HAClient._richiedi_statistiche`, chiavi italiane) e i collegamenti
+# (`HAClient._request_statistics`, chiavi italiane) e i collegamenti
 # dispositivo/direzione GIA' risolti, e tornano il corpo di un bilancio.
 # Chi legge la rete e chi risolve il dispositivo e' `server.py::
 # costruisci_bilanci` -- stessa separazione di `companions`/`directions`
@@ -407,7 +407,7 @@ def _share(numerator, denominator) -> float | None:
 def _dimension_points(series: dict[str, list[dict]], subject: str | None) -> list[dict]:
     """I punti orari di un'entita', ridotti a `{"inizio","fine","valore"}` --
     `valore` e' il `cambio` di quell'ora (il delta GIA' calcolato da HA,
-    corretto per gli azzeramenti: vedi `HAClient._richiedi_statistiche`),
+    corretto per gli azzeramenti: vedi `HAClient._request_statistics`),
     arrotondato in kWh. Un'ora senza `cambio` (dato mancante per QUELL'ora,
     non per l'intero `statistic_id`) resta `valore: None` -- mai uno zero
     inventato -- ma non toglie le altre ore dalla lista.

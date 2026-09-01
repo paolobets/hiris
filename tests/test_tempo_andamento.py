@@ -350,7 +350,7 @@ async def test_bands_also_come_out_in_the_home_space_timezone():
 @pytest.mark.asyncio
 async def test_the_end_of_a_band_comes_out_in_the_SAME_timezone_as_the_start():
     """Punto 5 del mandato «il bilancio dell'energia» (BASSO, 27/08/2026):
-    la traduzione unificata (`HAClient._richiedi_statistiche`) ha aggiunto
+    la traduzione unificata (`HAClient._request_statistics`) ha aggiunto
     la chiave `fine` a ogni fascia, ma `andamento` riscriveva nel fuso della
     casa SOLO `inizio` -- lo stesso punto usciva con `inizio` a +02:00 e
     `fine` ancora a +00:00, due fusi nella stessa risposta (fondamenta 3

@@ -21,7 +21,7 @@ ne ha, motivati -- diventa rumore, e chi lo legge smette di leggerlo. Per
 questo esiste il MARCATORE:
 
     # DOPPIONE DICHIARATO: il client HA non deve dipendere dallo storage
-    _CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
+    _MAIN_DASHBOARD_KEY = "__principale__"
 
 Il marcatore sta ACCANTO al codice e non in un elenco a parte, perche' un
 elenco a parte sarebbe un secondo posto da tenere allineato -- cioe'

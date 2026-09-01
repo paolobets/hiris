@@ -14,7 +14,7 @@ from hiris.app.azione.cronaca import Journal
 
 ADESSO = 1_756_000_000.0
 
-# La stessa guardia di `HAClient._CHIAVE_RE` (hiris/app/proxy/ha_client.py):
+# La stessa guardia di `HAClient._KEY_RE` (hiris/app/proxy/ha_client.py):
 # `key or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
 # vuota -- un intero o un dizionario, essendo truthy, arrivano intatti a
 # `.match()`, che solleva `TypeError` su qualunque cosa non sia str/bytes.
@@ -87,7 +87,7 @@ class FintoHA:
         if "leggi" in self._override:
             return self._override["leggi"]
         if not _CHIAVE_RE_FINTA.match(key or ""):
-            # Fedele a `HAClient._CHIAVE_RE.match(key or "")`: una chiave
+            # Fedele a `HAClient._KEY_RE.match(key or "")`: una chiave
             # falsy (None, "") diventa "" e fallisce il match normalmente; una
             # chiave truthy non testuale (un intero, un dizionario) arriva
             # intatta a `.match()` e solleva `TypeError` -- lo stesso crash
@@ -582,7 +582,7 @@ async def test_un_helper_che_non_e_un_dizionario_si_rifiuta_invece_di_esplodere(
 async def test_una_chiave_che_non_e_testo_si_rifiuta_invece_di_esplodere(banco):
     """IMPORTANT 6 (round 3, chiuso a meta' nel round 2): `"chiave": 1771`
     invece di `"1771"` e' l'errore di forma piu' probabile che un modello
-    faccia su questo campo -- `HAClient._CHIAVE_RE.match(key or "")`
+    faccia su questo campo -- `HAClient._KEY_RE.match(key or "")`
     riceve un intero intatto (e' truthy: `or ""` non lo tocca) e solleva
     `TypeError`. La finta ora e' fedele su questo punto (vedi
     `FintoHA.leggi_configurazione`), quindi questo test misura il codice

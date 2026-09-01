@@ -693,7 +693,7 @@ def _invalid_form(intent: dict) -> str | None:
     **`chiave` e `campi` (round 3 della review, IMPORTANT 6 chiuso solo a
     meta').** `"chiave": 1771` invece di `"1771"` e' l'errore di forma piu'
     probabile che un modello faccia su questo campo: essendo un intero
-    truthy, arriva intatto a `HAClient._CHIAVE_RE.match(chiave or "")` (l'`or`
+    truthy, arriva intatto a `HAClient._KEY_RE.match(chiave or "")` (l'`or`
     sostituisce solo i valori falsy) e solleva `TypeError`. `campi` non
     testuale-a-dizionario arriva a `composer.compose_script`, che fa
     `dict(campi)` -- `ValueError` su una stringa, `TypeError` su un intero.

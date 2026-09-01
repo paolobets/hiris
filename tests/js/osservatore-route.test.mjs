@@ -827,7 +827,7 @@ test('seam _rendiOggetti: due punti lontani nel tempo restano distanti nel grafi
 });
 
 test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date), mai le cifre grezze della stringa ISO', () => {
-  // `ora` arriva in UTC (`HAClient._istante_da_ha`): mostrare le prime
+  // `ora` arriva in UTC (`HAClient._instant_from_ha`): mostrare le prime
   // cifre della stringa ("13" da "...T13:00:00Z") sarebbe il difetto in
   // forma peggiore -- non più "non so l'ora", ma "affermo l'ora sbagliata"
   // (fino a due ore, con l'ora legale). Un fuso ESPLICITO e lontano da UTC

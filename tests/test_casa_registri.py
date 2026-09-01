@@ -114,7 +114,7 @@ async def test_un_ambito_di_categorie_caduto_si_dice_quale():
 # imitano ognuno dei tre modi in cui HA (o la connessione) mente davvero:
 # _msg_errore produce un `error` vero, _msg con un `result` non-lista imita
 # una forma inattesa SENZA errore, e `None` imita il comando mai partito.
-# Tutte e tre puntano al registro "piani" (primo di _REGISTRI, comando
+# Tutte e tre puntano al registro "piani" (primo di _REGISTRIES, comando
 # "config/floor_registry/list") apposta: quel comando non cambia in questo
 # task, cosi' i test restano validi a prescindere dalla correzione del nome
 # del comando "integrazioni" fatta piu' sotto nell'implementazione.

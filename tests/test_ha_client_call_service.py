@@ -106,7 +106,7 @@ async def test_la_forma_vera_viene_dichiarata_nel_log_al_primo_uso(caplog):
     cosi' la prossima prova sulla casa ce lo DICE."""
     import hiris.app.proxy.ha_client as modulo
 
-    modulo._forma_cambiati_dichiarata = False
+    modulo._changed_form_declared = False
     client = HAClient("http://ha.local:8123", "token")
     client._session = FintaSessione([
         {"entity_id": "light.salotto", "state": "off", "attributes": {}}])

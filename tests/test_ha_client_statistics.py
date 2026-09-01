@@ -77,7 +77,7 @@ async def test_stato_e_cambio_assenti_non_diventano_null(monkeypatch):
 
     Mutazione ESEGUITA: `if f.get("state") is not None: voce["stato"] = ...`
     sostituito con un'assegnazione incondizionata (`voce["stato"] =
-    f.get("state")`) in `_traduci_statistiche` -- arrossisce, perche' "stato"
+    f.get("state")`) in `_translate_statistics` -- arrossisce, perche' "stato"
     compare nella voce con valore `None` invece di mancare del tutto.
     Ripristinato subito dopo."""
     ha = HAClient("http://ha.local:8123", "tok")

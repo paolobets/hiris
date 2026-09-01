@@ -74,14 +74,14 @@ EVENTI_SERVIZI = ("service_registered", "service_removed")
 # un'altra cosa — le plance hanno un proprio ascoltatore.
 EVENTO_PLANCE = "lovelace_updated"
 
-# Deve restare identica a `_CHIAVE_PLANCIA_PRINCIPALE` in casa/archivio.py: e'
+# Deve restare identica a `_MAIN_DASHBOARD_KEY` in casa/archivio.py: e'
 # la chiave sotto cui la predefinita finisce nell'archivio (percorso vero
 # `None` -> questa stringa li'). Duplicata invece di importata per non far
 # dipendere il client HA dallo storage — stesso principio per cui EVENTO_PLANCE
 # e' referenziato per commento (mai importato) dall'altro verso in archivio.py.
 # leggi_plance() la usa per rifiutare una plancia vera il cui url_path collide
 # con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
-_CHIAVE_PLANCIA_PRINCIPALE = "__principale__"
+_MAIN_DASHBOARD_KEY = "__principale__"
 
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
@@ -114,7 +114,7 @@ MAX_TEMPLATE_RESPONSE_LEN = 2000
 logger = logging.getLogger(__name__)
 
 
-def _istante_da_ha(raw):
+def _instant_from_ha(raw):
     """Un istante come lo manda Home Assistant -> ISO-8601 con fuso.
 
     **Misurato sulla casa il 24/08/2026**, non dedotto:
@@ -135,14 +135,14 @@ def _istante_da_ha(raw):
     """
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return raw
-    secondi = raw / 1000.0 if abs(raw) > 1e11 else float(raw)
+    seconds = raw / 1000.0 if abs(raw) > 1e11 else float(raw)
     try:
-        return datetime.fromtimestamp(secondi, tz=UTC).isoformat()
+        return datetime.fromtimestamp(seconds, tz=UTC).isoformat()
     except (OverflowError, OSError, ValueError):
         return raw
 
 
-def _traduci_statistiche(raw: dict) -> dict[str, list[dict]]:
+def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     """`{statistic_id: [fascia HA, ...]}` -> lo stesso, in italiano.
 
     **L'UNICO punto che traduce le chiavi di `recorder/statistics_during_
@@ -168,8 +168,8 @@ def _traduci_statistiche(raw: dict) -> dict[str, list[dict]]:
         for f in fasce:
             if not isinstance(f, dict):
                 continue
-            entry = {"inizio": _istante_da_ha(f.get("start")),
-                     "fine": _istante_da_ha(f.get("end")),
+            entry = {"inizio": _instant_from_ha(f.get("start")),
+                     "fine": _instant_from_ha(f.get("end")),
                      "minimo": f.get("min"),
                      "massimo": f.get("max"), "media": f.get("mean")}
             if f.get("sum") is not None:
@@ -254,43 +254,43 @@ def _traduci_statistiche(raw: dict) -> dict[str, list[dict]]:
 # non cambia; cio' che e' cambiato e' chi ci si appoggia: `azione/porta.py`
 # non fonda piu' l'esito su questo ritorno da solo, e aspetta l'annuncio degli
 # eventi con una scadenza.
-_forma_cambiati_dichiarata = False
+_changed_form_declared = False
 
 
-def _cambiati_da(payload) -> list[dict]:
+def _changed_states(payload) -> list[dict]:
     """Gli stati che HA dichiara cambiati, da qualunque delle forme note.
 
     Restituisce sempre una lista di dizionari che hanno un `entity_id`: cio'
     che non ha quella chiave non e' uno stato e non serve a nessuno dei suoi
     lettori. Non solleva mai.
     """
-    global _forma_cambiati_dichiarata
+    global _changed_form_declared
 
-    grezzi = payload
+    raw = payload
     if isinstance(payload, dict):
         # forma `?return_response` (HA >= 2023.7)
-        grezzi = payload.get("changed_states")
-    if not isinstance(grezzi, list):
-        grezzi = []
+        raw = payload.get("changed_states")
+    if not isinstance(raw, list):
+        raw = []
 
-    states = [v for v in grezzi if isinstance(v, dict) and v.get("entity_id")]
+    states = [v for v in raw if isinstance(v, dict) and v.get("entity_id")]
 
-    if not _forma_cambiati_dichiarata:
-        _forma_cambiati_dichiarata = True
+    if not _changed_form_declared:
+        _changed_form_declared = True
         # `sorted(...)` di una sola voce: basta a riconoscere la forma, e non
         # versa nel log gli attributi di mezza casa.
-        prima_voce = sorted(states[0].keys()) if states else None
+        first_entry = sorted(states[0].keys()) if states else None
         logger.info(
             "call_service: la risposta di Home Assistant e' %s, %s voci "
             "utilizzabili, chiavi della prima: %s -- prima misura di questa "
             "forma su questo impianto",
             type(payload).__name__,
             len(states),
-            prima_voce)
+            first_entry)
     return states
 
 
-def _identificatori(raw) -> list[str]:
+def _identifiers(raw) -> list[str]:
     """Un insieme di identificatori di Home Assistant, letto come una lista.
 
     Dall'altra parte del websocket quei campi sono `set` di Python
@@ -403,7 +403,7 @@ class HAClient:
         async with self._session.post(url, json=data) as resp:
             resp.raise_for_status()
             payload = await resp.json()
-        return _cambiati_da(payload)
+        return _changed_states(payload)
 
     # I tre domini che l'API di configurazione governa. Sono i VALORI delle
     # rotte di `components/config/` (automation.py, script.py, scene.py),
@@ -418,20 +418,20 @@ class HAClient:
     # entrambi e RIFIUTA tutto il resto. E' una GUARDIA, e come quella su
     # `entity_id` va tenuta STRETTA: allargarla per far passare una chiave
     # esotica e' una decisione di sicurezza, non una pulizia.
-    _CHIAVE_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+    _KEY_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-    def _rotta_config(self, domain: str, key: str) -> tuple[str | None, str | None]:
+    def _config_route(self, domain: str, key: str) -> tuple[str | None, str | None]:
         """L'URL della rotta di configurazione, oppure il motivo del rifiuto."""
         if domain not in self.DOMINI_CONFIGURABILI:
             return None, (f"il dominio «{domain}» non si configura da qui. "
                           f"Domini configurabili: {', '.join(self.DOMINI_CONFIGURABILI)}.")
-        if not self._CHIAVE_RE.match(key or ""):
+        if not self._KEY_RE.match(key or ""):
             return None, (f"la chiave «{key}» non ha una forma ammessa "
                           "(lettere, cifre, trattino e trattino basso, max 64).")
         return f"{self._base_url}/api/config/{domain}/config/{key}", None
 
     @staticmethod
-    async def _motivo_http(resp) -> str:
+    async def _http_reason(resp) -> str:
         """Il motivo vero che Home Assistant manda nel corpo, non solo il numero.
 
         L'editor di HA mostra all'utente esattamente questa stringa: e' la
@@ -466,7 +466,7 @@ class HAClient:
 
         Solleva solo cio' che rompe il trasporto.
         """
-        url, rejection = self._rotta_config(domain, key)
+        url, rejection = self._config_route(domain, key)
         if url is None:
             return {"errore": rejection}
         async with self._session.get(url) as resp:
@@ -478,7 +478,7 @@ class HAClient:
                 # SOSTITUIRE l'automazione che c'era.
                 return {"assente": True}
             if resp.status != 200:
-                return {"errore": await self._motivo_http(resp)}
+                return {"errore": await self._http_reason(resp)}
             return {"corpo": await resp.json()}
 
     async def salva_configurazione(self, domain: str, key: str, body: dict) -> dict:
@@ -501,12 +501,12 @@ class HAClient:
         `automations.yaml` -- la voce accodata quattro volte, nascosta dalle
         ancore YAML. HIRIS non serializza nessuno YAML, e non deve iniziare.
         """
-        url, rejection = self._rotta_config(domain, key)
+        url, rejection = self._config_route(domain, key)
         if url is None:
             return {"errore": rejection}
         async with self._session.post(url, json=body) as resp:
             if resp.status != 200:
-                return {"errore": await self._motivo_http(resp)}
+                return {"errore": await self._http_reason(resp)}
             return {"salvato": True}
 
     async def cancella_configurazione(self, domain: str, key: str) -> dict:
@@ -520,12 +520,12 @@ class HAClient:
 
         Solleva solo cio' che rompe il trasporto.
         """
-        url, rejection = self._rotta_config(domain, key)
+        url, rejection = self._config_route(domain, key)
         if url is None:
             return {"errore": rejection}
         async with self._session.delete(url) as resp:
             if resp.status != 200:
-                return {"errore": await self._motivo_http(resp)}
+                return {"errore": await self._http_reason(resp)}
             return {"cancellato": True}
 
     async def valida_config(self, *, triggers=None, conditions=None,
@@ -559,7 +559,7 @@ class HAClient:
         if not extra:
             return {"errore": "niente da validare"}
         msg = await self._ws_command("validate_config", extra)
-        occurrence = self._esito_ws(msg, "risultato")
+        occurrence = self._ws_occurrence(msg, "risultato")
         if "errore" in occurrence:
             return occurrence
         result = occurrence["risultato"]
@@ -577,7 +577,7 @@ class HAClient:
                      "schedule")
 
     @staticmethod
-    def _esito_ws(msg: dict | None, key: str) -> dict:
+    def _ws_occurrence(msg: dict | None, key: str) -> dict:
         """Il `result` di un comando WS, oppure il motivo -- mai un successo muto."""
         if msg is None:
             return {"errore": "Home Assistant non ha risposto"}
@@ -599,7 +599,7 @@ class HAClient:
         if domain not in self.DOMINI_HELPER:
             return {"errore": (f"«{domain}» non e' un helper che so creare. "
                                f"Helper: {', '.join(self.DOMINI_HELPER)}.")}
-        return self._esito_ws(
+        return self._ws_occurrence(
             await self._ws_command(f"{domain}/create", dict(data)), "helper")
 
     async def cancella_helper(self, domain: str, helper_id: str) -> dict:
@@ -608,24 +608,24 @@ class HAClient:
         if domain not in self.DOMINI_HELPER:
             return {"errore": f"«{domain}» non e' un helper che so cancellare."}
         msg = await self._ws_command(f"{domain}/delete", {f"{domain}_id": helper_id})
-        occurrence = self._esito_ws(msg, "_")
+        occurrence = self._ws_occurrence(msg, "_")
         return {"errore": occurrence["errore"]} if "errore" in occurrence else {"cancellato": True}
 
     async def elenca_etichette(self) -> dict:
         """Le etichette del registro di Home Assistant."""
-        occurrence = self._esito_ws(
+        occurrence = self._ws_occurrence(
             await self._ws_command("config/label_registry/list"), "etichette")
         if "errore" in occurrence:
             return occurrence
-        righe = occurrence["etichette"]
-        return {"etichette": righe if isinstance(righe, list) else []}
+        rows = occurrence["etichette"]
+        return {"etichette": rows if isinstance(rows, list) else []}
 
     async def crea_etichetta(self, name: str) -> dict:
         """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
         QUI, nel registro di Home Assistant, e non in una tabella nostra: e'
         un fatto che HA sa gia' tenere, e duplicarlo sarebbe la fondamenta 2
         violata (spec §5)."""
-        return self._esito_ws(
+        return self._ws_occurrence(
             await self._ws_command("config/label_registry/create", {"name": name}),
             "etichetta")
 
@@ -641,7 +641,7 @@ class HAClient:
         etichette dell'utente proprio quando Home Assistant sta rispondendo
         male.
         """
-        loaded = self._esito_ws(
+        loaded = self._ws_occurrence(
             await self._ws_command("config/entity_registry/get",
                                    {"entity_id": entity_id}),
             "voce")
@@ -656,7 +656,7 @@ class HAClient:
         msg = await self._ws_command(
             "config/entity_registry/update",
             {"entity_id": entity_id, "labels": attuali + [label_id]})
-        occurrence = self._esito_ws(msg, "_")
+        occurrence = self._ws_occurrence(msg, "_")
         return {"errore": occurrence["errore"]} if "errore" in occurrence else {"applicata": True}
 
     # I cinque campi con cui Home Assistant accetta un bersaglio: sono le
@@ -715,14 +715,14 @@ class HAClient:
             return {"errore": "il bersaglio non e' un oggetto"}
         cleaned = {}
         for field in self.CAMPI_BERSAGLIO:
-            voci = target.get(field)
-            if isinstance(voci, str):
-                voci = [voci]
-            if not isinstance(voci, list):
+            entries = target.get(field)
+            if isinstance(entries, str):
+                entries = [entries]
+            if not isinstance(entries, list):
                 continue
-            voci = [v for v in voci if isinstance(v, str) and v.strip()]
-            if voci:
-                cleaned[field] = voci
+            entries = [v for v in entries if isinstance(v, str) and v.strip()]
+            if entries:
+                cleaned[field] = entries
         if not cleaned:
             return {"errore": "il bersaglio non nomina niente che Home Assistant "
                               "sappia risolvere"}
@@ -754,16 +754,16 @@ class HAClient:
         # insiemi. Tenerli qui vorrebbe dire dire «questo dispositivo si
         # tocca» di un dispositivo che non c'e'; toglierli non nasconde
         # niente, perche' restano interi in `dispositivi_mancanti`.
-        mancanti = _identificatori(result.get("missing_devices"))
+        missing = _identifiers(result.get("missing_devices"))
         return {
-            "entita": _identificatori(result.get("referenced_entities")),
-            "dispositivi": [d for d in _identificatori(result.get("referenced_devices"))
-                            if d not in set(mancanti)],
-            "aree": _identificatori(result.get("referenced_areas")),
-            "dispositivi_mancanti": mancanti,
-            "aree_mancanti": _identificatori(result.get("missing_areas")),
-            "piani_mancanti": _identificatori(result.get("missing_floors")),
-            "etichette_mancanti": _identificatori(result.get("missing_labels")),
+            "entita": _identifiers(result.get("referenced_entities")),
+            "dispositivi": [d for d in _identifiers(result.get("referenced_devices"))
+                            if d not in set(missing)],
+            "aree": _identifiers(result.get("referenced_areas")),
+            "dispositivi_mancanti": missing,
+            "aree_mancanti": _identifiers(result.get("missing_areas")),
+            "piani_mancanti": _identifiers(result.get("missing_floors")),
+            "etichette_mancanti": _identifiers(result.get("missing_labels")),
         }
 
     # fetta E3 Task 12: `get_automations`/`create_automation`/
@@ -811,13 +811,13 @@ class HAClient:
         distinguerebbero.
         """
         got = await self._ws_command("lovelace/dashboards/list", {})
-        elenco_arrivato = bool(got and got.get("success"))
-        elenco = got.get("result") if elenco_arrivato else None
-        elenco = elenco if isinstance(elenco, list) else []
+        listing_arrived = bool(got and got.get("success"))
+        listing = got.get("result") if listing_arrived else None
+        listing = listing if isinstance(listing, list) else []
 
-        non_disponibili: list[str] = []
-        if not elenco_arrivato:
-            non_disponibili.append(
+        unavailable: list[str] = []
+        if not listing_arrived:
+            unavailable.append(
                 "elenco: lovelace/dashboards/list non ha risposto — le plance "
                 "aggiuntive potrebbero non essere tutte qui"
             )
@@ -836,46 +836,46 @@ class HAClient:
         # `non_disponibili` non si ridichiara qui: gia' inizializzata sopra,
         # puo' gia' portare la dichiarazione "elenco" se l'elenco non e'
         # arrivato — ridichiararla la cancellerebbe.
-        percorsi: list[str | None] = [None]
+        paths: list[str | None] = [None]
         visti: set[str] = set()
-        for d in elenco:
+        for d in listing:
             p = d.get("url_path")
             if p is None:
                 continue
-            if p == _CHIAVE_PLANCIA_PRINCIPALE:
-                non_disponibili.append(
+            if p == _MAIN_DASHBOARD_KEY:
+                unavailable.append(
                     f"{p} (collide con la chiave della plancia predefinita, ignorata)")
                 continue
             if p in visti:
-                non_disponibili.append(f"{p} (duplicata nell'elenco, ignorata)")
+                unavailable.append(f"{p} (duplicata nell'elenco, ignorata)")
                 continue
             visti.add(p)
-            percorsi.append(p)
+            paths.append(p)
 
         comandi = [("lovelace/config", {} if p is None else {"url_path": p})
-                   for p in percorsi]
-        risposte = await self._ws_batch(comandi)
+                   for p in paths]
+        replies = await self._ws_batch(comandi)
 
         # setdefault, non un comprehension che sovrascrive: un percorso
         # duplicato deve accoppiarsi al PRIMO dizionario visto (coerente con
         # `visti` sopra), non all'ultimo — altrimenti la voce tenuta e quella
         # dichiarata scartata si scambierebbero i dati.
-        per_percorso: dict[str | None, dict] = {}
-        for d in elenco:
+        by_path: dict[str | None, dict] = {}
+        for d in listing:
             if isinstance(d, dict):
-                per_percorso.setdefault(d.get("url_path"), d)
+                by_path.setdefault(d.get("url_path"), d)
         dashboards: list[dict] = []
-        for path, msg in zip(percorsi, risposte):
+        for path, msg in zip(paths, replies):
             config = msg.get("result") if msg else None
             if not isinstance(config, dict):
                 config = None
-                non_disponibili.append(path or "principale")
-            entry = dict(per_percorso.get(path) or {})
+                unavailable.append(path or "principale")
+            entry = dict(by_path.get(path) or {})
             entry.setdefault("url_path", path)
             entry.setdefault("title", "Principale" if path is None else path)
             entry["config"] = config
             dashboards.append(entry)
-        return dashboards, non_disponibili
+        return dashboards, unavailable
 
     # fetta E3 Task 12: `save_dashboard_config` esce con `create_dashboard`
     # (stessa superficie di scrittura, vedi il commento sopra `class
@@ -988,7 +988,7 @@ class HAClient:
             return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(data, list):
             return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        grezzi: dict[str, list[dict]] = {}
+        raw: dict[str, list[dict]] = {}
         for group in data:
             if not isinstance(group, list):
                 continue
@@ -1016,7 +1016,7 @@ class HAClient:
                 # come il PRIMO vettore concreto -- si applica identico alla
                 # storia quanto allo stato vivo.
                 value = entry.get("state")
-                grezzi.setdefault(current, []).append(
+                raw.setdefault(current, []).append(
                     {"quando": when,
                      "valore": sanitize_ha_value(value) if value else value})
         # /api/history/period risponde in ordine cronologico ASCENDENTE: il
@@ -1026,10 +1026,10 @@ class HAClient:
         # attuale mostrando solo ore vecchie della finestra chiesta.
         truncated = False
         series: dict[str, list[dict]] = {}
-        for entity_id, punti in grezzi.items():
-            if len(punti) > MAX_STORICO_PUNTI:
+        for entity_id, points in raw.items():
+            if len(points) > MAX_STORICO_PUNTI:
                 truncated = True
-            series[entity_id] = punti[-MAX_STORICO_PUNTI:]
+            series[entity_id] = points[-MAX_STORICO_PUNTI:]
         return {"serie": series, "troncato": truncated}
 
     async def diario(self, entity: str | None, ore: int) -> dict:
@@ -1081,7 +1081,7 @@ class HAClient:
             return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(data, list):
             return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        voci = []
+        entries = []
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -1097,7 +1097,7 @@ class HAClient:
             name = item.get("name")
             message = item.get("message")
             state = item.get("state")
-            voci.append({
+            entries.append({
                 "quando": item.get("when"),
                 "nome": sanitize_ha_value(name) if name else name,
                 # `stato` e `messaggio` restano DUE campi, non se ne fonde uno:
@@ -1130,8 +1130,8 @@ class HAClient:
         # il mese che gli era stato chiesto. Prima questo dato restava dentro
         # il metodo e il docstring chiedeva al chiamante di ricostruirlo --
         # cioe' di indovinarlo.
-        return {"voci": voci[-MAX_DIARIO_VOCI:],
-                "troncato": len(voci) > MAX_DIARIO_VOCI,
+        return {"voci": entries[-MAX_DIARIO_VOCI:],
+                "troncato": len(entries) > MAX_DIARIO_VOCI,
                 "ore": window}
 
     async def render_template(self, template: str) -> dict:
@@ -1191,15 +1191,15 @@ class HAClient:
         `None` per i comandi rimasti senza risposta o se la connessione e'
         fallita del tutto: chi chiama decide se un guasto e' tollerabile.
         """
-        risposte: list[dict | None] = [None] * len(comandi)
+        replies: list[dict | None] = [None] * len(comandi)
         if not comandi:
-            return risposte
+            return replies
         ws_url = (
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
         token = self._headers["Authorization"].removeprefix("Bearer ")
-        tipi = [t for t, _ in comandi]
+        types = [t for t, _ in comandi]
         try:
             async with (
                 aiohttp.ClientSession() as session,
@@ -1210,8 +1210,8 @@ class HAClient:
                     await ws.send_json({"type": "auth", "access_token": token})
                     auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
                     if auth.get("type") != "auth_ok":
-                        logger.warning("HA WS auth failed in _ws_batch(%s)", tipi)
-                        return risposte
+                        logger.warning("HA WS auth failed in _ws_batch(%s)", types)
+                        return replies
                 for numero, (msg_type, extra) in enumerate(comandi, start=1):
                     payload = {"id": numero, "type": msg_type}
                     if extra:
@@ -1222,11 +1222,11 @@ class HAClient:
                     msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
                     numero = msg.get("id")
                     if numero in attesi:
-                        risposte[numero - 1] = msg
+                        replies[numero - 1] = msg
                         attesi.discard(numero)
         except Exception as exc:
-            logger.debug("_ws_batch(%s) failed: %s", tipi, exc)
-        return risposte
+            logger.debug("_ws_batch(%s) failed: %s", types, exc)
+        return replies
 
     async def _ws_request(self, msg_type: str, extra: dict | None = None,
                           timeout: float = 10.0) -> Any:
@@ -1261,7 +1261,7 @@ class HAClient:
         per la ragione per cui la traduzione vive in un posto solo.
         """
         start = (datetime.now(UTC) - timedelta(days=giorni)).isoformat()
-        return await self._richiedi_statistiche(
+        return await self._request_statistics(
             identificatori, {"start_time": start, "period": periodo})
 
     async def statistiche_orarie(self, identificatori: list[str],
@@ -1286,11 +1286,11 @@ class HAClient:
         statistiche`, l'UNICO confine): stesso contratto, `{"serie": ...}`
         o `{"errore": ...}`.
         """
-        return await self._richiedi_statistiche(
+        return await self._request_statistics(
             identificatori, {"start_time": da_iso, "end_time": a_iso, "period": "hour"})
 
-    async def _richiedi_statistiche(self, identificatori: list[str],
-                                    window: dict) -> dict:
+    async def _request_statistics(self, identificatori: list[str],
+                                  window: dict) -> dict:
         """`recorder/statistics_during_period` -> `{"serie": ...}` o
         `{"errore": ...}`. L'UNICO punto che parla con questo comando WS e
         l'UNICO che traduce la sua risposta: `statistiche` e `statistiche_
@@ -1341,7 +1341,7 @@ class HAClient:
         )
         if not isinstance(raw, dict):
             return {"errore": "Home Assistant non ha risposto alla richiesta di statistiche"}
-        return {"serie": _traduci_statistiche(raw)}
+        return {"serie": _translate_statistics(raw)}
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
     # (`components/search/__init__.py`), non coi nomi delle costanti.
@@ -1389,8 +1389,8 @@ class HAClient:
         result = msg.get("result") if msg else None
         if not isinstance(result, dict):
             return {"errore": "risposta in forma inattesa"}
-        return {key: sorted(str(v) for v in valori)
-                for key, valori in result.items() if valori}
+        return {key: sorted(str(v) for v in values)
+                for key, values in result.items() if values}
 
     # Le tre severita' di un problema, da `casa.anagrafe` -- la foglia dove
     # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
@@ -1444,7 +1444,7 @@ class HAClient:
     # un altro inverter nessuna di queste chiavi comparira' mai, e non deve
     # rompere niente -- `direzioni_energia`, sotto, lo tratta come «non
     # trovato», non come un guasto.
-    _DIREZIONE_DA_TRANSLATION_KEY: ClassVar[dict[str, str]] = {
+    _DIRECTION_BY_TRANSLATION_KEY: ClassVar[dict[str, str]] = {
         "energy_generating_today": "produzione", "power_generating": "produzione",
         "energy_importing_today": "prelievo", "power_importing": "prelievo",
         "energy_exporting_today": "immissione", "power_exporting": "immissione",
@@ -1488,19 +1488,19 @@ class HAClient:
         esiste», non «non ho potuto leggere».
         """
         try:
-            msg_prefs, msg_registro = await self._ws_batch(
+            msg_prefs, msg_registry = await self._ws_batch(
                 [("energy/get_prefs", None), ("config/entity_registry/list", None)])
         except Exception as e:
             logger.debug("direzioni dell'energia non lette: %s", e)
             return {"errore": "Home Assistant non ha risposto"}
-        if msg_prefs is None or msg_registro is None:
+        if msg_prefs is None or msg_registry is None:
             return {"errore": "Home Assistant non ha risposto"}
-        for msg in (msg_prefs, msg_registro):
+        for msg in (msg_prefs, msg_registry):
             if msg.get("error"):
                 error = msg["error"]
                 return {"errore": error.get("message") or error.get("code") or "rifiutato"}
         prefs = msg_prefs.get("result")
-        registry = msg_registro.get("result")
+        registry = msg_registry.get("result")
         if not isinstance(prefs, dict) or not isinstance(registry, list):
             return {"errore": "risposta in forma inattesa"}
 
@@ -1524,13 +1524,13 @@ class HAClient:
                 _declare(sorgente.get("stat_energy_from"), "scarica")
                 _declare(sorgente.get("stat_energy_to"), "carica")
 
-        for riga in registry:
-            if not isinstance(riga, dict):
+        for row in registry:
+            if not isinstance(row, dict):
                 continue
-            eid = riga.get("entity_id")
+            eid = row.get("entity_id")
             if not isinstance(eid, str) or eid in mappa:
                 continue  # la dichiarata vince sempre: la dedotta tace qui
-            direction = self._DIREZIONE_DA_TRANSLATION_KEY.get(riga.get("translation_key"))
+            direction = self._DIRECTION_BY_TRANSLATION_KEY.get(row.get("translation_key"))
             if direction:
                 mappa[eid] = {"direzione": direction, "provenienza": "dedotta"}
 
@@ -1571,7 +1571,7 @@ class HAClient:
     # scritto sugli script o sugli helper, contro il principio per cui il
     # significato e' dichiarato e non dedotto. Costano quattro comandi sulla
     # stessa connessione: praticamente nulla.
-    _AMBITI_CATEGORIA = ("automation", "script", "scene", "helpers")
+    _CATEGORY_SCOPES = ("automation", "script", "scene", "helpers")
 
     # I registri che l'utente ha gia' compilato in Home Assistant. Sono la
     # spina dorsale del significato per HIRIS: piani, aree, dispositivi,
@@ -1580,7 +1580,7 @@ class HAClient:
     # Le voci "categorie" sono una per ambito (vedi _AMBITI_CATEGORIA) e
     # condividono tutte la chiave "categorie": leggi_registri le fonde in
     # un'unica lista, marcando ogni riga con il proprio ambito.
-    _REGISTRI: list[tuple[str, str, dict | None]] = [
+    _REGISTRIES: list[tuple[str, str, dict | None]] = [
         ("piani",        "config/floor_registry/list",        None),
         ("aree",         "config/area_registry/list",         None),
         ("dispositivi",  "config/device_registry/list",       None),
@@ -1589,7 +1589,7 @@ class HAClient:
         ("integrazioni", "config_entries/get",               None),
     ] + [
         ("categorie", "config/category_registry/list", {"scope": scope})
-        for scope in _AMBITI_CATEGORIA
+        for scope in _CATEGORY_SCOPES
     ]
 
     async def leggi_registri(self) -> tuple[dict[str, list[dict]], list[str]]:
@@ -1609,11 +1609,11 @@ class HAClient:
         `non_disponibili` riporta quale (es. `categorie:script`), non un
         generico `categorie`.
         """
-        comandi = [(tipo, extra) for _, tipo, extra in self._REGISTRI]
-        risposte = await self._ws_batch(comandi)
-        registri: dict[str, list[dict]] = {}
-        non_disponibili: list[str] = []
-        for (key, tipo, extra), msg in zip(self._REGISTRI, risposte):
+        comandi = [(tipo, extra) for _, tipo, extra in self._REGISTRIES]
+        replies = await self._ws_batch(comandi)
+        registries: dict[str, list[dict]] = {}
+        unavailable: list[str] = []
+        for (key, tipo, extra), msg in zip(self._REGISTRIES, replies):
             result = msg.get("result") if msg else None
             if not isinstance(result, list):
                 scope = extra.get("scope") if extra else None
@@ -1640,18 +1640,18 @@ class HAClient:
                     # `error` da mostrare perche' HA non ha mai parlato.
                     logger.debug("registro %s non disponibile: nessuna risposta dal comando (%s)",
                                  name, tipo)
-                non_disponibili.append(name)
+                unavailable.append(name)
                 result = []
             if key == "categorie" and extra:
                 scope = extra.get("scope")
-                result = [{**riga, "ambito": scope} for riga in result]
-            registri.setdefault(key, []).extend(result)
+                result = [{**row, "ambito": scope} for row in result]
+            registries.setdefault(key, []).extend(result)
 
-        await self._aggiungi_campi_estesi(registri, non_disponibili)
-        return registri, non_disponibili
+        await self._add_extended_fields(registries, unavailable)
+        return registries, unavailable
 
-    async def _aggiungi_campi_estesi(self, registri: dict[str, list[dict]],
-                                     non_disponibili: list[str]) -> None:
+    async def _add_extended_fields(self, registries: dict[str, list[dict]],
+                                   unavailable: list[str]) -> None:
         """Gli ALIAS delle entita', che `config/entity_registry/list` non manda.
 
         Quel comando risponde con `RegistryEntry.as_partial_dict`
@@ -1681,22 +1681,22 @@ class HAClient:
         significa «il registro delle entita' non ha risposto», e farebbe
         credere alla casa di non avere entita' affatto.
         """
-        entities = registri.get("entita") or []
+        entities = registries.get("entita") or []
         ids = [e.get("entity_id") for e in entities if e.get("entity_id")]
         if not ids:
             return
         try:
-            estese = await self._ws_request(
+            extended_by_id = await self._ws_request(
                 "config/entity_registry/get_entries", extra={"entity_ids": ids})
         except Exception as e:
             logger.debug("campi estesi delle entita' non letti: %s", e)
-            estese = None
-        if not isinstance(estese, dict):
-            non_disponibili.append("entita:alias")
+            extended_by_id = None
+        if not isinstance(extended_by_id, dict):
+            unavailable.append("entita:alias")
             return
         for entry in entities:
-            estesa = estese.get(entry.get("entity_id"))
-            if not isinstance(estesa, dict):
+            extended = extended_by_id.get(entry.get("entity_id"))
+            if not isinstance(extended, dict):
                 continue
             # `None` DENTRO la lista non e' un alias, e' una sentinella.
             #
@@ -1714,7 +1714,7 @@ class HAClient:
             # E' la lezione del `carbon_monoxide` in un'altra forma: avevo
             # verificato CHE `aliases` esistesse in `extended_dict`, non COSA
             # possono contenere i suoi elementi. Il tipo lo diceva.
-            alias = [a for a in (estesa.get("aliases") or [])
+            alias = [a for a in (extended.get("aliases") or [])
                      if isinstance(a, str) and a.strip()]
             if alias:
                 entry["aliases"] = alias
@@ -1796,12 +1796,12 @@ class HAClient:
                     # verso add_registry_listener, uscito con la context map che lo chiamava
                     # -- fetta E3 Task 2, 2.0).
                     numero = 2
-                    for tipo_evento in (
+                    for event_type in (
                         t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"
                     ):
                         numero += 1
                         await ws.send_json(
-                            {"id": numero, "type": "subscribe_events", "event_type": tipo_evento}
+                            {"id": numero, "type": "subscribe_events", "event_type": event_type}
                         )
                     # Task 5: le plance hanno un ascoltatore proprio, separato
                     # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
@@ -1809,10 +1809,10 @@ class HAClient:
                     await ws.send_json(
                         {"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE}
                     )
-                    for tipo_evento in EVENTI_SERVIZI:
+                    for event_type in EVENTI_SERVIZI:
                         numero += 1
                         await ws.send_json({"id": numero, "type": "subscribe_events",
-                                            "event_type": tipo_evento})
+                                            "event_type": event_type})
 
                     # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo
                     # gli eventi di registro ricevuti mentre la connessione era su. Un

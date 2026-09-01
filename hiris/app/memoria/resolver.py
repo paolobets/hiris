@@ -398,7 +398,7 @@ def costruisci_indice(home_space: dict,
             # Un termine che non e' una stringa non e' un termine.
             #
             # Difesa in profondita', non ridondanza: la causa vera si
-            # chiude a monte (`ha_client._aggiungi_campi_estesi` filtra le
+            # chiude a monte (`ha_client._add_extended_fields` filtra le
             # sentinelle `None` degli alias), ma questo indice legge
             # l'ARCHIVIO -- che su un'installazione gia' avvelenata
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.

@@ -5,7 +5,7 @@ import pytest
 from hiris.app.casa.archivio import _MAIN_DASHBOARD_KEY as _ARCHIVE_KEY
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.comportamento import reread_dashboards
-from hiris.app.proxy.ha_client import _CHIAVE_PLANCIA_PRINCIPALE as _HA_CLIENT_KEY
+from hiris.app.proxy.ha_client import _MAIN_DASHBOARD_KEY as _HA_CLIENT_KEY
 from hiris.app.proxy.ha_client import HAClient
 
 

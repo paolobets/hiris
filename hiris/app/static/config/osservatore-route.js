@@ -487,7 +487,7 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* Gli istanti dentro `corpo.momenti`/`corpo.forma` sono ISO-8601 CON FUSO
-     (`HAClient._istante_da_ha`: sempre UTC, mai un timestamp UNIX) --
+     (`HAClient._instant_from_ha`: sempre UTC, mai un timestamp UNIX) --
      un'origine DIVERSA da `inizio_ts`/`fine_ts` dell'oggetto (quelli sono
      secondi UNIX, letti da `fmtOrario` con `* 1000`). Confonderli
      produrrebbe un `Invalid Date` o una data nel 1970: due formati, due

@@ -223,7 +223,7 @@ call_service: la risposta di Home Assistant e' list, 0 voci utilizzabili, chiavi
 
 **È la stessa disciplina della prova 1**, applicata alla forma che nessuno aveva mai
 misurato — ed è la riga che ha risolto questo difetto. Copiala comunque: se sulla tua casa
-dicesse `dict` invece di `list`, la forma è un'altra ancora e va riletta `_cambiati_da` in
+dicesse `dict` invece di `list`, la forma è un'altra ancora e va riletta `_changed_states` in
 `hiris/app/proxy/ha_client.py`. `0 voci utilizzabili` invece **non è più un allarme**: è
 quello che questa casa fa, e dalla 2.4.1 HIRIS non ci si appoggia più da solo.
 

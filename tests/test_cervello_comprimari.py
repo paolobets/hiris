@@ -105,7 +105,7 @@ class _ClienteLegami:
         # dell'energia») per fingere anche `statistiche_orarie()`**, stessa
         # disciplina "una sola finta" del paragrafo sopra: `{statistic_id:
         # [punto, ...]}` gia' nella forma TRADOTTA (chiavi italiane, come le
-        # manda `HAClient._richiedi_statistiche` per davvero) -- fedele al
+        # manda `HAClient._request_statistics` per davvero) -- fedele al
         # contratto vero: `costruisci_bilanci` (server.py) legge SOLO il
         # ritorno di `statistiche_orarie`, mai la richiesta grezza a HA.
         self._statistiche = statistiche or {}
