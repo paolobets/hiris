@@ -85,7 +85,7 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     return True, ""
 
 
-def chi_risponde(app) -> tuple[str, str]:
+def who_answers(app) -> tuple[str, str]:
     """`("ponte", "")` oppure `("catena", motivo)`.
 
     Il motivo e' vuoto quando non c'e' nessun ripiego da dichiarare, ed e' una
@@ -95,7 +95,7 @@ def chi_risponde(app) -> tuple[str, str]:
     """
     if not (app.get("ponte_attivo") and _bridge_on(app)):
         return "catena", ""
-    puo, reason = _subscription_can_answer(app)
-    if not puo:
+    can, reason = _subscription_can_answer(app)
+    if not can:
         return "catena", reason
     return "ponte", ""

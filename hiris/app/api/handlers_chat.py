@@ -24,7 +24,7 @@ from ..chat_store import (
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..decisione_modelli import downgrade_note
-from ..instradamento import chi_risponde
+from ..instradamento import who_answers
 from .handlers_casa import compose_briefing
 
 logger = logging.getLogger(__name__)
@@ -726,7 +726,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # disponibile» finiva in un errore invece che nel provider successivo. Il
     # ramo `else` più sotto è il ritorno: si scende alla catena, che è la riga
     # subito dopo questo blocco.
-    _route, _subscription_reason = chi_risponde(request.app)
+    _route, _subscription_reason = who_answers(request.app)
     if _route == "ponte" or _subscription_reason:
         # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
         # above/below is unaffected when the flag is off. Checked before

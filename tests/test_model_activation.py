@@ -14,11 +14,11 @@ uscito con loro: senza nessuno che esporti i cinque `PROVIDER_*`, era
 irraggiungibile, e il test che lo esercitava difendeva uno stato che nessun
 utente puo' produrre.
 """
-from hiris.app.model_activation import provider_in_catena
+from hiris.app.model_activation import providers_in_chain
 
 
 def test_in_catena_ci_sta_chi_l_utente_ci_ha_messo_e_ha_una_credenziale():
-    assert provider_in_catena(
+    assert providers_in_chain(
         ["openrouter", "claude", "ollama"],
         {"openrouter": True, "claude": True, "ollama": False},
     ) == ["openrouter", "claude"]
@@ -29,7 +29,7 @@ def test_l_ordine_e_quello_dell_utente_non_quello_di_una_strategia():
     Qui non c'e' nessun ordine di riserva: l'unico ordine e' quello scritto
     nell'archivio, altrimenti riordinare dalla pagina non vorrebbe dire
     niente."""
-    assert provider_in_catena(
+    assert providers_in_chain(
         ["ollama", "openai", "claude"],
         {"claude": True, "openai": True, "ollama": True},
     ) == ["ollama", "openai", "claude"]
@@ -42,18 +42,18 @@ def test_un_provider_credenziato_e_fuori_catena_NON_entra_da_solo():
     si guadagna e' che NIENTE entra in catena senza che qualcuno ce l'abbia
     messo -- l'altro difetto, quello che `reconcile_chain` creava mentre ne
     risolveva uno."""
-    assert provider_in_catena(["claude"], {"claude": True, "openai": True}) == ["claude"]
+    assert providers_in_chain(["claude"], {"claude": True, "openai": True}) == ["claude"]
 
 
 def test_una_catena_vuota_resta_vuota_e_non_si_riempie_di_nascosto():
     """`legacy = not any(toggles.values())` accendeva OGNI provider con
     credenziale quando erano spenti tutti. Catena vuota adesso significa una
     cosa sola, «HIRIS non puo' rispondere», e la pagina lo dice."""
-    assert provider_in_catena([], {"claude": True, "openrouter": True}) == []
+    assert providers_in_chain([], {"claude": True, "openrouter": True}) == []
 
 
 def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
-    assert provider_in_catena(
+    assert providers_in_chain(
         ["claude", "claude", "gemini"], {"claude": True}) == ["claude"]
 
 
@@ -64,7 +64,7 @@ def test_la_vecchia_derivazione_non_esiste_piu():
 
 
 # ---------------------------------------------------------------------------
-# Il CABLAGGIO: `app["catena_modelli"]` viene da `provider_in_catena` sulla
+# Il CABLAGGIO: `app["catena_modelli"]` viene da `providers_in_chain` sulla
 # chain_order dell'archivio e sulle credenziali, e da nient'altro.
 #
 # Non e' provabile con la fixture dell'app (`app.on_startup.clear()` in
@@ -87,7 +87,7 @@ def _blocco_catena_dallo_startup():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    from .model_activation import provider_in_catena")
+    start = src.index("    from .model_activation import providers_in_chain")
     marker = 'app["catena_modelli"] = list(_chain)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])

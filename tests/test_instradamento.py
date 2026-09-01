@@ -24,11 +24,11 @@ scende alla catena:
 import pytest
 
 from hiris.app.decisione_modelli import _DOWNGRADE_REASONS, SUBSCRIPTION_TOKEN_VAR
-from hiris.app.instradamento import chi_risponde
+from hiris.app.instradamento import who_answers
 
 
 class _CodaFinta:
-    """La coda vera vista da `chi_risponde`: sa contare i turni di oggi."""
+    """La coda vera vista da `who_answers`: sa contare i turni di oggi."""
 
     def __init__(self, oggi: int = 0) -> None:
         self._oggi = oggi
@@ -58,13 +58,13 @@ def senza_token(monkeypatch):
 
 
 def test_col_ponte_acceso_e_il_piano_capace_risponde_il_ponte(col_token):
-    assert chi_risponde(_app()) == ("ponte", "")
+    assert who_answers(_app()) == ("ponte", "")
 
 
 def test_col_ponte_spento_si_scende_alla_catena_SENZA_dichiarare_un_ripiego(col_token):
     """Non e' un ripiego: e' la configurazione. Annunciarlo a ogni turno
     direbbe all'utente che sta perdendo qualcosa che non ha mai avuto."""
-    via, motivo = chi_risponde(_app(ponte=False))
+    via, motivo = who_answers(_app(ponte=False))
     assert via == "catena"
     assert motivo == ""
 
@@ -72,11 +72,11 @@ def test_col_ponte_spento_si_scende_alla_catena_SENZA_dichiarare_un_ripiego(col_
 def test_senza_la_coda_cablata_si_scende_alla_catena_senza_ripiego(col_token):
     app = _app()
     del app["reasoning_queue"]
-    assert chi_risponde(app) == ("catena", "")
+    assert who_answers(app) == ("catena", "")
 
 
 def test_senza_il_token_del_piano_e_un_ripiego_e_si_dichiara(senza_token):
-    via, motivo = chi_risponde(_app())
+    via, motivo = who_answers(_app())
     assert via == "catena"
     assert motivo == "manca il token"
     assert motivo in _DOWNGRADE_REASONS, (
@@ -85,11 +85,11 @@ def test_senza_il_token_del_piano_e_un_ripiego_e_si_dichiara(senza_token):
 
 
 def test_a_tetto_pieno_e_un_ripiego_e_si_dichiara(col_token):
-    via, motivo = chi_risponde(_app(coda=_CodaFinta(oggi=150)))
+    via, motivo = who_answers(_app(coda=_CodaFinta(oggi=150)))
     assert via == "catena"
     assert motivo == "tetto giornaliero"
     assert motivo in _DOWNGRADE_REASONS
 
 
 def test_sotto_il_tetto_di_uno_il_ponte_risponde_ancora(col_token):
-    assert chi_risponde(_app(coda=_CodaFinta(oggi=149))) == ("ponte", "")
+    assert who_answers(_app(coda=_CodaFinta(oggi=149))) == ("ponte", "")

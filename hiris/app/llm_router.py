@@ -84,7 +84,7 @@ class LLMRouter:
     model="auto". If not supplied (None/empty), it derives from
     _STRATEGY_ORDER[strategy] — unchanged behavior for existing callers.
     When the caller instead passes `model_chain` (the chain the user ordered,
-    filtered to credentialed providers by model_activation.provider_in_catena
+    filtered to credentialed providers by model_activation.providers_in_chain
     — see server.py), that list supersedes chat_policy, and it does so ALSO
     when it is empty: an explicit empty chain means "nobody is in the chain",
     not "fall back to the strategy order".

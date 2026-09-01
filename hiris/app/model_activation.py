@@ -35,17 +35,17 @@ non ne nascerebbe nessuna. Va deciso, non ereditato -- vedi la sua docstring.
 from __future__ import annotations
 
 
-def provider_in_catena(chain_order: list[str], credenziali: dict[str, bool]) -> list[str]:
+def providers_in_chain(chain_order: list[str], credentials: dict[str, bool]) -> list[str]:
     """L'ordine dell'utente, filtrato a chi ha una credenziale.
 
     Nessun accodamento, nessun ripiego su un ordine di strategia, nessun
     doppione. Una catena vuota resta vuota: e' uno stato leggibile, non un
     guasto da coprire.
     """
-    dentro: list[str] = []
-    for nome_provider in chain_order or []:
-        if nome_provider in dentro:
+    inside: list[str] = []
+    for provider_name in chain_order or []:
+        if provider_name in inside:
             continue
-        if credenziali.get(nome_provider):
-            dentro.append(nome_provider)
-    return dentro
+        if credentials.get(provider_name):
+            inside.append(provider_name)
+    return inside

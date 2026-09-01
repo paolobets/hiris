@@ -618,7 +618,7 @@ def compose_topology(
     da dire, e la pagina disegna solo ciò che non è vuoto: nessuna condizione
     sul provider vive nel frontend.
     """
-    from .model_activation import provider_in_catena
+    from .model_activation import providers_in_chain
 
     # Il piano NON è un membro di `chain_order`, né qui né dopo il Task 14: la
     # sua presenza in testa discende da `ponte.attivo`, che è un'altra chiave
@@ -626,7 +626,7 @@ def compose_topology(
     # nomi, il piano non c'è); qui si ridice, perché questa funzione riceve una
     # lista e non il disco, e una lista può arrivare da chiunque -- il gateway
     # MCP fa PUT su questa rotta.
-    dentro = [p for p in provider_in_catena(chain_order, credentials)
+    dentro = [p for p in providers_in_chain(chain_order, credentials)
               if p != "subscription"]
     if bridge_active:
         dentro = ["subscription"] + dentro

@@ -1637,7 +1637,7 @@ def _recompute_chain(app) -> None:
     farebbe niente fino al riavvio successivo -- esattamente il difetto che il
     Task 10 ha chiuso per la catena. Qui e' l'UNICO posto che lo scrive.
     """
-    from .model_activation import provider_in_catena
+    from .model_activation import providers_in_chain
     cfg = app.get("models_config") or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
     # (`_reasoning_sweep`), l'instradamento (`handlers_chat.handle_chat`), la
@@ -1662,7 +1662,7 @@ def _recompute_chain(app) -> None:
     risponde = {name: b is not None for name, b in mappa.items()}
     if risponde.get("ollama"):
         risponde["ollama"] = bool((cfg.get("ollama") or {}).get("modello"))
-    chain = provider_in_catena(cfg.get("chain_order") or [], risponde)
+    chain = providers_in_chain(cfg.get("chain_order") or [], risponde)
     # UN calcolo, DUE copie: quella che la pagina riceve e quella che il router
     # usa. Sono lo stesso valore -- se divergessero, divergerebbero da sé
     # stesse -- e sono due oggetti perché nessuno dei due possa modificare
@@ -3286,7 +3286,7 @@ async def _on_startup(app: web.Application) -> None:
     # `_on_startup`, che ogni fixture azzera (il debito E dichiarato al
     # Task 1). Con una sola scrittura non c'e' piu' un secondo posto da tenere
     # allineato: il debito si chiude togliendo il doppione, non coprendolo.
-    from .model_activation import provider_in_catena
+    from .model_activation import providers_in_chain
     # Il filtro e' `_risponde`, non `_credentials` (Task 9): in catena ci puo'
     # stare solo chi ha un backend costruito. Con la sola credenziale, un
     # `chain_order` che nomina Ollama senza un modello scelto avrebbe messo in
@@ -3294,7 +3294,7 @@ async def _on_startup(app: web.Application) -> None:
     # numerato, col suo connettore, e nessun messaggio ci sarebbe mai passato.
     # Un anello a schermo che non risponde mai e' esattamente la bugia che
     # questa fetta ritira, e la differenza fra i due dizionari e' UNA riga.
-    _chain = provider_in_catena(app["models_config"].get("chain_order") or [], _risponde)
+    _chain = providers_in_chain(app["models_config"].get("chain_order") or [], _risponde)
     # Nessuna perdita in silenzio: chi ha una credenziale e NON sta in catena
     # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
     # cambio di comportamento si dichiara nel registro, dove un operatore lo

@@ -604,7 +604,7 @@ def test_un_subscription_in_chain_order_non_si_sdoppia_col_ponte_acceso():
 
 
 def test_un_provider_in_chain_order_senza_credenziale_finisce_fuori_non_in_catena():
-    """È la stessa regola di `provider_in_catena`, vista dal lato della pagina:
+    """È la stessa regola di `providers_in_chain`, vista dal lato della pagina:
     non esiste una riga «in catena ma non può» -- sarebbe la seconda
     rappresentazione dello stato che questa fetta toglie."""
     catena, fuori = compose_topology(chain_order=["ollama", "claude"],

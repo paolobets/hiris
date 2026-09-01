@@ -127,7 +127,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_casa import compose_briefing
     from ..api.handlers_chat import create_tool_dispatcher
-    from ..instradamento import chi_risponde
+    from ..instradamento import who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -136,7 +136,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # casa che gira interamente sul Piano Claude Max le promesse morivano su
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
-    route, downgrade_reason = chi_risponde(app)
+    route, downgrade_reason = who_answers(app)
     if route == "ponte":
         return _accoda_al_bridge(app, promise)
 

@@ -396,7 +396,7 @@ AUTO_MODEL_MAP: dict[str, str] = {
 # "chat", non a una stringa duplicata: nessun doppione.
 AUTO_MODEL_MAP["promessa"] = AUTO_MODEL_MAP["chat"]
 
-from .backends.pricing import get_price as _prezzo
+from .backends.pricing import get_price as _price
 
 
 def resolve_model(model: str, agent_type: str, default_model: str = "") -> str:
@@ -918,7 +918,7 @@ class ClaudeRunner:
             out = response.usage.output_tokens
             cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
-            prices = _prezzo(effective_model)
+            prices = _price(effective_model)
             cost = (
                 inp * prices["input"]
                 + cache_creation * prices.get("cache_write", prices["input"] * 1.25)
