@@ -161,11 +161,11 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     `None`.
     """
     series: dict[str, list[dict]] = {}
-    for ident, fasce in raw.items():
-        if not isinstance(fasce, list):
+    for ident, bands in raw.items():
+        if not isinstance(bands, list):
             continue
-        tradotte = []
-        for f in fasce:
+        translated = []
+        for f in bands:
             if not isinstance(f, dict):
                 continue
             entry = {"inizio": _instant_from_ha(f.get("start")),
@@ -178,8 +178,8 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
                 entry["stato"] = f.get("state")
             if f.get("change") is not None:
                 entry["cambio"] = f.get("change")
-            tradotte.append(entry)
-        series[ident] = tradotte
+            translated.append(entry)
+        series[ident] = translated
     return series
 
 
@@ -649,13 +649,13 @@ class HAClient:
             return {"errore": f"non ho potuto leggere le etichette di {entity_id}: "
                               f"{loaded['errore']}"}
         entry = loaded["voce"] if isinstance(loaded["voce"], dict) else {}
-        attuali = entry.get("labels")
-        attuali = list(attuali) if isinstance(attuali, list) else []
-        if label_id in attuali:
+        current_labels = entry.get("labels")
+        current_labels = list(current_labels) if isinstance(current_labels, list) else []
+        if label_id in current_labels:
             return {"applicata": True}
         msg = await self._ws_command(
             "config/entity_registry/update",
-            {"entity_id": entity_id, "labels": attuali + [label_id]})
+            {"entity_id": entity_id, "labels": current_labels + [label_id]})
         occurrence = self._ws_occurrence(msg, "_")
         return {"errore": occurrence["errore"]} if "errore" in occurrence else {"applicata": True}
 
@@ -837,7 +837,7 @@ class HAClient:
         # puo' gia' portare la dichiarazione "elenco" se l'elenco non e'
         # arrivato — ridichiararla la cancellerebbe.
         paths: list[str | None] = [None]
-        visti: set[str] = set()
+        seen: set[str] = set()
         for d in listing:
             p = d.get("url_path")
             if p is None:
@@ -846,15 +846,15 @@ class HAClient:
                 unavailable.append(
                     f"{p} (collide con la chiave della plancia predefinita, ignorata)")
                 continue
-            if p in visti:
+            if p in seen:
                 unavailable.append(f"{p} (duplicata nell'elenco, ignorata)")
                 continue
-            visti.add(p)
+            seen.add(p)
             paths.append(p)
 
-        comandi = [("lovelace/config", {} if p is None else {"url_path": p})
-                   for p in paths]
-        replies = await self._ws_batch(comandi)
+        commands = [("lovelace/config", {} if p is None else {"url_path": p})
+                    for p in paths]
+        replies = await self._ws_batch(commands)
 
         # setdefault, non un comprehension che sovrascrive: un percorso
         # duplicato deve accoppiarsi al PRIMO dizionario visto (coerente con
@@ -969,14 +969,14 @@ class HAClient:
         `entities` e' una LISTA (quella di `diario` e' singola): tutti gli
         elementi devono avere una forma valida, o nessuna richiesta parte.
         """
-        non_validi = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
-        if non_validi:
-            logger.warning("storico: entita' non valide: %r", non_validi)
-            return {"errore": _truncate(f"entita' non valide: {non_validi!r}", 200)}
-        filtro = quote(",".join(entities), safe="")
+        invalid = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
+        if invalid:
+            logger.warning("storico: entita' non valide: %r", invalid)
+            return {"errore": _truncate(f"entita' non valide: {invalid!r}", 200)}
+        entity_filter = quote(",".join(entities), safe="")
         url = (f"{self._base_url}/api/history/period/{da_iso}"
                f"?end_time={quote(a_iso, safe='')}"
-               f"&filter_entity_id={filtro}"
+               f"&filter_entity_id={entity_filter}"
                f"&minimal_response&no_attributes")
         try:
             async with self._session.get(url) as resp:
@@ -1179,7 +1179,7 @@ class HAClient:
     # suite dedicata, tests/test_ha_client_statistics.py, e resta): nessuna
     # garanzia persa.
 
-    async def _ws_batch(self, comandi: list[tuple[str, dict | None]],
+    async def _ws_batch(self, commands: list[tuple[str, dict | None]],
                         timeout: float = 10.0) -> list[dict | None]:
         """N comandi WebSocket su UNA connessione → N messaggi interi, in ordine.
 
@@ -1191,15 +1191,15 @@ class HAClient:
         `None` per i comandi rimasti senza risposta o se la connessione e'
         fallita del tutto: chi chiama decide se un guasto e' tollerabile.
         """
-        replies: list[dict | None] = [None] * len(comandi)
-        if not comandi:
+        replies: list[dict | None] = [None] * len(commands)
+        if not commands:
             return replies
         ws_url = (
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
         token = self._headers["Authorization"].removeprefix("Bearer ")
-        types = [t for t, _ in comandi]
+        types = [t for t, _ in commands]
         try:
             async with (
                 aiohttp.ClientSession() as session,
@@ -1212,18 +1212,18 @@ class HAClient:
                     if auth.get("type") != "auth_ok":
                         logger.warning("HA WS auth failed in _ws_batch(%s)", types)
                         return replies
-                for numero, (msg_type, extra) in enumerate(comandi, start=1):
-                    payload = {"id": numero, "type": msg_type}
+                for msg_id, (msg_type, extra) in enumerate(commands, start=1):
+                    payload = {"id": msg_id, "type": msg_type}
                     if extra:
                         payload.update(extra)
                     await ws.send_json(payload)
-                attesi = set(range(1, len(comandi) + 1))
-                while attesi:
+                awaited = set(range(1, len(commands) + 1))
+                while awaited:
                     msg = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    numero = msg.get("id")
-                    if numero in attesi:
-                        replies[numero - 1] = msg
-                        attesi.discard(numero)
+                    msg_id = msg.get("id")
+                    if msg_id in awaited:
+                        replies[msg_id - 1] = msg
+                        awaited.discard(msg_id)
         except Exception as exc:
             logger.debug("_ws_batch(%s) failed: %s", types, exc)
         return replies
@@ -1504,37 +1504,37 @@ class HAClient:
         if not isinstance(prefs, dict) or not isinstance(registry, list):
             return {"errore": "risposta in forma inattesa"}
 
-        mappa: dict[str, dict] = {}
+        by_entity: dict[str, dict] = {}
 
         def _declare(entity_id, direction: str) -> None:
             if isinstance(entity_id, str) and entity_id:
-                mappa[entity_id] = {"direzione": direction, "provenienza": "dichiarata"}
+                by_entity[entity_id] = {"direzione": direction, "provenienza": "dichiarata"}
 
-        for sorgente in prefs.get("energy_sources") or []:
-            if not isinstance(sorgente, dict):
+        for energy_source in prefs.get("energy_sources") or []:
+            if not isinstance(energy_source, dict):
                 continue
-            tipo = sorgente.get("type")
+            tipo = energy_source.get("type")
             if tipo == "grid":
-                _declare(sorgente.get("stat_energy_from"), "prelievo")
-                _declare(sorgente.get("stat_energy_to"), "immissione")
+                _declare(energy_source.get("stat_energy_from"), "prelievo")
+                _declare(energy_source.get("stat_energy_to"), "immissione")
             elif tipo == "solar":
-                _declare(sorgente.get("stat_energy_from"), "produzione")
-                _declare(sorgente.get("stat_rate"), "produzione")
+                _declare(energy_source.get("stat_energy_from"), "produzione")
+                _declare(energy_source.get("stat_rate"), "produzione")
             elif tipo == "battery":
-                _declare(sorgente.get("stat_energy_from"), "scarica")
-                _declare(sorgente.get("stat_energy_to"), "carica")
+                _declare(energy_source.get("stat_energy_from"), "scarica")
+                _declare(energy_source.get("stat_energy_to"), "carica")
 
         for row in registry:
             if not isinstance(row, dict):
                 continue
             eid = row.get("entity_id")
-            if not isinstance(eid, str) or eid in mappa:
+            if not isinstance(eid, str) or eid in by_entity:
                 continue  # la dichiarata vince sempre: la dedotta tace qui
             direction = self._DIRECTION_BY_TRANSLATION_KEY.get(row.get("translation_key"))
             if direction:
-                mappa[eid] = {"direzione": direction, "provenienza": "dedotta"}
+                by_entity[eid] = {"direzione": direction, "provenienza": "dedotta"}
 
-        return mappa
+        return by_entity
 
     async def get_config(self) -> dict:
         """Il sistema di riferimento della casa, da `get_config` di HA.
@@ -1609,8 +1609,8 @@ class HAClient:
         `non_disponibili` riporta quale (es. `categorie:script`), non un
         generico `categorie`.
         """
-        comandi = [(tipo, extra) for _, tipo, extra in self._REGISTRIES]
-        replies = await self._ws_batch(comandi)
+        commands = [(tipo, extra) for _, tipo, extra in self._REGISTRIES]
+        replies = await self._ws_batch(commands)
         registries: dict[str, list[dict]] = {}
         unavailable: list[str] = []
         for (key, tipo, extra), msg in zip(self._REGISTRIES, replies):
@@ -1795,23 +1795,23 @@ class HAClient:
                     # (non solo le creazioni: quel filtro apparteneva al meccanismo storico
                     # verso add_registry_listener, uscito con la context map che lo chiamava
                     # -- fetta E3 Task 2, 2.0).
-                    numero = 2
+                    msg_id = 2
                     for event_type in (
                         t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"
                     ):
-                        numero += 1
+                        msg_id += 1
                         await ws.send_json(
-                            {"id": numero, "type": "subscribe_events", "event_type": event_type}
+                            {"id": msg_id, "type": "subscribe_events", "event_type": event_type}
                         )
                     # Task 5: le plance hanno un ascoltatore proprio, separato
                     # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
-                    numero += 1
+                    msg_id += 1
                     await ws.send_json(
-                        {"id": numero, "type": "subscribe_events", "event_type": EVENTO_PLANCE}
+                        {"id": msg_id, "type": "subscribe_events", "event_type": EVENTO_PLANCE}
                     )
                     for event_type in EVENTI_SERVIZI:
-                        numero += 1
-                        await ws.send_json({"id": numero, "type": "subscribe_events",
+                        msg_id += 1
+                        await ws.send_json({"id": msg_id, "type": "subscribe_events",
                                             "event_type": event_type})
 
                     # Task 6: ogni (ri)connessione riuscita rifa' l'anagrafe, non solo

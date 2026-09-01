@@ -505,7 +505,12 @@ in §4①:
 | `vivi` | `vive` |
 | `citate` | `citato` |
 | `sconosciute` | `sconosciuto` |
+| `attesi` | `atteso` |
+| `comandi` | `comando` |
 | `estesa` | `esteso` |
+| `fasce` | `fascia` |
+| `tradotte` | `tradotto` |
+| `validi` | `valido` |
 | `estese` | `esteso` |
 | `estesi` | `esteso` |
 | `campi` | `campo` |
@@ -563,7 +568,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction | ~ parziale |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
-| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato | direction | ✓ arriva |
+| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **La mappa che `proxy/ha_client.py::direzioni_energia` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memoria/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
 | dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' | occurrence | ✓ arriva |
@@ -1311,6 +1316,7 @@ al Task 6 invece che deciso qui.
 | assegnato | assigned |
 | assembla | assemble |
 | assicura | ensure |
+| atteso | awaited | **Il participio prende un inglese diverso dal sostantivo `attesa -> pending`, ed e' la stessa distinzione di `leggi`/`letto`**: `attesa` e' la CONDIZIONE (una promessa in attesa), `attesi` sono le cose che si stanno aspettando -- gli id dei comandi websocket a cui `_ws_batch` non ha ancora ricevuto risposta. Chiamarli `pending` metterebbe due concetti diversi sotto lo stesso nome |
 | attesa | pending |
 | attivo | active |
 | attributo | attribute |
@@ -1337,6 +1343,7 @@ al Task 6 invece che deciso qui.
 | codice | code |
 | colonna | column |
 | configurazione | configuration |
+| comando | command |
 | confronta | compare |
 | confronto | comparison |
 | conoscenza | knowledge |
@@ -1349,7 +1356,7 @@ al Task 6 invece che deciso qui.
 | coppia | pair |
 | corpo | body |
 | correggibile | correctable |
-| corrente | current |
+| corrente | current | **`attuale` NON prende una riga, pur essendo un sinonimo**: `current` e' gia' l'inglese di `corrente`, e due parole italiane sullo stesso inglese sono la collisione permanente che questo glossario evita (vedi `libero`/`gratuito` sotto `gratuito`). L'unica occorrenza (`attuali`, le etichette gia' presenti su un'entita' in `proxy/ha_client.py::aggiungi_etichetta_a`) si chiama `current_labels`, cioe' prende il nome del campo di Home Assistant che alimenta |
 | correzione | correction |
 | costo | cost |
 | crea | create |
@@ -1390,7 +1397,7 @@ al Task 6 invece che deciso qui.
 | fascia | band |
 | finale | final |
 | finestra | window |
-| fonte | source |
+| fonte | source | **`sorgente` NON prende una riga, per la stessa ragione**: `source` e' gia' l'inglese di `fonte`. L'unica occorrenza (`sorgente` in `proxy/ha_client.py::direzioni_energia`) si chiama `energy_source`, che e' il nome che Home Assistant stesso da' a quelle voci (`energy/get_prefs` -> `energy_sources`) |
 | forma | form |
 | frase | phrase |
 | fresco | fresh |
@@ -1561,6 +1568,7 @@ al Task 6 invece che deciso qui.
 | tutte | all |
 | unita | unit |
 | valida | validate |
+| valido | valid | **Il femminile `valida` NON e' aliasato, ed e' una decisione**: `valida` e' il VERBO «convalida» (`valida_config`, in `proxy/ha_client.py` e `azione/costruzione/officina.py`), non l'aggettivo. Un alias `valida -> valido` trasformerebbe un metodo pubblico in un aggettivo. Stessa forma della nota su `prima` sotto `primo` |
 | via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
 | valore | value |
 | verbo | verb |

@@ -24,9 +24,9 @@ class _Client:
         self.solleva = solleva
         self.chiamate = []
 
-    async def _ws_batch(self, comandi, timeout=10.0):
+    async def _ws_batch(self, commands, timeout=10.0):
         risposte = []
-        for tipo, _extra in comandi:
+        for tipo, _extra in commands:
             if tipo == "config/entity_registry/list":
                 risposte.append({"result": [
                     {"entity_id": "light.salotto", "name": "Piantana"},

@@ -383,7 +383,7 @@ _NOTE_ITALIANE = frozenset({
     "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_del_turno", "modello_di",
     "motivo_token_non_valido", "nei_preset", "nei_test", "nel_prompt", "nell_argv",
     "nomi_di_ripiego", "non_c_e", "non_chiesto", "non_disponibili", "non_esiste", "non_letti",
-    "non_letto", "non_validi", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
+    "non_letto", "non_viste", "notte_30_oltre_confine", "parole_di_scadenza",
     "piano_ha_il_token", "poco_dopo", "ponte_con_configurazione_predefinita", "porta_con_canale",
     "prima_dei_guasti", "prima_riga", "prima_rivendicazione", "resp_con",
     "resp_senza", "riaggrega_gli_ultimi_due_giorni", "riepilogo_non_chiesto",

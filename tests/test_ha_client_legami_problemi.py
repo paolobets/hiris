@@ -16,8 +16,8 @@ class _Finto:
         self.solleva = solleva
         self.comandi = []
 
-    async def _ws_batch(self, comandi, timeout=10.0):
-        self.comandi.extend(comandi)
+    async def _ws_batch(self, commands, timeout=10.0):
+        self.comandi.extend(commands)
         if self.solleva:
             raise OSError("HA muto")
         return [self.risposta]
