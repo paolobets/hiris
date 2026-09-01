@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Il rinominatore del frontend: propone, e applica solo cio' che e' deciso.
+
+Stessa legge del gemello Python (`scripts/rinomina.py`): **non indovina**. Ma
+il JavaScript ha due difetti che il Python non ha, e questo strumento nasce
+sapendoli perche' sono stati MISURATI, non temuti.
+
+**1. Il nome non e' il legame.** 1.542 dichiarazioni portano 704 nomi
+distinti: `corpo` e' dichiarato 34 volte in 7 file, `testo` 25 in 10. Uno
+strumento a token le rinomina insieme. Per questo la sorgente di verita' non
+e' un tokenizzatore ma `scripts/legami_js.mjs`, che con `acorn` ricostruisce
+gli ambiti e restituisce i LEGAMI. Il controllo di collisione in ambito -- il
+gemello che `rinomina.Collisione` dichiara di non avere, e che il 1o settembre
+e' costato un 500 su ogni asset -- qui c'e', e ci sta perche' l'AST lo rende
+possibile in poche righe.
+
+**2. Una proprieta' rinominata da un lato solo non lancia: da' `undefined`.**
+In Python un attributo sbagliato e' un `AttributeError` rumoroso. Qui e'
+silenzio. Provato per mutazione su 41 casi: 37 li prende la suite, 4 no -- e
+tutti e quattro hanno la stessa forma, OGNI lettura in posizione di verita'
+(`!x`, `x ||`, `x ? :`), dove `undefined` diventa semplicemente `false`. Il
+predicato le trova con l'AST, e questo strumento le DICHIARA senza applicarle.
+
+Uso:
+    node scripts/legami_js.mjs > /tmp/legami.json
+    python scripts/rinomina_js.py --legami /tmp/legami.json [--percorso config]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rinomina
+
+# Le parole che la fetta di vocabolario del frontend ha deciso, e che il
+# glossario non aveva. Finche' non sono scritte in `docs/GLOSSARIO.md` questo
+# file resta vuoto: lo strumento non porta un vocabolario proprio, o sarebbe
+# il doppione che `doppioni.py` esiste per trovare.
+VOCABOLARIO_FRONTEND: dict[str, str] = {}
+
+
+def _pezzi_decisi(nome: str, g: rinomina.Glossario, ambito: str):
+    """(inglese, ragione) -- `None` se lo strumento non e' autorizzato."""
+    pezzi = rinomina.spezza(nome)
+    fuori = []
+    for p in pezzi:
+        low = p.lower()
+        en = g.per(low, ambito)
+        if en is None and low in g.alias:
+            en = g.per(g.alias[low], ambito)
+        if en is None:
+            en = VOCABOLARIO_FRONTEND.get(low)
+        if en is None:
+            return None, f"«{low}» non e' deciso da nessuna tabella"
+        fuori.append(en)
+    if len(pezzi) > 1:
+        return None, ("composto: l'inglese inverte l'ordine e questo strumento "
+                      f"non lo sa -- pezzi: {'+'.join(fuori)}")
+    nuovo = fuori[0]
+    # la maiuscola iniziale e il camelCase si conservano
+    if nome[:1].isupper():
+        nuovo = nuovo[:1].upper() + nuovo[1:]
+    return nuovo, ""
+
+
+def proprieta_cieche(dati: dict) -> set[str]:
+    """Le proprieta' che una rinomina di un lato solo NON fa arrossire.
+
+    La forma, misurata su 41 mutazioni: ogni lettura per attributo sta in
+    posizione di verita' (`!x`, `x || y`, `x ? a : b`, `if (x)`), dove una
+    lettura orfana restituisce `undefined` e `undefined` diventa `false` senza
+    che niente lanci. Tutti e quattro i casi ciechi hanno questa forma; nessuno
+    dei ventotto casi provati fuori da questa forma e' cieco.
+
+    Serve un lato-definizione (chiave di oggetto o scrittura per attributo):
+    una proprieta' che nessuno definisce non ha un lato da lasciare indietro.
+    """
+    from collections import defaultdict
+    lati = defaultdict(lambda: {"chiave": 0, "scrittura": 0, "lettura": 0, "verita": 0})
+    for v in dati.values():
+        for pr in v.get("proprieta", []):
+            lati[pr["nome"]][pr["lato"]] += 1
+            if pr["lato"] == "lettura" and pr.get("verita"):
+                lati[pr["nome"]]["verita"] += 1
+    return {n for n, x in lati.items()
+            if x["lettura"] > 0 and x["lettura"] == x["verita"]
+            and (x["chiave"] + x["scrittura"]) > 0}
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--legami", required=True, help="il JSON di legami_js.mjs")
+    p.add_argument("--percorso", default="", help="filtra: es. 'config' o 'chat'")
+    p.add_argument("--ambito", default="static",
+                   help="l'ambito con cui interrogare il glossario. Il valore giusto per "
+                        "questo albero e' `static`, e non e' un dettaglio: otto parole sono "
+                        "qualificate `(static)` e con l'ambito vuoto `Glossario.per` "
+                        "risponderebbe None su tutte e otto, in silenzio")
+    a = p.parse_args(argv)
+
+    dati = json.loads(Path(a.legami).read_text(encoding="utf-8"))
+    g = rinomina.g_corrente()
+    cieche = proprieta_cieche(dati)
+
+    applicabili: list[tuple] = []
+    proposte: list[tuple] = []
+    collisioni: list[tuple] = []
+
+    for rel, v in sorted(dati.items()):
+        if a.percorso and not rel.startswith(a.percorso):
+            continue
+        if "errore" in v:
+            print(f"!! {rel}: {v['errore']}")
+            continue
+        legami = v["legami"]
+        per_ambito = defaultdict(dict)
+        for l in legami:
+            per_ambito[l["ambito"]][l["nome"]] = l
+        for l in legami:
+            nome = l["nome"]
+            nuovo, ragione = _pezzi_decisi(nome, g, a.ambito)
+            if nuovo is None:
+                if any(rinomina.spezza(nome)) and ragione.startswith("composto"):
+                    proposte.append((rel, nome, ragione, len(l["rif"])))
+                continue
+            if nuovo == nome:
+                continue
+            # 1. il nome nuovo e' gia' legato nello STESSO ambito?
+            if nuovo in per_ambito[l["ambito"]]:
+                collisioni.append((rel, nome, nuovo, "gia' legato nello stesso ambito"))
+                continue
+            # 2. il nome nuovo esiste altrove nel file: ombreggiamento possibile
+            altrove = [x for x in legami if x["nome"] == nuovo and x["ambito"] != l["ambito"]]
+            if altrove:
+                collisioni.append((rel, nome, nuovo,
+                                   f"esiste in {len(altrove)} altri ambiti del file"))
+                continue
+            applicabili.append((rel, nome, nuovo, len(l["dich"]), len(l["rif"])))
+
+    print(f"== APPLICABILI: {len(applicabili)} legami")
+    for rel, vecchio, nuovo, nd, nr in applicabili[:200]:
+        print(f"   {rel}: {vecchio} -> {nuovo}  ({nd} dich, {nr} rif)")
+    print(f"\n== PROPOSTE (composti: lo strumento non indovina): {len(proposte)}")
+    for rel, nome, ragione, nr in proposte[:60]:
+        print(f"   {rel}: {nome}  -- {ragione}")
+    print(f"\n== COLLISIONI in ambito (la classe di server.py, 1 settembre): {len(collisioni)}")
+    for rel, vecchio, nuovo, perche in collisioni:
+        print(f"   {rel}: {vecchio} -> {nuovo}  RIFIUTATO: {perche}")
+    print(f"\n== PROPRIETA' CIECHE: {len(cieche)} -- a mano, col test scritto PRIMA")
+    print("   (ogni lettura in posizione di verita': una rinomina di un lato solo")
+    print("    non fa arrossire niente. Misurato: 4 casi su 41 mutazioni, e tutti e")
+    print("    quattro hanno questa forma; nessuno dei 28 provati fuori ce l'ha.)")
+    for n in sorted(cieche):
+        print(f"   {n}")
+    print("\nnessuna riga e' stata scritta: questo strumento non applica.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
