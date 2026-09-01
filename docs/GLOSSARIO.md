@@ -544,55 +544,133 @@ in §4①:
 
 | forma uscita dallo script | lemma nel glossario |
 |---|---|
-| `costruzioni` | `costruzione` |
-| `esiti` | `esito` |
-| `gambe` | `gamba` |
-| `lette` | `letto` |
-| `sconosciuta` | `sconosciuto` |
-| `effettiva` | `effettivo` |
-| `identificativo` | `identificatore` |
-| `disabilitate` | `disabilitato` |
-| `disabilitata` | `disabilitato` |
-| `nascoste` | `nascosto` |
-| `nascosta` | `nascosto` |
+| `aggiornamenti` | `aggiornamento` |
+| `ancore` | `ancora` |
+| `aperta` | `aperto` |
+| `aperte` | `aperto` |
+| `aperti` | `aperto` |
 | `assegnate` | `assegnato` |
-| `dichiarata` | `dichiarato` |
-| `propria` | `proprio` |
-| `viva` | `vivo` |
-| `candidata` | `candidato` |
-| `nostre` | `nostro` |
-| `vivi` | `vive` |
-| `citate` | `citato` |
-| `sconosciute` | `sconosciuto` |
+| `assoluta` | `assoluto` |
 | `attesi` | `atteso` |
-| `orarie` | `orario` |
+| `attive` | `attivo` |
+| `barre` | `barra` |
+| `bottoni` | `bottone` |
+| `caduto` | `caduti` |
+| `cambia` | `cambio` |
+| `cambiate` | `cambiato` |
+| `campi` | `campo` |
+| `candidata` | `candidato` |
+| `citate` | `citato` |
 | `comandi` | `comando` |
+| `conteggi` | `conteggio` |
+| `controllo` | `controlli` |
+| `correggibili` | `correggibile` |
+| `correzioni` | `correzione` |
+| `costruzioni` | `costruzione` |
 | `definizioni` | `definizione` |
+| `dichiarata` | `dichiarato` |
+| `disabilitata` | `disabilitato` |
+| `disabilitate` | `disabilitato` |
+| `disponibili` | `disponibile` |
+| `effettiva` | `effettivo` |
+| `esiti` | `esito` |
 | `estesa` | `esteso` |
-| `forme` | `forma` |
-| `invocazioni` | `invocazione` |
-| `regole` | `regola` |
-| `sentinelle` | `sentinella` |
-| `turni` | `turno` |
-| `fasce` | `fascia` |
-| `tradotte` | `tradotto` |
-| `validi` | `valido` |
 | `estese` | `esteso` |
 | `estesi` | `esteso` |
-| `campi` | `campo` |
-| `modi` | `modo` |
-| `nuove` | `nuovo` |
-| `problemi` | `problema` |
-| `pulita` | `pulito` |
-| `correggibili` | `correggibile` |
-| `aggiornamenti` | `aggiornamento` |
-| `correzioni` | `correzione` |
+| `fasce` | `fascia` |
+| `forme` | `forma` |
+| `gambe` | `gamba` |
+| `gratuiti` | `gratuito` |
+| `identificativo` | `identificatore` |
 | `ignorati` | `ignorato` |
+| `invocazioni` | `invocazione` |
+| `italiana` | `italiano` |
 | `letta` | `letto` |
-| `disponibili` | `disponibile` |
-| `verificabili` | `verificabile` |
+| `lette` | `letto` |
+| `letti` | `letto` |
+| `manca` | `mancante` |
+| `modi` | `modo` |
+| `mostrati` | `mostra` |
+| `nascosta` | `nascosto` |
+| `nascoste` | `nascosto` |
+| `nostre` | `nostro` |
 | `nostri` | `nostro` |
+| `nuove` | `nuovo` |
+| `orarie` | `orario` |
+| `piani` | `piano` |
+| `problemi` | `problema` |
+| `propria` | `proprio` |
+| `pulita` | `pulito` |
+| `regole` | `regola` |
+| `righe` | `riga` |
+| `ripristino` | `ripristina` |
+| `salvataggio` | `salva` |
+| `sconosciuta` | `sconosciuto` |
+| `sconosciute` | `sconosciuto` |
+| `sentinelle` | `sentinella` |
 | `strumento` | `strumenti` |
+| `tessere` | `tessera` |
+| `tradotte` | `tradotto` |
+| `turni` | `turno` |
+| `ultimo` | `ultima` |
+| `validi` | `valido` |
+| `verificabili` | `verificabile` |
+| `verificata` | `verifica` |
+| `visibili` | `visibile` |
+| `viva` | `vivo` |
+| `vivi` | `vive` |
+
+### Il frontend, e cosa di quella misura NON entra qui (fetta del 02/09)
+
+`hiris/app/static/` -- 22 file, 6.948 righe, 9.831 occorrenze di identificatore -- e' stato misurato
+con un lexer JavaScript, e la misura ha prodotto **405 parole che nessuna tabella di questo documento
+conosceva**. Lette una per una, si dividono in sei esiti, e **solo due sono decisioni**:
+
+| esito | quante | dove vivono |
+|---|---|---|
+| italiane | 188 | 134 righe in «Le parole ordinarie», 26 alias qui sotto, 8 qualificate `(static)`, 1 a mano (`ancora`), **19 rinviate** (vedi in fondo) |
+| contratto o valore di dominio | 38 | **non qui**: i valori di dominio sono gia' rinviati piu' avanti con la loro ragione, e ripetere quel rinvio 38 volte lo indebolirebbe |
+| gia' inglesi | 97 | nel rapporto della fetta |
+| sigle, tag HTML, frammenti | 46 | nel rapporto della fetta |
+| giunture (preposizioni, articoli, ausiliari) | 31 | nel rapporto della fetta |
+| nomi propri e marchi | 5 | nel rapporto della fetta |
+
+**Le ultime 179 sono una MISURA, non una decisione, e per questo non sono qui.** La tabella degli
+scarti qui sopra ha sei voci e ognuna significa *questa parola resta italiana per sempre, ed ecco
+perche'* -- e' cosi' che `Glossario.scartate` la legge, e su quel significato lo strumento decide di
+non rinominare mai. Scriverci `mount`, `cls` o `da` sarebbe falso due volte: quelle parole non
+«restano italiane», semplicemente **non sono italiane**, e centosettantanove righe di «e' gia'
+inglese» affogherebbero le sei che portano una ragione vera. Un documento normativo porta cio' che e'
+stato deciso; cio' che e' stato soltanto misurato sta nel verbale.
+
+**Il criterio che separa le 38 dalle 188 e' scritto perche' e' sottile, e la prima stesura lo aveva
+sbagliato su 26 parole.** Non e' «il backend nomina questa stringa»: una stringa Python omonima non fa
+di una variabile del frontend un campo. E' **come la usa il frontend** -- se la porta solo come CHIAVE
+o ATTRIBUTO, quella parola nomina un campo che viaggia sul filo; se la DICHIARA (`var`, `function`,
+parametro), e' una variabile nostra che per caso si scrive come una stringa del backend. Cosi'
+`bilancio` resta qui, perche' vive dentro `rigaBilancio` e `rendiMomentiBilancio`, mentre il valore
+`"bilancio"` sul filo -- membro di `GENRES` in `cervello/oggetti.py:44` accanto a `funzionamento`,
+`energia`, `presenza`, `guasto`, `sicurezza` -- non si tocca. **Il limite, dichiarato**: una parola che
+il frontend usa in tutti e due i modi manda in errore questo criterio, e le parole rimaste «nostre»
+sono state ricontrollate a campione, non tutte.
+
+**Le 19 rinviate, e perche' non bastava scegliere.** `attuale`, `chiavi`, `correggi`, `descrizione`,
+`detto`, `domanda`, `fine`, `giorni`, `ieri`, `modulo`, `nomi`, `numero`, `passo`, `pezzi`,
+`precedente`, `strategia`, `totali`, `voci`, `voluto`. Sono parole che il frontend usa e che il
+**Python porta ancora come residuo**, e le due strade possibili hanno tutt'e due un costo misurato da
+un cancello di questo repository:
+
+- **riga nuda** -- si applica ovunque: 21 identificatori di `hiris/app` verrebbero riscritti
+  (`memoria/resolver.py::fine`, `server.py::attuale`, `azione/costruzione/composer.py::numero`...) e
+  tre test degli ambiti chiusi vanno rossi. Il loro messaggio e' giusto -- *decidilo davvero
+  (applicalo, o traccialo qui)* -- ma applicarlo e' un lotto Python, non questa fetta;
+- **riga `(static)`** -- confina la decisione al frontend, ma rende la parola MUTA in una trentina di
+  coppie parola/ambito che il Python usa ancora, e
+  `test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato` le elenca una per una. E' il
+  trappolone di `riga (proxy)` in forma nuova.
+
+Nessuna delle due appartiene a questa fetta: **decidere il residuo italiano del Python e' un lotto
+Python**, e queste 19 righe si scriveranno quel giorno, insieme al resto.
 
 Le righe sopra (dopo le tre della spec) sono **variazioni di genere**, non singolare/plurale: lo
 script segnala la forma flessa come composto/proposta invece di applicarla da sola (la stessa
@@ -615,8 +693,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
-| ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede | anchor | ~ parziale |
-| ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto | tether | ~ parziale |
+| ancora (consumi) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede **`hiris/app/static/` porta ENTRAMBI i sensi, e per giunta un terzo che non e' un senso** (fetta del frontend, 02/09): `memoria-route.js::TIPO_ANCORA_LABELS` e' `tether`, `usage-route.js::daAncora` e' `anchor`, e `models-route.js:506` scrive `var ancora = el('button', ..., 'Riprova')` -- li' `ancora` e' l'AVVERBIO, e quel nome si rinomina `retry` invece di tradursi (e' il gemello di `bottoneRiprova`, la cui variabile locale si chiama gia' cosi'). Nessuna riga `ancora (static)`: gli ambiti sono CARTELLE, e una cartella con due sensi dentro e' il limite descritto in «Il limite della qualificazione per ambito». Si applica a mano, come `piano (abbonamento)`. | anchor | ~ parziale |
+| ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto **`hiris/app/static/` porta ENTRAMBI i sensi, e per giunta un terzo che non e' un senso** (fetta del frontend, 02/09): `memoria-route.js::TIPO_ANCORA_LABELS` e' `tether`, `usage-route.js::daAncora` e' `anchor`, e `models-route.js:506` scrive `var ancora = el('button', ..., 'Riprova')` -- li' `ancora` e' l'AVVERBIO, e quel nome si rinomina `retry` invece di tradursi (e' il gemello di `bottoneRiprova`, la cui variabile locale si chiama gia' cosi'). Nessuna riga `ancora (static)`: gli ambiti sono CARTELLE, e una cartella con due sensi dentro e' il limite descritto in «Il limite della qualificazione per ambito». Si applica a mano, come `piano (abbonamento)`. | tether | ~ parziale |
 | ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memoria.py::_resolve_tether` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito. **Attenzione, e la prima stesura lo taceva: `api` porta ENTRAMBI i sensi di `ancora`, non uno solo.** `api/handlers_usage.py:119,120,121,153,218` usa l'ancora dei CONSUMI (`ancora (consumi) -> anchor`), non questa. Questa riga non sbaglia oggi solo perche' `consumi/` e' stato convertito PRIMA, e quelle cinque occorrenze si scrivono gia' `anchor`: con un altro ordine dei lotti sarebbe una regola che sbaglia in silenzio, ed e' esattamente il caso che «Il limite della qualificazione per ambito» descrive (due sensi DENTRO lo stesso ambito, che una riga per ambito non sa distinguere). Chi incontra `ancora` nuda in un file di `api/` guarda il file prima di fidarsi di questa riga: se e' `handlers_usage.py` o un suo parente, e' `anchor` | tether | ~ parziale |
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
@@ -1362,6 +1440,7 @@ al Task 6 invece che deciso qui.
 | italiano | inglese |
 |---|---|
 | adesso | now |
+| acapo | newline |
 | affidabile | reliable |
 | aggiorna | refresh |
 | aggiornamento | update |
@@ -1377,47 +1456,71 @@ al Task 6 invece che deciso qui.
 | anteprima | preview |
 | aperto | open |
 | applica | apply |
+| apri | open | condivide `open` con `aperto`: e' la classe verbo/aggettivo gia' accettata (`elenca`/`elenco`) |
 | area | area |
+| aree | areas |
 | argomento | argument |
 | arrivato | arrived |
+| articolo | article |
 | assegnato | assigned |
 | assembla | assemble |
 | assicura | ensure |
-| atteso | awaited | **Il participio prende un inglese diverso dal sostantivo `attesa -> pending`, ed e' la stessa distinzione di `leggi`/`letto`**: `attesa` e' la CONDIZIONE (una promessa in attesa), `attesi` sono le cose che si stanno aspettando -- gli id dei comandi websocket a cui `_ws_batch` non ha ancora ricevuto risposta. Chiamarli `pending` metterebbe due concetti diversi sotto lo stesso nome |
+| assoluto | absolute |
 | attesa | pending |
+| attese | waits |
+| atteso | awaited | **Il participio prende un inglese diverso dal sostantivo `attesa -> pending`, ed e' la stessa distinzione di `leggi`/`letto`**: `attesa` e' la CONDIZIONE (una promessa in attesa), `attesi` sono le cose che si stanno aspettando -- gli id dei comandi websocket a cui `_ws_batch` non ha ancora ricevuto risposta. Chiamarli `pending` metterebbe due concetti diversi sotto lo stesso nome |
 | attivo | active |
 | attributo | attribute |
 | automazione | automation |
+| autosufficienza | self_sufficiency |
+| avvio | start | condivide `start` con `inizio`: stesso concetto. `row._attesa.avvio` e' l'istante in cui l'attesa e' cominciata |
 | avvisa | warn | il verbo, distinto dal sostantivo `avviso -> notice`: e' la classe verbo/sostantivo gia' accettata (`elenca`/`elenco`). `warn_thinking_ignored` (`backends/`) SCRIVE un avviso nel log, non ne restituisce uno |
+| avvisi | notices |
 | avviso | notice |
+| azioni | actions |
+| barra | bar |
+| basato | based |
+| basso | bottom |
+| batteria | battery |
+| bilancio | balance |
 | bloccato | stuck | **Non `blocked`**: in `reasoning/queue.py::fail_stuck_downgrades` un ripiego «bloccato» non e' stato fermato da qualcuno -- e' un lavoro preso in carico e mai finito, perche' il processo e' caduto a meta'. `blocked` direbbe che qualcosa lo trattiene, `stuck` dice che e' rimasto li'. Il verbo `blocca -> block` resta quello che e' |
 | blocco | block |
+| bolla | bubble |
+| bottone | button |
+| caduti | unavailable |
 | cambiato | changed |
 | cambio | change |
 | campione | sample |
 | campo | field |
-| candidato | candidate |
 | cancella | delete |
-| causa | cause |
+| candidato | candidate |
 | carattere | character |
 | carica | load |
+| caricamento | loading |
+| caricato | loaded | condivide `loaded` con `letto`, e non e' un caso: quella riga decide che il PARTICIPIO non e' l'atto. `caricato: false` (`models-route.js:118`) dice che il pannello non ha ancora i dati -- lo stesso risultato, detto con la parola del frontend |
 | cartella | folder |
+| casella | box |
 | catalogo | catalog |
 | categoria | category |
+| causa | cause |
+| chi | who |
 | chiama | call |
 | chiamata | call |
-| chi | who |
 | chiave | key |
-| circuito | circuit |
 | chiudi | close |
+| chiuso | closed |
+| circuito | circuit |
 | citato | cited |
 | classe | class |
 | coda | tail | **`code` (il plurale) e' la trappola gemella di `rotta`, e la piu' insidiosa finora.** `codice -> code` produce un nome che il glossario stesso rilegge come ITALIANO: `code` e' il plurale di `coda`, quindi `classifica('_code_of')` propone `tail_of`. **Contro-esempio, e il punto e' tutto qui**: `_codice_di -> _code_of` SEMBRA inglese corretto, e nessuna review si ferma su di lui -- a differenza di `broken_config`, che almeno dice una cosa falsa. Il nome giusto e' quello del campo vero: `_status_code` (`backends/openai_compat_runner.py`, `exc.status_code`). **Misurato su tutto il glossario: e' l'UNICA coppia il cui inglese si rilegge come italiano**, e `test_nessuna_parola_produce_un_inglese_che_il_glossario_rilegge_da_capo` la tiene sola. Chi decide un inglese che potrebbe essere anche un plurale italiano (`code`, `note`, `pane`, `mare`) lo verifichi prima. | **due sensi vivi, e quello che lo strumento applica da solo e' il minoritario -- quarto caso della famiglia gia' descritta in «Il limite della qualificazione per ambito» (Task 9, lotto 12).** `tail` e' giusto per `agent/runner.py:1559` (`coda = stdout.strip()[-200:]`, l'ultimo pezzo del flusso letto) e per i due `_coda` di `tests/test_strumenti_al_ponte.py` e `tests/test_token_interno.py`. Ma in `api/handlers_chat.py::_downgrade_to_chain` e nei quattro file di test che la nominano (`test_reasoning_queue.py`, `test_instradamento.py::_CodaFinta`, `test_promessa_dal_ponte.py`, `test_schedulatore_turno.py`) `coda` e' la CODA DI LAVORO, cioe' `ReasoningQueue`: `tail = request.app["reasoning_queue"]` sarebbe un nome che mente. Qualificare per ambito non aiuta -- i due sensi convivono dentro `agent/` come dentro `tests/` -- e nemmeno la forma li separa: sono entrambi NUDI, che e' esattamente il caso peggiore descritto per `fuori (casa)`. Si decide occorrenza per occorrenza guardando il codice: `queue` quando e' `ReasoningQueue` (il nome che l'app usa gia' nella chiave `reasoning_queue` e nella classe), `tail` quando e' la coda di una stringa |
 | codice | code |
+| collega | connect |
 | colonna | column |
+| colore | color |
+| comando | command |
+| completo | complete |
 | configurabile | configurable |
 | configurazione | configuration |
-| comando | command |
 | confronta | compare |
 | confronto | comparison |
 | conoscenza | knowledge |
@@ -1427,72 +1530,108 @@ al Task 6 invece che deciso qui.
 | conta | count |
 | conteggio | counts |
 | contenuto | content |
+| continua | continue |
+| controlli | controls |
 | coppia | pair |
 | corpo | body |
 | correggibile | correctable |
 | corrente | current | **`attuale` NON prende una riga, pur essendo un sinonimo**: `current` e' gia' l'inglese di `corrente`, e due parole italiane sullo stesso inglese sono la collisione permanente che questo glossario evita (vedi `libero`/`gratuito` sotto `gratuito`). L'unica occorrenza (`attuali`, le etichette gia' presenti su un'entita' in `proxy/ha_client.py::add_label_to`) si chiama `current_labels`, cioe' prende il nome del campo di Home Assistant che alimenta |
+| corretto | correct |
 | correzione | correction |
 | costo | cost |
 | crea | create |
 | credenziale | credential |
+| credenziati | credentialed |
 | cronologia | history | la serie dei messaggi gia' scambiati in chat. Prende lo STESSO inglese di `storico -> history` e non e' un doppione: `storico` e' la serie di stati passati che Home Assistant espone (legge del confine), `cronologia` e' la nostra, e sono due sguardi sulla stessa idea -- la classe gia' ammessa in «L'omonimia FRA MODULI». Decisa il 01/09 per la rotta `GET/DELETE /api/chat/history` (era `/api/chat/cronologia`), e l'inglese esisteva gia' nel codice: `chat_store.ChatStore.delete_old_messages(retention_days)`. **Resta indecisa come identificatore**: `handlers_chat_history.py` non e' mai stato convertito (vedi la nota su `giorni`), qui si decide il nome della ROTTA, che e' una stringa e non passa dallo strumento |
+| cronometro | stopwatch |
+| curva | curve |
 | dati | data |
+| decimali | decimals |
 | dedotto | deduced |
-| denominatore | denominator |
 | definizione | definition |
+| denominatore | denominator |
+| dettagli | details |
 | dettaglio | detail |
 | diagnosi | diagnosis |
 | dichiara | declare |
 | dichiarato | declared |
 | differenza | difference |
 | dimensione | dimension |
+| direzioni | directions |
 | disabilitato | disabled |
+| disegna | draw |
 | disponibile | available |
+| dispositivi | devices |
 | dispositivo | device |
 | divergenza | divergence |
+| dizionario | dictionary |
 | dominio | domain |
 | dopo (casa) | after |
 | dove | where |
+| eccezione | exception |
 | effettivo | actual |
+| elementi | elements |
 | elenca | list |
 | elencato | listed |
 | elenco | list | **`list` e' un builtin Python**, quindi su un nome NUDO non si applica (`_pericoloso`, la stessa guardia di `classe`/`class` e di `ingresso -> input_tokens`): il nome scelto e' `listing`. Non `listed`, che e' gia' l'inglese di `elencato`, ne' `catalog`, gia' quello di `catalogo` -- due collisioni permanenti evitate riusando la forma sostantivata dello stesso verbo. Misurato dal vivo su `proxy/ha_client.py::read_dashboards` (`elenco`/`elenco_arrivato` -> `listing`/`listing_arrived`) |
 | entita | entity |
 | episodio | episode |
+| equivalente | equivalent |
 | errore | error |
 | escluso | excluded |
 | esecuzione | execution |
-| eccezione | exception |
 | eseguito | executed |
 | esistente | existing |
 | esteso | extended | il campo che Home Assistant aggiunge a una riga di registro quando lo si chiede esplicitamente (gli alias di un'entita'), oltre a quelli che il registro porta sempre: `_add_extended_fields` (`proxy/ha_client.py`). Le quattro forme (`esteso`/`estesa`/`estesi`/`estese`) vivono oggi in quel solo file -- misurato con `tokenize` su tutto `hiris/app` prima di scrivere questa riga, zero collisioni altrove |
 | eta | age |
 | etichetta | label |
+| etichette | labels |
 | evento | event |
 | fallisci | fail |
 | fallito | failed |
 | fascia | band |
+| ferma | stop |
+| filtro | filter |
 | finale | final |
 | finestra | window |
+| fisso | fixed |
 | fonte | source | **`sorgente` NON prende una riga, per la stessa ragione**: `source` e' gia' l'inglese di `fonte`. L'unica occorrenza (`sorgente` in `proxy/ha_client.py::energy_directions`) si chiama `energy_source`, che e' il nome che Home Assistant stesso da' a quelle voci (`energy/get_prefs` -> `energy_sources`) |
 | forma | form |
+| formatta | format |
+| forza (static) | modality | lo stesso concetto di `forza (memoria)`, letto dal frontend: `FORZA_OPZIONI` porta preferenza/divieto/fatto/regola. Il campo `forza` sul filo non cambia qui -- lo decide la fetta delle rotte -- cambia solo l'identificatore che lo maneggia (`selForza`) |
 | frase | phrase |
+| frasi | sentences |
 | fresco | fresh |
 | fuori (casa) | outside |
+| fuori (static) | outside | `ID_FUORI_DALLE_AREE`: le entita' fuori da ogni area, lo stesso concetto di `fuori (casa)`. La STRINGA `__fuori_dalle_aree__` e' un valore sul filo e non si tocca |
+| generazione | generation |
 | gerarchia | hierarchy |
+| giornaliero | daily |
 | giorno | day | **`giorno_start -> midnight`** (`reasoning/queue.py::count_exchanges_today`): non `day_start`, che nello stesso metodo e' gia' il TIMESTAMP di quel momento. Il `datetime` consapevole del fuso e il numero che ne esce sono due cose, e chiamarle quasi uguali era il modo di confonderle. `mezzanotte` non prende una riga: e' l'unica occorrenza del progetto |
 | giro | round |
+| giu | down |
+| grafici | charts |
 | grana | granularity |
+| grandezza | magnitude |
 | gratuito | free | **`free` e' preso da QUESTO senso -- «senza costo» -- e non e' disponibile per `libero`, «non vincolato».** Misurato nel lotto 14 (`proxy/_sanitize.py`): `MAX_TESTO_LIBERO` andava all'inglese e il suggerimento meccanico era `max_text_libero`, meta' nome. Scrivere `libero -> free` avrebbe messo due parole italiane di senso diverso sullo stesso inglese in modo PERMANENTE -- la collisione che `Collisione` ferma dentro un file, resa regola. Risolto riusando il nome dell'interfaccia che la costante alimenta (`sanitize_ha_free_text` -> `MAX_FREE_TEXT`), e `libero` resta undecided: chi la incontra decide guardando il codice, non traducendo |
+| grezzo (static) | raw | **NON** `reading` di `grezzo (cervello)`, e la differenza si legge: la' e' una lettura di sensore non elaborata, qui e' l'aggettivo su un identificativo (`albero-route.js:467`, «resta visibile il solo identificativo grezzo»). Due sensi, due inglesi |
+| griglia | grid |
+| gruppi | groups |
+| gruppo | group |
+| guardia | guard |
 | guasto | fault |
+| guscio | shell |
+| icona | icon |
 | identificatore | identifier |
 | identita | identity |
 | ignorato | ignored |
-| indirizzo | address |
+| ignoto | unknown | condivide `unknown` con `sconosciuto`: stesso concetto |
 | illeggibile | unreadable |
 | impronta | fingerprint |
 | inaffidabile | unreliable |
 | incompleto | incomplete |
+| indietro | back |
+| indirizzo | address |
 | individuale | individual |
 | ingresso | input |
 | iniziale | initial |
@@ -1501,39 +1640,59 @@ al Task 6 invece che deciso qui.
 | integrazione | integration |
 | interno | internal |
 | intero | integer |
+| intervallo | interval |
 | invalida | invalidate |
 | inventario | inventory |
 | irraggiungibile | unreachable |
+| istantanea | snapshot |
 | istante | instant |
+| italiano (static) | italian | **Qualificata non perche' abbia due sensi, ma perche' la parola nuda rompe due lettori.** `| italiano | italian |` ha la prima cella uguale all'INTESTAZIONE della tabella: il controllo di completezza n. 1 la scambia per un'intestazione e smette di leggere tutto cio' che segue (misurato: 60 righe sparite in silenzio), e `rinomina.leggi_glossario` la salta di proposito (`if it in ("italiano", "costante")`), quindi la riga sarebbe stata MORTA anche nello strumento. Con la qualificazione la prima cella non e' piu' quella parola e tutt'e due i lettori la vedono. Sta in `nomiRegistriInItaliano` (`albero-route.js:114`, `dashboard.js:235`) |
 | lacuna | gap |
+| lacune | gaps |
+| larghezza | width |
+| lato | side |
+| legenda | legend |
 | leggi | read |
 | leggibile | readable |
+| lenta | slow |
 | lettore | reader |
+| lettura (static) | read | `build-check.js::letturaLocale()` legge l'identificativo della build locale: l'ATTO di leggere, come `lettura (consumi)` |
 | limite | limit |
+| lista | list | condivide `list` con `elenco`: stesso concetto, terza parola italiana per la stessa cosa |
 | locale | local |
 | loro (casa) | their |
 | lunghezza | length |
 | mancante | missing |
 | mantieni | keep |
+| mappa | map |
+| margine | margin |
 | massimo | maximum |
 | messaggio | message |
 | metodo | method |
+| metti | set |
 | minimo | minimum |
 | misura | measurement |
+| misure | measurements |
+| mobili | moving |
 | modelli | models |
 | modello | model |
 | modo | mode |
+| momenti | moments |
 | momento | moment |
+| mostra | show |
 | motivo | reason |
+| nascondi | hide |
 | nascosto | hidden |
+| natura | nature |
 | negativo | negative |
 | nodo | node |
-| natura | nature |
 | nome | name | **`name` nudo e' giusto per il CAMPO, sbagliato per la FUNZIONE, e la differenza si vede solo leggendo.** `decisione_modelli.nome(provider_id)` non porta un nome: lo TROVA, restituendo `NOMI.get(provider_id, provider_id)`, cioe' il nome LEGGIBILE di un provider ("Piano Claude Max", "OpenRouter") con l'id come ripiego quando non lo conosce. A livello di modulo `def name(...)` direbbe meno del vero e collezionerebbe l'omonimia con i cinque `nome` di `ChatSettings`, che sono campi: `display_name`, e con lui `NOMI -> DISPLAY_NAMES`. **Deciso a mano, non dallo strumento**: `nome` e' stato tolto dalla mappa prima di applicare, perche' `classifica('nome')` propone `name` e l'avrebbe applicato da solo -- una parola di UNA parola sola non passa mai da una proposta. La chiave JSON `"nome"` del pannello Modelli (quattro siti) resta italiana, come ogni altra chiave. **Il rovescio, misurato l'01/09**: in `impostazioni_chat.py` `nome` E' un campo, e `name` nudo e' giusto -- e' il nome del chatbot che l'utente scrive nella pagina Impostazioni. Le due decisioni non sono in conflitto: `display_name` nomina una FUNZIONE che cerca, `name` nomina un CAMPO che porta. La chiave JSON `"nome"` resta italiana in tutti e due i file |
+| normale | normal |
 | normalizza | normalize |
 | nostro (casa) | our |
 | nota | note |
 | notifica | notification |
+| noto | known | condivide `known` con `conosciuto`: stesso concetto |
 | numeratore | numerator |
 | nuovo | new |
 | oggetto | object |
@@ -1542,20 +1701,32 @@ al Task 6 invece che deciso qui.
 | opzioni | options |
 | ora | hour |
 | orario | hourly |
-| ordine | order |
+| ordina | sort |
 | ordinato | sorted | **`sorted` e' un builtin Python**, quindi su un nome NUDO non si applica (`_pericoloso`, la stessa guardia di `classe`/`class` e di `elenco -> listing`): il nome scelto e' `ordered`. Misurato dal vivo su `llm_router.py::ordinati`, la lista dei backend gia' messi in ordine |
+| ordine | order |
+| ore | hours |
 | ottieni | get |
+| padre | parent |
+| pallino | dot |
+| pannello | panel |
+| parola | word |
 | parte | part |
+| parti | parts |
+| percento | percent |
 | percorso | path |
+| periodo | period |
 | peso | weight |
+| piano (static) | floor | il piano di una casa, lo stesso concetto di `piano (casa)`: tutte e dodici le occorrenze di `static/` sono quelle (`piano.aree`, `SPIEGAZIONE_PIANO`). Il senso *subscription* di `piano (abbonamento)` NON compare nel frontend |
 | piattaforma | platform |
 | picco | peak |
+| pieno | full |
 | plurale | plural |
 | portatore | carrier |
 | posizione | position |
 | pota | prune |
-| prefisso | prefix |
 | predefinito | default |
+| prefisso | prefix |
+| presenti | present |
 | primo | first | **Il femminile `prima` NON e' aliasato, ed e' una decisione, non una dimenticanza**: in `azione/porta.py`, `azione/costruzione/officina.py` e `azione/costruzione/versioni.py` `prima` e' l'AVVERBIO («prima e dopo» di un confronto di stati, ed e' anche la chiave JSON `"prima"`/`"dopo"`, un valore di dominio deliberatamente italiano), non l'ordinale. Un alias `prima -> primo` tradurrebbe tre ambiti stabili con il senso sbagliato. L'ordinale femminile si applica A MANO (`prima_voce -> first_entry`, `proxy/ha_client.py`) |
 | principale | main |
 | problema | problem |
@@ -1567,84 +1738,122 @@ al Task 6 invece che deciso qui.
 | protocollo | protocol |
 | pulisci | clean |
 | pulito | cleaned |
+| punti | points |
 | punto | point |
 | quale | which |
 | quando | when |
 | quante | count |
+| quieto | calm |
 | raggruppa | group |
-| gruppo | group |
 | raggruppato | grouped |
 | rango | rank |
+| recenti | recent |
 | reclama | reclaim |
-| regola | rule |
+| regione | region |
 | registra | log |
+| registri | registers |
+| regola | rule |
+| relativo | relative |
+| remoto | remote |
+| rendi | render |
+| rendite | results |
+| resa | surrender |
 | resto | rest |
 | restrizione | restriction |
+| ricarica | reload |
 | richiesta | request |
 | richiesto | requested |
+| ricomponi | recompose |
 | ricordo | memory |
 | ricostruisci | rebuild |
+| riempi | fill |
 | riepilogo | summary |
+| rifai | redo |
 | rifiuta | reject |
-| ripiega | downgrade |
+| rifiuti | refusals |
 | riga | row |
+| riga (agent) | line | una riga di STDOUT della CLI (`agent/runner.py::read_stream`, `stdout.splitlines()`): e' una linea di testo, lo stesso senso di `riga (casa)` e non quello di `(api)`/`(proxy)`, che sono record di un registro. Quarta qualificazione della stessa parola, e la piu' facile da sbagliare proprio perche' le altre tre dicono `row` |
 | riga (api) | row |
 | riga (casa) | line |
-| riga (agent) | line | una riga di STDOUT della CLI (`agent/runner.py::read_stream`, `stdout.splitlines()`): e' una linea di testo, lo stesso senso di `riga (casa)` e non quello di `(api)`/`(proxy)`, che sono record di un registro. Quarta qualificazione della stessa parola, e la piu' facile da sbagliare proprio perche' le altre tre dicono `row` |
 | riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (casa)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `consumi/store.py`, `memoria/archivio.py`, `schedulatore/archivio.py`, `schedulatore/turno.py`, `azione/costruzione/officina.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
+| riga (static) | line | **Quinta** qualificazione della stessa parola. `albero-route.js::riga(padre, testo, stile)` AGGIUNGE UNA RIGA DI TESTO a un nodo: e' il senso di `riga (casa)` e `riga (agent)`, non il record di `(api)`/`(proxy)` |
 | rileggi | reread |
+| riordinabile | reorderable |
 | ripara | repair |
+| ripiega | downgrade |
 | ripristina | restore |
+| riprova | retry |
 | riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
 | risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `read_dashboards`, `read_registries`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
 | risultato | result |
 | ritardo | delay |
+| rivelatore | detector |
 | rivendica | claim |
-| rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento proponeva `_rotta_config -> broken_config` (il nome vero, dal lotto 18 di `proxy/`, e' `_config_route`: qui resta il nome di allora perche' e' la misura che ha motivato questa riga), e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
 | rotta (participio) | broken | **Annotazione, non una riga raggiungibile**: `(participio)` non e' un ambito reale e nessun `--ambito` la trovera' mai, esattamente come `piano (abbonamento)`. Serve a tenere scritto il senso -- `porta_rotta` e' una porta GUASTA -- accanto a quello che gli somiglia, perche' chi legge solo la riga giusta non capisce perche' esiste. Si applica a mano, se mai servira' |
+| rotta (proxy) | route | **La riga che sarebbe costata piu' cara di tutta la fetta, e non perche' lo strumento sbagli: perche' `rotta` e' un OMOGRAFO vero dell'italiano** -- participio di «rompere» e sostantivo «percorso». Su `proxy/ha_client.py:423` lo strumento proponeva `_rotta_config -> broken_config` (il nome vero, dal lotto 18 di `proxy/`, e' `_config_route`: qui resta il nome di allora perche' e' la misura che ha motivato questa riga), e quel nome **direbbe l'opposto del vero**: quella funzione compone l'URL della rotta di configurazione, e lo dice il suo stesso docstring («L'URL della rotta di configurazione, oppure il motivo del rifiuto»). Non e' un suggerimento storpiato che salta all'occhio come `metti_da_part_l_store_unreadable`: e' **plausibile**, e sarebbe passato in review. **Misurato su tutti gli identificatori del repo che contengono il pezzo `rotta`**: uno in `hiris/app` (`_rotta_config`, senso PERCORSO) e circa 130 nei test (`ROTTA`, `rotta`, `rotta_senza_archivi`, `_Rotta`, tutti senso PERCORSO) contro **UNO** nel senso participio (`porta_rotta`, `tests/test_azione_porta.py:986`). La riga nuda `broken` descrive quindi il senso MINORITARIO, ed e' il verso in cui un'applicazione cieca fa piu' danno. Qualificando `(proxy)`, la riga nuda si spegne per ogni altro ambito (vedi «Il limite della qualificazione per ambito»): e' voluto -- meglio non rinominare che rinominare col senso sbagliato -- e il giorno in cui si convertira' `tests/` va qualificata anche li', guardando ogni occorrenza |
+| salva | save |
 | sanificato | sanitized |
-| scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `schedulatore/archivio.py` e `schedulatore/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
 | scadenza | deadline |
+| scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `schedulatore/archivio.py` e `schedulatore/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
 | scegli | choose |
-| sentinella | sentinel |
 | scelto | chosen |
 | scena | scene |
 | sconosciuto | unknown |
 | scritto | written |
 | scrivi | write |
+| scrivibile | writable |
 | secondo | second |
 | segna | mark |
+| segnaposto | placeholder |
 | semina | seed |
+| sentinella | sentinel |
 | senza (casa) | without |
 | serie | series |
 | servizio | service |
 | severita | severity |
 | sezione | section |
 | sicurezza | safety |
+| sicuro | safe |
 | significato | meaning |
 | singolare | singular |
+| sinistra | left |
 | sistema | system |
-| sonda | probe |
 | soggetto | subject |
 | soglia | threshold |
+| soglie | thresholds |
+| sommario | summary | condivide `summary` con `riepilogo`: stesso concetto |
+| sonda | probe |
+| sospeso | pending | condivide `pending` con `attesa`: la promessa «in sospeso» e l'attesa di una risposta sono la stessa condizione a due altezze -- omonimia ammessa fra moduli |
 | sostituisci | replace |
+| sottotitolo | subtitle |
+| spiegazione | explanation |
+| sposta | move |
 | stampa | print |
 | statistiche | statistics |
-| spiegazione | explanation |
 | stato | state |
+| stile | style |
 | storico | history | il nome che Home Assistant da' alla serie di stati passati di un'entita' (`GET /api/history/period`), e quindi il nome che prende qui: LEGGE DEL CONFINE. Non e' un doppione di `cronaca -> journal` (la nostra registrazione di cio' che abbiamo fatto NOI) ne' di `storia`, che resta italiano in `consumi/store.py::storia` -- residuo dichiarato, protetto da `_METODI_USAGE_STORE` |
+| striscia | strip |
 | successivo | next |
 | suffisso | suffix |
 | suggerimento | suggestion |
+| tabella | table |
 | taciuto | silenced |
 | tagliato | cut |
 | taglio | cut |
 | termine | term |
+| tessera | tile |
+| testa | head |
 | testo | text |
+| tieni | keep | condivide `keep` con `mantieni`: stesso concetto |
 | tipo | type |
 | titolo | title |
+| toccate | touched |
+| togli | remove |
+| tono | tone |
+| topologia | layout | `anagrafe -> topology` e' gia' deciso, e `ricomponiTopologia` (`models-route.js:830`) NON e' l'anagrafe: e' la disposizione della catena dei modelli, ricalcolata dall'ordine. Concetti diversi, inglese diverso -- ed e' il criterio del controllo n. 2 |
 | totale | total |
 | tracciato | tracked |
 | tradotto | translated |
@@ -1654,14 +1863,25 @@ al Task 6 invece che deciso qui.
 | trova | find |
 | trovato | found |
 | tutte | all |
+| ultima | last |
+| umidita | humidity |
 | unita | unit |
+| usa | use |
+| uscita | exit |
+| utente | user |
+| vai | go |
 | valida | validate |
 | valido | valid | **Il femminile `valida` NON e' aliasato, ed e' una decisione**: `valida` e' il VERBO «convalida» (`validate_config`, in `proxy/ha_client.py` e `azione/costruzione/officina.py`), non l'aggettivo. Un alias `valida -> valido` trasformerebbe un metodo pubblico in un aggettivo. Stessa forma della nota su `prima` sotto `primo` |
-| via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
 | valore | value |
+| vecchio | old |
 | verbo | verb |
+| verifica (static) | verify | `build-check.js::verifica()` confronta build locale e remota: il verbo, come `verifica (agent)` e `verifica (memoria)` |
 | verificabile | verifiable |
+| versione | version |
+| via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
+| vicino | near |
 | visibile | visible |
+| visto | seen |
 | visualizzato | displayed |
 | vivo | live |
 | voce | entry |
