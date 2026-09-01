@@ -59,7 +59,7 @@ from .cervello.osservatore import Watcher
 from .decisione_modelli import subscription_has_token
 from .env_util import env_bool
 from .esiti_provider import OccurrenceRegistry
-from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
+from .impostazioni_chat import ChatSettings, file_lacks_retention_days
 from .memoria.archivio import MemoryStore
 from .memoria.cache_indice import LookupCache
 from .proxy.entity_cache import EntityCache
@@ -2082,7 +2082,7 @@ async def _on_startup(app: web.Application) -> None:
     # E4 Task 2 -- DispatcherStrumenti legge `app["entity_cache"]`/
     # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
     # valorizzati sopra).
-    impostazioni_chat = ImpostazioniChat.carica(data_dir)
+    impostazioni_chat = ChatSettings.load(data_dir)
     app["impostazioni_chat"] = impostazioni_chat
 
     # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
@@ -2102,15 +2102,15 @@ async def _on_startup(app: web.Application) -> None:
     # memoria e' comunque quello giusto; a mancare sarebbe solo la persistenza,
     # e il cancello del rilascio la verifica esplicitamente
     # (docs/prova-modelli-e-catena.md, quarta precondizione).
-    if il_file_non_porta_i_giorni(data_dir):
+    if file_lacks_retention_days(data_dir):
         try:
-            impostazioni_chat.salva(data_dir)
+            impostazioni_chat.save(data_dir)
             logger.info(
                 "Migrazione (versione A): 'giorni_conservazione' (%d) e' stato "
                 "scritto in impostazioni_chat.json -- da adesso si cambia dalla "
                 "pagina Impostazioni chat, e l'opzione dell'add-on "
                 "'history_retention_days' non serve piu'.",
-                impostazioni_chat.giorni_conservazione,
+                impostazioni_chat.retention_days,
             )
         except OSError as exc:
             logger.warning(
@@ -2119,7 +2119,7 @@ async def _on_startup(app: web.Application) -> None:
                 "ma al prossimo riavvio si perde: 'history_retention_days' non "
                 "e' piu' un'opzione dell'add-on, quindi non c'e' piu' niente da "
                 "cui rileggerlo. Salvalo dalla pagina Impostazioni chat.",
-                impostazioni_chat.giorni_conservazione, exc,
+                impostazioni_chat.retention_days, exc,
             )
 
     # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
@@ -2810,7 +2810,7 @@ async def _on_startup(app: web.Application) -> None:
     from .chat_store import delete_old_messages as _delete_old_messages
 
     def _run_retention() -> None:
-        giorni = app["impostazioni_chat"].giorni_conservazione
+        giorni = app["impostazioni_chat"].retention_days
         if giorni > 0:
             n = _delete_old_messages(data_dir, giorni)
             if n:

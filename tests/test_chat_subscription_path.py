@@ -41,7 +41,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -75,8 +75,8 @@ def il_piano_puo_rispondere(monkeypatch):
 # chiave interna fissa resta -- chat_store e la coda non hanno proprio piu'
 # un concetto di id (vedi handlers_chat.py).
 def _make_impostazioni(*, max_chat_turns=0):
-    return ImpostazioniChat(
-        nome="test-agent",
+    return ChatSettings(
+        name="test-agent",
         system_prompt="You are a helpful assistant.",
         max_chat_turns=max_chat_turns,
     )
@@ -302,7 +302,7 @@ async def test_job_context_history_e_limitata_dai_giorni_di_conservazione(tmp_pa
     app, q, _runner, impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True
     )
-    impostazioni.giorni_conservazione = 5
+    impostazioni.retention_days = 5
 
     store = _get_store(data_dir)
     vecchio_ts = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -949,8 +949,8 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     risultava salvata e non faceva niente, in silenzio."""
     app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
-    app["impostazioni_chat"] = ImpostazioniChat(
-        nome="test-agent", system_prompt="You are a helpful assistant.",
+    app["impostazioni_chat"] = ChatSettings(
+        name="test-agent", system_prompt="You are a helpful assistant.",
         thinking_budget=8000,
     )
     with caplog.at_level("WARNING"):

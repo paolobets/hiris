@@ -24,7 +24,7 @@ import textwrap
 from datetime import UTC
 
 from hiris.app import server
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 
 
 def _load_run_retention():
@@ -71,7 +71,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     check = _load_run_retention()
     import logging
 
-    app = {"impostazioni_chat": ImpostazioniChat(giorni_conservazione=5)}
+    app = {"impostazioni_chat": ChatSettings(retention_days=5)}
     run_retention = check(app=app, data_dir=data_dir, logger=logging.getLogger("test"))
     run_retention()
     assert load_history(data_dir) == [], "5 giorni: il messaggio di 10 giorni fa doveva sparire"
@@ -87,7 +87,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
         (vecchio_ts2, "recente"),
     )
     store2._conn.commit()
-    app["impostazioni_chat"] = ImpostazioniChat(giorni_conservazione=0)
+    app["impostazioni_chat"] = ChatSettings(retention_days=0)
     run_retention()
     assert load_history(data_dir) == [{"role": "user", "content": "recente"}], (
         "0: la potatura non deve aver toccato niente"

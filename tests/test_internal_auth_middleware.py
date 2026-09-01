@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.server import create_app
 
 
@@ -22,7 +22,7 @@ def _make_app(tmp_path, token, cidrs=None):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)

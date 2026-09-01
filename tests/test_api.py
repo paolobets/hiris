@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.server import create_app
 
 
@@ -44,7 +44,7 @@ async def client(aiohttp_client, tmp_path):
     mock_runner.last_tool_calls = []
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -104,7 +104,7 @@ async def test_chat_no_runner(aiohttp_client):
     mock_ha.start_websocket = AsyncMock()
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = None
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -156,8 +156,8 @@ async def test_chat_no_runner(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
-    client.app["impostazioni_chat"] = ImpostazioniChat(
-        nome="Energia", system_prompt="Sei un esperto di energia.",
+    client.app["impostazioni_chat"] = ChatSettings(
+        name="Energia", system_prompt="Sei un esperto di energia.",
     )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="risposta energia")
@@ -175,7 +175,7 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
 
 @pytest.mark.asyncio
 async def test_chat_senza_chatbot_id_usa_comunque_le_impostazioni(client):
-    client.app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Prompt di default HIRIS.")
+    client.app["impostazioni_chat"] = ChatSettings(system_prompt="Prompt di default HIRIS.")
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="risposta default")
 
@@ -191,7 +191,7 @@ async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
     sul default (fallback). Ora non c'e' nessuna ricerca da far fallire: un
     id qualsiasi -- esistito o mai esistito -- non cambia il comportamento,
     perche' non seleziona piu' niente."""
-    client.app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Fallback prompt.")
+    client.app["impostazioni_chat"] = ChatSettings(system_prompt="Fallback prompt.")
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="fallback")
 
@@ -233,7 +233,7 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
         mock_runner.last_tool_calls = []
         app = create_app()
         app["ha_client"] = mock_ha
-        app["impostazioni_chat"] = ImpostazioniChat(system_prompt="Prompt fisso.")
+        app["impostazioni_chat"] = ChatSettings(system_prompt="Prompt fisso.")
         app["claude_runner"] = mock_runner
         app["theme"] = "auto"
         app["data_dir"] = str(tmp_path / data_dir_name)
@@ -287,8 +287,8 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
     il turno chiede sempre `auto`. Il test non è stato cancellato perché dava
     fastidio: il suo soggetto è cambiato di segno, e questo è l'unico posto
     che lo verifica sull'app VERA (`create_app`), non su un'app di prova."""
-    client.app["impostazioni_chat"] = ImpostazioniChat(
-        nome="Haiku", system_prompt="Chat test", restrict_to_home=False,
+    client.app["impostazioni_chat"] = ChatSettings(
+        name="Haiku", system_prompt="Chat test", restrict_to_home=False,
     )
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="ok")
@@ -307,7 +307,7 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
 @pytest.mark.asyncio
 async def test_chat_max_turns_blocks_when_limit_reached(client):
     from hiris.app.chat_store import append_messages
-    client.app["impostazioni_chat"] = ImpostazioniChat(max_chat_turns=2)
+    client.app["impostazioni_chat"] = ChatSettings(max_chat_turns=2)
     data_dir = client.app["data_dir"]
     # Pre-fill 2 user turns nell'UNICA cronologia server-side (fetta E4
     # Task 5: chat_store non prende piu' un id -- vedi handlers_chat.py).
@@ -353,7 +353,7 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     from hiris.app.chat_store import _get_store
 
     data_dir = client.app["data_dir"]
-    client.app["impostazioni_chat"] = ImpostazioniChat(giorni_conservazione=5)
+    client.app["impostazioni_chat"] = ChatSettings(retention_days=5)
     runner = client.app["claude_runner"]
     runner.chat = AsyncMock(return_value="ok")
 

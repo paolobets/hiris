@@ -98,7 +98,7 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
 
     from hiris.app.api.handlers_chat import handle_chat
     from hiris.app.chat_store import close_all_stores
-    from hiris.app.impostazioni_chat import ImpostazioniChat
+    from hiris.app.impostazioni_chat import ChatSettings
     from hiris.app.reasoning.queue import ReasoningQueue
 
     close_all_stores()
@@ -110,8 +110,8 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         # che scavalcava la catena; poi `provider_models["claude"]`, cioe' il
         # modello di un ALTRO provider; adesso `ponte.modello`, che e' del
         # piano e di nessun altro.
-        impostazioni = ImpostazioniChat(
-            nome="test-agent", system_prompt="Sei HIRIS.",
+        impostazioni = ChatSettings(
+            name="test-agent", system_prompt="Sei HIRIS.",
         )
 
         app = web.Application()

@@ -1732,3 +1732,60 @@ def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
         ("hiris/app/llm_router.py", "model"),
         ("tests/test_decisione_modelli.py", "now"),
         ("tests/test_decisione_modelli.py", "occurrences")], trovati
+
+
+_DATACLASS = """
+from dataclasses import dataclass
+
+@dataclass
+class ChatSettings:
+    nome: str = "HIRIS"
+    giorni_conservazione: int = 90
+"""
+
+
+def test_i_campi_di_una_dataclass_sono_parole_chiave_che_nessuna_def_dichiara():
+    """La NONA specie, misurata l'01/09 convertendo `impostazioni_chat.py`.
+
+    I campi di una `@dataclass` diventano parole chiave del costruttore che il
+    decoratore genera a import time. Nessun `def` li dichiara, quindi il
+    controllo di chiusura -- che legge i parametri delle `def` -- non li
+    vedeva: `ChatSettings(giorni_conservazione=...)` in **ventidue siti**, e
+    l'ha preso la suite andando rossa con `TypeError: got an unexpected
+    keyword argument 'giorni_conservazione'`.
+
+    E' la stessa forma gia' curata per `__init__` e il nome della classe, e
+    per questo il nome chiamato e' la CLASSE. Il perimetro e' misurato: dodici
+    `@dataclass` e 57 campi in tutto il repo, quindi niente rumore.
+
+    Provato per mutazione: tolto il giro su `campi_dataclass` da
+    `parametri_def_rinominati`, il primo assert va rosso; tolto da
+    `firme_rinominate`, il secondo.
+    """
+    g = rinomina.g_corrente()
+    coppie = {"giorni_conservazione": "retention_days"}
+    assert rinomina.parametri_def_rinominati(
+        _DATACLASS, g, "", coppie=coppie) == coppie
+    assert rinomina.firme_rinominate(_DATACLASS, g, "", coppie=coppie) == {"ChatSettings"}
+
+
+def test_una_classe_senza_dataclass_non_porta_parole_chiave():
+    """Il confine: senza il decoratore non c'e' nessun costruttore generato, e
+    quelle annotazioni sono attributi di classe -- che la TERZA rete copre
+    gia' come attributi. Segnalarle qui sarebbe contarle due volte."""
+    sorgente = _DATACLASS.replace("@dataclass\n", "")
+    coppie = {"giorni_conservazione": "retention_days"}
+    assert rinomina.parametri_def_rinominati(sorgente, rinomina.g_corrente(),
+                                             "", coppie=coppie) == {}
+
+
+def test_le_dataclass_del_prodotto_sono_dodici_e_i_campi_cinquantasette():
+    """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
+    scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
+    criterio largo dell'ottava (1.424 occorrenze): dodici classi si leggono."""
+    classi = campi = 0
+    for f in rinomina.file_py(rinomina.ROOT):
+        trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
+        classi += len(trovate)
+        campi += sum(len(c) for c in trovate.values())
+    assert (classi, campi) == (12, 57), (classi, campi)

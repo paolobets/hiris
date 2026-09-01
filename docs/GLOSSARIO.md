@@ -1422,7 +1422,7 @@ al Task 6 invece che deciso qui.
 | confronto | comparison |
 | conoscenza | knowledge |
 | conosciuto | known |
-| conservazione | retention |
+| conservazione | retention. **`giorni_conservazione -> retention_days`, e il nome esisteva gia'** (01/09): `chat_store.ChatStore.delete_old_messages` porta `retention_days` da sempre, ed e' lo STESSO concetto -- i giorni oltre i quali un messaggio si dimentica. Un concetto, un nome: qui non si traduce, si riusa. Il campo e la chiave JSON `"giorni_conservazione"` restano distinti nel codice, che li mappava gia' a mano |
 | consumi | usage | **Il singolare `consumo` NON e' aliasato, ed e' una decisione**: `cervello/oggetti.py::consumo` e' una variabile di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). `registra_consumo -> log_usage` (`backends/`) si applica a mano. Stessa forma delle note su `prima`, `valida` e `scadute` |
 | conta | count |
 | conteggio | counts |
@@ -1528,7 +1528,7 @@ al Task 6 invece che deciso qui.
 | negativo | negative |
 | nodo | node |
 | natura | nature |
-| nome | name | **`name` nudo e' giusto per il CAMPO, sbagliato per la FUNZIONE, e la differenza si vede solo leggendo.** `decisione_modelli.nome(provider_id)` non porta un nome: lo TROVA, restituendo `NOMI.get(provider_id, provider_id)`, cioe' il nome LEGGIBILE di un provider ("Piano Claude Max", "OpenRouter") con l'id come ripiego quando non lo conosce. A livello di modulo `def name(...)` direbbe meno del vero e collezionerebbe l'omonimia con i cinque `nome` di `ImpostazioniChat`, che sono campi: `display_name`, e con lui `NOMI -> DISPLAY_NAMES`. **Deciso a mano, non dallo strumento**: `nome` e' stato tolto dalla mappa prima di applicare, perche' `classifica('nome')` propone `name` e l'avrebbe applicato da solo -- una parola di UNA parola sola non passa mai da una proposta. La chiave JSON `"nome"` del pannello Modelli (quattro siti) resta italiana, come ogni altra chiave |
+| nome | name | **`name` nudo e' giusto per il CAMPO, sbagliato per la FUNZIONE, e la differenza si vede solo leggendo.** `decisione_modelli.nome(provider_id)` non porta un nome: lo TROVA, restituendo `NOMI.get(provider_id, provider_id)`, cioe' il nome LEGGIBILE di un provider ("Piano Claude Max", "OpenRouter") con l'id come ripiego quando non lo conosce. A livello di modulo `def name(...)` direbbe meno del vero e collezionerebbe l'omonimia con i cinque `nome` di `ImpostazioniChat`, che sono campi: `display_name`, e con lui `NOMI -> DISPLAY_NAMES`. **Deciso a mano, non dallo strumento**: `nome` e' stato tolto dalla mappa prima di applicare, perche' `classifica('nome')` propone `name` e l'avrebbe applicato da solo -- una parola di UNA parola sola non passa mai da una proposta. La chiave JSON `"nome"` del pannello Modelli (quattro siti) resta italiana, come ogni altra chiave. **Il rovescio, misurato l'01/09**: in `impostazioni_chat.py` `nome` E' un campo, e `name` nudo e' giusto -- e' il nome del chatbot che l'utente scrive nella pagina Impostazioni. Le due decisioni non sono in conflitto: `display_name` nomina una FUNZIONE che cerca, `name` nomina un CAMPO che porta. La chiave JSON `"nome"` resta italiana in tutti e due i file |
 | normalizza | normalize |
 | nostro (casa) | our |
 | nota | note |

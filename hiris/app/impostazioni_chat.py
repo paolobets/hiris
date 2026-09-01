@@ -43,11 +43,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-_FILE_IMPOSTAZIONI = "impostazioni_chat.json"
+_SETTINGS_FILE = "impostazioni_chat.json"
 
 # Permessi del file: solo il proprietario legge e scrive -- stesso valore e
 # stessa motivazione di `token_interno.FILE_PERMISSIONS` (vedi `salva()` sotto).
-_PERMESSI_FILE = 0o600
+_FILE_PERMISSIONS = 0o600
 
 # Review finale fetta E3, Important #2: la versione precedente istruiva a
 # chiamare `get_home_status()`/`get_area_entities()`, morti dalla E2 Task 8 --
@@ -215,27 +215,27 @@ DEFAULT_SYSTEM_PROMPT = (
 #
 # Il censimento la elenchera' fra le «variabili lette e mai esportate da
 # run.sh»: e' corretto, ed e' dichiarato nel rapporto del Task 13.
-def _giorni_da_ambiente(predefinito: int) -> int:
-    grezzo = os.environ.get("HISTORY_RETENTION_DAYS")
-    if grezzo is None:
-        return predefinito
+def _retention_days_from_environment(default: int) -> int:
+    reading = os.environ.get("HISTORY_RETENTION_DAYS")
+    if reading is None:
+        return default
     try:
-        giorni = int(grezzo)
+        days = int(reading)
     except (TypeError, ValueError):
-        return predefinito
-    if giorni != predefinito:
+        return default
+    if days != default:
         logger.info(
             "impostazioni_chat.json non specifica 'giorni_conservazione': "
             "arriva dall'opzione dell'add-on 'history_retention_days' (valore "
             "%d). Da ora si cambia dalla pagina Impostazioni chat -- governa "
             "sia la potatura notturna sia quanto HIRIS rilegge della "
             "conversazione in corso.",
-            giorni,
+            days,
         )
-    return giorni
+    return days
 
 
-def il_file_non_porta_i_giorni(data_dir: str) -> bool:
+def file_lacks_retention_days(data_dir: str) -> bool:
     """`True` se `impostazioni_chat.json` non ha (ancora) la chiave
     `giorni_conservazione`, file assente o illeggibile compresi.
 
@@ -251,7 +251,7 @@ def il_file_non_porta_i_giorni(data_dir: str) -> bool:
     A senza una scrittura all'avvio non migra NIENTE: legge e basta.
 
     Il chiamante e' `server._on_startup`, subito dopo `carica()`."""
-    path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
+    path = os.path.join(data_dir, _SETTINGS_FILE)
     try:
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
@@ -261,23 +261,23 @@ def il_file_non_porta_i_giorni(data_dir: str) -> bool:
 
 
 @dataclass
-class ImpostazioniChat:
+class ChatSettings:
     """La configurazione dell'unica conversazione che HIRIS sa avere.
 
     Ogni campo ha il proprio default nel codice -- non serve un seed
     all'avvio (`_seed_default_chatbot` non esiste piu') perche' un'istanza di
     questa classe e' gia' completa appena costruita, con `ImpostazioniChat()`
     a zero argomenti."""
-    nome: str = "HIRIS"
+    name: str = "HIRIS"
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     response_mode: str = "auto"
     thinking_budget: int = 0
     max_chat_turns: int = 0
     restrict_to_home: bool = False
-    giorni_conservazione: int = 90
+    retention_days: int = 90
 
     @classmethod
-    def carica(cls, data_dir: str) -> "ImpostazioniChat":
+    def load(cls, data_dir: str) -> "ChatSettings":
         """Non solleva mai e non restituisce mai `None`: un file assente,
         illeggibile o corrotto produce i default di sopra (dichiarato nel
         log, non un pass muto) -- mai uno stato "impostazioni mancanti" che
@@ -289,7 +289,7 @@ class ImpostazioniChat:
         per `giorni_conservazione` (`_giorni_da_ambiente` sopra), invece di
         far scomparire silenziosamente la versione A della migrazione ogni
         volta che il file non e' leggibile."""
-        path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
+        path = os.path.join(data_dir, _SETTINGS_FILE)
         raw: dict = {}
         if os.path.exists(path):
             try:
@@ -330,23 +330,23 @@ class ImpostazioniChat:
         # A: consulta l'ambiente) da "chiave presente" (vince sempre, 0
         # compreso) con un `in` esplicito, non con la verita' del valore.
         if "giorni_conservazione" in raw:
-            valore = raw.get("giorni_conservazione")
-            giorni_conservazione = (
-                default.giorni_conservazione if valore is None else int(valore)
+            value = raw.get("giorni_conservazione")
+            retention_days = (
+                default.retention_days if value is None else int(value)
             )
         else:
-            giorni_conservazione = _giorni_da_ambiente(default.giorni_conservazione)
+            retention_days = _retention_days_from_environment(default.retention_days)
         return cls(
-            nome=raw.get("nome", default.nome),
+            name=raw.get("nome", default.name),
             system_prompt=raw.get("system_prompt") or default.system_prompt,
             response_mode=raw.get("response_mode", default.response_mode),
             thinking_budget=int(raw.get("thinking_budget", 0) or 0),
             max_chat_turns=int(raw.get("max_chat_turns", 0) or 0),
             restrict_to_home=bool(raw.get("restrict_to_home", default.restrict_to_home)),
-            giorni_conservazione=giorni_conservazione,
+            retention_days=retention_days,
         )
 
-    def salva(self, data_dir: str) -> None:
+    def save(self, data_dir: str) -> None:
         """Scrittura atomica e durevole: file temporaneo, `fsync`, `os.replace`.
 
         Un crash a meta' scrittura non deve mai lasciare un
@@ -379,24 +379,24 @@ class ImpostazioniChat:
         (`api/handlers_impostazioni.handle_save_impostazioni`) la cattura e
         risponde dichiarando il guasto, invece di rispondere "salvato".
         """
-        path = os.path.join(data_dir, _FILE_IMPOSTAZIONI)
+        path = os.path.join(data_dir, _SETTINGS_FILE)
         tmp = path + ".tmp"
         data = {
-            "nome": self.nome,
+            "nome": self.name,
             "system_prompt": self.system_prompt,
             "response_mode": self.response_mode,
             "thinking_budget": self.thinking_budget,
             "max_chat_turns": self.max_chat_turns,
             "restrict_to_home": self.restrict_to_home,
-            "giorni_conservazione": self.giorni_conservazione,
+            "giorni_conservazione": self.retention_days,
         }
         os.makedirs(os.path.dirname(os.path.abspath(tmp)), exist_ok=True)
         with _save_lock:
-            descrittore = os.open(
-                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _PERMESSI_FILE,
+            descriptor = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _FILE_PERMISSIONS,
             )
             try:
-                with os.fdopen(descrittore, "w", encoding="utf-8") as f:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
                     f.flush()
                     os.fsync(f.fileno())

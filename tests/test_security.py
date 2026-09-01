@@ -25,13 +25,13 @@ def _make_app_with_runner(runner):
     is left as a live subject here, so only that route is registered now.
     """
     from hiris.app.api.handlers_chat import handle_chat
-    from hiris.app.impostazioni_chat import ImpostazioniChat
+    from hiris.app.impostazioni_chat import ChatSettings
     from hiris.app.server import _security_headers
 
     app = web.Application(middlewares=[_security_headers])
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="test")
+    app["impostazioni_chat"] = ChatSettings(system_prompt="test")
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)

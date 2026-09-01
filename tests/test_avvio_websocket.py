@@ -53,7 +53,7 @@ def _load_avvio_websocket():
     websocket e costruisce le impostazioni della chat + lo scheduler -- da
     `await ha_client.start_websocket()` fino (inclusa) ad
     `app["scheduler"] = scheduler`. Lo incapsula in una funzione che riceve
-    `ha_client`/`data_dir`/`app`/`ImpostazioniChat`/`AsyncIOScheduler`/`os`/
+    `ha_client`/`data_dir`/`app`/`ChatSettings`/`AsyncIOScheduler`/`os`/
     `logger` dall'esterno, cosi' da poterla eseguire isolata senza il resto
     del boot (Supervisor/MQTT/deploy della card...)."""
     src = inspect.getsource(server._on_startup)
@@ -62,8 +62,8 @@ def _load_avvio_websocket():
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
-        "async def _check(ha_client, data_dir, app, ImpostazioniChat, "
-        "AsyncIOScheduler, os, logger, il_file_non_porta_i_giorni):\n"
+        "async def _check(ha_client, data_dir, app, ChatSettings, "
+        "AsyncIOScheduler, os, logger, file_lacks_retention_days):\n"
         + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
@@ -86,23 +86,23 @@ class _SchedulerFinto:
 
 
 class _ImpostazioniChatFinte:
-    """`carica()` non deve toccare il disco per davvero in questo test
+    """`load()` non deve toccare il disco per davvero in questo test
     isolato -- solo dimostrare che viene chiamata dopo il websocket, mai
     prima.
 
-    `salva()` e `giorni_conservazione` esistono perche' dalla chiusura C2 il
-    blocco estratto PERSISTE `giorni_conservazione` quando il file non lo
+    `save()` e `retention_days` esistono perche' dalla chiusura C2 il
+    blocco estratto PERSISTE `retention_days` quando il file non lo
     porta ancora (versione A della migrazione applicata a quel campo). Qui non
     tocca il disco e non compare nell'ordine: cio' che questo test misura e'
     solo che il websocket parta per primo."""
 
-    giorni_conservazione = 90
+    retention_days = 90
 
     @classmethod
-    def carica(cls, data_dir):
+    def load(cls, data_dir):
         return cls()
 
-    def salva(self, data_dir):
+    def save(self, data_dir):
         return None
 
 
@@ -125,11 +125,11 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
         ha_client=ha_client,
         data_dir=str(tmp_path),
         app=app,
-        ImpostazioniChat=_ImpostazioniChatFinte,
+        ChatSettings=_ImpostazioniChatFinte,
         AsyncIOScheduler=_fabbrica_scheduler,
         os=os_module,
         logger=logging.getLogger("test_avvio_websocket"),
-        il_file_non_porta_i_giorni=lambda data_dir: True,
+        file_lacks_retention_days=lambda data_dir: True,
     )
 
     ha_client.start_websocket.assert_awaited_once()

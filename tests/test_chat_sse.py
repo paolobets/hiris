@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.server import create_app
 
 
@@ -33,7 +33,7 @@ async def client(aiohttp_client, tmp_path):
 
     mock_runner.chat_stream = fake_chat_stream
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = mock_runner
     app["llm_router"] = mock_runner
     app["theme"] = "auto"

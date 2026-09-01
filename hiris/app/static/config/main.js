@@ -193,7 +193,7 @@
   /* fetta E5 Task 2: la route che in v0.10.5 era stata rimossa perché
      placeholder vuoto (`#/settings`, «Implementata in Phase 11») rinasce qui
      con contenuto reale e con il nome italiano del resto della fetta:
-     `#/impostazioni`, i sette campi di ImpostazioniChat. */
+     `#/impostazioni`, i sette campi di ChatSettings. */
   HirisRouter.register(/^#\/impostazioni\/?$/, function() {
     setCrumbHere('Impostazioni chat');
     if (window.HirisImpostazioniRoute) {

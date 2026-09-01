@@ -170,7 +170,7 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.memoria.archivio import MemoryStore
 
 
@@ -199,7 +199,7 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     db_path = str(tmp_path / "reasoning.db")
 
     reasoning_queue = ReasoningQueue(db_path)
-    impostazioni = ImpostazioniChat(nome="test-agent", system_prompt="Sei HIRIS.")
+    impostazioni = ChatSettings(name="test-agent", system_prompt="Sei HIRIS.")
 
     app = web.Application()
     app["reasoning_queue"] = reasoning_queue

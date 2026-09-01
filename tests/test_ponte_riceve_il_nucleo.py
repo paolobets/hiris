@@ -50,7 +50,7 @@ from hiris.app.claude_runner import (
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -673,8 +673,8 @@ def test_reason_chat_col_loro_default_su_un_job_senza_le_due_chiavi():
 def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
-    impostazioni = ImpostazioniChat(
-        nome="test-ponte", system_prompt="Sei HIRIS.",
+    impostazioni = ChatSettings(
+        name="test-ponte", system_prompt="Sei HIRIS.",
         restrict_to_home=restrict_to_home, response_mode=response_mode,
     )
     runner_mock = AsyncMock()

@@ -932,6 +932,13 @@ def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str, *,
         nuovo = _nuovo_nome(t.string, g, ambito, coppie)
         if nuovo:
             rinominati[t.string] = nuovo
+    # I campi di una `@dataclass` sono parole chiave del costruttore generato,
+    # e nessuna `def` li dichiara: vedi `campi_dataclass`.
+    for campi in campi_dataclass(sorgente).values():
+        for campo in campi:
+            nuovo = _nuovo_nome(campo, g, ambito, coppie)
+            if nuovo:
+                rinominati[campo] = nuovo
     return rinominati
 
 
@@ -988,7 +995,51 @@ def firme_rinominate(sorgente: str, g: Glossario, ambito: str, *,
             trovati.add(ultima_def)
             if ultima_def == "__init__" and ultima_classe:
                 trovati.add(ultima_classe)
+    # Una `@dataclass` non ha nemmeno il `def`: il nome chiamato e' la classe.
+    for classe, campi in campi_dataclass(sorgente).items():
+        if any(_nuovo_nome(c, g, ambito, coppie) for c in campi):
+            trovati.add(classe)
     return trovati
+
+
+def campi_dataclass(sorgente: str) -> dict[str, set[str]]:
+    """`{classe: {campi}}` per ogni `@dataclass` del sorgente.
+
+    **La NONA specie di sponda, misurata l'01/09 convertendo
+    `impostazioni_chat.py`.** I campi di una `@dataclass` sono parole chiave
+    del suo `__init__`, ma nessun `def` li dichiara: sono annotazioni a
+    livello di classe, e il decoratore genera il costruttore a import time.
+    Il controllo di chiusura legge i parametri delle `def` e quindi non li
+    vede -- `ChatSettings(giorni_conservazione=...)` in ventidue siti e' un
+    difetto che nessuna delle otto reti guardava, e l'ha preso la suite andando
+    rossa con `TypeError: got an unexpected keyword argument`.
+
+    **E' la stessa forma gia' curata per `__init__` e il nome della classe**:
+    un costruttore non si chiama col suo nome, e una `@dataclass` non ha
+    nemmeno il `def`. Si misura sul repo: **dodici `@dataclass`, 57 campi in
+    tutto**, quindi la rete e' precisa per costruzione -- non c'e' il rumore
+    che ha costretto a restringere l'ottava.
+    """
+    import ast
+    try:
+        albero = ast.parse(sorgente)
+    except (SyntaxError, ValueError):
+        return {}
+    fuori: dict[str, set[str]] = {}
+    for n in ast.walk(albero):
+        if not isinstance(n, ast.ClassDef):
+            continue
+        deco = {(d.id if isinstance(d, ast.Name)
+                 else d.attr if isinstance(d, ast.Attribute)
+                 else getattr(getattr(d, "func", None), "id", ""))
+                for d in n.decorator_list}
+        if "dataclass" not in deco:
+            continue
+        campi = {x.target.id for x in n.body
+                 if isinstance(x, ast.AnnAssign) and isinstance(x.target, ast.Name)}
+        if campi:
+            fuori[n.name] = campi
+    return fuori
 
 
 def parametri_dichiarati(radice: Path | None = None) -> set[str]:

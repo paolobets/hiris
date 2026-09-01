@@ -23,7 +23,7 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # mantiene lo stesso comportamento invece di farlo silenziosamente
     # ricadere sul default (90) del parametro qualunque cosa l'utente abbia
     # scelto in «Impostazioni chat».
-    giorni = request.app["impostazioni_chat"].giorni_conservazione
+    giorni = request.app["impostazioni_chat"].retention_days
     messages = load_history(data_dir, days=giorni)
     return web.json_response({"messages": messages})
 

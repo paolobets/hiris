@@ -30,7 +30,7 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.api import handlers_mcp
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.memoria.archivio import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
@@ -59,7 +59,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     # La sorgente del client di test e' un loopback, che NON e' nella CIDR del

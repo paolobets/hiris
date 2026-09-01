@@ -27,7 +27,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import server
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.schedulatore.archivio import AgendaStore
 
@@ -48,7 +48,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]

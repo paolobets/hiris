@@ -19,7 +19,7 @@ from hiris.app.api.handlers_impostazioni import (
     RESPONSE_MODES,
 )
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
+from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 from hiris.app.server import create_app
 
 ROTTA = "/api/impostazioni-chat"
@@ -39,7 +39,7 @@ async def client(aiohttp_client, tmp_path):
     (`internal_auth_middleware`, `csrf_middleware`), e un test che le
     scavalcasse non direbbe niente su cio' che accade in produzione."""
     app = create_app()
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["data_dir"] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -67,14 +67,14 @@ async def test_get_su_data_vuota_restituisce_i_default_nel_codice(client):
     resp = await client.get(ROTTA)
     assert resp.status == 200
     body = await resp.json()
-    default = ImpostazioniChat()
-    assert body["nome"] == default.nome
+    default = ChatSettings()
+    assert body["nome"] == default.name
     assert body["system_prompt"] == DEFAULT_SYSTEM_PROMPT
     assert body["response_mode"] == default.response_mode
     assert body["thinking_budget"] == default.thinking_budget
     assert body["max_chat_turns"] == default.max_chat_turns
     assert body["restrict_to_home"] == default.restrict_to_home
-    assert body["giorni_conservazione"] == default.giorni_conservazione
+    assert body["giorni_conservazione"] == default.retention_days
 
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_get_mostra_cio_che_la_chat_sta_usando_non_il_disco(client):
     """`app["impostazioni_chat"]` e' l'oggetto che `handlers_chat.py` rilegge a
     ogni turno: la pagina legge quello, quindi non puo' mostrare qualcosa di
     diverso da cio' che e' in vigore."""
-    client.app["impostazioni_chat"] = ImpostazioniChat(nome="Solo in memoria")
+    client.app["impostazioni_chat"] = ChatSettings(name="Solo in memoria")
     body = await (await client.get(ROTTA)).json()
     assert body["nome"] == "Solo in memoria"
 
@@ -120,13 +120,13 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     # (a) hot-update: senza questo, il salvataggio riesce e la chat continua a
     # usare i valori vecchi fino al riavvio dell'add-on.
     in_memoria = client.app["impostazioni_chat"]
-    assert in_memoria.nome == "Casa"
+    assert in_memoria.name == "Casa"
     assert in_memoria.system_prompt == "Sei utile e conciso."
     assert in_memoria.response_mode == "compact"
     assert in_memoria.thinking_budget == 1024
     assert in_memoria.max_chat_turns == 5
     assert in_memoria.restrict_to_home is True
-    assert in_memoria.giorni_conservazione == 30
+    assert in_memoria.retention_days == 30
 
     # (b) persistenza: il file c'e' ed e' completo.
     assert _su_disco(client) == nuove
@@ -137,8 +137,8 @@ async def test_put_sopravvive_al_riavvio(client, tmp_path):
     """Il "riavvio" e' esattamente cio' che fa `server._on_startup`:
     `ImpostazioniChat.carica(data_dir)` su una `/data` che ha gia' il file."""
     await client.put(ROTTA, json={"nome": "Dopo il riavvio", "max_chat_turns": 7})
-    dopo_riavvio = ImpostazioniChat.carica(str(tmp_path))
-    assert dopo_riavvio.nome == "Dopo il riavvio"
+    dopo_riavvio = ChatSettings.load(str(tmp_path))
+    assert dopo_riavvio.name == "Dopo il riavvio"
     assert dopo_riavvio.max_chat_turns == 7
     assert dopo_riavvio == client.app["impostazioni_chat"]
 
@@ -161,7 +161,7 @@ async def test_put_di_un_solo_campo_non_azzera_gli_altri(client):
     await client.put(ROTTA, json={"nome": "Primo", "max_chat_turns": 9})
     await client.put(ROTTA, json={"nome": "Secondo"})
     corrente = client.app["impostazioni_chat"]
-    assert corrente.nome == "Secondo"
+    assert corrente.name == "Secondo"
     assert corrente.max_chat_turns == 9, "un campo assente conserva il valore corrente"
 
 
@@ -172,7 +172,7 @@ async def test_put_giorni_conservazione_a_zero_e_valido_non_un_rifiuto(client):
     nella tabella `CORPI_RIFIUTATI` sotto."""
     resp = await client.put(ROTTA, json={"giorni_conservazione": 0})
     assert resp.status == 200
-    assert client.app["impostazioni_chat"].giorni_conservazione == 0
+    assert client.app["impostazioni_chat"].retention_days == 0
     assert (await resp.json())["giorni_conservazione"] == 0
 
 
@@ -224,7 +224,7 @@ async def test_put_con_x_requested_with_passa_anche_a_csrf_stretto(client, csrf_
     resp = await client.put(ROTTA, json={"nome": "Dalla pagina"},
                             headers={"X-Requested-With": "fetch"})
     assert resp.status == 200
-    assert client.app["impostazioni_chat"].nome == "Dalla pagina"
+    assert client.app["impostazioni_chat"].name == "Dalla pagina"
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ async def test_put_malformato_e_400_parlante_e_non_tocca_il_file(
     assert campo in body["error"], "il messaggio deve nominare il campo"
 
     assert _su_disco(client) == prima, "un corpo rifiutato non deve toccare il file"
-    assert client.app["impostazioni_chat"].nome == "Valore precedente"
+    assert client.app["impostazioni_chat"].name == "Valore precedente"
 
 
 @pytest.mark.asyncio
@@ -297,11 +297,11 @@ async def test_un_errore_di_scrittura_non_dice_salvato(client, monkeypatch):
     def esplodi(self, data_dir):
         raise OSError("disco pieno")
 
-    monkeypatch.setattr(ImpostazioniChat, "salva", esplodi)
+    monkeypatch.setattr(ChatSettings, "save", esplodi)
     resp = await client.put(ROTTA, json={"nome": "Non arrivera' mai"})
     assert resp.status == 500
     assert "non è stato possibile" in (await resp.json())["error"].lower()
-    assert client.app["impostazioni_chat"].nome == "HIRIS"
+    assert client.app["impostazioni_chat"].name == "HIRIS"
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ async def test_client_diretto_senza_token_resta_negato(tmp_path, monkeypatch):
     rifiuto-per-default di `internal_auth_middleware` come tutte le altre."""
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "")
     app = create_app()
-    app["impostazioni_chat"] = ImpostazioniChat()
+    app["impostazioni_chat"] = ChatSettings()
     app["data_dir"] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -375,7 +375,7 @@ async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo
     assert "posizione 1" in body["error"]
 
     assert _su_disco(client) == prima, "un corpo rifiutato non deve toccare il file"
-    assert client.app["impostazioni_chat"].nome == "Valore precedente"
+    assert client.app["impostazioni_chat"].name == "Valore precedente"
 
 
 @pytest.mark.asyncio

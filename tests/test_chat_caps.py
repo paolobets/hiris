@@ -41,7 +41,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -76,8 +76,8 @@ def il_piano_puo_rispondere(monkeypatch):
 # Task 5: nemmeno una chiave interna fissa resta -- chat_store e la coda non
 # hanno proprio piu' un concetto di id (vedi handlers_chat.py).
 def _make_impostazioni(*, max_chat_turns=0):
-    return ImpostazioniChat(
-        nome="test-agent",
+    return ChatSettings(
+        name="test-agent",
         system_prompt="You are a helpful assistant.",
         max_chat_turns=max_chat_turns,
     )

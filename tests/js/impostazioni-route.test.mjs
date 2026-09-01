@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* fetta E5 Task 2: la pagina #/impostazioni (config/impostazioni-route.js).
-   E' la prima interfaccia che i campi di ImpostazioniChat abbiano mai avuto:
+   E' la prima interfaccia che i campi di ChatSettings abbiano mai avuto:
    fino a quel task si cambiavano solo scrivendo a mano
    /data/impostazioni_chat.json. Qui si verifica cio' che un tester UAT fa
    davvero -- apre la pagina, vede i valori in vigore, ne cambia uno, salva, e

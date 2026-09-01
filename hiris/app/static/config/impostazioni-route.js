@@ -1,5 +1,5 @@
 /* HIRIS · Config · Impostazioni chat (route #/impostazioni)
-   fetta E5 Task 2. I sette campi di `ImpostazioniChat`
+   fetta E5 Task 2. I sette campi di `ChatSettings`
    (hiris/app/impostazioni_chat.py) governano l'unica conversazione che HIRIS
    sa avere. Fino a quel task si cambiavano SOLO scrivendo a mano
    /data/impostazioni_chat.json: questa pagina e le due rotte

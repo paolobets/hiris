@@ -82,7 +82,7 @@ import logging
 
 from aiohttp import web
 
-from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
+from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ def _non_negative_integer(body: dict, key: str, current: int) -> int:
     return value
 
 
-def validate(current: ImpostazioniChat, body) -> ImpostazioniChat:
+def validate(current: ChatSettings, body) -> ChatSettings:
     """Le impostazioni nuove, a partire dalle correnti e dal corpo ricevuto.
 
     Solleva `Rifiuto` al primo campo che non va, senza aver scritto niente.
@@ -210,7 +210,7 @@ def validate(current: ImpostazioniChat, body) -> ImpostazioniChat:
                 ", ".join(unknown_fields), ", ".join(FIELDS)),
         )
 
-    name = _text(body, "nome", current.nome).strip()
+    name = _text(body, "nome", current.name).strip()
     if not name:
         raise Rejection("nome", "«nome» non può essere vuoto.")
 
@@ -254,32 +254,32 @@ def validate(current: ImpostazioniChat, body) -> ImpostazioniChat:
     # `thinking_budget`/`max_chat_turns`, il limite vero non esiste o non e'
     # di competenza di questa validazione.
     giorni_conservazione = _non_negative_integer(
-        body, "giorni_conservazione", current.giorni_conservazione)
+        body, "giorni_conservazione", current.retention_days)
 
-    return ImpostazioniChat(
-        nome=name,
+    return ChatSettings(
+        name=name,
         system_prompt=prompt,
         response_mode=mode,
         thinking_budget=thinking,
         max_chat_turns=turns,
         restrict_to_home=restriction,
-        giorni_conservazione=giorni_conservazione,
+        retention_days=giorni_conservazione,
     )
 
 
-def _payload(settings: ImpostazioniChat) -> dict:
+def _payload(settings: ChatSettings) -> dict:
     """I sette campi, piu' due cose che la pagina non deve indovinare: i
     valori ammessi per `response_mode` e il prompt di default (per il
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
     return {
-        "nome": settings.nome,
+        "nome": settings.name,
         "system_prompt": settings.system_prompt,
         "response_mode": settings.response_mode,
         "thinking_budget": settings.thinking_budget,
         "max_chat_turns": settings.max_chat_turns,
         "restrict_to_home": settings.restrict_to_home,
-        "giorni_conservazione": settings.giorni_conservazione,
+        "giorni_conservazione": settings.retention_days,
         "modi_risposta": list(RESPONSE_MODES),
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     }
@@ -290,7 +290,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
     chat leggera'. Si prendono da `app["impostazioni_chat"]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
-    settings = request.app.get("impostazioni_chat") or ImpostazioniChat()
+    settings = request.app.get("impostazioni_chat") or ChatSettings()
     return web.json_response(_payload(settings))
 
 
@@ -303,7 +303,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
             status=400,
         )
 
-    current = request.app.get("impostazioni_chat") or ImpostazioniChat()
+    current = request.app.get("impostazioni_chat") or ChatSettings()
     try:
         updated = validate(current, body)
     except Rejection as rejection:
@@ -317,7 +317,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
 
     data_dir = request.app.get("data_dir") or "/data"
     try:
-        updated.salva(data_dir)
+        updated.save(data_dir)
     except OSError as exc:
         # Mai un "salvato" davanti a un disco che non ha accettato niente, e
         # mai un 500 muto: si dice cosa e' successo, e le impostazioni in

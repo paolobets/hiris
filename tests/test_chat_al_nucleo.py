@@ -55,7 +55,7 @@ from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.impostazioni_chat import ImpostazioniChat
+from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma
@@ -104,7 +104,7 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     mock_runner.last_tool_calls = []
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
+    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -257,7 +257,7 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
     mock_runner.last_tool_calls = []
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
+    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -441,7 +441,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
         runner = ClaudeRunner(api_key="test-key")
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ImpostazioniChat(system_prompt="base prompt")
+    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)

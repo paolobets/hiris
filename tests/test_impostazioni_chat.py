@@ -8,12 +8,12 @@ import json
 
 import pytest
 
-from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ImpostazioniChat
+from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 
 def test_default_e_completo_senza_argomenti():
-    imp = ImpostazioniChat()
-    assert imp.nome == "HIRIS"
+    imp = ChatSettings()
+    assert imp.name == "HIRIS"
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
     assert imp.response_mode == "auto"
     assert imp.thinking_budget == 0
@@ -25,29 +25,29 @@ def test_carica_senza_file_restituisce_i_default_nel_codice(tmp_path):
     """Nessun file sul disco -- il caso che prima faceva degradare
     handlers_chat.py: qui non solleva, non restituisce None, produce gli
     stessi default di `ImpostazioniChat()`."""
-    imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp == ImpostazioniChat()
+    imp = ChatSettings.load(str(tmp_path))
+    assert imp == ChatSettings()
 
 
 def test_salva_poi_carica_ritorna_gli_stessi_valori(tmp_path):
-    originale = ImpostazioniChat(
-        nome="Casa",
+    originale = ChatSettings(
+        name="Casa",
         system_prompt="Sei utile e conciso.",
         response_mode="compact",
         thinking_budget=1024,
         max_chat_turns=5,
         restrict_to_home=True,
     )
-    originale.salva(str(tmp_path))
+    originale.save(str(tmp_path))
 
-    ricaricato = ImpostazioniChat.carica(str(tmp_path))
+    ricaricato = ChatSettings.load(str(tmp_path))
     assert ricaricato == originale
 
 
 def test_salva_scrittura_atomica_tmp_poi_replace(tmp_path):
     """Stessa disciplina di ChatbotEngine._save(): passa da un file .tmp,
     mai una scrittura diretta sul file finale."""
-    ImpostazioniChat(nome="X").salva(str(tmp_path))
+    ChatSettings(name="X").save(str(tmp_path))
     assert (tmp_path / "impostazioni_chat.json").exists()
     assert not (tmp_path / "impostazioni_chat.json.tmp").exists()
 
@@ -55,8 +55,8 @@ def test_salva_scrittura_atomica_tmp_poi_replace(tmp_path):
 def test_carica_file_corrotto_non_solleva_usa_i_default(tmp_path, caplog):
     (tmp_path / "impostazioni_chat.json").write_text("{ non e' json valido", encoding="utf-8")
     with caplog.at_level("ERROR"):
-        imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp == ImpostazioniChat()
+        imp = ChatSettings.load(str(tmp_path))
+    assert imp == ChatSettings()
     assert any("Impostazioni chat illeggibili" in rec.message for rec in caplog.records)
 
 
@@ -67,8 +67,8 @@ def test_carica_file_parziale_riempie_i_campi_mancanti_coi_default(tmp_path):
     (tmp_path / "impostazioni_chat.json").write_text(
         json.dumps({"nome": "Solo il nome"}), encoding="utf-8",
     )
-    imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp.nome == "Solo il nome"
+    imp = ChatSettings.load(str(tmp_path))
+    assert imp.name == "Solo il nome"
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
     assert imp.max_chat_turns == 0
 
@@ -80,7 +80,7 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
     (tmp_path / "impostazioni_chat.json").write_text(
         json.dumps({"system_prompt": ""}), encoding="utf-8",
     )
-    imp = ImpostazioniChat.carica(str(tmp_path))
+    imp = ChatSettings.load(str(tmp_path))
     assert imp.system_prompt == DEFAULT_SYSTEM_PROMPT
 
 
@@ -102,7 +102,7 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
 # ---------------------------------------------------------------------------
 
 def _chiamate_a_salva():
-    r"""Le chiamate `qualcosa.salva(...)` in `hiris/app`, trovate con l'AST.
+    r"""Le chiamate `qualcosa.save(...)` in `hiris/app`, trovate con l'AST.
 
     Fix round 1, I-3. La prima versione di questa guardia cercava
     `\.salva\(` con una regex riga per riga, scartando solo le righe che
@@ -132,7 +132,7 @@ def _chiamate_a_salva():
         for nodo in ast.walk(albero):
             if (isinstance(nodo, ast.Call)
                     and isinstance(nodo.func, ast.Attribute)
-                    and nodo.func.attr == "salva"):
+                    and nodo.func.attr == "save"):
                 trovate.append(f"{f.name}:{nodo.lineno}")
     return trovate
 
@@ -147,7 +147,7 @@ def test_salva_ha_un_chiamante_di_produzione():
     uscita senza sostituto, cioe' che il buco si e' riaperto."""
     chiamanti = _chiamate_a_salva()
     assert chiamanti, (
-        "ImpostazioniChat.salva() non ha nessun chiamante di produzione: i sette "
+        "ChatSettings.save() non ha nessun chiamante di produzione: i sette "
         "campi tornerebbero a essere modificabili solo scrivendo a mano il JSON "
         "in /data"
     )
@@ -164,7 +164,7 @@ def test_salva_non_lascia_il_temporaneo_se_la_scrittura_fallisce(tmp_path, monke
 
     monkeypatch.setattr(_json, "dump", esplodi)
     with pytest.raises(OSError):
-        ImpostazioniChat(nome="Mai scritto").salva(str(tmp_path))
+        ChatSettings(name="Mai scritto").save(str(tmp_path))
     assert not (tmp_path / "impostazioni_chat.json").exists()
     assert not (tmp_path / "impostazioni_chat.json.tmp").exists()
 
@@ -177,11 +177,11 @@ def test_salva_non_pubblica_un_file_su_un_errore_e_lascia_intatto_il_precedente(
     l'add-on rileggera' al prossimo avvio."""
     import json as _json
 
-    ImpostazioniChat(nome="Il buono").salva(str(tmp_path))
+    ChatSettings(name="Il buono").save(str(tmp_path))
     monkeypatch.setattr(_json, "dump", lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
     with pytest.raises(OSError):
-        ImpostazioniChat(nome="Il rotto").salva(str(tmp_path))
-    assert ImpostazioniChat.carica(str(tmp_path)).nome == "Il buono"
+        ChatSettings(name="Il rotto").save(str(tmp_path))
+    assert ChatSettings.load(str(tmp_path)).name == "Il buono"
 
 
 def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
@@ -196,7 +196,7 @@ def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
     import os
     import stat
 
-    ImpostazioniChat(nome="Permessi").salva(str(tmp_path))
+    ChatSettings(name="Permessi").save(str(tmp_path))
     modo = stat.S_IMODE(os.stat(tmp_path / "impostazioni_chat.json").st_mode)
     assert modo & stat.S_IRUSR and modo & stat.S_IWUSR
     if os.name != "nt":
@@ -211,15 +211,15 @@ def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_le_impostazioni_non_hanno_piu_un_modello():
-    assert not hasattr(ImpostazioniChat(), "model")
+    assert not hasattr(ChatSettings(), "model")
 
 
 def test_un_file_con_il_vecchio_modello_lo_dichiara_invece_di_ignorarlo(tmp_path, caplog):
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"nome": "HIRIS", "model": "claude-opus-4-7"}', encoding="utf-8")
     with caplog.at_level("INFO"):
-        imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp.nome == "HIRIS"
+        imp = ChatSettings.load(str(tmp_path))
+    assert imp.name == "HIRIS"
     testo = "\n".join(r.getMessage() for r in caplog.records)
     assert "claude-opus-4-7" in testo, testo
 
@@ -228,7 +228,7 @@ def test_un_file_senza_il_vecchio_modello_non_dice_niente(tmp_path, caplog):
     """La prova gemella: la dichiarazione non è una riga che si stampa sempre."""
     (tmp_path / "impostazioni_chat.json").write_text('{"nome": "HIRIS"}', encoding="utf-8")
     with caplog.at_level("INFO"):
-        ImpostazioniChat.carica(str(tmp_path))
+        ChatSettings.load(str(tmp_path))
     assert "model" not in "\n".join(r.getMessage() for r in caplog.records)
 
 
@@ -244,7 +244,7 @@ def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_
 
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"nome": "HIRIS", "model": "claude-opus-4-7"}', encoding="utf-8")
-    ImpostazioniChat.carica(str(tmp_path)).salva(str(tmp_path))
+    ChatSettings.load(str(tmp_path)).save(str(tmp_path))
     su_disco = _json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert "model" not in su_disco, su_disco
     assert su_disco["nome"] == "HIRIS"
@@ -260,18 +260,18 @@ def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_
 # ---------------------------------------------------------------------------
 
 def test_i_giorni_di_conservazione_vivono_nelle_impostazioni_della_chat():
-    assert ImpostazioniChat().giorni_conservazione == 90
+    assert ChatSettings().retention_days == 90
 
 
 def test_al_primo_avvio_il_valore_arriva_dall_opzione_dell_addon(tmp_path, monkeypatch, caplog):
     """Versione A applicata a questo valore: chi aveva 30 giorni non deve
     ritrovarsi a 90 senza una riga che lo dica. "Primo avvio" = nessun file
     ancora sul disco, non solo "chiave assente in un file esistente" --
-    `carica()` deve consultare l'ambiente in entrambi i casi."""
+    `load()` deve consultare l'ambiente in entrambi i casi."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     with caplog.at_level("INFO"):
-        imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp.giorni_conservazione == 30
+        imp = ChatSettings.load(str(tmp_path))
+    assert imp.retention_days == 30
     assert "30" in "\n".join(r.getMessage() for r in caplog.records)
 
 
@@ -279,7 +279,7 @@ def test_un_valore_gia_scelto_vince_sull_opzione(tmp_path, monkeypatch):
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"giorni_conservazione": 7}', encoding="utf-8")
-    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 7
+    assert ChatSettings.load(str(tmp_path)).retention_days == 7
 
 
 def test_uno_zero_gia_scelto_vince_sull_opzione_e_non_diventa_il_default(tmp_path, monkeypatch):
@@ -289,7 +289,7 @@ def test_uno_zero_gia_scelto_vince_sull_opzione_e_non_diventa_il_default(tmp_pat
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     (tmp_path / "impostazioni_chat.json").write_text(
         '{"giorni_conservazione": 0}', encoding="utf-8")
-    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 0
+    assert ChatSettings.load(str(tmp_path)).retention_days == 0
 
 
 def test_un_ambiente_uguale_al_default_non_scrive_niente_nel_log(tmp_path, monkeypatch, caplog):
@@ -300,8 +300,8 @@ def test_un_ambiente_uguale_al_default_non_scrive_niente_nel_log(tmp_path, monke
     (Task 6/7)."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "90")
     with caplog.at_level("INFO"):
-        imp = ImpostazioniChat.carica(str(tmp_path))
-    assert imp.giorni_conservazione == 90
+        imp = ChatSettings.load(str(tmp_path))
+    assert imp.retention_days == 90
     assert "giorni_conservazione" not in "\n".join(r.getMessage() for r in caplog.records)
     assert "history_retention_days" not in "\n".join(r.getMessage() for r in caplog.records)
 
@@ -312,7 +312,7 @@ def test_un_ambiente_muto_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch
     fidarsi di chi lo chiama): nessun KeyError, nessun crash, il default nel
     codice."""
     monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
-    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 90
+    assert ChatSettings.load(str(tmp_path)).retention_days == 90
 
 
 def test_un_ambiente_non_numerico_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
@@ -320,11 +320,11 @@ def test_un_ambiente_non_numerico_non_solleva_e_ricade_sul_default(tmp_path, mon
     `int()` non digerisce: stessa disciplina di `migrazione_opzioni._intero`
     per gli altri sette valori che arrivano da `run.sh`."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "")
-    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 90
+    assert ChatSettings.load(str(tmp_path)).retention_days == 90
 
 
 def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
-    ImpostazioniChat(giorni_conservazione=45).salva(str(tmp_path))
+    ChatSettings(retention_days=45).save(str(tmp_path))
     su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert su_disco["giorni_conservazione"] == 45
 
@@ -360,11 +360,11 @@ def _blocco_giorni_dallo_startup():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    impostazioni_chat = ImpostazioniChat.carica(data_dir)")
+    start = src.index("    impostazioni_chat = ChatSettings.load(data_dir)")
     end = src.index('    _chatbots_json_path = os.path.join(', start)
     corpo = textwrap.dedent(src[start:end])
-    firma = ("def _avvio(app, data_dir, logger, ImpostazioniChat, "
-             "il_file_non_porta_i_giorni):\n")
+    firma = ("def _avvio(app, data_dir, logger, ChatSettings, "
+             "file_lacks_retention_days):\n")
     namespace: dict = {}
     exec(compile(firma + textwrap.indent(corpo, "    "),
                  "<_on_startup giorni_conservazione>", "exec"), namespace)
@@ -374,21 +374,21 @@ def _blocco_giorni_dallo_startup():
 def _avvia(tmp_path):
     import logging
 
-    from hiris.app.impostazioni_chat import il_file_non_porta_i_giorni
+    from hiris.app.impostazioni_chat import file_lacks_retention_days
 
     app: dict = {}
     _blocco_giorni_dallo_startup()(
         app, str(tmp_path), logging.getLogger("t"),
-        ImpostazioniChat, il_file_non_porta_i_giorni,
+        ChatSettings, file_lacks_retention_days,
     )
     return app["impostazioni_chat"]
 
 
 def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path, monkeypatch):
     """Rimettere il difetto -- togliere da `_on_startup` la chiamata a
-    `salva()` -- fa cadere questo test."""
+    `save()` -- fa cadere questo test."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
-    assert _avvia(tmp_path).giorni_conservazione == 30
+    assert _avvia(tmp_path).retention_days == 30
     su_disco = json.loads((tmp_path / "impostazioni_chat.json").read_text(encoding="utf-8"))
     assert su_disco["giorni_conservazione"] == 30, (
         "il valore che l'utente aveva nell'opzione dell'add-on non e' arrivato "
@@ -404,12 +404,12 @@ def test_lo_zero_sopravvive_alla_versione_b(tmp_path, monkeypatch):
     novanta giorni -- senza che nessuno l'abbia chiesto e senza una riga che lo
     dica."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "0")
-    assert _avvia(tmp_path).giorni_conservazione == 0
+    assert _avvia(tmp_path).retention_days == 0
 
     # Versione B: l'opzione esce dallo schema, `run.sh` non esporta piu'
     # niente, l'ambiente e' muto.
     monkeypatch.delenv("HISTORY_RETENTION_DAYS", raising=False)
-    assert ImpostazioniChat.carica(str(tmp_path)).giorni_conservazione == 0, (
+    assert ChatSettings.load(str(tmp_path)).retention_days == 0, (
         "dopo la versione B «non cancellare mai» e' diventato «cancella dopo "
         "90 giorni»: e' una perdita di dato, non un default"
     )
@@ -419,16 +419,16 @@ def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, monkeypatch, capl
     """Contorno di C2, ed e' il debito F di un altro archivio: finche' la
     chiave non arriva sul disco, la riga di migrazione ricompare a OGNI
     riavvio. Dal primo avvio in poi il file la porta, quindi
-    `_giorni_da_ambiente` non viene nemmeno consultata."""
+    `_retention_days_from_environment` non viene nemmeno consultata."""
     import logging
 
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "30")
     _avvia(tmp_path)
     # Fra i due avvii l'utente cambia il valore dalla pagina: il secondo avvio
     # non deve riportarlo a quello dell'opzione.
-    ImpostazioniChat(giorni_conservazione=7).salva(str(tmp_path))
+    ChatSettings(retention_days=7).save(str(tmp_path))
     with caplog.at_level(logging.INFO):
-        assert _avvia(tmp_path).giorni_conservazione == 7
+        assert _avvia(tmp_path).retention_days == 7
     assert "giorni_conservazione" not in caplog.text, (
         "la migrazione ha parlato di nuovo al secondo avvio: non era piu' il "
         "suo momento"
