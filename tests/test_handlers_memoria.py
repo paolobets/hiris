@@ -3,6 +3,8 @@
 Convenzione seguita: quella di `tests/test_handlers_casa.py` -- handler
 `async def` semplice, app costruita a mano nel test, nessun `registra_rotte_*`.
 """
+import json
+
 import pytest
 from aiohttp import web
 
@@ -364,3 +366,41 @@ async def test_dimenticare_toglie_il_ricordo(aiohttp_client, tmp_path):
     assert memory.fetch() == []
 
     memory.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_le_rotte_dichiarano_il_guasto_con_la_chiave_del_confine():
+    """Le tre rotte della memoria, senza archivio, rispondono 503 -- e la chiave
+    del corpo si chiama `error`, non `errore`.
+
+    Nasce da una mutazione sfuggita: `{"error": ...}` rimesso a `{"errore":
+    ...}` in questo ramo lasciava verdi tutti e quattro i cancelli, perche' i
+    test che nominano `error` coprono solo i rami 400. Il ramo 503 non era
+    nominato da nessuno, e `memoria-route.js` legge `esito.json.error`.
+    """
+    from aiohttp import web
+
+    from hiris.app.api.handlers_memoria import (
+        handle_delete_memory,
+        handle_get_memories,
+        handle_patch_memory,
+    )
+
+    app = web.Application()
+
+    def richiesta():
+        return type("R", (), {"app": app, "match_info": {"id": "1"}, "query": {}})()
+
+    # Le due che SCRIVONO dichiarano il guasto con 503 e la chiave `error`.
+    for handler in (handle_patch_memory, handle_delete_memory):
+        risposta = await handler(richiesta())
+        assert risposta.status == 503, handler.__name__
+        assert set(json.loads(risposta.body)) == {"error"}, handler.__name__
+
+    # La LETTURA no, ed e' una distinzione voluta (vedi la docstring del
+    # modulo, punto 3): risponde 200 e DICHIARA `available: false`, invece di
+    # affermare «zero ricordi» come se fosse un fatto accertato. Si pinza qui
+    # perche' e' l'unico posto in cui le due forme si vedono accanto.
+    risposta = await handle_get_memories(richiesta())
+    assert risposta.status == 200
+    assert json.loads(risposta.body) == {"available": False, "memories": []}

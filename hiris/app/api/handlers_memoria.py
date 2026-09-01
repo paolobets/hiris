@@ -29,7 +29,7 @@ Tre cose, non di piu':
    risponde 404, non 200 `ok: true`: un ricordo che non esiste piu' non si
    "corregge" con successo.
 3. Senza archivio, la risposta non afferma "zero ricordi" come se fosse un
-   fatto accertato: lo dichiara (`disponibile: false`) -- stessa convenzione
+   fatto accertato: lo dichiara (`available: false`) -- stessa convenzione
    di `handlers_casa.handle_get_home_space`, non una seconda inventata qui.
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ _CORRECTABLE_FIELDS = {
 }
 
 # Quanti ricordi mostra al massimo il GET. Non e' un tetto silenzioso: la
-# risposta porta sempre `totale` (vedi handle_get_memories), cosi' chi guarda
+# risposta porta sempre `total` (vedi handle_get_memories), cosi' chi guarda
 # sa se sta vedendo tutto o solo la coda piu' recente.
 _MEMORIES_SHOWN_LIMIT = 200
 
@@ -137,7 +137,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     if store is None:
         # Stessa convenzione di handle_get_home_space (handlers_casa.py): senza
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
-        # mancare -- `disponibile` lo dice, `ricordi: []` resta un
+        # mancare -- `available` lo dice, `memories: []` resta un
         # contenitore naturale, non l'affermazione di un fatto.
         return web.json_response({"available": False, "memories": []})
 

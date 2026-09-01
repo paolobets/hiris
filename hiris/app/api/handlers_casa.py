@@ -244,9 +244,9 @@ def compose_briefing(app) -> tuple[str, dict]:
     # Con `conta()` (scritto apposta per dichiarare questa differenza) si
     # richiamano TUTTI i ricordi, e si lascia decidere al taglio di
     # `componi()` -- che dichiara sempre, nel nucleo stesso, quanti ne
-    # restano fuori (`ricordi_esclusi`). Prima di questo fix, i ricordi
+    # restano fuori (`excluded_memories`). Prima di questo fix, i ricordi
     # oltre il ventesimo sparivano PRIMA ancora di arrivare a `componi()`,
-    # e il riepilogo giurava "ricordi_esclusi: 0" su una casa con 200
+    # e il riepilogo giurava "excluded_memories: 0" su una casa con 200
     # ricordi veri e solo 20 nel nucleo.
     if memory_store is not None:
         memories = memory_store.fetch(limit=memory_store.count())

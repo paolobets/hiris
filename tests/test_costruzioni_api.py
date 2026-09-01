@@ -95,15 +95,41 @@ class FintaRichiesta:
         self.query = query or {}
 
 
+def _corpo(risposta) -> dict:
+    """Il corpo PARSATO, non la sua serializzazione.
+
+    Questo aiutante nasce da un difetto vero, e la genealogia va scritta perche'
+    non torni. Prima si asseriva `b'"b"' in risposta.body`: una SOTTOSTRINGA
+    del corpo serializzato, che vede gli id dentro l'elenco e **non vede il nome
+    dell'involucro che li contiene**. Provato per mutazione durante la review
+    della fetta «la rinomina»: rinominato l'involucro di questa rotta da
+    `constructions` a `costruzioni`, tutti e quattro i cancelli restavano verdi
+    (ruff, 3001 test, npm 300/300, oxlint) mentre la pagina non sapeva piu'
+    leggere la risposta.
+
+    L'altro lato non poteva prenderlo: la finta di `tests/js/
+    costruzioni-route.test.mjs` fornisce quella chiave DA SE', quindi nessuno
+    dei due lati la pinzava. Da qui in poi la pinza questo.
+    """
+    import json
+    return json.loads(risposta.body)
+
+
 @pytest.mark.asyncio
 async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     righe = [{"id": "a", "stato": "in_attesa"}, {"id": "b", "stato": "applicata"}]
     archivio = FintoArchivio(righe)
     app = _app(archivio)
-    tutte = await handle_get_constructions(FintaRichiesta(app))
-    assert b'"b"' in tutte.body
-    aperte = await handle_get_constructions(FintaRichiesta(app, query={"pending_only": "1"}))
-    assert b'"b"' not in aperte.body
+    tutte = _corpo(await handle_get_constructions(FintaRichiesta(app)))
+    # L'INVOLUCRO, per nome: e' il contratto che la pagina legge
+    # (`static/config/costruzioni-route.js::dati.constructions`), e nessun
+    # altro test di questa rotta lo nomina.
+    assert set(tutte) == {"constructions"}
+    assert [c["id"] for c in tutte["constructions"]] == ["a", "b"]
+    aperte = _corpo(await handle_get_constructions(
+        FintaRichiesta(app, query={"pending_only": "1"})))
+    assert set(aperte) == {"constructions"}
+    assert [c["id"] for c in aperte["constructions"]] == ["a"]
     # La pagina non deve mai mostrare come «da approvare» una proposta che
     # l'officina rifiuterebbe perche' scaduta.
     assert archivio.scadenze_chieste == 2
@@ -120,6 +146,32 @@ async def test_una_costruzione_che_non_esiste_da_404():
     app = _app(FintoArchivio([]))
     risposta = await handle_get_construction(FintaRichiesta(app, ident="zzz"))
     assert risposta.status == 404
+
+
+@pytest.mark.asyncio
+async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
+    """Il caso RIUSCITO di `GET /api/constructions/{id}`, che non era coperto.
+
+    Aveva solo il test del 404: il ramo che risponde 200 non era esercitato da
+    nessuno, e l'involucro `construction` (singolare, distinto da
+    `constructions` della lista) non era nominato da nessuna parte. Misurato
+    con una batteria di mutazioni a fine fetta «la rinomina»: rimesso a
+    `costruzione`, tutti e quattro i cancelli restavano verdi.
+
+    **Questa rotta non ha lettori nel frontend** (`costruzioni-route.js` prende
+    l'elenco intero e filtra in locale), quindi non c'e' una pagina che possa
+    andare rossa al posto suo: questo test e' l'unica cosa che pinza il suo
+    contratto. E' anche il motivo per cui la rotta e' nella tabella del debito.
+    """
+    import json
+
+    riga = {"id": "p1", "stato": "in_attesa", "gesto": "crea"}
+    app = _app(FintoArchivio([riga]))
+    risposta = await handle_get_construction(FintaRichiesta(app, ident="p1"))
+    assert risposta.status == 200
+    corpo = json.loads(risposta.body)
+    assert set(corpo) == {"construction"}
+    assert corpo["construction"]["id"] == "p1"
 
 
 @pytest.mark.asyncio

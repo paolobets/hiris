@@ -1295,7 +1295,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
-    il riepilogo (`caratteri`, `troncato`, `ricordi_esclusi`, `avvisi`) non
+    il riepilogo (`chars`, `truncated`, `excluded_memories`, `notices`) non
     puo' mentire su cio' che il testo non contiene, perche' e' costruito
     dagli stessi tagli che il testo dichiara -- vedi `test_nucleo.py`.
 
@@ -1362,7 +1362,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # motivo, i problemi che Home Assistant ha diagnosticato. Chi chiede «come
     # sta la casa» sta chiedendo ESATTAMENTE questo.
     #
-    # `avvisi` sono i LIMITI DI CIO' CHE SO: un registro che non ha risposto,
+    # `notices` sono i LIMITI DI CIO' CHE SO: un registro che non ha risposto,
     # un corpo di automazione mancante, il taglio del nucleo, le nascoste.
     #
     # Stavano insieme, sotto l'intestazione «Cio' che HIRIS ignora». E un
@@ -1618,7 +1618,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         if len(_assemble(print_order)) <= budget:
             break
 
-    # L'indice dell'avviso di taglio dentro `avvisi`, se e quando esiste --
+    # L'indice dell'avviso di taglio dentro `notices`, se e quando esiste --
     # serve a poterlo RISCRIVERE (rete di sicurezza sotto) senza rischiare
     # di sovrascrivere un avviso diverso che gli stesse accanto (es. i
     # corpi mancanti), che una sostituzione posizionale "ultimo elemento"
@@ -1685,8 +1685,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         "chars": len(text),
         "truncated": truncated,
         "excluded_memories": excluded_memories,
-        # Due chiavi come le due sezioni, e per la stessa ragione: `guasti`
-        # sono fatti sulla CASA, `avvisi` sono i limiti di cio' che HIRIS sa.
+        # Due chiavi come le due sezioni, e per la stessa ragione: `faults`
+        # sono fatti sulla CASA, `notices` sono i limiti di cio' che HIRIS sa.
         # Tenerli in un elenco solo qui rimetterebbe in piedi la confusione che
         # nel testo e' appena stata sciolta -- e il riepilogo non puo'
         # raccontare una forma diversa da quella che il testo ha.

@@ -16,7 +16,7 @@ Perche' 200 e non 503 (scelta della fetta "fix pre-UAT", voce C-1):
   - il fatto «i consumi non si misurano su questo percorso» e' un fatto di
     dominio, e i fatti di dominio stanno nel corpo della risposta.
 
-Il campo che porta la distinzione e' `misurata`. I contatori restano nel corpo
+Il campo che porta la distinzione e' `measured`. I contatori restano nel corpo
 ma valgono `null`, non `0`: `0` affermerebbe «misurato, e non hai consumato
 niente» -- lo stesso difetto a tre stati che tutto l'archivio della casa e'
 stato scritto per non commettere.
@@ -60,7 +60,7 @@ def _can_respond(app) -> bool:
 
     Con un provider configurato uno ZERO e' un fatto misurato -- «non hai
     ancora consumato niente» -- e non un'assenza di misura. E' la distinzione
-    che rende `misurata: false` un caso raro invece che la normalita'.
+    che rende `measured: false` un caso raro invece che la normalita'.
     """
     return bool(app.get("llm_router") or app.get("claude_runner")
                 or app.get("ponte_attivo"))

@@ -123,6 +123,19 @@ def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     assert model["model"] == "claude-sonnet-4-6"
     assert model["cost_state"] == "misurato"
     assert model["first_use"] == "2026-08-21"
+    # L'INSIEME ESATTO delle chiavi di una riga di modello, non solo quelle
+    # che questo test guarda. E' il confine fra le colonne di `consumi/store`
+    # e HTTP (`_model_out`): una colonna che uscisse da sola col suo nome
+    # italiano, o una chiave che sparisse, si vede qui e in nessun altro
+    # posto. Trovato con una batteria di mutazioni: `requests` non era
+    # nominato da nessun test, e rimetterlo a `richieste` lasciava verdi
+    # tutti e quattro i cancelli.
+    assert set(model) == {
+        "model", "requests", "token_in", "token_out", "cache_read",
+        "cache_write", "cost_usd", "cost_eur", "cost_state",
+        "rate_limit_errors", "first_use", "last_use",
+    }
+    assert model["requests"] == 1
 
 
 def test_un_modello_senza_prezzo_esce_con_costo_NULLO(app):
@@ -176,7 +189,19 @@ def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     corpo = _corpo(_chiama(handle_usage_history, app,
                            {"from": "2026-08-21", "to": "2026-08-22"}))
     assert [g["day"] for g in corpo["days"]] == ["2026-08-21", "2026-08-22"]
-    assert corpo["days"][0]["per_provider"]["claude"]["cost_eur"] > 0
+    secchiello = corpo["days"][0]["per_provider"]["claude"]
+    assert secchiello["cost_eur"] > 0
+    # L'INSIEME ESATTO del secchiello. Prima di questa fetta questa rotta
+    # faceva `{**riga_di_archivio, ...}` -- uno spread crudo -- e le colonne
+    # uscivano su HTTP coi loro nomi senza che nessuno l'avesse deciso.
+    # `_bucket_out` le mappa a mano, e questa riga e' cio' che impedisce alla
+    # mappa di tornare uno spread: una colonna aggiunta a `consumo_giorno`
+    # che comparisse qui da sola fa rosso.
+    assert set(secchiello) == {
+        "requests", "token_in", "token_out", "cache_read", "cache_write",
+        "rate_limit_errors", "cost_usd", "cost_eur",
+    }
+    assert secchiello["requests"] == 1
 
 
 def test_la_storia_senza_parametri_da_gli_ultimi_trenta_giorni(app):

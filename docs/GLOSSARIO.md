@@ -2678,6 +2678,19 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 
 ## I nomi degli strumenti
 
+> **Tredici e' il numero del PERIMETRO DELLA CHAT, non del repository.** I
+> `*_TOOL_DEF` sono **quattordici**: i tredici di `casa/strumenti.py`
+> (`accaduto`, `andamento`, `cerca`, `conferma`, `costruisci`, `disdici`,
+> `esegui`, `guarda`, `legami`, `promesse`, `prometti`, `richiama`, `ricorda`)
+> **piu' `CONCLUDI_TOOL_DEF`** in `schedulatore/turno.py`, lo strumento con cui
+> si chiude una promessa -- che non e' un utensile della chat e vive nel turno
+> dello schedulatore. Verificato per enumerazione l'02/09, non per lettura.
+>
+> La nota esiste perche' e' la sesta volta, in questa fetta, che un numero
+> GIUSTO su un perimetro sembra sbagliato su un altro: chi legge «i tredici
+> nomi degli strumenti» deve sapere quale perimetro sta contando, o cerchera'
+> un quattordicesimo che non trova o dara' per convertito uno che non lo e'.
+
 **Non sono identificatori qualunque: sono la parte di codice che un modello linguistico legge per
 decidere cosa chiamare.** Per questo il criterio qui e' piu' stretto che altrove: non basta che il
 nome si capisca, deve anche **non confondersi con un altro dei tredici**. Il prodotto ha gia' due

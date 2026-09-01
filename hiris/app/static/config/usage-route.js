@@ -309,8 +309,8 @@
         return r.json();
       }),
       fetch('api/usage/history').then(function(r) {
-        return r.ok ? r.json() : { giorni: [] };
-      }).catch(function() { return { giorni: [] }; })
+        return r.ok ? r.json() : { days: [] };
+      }).catch(function() { return { days: [] }; })
     ]).then(function(esiti) {
       stato.ultimo = esiti[0];
       disegna(esiti[0], esiti[1]);

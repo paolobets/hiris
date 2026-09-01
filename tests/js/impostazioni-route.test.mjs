@@ -167,7 +167,7 @@ test('un esito riuscito si vede, e la pagina si riallinea a cio\' che il server 
 test('un 400 del server si vede, col messaggio che dice quale campo non va', async () => {
   const { window, document } = montaConServer({
     putStatus: 400,
-    putBody: { error: '«thinking_budget» non può essere negativo (ricevuto -1).', campo: 'thinking_budget' },
+    putBody: { error: '«thinking_budget» non può essere negativo (ricevuto -1).', field: 'thinking_budget' },
   });
   window.HirisImpostazioniRoute.mount();
   await tick(20);
