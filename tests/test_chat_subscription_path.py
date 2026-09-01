@@ -1180,9 +1180,9 @@ def _con_registro(app, *, catena, chi_ha_risposto=None):
     lascia che l'helper lo trovi scorrendo la catena. Se il ripiego nominasse
     `catena_modelli[0]` invece di chi ha davvero risposto, i test che mettono
     un fallimento in testa lo direbbero."""
-    from hiris.app.esiti_provider import RegistroEsiti
+    from hiris.app.esiti_provider import OccurrenceRegistry
 
-    registro = RegistroEsiti(orologio=lambda: 1000.0)
+    registro = OccurrenceRegistry(clock=lambda: 1000.0)
     app["registro_esiti"] = registro
     app["catena_modelli"] = list(catena)
     if chi_ha_risposto:
@@ -1220,8 +1220,8 @@ async def test_la_nota_nomina_CHI_HA_RISPOSTO_non_il_primo_della_catena(tmp_path
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["claude", "openrouter"])
-    registro.fallimento("claude", famiglia="credenziale", codice=400,
-                        messaggio="credit balance too low", durata_s=0.3)
+    registro.fallimento("claude", family="credenziale", code=400,
+                        message="credit balance too low", durata_s=0.3)
     registro.successo("openrouter")
     async with TestClient(TestServer(app)) as client:
         body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
@@ -1406,7 +1406,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     async with TestClient(TestServer(app)) as client:
         await client.get("/api/chat/reply/" + jid)
 
-    esito = registro.esito("subscription")
+    esito = registro.occurrence("subscription")
     assert esito["tipo"] == "rifiutato" and esito["famiglia"] == "scaduto"
     assert esito["codice"] is None
     # `durata_s` e' quanto il piano ha AVUTO, misurato sul job (nato 300 s

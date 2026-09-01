@@ -72,13 +72,15 @@ def _piano_puo_rispondere(app) -> tuple[bool, str]:
     """
     if not piano_ha_il_token():
         return False, "manca il token"
-    tetto = int((app.get("models_config") or {})
-                .get("ponte", {}).get("tetto_giornaliero",
-                                      _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
-    if app["reasoning_queue"].count_exchanges_today() >= tetto:
+    ceiling = int(
+        (app.get("models_config") or {})
+        .get("ponte", {})
+        .get("tetto_giornaliero",
+             _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
+    if app["reasoning_queue"].count_exchanges_today() >= ceiling:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "
-            "alla catena.", tetto)
+            "alla catena.", ceiling)
         return False, "tetto giornaliero"
     return True, ""
 
@@ -93,7 +95,7 @@ def chi_risponde(app) -> tuple[str, str]:
     """
     if not (app.get("ponte_attivo") and _bridge_on(app)):
         return "catena", ""
-    puo, motivo = _piano_puo_rispondere(app)
+    puo, reason = _piano_puo_rispondere(app)
     if not puo:
-        return "catena", motivo
+        return "catena", reason
     return "ponte", ""

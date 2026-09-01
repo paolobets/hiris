@@ -14,23 +14,23 @@ regalare una freschezza che la produzione non ha.
 import pytest
 
 from hiris.app.decisione_modelli import frase_esito
-from hiris.app.esiti_provider import FAMIGLIE, RegistroEsiti, famiglia_da_codice, famiglia_errore
+from hiris.app.esiti_provider import FAMILIES, OccurrenceRegistry, error_family, family_from_code
 
 
 def _registro(t0=1000.0):
     adesso = [t0]
-    return RegistroEsiti(orologio=lambda: adesso[0]), adesso
+    return OccurrenceRegistry(clock=lambda: adesso[0]), adesso
 
 
 def test_senza_osservazioni_non_si_afferma_niente():
     r, _ = _registro()
-    assert r.esito("claude") is None
+    assert r.occurrence("claude") is None
 
 
 def test_un_successo_e_un_fatto_con_una_data():
     r, _t = _registro()
     r.successo("openrouter")
-    e = r.esito("openrouter")
+    e = r.occurrence("openrouter")
     assert e["tipo"] == "risposto" and e["quando"] == 1000.0 and e["da_quante"] == 1
 
 
@@ -40,18 +40,18 @@ def test_i_fallimenti_consecutivi_si_contano():
     r, t = _registro()
     for i in range(40):
         t[0] += 1
-        r.fallimento("claude", famiglia="credenziale", codice=400,
-                     messaggio="credit balance too low", durata_s=0.4)
-    e = r.esito("claude")
+        r.fallimento("claude", family="credenziale", code=400,
+                     message="credit balance too low", durata_s=0.4)
+    e = r.occurrence("claude")
     assert e["da_quante"] == 40 and e["quando"] == 1040.0
 
 
 def test_un_successo_azzera_il_conto_dei_rifiuti():
     r, _t = _registro()
-    r.fallimento("claude", famiglia="credenziale", codice=400, messaggio="x", durata_s=0.1)
-    r.fallimento("claude", famiglia="credenziale", codice=400, messaggio="x", durata_s=0.1)
+    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
+    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
     r.successo("claude")
-    assert r.esito("claude") == {"tipo": "risposto", "famiglia": "", "codice": None,
+    assert r.occurrence("claude") == {"tipo": "risposto", "famiglia": "", "codice": None,
                                  "messaggio": "", "quando": 1000.0, "da_quante": 1,
                                  "durata_s": 0.0}
 
@@ -64,7 +64,7 @@ def test_i_successi_consecutivi_si_contano_anche_loro():
     for _ in range(3):
         t[0] += 1
         r.successo("openrouter")
-    assert r.esito("openrouter")["da_quante"] == 3
+    assert r.occurrence("openrouter")["da_quante"] == 3
 
 
 def test_un_rifiuto_DIVERSO_ricomincia_a_contare():
@@ -76,20 +76,20 @@ def test_un_rifiuto_DIVERSO_ricomincia_a_contare():
     r, t = _registro()
     for _ in range(5):
         t[0] += 1
-        r.fallimento("openai", famiglia="modello", codice=404, messaggio="", durata_s=0.1)
-    assert r.esito("openai")["da_quante"] == 5
+        r.fallimento("openai", family="modello", code=404, message="", durata_s=0.1)
+    assert r.occurrence("openai")["da_quante"] == 5
     t[0] += 1
-    r.fallimento("openai", famiglia="credenziale", codice=401, messaggio="", durata_s=0.1)
-    e = r.esito("openai")
+    r.fallimento("openai", family="credenziale", code=401, message="", durata_s=0.1)
+    e = r.occurrence("openai")
     assert e["da_quante"] == 1 and e["famiglia"] == "credenziale" and e["codice"] == 401
 
 
 def test_due_provider_non_si_confondono():
     r, _ = _registro()
     r.successo("openrouter")
-    r.fallimento("claude", famiglia="credenziale", codice=400, messaggio="x", durata_s=0.1)
-    assert r.esito("openrouter")["tipo"] == "risposto"
-    assert r.esito("claude")["tipo"] == "rifiutato"
+    r.fallimento("claude", family="credenziale", code=400, message="x", durata_s=0.1)
+    assert r.occurrence("openrouter")["tipo"] == "risposto"
+    assert r.occurrence("claude")["tipo"] == "rifiutato"
 
 
 def test_tutti_restituisce_una_voce_per_provider_osservato_e_nessuna_per_gli_altri():
@@ -98,7 +98,7 @@ def test_tutti_restituisce_una_voce_per_provider_osservato_e_nessuna_per_gli_alt
     sono due cose diverse, e la seconda si afferma solo dopo averla vista."""
     r, _ = _registro()
     r.successo("openrouter")
-    assert set(r.tutti()) == {"openrouter"}
+    assert set(r.occurrences()) == {"openrouter"}
 
 
 def test_chi_legge_il_registro_non_lo_puo_riscrivere():
@@ -107,20 +107,20 @@ def test_chi_legge_il_registro_non_lo_puo_riscrivere():
     handler HTTP."""
     r, _ = _registro()
     r.successo("claude")
-    r.esito("claude")["tipo"] = "rifiutato"
-    r.tutti()["claude"]["da_quante"] = 99
-    assert r.esito("claude") == {"tipo": "risposto", "famiglia": "", "codice": None,
+    r.occurrence("claude")["tipo"] = "rifiutato"
+    r.occurrences()["claude"]["da_quante"] = 99
+    assert r.occurrence("claude") == {"tipo": "risposto", "famiglia": "", "codice": None,
                                  "messaggio": "", "quando": 1000.0, "da_quante": 1,
                                  "durata_s": 0.0}
 
 
 def test_un_esito_vecchio_resta_vecchio_e_lo_dichiara():
     adesso = [1000.0]
-    r = RegistroEsiti(orologio=lambda: adesso[0])
-    r.fallimento("claude", famiglia="credenziale", codice=400,
-                 messaggio="credit balance too low", durata_s=0.4)
+    r = OccurrenceRegistry(clock=lambda: adesso[0])
+    r.fallimento("claude", family="credenziale", code=400,
+                 message="credit balance too low", durata_s=0.4)
     adesso[0] += 7200                      # due ore dopo, e NESSUNA nuova chiamata
-    e = r.esito("claude")
+    e = r.occurrence("claude")
     assert e["quando"] == 1000.0, "il registro non deve ringiovanire da solo"
     assert frase_esito(e, posizione=1, adesso=adesso[0]) == (
         "ha rifiutato l'ultima richiesta — credito esaurito (400), 2 h fa")
@@ -134,7 +134,7 @@ def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
     """Collassarle in «errore temporaneo» è ciò che fa il codice oggi, ed è la
     ragione per cui il proprietario non ha mai saputo del credito. Sono tre
     frasi diverse e tre azioni diverse per chi legge."""
-    assert famiglia_da_codice(codice) == attesa
+    assert family_from_code(codice) == attesa
 
 
 def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
@@ -146,15 +146,15 @@ def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
     Max non risponde con un codice e non solleva niente -- il turno accodato
     non viene servito entro la scadenza. Il ramo di scorta direbbe «ha
     rifiutato», che è una parola più larga del fatto."""
-    assert set(FAMIGLIE) == {"credenziale", "modello", "irraggiungibile",
+    assert set(FAMILIES) == {"credenziale", "modello", "irraggiungibile",
                              "scaduto", "altro"}
     for codice in (400, 401, 402, 403, 404, 429, 500, None):
-        assert famiglia_da_codice(codice) in FAMIGLIE
+        assert family_from_code(codice) in FAMILIES
     # `scaduto` non nasce da un codice HTTP: non c'è nessuna risposta da cui
     # prenderlo. La scrive a mano l'unico punto che la osserva
     # (`handlers_chat._downgrade_to_chain`), ed è per questo che questa riga
     # sta qui e non nel ciclo qui sopra.
-    assert "scaduto" not in {famiglia_da_codice(c)
+    assert "scaduto" not in {family_from_code(c)
                              for c in (400, 401, 402, 403, 404, 429, 500, None)}
 
 
@@ -173,8 +173,8 @@ def test_una_scadenza_non_si_legge_come_un_rifiuto():
 
 def test_un_errore_di_connessione_e_irraggiungibile_non_altro():
     import httpx
-    assert famiglia_errore(httpx.ConnectError("boom")) == "irraggiungibile"
-    assert famiglia_errore(ConnectionError("boom")) == "irraggiungibile"
+    assert error_family(httpx.ConnectError("boom")) == "irraggiungibile"
+    assert error_family(ConnectionError("boom")) == "irraggiungibile"
 
 
 def test_le_due_sdk_dicono_irraggiungibile_nello_stesso_modo():
@@ -187,8 +187,8 @@ def test_le_due_sdk_dicono_irraggiungibile_nello_stesso_modo():
     import openai
 
     richiesta = httpx.Request("POST", "https://esempio/v1")
-    assert famiglia_errore(anthropic.APIConnectionError(request=richiesta)) == "irraggiungibile"
-    assert famiglia_errore(openai.APIConnectionError(request=richiesta)) == "irraggiungibile"
+    assert error_family(anthropic.APIConnectionError(request=richiesta)) == "irraggiungibile"
+    assert error_family(openai.APIConnectionError(request=richiesta)) == "irraggiungibile"
 
 
 def test_famiglia_errore_legge_il_codice_quando_l_eccezione_ce_l_ha():
@@ -203,8 +203,8 @@ def test_famiglia_errore_legge_il_codice_quando_l_eccezione_ce_l_ha():
     class _Muta(Exception):
         pass
 
-    assert famiglia_errore(_Api()) == "credenziale"
-    assert famiglia_errore(_Muta()) == "altro"
+    assert error_family(_Api()) == "credenziale"
+    assert error_family(_Muta()) == "altro"
 
 
 def test_un_errore_di_connessione_resta_irraggiungibile_anche_col_codice():
@@ -217,7 +217,7 @@ def test_un_errore_di_connessione_resta_irraggiungibile_anche_col_codice():
     class _ConnColCodice(httpx.ConnectError):
         status_code = 500
 
-    assert famiglia_errore(_ConnColCodice("boom")) == "irraggiungibile"
+    assert error_family(_ConnColCodice("boom")) == "irraggiungibile"
 
 
 # ── L'età, e i cinque stati ────────────────────────────────────────────────

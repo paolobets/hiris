@@ -472,9 +472,9 @@ def test_ogni_codice_di_credenziale_ha_la_sua_causa():
     per farlo comparire come problema di credito) manderebbe l'utente a
     rigenerare una chiave che funziona."""
     from hiris.app.decisione_modelli import _CAUSA_CREDENZIALE
-    from hiris.app.esiti_provider import _CREDENZIALE
+    from hiris.app.esiti_provider import _CREDENTIAL
 
-    senza_causa = sorted(c for c in _CREDENZIALE if c not in _CAUSA_CREDENZIALE)
+    senza_causa = sorted(c for c in _CREDENTIAL if c not in _CAUSA_CREDENZIALE)
     assert senza_causa == [], f"codici senza una causa dichiarata: {senza_causa}"
 
 

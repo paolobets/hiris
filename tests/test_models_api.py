@@ -942,9 +942,9 @@ async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
     dire «non l'hai ancora usato» invece di non dire niente. `_on_startup` e'
     anche cio' che OGNI fixture azzera -- un registro che nascesse li'
     avrebbe copertura zero (la lezione del debito E del Task 1)."""
-    from hiris.app.esiti_provider import RegistroEsiti
+    from hiris.app.esiti_provider import OccurrenceRegistry
 
-    assert isinstance(client.app["registro_esiti"], RegistroEsiti)
+    assert isinstance(client.app["registro_esiti"], OccurrenceRegistry)
 
 
 @pytest.mark.asyncio
@@ -957,8 +957,8 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     client.app["catena_modelli"] = ["claude", "openrouter"]
     registro = client.app["registro_esiti"]
     for _ in range(40):
-        registro.fallimento("claude", famiglia="credenziale", codice=400,
-                            messaggio="credit balance too low", durata_s=0.4)
+        registro.fallimento("claude", family="credenziale", code=400,
+                            message="credit balance too low", durata_s=0.4)
     registro.successo("openrouter")
 
     body = await (await client.get("/api/models/config")).json()
@@ -1031,7 +1031,7 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     buono.chat = AsyncMock(return_value="ok")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"],
-                       registro=client.app["registro_esiti"])
+                       registry=client.app["registro_esiti"])
     await router.chat(model="auto")
 
     client.app["openrouter_api_key"] = "sk-or-presente"
@@ -1061,7 +1061,7 @@ def test_l_avvio_consegna_al_router_IL_registro_dell_app():
     assert costruzioni, "nessuna costruzione di LLMRouter trovata in server.py"
     for chiamata in costruzioni:
         nomi = {k.arg for k in chiamata.keywords}
-        assert "registro" in nomi, (
+        assert "registry" in nomi, (
             "ogni LLMRouter costruito dall'avvio deve ricevere il registro "
             "degli esiti, o il ciclo di ripiego torna a buttare via cio' che "
             "vede"

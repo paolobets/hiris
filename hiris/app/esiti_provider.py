@@ -60,17 +60,17 @@ import time
 # esiste per chiudere: il piano non ha rifiutato, non ha risposto. Chiede a chi
 # legge un'azione ancora diversa dalle altre tre -- guardare se il worker del
 # ponte sta girando -- ed e' per questo che e' separata.
-FAMIGLIE = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
+FAMILIES = ("credenziale", "modello", "irraggiungibile", "scaduto", "altro")
 
 # La sola tabella di questo modulo, e sta qui e non in `frase_esito` perché è
 # una MISURA (che cosa ha risposto il server), non una parola. 402 è il codice
 # canonico del credito; Anthropic risponde 400 con «credit balance too low»,
 # che è il caso del proprietario; 401 e 403 sono la chiave rifiutata. Tutti e
 # quattro sono «la credenziale non ti fa passare», e la frase li distingue.
-_CREDENZIALE = (400, 401, 402, 403)
+_CREDENTIAL = (400, 401, 402, 403)
 
 
-def famiglia_da_codice(codice: int | None) -> str:
+def family_from_code(code: int | None) -> str:
     """La famiglia di uno stato HTTP.
 
     Tutto ciò che non è credenziale o modello è `"altro"`, compreso il 429 e
@@ -78,14 +78,14 @@ def famiglia_da_codice(codice: int | None) -> str:
     fingere che lo dicano sarebbe l'ipotesi sulla causa che questo prodotto non
     fa. `None` (nessun codice) è `"altro"` per la stessa ragione.
     """
-    if codice in _CREDENZIALE:
+    if code in _CREDENTIAL:
         return "credenziale"
-    if codice == 404:
+    if code == 404:
         return "modello"
     return "altro"
 
 
-def famiglia_errore(exc: Exception) -> str:
+def error_family(exc: Exception) -> str:
     """La famiglia di un'eccezione sollevata da un runner.
 
     La connessione VINCE sul codice: `openai.APIConnectionError` porta
@@ -105,11 +105,11 @@ def famiglia_errore(exc: Exception) -> str:
 
     if _is_conn_error(exc):
         return "irraggiungibile"
-    codice = getattr(exc, "status_code", None)
-    return famiglia_da_codice(codice if isinstance(codice, int) else None)
+    code = getattr(exc, "status_code", None)
+    return family_from_code(code if isinstance(code, int) else None)
 
 
-class RegistroEsiti:
+class OccurrenceRegistry:
     """L'ultimo esito osservato, per provider, e da quante richieste dura.
 
     Un dizionario in memoria, alimentato dal ciclo di ripiego del router --
@@ -125,12 +125,12 @@ class RegistroEsiti:
     che l'hanno avuta diversa.
     """
 
-    def __init__(self, orologio=time.time) -> None:
+    def __init__(self, clock=time.time) -> None:
         # Una funzione, non un modulo: nei test è una lista mutabile che avanza
         # quando il test lo dice. Un orologio che avanza da solo renderebbe
         # invisibile proprio la cosa che questo registro esiste per dire --
         # quanto è vecchia l'ultima osservazione.
-        self._orologio = orologio
+        self._clock = clock
         self._per_provider: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
@@ -148,24 +148,24 @@ class RegistroEsiti:
             "famiglia": "",
             "codice": None,
             "messaggio": "",
-            "quando": float(self._orologio()),
+            "quando": float(self._clock()),
             "da_quante": (precedente["da_quante"] + 1) if continua else 1,
             "durata_s": 0.0,
         }
 
-    def fallimento(self, provider: str, *, famiglia: str, codice: int | None,
-                   messaggio: str, durata_s: float) -> None:
+    def fallimento(self, provider: str, *, family: str, code: int | None,
+                   message: str, durata_s: float) -> None:
         precedente = self._per_provider.get(provider)
         continua = (bool(precedente)
                     and precedente["tipo"] == "rifiutato"
-                    and precedente["famiglia"] == famiglia
-                    and precedente["codice"] == codice)
+                    and precedente["famiglia"] == family
+                    and precedente["codice"] == code)
         self._per_provider[provider] = {
             "tipo": "rifiutato",
-            "famiglia": famiglia,
-            "codice": codice,
-            "messaggio": messaggio,
-            "quando": float(self._orologio()),
+            "famiglia": family,
+            "codice": code,
+            "messaggio": message,
+            "quando": float(self._clock()),
             "da_quante": (precedente["da_quante"] + 1) if continua else 1,
             "durata_s": float(durata_s),
         }
@@ -174,7 +174,7 @@ class RegistroEsiti:
     # Lettura: la fa l'handler della pagina, una volta per richiesta
     # ------------------------------------------------------------------
 
-    def esito(self, provider: str) -> dict | None:
+    def occurrence(self, provider: str) -> dict | None:
         """L'ultimo esito, o `None` se non c'è mai stata un'osservazione.
 
         `None` non è «non lo so»: è «non l'ho interrogato», che è un fatto e la
@@ -182,13 +182,13 @@ class RegistroEsiti:
         modificasse il dizionario ricevuto riscriverebbe la storia osservata
         dell'add-on da dentro un handler HTTP.
         """
-        voce = self._per_provider.get(provider)
-        return dict(voce) if voce is not None else None
+        entry = self._per_provider.get(provider)
+        return dict(entry) if entry is not None else None
 
-    def tutti(self) -> dict[str, dict]:
+    def occurrences(self) -> dict[str, dict]:
         """Le voci di CHI È STATO OSSERVATO, e nessun'altra.
 
         Un provider mai interrogato non compare: mettercelo con un esito vuoto
         sarebbe affermare un'osservazione che non c'è stata.
         """
-        return {nome: dict(voce) for nome, voce in self._per_provider.items()}
+        return {name: dict(entry) for name, entry in self._per_provider.items()}

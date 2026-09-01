@@ -114,7 +114,7 @@ class LLMRouter:
         strategy: str = "balanced",
         chat_policy: list[str] | None = None,
         model_chain: list[str] | None = None,
-        registro: Any = None,
+        registry: Any = None,
     ) -> None:
         # `registro` è `esiti_provider.RegistroEsiti` (app["registro_esiti"]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
@@ -123,7 +123,7 @@ class LLMRouter:
         # i runner non lo ricevono, perché il turno vero passa di qui e due
         # scrittori della stessa osservazione sarebbero due rappresentazioni
         # dello stesso fatto.
-        self._registro = registro
+        self._registry = registry
         self._claude = claude
         self._openai = openai
         self._openrouter = openrouter
@@ -159,7 +159,7 @@ class LLMRouter:
             "ollama": self._ollama,
         }
 
-    def _ordered_backends_con_nome(self) -> list[tuple[str, Any]]:
+    def _ordered_backends_with_name(self) -> list[tuple[str, Any]]:
         """Gli anelli in ordine di catena, CON IL NOME DEL PROVIDER.
 
         Il nome serve perché il registro degli esiti è per provider, e
@@ -181,7 +181,7 @@ class LLMRouter:
         implementazione: due liste ordinate dalla stessa policy sono due
         rappresentazioni della stessa cosa, libere di divergere.
         """
-        return [runner for _, runner in self._ordered_backends_con_nome()]
+        return [runner for _, runner in self._ordered_backends_with_name()]
 
     def _route(self, model: str) -> Any:
         if _is_openrouter_model(model):
@@ -204,8 +204,8 @@ class LLMRouter:
                 return "Nessun provider AI configurato per questo modello."
             return await runner.chat(**kwargs)
         # auto: try backends in chat_policy order with fallback
-        ordinati = self._ordered_backends_con_nome()
-        if not ordinati:
+        ordered = self._ordered_backends_with_name()
+        if not ordered:
             # Da questa fetta e' uno stato RAGGIUNGIBILE e con un significato:
             # la catena e' vuota (nessuno ce l'ha messo) oppure i nomi che
             # porta non hanno un backend costruito. «Riprova tra poco» sarebbe
@@ -215,22 +215,22 @@ class LLMRouter:
                     "chiedere. Apri la pagina Modelli e mettine almeno uno in "
                     "catena.")
         last_friendly: str | None = None
-        for nome_backend, runner in ordinati:
+        for backend_name, runner in ordered:
             # Il ciclo di ripiego è il SOLO posto in cui HIRIS vede davvero
             # come si comporta un provider, e fino a questa fetta lo buttava
             # via: un `logger.warning` e avanti. La pagina Modelli poteva dire
             # «Claude è primo in catena» e non «e sta rifiutando da quaranta
             # richieste» -- che è il caso del proprietario per intero.
-            inizio = time.monotonic()
+            start = time.monotonic()
             try:
-                risposta = await runner.chat(**kwargs)
+                answer = await runner.chat(**kwargs)
             except RunnerBackendError as exc:
-                logger.warning("Backend %s failed, trying next: %s", nome_backend, exc)
-                if self._registro is not None:
-                    self._registro.fallimento(
-                        nome_backend, famiglia=getattr(exc, "famiglia", "altro"),
-                        codice=getattr(exc, "codice", None), messaggio=str(exc),
-                        durata_s=time.monotonic() - inizio)
+                logger.warning("Backend %s failed, trying next: %s", backend_name, exc)
+                if self._registry is not None:
+                    self._registry.fallimento(
+                        backend_name, family=getattr(exc, "famiglia", "altro"),
+                        code=getattr(exc, "codice", None), message=str(exc),
+                        durata_s=time.monotonic() - start)
                 last_friendly = exc.friendly_message
             except Exception as exc:
                 # Il ramo che c'era già: un guasto che NON è un
@@ -239,15 +239,15 @@ class LLMRouter:
                 # come `"altro"` invece di essere buttato: un provider che
                 # esplode in modo imprevisto deve comparire nella pagina come
                 # uno che ha rifiutato, non come uno di cui non si sa niente.
-                logger.warning("Backend %s failed, trying next: %s", nome_backend, exc)
-                if self._registro is not None:
-                    self._registro.fallimento(
-                        nome_backend, famiglia="altro", codice=None,
-                        messaggio=str(exc), durata_s=time.monotonic() - inizio)
+                logger.warning("Backend %s failed, trying next: %s", backend_name, exc)
+                if self._registry is not None:
+                    self._registry.fallimento(
+                        backend_name, family="altro", code=None,
+                        message=str(exc), durata_s=time.monotonic() - start)
             else:
-                if self._registro is not None:
-                    self._registro.successo(nome_backend)
-                return risposta
+                if self._registry is not None:
+                    self._registry.successo(backend_name)
+                return answer
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):

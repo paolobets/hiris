@@ -444,9 +444,9 @@ async def test_un_turno_finisce_con_la_catena_con_cui_e_partito():
 
 
 def _registro_fermo(t0=1000.0):
-    from hiris.app.esiti_provider import RegistroEsiti
+    from hiris.app.esiti_provider import OccurrenceRegistry
     adesso = [t0]
-    return RegistroEsiti(orologio=lambda: adesso[0]), adesso
+    return OccurrenceRegistry(clock=lambda: adesso[0]), adesso
 
 
 @pytest.mark.asyncio
@@ -461,14 +461,14 @@ async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
-                       model_chain=["claude", "openrouter"], registro=registro)
+                       model_chain=["claude", "openrouter"], registry=registro)
 
     assert await router.chat(model="auto") == "risposta"
-    claude = registro.esito("claude")
+    claude = registro.occurrence("claude")
     assert claude["tipo"] == "rifiutato"
     assert claude["famiglia"] == "credenziale" and claude["codice"] == 400
     assert claude["quando"] == 1000.0 and claude["da_quante"] == 1
-    assert registro.esito("openrouter")["tipo"] == "risposto"
+    assert registro.occurrence("openrouter")["tipo"] == "risposto"
 
 
 @pytest.mark.asyncio
@@ -487,11 +487,11 @@ async def test_il_registro_distingue_openai_da_openrouter():
 
     registro, _ = _registro_fermo()
     router = LLMRouter(openai=_Compat(), openrouter=_Router(),
-                       model_chain=["openrouter"], registro=registro)
+                       model_chain=["openrouter"], registry=registro)
     await router.chat(model="auto")
 
-    assert registro.esito("openrouter")["codice"] == 404
-    assert registro.esito("openai") is None, (
+    assert registro.occurrence("openrouter")["codice"] == 404
+    assert registro.occurrence("openai") is None, (
         "OpenAI non e' stato interrogato: sulla sua riga non deve comparire "
         "il rifiuto di un altro provider"
     )
@@ -506,10 +506,10 @@ async def test_un_guasto_che_non_e_un_RunnerBackendError_si_registra_lo_stesso()
     registro, _ = _registro_fermo()
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=TypeError("firma cambiata"))
-    router = LLMRouter(claude=rotto, model_chain=["claude"], registro=registro)
+    router = LLMRouter(claude=rotto, model_chain=["claude"], registry=registro)
     await router.chat(model="auto")
 
-    e = registro.esito("claude")
+    e = registro.occurrence("claude")
     assert e["tipo"] == "rifiutato" and e["famiglia"] == "altro" and e["codice"] is None
     assert "firma cambiata" in e["messaggio"]
 
@@ -526,10 +526,10 @@ async def test_chi_non_e_stato_interrogato_non_compare_nel_registro():
     mai = MagicMock()
     mai.chat = AsyncMock(return_value="mai chiamato")
     router = LLMRouter(claude=buono, ollama=mai,
-                       model_chain=["claude", "ollama"], registro=registro)
+                       model_chain=["claude", "ollama"], registry=registro)
     await router.chat(model="auto")
 
-    assert set(registro.tutti()) == {"claude"}
+    assert set(registro.occurrences()) == {"claude"}
 
 
 @pytest.mark.asyncio
@@ -546,12 +546,12 @@ async def test_quaranta_turni_di_rifiuto_si_leggono_come_quaranta():
     buono = MagicMock()
     buono.chat = AsyncMock(return_value="risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
-                       model_chain=["claude", "openrouter"], registro=registro)
+                       model_chain=["claude", "openrouter"], registry=registro)
     for _ in range(40):
         adesso[0] += 60
         await router.chat(model="auto")
 
-    e = registro.esito("claude")
+    e = registro.occurrence("claude")
     assert e["da_quante"] == 40 and e["quando"] == 1000.0 + 40 * 60
 
 
@@ -581,11 +581,11 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
     registro, _ = _registro_fermo()
     rotto = MagicMock()
     rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
-    router = LLMRouter(claude=rotto, model_chain=["claude"], registro=registro)
+    router = LLMRouter(claude=rotto, model_chain=["claude"], registry=registro)
     with patch.object(modulo.time, "monotonic", lambda: next(passi)):
         await router.chat(model="auto")
 
-    assert registro.esito("claude")["durata_s"] == 8.0
+    assert registro.occurrence("claude")["durata_s"] == 8.0
 
 
 def test_l_ordine_coi_nomi_e_l_ordine_senza_sono_LO_STESSO_calcolo():
@@ -601,14 +601,14 @@ def test_l_ordine_coi_nomi_e_l_ordine_senza_sono_LO_STESSO_calcolo():
     claude, ollama = _Dummy(), _Dummy()
     r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
     assert r._ordered_backends() == [ollama, claude]
-    assert [n for n, _ in r._ordered_backends_con_nome()] == ["ollama", "claude"]
+    assert [n for n, _ in r._ordered_backends_with_name()] == ["ollama", "claude"]
 
     import textwrap
     albero = ast.parse(textwrap.dedent(
         inspect.getsource(modulo.LLMRouter._ordered_backends)))
     chiamate = [n.func.attr for n in ast.walk(albero)
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
-    assert "_ordered_backends_con_nome" in chiamate, (
+    assert "_ordered_backends_with_name" in chiamate, (
         "_ordered_backends deve derivare dall'altra, non rifare il giro sulla "
         "policy per conto proprio"
     )

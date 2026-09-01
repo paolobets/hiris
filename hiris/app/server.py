@@ -58,7 +58,7 @@ from .cervello.oggetti import (
 from .cervello.osservatore import Watcher
 from .decisione_modelli import piano_ha_il_token
 from .env_util import env_bool
-from .esiti_provider import RegistroEsiti
+from .esiti_provider import OccurrenceRegistry
 from .impostazioni_chat import ImpostazioniChat, il_file_non_porta_i_giorni
 from .memoria.archivio import MemoryStore
 from .memoria.cache_indice import LookupCache
@@ -3334,7 +3334,7 @@ async def _on_startup(app: web.Application) -> None:
             # via. Lo stesso oggetto che la pagina Modelli legge: se fossero
             # due, divergerebbero -- e la pagina racconterebbe un traffico che
             # non e' quello che c'e' stato.
-            registro=app["registro_esiti"],
+            registry=app["registro_esiti"],
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
@@ -3512,7 +3512,7 @@ def create_app() -> web.Application:
     # Nessuna persistenza: muore col processo, e «da quando l'add-on e'
     # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un
     # esito di due ore fa resta li', vecchio, e la pagina ne dice l'eta'.
-    app["registro_esiti"] = RegistroEsiti()
+    app["registro_esiti"] = OccurrenceRegistry()
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_index)

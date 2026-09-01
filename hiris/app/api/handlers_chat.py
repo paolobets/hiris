@@ -300,7 +300,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     if occurrence_registry is None:
         return ""
     for backend_name in (request.app.get("catena_modelli") or []):
-        occurrence = occurrence_registry.esito(backend_name)
+        occurrence = occurrence_registry.occurrence(backend_name)
         if occurrence and occurrence["tipo"] == "risposto":
             return nota_ripiego(motivo=reason, chi_ha_risposto=backend_name)
     return ""
@@ -466,10 +466,10 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     occurrence_registry = request.app.get("registro_esiti")
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
-            "subscription", famiglia="scaduto", codice=None,
+            "subscription", family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
             # che l'utente vede la compone `decisione_modelli.frase_esito`.
-            messaggio="nessuna risposta entro la scadenza del ponte",
+            message="nessuna risposta entro la scadenza del ponte",
             # Quanto il piano ha AVUTO, misurato sul job e non riletto
             # dall'archivio: la scadenza può essere stata cambiata mentre il
             # turno era in volo, e quel numero racconterebbe un'attesa che non

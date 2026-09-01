@@ -502,9 +502,9 @@ _METODI_IMPOSTAZIONI_CHAT = frozenset({
 # classe, ma si leggono per attributo sul MODULO
 # (`esiti_provider.famiglia_errore(...)`) ed e' lo stesso gesto sintattico).
 _METODI_REGISTRO_ESITI = frozenset({
-    "__init__", "_orologio", "_per_provider",
-    "successo", "fallimento", "esito", "tutti",
-    "famiglia_da_codice", "famiglia_errore",
+    "__init__", "_clock", "_per_provider",
+    "successo", "fallimento", "occurrence", "occurrences",
+    "family_from_code", "error_family",
 })
 
 # L'insieme delle classi esterne protette per attributo, indipendentemente

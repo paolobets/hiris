@@ -21,7 +21,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _PerCallList,
 )
-from ..esiti_provider import famiglia_errore
+from ..esiti_provider import error_family
 from .pricing import get_price as _prezzo
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip
@@ -719,7 +719,7 @@ class OpenAICompatRunner:
                 # invece si porta, perché è un fatto.
                 raise RunnerBackendError(
                     upstream or "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    famiglia=famiglia_errore(exc),
+                    famiglia=error_family(exc),
                     codice=_status_code(exc) or 429,
                 ) from exc
             except _openai.APIError as exc:
@@ -746,7 +746,7 @@ class OpenAICompatRunner:
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
                             f"Riduci max_tokens dell'agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai.",
-                            famiglia=famiglia_errore(retry_exc),
+                            famiglia=error_family(retry_exc),
                             codice=_status_code(retry_exc),
                         ) from retry_exc
                 else:
@@ -763,7 +763,7 @@ class OpenAICompatRunner:
                     # finito» diventavano la stessa identica riga.
                     raise RunnerBackendError(
                         "Errore temporaneo del servizio AI. Riprova tra poco.",
-                        famiglia=famiglia_errore(exc),
+                        famiglia=error_family(exc),
                         codice=_status_code(exc),
                     ) from exc
 

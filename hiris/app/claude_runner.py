@@ -23,7 +23,7 @@ import anthropic
 # `esiti_provider`, che non importa niente da qui a livello di modulo (il suo
 # unico import di `openai_compat_runner` è dentro `famiglia_errore`) -- quindi
 # nessun ciclo.
-from .esiti_provider import famiglia_errore
+from .esiti_provider import error_family
 
 logger = logging.getLogger(__name__)
 
@@ -906,7 +906,7 @@ class ClaudeRunner:
                 _codice = getattr(exc, "status_code", None)
                 raise RunnerBackendError(
                     "Errore temporaneo del servizio AI. Riprova tra poco.",
-                    famiglia=famiglia_errore(exc),
+                    famiglia=error_family(exc),
                     codice=_codice if isinstance(_codice, int) else None,
                 ) from exc
 

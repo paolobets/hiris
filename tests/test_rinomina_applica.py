@@ -465,22 +465,25 @@ def test_il_filtro_separa_i_chiamanti_orfani_certi_dagli_ambigui(tmp_path):
 
 
 def test_un_metodo_di_registroesiti_non_si_applica_da_solo():
-    """Quarta voce della guardia (Task 9, `api/handlers_chat.py`), e la sola
-    delle quattro che previene un difetto ATTIVO invece che futuro:
-    `esito -> occurrence` e' deciso da sempre, e `handlers_chat.py:303` legge
-    `registro.esito(...)` su un `RegistroEsiti` (`esiti_provider.py`, file di
-    RADICE mai convertito). Senza questa voce il join produce
-    `registry.occurrence(...)`, cioe' un `AttributeError` alla prima chat che
-    ripiega dal piano alla catena -- e nessun cancello lo vede, perche' il
-    finto che imita il registro nei test verrebbe rinominato insieme al
-    chiamante."""
-    gf = rinomina.Glossario(mappa={"esito": "occurrence"})
-    dentro = "esito = registro.esito(nome_backend)\n"
+    """Quarta voce della guardia (Task 9, `api/handlers_chat.py`).
+
+    **Il caso misurato era `registro.esito(...)`** su un `RegistroEsiti`:
+    `esito -> occurrence` e' deciso da sempre, e senza questa voce il join
+    produceva `registry.occurrence(...)`, cioe' un `AttributeError` alla prima
+    chat che ripiega dal piano alla catena. **Quel caso oggi non esiste piu'**:
+    dal lotto dei moduli di radice `esiti_provider.py` e' convertito, la classe
+    si chiama `OccurrenceRegistry` e il metodo `occurrence` davvero.
+
+    La guardia serve identica nel verso opposto -- il giorno in cui una parola
+    inglese di quella classe entrasse nel glossario come traduzione di
+    qualcos'altro -- e il glossario di questa prova e' sintetico apposta, cosi'
+    misura il MECCANISMO e non lo stato di conversione del modulo."""
+    gf = rinomina.Glossario(mappa={"successo": "success"})
+    dentro = "esito = registry.successo(backend_name)" + chr(10)
     fuori, proposte = rinomina.riscrivi(dentro, gf, "qualunque")
-    assert fuori == "occurrence = registro.esito(nome_backend)\n", (
-        "l'attributo di RegistroEsiti non si applica da solo; la variabile "
-        "locale si'")
-    assert [p.nome for p in proposte] == ["esito"]
+    assert fuori == dentro, (
+        "l'attributo di OccurrenceRegistry non si applica da solo")
+    assert [p.nome for p in proposte] == ["successo"]
 
 
 def test_un_attributo_che_non_e_di_registroesiti_si_applica_normalmente():
@@ -1437,3 +1440,55 @@ def test_una_parola_scartata_non_si_raggiunge_per_singolarizzazione():
         "code", rinomina.Glossario(mappa={"coda": "tail"}), "qualunque")
     assert isinstance(proposta, rinomina.Proposta)
     assert proposta.suggerito == "tail"
+
+
+def test_chiudi_sponde_segue_un_riassegnamento_che_ombreggia_un_import(tmp_path):
+    """Il caso che il repo NON contiene, e che quindi va costruito.
+
+    `chiudi_sponde` chiude anche un `vecchio = ...` in un file che fa
+    `from X import vecchio`: e' coerente -- e' la STESSA legatura, e lasciare
+    il riassegnamento col nome vecchio produrrebbe due nomi per una variabile
+    sola -- ma nel repo non esiste nessun file che ombreggi un proprio import,
+    quindi il comportamento non era esercitato da niente.
+
+    **Un codice senza caso non e' provato**, ed e' il rovescio esatto del
+    difetto n.1 di questo progetto: li' un test che non puo' fallire, qui un
+    codice che non puo' essere esercitato. Dentro l'attrezzo che riscrive la
+    codebase e' il posto peggiore dove lasciarlo.
+
+    Provato per mutazione: tolto il ramo dei nomi nudi da `chiudi_sponde`, la
+    riga `vecchio_nome = 1` resta indietro e questo test va rosso.
+    """
+    f = tmp_path / "ombra.py"
+    f.write_text("from pacchetto.modulo import vecchio_nome\n"
+                 "\n"
+                 "def prepara():\n"
+                 "    global vecchio_nome\n"
+                 "    vecchio_nome = 1\n"
+                 "    return vecchio_nome\n", encoding="utf-8")
+    siti = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
+    assert [s[4] for s in siti] == ["import"], (
+        "solo l'import e' una sponda dichiarata: i tre usi nudi non lo sono, "
+        "ed e' proprio per questo che il ramo dei nomi nudi doveva esistere")
+    assert rinomina.chiudi_sponde(siti) == 4
+    assert f.read_text(encoding="utf-8") == (
+        "from pacchetto.modulo import new_name\n"
+        "\n"
+        "def prepara():\n"
+        "    global new_name\n"
+        "    new_name = 1\n"
+        "    return new_name\n")
+
+
+def test_chiudi_sponde_non_segue_un_nome_nudo_in_un_file_che_non_lo_importa(tmp_path):
+    """La controprova, ed e' il confine della regola: il legame dell'import
+    rende CERTO che un nome nudo sia quello importato. Senza l'import, lo
+    stesso nome nudo e' una variabile qualunque -- e questa funzione non lo
+    tocca, esattamente come la rete non lo segnala."""
+    f = tmp_path / "estraneo.py"
+    f.write_text("vecchio_nome = 1\n" "x = oggetto.vecchio_nome\n", encoding="utf-8")
+    siti = rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path)
+    assert [s[4] for s in siti] == ["attributo"]
+    assert rinomina.chiudi_sponde(siti) == 1
+    assert f.read_text(encoding="utf-8") == ("vecchio_nome = 1\n"
+                                             "x = oggetto.new_name\n")

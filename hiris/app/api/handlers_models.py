@@ -554,7 +554,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # una app che non ne ha uno (una fixture che non fa girare
         # `create_app`), e produce esattamente ciò che è vero in quel caso --
         # nessuna osservazione, e la pagina lo dice.
-        esiti=(request.app["registro_esiti"].tutti()
+        esiti=(request.app["registro_esiti"].occurrences()
                if request.app.get("registro_esiti") is not None else {}),
         # L'orologio di parete, letto QUI e passato: `decisione_modelli` è un
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
