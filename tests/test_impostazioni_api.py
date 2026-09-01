@@ -1,5 +1,5 @@
 """fetta E5 Task 2: le due rotte che ridanno una superficie alle impostazioni
-della chat -- `GET/PUT /api/impostazioni-chat`.
+della chat -- `GET/PUT /api/chat-settings`.
 
 Il punto di questi test non e' la forma del JSON: e' che un tester UAT possa
 cambiare i sei campi senza scrivere a mano `/data/impostazioni_chat.json`, e
@@ -22,7 +22,7 @@ from hiris.app.chat_store import close_all_stores
 from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 from hiris.app.server import create_app
 
-ROTTA = "/api/impostazioni-chat"
+ROTTA = "/api/chat-settings"
 
 
 @pytest.fixture(autouse=True)

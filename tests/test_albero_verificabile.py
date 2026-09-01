@@ -27,7 +27,7 @@ Le prove sono in cinque parti:
    legge piu' il giorno in cui dice qualcosa di vero;
 4. **il non letto non e' il combaciato**, per il giro intero e per la singola
    area;
-5. **la catena**, dall'app fino al testo e fino a `/api/casa`, senza rete.
+5. **la catena**, dall'app fino al testo e fino a `/api/home-space`, senza rete.
 
 Ognuna di queste prove sa PRODURRE il difetto che sorveglia -- verificato per
 mutazione, non per fiducia: togliere il ramo di `_avviso_confronto` che tace
@@ -483,10 +483,10 @@ async def test_api_casa_mostra_la_divergenza_sull_albero(aiohttp_client, tmp_pat
                                "guardate": [{"area": "cucina", "nome": "Cucina",
                                              "mancanti": [], "in_piu": ["light.fantasma"],
                                              "assente_in_ha": False}]}
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    corpo = await (await client.get("/api/casa")).json()
+    corpo = await (await client.get("/api/home-space")).json()
     assert corpo["confronto"]["guardate"][0]["in_piu"] == ["light.fantasma"]
     assert corpo["confronto"]["aree_totali"] == 3
     archivio.close()
@@ -500,10 +500,10 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
     archivio = _archivio_con_una_casa(tmp_path)
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    corpo = await (await client.get("/api/casa")).json()
+    corpo = await (await client.get("/api/home-space")).json()
     assert corpo["confronto"] is None
     archivio.close()
 

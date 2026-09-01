@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
    (`hiris/app/schedulatore/promise.py::STATES_SOSPESO`, usata da
    `archivio.py` per le sue due query) E in JavaScript
    (`static/config/promesse-route.js::STATI_SOSPESO`, che filtra
-   `GET /api/promesse?tutte=1` lato client) -- senza niente che li legasse.
+   `GET /api/agenda?all=1` lato client) -- senza niente che li legasse.
    Il vocabolario degli stati «conclusi» (`STATES_CONCLUSI`) ha la stessa
    forma: Python lo usa per `concludi()`/potatura, il JavaScript lo rispecchia
    in `STATO_LABEL`/`STATO_BADGE`.

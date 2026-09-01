@@ -135,7 +135,7 @@
   });
   /* fetta «lo schedulatore» Task 9: la pagina #/promesse -- vedi
      config/promesse-route.js per il perche'. Una sola rotta: la pagina
-     legge UNA GET /api/promesse?tutte=1 e filtra lì per `stato`, invece di
+     legge UNA GET /api/agenda?all=1 e filtra lì per `stato`, invece di
      chiederne due -- lo stato di una promessa è un campo, non un
      endpoint. */
   HirisRouter.register(/^#\/promesse\/?$/, function() {

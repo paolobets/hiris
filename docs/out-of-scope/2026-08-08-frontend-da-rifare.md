@@ -3,6 +3,13 @@
 Prodotto dal Task 15 della fetta E3 («Esce la casa vecchia»), che **non tocca `static/`**: qui si
 elenca e si verifica, non si ripara e non si nasconde (vincolo esplicito del brief).
 
+> **Verbale, non contratto (nota aggiunta l'01/09/2026).** I percorsi citati qui sotto sono quelli
+> del 08/08: la fetta «la rinomina» li ha convertiti in inglese (`/api/casa -> /api/home-space`,
+> `/api/memoria -> /api/memories`, `/api/nucleo -> /api/briefing`, `/api/promesse -> /api/agenda`,
+> e le altre). Questo documento registra una MISURA di quel giorno e resta com'era; l'elenco vivo
+> delle rotte e' `docs/GLOSSARIO.md`, sezione «I nomi delle rotte HTTP». Chi legge di qui e prova
+> `/api/casa` prende un 404, e questa riga esiste perche' non lo scopra provandolo.
+
 ## Metodo
 
 Ogni `fetch(...)`/`api(...)` che compare in `hiris/app/static/` è stato estratto con un grep mirato

@@ -10,7 +10,7 @@ casa che ne vedono due diverse, vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
 
 Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.componi`, condiviso
-con GET /api/nucleo tramite `handlers_casa.compose_briefing` -- stessa
+con GET /api/briefing tramite `handlers_casa.compose_briefing` -- stessa
 composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
 chiuse, non conoscenza sulla casa.
@@ -21,7 +21,7 @@ la chat ha smesso di leggerlo. Le due chiamate citate qui sopra restano
 nominate perche' raccontano il PRIMA; non esistono piu' nel codice.
 
 Segue la convenzione REST-vera gia' in tests/test_handlers_casa.py (per
-`/api/nucleo`) e, prima di questa fetta, in tests/test_declared_block_chat.py
+`/api/briefing`) e, prima di questa fetta, in tests/test_declared_block_chat.py
 (ora rimosso -- testava esattamente la sovrapposizione che questo task
 chiude, vedi il rapporto): un `client` costruito con `create_app()` +
 `aiohttp_client`, che legge `context_str`/`strumenti`/`dispatcher` da
@@ -151,7 +151,7 @@ async def test_il_contesto_della_chat_e_il_nucleo(aiohttp_client, tmp_path):
     assert resp.status == 200
 
     context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    # Le sezioni del nucleo -- lo stesso testo che GET /api/nucleo mostra --
+    # Le sezioni del nucleo -- lo stesso testo che GET /api/briefing mostra --
     # non le quattro vecchie intestazioni.
     assert "## La casa" in context_str
     assert "## Notevole adesso" in context_str
@@ -286,7 +286,7 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
     `compose_briefing`/`handle_get_briefing` quando `_on_startup` non e'
     ancora girato) -- stessa lacuna che
     tests/test_handlers_casa.py::test_api_nucleo_senza_archivi_non_afferma_di_sapere
-    verifica per /api/nucleo, qui verificata per il contesto che la chat
+    verifica per /api/briefing, qui verificata per il contesto che la chat
     passa davvero al modello."""
     client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
 
@@ -600,7 +600,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
 # Conversazione 3: «d'inverno il soggiorno ideale e' 19.5» -- la frase esatta
 # da cui e' nato l'intero refactor. HIRIS aveva risposto "preso nota" SENZA
 # salvare niente: qui si verifica la scrittura vera, non che il modello
-# abbia DETTO di averlo fatto -- una GET /api/memoria separata, dopo che la
+# abbia DETTO di averlo fatto -- una GET /api/memories separata, dopo che la
 # risposta della chat e' gia' tornata, sulla STESSA app (stesso archivio).
 # ---------------------------------------------------------------------------
 
@@ -632,7 +632,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 
     # La prova vera: NON il testo della risposta (che qui il modello finto
     # controlla), ma una richiesta HTTP separata sull'archivio vero.
-    resp_memoria = await client.get("/api/memoria")
+    resp_memoria = await client.get("/api/memories")
     assert resp_memoria.status == 200
     corpo_memoria = await resp_memoria.json()
     assert corpo_memoria["disponibile"] is True

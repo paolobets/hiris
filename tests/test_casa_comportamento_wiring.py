@@ -115,7 +115,7 @@ async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartel
 
     Risolvendo la cartella una volta sola all'avvio, la sentinella restava
     convinta PER SEMPRE che non ci fosse niente da leggere: il giro ogni 5
-    minuti andava a vuoto in silenzio, e /api/casa raccontava lo stantio come
+    minuti andava a vuoto in silenzio, e /api/home-space raccontava lo stantio come
     stato attuale.
     """
     client = _client()

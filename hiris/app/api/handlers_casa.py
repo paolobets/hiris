@@ -164,7 +164,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # certezza (id duplicati, script vuoti, voci malformate) e i
             # file che non si sono letti, con la ragione. Costruiti con
             # cura da comportamento.compose()/reread() -- prima morivano in
-            # una riga di log, invisibili a chi guarda solo /api/casa.
+            # una riga di log, invisibili a chi guarda solo /api/home-space.
             "problemi": store.behavior_problems(),
             "file_non_letti": store.unloaded_files(),
             "voci": behavior_entries,
@@ -183,7 +183,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
 def compose_briefing(app) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
-    Condivisa da `handle_get_briefing` (GET /api/nucleo, la verifica dal vivo)
+    Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo)
     e da `handlers_chat.compose_chat_context` (il contesto che il modello
     riceve davvero -- dalla fetta "il ponte riceve il nucleo", parita' A, su
     ENTRAMBI i percorsi di chat: il sincrono e quello in abbonamento): la
@@ -232,7 +232,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         behavior = home_space_store.behavior()
         # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
         # sconosciuta (id duplicato, file malformato) non arrivava mai al
-        # modello -- `/api/casa` li espone gia', `componi()` non aveva un
+        # modello -- `/api/home-space` li espone gia', `componi()` non aveva un
         # parametro per riceverli.
         behavior_problems = tuple(home_space_store.behavior_problems())
         unloaded_behavior_files = home_space_store.unloaded_files()
@@ -256,7 +256,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
     # `casa.anagrafe.specchio_vivo` e' la stessa che usano `guarda`, `cerca` e
     # la correzione dei ricordi. Prima questa porta -- che alimenta SIA
-    # `GET /api/nucleo` SIA il contesto della chat, cioe' la piu' importante --
+    # `GET /api/briefing` SIA il contesto della chat, cioe' la piu' importante --
     # se lo rileggeva da sola: una normalizzazione imparata li' non sarebbe mai
     # arrivata qui, e il modello avrebbe letto nel digesto stati che non
     # coincidono con quelli che ottiene chiamando `guarda`.
@@ -325,7 +325,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
-        # sincrona, ponte e GET /api/nucleo passano tutti di qua), perche'
+        # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
         # `componi` e' pura e non legge nulla da sola. Senza questa riga il
         # parametro esisterebbe, i test di `componi` passerebbero, e il modello
         # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
@@ -335,7 +335,7 @@ def compose_briefing(app) -> tuple[str, dict]:
 
 
 async def handle_get_briefing(request: web.Request) -> web.Response:
-    """GET /api/nucleo: il testo ESATTO che il modello ha sempre davanti, e
+    """GET /api/briefing: il testo ESATTO che il modello ha sempre davanti, e
     il riepilogo di quanto ne resta fuori.
 
     Serve all'utente per capire, prima di accendere la chat, se HIRIS sta

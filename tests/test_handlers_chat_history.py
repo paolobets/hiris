@@ -28,7 +28,7 @@ def _make_app(data_dir: str) -> MagicMock:
 
 
 # fetta E5 Task 4 ("nasce la rotta onesta, muore il placeholder"): la rotta
-# reale (server.py) e' ora `GET/DELETE /api/chat/cronologia`, senza nessun
+# reale (server.py) e' ora `GET/DELETE /api/chat/history`, senza nessun
 # identificatore nel percorso -- c'e' UNA cronologia (dalla E4 Task 5), non
 # c'e' piu' niente da scegliere. Gli handler sotto non leggevano l'id da
 # match_info nemmeno prima: cambia solo la richiesta mockata, non il loro
@@ -58,7 +58,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/chat/cronologia", app=app, match_info={},
+        "GET", "/api/chat/history", app=app, match_info={},
     )
 
     resp = await handle_get_chat_history(request)
@@ -70,7 +70,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 async def test_get_chat_history_empty_when_no_messages(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "GET", "/api/chat/cronologia", app=app, match_info={},
+        "GET", "/api/chat/history", app=app, match_info={},
     )
 
     resp = await handle_get_chat_history(request)
@@ -85,7 +85,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/chat/cronologia", app=app, match_info={},
+        "DELETE", "/api/chat/history", app=app, match_info={},
     )
 
     resp = await handle_clear_chat_history(request)
@@ -98,7 +98,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
 async def test_clear_chat_history_noop_when_empty(tmp_path):
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
-        "DELETE", "/api/chat/cronologia", app=app, match_info={},
+        "DELETE", "/api/chat/history", app=app, match_info={},
     )
 
     resp = await handle_clear_chat_history(request)

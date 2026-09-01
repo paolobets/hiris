@@ -130,7 +130,7 @@ def test_la_pagina_nomina_l_unica_rotta_che_usa():
     commenti a blocco, quindi la menzione di `api/models` nell'intestazione
     del file -- che racconta perche' e' uscita -- non soddisfa questo
     assert."""
-    assert "api/impostazioni-chat" in ROUTE
+    assert "api/chat-settings" in ROUTE
     assert "api/models" not in ROUTE
 
 

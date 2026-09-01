@@ -1,4 +1,4 @@
-"""GET/PATCH/DELETE /api/memoria: cio' che HIRIS sa, in chiaro e correggibile.
+"""GET/PATCH/DELETE /api/memories: cio' che HIRIS sa, in chiaro e correggibile.
 
 Convenzione seguita: quella di `tests/test_handlers_casa.py` -- handler
 `async def` semplice, app costruita a mano nel test, nessun `registra_rotte_*`.
@@ -21,9 +21,9 @@ def _app(archivio_memoria=None, archivio_casa=None) -> web.Application:
     app = web.Application()
     app["archivio_memoria"] = archivio_memoria
     app["archivio_casa"] = archivio_casa
-    app.router.add_get("/api/memoria", handle_get_memories)
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
-    app.router.add_delete("/api/memoria/{id}", handle_delete_memory)
+    app.router.add_get("/api/memories", handle_get_memories)
+    app.router.add_patch("/api/memories/{id}", handle_patch_memory)
+    app.router.add_delete("/api/memories/{id}", handle_delete_memory)
     return app
 
 
@@ -52,7 +52,7 @@ async def test_api_memoria_mostra_la_frase_e_cosa_hiris_ha_capito(aiohttp_client
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/memoria")
+    resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
     assert body["disponibile"] is True
@@ -88,7 +88,7 @@ async def test_api_memoria_senza_archivio_risponde_lo_stesso(aiohttp_client):
     app = _app(archivio_memoria=None, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/memoria")
+    resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
     assert body["disponibile"] is False
@@ -102,7 +102,7 @@ async def test_correggere_cambia_l_interpretazione_e_non_il_testo(aiohttp_client
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}",
+    resp = await client.patch(f"/api/memories/{ident}",
                                json={"forza": "preferenza", "minimo": 19.0, "massimo": 20.0})
     assert resp.status == 200
 
@@ -127,7 +127,7 @@ async def test_una_correzione_con_un_ancora_inesistente_viene_rifiutata(aiohttp_
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={
+    resp = await client.patch(f"/api/memories/{ident}", json={
         "ancore": [{"tipo": "area", "riferimento": "area_che_non_esiste",
                     "nome_visto": "veranda"}],
     })
@@ -152,7 +152,7 @@ async def test_il_taglio_a_200_ricordi_e_dichiarato(aiohttp_client, tmp_path):
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/memoria")
+    resp = await client.get("/api/memories")
     body = await resp.json()
     assert body["totale"] == 5
     assert body["mostrati"] == 5
@@ -169,7 +169,7 @@ async def test_correggere_un_id_inesistente_risponde_404(aiohttp_client, tmp_pat
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch("/api/memoria/9999", json={"forza": "preferenza"})
+    resp = await client.patch("/api/memories/9999", json={"forza": "preferenza"})
     assert resp.status == 404
     body = await resp.json()
     assert body["errore"]
@@ -190,7 +190,7 @@ async def test_una_correzione_con_ancore_e_anagrafe_mai_letta_dice_la_ragione_ve
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={
+    resp = await client.patch(f"/api/memories/{ident}", json={
         "ancore": [{"tipo": "area", "riferimento": "sala_pranzo", "nome_visto": "sala"}],
     })
     assert resp.status == 400
@@ -217,7 +217,7 @@ async def test_get_con_anagrafe_mai_letta_non_dichiara_le_ancore_sparite(
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/memoria")
+    resp = await client.get("/api/memories")
     assert resp.status == 200
     body = await resp.json()
     tether = body["ricordi"][0]["ancore"][0]
@@ -238,7 +238,7 @@ async def test_una_condizione_senza_valore_viene_rifiutata(aiohttp_client, tmp_p
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={
+    resp = await client.patch(f"/api/memories/{ident}", json={
         "condizioni": [{"tipo": "ora"}],   # manca `valore`
     })
     assert resp.status == 400
@@ -269,7 +269,7 @@ async def test_una_correzione_parziale_non_crea_un_intervallo_rovesciato_in_sile
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={"minimo": 25})
+    resp = await client.patch(f"/api/memories/{ident}", json={"minimo": 25})
     assert resp.status == 200
     body = await resp.json()
     assert body["correzioni"]                            # e non in silenzio
@@ -289,7 +289,7 @@ async def test_una_correzione_parziale_coerente_scrive_solo_quel_capo(aiohttp_cl
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={"minimo": 18})
+    resp = await client.patch(f"/api/memories/{ident}", json={"minimo": 18})
     assert resp.status == 200
 
     r = memory.fetch()[0]
@@ -307,7 +307,7 @@ async def test_correggere_i_campi_non_correggibili_viene_dichiarato(aiohttp_clie
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}",
+    resp = await client.patch(f"/api/memories/{ident}",
                                json={"testo": "riscritto!", "forza": "fatto"})
     assert resp.status == 200
     body = await resp.json()
@@ -341,7 +341,7 @@ async def test_correggere_la_grandezza_ridedduce_l_unita(aiohttp_client, tmp_pat
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{ident}", json={"grandezza": "humidity"})
+    resp = await client.patch(f"/api/memories/{ident}", json={"grandezza": "humidity"})
     assert resp.status == 200
 
     r = memory.fetch()[0]
@@ -359,7 +359,7 @@ async def test_dimenticare_toglie_il_ricordo(aiohttp_client, tmp_path):
     app = _app(archivio_memoria=memory, archivio_casa=None)
     client = await aiohttp_client(app)
 
-    resp = await client.delete(f"/api/memoria/{ident}")
+    resp = await client.delete(f"/api/memories/{ident}")
     assert resp.status == 204
     assert memory.fetch() == []
 

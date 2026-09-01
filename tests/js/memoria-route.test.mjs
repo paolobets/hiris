@@ -4,7 +4,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* fetta E5 Task 9: la pagina #/memoria (config/memoria-route.js). Sostituisce
    il pannello Memoria della chat (coda di approvazione, uscita con questo
-   stesso task) e interroga l'archivio vero (GET/PATCH/DELETE /api/memoria*).
+   stesso task) e interroga l'archivio vero (GET/PATCH/DELETE /api/memories*).
 
    Tre cose non negoziabili, dettate dal brief e da handlers_memoria.py:
    - `ancora.esiste === null` ("non ho potuto controllare") non si legge come
@@ -43,7 +43,7 @@ const RICORDO = {
   condizioni: [{ tipo: 'stagione', valore: 'inverno' }, { tipo: 'presenza', valore: 'casa' }],
 };
 
-/* Il finto server: risponde a GET/PATCH/DELETE api/memoria*. Ogni test rompe
+/* Il finto server: risponde a GET/PATCH/DELETE api/memories*. Ogni test rompe
    solo il pezzo che gli interessa, come in impostazioni-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
@@ -221,7 +221,7 @@ test('«Correggi» apre un modulo senza campo per il testo, e Salva manda un PAT
 
   const patch = chiamate.find((c) => c.method === 'PATCH');
   assert.ok(patch, 'il click deve mandare un PATCH');
-  assert.equal(patch.url, 'api/memoria/7');
+  assert.equal(patch.url, 'api/memories/7');
   assert.equal(patch.opts.headers['X-Requested-With'], 'fetch',
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(patch.opts.body);
@@ -318,7 +318,7 @@ test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricar
 
   const del = chiamate.find((c) => c.method === 'DELETE');
   assert.ok(del, 'confermare deve mandare la DELETE');
-  assert.equal(del.url, 'api/memoria/7');
+  assert.equal(del.url, 'api/memories/7');
   assert.equal(del.opts.headers['X-Requested-With'], 'fetch');
   assert.match(document.getElementById('route-outlet').textContent, /Nessun ricordo salvato/,
     'dopo la cancellazione la lista si ricarica dal server');

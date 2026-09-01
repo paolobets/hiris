@@ -82,7 +82,7 @@ _OUR_KEYS = (
 # `catena_seminata` che la catena e' gia' stata copiata dalla vecchia regola.
 # Stavano in `_OUR_KEYS` e ne sono usciti: un client che rimandasse
 # `seminato: false` -- la pagina lo faceva, con lo `state.cfg` di default, dopo
-# un GET fallito; un gateway MCP con uno snapshot stale lo farebbe ancora --
+# un GET fallito; qualunque client con uno snapshot stale lo farebbe ancora --
 # farebbe RIGIRARE la semina al riavvio successivo, e dopo la versione B, con
 # l'ambiente muto, ricopierebbe i predefiniti sopra le decisioni dell'utente.
 # Cioe' la perdita silenziosa che le due versioni della migrazione esistono per
@@ -299,8 +299,8 @@ def load_models_config(data_dir: str) -> dict:
 def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dict:
     """`flags=True` e' riservato all'avvio (`server._on_startup`): e' l'unico
     momento in cui `seminato`/`catena_seminata` si scrivono. Ogni altro
-    chiamante -- la PUT, e quindi la pagina e il gateway MCP -- li lascia dove
-    sono: vedi `_MIGRATION_FLAGS`."""
+    chiamante -- la PUT, e quindi la pagina -- li lascia dove sono: vedi
+    `_MIGRATION_FLAGS`."""
     if not isinstance(data, dict):
         data = {}
     path = _models_config_path(data_dir)
@@ -324,7 +324,13 @@ def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dic
     # azzererebbe ponte, Ollama e nascondi_gratuiti: una perdita di
     # configurazione silenziosa, cioe' esattamente cio' che la versione A
     # esiste per impedire. Il contratto della PUT e' «sempre l'oggetto intero»
-    # e la pagina lo rispetta, ma un client diverso esiste (il gateway MCP).
+    # e la pagina lo rispetta. La difesa resta anche se OGGI la pagina e'
+    # l'unico client: misurato l'01/09 (fetta «la rinomina», lotto delle
+    # rotte) su `hiris-mcp-gateway`, il gateway non chiama questa rotta ne'
+    # nessun'altra di quelle convertite -- nomina solo `/api/reasoning/*`. Il
+    # commento che lo dava per cliente diceva il falso; il CODICE no, e non si
+    # toglie: e' la difesa che rende sicuro il giorno in cui un secondo client
+    # nascera' davvero.
     writable = _OUR_KEYS + (_MIGRATION_FLAGS if flags else ())
     base = dict(disk_data)
     base.update({k: v for k, v in data.items() if k in writable})
@@ -919,8 +925,9 @@ async def handle_list_models(request: web.Request) -> web.Response:
     fatto.
 
     Senza `?provider=` risponde per tutti, come prima: è la forma che un
-    client diverso dalla pagina (il gateway, uno script) si aspetta, e una
-    rotta che cambia significato in silenzio è la cosa che questa fetta ritira.
+    client diverso dalla pagina (uno script) si aspetterebbe, e una rotta che
+    cambia significato in silenzio è la cosa che questa fetta ritira. Oggi
+    quel client non esiste — misurato l'01/09, vedi `save_models_config`.
     """
     requested = request.query.get("provider", "")
     store = load_models_config(request.app.get("data_dir") or "/data")

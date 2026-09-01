@@ -10,7 +10,7 @@ I codici HTTP portano la distinzione che conta: 404 «non esiste», 409
 «esiste ma non e' piu' disdicibile». Un 400 unico avrebbe costretto la
 pagina a leggere il testo dell'errore per sapere quale dei due mostrare.
 
-**`GET /api/esecuzioni/{id}`** vive qui e non in un file suo (review finale
+**`GET /api/executions/{id}`** vive qui e non in un file suo (review finale
 della fetta, rilievo ①): non serializza niente di suo neppure lei --
 `Journal.read` gia' lo fa (`azione/cronaca.py::_row`) -- ed e' la sorella
 delle due sopra per lo stesso motivo per cui loro sono insieme: la pagina
@@ -19,7 +19,7 @@ dell'esecuzione (spec §8): si collega per `esecuzione_id`, e chi vuole
 sapere cosa e' cambiato chiede qui -- a parte, per identificatore, mai
 appiattito dentro `serializza()`. E' una rotta di lettura: nessun
 `csrf_middleware` da rispettare (e' un metodo "safe", stessa esenzione di
-`GET /api/promesse`), ma passa comunque dagli stessi middleware di ogni
+`GET /api/agenda`), ma passa comunque dagli stessi middleware di ogni
 altra rotta -- non ne salta nessuno.
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response({"promesse": [], "errore": "archivio non disponibile"},
                                  status=503)
-    show_all = request.query.get("tutte") in ("1", "true", "si")
+    show_all = request.query.get("all") in ("1", "true", "si")
     return web.json_response({"promesse": store.list(solo_in_sospeso=not show_all,
                                                        limit=200)})
 

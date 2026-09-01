@@ -304,11 +304,11 @@
        anche il riquadro della chat a intervalli, e trenta giorni di serie
        storica li' sarebbero un peso che la chat non chiede mai. */
     Promise.all([
-      fetch('api/usage' + (stato.daAncora ? '' : '?da=sempre')).then(function(r) {
+      fetch('api/usage' + (stato.daAncora ? '' : '?from=sempre')).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       }),
-      fetch('api/usage/storia').then(function(r) {
+      fetch('api/usage/history').then(function(r) {
         return r.ok ? r.json() : { giorni: [] };
       }).catch(function() { return { giorni: [] }; })
     ]).then(function(esiti) {

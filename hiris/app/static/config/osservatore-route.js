@@ -3,7 +3,7 @@
    La prima fetta del cervello nuovo (docs/design/2026-08-26-l-osservatore.md).
    Guarda la casa e ne ricava oggetti -- non conclude niente, non parla, non
    tocca niente. Questa pagina e' la sola faccia che ha oggi: due GET,
-   `api/cervello/osservate` e `api/cervello/oggetti?giorno=...`
+   `api/mind/watching` e `api/mind/facts?day=...`
    (`hiris/app/api/handlers_cervello.py`).
 
    -- Trasparenza al posto del permesso (spec §7) --
@@ -902,7 +902,7 @@ window.HirisOsservatoreRoute = (function () {
     clearEl(corpo);
     riga(corpo, 'Caricamento…', TONO_QUIETO);
     function ricarica() { return caricaOsservate(corpo); }
-    return leggi('api/cervello/osservate').then(function (esito) {
+    return leggi('api/mind/watching').then(function (esito) {
       clearEl(corpo);
       if (!esito.ok) { rendiOsservateErrore(corpo, esito.status, ricarica); return; }
       rendiOsservate(corpo, esito.corpo.osservate || []);
@@ -924,7 +924,7 @@ window.HirisOsservatoreRoute = (function () {
     clearEl(corpo);
     riga(corpo, 'Caricamento…', TONO_QUIETO);
     function ricarica() { return caricaOggetti(corpo, giorno); }
-    var percorso = 'api/cervello/oggetti' + (giorno ? '?giorno=' + encodeURIComponent(giorno) : '');
+    var percorso = 'api/mind/facts' + (giorno ? '?day=' + encodeURIComponent(giorno) : '');
     return leggi(percorso).then(function (esito) {
       if (miaGenerazione !== generazioneOggetti) return; // superata da un cambio di giorno più recente
       clearEl(corpo);

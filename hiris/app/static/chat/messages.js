@@ -210,7 +210,7 @@
          risposta ci finisce quando il runner la consegna
          (`server.py::_submit_chat_reply`), senza che la pagina c'entri.
          Chiudere non perde niente: al caricamento dopo, `restore()` la rilegge
-         da `GET api/chat/cronologia`.
+         da `GET api/chat/history`.
        - Turno servito direttamente: l'intero scambio viene scritto
          (`handlers_chat.handle_chat`) solo alla fine, sulla stessa richiesta
          HTTP che la pagina sta aspettando. Se la pagina se ne va, quella

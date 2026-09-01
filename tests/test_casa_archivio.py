@@ -283,7 +283,7 @@ def test_un_corpo_illeggibile_su_disco_diventa_None_non_vuoto(archivio):
 def test_problemi_e_file_non_letti_si_conservano_accanto_ai_dati(archivio):
     """Important (3): prima morivano in una riga di log, scartati da tutti i
     chiamanti. Vanno in `meta`, accanto ai dati, come `non_disponibili`
-    dell'anagrafe -- altrimenti chi guarda /api/casa non puo' sapere PERCHE'
+    dell'anagrafe -- altrimenti chi guarda /api/home-space non puo' sapere PERCHE'
     un'automazione manca o e' ambigua."""
     archivio.replace_behavior(
         _COMPORTAMENTO,

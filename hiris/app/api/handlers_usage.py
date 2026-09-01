@@ -112,11 +112,11 @@ async def handle_usage(request: web.Request) -> web.Response:
     if store is None or (store.empty() and not _can_respond(request.app)):
         return web.json_response(_unmeasured())
 
-    # `?da=sempre` chiede la storia intera; senza parametro si conta
+    # `?from=sempre` chiede la storia intera; senza parametro si conta
     # dall'ancora, che e' cio' che la pagina mostra per primo. Il parametro
     # esiste perche' l'interruttore «da ultimo azzeramento / da sempre» possa
     # davvero cambiare qualcosa: senza, sarebbe un pulsante che non fa niente.
-    from_anchor = request.query.get("da") != "sempre"
+    from_anchor = request.query.get("from") != "sempre"
     sections = store.sezioni(from_anchor=from_anchor)
     totals = store.totali(from_anchor=from_anchor)
 
@@ -173,7 +173,7 @@ async def handle_usage(request: web.Request) -> web.Response:
 
 
 async def handle_usage_history(request: web.Request) -> web.Response:
-    """`GET /api/usage/storia?da=&a=` -- i secchielli giornalieri, per il grafico.
+    """`GET /api/usage/history?from=&to=` -- i secchielli giornalieri, per il grafico.
 
     Ha una rotta SUA perche' e' una domanda diversa, con parametri suoi: un
     oggetto che si sa interrogare da solo (fondamenta n.4), non un allegato
@@ -186,8 +186,8 @@ async def handle_usage_history(request: web.Request) -> web.Response:
         return web.json_response({"giorni": [], "da": "", "a": ""})
 
     today = datetime.fromtimestamp(time.time(), UTC)
-    a = request.query.get("a") or today.strftime("%Y-%m-%d")
-    da = request.query.get("da") or (
+    a = request.query.get("to") or today.strftime("%Y-%m-%d")
+    da = request.query.get("from") or (
         datetime.fromtimestamp(time.time() - _HISTORY_DAYS * 86400, UTC)
         .strftime("%Y-%m-%d"))
 

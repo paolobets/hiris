@@ -184,7 +184,7 @@ def test_nome_visto_sopravvive_a_spazi_multipli():
 
 
 def test_le_espressioni_non_si_compilano_prima_del_primo_trova():
-    """`costruisci_indice()` gira a ogni GET/PATCH di /api/memoria, ma quelle
+    """`costruisci_indice()` gira a ogni GET/PATCH di /api/memories, ma quelle
     rotte usano solo `verifica()` -- un accesso a dizionario. Compilare i
     pattern li' sarebbe lavoro morto (misurato: 16,8 ms a 380 voci): si
     compila pigri, alla prima trova()."""

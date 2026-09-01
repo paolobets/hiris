@@ -108,7 +108,7 @@ _FILE_PERMISSIONS = 0o600
 # «nessun codice di produzione scrive `impostazioni_chat.json`, `salva()` non
 # ha nessun chiamante fuori dai test, e la superficie HTTP che lo scrivera' e'
 # della fetta E5». Quella superficie ORA esiste --
-# `api/handlers_impostazioni.py`, `PUT /api/impostazioni-chat`, la pagina
+# `api/handlers_impostazioni.py`, `PUT /api/chat-settings`, la pagina
 # `#/impostazioni` -- quindi un `impostazioni_chat.json` sul disco non e' piu'
 # necessariamente scritto a mano: puo' essere stato salvato dall'utente dalla
 # pagina. Cio' che NON cambia e' la conclusione: un meccanismo alla

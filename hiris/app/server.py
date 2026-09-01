@@ -788,7 +788,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
         # La data la mette il chiamante: `confronta_con_home_assistant` e'
         # pura, e una funzione pura che leggesse l'orologio non sarebbe piu'
         # confrontabile con se stessa. Serve a chi disegna l'albero
-        # (`/api/casa`) per dire quanto e' fresco il verdetto che sta
+        # (`/api/home-space`) per dire quanto e' fresco il verdetto che sta
         # mostrando.
         report["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
         app["confronto_albero"] = report
@@ -1463,12 +1463,12 @@ def behavior_sentinel(client, store, ha_folder: Path | None,
     Finche' la cartella non c'e', la si **ricerca a ogni giro**: l'add-on puo'
     partire prima che il Supervisor abbia finito di montarla, e risolverla una
     volta sola all'avvio significherebbe restare convinti per sempre che non ci
-    sia niente da leggere -- con `/api/casa` che racconta lo stantio come
+    sia niente da leggere -- con `/api/home-space` che racconta lo stantio come
     stato attuale, in silenzio.
 
     L'mtime dei due file non basta da solo: un'automazione tolta o aggiunta
     dentro un PACCHETTO (o una cartella inclusa) non tocca `automations.yaml`,
-    quindi non cambia l'impronta -- resterebbe in `/api/casa` come fantasma
+    quindi non cambia l'impronta -- resterebbe in `/api/home-space` come fantasma
     (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
     "principali". `guarda(force=True)` bypassa il confronto sull'impronta:
     e' quanto usa `schedule_behavior_reread`, agganciata allo stesso
@@ -1532,7 +1532,7 @@ def schedule_behavior_reread(guarda, delay: float = 3.0):
     `add_topology_listener`: nessun meccanismo nuovo). Aggiungere o togliere
     un'automazione cambia il registro delle entita', ma NON tocca sempre
     `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
-    innesco, quel cambiamento resterebbe invisibile a `/api/casa` finche'
+    innesco, quel cambiamento resterebbe invisibile a `/api/home-space` finche'
     qualcuno non tocca a mano i due file "principali" (vedi
     `behavior_sentinel`).
     """
@@ -2804,7 +2804,7 @@ async def _on_startup(app: web.Application) -> None:
     # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
     # `app["impostazioni_chat"].retention_days` -- letto AD OGNI GIRO
     # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
-    # /api/impostazioni-chat riassegna quella chiave a caldo
+    # /api/chat-settings riassegna quella chiave a caldo
     # (`handlers_impostazioni.handle_save_impostazioni`), e la potatura di
     # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
     # con cui l'add-on e' partito.
@@ -3526,7 +3526,7 @@ def create_app() -> web.Application:
     # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
     app.router.add_get("/api/usage", handle_usage)
-    app.router.add_get("/api/usage/storia", handle_usage_history)
+    app.router.add_get("/api/usage/history", handle_usage_history)
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
@@ -3538,7 +3538,7 @@ def create_app() -> web.Application:
     # GET /api/chatbots e' restata come superficie di compatibilita'
     # dichiarata (Global Constraints) finche' avesse un chiamante: la chat
     # se n'e' staccata al Task 3 di questa fetta (nome e tetto di turni da
-    # GET /api/impostazioni-chat, il "connesso" da GET api/health), la card
+    # GET /api/chat-settings, il "connesso" da GET api/health), la card
     # e' uscita dal prodotto al Task 5, e i tre chiamanti rimasti nella SPA
     # di configurazione (config/dashboard.js, config/models-route.js,
     # config/usage-route.js) sono usciti ai Task 7 e 8. Col gate verde
@@ -3555,8 +3555,8 @@ def create_app() -> web.Application:
     # ha mai chiamate (teneva la propria cronologia in localStorage) ed e'
     # comunque uscita per intero con la E5 Task 5. Gli handler non cambiano:
     # non hanno mai visto l'id, cambia solo la firma pubblica della rotta.
-    app.router.add_get("/api/chat/cronologia", handle_get_chat_history)
-    app.router.add_delete("/api/chat/cronologia", handle_clear_chat_history)
+    app.router.add_get("/api/chat/history", handle_get_chat_history)
+    app.router.add_delete("/api/chat/history", handle_clear_chat_history)
     # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
     # Engine -- hanno lasciato rotte la pagina #/tasks (tasks-route.js) e il
     # pannello Task della chat (chat/tasks.js) per due fette. Il Task 6
@@ -3569,8 +3569,8 @@ def create_app() -> web.Application:
     # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
     # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
     # (static/config/impostazioni-route.js), nello stesso commit.
-    app.router.add_get("/api/impostazioni-chat", handle_get_settings)
-    app.router.add_put("/api/impostazioni-chat", handle_save_settings)
+    app.router.add_get("/api/chat-settings", handle_get_settings)
+    app.router.add_put("/api/chat-settings", handle_save_settings)
     app.router.add_get("/api/models", handle_list_models)
     app.router.add_get("/api/models/config", handle_get_models_config)
     app.router.add_put("/api/models/config", handle_save_models_config)
@@ -3586,7 +3586,7 @@ def create_app() -> web.Application:
     # Fetta "esce il documentale": escono le quattro rotte /api/knowledge*
     # (coda di approvazione, approva, rifiuta, aggiunta manuale -- nessun
     # frontend le chiamava piu' da quando la pagina Memoria interroga
-    # /api/memoria) e le due /api/history/policy con la pagina
+    # /api/memories) e le due /api/history/policy con la pagina
     # Storicizzazione che le disegnava.
 
     # fetta E3 Task 3: le quattro rotte CRUD /api/agentbots sono uscite
@@ -3655,21 +3655,21 @@ def create_app() -> web.Application:
     # Task 6 SDD casa: sola lettura, per guardare dal vivo cio' che l'archivio
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
     # Dalla fetta E5 Task 8 e' anche la fonte della home della
-    # configurazione: vedi il commento di /api/nucleo piu' sotto.
+    # configurazione: vedi il commento di /api/briefing piu' sotto.
     from .api.handlers_casa import handle_get_home_space
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
 
     # Task 4 SDD memoria: la pagina "cio' che HIRIS sa" -- la decisione (5)
     # del progetto della memoria. Nessun frontend in questo task: si guarda
-    # dal browser come /api/casa.
+    # dal browser come /api/home-space.
     from .api.handlers_memoria import (
         handle_delete_memory,
         handle_get_memories,
         handle_patch_memory,
     )
-    app.router.add_get("/api/memoria", handle_get_memories)
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
-    app.router.add_delete("/api/memoria/{id}", handle_delete_memory)
+    app.router.add_get("/api/memories", handle_get_memories)
+    app.router.add_patch("/api/memories/{id}", handle_patch_memory)
+    app.router.add_delete("/api/memories/{id}", handle_delete_memory)
 
     # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
@@ -3677,23 +3677,23 @@ def create_app() -> web.Application:
     # `casa/strumenti.py`), sulla stessa serializzazione
     # (`schedulatore/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
-    # `/api/memoria/{id}` -- nessuna rotta mutante e' esente.
+    # `/api/memories/{id}` -- nessuna rotta mutante e' esente.
     from .api.handlers_promesse import (
         handle_delete_promise,
         handle_get_agenda,
         handle_get_execution,
     )
-    app.router.add_get("/api/promesse", handle_get_agenda)
-    app.router.add_delete("/api/promesse/{id}", handle_delete_promise)
+    app.router.add_get("/api/agenda", handle_get_agenda)
+    app.router.add_delete("/api/agenda/{id}", handle_delete_promise)
     # La cronaca si chiede A PARTE, per identificatore (review finale,
     # rilievo ①): la promessa porta solo `esecuzione_id`, mai i fatti
     # dell'esecuzione ricopiati. Rotta di lettura -- niente csrf_middleware
-    # da rispettare, stessa esenzione di GET /api/promesse.
-    app.router.add_get("/api/esecuzioni/{id}", handle_get_execution)
+    # da rispettare, stessa esenzione di GET /api/agenda.
+    app.router.add_get("/api/executions/{id}", handle_get_execution)
 
     # Task 10 SDD costruire: la faccia dell'officina -- guardare le proposte,
     # aprirne una, confermare, rimettere com'era. Le due GET sono metodi
-    # safe, come `GET /api/promesse`; le due POST di conferma e ripristino
+    # safe, come `GET /api/agenda`; le due POST di conferma e ripristino
     # scrivono su Home Assistant e passano dallo stesso `csrf_middleware` di
     # ogni altra scrittura -- quel middleware protegge per METODO
     # (`POST`/`PUT`/`PATCH`/`DELETE` sotto `/api/*`), non per un elenco di
@@ -3706,34 +3706,34 @@ def create_app() -> web.Application:
         handle_reject_construction,
         handle_restore_construction,
     )
-    app.router.add_get("/api/costruzioni", handle_get_constructions)
-    app.router.add_get("/api/costruzioni/{id}", handle_get_construction)
-    app.router.add_post("/api/costruzioni/{id}/conferma", handle_confirm_construction)
-    app.router.add_post("/api/costruzioni/{id}/ripristina", handle_restore_construction)
+    app.router.add_get("/api/constructions", handle_get_constructions)
+    app.router.add_get("/api/constructions/{id}", handle_get_construction)
+    app.router.add_post("/api/constructions/{id}/confirm", handle_confirm_construction)
+    app.router.add_post("/api/constructions/{id}/restore", handle_restore_construction)
     # Il «no» del proprietario (Task 10-bis): stessa protezione CSRF delle
     # due righe sopra -- il middleware la copre per METODO e prefisso, non
     # per un elenco di rotte, quindi non c'e' niente da aggiungere altrove
     # perche' anche questa non la salti. Non scrive su Home Assistant: si
     # scrive nell'archivio e basta (vedi il modulo `handlers_costruzioni`).
-    app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_reject_construction)
+    app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
-    # Nata senza faccia, come /api/casa e /api/memoria: dalla fetta E5
+    # Nata senza faccia, come /api/home-space e /api/memories: dalla fetta E5
     # Task 8 una faccia ce l'ha -- la home della configurazione
-    # (`static/config/dashboard.js`) legge questa rotta e /api/casa, e non
+    # (`static/config/dashboard.js`) legge questa rotta e /api/home-space, e non
     # ne ricalcola nessun dato per conto proprio.
     from .api.handlers_casa import handle_get_briefing
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
 
     # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
     # §7): la pagina che dice «cosa sto guardando e perche'» e mostra gli
     # oggetti che l'aggregazione notturna ha costruito. Due GET, come
-    # /api/casa e /api/memoria qui sopra: nessuna scrittura, quindi nessun
+    # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
     from .api.handlers_cervello import handle_facts, handle_watching
-    app.router.add_get("/api/cervello/osservate", handle_watching)
-    app.router.add_get("/api/cervello/oggetti", handle_facts)
+    app.router.add_get("/api/mind/watching", handle_watching)
+    app.router.add_get("/api/mind/facts", handle_facts)
 
     return app
 

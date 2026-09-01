@@ -228,10 +228,10 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     app["archivio_memoria"] = memoria
     app["archivio_casa"] = casa_archivio
     app["entity_cache"] = _SpecchioFinto()
-    app.router.add_patch("/api/memoria/{id}", handle_patch_memory)
+    app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     client = await aiohttp_client(app)
 
-    resp = await client.patch(f"/api/memoria/{id_ricordo}",
+    resp = await client.patch(f"/api/memories/{id_ricordo}",
                               json={"grandezza": "temperature"})
     assert resp.status == 200, await resp.text()
     salvato = next(r for r in memoria.fetch() if r["id"] == id_ricordo)

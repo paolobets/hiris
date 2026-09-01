@@ -69,7 +69,7 @@ async def test_gli_oggetti_si_leggono():
 async def test_gli_oggetti_filtrano_per_giorno_dalla_query():
     archivio = _FintoArchivio()
     r = await handle_facts(
-        _richiesta({"osservazioni": archivio}, query={"giorno": "2026-08-24"}))
+        _richiesta({"osservazioni": archivio}, query={"day": "2026-08-24"}))
     assert r.status == 200
     assert archivio.chiesto["giorno"] == "2026-08-24"
 

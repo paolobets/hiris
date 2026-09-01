@@ -1340,7 +1340,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     `problemi_comportamento`/`file_non_letti_comportamento` sono le
     dichiarazioni che `comportamento.reread()` costruisce gia' e che
-    `/api/casa` espone (`ArchivioCasa.problemi_comportamento()`/
+    `/api/home-space` espone (`ArchivioCasa.problemi_comportamento()`/
     `.file_non_letti()`): senza un parametro per riceverle, il PERCHE' di
     un'automazione sconosciuta (id duplicato, file malformato) non arrivava
     mai al modello (IMPORTANT ⑧).
@@ -1446,7 +1446,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         entry = _plural(n, "problema", "problemi")
         notices.append(
             f"{n} {entry} nella lettura del comportamento (id duplicati, voci "
-            "malformate: vedi /api/casa per il dettaglio).")
+            "malformate: vedi /api/home-space per il dettaglio).")
 
     if unloaded_behavior_files:
         names = ", ".join(sorted(unloaded_behavior_files))

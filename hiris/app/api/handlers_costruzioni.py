@@ -50,7 +50,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     # «da approvare» proposte che l'officina rifiuterebbe di applicare -- e il
     # bottone mentirebbe.
     store.scadi(time.time())
-    pending_only = request.query.get("in_attesa") in ("1", "true", "si")
+    pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
         {"costruzioni": store.list(pending_only=pending_only, limit=200)})
 

@@ -174,7 +174,7 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
 
 def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     corpo = _corpo(_chiama(handle_usage_history, app,
-                           {"da": "2026-08-21", "a": "2026-08-22"}))
+                           {"from": "2026-08-21", "to": "2026-08-22"}))
     assert [g["giorno"] for g in corpo["giorni"]] == ["2026-08-21", "2026-08-22"]
     assert corpo["giorni"][0]["per_provider"]["claude"]["cost_eur"] > 0
 
@@ -216,7 +216,7 @@ def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
     app["consumi"].sposta_anchor(T22 + 3600)
 
     da_anchor = _corpo(_chiama(handle_usage, app))
-    da_sempre = _corpo(_chiama(handle_usage, app, {"da": "sempre"}))
+    da_sempre = _corpo(_chiama(handle_usage, app, {"from": "sempre"}))
 
     assert da_anchor["total_requests"] == 0, "dopo l'ancora non si e' consumato niente"
     assert da_sempre["total_requests"] == 2, "la storia intera c'e' ancora"

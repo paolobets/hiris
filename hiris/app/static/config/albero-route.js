@@ -1,6 +1,6 @@
 /* HIRIS · Configurazione · «Albero della casa» (route #/albero)
 
-   Chiude il reperto 26: `GET /api/casa` manda gia' l'albero completo che
+   Chiude il reperto 26: `GET /api/home-space` manda gia' l'albero completo che
    `anagrafe.gerarchia()` costruisce -- piani -> aree -> entita', col
    comportamento, la piattaforma, la categoria, la classe, l'unita', se
    un'entita' e' nascosta, i suoi alias e le sue etichette -- ed e' il
@@ -142,7 +142,7 @@ window.HirisAlberoRoute = (function () {
       .map(function (k) { return (NOMI_MISURA[k] || k) + ' ' + unita[k]; });
   }
 
-  /* I NOMI delle etichette (`casa.etichette`, `GET /api/casa`): mappa
+  /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
      id -> nome, risolta una volta sola dal backend -- vedi
      `handlers_casa.handle_get_home_space`. `gerarchia()` mette su aree ed
      entita' i soli `label_id` (cosi' li manda Home Assistant): senza
@@ -514,7 +514,7 @@ window.HirisAlberoRoute = (function () {
     var caricamento = el('p', 'page-subtitle', 'Caricamento…');
     outlet.appendChild(caricamento);
 
-    return leggi('api/casa').then(function (casa) {
+    return leggi('api/home-space').then(function (casa) {
       if (caricamento.parentNode) caricamento.parentNode.removeChild(caricamento);
       rendiAlbero(outlet, casa);
     }, function (err) {

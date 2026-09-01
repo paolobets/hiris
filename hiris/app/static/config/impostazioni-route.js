@@ -3,7 +3,7 @@
    (hiris/app/impostazioni_chat.py) governano l'unica conversazione che HIRIS
    sa avere. Fino a quel task si cambiavano SOLO scrivendo a mano
    /data/impostazioni_chat.json: questa pagina e le due rotte
-   GET/PUT api/impostazioni-chat sono la loro prima interfaccia.
+   GET/PUT api/chat-settings sono la loro prima interfaccia.
 
    fetta "Modelli" (2.0), Task 12: settimo campo, `giorni_conservazione` --
    arrivato da `history_retention_days` (l'opzione dell'add-on). Non e'
@@ -32,7 +32,7 @@
 window.HirisImpostazioniRoute = (function () {
   'use strict';
 
-  var URL_IMPOSTAZIONI = 'api/impostazioni-chat';
+  var URL_IMPOSTAZIONI = 'api/chat-settings';
 
   /* Etichette italiane dei modi di risposta. Le CHIAVI ammesse arrivano dal
      server (payload `modi_risposta`), non sono scritte qui: se il backend ne

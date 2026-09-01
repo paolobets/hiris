@@ -333,7 +333,7 @@ test('la nota non viene interpretata: è testo, non markup', async (t) => {
 // ricaricata al boot. restore() la ricarica.
 // Task 3 ("via l'elenco dei bot"): non esiste piu' un "agente attivo" da
 // scegliere -- c'e' una sola conversazione. Task 4 ("nasce la rotta
-// onesta"): la cronologia vive su `GET/DELETE api/chat/cronologia`, senza
+// onesta"): la cronologia vive su `GET/DELETE api/chat/history`, senza
 // piu' nessun id di bot nel percorso (prima era una chiave fissa,
 // 'hiris-default', dentro `/api/chatbots/{id}/chat-history` -- un
 // placeholder mai letto dal server).
@@ -344,7 +344,7 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
   const seen = [];
   window.fetch = async (url) => {
     seen.push(String(url));
-    if (String(url).includes('/cronologia')) {
+    if (String(url).includes('/history')) {
       return { ok: true, status: 200, json: async () => ({ messages: [
         { role: 'user', content: 'ciao' },
         { role: 'assistant', content: 'risposta salvata' },
@@ -355,7 +355,7 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
 
   await window.HirisChatAgents.restore();
 
-  assert.ok(seen.some((u) => /api\/chat\/cronologia/.test(u)),
+  assert.ok(seen.some((u) => /api\/chat\/history/.test(u)),
     'restore deve fetchare la history della conversazione');
   const bubbles = document.querySelectorAll('.msg-row .bubble');
   assert.ok(bubbles.length >= 2, 'i messaggi salvati devono ricomparire');
@@ -847,7 +847,7 @@ test('clearConversation confermata: DELETE parte e i messaggi si svuotano', asyn
 
   const del = calls.find((c) => c.opts && c.opts.method === 'DELETE');
   assert.ok(del, 'la DELETE deve partire dopo conferma');
-  assert.match(del.url, /api\/chat\/cronologia$/);
+  assert.match(del.url, /api\/chat\/history$/);
   assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'i messaggi devono svuotarsi');
 });
 

@@ -3,7 +3,7 @@ from aiohttp import web
 from ..chat_store import clear_history, load_history
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET/DELETE
-# /api/chat/cronologia` (server.py) -- nessun identificatore nel percorso,
+# /api/chat/history` (server.py) -- nessun identificatore nel percorso,
 # perche' c'e' UNA cronologia sola (chat_store non ha piu' un chatbot_id per
 # cui filtrare dalla E4 Task 5). Storia: fino a questo task il path portava
 # ancora un placeholder `{agent_id}` ereditato dall'epoca multi-assistente --

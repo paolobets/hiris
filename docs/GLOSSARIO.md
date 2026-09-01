@@ -1435,6 +1435,7 @@ al Task 6 invece che deciso qui.
 | costo | cost |
 | crea | create |
 | credenziale | credential |
+| cronologia | history | la serie dei messaggi gia' scambiati in chat. Prende lo STESSO inglese di `storico -> history` e non e' un doppione: `storico` e' la serie di stati passati che Home Assistant espone (legge del confine), `cronologia` e' la nostra, e sono due sguardi sulla stessa idea -- la classe gia' ammessa in «L'omonimia FRA MODULI». Decisa il 01/09 per la rotta `GET/DELETE /api/chat/history` (era `/api/chat/cronologia`), e l'inglese esisteva gia' nel codice: `chat_store.ChatStore.delete_old_messages(retention_days)`. **Resta indecisa come identificatore**: `handlers_chat_history.py` non e' mai stato convertito (vedi la nota su `giorni`), qui si decide il nome della ROTTA, che e' una stringa e non passa dallo strumento |
 | dati | data |
 | dedotto | deduced |
 | denominatore | denominator |
@@ -2892,6 +2893,67 @@ per usarla.)
 > aggiungere. Perche' `legame`/`comprimari` non generano una nuova voce per `_COMPANION_TYPES`: la
 > costante enumera **tipi di comprimari**, e sia `legami` (nomi degli strumenti) sia `comprimari`
 > (concetti) sono gia' voci a se' — non serve una terza parola.
+
+## I nomi delle rotte HTTP, e cosa resta italiano dentro il corpo
+
+Deciso l'01/09, fetta «la rinomina», lotto delle rotte. **Un percorso e una chiave JSON sono
+STRINGHE: lo strumento non li vede per costruzione, nessuna delle nove reti li copre, e nessun
+cancello li legge.** Tutto qui e' stato fatto e verificato a mano, e questa sezione esiste perche'
+la prossima persona non debba rimisurare.
+
+La specifica autorizza la conversione dei percorsi per una ragione sola, e **verificata prima di
+crederla**: le rotte hanno un solo consumatore, il frontend, che viaggia dentro la stessa immagine.
+Misurato il 01/09 su `hiris-mcp-gateway`: il gateway nomina `/api/reasoning/claim` (10),
+`/api/reasoning/submit` (8) e alcune rotte morte -- **zero occorrenze** delle rotte italiane. Il
+ponte (`agent/runner.py:309,518`) usa `/api/mcp` e le due di reasoning, gia' inglesi.
+
+| oggi | prima | perche' quel nome |
+|---|---|---|
+| `/api/home-space` | `/api/casa` | `casa -> home_space`, la riga dei concetti. `/api/home` si legge meglio ma **direbbe una cosa diversa da quella decisa**, e inventare un terzo nome per un concetto gia' nominato e' cio' che questa fetta esiste per curare |
+| `/api/briefing` | `/api/nucleo` | `nucleo -> briefing` |
+| `/api/memories`, `/api/memories/{id}` | `/api/memoria*` | `ricordi -> memories` al plurale per la lista, e l'identificatore resta sotto lo stesso nome invece di aprire un secondo percorso singolare |
+| `/api/agenda`, `/api/agenda/{id}` | `/api/promesse*` | `promesse -> agenda`: il collettivo ha un nome suo, distinto da `promessa -> promise` |
+| `/api/executions/{id}` | `/api/esecuzioni/{id}` | `esecuzione -> execution` |
+| `/api/constructions*`, `.../confirm`, `.../restore`, `.../reject` | `/api/costruzioni*`, `.../conferma`, `.../ripristina`, `.../rifiuta` | `costruzione -> construction`, `conferma -> confirm`, `ripristina -> restore`, `rifiuta -> reject` (il verbo, distinto da `rifiuto -> rejection`) |
+| `/api/chat-settings` | `/api/impostazioni-chat` | `impostazioni -> settings`, e l'ordine inglese: e' la chat a essere impostata |
+| `/api/chat/history` | `/api/chat/cronologia` | `cronologia -> history`, riga nuova di questo lotto |
+| `/api/mind/watching`, `/api/mind/facts` | `/api/cervello/osservate`, `/api/cervello/oggetti` | `cervello -> mind`, `guarda (cervello) -> watch`, `oggetti -> fact` |
+| `/api/usage/history` | `/api/usage/storia` | l'handler si chiamava gia' `handle_usage_history` dal lotto 7 di `api/`. **Nessuna riga generale `storia -> history` e' stata scritta**, per la stessa ragione di allora: la farebbe applicare a `UsageStore.storia`, il metodo protetto da `_METODI_USAGE_STORE` |
+
+I parametri di query sono contratto quanto il percorso: `?tutte=1 -> ?all=1`,
+`?giorno= -> ?day=`, `?in_attesa= -> ?pending_only=`, `?da= -> ?from=`, `?a= -> ?to=`.
+Il VALORE `sempre` di `?from=sempre` resta italiano: e' un valore di dominio, e i valori di dominio
+sono gia' rinviati con la loro ragione (sezione «I valori di dominio»).
+
+### La regola che decide quali chiavi JSON cambiano
+
+**Si converte l'INVOLUCRO -- la parola con cui la rotta nomina cio' che porta -- non il RECORD, che
+e' la forma di una cosa che vive anche nel database, nell'archivio su disco, o nel risultato di uno
+strumento.**
+
+Non e' un compromesso, ed e' misurato: in ognuna di queste rotte **l'involucro e il segmento di
+percorso sono la stessa parola** (`/api/cervello/oggetti` -> `{"oggetti": ...}`), quindi tradurre il
+percorso e lasciare l'involucro sarebbe il peggio dei due. E ogni involucro e' un dict LETTERALE di
+`api/`: lo strumento del modello costruisce il suo per conto proprio (`casa/strumenti.py::_list_agenda`
+fa `{"promesse": ...}` da se'), quindi tradurre l'uno non tocca l'altro.
+
+Il record no, e per la ragione gia' accettata per il database: `{"forza": ..., "grandezza": ...,
+"minimo": ..., "massimo": ...}` di un ricordo SONO le colonne di `ricordi`; le chiavi di
+`/api/models/config` SONO `models_config.json` sul disco di un utente vero, e la PUT rimanda
+indietro l'archivio intero. Rinominarle vuol dire mentire sul contenuto o scrivere una migrazione
+del dato di casa altrui.
+
+### Il corpo di `/api/home-space` ha un APPUNTAMENTO, non una condanna
+
+Il percorso cambia in questo lotto; le sue 125 chiavi no. **Il vincolo non e' permanente come per il
+database**: `piani` esce da `casa/anagrafe.py::hierarchy()`, condivisa con `casa/nucleo.py:1478` e
+con `casa/domande.py:477,585,612` -- cioe' con gli strumenti, che escono nella fetta successiva.
+Quel corpo si riapre allora, non mai.
+
+C'e' un secondo vincolo, e va scritto perche' non e' ovvio: `dashboard.js:151-178` itera
+`Object.keys(casa.conteggi)` contro `NOMI_REGISTRI` e incrocia i **valori** di `non_disponibili`
+(`"categorie:script"`), che sono i nomi dei registri di Home Assistant. Rinominare `conteggi.aree`
+obbligherebbe a rinominare valori che sono la legge del confine di HA.
 
 ## Controlli di completezza
 

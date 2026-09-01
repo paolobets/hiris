@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): `GET
-   /api/casa` manda l'albero completo che `anagrafe.gerarchia()` costruisce
+   /api/home-space` manda l'albero completo che `anagrafe.gerarchia()` costruisce
    (`casa.piani`), e prima usciva verso nessuna pagina. Questo file pinna la
    pagina #/albero (config/albero-route.js), che lo mostra.
 
@@ -98,10 +98,10 @@ function casaCompleta(extra = {}) {
   }, extra);
 }
 
-test('legge api/casa e nessun\'altra rotta', async () => {
+test('legge api/home-space e nessun\'altra rotta', async () => {
   const { chiamate } = await rendi(casaCompleta());
-  assert.ok(chiamate.some((u) => u.includes('api/casa')));
-  assert.equal(chiamate.length, 1, 'una sola fetch: niente api/nucleo, niente rotte uscite');
+  assert.ok(chiamate.some((u) => u.includes('api/home-space')));
+  assert.equal(chiamate.length, 1, 'una sola fetch: niente api/briefing, niente rotte uscite');
 });
 
 test('le sei pseudo-aree/pseudo-piani restano SEI frasi diverse, non un unico «non si sa»', async () => {

@@ -173,7 +173,7 @@ class Lookup:
         # candidati, ed e' trova() a dichiararlo, non a sceglierne uno.
         #
         # Le espressioni pero' NON si compilano qui: costruisci_indice()
-        # gira a ogni GET/PATCH di /api/memoria (handlers_memoria.py), ma
+        # gira a ogni GET/PATCH di /api/memories (handlers_memoria.py), ma
         # quelle rotte usano solo verifica() -- un accesso a dizionario.
         # Compilare un pattern per termine per una richiesta che non chiama
         # mai trova() e' lavoro morto (misurato: 16,8 ms a 380 voci). Si

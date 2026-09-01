@@ -4,14 +4,14 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/promesse (config/promesse-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
-   cosa e' in sospeso e annullarlo.» Legge UNA sola GET /api/promesse?tutte=1 e
+   cosa e' in sospeso e annullarlo.» Legge UNA sola GET /api/agenda?all=1 e
    filtra lato client per `stato` -- lo stato e' un campo della stessa lista,
    non due mondi (progetto, guida di disegno §1).
 
    Tre cose non negoziabili, dettate dalla guida di disegno e da
    handlers_promesse.py/archivio.py:
    - la DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
-     /api/memoria/{id} -- un test lo pinza sotto;
+     /api/memories/{id} -- un test lo pinza sotto;
    - il vocabolario mostrato non e' quello del backend: `saltata` -> «Non
      eseguita», `fallita` -> «Non riuscita» (guida §0/§3);
    - nessun window.confirm() per disdire: e' reversibile (chiedendo di nuovo a
@@ -65,7 +65,7 @@ function esecuzione(campi) {
   }, campi || {});
 }
 
-/* Il finto server: risponde a GET/DELETE api/promesse*, stesso pattern di
+/* Il finto server: risponde a GET/DELETE api/agenda*, stesso pattern di
    montaConServer() in memoria-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
@@ -76,7 +76,7 @@ function montaConServer(opts = {}) {
     const u = String(url);
     const method = (options || {}).method || 'GET';
     chiamate.push({ url: u, method, opts: options || {} });
-    if (method === 'GET' && u.indexOf('api/esecuzioni/') === 0) {
+    if (method === 'GET' && u.indexOf('api/executions/') === 0) {
       esecuzioneCount += 1;
       if (opts.esecuzioneRotta) throw new Error('rete giu\'');
       if (opts.esecuzione404) {
@@ -275,7 +275,7 @@ test('«Disdici» non chiede conferma: manda subito la DELETE', async () => {
   assert.equal(confirmChiamato, false, 'nessun window.confirm() per disdire');
   const del = chiamate.find((c) => c.method === 'DELETE');
   assert.ok(del, 'il click deve mandare subito la DELETE');
-  assert.equal(del.url, 'api/promesse/p1');
+  assert.equal(del.url, 'api/agenda/p1');
   assert.equal(del.opts.headers['X-Requested-With'], 'fetch',
     'senza questo header csrf_middleware risponde 403');
 });
@@ -294,7 +294,7 @@ test('la DELETE riuscita (200, non 204) ricarica l\'elenco e conferma sulla riga
   await tick(20);
   const testo = document.body.textContent;
   assert.match(testo, /Promessa disdetta/,
-    'trappola del brief: la DELETE risponde 200 con un corpo, non 204 come /api/memoria/{id} -- ' +
+    'trappola del brief: la DELETE risponde 200 con un corpo, non 204 come /api/memories/{id} -- ' +
     'chi legge "res.status === 204" per il successo qui leggerebbe sempre un fallimento');
   assert.match(testo, /nessuna promessa/i, 'la lista si e\' ricaricata: ora e\' vuota davvero');
 });
@@ -369,7 +369,7 @@ const FAI_MANTENUTA = {
 };
 
 function contaGetEsecuzioni(chiamate) {
-  return chiamate.filter((c) => c.method === 'GET' && c.url.indexOf('api/esecuzioni/') === 0).length;
+  return chiamate.filter((c) => c.method === 'GET' && c.url.indexOf('api/executions/') === 0).length;
 }
 
 test('il bottone "Cosa è cambiato" compare SOLO su un fai mantenuta con esecuzione_id', async () => {

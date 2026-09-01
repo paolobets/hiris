@@ -199,7 +199,7 @@ def compose_chat_context(app, data_dir: str) -> str:
     # sovrapposizione n.1 della mappa del prodotto, vista da dentro (due
     # intelligenze nella stessa casa che ne vedono due diverse -- vedi
     # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
-    # `compose_briefing()` (condivisa con GET /api/nucleo,
+    # `compose_briefing()` (condivisa con GET /api/briefing,
     # handlers_casa.py -- stessa composizione, non due che potrebbero
     # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
     # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --

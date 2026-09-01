@@ -483,7 +483,7 @@ class HomeSpaceStore:
             # sono la STESSA informazione (solo `solo_file` genera un id
             # sintetico — vedi comportamento.compose()) e duplicarla in una
             # colonna aprirebbe la porta a farle disallineare. Dichiarato qui
-            # comunque, cosi' chi legge /api/casa non deve dedurlo da una
+            # comunque, cosi' chi legge /api/home-space non deve dedurlo da una
             # convenzione di prefisso sull'id.
             v["id_reale"] = v.get("origine") != "solo_file"
             entries.append(v)
@@ -536,7 +536,7 @@ class HomeSpaceStore:
         registri.
 
         `non_disponibili` si archivia accanto ai dati, stesso principio di
-        `non_disponibili` dell'anagrafe: senza conservarlo, /api/casa non
+        `non_disponibili` dell'anagrafe: senza conservarlo, /api/home-space non
         potrebbe dire perche' una plancia manca.
         """
         c = self._conn

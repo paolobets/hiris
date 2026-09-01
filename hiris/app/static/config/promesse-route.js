@@ -4,9 +4,9 @@
    lo-schedulatore.md, §10): «Si vede. Un posto dove guardare cosa e' in
    sospeso e annullarlo. Promesse che HIRIS tiene e non mostra sarebbero
    stato invisibile.» Questa pagina e' quel posto: legge l'archivio vero
-   (`GET /api/promesse?tutte=1`, `hiris/app/api/handlers_promesse.py`) e
+   (`GET /api/agenda?all=1`, `hiris/app/api/handlers_promesse.py`) e
    lascia disdire cio' che non e' ancora scattato (`DELETE
-   /api/promesse/{id}`).
+   /api/agenda/{id}`).
 
    UNA sola GET, filtrata qui per `stato`: lo stato di una promessa e' un
    campo della stessa lista, non due mondi -- due sezioni («In sospeso»,
@@ -32,7 +32,7 @@
       reversibile chiedendo di nuovo a voce -- diverso dalla cancellazione di
       un ricordo in memoria-route.js, che e' per sempre.
    3. La DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
-      /api/memoria/{id}: chi copia `res.status === 204` da li' legge un
+      /api/memories/{id}: chi copia `res.status === 204` da li' legge un
       successo come un fallimento.
 
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati
@@ -41,7 +41,7 @@
 
    «Cosa e' cambiato» (review finale, rilievo ①): un `fai` mantenuto porta
    un `esecuzione_id`, e la riga si collega alla cronaca PER IDENTIFICATORE
-   (`GET /api/esecuzioni/{id}`, spec §8) -- non ne ricopia mai i fatti dentro
+   (`GET /api/executions/{id}`, spec §8) -- non ne ricopia mai i fatti dentro
    `serializza()`. Caricata A RICHIESTA quando l'utente apre quella riga, non
    all'apertura della pagina: con N righe nello storico sarebbe una richiesta
    per riga. E' l'unico posto di questa pagina in cui un dettaglio sta dietro
@@ -164,7 +164,7 @@ window.HirisPromesseRoute = (function () {
   }
 
   /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
-     legge la riga di `GET /api/esecuzioni/{id}` cosi' com'e', senza
+     legge la riga di `GET /api/executions/{id}` cosi' com'e', senza
      ricostruire un'altra forma -- la cronaca gia' porta `servizio`,
      `entita`, `cambiato`, `avviso`, `errore` (`azione/cronaca.py::_riga`).
 
@@ -245,7 +245,7 @@ window.HirisPromesseRoute = (function () {
       }
       btn.disabled = true;
       btn.textContent = 'Verifica…';
-      fetch('api/esecuzioni/' + encodeURIComponent(p.esecuzione_id)).then(function (res) {
+      fetch('api/executions/' + encodeURIComponent(p.esecuzione_id)).then(function (res) {
         if (res.status === 404) {
           clearEl(pannello);
           pannello.appendChild(el('p', 'field-hint', 'Non ne ho più il dettaglio.'));
@@ -300,7 +300,7 @@ window.HirisPromesseRoute = (function () {
       btn.setAttribute('data-disdici', p.id);
       btn.addEventListener('click', function () {
         btn.disabled = true;
-        api('api/promesse/' + encodeURIComponent(p.id), { method: 'DELETE' })
+        api('api/agenda/' + encodeURIComponent(p.id), { method: 'DELETE' })
           .then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (corpo2) {
               return { res: res, corpo: corpo2 };
@@ -308,7 +308,7 @@ window.HirisPromesseRoute = (function () {
           })
           .then(function (esito) {
             /* Trappola dichiarata dalla guida: la DELETE riuscita risponde
-               200 con un corpo, MAI 204 come /api/memoria/{id} -- si
+               200 con un corpo, MAI 204 come /api/memories/{id} -- si
                guarda `res.ok`, non uno status specifico. 404 e 409
                arrivano gia' col testo giusto dal server (handlers_
                promesse.py / archivio.py::disdici): si mostra quello,
@@ -423,7 +423,7 @@ window.HirisPromesseRoute = (function () {
     if (!sospesoCorpo || !storicoCorpo) return;
     clearEl(sospesoCorpo); sospesoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
     clearEl(storicoCorpo); storicoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    return fetch('api/promesse?tutte=1').then(function (r) {
+    return fetch('api/agenda?all=1').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {

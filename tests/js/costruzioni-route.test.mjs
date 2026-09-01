@@ -32,7 +32,7 @@ test('le proposte in attesa hanno il bottone di conferma, le applicate no', asyn
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
   const testo = dom.window.document.body.textContent;
   assert.match(testo, /Tapparelle/);
-  const conferme = dom.window.document.querySelectorAll('[data-azione="conferma"]');
+  const conferme = dom.window.document.querySelectorAll('[data-azione="confirm"]');
   assert.equal(conferme.length, 1);
 });
 
@@ -78,8 +78,8 @@ test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
       chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
   ] });
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
-  assert.equal(dom.window.document.querySelectorAll('[data-azione="conferma"]').length, 1);
-  assert.equal(dom.window.document.querySelectorAll('[data-azione="rifiuta"]').length, 1);
+  assert.equal(dom.window.document.querySelectorAll('[data-azione="confirm"]').length, 1);
+  assert.equal(dom.window.document.querySelectorAll('[data-azione="reject"]').length, 1);
 });
 
 test('il no del proprietario non si mostra come un fallimento', async () => {
@@ -110,7 +110,7 @@ test('solo le costruzioni applicate offrono il ripristino', async () => {
       chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
   ] });
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
-  assert.equal(dom.window.document.querySelectorAll('[data-azione="ripristina"]').length, 0);
+  assert.equal(dom.window.document.querySelectorAll('[data-azione="restore"]').length, 0);
 });
 
 test('una scena mostra il conteggio e gli entity_id anche se `entities` è un dizionario', async () => {
@@ -156,7 +156,7 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   global.window = dom.window;
   global.document = dom.window.document;
   dom.window.fetch = async (url, _opzioni) => {
-    if (String(url).indexOf('/conferma') !== -1) return new Promise(() => {});
+    if (String(url).indexOf('/confirm') !== -1) return new Promise(() => {});
     return { ok: true, status: 200, json: async () => ({ costruzioni: [
       { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
         chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
@@ -166,8 +166,8 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   new dom.window.Function(SORGENTE)();
 
   await dom.window.HirisCostruzioni.mount(dom.window.document.getElementById('route-outlet'));
-  const conferma = dom.window.document.querySelector('[data-azione="conferma"]');
-  const rifiuta = dom.window.document.querySelector('[data-azione="rifiuta"]');
+  const conferma = dom.window.document.querySelector('[data-azione="confirm"]');
+  const rifiuta = dom.window.document.querySelector('[data-azione="reject"]');
   conferma.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 
   // Nessun await qui: la disabilitazione avviene sincrona dentro il

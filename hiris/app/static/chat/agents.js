@@ -11,7 +11,7 @@
    ripristino della cronologia al boot, il nome mostrato nella pill
    dell'header.
 
-   Le due rotte di cronologia sono `GET/DELETE api/chat/cronologia` (fetta E5
+   Le due rotte di cronologia sono `GET/DELETE api/chat/history` (fetta E5
    Task 4 -- "nasce la rotta onesta e muore il placeholder"): fino a quel
    task portavano ancora un id di bot nel path (`{agent_id}`, sempre
    'hiris-default', mai piu' letto dal server); ora il percorso non porta
@@ -76,7 +76,7 @@
        comportamento giusto, non perche' un'altra superficie la imponga. */
     if (!window.confirm(domandaDiConferma())) return;
     try {
-      var r = await fetch('api/chat/cronologia', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
+      var r = await fetch('api/chat/history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
       if (!r.ok) {
         /* Se il server non ha cancellato, la UI non deve fingere che l'abbia
            fatto: altrove in questo file un catch vuoto ha nascosto per mesi
@@ -130,14 +130,14 @@
 
   /* Sostituisce il vecchio `load()` (costruttore d'elenco). Legge il nome e
      il tetto di turni dalle impostazioni della chat (Task 2,
-     `GET /api/impostazioni-chat`), non piu' dalla superficie di
+     `GET /api/chat-settings`), non piu' dalla superficie di
      compatibilita' `GET /api/chatbots`: e' il primo chiamante che se ne
      stacca. L'indicatore "connesso/offline" non vive piu' qui -- e'
      diventato parte del controllo di salute che chat/main.js gia' fa al
      boot (`GET api/health`), invece di una fetch separata. */
   async function loadSettings() {
     try {
-      var r = await fetch('api/impostazioni-chat');
+      var r = await fetch('api/chat-settings');
       if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
       var dati = await r.json();
       state.maxChatTurns = dati.max_chat_turns || 0;
@@ -154,7 +154,7 @@
      ritardo. */
   async function applyHistory() {
     try {
-      var r = await fetch('api/chat/cronologia');
+      var r = await fetch('api/chat/history');
       if (!r.ok) {
         /* Fratello dello stesso difetto: prima ne' il ramo r.ok=false ne' il
            catch sotto lasciavano traccia -- la cronologia restava vuota senza

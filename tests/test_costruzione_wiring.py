@@ -154,23 +154,23 @@ def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore(
 
 
 def test_le_cinque_rotte_sono_registrate():
-    """Ondata finale, punto 6: la registrazione di `/rifiuta` non era pinnata
+    """Ondata finale, punto 6: la registrazione di `/reject` non era pinnata
     da nessun test, e le altre quattro erano pinnate solo per SOTTOSTRINGA
-    (`'"/api/costruzioni/{id}/conferma"' in sorgente`), che una registrazione
+    (`'"/api/constructions/{id}/confirm"' in sorgente`), che una registrazione
     commentata avrebbe lasciato passare -- la sottostringa combacia UGUALE
     dentro un commento (`# app.router.add_post(...)` la contiene per intero),
     quindi `in sorgente` da solo non basta: serve una riga, non solo un
-    frammento (misurato mutando `add_post(".../rifiuta"...)` in un
+    frammento (misurato mutando `add_post(".../reject"...)` in un
     commento -- la vecchia forma restava verde). Si cerca la riga ESATTA
     (spogliata dell'indentazione) fra le righe del sorgente, non un
     sottinsieme di caratteri al suo interno."""
     sorgente = inspect.getsource(server)
     righe = [r.strip() for r in sorgente.splitlines()]
     for attesa in (
-        'app.router.add_get("/api/costruzioni", handle_get_constructions)',
-        'app.router.add_get("/api/costruzioni/{id}", handle_get_construction)',
-        'app.router.add_post("/api/costruzioni/{id}/conferma", handle_confirm_construction)',
-        'app.router.add_post("/api/costruzioni/{id}/ripristina", handle_restore_construction)',
-        'app.router.add_post("/api/costruzioni/{id}/rifiuta", handle_reject_construction)',
+        'app.router.add_get("/api/constructions", handle_get_constructions)',
+        'app.router.add_get("/api/constructions/{id}", handle_get_construction)',
+        'app.router.add_post("/api/constructions/{id}/confirm", handle_confirm_construction)',
+        'app.router.add_post("/api/constructions/{id}/restore", handle_restore_construction)',
+        'app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)',
     ):
         assert attesa in righe, f"rotta non registrata (o commentata): {attesa}"

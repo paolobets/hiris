@@ -7,13 +7,13 @@
    chat e si racconta li'.
 
    Due sole fetch, su rotte vive e in sola lettura:
-     - GET /api/casa   -> l'anagrafe ricostruita, il comportamento, le plance;
-     - GET /api/nucleo -> il testo ESATTO che il modello ha davanti in chat
+     - GET /api/home-space   -> l'anagrafe ricostruita, il comportamento, le plance;
+     - GET /api/briefing -> il testo ESATTO che il modello ha davanti in chat
                           (la stessa composizione, non un secondo conto:
                           `handlers_casa.compose_briefing()` e' condivisa con
                           `handlers_chat.compose_chat_context`).
 
-   La regola che governa ogni riga qui sotto: i campi di /api/casa hanno TRE
+   La regola che governa ogni riga qui sotto: i campi di /api/home-space hanno TRE
    stati, non due. `null` = «non ho potuto controllare», `[]`/`{}`/`0` = «ho
    controllato, non c'e' niente». Renderli allo stesso modo -- un `null`
    mostrato come «0» o come «tutto a posto» -- rimetterebbe dentro dalla porta
@@ -408,7 +408,7 @@ window.HirisDashboard = (function () {
     outlet.appendChild(caricamento);
 
     return Promise.all([
-      leggi('api/casa').then(function (casa) {
+      leggi('api/home-space').then(function (casa) {
         return function () { rendiCasa(outlet, casa); };
       }, function (err) {
         return function () {
@@ -416,7 +416,7 @@ window.HirisDashboard = (function () {
             'Non è stato possibile leggere ciò che HIRIS sa della casa. Questo non significa che la casa sia vuota: la richiesta non è andata a buon fine.', err);
         };
       }),
-      leggi('api/nucleo').then(function (nucleo) {
+      leggi('api/briefing').then(function (nucleo) {
         return function () { rendiNucleo(outlet, nucleo); };
       }, function (err) {
         return function () {

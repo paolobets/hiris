@@ -29,20 +29,20 @@ function jsonResponse(body, status) {
 }
 
 /* Il finto server: distingue le due rotte per prefisso, come fa la pagina
-   vera (`api/cervello/osservate`, `api/cervello/oggetti[?giorno=...]`). */
+   vera (`api/mind/watching`, `api/mind/facts[?day=...]`). */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];
   ctx.window.fetch = async (url) => {
     const u = String(url);
     chiamate.push(u);
-    if (u.indexOf('api/cervello/osservate') === 0) {
+    if (u.indexOf('api/mind/watching') === 0) {
       if (opts.osservateRotto) throw new Error('rete giu\'');
       return jsonResponse(
         opts.osservate !== undefined ? opts.osservate : { osservate: [] },
         opts.osservateStatus);
     }
-    if (u.indexOf('api/cervello/oggetti') === 0) {
+    if (u.indexOf('api/mind/facts') === 0) {
       if (opts.oggettiRotto) throw new Error('rete giu\'');
       return jsonResponse(
         opts.oggetti !== undefined ? opts.oggetti : { oggetti: [] },
@@ -338,13 +338,13 @@ test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rila
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
-  const primaDelClick = chiamate.filter((u) => u.indexOf('osservate') !== -1).length;
+  const primaDelClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
   const retry = bottone(document, 'Riprova');
   assert.ok(retry, 'deve esserci un modo di riprovare');
   retry.dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
-  const dopoIlClick = chiamate.filter((u) => u.indexOf('osservate') !== -1).length;
+  const dopoIlClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
   assert.equal(dopoIlClick, primaDelClick + 1, 'il bottone deve rilanciare la stessa richiesta');
 });
 
@@ -363,13 +363,13 @@ test('un guasto di rete su "cosa è successo" offre Riprova, e il bottone rilanc
   window.HirisOsservatoreRoute.mount();
   await tick(20);
 
-  const chiamateOggettiPrima = chiamate.filter((u) => u.indexOf('oggetti') !== -1);
+  const chiamateOggettiPrima = chiamate.filter((u) => u.indexOf('facts') !== -1);
   const retry = bottone(document, 'Riprova');
   assert.ok(retry);
   retry.dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
-  const chiamateOggettiDopo = chiamate.filter((u) => u.indexOf('oggetti') !== -1);
+  const chiamateOggettiDopo = chiamate.filter((u) => u.indexOf('facts') !== -1);
   assert.equal(chiamateOggettiDopo.length, chiamateOggettiPrima.length + 1);
   assert.equal(chiamateOggettiDopo[chiamateOggettiDopo.length - 1], chiamateOggettiPrima[0],
     'il retry deve rilanciare la stessa richiesta (stesso giorno), non perdere il filtro');
@@ -1088,10 +1088,10 @@ test('due cambi rapidi di giorno: la risposta più lenta e superata non deve vin
 
   window.fetch = (url) => {
     const u = String(url);
-    if (u.indexOf('api/cervello/osservate') === 0) {
+    if (u.indexOf('api/mind/watching') === 0) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ osservate: [] }) });
     }
-    const m = u.match(/giorno=([\d-]+)/);
+    const m = u.match(/day=([\d-]+)/);
     const giorno = m ? decodeURIComponent(m[1]) : null;
     // La prima richiesta lanciata (IERI, poi superata da OGGI) è anche la
     // più lenta: senza guardia arriverebbe per ultima e vincerebbe.

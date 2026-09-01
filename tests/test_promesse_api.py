@@ -9,7 +9,7 @@ test che li scavalcasse non direbbe niente su cio' che accade in produzione.
 Per la maggior parte dei test il CSRF resta silenzioso perche' `conftest.py`
 mette `HIRIS_ALLOW_NO_CSRF=1` per l'intera suite. Ma l'invariante «questa
 DELETE rifiuta le scritture cross-site» merita un test proprio, non solo la
-copertura generica di `test_security.py`: la sorella `/api/memoria/{id}` ha
+copertura generica di `test_security.py`: la sorella `/api/memories/{id}` ha
 lo stesso trattamento in `test_impostazioni_api.py` (fixture `csrf_stretto`,
 riusata qui per import -- niente di specifico alle impostazioni, stesso
 riuso cross-file gia' praticato dal progetto per `client`). Senza un test
@@ -45,7 +45,7 @@ def reset_chat_stores():
 async def client(aiohttp_client, tmp_path):
     app = create_app()
     app["promesse"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
-    # La cronaca (`GET /api/esecuzioni/{id}`, rilievo ① della review finale):
+    # La cronaca (`GET /api/executions/{id}`, rilievo ① della review finale):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
     # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
     # sola in `create_app` -> `_avvia` (server.py).
@@ -64,7 +64,7 @@ async def test_get_promesse_torna_le_in_sospeso(client):
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "e' aumentata?"}, now=1.0)
 
-    risposta = await client.get("/api/promesse")
+    risposta = await client.get("/api/agenda")
     assert risposta.status == 200
     corpo = await risposta.json()
     assert len(corpo["promesse"]) == 1
@@ -78,9 +78,9 @@ async def test_get_promesse_tutte_include_le_concluse(client):
                           now=1.0)["promessa"]["id"]
     archivio.concludi(ident, state="mantenuta", now=2.0)
 
-    corpo = await (await client.get("/api/promesse?tutte=1")).json()
+    corpo = await (await client.get("/api/agenda?all=1")).json()
     assert len(corpo["promesse"]) == 1
-    corpo = await (await client.get("/api/promesse")).json()
+    corpo = await (await client.get("/api/agenda")).json()
     assert corpo["promesse"] == []
 
 
@@ -91,7 +91,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
 
-    primo = await client.delete(f"/api/promesse/{ident}")
+    primo = await client.delete(f"/api/agenda/{ident}")
     assert primo.status == 200
     # Il corpo del 200 deve portare la promessa vera, non un `{}`: e' il
     # corpo che la pagina usera' per aggiornarsi senza una seconda GET.
@@ -100,20 +100,20 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     assert corpo["promessa"]["stato"] == "disdetta"
     assert archivio.read(ident)["stato"] == "disdetta"
 
-    secondo = await client.delete(f"/api/promesse/{ident}")
+    secondo = await client.delete(f"/api/agenda/{ident}")
     assert secondo.status == 409
     assert "errore" in await secondo.json()
 
 
 @pytest.mark.asyncio
 async def test_delete_di_un_id_inesistente_da_404(client):
-    assert (await client.delete("/api/promesse/mai-esistita")).status == 404
+    assert (await client.delete("/api/agenda/mai-esistita")).status == 404
 
 
 @pytest.mark.asyncio
 async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_stretto):
     """La rotta non ha un'autenticazione propria: passa dallo stesso
-    `csrf_middleware` di `/api/memoria/{id}`. Un 403 non deve aver toccato
+    `csrf_middleware` di `/api/memories/{id}`. Un 403 non deve aver toccato
     l'archivio -- la promessa resta `in_attesa`, disdicibile per davvero piu'
     tardi, non "disdetta a meta'"."""
     archivio = client.app["promesse"]
@@ -121,7 +121,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
 
-    risposta = await client.delete(f"/api/promesse/{ident}")
+    risposta = await client.delete(f"/api/agenda/{ident}")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     assert archivio.read(ident)["stato"] == "in_attesa"
@@ -134,7 +134,7 @@ async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, 
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
 
-    risposta = await client.delete(f"/api/promesse/{ident}",
+    risposta = await client.delete(f"/api/agenda/{ident}",
                                    headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "disdetta"
@@ -149,7 +149,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "?"}, now=1.0)
 
-    da_http = (await (await client.get("/api/promesse")).json())["promesse"][0]
+    da_http = (await (await client.get("/api/agenda")).json())["promesse"][0]
     d = ToolDispatcher(None, None, agenda=archivio)
     da_strumento = (await d.dispatch("promesse", {}))["promesse"][0]
 
@@ -160,7 +160,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
 
 # ---------------------------------------------------------------------------
-# GET /api/esecuzioni/{id} -- review finale, rilievo ①: la cronaca si chiede
+# GET /api/executions/{id} -- review finale, rilievo ①: la cronaca si chiede
 # a parte, per identificatore. Non ricostruisce niente di suo: quel che esce
 # e' esattamente cio' che `Journal.read` gia' serializza.
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
         executed=True, changed=["light.studio"], now=1_755_600_000.0)
 
-    risposta = await client.get(f"/api/esecuzioni/{ident}")
+    risposta = await client.get(f"/api/executions/{ident}")
     assert risposta.status == 200
     corpo = await risposta.json()
     # Nessun dizionario nuovo: la forma e' esattamente quella di
@@ -187,7 +187,7 @@ async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
 
 @pytest.mark.asyncio
 async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
-    risposta = await client.get("/api/esecuzioni/mai-esistita")
+    risposta = await client.get("/api/executions/mai-esistita")
     assert risposta.status == 404
     corpo = await risposta.json()
     assert corpo["errore"] == "non ho nessuna esecuzione con quell'identificatore."
@@ -208,7 +208,7 @@ async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
-    risposta = await c.get("/api/esecuzioni/qualsiasi")
+    risposta = await c.get("/api/executions/qualsiasi")
     assert risposta.status == 503
     assert "errore" in await risposta.json()
 
@@ -216,11 +216,11 @@ async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
 @pytest.mark.asyncio
 async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto):
     """E' una rotta di lettura (metodo "safe"): niente csrf_middleware da
-    passare, stessa esenzione di `GET /api/promesse`. Mutazione: se la rotta
+    passare, stessa esenzione di `GET /api/agenda`. Mutazione: se la rotta
     finisse dietro un controllo CSRF (o venisse registrata come POST/GET
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
     journal = client.app["cronaca"]
     ident = journal.log(actor="chat", service="a.b", entity=[],
                              executed=True, now=1.0)
-    risposta = await client.get(f"/api/esecuzioni/{ident}")
+    risposta = await client.get(f"/api/executions/{ident}")
     assert risposta.status == 200

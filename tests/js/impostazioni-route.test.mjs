@@ -131,7 +131,7 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi italiani dei campi', 
 
   const put = chiamate.find((c) => c.opts.method === 'PUT');
   assert.ok(put, 'il click su Salva deve mandare un PUT');
-  assert.equal(put.url, 'api/impostazioni-chat');
+  assert.equal(put.url, 'api/chat-settings');
   assert.equal(put.opts.headers['X-Requested-With'], 'fetch',
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
@@ -251,7 +251,7 @@ test('mount: la pagina non chiede più l\'elenco dei modelli', async () => {
   const { window, chiamate } = montaConServer();
   window.HirisImpostazioniRoute.mount();
   await tick(20);
-  assert.deepEqual(chiamate.map((c) => c.url), ['api/impostazioni-chat'],
+  assert.deepEqual(chiamate.map((c) => c.url), ['api/chat-settings'],
     'questa pagina non ha piu\' nessuna ragione di conoscere i provider');
 });
 

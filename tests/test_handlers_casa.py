@@ -1,4 +1,4 @@
-"""GET /api/casa: la casa si vede in sola lettura, anche quando l'archivio manca.
+"""GET /api/home-space: la casa si vede in sola lettura, anche quando l'archivio manca.
 
 Convenzione seguita: quella vera del repo (vedi `hiris/app/server.py`,
 `create_app()`) -- un handler `async def` semplice, registrato con
@@ -38,10 +38,10 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
     })
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/casa")
+    resp = await client.get("/api/home-space")
     assert resp.status == 200
     corpo = await resp.json()
     assert corpo["piani"][0]["nome"] == "Piano terra"
@@ -58,10 +58,10 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     non 500 -- chi guarda deve poter distinguere «vuota» da «rotta»."""
     app = web.Application()
     app["archivio_casa"] = None
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/casa")
+    resp = await client.get("/api/home-space")
     assert resp.status == 200
     corpo = await resp.json()
     assert corpo["piani"] == []
@@ -93,10 +93,10 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     )
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/casa")
+    resp = await client.get("/api/home-space")
     assert resp.status == 200
     corpo = await resp.json()
     comportamento = corpo["comportamento"]
@@ -128,10 +128,10 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     ])
     app = web.Application()
     app["archivio_casa"] = archivio
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/casa")
+    resp = await client.get("/api/home-space")
     assert resp.status == 200
     corpo = await resp.json()
     sezione = corpo["plance"]
@@ -153,7 +153,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
 
 @pytest.mark.asyncio
 async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_path):
-    """`/api/nucleo` mostra il testo ESATTO che il modello ha davanti, e il
+    """`/api/briefing` mostra il testo ESATTO che il modello ha davanti, e il
     riepilogo (caratteri, troncato, ricordi esclusi) e' coerente col testo."""
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     archivio_casa.replace({
@@ -169,10 +169,10 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
     app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/nucleo")
+    resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
     testo = corpo["testo"]
@@ -197,10 +197,10 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     app["archivio_casa"] = None
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/nucleo")
+    resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
     testo = corpo["testo"]
@@ -228,10 +228,10 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/nucleo")
+    resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
     sezione_casa = corpo["testo"].split("## Notevole adesso")[0]
@@ -265,10 +265,10 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = archivio_memoria
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/nucleo")
+    resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
     riepilogo = corpo["riepilogo"]
@@ -287,10 +287,10 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
 @pytest.mark.asyncio
 async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento(
         aiohttp_client, tmp_path):
-    """IMPORTANT ⑧: `/api/casa` espone gia' `problemi`/`file_non_letti` del
+    """IMPORTANT ⑧: `/api/home-space` espone gia' `problemi`/`file_non_letti` del
     comportamento, ma `componi()` non aveva un parametro per riceverli --
     con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
-    modello attraverso `/api/nucleo`."""
+    modello attraverso `/api/briefing`."""
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
@@ -307,10 +307,10 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     app["archivio_casa"] = archivio_casa
     app["archivio_memoria"] = None
     app["entity_cache"] = None
-    app.router.add_get("/api/nucleo", handle_get_briefing)
+    app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
-    resp = await client.get("/api/nucleo")
+    resp = await client.get("/api/briefing")
     assert resp.status == 200
     corpo = await resp.json()
     avvisi = corpo["riepilogo"]["avvisi"]
@@ -337,10 +337,10 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     }, [])
     app = web.Application()
     app["archivio_casa"] = casa
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    corpo = await (await client.get("/api/casa")).json()
+    corpo = await (await client.get("/api/home-space")).json()
     assert corpo["etichette"]["da_controllare"] == "Da controllare"
     # La mappa, non il nome ripetuto: sull'albero l'etichetta resta un id.
     area = corpo["piani"][0]["aree"][0]
@@ -374,10 +374,10 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
     }, [])
     app = web.Application()
     app["archivio_casa"] = casa
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    corpo = await (await client.get("/api/casa")).json()
+    corpo = await (await client.get("/api/home-space")).json()
     assert corpo["categorie"]["automation"]["c1"] == "Vacanza"
     assert corpo["categorie"]["script"]["c1"] == "Luci esterne"
 
@@ -388,9 +388,9 @@ async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
     abbiamo letto niente». La stessa distinzione di `non_disponibili`."""
     app = web.Application()
     app["archivio_casa"] = None
-    app.router.add_get("/api/casa", handle_get_home_space)
+    app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
-    corpo = await (await client.get("/api/casa")).json()
+    corpo = await (await client.get("/api/home-space")).json()
     assert corpo["etichette"] is None
     assert corpo["categorie"] is None

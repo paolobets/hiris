@@ -157,7 +157,7 @@ def _nucleo(sistema):
 
 def test_il_nucleo_dichiara_il_riferimento():
     testo = _nucleo(reference_frame(_CONFIG))
-    # Il nome proprio della casa: entrava nell'archivio, usciva da /api/casa e
+    # Il nome proprio della casa: entrava nell'archivio, usciva da /api/home-space e
     # non arrivava al modello. E' il nome della cosa di cui parla tutto il resto.
     assert "Casa" in testo
     assert "Europe/Rome" in testo
@@ -193,7 +193,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
 
     `componi` e' pura e riceve `adesso`: se `compose_briefing` -- l'unico
     compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
-    GET /api/nucleo -- non gliela passa, il parametro esiste, i test passano,
+    GET /api/briefing -- non gliela passa, il parametro esiste, i test passano,
     e il modello continua a indovinare l'ora esattamente come prima."""
     from hiris.app.api.handlers_casa import compose_briefing
 

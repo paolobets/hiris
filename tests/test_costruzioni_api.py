@@ -102,7 +102,7 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     app = _app(archivio)
     tutte = await handle_get_constructions(FintaRichiesta(app))
     assert b'"b"' in tutte.body
-    aperte = await handle_get_constructions(FintaRichiesta(app, query={"in_attesa": "1"}))
+    aperte = await handle_get_constructions(FintaRichiesta(app, query={"pending_only": "1"}))
     assert b'"b"' not in aperte.body
     # La pagina non deve mai mostrare come «da approvare» una proposta che
     # l'officina rifiuterebbe perche' scaduta.
@@ -244,7 +244,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/conferma")
+    risposta = await client.post(f"/api/constructions/{ident}/confirm")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
@@ -262,7 +262,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/conferma",
+    risposta = await client.post(f"/api/constructions/{ident}/confirm",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "applicata"
@@ -279,7 +279,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
         preview="anteprima", now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/ripristina")
+    risposta = await client.post(f"/api/constructions/{ident}/restore")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     assert client.app["_ha_finta"].salvate == []
@@ -300,7 +300,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
         preview="anteprima", now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/ripristina",
+    risposta = await client.post(f"/api/constructions/{ident}/restore",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert client.app["_ha_finta"].salvate
@@ -308,7 +308,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
 
 @pytest.mark.asyncio
 async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
-    """Punto 9 (residuo): `/rifiuta` era l'unica delle tre POST senza questa
+    """Punto 9 (residuo): `/reject` era l'unica delle tre POST senza questa
     prova end-to-end, nel file il cui stesso commento argomenta perche' serve.
     Non tocca Home Assistant (vedi `handlers_costruzioni.py`), quindi la meta'
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
@@ -319,7 +319,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta")
+    risposta = await client.post(f"/api/constructions/{ident}/reject")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: sul 403 la proposta resta `in_attesa`.
@@ -335,7 +335,7 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/costruzioni/{ident}/rifiuta",
+    risposta = await client.post(f"/api/constructions/{ident}/reject",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "disdetta"

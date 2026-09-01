@@ -13,7 +13,7 @@
 
    -- Due scostamenti che la guida ha trovato leggendo il codice --
    1. Manca(va) la rotta per rifiutare nello scheletro del brief: e' stata
-      chiusa dal Task 10-bis (`POST /api/costruzioni/{id}/rifiuta`), quindi la
+      chiusa dal Task 10-bis (`POST /api/constructions/{id}/reject`), quindi la
       card «in attesa» ha DUE bottoni, Approva e Rifiuta, non uno.
    2. `gesto` non vale MAI letteralmente "ripristina": l'elenco vero e'
       ("crea","modifica","cancella"). Un ripristino crea una riga NUOVA con
@@ -34,7 +34,7 @@
    fondo, non il livello primario di lettura.
 
    -- Gerarchia (guida §1) --
-   UNA sola `GET /api/costruzioni`, filtrata qui per `stato` -- non due
+   UNA sola `GET /api/constructions`, filtrata qui per `stato` -- non due
    richieste, non due mondi. Due sezioni: «In attesa» (in_attesa + in_corso
    insieme, stesso concetto "non ancora concluso", ordinate per `creata_ts`
    crescente -- chi aspetta da piu' tempo sta in cima) e «Storico» (tutto il
@@ -348,7 +348,7 @@ window.HirisCostruzioni = (function () {
   function eseguiAzione(azione, id, bottoni, statusEl, ricarica) {
     bottoni.forEach(function (b) { b.disabled = true; });
     statusEl.textContent = '';
-    api('api/costruzioni/' + encodeURIComponent(id) + '/' + azione, { method: 'POST' })
+    api('api/constructions/' + encodeURIComponent(id) + '/' + azione, { method: 'POST' })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (corpo) {
           return { res: res, corpo: corpo };
@@ -381,7 +381,7 @@ window.HirisCostruzioni = (function () {
     b.setAttribute('data-azione', azione);
     b.setAttribute('data-id', c.id);
     b.addEventListener('click', function () {
-      if (azione === 'ripristina' && !window.confirm(messaggioRipristino(c))) return;
+      if (azione === 'restore' && !window.confirm(messaggioRipristino(c))) return;
       eseguiAzione(azione, c.id, gruppo || [b], statusEl, ricarica);
     });
     return b;
@@ -452,14 +452,14 @@ window.HirisCostruzioni = (function () {
        di recupero, la guarigione e' gia' lato server). */
     if (c.stato === 'in_attesa') {
       var gruppoAttesa = [];
-      var bConferma = bottoneAzione('conferma', 'Approva', 'btn btn-primary', c, statusEl, ricarica, gruppoAttesa);
-      var bRifiuta = bottoneAzione('rifiuta', 'Rifiuta', 'btn', c, statusEl, ricarica, gruppoAttesa);
+      var bConferma = bottoneAzione('confirm', 'Approva', 'btn btn-primary', c, statusEl, ricarica, gruppoAttesa);
+      var bRifiuta = bottoneAzione('reject', 'Rifiuta', 'btn', c, statusEl, ricarica, gruppoAttesa);
       gruppoAttesa.push(bConferma, bRifiuta);
       azioni.appendChild(bConferma);
       azioni.appendChild(bRifiuta);
     }
     if (c.stato === 'applicata') {
-      azioni.appendChild(bottoneAzione('ripristina', 'Rimetti com’era',
+      azioni.appendChild(bottoneAzione('restore', 'Rimetti com’era',
         'btn btn-ghost btn-ghost-danger', c, statusEl, ricarica));
     }
     if (azioni.childNodes.length) box.appendChild(azioni);
@@ -534,7 +534,7 @@ window.HirisCostruzioni = (function () {
     clearEl(apertaCorpo); apertaCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
     clearEl(storicoCorpo); storicoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
 
-    return fetch('api/costruzioni').then(function (r) {
+    return fetch('api/constructions').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {

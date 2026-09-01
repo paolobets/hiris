@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* La home della configurazione (`#/`) e' «Cosa HIRIS sa»: la faccia di
-   GET /api/casa e GET /api/nucleo.
+   GET /api/home-space e GET /api/briefing.
 
    Cio' che questo file pinna non e' l'impaginazione -- e' l'unica cosa che
-   distingue questa pagina da un cruscotto qualunque: i campi di /api/casa
+   distingue questa pagina da un cruscotto qualunque: i campi di /api/home-space
    hanno TRE stati e la pagina li deve rendere in tre modi diversi.
    `null` = «non ho potuto controllare»; `[]`/`{}`/`0` = «ho controllato, non
    c'e' niente». Renderli allo stesso modo -- un `null` che diventa «tutto a
@@ -17,7 +17,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
-/* Una risposta di /api/casa con tutto letto e tutto a posto: la base da cui
+/* Una risposta di /api/home-space con tutto letto e tutto a posto: la base da cui
    ogni test cambia UN campo, cosi' l'asserzione parla di quel campo solo. */
 function casaLetta(modifiche = {}) {
   return Object.assign({
@@ -95,7 +95,7 @@ async function rendi(casa, nucleo = NUCLEO_VUOTO) {
   ctx.window.fetch = (url) => {
     const u = String(url);
     chiamate.push(u);
-    const corpo = u.indexOf('api/nucleo') !== -1 ? nucleo : casa;
+    const corpo = u.indexOf('api/briefing') !== -1 ? nucleo : casa;
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(corpo) });
   };
   await ctx.window.HirisDashboard.mount();
@@ -105,8 +105,8 @@ async function rendi(casa, nucleo = NUCLEO_VUOTO) {
 
 test('la pagina legge le due rotte vive, e nessuna delle rotte uscite', async () => {
   const { chiamate } = await rendi(casaLetta());
-  assert.ok(chiamate.some((u) => u.includes('api/casa')), 'deve leggere api/casa');
-  assert.ok(chiamate.some((u) => u.includes('api/nucleo')), 'deve leggere api/nucleo');
+  assert.ok(chiamate.some((u) => u.includes('api/home-space')), 'deve leggere api/home-space');
+  assert.ok(chiamate.some((u) => u.includes('api/briefing')), 'deve leggere api/briefing');
   for (const morta of ['api/chatbots', 'api/brain/', 'api/proposals', 'api/tasks']) {
     assert.equal(chiamate.filter((u) => u.includes(morta)).length, 0,
       `nessuna chiamata a ${morta}: e' una rotta uscita, chiamarla degraderebbe in silenzio`);
@@ -350,7 +350,7 @@ test('una fetch caduta lo DICHIARA: la sezione non resta muta né finge una casa
   const errori = [];
   const consoleVera = console.error;
   console.error = (...a) => errori.push(a.join(' '));
-  ctx.window.fetch = (url) => (String(url).indexOf('api/casa') !== -1
+  ctx.window.fetch = (url) => (String(url).indexOf('api/home-space') !== -1
     ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
     : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(NUCLEO_VUOTO) }));
 

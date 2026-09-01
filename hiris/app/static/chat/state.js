@@ -36,7 +36,7 @@
     hasMessages: false,
     /* Tetto e contatore di turni per l'UNICA conversazione (Task 3): prima
        erano mappe indicizzate per agentId, con un id solo dentro. `maxChatTurns`
-       viene da `GET /api/impostazioni-chat` (chat/agents.js::loadSettings). */
+       viene da `GET /api/chat-settings` (chat/agents.js::loadSettings). */
     maxChatTurns: 0,
     turnCount: 0,
     isLoading: false,

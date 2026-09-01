@@ -9,7 +9,7 @@ all'import, e nessun test costruiva uno scenario per verificarlo (si scopre
 grep-ando `hiris_retention`/`_run_retention` nei test esistenti: zero
 occorrenze prima di questo file). Il Task 12 lo rende un parametro letto da
 `app["impostazioni_chat"]` -- un valore che un PUT su
-`/api/impostazioni-chat` puo' cambiare a caldo -- ed e' proprio questo che
+`/api/chat-settings` puo' cambiare a caldo -- ed e' proprio questo che
 merita un pin: se il numero tornasse a essere catturato una volta sola
 all'avvio (o a leggere una costante fissa), un utente che abbassa la
 conservazione dalla pagina vedrebbe la potatura di stanotte ignorarlo.

@@ -8,10 +8,10 @@
    il documentale» quella coda non esiste più affatto: l'archivio di
    conoscenza, il suo handler e le sue quattro rotte /api/knowledge* sono
    usciti, restando senza nessun consumatore vivo. Questa pagina è l'unica
-   vista della memoria, e legge l'archivio vero (/api/memoria).
+   vista della memoria, e legge l'archivio vero (/api/memories).
 
    Questa pagina interroga invece l'archivio vero (`GET/PATCH/DELETE
-   /api/memoria*`, `hiris/app/api/handlers_memoria.py`) ed esegue la
+   /api/memories*`, `hiris/app/api/handlers_memoria.py`) ed esegue la
    decisione (5) del progetto della memoria (docs/design/2026-08-05-la-
    conoscenza-di-hiris.md, §6): «si può ricordare subito solo se poi si può
    guardare e correggere».
@@ -246,7 +246,7 @@ window.HirisMemoriaRoute = (function () {
       }
       cardErr.style.display = 'none';
       salva.disabled = true;
-      api('api/memoria/' + encodeURIComponent(r.id), { method: 'PATCH', body: JSON.stringify(corpo) })
+      api('api/memories/' + encodeURIComponent(r.id), { method: 'PATCH', body: JSON.stringify(corpo) })
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (json) {
             return { res: res, json: json };
@@ -356,7 +356,7 @@ window.HirisMemoriaRoute = (function () {
         'Non si può annullare: il ricordo e le sue ancore vengono tolti dall’archivio.';
       if (!window.confirm(msg)) return;
       cardErr.style.display = 'none';
-      api('api/memoria/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
+      api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
         if (res.status === 204) { setStatus('Ricordo cancellato.'); ricarica(); return; }
         return res.json().catch(function () { return {}; }).then(function (corpo) {
           mostraErroreCard(cardErr, (corpo && corpo.errore) || ('Errore HTTP ' + res.status));
@@ -415,7 +415,7 @@ window.HirisMemoriaRoute = (function () {
     if (!lista) return;
     clearEl(lista);
     lista.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    return fetch('api/memoria').then(function (r) {
+    return fetch('api/memories').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {

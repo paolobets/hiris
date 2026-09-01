@@ -15,7 +15,7 @@ difende ovunque (`casa.non_disponibili`, `casa.etichette`, eccetera): un
 guasto non si appiattisce su un'assenza.
 
 Entrambe le rotte sono GET, quindi nessun `csrf_middleware` da rispettare
-(sono metodi "safe", stessa esenzione di `GET /api/promesse`)."""
+(sono metodi "safe", stessa esenzione di `GET /api/agenda`)."""
 from __future__ import annotations
 
 from aiohttp import web
@@ -52,5 +52,5 @@ async def handle_facts(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response(
             {"oggetti": [], "errore": "archivio non disponibile"}, status=503)
-    day = request.query.get("giorno") or None
+    day = request.query.get("day") or None
     return web.json_response({"oggetti": store.facts(day=day)})

@@ -62,8 +62,8 @@
     <div class="nav-section-label">Configurazione</div>
     <!-- fetta E5 Task 8: la home della configurazione non e' piu' la
          "Dashboard" del prodotto vecchio (chatbot da creare, proposte,
-         gateway): e' «Cosa HIRIS sa», la faccia di GET /api/casa e
-         GET /api/nucleo. Il badge `#nav-adv-count` che stava qui contava le
+         gateway): e' «Cosa HIRIS sa», la faccia di GET /api/home-space e
+         GET /api/briefing. Il badge `#nav-adv-count` che stava qui contava le
          segnalazioni del Brain leggendo una rotta uscita con la fetta E3, e
          mostrava `0` quando la rotta rispondeva 404: e' uscito con la sua
          fonte, vedi config/main.js. -->
@@ -74,7 +74,7 @@
       <span class="nav-label">Cosa HIRIS sa</span>
     </a>
     <!-- Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): GET
-         /api/casa manda gia' l'albero completo (`gerarchia()`: piani -> aree
+         /api/home-space manda gia' l'albero completo (`gerarchia()`: piani -> aree
          -> entita', col comportamento, la piattaforma, la classe, l'unita',
          le disabilitate, gli alias, le etichette), e prima usciva verso
          nessuna pagina -- "Cosa HIRIS sa" ne leggeva solo i conteggi. Voce
@@ -90,7 +90,7 @@
          interrogava la coda di approvazione di knowledge_store -- vuota per
          costruzione da mesi e, dalla fetta "esce il documentale", uscita del
          tutto insieme all'archivio. Qui si guarda e si corregge l'archivio
-         vero (GET/PATCH/DELETE /api/memoria*). -->
+         vero (GET/PATCH/DELETE /api/memories*). -->
     <a class="nav-item" href="#/memoria" data-route="memoria" title="Memoria" aria-label="Memoria">
       <span class="nav-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h5M8 13h3"/></svg>
@@ -100,7 +100,7 @@
     <!-- fetta «lo schedulatore» Task 9: la terza condizione della spec (§10)
          -- «si vede»: un posto dove guardare cosa e' in sospeso e
          annullarlo. Legge/disdice l'archivio vero (GET/DELETE
-         /api/promesse*, config/promesse-route.js). Icona orologio: nessun'
+         /api/agenda*, config/promesse-route.js). Icona orologio: nessun'
          altra voce dice "quando". -->
     <a class="nav-item" href="#/promesse" data-route="promesse" title="Promesse" aria-label="Promesse">
       <span class="nav-icon">
@@ -111,8 +111,8 @@
     <!-- fetta «costruire» Task 11: il posto dove il proprietario approva o
          rifiuta cio' che HIRIS propone di scrivere in Home Assistant, legge
          il confronto prima/dopo e rimette com'era un oggetto. Legge/scrive
-         l'archivio vero (GET /api/costruzioni, POST .../conferma|rifiuta|
-         ripristina, config/costruzioni-route.js). Icona chiave inglese:
+         l'archivio vero (GET /api/constructions, POST .../confirm|reject|
+         restore, config/costruzioni-route.js). Icona chiave inglese:
          nessun'altra voce parla di "costruire" dentro la casa. -->
     <a class="nav-item" href="#/costruzioni" data-route="costruzioni" title="Costruzioni" aria-label="Costruzioni">
       <span class="nav-icon">

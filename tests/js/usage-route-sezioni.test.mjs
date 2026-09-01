@@ -192,7 +192,7 @@ test('il fuso si dichiara: un giorno senza fuso non e\' un giorno', async () => 
 
 test('la storia si chiede alla SUA rotta, non a quella del riepilogo', async () => {
   const { chiamate } = await monta();
-  assert.ok(chiamate.some((c) => c.url.includes('api/usage/storia')));
+  assert.ok(chiamate.some((c) => c.url.includes('api/usage/history')));
 });
 
 test('quando non si misura, la pagina lo dice e toglie il pulsante', async () => {
