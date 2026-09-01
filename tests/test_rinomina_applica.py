@@ -942,3 +942,124 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
         "from x import vecchio_nome\n", encoding="utf-8")
     assert rinomina.sponde_per_nome({"vecchio_nome": "new_name"}, radice=tmp_path,
                                     escludi=("file_lotto.py",)) == []
+
+
+# Ogni coppia (parola qualificata, ambito) in cui la parola E' USATA ma
+# `Glossario.per()` torna `None`: la riga esiste per un altro ambito, e qui
+# la parola e' MUTA -- lo strumento non la vede e il dry-run non la nomina.
+#
+# **La mutezza e' il comportamento SICURO, non un difetto**: meglio non
+# rinominare che rinominare col significato dell'altra riga. Questo elenco non
+# e' quindi un debito da azzerare, e' un'istantanea da non far crescere in
+# silenzio -- la stessa forma di `_NOTE_ITALIANE`. Una coppia NUOVA che
+# comparisse qui e' la domanda «questa parola va qualificata anche per questo
+# ambito, o e' un senso diverso?», ed e' esattamente la domanda che nessuno si
+# e' posto per `riga (proxy)`: `Glossario.per("riga", "proxy")` tornava `None`,
+# `riga`/`righe` restavano italiane in `proxy/ha_client.py` e **il dry-run non
+# diceva niente**. Trovata inciampandoci, non cercandola.
+_MUTE_NOTE = {
+    # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
+    # per intero (ambiti non convertiti) o dentro residui gia' dichiarati
+    # (`memoria/resolver.py`, `schedulatore/turno.py::_senza_conclusione`).
+    ("senza", "agent"), ("senza", "api"), ("senza", "azione"),
+    ("senza", "memoria"), ("senza", "schedulatore"),
+    # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
+    # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
+    ("note", "api"), ("note", "azione"), ("note", "consumi"),
+    ("note", "schedulatore"),
+    # `dopo (casa)` e' l'ordine temporale. In `azione/` `dopo` e' la CHIAVE
+    # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
+    # italiano per decisione (vedi la riga `primo` del glossario).
+    ("dopo", "azione"),
+    # `fuori (casa)` e' «all'aperto». In `consumi/` e `schedulatore/` e' «in
+    # uscita»/«fuori finestra»: senso diverso, mutezza giusta.
+    ("fuori", "consumi"), ("fuori", "schedulatore"),
+    # `lettura` e' qualificata `(casa)`/`(consumi)`. In `schedulatore/` compare
+    # solo dentro `SOLA_LETTURA`, dove e' «read-only»: terzo senso.
+    ("lettura", "schedulatore"),
+    # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
+    # stanno in una riga sola, e non sono state decise per quell'ambito.
+    ("loro", "azione"), ("nostro", "azione"),
+    # `piano (abbonamento)` E' irraggiungibile per costruzione, con la ragione
+    # scritta accanto alla riga: si applica a mano. Qui non e' una scoperta.
+    ("piano", "agent"), ("piano", "api"),
+    # `riga` e' qualificata `(api)`, `(casa)`, `(proxy)`. `agent/` non e'
+    # ancora stato convertito: quando lo sara', va qualificata anche li'.
+    ("riga", "agent"),
+    # `verifica` e' qualificata `(azione)`/`(memoria)`. `agent/` non e'
+    # convertito; in `casa/strumenti.py` c'e' un'occorrenza sola, dentro il
+    # residuo dichiarato di quel file.
+    ("verifica", "agent"), ("verifica", "casa"),
+}
+
+
+def _pezzi_per_ambito() -> dict[str, set[str]]:
+    """`{ambito: {pezzi minuscoli usati nei suoi identificatori}}`.
+
+    Una passata sola su `hiris/app`: la versione ingenua (un giro per ogni
+    coppia parola/ambito) tokenizza gli stessi file centoquarantatre volte.
+    """
+    from _comune import ROOT
+    app = ROOT / "hiris" / "app"
+    fuori: dict[str, set[str]] = {}
+    for cartella in sorted(p for p in app.iterdir() if p.is_dir()):
+        if cartella.name in ("__pycache__", "static"):
+            continue
+        pezzi: set[str] = set()
+        for f in rinomina.file_py(cartella):
+            try:
+                tk = list(tokenize.generate_tokens(
+                    io.StringIO(rinomina._leggi_grezzo(f)).readline))
+            except (tokenize.TokenError, IndentationError, SyntaxError):
+                continue
+            for t in tk:
+                if t.type == tokenize.NAME:
+                    pezzi.update(p.lower() for p in rinomina.spezza(t.string))
+        fuori[cartella.name] = pezzi
+    return fuori
+
+
+def test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato():
+    """Il cancello sulla cecita' per ambito.
+
+    Qualificare una parola per UN ambito (`riga (api)`) spegne la riga nuda per
+    TUTTI gli altri: e' documentato nel glossario da settimane, ma non lo
+    controllava nessuno -- e infatti `riga` era muta in `proxy/`, `agent/` e in
+    sei file di ambiti STABILI senza che il dry-run lo dicesse.
+
+    Uguaglianza esatta nelle due direzioni, come `_NOTE_ITALIANE`: una coppia
+    nuova e' una domanda da porsi (qualificare anche li', o e' un senso
+    diverso?), una coppia sparita e' un'eccezione da togliere.
+
+    Provato per mutazione: tolta la riga `note (casa)` dal glossario, questo
+    test va rosso nominando `('note', 'casa')` fra le coppie mai viste prima;
+    rimessa, torna verde.
+
+    **La mutazione ovvia NON funziona, ed e' istruttivo**: togliere
+    `riga (proxy)` non fa arrossire niente, perche' dopo il lotto 18 in
+    `proxy/` non c'e' piu' nessun identificatore che porti il pezzo `riga`
+    -- la parola non e' piu' usata li', quindi non puo' essere muta li'.
+    Questo cancello vede una parola qualificata solo se qualcuno la USA
+    ancora: e' cio' che lo rende leggibile (nessuna coppia inventata) e
+    insieme il suo limite dichiarato (una riga qualificata che non serve
+    piu' a nessuno resta scritta, e nessuno lo sa).
+    """
+    g = rinomina.leggi_glossario()
+    pezzi = _pezzi_per_ambito()
+    mute = {(parola, ambito)
+            for parola in g.omonimi
+            for ambito, usati in pezzi.items()
+            if parola in usati and g.per(parola, ambito) is None}
+    nuove = sorted(mute - _MUTE_NOTE)
+    sparite = sorted(_MUTE_NOTE - mute)
+    assert not nuove, (
+        "parole qualificate MUTE in un ambito che le usa, mai viste prima: "
+        + ", ".join(f"{p} in {a}" for p, a in nuove)
+        + " -- lo strumento non le vedra' e il dry-run non le nominera'. "
+          "Decidi: qualificala anche per quell'ambito (`parola (ambito)`), "
+          "oppure dichiara qui che li' e' un senso diverso, con la ragione.")
+    assert not sparite, (
+        "coppie dichiarate mute che non lo sono piu': "
+        + ", ".join(f"{p} in {a}" for p, a in sparite)
+        + " -- o la parola e' stata qualificata anche li' (bene: togli la "
+          "riga da `_MUTE_NOTE`), o non e' piu' usata in quell'ambito.")
