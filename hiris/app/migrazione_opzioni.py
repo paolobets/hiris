@@ -50,23 +50,23 @@ Funzione PURA: `ambiente` e' un dizionario gia' letto, non `os.environ`.
 from __future__ import annotations
 
 
-def _intero(valore, predefinito: int) -> int:
+def _integer(value, default: int) -> int:
     """`run.sh` esporta stringhe, e un `bashio::config` su un campo vuoto torna
     "". Un ValueError qui fermerebbe l'add-on all'avvio: si ricade sul
     predefinito, che e' cio' che facevano gia' i lettori che sostituiamo
     (`int(os.environ.get("CHAT_DAILY_CAP", "50"))` e gemelli)."""
     try:
-        return int(valore)
+        return int(value)
     except (TypeError, ValueError):
-        return predefinito
+        return default
 
 
-def _bool(valore, predefinito: bool) -> bool:
-    if isinstance(valore, bool):
-        return valore
-    if valore is None or valore == "":
-        return predefinito
-    return str(valore).strip().lower() in ("1", "true", "yes", "on")
+def _bool(value, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None or value == "":
+        return default
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 # Il predefinito di ogni campo e' quello dell'OPZIONE da cui il campo viene:
@@ -76,7 +76,7 @@ def _bool(valore, predefinito: bool) -> bool:
 # strategia_ultima» e il ramo «erano tutti ai predefiniti» e' morto in
 # produzione: e' il debito F dichiarato dal Task 6, e si chiude decidendo il
 # predefinito del campo. Il predefinito e' "balanced", come l'opzione.
-_PREDEFINITI = {
+_DEFAULTS = {
     "ponte": {"attivo": False, "scadenza_min": 5, "tetto_giornaliero": 50},
     "ollama": {"modello": "", "timeout_s": 120},
     "nascondi_gratuiti": False,
@@ -91,29 +91,29 @@ _PREDEFINITI = {
 # letto niente afferma piu' di cio' che il sistema sa. Su un archivio
 # illeggibile quella riga era, insieme a quella della catena, l'unica cosa che
 # l'utente leggeva mentre dodici sue decisioni sparivano.
-_VARIABILI = ("BRIDGE_ENABLED", "BRIDGE_DEADLINE_MIN", "CHAT_DAILY_CAP",
+_VARIABLES = ("BRIDGE_ENABLED", "BRIDGE_DEADLINE_MIN", "CHAT_DAILY_CAP",
               "LOCAL_MODEL_NAME", "OLLAMA_REQUEST_TIMEOUT",
               "HIRIS_HIDE_FREE_MODELS", "LLM_STRATEGY")
 
 
-def ambiente_muto(ambiente: dict) -> bool:
+def environment_is_silent(environment: dict) -> bool:
     """Nessuna delle sette variabili porta un valore. `""` conta come muto:
     e' cio' che `bashio::config` restituisce per un campo vuoto, ed e' anche
     cio' che resta quando l'opzione non esiste piu'."""
-    return not any(str(ambiente.get(n) or "").strip() for n in _VARIABILI)
+    return not any(str(environment.get(n) or "").strip() for n in _VARIABLES)
 
 
-def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
+def seed(store: dict, environment: dict, *, log) -> tuple[dict, list[str]]:
     """Riempie l'archivio con i valori delle opzioni dell'add-on, una volta.
 
     Restituisce `(archivio, chiavi_copiate)`. `chiavi_copiate` e' vuota sia
     quando la semina era gia' avvenuta sia quando non c'era niente da copiare:
     sono due casi diversi, e il log li distingue.
     """
-    if archivio.get("seminato"):
-        return archivio, []
+    if store.get("seminato"):
+        return store, []
 
-    # I predefiniti si LEGGONO da `_PREDEFINITI`, non si ridigitano qui: erano
+    # I predefiniti si LEGGONO da `_DEFAULTS`, non si ridigitano qui: erano
     # gli stessi numeri scritti due volte nello stesso file (una nel
     # dizionario, una come argomento di `_intero`/`_bool`), piu' una terza
     # volta in `api/handlers_models._STORE_DEFAULTS`. E' esattamente la
@@ -121,42 +121,42 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
     # `""` in una copia e `"balanced"` nell'altra, e ogni installazione, anche
     # nuova, che logga «Copiati: strategia_ultima» -- chiuso allora
     # ALLINEANDO le copie invece di toglierne una.
-    _p = _PREDEFINITI
-    valori = {
+    _p = _DEFAULTS
+    values = {
         "ponte": {
-            "attivo": _bool(ambiente.get("BRIDGE_ENABLED"), _p["ponte"]["attivo"]),
-            "scadenza_min": _intero(ambiente.get("BRIDGE_DEADLINE_MIN"),
-                                    _p["ponte"]["scadenza_min"]),
-            "tetto_giornaliero": _intero(ambiente.get("CHAT_DAILY_CAP"),
-                                         _p["ponte"]["tetto_giornaliero"]),
+            "attivo": _bool(environment.get("BRIDGE_ENABLED"), _p["ponte"]["attivo"]),
+            "scadenza_min": _integer(environment.get("BRIDGE_DEADLINE_MIN"),
+                                     _p["ponte"]["scadenza_min"]),
+            "tetto_giornaliero": _integer(environment.get("CHAT_DAILY_CAP"),
+                                          _p["ponte"]["tetto_giornaliero"]),
         },
         "ollama": {
-            "modello": str(ambiente.get("LOCAL_MODEL_NAME") or _p["ollama"]["modello"]),
-            "timeout_s": _intero(ambiente.get("OLLAMA_REQUEST_TIMEOUT"),
-                                 _p["ollama"]["timeout_s"]),
+            "modello": str(environment.get("LOCAL_MODEL_NAME") or _p["ollama"]["modello"]),
+            "timeout_s": _integer(environment.get("OLLAMA_REQUEST_TIMEOUT"),
+                                  _p["ollama"]["timeout_s"]),
         },
-        "nascondi_gratuiti": _bool(ambiente.get("HIRIS_HIDE_FREE_MODELS"),
+        "nascondi_gratuiti": _bool(environment.get("HIRIS_HIDE_FREE_MODELS"),
                                    _p["nascondi_gratuiti"]),
         # Lo stesso ripiego di `run.sh` (`bashio::config 'llm_strategy'
         # 'balanced'`): un ambiente muto vale «balanced», non «niente». Senza,
         # un ambiente muto verrebbe contato come valore copiato.
-        "strategia_ultima": str(ambiente.get("LLM_STRATEGY") or _p["strategia_ultima"]),
+        "strategia_ultima": str(environment.get("LLM_STRATEGY") or _p["strategia_ultima"]),
     }
 
-    copiate = [k for k, v in valori.items() if v != _PREDEFINITI[k]]
-    archivio.update(valori)
-    archivio["seminato"] = True
+    copied = [k for k, v in values.items() if v != _DEFAULTS[k]]
+    store.update(values)
+    store["seminato"] = True
 
-    if copiate:
+    if copied:
         log.info(
             "Migrazione (versione A): i valori delle opzioni dell'add-on sono "
             "stati copiati nell'archivio di HIRIS, e da adesso si cambiano dalla "
             "pagina Modelli. Copiati: %s. Valori: ponte=%r, ollama=%r, "
             "nascondi_gratuiti=%r, strategia=%r.",
-            ", ".join(sorted(copiate)), valori["ponte"], valori["ollama"],
-            valori["nascondi_gratuiti"], valori["strategia_ultima"],
+            ", ".join(sorted(copied)), values["ponte"], values["ollama"],
+            values["nascondi_gratuiti"], values["strategia_ultima"],
         )
-    elif ambiente_muto(ambiente):
+    elif environment_is_silent(environment):
         # Il caso normale dalla 3.0.0: le opzioni non esistono piu', quindi non
         # c'era NIENTE da leggere. Non si dice «erano tutti ai predefiniti»:
         # sarebbe un'affermazione sui valori dell'utente, e nessun valore
@@ -176,13 +176,13 @@ def semina(archivio: dict, ambiente: dict, *, log) -> tuple[dict, list[str]]:
             "dell'add-on -- erano tutti ai predefiniti. L'archivio di HIRIS e' "
             "adesso la fonte di queste decisioni."
         )
-    return archivio, copiate
+    return store, copied
 
 
-def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[dict, bool]:
+def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, bool]:
     """Copia la catena EFFETTIVA di oggi nell'archivio, una volta sola.
 
-    `catena_di_oggi` va calcolata dal chiamante con la vecchia regola ancora
+    `current_chain` va calcolata dal chiamante con la vecchia regola ancora
     viva (`server._catena_com_era`, cioe' `reconcile_chain` sui provider
     derivati dai cinque interruttori): e' l'ultimo istante in cui quella regola
     esiste, ed e' l'unico modo di non far passare l'installazione del
@@ -210,20 +210,20 @@ def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[di
     questo il secondo valore di ritorno significa «c'e' qualcosa da
     persistere», non «ho copiato una catena».
     """
-    if archivio.get("catena_seminata"):
-        return archivio, False
-    archivio["catena_seminata"] = True
-    if archivio.get("chain_order"):
+    if store.get("catena_seminata"):
+        return store, False
+    store["catena_seminata"] = True
+    if store.get("chain_order"):
         # Una catena gia' decisa (l'ordine manuale di un'installazione
         # pre-2.5.0) non si tocca: si segna e basta.
-        return archivio, True
-    if not catena_di_oggi:
+        return store, True
+    if not current_chain:
         log.info(
             "Catena iniziale: nessuna credenziale utilizzabile, quindi la "
             "catena nasce vuota. La pagina Modelli lo dichiara e dice il gesto."
         )
-        return archivio, True
-    archivio["chain_order"] = list(catena_di_oggi)
+        return store, True
+    store["chain_order"] = list(current_chain)
     # NON «la catena che HIRIS stava usando»: qui ci arriva anche
     # un'installazione nata ieri, che non stava usando niente e la cui catena
     # e' stata COMPOSTA adesso dalle credenziali presenti. Dichiarare una
@@ -233,16 +233,16 @@ def semina_catena(archivio: dict, catena_di_oggi: list[str], *, log) -> tuple[di
     log.info(
         "Catena iniziale scritta nell'archivio: composta con i provider di cui "
         "c'e' una credenziale, nell'ordine del preset. Da adesso si riordina "
-        "dalla pagina Modelli. Ordine: %s.", " -> ".join(catena_di_oggi),
+        "dalla pagina Modelli. Ordine: %s.", " -> ".join(current_chain),
     )
-    return archivio, True
+    return store, True
 
 
-def semina_modello_del_piano(archivio: dict, alias_di_oggi: str,
-                             *, log) -> tuple[dict, bool]:
+def seed_subscription_model(store: dict, current_alias: str,
+                            *, log) -> tuple[dict, bool]:
     """Copia nel campo nuovo l'alias che il piano sta usando ADESSO, una volta.
 
-    `alias_di_oggi` lo calcola il chiamante con la derivazione ancora viva
+    `current_alias` lo calcola il chiamante con la derivazione ancora viva
     (`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`):
     e' la regola che la fetta «il modello del piano» ritira, e la si esegue
     un'ultima volta per non far cambiare comportamento all'installazione il
@@ -254,11 +254,11 @@ def semina_modello_del_piano(archivio: dict, alias_di_oggi: str,
 
     LA GUARDIA E' IL SEGNO, NON LA FORMA DEL VALORE. Regolarsi su «il campo
     vale ancora il predefinito» ricoprirebbe al riavvio successivo la scelta di
-    chi ha scelto proprio `sonnet` -- lo stesso difetto che `semina_catena`
+    chi ha scelto proprio `sonnet` -- lo stesso difetto che `seed_chain`
     documenta per la catena vuota, dove regolarsi sulla forma faceva ripopolare
     una catena svuotata di proposito.
 
-    A differenza di `semina_catena` questa NON legge una regola in via di
+    A differenza di `seed_chain` questa NON legge una regola in via di
     sparizione: `provider_models["claude"]` resta vivo, e' il modello di Claude
     API. E' il segno, e solo il segno, a rendere la semina irripetibile.
 
@@ -266,20 +266,20 @@ def semina_modello_del_piano(archivio: dict, alias_di_oggi: str,
     «ho copiato un modello»: il segno si scrive SEMPRE, anche quando il valore
     coincideva col predefinito.
     """
-    if archivio.get("piano_seminato"):
-        return archivio, False
-    archivio["piano_seminato"] = True
-    ponte = dict(archivio.get("ponte") or {})
-    precedente = ponte.get("modello")
-    ponte["modello"] = alias_di_oggi
-    archivio["ponte"] = ponte
+    if store.get("piano_seminato"):
+        return store, False
+    store["piano_seminato"] = True
+    bridge = dict(store.get("ponte") or {})
+    previous = bridge.get("modello")
+    bridge["modello"] = current_alias
+    store["ponte"] = bridge
     log.info(
         "Il Piano Claude Max ha adesso un modello suo: %s, cioe' quello che "
         "stava gia' usando (era un effetto del modello di Claude API). Da "
         "adesso si sceglie dalla riga del piano nella pagina Modelli, e "
         "cambiare il modello di Claude API non lo tocca piu'.%s",
-        alias_di_oggi,
-        "" if precedente in (None, alias_di_oggi)
-        else f" Il predefinito {precedente!r} e' stato sostituito.",
+        current_alias,
+        "" if previous in (None, current_alias)
+        else f" Il predefinito {previous!r} e' stato sostituito.",
     )
-    return archivio, True
+    return store, True

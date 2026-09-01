@@ -16,7 +16,7 @@ from ..decisione_modelli import (
     compose_topology,
     subscription_has_token,
 )
-from ..migrazione_opzioni import _PREDEFINITI as _SEED_DEFAULTS
+from ..migrazione_opzioni import _DEFAULTS as _SEED_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +55,14 @@ _STORE_DEFAULTS = {
     # significherebbe «non so», e «non so» e' la forma con cui la regola «se
     # non so niente allora comportati come prima» e' gia' rientrata quattro
     # volte in questo prodotto, da quattro porte diverse. Il campo nasce con un
-    # valore, e la semina (`migrazione_opzioni.semina_modello_del_piano`) lo
+    # valore, e la semina (`migrazione_opzioni.seed_subscription_model`) lo
     # sostituisce una volta sola con quello che l'installazione stava gia'
     # usando.
-    # I numeri vengono da `migrazione_opzioni._PREDEFINITI`, non ridigitati:
+    # I numeri vengono da `migrazione_opzioni._DEFAULTS`, non ridigitati:
     # erano gli stessi valori in due moduli (piu' due volte dentro l'altro), ed
     # e' la struttura che ha gia' prodotto il debito F. `modello` e' l'UNICO
     # campo in piu' -- la semina lo tratta a parte
-    # (`semina_modello_del_piano`), quindi non sta nell'altro elenco: la
+    # (`seed_subscription_model`), quindi non sta nell'altro elenco: la
     # differenza e' voluta, e adesso e' l'unica.
     "ponte": {**_SEED_DEFAULTS["ponte"], "modello": "sonnet"},
     "ollama": dict(_SEED_DEFAULTS["ollama"]),
@@ -170,7 +170,7 @@ def _store_keys(raw: dict) -> dict:
         # dell'opzione da cui viene (`llm_strategy: "balanced"` in
         # config.yaml). Valeva "", e la differenza faceva contare come
         # «copiato» un valore che nessuno aveva scelto -- vedi
-        # `migrazione_opzioni._PREDEFINITI`.
+        # `migrazione_opzioni._DEFAULTS`.
         "strategia_ultima": strategy if isinstance(strategy, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
         # Il segno della semina della CATENA, distinto da `seminato` (che e'

@@ -98,7 +98,7 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
 # ---------------------------------------------------------------------------
 # fetta E5 Task 2: `salva()` smette di essere orfana, e la sua scrittura si
 # allinea al precedente di questo ramo per i file di /data che devono
-# sopravvivere ai riavvii (token_interno._scrivi_token).
+# sopravvivere ai riavvii (token_interno._write_token).
 # ---------------------------------------------------------------------------
 
 def _chiamate_a_salva():
@@ -185,7 +185,7 @@ def test_salva_non_pubblica_un_file_su_un_errore_e_lascia_intatto_il_precedente(
 
 
 def test_salva_scrive_col_permesso_piu_stretto_disponibile(tmp_path):
-    """Stessa disciplina di `token_interno._scrivi_token`: i permessi si danno
+    """Stessa disciplina di `token_interno._write_token`: i permessi si danno
     alla creazione del temporaneo, non con un chmod dopo la pubblicazione.
 
     Su Linux -- la piattaforma dell'add-on -- il file finisce 0600. Su Windows,

@@ -1061,8 +1061,11 @@ _MUTE_PROVVISORIE = {
     # importati da questo stesso file. **La lezione e' che una coppia muta puo'
     # vivere in un ambito che non la scrive**: spariscono convertendo un altro
     # file, non il loro.
-    ("fuori", "radice"), ("guarda", "radice"), ("piano", "radice"),
-    ("riga", "radice"),
+    # **`piano` e' sparita l'01/09**, col secondo lotto di radice:
+    # `semina_modello_del_piano -> seed_subscription_model` era il suo ultimo
+    # portatore in un ambito che la scrive. Il senso *subscription* resta
+    # irraggiungibile per costruzione, com'e' scritto accanto alla sua riga.
+    ("fuori", "radice"), ("guarda", "radice"), ("riga", "radice"),
 }
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE

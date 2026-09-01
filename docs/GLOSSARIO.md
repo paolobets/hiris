@@ -1536,7 +1536,7 @@ al Task 6 invece che deciso qui.
 | numeratore | numerator |
 | nuovo | new |
 | oggetto | object |
-| oggi | today |
+| oggi | today | **«di oggi» quasi mai vuol dire *today*, e le due volte in cui l'ho incontrato voleva dire *current*** (01/09, `migrazione_opzioni.py`). `catena_di_oggi` e `alias_di_oggi` sono i due parametri delle semine: il chiamante li calcola con la vecchia regola ancora viva e li passa perche' si COPINO nell'archivio -- «la catena che vale ADESSO», non «la catena di questa giornata». La proposta meccanica (`chain_di_today`) e' due volte sbagliata, per ordine e per senso, e nessun dry-run poteva dirlo: sono diventati `current_chain` e `current_alias`. **La riga resta valida**: `today` e' giusto dove `oggi` e' davvero il giorno (le finestre temporali di `consumi/`). Quando `oggi` sta dentro un composto, si legge il codice: se il vicino e' una data e' `today`, se e' uno stato in vigore e' `current` |
 | ogni | every |
 | opzioni | options |
 | ora | hour |

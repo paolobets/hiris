@@ -167,7 +167,7 @@ def _text(body: dict, key: str, current: str) -> str:
         value.encode("utf-8")
     except UnicodeEncodeError as exc:
         # Del carattere si dice la POSIZIONE, mai il valore: stessa disciplina
-        # di `token_interno.motivo_token_non_valido`, e un prompt di sistema
+        # di `token_interno.invalid_token_reason`, e un prompt di sistema
         # intero dentro un messaggio d'errore sarebbe illeggibile in pagina.
         raise Rejection(
             key,

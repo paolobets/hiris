@@ -67,7 +67,7 @@ from .proxy.ha_client import HAClient
 from .schedulatore.archivio import AgendaStore
 from .schedulatore.sweeper import Sweeper
 from .schedulatore.turno import interpreta_promise
-from .token_interno import prepara_token_interno
+from .token_interno import prepare_internal_token
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1728,13 +1728,13 @@ async def _on_startup(app: web.Application) -> None:
     app["data_dir"] = data_dir
     # Il token interno: se l'opzione dell'add-on e' vuota (il default di
     # config.yaml) viene generato e conservato in `data_dir`, cosi' che
-    # sopravviva ai riavvii -- ed e' `prepara_token_interno` a ripubblicarlo
+    # sopravviva ai riavvii -- ed e' `prepare_internal_token` a ripubblicarlo
     # anche in `os.environ["INTERNAL_TOKEN"]`, perche' il worker del ponte
     # (`agent/runner.py::build_headers`) legge di li' a ogni giro e senza
     # quella riga continuerebbe a mandare l'header vuoto. Se generarlo o
     # scriverlo fallisce si torna "" e il rifiuto-per-default resta in piedi,
     # dichiarato nel log: vedi `token_interno.py`.
-    app["internal_token"] = prepara_token_interno(data_dir)
+    app["internal_token"] = prepare_internal_token(data_dir)
     # CR-1: trusted Supervisor-ingress source CIDRs. The ingress-bypass in
     # internal_auth_middleware only applies to requests from these ranges, so a
     # forged X-Ingress-Path from a direct LAN/tunnel client cannot bypass the
@@ -1893,7 +1893,7 @@ async def _on_startup(app: web.Application) -> None:
     # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
     # con la E3 -- vedi handlers_models.py.
     from .api.handlers_models import load_models_config, save_models_config
-    from .migrazione_opzioni import semina
+    from .migrazione_opzioni import seed
     # Task 6 -- versione A della migrazione. Il Supervisor scarta ogni chiave
     # fuori schema PRIMA che /data/options.json esista: togliere un'opzione
     # dallo schema, da sola, fa sparire IN SILENZIO il valore dell'utente, e
@@ -1902,7 +1902,7 @@ async def _on_startup(app: web.Application) -> None:
     # dichiarandolo nel log. Le sette variabili qui sotto sono quelle che
     # run.sh esporta dalle opzioni di config.yaml (i nomi MAIUSCOLI non
     # coincidono con i nomi delle opzioni: la catena si segue per intero).
-    _archivio, _copiate = semina(load_models_config(data_dir), {
+    _archivio, _copiate = seed(load_models_config(data_dir), {
         "BRIDGE_ENABLED": os.environ.get("BRIDGE_ENABLED", ""),
         "BRIDGE_DEADLINE_MIN": os.environ.get("BRIDGE_DEADLINE_MIN", ""),
         "CHAT_DAILY_CAP": os.environ.get("CHAT_DAILY_CAP", ""),
@@ -2369,8 +2369,8 @@ async def _on_startup(app: web.Application) -> None:
     # La guardia e' il SEGNO, non la forma della catena: una `chain_order`
     # vuota, da questa fetta, e' una decisione esprimibile in due click, e
     # regolarsi su di lei faceva ripopolare al riavvio una catena svuotata di
-    # proposito. Vedi `semina_catena`.
-    from .migrazione_opzioni import semina_catena
+    # proposito. Vedi `seed_chain`.
+    from .migrazione_opzioni import seed_chain
     if not app["models_config"].get("catena_seminata"):
         _catena_di_oggi = _catena_com_era(
             os.environ.get("LLM_STRATEGY", "balanced"),
@@ -2381,8 +2381,8 @@ async def _on_startup(app: web.Application) -> None:
             {**_credenziali, "ollama": bool(local_model_url and _nome_modello_com_era)},
             env_bool("BRIDGE_ENABLED"),
         )
-        _arch, _da_salvare = semina_catena(dict(app["models_config"]),
-                                           _catena_di_oggi, log=logger)
+        _arch, _da_salvare = seed_chain(dict(app["models_config"]),
+                                        _catena_di_oggi, log=logger)
         if _da_salvare:
             save_models_config(data_dir, _arch, flags=True)
             app["models_config"] = load_models_config(data_dir)
@@ -2398,7 +2398,7 @@ async def _on_startup(app: web.Application) -> None:
     # semine in una scrittura sola le renderebbe una migrazione sola che puo'
     # trovarsi a meta', che e' esattamente cio' che i segni distinti esistono
     # per evitare.
-    from .migrazione_opzioni import semina_modello_del_piano
+    from .migrazione_opzioni import seed_subscription_model
     if not app["models_config"].get("piano_seminato"):
         from .agent.runner import cli_model
         from .claude_runner import resolve_model
@@ -2406,7 +2406,7 @@ async def _on_startup(app: web.Application) -> None:
             "auto", "chat",
             app["models_config"].get("provider_models", {}).get("claude", ""),
         ))
-        _arch_p, _da_salvare_p = semina_modello_del_piano(
+        _arch_p, _da_salvare_p = seed_subscription_model(
             dict(app["models_config"]), _alias_di_oggi, log=logger)
         if _da_salvare_p:
             save_models_config(data_dir, _arch_p, flags=True)

@@ -74,7 +74,7 @@ def test_la_semina_copia_il_valore_derivato_oggi():
     """Il giorno dell'aggiornamento niente cambia sotto l'utente: il campo
     nuovo nasce col valore che l'installazione stava GIA' usando. Sull'impianto
     del proprietario, misurato il 15 agosto 2026: `haiku`."""
-    archivio, da_salvare = migrazione_opzioni.semina_modello_del_piano(
+    archivio, da_salvare = migrazione_opzioni.seed_subscription_model(
         {"ponte": {"attivo": True, "scadenza_min": 10,
                    "tetto_giornaliero": 150, "modello": "sonnet"}},
         "haiku", log=log)
@@ -87,7 +87,7 @@ def test_la_semina_non_rigira_e_non_ricopre_una_scelta():
     """La guardia e' il SEGNO, non la forma del valore. Regolarsi sul valore --
     «se e' ancora il predefinito allora semina» -- farebbe ricoprire al riavvio
     la scelta di chi ha scelto proprio `sonnet`."""
-    archivio, da_salvare = migrazione_opzioni.semina_modello_del_piano(
+    archivio, da_salvare = migrazione_opzioni.seed_subscription_model(
         {"piano_seminato": True,
          "ponte": {"attivo": True, "scadenza_min": 10,
                    "tetto_giornaliero": 150, "modello": "sonnet"}},
@@ -99,7 +99,7 @@ def test_la_semina_non_rigira_e_non_ricopre_una_scelta():
 def test_il_segno_si_scrive_anche_quando_il_valore_coincideva():
     """Altrimenti la semina resta una condizione che si rivaluta a ogni avvio
     invece di un evento che accade una volta."""
-    archivio, da_salvare = migrazione_opzioni.semina_modello_del_piano(
+    archivio, da_salvare = migrazione_opzioni.seed_subscription_model(
         {"ponte": {"attivo": False, "scadenza_min": 5,
                    "tetto_giornaliero": 50, "modello": "sonnet"}},
         "sonnet", log=log)
@@ -143,7 +143,7 @@ def test_il_segno_sopravvive_al_giro_load_save(tmp_path):
 def _carica_blocco_semina():
     from hiris.app import server
     src = inspect.getsource(server._on_startup)
-    start = src.index("    from .migrazione_opzioni import semina_modello_del_piano")
+    start = src.index("    from .migrazione_opzioni import seed_subscription_model")
     fine = 'app["models_config"] = load_models_config(data_dir)'
     end = src.index(fine, start) + len(fine)
     corpo = textwrap.dedent(src[start:end])

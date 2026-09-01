@@ -437,7 +437,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
     round 2 del Task 3). Fino a oggi quel canale era chiuso da una dipendenza
-    scritta in un docstring altrui -- `token_interno.motivo_token_non_valido`
+    scritta in un docstring altrui -- `token_interno.invalid_token_reason`
     rifiuta i caratteri di controllo all'avvio -- cioe' da una difesa che sta
     in un altro file e che nessun test legava a questa riga.
 
@@ -495,7 +495,7 @@ def probe_tools(client, base_url: str, headers: dict,
     e con un token che contiene CR/LF/NUL il client HTTP solleva **col valore
     dentro** -- verificato contro un listener vero, `LocalProtocolError: Illegal
     header value b'...'`. La promessa regge perche' un token del genere non
-    arriva fin qui: `token_interno.motivo_token_non_valido` lo rifiuta
+    arriva fin qui: `token_interno.invalid_token_reason` lo rifiuta
     all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
     quella validazione sparisse, questo docstring tornerebbe falso.
 

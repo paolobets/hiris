@@ -13,7 +13,7 @@ Un avvio con questa versione, e i valori sono al sicuro. Solo dopo, la B.
 import io
 import logging
 
-from hiris.app.migrazione_opzioni import semina, semina_catena
+from hiris.app.migrazione_opzioni import seed, seed_chain
 
 VUOTO = {
     "chain_order": [],
@@ -42,7 +42,7 @@ def _vuoto() -> dict:
 
 
 def test_al_primo_avvio_i_valori_dell_utente_entrano_nell_archivio():
-    fuori, copiate = semina(_vuoto(), AMBIENTE, log=logging.getLogger("t"))
+    fuori, copiate = seed(_vuoto(), AMBIENTE, log=logging.getLogger("t"))
     assert fuori["ponte"] == {"attivo": True, "scadenza_min": 20, "tetto_giornaliero": 200}
     assert fuori["ollama"] == {"modello": "llama3.1:8b", "timeout_s": 300}
     assert fuori["nascondi_gratuiti"] is True
@@ -58,7 +58,7 @@ def test_la_copia_si_dichiara_nel_log_e_nomina_i_valori():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        semina(_vuoto(), AMBIENTE, log=reg)
+        seed(_vuoto(), AMBIENTE, log=reg)
     finally:
         reg.removeHandler(h)
     testo = buf.getvalue()
@@ -71,9 +71,9 @@ def test_la_semina_avviene_UNA_volta_sola():
     Senza questo, ogni riavvio riscriverebbe sopra la scelta fatta dalla pagina
     Modelli -- cioe' l'opzione dell'add-on continuerebbe a vincere, e la
     migrazione non finirebbe mai."""
-    primo, _ = semina(_vuoto(), AMBIENTE, log=logging.getLogger("t"))
+    primo, _ = seed(_vuoto(), AMBIENTE, log=logging.getLogger("t"))
     primo["ponte"]["scadenza_min"] = 3          # l'utente ha scelto 3 dalla pagina
-    secondo, copiate = semina(primo, AMBIENTE, log=logging.getLogger("t"))
+    secondo, copiate = seed(primo, AMBIENTE, log=logging.getLogger("t"))
     assert secondo["ponte"]["scadenza_min"] == 3
     assert copiate == []
 
@@ -82,7 +82,7 @@ def test_un_ambiente_vuoto_lascia_i_predefiniti_e_semina_lo_stesso():
     """Chi installa HIRIS oggi non ha niente da salvare: la semina segna
     comunque `seminato`, cosi' il primo avvio dopo la versione B non ricomincia
     a cercare opzioni che non esistono piu'."""
-    fuori, copiate = semina(_vuoto(), {}, log=logging.getLogger("t"))
+    fuori, copiate = seed(_vuoto(), {}, log=logging.getLogger("t"))
     assert fuori["seminato"] is True
     assert fuori["ponte"]["scadenza_min"] == 5
     assert copiate == [], (
@@ -110,7 +110,7 @@ def test_un_ambiente_muto_non_afferma_che_i_valori_erano_ai_predefiniti():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        semina(_vuoto(), {}, log=reg)
+        seed(_vuoto(), {}, log=reg)
     finally:
         reg.removeHandler(h)
     testo = buf.getvalue()
@@ -133,8 +133,8 @@ def test_un_ambiente_popolato_ai_predefiniti_lo_dice_ancora():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        _, copiate = semina(_vuoto(), {"BRIDGE_ENABLED": "false",
-                                       "CHAT_DAILY_CAP": "50"}, log=reg)
+        _, copiate = seed(_vuoto(), {"BRIDGE_ENABLED": "false",
+                                     "CHAT_DAILY_CAP": "50"}, log=reg)
     finally:
         reg.removeHandler(h)
     assert copiate == []
@@ -145,8 +145,8 @@ def test_un_valore_non_numerico_non_fa_saltare_l_avvio():
     """`run.sh` esporta stringhe, e `bashio::config` su un campo vuoto torna "".
     Un ValueError qui fermerebbe l'add-on all'avvio per un'opzione che l'utente
     non ha nemmeno toccato."""
-    fuori, _ = semina(_vuoto(), {"BRIDGE_DEADLINE_MIN": "", "CHAT_DAILY_CAP": "boh"},
-                      log=logging.getLogger("t"))
+    fuori, _ = seed(_vuoto(), {"BRIDGE_DEADLINE_MIN": "", "CHAT_DAILY_CAP": "boh"},
+                    log=logging.getLogger("t"))
     assert fuori["ponte"]["scadenza_min"] == 5
     assert fuori["ponte"]["tetto_giornaliero"] == 50
 
@@ -156,10 +156,10 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
     import logging
 
     from hiris.app.api.handlers_models import load_models_config, save_models_config
-    from hiris.app.migrazione_opzioni import semina
+    from hiris.app.migrazione_opzioni import seed
 
-    archivio, _ = semina(load_models_config(str(tmp_path)),
-                         {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
+    archivio, _ = seed(load_models_config(str(tmp_path)),
+                       {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
     # `flags=True`: `seminato` e' un SEGNO DI MIGRAZIONE e solo l'avvio lo
     # scrive -- vedi `test_una_put_non_puo_riscrivere_il_segno_della_semina`.
     save_models_config(str(tmp_path), archivio, flags=True)
@@ -268,7 +268,7 @@ def test_la_catena_si_semina_con_quella_di_oggi_non_con_l_ordine_di_strategia():
     di copiare si vedrebbe."""
     a = _vuoto()
     a["seminato"] = True                      # il Task 6 e' gia' passato
-    fuori, seminata = semina_catena(a, ["openrouter", "claude"], log=logging.getLogger("t"))
+    fuori, seminata = seed_chain(a, ["openrouter", "claude"], log=logging.getLogger("t"))
     assert fuori["chain_order"] == ["openrouter", "claude"]
     assert seminata is True
 
@@ -279,7 +279,7 @@ def test_una_catena_gia_scelta_non_si_tocca():
     significa «c'e' qualcosa da persistere», non «ho copiato una catena»."""
     a = _vuoto()
     a["chain_order"] = ["ollama"]
-    fuori, da_salvare = semina_catena(a, ["claude", "openrouter"], log=logging.getLogger("t"))
+    fuori, da_salvare = seed_chain(a, ["claude", "openrouter"], log=logging.getLogger("t"))
     assert fuori["chain_order"] == ["ollama"]
     assert fuori["catena_seminata"] is True
     assert da_salvare is True
@@ -292,7 +292,7 @@ def test_seminare_una_catena_vuota_con_niente_da_copiare_non_mente_nel_log():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        fuori, da_salvare = semina_catena(_vuoto(), [], log=reg)
+        fuori, da_salvare = seed_chain(_vuoto(), [], log=reg)
     finally:
         reg.removeHandler(h)
     assert "copiata" not in buf.getvalue()
@@ -309,7 +309,7 @@ def test_la_semina_della_catena_si_dichiara_nel_log_con_l_ordine_vero():
     reg.addHandler(h)
     reg.setLevel(logging.INFO)
     try:
-        semina_catena(_vuoto(), ["openrouter", "claude"], log=reg)
+        seed_chain(_vuoto(), ["openrouter", "claude"], log=reg)
     finally:
         reg.removeHandler(h)
     testo = buf.getvalue()
@@ -342,7 +342,7 @@ def test_la_catena_non_si_semina_guardando_seminato():
     difenderlo c'e' il test qui sotto."""
     a = _vuoto()
     a["seminato"] = True
-    fuori, da_salvare = semina_catena(a, ["claude"], log=logging.getLogger("t"))
+    fuori, da_salvare = seed_chain(a, ["claude"], log=logging.getLogger("t"))
     assert fuori["chain_order"] == ["claude"]
     assert da_salvare is True
 
@@ -371,7 +371,7 @@ def test_una_catena_svuotata_di_proposito_non_si_ripopola_al_riavvio():
     reg.setLevel(logging.INFO)
     try:
         # Primo avvio: la catena si semina dalla vecchia regola.
-        a, _ = semina_catena(_vuoto(), ["claude", "openrouter"], log=reg)
+        a, _ = seed_chain(_vuoto(), ["claude", "openrouter"], log=reg)
         assert a["chain_order"] == ["claude", "openrouter"]
         # Il gesto dell'utente: via tutti e due.
         a["chain_order"] = []
@@ -379,7 +379,7 @@ def test_una_catena_svuotata_di_proposito_non_si_ripopola_al_riavvio():
         buf.seek(0)
         # Riavvio, con la stessa vecchia regola che direbbe ancora le stesse
         # due cose.
-        b, da_salvare = semina_catena(a, ["claude", "openrouter"], log=reg)
+        b, da_salvare = seed_chain(a, ["claude", "openrouter"], log=reg)
     finally:
         reg.removeHandler(h)
     assert b["chain_order"] == [], (
@@ -418,7 +418,7 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    from .migrazione_opzioni import semina_catena")
+    start = src.index("    from .migrazione_opzioni import seed_chain")
     marker = 'app["models_config"] = load_models_config(data_dir)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
@@ -455,7 +455,7 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     from hiris.app.api.handlers_models import load_models_config, save_models_config
     namespace["load_models_config"] = load_models_config
     namespace["save_models_config"] = save_models_config
-    exec(compile(func_src, "<_on_startup semina_catena>", "exec"), namespace)
+    exec(compile(func_src, "<_on_startup seed_chain>", "exec"), namespace)
     return namespace["_avvio"]
 
 
@@ -567,7 +567,7 @@ def test_una_catena_gia_scelta_sopravvive_all_avvio(tmp_path):
 
 def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato(tmp_path):
     """**C3 cablato nell'avvio vero**, col disco vero in mezzo: il test di
-    `semina_catena` da solo sopravviverebbe a un `server.py` che si dimentica
+    `seed_chain` da solo sopravviverebbe a un `server.py` che si dimentica
     di guardare il segno, ed e' esattamente la guardia che questa chiusura
     sposta.
 

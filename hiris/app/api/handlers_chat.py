@@ -395,7 +395,7 @@ async def _enqueue_chat_job(
         # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
         # Il predefinito `"sonnet"` e' quello di `_STORE_DEFAULTS` e vale
         # solo per un'app senza archivio (i test): sull'impianto la semina
-        # (`migrazione_opzioni.semina_modello_del_piano`) ha gia' scritto il
+        # (`migrazione_opzioni.seed_subscription_model`) ha gia' scritto il
         # campo prima che un turno possa arrivare qui.
         "model": ((request.app.get("models_config") or {})
                   .get("ponte", {}).get("modello", "sonnet")),

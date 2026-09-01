@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 _FILE_IMPOSTAZIONI = "impostazioni_chat.json"
 
 # Permessi del file: solo il proprietario legge e scrive -- stesso valore e
-# stessa motivazione di `token_interno.PERMESSI_FILE` (vedi `salva()` sotto).
+# stessa motivazione di `token_interno.FILE_PERMISSIONS` (vedi `salva()` sotto).
 _PERMESSI_FILE = 0o600
 
 # Review finale fetta E3, Important #2: la versione precedente istruiva a
@@ -355,7 +355,7 @@ class ImpostazioniChat:
         chat riparte dopo un riavvio, cioe' l'unico stato che le sopravvive.
 
         fetta E5 Task 2: la disciplina e' allineata a quella di
-        `token_interno._scrivi_token`, che e' il precedente di questo ramo per
+        `token_interno._write_token`, che e' il precedente di questo ramo per
         un file di `/data` che deve sopravvivere ai riavvii. Tre differenze
         rispetto alla versione precedente (che era il semplice tmp+replace
         ereditato da `ChatbotEngine._save()`):
