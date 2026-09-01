@@ -119,7 +119,7 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
     dell'opzione dichiarava e la nuova pagina (#/impostazioni) deve
     continuare a dichiarare: `days` non e' una soglia di pulizia qui --
     `load_context` non cancella niente, filtra solo cio' che RILEGGE. Con
-    `days=1` un messaggio di due days fa, ancora nella sessione attiva
+    `days=1` un messaggio di due giorni fa, ancora nella sessione attiva
     (last_msg_at recente), non deve arrivare al modello -- ma resta sul
     disco: e' la prova gemella di `test_zero_giorni_non_cancella_mai_niente`
     sotto, sullo stesso dato."""
@@ -152,8 +152,9 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
 
 
 def test_zero_giorni_non_cancella_mai_niente(tmp_path):
-    """`0` disattiva ENTRAMBI i lavori (`if days > 0` nei due lettori: qui
-    e in `ChatStore.load_context`/`load_history` sopra) -- non «cancella
+    """`0` disattiva ENTRAMBI i lavori -- la potatura esce con
+    `if retention_days <= 0`, `load_context`/`load_history` filtrano con
+    `if days > 0`: la stessa regola scritta al contrario -- non «cancella
     subito», il contrario di cio' che chiunque si aspetta da una
     "conservazione" messa a zero."""
     data_dir = str(tmp_path)

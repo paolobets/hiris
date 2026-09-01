@@ -155,9 +155,9 @@ def _build_system_prompt(settings) -> str:
 
     fetta E4 Task 4 ("un bot solo"): prima componeva `strategic_context` +
     `system_prompt` di un `Chatbot` -- due campi pensati per una molteplicita'
-    di persone che non esiste piu'. `ImpostazioniChat` ha un solo campo
+    di persone che non esiste piu'. `ChatSettings` ha un solo campo
     (`system_prompt`): niente piu' da comporre. `settings` non e' mai
-    `None` (vedi `ImpostazioniChat.carica`, che non lo restituisce mai) --
+    `None` (vedi `ChatSettings.load`, che non lo restituisce mai) --
     il parametro resta accettabile a `None` solo per i test che passano un
     oggetto costruito a mano."""
     if settings and settings.system_prompt:
@@ -829,7 +829,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
     # `None`: il prompt degradava a una stringa vuota E la cronologia
     # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
-    # `impostazioni_chat` non e' mai `None` (`ImpostazioniChat.carica` non lo
+    # `impostazioni_chat` non e' mai `None` (`ChatSettings.load` non lo
     # restituisce mai) -- quel ramo di degrado e' impossibile per
     # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
     # anche l'id transitorio che qui sotto selezionava la cronologia
@@ -884,7 +884,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     agent_type = "chat"
     # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
     # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
-    # entrato in `ImpostazioniChat`, diventa qui una costante diretta:
+    # entrato in `ChatSettings`, diventa qui una costante diretta:
     # la chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
     # modulo dei runner (4096), perche' una risposta lunga -- il riepilogo di
     # una casa grande, un elenco di ricordi -- lo supera legittimamente.

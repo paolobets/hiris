@@ -29,7 +29,26 @@ line-length = 100
 # Base: il set di default della versione appuntata in hiris/requirements.txt.
 # Il pin `<0.17.0` esiste per questo: un linter che cambia da solo il proprio
 # default trasforma un CI verde in rosso senza che nessuno abbia toccato una riga.
-extend-select = ["E501"]  # le righe lunghe non sono nel default
+# `A` (flake8-builtins) e `W291` entrano il 01/09, e non per gusto: la famiglia
+# di `A` ha prodotto un GUASTO VIVO in produzione. `richiesta -> request` dentro
+# `_security_headers(request, handler)` ha scritto `request = request.query.get("v")`
+# -- riassegna il parametro, e due righe dopo `request.path` su una stringa: 500 su
+# ogni asset. Quel caso preciso non lo vede `A` (`request` non e' un builtin) ma e'
+# la stessa forma, e `A` chiude la meta' che si puo' chiudere meccanicamente.
+# Misurato prima di accenderla: **12 violazioni**, tutte precedenti a questo giro.
+# `W291`: sei, tutte in un file solo.
+#
+# **`E301`-`E306` (righe bianche) restano SPENTE, e la ragione non e' il
+# numero.** Sono 72 violazioni, tutte auto-correggibili -- il costo non e'
+# quello. `ruff` le implementa solo in `preview`, e `preview = true` e' un
+# interruttore GLOBALE: accenderebbe insieme il comportamento sperimentale di
+# ogni altra regola gia' selezionata, cioe' esattamente la cosa che il pin
+# `<0.17.0` poche righe piu' su esiste per impedire -- un linter che cambia da
+# solo il proprio giudizio. Si pagherebbe un interruttore globale per una
+# classe cosmetica: no. Misurato il 01/09 (39 E302, 12 E306, 10 E305, 9 E303,
+# 2 E301). L'unico sito che questo giro aveva sporcato e' stato messo a posto a
+# mano (`scripts/rinomina.py`, due righe bianche fra due «def» di modulo).
+extend-select = ["E501", "A", "W291"]  # E501: le righe lunghe non sono nel default
 
 ignore = [
     # BLE001 (blind-except) — 103 casi, 99 in produzione.
@@ -54,6 +73,17 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# A001/A002 — 11 casi, TUTTI in `memoria/`, tutti `type` e `id` come parametri o
+# locali, e tutti precedenti al giro che ha acceso la regola (li ha scritti la
+# conversione di `memoria/`, lotti 5-6). Non si toccano ADESSO per una ragione
+# misurata e non per pigrizia: rinominare un parametro dentro un ambito CHIUSO
+# vuol dire riaprire le sue sponde, ed e' esattamente la manovra che l'01/09 ha
+# prodotto il guasto di `_security_headers` — a valle di un rilascio in
+# preparazione e' il momento peggiore per farla. La regola resta ACCESA su tutto
+# il resto, che e' il punto: da oggi un builtin ombreggiato NUOVO va rosso. Il
+# tredicesimo caso, `server.py::round`, e' stato rinominato invece che ignorato,
+# perche' quello lo aveva scritto il giro in corso.
+"hiris/app/memoria/*.py" = ["A001", "A002"]
 # F811 — 56 casi, 55 FALSI POSITIVI: sono i parametri-fixture di pytest che
 #        ombreggiano il nome della fixture. L'unico caso vero (un test scritto
 #        due volte) e' stato sanato PRIMA di scrivere questa riga.

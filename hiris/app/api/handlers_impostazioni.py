@@ -1,7 +1,7 @@
 """fetta E5 Task 2 ("il frontend"): le impostazioni della chat tornano ad
 avere una superficie.
 
-**Perche' questo file esiste.** I sette campi di `ImpostazioniChat`
+**Perche' questo file esiste.** I sette campi di `ChatSettings`
 (`hiris/app/impostazioni_chat.py`) governano l'unica conversazione che HIRIS
 sa avere -- il prompt di sistema, la forma della risposta, il budget di
 ragionamento, il tetto di turni, la restrizione alla casa, il nome e (dalla
@@ -10,7 +10,7 @@ fra loro: si sceglie per provider, nella pagina Modelli (fetta "la catena
 diventa l'unica verita'", Task 4 -- il campo `model` che stava qui scavalcava
 la catena e annullava il ripiego).
 Fino alla fetta E5 Task 2 si cambiavano **solo scrivendo a mano
-`/data/impostazioni_chat.json`**: `ImpostazioniChat.salva()` non aveva nessun
+`/data/impostazioni_chat.json`**: `ChatSettings.save()` non aveva nessun
 chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_impostazioni_chat.py`). Per chi installa l'add-on senza aprire una
 shell dentro il container, quei campi erano di fatto costanti.
@@ -57,7 +57,7 @@ prodotto: arriva verbatim nel prompt di ogni turno, sia sul percorso sincrono
 sia sul ponte. Un utente che lo svuota non deve ritrovarsi una chat con prompt
 vuoto e non deve reinstallare per tornare indietro: un `system_prompt` vuoto
 (o di soli spazi) **ripristina `DEFAULT_SYSTEM_PROMPT`**, cioe' il default nel
-codice -- la stessa regola che `ImpostazioniChat.carica()` applica gia' a un
+codice -- la stessa regola che `ChatSettings.load()` applica gia' a un
 file con la chiave vuota. Il default viaggia anche nel GET
 (`default_system_prompt`) cosi' che la pagina possa offrire "ripristina" senza
 tenerne una copia propria destinata a invecchiare.
@@ -145,7 +145,7 @@ def _text(body: dict, key: str, current: str) -> str:
     Fix round 1, I-1. `isinstance(valore, str)` verifica il TIPO, non la
     CODIFICABILITA': una stringa Python puo' contenere un surrogato spaiato
     (un U+D800 isolato) -- JSON valido in ingresso, `str` a tutti gli effetti
-    -- che il `json.dump` di `ImpostazioniChat.salva()` rifiuta con
+    -- che il `json.dump` di `ChatSettings.save()` rifiuta con
     `UnicodeEncodeError`. Quell'eccezione NON e' un `OSError`, quindi non
     veniva catturata dal chiamante e usciva come 500 col traceback: era
     l'unico buco nella promessa «ogni corpo sbagliato produce un 400 che dice

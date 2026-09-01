@@ -97,7 +97,7 @@ async def test_una_rilettura_fallita_non_blocca_le_successive(archivio, cartella
 async def test_forza_rilegge_anche_se_i_file_non_sono_cambiati(archivio, cartella):
     """Important (6): un'automazione tolta o aggiunta dentro un PACCHETTO non
     tocca l'mtime dei due file "principali" -- resterebbe un fantasma (o
-    invisibile) fino al prossimo tocco a mano. `guarda(forza=True)` e' il
+    invisibile) fino al prossimo tocco a mano. `guarda(force=True)` e' il
     modo in cui `schedule_behavior_reread` bypassa il confronto
     sull'impronta quando arriva un evento di registro entita'."""
     client = _client()

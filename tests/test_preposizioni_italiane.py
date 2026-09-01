@@ -57,6 +57,13 @@ creava), `_INTESTAZIONE_NON_RILASCIATO` (`scripts/release.py`), `doppi_di` e
 `_moduli_di_test`, `_ARTICOLO_I_SCOPERTO` e `scoperti_i`. Il debito vecchio
 non lo fa arrossire mai, per costruzione: sta nell'istantanea.
 
+**Sesta occasione, 01/09, mentre si preparava il rilascio**: la review finale aveva trovato un
+guasto vivo, ho scritto il test che lo copriva e ho battezzato l'aiutante
+`_blocco_risanamento_costruzioni_dallo_startup`. Il cancello l'ha preso nello stesso giro in cui
+chiudevo un difetto, ed e' il punto: **non protegge chi ha tempo, protegge chi ne ha poco**. Il
+nome e' diventato `_blocco_risanamento_costruzioni` -- dove viene lo dice il docstring, che ha
+spazio per una frase intera. **Sei occasioni su sei, il nome era del giorno stesso.**
+
 **Quinta occasione, 01/09, e la piu' istruttiva perche' arriva DENTRO l'attrezzo che
 rinomina.** Scrivendo l'ottava rete e l'alimentazione dalle coppie applicate ho battezzato
 cinque nomi in un colpo, tutti con una preposizione: `chiavi_di_inoltro`, `coppie_del_lavoro`,
@@ -385,8 +392,8 @@ _NOTE_ITALIANE = frozenset({
     "_cosa_non_esiste", "_da_consegnare", "_da_quando", "_da_rileggere", "_da_salvare",
     "_da_salvare_p", "_dentro_un_loop", "_e_carattere_di_parola", "_e_chiamata_a_primitiva_rest",
     "_e_chiamata_a_rete", "_e_risorsa_della_card", "_e_self_ha", "_eco_della_cli",
-    "_fogli_della_pagina_config", "_fra_poco", 
-    "_get_entities_on_come_lo_strumento", 
+    "_fogli_della_pagina_config", "_fra_poco",
+    "_get_entities_on_come_lo_strumento",
     "_guasto_con_404", "_i_due_testi_di_chi_puo_agire", "_init_col_server_collegato",
     "_le_due_guide", "_letture_dallo_startup", "_membri_di",
     "_mock_che_solleva", "_mock_risposta_con_stato", "_nomi_di_campo",
@@ -400,7 +407,7 @@ _NOTE_ITALIANE = frozenset({
     "_testi_che_legge_l_utente", "_tools_list_come_la_rotta", "_tutte_le_descrizioni", "a_iso",
     "a_ts", "aggiornata_il", "ago_senza_slash", "annuncio_di_un_altra",
     "app_con", "app_senza", "ascoltatori_durante_la_chiamata", "avvolte_da_rete", "body_con",
-    "body_senza", "casa_con_orfana", "casa_senza", 
+    "body_senza", "casa_con_orfana", "casa_senza",
     "chiamata_dello_schedulatore", "chiamato_con", "chiavi_che_parlano_del_ponte",
     "claude_con_elenco", "client_con", "client_senza", "cliente_su", "col_token",
     "col_token_del_piano", "come_stringa", "commenti_di", "con_free", "con_gratuiti",
@@ -408,9 +415,9 @@ _NOTE_ITALIANE = frozenset({
     "da_http", "da_iso", "da_quando", "da_quante", "da_risolvere", "da_run_sh", "da_salvare",
     "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
-    "e_contenitore", "e_def", "e_intestazione", 
+    "e_contenitore", "e_def", "e_intestazione",
     "fra_parentesi",
-    "grave_piu_un_taciuto", 
+    "grave_piu_un_taciuto",
     "i_non_letta", "ids_da_leggere", "il_piano_puo_rispondere",
     "in_fuori", "kwargs_con", "kwargs_senza", "l_altro_ieri", "legami_a_self_ha",
     "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_di",
@@ -421,7 +428,7 @@ _NOTE_ITALIANE = frozenset({
     "prima_dei_guasti", "prima_riga", "prima_rivendicazione", "resp_con",
     "resp_senza", "riepilogo_non_chiesto",
     "riepilogo_non_letto", "riga_di", "righe_non_vuote", "rompe_dalla_lettura",
-    "rotta_senza_archivi", "runner_con", "runner_senza", 
+    "rotta_senza_archivi", "runner_con", "runner_senza",
     "senza_accenti", "senza_area", "senza_causa", "senza_id",
     "senza_registro_caduto", "senza_stato_vivo", "senza_token", "specchio_al_ritorno",
     "strumenti_che_scrivono", "su_disco", "tipi_non_verificabili", "toks_dopo", "toks_prima",

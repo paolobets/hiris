@@ -144,7 +144,7 @@ async def test_chat_no_runner(aiohttp_client):
 # prompt, test_chat_without_agent_id_uses_default_agent e
 # test_chat_with_unknown_agent_id_fallback_to_default pinnavano una
 # SELEZIONE fra piu' `Chatbot` diversi per id -- quella selezione non esiste
-# piu': c'e' un solo `ImpostazioniChat`, senza id, e il `chatbot_id`/
+# piu': c'e' un solo `ChatSettings`, senza id, e il `chatbot_id`/
 # `agent_id` che il client manda viene accettato e ignorato (vedi
 # handlers_chat.py). Verificato prima di riscriverli: coi vecchi corpi
 # ancora in piedi, `client.app["engine"]` solleva `KeyError` -- il

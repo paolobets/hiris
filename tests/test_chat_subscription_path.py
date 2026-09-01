@@ -69,7 +69,7 @@ def il_piano_puo_rispondere(monkeypatch):
 
 # fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
 # mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
-# un'`ImpostazioniChat` vera. Il `chatbot_id`/`agent_id` che i test mandano
+# un'`ChatSettings` vera. Il `chatbot_id`/`agent_id` che i test mandano
 # nel body resta nel payload (continua a coprire "un id qualsiasi non rompe
 # nulla"), ma non seleziona piu' niente. fetta E4 Task 5: nemmeno una
 # chiave interna fissa resta -- chat_store e la coda non hanno proprio piu'
@@ -149,7 +149,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #     equivalente sulla riga di comando della CLI `claude` -- non c'e'
     #     un `--thinking-budget` ne' un `--max-tokens` da passargli;
     #   - `nome`: non e' letto da nessuno dei due percorsi (sincrono o
-    #     ponte), solo dal campo di compatibilita' `ImpostazioniChat.nome`
+    #     ponte), solo dal campo di compatibilita' `ChatSettings.name`
     #     stesso (impostazioni_chat.py);
     #   - gli strumenti (STRUMENTI_CONOSCENZA/dispatcher) e `debug`
     #     (tools_called/thinking_blocks): la fetta A non da' strumenti al

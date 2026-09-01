@@ -1,4 +1,4 @@
-"""fetta E4 Task 4 ("un bot solo"): `ImpostazioniChat` sostituisce l'entita'
+"""fetta E4 Task 4 ("un bot solo"): `ChatSettings` sostituisce l'entita'
 Chatbot. Il punto non e' solo lo shape -- e' che "mancare" non e' piu' uno
 stato rappresentabile: `carica()` non solleva mai e non restituisce mai
 `None`, a differenza di `engine.get_default_chatbot()` che poteva restituire
@@ -24,7 +24,7 @@ def test_default_e_completo_senza_argomenti():
 def test_carica_senza_file_restituisce_i_default_nel_codice(tmp_path):
     """Nessun file sul disco -- il caso che prima faceva degradare
     handlers_chat.py: qui non solleva, non restituisce None, produce gli
-    stessi default di `ImpostazioniChat()`."""
+    stessi default di `ChatSettings()`."""
     imp = ChatSettings.load(str(tmp_path))
     assert imp == ChatSettings()
 
@@ -107,7 +107,7 @@ def _chiamate_a_salva():
     Fix round 1, I-3. La prima versione di questa guardia cercava
     `\.salva\(` con una regex riga per riga, scartando solo le righe che
     cominciano con `#`. Una DOCSTRING la soddisfaceva: la prosa in cima a
-    `api/handlers_impostazioni.py` contiene la frase «`ImpostazioniChat.salva()`
+    `api/handlers_impostazioni.py` contiene la frase «`ChatSettings.save()`
     non aveva nessun chiamante», che combacia col pattern e nomina il file
     cercato -- quindi entrambe le asserzioni sarebbero rimaste verdi anche
     cancellando la chiamata vera.
@@ -140,7 +140,7 @@ def _chiamate_a_salva():
 def test_salva_ha_un_chiamante_di_produzione():
     """Il difetto che il Task 2 della fetta E5 chiude, pinnato dove si vede.
 
-    Fino a quel task le uniche chiamate a `ImpostazioniChat.salva()` in tutto
+    Fino a quel task le uniche chiamate a `ChatSettings.save()` in tutto
     il repo erano le due di questo file: i sette campi si potevano cambiare
     SOLO scrivendo a mano `/data/impostazioni_chat.json`. Se questo test
     tornasse a fallire significherebbe che la superficie HTTP che li salva e'

@@ -677,7 +677,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     Chiamata una volta all'avvio (subito dopo `rebuild_conditions`) e
     ogni dieci minuti dal lavoro periodico registrato piu' sotto in
     `_on_startup` -- stessa funzione, due chiamanti, come
-    `tree_comparison_round`/`guarda_comportamento` qui accanto.
+    `tree_comparison_round`/`watch_behavior` qui accanto.
 
     Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
     puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
@@ -752,7 +752,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """
     state: dict[str, str | None] = {"dopo": None}
 
-    async def round() -> dict | None:
+    async def run_round() -> dict | None:
         if ha_client is None:
             return None
         reader = getattr(ha_client, "extract_from_target", None)
@@ -799,7 +799,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
                            "Home Assistant", divergenti, len(report["guardate"]))
         return report
 
-    return round
+    return run_round
 
 
 # I legami che valgono come comprimari: cose che FANNO o MISURANO qualcosa
@@ -986,7 +986,7 @@ async def build_balances(
     for subject in energy_subjects:
         # **Correzione BASSA della review (mandato, punto 6, 27/08/2026):
         # solo i soggetti che hanno DAVVERO una direzione entrano fra i
-        # "membri" candidati.** `soggetti_energia` nella vita vera porta
+        # "membri" candidati.** `energy_subjects` nella vita vera porta
         # TUTTI i soggetti osservati quel giorno (`server.py::_aggrega_ieri`
         # e `reaggregate_last_two_days` passano `sorted(soggetti)`,
         # senza filtro) -- prima di questa correzione un interruttore o un
@@ -1380,7 +1380,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
 
 
 def schedule_registry_rebuild(client, store, delay: float = 3.0):
-    """Restituisce `innesca(tipo_evento)`: ricostruisce l'anagrafe, una volta sola.
+    """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
 
     Riorganizzare la casa in Home Assistant produce una raffica di eventi —
     spostare dieci entita' ne emette dieci. Ricostruire a ogni evento
@@ -1415,7 +1415,7 @@ def schedule_registry_rebuild(client, store, delay: float = 3.0):
 
 
 def schedule_dashboards_reread(client, store, delay: float = 3.0):
-    """Restituisce `innesca(dati_evento)`: rilegge le plance, una volta sola.
+    """Restituisce `trigger(event_data)`: rilegge le plance, una volta sola.
 
     Gemello di `schedule_registry_rebuild` — stesso antirimbalzo,
     stessa tolleranza ai guasti — ma per un innesco DIVERSO (DASHBOARD_EVENT,
@@ -1470,7 +1470,7 @@ def behavior_sentinel(client, store, ha_folder: Path | None,
     dentro un PACCHETTO (o una cartella inclusa) non tocca `automations.yaml`,
     quindi non cambia l'impronta -- resterebbe in `/api/casa` come fantasma
     (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
-    "principali". `guarda(forza=True)` bypassa il confronto sull'impronta:
+    "principali". `guarda(force=True)` bypassa il confronto sull'impronta:
     e' quanto usa `schedule_behavior_reread`, agganciata allo stesso
     evento di registro entita' (TOPOLOGY_EVENTS) che gia' fa ricostruire
     l'anagrafe -- aggiungere o togliere un'automazione CAMBIA quel registro.
@@ -1524,7 +1524,7 @@ def behavior_sentinel(client, store, ha_folder: Path | None,
 
 
 def schedule_behavior_reread(guarda, delay: float = 3.0):
-    """Restituisce `innesca(tipo_evento)`: rilegge il comportamento FORZANDO
+    """Restituisce `trigger(event_type)`: rilegge il comportamento FORZANDO
     il confronto sull'impronta, una volta sola per raffica.
 
     Gemello di `schedule_registry_rebuild` -- stesso antirimbalzo,
@@ -2086,8 +2086,8 @@ async def _on_startup(app: web.Application) -> None:
     app["impostazioni_chat"] = chat_settings
 
     # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
-    # CHE MANCAVA. `carica()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
-    # quando la chiave non c'e', ma non lo SCRIVE, e `salva()` ha un solo
+    # CHE MANCAVA. `load()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
+    # quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
     # chiamante di produzione (la PUT di «Impostazioni chat»). Chi quella pagina
     # non la apre mai non produce mai la chiave: al rilascio successivo, con
     # l'opzione fuori dallo schema e l'ambiente muto, il valore diventa il
@@ -2129,7 +2129,7 @@ async def _on_startup(app: web.Application) -> None:
     # (ChatbotEngine._load, chatbot_engine.py) sono uscite per intero con
     # questo task. Decisione utente (vedi il commit): il prompt
     # personalizzato eventualmente salvato sul bot di default NON viene
-    # migrato in ImpostazioniChat -- si riparte puliti, coi default nel
+    # migrato in ChatSettings -- si riparte puliti, coi default nel
     # codice. I file restano su disco, intatti (mai dati utente cancellati
     # in /data).
     _chatbots_json_path = os.path.join(data_dir, "chatbots.json")
@@ -2761,7 +2761,7 @@ async def _on_startup(app: web.Application) -> None:
     # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
     # nessuna `apply`, e resterebbe un fantasma fino alla potatura.
     try:
-        app["costruzioni"].risana(adesso=_time.time())
+        app["costruzioni"].risana(now=_time.time())
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
@@ -2802,7 +2802,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Task 12: la fonte del numero di giorni non e' piu' il globale di modulo
     # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
-    # `app["impostazioni_chat"].giorni_conservazione` -- letto AD OGNI GIRO
+    # `app["impostazioni_chat"].retention_days` -- letto AD OGNI GIRO
     # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
     # /api/impostazioni-chat riassegna quella chiave a caldo
     # (`handlers_impostazioni.handle_save_impostazioni`), e la potatura di
@@ -3563,9 +3563,9 @@ def create_app() -> web.Application:
     # della E5 le ha cancellate entrambe, con le due voci di menu che ci
     # portavano.
     # fetta E5 Task 2 ("il frontend"): le impostazioni della chat hanno di
-    # nuovo una superficie. Fino a qui i sette campi di `ImpostazioniChat` si
+    # nuovo una superficie. Fino a qui i sette campi di `ChatSettings` si
     # cambiavano solo scrivendo a mano `/data/impostazioni_chat.json`
-    # (`salva()` non aveva chiamanti di produzione). Il PUT passa dallo stesso
+    # (`save()` non aveva chiamanti di produzione). Il PUT passa dallo stesso
     # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
     # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
     # (static/config/impostazioni-route.js), nello stesso commit.

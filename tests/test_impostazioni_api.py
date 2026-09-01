@@ -135,7 +135,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
 @pytest.mark.asyncio
 async def test_put_sopravvive_al_riavvio(client, tmp_path):
     """Il "riavvio" e' esattamente cio' che fa `server._on_startup`:
-    `ImpostazioniChat.carica(data_dir)` su una `/data` che ha gia' il file."""
+    `ChatSettings.load(data_dir)` su una `/data` che ha gia' il file."""
     await client.put(ROTTA, json={"nome": "Dopo il riavvio", "max_chat_turns": 7})
     dopo_riavvio = ChatSettings.load(str(tmp_path))
     assert dopo_riavvio.name == "Dopo il riavvio"

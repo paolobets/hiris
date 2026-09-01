@@ -479,7 +479,7 @@ _METODI_USAGE_STORE = frozenset({
 })
 
 # Terza voce (Task 9, `api/handlers_impostazioni.py`, PRIMA di applicare il
-# file, non dopo): `ImpostazioniChat` (`impostazioni_chat.py`, un file di
+# file, non dopo): `ChatSettings` (`impostazioni_chat.py`, un file di
 # RADICE -- non un ambito di questa fetta, ne' chiuso ne' aperto) e' un
 # dataclass, non una classe di servizio: il rischio non e' un METODO
 # rinominato per attributo, e' un CAMPO. `nome` e `giorni_conservazione`
@@ -492,6 +492,13 @@ _METODI_USAGE_STORE = frozenset({
 # `archivio.sezioni()`, qui su un campo di dataclass invece che su un
 # metodo. Elenco letto a mano da `impostazioni_chat.py`: i sette campi piu'
 # i due metodi pubblici (`carica`, `salva`).
+# **Chiusa il 01/09**, col lotto di radice che ha convertito quel file: i due
+# campi sono `name` e `retention_days`, i due metodi `load` e `save`, e le 121
+# sponde le ha trovate la terza rete. La guardia resta scritta coi nomi di
+# ALLORA e non si aggiorna: serve a proteggere un sorgente PRIMA della
+# conversione, quindi i nomi italiani sono esattamente quelli giusti da
+# elencare -- aggiornarla la renderebbe inutile il giorno in cui servisse di
+# nuovo. Cio' che era falso era la frase «restano italiani» al presente.
 _METODI_IMPOSTAZIONI_CHAT = frozenset({
     "nome", "system_prompt", "response_mode", "thinking_budget",
     "max_chat_turns", "restrict_to_home", "giorni_conservazione",
@@ -913,6 +920,8 @@ def _nuovo_nome(nome: str, g: Glossario, ambito: str,
         return nuovo if nuovo and nuovo != nome else None
     esito = classifica(nome, g, ambito)
     return esito if isinstance(esito, str) and esito != nome else None
+
+
 def parametri_def_rinominati(sorgente: str, g: Glossario, ambito: str, *,
                              coppie: dict[str, str] | None = None) -> dict[str, str]:
     """`{nome vecchio: nome nuovo}` per i soli parametri di `def` che

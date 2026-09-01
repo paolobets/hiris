@@ -137,7 +137,7 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 # startup via configure()", che non esisteva davvero: nessun `configure()` e'
 # mai stato definito in questo file) non l'avrebbe mai fatta arrivare a un
 # lettore che la importa per valore all'avvio. La sorgente di verita' e' ora
-# `ImpostazioniChat.giorni_conservazione` (`impostazioni_chat.py`): entrambi i
+# `ChatSettings.retention_days` (`impostazioni_chat.py`): entrambi i
 # lettori la ricevono come PARAMETRO a ogni chiamata, non piu' come un globale
 # fissato una volta. `load_context` sotto porta `days` con un default (90,
 # lo stesso valore che questa costante aveva) solo per i chiamanti di questo
@@ -332,13 +332,13 @@ class ChatStore:
     def load_context(self, max_turns: int = 30, *, days: int = 90) -> list[dict]:
         """Return last max_turns pairs from the active (non-stale) session.
 
-        `days` is the second job of `ImpostazioniChat.giorni_conservazione`
+        `days` is the second job of `ChatSettings.retention_days`
         (Task 12): it does NOT free disk space here, it makes HIRIS forget
         sooner -- messages older than `days` days, even inside the still-open
         active session, are not read back into the model's context. `0`
-        disables this (never filters), matching the nightly pruning's own `if
-        giorni > 0` in `delete_old_messages` below -- the two readers agree on
-        what `0` means."""
+        disables this (never filters), and the nightly pruning agrees on what
+        `0` means -- `delete_old_messages` below writes the same rule the other
+        way round, `if retention_days <= 0: return 0`."""
         with self._mu:
             sid = self._fresh_session_id()
             if not sid:

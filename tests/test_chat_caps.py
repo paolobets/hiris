@@ -69,7 +69,7 @@ def il_piano_puo_rispondere(monkeypatch):
 
 # fetta E4 Task 4 ("un bot solo"): non c'e' piu' un `Chatbot` per id da
 # mockare -- `_make_agent`/l'`engine` MagicMock sono sostituiti da
-# un'`ImpostazioniChat` vera (nessuna selezione da simulare: e' l'unica
+# un'`ChatSettings` vera (nessuna selezione da simulare: e' l'unica
 # istanza, sempre quella). Il `chatbot_id`/`agent_id` che i test mandano nel
 # body resta nel payload delle richieste sotto (per continuare a coprire "un
 # id qualsiasi non rompe nulla"), ma non seleziona piu' niente. fetta E4

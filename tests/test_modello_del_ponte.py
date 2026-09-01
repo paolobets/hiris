@@ -106,7 +106,7 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         data_dir = str(tmp_path / "data")
         os.makedirs(data_dir, exist_ok=True)
 
-        # La SORGENTE e' cambiata due volte. Prima `ImpostazioniChat(model=)`,
+        # La SORGENTE e' cambiata due volte. Prima `ChatSettings(model=)`,
         # che scavalcava la catena; poi `provider_models["claude"]`, cioe' il
         # modello di un ALTRO provider; adesso `ponte.modello`, che e' del
         # piano e di nessun altro.

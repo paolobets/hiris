@@ -425,7 +425,7 @@ def _build_thinking_param(
     combos". Entrambe le meta' sono false al presente. `agents.json` (e il suo
     successore `chatbots.json`) non ha piu' nessun lettore dalla fetta E4
     Task 4 -- l'unico `thinking_budget` che arriva fin qui e' quello di
-    `ImpostazioniChat`, col default nel codice -- e la "frontend validation"
+    `ChatSettings`, col default nel codice -- e la "frontend validation"
     stava nell'editor Chatbot, che dalla fetta E4 Task 3 non puo' piu'
     persistere niente (PUT /api/chatbots/{id} non esiste). Il guard resta
     perche' la coppia modello/thinking non la riverifica nessuno:

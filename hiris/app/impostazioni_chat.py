@@ -30,7 +30,7 @@ Il punto di questo modulo, non solo la sua forma: prima, se il chatbot
 seminato da `_seed_default_chatbot()` mancava (id sbagliato, file corrotto,
 mai girato l'avvio), `handlers_chat.py` degradava in silenzio a un
 BASE_SYSTEM_PROMPT e SMETTEVA di persistere la cronologia -- senza dirlo a
-nessuno. Con `ImpostazioniChat` quel caso non e' piu' rappresentabile: i
+nessuno. Con `ChatSettings` quel caso non e' piu' rappresentabile: i
 default vivono nel codice (qui sotto), `carica()` non solleva mai e non
 restituisce mai `None` -- "mancare" non e' uno stato che questo tipo puo'
 assumere.
@@ -178,8 +178,9 @@ DEFAULT_SYSTEM_PROMPT = (
 #      della conversazione in corso -- abbassarlo non libera spazio, fa
 #      DIMENTICARE PRIMA. Un file/opzione mai toccato non lo diceva: la
 #      descrizione in `#/impostazioni` lo dichiara adesso.
-# E `0` non cancella e non limita MAI niente (`if days > 0` nei due lettori di
-# `chat_store`; qui il campo si chiama ancora `giorni_conservazione`) -- il contrario
+# E `0` non cancella e non limita MAI niente: i due lettori di `chat_store`
+# scrivono la stessa regola al contrario (`if days > 0` in `load_context`,
+# `if retention_days <= 0: return 0` in `delete_old_messages`) -- il contrario
 # di cio' che chiunque si aspetta da una "conservazione" messa a zero, e per
 # questo va detto esplicitamente, non lasciato dedurre.
 #
@@ -216,11 +217,11 @@ DEFAULT_SYSTEM_PROMPT = (
 # Il censimento la elenchera' fra le «variabili lette e mai esportate da
 # run.sh»: e' corretto, ed e' dichiarato nel rapporto del Task 13.
 def _retention_days_from_environment(default: int) -> int:
-    reading = os.environ.get("HISTORY_RETENTION_DAYS")
-    if reading is None:
+    raw = os.environ.get("HISTORY_RETENTION_DAYS")
+    if raw is None:
         return default
     try:
-        days = int(reading)
+        days = int(raw)
     except (TypeError, ValueError):
         return default
     if days != default:
@@ -266,7 +267,7 @@ class ChatSettings:
 
     Ogni campo ha il proprio default nel codice -- non serve un seed
     all'avvio (`_seed_default_chatbot` non esiste piu') perche' un'istanza di
-    questa classe e' gia' completa appena costruita, con `ImpostazioniChat()`
+    questa classe e' gia' completa appena costruita, con `ChatSettings()`
     a zero argomenti."""
     name: str = "HIRIS"
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
