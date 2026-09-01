@@ -64,28 +64,28 @@ window.HirisImpostazioniRoute = (function () {
     return fetch(url, opts);
   }
 
-  function campo(body, titolo, descrizione, controllo) {
+  function field(body, title, descrizione, controls) {
     var wrap = el('div');
     wrap.style.cssText = 'padding:12px 0 4px';
-    var t = el('div', null, titolo);
+    var t = el('div', null, title);
     t.style.cssText = 'font-weight:500;margin-bottom:4px';
     wrap.appendChild(t);
-    wrap.appendChild(controllo);
+    wrap.appendChild(controls);
     if (descrizione) wrap.appendChild(el('p', 'sc-desc', descrizione));
     body.appendChild(wrap);
-    return controllo;
+    return controls;
   }
 
-  function input(tipo, valore) {
+  function input(type, value) {
     var i = el('input');
-    i.type = tipo;
-    i.value = valore == null ? '' : String(valore);
+    i.type = type;
+    i.value = value == null ? '' : String(value);
     i.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;' +
-      (tipo === 'number' ? 'width:140px' : 'width:100%');
+      (type === 'number' ? 'width:140px' : 'width:100%');
     return i;
   }
 
-  function render(outlet, dati) {
+  function render(outlet, data) {
     outlet.innerHTML = '';
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
     /* La dichiarazione che manca quasi ovunque in questo prodotto: cosa
@@ -100,15 +100,15 @@ window.HirisImpostazioniRoute = (function () {
     var card = el('section', 'section-card');
     var body = el('div', 'sc-body');
 
-    var nome = campo(body, 'Nome',
-      'Come si chiama l\'assistente nell\'interfaccia.', input('text', dati.name));
+    var name = field(body, 'Nome',
+      'Come si chiama l\'assistente nell\'interfaccia.', input('text', data.name));
 
     var prompt = el('textarea');
-    prompt.value = dati.system_prompt || '';
+    prompt.value = data.system_prompt || '';
     prompt.rows = 10;
     prompt.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;' +
       'font-family:var(--font-mono,monospace);font-size:13px';
-    campo(body, 'Prompt di sistema',
+    field(body, 'Prompt di sistema',
       'Arriva parola per parola in testa a ogni turno di chat: è la cosa più ' +
       'delicata di HIRIS. Se lo svuoti e salvi, torna il testo predefinito ' +
       'scritto nel codice — non resta mai vuoto.', prompt);
@@ -116,25 +116,25 @@ window.HirisImpostazioniRoute = (function () {
     /* Il ritorno indietro, esplicito: il default arriva dal server
        (`default_system_prompt`), non da una copia tenuta qui che
        invecchierebbe alla prima modifica del prompt nel codice. */
-    var ripristina = el('button', 'btn', 'Ripristina il prompt predefinito');
-    ripristina.type = 'button';
-    ripristina.style.cssText = 'margin-top:6px';
-    ripristina.addEventListener('click', function () {
-      prompt.value = dati.default_system_prompt || '';
+    var restore = el('button', 'btn', 'Ripristina il prompt predefinito');
+    restore.type = 'button';
+    restore.style.cssText = 'margin-top:6px';
+    restore.addEventListener('click', function () {
+      prompt.value = data.default_system_prompt || '';
     });
-    body.appendChild(ripristina);
+    body.appendChild(restore);
 
-    var modi = (dati.response_modes && dati.response_modes.length)
-      ? dati.response_modes : ['auto'];
+    var mode = (data.response_modes && data.response_modes.length)
+      ? data.response_modes : ['auto'];
     var selModo = el('select');
     selModo.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
-    modi.forEach(function (m) {
+    mode.forEach(function (m) {
       var o = el('option', null, ETICHETTE_MODO[m] || m);
       o.value = m;
-      if (m === dati.response_mode) o.selected = true;
+      if (m === data.response_mode) o.selected = true;
       selModo.appendChild(o);
     });
-    campo(body, 'Forma della risposta',
+    field(body, 'Forma della risposta',
       'Quanto deve essere asciutta la risposta.', selModo);
 
     /* Fix round 1 (I-2). La versione precedente prometteva «viene disattivato
@@ -144,67 +144,67 @@ window.HirisImpostazioniRoute = (function () {
        di log ora ci sono, ma la descrizione non le promette come se
        l'impostazione avesse effetto ovunque: dice PRIMA dove vale, che e' cio'
        che serve a chi sta decidendo quanto scrivere. */
-    var thinking = campo(body, 'Budget di ragionamento (token)',
+    var thinking = field(body, 'Budget di ragionamento (token)',
       '0 disattiva il ragionamento esteso. Vale solo con i modelli Claude sul ' +
       'percorso diretto: sugli altri backend (OpenAI, OpenRouter, Ollama) e in ' +
       'modalità abbonamento resta salvato ma non ha effetto, e il log lo dice a ' +
       'ogni turno. Anche sul percorso diretto, sotto i 1024 token o su un modello ' +
       'che non lo supporta viene disattivato.',
-      input('number', dati.thinking_budget));
+      input('number', data.thinking_budget));
     thinking.min = '0';
 
-    var turni = campo(body, 'Tetto di turni per sessione',
+    var exchange = field(body, 'Tetto di turni per sessione',
       '0 significa nessun tetto. Oltre il tetto la chat risponde che il limite ' +
       'è stato raggiunto, invece di continuare a consumare.',
-      input('number', dati.max_chat_turns));
-    turni.min = '0';
+      input('number', data.max_chat_turns));
+    exchange.min = '0';
 
     /* fetta "Modelli" (2.0), Task 12: arrivato da `history_retention_days`
        (l'opzione dell'add-on) -- non e' aspetto, non e' una chiave, non e' rete:
        e' una decisione sulla conversazione, come gli altri campi di questa
        pagina. Il numero fa DUE lavori e la descrizione li dice entrambi: nessuno
        dei due era mai stato scritto da nessuna parte prima di questo task. */
-    var conservazione = campo(body, 'Giorni di conservazione',
+    var conservazione = field(body, 'Giorni di conservazione',
       'Ogni notte cancella i messaggi più vecchi di questo numero di giorni. ' +
       'Lo stesso numero limita quanto HIRIS rilegge della conversazione in ' +
       'corso: abbassarlo gli fa dimenticare prima. 0 = non cancella mai niente.',
-      input('number', dati.retention_days));
+      input('number', data.retention_days));
     conservazione.min = '0';
 
-    var riga = el('label');
-    riga.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 0 4px;cursor:pointer';
-    var casa = el('input');
-    casa.type = 'checkbox';
-    casa.checked = !!dati.restrict_to_home;
-    casa.style.cssText = 'width:20px;height:20px;flex:0 0 auto';
-    riga.appendChild(casa);
-    riga.appendChild(el('span', null, 'Rispondi solo su argomenti di casa'));
-    body.appendChild(riga);
+    var line = el('label');
+    line.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 0 4px;cursor:pointer';
+    var home_space = el('input');
+    home_space.type = 'checkbox';
+    home_space.checked = !!data.restrict_to_home;
+    home_space.style.cssText = 'width:20px;height:20px;flex:0 0 auto';
+    line.appendChild(home_space);
+    line.appendChild(el('span', null, 'Rispondi solo su argomenti di casa'));
+    body.appendChild(line);
     body.appendChild(el('p', 'sc-desc',
       'Aggiunge al prompt l\'istruzione di declinare le domande che non ' +
       'riguardano la casa.'));
 
-    var barra = el('div');
-    barra.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
-    var salva = el('button', 'btn btn-primary', 'Salva');
-    salva.type = 'button';
-    var stato = el('span', 'sc-desc', '');
-    stato.setAttribute('aria-live', 'polite');
-    barra.appendChild(salva);
-    barra.appendChild(stato);
-    body.appendChild(barra);
+    var bar = el('div');
+    bar.style.cssText = 'margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+    var save = el('button', 'btn btn-primary', 'Salva');
+    save.type = 'button';
+    var state = el('span', 'sc-desc', '');
+    state.setAttribute('aria-live', 'polite');
+    bar.appendChild(save);
+    bar.appendChild(state);
+    body.appendChild(bar);
 
     function mostraEsito(testo) {
       /* aria-live annuncia le MUTAZIONI del contenuto: si svuota e si
          riscrive, cosi' due errori identici di fila vengono comunque letti
          (stessa ragione documentata in models-route.js, showErrBadge). */
-      stato.textContent = '';
-      stato.textContent = testo;
+      state.textContent = '';
+      state.textContent = testo;
     }
 
-    salva.addEventListener('click', function () {
+    save.addEventListener('click', function () {
       var corpo = {
-        name: nome.value,
+        name: name.value,
         system_prompt: prompt.value,
         response_mode: selModo.value,
         /* I tre interi passano da parseInt: un campo number svuotato produce
@@ -212,43 +212,43 @@ window.HirisImpostazioniRoute = (function () {
            mai niente", non solo per i due tetti -- senza che l'utente lo
            abbia chiesto. Con NaN si manda il valore corrente, che il PUT
            conserva. */
-        thinking_budget: numero(thinking.value, dati.thinking_budget),
-        max_chat_turns: numero(turni.value, dati.max_chat_turns),
-        restrict_to_home: !!casa.checked,
-        retention_days: numero(conservazione.value, dati.retention_days)
+        thinking_budget: numero(thinking.value, data.thinking_budget),
+        max_chat_turns: numero(exchange.value, data.max_chat_turns),
+        restrict_to_home: !!home_space.checked,
+        retention_days: numero(conservazione.value, data.retention_days)
       };
-      salva.disabled = true;
+      save.disabled = true;
       mostraEsito('Salvataggio…');
       api(URL_IMPOSTAZIONI, { method: 'PUT', body: JSON.stringify(corpo) })
         .then(function (r) {
           return r.json().catch(function () { return {}; })
             .then(function (j) { return { ok: r.ok, corpo: j }; });
         })
-        .then(function (esito) {
-          salva.disabled = false;
-          if (esito.ok) {
+        .then(function (occurrence) {
+          save.disabled = false;
+          if (occurrence.ok) {
             /* I valori tornati dal server sono quelli davvero in vigore (il
                prompt puo' essere tornato al default): si aggiorna la vista
                con QUELLI, non con cio' che si era digitato. */
-            dati = esito.corpo;
-            nome.value = dati.name || '';
-            prompt.value = dati.system_prompt || '';
-            selModo.value = dati.response_mode || 'auto';
-            thinking.value = String(dati.thinking_budget);
-            turni.value = String(dati.max_chat_turns);
-            casa.checked = !!dati.restrict_to_home;
-            conservazione.value = String(dati.retention_days);
+            data = occurrence.corpo;
+            name.value = data.name || '';
+            prompt.value = data.system_prompt || '';
+            selModo.value = data.response_mode || 'auto';
+            thinking.value = String(data.thinking_budget);
+            exchange.value = String(data.max_chat_turns);
+            home_space.checked = !!data.restrict_to_home;
+            conservazione.value = String(data.retention_days);
             mostraEsito('Salvato. Vale dal prossimo messaggio.');
             return;
           }
           /* Mai un catch vuoto: l'errore del server dice quale campo non va,
              e quel testo e' scritto per essere letto da chi sta compilando. */
-          mostraEsito(esito.corpo && esito.corpo.error
-            ? esito.corpo.error
+          mostraEsito(occurrence.corpo && occurrence.corpo.error
+            ? occurrence.corpo.error
             : 'Salvataggio non riuscito. Controlla il log dell\'add-on.');
         })
         .catch(function () {
-          salva.disabled = false;
+          save.disabled = false;
           mostraEsito('Salvataggio non riuscito: il server non ha risposto.');
         });
     });
@@ -257,12 +257,12 @@ window.HirisImpostazioniRoute = (function () {
     outlet.appendChild(card);
   }
 
-  function numero(grezzo, ripiego) {
-    var n = parseInt(grezzo, 10);
-    return isNaN(n) ? ripiego : n;
+  function numero(raw, downgrade) {
+    var n = parseInt(raw, 10);
+    return isNaN(n) ? downgrade : n;
   }
 
-  function errore(outlet, testo) {
+  function error(outlet, testo) {
     outlet.innerHTML = '';
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
     outlet.appendChild(el('p', 'page-subtitle', testo));
@@ -281,9 +281,9 @@ window.HirisImpostazioniRoute = (function () {
        nessuna ragione di conoscere i provider. */
     api(URL_IMPOSTAZIONI, { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-      .then(function (dati) { render(outlet, dati); })
+      .then(function (data) { render(outlet, data); })
       .catch(function () {
-        errore(outlet, 'Non è stato possibile leggere le impostazioni della chat. ' +
+        error(outlet, 'Non è stato possibile leggere le impostazioni della chat. ' +
           'Controlla il log dell\'add-on e ricarica la pagina.');
       });
   }
