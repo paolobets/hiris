@@ -160,7 +160,7 @@ def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, s
 
 
 # Quanti punti arrivano al modello in UNA risposta. Non e' il cap del client
-# (`MAX_STORICO_PUNTI`, che protegge la memoria di questo processo): questo
+# (`MAX_HISTORY_POINTS`, che protegge la memoria di questo processo): questo
 # protegge la LEGGIBILITA'. Per le entita' con statistiche il problema non si
 # pone -- sopra la soglia si passa alle fasce -- ma per le altre il dettaglio
 # e' l'unica fonte che esista, e li' si riassume di nostro.

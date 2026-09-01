@@ -135,9 +135,9 @@ class Workshop:
         domain = intent.get("dominio")
         if operation not in OPERATIONS:
             return {"errore": f"gesto sconosciuto: {operation}. Gesti: {', '.join(OPERATIONS)}."}
-        if domain not in self._ha.DOMINI_CONFIGURABILI:
+        if domain not in self._ha.CONFIGURABLE_DOMAINS:
             return {"errore": (f"non so costruire «{domain}». So costruire: "
-                               f"{', '.join(self._ha.DOMINI_CONFIGURABILI)}.")}
+                               f"{', '.join(self._ha.CONFIGURABLE_DOMAINS)}.")}
         form_reason = _invalid_form(intent)
         if form_reason is not None:
             return {"errore": form_reason}
@@ -288,7 +288,7 @@ class Workshop:
     def _preview(self, operation, domain, key, intent, prima, dopo,
                    consiglio) -> str:
         # `.get(dominio, dominio)`, non un indice nudo: l'elenco dei domini
-        # configurabili e' del client (`HAClient.DOMINI_CONFIGURABILI`), non
+        # configurabili e' del client (`HAClient.CONFIGURABLE_DOMAINS`), non
         # di queste tabelle locali (ARTICOLO_INDETERMINATIVO/DETERMINATIVO,
         # sopra) -- un quarto dominio aggiunto la' solleverebbe `KeyError` qui.
         righe = []

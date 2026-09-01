@@ -74,7 +74,7 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
 async def test_una_raffica_di_eventi_rilegge_il_comportamento_una_volta_sola():
     """Important (6): stesso antirimbalzo di
     `test_una_raffica_di_eventi_ricostruisce_una_volta_sola`, ma per il
-    comportamento -- riusa EVENTI_ANAGRAFE (nessun meccanismo nuovo)."""
+    comportamento -- riusa TOPOLOGY_EVENTS (nessun meccanismo nuovo)."""
     guarda_finta = AsyncMock(return_value=True)
     innesca = programma_rilettura_comportamento(guarda_finta, ritardo=0.05)
     for _ in range(10):
@@ -151,8 +151,8 @@ class _FintaSessioneEventi:
 
 @pytest.mark.asyncio
 async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti():
-    """Sostituisce la tautologia che confrontava EVENTI_ANAGRAFE con se stessa.
-    Cancellando il blocco `if event_type in EVENTI_ANAGRAFE` o il ciclo di
+    """Sostituisce la tautologia che confrontava TOPOLOGY_EVENTS con se stessa.
+    Cancellando il blocco `if event_type in TOPOLOGY_EVENTS` o il ciclo di
     sottoscrizione, questo test si accorge -- quello vecchio no.
 
     Un floor_registry_updated deve chiamare l'ascoltatore dell'anagrafe. Un
@@ -193,10 +193,10 @@ async def test_lo_smistamento_degli_eventi_ws_raggiunge_gli_ascoltatori_giusti()
 
 @pytest.mark.asyncio
 async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
-    """Task 5: EVENTO_PLANCE ha un ascoltatore proprio, separato
+    """Task 5: DASHBOARD_EVENT ha un ascoltatore proprio, separato
     dall'anagrafe. Cancellare la sua sottoscrizione o il suo smistamento (e
     lasciare solo quello dell'anagrafe) farebbe cadere questo test da solo --
-    a differenza di un confronto EVENTI_ANAGRAFE-con-se-stesso, che non si
+    a differenza di un confronto TOPOLOGY_EVENTS-con-se-stesso, che non si
     accorgerebbe di niente."""
     ws = _FintoWSEventi([("lovelace_updated", {"url_path": "cucina"})])
     client = HAClient(base_url="http://ha.test", token="t")
@@ -216,9 +216,9 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
         pass
 
     # "riconnessione" (stesso principio del Task 6 per l'anagrafe): una
-    # disconnessione perde per sempre un EVENTO_PLANCE emesso nel frattempo.
+    # disconnessione perde per sempre un DASHBOARD_EVENT emesso nel frattempo.
     assert plance_chiamate == [{}, {"url_path": "cucina"}]
-    # EVENTO_PLANCE non deve innescare la ricostruzione dei REGISTRI: solo
+    # DASHBOARD_EVENT non deve innescare la ricostruzione dei REGISTRI: solo
     # "riconnessione" tocca l'ascoltatore dell'anagrafe qui.
     assert anagrafe_chiamate == ["riconnessione"]
 

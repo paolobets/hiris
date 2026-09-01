@@ -39,7 +39,7 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # entita' — e per giunta solo con action="create": rinomini, cambi d'area,
 # disabilitazioni e cancellazioni passavano inosservati, e la casa che HIRIS
 # credeva di conoscere si allontanava da quella vera in silenzio.
-EVENTI_ANAGRAFE = (
+TOPOLOGY_EVENTS = (
     "area_registry_updated",
     "device_registry_updated",
     "entity_registry_updated",
@@ -65,19 +65,19 @@ EVENTI_ANAGRAFE = (
 # suoi servizi dicendo «non esiste in questa casa» -- una frase falsa detta con
 # sicurezza. I nomi e i campi (`domain`, `service`) sono quelli dichiarati da
 # Home Assistant su home-assistant.io/docs/configuration/events/.
-EVENTI_SERVIZI = ("service_registered", "service_removed")
+SERVICE_EVENTS = ("service_registered", "service_removed")
 
 # L'evento delle plance (Task 5): porta il PERCORSO di quella cambiata, ma
 # innesca comunque una rilettura completa (sono poche, e la replica si rifa'
 # invece di rattopparsi — vedi rileggi_plance). Deliberatamente FUORI da
-# EVENTI_ANAGRAFE: quello innesca la ricostruzione dei *registri*, che e'
+# TOPOLOGY_EVENTS: quello innesca la ricostruzione dei *registri*, che e'
 # un'altra cosa — le plance hanno un proprio ascoltatore.
-EVENTO_PLANCE = "lovelace_updated"
+DASHBOARD_EVENT = "lovelace_updated"
 
 # Deve restare identica a `_MAIN_DASHBOARD_KEY` in casa/archivio.py: e'
 # la chiave sotto cui la predefinita finisce nell'archivio (percorso vero
 # `None` -> questa stringa li'). Duplicata invece di importata per non far
-# dipendere il client HA dallo storage — stesso principio per cui EVENTO_PLANCE
+# dipendere il client HA dallo storage — stesso principio per cui DASHBOARD_EVENT
 # e' referenziato per commento (mai importato) dall'altro verso in archivio.py.
 # leggi_plance() la usa per rifiutare una plancia vera il cui url_path collide
 # con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
@@ -86,24 +86,24 @@ _MAIN_DASHBOARD_KEY = "__principale__"
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
 # Il logbook di una settimana puo' contenere decine di migliaia di voci.
-MAX_DIARIO_VOCI = 200
+MAX_LOGBOOK_ENTRIES = 200
 # Finestra massima interrogabile dal diario. Il cap sulle voci limita la
 # risposta, non il costo della query: senza un tetto sulle ore HA scandisce
 # l'intero database del recorder. 168 ore = 7 giorni, quanto basta per "cosa e'
 # successo questa settimana?" e non di piu' (il recorder di default ne conserva
 # 10, quindi oltre non c'e' comunque granche' da leggere).
-MAX_DIARIO_ORE = 168
+MAX_LOGBOOK_HOURS = 168
 # Finestra usata quando `ore` non e' un numero interpretabile.
-DEFAULT_DIARIO_ORE = 24
+DEFAULT_LOGBOOK_HOURS = 24
 # Cap sui punti di storico dettagliato riportati per SINGOLA entita' -- non
 # per chiamata: con N entita' nella lista la risposta puo' portarne fino a
-# N x MAX_STORICO_PUNTI. Due giorni di un sensore chiacchierone ne producono
+# N x MAX_HISTORY_POINTS. Due giorni di un sensore chiacchierone ne producono
 # migliaia: il cap protegge la memoria di QUESTO processo per ogni singola
 # serie, non la leggibilita' della risposta (di quella si occupa
 # `casa/tempo.py`, che riassume). Chi legge deve poter sapere che e' scattato,
 # quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
 # troncamento del diario, imparata li'.
-MAX_STORICO_PUNTI = 5000
+MAX_HISTORY_POINTS = 5000
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
 # ma un payload.
 MAX_TEMPLATE_LEN = 2000
@@ -411,7 +411,7 @@ class HAClient:
     # di `components/config/view.py`. Non c'e' una quarta rotta: le plance si
     # scrivono su un altro canale (WS `lovelace/config/save`), che riscrive
     # TUTTO -- vedi la spec §1.1 -- e non passa di qui.
-    DOMINI_CONFIGURABILI = ("automation", "script", "scene")
+    CONFIGURABLE_DOMAINS = ("automation", "script", "scene")
 
     # La chiave finisce dentro un URL. Per automazioni e scene e' l'`id`
     # (cifre), per gli script uno slug (`cv.slug`): questa forma li copre
@@ -422,9 +422,9 @@ class HAClient:
 
     def _config_route(self, domain: str, key: str) -> tuple[str | None, str | None]:
         """L'URL della rotta di configurazione, oppure il motivo del rifiuto."""
-        if domain not in self.DOMINI_CONFIGURABILI:
+        if domain not in self.CONFIGURABLE_DOMAINS:
             return None, (f"il dominio «{domain}» non si configura da qui. "
-                          f"Domini configurabili: {', '.join(self.DOMINI_CONFIGURABILI)}.")
+                          f"Domini configurabili: {', '.join(self.CONFIGURABLE_DOMAINS)}.")
         if not self._KEY_RE.match(key or ""):
             return None, (f"la chiave «{key}» non ha una forma ammessa "
                           "(lettere, cifre, trattino e trattino basso, max 64).")
@@ -572,9 +572,9 @@ class HAClient:
     # `{domain}/create`, `{domain}/update`, `{domain}/delete` -- e la
     # chiave del delete porta il NOME DEL DOMINIO (`input_boolean_id`), non
     # `id`. Non e' un dettaglio estetico: con `id` il comando viene rifiutato.
-    DOMINI_HELPER = ("input_boolean", "input_number", "input_select",
-                     "input_text", "input_datetime", "timer", "counter",
-                     "schedule")
+    HELPER_DOMAINS = ("input_boolean", "input_number", "input_select",
+                      "input_text", "input_datetime", "timer", "counter",
+                      "schedule")
 
     @staticmethod
     def _ws_occurrence(msg: dict | None, key: str) -> dict:
@@ -596,16 +596,16 @@ class HAClient:
         comporre ma non accendere perche' manca un `input_boolean` si ferma a
         un passo dalla fine.
         """
-        if domain not in self.DOMINI_HELPER:
+        if domain not in self.HELPER_DOMAINS:
             return {"errore": (f"«{domain}» non e' un helper che so creare. "
-                               f"Helper: {', '.join(self.DOMINI_HELPER)}.")}
+                               f"Helper: {', '.join(self.HELPER_DOMAINS)}.")}
         return self._ws_occurrence(
             await self._ws_command(f"{domain}/create", dict(data)), "helper")
 
     async def cancella_helper(self, domain: str, helper_id: str) -> dict:
         """Cancella un helper. Serve alla DISFATTA (spec §3.1): se l'automazione
         viene rifiutata dopo che gli helper sono nati, l'officina li toglie."""
-        if domain not in self.DOMINI_HELPER:
+        if domain not in self.HELPER_DOMAINS:
             return {"errore": f"«{domain}» non e' un helper che so cancellare."}
         msg = await self._ws_command(f"{domain}/delete", {f"{domain}_id": helper_id})
         occurrence = self._ws_occurrence(msg, "_")
@@ -666,7 +666,7 @@ class HAClient:
     # perche' in questo progetto la differenza fra il nome di una costante di
     # Home Assistant e il suo valore e' gia' costata cara (`CO` vale
     # "carbon_monoxide", non "co").
-    CAMPI_BERSAGLIO = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
+    TARGET_FIELDS = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
 
     async def estrai_dal_bersaglio(self, target: dict) -> dict:
         """Cosa contiene un bersaglio -- e a dirlo e' HOME ASSISTANT, non HIRIS.
@@ -714,7 +714,7 @@ class HAClient:
         if not isinstance(target, dict):
             return {"errore": "il bersaglio non e' un oggetto"}
         cleaned = {}
-        for field in self.CAMPI_BERSAGLIO:
+        for field in self.TARGET_FIELDS:
             entries = target.get(field)
             if isinstance(entries, str):
                 entries = [entries]
@@ -1027,9 +1027,9 @@ class HAClient:
         truncated = False
         series: dict[str, list[dict]] = {}
         for entity_id, points in raw.items():
-            if len(points) > MAX_STORICO_PUNTI:
+            if len(points) > MAX_HISTORY_POINTS:
                 truncated = True
-            series[entity_id] = points[-MAX_STORICO_PUNTI:]
+            series[entity_id] = points[-MAX_HISTORY_POINTS:]
         return {"serie": series, "troncato": truncated}
 
     async def diario(self, entity: str | None, ore: int) -> dict:
@@ -1037,11 +1037,11 @@ class HAClient:
 
         `entity` filtra su una singola entita' (None = tutta la casa), `ore`
         e' la finestra all'indietro da adesso, normalizzata fra 1 e
-        MAX_DIARIO_ORE (valori non numerici valgono DEFAULT_DIARIO_ORE).
+        MAX_LOGBOOK_HOURS (valori non numerici valgono DEFAULT_LOGBOOK_HOURS).
 
         Ritorna `{"voci": [{"quando", "nome", "stato", "messaggio", "entita"},
         ...],
-        "troncato": bool, "ore": int}`, tenendo al piu' MAX_DIARIO_VOCI voci
+        "troncato": bool, "ore": int}`, tenendo al piu' MAX_LOGBOOK_ENTRIES voci
         (le piu' recenti). In caso di guasto -- o di un'entita' non valida --
         ritorna `{"errore": str}` e NON la chiave `voci`: una lista vuota
         affermerebbe «non e' successo niente», che e' un'altra cosa dal «non
@@ -1051,7 +1051,7 @@ class HAClient:
         Sia `ore` sia `troncato` tornano DICHIARATI al chiamante che
         confeziona la risposta per l'utente: prima questo dato restava dentro
         il metodo e il docstring gli chiedeva di ricostruirlo da
-        `len(voci) == MAX_DIARIO_VOCI` -- cioe' di indovinarlo -- e lo stesso
+        `len(voci) == MAX_LOGBOOK_ENTRIES` -- cioe' di indovinarlo -- e lo stesso
         valeva per la finestra clampata, altrimenti l'LLM concludeva «non e'
         successo altro» o diceva «nell'ultimo mese» avendo guardato una
         settimana.
@@ -1059,8 +1059,8 @@ class HAClient:
         if entity is not None and not _ENTITY_ID_RE.match(str(entity)):
             logger.warning("diario: entita' non valida: %r", entity)
             return {"errore": _truncate(f"entita' non valida: {entity!r}", 200)}
-        window = int(normalize_hours(ore, ceiling=MAX_DIARIO_ORE,
-                                      default=DEFAULT_DIARIO_ORE))
+        window = int(normalize_hours(ore, ceiling=MAX_LOGBOOK_HOURS,
+                                      default=DEFAULT_LOGBOOK_HOURS))
         now = datetime.now(UTC)
         start = (now - timedelta(hours=window)).isoformat()
         # start sta nel path (come /api/history/period); end_time ed entity
@@ -1130,8 +1130,8 @@ class HAClient:
         # il mese che gli era stato chiesto. Prima questo dato restava dentro
         # il metodo e il docstring chiedeva al chiamante di ricostruirlo --
         # cioe' di indovinarlo.
-        return {"voci": entries[-MAX_DIARIO_VOCI:],
-                "troncato": len(entries) > MAX_DIARIO_VOCI,
+        return {"voci": entries[-MAX_LOGBOOK_ENTRIES:],
+                "troncato": len(entries) > MAX_LOGBOOK_ENTRIES,
                 "ore": window}
 
     async def render_template(self, template: str) -> dict:
@@ -1345,9 +1345,9 @@ class HAClient:
 
     # I tipi che `search/related` accetta, coi VALORI di `ItemType`
     # (`components/search/__init__.py`), non coi nomi delle costanti.
-    TIPI_LEGAME = ("area", "automation", "automation_blueprint", "config_entry",
-                   "device", "entity", "floor", "group", "integration", "label",
-                   "person", "scene", "script", "script_blueprint")
+    RELATED_ITEM_TYPES = ("area", "automation", "automation_blueprint", "config_entry",
+                          "device", "entity", "floor", "group", "integration",
+                          "label", "person", "scene", "script", "script_blueprint")
 
     async def legami(self, tipo: str, identifier: str) -> dict:
         """Chi tocca questa cosa, secondo Home Assistant.
@@ -1374,7 +1374,7 @@ class HAClient:
         ogni HA con interfaccia -- ma un rifiuto va comunque distinto da un
         «niente».
         """
-        if tipo not in self.TIPI_LEGAME:
+        if tipo not in self.RELATED_ITEM_TYPES:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
         try:
             msg = await self._ws_batch(
@@ -1396,7 +1396,7 @@ class HAClient:
     # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
     # tenerle qui avrebbe voluto dire far importare il client di rete al
     # digesto, che si dichiara puro.
-    SEVERITA_PROBLEMA = PROBLEM_SEVERITY
+    PROBLEM_SEVERITY = PROBLEM_SEVERITY
 
     async def problemi(self) -> dict:
         """I guasti che Home Assistant ha GIA' diagnosticato.
@@ -1759,9 +1759,9 @@ class HAClient:
         self._servizi_listeners.append(callback)
 
     def add_plance_listener(self, callback: Callable[[dict], None]) -> None:
-        """callback(dati_evento) a ogni cambio di una plancia (EVENTO_PLANCE).
+        """callback(dati_evento) a ogni cambio di una plancia (DASHBOARD_EVENT).
         `dati_evento` porta il `url_path` di quella cambiata, ma chi ascolta
-        rilegge tutte le plance — vedi EVENTO_PLANCE."""
+        rilegge tutte le plance — vedi DASHBOARD_EVENT."""
         self._plance_listeners.append(callback)
 
     async def start_websocket(self) -> None:
@@ -1797,19 +1797,19 @@ class HAClient:
                     # -- fetta E3 Task 2, 2.0).
                     msg_id = 2
                     for event_type in (
-                        t for t in EVENTI_ANAGRAFE if t != "entity_registry_updated"
+                        t for t in TOPOLOGY_EVENTS if t != "entity_registry_updated"
                     ):
                         msg_id += 1
                         await ws.send_json(
                             {"id": msg_id, "type": "subscribe_events", "event_type": event_type}
                         )
                     # Task 5: le plance hanno un ascoltatore proprio, separato
-                    # dall'anagrafe (vedi EVENTO_PLANCE in cima al modulo).
+                    # dall'anagrafe (vedi DASHBOARD_EVENT in cima al modulo).
                     msg_id += 1
                     await ws.send_json(
-                        {"id": msg_id, "type": "subscribe_events", "event_type": EVENTO_PLANCE}
+                        {"id": msg_id, "type": "subscribe_events", "event_type": DASHBOARD_EVENT}
                     )
-                    for event_type in EVENTI_SERVIZI:
+                    for event_type in SERVICE_EVENTS:
                         msg_id += 1
                         await ws.send_json({"id": msg_id, "type": "subscribe_events",
                                             "event_type": event_type})
@@ -1840,7 +1840,7 @@ class HAClient:
                         except Exception:
                             logger.exception("anagrafe_listener callback raised")
                     # Stessa logica per le plance: una disconnessione perde per
-                    # sempre un eventuale EVENTO_PLANCE emesso nel frattempo.
+                    # sempre un eventuale DASHBOARD_EVENT emesso nel frattempo.
                     for cb in self._plance_listeners:
                         try:
                             cb({})
@@ -1860,27 +1860,27 @@ class HAClient:
                                         cb(event["data"])
                                     except Exception:
                                         logger.exception("state_listener callback raised")
-                            elif event_type == EVENTO_PLANCE:
+                            elif event_type == DASHBOARD_EVENT:
                                 # Il percorso della plancia cambiata sta in
                                 # event["data"], ma non lo si usa per filtrare:
                                 # chi ascolta rilegge tutte le plance (vedi
-                                # EVENTO_PLANCE e rileggi_plance).
+                                # DASHBOARD_EVENT e rileggi_plance).
                                 for cb in self._plance_listeners:
                                     try:
                                         cb(event.get("data", {}))
                                     except Exception:
                                         logger.exception("plance_listener callback raised")
-                            if event_type in EVENTI_SERVIZI:
+                            if event_type in SERVICE_EVENTS:
                                 for cb in self._servizi_listeners:
                                     try:
                                         cb(event_type)
                                     except Exception:
                                         logger.exception("servizi_listener callback raised")
-                            if event_type in EVENTI_ANAGRAFE:
+                            if event_type in TOPOLOGY_EVENTS:
                                 # La casa e' cambiata (create/update/move/remove, su
                                 # qualsiasi registro): l'anagrafe va rifatta. Nessun
                                 # filtro per action ne' per tipo di registro — vedi
-                                # EVENTI_ANAGRAFE in cima al modulo.
+                                # TOPOLOGY_EVENTS in cima al modulo.
                                 for cb in self._anagrafe_listeners:
                                     try:
                                         cb(event_type)

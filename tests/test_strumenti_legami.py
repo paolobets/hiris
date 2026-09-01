@@ -37,7 +37,7 @@ from tests.test_cervello_comprimari import _ClienteLegami
 # reso invisibile il Critical dei comprimari. Qui non serve estenderla: ogni
 # prova sotto chiede sempre lo stesso `riferimento` per chiamata, quindi
 # `_ClienteLegami(default=...)` -- che risponde a QUALUNQUE identificatore,
-# ma valida `tipo` contro `HAClient.TIPI_LEGAME` prima di rispondere -- basta
+# ma valida `tipo` contro `HAClient.RELATED_ITEM_TYPES` prima di rispondere -- basta
 # senza bisogno di popolare `mappa` per identificatore.
 
 
@@ -74,7 +74,7 @@ def test_il_vocabolario_copre_ESATTAMENTE_i_tipi_di_home_assistant():
     stesso elenco visto da due parti. Se Home Assistant ne aggiunge uno e il
     client lo accetta mentre la tabella no, il modello riceve un tipo che non
     sa nominare e non puo' richiedere: questa prova cade prima."""
-    assert set(LINK_NAME) == set(HAClient.TIPI_LEGAME)
+    assert set(LINK_NAME) == set(HAClient.RELATED_ITEM_TYPES)
 
 
 @pytest.mark.asyncio

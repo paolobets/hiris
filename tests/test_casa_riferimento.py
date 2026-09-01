@@ -22,7 +22,7 @@ from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import compose
 from hiris.app.casa.strumenti import ToolDispatcher
 from hiris.app.memoria.archivio import MemoryStore
-from hiris.app.proxy.ha_client import EVENTI_ANAGRAFE, HAClient
+from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS, HAClient
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che
 # HIRIS legge piu' due che deve buttare via (`components`, `latitude`) --
@@ -145,7 +145,7 @@ async def test_un_riferimento_non_letto_si_dichiara(archivio):
 def test_il_riferimento_si_rilegge_quando_la_casa_lo_cambia():
     """Cambiare fuso o unita' in Home Assistant emette `core_config_updated`.
     Senza questo, HIRIS ragionerebbe sul fuso di quando e' partito."""
-    assert "core_config_updated" in EVENTI_ANAGRAFE
+    assert "core_config_updated" in TOPOLOGY_EVENTS
 
 
 # --- il nucleo: chi lo legge ----------------------------------------------

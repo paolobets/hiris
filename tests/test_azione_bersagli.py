@@ -126,7 +126,7 @@ def test_il_client_e_la_verifica_conoscono_gli_stessi_cinque_campi():
     in cui la verifica traduce. Due elenchi scritti a mano nei due moduli
     divergerebbero al primo campo nuovo, e il bersaglio tradotto verrebbe
     scartato in silenzio dall'altro lato."""
-    assert set(HAClient.CAMPI_BERSAGLIO) == set(TARGETS.values())
+    assert set(HAClient.TARGET_FIELDS) == set(TARGETS.values())
 
 
 def test_una_voce_sola_puo_essere_una_stringa_anche_per_un_area():

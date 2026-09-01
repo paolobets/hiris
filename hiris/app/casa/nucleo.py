@@ -997,7 +997,7 @@ def _problems_notice(problems: dict | None) -> str | None:
             continue
         to_report.append(p)
 
-    # L'ordine di gravita' NON si riscrive qui: `SEVERITA_PROBLEMA` e'
+    # L'ordine di gravita' NON si riscrive qui: `PROBLEM_SEVERITY` e'
     # gia' ordinata dalla piu' grave, ed e' la sua unica casa (fondamenta:
     # nessun doppione). Serve perche' il tetto qui sotto taglia dalla coda:
     # senza, cinque `warning` in scadenza potrebbero nascondere un `critical`.

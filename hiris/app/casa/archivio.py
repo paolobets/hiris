@@ -531,7 +531,7 @@ class HomeSpaceStore:
         scioglimento del JSON, `config` a `None` che resta `None`.
 
         NON sta in _TABELLE ne' in replace(): le plance hanno una
-        cadenza propria (l'evento EVENTO_PLANCE), diversa da quella
+        cadenza propria (l'evento DASHBOARD_EVENT), diversa da quella
         dell'anagrafe — ci finirebbero cancellate a ogni ricostruzione dei
         registri.
 

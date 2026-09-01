@@ -13,8 +13,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import pytest
 
 from hiris.app.proxy.ha_client import (
-    MAX_DIARIO_ORE,
-    MAX_DIARIO_VOCI,
+    MAX_LOGBOOK_ENTRIES,
+    MAX_LOGBOOK_HOURS,
     MAX_TEMPLATE_LEN,
     MAX_TEMPLATE_RESPONSE_LEN,
     HAClient,
@@ -219,12 +219,12 @@ async def test_diario_caps_entries_keeping_most_recent(client):
     troncamento e' dichiarato invece che dedotto."""
     payload = [{"when": f"t{i}", "name": "n", "message": "m",
                 "entity_id": "light.cucina"}
-               for i in range(MAX_DIARIO_VOCI + 50)]
+               for i in range(MAX_LOGBOOK_ENTRIES + 50)]
     _fake_session(client, "get", _resp(200, json_data=payload))
     esito = await client.diario(entity=None, ore=168)
 
-    assert len(esito["voci"]) == MAX_DIARIO_VOCI
-    assert esito["voci"][-1]["quando"] == f"t{MAX_DIARIO_VOCI + 49}"
+    assert len(esito["voci"]) == MAX_LOGBOOK_ENTRIES
+    assert esito["voci"][-1]["quando"] == f"t{MAX_LOGBOOK_ENTRIES + 49}"
     assert esito["voci"][0]["quando"] == "t50"
     assert esito["troncato"] is True
     assert esito["ore"] == 168
@@ -259,12 +259,12 @@ async def test_diario_caps_after_filtering(client):
     restituiscono meno voci del massimo pur avendone di valide piu' vecchie."""
     payload = [{"when": f"t{i}", "name": "n", "message": "m",
                 "entity_id": "light.cucina"}
-               for i in range(MAX_DIARIO_VOCI)]
+               for i in range(MAX_LOGBOOK_ENTRIES)]
     payload += ["non un dict"] * 100
     _fake_session(client, "get", _resp(200, json_data=payload))
     esito = await client.diario(entity=None, ore=24)
 
-    assert len(esito["voci"]) == MAX_DIARIO_VOCI
+    assert len(esito["voci"]) == MAX_LOGBOOK_ENTRIES
     assert esito["voci"][0]["quando"] == "t0"
     assert esito["troncato"] is False
 
@@ -309,22 +309,22 @@ async def test_diario_falls_back_on_non_numeric_ore(client, ore):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("ore", [float("inf"), 18_000_000, 10**12,
-                                 MAX_DIARIO_ORE + 1])
+                                 MAX_LOGBOOK_HOURS + 1])
 async def test_diario_clamps_ore_to_maximum(client, ore):
-    """Valori enormi: la finestra e' limitata a MAX_DIARIO_ORE, cosi' HA non
+    """Valori enormi: la finestra e' limitata a MAX_LOGBOOK_HOURS, cosi' HA non
     deve scandire l'intero database del recorder."""
     calls = _fake_session(client, "get", _resp(200, json_data=[]))
     esito = await client.diario(entity=None, ore=ore)
 
-    assert abs(_start_ore_indietro(calls[0][0]) - MAX_DIARIO_ORE) < 0.02
-    assert esito["ore"] == MAX_DIARIO_ORE
+    assert abs(_start_ore_indietro(calls[0][0]) - MAX_LOGBOOK_HOURS) < 0.02
+    assert esito["ore"] == MAX_LOGBOOK_HOURS
 
 
 @pytest.mark.asyncio
 async def test_diario_usa_il_suo_tetto_non_quello_di_tempo():
     """L'unificazione di normalize_hours: diario ha tetto 168, tempo.py ha tetto
     2160. Questo test verifica che diario usi il suo tetto specifico. Se togli
-    tetto=MAX_DIARIO_ORE dalla chiamata di normalize_hours in ha_client.py, il
+    tetto=MAX_LOGBOOK_HOURS dalla chiamata di normalize_hours in ha_client.py, il
     diario clatherebbe il valore 200 a 2160 invece di 168 e il test
     fallirebbe."""
     client = HAClient(base_url="http://supervisor/core", token="test-token")
@@ -333,8 +333,8 @@ async def test_diario_usa_il_suo_tetto_non_quello_di_tempo():
     esito = await client.diario(entity=None, ore=200)
 
     # Con il tetto corretto di diario (168), la finestra inizia 168 ore indietro
-    assert abs(_start_ore_indietro(calls[0][0]) - MAX_DIARIO_ORE) < 0.02
-    assert esito["ore"] == MAX_DIARIO_ORE
+    assert abs(_start_ore_indietro(calls[0][0]) - MAX_LOGBOOK_HOURS) < 0.02
+    assert esito["ore"] == MAX_LOGBOOK_HOURS
 
 
 # --------------------------------------------------------------------------

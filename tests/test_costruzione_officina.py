@@ -39,7 +39,7 @@ class FintoHA:
         self.esistenti = {"1771"}
         self.stati = [{"entity_id": "automation.tapparelle_all_alba",
                        "state": "on", "attributes": {"id": "1771"}}]
-        self.DOMINI_CONFIGURABILI = ("automation", "script", "scene")
+        self.CONFIGURABLE_DOMAINS = ("automation", "script", "scene")
         # Ondata finale, punto 1: prima di questa riga `FintoHA` non
         # sollevava MAI, e nessun test poteva vedere cosa succede quando Home
         # Assistant e' irraggiungibile durante un'`apply` -- il difetto n.1

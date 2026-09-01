@@ -13,7 +13,7 @@ de «l'osservatore», 26/08/2026). La finta precedente accettava QUALUNQUE
 la forma di `casa/domande.py::legami`, non quella del client. Con quella
 finta, `costruisci_comprimari` poteva chiamare `ha_client.legami("entita",
 ...)` (la chiave ITALIANA: il client vero la rifiuta prima di toccare la
-rete, perche' `TIPI_LEGAME` ha i valori inglesi) e leggere `esito["legami"]`
+rete, perche' `RELATED_ITEM_TYPES` ha i valori inglesi) e leggere `esito["legami"]`
 da una risposta che il client vero non manda mai -- **inerte in produzione,
 zero chiamate di rete utili, `mappa` sempre vuota** -- e questi cinque test
 restavano tutti verdi, perche' la finta non validava `tipo` e rispondeva
@@ -53,7 +53,7 @@ class _ClienteLegami:
     una volta per tutte.
 
     Valida `tipo` come fa il client vero (i valori INGLESI di
-    `HAClient.TIPI_LEGAME`, importati -- non ricopiati) e risponde nella
+    `HAClient.RELATED_ITEM_TYPES`, importati -- non ricopiati) e risponde nella
     forma GREZZA del client: chiavi inglesi, nessuna busta `{"legami": ...}`.
 
     Costruita sui quattro esiti che `HAClient.legami` produce davvero:
@@ -138,7 +138,7 @@ class _ClienteLegami:
 
     async def legami(self, tipo, identifier):
         self.chiesti.append((tipo, identifier))
-        if tipo not in HAClient.TIPI_LEGAME:
+        if tipo not in HAClient.RELATED_ITEM_TYPES:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {tipo}"}
         return self._mappa.get(identifier, self._default)
 
@@ -169,7 +169,7 @@ async def test_i_comprimari_arrivano_da_legami():
 async def test_si_chiede_sempre_il_tipo_giusto_a_home_assistant():
     """Il Critical vero: `costruisci_comprimari` chiedeva `"entita"` (la
     chiave ITALIANA), che il client vero rifiuta prima di toccare la rete --
-    `"entita" not in HAClient.TIPI_LEGAME`. Qui si legge cosa e' stato
+    `"entita" not in HAClient.RELATED_ITEM_TYPES`. Qui si legge cosa e' stato
     chiesto DAVVERO, non solo cosa e' tornato.
 
     Mutazione ESEGUITA: `tipo_ha = TIPO_LEGAME_HA["entita"]` sostituito con

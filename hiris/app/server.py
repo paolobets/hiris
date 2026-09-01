@@ -616,7 +616,7 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     rado mentirebbe poche ore dopo, ed e' peggio che non saperlo»).
 
     C'e' anche una ragione meccanica, e da sola basterebbe: l'anagrafe si
-    ricostruisce sugli eventi dei REGISTRI (`EVENTI_ANAGRAFE`), e il registro
+    ricostruisce sugli eventi dei REGISTRI (`TOPOLOGY_EVENTS`), e il registro
     dei problemi non ne emette nessuno. Messo in archivio, nessun innesco lo
     aggiornerebbe: sarebbe una tabella scritta all'avvio e vecchia da li' in
     poi.
@@ -820,7 +820,7 @@ async def costruisci_comprimari(
     prima di questa correzione questa funzione era INERTE in produzione:
     zero chiamate di rete, `mappa` sempre vuota, e nessuna riga di log lo
     diceva). `HAClient.legami(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
-    contro `TIPI_LEGAME`, che ha i valori INGLESI di Home Assistant
+    contro `RELATED_ITEM_TYPES`, che ha i valori INGLESI di Home Assistant
     (`"entity"`, non `"entita"`); un tipo che non riconosce lo rifiuta con
     `{"errore": ...}` **prima di toccare la rete**. E la risposta buona non
     porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
@@ -1418,7 +1418,7 @@ def programma_rilettura_plance(client, archivio, ritardo: float = 3.0):
     """Restituisce `innesca(dati_evento)`: rilegge le plance, una volta sola.
 
     Gemello di `programma_ricostruzione_anagrafe` — stesso antirimbalzo,
-    stessa tolleranza ai guasti — ma per un innesco DIVERSO (EVENTO_PLANCE,
+    stessa tolleranza ai guasti — ma per un innesco DIVERSO (DASHBOARD_EVENT,
     non i registri): le plance non stanno in _TABELLE e non vanno confuse con
     l'anagrafe, che questa funzione non tocca.
     """
@@ -1472,7 +1472,7 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
     (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
     "principali". `guarda(forza=True)` bypassa il confronto sull'impronta:
     e' quanto usa `programma_rilettura_comportamento`, agganciata allo stesso
-    evento di registro entita' (EVENTI_ANAGRAFE) che gia' fa ricostruire
+    evento di registro entita' (TOPOLOGY_EVENTS) che gia' fa ricostruire
     l'anagrafe -- aggiungere o togliere un'automazione CAMBIA quel registro.
 
     Restituisce `True` se ha riletto, `False` se non serviva o se la
@@ -1528,7 +1528,7 @@ def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
     il confronto sull'impronta, una volta sola per raffica.
 
     Gemello di `programma_ricostruzione_anagrafe` -- stesso antirimbalzo,
-    stessa tolleranza ai guasti, stesso evento (EVENTI_ANAGRAFE, via
+    stessa tolleranza ai guasti, stesso evento (TOPOLOGY_EVENTS, via
     `add_anagrafe_listener`: nessun meccanismo nuovo). Aggiungere o togliere
     un'automazione cambia il registro delle entita', ma NON tocca sempre
     `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
@@ -2018,7 +2018,7 @@ async def _on_startup(app: web.Application) -> None:
     # ricarica (il servizio non accetta un id), quindi lo tiene aggiornato
     # una sentinella periodica sull'mtime dei due file (vedi sotto, job
     # "hiris_comportamento_sentinella"). Un evento di registro entita' esiste
-    # pero' (EVENTI_ANAGRAFE) e aggiungere/togliere un'automazione lo emette:
+    # pero' (TOPOLOGY_EVENTS) e aggiungere/togliere un'automazione lo emette:
     # lo si aggancia qui sotto per forzare una rilettura anche quando l'mtime
     # non basta -- un'automazione tolta o messa in un PACCHETTO non tocca
     # `automations.yaml` (vedi `programma_rilettura_comportamento`).
@@ -2034,7 +2034,7 @@ async def _on_startup(app: web.Application) -> None:
         programma_rilettura_comportamento(guarda_comportamento))
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
-    # che HIRIS non aveva mai visto. Cadenza propria (EVENTO_PLANCE, non i
+    # che HIRIS non aveva mai visto. Cadenza propria (DASHBOARD_EVENT, non i
     # registri): non stanno in _TABELLE, quindi una ricostruzione
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
     # lettura non deve poter impedire il boot.

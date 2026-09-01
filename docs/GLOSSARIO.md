@@ -588,7 +588,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | intento | la struttura con cui una richiesta di nuova costruzione descrive se stessa -- che cosa la fa scattare, quali passi compie, quali stati verifica, quali parametri porta, se va riusata o si ripete, se e' stata chiesta esplicitamente -- da cui si decide quale oggetto serve davvero | intent | ✓ arriva |
 | interpretazione | il linguaggio chiuso a quattro caselle -- a chi si riferisce, cosa chiede, quando vale, che forza ha -- con cui il modello propone una lettura strutturata di una frase ricordata, scartando cio' che non riconosce invece di inventarlo | interpretation | ~ parziale |
 | invocazione | il risultato completo di un singolo lancio del processo che parla col modello -- il codice di uscita, l'output gia' ripulito dai segreti, il flusso gia' interpretato -- pensato perche' lo stesso lancio puo' avvenire due volte nello stesso turno senza che i due tentativi vengano letti in due modi diversi | invocation | ~ parziale |
-| legame | la relazione fra una cosa della casa e le altre che la nominano o dove sta, nel vocabolario dei quattordici tipi che Home Assistant riconosce per l'API di ricerca -- il tipo di legame, non il legame stesso: `legami()` ("I nomi degli strumenti") ne restituisce l'elenco, questa e' la parola con cui una singola voce di quell'elenco si nomina | link | ~ parziale |
+| legame | la relazione fra una cosa della casa e le altre che la nominano o dove sta, nel vocabolario dei quattordici tipi che Home Assistant riconosce per l'API di ricerca -- il tipo di legame, non il legame stesso: `legami()` ("I nomi degli strumenti") ne restituisce l'elenco, questa e' la parola con cui una singola voce di quell'elenco si nomina. **`TIPI_LEGAME -> RELATED_ITEM_TYPES`** (`proxy/ha_client.py`): non `LINK_TYPES` -- quei valori sono le stringhe di `ItemType` che il comando `search/related` di Home Assistant accetta, quindi prendono il nome del comando che li riceve, non la traduzione della parola italiana | link | ~ parziale |
 | letto | il participio passato di `leggi`: non l'atto di leggere ma il RISULTATO, cio' che e' stato letto e tenuto -- `sistema_letto`, `specchio_letto`, `comportamento_letto_il`. Il glossario aveva risolto sia `leggi` sia `letto` con lo stesso inglese (`read`): la guardia sulle collisioni dello strumento di rinomina (Task 4bis) l'ha trovato prima che potesse fondere l'atto e il risultato in un nome solo, su `casa/strumenti.py` e `azione/costruzione/officina.py`, dove le due forme convivono. `leggi` resta `read`: e' il verbo, il nome giusto per un metodo (`casa.leggi()`). `letto` e' il participio, quindi diventa un aggettivo in inglese: `loaded` | loaded | ✓ arriva |
 | lettura (casa) | trasforma il testo di un file di configurazione di Home Assistant nella struttura che rappresenta, sollevando quando il testo e' davvero malformato invece di restituire un risultato vuoto indistinguibile da un file senza contenuto | parse | ✓ arriva |
 | lettura (consumi) | i token che una chiamata ha RICEVUTO dalla cache del provider invece di generarli da capo -- un significato distinto da «trasformare il testo di un file di configurazione» (la riga sopra): scoperto rinominando `consumi/` (Task 4), dove applicare alla cieca `parse` avrebbe prodotto un nome semanticamente falso per `cache_lettura`. La stessa codebase aveva gia' scelto `cache_read`/`cache_write` altrove (`backends/pricing.py`) prima che questo glossario lo dicesse | read | ✓ arriva |
@@ -1342,6 +1342,7 @@ al Task 6 invece che deciso qui.
 | coda | tail | **due sensi vivi, e quello che lo strumento applica da solo e' il minoritario -- quarto caso della famiglia gia' descritta in «Il limite della qualificazione per ambito» (Task 9, lotto 12).** `tail` e' giusto per `agent/runner.py:1559` (`coda = stdout.strip()[-200:]`, l'ultimo pezzo del flusso letto) e per i due `_coda` di `tests/test_strumenti_al_ponte.py` e `tests/test_token_interno.py`. Ma in `api/handlers_chat.py::_downgrade_to_chain` e nei quattro file di test che la nominano (`test_reasoning_queue.py`, `test_instradamento.py::_CodaFinta`, `test_promessa_dal_ponte.py`, `test_schedulatore_turno.py`) `coda` e' la CODA DI LAVORO, cioe' `ReasoningQueue`: `tail = request.app["reasoning_queue"]` sarebbe un nome che mente. Qualificare per ambito non aiuta -- i due sensi convivono dentro `agent/` come dentro `tests/` -- e nemmeno la forma li separa: sono entrambi NUDI, che e' esattamente il caso peggiore descritto per `fuori (casa)`. Si decide occorrenza per occorrenza guardando il codice: `queue` quando e' `ReasoningQueue` (il nome che l'app usa gia' nella chiave `reasoning_queue` e nella classe), `tail` quando e' la coda di una stringa |
 | codice | code |
 | colonna | column |
+| configurabile | configurable |
 | configurazione | configuration |
 | comando | command |
 | confronta | compare |
@@ -1547,6 +1548,7 @@ al Task 6 invece che deciso qui.
 | stampa | print |
 | statistiche | statistics |
 | stato | state |
+| storico | history | il nome che Home Assistant da' alla serie di stati passati di un'entita' (`GET /api/history/period`), e quindi il nome che prende qui: LEGGE DEL CONFINE. Non e' un doppione di `cronaca -> journal` (la nostra registrazione di cio' che abbiamo fatto NOI) ne' di `storia`, che resta italiano in `consumi/store.py::storia` -- residuo dichiarato, protetto da `_METODI_USAGE_STORE` |
 | successivo | next |
 | suffisso | suffix |
 | suggerimento | suggestion |
@@ -2440,7 +2442,7 @@ codice:
 | costruisci | Propone di creare, modificare o cancellare un'automazione, uno script o una scena -- valida la configurazione contro questa casa e restituisce un'anteprima, senza scrivere nulla | propose | ~ parziale |
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
 | andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend | ~ parziale |
-| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca | logbook | ~ parziale |
+| accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca. **`diario` NON prende una riga, e il metodo `HAClient.diario` si chiama comunque `logbook` (deciso a mano, lotto 19 di `proxy/`)**: `logbook` e' gia' l'inglese di `accaduto`, e una riga `diario -> logbook` renderebbe la collisione PERMANENTE e automatica. Ma i due nomi non sono due concetti: sono lo STESSO concetto a due strati -- `proxy/ha_client.py::logbook` e' la chiamata grezza a `GET /api/logbook`, `casa/tempo.py::logbook` e' la risposta che ci si costruisce sopra confrontandola con la cronaca. La legge del confine dice che al confine si prende il nome del sistema esterno, e Home Assistant quella cosa la chiama logbook a tutti e due gli strati. Chi legge deve saperlo, ed e' scritto qui invece che in un rapporto | logbook | ~ parziale |
 
 > **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
 > «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
@@ -2604,7 +2606,7 @@ codice:
 
 > **Perche' `legami` -> `related` e non un sinonimo inventato (`links`, `relations`):** e' il
 > confine, non un'invenzione. `legami` chiama, sotto, il comando nativo di Home Assistant
-> `search/related` (`proxy/ha_client.py:1406`, `TIPI_LEGAME` a riga 1371-1373 coi VALORI di
+> `search/related` (`proxy/ha_client.py:1406`, `RELATED_ITEM_TYPES` (gia' `TIPI_LEGAME`) coi VALORI di
 > `ItemType` di `homeassistant/components/search/__init__.py`) -- HA ha gia' un nome per "chi tocca
 > questa cosa", ed e' quello, non un sinonimo che questa fetta esiste per non inventare.
 >

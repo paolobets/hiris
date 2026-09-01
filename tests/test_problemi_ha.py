@@ -193,9 +193,9 @@ def test_i_piu_gravi_non_finiscono_sotto_il_tetto():
     """Il tetto taglia dalla coda: senza un ordine per gravita', cinque
     `warning` in scadenza arrivati prima nasconderebbero il `critical`.
 
-    L'ordine non e' riscritto nel nucleo -- e' `HAClient.SEVERITA_PROBLEMA`,
+    L'ordine non e' riscritto nel nucleo -- e' `HAClient.PROBLEM_SEVERITY`,
     che dichiara di essere ordinata dalla piu' grave."""
-    assert HAClient.SEVERITA_PROBLEMA[0] == "critical"
+    assert HAClient.PROBLEM_SEVERITY[0] == "critical"
     testo, _ = _nucleo({"problemi": [
         _p(domain=f"rumore_{n}", issue_id=f"scadenza_{n}", severity="warning",
            breaks_in_ha_version="2027.1")
