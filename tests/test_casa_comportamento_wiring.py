@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.server import sentinella_comportamento
+from hiris.app.server import behavior_sentinel
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def _client():
 @pytest.mark.asyncio
 async def test_la_prima_chiamata_legge_sempre(archivio, cartella):
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, cartella)
+    guarda = behavior_sentinel(client, archivio, cartella)
     assert await guarda() is True
     assert client.get_states.await_count == 1
 
@@ -40,7 +40,7 @@ async def test_la_prima_chiamata_legge_sempre(archivio, cartella):
 @pytest.mark.asyncio
 async def test_se_i_file_non_cambiano_non_si_rilegge(archivio, cartella):
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, cartella)
+    guarda = behavior_sentinel(client, archivio, cartella)
     await guarda()
     assert await guarda() is False
     assert await guarda() is False
@@ -50,7 +50,7 @@ async def test_se_i_file_non_cambiano_non_si_rilegge(archivio, cartella):
 @pytest.mark.asyncio
 async def test_un_file_toccato_fa_rileggere(archivio, cartella):
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, cartella)
+    guarda = behavior_sentinel(client, archivio, cartella)
     await guarda()
     f = cartella / "scripts.yaml"
     os.utime(f, (f.stat().st_atime + 10, f.stat().st_mtime + 10))
@@ -63,7 +63,7 @@ async def test_senza_cartella_non_esplode(archivio):
     """Fuori dal Supervisor la cartella di HA non c'e': si legge comunque lo
     stato, e tutte le voci risultano senza corpo. Non e' un guasto."""
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, None)
+    guarda = behavior_sentinel(client, archivio, None)
     assert await guarda() is True
 
 
@@ -75,7 +75,7 @@ async def test_senza_cartella_si_rilegge_una_volta_sola(archivio):
     realta' e' l'opposto, e senza distinguerli si rileggerebbe a ogni
     chiamata invece che una volta sola."""
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, None)
+    guarda = behavior_sentinel(client, archivio, None)
     assert await guarda() is True
     assert await guarda() is False
     assert await guarda() is False
@@ -88,7 +88,7 @@ async def test_una_rilettura_fallita_non_blocca_le_successive(archivio, cartella
     guasto passeggero congelerebbe il comportamento fino al prossimo tocco."""
     client = _client()
     client.get_states = AsyncMock(side_effect=[OSError("HA giu'"), []])
-    guarda = sentinella_comportamento(client, archivio, cartella)
+    guarda = behavior_sentinel(client, archivio, cartella)
     assert await guarda() is False      # fallita, e lo dice
     assert await guarda() is True       # riprova senza aspettare un tocco
 
@@ -98,14 +98,14 @@ async def test_forza_rilegge_anche_se_i_file_non_sono_cambiati(archivio, cartell
     """Important (6): un'automazione tolta o aggiunta dentro un PACCHETTO non
     tocca l'mtime dei due file "principali" -- resterebbe un fantasma (o
     invisibile) fino al prossimo tocco a mano. `guarda(forza=True)` e' il
-    modo in cui `programma_rilettura_comportamento` bypassa il confronto
+    modo in cui `schedule_behavior_reread` bypassa il confronto
     sull'impronta quando arriva un evento di registro entita'."""
     client = _client()
-    guarda = sentinella_comportamento(client, archivio, cartella)
+    guarda = behavior_sentinel(client, archivio, cartella)
     await guarda()
     assert await guarda() is False              # impronta invariata: non rilegge
     assert client.get_states.await_count == 1
-    assert await guarda(forza=True) is True      # bypassata
+    assert await guarda(force=True) is True      # bypassata
     assert client.get_states.await_count == 2
 
 
@@ -120,8 +120,8 @@ async def test_la_cartella_che_compare_dopo_l_avvio_viene_vista(archivio, cartel
     """
     client = _client()
     montata: list = [None]                       # all'inizio non c'e'
-    guarda = sentinella_comportamento(client, archivio, None,
-                                      trova_cartella=lambda: montata[0])
+    guarda = behavior_sentinel(client, archivio, None,
+                               find_folder=lambda: montata[0])
 
     assert await guarda() is True                # prima lettura, senza cartella
     assert await guarda() is False               # e non si ripete a vuoto

@@ -20,7 +20,7 @@ def test_reasoning_queue_importable():
 # altrimenti la misura non e' piu' ripetibile da chi legge.
 #
 # Review finale della fetta «il linter e le best practice», I-3: provato per
-# mutazione che togliendo `leggi_fuso=lambda: _fuso_da_archivio_casa(
+# mutazione che togliendo `leggi_fuso=lambda: _timezone_from_home_space_store(
 # archivio_casa)` dalla costruzione di `ReasoningQueue` in `server.py`,
 # l'intera suite restava verde. Il gemello nello stesso commit -- la
 # costruzione di `Workshop` -- quella mutazione la prende
@@ -61,8 +61,8 @@ def _estrai_costruzione_reasoning_queue():
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
-        "def _check(app, data_dir, os, archivio_casa, ReasoningQueue, "
-        "_fuso_da_archivio_casa):\n" + textwrap.indent(body, "    ")
+        "def _check(app, data_dir, os, home_space_store, ReasoningQueue, "
+        "_timezone_from_home_space_store):\n" + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup costruzione reasoning_queue>", "exec"), namespace)
@@ -94,7 +94,7 @@ def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_pat
         check = _estrai_costruzione_reasoning_queue()
         app: dict = {}
         check(app, str(tmp_path), os, archivio_casa, _SpiaReasoningQueue,
-              server._fuso_da_archivio_casa)
+              server._timezone_from_home_space_store)
 
         istanza = app["reasoning_queue"]
         assert isinstance(istanza, _SpiaReasoningQueue)

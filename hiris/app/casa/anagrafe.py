@@ -908,7 +908,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 # Il secondo parere e' di Home Assistant su se stesso: `extract_from_target`
 # (`HAClient.extract_from_target`) RISOLVE un'area invece di dedurla. Le
 # funzioni qui sotto sono la meta' pura di quel confronto: la rete la fa il
-# chiamante (`server.giro_di_confronto_albero`), qui arrivano solo le risposte
+# chiamante (`server.tree_comparison_round`), qui arrivano solo le risposte
 # gia' lette -- la stessa disciplina di `componi()`, che riceve `stato` e
 # `problemi` come argomenti.
 

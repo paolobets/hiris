@@ -936,7 +936,7 @@ def _problem_entry(p: dict) -> str:
     - `learn_more_url`: un indirizzo che il modello non puo' aprire. Chi puo'
       aprirlo lo trova gia' nella pagina delle riparazioni;
     - `created`: il registro dei problemi si rilegge ogni pochi minuti (vedi
-      `server.rileggi_problemi_ha`), e una data di apertura non cambia cosa
+      `server.reread_ha_problems`), e una data di apertura non cambia cosa
       c'e' da fare.
     """
     name = f"{p.get('domain') or 'senza dominio'}: " \
@@ -1332,7 +1332,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     `confronto` e' l'esito dell'ultimo giro di verifica dell'albero contro
     Home Assistant (`anagrafe.confronta_con_home_assistant`, alimentato da
-    `server.giro_di_confronto_albero`). Arriva come ARGOMENTO per la stessa
+    `server.tree_comparison_round`). Arriva come ARGOMENTO per la stessa
     ragione di `problemi`: questa funzione non apre connessioni, e chiedere a
     HA cosa contiene un'area e' una chiamata di rete. `None` significa «il
     chiamante non ha chiesto», e NON «l'albero combacia»: vedi

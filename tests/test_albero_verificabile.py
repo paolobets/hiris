@@ -49,7 +49,7 @@ from hiris.app.casa.anagrafe import (
 )
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import compose
-from hiris.app.server import giro_di_confronto_albero
+from hiris.app.server import tree_comparison_round
 
 # --------------------------------------------------------------------------
 # I finti: l'anagrafe da una parte, cio' che Home Assistant risponde dall'altra
@@ -364,7 +364,7 @@ def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():
 # --------------------------------------------------------------------------
 
 class _ClienteFinto:
-    """Home Assistant visto da `giro_di_confronto_albero`: risponde per area,
+    """Home Assistant visto da `tree_comparison_round`: risponde per area,
     e per le aree che non conosce restituisce un errore invece di una lista
     corta -- come fa `extract_from_target` davvero."""
 
@@ -404,7 +404,7 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
     app = {"archivio_casa": archivio}
     cliente = _ClienteFinto({"cucina": ["light.cucina"]})
 
-    esito = asyncio.run(giro_di_confronto_albero(app, cliente, quante=1)())
+    esito = asyncio.run(tree_comparison_round(app, cliente, count=1)())
     assert esito is app["confronto_albero"]
     assert app["confronto_albero"]["aree_totali"] == 3
     assert app["confronto_albero"]["letto_il"]
@@ -415,7 +415,7 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
 def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
     archivio = _archivio_con_una_casa(tmp_path)
     cliente = _ClienteFinto({})
-    giro = giro_di_confronto_albero({"archivio_casa": archivio}, cliente, quante=1)
+    giro = tree_comparison_round({"archivio_casa": archivio}, cliente, count=1)
 
     asyncio.run(giro())
     asyncio.run(giro())
@@ -430,7 +430,7 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
     cliente = _ClienteFinto({}, guasto="Home Assistant non ha risposto")
     app = {"archivio_casa": archivio}
 
-    asyncio.run(giro_di_confronto_albero(app, cliente, quante=2)())
+    asyncio.run(tree_comparison_round(app, cliente, count=2)())
     assert all(g["errore"] for g in app["confronto_albero"]["guardate"])
     testo, _ = compose_briefing(app)
     assert "non si sono potute controllare" in testo
@@ -447,8 +447,8 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
 
     archivio = _archivio_con_una_casa(tmp_path)
     app = {"archivio_casa": archivio}
-    assert asyncio.run(giro_di_confronto_albero(app, _ClienteVecchio())()) is None
-    assert asyncio.run(giro_di_confronto_albero(app, None)()) is None
+    assert asyncio.run(tree_comparison_round(app, _ClienteVecchio())()) is None
+    assert asyncio.run(tree_comparison_round(app, None)()) is None
     assert "confronto_albero" not in app
     archivio.close()
 

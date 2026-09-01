@@ -875,10 +875,10 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     per il prossimo messaggio -- il GET la legge da `app["catena_modelli"]`,
     che il ricalcolo riscrive.
 
-    Qui si usa la funzione VERA (`server._ricalcola_catena`), non una finta:
+    Qui si usa la funzione VERA (`server._recompute_chain`), non una finta:
     di sua natura questa prova esiste per non fidarsi del cablaggio."""
     from hiris.app.llm_router import LLMRouter
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     class _Runner:
         pass
@@ -886,7 +886,7 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     router = LLMRouter(claude=_Runner(), openrouter=_Runner(),
                        model_chain=["claude", "openrouter"])
     client.app["llm_router"] = router
-    client.app["ricalcola_catena"] = lambda: _ricalcola_catena(client.app)
+    client.app["ricalcola_catena"] = lambda: _recompute_chain(client.app)
     client.app["models_config"] = {"chain_order": ["claude", "openrouter"]}
     client.app["catena_modelli"] = ["claude", "openrouter"]
     # Le due credenziali che il GET misura per disegnare le righe: senza,

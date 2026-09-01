@@ -26,7 +26,7 @@ import pytest
 from hiris.app.api.handlers_casa import compose_briefing
 from hiris.app.casa.nucleo import compose
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import rileggi_problemi_ha
+from hiris.app.server import reread_ha_problems
 
 
 def _nucleo(problemi):
@@ -344,7 +344,7 @@ def test_rileggi_problemi_mette_la_fotografia_in_ram():
             return {"problemi": [_p(domain="caldaia", issue_id="x")]}
 
     app: dict = {}
-    esito = asyncio.run(rileggi_problemi_ha(app, _ClienteFinto()))
+    esito = asyncio.run(reread_ha_problems(app, _ClienteFinto()))
     assert esito == app["problemi_ha"]
     assert app["problemi_ha"]["problemi"][0]["domain"] == "caldaia"
 
@@ -358,7 +358,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
             return {"errore": "Home Assistant non ha risposto"}
 
     app: dict = {}
-    asyncio.run(rileggi_problemi_ha(app, _ClienteRotto()))
+    asyncio.run(reread_ha_problems(app, _ClienteRotto()))
     assert app["problemi_ha"] == {"errore": "Home Assistant non ha risposto"}
     testo, _ = compose_briefing(app)
     assert "non si e' potuto guardare" in testo
@@ -373,9 +373,9 @@ def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():
         pass
 
     app: dict = {}
-    assert asyncio.run(rileggi_problemi_ha(app, _ClienteVecchio())) is None
+    assert asyncio.run(reread_ha_problems(app, _ClienteVecchio())) is None
     assert "problemi_ha" not in app
-    assert asyncio.run(rileggi_problemi_ha(app, None)) is None
+    assert asyncio.run(reread_ha_problems(app, None)) is None
 
 
 @pytest.mark.parametrize("problemi", [

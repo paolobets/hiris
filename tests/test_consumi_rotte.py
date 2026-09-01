@@ -37,7 +37,7 @@ class _Req:
 
 
 class _ArchivioCasaFinto:
-    """Il minimo che `_fuso_da_archivio_casa` (`server.py`) legge:
+    """Il minimo che `_timezone_from_home_space_store` (`server.py`) legge:
     `reference_frame()`. Sostituisce `app["fuso_casa"]` (riparazione-
     impoverisce-brief.md, appendice punto 7): quella chiave non la popolava
     nessun codice di produzione, solo questa finta -- il difetto che questo

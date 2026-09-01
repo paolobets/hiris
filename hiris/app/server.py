@@ -97,7 +97,7 @@ def _spawn(coro, *, name: str | None = None) -> asyncio.Task:
     return task
 
 
-def _chiudi_promessa_scaduta(app, job: dict) -> None:
+def _close_expired_promise(app, job: dict) -> None:
     """Il turno del piano e' scaduto: la promessa fallisce dichiarando l'attesa.
 
     Estratta invece che scritta in linea dentro lo sweep perche' ha una
@@ -110,8 +110,8 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
     `submit`, e `wake` e' la sola parte del job che sopravvive.
     """
     ident = (job.get("wake") or {}).get("promessa_id") or ""
-    archivio = app.get("promesse")
-    riga = archivio.read(ident) if (archivio is not None and ident) else None
+    store = app.get("promesse")
+    riga = store.read(ident) if (store is not None and ident) else None
     if riga is None or riga.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
         # riapre. E' lo stesso ordine di controlli della consegna
@@ -119,7 +119,7 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
         return
     minuti = int((app.get("models_config") or {}).get("ponte", {}).get(
         "scadenza_min", 5))
-    archivio.concludi(
+    store.concludi(
         ident, state="fallita", now=time.time(),
         reason=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
                 "risposto: non so cosa dirti."))
@@ -128,7 +128,7 @@ def _chiudi_promessa_scaduta(app, job: dict) -> None:
         ident, minuti)
 
 
-def _ponte_attivo(archivio: dict | None) -> bool:
+def _bridge_active(store: dict | None) -> bool:
     """Il ponte e' acceso se, e solo se, `ponte.attivo` lo dice nell'archivio.
 
     Fino alla 2.3.1 questa funzione si chiamava `_chat_subscription_active` ed
@@ -139,7 +139,7 @@ def _ponte_attivo(archivio: dict | None) -> bool:
 
     Il proprietario ha fuso i due interruttori in uno solo (`ponte.attivo`,
     13 agosto 2026), e il fail-safe NON e' stato rimosso: e' diventato
-    STRUTTURALE. C'e' UN valore, derivato UNA volta (`_ricalcola_catena`
+    STRUTTURALE. C'e' UN valore, derivato UNA volta (`_recompute_chain`
     scrive `app["ponte_attivo"]`) e letto da tutti -- la spazzata,
     l'instradamento della chat, il gate del lavoratore del ponte, la pagina.
     L'invariante «non accodare mai in una coda che nessuno spazza» non regge
@@ -159,7 +159,7 @@ def _ponte_attivo(archivio: dict | None) -> bool:
     ponte sarebbe impossibile per chiunque abbia un token.
 
     Chi aggiorna col token presente e `ponte.attivo` false perde il ponte, e
-    NON in silenzio: `_avvisi_del_ponte` glielo dice all'avvio nel registro, la
+    NON in silenzio: `_bridge_notices` glielo dice all'avvio nel registro, la
     pagina Modelli lo dice in cima («Il Piano Claude Max ha il token, lo paghi,
     ed e' fuori dalla catena») e accanto a quella frase c'e' il bottone che lo
     riaccende in un gesto.
@@ -168,10 +168,10 @@ def _ponte_attivo(archivio: dict | None) -> bool:
     con un interruttore -- farebbe cadere
     `test_chat_subscription_path.py::test_il_ponte_e_un_valore_solo`.
     """
-    return bool(((archivio or {}).get("ponte") or {}).get("attivo", False))
+    return bool(((store or {}).get("ponte") or {}).get("attivo", False))
 
 
-def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
+def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
     """Le due frasi che `run.sh` non puo' piu' dire, e perche' sono ancora qui.
 
     Fino alla 2.5.0 vivevano in `run.sh`: erano l'unico posto che parlava
@@ -194,18 +194,18 @@ def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
     - **token presente, ponte spento**: e' lo stato in cui si ritrova chi
       aggiorna alla 3.0.0 avendo il piano acceso via `provider_subscription`
       SENZA aver mai acceso il ponte. Quell'opzione implicava il ponte; la
-      versione B toglie l'implicazione (vedi `_ponte_attivo`), e la copia
+      versione B toglie l'implicazione (vedi `_bridge_active`), e la copia
       d'archivio della 2.5.0 aveva copiato l'OPZIONE `ponte.attivo`, non lo
       stato effettivo. Il ponte si spegne, e questa riga e' cio' che rende la
       cosa rumorosa invece che silenziosa: senza, la chat tornerebbe a pagare
       a consumo senza dirlo.
     """
-    if ponte_attivo and not token_presente:
+    if bridge_active and not token_presente:
         return [("Il ponte e' acceso ma «Provider · Piano Claude Max — token» e' "
                 "vuoto: nessun messaggio arriva al Piano Claude Max, e ogni turno "
                 "passa alla catena -- dal forfait al consumo. Incolla il token, "
                 "oppure spegni il ponte dalla pagina Modelli di HIRIS.")]
-    if token_presente and not ponte_attivo:
+    if token_presente and not bridge_active:
         return [("Hai il token del Piano Claude Max, ma il ponte e' spento: le "
                 "risposte passano dalla catena, a consumo. Il ponte non si accende "
                 "piu' da un'opzione dell'add-on -- si accende nella pagina Modelli "
@@ -230,7 +230,7 @@ def _avvisi_del_ponte(ponte_attivo: bool, token_presente: bool) -> list[str]:
 # passa una catena (`model_chain=None`), ed e' pinnato dai suoi test.
 
 
-def _catena_com_era(strategia: str, credenziali: dict, ponte: bool) -> list[str]:
+def _chain_as_it_was(strategia: str, credentials: dict, bridge: bool) -> list[str]:
     """La catena con cui nasce un archivio che non ha ancora la sua: **ogni
     provider di cui c'e' una credenziale**, nell'ordine del preset.
 
@@ -260,12 +260,12 @@ def _catena_com_era(strategia: str, credenziali: dict, ponte: bool) -> list[str]
     quello lo dice `ponte.attivo`, non l'appartenenza.
     """
     from .llm_router import _STRATEGY_ORDER
-    attivi = {}
+    active = {}
     for p in ("subscription", "claude", "openai", "openrouter", "ollama"):
-        ha = bool(credenziali.get(p))
-        attivi[p] = (ha and ponte) if p == "subscription" else ha
-    ordine = _STRATEGY_ORDER.get(strategia, _STRATEGY_ORDER["balanced"])
-    return [n for n in ordine if attivi.get(n)]
+        ha = bool(credentials.get(p))
+        active[p] = (ha and bridge) if p == "subscription" else ha
+    order = _STRATEGY_ORDER.get(strategia, _STRATEGY_ORDER["balanced"])
+    return [n for n in order if active.get(n)]
 
 
 def _find_ha_config_dir() -> str | None:
@@ -323,7 +323,7 @@ async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
 #  2. **e' idempotente**: al secondo avvio non trova niente e non fa niente;
 #  3. **non fa cadere l'avvio e non lo appende**: se Home Assistant non
 #     risponde, o la cartella di configurazione non e' montata, la funzione
-#     registra e torna -- entro un tempo **limitato** (`_ATTESA_CONNESSIONE_WS`
+#     registra e torna -- entro un tempo **limitato** (`_WS_CONNECT_TIMEOUT`
 #     sulla connessione, 10s su ciascuna delle due attese dentro la
 #     conversazione). E se la deregistrazione fallisce lo **dice**: ogni
 #     risorsa rimasta col proprio URL, piu' una riga di riepilogo con
@@ -331,7 +331,7 @@ async def _ws_await(ws, msg_id: int, timeout: float = 10.0) -> dict:
 #     dell'utente sarebbe indistinguibile da un'assenza di problemi -- e un
 #     elenco monco lo sarebbe altrettanto, perche' l'utente toglierebbe cio'
 #     che ha letto e resterebbe con il resto.
-_URL_CARD_LOCALE = "/local/{slug}/hiris-chat-card.js"
+_LOCAL_CARD_URL = "/local/{slug}/hiris-chat-card.js"
 _URL_CARD_INGRESS = "/api/hassio_ingress/{slug}/static/hiris-chat-card.js"
 # I due file che l'add-on copiava dentro <config-ha>/www/{slug}/. Nient'altro
 # di quella cartella e' suo: se l'utente ci ha messo roba propria, resta.
@@ -346,7 +346,7 @@ _FILE_CARD = ("hiris-chat-card.js", "hiris-ingress.json")
 # avvio -- non un guasto, ma nemmeno un avvio: la chat non c'e' finche' quella
 # riga non torna. "Non fa cadere l'avvio" e "non ritarda l'avvio" sono due
 # promesse diverse, e serviva la seconda (fix round 1, Important 1).
-_ATTESA_CONNESSIONE_WS = 15.0
+_WS_CONNECT_TIMEOUT = 15.0
 
 
 def _e_risorsa_della_card(url: str, slug: str) -> bool:
@@ -364,11 +364,11 @@ def _e_risorsa_della_card(url: str, slug: str) -> bool:
       - `/local/{slug}/hiris-chat-card.js` nudo (add-on vecchi);
       - lo stesso con la query di versione, `?v=...`.
     """
-    locale = _URL_CARD_LOCALE.format(slug=slug)
+    local = _LOCAL_CARD_URL.format(slug=slug)
     return (
         url == _URL_CARD_INGRESS.format(slug=slug)
-        or url == locale
-        or url.startswith(locale + "?")
+        or url == local
+        or url.startswith(local + "?")
     )
 
 
@@ -379,7 +379,7 @@ async def _deregistra_risorsa_card(ha_base_url: str, token: str, slug: str) -> b
     punto il log l'ha gia' detto: ogni risorsa non tolta col proprio URL, piu'
     una riga di riepilogo con l'elenco completo. Nessun ramo di questa funzione
     solleva, e nessuno puo' bloccare l'avvio piu' di
-    `_ATTESA_CONNESSIONE_WS` + due attese da 10s.
+    `_WS_CONNECT_TIMEOUT` + due attese da 10s.
     """
     ws_url = (
         ha_base_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -390,12 +390,12 @@ async def _deregistra_risorsa_card(ha_base_url: str, token: str, slug: str) -> b
             # La connessione si apre a mano invece che con `async with
             # session.ws_connect(...)` per poterle mettere attorno un
             # `wait_for`: e' il solo punto della conversazione che non aveva
-            # un timeout suo (vedi `_ATTESA_CONNESSIONE_WS`). Il `finally`
+            # un timeout suo (vedi `_WS_CONNECT_TIMEOUT`). Il `finally`
             # chiude il context manager esattamente come farebbe l'`async
             # with`, anche quando l'attesa scade.
             connessione = session.ws_connect(ws_url)
             ws = await asyncio.wait_for(
-                connessione.__aenter__(), timeout=_ATTESA_CONNESSIONE_WS)
+                connessione.__aenter__(), timeout=_WS_CONNECT_TIMEOUT)
             try:
                 handshake = await asyncio.wait_for(ws.receive_json(), timeout=10.0)
                 if handshake.get("type") == "auth_required":
@@ -472,7 +472,7 @@ async def _deregistra_risorsa_card(ha_base_url: str, token: str, slug: str) -> b
         logger.warning(
             "card HIRIS: Home Assistant non ha risposto (%s) — se nella tua "
             "dashboard resta la risorsa %s, toglila da Impostazioni -> Dashboard "
-            "-> Risorse", exc, _URL_CARD_LOCALE.format(slug=slug))
+            "-> Risorse", exc, _LOCAL_CARD_URL.format(slug=slug))
         return False
 
 
@@ -484,25 +484,25 @@ def _rimuovi_file_card(slug: str) -> None:
         # non e' un guasto, e' una installazione che la copia non l'ha mai
         # ricevuta.
         return
-    cartella = os.path.join(ha_config, "www", slug)
-    for nome in _FILE_CARD:
-        percorso = os.path.join(cartella, nome)
+    folder = os.path.join(ha_config, "www", slug)
+    for name in _FILE_CARD:
+        path = os.path.join(folder, name)
         try:
-            if os.path.exists(percorso):
-                os.remove(percorso)
-                logger.info("card HIRIS: rimosso %s", percorso)
+            if os.path.exists(path):
+                os.remove(path)
+                logger.info("card HIRIS: rimosso %s", path)
         except Exception as exc:
             logger.warning(
                 "card HIRIS: non ho potuto rimuovere %s (%s) — puoi cancellarlo "
-                "a mano", percorso, exc)
+                "a mano", path, exc)
     # La cartella si toglie SOLO se e' rimasta vuota: se l'utente ci ha messo
     # qualcosa di suo, quella roba non e' dell'add-on e non si tocca.
     try:
-        if os.path.isdir(cartella) and not os.listdir(cartella):
-            os.rmdir(cartella)
-            logger.info("card HIRIS: rimossa la cartella vuota %s", cartella)
+        if os.path.isdir(folder) and not os.listdir(folder):
+            os.rmdir(folder)
+            logger.info("card HIRIS: rimossa la cartella vuota %s", folder)
     except Exception as exc:
-        logger.debug("card HIRIS: cartella %s non rimossa (%s)", cartella, exc)
+        logger.debug("card HIRIS: cartella %s non rimossa (%s)", folder, exc)
 
 
 async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
@@ -558,7 +558,7 @@ async def _disinstalla_card_lovelace(ha_base_url: str, token: str,
 # vedi il commento sopra il cablaggio dello scheduler, piu' sotto.
 
 
-async def ricarica_inventario_entita(cache, ha_client) -> bool:
+async def reload_entity_inventory(cache, ha_client) -> bool:
     """Ritenta il caricamento iniziale dell'inventario delle entita', e SOLO
     quello. Ritorna True se questo giro l'ha rimesso in piedi.
 
@@ -600,7 +600,7 @@ async def ricarica_inventario_entita(cache, ha_client) -> bool:
     return True
 
 
-async def rileggi_problemi_ha(app, ha_client) -> dict | None:
+async def reread_ha_problems(app, ha_client) -> dict | None:
     """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
     `app["problemi_ha"]`. Ritorna cio' che ha scritto (`None` senza client).
 
@@ -641,22 +641,22 @@ async def rileggi_problemi_ha(app, ha_client) -> dict | None:
     """
     if ha_client is None:
         return None
-    lettore = getattr(ha_client, "problems", None)
-    if lettore is None:
+    reader = getattr(ha_client, "problems", None)
+    if reader is None:
         # Un client vecchio o un finto di prova che non dichiara `problemi`:
         # non si scrive niente, cosi' `app["problemi_ha"]` resta `None` e il
         # nucleo tace invece di affermare che la casa e' sana.
         return None
     try:
-        esito = await lettore()
+        report = await reader()
     except Exception as exc:  # non previsto: `problems()` cattura gia' da se'
         logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
-        esito = {"errore": "Home Assistant non ha risposto"}
-    app["problemi_ha"] = esito
-    return esito
+        report = {"errore": "Home Assistant non ha risposto"}
+    app["problemi_ha"] = report
+    return report
 
 
-async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
+async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
     caricate) verso `app["osservatore"].watch_system` (fetta «l'osservatore»,
     Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
@@ -677,33 +677,33 @@ async def guarda_condizioni_di_sistema(app, ha_client) -> int | None:
     Chiamata una volta all'avvio (subito dopo `rebuild_conditions`) e
     ogni dieci minuti dal lavoro periodico registrato piu' sotto in
     `_on_startup` -- stessa funzione, due chiamanti, come
-    `giro_di_confronto_albero`/`guarda_comportamento` qui accanto.
+    `tree_comparison_round`/`guarda_comportamento` qui accanto.
 
     Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
     puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
     e in quel caso deve propagare, per il motivo scritto sul suo docstring.
     """
-    osservatore = app.get("osservatore")
-    if osservatore is None:
+    watcher = app.get("osservatore")
+    if watcher is None:
         return None
-    esito_problemi = await ha_client.problems()
-    if "errore" in esito_problemi:
+    problems_report = await ha_client.problems()
+    if "errore" in problems_report:
         logger.warning(
             "cervello: condizioni di sistema non lette, problemi() ha "
-            "fallito (%s) -- giro saltato", esito_problemi["errore"])
+            "fallito (%s) -- giro saltato", problems_report["errore"])
         return None
-    registri, non_disponibili = await ha_client.read_registries()
-    if "integrazioni" in non_disponibili:
+    registries, unavailable = await ha_client.read_registries()
+    if "integrazioni" in unavailable:
         logger.warning(
             "cervello: condizioni di sistema non lette, il registro delle "
             "integrazioni non e' disponibile -- giro saltato")
         return None
-    return osservatore.watch_system(
-        problems=esito_problemi.get("problemi") or [],
-        integrations=registri.get("integrazioni") or [])
+    return watcher.watch_system(
+        problems=problems_report.get("problemi") or [],
+        integrations=registries.get("integrazioni") or [])
 
 
-def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
+def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
 
@@ -728,7 +728,7 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
 
     **DOVE VIVE L'ESITO.** In RAM, in `app["confronto_albero"]`, accanto a
     `app["problemi_ha"]` e per la stessa ragione, gia' scritta per esteso su
-    `rileggi_problemi_ha`: un confronto e' momentaneo -- la casa cambia e la
+    `reread_ha_problems`: un confronto e' momentaneo -- la casa cambia e la
     replica si rifa' da sola al primo evento di registro -- e un archivio
     riletto di rado continuerebbe ad annunciare per ore una divergenza gia'
     rientrata. E' lo stesso ragionamento per cui `state` non entra nel sistema
@@ -747,68 +747,68 @@ def giro_di_confronto_albero(app, ha_client, quante: int = AREAS_PER_ROUND):
 
     Lo stato della rotazione (`dopo`) vive in una chiusura e non in `app`: e'
     un dettaglio di questo lavoro, non un fatto sulla casa, e nessun altro ha
-    motivo di leggerlo. Stessa forma di `sentinella_comportamento` e di
-    `programma_ricostruzione_anagrafe` qui sopra.
+    motivo di leggerlo. Stessa forma di `behavior_sentinel` e di
+    `schedule_registry_rebuild` qui sopra.
     """
-    stato: dict[str, str | None] = {"dopo": None}
+    state: dict[str, str | None] = {"dopo": None}
 
-    async def giro() -> dict | None:
+    async def round() -> dict | None:
         if ha_client is None:
             return None
-        lettore = getattr(ha_client, "extract_from_target", None)
-        if lettore is None:
+        reader = getattr(ha_client, "extract_from_target", None)
+        if reader is None:
             # Un client vecchio o un finto di prova che non dichiara il
             # comando: non si scrive niente, cosi' la chiave resta assente e
             # il nucleo tace invece di affermare che l'albero e' verificato.
             return None
-        archivio = app.get("archivio_casa")
-        if archivio is None:
+        store = app.get("archivio_casa")
+        if store is None:
             return None
 
         # Una lettura sola, e l'albero costruito una volta: il campione, le
         # domande a HA e il verdetto guardano tutti la STESSA fotografia della
         # replica. Ricostruirlo dopo le risposte vorrebbe dire confrontare un
         # albero con le risposte a domande fatte su un altro.
-        casa = archivio.read()
-        piani = hierarchy(casa, tuple(archivio.unavailable()))
-        aree = tree_areas(piani)
-        campione = choose_sample(aree, quante, stato["dopo"])
+        home_space = store.read()
+        piani = hierarchy(home_space, tuple(store.unavailable()))
+        areas = tree_areas(piani)
+        sample = choose_sample(areas, count, state["dopo"])
 
-        risposte: dict[str, dict] = {}
-        for area in campione:
+        answers: dict[str, dict] = {}
+        for area in sample:
             try:
-                risposte[area["id"]] = await lettore({"area_id": [area["id"]]})
+                answers[area["id"]] = await reader({"area_id": [area["id"]]})
             except Exception as exc:  # non previsto: il client cattura gia'
                 logger.warning("confronto dell'area %s non riuscito: %s", area["id"], exc)
-                risposte[area["id"]] = {"errore": "Home Assistant non ha risposto"}
-        if campione:
-            stato["dopo"] = campione[-1]["id"]
+                answers[area["id"]] = {"errore": "Home Assistant non ha risposto"}
+        if sample:
+            state["dopo"] = sample[-1]["id"]
 
-        esito = compare_with_home_assistant(piani, casa, risposte)
+        report = compare_with_home_assistant(piani, home_space, answers)
         # La data la mette il chiamante: `confronta_con_home_assistant` e'
         # pura, e una funzione pura che leggesse l'orologio non sarebbe piu'
         # confrontabile con se stessa. Serve a chi disegna l'albero
         # (`/api/casa`) per dire quanto e' fresco il verdetto che sta
         # mostrando.
-        esito["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
-        app["confronto_albero"] = esito
-        divergenti = sum(1 for g in esito["guardate"] if g.get("mancanti") or g.get("in_piu")
+        report["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
+        app["confronto_albero"] = report
+        divergenti = sum(1 for g in report["guardate"] if g.get("mancanti") or g.get("in_piu")
                          or g.get("assente_in_ha"))
         if divergenti:
             logger.warning("confronto dell'albero: %d aree su %d guardate divergono da "
-                           "Home Assistant", divergenti, len(esito["guardate"]))
-        return esito
+                           "Home Assistant", divergenti, len(report["guardate"]))
+        return report
 
-    return giro
+    return round
 
 
 # I legami che valgono come comprimari: cose che FANNO o MISURANO qualcosa
 # mentre l'oggetto dura. Un'area e' dove sta, non cosa fa.
-_LEGAMI_COMPRIMARI = ("entita", "automazione", "scena", "script")
+_COMPANION_TYPES = ("entita", "automazione", "scena", "script")
 
 
-async def costruisci_comprimari(
-        ha_client, soggetti: list[str]) -> tuple[dict[str, list[str]], int]:
+async def build_companions(
+        ha_client, subjects: list[str]) -> tuple[dict[str, list[str]], int]:
     """Per ogni protagonista, chi sta con lui. **Una lettura per soggetto.**
 
     Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
@@ -839,7 +839,7 @@ async def costruisci_comprimari(
     poter distinguere «questa entita' non ha comprimari» da «non si e'
     potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
     88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
-    fallito, e' la stessa disciplina di `guarda_condizioni_di_sistema` qui
+    fallito, e' la stessa disciplina di `watch_system_conditions` qui
     sopra.
 
     **Il ritorno e' una coppia, `(mappa, falliti)`, non piu' solo `mappa`**
@@ -876,50 +876,50 @@ async def costruisci_comprimari(
     non la decisione.
     """
     mappa: dict[str, list[str]] = {}
-    falliti = 0
-    tipo_ha = HA_LINK_TYPE["entita"]  # sempre "entity": i soggetti che
+    failed = 0
+    ha_type = HA_LINK_TYPE["entita"]  # sempre "entity": i soggetti che
     # arrivano qui sono protagonisti di oggetti, cioe' entita' di Home
     # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
     # `search/related` sa collegare.
-    for soggetto in soggetti:
-        if soggetto in mappa or "." not in soggetto or soggetto.startswith(
+    for subject in subjects:
+        if subject in mappa or "." not in subject or subject.startswith(
                 ("problema:", "integrazione:")):
             continue
         try:
-            grezzo = await ha_client.related(tipo_ha, soggetto)
-        except Exception as errore:
+            raw = await ha_client.related(ha_type, subject)
+        except Exception as error:
             logger.debug("cervello: comprimari di %s non letti (%s: %s)",
-                        soggetto, type(errore).__name__, errore)
-            mappa[soggetto] = []
-            falliti += 1
+                        subject, type(error).__name__, error)
+            mappa[subject] = []
+            failed += 1
             continue
-        esito = _legami_leggibili(grezzo, "entita", soggetto)
-        if "errore" in esito:
+        report = _legami_leggibili(raw, "entita", subject)
+        if "errore" in report:
             logger.debug("cervello: comprimari di %s non letti (%s)",
-                        soggetto, esito["errore"])
-            mappa[soggetto] = []
-            falliti += 1
+                        subject, report["errore"])
+            mappa[subject] = []
+            failed += 1
             continue
-        legami = esito.get("legami") or {}
+        related = report.get("legami") or {}
         insieme: list[str] = []
-        for tipo in _LEGAMI_COMPRIMARI:
-            for altro in legami.get(tipo) or []:
-                if isinstance(altro, str) and altro != soggetto and altro not in insieme:
-                    insieme.append(altro)
-        mappa[soggetto] = insieme
-    if falliti:
+        for link_type in _COMPANION_TYPES:
+            for other in related.get(link_type) or []:
+                if isinstance(other, str) and other != subject and other not in insieme:
+                    insieme.append(other)
+        mappa[subject] = insieme
+    if failed:
         logger.warning(
             "cervello: comprimari non letti per %d soggetti su %d -- il "
-            "contesto di questo giro e' parziale", falliti, len(mappa))
-    return mappa, falliti
+            "contesto di questo giro e' parziale", failed, len(mappa))
+    return mappa, failed
 
 
-async def costruisci_bilanci(
-        ha_client, archivio_casa, *, giorno: str, fuso: str | None,
-        soggetti_energia: list[str], direzioni: dict) -> tuple[list[dict], int]:
+async def build_balances(
+        ha_client, home_space_store, *, day: str, timezone: str | None,
+        energy_subjects: list[str], directions: dict) -> tuple[list[dict], int]:
     """I bilanci del giorno, uno per dispositivo -- mandato «il bilancio
     dell'energia», 27/08/2026. Torna `(bilanci, falliti)`: stessa forma di
-    `costruisci_comprimari` sopra, per la stessa ragione -- il chiamante
+    `build_companions` sopra, per la stessa ragione -- il chiamante
     deve poter distinguere «non ho trovato niente da riassumere» (`falliti
     == 0`, `bilanci` magari vuota) da «ho trovato dispositivi ma non sono
     riuscito a leggerne le statistiche» (`falliti > 0`).
@@ -969,97 +969,97 @@ async def costruisci_bilanci(
     casa non ha nessuna direzione nota (o `archivio_casa` non c'e' ancora),
     tornare `([], 0)` non costa niente.
     """
-    if archivio_casa is None or not soggetti_energia:
+    if home_space_store is None or not energy_subjects:
         return [], 0
 
-    casa = archivio_casa.read()
-    entita_per_id = {e.get("id"): e for e in casa.get("entita", []) if e.get("id")}
-    nome_dispositivo = {d.get("id"): d.get("nome") or d.get("id")
-                        for d in casa.get("dispositivi", []) if d.get("id")}
-    entita_del_dispositivo: dict[str, list[dict]] = {}
-    for e in casa.get("entita", []):
+    home_space = home_space_store.read()
+    entities_by_id = {e.get("id"): e for e in home_space.get("entita", []) if e.get("id")}
+    device_names = {d.get("id"): d.get("nome") or d.get("id")
+                    for d in home_space.get("dispositivi", []) if d.get("id")}
+    device_entities: dict[str, list[dict]] = {}
+    for e in home_space.get("entita", []):
         did = e.get("dispositivo_id")
         if did:
-            entita_del_dispositivo.setdefault(did, []).append(e)
+            device_entities.setdefault(did, []).append(e)
 
-    membri_per_dispositivo: dict[str, set[str]] = {}
-    for soggetto in soggetti_energia:
+    members_by_device: dict[str, set[str]] = {}
+    for subject in energy_subjects:
         # **Correzione BASSA della review (mandato, punto 6, 27/08/2026):
         # solo i soggetti che hanno DAVVERO una direzione entrano fra i
         # "membri" candidati.** `soggetti_energia` nella vita vera porta
         # TUTTI i soggetti osservati quel giorno (`server.py::_aggrega_ieri`
-        # e `riaggrega_gli_ultimi_due_giorni` passano `sorted(soggetti)`,
+        # e `reaggregate_last_two_days` passano `sorted(soggetti)`,
         # senza filtro) -- prima di questa correzione un interruttore o un
         # sensore diagnostico dello STESSO dispositivo dell'inverter finiva
         # elencato come «dentro il bilancio» pur continuando a produrre il
         # proprio episodio. Innocuo su questa casa (l'inverter ha solo
         # energia, potenza e batteria), falso su un dispositivo misto.
-        info = direzioni.get(soggetto) if direzioni else None
+        info = directions.get(subject) if directions else None
         if not info or not info.get("direzione"):
             continue
-        voce = entita_per_id.get(soggetto)
-        dispositivo_id = voce.get("dispositivo_id") if voce else None
-        if dispositivo_id:
-            membri_per_dispositivo.setdefault(dispositivo_id, set()).add(soggetto)
+        entry = entities_by_id.get(subject)
+        device_id = entry.get("dispositivo_id") if entry else None
+        if device_id:
+            members_by_device.setdefault(device_id, set()).add(subject)
 
-    candidati: dict[str, dict] = {}
-    for dispositivo_id, membri in membri_per_dispositivo.items():
-        entita_per_dimensione: dict[str, str] = {}
-        provenienza_per_dimensione: dict[str, str] = {}
-        for soggetto in sorted(membri):
-            info = direzioni.get(soggetto) if direzioni else None
+    candidates: dict[str, dict] = {}
+    for device_id, membri in members_by_device.items():
+        entity_by_dimension: dict[str, str] = {}
+        provenance_by_dimension: dict[str, str] = {}
+        for subject in sorted(membri):
+            info = directions.get(subject) if directions else None
             if not info or info.get("direzione") not in BALANCE_DIRECTIONS:
                 continue
-            voce = entita_per_id.get(soggetto) or {}
-            if voce.get("classe") != "energy":
+            entry = entities_by_id.get(subject) or {}
+            if entry.get("classe") != "energy":
                 continue
-            dimensione = info["direzione"]
-            if dimensione in entita_per_dimensione:
+            dimension = info["direzione"]
+            if dimension in entity_by_dimension:
                 continue  # la prima trovata (ordine alfabetico) vince, deterministico
-            entita_per_dimensione[dimensione] = soggetto
-            provenienza_per_dimensione[dimensione] = info["provenienza"]
-        if not entita_per_dimensione:
+            entity_by_dimension[dimension] = subject
+            provenance_by_dimension[dimension] = info["provenienza"]
+        if not entity_by_dimension:
             continue  # nessuna direzione utile: niente bilancio per questo dispositivo
 
-        entita_batteria = next(
-            (e.get("id") for e in sorted(entita_del_dispositivo.get(dispositivo_id, []),
+        battery_entity = next(
+            (e.get("id") for e in sorted(device_entities.get(device_id, []),
                                          key=lambda e: e.get("id") or "")
              if e.get("classe") == "battery"), None)
 
-        candidati[dispositivo_id] = {
-            "nome": nome_dispositivo.get(dispositivo_id, dispositivo_id),
+        candidates[device_id] = {
+            "nome": device_names.get(device_id, device_id),
             "entita": sorted(membri),
-            "entita_per_dimensione": entita_per_dimensione,
-            "provenienza_per_dimensione": provenienza_per_dimensione,
-            "entita_batteria": entita_batteria,
+            "entita_per_dimensione": entity_by_dimension,
+            "provenienza_per_dimensione": provenance_by_dimension,
+            "entita_batteria": battery_entity,
         }
 
-    if not candidati:
+    if not candidates:
         return [], 0
 
     ids_da_leggere = sorted(
-        {soggetto for c in candidati.values() for soggetto in c["entita_per_dimensione"].values()}
-        | {c["entita_batteria"] for c in candidati.values() if c["entita_batteria"]})
+        {subject for c in candidates.values() for subject in c["entita_per_dimensione"].values()}
+        | {c["entita_batteria"] for c in candidates.values() if c["entita_batteria"]})
 
-    da_ts, a_ts = day_boundaries(giorno, fuso)
+    da_ts, a_ts = day_boundaries(day, timezone)
     da_iso = datetime.fromtimestamp(da_ts, tz=UTC).isoformat()
     a_iso = datetime.fromtimestamp(a_ts, tz=UTC).isoformat()
-    esito = await ha_client.hourly_statistics(ids_da_leggere, da_iso, a_iso)
-    if "errore" in esito:
+    report = await ha_client.hourly_statistics(ids_da_leggere, da_iso, a_iso)
+    if "errore" in report:
         logger.warning(
             "cervello: statistiche del bilancio non lette per %d dispositivi -- "
-            "nessun bilancio per questo giro (%s)", len(candidati), esito["errore"])
-        return [], len(candidati)
+            "nessun bilancio per questo giro (%s)", len(candidates), report["errore"])
+        return [], len(candidates)
 
-    serie = esito["serie"]
+    series = report["serie"]
     bilanci: list[dict] = []
-    falliti = 0
-    for dispositivo_id, c in candidati.items():
-        corpo = build_balance_body(
-            series=serie, entity_per_dimension=c["entita_per_dimensione"],
+    failed = 0
+    for device_id, c in candidates.items():
+        body = build_balance_body(
+            series=series, entity_per_dimension=c["entita_per_dimensione"],
             provenance_per_dimension=c["provenienza_per_dimensione"],
             battery_entity=c["entita_batteria"])
-        if not corpo.get("totali"):
+        if not body.get("totali"):
             # **Correzione MEDIA della review (mandato, punto 3,
             # 27/08/2026): una serie vuota dove ci si aspettava un bilancio
             # CONTA come fallimento**, anche se `ha_client.statistiche_
@@ -1069,20 +1069,20 @@ async def costruisci_bilanci(
             # spec dell'osservatore, §9③). Un bilancio senza nemmeno un
             # totale non e' un fatto onesto su questo dispositivo, e'
             # un'assenza indistinguibile da «non ho letto niente»: la
-            # riparazione (`riaggrega_gli_ultimi_due_giorni`, che
+            # riparazione (`reaggregate_last_two_days`, che
             # SOSTITUISCE) deve fermarsi su questo `falliti`, o sostituisce
             # un giorno che aveva gia' un bilancio con uno senza -- gli
             # undici frammenti tornano. La notte (`_aggrega_ieri`, che
             # COSTRUISCE da zero) ignora `falliti` apposta: resta
             # tollerabile, non peggiora niente che gia' esisteva.
-            falliti += 1
+            failed += 1
             continue
-        bilanci.append({"dispositivo_id": dispositivo_id, "nome": c["nome"],
-                        "entita": c["entita"], "corpo": corpo})
-    return bilanci, falliti
+        bilanci.append({"dispositivo_id": device_id, "nome": c["nome"],
+                        "entita": c["entita"], "corpo": body})
+    return bilanci, failed
 
 
-def _fuso_da_archivio_casa(archivio_casa) -> str | None:
+def _timezone_from_home_space_store(home_space_store) -> str | None:
     """Il fuso della casa, letto da `reference_frame()` -- `None` se
     `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
     costruisce).
@@ -1100,7 +1100,7 @@ def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     - `_aggrega_ieri` e la costruzione di `UsageStore` (il `lambda`
       passato a `read_timezone`) leggono il fuso DAVVERO dentro `_on_startup`
       -- sono scritte li', a livello di codice, non solo chiamate da li';
-    - `riaggrega_gli_ultimi_due_giorni`, qui sotto, e' una funzione a se':
+    - `reaggregate_last_two_days`, qui sotto, e' una funzione a se':
       solo la sua CHIAMATA sta dentro `_on_startup`, il corpo che legge il
       fuso no. La frase che c'era prima diceva «tutte e tre dentro
       `_on_startup`» senza questa distinzione, ed era falsa per questo caso;
@@ -1115,10 +1115,10 @@ def _fuso_da_archivio_casa(archivio_casa) -> str | None:
     docstring suo che dice perche' non si unifica qui. Non toccarla senza
     leggerlo prima.
     """
-    return archivio_casa.reference_frame().get("fuso") if archivio_casa else None
+    return home_space_store.reference_frame().get("fuso") if home_space_store else None
 
 
-async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now) -> None:
+async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None:
     """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
     non e' ancora finito) **con gli stessi comprimari che costruirebbe
     l'aggregazione notturna** -- non piu' senza. Non torna niente: chi la
@@ -1185,29 +1185,29 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     La scelta non e' «riaggrego senza»: sostituire oggetti ricchi con oggetti
     poveri e' un danno, mentre non ripararli e' solo un'attesa fino al
     prossimo riavvio. Stessa regola gia' presa per il giro delle condizioni
-    di sistema (`guarda_condizioni_di_sistema`, qui sopra): **meglio un buco
+    di sistema (`watch_system_conditions`, qui sopra): **meglio un buco
     nella storia che una bugia nella storia.**
 
     **Il salto vero legge `falliti`, non un `except`** (CRITICAL «il
     grilletto non lo preme nessuno», review de «l'osservatore», 26/08/2026 --
     grilletto-brief.md). La prima stesura di questa cura avvolgeva la
-    chiamata a `costruisci_comprimari` in un `try/except` e saltava solo se
+    chiamata a `build_companions` in un `try/except` e saltava solo se
     SOLLEVAVA -- ma `HAClient.related` (`proxy/ha_client.py`) non solleva mai
     su un guasto di rete: lo CONTIENE e torna `{"errore": ...}`, e
-    `costruisci_comprimari` fa lo stesso con quella risposta (mette `[]`,
+    `build_companions` fa lo stesso con quella risposta (mette `[]`,
     conta un fallito, non rilancia). Il `try/except` avvolgeva quindi una
     funzione che di fatto non puo' sollevare, e il salto era irraggiungibile
     dal collaboratore vero -- proprio nel caso normale, non in un limite: un
     riavvio dell'add-on con Home Assistant non ancora sveglio (i due
     partono insieme). Il segnale giusto e' il contatore dei falliti che
-    `costruisci_comprimari` gia' costruiva per il proprio warning e ora
+    `build_companions` gia' costruiva per il proprio warning e ora
     restituisce: se **anche un solo soggetto** e' fallito, questa funzione si
     ferma, perche' quel soggetto verrebbe riscritto con `[]` mentre la
     notte l'aveva letto -- e' l'asimmetria vera, e va detta per intero:
 
     > Chi costruisce dal nulla tollera il parziale; chi sostituisce no.
     >
-    > L'aggregazione notturna (`_aggrega_ieri`, e `costruisci_comprimari`
+    > L'aggregazione notturna (`_aggrega_ieri`, e `build_companions`
     > stessa) costruisce da zero: un oggetto con qualche comprimare mancante
     > e' meglio di nessun oggetto, e va avanti -- e' la regola del suo
     > docstring. Questa funzione SOSTITUISCE cio' che c'e': un oggetto con
@@ -1217,14 +1217,14 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     > CRITICAL correggeva.
 
     Il `try/except` attorno alla chiamata resta, come difesa in profondita'
-    contro il guasto REALE che puo' far sollevare `costruisci_comprimari` per
+    contro il guasto REALE che puo' far sollevare `build_companions` per
     davvero -- una risposta malformata che la sua traduzione non contiene,
     vedi il suo docstring, corretto in questo stesso giro: non e' un bug
     futuro ipotetico -- ma il segnale di cui questa funzione si fida per il
     caso ORDINARIO e' `falliti`, non l'assenza di un'eccezione.
 
     **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
-    `costruisci_comprimari`, che legge la rete verso Home Assistant (una
+    `build_companions`, che legge la rete verso Home Assistant (una
     `legami` per soggetto): va attesa. Qui c'era scritto che questa
     riparazione «gira SINCRONA, prima ancora che l'event loop dell'add-on sia
     in piedi per davvero» -- non era vero: il chiamante e' `_on_startup`, una
@@ -1241,28 +1241,28 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     `_on_startup`, subito sotto): un cervello che non parte perche' non e'
     riuscito a rifare l'altro ieri sarebbe peggio del buco che questa
     funzione chiude. Qui dentro l'eccezione **si lascia propagare** (tranne
-    quella di `costruisci_comprimari`, contenuta sopra apposta): e' il
+    quella di `build_companions`, contenuta sopra apposta): e' il
     chiamante a decidere se e come contenerla, come per
-    `guarda_condizioni_di_sistema` qui sopra.
+    `watch_system_conditions` qui sopra.
 
     `adesso` e' iniettabile per i test, come `Watcher.__init__`: nella
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
-    fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
-    oggi = adesso(home_space_zone(fuso)).date()
-    giorni = [(oggi - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
+    timezone = _timezone_from_home_space_store(app.get("archivio_casa"))
+    today = now(home_space_zone(timezone)).date()
+    days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
 
     # I comprimari si leggono UNA volta per i due giorni insieme, come fa
-    # `_aggrega_ieri` per uno solo (Task 6, `costruisci_comprimari`): una
+    # `_aggrega_ieri` per uno solo (Task 6, `build_companions`): una
     # chiamata di rete per cambio farebbe migliaia di richieste.
-    soggetti: set[str] = set()
-    for giorno in giorni:
-        da_ts, a_ts = day_boundaries(giorno, fuso)
-        soggetti.update(r["soggetto"] for r
+    subjects: set[str] = set()
+    for day in days:
+        da_ts, a_ts = day_boundaries(day, timezone)
+        subjects.update(r["soggetto"] for r
                         in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts))
     try:
-        mappa, falliti = await costruisci_comprimari(ha_client, sorted(soggetti))
+        mappa, failed = await build_companions(ha_client, sorted(subjects))
         # Le direzioni dell'energia si leggono UNA volta per i due giorni
         # insieme, come i comprimari qui sopra (mandato «le direzioni
         # dell'energia», 27/08/2026): una connessione sola, non una per
@@ -1270,12 +1270,12 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         # guasto di rete (stesso contratto di `legami`/`problemi`: torna
         # `{"errore": ...}`) -- il `try` resta comunque, difesa in
         # profondita', per lo stesso motivo del commento sotto.
-        mappa_direzioni = await ha_client.energy_directions()
-    except Exception as errore:
+        directions_map = await ha_client.energy_directions()
+    except Exception as error:
         # Difesa in profondita': un guasto di RETE o di Home Assistant e'
-        # gia' contenuto dentro `costruisci_comprimari` (mette `[]`, conta un
+        # gia' contenuto dentro `build_companions` (mette `[]`, conta un
         # fallito -- il vero segnale, sotto, e' `falliti`). Ma la sua
-        # TRADUZIONE (`_legami_leggibili`, dentro `costruisci_comprimari`,
+        # TRADUZIONE (`_legami_leggibili`, dentro `build_companions`,
         # vedi il suo docstring) non lo e': una risposta malformata fa
         # uscire un `TypeError` per davvero, non un bug ipotetico. Qui non
         # deve poter scrivere oggetti poveri sopra oggetti ricchi solo
@@ -1283,22 +1283,22 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         logger.warning(
             "cervello: comprimari non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
-            type(errore).__name__, errore)
+            type(error).__name__, error)
         return
-    if falliti:
+    if failed:
         # QUESTA funzione SOSTITUISCE (`replace_day`), non costruisce
         # da zero: qualunque fallito -- anche uno solo su cento soggetti --
         # riscriverebbe un oggetto che la notte aveva letto con `[]`. Il
-        # warning che conta e' gia' partito dentro `costruisci_comprimari`;
+        # warning che conta e' gia' partito dentro `build_companions`;
         # qui basta fermarsi. Non e' un buco peggiore di quello che c'era
         # prima di questa cura: la notte prossima, o il riavvio successivo,
         # ci riprovano.
         logger.warning(
             "cervello: comprimari parziali (%d falliti), riparazione "
             "all'avvio saltata per intero -- si riprova al prossimo riavvio",
-            falliti)
+            failed)
         return
-    if "errore" in mappa_direzioni:
+    if "errore" in directions_map:
         # STESSA regola dei comprimari, e per la STESSA ragione (mandato,
         # punto 3): la notte prima puo' aver gia' scritto episodi di energia
         # CON `direzione`. Sostituirli con episodi senza -- perche' questa
@@ -1306,7 +1306,7 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         logger.warning(
             "cervello: direzioni dell'energia non lette, riparazione "
             "all'avvio saltata per intero -- si riprova al prossimo riavvio "
-            "(%s)", mappa_direzioni["errore"])
+            "(%s)", directions_map["errore"])
         return
 
     # I bilanci -- **l'asimmetria dichiarata dal mandato**: «chi costruisce
@@ -1321,20 +1321,20 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
     # undici frammenti tornati individuali -- l'esatto impoverimento che
     # l'asimmetria esiste per impedire.
     try:
-        bilanci_per_giorno: dict[str, list[dict]] = {}
-        for giorno in giorni:
-            bilanci, bilanci_falliti = await costruisci_bilanci(
-                ha_client, app.get("archivio_casa"), giorno=giorno, fuso=fuso,
-                soggetti_energia=sorted(soggetti), direzioni=mappa_direzioni)
-            if bilanci_falliti:
+        balances_by_day: dict[str, list[dict]] = {}
+        for day in days:
+            bilanci, failed_balances = await build_balances(
+                ha_client, app.get("archivio_casa"), day=day, timezone=timezone,
+                energy_subjects=sorted(subjects), directions=directions_map)
+            if failed_balances:
                 logger.warning(
                     "cervello: statistiche del bilancio non lette per %s "
                     "(%d dispositivi), riparazione all'avvio saltata per "
                     "intero -- si riprova al prossimo riavvio",
-                    giorno, bilanci_falliti)
+                    day, failed_balances)
                 return
-            bilanci_per_giorno[giorno] = bilanci
-    except Exception as errore:
+            balances_by_day[day] = bilanci
+    except Exception as error:
         # Difesa in profondita', stessa ragione del blocco comprimari sopra:
         # `archivio_casa.leggi()` e' una lettura SQLite locale che non ci si
         # aspetta sollevi, ma se lo fa non deve poter scrivere oggetti
@@ -1342,21 +1342,21 @@ async def riaggrega_gli_ultimi_due_giorni(app, ha_client, *, adesso=datetime.now
         logger.warning(
             "cervello: bilanci non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
-            type(errore).__name__, errore)
+            type(error).__name__, error)
         return
 
-    for giorno in giorni:
-        quanti = aggregate_day(
-            store=app["osservazioni"], day=giorno, timezone=fuso,
+    for day in days:
+        count = aggregate_day(
+            store=app["osservazioni"], day=day, timezone=timezone,
             companions=lambda s, mappa=mappa: mappa.get(s, []),
-            directions=lambda s, m=mappa_direzioni: m.get(s),
-            balances=bilanci_per_giorno[giorno])
+            directions=lambda s, m=directions_map: m.get(s),
+            balances=balances_by_day[day])
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
-            quanti, giorno)
+            count, day)
 
 
-def should_start_agent_worker(ponte_attivo: bool) -> bool:
+def should_start_agent_worker(bridge_active: bool) -> bool:
     """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
 
     Fino alla 2.3.1 la seconda meta' della condizione leggeva
@@ -1374,12 +1374,12 @@ def should_start_agent_worker(ponte_attivo: bool) -> bool:
     l'instradamento. E' una funzione di modulo senza `app`: passarglielo e'
     l'unico modo di tenerla una funzione pura e di renderla chiamabile ANCHE
     a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
-    (`_ricalcola_catena`). Il token resta letto qui: e' una credenziale, e le
+    (`_recompute_chain`). Il token resta letto qui: e' una credenziale, e le
     credenziali stanno ancora nelle opzioni dell'add-on."""
-    return ponte_attivo and subscription_has_token()
+    return bridge_active and subscription_has_token()
 
 
-def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
+def schedule_registry_rebuild(client, store, delay: float = 3.0):
     """Restituisce `innesca(tipo_evento)`: ricostruisce l'anagrafe, una volta sola.
 
     Riorganizzare la casa in Home Assistant produce una raffica di eventi —
@@ -1391,67 +1391,67 @@ def programma_ricostruzione_anagrafe(client, archivio, ritardo: float = 3.0):
     Home Assistant che si riavvia, o dopo il primo intoppo l'anagrafe resta
     ferma per sempre senza che nessuno lo sappia.
     """
-    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+    state: dict[str, asyncio.Task | None] = {"attesa": None}
 
     async def _fra_poco():
         try:
-            await asyncio.sleep(ritardo)
-            await rebuild(client, archivio)
+            await asyncio.sleep(delay)
+            await rebuild(client, store)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning("ricostruzione dell'anagrafe fallita: %s", exc)
 
-    def innesca(tipo_evento: str) -> None:
-        attesa = stato["attesa"]
-        if attesa is not None and not attesa.done():
-            attesa.cancel()
+    def trigger(event_type: str) -> None:
+        pending = state["attesa"]
+        if pending is not None and not pending.done():
+            pending.cancel()
         # _spawn(), non un asyncio.create_task(...) nudo: tiene un riferimento
         # forte finche' la ricostruzione non finisce (review C/#15) -- vedi il
         # commento in cima al modulo su _background_tasks.
-        stato["attesa"] = _spawn(_fra_poco(), name="ricostruzione_anagrafe")
+        state["attesa"] = _spawn(_fra_poco(), name="ricostruzione_anagrafe")
 
-    return innesca
+    return trigger
 
 
-def programma_rilettura_plance(client, archivio, ritardo: float = 3.0):
+def schedule_dashboards_reread(client, store, delay: float = 3.0):
     """Restituisce `innesca(dati_evento)`: rilegge le plance, una volta sola.
 
-    Gemello di `programma_ricostruzione_anagrafe` — stesso antirimbalzo,
+    Gemello di `schedule_registry_rebuild` — stesso antirimbalzo,
     stessa tolleranza ai guasti — ma per un innesco DIVERSO (DASHBOARD_EVENT,
     non i registri): le plance non stanno in _TABELLE e non vanno confuse con
     l'anagrafe, che questa funzione non tocca.
     """
-    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+    state: dict[str, asyncio.Task | None] = {"attesa": None}
 
     async def _fra_poco():
         try:
-            await asyncio.sleep(ritardo)
-            await reread_dashboards(client, archivio)
+            await asyncio.sleep(delay)
+            await reread_dashboards(client, store)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning("rilettura delle plance fallita: %s", exc)
 
-    def innesca(dati_evento: dict) -> None:
-        attesa = stato["attesa"]
-        if attesa is not None and not attesa.done():
-            attesa.cancel()
-        stato["attesa"] = _spawn(_fra_poco(), name="rilettura_plance")
+    def trigger(event_data: dict) -> None:
+        pending = state["attesa"]
+        if pending is not None and not pending.done():
+            pending.cancel()
+        state["attesa"] = _spawn(_fra_poco(), name="rilettura_plance")
 
-    return innesca
+    return trigger
 
 
-# Sentinella per distinguere, dentro `sentinella_comportamento`, «non ho
+# Sentinella per distinguere, dentro `behavior_sentinel`, «non ho
 # ancora letto nulla» da «ho letto e l'impronta e' None» (cartella di Home
 # Assistant assente). Con `None` come valore iniziale le due cose sarebbero
 # indistinguibili: senza cartella l'impronta resta sempre `None`, e
 # `guarda()` rileggerebbe a ogni chiamata invece che una volta sola.
-_MAI_LETTA = object()
+_NEVER_READ = object()
 
 
-def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
-                             trova_cartella=None):
+def behavior_sentinel(client, store, ha_folder: Path | None,
+                      find_folder=None):
     """Restituisce `guarda()`: rilegge il comportamento solo se i file sono cambiati.
 
     L'mtime di `automations.yaml` e `scripts.yaml` e' l'unico segnale che
@@ -1471,44 +1471,44 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
     quindi non cambia l'impronta -- resterebbe in `/api/casa` come fantasma
     (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
     "principali". `guarda(forza=True)` bypassa il confronto sull'impronta:
-    e' quanto usa `programma_rilettura_comportamento`, agganciata allo stesso
+    e' quanto usa `schedule_behavior_reread`, agganciata allo stesso
     evento di registro entita' (TOPOLOGY_EVENTS) che gia' fa ricostruire
     l'anagrafe -- aggiungere o togliere un'automazione CAMBIA quel registro.
 
     Restituisce `True` se ha riletto, `False` se non serviva o se la
     rilettura e' fallita.
     """
-    ultimo: dict[str, object] = {"impronta": _MAI_LETTA}
-    stato: dict[str, Path | None] = {"cartella": cartella_ha}
-    _trova = trova_cartella if trova_cartella is not None else _find_ha_config_dir
+    ultimo: dict[str, object] = {"impronta": _NEVER_READ}
+    state: dict[str, Path | None] = {"cartella": ha_folder}
+    _find = find_folder if find_folder is not None else _find_ha_config_dir
 
-    def _cartella() -> Path | None:
-        if stato["cartella"] is None:
-            trovata = _trova()
+    def _folder() -> Path | None:
+        if state["cartella"] is None:
+            trovata = _find()
             if trovata:
-                stato["cartella"] = Path(trovata)
+                state["cartella"] = Path(trovata)
                 logger.info("cartella di Home Assistant comparsa dopo l'avvio: %s",
-                            stato["cartella"])
-        return stato["cartella"]
+                            state["cartella"])
+        return state["cartella"]
 
-    def _impronta():
-        cartella = _cartella()
-        if cartella is None:
+    def _fingerprint():
+        folder = _folder()
+        if folder is None:
             return None
         marche = []
-        for nome in ("automations.yaml", "scripts.yaml"):
+        for name in ("automations.yaml", "scripts.yaml"):
             try:
-                marche.append((nome, (cartella / nome).stat().st_mtime_ns))
+                marche.append((name, (folder / name).stat().st_mtime_ns))
             except OSError:
-                marche.append((nome, None))
+                marche.append((name, None))
         return tuple(marche)
 
-    async def guarda(forza: bool = False) -> bool:
-        adesso = _impronta()
-        if not forza and ultimo["impronta"] is not _MAI_LETTA and adesso == ultimo["impronta"]:
+    async def guarda(force: bool = False) -> bool:
+        now = _fingerprint()
+        if not force and ultimo["impronta"] is not _NEVER_READ and now == ultimo["impronta"]:
             return False
         try:
-            await reread(client, archivio, stato["cartella"])
+            await reread(client, store, state["cartella"])
         except Exception as exc:
             # NON si memorizza l'impronta qui: se lo si facesse prima di aver
             # letto davvero, un guasto passeggero (Home Assistant che si
@@ -1517,46 +1517,46 @@ def sentinella_comportamento(client, archivio, cartella_ha: Path | None,
             # sappia. Si riprova al giro successivo, tocco o non tocco.
             logger.warning("rilettura del comportamento fallita: %s", exc)
             return False
-        ultimo["impronta"] = adesso
+        ultimo["impronta"] = now
         return True
 
     return guarda
 
 
-def programma_rilettura_comportamento(guarda, ritardo: float = 3.0):
+def schedule_behavior_reread(guarda, delay: float = 3.0):
     """Restituisce `innesca(tipo_evento)`: rilegge il comportamento FORZANDO
     il confronto sull'impronta, una volta sola per raffica.
 
-    Gemello di `programma_ricostruzione_anagrafe` -- stesso antirimbalzo,
+    Gemello di `schedule_registry_rebuild` -- stesso antirimbalzo,
     stessa tolleranza ai guasti, stesso evento (TOPOLOGY_EVENTS, via
     `add_topology_listener`: nessun meccanismo nuovo). Aggiungere o togliere
     un'automazione cambia il registro delle entita', ma NON tocca sempre
     `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
     innesco, quel cambiamento resterebbe invisibile a `/api/casa` finche'
     qualcuno non tocca a mano i due file "principali" (vedi
-    `sentinella_comportamento`).
+    `behavior_sentinel`).
     """
-    stato: dict[str, asyncio.Task | None] = {"attesa": None}
+    state: dict[str, asyncio.Task | None] = {"attesa": None}
 
     async def _fra_poco():
         try:
-            await asyncio.sleep(ritardo)
-            await guarda(forza=True)
+            await asyncio.sleep(delay)
+            await guarda(force=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning("rilettura forzata del comportamento fallita: %s", exc)
 
-    def innesca(tipo_evento: str) -> None:
-        attesa = stato["attesa"]
-        if attesa is not None and not attesa.done():
-            attesa.cancel()
-        stato["attesa"] = _spawn(_fra_poco(), name="rilettura_comportamento")
+    def trigger(event_type: str) -> None:
+        pending = state["attesa"]
+        if pending is not None and not pending.done():
+            pending.cancel()
+        state["attesa"] = _spawn(_fra_poco(), name="rilettura_comportamento")
 
-    return innesca
+    return trigger
 
 
-def _governa_lavoratore_del_ponte(app) -> None:
+def _govern_bridge_worker(app) -> None:
     """Fa partire, o fa smettere, il lavoratore che risponde sul piano.
 
     Fino alla 2.5.0 questa decisione si prendeva UNA volta, alla fine
@@ -1576,7 +1576,7 @@ def _governa_lavoratore_del_ponte(app) -> None:
 
     Senza un event loop in corso non si fa niente e non e' un ripiego: un
     compito asincrono non ha dove girare. Succede solo fuori dal server (i test
-    che chiamano `_ricalcola_catena` come funzione), e in quel caso l'assenza
+    che chiamano `_recompute_chain` come funzione), e in quel caso l'assenza
     del lavoratore e' il fatto vero, non una supposizione.
     """
     try:
@@ -1585,10 +1585,10 @@ def _governa_lavoratore_del_ponte(app) -> None:
         return
 
     voluto = should_start_agent_worker(bool(app.get("ponte_attivo")))
-    corrente = app.get("agent_worker_task")
-    vivo = corrente is not None and not corrente.done()
+    current = app.get("agent_worker_task")
+    live = current is not None and not current.done()
 
-    if voluto and not vivo:
+    if voluto and not live:
         from .agent import runner as _agent_runner
 
         if app.get("consumi") is not None:
@@ -1609,15 +1609,15 @@ def _governa_lavoratore_del_ponte(app) -> None:
         logger.info(
             "Lavoratore del ponte avviato: il ponte e' acceso e il token del "
             "Piano Claude Max c'e'.")
-    elif not voluto and vivo:
-        corrente.cancel()
+    elif not voluto and live:
+        current.cancel()
         app["agent_worker_task"] = None
         logger.info(
             "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
             "token del Piano Claude Max. La chat risponde dalla catena.")
 
 
-def _ricalcola_catena(app) -> None:
+def _recompute_chain(app) -> None:
     """Rimette in vigore, a caldo, ciò che la pagina Modelli ha appena salvato.
 
     Senza questa funzione un riordino cambierebbe la PAGINA e non il RUNTIME:
@@ -1643,7 +1643,7 @@ def _ricalcola_catena(app) -> None:
     # (`_reasoning_sweep`), l'instradamento (`handlers_chat.handle_chat`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
-    app["ponte_attivo"] = _ponte_attivo(cfg)
+    app["ponte_attivo"] = _bridge_active(cfg)
     # E il lavoratore del ponte SEGUE l'interruttore, invece di essere deciso
     # una volta all'avvio. Sono i due lati dello stesso fatto: accendere il
     # ponte senza far partire chi risponde vorrebbe dire accodare ogni turno in
@@ -1651,7 +1651,7 @@ def _ricalcola_catena(app) -> None:
     # sulla catena (Task 14) -- cioe' il bottone «Mettilo primo» sarebbe un
     # bottone che risponde 200 e fa aspettare. Spegnerlo senza fermarlo
     # lascerebbe un ciclo che interroga una coda vuota ogni tre secondi.
-    _governa_lavoratore_del_ponte(app)
+    _govern_bridge_worker(app)
     router = app.get("llm_router")
     mappa = router._backend_map() if router is not None else {}
     # Chi può rispondere ADESSO: la stessa regola dell'avvio (`_risponde`),
@@ -1659,15 +1659,15 @@ def _ricalcola_catena(app) -> None:
     # modello scelto: il runner locale esiste con il solo indirizzo, ma senza
     # un modello sarebbe un anello che `_ordered_backends` salta in silenzio
     # mentre la pagina lo disegna numerato (il buco che il Task 9 ha chiuso).
-    risponde = {nome: b is not None for nome, b in mappa.items()}
+    risponde = {name: b is not None for name, b in mappa.items()}
     if risponde.get("ollama"):
         risponde["ollama"] = bool((cfg.get("ollama") or {}).get("modello"))
-    catena = provider_in_catena(cfg.get("chain_order") or [], risponde)
+    chain = provider_in_catena(cfg.get("chain_order") or [], risponde)
     # UN calcolo, DUE copie: quella che la pagina riceve e quella che il router
     # usa. Sono lo stesso valore -- se divergessero, divergerebbero da sé
     # stesse -- e sono due oggetti perché nessuno dei due possa modificare
     # l'altro per sbaglio (stessa ragione del `list(_chain)` dell'avvio).
-    app["catena_modelli"] = list(catena)
+    app["catena_modelli"] = list(chain)
     if router is None:
         return
     # NIENTE ripiego sulla policy precedente quando la catena è vuota: una
@@ -1675,7 +1675,7 @@ def _ricalcola_catena(app) -> None:
     # router._chat_policy` rimetterebbe in piedi la regola legacy tolta al
     # Task 7 -- pagina che dice «la catena è vuota, HIRIS non può rispondere»
     # e chat che risponde lo stesso, usando l'ordine di prima.
-    router._chat_policy = list(catena)
+    router._chat_policy = list(chain)
     ollama = mappa.get("ollama")
     if ollama is not None:
         # L'unico valore della fetta che non si può leggere al momento
@@ -1685,7 +1685,7 @@ def _ricalcola_catena(app) -> None:
         ollama.apply_timeout((cfg.get("ollama") or {}).get("timeout_s", 120))
 
 
-def _leggi_statici(app) -> None:
+def _read_static_pages(app) -> None:
     """Sincrona di proposito: gira una volta sola all'avvio, prima che l'app
     serva qualcosa. Sta fuori dalla coroutine perche' `open()` dentro una
     funzione async e' un difetto anche quando qui non lo e' -- e una regola
@@ -1713,7 +1713,7 @@ async def _on_startup(app: web.Application) -> None:
     # Pre-load static HTML so request handlers don't do sync open().read()
     # per request (would block the event loop). Cache invalidation happens via
     # _inject_version() on every render anyway.
-    _leggi_statici(app)
+    _read_static_pages(app)
 
     # fetta E4 Task 4 ("un bot solo"): prima `data_dir` si derivava da
     # `CHATBOTS_DATA_PATH` (un file per l'entita' Chatbot che non esiste
@@ -1791,7 +1791,7 @@ async def _on_startup(app: web.Application) -> None:
     # I guasti che Home Assistant ha gia' diagnosticato. Qui la PRIMA lettura,
     # accanto all'inventario perche' e' la stessa specie di dato: una
     # fotografia momentanea che vive in RAM e non in archivio (il perche' per
-    # esteso e' su `rileggi_problemi_ha`). Le riletture sono un lavoro dello
+    # esteso e' su `reread_ha_problems`). Le riletture sono un lavoro dello
     # schedulatore, piu' sotto.
     #
     # Prima di questa riga la chiave non esiste, e `componi()` lo legge come
@@ -1799,7 +1799,7 @@ async def _on_startup(app: web.Application) -> None:
     # Assistant e' giu' proprio adesso, `problems()` risponde `{"errore": ...}`
     # e il nucleo lo dichiara: la finestra in cui HIRIS tace su questo e' larga
     # quanto il boot.
-    await rileggi_problemi_ha(app, ha_client)
+    await reread_ha_problems(app, ha_client)
 
     # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
@@ -1833,14 +1833,14 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_state_listener(app["osservatore"].watch_reading)
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
-    # per lo stesso motivo di `rileggi_problemi_ha` piu' sopra: senza,
+    # per lo stesso motivo di `reread_ha_problems` piu' sopra: senza,
     # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
     # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
     # quella lettura, questa PUO' sollevare (`Watcher.watch_system`, se
     # `annota` fallisce a meta'): un archivio che non risponde non deve
     # impedire il boot.
     try:
-        await guarda_condizioni_di_sistema(app, ha_client)
+        await watch_system_conditions(app, ha_client)
     except Exception as exc:
         logger.warning(
             "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
@@ -1882,7 +1882,7 @@ async def _on_startup(app: web.Application) -> None:
         os.path.join(data_dir, "costruzioni.db"))
     app["officina"] = Workshop(
         ha_client, app["costruzioni"], app["cronaca"],
-        read_timezone=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))
+        read_timezone=lambda: _timezone_from_home_space_store(app.get("archivio_casa")))
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
@@ -1902,7 +1902,7 @@ async def _on_startup(app: web.Application) -> None:
     # dichiarandolo nel log. Le sette variabili qui sotto sono quelle che
     # run.sh esporta dalle opzioni di config.yaml (i nomi MAIUSCOLI non
     # coincidono con i nomi delle opzioni: la catena si segue per intero).
-    _archivio, _copiate = seed(load_models_config(data_dir), {
+    _store, _copiate = seed(load_models_config(data_dir), {
         "BRIDGE_ENABLED": os.environ.get("BRIDGE_ENABLED", ""),
         "BRIDGE_DEADLINE_MIN": os.environ.get("BRIDGE_DEADLINE_MIN", ""),
         "CHAT_DAILY_CAP": os.environ.get("CHAT_DAILY_CAP", ""),
@@ -1919,7 +1919,7 @@ async def _on_startup(app: web.Application) -> None:
     # `flags=True`: `seminato` e' un SEGNO DI MIGRAZIONE, non una decisione, e
     # l'avvio e' l'unico posto che lo scrive -- una PUT non lo tocca piu'
     # (`handlers_models._MIGRATION_FLAGS`).
-    save_models_config(data_dir, _archivio, flags=True)
+    save_models_config(data_dir, _store, flags=True)
     app["models_config"] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe si costruisce all'avvio e si rifa' quando la
@@ -1927,12 +1927,12 @@ async def _on_startup(app: web.Application) -> None:
     # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
     # nel log, non fa fallire l'add-on -- il primo evento di registro la
     # ricostruira' comunque.
-    archivio_casa = HomeSpaceStore(os.path.join(data_dir, "casa.db"))
-    app["archivio_casa"] = archivio_casa
+    home_space_store = HomeSpaceStore(os.path.join(data_dir, "casa.db"))
+    app["archivio_casa"] = home_space_store
 
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
     # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
-    # -- vedi il docstring di `riaggrega_gli_ultimi_due_giorni` per il perche'
+    # -- vedi il docstring di `reaggregate_last_two_days` per il perche'
     # di "due" e non "i giorni senza oggetti", e per quando si salta per
     # intero invece di scrivere oggetti impoveriti.
     #
@@ -1940,7 +1940,7 @@ async def _on_startup(app: web.Application) -> None:
     # punto 1, CRITICAL -- la terza volta che questa stessa fondamenta si
     # rompe sulla stessa funzione).** Fino a questo giro la chiamata stava 87
     # righe piu' in alto, PRIMA che `archivio_casa` esistesse:
-    # `_fuso_da_archivio_casa(app.get("archivio_casa"))` leggeva sempre
+    # `_timezone_from_home_space_store(app.get("archivio_casa"))` leggeva sempre
     # `None`, e questa riparazione lavorava SEMPRE in UTC -- mentre
     # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto in questa stessa
     # funzione, che gira alle 00:20 quando `archivio_casa` c'e' gia' da ore)
@@ -1971,7 +1971,7 @@ async def _on_startup(app: web.Application) -> None:
     # bloccare l'avvio: un cervello che non riparte perche' non e' riuscito a
     # rifare l'altro ieri sarebbe peggio del buco che sta chiudendo.
     try:
-        await riaggrega_gli_ultimi_due_giorni(app, ha_client)
+        await reaggregate_last_two_days(app, ha_client)
     except Exception as exc:
         logger.warning(
             "cervello: riaggregazione degli ultimi due giorni all'avvio "
@@ -1985,12 +1985,12 @@ async def _on_startup(app: web.Application) -> None:
 
     app["consumi"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
-        read_timezone=lambda: _fuso_da_archivio_casa(archivio_casa))
+        read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
     try:
-        await rebuild(ha_client, archivio_casa)
+        await rebuild(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
-    ha_client.add_topology_listener(programma_ricostruzione_anagrafe(ha_client, archivio_casa))
+    ha_client.add_topology_listener(schedule_registry_rebuild(ha_client, home_space_store))
 
     # La verifica dell'albero: `gerarchia()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
@@ -1999,15 +1999,15 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Il primo giro all'avvio non serve a trovare divergenze -- la replica e'
     # appena stata rifatta, e' il momento in cui e' piu' fresca (vedi
-    # `giro_di_confronto_albero`) -- ma a far vedere subito, dal vivo, che il
+    # `tree_comparison_round`) -- ma a far vedere subito, dal vivo, che il
     # cablaggio c'e' e cosa risponde questa casa. Se Home Assistant e' giu'
     # adesso, l'esito lo dichiara area per area invece di tacere.
     # Una variabile locale e non una chiave di `app`: la chiusura la legge solo
     # lo schedulatore, qui sotto e dentro la stessa funzione. Metterla in `app`
     # sarebbe un dato scritto e mai letto da nessun altro.
-    confronta_albero = giro_di_confronto_albero(app, ha_client)
+    tree_comparison = tree_comparison_round(app, ha_client)
     try:
-        await confronta_albero()
+        await tree_comparison()
     except Exception as exc:
         logger.warning("primo confronto dell'albero non riuscito: %s", exc)
 
@@ -2021,17 +2021,17 @@ async def _on_startup(app: web.Application) -> None:
     # pero' (TOPOLOGY_EVENTS) e aggiungere/togliere un'automazione lo emette:
     # lo si aggancia qui sotto per forzare una rilettura anche quando l'mtime
     # non basta -- un'automazione tolta o messa in un PACCHETTO non tocca
-    # `automations.yaml` (vedi `programma_rilettura_comportamento`).
+    # `automations.yaml` (vedi `schedule_behavior_reread`).
     ha_config_dir = _find_ha_config_dir()
-    guarda_comportamento = sentinella_comportamento(
-        ha_client, archivio_casa, Path(ha_config_dir) if ha_config_dir else None
+    watch_behavior = behavior_sentinel(
+        ha_client, home_space_store, Path(ha_config_dir) if ha_config_dir else None
     )
     try:
-        await guarda_comportamento()
+        await watch_behavior()
     except Exception as exc:
         logger.warning("prima lettura del comportamento fallita: %s", exc)
     ha_client.add_topology_listener(
-        programma_rilettura_comportamento(guarda_comportamento))
+        schedule_behavior_reread(watch_behavior))
 
     # Task 5 SDD casa: le plance, compresa la predefinita (url_path nullo)
     # che HIRIS non aveva mai visto. Cadenza propria (DASHBOARD_EVENT, non i
@@ -2039,10 +2039,10 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe non le tocca e viceversa. Come l'anagrafe, la prima
     # lettura non deve poter impedire il boot.
     try:
-        await reread_dashboards(ha_client, archivio_casa)
+        await reread_dashboards(ha_client, home_space_store)
     except Exception as exc:
         logger.warning("prima lettura delle plance fallita: %s", exc)
-    ha_client.add_dashboard_listener(programma_rilettura_plance(ha_client, archivio_casa))
+    ha_client.add_dashboard_listener(schedule_dashboards_reread(ha_client, home_space_store))
 
     # I servizi si rinfrescano su EVENTO, non a scadenza. Prima si ricaricavano
     # solo dopo 300 secondi, e per quei cinque minuti HIRIS rifiutava i servizi
@@ -2053,16 +2053,16 @@ async def _on_startup(app: web.Application) -> None:
     # comando. Installare un'integrazione emette una raffica di eventi, e una
     # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
     # qualcuno chiede di agire.
-    _registro_servizi = app["registro_servizi"]
-    ha_client.add_service_listener(lambda _tipo: _registro_servizi.invalidate())
+    _service_registry = app["registro_servizi"]
+    ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
 
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
     # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
     # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi
     # memoria/archivio.py). Nessuna lettura iniziale da fare qui: a
     # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
-    archivio_memoria = MemoryStore(os.path.join(data_dir, "memoria.db"))
-    app["archivio_memoria"] = archivio_memoria
+    memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
+    app["archivio_memoria"] = memory_store
 
     # Task 1 fetta E4: il WebSocket verso HA parte qui -- non e' mai stato
     # dentro un "engine.start()" da quando quel task lo ha spostato (e ora
@@ -2082,8 +2082,8 @@ async def _on_startup(app: web.Application) -> None:
     # E4 Task 2 -- DispatcherStrumenti legge `app["entity_cache"]`/
     # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
     # valorizzati sopra).
-    impostazioni_chat = ChatSettings.load(data_dir)
-    app["impostazioni_chat"] = impostazioni_chat
+    chat_settings = ChatSettings.load(data_dir)
+    app["impostazioni_chat"] = chat_settings
 
     # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
     # CHE MANCAVA. `carica()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
@@ -2104,13 +2104,13 @@ async def _on_startup(app: web.Application) -> None:
     # (docs/prova-modelli-e-catena.md, quarta precondizione).
     if file_lacks_retention_days(data_dir):
         try:
-            impostazioni_chat.save(data_dir)
+            chat_settings.save(data_dir)
             logger.info(
                 "Migrazione (versione A): 'giorni_conservazione' (%d) e' stato "
                 "scritto in impostazioni_chat.json -- da adesso si cambia dalla "
                 "pagina Impostazioni chat, e l'opzione dell'add-on "
                 "'history_retention_days' non serve piu'.",
-                impostazioni_chat.retention_days,
+                chat_settings.retention_days,
             )
         except OSError as exc:
             logger.warning(
@@ -2119,7 +2119,7 @@ async def _on_startup(app: web.Application) -> None:
                 "ma al prossimo riavvio si perde: 'history_retention_days' non "
                 "e' piu' un'opzione dell'add-on, quindi non c'e' piu' niente da "
                 "cui rileggerlo. Salvalo dalla pagina Impostazioni chat.",
-                impostazioni_chat.retention_days, exc,
+                chat_settings.retention_days, exc,
             )
 
     # Silenzio dichiarato, stessa disciplina di advisory.db/sentinel.db/ecc.
@@ -2310,11 +2310,11 @@ async def _on_startup(app: web.Application) -> None:
     # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
     # popolato dal vecchio `run.sh` deve poter migrare -- non puo' succedere
     # via Supervisor, puo' succedere in sviluppo. Escono con la fetta
-    # successiva, insieme a `_catena_com_era` e a `migrazione_opzioni`, quando
+    # successiva, insieme a `_chain_as_it_was` e a `migrazione_opzioni`, quando
     # nessuna installazione potra' piu' arrivare non seminata (scadenza: la
     # prima fetta dopo il 14 agosto 2026). Fino ad allora il censimento le
     # elenca fra le «variabili lette e mai esportate da run.sh», ed e' corretto.
-    _nome_modello_com_era = os.environ.get("LOCAL_MODEL_NAME", "")
+    _model_name_as_it_was = os.environ.get("LOCAL_MODEL_NAME", "")
     openai_api_key = os.environ.get("OPENAI_API_KEY", "")
     openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
@@ -2324,7 +2324,7 @@ async def _on_startup(app: web.Application) -> None:
     # (`derive_active_providers`), cioe' la SECONDA rappresentazione dello
     # stato di un provider. Adesso l'unica cosa che si misura qui e' se la
     # credenziale c'e'; chi la USA lo dice `chain_order`.
-    _credenziali = {
+    _credentials = {
         "subscription": subscription_has_token(),
         "claude": bool(api_key),
         "openai": bool(openai_api_key),
@@ -2339,7 +2339,7 @@ async def _on_startup(app: web.Application) -> None:
         # invece di nasconderlo. Fino al Task 9 quello stato ha un BUCO
         # dichiarato: il runner di Ollama nasce ancora solo con
         # `url AND model`, quindi Ollama puo' stare in catena senza un backend
-        # dietro. La migrazione non ce lo porta (`_catena_com_era` riceve la
+        # dietro. La migrazione non ce lo porta (`_chain_as_it_was` riceve la
         # credenziale VECCHIA, vedi sotto): ci si arriva solo mettendocelo a
         # mano dalla pagina Modelli.
         #
@@ -2372,17 +2372,17 @@ async def _on_startup(app: web.Application) -> None:
     # proposito. Vedi `seed_chain`.
     from .migrazione_opzioni import seed_chain
     if not app["models_config"].get("catena_seminata"):
-        _catena_di_oggi = _catena_com_era(
+        _current_chain = _chain_as_it_was(
             os.environ.get("LLM_STRATEGY", "balanced"),
             # Le credenziali COM'ERANO, non quelle di adesso: la credenziale di
             # Ollama comprendeva il nome del modello. Passare quelle nuove
             # farebbe entrare in catena un Ollama che la vecchia regola non ci
             # aveva MAI messo -- cioe' si inventerebbe invece di copiare.
-            {**_credenziali, "ollama": bool(local_model_url and _nome_modello_com_era)},
+            {**_credentials, "ollama": bool(local_model_url and _model_name_as_it_was)},
             env_bool("BRIDGE_ENABLED"),
         )
         _arch, _da_salvare = seed_chain(dict(app["models_config"]),
-                                        _catena_di_oggi, log=logger)
+                                        _current_chain, log=logger)
         if _da_salvare:
             save_models_config(data_dir, _arch, flags=True)
             app["models_config"] = load_models_config(data_dir)
@@ -2402,12 +2402,12 @@ async def _on_startup(app: web.Application) -> None:
     if not app["models_config"].get("piano_seminato"):
         from .agent.runner import cli_model
         from .claude_runner import resolve_model
-        _alias_di_oggi = cli_model(resolve_model(
+        _current_alias = cli_model(resolve_model(
             "auto", "chat",
             app["models_config"].get("provider_models", {}).get("claude", ""),
         ))
         _arch_p, _da_salvare_p = seed_subscription_model(
-            dict(app["models_config"]), _alias_di_oggi, log=logger)
+            dict(app["models_config"]), _current_alias, log=logger)
         if _da_salvare_p:
             save_models_config(data_dir, _arch_p, flags=True)
             app["models_config"] = load_models_config(data_dir)
@@ -2420,11 +2420,11 @@ async def _on_startup(app: web.Application) -> None:
     # letto, e l'ultima seconda rappresentazione del prodotto: con lei viva,
     # `app["ponte_attivo"]` poteva dire True mentre `ponte.attivo`, cioe' cio'
     # che la pagina Modelli mostra e scrive, diceva False. Il ponte adesso e'
-    # un valore solo (`_ponte_attivo`, che legge l'archivio), e si accende
+    # un valore solo (`_bridge_active`, che legge l'archivio), e si accende
     # dalla pagina -- dove c'e' anche il bottone che lo fa in un gesto.
     #
     # Le due frasi che `run.sh` diceva su questo stato si sono spostate qui
-    # sotto (`_avvisi_del_ponte`): da uno script di avvio l'archivio non si
+    # sotto (`_bridge_notices`): da uno script di avvio l'archivio non si
     # legge, e restare in silenzio avrebbe reso muta proprio la transizione che
     # questa versione produce.
 
@@ -2560,11 +2560,11 @@ async def _on_startup(app: web.Application) -> None:
     # due minuti -- meno della ronda della sentinella -- e appena la lettura
     # riesce il lavoro torna a essere il controllo di una bandiera, senza
     # toccare piu' Home Assistant.
-    async def _ricarica_inventario() -> None:
-        await ricarica_inventario_entita(app.get("entity_cache"), ha_client)
+    async def _reload_inventory() -> None:
+        await reload_entity_inventory(app.get("entity_cache"), ha_client)
 
     scheduler.add_job(
-        _ricarica_inventario,
+        _reload_inventory,
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
         misfire_grace_time=120,
@@ -2577,11 +2577,11 @@ async def _on_startup(app: web.Application) -> None:
     # Serve soprattutto al verso opposto -- un problema RIPARATO dall'utente
     # deve sparire dal nucleo da solo, o HIRIS continuerebbe ad annunciare un
     # guasto che non c'e' piu' fino al riavvio dell'add-on.
-    async def _rileggi_problemi() -> None:
-        await rileggi_problemi_ha(app, ha_client)
+    async def _reread_problems() -> None:
+        await reread_ha_problems(app, ha_client)
 
     scheduler.add_job(
-        _rileggi_problemi,
+        _reread_problems,
         trigger="interval", minutes=5,
         id="hiris_problemi_ha", replace_existing=True,
         misfire_grace_time=300,
@@ -2589,14 +2589,14 @@ async def _on_startup(app: web.Application) -> None:
 
     # La verifica dell'albero contro Home Assistant. Quindici minuti, e la
     # cadenza e' piu' larga di quella dei problemi qui sopra per due ragioni
-    # scritte per esteso su `giro_di_confronto_albero`: cio' che si cerca e'
+    # scritte per esteso su `tree_comparison_round`: cio' che si cerca e'
     # una replica che INVECCHIA (guardare piu' spesso non la fa invecchiare
     # prima), e una divergenza non si ripara con un clic -- rientra da sola
     # alla prossima ricostruzione dell'anagrafe. A coprire tutta la casa non e'
     # la frequenza ma la rotazione del campione: tre aree a giro, in ordine di
     # id, ricominciando da capo alla fine.
     scheduler.add_job(
-        confronta_albero,
+        tree_comparison,
         trigger="interval", minutes=15,
         id="hiris_confronto_albero", replace_existing=True,
         misfire_grace_time=900,
@@ -2607,7 +2607,7 @@ async def _on_startup(app: web.Application) -> None:
     # cambia con una cadenza di giorni, non serve un giro piu' stretto, e il
     # costo di un giro a vuoto sono solo due `stat()`.
     scheduler.add_job(
-        guarda_comportamento,
+        watch_behavior,
         trigger="interval", minutes=5,
         id="hiris_comportamento_sentinella", replace_existing=True,
         misfire_grace_time=300,
@@ -2617,7 +2617,7 @@ async def _on_startup(app: web.Application) -> None:
     # docs/design/2026-08-26-l-osservatore.md).
     #
     # Le condizioni di sistema, ogni dieci minuti: la stessa funzione della
-    # prima lettura fatta qui sopra all'avvio, `guarda_condizioni_di_sistema`
+    # prima lettura fatta qui sopra all'avvio, `watch_system_conditions`
     # -- vedi il suo docstring per il perche' un giro si salta interamente
     # quando una delle due letture fallisce (task-5-correzioni.md, punto
     # A.1): un errore letto come lista vuota chiuderebbe ogni condizione
@@ -2632,16 +2632,16 @@ async def _on_startup(app: web.Application) -> None:
     # era mandata apposta, e legare il cervello a una cache di un altro
     # pezzo del prodotto e' una dipendenza che oggi non serve. Ma va detto
     # qui, o la seconda lettura sembra una svista a chi la trova dopo.
-    async def _guarda_condizioni() -> None:
+    async def _watch_conditions() -> None:
         try:
-            await guarda_condizioni_di_sistema(app, ha_client)
+            await watch_system_conditions(app, ha_client)
         except Exception as exc:
             logger.warning(
                 "cervello: giro delle condizioni di sistema fallito (%s: %s)",
                 type(exc).__name__, exc)
 
     scheduler.add_job(
-        _guarda_condizioni,
+        _watch_conditions,
         trigger="interval", minutes=10,
         id="hiris_cervello_condizioni", replace_existing=True,
         misfire_grace_time=600,
@@ -2660,27 +2660,28 @@ async def _on_startup(app: web.Application) -> None:
             # solleva FUORI da qui il warning contestualizzato non parte --
             # l'eccezione finisce nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salta in silenzio.
-            fuso = _fuso_da_archivio_casa(app.get("archivio_casa"))
-            ieri = (datetime.now(home_space_zone(fuso)) - timedelta(days=1)).strftime("%Y-%m-%d")
+            timezone = _timezone_from_home_space_store(app.get("archivio_casa"))
+            ieri = (datetime.now(home_space_zone(timezone))
+                    - timedelta(days=1)).strftime("%Y-%m-%d")
             # I comprimari si leggono UNA volta per giornata, prima: dentro il
             # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
-            # migliaia di richieste (Task 6, `costruisci_comprimari`).
-            da_ts, a_ts = day_boundaries(ieri, fuso)
-            soggetti = sorted({r["soggetto"] for r
+            # migliaia di richieste (Task 6, `build_companions`).
+            da_ts, a_ts = day_boundaries(ieri, timezone)
+            subjects = sorted({r["soggetto"] for r
                                in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts)})
             # Il conteggio dei falliti si ignora apposta (`_`): questo giro
             # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
-            # il parziale, come dice il docstring di `costruisci_comprimari`.
-            mappa, _ = await costruisci_comprimari(ha_client, soggetti)
+            # il parziale, come dice il docstring di `build_companions`.
+            mappa, _ = await build_companions(ha_client, subjects)
             # Le direzioni dell'energia, stessa disciplina (mandato «le
             # direzioni dell'energia», 27/08/2026): questo giro costruisce
             # da zero, quindi tollera anche un `{"errore": ...}` -- un
             # episodio senza `direzione` e' comunque meglio di nessun
             # episodio. La riparazione all'avvio, che SOSTITUISCE, non
             # tollera invece nessun guasto (vedi il suo docstring).
-            mappa_direzioni = await ha_client.energy_directions()
-            if "errore" in mappa_direzioni:
-                mappa_direzioni = {}
+            directions_map = await ha_client.energy_directions()
+            if "errore" in directions_map:
+                directions_map = {}
             # I bilanci, stessa disciplina (mandato «il bilancio
             # dell'energia», 27/08/2026): questo giro COSTRUISCE il giorno
             # da zero, quindi tollera un guasto delle statistiche -- `_`
@@ -2690,18 +2691,18 @@ async def _on_startup(app: web.Application) -> None:
             # individuale, esattamente come prima di questa fetta. La
             # riparazione all'avvio, che SOSTITUISCE, non tollera invece
             # nessun guasto (vedi il suo docstring).
-            bilanci, _ = await costruisci_bilanci(
-                ha_client, app.get("archivio_casa"), giorno=ieri, fuso=fuso,
-                soggetti_energia=soggetti, direzioni=mappa_direzioni)
-            quanti = aggregate_day(
-                store=app["osservazioni"], day=ieri, timezone=fuso,
+            bilanci, _ = await build_balances(
+                ha_client, app.get("archivio_casa"), day=ieri, timezone=timezone,
+                energy_subjects=subjects, directions=directions_map)
+            count = aggregate_day(
+                store=app["osservazioni"], day=ieri, timezone=timezone,
                 companions=lambda s: mappa.get(s, []),
-                directions=lambda s: mappa_direzioni.get(s),
+                directions=lambda s: directions_map.get(s),
                 balances=bilanci)
-            logger.info("cervello: %s oggetti costruiti per %s", quanti, ieri)
-        except Exception as errore:
+            logger.info("cervello: %s oggetti costruiti per %s", count, ieri)
+        except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
-                           type(errore).__name__, errore)
+                           type(error).__name__, error)
 
     scheduler.add_job(
         _aggrega_ieri,
@@ -2722,19 +2723,19 @@ async def _on_startup(app: web.Application) -> None:
     # di notte finiva nel registro di apscheduler senza il prefisso
     # «cervello:», mentre i due fratelli (le condizioni, l'aggregazione) ce
     # l'hanno gia'.
-    async def _pota_osservazioni() -> None:
+    async def _prune_observations() -> None:
         try:
-            quanti = app["osservazioni"].prune(_time.time())
-            if quanti:
-                giorni = READING_RETENTION_S // 86400
+            count = app["osservazioni"].prune(_time.time())
+            if count:
+                days = READING_RETENTION_S // 86400
                 logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
-                            quanti, giorni)
-        except Exception as errore:
+                            count, days)
+        except Exception as error:
             logger.warning("cervello: potatura fallita (%s: %s)",
-                           type(errore).__name__, errore)
+                           type(error).__name__, error)
 
     scheduler.add_job(
-        _pota_osservazioni,
+        _prune_observations,
         trigger="cron", hour=3, minute=0,
         id="hiris_cervello_potatura", replace_existing=True,
         misfire_grace_time=3600,
@@ -2770,8 +2771,8 @@ async def _on_startup(app: web.Application) -> None:
     # `interpreta_promise` prende DUE argomenti (`app`, `promessa`); l'orologio
     # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
     # quel secondo argomento, catturato.
-    async def _interpreta(promessa: dict) -> dict:
-        return await interpreta_promise(app, promessa)
+    async def _interpreta(promise: dict) -> dict:
+        return await interpreta_promise(app, promise)
 
     app["orologio"] = Sweeper(
         app["promesse"],
@@ -2810,9 +2811,9 @@ async def _on_startup(app: web.Application) -> None:
     from .chat_store import delete_old_messages as _delete_old_messages
 
     def _run_retention() -> None:
-        giorni = app["impostazioni_chat"].retention_days
-        if giorni > 0:
-            n = _delete_old_messages(data_dir, giorni)
+        days = app["impostazioni_chat"].retention_days
+        if days > 0:
+            n = _delete_old_messages(data_dir, days)
             if n:
                 logger.info("Retention: deleted %d old chat messages", n)
 
@@ -2928,7 +2929,7 @@ async def _on_startup(app: web.Application) -> None:
 
     reasoning_queue = ReasoningQueue(
         os.path.join(data_dir, "reasoning.db"),
-        read_timezone=lambda: _fuso_da_archivio_casa(archivio_casa))
+        read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
     app["reasoning_queue"] = reasoning_queue
 
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
@@ -3046,11 +3047,11 @@ async def _on_startup(app: web.Application) -> None:
     # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
     async def _reasoning_sweep() -> None:
         # Lo STESSO VALORE dell'instradamento, non la stessa espressione: fino
-        # alla 2.5.0 i due gate chiamavano `_ponte_attivo` ciascuno per conto
+        # alla 2.5.0 i due gate chiamavano `_bridge_active` ciascuno per conto
         # suo sugli stessi due ingressi, e il fail-safe «mai accodare in una
         # coda che nessuno spazza» reggeva sul fatto che le due chiamate
         # restassero identiche. Adesso il valore e' derivato UNA volta
-        # (`_ricalcola_catena`) e qui si LEGGE: due letture dello stesso slot
+        # (`_recompute_chain`) e qui si LEGGE: due letture dello stesso slot
         # non possono divergere nemmeno per distrazione. Ed e' anche cio' che
         # rende la spazzata sensibile al ponte spento dalla pagina, senza un
         # riavvio.
@@ -3063,7 +3064,7 @@ async def _on_startup(app: web.Application) -> None:
                 # puo' restare `in_corso` -- sarebbe invisibile, e peggio di
                 # una fallita: `risana()` la chiuderebbe solo al prossimo
                 # riavvio, cioe' forse mai.
-                _chiudi_promessa_scaduta(app, job)
+                _close_expired_promise(app, job)
                 continue
             if job.get("kind") != "chat":
                 logger.warning(
@@ -3094,7 +3095,7 @@ async def _on_startup(app: web.Application) -> None:
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
-    # sul ponte -- NON e' piu' qui: e' `_ricalcola_catena`, l'unica riga del
+    # sul ponte -- NON e' piu' qui: e' `_recompute_chain`, l'unica riga del
     # prodotto che scrive `app["ponte_attivo"]`, e viene chiamata sia all'avvio
     # (`_rimetti_in_vigore`, piu' sotto) sia a ogni salvataggio della pagina
     # Modelli. Doveva spostarsi: il valore viene adesso dall'archivio, che la
@@ -3134,13 +3135,13 @@ async def _on_startup(app: web.Application) -> None:
     # vede sempre l'ultimo archivio, e la sostituzione del dizionario intero
     # è ciò che rende la lettura atomica -- un turno non può mai vedere metà
     # di un salvataggio.
-    def _modello_di(provider: str):
-        def leggi() -> str:
+    def _model_of(provider: str):
+        def read() -> str:
             return ((app.get("models_config") or {})
                     .get("provider_models", {}).get(provider, ""))
-        return leggi
+        return read
 
-    def _modello_locale() -> str:
+    def _local_model() -> str:
         """Il modello di Ollama non vive in `provider_models` (è un fantasma
         lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
         sua unica casa è `models_config["ollama"]["modello"]`."""
@@ -3153,7 +3154,7 @@ async def _on_startup(app: web.Application) -> None:
     # (`_PROVIDER_MODEL_KEYS` non lo contiene, `_clean_provider_models` lo
     # scarta in lettura E in scrittura -- e resta così: NON è un doppione da
     # far rivivere).
-    _modello_ollama = (app["models_config"].get("ollama") or {}).get("modello", "")
+    _ollama_model = (app["models_config"].get("ollama") or {}).get("modello", "")
     # Chi può davvero RISPONDERE. Non è una seconda rappresentazione della
     # credenziale: sono due fatti diversi, e per quattro provider su cinque
     # coincidono. Per Ollama no -- l'indirizzo è ciò che si custodisce, il
@@ -3162,14 +3163,14 @@ async def _on_startup(app: web.Application) -> None:
     # in `catena_modelli` senza un runner dietro, cioè comparire come anello
     # numerato in una pagina che descrive il runtime mentre
     # `LLMRouter._ordered_backends` lo saltava in silenzio.
-    _risponde = {**_credenziali,
-                 "ollama": bool(local_model_url and _modello_ollama)}
+    _risponde = {**_credentials,
+                 "ollama": bool(local_model_url and _ollama_model)}
 
     claude_runner = None
-    if api_key and _credenziali["claude"]:
+    if api_key and _credentials["claude"]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            read_model=_modello_di("claude"),
+            read_model=_model_of("claude"),
             log_usage=app["consumi"].log,
         )
 
@@ -3188,11 +3189,11 @@ async def _on_startup(app: web.Application) -> None:
     ], now=time.time())
 
     openai_runner = None
-    if openai_api_key and _credenziali["openai"]:
+    if openai_api_key and _credentials["openai"]:
         openai_runner = OpenAICompatRunner(
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
-            read_model=_modello_di("openai"),
+            read_model=_model_of("openai"),
             log_usage=app["consumi"].log,
         )
 
@@ -3215,7 +3216,7 @@ async def _on_startup(app: web.Application) -> None:
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
-            read_model=_modello_locale,
+            read_model=_local_model,
             log_usage=app["consumi"].log,
         )
     if _risponde["ollama"]:
@@ -3229,13 +3230,13 @@ async def _on_startup(app: web.Application) -> None:
                 if _r.status == 200:
                     _tags = await _r.json()
                     _names = [m.get("name", "") for m in _tags.get("models", [])]
-                    if _modello_ollama in _names:
-                        logger.info("Ollama OK — modello '%s' pronto", _modello_ollama)
+                    if _ollama_model in _names:
+                        logger.info("Ollama OK — modello '%s' pronto", _ollama_model)
                     else:
                         logger.warning(
                             "Ollama raggiungibile ma il modello '%s' non è nella lista %s — "
                             "pull potrebbe essere necessario",
-                            _modello_ollama, _names,
+                            _ollama_model, _names,
                         )
                 else:
                     logger.warning("Ollama /api/tags ha risposto con status %s", _r.status)
@@ -3246,10 +3247,10 @@ async def _on_startup(app: web.Application) -> None:
             )
 
     openrouter_runner = None
-    if openrouter_api_key and _credenziali["openrouter"]:
+    if openrouter_api_key and _credentials["openrouter"]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            read_model=_modello_di("openrouter"),
+            read_model=_model_of("openrouter"),
             log_usage=app["consumi"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
@@ -3286,7 +3287,7 @@ async def _on_startup(app: web.Application) -> None:
     # Task 1). Con una sola scrittura non c'e' piu' un secondo posto da tenere
     # allineato: il debito si chiude togliendo il doppione, non coprendolo.
     from .model_activation import provider_in_catena
-    # Il filtro e' `_risponde`, non `_credenziali` (Task 9): in catena ci puo'
+    # Il filtro e' `_risponde`, non `_credentials` (Task 9): in catena ci puo'
     # stare solo chi ha un backend costruito. Con la sola credenziale, un
     # `chain_order` che nomina Ollama senza un modello scelto avrebbe messo in
     # catena un anello che il router salta -- la pagina lo avrebbe disegnato
@@ -3354,7 +3355,7 @@ async def _on_startup(app: web.Application) -> None:
     # se le due derivazioni potessero divergere, divergerebbero all'avvio,
     # dove ogni prova le guarda, invece che al primo salvataggio di un utente.
     def _rimetti_in_vigore() -> None:
-        _ricalcola_catena(app)
+        _recompute_chain(app)
 
     app["ricalcola_catena"] = _rimetti_in_vigore
     _rimetti_in_vigore()
@@ -3372,7 +3373,7 @@ async def _on_startup(app: web.Application) -> None:
     # confermato che ci sono davvero (vedi agent/runner.py).
     #
     # QUI c'era il `if should_start_agent_worker():` che lo avviava una volta
-    # sola. Vive adesso in `_governa_lavoratore_del_ponte`, che
+    # sola. Vive adesso in `_govern_bridge_worker`, che
     # `_rimetti_in_vigore()` ha gia' chiamato poche righe sopra: l'avvio e il
     # salvataggio dalla pagina Modelli passano dalla STESSA strada, che e' la
     # disciplina del Task 10 (la catena) applicata al ponte. Se fosse rimasto
@@ -3386,9 +3387,9 @@ async def _on_startup(app: web.Application) -> None:
     # ponte. Sono l'ultima cosa dell'avvio perche' sono le prime che un
     # operatore cerca in coda al registro quando la chat costa piu' del
     # previsto.
-    for _avviso in _avvisi_del_ponte(bool(app.get("ponte_attivo")),
-                                     _credenziali["subscription"]):
-        logger.warning(_avviso)
+    for _notice in _bridge_notices(bool(app.get("ponte_attivo")),
+                                   _credentials["subscription"]):
+        logger.warning(_notice)
 
 
 async def _on_cleanup(app: web.Application) -> None:
@@ -3462,15 +3463,15 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
         # testi del backend erano gia' aggiornati) sarebbe stato diagnosticato
         # subito invece che scoperto un giorno dopo. Non cambia cosa viene
         # servito: il file resta quello, si aggiunge solo la riga di log.
-        richiesta = request.query.get("v")
-        if richiesta:
+        asked = request.query.get("v")
+        if asked:
             rel_path = request.path.lstrip("/")  # "static/chat/main.js"
             attuale = _asset_fingerprint(rel_path, "")
-            if attuale and richiesta != attuale:
+            if attuale and asked != attuale:
                 logger.warning(
                     "Asset richiesto con impronta stantia: %s (chiesta=%s, attuale=%s) "
                     "-- il client ha un guscio HTML vecchio",
-                    rel_path, richiesta, attuale,
+                    rel_path, asked, attuale,
                 )
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     # X-Frame-Options omesso: HA Ingress carica l'UI in un iframe

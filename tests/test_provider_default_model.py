@@ -144,12 +144,12 @@ def _letture_dallo_startup():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    def _modello_di(provider: str):")
+    start = src.index("    def _model_of(provider: str):")
     marker = '.get("ollama", {}).get("modello", "")'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
     func_src = ("def _avvio(app):\n" + textwrap.indent(corpo, "    ")
-                + "\n    return _modello_di, _modello_locale")
+                + "\n    return _model_of, _local_model")
     spazio: dict = {}
     exec(compile(func_src, "<_on_startup letture>", "exec"), spazio)
     return spazio["_avvio"]

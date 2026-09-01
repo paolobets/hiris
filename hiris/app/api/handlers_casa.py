@@ -133,7 +133,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         "categorie": _categories_by_scope(home_space),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
-        # (`server.giro_di_confronto_albero`, verdetto in
+        # (`server.tree_comparison_round`, verdetto in
         # `anagrafe.confronta_con_home_assistant`).
         #
         # Esce ANCHE da qui, e non solo nel nucleo, per la stessa ragione del
@@ -278,7 +278,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     #
     # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app["problemi_ha"]`,
     # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
-    # `server.rileggi_problemi_ha`, mai una tabella. La ragione e' scritta per
+    # `server.reread_ha_problems`, mai una tabella. La ragione e' scritta per
     # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
     # riferimento (vedi `casa/anagrafe.sistema_di_riferimento`): un problema e'
     # momentaneo, l'utente lo ripara con un clic in Home Assistant, e un
@@ -292,7 +292,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # o in una lista vuota affermerebbe che la casa non ha guasti.
     problems = app.get("problemi_ha")
 
-    # L'esito dell'ultimo giro di verifica dell'albero (`server.giro_di_confronto_albero`).
+    # L'esito dell'ultimo giro di verifica dell'albero (`server.tree_comparison_round`).
     #
     # Vive dove vivono i problemi, in RAM e non in archivio, e per la stessa
     # ragione: un confronto e' momentaneo due volte -- la casa cambia, e la

@@ -23,7 +23,7 @@ di distanza. Cio' che si guadagna e' che NIENTE entra in catena senza che
 qualcuno ce l'abbia messo.
 
 Della regola pre-2.5 resta nel repo la sola META' di compatibilita' («ogni
-provider con una credenziale entra in catena»), in `server._catena_com_era`:
+provider con una credenziale entra in catena»), in `server._chain_as_it_was`:
 serviva a copiare nell'archivio la catena che HIRIS stava gia' usando. L'altra
 meta' -- quella che leggeva i cinque interruttori -- e' uscita con la versione
 B, che li ha tolti dallo schema: senza produttore, era codice irraggiungibile.

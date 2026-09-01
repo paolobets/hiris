@@ -17,7 +17,7 @@ import asyncio
 
 import pytest
 
-from hiris.app.server import _governa_lavoratore_del_ponte, should_start_agent_worker
+from hiris.app.server import _govern_bridge_worker, should_start_agent_worker
 
 
 def test_worker_off_by_default(monkeypatch):
@@ -89,7 +89,7 @@ async def test_accendere_il_ponte_fa_partire_il_lavoratore(monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
     app = {"ponte_attivo": True}
-    _governa_lavoratore_del_ponte(app)
+    _govern_bridge_worker(app)
     compito = app.get("agent_worker_task")
     assert compito is not None, (
         "il ponte e' acceso e il token c'e': senza lavoratore ogni turno "
@@ -108,41 +108,41 @@ async def test_spegnere_il_ponte_ferma_il_lavoratore(monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
     app = {"ponte_attivo": False, "agent_worker_task": finto}
-    _governa_lavoratore_del_ponte(app)
+    _govern_bridge_worker(app)
     assert finto.fermato is True
     assert app["agent_worker_task"] is None
 
 
 @pytest.mark.asyncio
 async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
-    """`_ricalcola_catena` gira a OGNI salvataggio della pagina Modelli, non
+    """`_recompute_chain` gira a OGNI salvataggio della pagina Modelli, non
     solo quando il ponte cambia: salvare due volte di fila col ponte acceso
     non deve produrre due cicli che si contendono la stessa coda."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
     app = {"ponte_attivo": True, "agent_worker_task": finto}
-    _governa_lavoratore_del_ponte(app)
+    _govern_bridge_worker(app)
     assert app["agent_worker_task"] is finto
     assert finto.fermato is False
 
 
 # ---------------------------------------------------------------------------
 # C3 della revisione del commit 3.0.0: **il NODO era pinnato, l'ARCO no.**
-# I tre test qui sopra chiamano `_governa_lavoratore_del_ponte` DIRETTAMENTE.
-# Nessuno provava che `_ricalcola_catena` la chiamasse, e sostituire quella
+# I tre test qui sopra chiamano `_govern_bridge_worker` DIRETTAMENTE.
+# Nessuno provava che `_recompute_chain` la chiamasse, e sostituire quella
 # riga con `pass` lasciava la suite intera verde (1612 passed). E' esattamente
 # la quarta condizione senza cui «Mettilo primo» torna a essere un bottone che
 # risponde 200 e fa aspettare cinque minuti: il valore arriva al disco, il
 # runtime lo segue, ma nessuno risponde sulla coda.
 #
-# Si prova col COMPORTAMENTO e non col sorgente: `_ricalcola_catena` sull'app
+# Si prova col COMPORTAMENTO e non col sorgente: `_recompute_chain` sull'app
 # vera, e il lavoratore c'e' o non c'e'.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(monkeypatch):
     """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
-    `_ricalcola_catena`. Se questa si limitasse a cablare `app["ponte_attivo"]`
+    `_recompute_chain`. Se questa si limitasse a cablare `app["ponte_attivo"]`
     senza governare il lavoratore, ogni turno andrebbe in una coda senza
     consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
@@ -150,7 +150,7 @@ async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(mo
     from hiris.app import server
 
     app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []}}
-    server._ricalcola_catena(app)
+    server._recompute_chain(app)
 
     assert app["ponte_attivo"] is True
     compito = app.get("agent_worker_task")
@@ -175,7 +175,7 @@ async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(mo
     finto = _CompitoFinto()
     app = {"models_config": {"ponte": {"attivo": False}, "chain_order": []},
            "agent_worker_task": finto}
-    server._ricalcola_catena(app)
+    server._recompute_chain(app)
 
     assert app["ponte_attivo"] is False
     assert finto.fermato is True
@@ -183,10 +183,10 @@ async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(mo
 
 
 def test_senza_un_loop_non_si_avvia_niente_e_non_si_solleva_niente(monkeypatch):
-    """`_ricalcola_catena` e' una funzione di modulo e i test la chiamano fuori
+    """`_recompute_chain` e' una funzione di modulo e i test la chiamano fuori
     da un server (`test_model_activation.py`). Un compito asincrono non ha dove
     girare, e non averlo non e' un errore da inghiottire: e' il fatto vero."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     app = {"ponte_attivo": True}
-    _governa_lavoratore_del_ponte(app)
+    _govern_bridge_worker(app)
     assert app.get("agent_worker_task") is None

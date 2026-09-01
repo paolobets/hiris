@@ -13,7 +13,7 @@
 # HIRIS_DEBUG_EXPOSE_PORT. Quelle decisioni vivono adesso nell'archivio di
 # HIRIS (`/data/models_config.json`, `/data/impostazioni_chat.json`), dove le
 # scrive la pagina che le fa vedere. `migrazione_opzioni.semina` e
-# `server._catena_com_era` continuano a LEGGERE alcune di quelle variabili
+# `server._chain_as_it_was` continuano a LEGGERE alcune di quelle variabili
 # d'ambiente: e' la migrazione, e serve a un'installazione che salti la
 # versione A e arrivi qui con l'ambiente ancora popolato dal vecchio run.sh
 # (non puo' succedere via Supervisor, ma puo' succedere in sviluppo). Escono
@@ -78,7 +78,7 @@ fi
 
 # I due avvisi sul ponte -- «il piano e' acceso ma manca il token» e «hai il
 # token ma il ponte e' spento» -- NON sono spariti: si sono SPOSTATI in
-# `server.py::_avvisi_del_ponte`, chiamato all'avvio. Leggevano
+# `server.py::_bridge_notices`, chiamato all'avvio. Leggevano
 # PROVIDER_SUBSCRIPTION e BRIDGE_ENABLED, che con la versione B non esistono
 # piu': il ponte adesso e' `ponte.attivo` nell'archivio di HIRIS, e da qui
 # l'archivio non si legge. In Python si legge, e le due frasi restano parole

@@ -188,6 +188,22 @@ class Collisione:
     -- un aiutante privato scambiato per l'interfaccia pubblica di
     qualcun altro, senza che nessuno lo sappia. Come un composto, si segnala
     e non si applica: lo strumento non indovina, chiede.
+
+    **Il gemello che questa classe NON vede, e che e' costato un guasto vivo
+    (01/09, `server.py`).** Qui si guardano due nomi che collidono fra loro;
+    manca il caso in cui UN nome rinominato collide con un nome che nello
+    stesso ambito c'e' gia': `richiesta -> request` dentro
+    `_security_headers(request, handler)` ha prodotto
+    `request = request.query.get("v")`, che riassegna il PARAMETRO e due
+    righe dopo fa `request.path` su una stringa -- **500 su ogni asset**, e
+    l'ha preso la suite, non il linter (e' un riassegnamento legale) ne'
+    questo controllo (i due nomi non collidono nel glossario: uno solo e'
+    rinominato). La guardia sui builtin non basta, perche' `request` non e'
+    un builtin: e' un parametro. Il controllo giusto e' per AMBITO -- «il
+    nome nuovo e' gia' legato in questa funzione?» -- e si legge con l'AST
+    in poche righe. **Non e' scritto perche' non e' provato per mutazione**,
+    e qui vale la regola della fetta: una rete senza caso e' una speranza.
+    Chi lo scrivera' ha gia' il suo caso, ed e' questo.
     """
     nomi: list[str]
     suggerito: str

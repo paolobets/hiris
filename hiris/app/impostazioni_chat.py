@@ -206,7 +206,7 @@ DEFAULT_SYSTEM_PROMPT = (
 # (`server._on_startup`, `il_file_non_porta_i_giorni`), non solo letto.
 #
 # La lettura resta, ed e' la stessa eccezione dichiarata per
-# `migrazione_opzioni.semina` e `server._catena_com_era`: serve a
+# `migrazione_opzioni.semina` e `server._chain_as_it_was`: serve a
 # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
 # popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
 # fuori schema vengono scartate prima che /data/options.json esista); in

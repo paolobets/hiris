@@ -40,7 +40,7 @@ gia' `seminato`, e quindi esce subito); in sviluppo si'. **Esce con la fetta
 successiva**, insieme a `impostazioni_chat._giorni_da_ambiente`, quando nessuna
 installazione potra' piu' arrivare non seminata.
 
-`server._catena_com_era` era elencata qui accanto, e **non esce con loro**: con
+`server._chain_as_it_was` era elencata qui accanto, e **non esce con loro**: con
 gli interruttori tolti non copia piu' niente da nessuna parte, COMPONE la
 catena di ogni installazione nuova, e cancellarla e basta la farebbe nascere
 con la catena vuota e la chat muta. Va decisa -- vedi la sua docstring.
@@ -183,7 +183,7 @@ def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, boo
     """Copia la catena EFFETTIVA di oggi nell'archivio, una volta sola.
 
     `current_chain` va calcolata dal chiamante con la vecchia regola ancora
-    viva (`server._catena_com_era`, cioe' `reconcile_chain` sui provider
+    viva (`server._chain_as_it_was`, cioe' `reconcile_chain` sui provider
     derivati dai cinque interruttori): e' l'ultimo istante in cui quella regola
     esiste, ed e' l'unico modo di non far passare l'installazione del
     proprietario -- cinque interruttori a false, credenziali presenti -- da
@@ -198,7 +198,7 @@ def seed_chain(store: dict, current_chain: list[str], *, log) -> tuple[dict, boo
     esprimibile in due click (la ✕ su ogni riga). Chi svuotava la catena di
     proposito -- il proprietario che toglie la chiave a credito zero e
     OpenRouter per restare sul piano che ha gia' pagato -- se la ritrovava
-    ripopolata al riavvio successivo da `_catena_com_era`, cioe' dalla regola
+    ripopolata al riavvio successivo da `_chain_as_it_was`, cioe' dalla regola
     `legacy` (`not any(interruttori)`) che questa fetta ha tolto dal prodotto:
     con i cinque interruttori a false rientrava in catena OGNI provider con una
     credenziale, e la spesa a consumo ripartiva. Era la QUARTA porta di quella

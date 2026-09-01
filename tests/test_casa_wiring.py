@@ -6,7 +6,7 @@ import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import programma_ricostruzione_anagrafe, programma_rilettura_comportamento
+from hiris.app.server import schedule_behavior_reread, schedule_registry_rebuild
 
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
@@ -33,7 +33,7 @@ async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
     await asyncio.sleep(0.2)
@@ -45,7 +45,7 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
@@ -62,7 +62,7 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = programma_ricostruzione_anagrafe(client, archivio, ritardo=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
     innesca("area_registry_updated")
@@ -76,7 +76,7 @@ async def test_una_raffica_di_eventi_rilegge_il_comportamento_una_volta_sola():
     `test_una_raffica_di_eventi_ricostruisce_una_volta_sola`, ma per il
     comportamento -- riusa TOPOLOGY_EVENTS (nessun meccanismo nuovo)."""
     guarda_finta = AsyncMock(return_value=True)
-    innesca = programma_rilettura_comportamento(guarda_finta, ritardo=0.05)
+    innesca = schedule_behavior_reread(guarda_finta, delay=0.05)
     for _ in range(10):
         innesca("entity_registry_updated")
     await asyncio.sleep(0.2)
@@ -84,13 +84,13 @@ async def test_una_raffica_di_eventi_rilegge_il_comportamento_una_volta_sola():
     # FORZA la rilettura: l'mtime dei file puo' non essere cambiato affatto
     # (un'automazione tolta/aggiunta in un pacchetto), ed e' proprio il
     # punto di questo innesco.
-    guarda_finta.assert_awaited_once_with(forza=True)
+    guarda_finta.assert_awaited_once_with(force=True)
 
 
 @pytest.mark.asyncio
 async def test_una_rilettura_del_comportamento_fallita_non_uccide_l_ascoltatore():
     guarda_finta = AsyncMock(side_effect=[OSError("HA giu'"), True])
-    innesca = programma_rilettura_comportamento(guarda_finta, ritardo=0.05)
+    innesca = schedule_behavior_reread(guarda_finta, delay=0.05)
     innesca("entity_registry_updated")
     await asyncio.sleep(0.2)
     innesca("entity_registry_updated")

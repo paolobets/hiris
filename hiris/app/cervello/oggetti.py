@@ -482,7 +482,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
     `entity_per_dimension`: `{"produzione": "sensor.x", ...}`, quale
     entita' del dispositivo rappresenta quale delle `BALANCE_DIRECTIONS`
-    -- scelta dal chiamante (`server.py::costruisci_bilanci`) fra le entita'
+    -- scelta dal chiamante (`server.py::build_balances`) fra le entita'
     del dispositivo che hanno quella direzione **e** la classe energia
     dichiarata (non potenza: il bilancio riporta kWh del giorno, non W
     istantanei). Una dimensione assente da questo dizionario significa
@@ -635,7 +635,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     (mandato «il bilancio dell'energia»): undici frammenti di energia dello
     stesso dispositivo diventano UN oggetto, di genere `"bilancio"`. Ogni
     elemento e' `{"dispositivo_id", "nome", "entita": [...], "corpo": {...}}`
-    -- gia' costruito dal chiamante (`server.py::costruisci_bilanci`, che
+    -- gia' costruito dal chiamante (`server.py::build_balances`, che
     legge `HAClient.hourly_statistics()`: **il bilancio non dipende dal
     grezzo**, viene dalle statistiche di HA, che sono piu' corrette
     (gestiscono gli azzeramenti) e piu' durature dei nostri 22 giorni). E'

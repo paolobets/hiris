@@ -29,9 +29,9 @@ symbol in server.py or a simple closure value supplied directly, not
 per-instance state, so binding them is exact, not a guess.
 
 Dalla 2.4.0 la spazzata passava dal combinatore condiviso con l'instradamento
-(``_ponte_attivo``), e il namespace glielo forniva insieme a ``env_bool`` e
+(``_bridge_active``), e il namespace glielo forniva insieme a ``env_bool`` e
 ``_sub_first_class``. Dalla VERSIONE B (3.0.0) non deriva piu' niente: LEGGE
-``app["ponte_attivo"]``, che ``_ricalcola_catena`` ha gia' scritto -- una
+``app["ponte_attivo"]``, che ``_recompute_chain`` ha gia' scritto -- una
 lettura sola invece di due derivazioni. I tre simboli sono usciti dal
 namespace, e uscirne e' la difesa: rimettere una derivazione dentro la
 spazzata farebbe fallire l'exec con un NameError, invece di lasciarla passare
@@ -57,9 +57,9 @@ def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
     func_src = textwrap.dedent(src[start:end])
 
     # VERSIONE B (3.0.0): il namespace ha perso TRE simboli -- `env_bool`,
-    # `_sub_first_class` e `_ponte_attivo` -- e ne ha guadagnato una chiave.
+    # `_sub_first_class` e `_bridge_active` -- e ne ha guadagnato una chiave.
     # La spazzata non deriva piu' niente: LEGGE `app["ponte_attivo"]`, che
-    # `_ricalcola_catena` ha gia' scritto. Toglierli invece di lasciarli per
+    # `_recompute_chain` ha gia' scritto. Toglierli invece di lasciarli per
     # sicurezza e' deliberato ed e' la virtu' di questo file: se qualcuno
     # rimettesse una derivazione dentro la spazzata, l'exec fallirebbe con un
     # NameError rumoroso invece di passare su un valore di comodo.

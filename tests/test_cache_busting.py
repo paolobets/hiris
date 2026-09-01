@@ -45,10 +45,10 @@ async def client(aiohttp_client, tmp_path):
     app.on_cleanup.clear()
 
     # Stessa lettura di `_on_startup` (sincrona di proposito, vedi
-    # `server._leggi_statici`): riusarla qui evita un secondo posto che
+    # `server._read_static_pages`): riusarla qui evita un secondo posto che
     # legge gli stessi due file e potrebbe divergere da come li legge l'app
     # vera.
-    server._leggi_statici(app)
+    server._read_static_pages(app)
 
     return await aiohttp_client(app)
 

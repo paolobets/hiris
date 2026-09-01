@@ -169,7 +169,7 @@ async def test_una_consegna_di_chat_non_tocca_le_promesse(consegna):
 def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     """Una promessa `in_corso` per sempre non si vede: `risana()` la
     chiuderebbe solo al prossimo riavvio, cioe' forse mai."""
-    from hiris.app.server import _chiudi_promessa_scaduta
+    from hiris.app.server import _close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -177,7 +177,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
         app = {"promesse": promesse,
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
-        _chiudi_promessa_scaduta(app, {"wake": {"promessa_id": ident}})
+        _close_expired_promise(app, {"wake": {"promessa_id": ident}})
 
         p = promesse.read(ident)
         assert p["stato"] == "fallita"
@@ -189,7 +189,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
 def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
     """`concludi` puo' essere arrivato mentre il turno finiva: riaprirla
     cancellerebbe un testo che l'utente puo' gia' aver letto."""
-    from hiris.app.server import _chiudi_promessa_scaduta
+    from hiris.app.server import _close_expired_promise
 
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
@@ -197,8 +197,8 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        _chiudi_promessa_scaduta({"promesse": promesse, "models_config": {}},
-                                 {"wake": {"promessa_id": ident}})
+        _close_expired_promise({"promesse": promesse, "models_config": {}},
+                               {"wake": {"promessa_id": ident}})
 
         assert promesse.read(ident)["stato"] == "mantenuta"
     finally:
@@ -206,6 +206,6 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
 
 
 def test_un_job_scaduto_senza_promessa_non_esplode(tmp_path):
-    from hiris.app.server import _chiudi_promessa_scaduta
+    from hiris.app.server import _close_expired_promise
 
-    _chiudi_promessa_scaduta({"promesse": None, "models_config": {}}, {"wake": {}})
+    _close_expired_promise({"promesse": None, "models_config": {}}, {"wake": {}})

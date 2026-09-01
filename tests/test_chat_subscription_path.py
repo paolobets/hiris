@@ -625,7 +625,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # in un interruttore solo (`ponte.attivo`, 2.4.0): l'AND non ha piu' due valori
 # da combinare, e quei sei test non hanno piu' un soggetto.
 #
-# Poi ne sono stati scritti quattro sulla forma intermedia -- `_ponte_attivo`
+# Poi ne sono stati scritti quattro sulla forma intermedia -- `_bridge_active`
 # come `or` fra l'interruttore e l'implicazione del piano -- e anche quelli
 # hanno finito il loro soggetto con la versione B (3.0.0): `provider_
 # subscription` e' uscita dallo schema, e con lei l'implicazione. Erano
@@ -635,7 +635,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # Il fail-safe non e' stato rimosso in nessuno dei due passaggi: ha finito di
 # cambiare natura. Da regola da non sbagliare (un `and` scritto a mano in due
 # punti), a espressione condivisa (la stessa funzione chiamata due volte), a
-# VALORE condiviso: `_ricalcola_catena` scrive `app["ponte_attivo"]`, e la
+# VALORE condiviso: `_recompute_chain` scrive `app["ponte_attivo"]`, e la
 # spazzata e l'instradamento lo LEGGONO. Due letture dello stesso slot non
 # possono divergere nemmeno per distrazione.
 #
@@ -643,7 +643,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # poter tornare.
 # ---------------------------------------------------------------------------
 
-from hiris.app.server import _ponte_attivo
+from hiris.app.server import _bridge_active
 
 
 @pytest.mark.parametrize("archivio,atteso", [
@@ -665,7 +665,7 @@ def test_il_ponte_e_un_valore_solo(archivio, atteso):
     interruttore (la coppia di leve del 2023) -- deve far cadere qualcosa, e
     questo e' il posto.
     """
-    assert _ponte_attivo(archivio) is atteso
+    assert _bridge_active(archivio) is atteso
 
 
 def test_il_token_da_solo_non_accende_il_ponte(monkeypatch):
@@ -682,11 +682,11 @@ def test_il_token_da_solo_non_accende_il_ponte(monkeypatch):
 
     Il token c'e', l'archivio dice di no: il ponte e' spento. Chi lo aveva
     acceso attraverso il piano se lo sente dire all'avvio
-    (`_avvisi_del_ponte`) e lo rivede in cima alla pagina Modelli, col gesto
+    (`_bridge_notices`) e lo rivede in cima alla pagina Modelli, col gesto
     accanto.
     """
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
-    assert _ponte_attivo({"ponte": {"attivo": False}}) is False
+    assert _bridge_active({"ponte": {"attivo": False}}) is False
 
 
 def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
@@ -695,7 +695,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     Prima l'invariante «non accodare mai in una coda che nessuno spazza» era
     una regola da non sbagliare: due opzioni distinte, combinate a mano nel
     punto giusto. Poi due chiamate alla stessa funzione. Adesso e' una
-    struttura: `_ricalcola_catena` e' l'UNICO posto che deriva il valore, e
+    struttura: `_recompute_chain` e' l'UNICO posto che deriva il valore, e
     `_reasoning_sweep` lo legge invece di ricalcolarlo. Se qualcuno riscrivesse
     uno dei due a mano, l'invariante tornerebbe a dipendere dall'attenzione:
     questo test lo impedisce, e guarda tutti e tre i lati.
@@ -704,11 +704,11 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
 
     from hiris.app import server
 
-    ricalcola = inspect.getsource(server._ricalcola_catena)
+    ricalcola = inspect.getsource(server._recompute_chain)
     riga_cablaggio = [r for r in ricalcola.splitlines()
                       if 'app["ponte_attivo"] =' in r]
     assert len(riga_cablaggio) == 1, riga_cablaggio
-    assert "_ponte_attivo(" in riga_cablaggio[0], (
+    assert "_bridge_active(" in riga_cablaggio[0], (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
         "booleana e' stata riscritta a mano nel punto di assegnazione"
     )
@@ -728,7 +728,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
         "in disaccordo con l'instradamento, ed e' esattamente il buco che l'AND "
         "di prima serviva a chiudere"
     )
-    assert "_ponte_attivo(" not in corpo_sweep, (
+    assert "_bridge_active(" not in corpo_sweep, (
         "la spazzata RIDERIVA il valore invece di leggerlo: due derivazioni "
         "possono divergere, una lettura sola no"
     )
@@ -743,7 +743,7 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
     non ne resta nessuna -- `ponte:` per intero e `provider_subscription` sono
     usciti -- e `server.py` non legge piu' nessuna delle due variabili
     d'ambiente per DECIDERE. `BRIDGE_ENABLED` resta nominata in una riga viva
-    sola, quella della migrazione (`_catena_com_era`), che copia la catena
+    sola, quella della migrazione (`_chain_as_it_was`), che copia la catena
     com'era e non decide niente: si guarda quindi il gate, non il nome.
     """
     import pathlib as _pl
@@ -775,7 +775,7 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
     assert not [r for r in codice if 'env_bool("PROVIDER_SUBSCRIPTION")' in r], (
         "l'ultimo dei cinque interruttori e' tornato a decidere qualcosa"
     )
-    # L'IMPLICAZIONE, non il suo nome: la docstring di `_ponte_attivo` racconta
+    # L'IMPLICAZIONE, non il suo nome: la docstring di `_bridge_active` racconta
     # apposta che cosa era `_sub_first_class` e perche' e' uscita, e una
     # docstring non e' un commento `#` -- il filtro qui sopra non la toglie. Si
     # guarda quindi la scrittura che la farebbe rientrare (l'assegnazione), non
@@ -794,14 +794,14 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
 # dirlo -- si spostano dove l'archivio c'e'.
 # ---------------------------------------------------------------------------
 
-from hiris.app.server import _avvisi_del_ponte
+from hiris.app.server import _bridge_notices
 
 
 def test_il_ponte_acceso_senza_token_si_sente_dire_all_avvio():
     """Invariante 5, nel registro. Dal Task 14 il turno non si perde piu' (scende
     alla catena), ma scende a un provider a consumo: un ripiego silenzioso dal
     forfait al consumo si scopre a fine mese."""
-    righe = _avvisi_del_ponte(True, False)
+    righe = _bridge_notices(True, False)
     assert len(righe) == 1, righe
     assert "dal forfait al consumo" in righe[0], righe[0]
     # Il campo si nomina col nome VERO, come il 503 di primo avvio: mandare a
@@ -819,7 +819,7 @@ def test_il_token_senza_ponte_si_sente_dire_all_avvio_DOVE_si_accende():
     cio' che la rende rumorosa invece che silenziosa. Deve dire anche DOVE si
     ripara: mandare a cercare l'opzione nell'add-on sarebbe mandare a cercare
     un campo che non esiste piu'."""
-    righe = _avvisi_del_ponte(False, True)
+    righe = _bridge_notices(False, True)
     assert len(righe) == 1, righe
     assert "pagina Modelli" in righe[0], righe[0]
     assert "a consumo" in righe[0], righe[0]
@@ -831,7 +831,7 @@ def test_il_token_senza_ponte_si_sente_dire_all_avvio_DOVE_si_accende():
 def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti():
     """**C3 della revisione del commit 3.0.0: il nodo era pinnato, l'arco no.**
 
-    I tre test qui sopra provano `_avvisi_del_ponte` come funzione pura -- le
+    I tre test qui sopra provano `_bridge_notices` come funzione pura -- le
     stringhe che restituisce. Nessuno provava che qualcuno le stampasse:
     sostituire il ciclo di `_on_startup` con `pass` lasciava la suite intera
     verde (1612 passed), e con lui spariva il PRIMO dei tre segnali della
@@ -853,14 +853,14 @@ def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti():
     # all'avvio cita il nome, e citarlo non e' stamparlo.
     righe = [r for r in inspect.getsource(server._on_startup).splitlines()
              if not r.lstrip().startswith("#")]
-    chiamata = [r for r in righe if "_avvisi_del_ponte(" in r]
+    chiamata = [r for r in righe if "_bridge_notices(" in r]
     assert chiamata, (
-        "nessuno chiama piu' `_avvisi_del_ponte` all'avvio: la funzione resta "
+        "nessuno chiama piu' `_bridge_notices` all'avvio: la funzione resta "
         "corretta e provata, e non la esegue nessuno -- chi aggiorna con il "
         "token e il ponte spento non riceve piu' nessun segnale che non sia "
         "andato a cercarsi"
     )
-    assert [r for r in righe if "logger.warning(_avviso)" in r], (
+    assert [r for r in righe if "logger.warning(_notice)" in r], (
         "gli avvisi si compongono e non finiscono piu' nel registro, o non ci "
         "finiscono piu' come warning: col livello `info` predefinito un "
         "`logger.debug` non si vedrebbe"
@@ -873,7 +873,7 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
     rumore e' cio' che ha fatto scorrere via l'avvio dal registro consegnato col
     cancello di questa fetta. Ponte acceso col token e ponte spento senza token
     sono due stati COERENTI: non c'e' niente da dire."""
-    assert _avvisi_del_ponte(ponte, token) == []
+    assert _bridge_notices(ponte, token) == []
 
 
 # ---------------------------------------------------------------------------

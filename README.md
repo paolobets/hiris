@@ -71,9 +71,9 @@ Periodic work *does* run — the scheduler registers **ten** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Nine are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
-reload every 2 minutes (`server.py::_ricarica_inventario`), the reread of Home
+reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
-(`server.py::_rileggi_problemi`), the tree-vs-Home-Assistant comparison
+(`server.py::_reread_problems`), the tree-vs-Home-Assistant comparison
 sample every 15 minutes (`server.py::confronta_albero`), the `mtime` sentinel
 over `automations.yaml`/`scripts.yaml` every 5 minutes
 (`server.py::guarda_comportamento`), chat-history retention at 03:00, the
@@ -81,11 +81,11 @@ reasoning-queue sweep every 2 minutes, and three more added by the "the
 observer" slice (`hiris/app/cervello/`): the system-conditions read — the same
 diagnosed issues plus the integrations Home Assistant has not loaded, folded
 into the observer's fault objects — every 10 minutes
-(`server.py::_guarda_condizioni`), the nightly aggregation of the previous
+(`server.py::_watch_conditions`), the nightly aggregation of the previous
 day's raw state changes into objects at 00:20
 (`server.py::_aggrega_ieri` → `cervello/oggetti.py::aggrega_giorno`), and the
 pruning of raw changes older than 22 days at 03:00
-(`server.py::_pota_osservazioni`). The 03:30 history compaction, the 04:00
+(`server.py::_prune_observations`). The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
@@ -255,7 +255,7 @@ external subscription runner through a queue instead of being answered locally.
 It is active when `ponte.attivo` is on — **and also**, regardless of that
 option, whenever `provider_subscription` is enabled and
 `claude_code_oauth_token` is set: an active subscription provider implies the
-bridge (`hiris/app/server.py::_ponte_attivo`, fed by `_sub_first_class`).
+bridge (`hiris/app/server.py::_bridge_active`, fed by `_sub_first_class`).
 
 Until 2.3.1 this took **two** options that had to be on together
 (`bridge_enabled` and `chat_via_subscription`); they were merged in 2.4.0,
@@ -352,7 +352,7 @@ active `provider_subscription` with a token still turns the bridge on by itself.
 | `ponte.chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
 
 The fail-safe the old `AND` protected — never enqueue into a queue nothing
-sweeps — is now structural: one expression (`server.py::_ponte_attivo`) gates
+sweeps — is now structural: one expression (`server.py::_bridge_active`) gates
 both the sweep and the routing, so they cannot disagree.
 
 > **Upgrading from an earlier 2.x?** These options changed name (nested under

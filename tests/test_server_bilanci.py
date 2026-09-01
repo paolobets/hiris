@@ -1,4 +1,4 @@
-"""`server.costruisci_bilanci`: il raggruppamento per dispositivo (senza
+"""`server.build_balances`: il raggruppamento per dispositivo (senza
 nessuna lettura di rete, il registro e' gia' replicato in `archivio_casa`) e
 UNA connessione sola per tutti i dispositivi candidati (`HAClient.
 statistiche_orarie`).
@@ -9,7 +9,7 @@ import pytest
 
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.cervello.oggetti import day_boundaries
-from hiris.app.server import costruisci_bilanci
+from hiris.app.server import build_balances
 from tests.test_cervello_comprimari import _ClienteLegami
 
 G = "2026-08-24"
@@ -45,9 +45,9 @@ def _punto(cambio, ora=6):
 @pytest.mark.asyncio
 async def test_senza_archivio_casa_niente_bilanci_niente_rete():
     cliente = _ClienteLegami()
-    bilanci, falliti = await costruisci_bilanci(
-        cliente, None, giorno=G, fuso="Europe/Rome",
-        soggetti_energia=["sensor.x"], direzioni={})
+    bilanci, falliti = await build_balances(
+        cliente, None, day=G, timezone="Europe/Rome",
+        energy_subjects=["sensor.x"], directions={})
     assert bilanci == []
     assert falliti == 0
     assert cliente.statistiche_chieste == []
@@ -58,9 +58,9 @@ async def test_senza_soggetti_niente_bilanci_niente_rete(tmp_path):
     casa = _casa(tmp_path, entita=[], dispositivi=[])
     cliente = _ClienteLegami()
     try:
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=[], direzioni={})
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=[], directions={})
         assert bilanci == []
         assert falliti == 0
         assert cliente.statistiche_chieste == []
@@ -78,10 +78,10 @@ async def test_un_dispositivo_con_una_direzione_utile_diventa_un_bilancio(tmp_pa
     try:
         cliente = _ClienteLegami(statistiche={
             "sensor.energia_prodotta_oggi": [_punto(1.0), _punto(2.0)]})
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.energia_prodotta_oggi"],
-            direzioni={"sensor.energia_prodotta_oggi":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.energia_prodotta_oggi"],
+            directions={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}})
 
         assert falliti == 0
@@ -118,10 +118,10 @@ async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
     try:
         cliente = _ClienteLegami(statistiche={
             "sensor.energia_consumata_oggi": [_punto(14.72)]})
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.energia_consumata_oggi"],
-            direzioni={"sensor.energia_consumata_oggi":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.energia_consumata_oggi"],
+            directions={"sensor.energia_consumata_oggi":
                       {"direzione": "consumo", "provenienza": "dedotta"}})
         assert falliti == 0
         [b] = bilanci
@@ -142,10 +142,10 @@ async def test_senza_nessuna_direzione_utile_niente_bilancio_niente_rete(tmp_pat
                 "device_class": "energy"}])
     try:
         cliente = _ClienteLegami()
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.temperatura_inverter"],
-            direzioni={})
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.temperatura_inverter"],
+            directions={})
         assert bilanci == []
         assert falliti == 0
         assert cliente.statistiche_chieste == []
@@ -165,10 +165,10 @@ async def test_una_direzione_su_potenza_non_basta_serve_la_classe_energy(tmp_pat
                 "device_class": "power"}])
     try:
         cliente = _ClienteLegami()
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.potenza_prodotta"],
-            direzioni={"sensor.potenza_prodotta":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.potenza_prodotta"],
+            directions={"sensor.potenza_prodotta":
                       {"direzione": "produzione", "provenienza": "dichiarata"}})
         assert bilanci == []
         assert falliti == 0
@@ -195,10 +195,10 @@ async def test_la_batteria_dello_stesso_dispositivo_entra_nella_lettura(tmp_path
                                  "fine": "2026-08-24T07:00:00+00:00", "minimo": None,
                                  "massimo": None, "media": 55.0, "cambio": None}],
         })
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.energia_prodotta_oggi"],
-            direzioni={"sensor.energia_prodotta_oggi":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.energia_prodotta_oggi"],
+            directions={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}})
 
         assert falliti == 0
@@ -223,10 +223,10 @@ async def test_un_entita_senza_dispositivo_non_e_un_errore_resta_fuori(tmp_path)
                         "device_class": "energy"}])
     try:
         cliente = _ClienteLegami()
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.orfana"],
-            direzioni={"sensor.orfana": {"direzione": "produzione", "provenienza": "dichiarata"}})
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.orfana"],
+            directions={"sensor.orfana": {"direzione": "produzione", "provenienza": "dichiarata"}})
         assert bilanci == []
         assert falliti == 0
         assert cliente.statistiche_chieste == []
@@ -248,10 +248,10 @@ async def test_due_dispositivi_candidati_una_connessione_sola(tmp_path):
             "sensor.dev1_produzione": [_punto(1.0)],
             "sensor.dev2_prelievo": [_punto(2.0)],
         })
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.dev1_produzione", "sensor.dev2_prelievo"],
-            direzioni={
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.dev1_produzione", "sensor.dev2_prelievo"],
+            directions={
                 "sensor.dev1_produzione": {"direzione": "produzione", "provenienza": "dichiarata"},
                 "sensor.dev2_prelievo": {"direzione": "prelievo", "provenienza": "dichiarata"},
             })
@@ -269,7 +269,7 @@ async def test_una_serie_vuota_per_un_candidato_conta_come_fallimento(tmp_path):
     identificatori rinominati, recorder ripartito (misurato: il database
     del recorder e' gia' rinato una volta, il 13 agosto). Prima di questa
     correzione `falliti` restava a zero: la riparazione all'avvio
-    (`riaggrega_gli_ultimi_due_giorni`, che SOSTITUISCE) avrebbe scritto
+    (`reaggregate_last_two_days`, che SOSTITUISCE) avrebbe scritto
     sopra un giorno che aveva gia' un bilancio uno senza -- gli undici
     frammenti tornano. Ora conta come fallito anche senza nessun `errore`
     da Home Assistant."""
@@ -280,10 +280,10 @@ async def test_una_serie_vuota_per_un_candidato_conta_come_fallimento(tmp_path):
                 "device_class": "energy"}])
     try:
         cliente = _ClienteLegami(statistiche={})  # riesce, ma non c'e' niente
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.energia_prodotta_oggi"],
-            direzioni={"sensor.energia_prodotta_oggi":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.energia_prodotta_oggi"],
+            directions={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}})
         assert bilanci == []
         assert falliti == 1
@@ -315,10 +315,10 @@ async def test_i_membri_del_bilancio_sono_solo_i_soggetti_con_una_direzione_vera
     try:
         cliente = _ClienteLegami(statistiche={
             "sensor.energia_prodotta_oggi": [_punto(1.0)]})
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.energia_prodotta_oggi", "switch.inverter_relay"],
-            direzioni={"sensor.energia_prodotta_oggi":
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.energia_prodotta_oggi", "switch.inverter_relay"],
+            directions={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}})
         assert falliti == 0
         [b] = bilanci
@@ -341,10 +341,10 @@ async def test_un_guasto_delle_statistiche_fallisce_tutti_i_candidati_insieme(tm
         ])
     try:
         cliente = _ClienteLegami(statistiche_errore="Home Assistant non ha risposto")
-        bilanci, falliti = await costruisci_bilanci(
-            cliente, casa, giorno=G, fuso="Europe/Rome",
-            soggetti_energia=["sensor.dev1_produzione", "sensor.dev2_prelievo"],
-            direzioni={
+        bilanci, falliti = await build_balances(
+            cliente, casa, day=G, timezone="Europe/Rome",
+            energy_subjects=["sensor.dev1_produzione", "sensor.dev2_prelievo"],
+            directions={
                 "sensor.dev1_produzione": {"direzione": "produzione", "provenienza": "dichiarata"},
                 "sensor.dev2_prelievo": {"direzione": "prelievo", "provenienza": "dichiarata"},
             })

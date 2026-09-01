@@ -326,7 +326,7 @@ async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
     inizio = time.monotonic()
     with (
         patch("hiris.app.server.aiohttp.ClientSession", return_value=sessione),
-        patch("hiris.app.server._ATTESA_CONNESSIONE_WS", 0.05),
+        patch("hiris.app.server._WS_CONNECT_TIMEOUT", 0.05),
         caplog.at_level("WARNING"),
     ):
         from hiris.app.server import _deregistra_risorsa_card
@@ -339,7 +339,7 @@ async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
 
 def test_l_attesa_sulla_connessione_e_dichiarata_e_breve():
     """Il valore vero, non una promessa nel commento: minuti no, secondi si'."""
-    assert 0 < server._ATTESA_CONNESSIONE_WS <= 30.0
+    assert 0 < server._WS_CONNECT_TIMEOUT <= 30.0
 
 
 @pytest.mark.asyncio
@@ -418,7 +418,7 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
 # ---------------------------------------------------------------------------
 # `_find_ha_config_dir` — sopravvive alla card: i suoi test si sono SPOSTATI
 # qui, non cancellati. La usa anche la sentinella del comportamento
-# (`server.py`, `sentinella_comportamento`).
+# (`server.py`, `behavior_sentinel`).
 # ---------------------------------------------------------------------------
 
 def _patch_ha_mounted(ha_config_dir: str | None = "/config"):

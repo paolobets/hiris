@@ -29,7 +29,7 @@ def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
     assert chiamata == (
         'app["officina"] = Workshop(\n'
         '        ha_client, app["costruzioni"], app["cronaca"],\n'
-        '        read_timezone=lambda: _fuso_da_archivio_casa(app.get("archivio_casa")))'
+        '        read_timezone=lambda: _timezone_from_home_space_store(app.get("archivio_casa")))'
     )
     assert "porta_azione" not in chiamata
 

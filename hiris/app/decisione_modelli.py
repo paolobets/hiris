@@ -38,7 +38,7 @@ import os
 # «Il piano ha un token?» era scritta quattro volte, in quattro moduli, e
 # governava quattro decisioni diverse: se il worker del ponte PARTE
 # (`server.should_start_agent_worker`), se il piano ENTRA nella catena
-# (`server._credenziali`), cosa la pagina Modelli DICHIARA
+# (`server._credentials`), cosa la pagina Modelli DICHIARA
 # (`handlers_models._config_has_credential`), e se il turno si ACCODA
 # (`instradamento._piano_puo_rispondere`).
 #
@@ -512,7 +512,7 @@ def compose_now(
         # 200 e viene buttata via al riavvio successivo -- il bottone che
         # sembra funzionare e non funziona, che questa fetta ha già evitato due
         # volte. Con la versione B (3.0.0) `ponte.attivo` vive nell'archivio,
-        # la PUT lo scrive, `_ricalcola_catena` lo rimette in vigore a caldo
+        # la PUT lo scrive, `_recompute_chain` lo rimette in vigore a caldo
         # (compreso il lavoratore che risponde sul piano) e la rilettura mostra
         # il piano in testa. La metà che mancava è arrivata.
         diagnosis.append({

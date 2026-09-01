@@ -297,7 +297,7 @@ def test_seminare_una_catena_vuota_con_niente_da_copiare_non_mente_nel_log():
         reg.removeHandler(h)
     assert "copiata" not in buf.getvalue()
     # Niente da copiare, ma la migrazione E' avvenuta: il segno si scrive e si
-    # persiste, altrimenti il prossimo avvio ricalcolerebbe `_catena_com_era`.
+    # persiste, altrimenti il prossimo avvio ricalcolerebbe `_chain_as_it_was`.
     assert fuori["catena_seminata"] is True
     assert da_salvare is True
 
@@ -356,7 +356,7 @@ def test_una_catena_svuotata_di_proposito_non_si_ripopola_al_riavvio():
     rende esprimibile in due click (la ✕ su ogni riga, `riordinabile` vero per
     tutte). Il proprietario legge in cima alla pagina che sta pagando due
     volte, toglie la chiave a credito zero e OpenRouter per restare sul piano
-    che ha gia' pagato -- poi l'add-on si riavvia, e `_catena_com_era` (cioe'
+    che ha gia' pagato -- poi l'add-on si riavvia, e `_chain_as_it_was` (cioe'
     `legacy = not any(interruttori)`, la regola che questa fetta ha tolto dal
     prodotto) glieli rimette tutti e due in catena: la spesa a consumo
     riparte, e a dirlo c'e' una riga di log che afferma il falso («la catena
@@ -422,12 +422,12 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     marker = 'app["models_config"] = load_models_config(data_dir)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
-    # `_nome_modello_com_era` e non `local_model_name` dal Task 9: e' l'UNICO
+    # `_model_name_as_it_was` e non `local_model_name` dal Task 9: e' l'UNICO
     # uso rimasto di `LOCAL_MODEL_NAME` in server.py, e il nome dice a cosa
     # serve -- ricostruire la CREDENZIALE COM'ERA, dove il modello contava
     # insieme all'indirizzo. Il modello che il runner usa arriva dall'archivio.
-    firma = ("def _avvio(app, os, logger, data_dir, _credenziali, "
-             "local_model_url, _nome_modello_com_era):\n")
+    firma = ("def _avvio(app, os, logger, data_dir, _credentials, "
+             "local_model_url, _model_name_as_it_was):\n")
     func_src = firma + textwrap.indent(corpo, "    ")
     # `env_bool` legge `os.environ` DENTRO env_util.py, quindi l'`os` finto
     # passato al blocco non la raggiunge: se si lasciasse quella vera,
@@ -449,7 +449,7 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     namespace: dict = {
         "__package__": "hiris.app",
         "__name__": "hiris.app.server",
-        "_catena_com_era": server._catena_com_era,
+        "_chain_as_it_was": server._chain_as_it_was,
         "env_bool": _env_bool_finta,
     }
     from hiris.app.api.handlers_models import load_models_config, save_models_config
@@ -595,6 +595,6 @@ def test_due_avvii_veri_non_ripopolano_la_catena_che_il_proprietario_ha_svuotato
         tmp_path, ambiente, CREDENZIALI_DEL_PROPRIETARIO)
     assert secondo["models_config"]["chain_order"] == [], (
         "al riavvio la catena svuotata di proposito si e' ripopolata da "
-        "`_catena_com_era`: la regola di compatibilita' e' rientrata dalla "
+        "`_chain_as_it_was`: la regola di compatibilita' e' rientrata dalla "
         "quarta porta, e la spesa a consumo riparte da sola"
     )

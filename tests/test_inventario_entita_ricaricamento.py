@@ -54,7 +54,7 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
     assert cache.loaded is False
 
     ha = _HA()
-    ricaricato = await server.ricarica_inventario_entita(cache, ha)
+    ricaricato = await server.reload_entity_inventory(cache, ha)
 
     assert ricaricato is True
     assert cache.loaded is True
@@ -85,7 +85,7 @@ async def test_dopo_la_ricarica_gli_strumenti_tornano_a_rispondere():
     prima = await _get_entities_on_come_lo_strumento(cache)
     assert isinstance(prima, dict) and "pront" in prima.get("error", "").lower()
 
-    await server.ricarica_inventario_entita(cache, _HA())
+    await server.reload_entity_inventory(cache, _HA())
 
     dopo = await _get_entities_on_come_lo_strumento(cache)
     assert [e["id"] for e in dopo] == ["light.cucina"]
@@ -101,7 +101,7 @@ async def test_non_ricarica_quando_la_cache_e_gia_viva():
     await cache.load(ha)
     letture_iniziali = ha.chiamate_stati
 
-    ricaricato = await server.ricarica_inventario_entita(cache, ha)
+    ricaricato = await server.reload_entity_inventory(cache, ha)
 
     assert ricaricato is False
     assert ha.chiamate_stati == letture_iniziali, (
@@ -117,19 +117,19 @@ async def test_home_assistant_ancora_giu_non_solleva_e_lascia_riprovare():
     cache = EntityCache()
     ha_giu = _HA(giu=True)
 
-    ricaricato = await server.ricarica_inventario_entita(cache, ha_giu)
+    ricaricato = await server.reload_entity_inventory(cache, ha_giu)
 
     assert ricaricato is False
     assert cache.loaded is False
 
     # Il giro dopo, con HA tornato, deve funzionare.
-    assert await server.ricarica_inventario_entita(cache, _HA()) is True
+    assert await server.reload_entity_inventory(cache, _HA()) is True
 
 
 @pytest.mark.asyncio
 async def test_senza_cache_o_senza_client_non_solleva():
-    assert await server.ricarica_inventario_entita(None, _HA()) is False
-    assert await server.ricarica_inventario_entita(EntityCache(), None) is False
+    assert await server.reload_entity_inventory(None, _HA()) is False
+    assert await server.reload_entity_inventory(EntityCache(), None) is False
 
 
 def test_il_lavoro_periodico_e_registrato_come_gli_altri():
@@ -139,7 +139,7 @@ def test_il_lavoro_periodico_e_registrato_come_gli_altri():
     sorgente = inspect.getsource(server._on_startup)
 
     assert "hiris_entity_cache_reload" in sorgente
-    assert "ricarica_inventario_entita" in sorgente
+    assert "reload_entity_inventory" in sorgente
     # Cadenza breve: un'indisponibilita' passeggera di Home Assistant deve
     # rientrare in pochi minuti, non alla prossima notte.
     blocco = sorgente[sorgente.index("hiris_entity_cache_reload") - 400:

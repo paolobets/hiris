@@ -380,7 +380,7 @@ def _config_has_credential(request: web.Request, provider_id: str) -> bool:
         return bool(request.app.get("openrouter_api_key"))
     if provider_id == "ollama":
         # fetta «la catena diventa l'unica verità»: la credenziale di Ollama è
-        # il SOLO indirizzo, come in `server._credenziali`. Il nome del modello
+        # il SOLO indirizzo, come in `server._credentials`. Il nome del modello
         # è una decisione, non una credenziale, e da questa fetta vive
         # nell'archivio. Due definizioni della stessa credenziale, una qui e
         # una nell'avvio, sarebbero la seconda rappresentazione in miniatura.

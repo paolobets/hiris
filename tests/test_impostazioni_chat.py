@@ -360,7 +360,7 @@ def _blocco_giorni_dallo_startup():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    impostazioni_chat = ChatSettings.load(data_dir)")
+    start = src.index("    chat_settings = ChatSettings.load(data_dir)")
     end = src.index('    _chatbots_json_path = os.path.join(', start)
     corpo = textwrap.dedent(src[start:end])
     firma = ("def _avvio(app, data_dir, logger, ChatSettings, "

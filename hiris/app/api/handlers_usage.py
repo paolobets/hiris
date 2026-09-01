@@ -135,8 +135,8 @@ async def handle_usage(request: web.Request) -> web.Response:
     # casa?»), con in piu' un primo ramo morto (`app["fuso_casa"]`, appendice
     # punto 7): nessun codice di produzione scriveva quella chiave, la
     # riempiva solo la finta di un test -- vedi `tests/test_consumi_rotte.py`.
-    from ..server import _fuso_da_archivio_casa
-    timezone = _fuso_da_archivio_casa(request.app.get("archivio_casa")) or ""
+    from ..server import _timezone_from_home_space_store
+    timezone = _timezone_from_home_space_store(request.app.get("archivio_casa")) or ""
 
     return web.json_response({
         "misurata": True,

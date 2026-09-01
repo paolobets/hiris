@@ -8,7 +8,7 @@ stato di un provider -- quella per cui, sull'unica installazione esistente, due
 provider lavoravano mentre la pagina li mostrava spenti.
 
 Della vecchia regola resta nel repo la sola META' di compatibilita', in
-`server._catena_com_era`, ed e' provata li'
+`server._chain_as_it_was`, ed e' provata li'
 (`tests/test_migrazione_opzioni.py`). Il ramo che leggeva gli interruttori e'
 uscito con loro: senza nessuno che esporti i cinque `PROVIDER_*`, era
 irraggiungibile, e il test che lo esercitava difendeva uno stato che nessun
@@ -91,7 +91,7 @@ def _blocco_catena_dallo_startup():
     marker = 'app["catena_modelli"] = list(_chain)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
-    # Il parametro si chiama `_risponde` e non `_credenziali` dal Task 9: in
+    # Il parametro si chiama `_risponde` e non `_credentials` dal Task 9: in
     # catena ci sta chi puo' RISPONDERE, che per quattro provider su cinque
     # coincide con la credenziale e per Ollama no (la credenziale e' il solo
     # indirizzo, ma senza un modello scelto il runner non viene costruito e il
@@ -209,11 +209,11 @@ def _blocco_risponde_dallo_startup():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index('    _modello_ollama = (app["models_config"]')
-    marker = '"ollama": bool(local_model_url and _modello_ollama)}'
+    start = src.index('    _ollama_model = (app["models_config"]')
+    marker = '"ollama": bool(local_model_url and _ollama_model)}'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
-    func_src = ("def _avvio(app, _credenziali, local_model_url):\n"
+    func_src = ("def _avvio(app, _credentials, local_model_url):\n"
                 + textwrap.indent(corpo, "    ")
                 + "\n    return _risponde")
     namespace: dict = {"__package__": "hiris.app", "__name__": "hiris.app.server"}
@@ -259,7 +259,7 @@ def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(monkeypat
 
 
 # ---------------------------------------------------------------------------
-# LA SCRITTURA A CALDO (Task 10): `_ricalcola_catena`
+# LA SCRITTURA A CALDO (Task 10): `_recompute_chain`
 #
 # Fino alla 2.4.1 `handle_save_models_config` aggiornava `app["models_config"]`
 # e basta: la catena del router si costruiva all'avvio, quindi un riordino
@@ -268,7 +268,7 @@ def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(monkeypat
 # rimostrava l'ordine vecchio. Il salvataggio sembrava perso, e c'era una riga
 # in pagina che lo confessava.
 #
-# `_ricalcola_catena` e' a livello di modulo apposta: e' l'UNICO calcolo che
+# `_recompute_chain` e' a livello di modulo apposta: e' l'UNICO calcolo che
 # rimette in vigore, lo chiama sia la PUT sia l'avvio, e si puo' provare senza
 # far girare `_on_startup`.
 # ---------------------------------------------------------------------------
@@ -304,12 +304,12 @@ def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
     """Il difetto che questo task chiude. Senza il ricalcolo, `catena_modelli`
     resta quella dell'avvio e `_chat_policy` pure: la pagina inviterebbe a un
     gesto e poi lo dimenticherebbe."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(),
                 catena=["openrouter", "claude"])
     app = _app(["claude", "openrouter"], router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == ["claude", "openrouter"]
     assert r._chat_policy == ["claude", "openrouter"], (
         "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
@@ -322,11 +322,11 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     dell'uno toccherebbe l'altro e i due potrebbero divergere senza che nessuno
     abbia scritto una seconda regola (stessa ragione del `list(_chain)`
     dell'avvio)."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == r._chat_policy
     assert app["catena_modelli"] is not r._chat_policy
 
@@ -336,11 +336,11 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     rimetterebbe in piedi la regola legacy tolta al Task 7: pagina che dice
     «la catena e' vuota, HIRIS non ha a chi chiedere» e chat che risponde lo
     stesso, usando l'ordine di prima."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == []
     assert r._chat_policy == []
     assert r._ordered_backends() == []
@@ -350,11 +350,11 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     """Un anello che il router salta in silenzio, disegnato numerato dalla
     pagina, e' la bugia che questa fetta ritira. La credenziale non basta: il
     ricalcolo guarda i backend che il router ha in mano."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == ["claude"]
     assert r._chat_policy == ["claude"]
 
@@ -363,11 +363,11 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     """Il runner locale nasce con l'indirizzo (e' la credenziale), ma senza un
     modello scelto non puo' rispondere: `_resolve_model` manderebbe "". E' la
     stessa regola dell'avvio (`_risponde`), riletta invece che ricordata."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == []
 
 
@@ -377,12 +377,12 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     prossimo messaggio ci passa. Il runner locale esiste gia' perche' nasce con
     l'indirizzo -- se nascesse con `indirizzo AND modello`, questo gesto
     tornerebbe 200 e non farebbe niente fino al riavvio."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     locale = _RunnerLocale()
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == ["claude", "ollama"]
     assert r._ordered_backends()[-1] is locale
 
@@ -391,12 +391,12 @@ def test_il_timeout_del_locale_viene_dall_archivio_a_ogni_ricalcolo():
     """L'unico valore della fetta che non si puo' leggere al momento dell'uso:
     `AsyncOpenAI` cuoce il timeout nel client alla costruzione. Il ricalcolo lo
     riapplica, cosi' anche quel numero vale dal prossimo messaggio."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     locale = _RunnerLocale()
     app = _app(["ollama"], ollama_modello="llama3.1:8b", timeout_s=300,
                router=_router(ollama=locale, catena=["ollama"]))
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert locale.timeout_applicati == [300]
 
 
@@ -406,18 +406,18 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
     solleverebbe `TypeError: 'NoneType' object is not callable`. E la catena
     dev'essere vuota, non l'ordine scritto: senza backend non risponde
     nessuno."""
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     app = _app(["claude", "openrouter"], router=None)
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == []
 
 
 def test_il_ricalcolo_regge_un_archivio_assente():
-    from hiris.app.server import _ricalcola_catena
+    from hiris.app.server import _recompute_chain
 
     app: dict = {}
-    _ricalcola_catena(app)
+    _recompute_chain(app)
     assert app["catena_modelli"] == []
 
 
@@ -472,7 +472,7 @@ def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
         "la verifica di raggiungibilita' parla del MODELLO scaricato: senza un "
         "modello scelto non c'e' niente da verificare"
     )
-    assert "read_model=_modello_locale," in blocco
+    assert "read_model=_local_model," in blocco
     assert "local=True," in blocco
 
 
@@ -492,4 +492,4 @@ def test_ogni_runner_riceve_la_lettura_del_SUO_provider():
                                   ("openrouter", "openrouter_runner = OpenRouterRunner(")):
         i = src.index(costruttore)
         blocco = src[i:src.index("        )", i)]
-        assert f'read_model=_modello_di("{provider}")' in blocco, blocco
+        assert f'read_model=_model_of("{provider}")' in blocco, blocco
