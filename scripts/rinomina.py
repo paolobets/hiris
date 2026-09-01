@@ -389,7 +389,7 @@ _METODI_HA_CLIENT = frozenset({
     "storico", "diario", "render_template", "_ws_batch", "_ws_request",
     "_ws_command", "_ws_call", "statistiche", "statistiche_orarie",
     "_richiedi_statistiche", "legami", "problemi", "direzioni_energia",
-    "_dichiara", "get_config", "leggi_registri", "_aggiungi_campi_estesi",
+    "_declare", "get_config", "leggi_registri", "_aggiungi_campi_estesi",
     "add_state_listener", "remove_state_listener", "add_anagrafe_listener",
     "add_servizi_listener", "add_plance_listener", "start_websocket",
     "_ws_loop",
