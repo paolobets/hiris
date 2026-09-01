@@ -1330,6 +1330,66 @@ def _binding_concorrenti(sorgente: str) -> set[str]:
     return concorrenti
 
 
+# Le forme con cui si legge un attributo per NOME invece che per sintassi.
+# Elenco esplicito e corto: sono le funzioni della libreria standard che
+# prendono il nome come stringa, piu' `operator`. Cresce solo se ne nasce una.
+_FORME_DINAMICHE = frozenset({
+    "getattr", "setattr", "hasattr", "delattr", "attrgetter", "methodcaller",
+})
+
+
+def accessi_dinamici(nomi: dict[str, str], radice: Path | None = None, *,
+                     escludi: tuple[str, ...] = ()
+                     ) -> list[tuple[Path, int, str, str, str]]:
+    """La SETTIMA specie: un attributo letto per NOME, come stringa letterale.
+    `(file, riga, vecchio, nuovo, la forma che lo legge)`.
+
+    **Le prime sei specie di sponda le abbiamo trovate a caro prezzo; questa
+    l'ha presa la suite andando rossa, che e' fortuna e non rete.**
+    `llm_router.py:231` faceva `getattr(exc, "famiglia", "altro")` su un
+    `RunnerBackendError` i cui campi erano appena diventati `family`/`code`:
+    non e' un `def`, non e' un attributo per sintassi, non e' un import, non e'
+    una parola chiave -- **nessuna delle sei reti guarda dentro una stringa**.
+
+    E' un confronto di insiemi, e per questo costa poco: i nomi letterali
+    passati a una forma dinamica, incrociati con la mappa delle rinomine.
+    Misurato sul repo: **28 accessi dinamici con un nome letterale**, e finche'
+    nessuno li incrociava con la mappa erano ventotto occasioni.
+
+    **Dichiara e non corregge**, come le altre: `getattr(altro_oggetto,
+    "nome")` e' legittimo, e solo chi legge sa a quale oggetto quella stringa
+    appartenga. Ma un elenco di ventotto righe si legge, e un `grep` che
+    nessuno lancia no.
+    """
+    base = radice or ROOT
+    saltati = {e.replace("\\", "/") for e in escludi}
+    fuori: list[tuple[Path, int, str, str, str]] = []
+    if not nomi:
+        return fuori
+    import ast
+    for f in file_py(base):
+        if f.relative_to(base).as_posix() in saltati:
+            continue
+        try:
+            albero = ast.parse(_leggi_grezzo(f))
+        except (SyntaxError, ValueError):
+            continue
+        for nodo in ast.walk(albero):
+            if not isinstance(nodo, ast.Call):
+                continue
+            chiamato = (nodo.func.id if isinstance(nodo.func, ast.Name)
+                        else nodo.func.attr if isinstance(nodo.func, ast.Attribute)
+                        else "")
+            if chiamato not in _FORME_DINAMICHE:
+                continue
+            for arg in nodo.args:
+                if (isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                        and arg.value in nomi):
+                    fuori.append((f, arg.lineno, arg.value, nomi[arg.value],
+                                  chiamato))
+    return fuori
+
+
 def chiudi_sponde(siti) -> int:
     """Rinomina i token nei SITI che `sponde_per_nome` ha dichiarato e che un
     umano ha approvato. Restituisce quanti ne ha chiusi.
@@ -1689,6 +1749,15 @@ def main(argv=None) -> int:
     # Terzo strato: le due sponde che nessuno degli altri due copre -- un nome
     # vecchio letto altrove come NOME IMPORTATO o come ATTRIBUTO. Entrambe
     # trovate a mano, due volte, prima che questa esistesse.
+    dinamici = accessi_dinamici(ogni_nome, escludi=tuple(file_lotto))
+    if dinamici:
+        print(f"  -- {len(dinamici)} attributi letti per NOME (settima specie) "
+              f"FUORI da {a.percorso}: nessun'altra rete guarda dentro una "
+              f"stringa, e un nome sbagliato qui non lo vede nemmeno il "
+              f"linter -- si scopre in produzione:")
+        for f, riga, vecchio, nuovo, forma in dinamici:
+            print(f"     {forma}(...) {rel(f)}:{riga}  \"{vecchio}\" -> \"{nuovo}\"")
+
     sponde = sponde_per_nome(ogni_nome, escludi=tuple(file_lotto))
     if sponde:
         print(f"  -- {len(sponde)} letture di un nome vecchio FUORI da "

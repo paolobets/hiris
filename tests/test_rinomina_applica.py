@@ -1552,3 +1552,49 @@ def test_gli_attributi_d_istanza_sono_ESPORTATI_quanto_un_metodo():
               "        return locale\n")
     esportati = rinomina.nomi_esportati(dentro, gf, "radice")
     assert esportati == {"famiglia": "family", "codice": "code"}, esportati
+
+
+def test_la_settima_rete_vede_un_attributo_letto_per_NOME(tmp_path):
+    """La settima specie: un attributo letto come STRINGA.
+
+    **Le prime sei le abbiamo trovate a caro prezzo; questa l'ha presa la suite
+    andando rossa** -- `llm_router.py:231`, `getattr(exc, "famiglia", "altro")`
+    su un `RunnerBackendError` i cui campi erano appena diventati
+    `family`/`code`. Non e' un `def`, non e' un attributo per sintassi, non e'
+    un import, non e' una parola chiave: **nessuna delle sei reti guarda dentro
+    una stringa**, e nemmeno il linter -- un nome sbagliato li' si scopre in
+    produzione.
+
+    Validata contro l'albero vero di `c46e07c^`, dove il caso era ancora vivo:
+    **due segnalazioni, esattamente i due siti** che la suite aveva preso per
+    fortuna.
+    """
+    (tmp_path / "legge.py").write_text(
+        'a = getattr(exc, "famiglia", "altro")\n'
+        'b = hasattr(x, "codice")\n'
+        'import operator\n'
+        'c = operator.attrgetter("famiglia")\n', encoding="utf-8")
+    trovati = rinomina.accessi_dinamici({"famiglia": "family", "codice": "code"},
+                                        radice=tmp_path)
+    assert [(r, v, n, forma) for _, r, v, n, forma in trovati] == [
+        (1, "famiglia", "family", "getattr"),
+        (2, "codice", "code", "hasattr"),
+        (4, "famiglia", "family", "attrgetter")], trovati
+
+
+def test_la_settima_rete_non_guarda_ogni_stringa_del_repo(tmp_path):
+    """La controprova, ed e' il confine: **una stringa non e' un accesso
+    dinamico**. Le chiavi JSON di questo prodotto portano gli stessi nomi
+    italiani per decisione (`{"famiglia": ...}` e' un campo del contratto), e
+    segnalarle renderebbe l'elenco illeggibile -- il difetto n.1 applicato al
+    rimedio.
+
+    Si guardano solo le forme che leggono un attributo PER NOME, e sono un
+    elenco corto e chiuso (`_FORME_DINAMICHE`).
+    """
+    (tmp_path / "dati.py").write_text(
+        'riga = {"famiglia": "altro", "codice": None}\n'
+        'msg = "la famiglia non e\' nota"\n'
+        'x = chiamata("famiglia")\n', encoding="utf-8")
+    assert rinomina.accessi_dinamici({"famiglia": "family", "codice": "code"},
+                                     radice=tmp_path) == []

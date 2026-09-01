@@ -112,8 +112,26 @@ Non e' un'attenuazione: e' cosa vuol dire elidere. `dell'utente` esiste,
 una parola comunissima -- avrebbe segnalato `all_bands`, `all_states`,
 `get_all`, `show_all`, `close_all_stores`, cioe' cinque nomi inglesi
 corretti, di cui uno (`all_bands`) e' la CORREZIONE che la misura stessa
-prescrive. Con la condizione ne segnala zero, e continua a segnalare
-`dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`, `l_altro_ieri`.
+prescrive. Con la condizione quei cinque non li segnala piu', e continua a
+segnalare `dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`, `l_altro_ieri`.
+
+**`all` ha UN falso positivo misurato, ed e' il primo: `all_occurrences`**
+(`esiti_provider.py`, lotto di `radice`). La condizione sulle vocali non lo
+salva -- `occurrences` COMINCIA per vocale -- quindi il cancello lo segnala
+**per costruzione**, non perche' il nome sia sbagliato: `all_occurrences` e'
+inglese perfettamente corretto. La frase che stava qui («con la condizione ne
+segnala zero») e' diventata falsa in quel momento, ed e' corretta ora.
+
+**La regola RESTA, e il conto e' questo**: cinque nomi inglesi corretti salvati
+dalla condizione contro uno che le sfugge, piu' i quattro veri positivi
+(`dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`, `l_altro_ieri`). Il costo
+del falso positivo e' stato nullo -- il nome finale, `occurrences`, e' anche
+piu' semplice -- ma **il costo di non contarlo non lo sarebbe**: accettare un
+falso positivo come una presa e' il modo in cui un cancello smette di essere
+tarato. Il prossimo autore ne accetterebbe il verdetto senza guardare, e il
+conto dei falsi positivi -- quello che ha deciso `in`, `per`, `i` e `o` --
+diventerebbe inservibile. **Un cancello che dice «zero falsi positivi» e ne ha
+uno e' peggio di uno che ne dichiara uno.**
 
 **3. `a` vale solo se NON e' l'ultimo pezzo** -- e questa regola ha due
 FALSI NEGATIVI dichiarati, perche' la frase che la giustificava era piu'
@@ -524,3 +542,27 @@ def test_un_nome_di_un_pezzo_solo_non_e_mai_una_giuntura():
     database): il difetto e' la GIUNTURA fra due pezzi, non la parola."""
     for nome in ("da", "a", "e", "i", "del"):
         assert giunture(nome) == []
+
+
+def test_il_falso_positivo_di_all_e_dichiarato_e_uno_solo():
+    """`all` ha un falso positivo, e sta scritto qui invece che nella prosa.
+
+    `all_occurrences` (`esiti_provider.py`, lotto di `radice`) e' inglese
+    perfettamente corretto, e il cancello lo segnala **per costruzione**: la
+    condizione sulle vocali non lo salva, perche' `occurrences` comincia per
+    vocale. Non e' una presa: e' il prezzo della regola.
+
+    **Sta in un test e non solo nel docstring** perche' un conto scritto in
+    prosa invecchia in silenzio -- e' successo alla frase «con la condizione ne
+    segnala zero», che e' rimasta li' mentre diventava falsa. Qui il conto lo
+    verifica una macchina: se un domani la condizione salvasse anche questo
+    caso, questo test arrossisce e la prosa si aggiorna con lui.
+    """
+    assert giunture("all_occurrences") == ["all"], (
+        "la condizione sulle vocali NON salva `all_occurrences`: e' il falso "
+        "positivo dichiarato di `all`, e il docstring lo conta")
+    for nome in ("all_bands", "all_states", "get_all", "show_all",
+                 "close_all_stores"):
+        assert giunture(nome) == [], (
+            f"{nome} e' uno dei cinque che la condizione salva: se arrossisse, "
+            "il conto che giustifica la regola sarebbe cambiato")
