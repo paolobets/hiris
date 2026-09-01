@@ -1047,7 +1047,17 @@ _MUTE_VOLUTE = {
 # definizione prometteva. Resta scritto, e non cancellato, perche' i moduli
 # di radice ne porteranno altre: un insieme vuoto DICHIARATO dice una cosa
 # che un insieme cancellato non direbbe piu'.
-_MUTE_PROVVISORIE: set[tuple[str, str]] = set()
+_MUTE_PROVVISORIE = {
+    # I moduli di RADICE, ancora da convertire: `decisione_modelli.py`,
+    # `server.py`, `chat_store.py`, `token_interno.py`, `migrazione_opzioni.py`.
+    # **Sono comparse il 01/09, appena il cancello ha smesso di guardare le sole
+    # CARTELLE** -- prima erano invisibili, e una di loro (`lettura`) era gia'
+    # costata un nome rimasto italiano (`cache_lettura`, `claude_runner.py`).
+    # Ognuna va decisa quando tocchera' al suo file: qualificarla `(radice)`, o
+    # dichiararla voluta con la ragione.
+    ("fuori", "radice"), ("guarda", "radice"), ("piano", "radice"),
+    ("riga", "radice"), ("senza", "radice"),
+}
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE
 
@@ -1061,11 +1071,10 @@ def _pezzi_per_ambito() -> dict[str, set[str]]:
     from _comune import ROOT
     app = ROOT / "hiris" / "app"
     fuori: dict[str, set[str]] = {}
-    for cartella in sorted(p for p in app.iterdir() if p.is_dir()):
-        if cartella.name in ("__pycache__", "static"):
-            continue
+
+    def raccogli_pezzi(file) -> set[str]:
         pezzi: set[str] = set()
-        for f in rinomina.file_py(cartella):
+        for f in file:
             try:
                 tk = list(tokenize.generate_tokens(
                     io.StringIO(rinomina._leggi_grezzo(f)).readline))
@@ -1074,7 +1083,19 @@ def _pezzi_per_ambito() -> dict[str, set[str]]:
             for t in tk:
                 if t.type == tokenize.NAME:
                     pezzi.update(p.lower() for p in rinomina.spezza(t.string))
-        fuori[cartella.name] = pezzi
+        return pezzi
+
+    # **I moduli di RADICE sono un ambito, e il cancello non li guardava.**
+    # Trovato dal lotto `radice`: `cache_lettura` (`claude_runner.py`) e' rimasto
+    # italiano perche' `lettura` e' qualificata `(casa)`/`(consumi)` e quindi
+    # muta li' -- ma nessuna riga di questo elenco poteva dirlo, perche'
+    # `iterdir()` filtrava sulle sole CARTELLE. Un cancello che guarda meta' del
+    # perimetro non protegge meta': non protegge, e sembra di si'.
+    fuori["radice"] = raccogli_pezzi(sorted(app.glob("*.py")))
+    for cartella in sorted(p for p in app.iterdir() if p.is_dir()):
+        if cartella.name in ("__pycache__", "static"):
+            continue
+        fuori[cartella.name] = raccogli_pezzi(rinomina.file_py(cartella))
     return fuori
 
 
