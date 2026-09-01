@@ -143,11 +143,16 @@ def doppi(reale, moduli) -> list[tuple[str, str]]:
               if callable(valore) and nome != "__init__"}
     trovati = []
     for modulo in moduli:
+        imitatori = {nome for nome, c in vars(modulo).items()
+                     if inspect.isclass(c) and c.__module__ == modulo.__name__
+                     and not issubclass(c, reale) and (set(vars(c)) & metodi)}
         for nome_cls, cls in vars(modulo).items():
             if not inspect.isclass(cls) or cls.__module__ != modulo.__name__:
                 continue
             if issubclass(cls, reale):
                 continue
+            _assert_sottoclasse_ridichiara_solo_membri_veri(
+                reale, metodi, imitatori, modulo, nome_cls, cls)
             for nome_metodo in sorted(vars(cls)):
                 if nome_metodo not in metodi or not callable(vars(cls)[nome_metodo]):
                     continue
@@ -157,6 +162,47 @@ def doppi(reale, moduli) -> list[tuple[str, str]]:
                          f"{modulo.__name__}.{nome_cls}.{nome_metodo}")
                 trovati.append((f"{modulo.__name__}.{nome_cls}", nome_metodo))
     return trovati
+
+
+def _assert_sottoclasse_ridichiara_solo_membri_veri(reale, metodi, imitatori,
+                                                    modulo, nome_cls, cls) -> None:
+    """La QUARTA specie di sponda: un ATTRIBUTO di classe che ombreggia un
+    metodo vero, e che smette di ombreggiarlo quando il metodo cambia nome.
+
+    **Misurata dal vivo, e con un test verde su entrambi i lati** (fetta «la
+    rinomina», lotto 19c): `tests/test_azione_bersagli.py::
+    FintoClientSenzaBocca` porta `estrai_dal_bersaglio = None` per dichiarare
+    il client che NON sa risolvere i bersagli. Rinominato
+    `HAClient.estrai_dal_bersaglio` in `extract_from_target`, quell'attributo
+    e' rimasto indietro: non e' un `def` (i rinominatori guardano `def` e
+    `.attributo`), non e' una parola chiave (il controllo di chiusura guarda
+    quelle), non e' un import (`sponde_per_nome` guarda quelli) e non e' un
+    metodo (`assert_stessa_firma` confronta firme, e `None` non ne ha una).
+    La finta ha ricominciato a EREDITARE il metodo vero dalla sua base, e il
+    test e' rimasto verde -- prima e dopo, provato per mutazione. Non provava
+    piu' il ramo che il suo docstring prometteva.
+
+    **Il criterio e' stretto apposta, e misurato**: si guarda SOLO una classe
+    che eredita da un imitatore definito nello stesso modulo. Ridichiarare un
+    nome li' ha una ragione sola -- ombreggiare un membro della classe
+    imitata -- quindi ogni nome ridichiarato deve essere un membro VERO.
+    Misurato prima di scrivere la riga: due sottoclassi di questa specie in
+    tutta la suite, zero falsi positivi. La regola piu' larga (ogni attributo
+    di classe di ogni imitatore) ne dava uno su due, e un cancello che
+    arrossisce su un nome corretto viene indebolito, non corretto.
+    """
+    if not any(b.__name__ in imitatori for b in cls.__bases__):
+        return
+    for attr in sorted(vars(cls)):
+        if attr.startswith("__"):
+            continue
+        assert attr in metodi, (
+            f"{modulo.__name__}.{nome_cls} eredita da una finta di "
+            f"{reale.__name__} e ridichiara «{attr}», che {reale.__name__} "
+            "non ha: o il membro vero e' stato rinominato e questo e' rimasto "
+            "indietro (allora la finta ha ripreso a EREDITARE il metodo vero, "
+            "e cio' che credeva di provare non lo prova piu'), oppure il nome "
+            "e' sbagliato da sempre")
 
 
 def assert_stessa_firma(reale, finto, *, nome: str = "") -> None:

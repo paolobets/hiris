@@ -973,12 +973,20 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # e' posto per `riga (proxy)`: `Glossario.per("riga", "proxy")` tornava `None`,
 # `riga`/`righe` restavano italiane in `proxy/ha_client.py` e **il dry-run non
 # diceva niente**. Trovata inciampandoci, non cercandola.
-_MUTE_NOTE = {
+#
+# **L'elenco e' DIVISO IN DUE, e la divisione e' il punto** (01/09, review del
+# round 14): un elenco che mescola un insieme che si esaurisce con uno che non
+# si esaurisce mai non potra' mai dirsi finito. A fine fetta si deve poter dire
+# «restano N, tutte volute», non «restano N+M, non chiedermi quante contano».
+
+# ── 1. VOLUTE: qui la parola ha un senso DIVERSO da quello della riga
+# qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
+_MUTE_VOLUTE = {
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
-    # per intero (ambiti non convertiti) o dentro residui gia' dichiarati
-    # (`memoria/resolver.py`, `schedulatore/turno.py::_senza_conclusione`).
-    ("senza", "agent"), ("senza", "api"), ("senza", "azione"),
-    ("senza", "memoria"), ("senza", "schedulatore"),
+    # per intero o dentro residui gia' dichiarati (`memoria/resolver.py`,
+    # `schedulatore/turno.py::_senza_conclusione`).
+    ("senza", "api"), ("senza", "azione"), ("senza", "memoria"),
+    ("senza", "schedulatore"),
     # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "azione"), ("note", "consumi"),
@@ -998,15 +1006,22 @@ _MUTE_NOTE = {
     ("loro", "azione"), ("nostro", "azione"),
     # `piano (abbonamento)` E' irraggiungibile per costruzione, con la ragione
     # scritta accanto alla riga: si applica a mano. Qui non e' una scoperta.
-    ("piano", "agent"), ("piano", "api"),
-    # `riga` e' qualificata `(api)`, `(casa)`, `(proxy)`. `agent/` non e'
-    # ancora stato convertito: quando lo sara', va qualificata anche li'.
-    ("riga", "agent"),
-    # `verifica` e' qualificata `(azione)`/`(memoria)`. `agent/` non e'
-    # convertito; in `casa/strumenti.py` c'e' un'occorrenza sola, dentro il
-    # residuo dichiarato di quel file.
-    ("verifica", "agent"), ("verifica", "casa"),
+    ("piano", "api"),
+    # `verifica` e' qualificata `(azione)`/`(memoria)`; in `casa/strumenti.py`
+    # c'e' un'occorrenza sola, dentro il residuo dichiarato di quel file.
+    ("verifica", "casa"),
 }
+
+# ── 2. DA CONVERTIRE: la parola e' muta solo perche' il suo sottosistema non
+# e' ancora stato convertito. **Questo insieme si esaurisce**, e ogni fetta lo
+# fa calare: quando `agent/` sara' convertito queste righe spariscono, o
+# diventano volute con una ragione scritta.
+_MUTE_PROVVISORIE = {
+    ("senza", "agent"), ("piano", "agent"), ("riga", "agent"),
+    ("verifica", "agent"),
+}
+
+_MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE
 
 
 def _pezzi_per_ambito() -> dict[str, set[str]]:
@@ -1047,6 +1062,10 @@ def test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato():
     nuova e' una domanda da porsi (qualificare anche li', o e' un senso
     diverso?), una coppia sparita e' un'eccezione da togliere.
 
+    L'insieme atteso e' l'unione di due, e il messaggio lo dice: `_MUTE_VOLUTE`
+    non cala mai (senso diverso, mutezza giusta), `_MUTE_PROVVISORIE` si
+    esaurisce a ogni sottosistema convertito.
+
     Provato per mutazione: tolta la riga `note (casa)` dal glossario, questo
     test va rosso nominando `('note', 'casa')` fra le coppie mai viste prima;
     rimessa, torna verde.
@@ -1078,4 +1097,7 @@ def test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato():
         "coppie dichiarate mute che non lo sono piu': "
         + ", ".join(f"{p} in {a}" for p, a in sparite)
         + " -- o la parola e' stata qualificata anche li' (bene: togli la "
-          "riga da `_MUTE_NOTE`), o non e' piu' usata in quell'ambito.")
+          "riga), o non e' piu' usata in quell'ambito. Se viene da "
+          "`_MUTE_PROVVISORIE` e' l'esito atteso di una conversione; se "
+          "viene da `_MUTE_VOLUTE`, guarda perche': quell'insieme non "
+          "dovrebbe calare da solo.")

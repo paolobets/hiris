@@ -386,6 +386,50 @@ Lo stesso vale per i rapporti sotto `.superpowers/`: si scrivono in coda, non si
 monte -- salvo per correggere un dato MISURATO che si e' rivelato falso (un conteggio, un esito),
 mai per allineare un nome.
 
+### Il confine vero non e' il DOCUMENTO: e' la FRASE
+
+**Corretto il 01/09 dopo il lotto 19c, e la regola precedente -- «questo documento e' vivo, quello
+e' un verbale» -- e' troppo grossa.** Dentro un file vivo convivono le due specie, e il criterio
+che tiene e' per singola frase:
+
+> **Una citazione che PUNTA al codice segue il codice. Una citazione che REGISTRA una misura e' un
+> verbale e resta com'e', coi nomi di allora.**
+
+Misurato al costo di due giri annullati. Il primo, una sostituzione `nome` sulle citazioni,
+ha toccato **744 punti in 80 file**: `diario`, `statistiche`, `problemi`, `legami`, `storico` sono
+parole italiane ORDINARIE, e mezza codebase le usa in prosa. Il secondo, ristretto alle sole coppie
+di backtick, ha riscritto i verbali -- dal docstring «senza questa guardia `ha.statistiche(...)`
+diventava `ha.statistics(...)`» ha prodotto «`ha.statistics(...)` in `ha.statistics(...)`»,
+**cancellando la misura che quella frase esisteva per registrare**. Una frase al passato che
+racconta cosa faceva il codice PRIMA e' un verbale ovunque viva, anche dentro `scripts/rinomina.py`.
+
+**E la nota onesta, per chi progettera' il giro finale**: questa fetta se n'e' accorta soltanto
+perche' i suoi verbali stanno tutti in sei file, che sono il diario del meccanismo stesso
+(`scripts/rinomina.py`, `tests/_contratti.py`, `tests/test_rinomina_applica.py`,
+`tests/test_contratto_ha_client.py`, `tests/test_preposizioni_italiane.py`, e questo glossario).
+Escluderli dall'automatismo e' bastato **qui**. Un'altra fetta avrebbe i verbali sparsi fra i
+commenti del prodotto, e non esiste nessun criterio meccanico che distingua «punta» da «registra»:
+li trova solo la lettura. Chi progetta il giro di fine fetta deve saperlo prima di stimarlo.
+
+## L'omonimia FRA MODULI e' ammessa quando il concetto e' lo stesso
+
+**Classe decisa il 01/09, dal caso `diario`/`logbook`.** I moduli sono spazi di nomi, e dare lo
+stesso nome alla stessa cosa a due livelli e' cio' che un lettore si aspetta: non e' un doppione,
+e' coerenza.
+
+- **Ammessa**: `proxy/ha_client.py::logbook` e' il diario di Home Assistant letto grezzo
+  (`GET /api/logbook`); `casa/tempo.py::logbook` e' la funzione che lo legge per gli strumenti. Un
+  terzo nome avrebbe fatto credere a un terzo concetto. E' anche il motivo per cui `diario` **non
+  prende una riga di glossario**: la riga renderebbe permanente e automatica una collisione con
+  `accaduto -> logbook`, mentre il nome deciso a mano resta una scelta letta ogni volta.
+- **Vietata**: `registro` (lotto 12) -- il registro dei servizi di Home Assistant e `RegistroEsiti`
+  dei provider sono due cose diverse, e chiamarli tutti e due `registry` sarebbe stato una bugia,
+  non un'economia. Li' e' servita una guardia (`_METODI_REGISTRO_ESITI`), non un nome condiviso.
+
+**Il criterio e' il CONCETTO, non la comodita'**: se i due nomi rispondono alla stessa domanda a due
+altezze diverse, l'omonimia aiuta; se rispondono a domande diverse, e' un inganno. Chi ne aggiunge
+una scrive qui quale delle due sta facendo.
+
 ## «Ambito chiuso» significa chiuso rispetto al glossario di QUEL giorno
 
 **Aggiunto dopo la review del lotto 9, e non descrive un difetto da correggere: descrive come il
