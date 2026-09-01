@@ -35,9 +35,17 @@ import sys
 from pathlib import Path
 
 from hiris.app.proxy.ha_client import HAClient
-from tests._contratti import doppi
+from tests._contratti import buchi, doppi
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _sorgenti_prova():
+    """I file `tests/test_*.py`, letti dal disco: `buchi` fa AST sul SORGENTE,
+    non introspezione, perche' due dei tre buchi vivono in una classe definita
+    dentro una funzione di test."""
+    return [f for f in sorted(ROOT.joinpath("tests").glob("test_*.py"))
+            if f.stem != Path(__file__).stem]
 
 
 def _moduli():
@@ -95,3 +103,59 @@ def test_il_doppio_piu_riscritto_e_dentro_l_enumerazione():
         "l'enumerazione non trova piu' nessuna finta di `call_service`: "
         "controlla il criterio di `doppi` prima di credere che le finte "
         "siano sparite")
+
+
+# I BUCHI dichiarati: un attributo di classe che porta il nome di un metodo di
+# `HAClient` senza esserne uno. Sono finte che dicono «io questo NON lo so
+# fare», ed e' il modo giusto di dirlo -- ma vivono solo finche' il nome resta
+# un membro vero: il giorno in cui il metodo viene rinominato, il buco smette
+# di essere un buco e la finta torna a EREDITARE il metodo vero, con la suite
+# verde. E' successo (lotto 19c, `estrai_dal_bersaglio = None`), ed e' la
+# quarta specie di sponda.
+#
+# **Uguaglianza esatta nelle due direzioni**: un buco nuovo va dichiarato qui
+# con la sua ragione, e un buco che SPARISCE e' il segnale del difetto --
+# nessuno cancella un `= None` per caso, quindi se non c'e' piu' e' perche' il
+# nome del metodo e' cambiato sotto.
+_BUCHI_NOTI = {
+    # `FintoClientPorta` sa risolvere i bersagli; questa sottoclasse no, e la
+    # porta deve dichiararlo invece di eseguire su niente
+    # (`test_un_client_che_non_sa_risolvere_non_esegue_e_lo_dichiara`).
+    ("FintoClientSenzaBocca", "extract_from_target"),
+    # `ClientSordo` e' il client che NON annuncia: la porta non deve aspettare
+    # un annuncio che non puo' arrivare. I due ascoltatori sono un buco solo in
+    # due pezzi -- toglierne uno lascerebbe la finta a meta'.
+    ("ClientSordo", "add_state_listener"),
+    ("ClientSordo", "remove_state_listener"),
+}
+
+
+def test_ogni_buco_dichiarato_e_ancora_un_buco():
+    """La quarta specie di sponda, chiusa alla fonte invece che caso per caso.
+
+    Provato per mutazione sul caso vissuto: rinominato
+    `HAClient.extract_from_target`, il buco di `FintoClientSenzaBocca` sparisce
+    da questo elenco e il test va rosso -- mentre prima la suite restava verde
+    e la finta aveva ripreso a ereditare il metodo vero.
+
+    **Si legge il sorgente, non le classi importate**: due dei tre buchi
+    vivono in una classe definita dentro il corpo di una funzione di test, che
+    nessuna introspezione a runtime raggiunge. L'enumerazione a runtime ne
+    trovava uno su tre -- «la difesa esiste in un caso su tre» era il rilievo,
+    ed era esatto.
+    """
+    trovati = {(cls, membro) for cls, membro, _ in buchi(HAClient, _sorgenti_prova())}
+    nuovi = sorted(trovati - _BUCHI_NOTI)
+    spariti = sorted(_BUCHI_NOTI - trovati)
+    assert not nuovi, (
+        "buchi mai dichiarati: " + ", ".join(f"{c}.{m}" for c, m in nuovi)
+        + " -- un attributo di classe che ombreggia un metodo vero e' una "
+          "finta che dice «questo non lo so fare»: dichiaralo qui con la "
+          "ragione, cosi' il giorno che smette di essere un buco si vede")
+    assert not spariti, (
+        "buchi dichiarati che non ci sono piu': "
+        + ", ".join(f"{c}.{m}" for c, m in spariti)
+        + " -- nessuno cancella un `= None` per caso. Quasi sempre significa "
+          "che il METODO VERO e' stato rinominato e l'attributo e' rimasto "
+          "indietro: la finta ha ripreso a EREDITARE il metodo vero, e cio' "
+          "che quel test credeva di misurare non lo misura piu'")

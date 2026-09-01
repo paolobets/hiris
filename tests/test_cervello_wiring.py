@@ -311,7 +311,7 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
     modifica futura a `HAClient.read_registries`."""
     from hiris.app.proxy.ha_client import HAClient
     assert_stessa_firma(HAClient.read_registries, _ClienteFinto.read_registries,
-                        nome="HAClient.leggi_registri")
+                        nome="HAClient.read_registries")
 
 
 def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono():

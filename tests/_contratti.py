@@ -76,6 +76,7 @@ percorsi di import e che `tests/test_preposizioni_italiane.py` dice dei
 sottosistemi -- mentre una derivazione dimenticata non esiste: una finta
 nuova, in un file nuovo, e' coperta senza che nessuno se ne ricordi.
 """
+import ast
 import inspect
 
 _VUOTO = object()  # sentinella: "nessun default", per distinguerlo da default=None
@@ -162,6 +163,55 @@ def doppi(reale, moduli) -> list[tuple[str, str]]:
                          f"{modulo.__name__}.{nome_cls}.{nome_metodo}")
                 trovati.append((f"{modulo.__name__}.{nome_cls}", nome_metodo))
     return trovati
+
+
+def buchi(reale, file) -> list[tuple[str, str, int]]:
+    """`[(«Classe», «membro», riga), ...]`: ogni ATTRIBUTO di classe che porta
+    il nome di un metodo di `reale` senza esserne uno -- un BUCO deliberato
+    (`add_state_listener = None`, «il client che non annuncia»).
+
+    **Perche' non basta `assert_stessa_firma`, e perche' non basta nemmeno
+    `doppi`.** Un buco non ha una firma da confrontare: `doppi` lo scarta
+    (`not callable(...)`) e la guardia sulle sottoclassi lo vede solo se il
+    nome NON e' piu' un membro del vero. Il caso pericoloso e' l'opposto:
+    finche' il nome resta valido il buco funziona, ma il giorno in cui il
+    metodo vero viene rinominato **il buco smette di essere un buco** -- la
+    finta torna a ereditare il metodo vero, e cio' che il test credeva di
+    misurare non lo misura piu'. Successo davvero (lotto 19c,
+    `estrai_dal_bersaglio = None`), con la suite verde prima e dopo.
+
+    **Si legge il SORGENTE, non le classi importate**, e non e' un dettaglio:
+    due dei tre buchi di oggi vivono in una classe definita DENTRO il corpo di
+    una funzione di test (`ClientSordo`, `test_azione_porta.py`), che non e' un
+    attributo del modulo e che nessuna introspezione a runtime raggiunge.
+    Misurato: l'enumerazione a runtime ne trova **uno su tre**.
+
+    Il criterio e' un'assegnazione a livello di CLASSE il cui bersaglio si
+    chiama come un metodo del vero. Misurato su tutta la suite: tre voci, zero
+    falsi positivi.
+    """
+    metodi = {nome for nome, valore in vars(reale).items()
+              if callable(valore) and nome != "__init__"}
+    trovati = []
+    for percorso in file:
+        try:
+            albero = ast.parse(percorso.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for nodo in ast.walk(albero):
+            if not isinstance(nodo, ast.ClassDef):
+                continue
+            for corpo in nodo.body:
+                if isinstance(corpo, ast.Assign):
+                    bersagli = [t.id for t in corpo.targets if isinstance(t, ast.Name)]
+                elif isinstance(corpo, ast.AnnAssign) and isinstance(corpo.target, ast.Name):
+                    bersagli = [corpo.target.id]
+                else:
+                    continue
+                for b in bersagli:
+                    if b in metodi:
+                        trovati.append((nodo.name, b, corpo.lineno))
+    return sorted(trovati)
 
 
 def _assert_sottoclasse_ridichiara_solo_membri_veri(reale, metodi, imitatori,

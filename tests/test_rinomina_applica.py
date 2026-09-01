@@ -1204,3 +1204,89 @@ def test_il_residuo_di_backends_e_solo_la_famiglia_dei_runner(tmp_path):
         "solo le tre parole della famiglia dei runner -- un nome nuovo e' "
         "comparso: decidilo davvero invece di lasciarlo dentro un'eccezione "
         "a grana di file")
+
+
+def test_il_triage_degli_orfani_mette_l_asse_del_NOME_CHIAMATO_per_primo():
+    """Il cancello che mancava alla ritaratura del filtro.
+
+    Misurato dalla review del 01/09: spegnendo l'asse nuovo dentro `main()`
+    (`certi = []`, cioe' riportando il filtro esattamente alla RARITA' che il
+    commit esisteva per sostituire) **la suite intera restava verde, 2966
+    passed**. Era provato l'ingrediente -- `chiamanti_orfani` restituisce il
+    nome chiamato -- non la ricetta. Una decisione nuova senza cancello e' una
+    decisione che il prossimo annulla senza saperlo.
+
+    Le tre righe qui sotto sono i tre casi che i due assi separano, e il caso
+    (a) e' quello che l'asse vecchio non vede MAI: `nome` e' dichiarato da
+    decine di firme del repo (quindi «ambiguo» per la rarita'), ma la chiamata
+    e' a una firma che questo lotto ha cambiato -- quindi e' una sponda.
+
+    Provato per mutazione: `sponde = []` in `triage_orfani` fa arrossire
+    questo test e nient'altro.
+    """
+    percorso = Path("x.py")
+    a = (percorso, 1, "nome", "name", "storico")       # sponda: firma cambiata
+    b = (percorso, 2, "gesto", "operation", "_intento")  # nessuna def lo dichiara
+    c = (percorso, 3, "nome", "name", "nota_ripiego")    # firma altrui, ambiguo
+    sponde, mai, ambigui = rinomina.triage_orfani(
+        [a, b, c], firme={"storico"}, dichiarati={"nome"})
+    assert sponde == [a], sponde
+    assert mai == [b], mai
+    assert ambigui == [c], ambigui
+
+
+def test_il_triage_non_promuove_a_sponda_una_chiamata_a_una_firma_altrui():
+    """La controprova, e non e' un doppione: se l'asse nuovo fosse «qualunque
+    chiamata», ogni `motivo=` del repo diventerebbe una sponda e l'elenco
+    tornerebbe illeggibile -- il difetto che i due assi esistono per evitare.
+    Solo le firme che QUESTO lotto ha cambiato contano."""
+    percorso = Path("x.py")
+    o = (percorso, 1, "motivo", "reason", "nota_ripiego")
+    sponde, mai, ambigui = rinomina.triage_orfani(
+        [o], firme=set(), dichiarati={"motivo"})
+    assert sponde == [] and mai == [] and ambigui == [o]
+
+
+def test_le_citazioni_si_ENUMERANO_col_contesto_e_non_si_riscrivono(tmp_path):
+    """Lo strumento del giro finale: dichiara, non riscrive.
+
+    Una citazione fra backtick puo' essere un PUNTATORE al codice di oggi
+    (segue il codice) o un VERBALE che registra una misura passata (resta coi
+    nomi di allora), e **nessun criterio meccanico le separa** -- misurato al
+    costo di due giri annullati nel lotto 19c, il secondo dei quali ha
+    prodotto la tautologia «`ha.statistics(...)` diventava `ha.statistics(...)`»,
+    cioe' ha cancellato la misura che la frase esisteva per registrare.
+
+    Cio' che manca non e' il criterio: e' l'ENUMERAZIONE. Senza, il giro si fa
+    a memoria, file per file -- e la prova che non regge sono tre commenti
+    fratelli con la stessa frase trattati in tre modi diversi.
+
+    Il contesto e' la RIGA INTERA, perche' e' l'unica cosa che permette di
+    decidere. E il file NON si tocca: questo test lo verifica leggendolo dopo.
+    """
+    f = tmp_path / "prosa.md"
+    f.write_text("vedi `HAClient.storico` per la forma\n"
+                 "prima `ha.storico()` diventava `ha.history()`\n"
+                 "questa riga nomina storico senza backtick e non conta\n",
+                 encoding="utf-8")
+    prima = f.read_text(encoding="utf-8")
+    trovate = rinomina.citazioni({"storico": "history"}, radice=tmp_path)
+    assert [(r, v, n) for _, r, v, n, _ in trovate] == [
+        (1, "storico", "history"), (2, "storico", "history")], trovate
+    assert "diventava" in trovate[1][4], "il contesto e' la riga intera"
+    assert f.read_text(encoding="utf-8") == prima, (
+        "questo strumento DICHIARA: se riscrivesse, cancellerebbe i verbali")
+
+
+def test_le_citazioni_si_cercano_in_ogni_estensione_di_testo(tmp_path):
+    """Le estensioni si elencano per ESCLUSIONE, mai per inclusione.
+
+    Un elenco per inclusione ne dimentica una la prossima volta che ne nasce
+    un tipo: successo davvero (Task 9 round 8, la scansione elencava
+    `.py/.js/.css/.html` e i 24 file di `tests/js/` sono `.mjs`).
+    """
+    (tmp_path / "a.mjs").write_text("// `storico` qui\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("`storico` anche qui\n", encoding="utf-8")
+    (tmp_path / "c.png").write_bytes(b"`storico`")
+    trovate = rinomina.citazioni({"storico": "history"}, radice=tmp_path)
+    assert {f.name for f, _, _, _, _ in trovate} == {"a.mjs", "b.txt"}

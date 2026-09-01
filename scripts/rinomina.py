@@ -1167,6 +1167,103 @@ def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
     return trovati
 
 
+# Le estensioni che NON portano prosa: si elencano quelle da ESCLUDERE, mai
+# quelle da includere. Un elenco per inclusione ne dimentica una la prossima
+# volta che ne nasce un tipo -- successo davvero (Task 9 round 8: la scansione
+# elencava `.py/.js/.css/.html` e i 24 file di `tests/js/` sono `.mjs`).
+_ESTENSIONI_BINARIE = frozenset({
+    ".pyc", ".pyo", ".so", ".dll", ".png", ".jpg", ".jpeg", ".gif", ".ico",
+    ".webp", ".svg", ".pdf", ".zip", ".gz", ".db", ".sqlite", ".woff",
+    ".woff2", ".ttf", ".eot", ".mp3", ".mp4", ".wav",
+})
+
+
+def citazioni(nomi: dict[str, str], radice: Path | None = None, *,
+              escludi: tuple[str, ...] = ()
+              ) -> list[tuple[Path, int, str, str, str]]:
+    """Ogni citazione fra backtick che nomina un identificatore rinominato.
+    `(file, riga, vecchio, nuovo, la riga intera)`.
+
+    **DICHIARA, non riscrive, e la ragione e' misurata al costo di due giri
+    annullati** (lotto 19c). Una citazione fra backtick puo' essere due cose
+    opposte, e nessun criterio meccanico le separa:
+
+    - un PUNTATORE al codice di oggi (`vedi `HAClient.storico``) -- segue il
+      codice;
+    - un VERBALE che registra una misura passata (*«senza questa guardia
+      `ha.statistiche(...)` diventava `ha.statistics(...)`»*) -- resta com'e',
+      coi nomi di allora.
+
+    Riscriverle tutte produce tautologie e **cancella la misura che la frase
+    esisteva per registrare**; non riscriverne nessuna lascia puntatori falsi.
+    La distinzione la fa un umano, frase per frase. **Cio' che manca, e che
+    questa funzione da', e' l'ENUMERAZIONE**: senza, il giro si fa a memoria e
+    file per file -- e la prova che non regge sono tre commenti fratelli con la
+    stessa frase trattati in tre modi diversi, piu' sei puntatori rimasti
+    dentro il file che il lotto stesso aveva chiuso.
+
+    Restituisce la RIGA INTERA e non solo la citazione: e' il contesto che
+    permette di decidere, ed e' l'unica cosa che serva a chi legge.
+
+    Cerca in tutti i file di testo, `.py` compresi ma non solo: le citazioni
+    vivono anche nei `.js`, nei `.mjs`, nei `.md`. Si escludono le estensioni
+    BINARIE, mai si elencano quelle da guardare.
+    """
+    base = radice or ROOT
+    saltati = {e.replace("\\", "/") for e in escludi}
+    fuori: list[tuple[Path, int, str, str, str]] = []
+    if not nomi:
+        return fuori
+    _RE_CITAZIONE = re.compile("`[^`\\n]+`")
+    for f in sorted(base.rglob("*")):
+        if not f.is_file() or f.suffix.lower() in _ESTENSIONI_BINARIE:
+            continue
+        parti = f.relative_to(base).parts
+        if "__pycache__" in parti or ".git" in parti or "node_modules" in parti:
+            continue
+        if f.relative_to(base).as_posix() in saltati:
+            continue
+        try:
+            testo = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for numero, riga in enumerate(testo.splitlines(), start=1):
+            for citazione in _RE_CITAZIONE.findall(riga):
+                for vecchio, nuovo in nomi.items():
+                    confine = "\\b"
+                    if re.search(confine + re.escape(vecchio) + confine, citazione):
+                        fuori.append((f, numero, vecchio, nuovo, riga.strip()))
+    return fuori
+
+
+def triage_orfani(orfani: list, firme: set[str], dichiarati: set[str]
+                  ) -> tuple[list, list, list]:
+    """`(sponde, mai_dichiarati, ambigui)` -- i due assi del controllo di
+    chiusura, applicati in ordine.
+
+    **Vive qui e non dentro `main()` perche' una decisione senza cancello e'
+    una decisione che il prossimo annulla senza saperlo.** Misurato dalla
+    review del 01/09: spegnendo l'asse nuovo dentro `main()` (`certi = []`,
+    cioe' riportando il filtro esattamente alla RARITA' che il commit esisteva
+    per sostituire) la suite intera restava verde, 2966 passed. Era provato
+    l'ingrediente -- `chiamanti_orfani` restituisce il nome chiamato -- non la
+    ricetta.
+
+    1. **Sponda**: la parola chiave sta dentro una chiamata a una firma che
+       QUESTO lotto ha cambiato. E' la domanda giusta, e su `proxy/` ha dato 15
+       su 15 dove l'asse vecchio dava 0 su 120.
+    2. **Mai dichiarato**: nessuna `def` del repo porta piu' quel nome. E' un
+       rilevatore della RARITA' della parola, non della verita' della chiamata:
+       utile sulle parole rare, cieco sulle comuni.
+    3. Il resto e' ambiguo e si legge.
+    """
+    sponde = [o for o in orfani if o[4] in firme]
+    resto = [o for o in orfani if o not in sponde]
+    mai_dichiarati = [o for o in resto if o[2] not in dichiarati]
+    ambigui = [o for o in resto if o not in mai_dichiarati]
+    return sponde, mai_dichiarati, ambigui
+
+
 def _elenco_file(base: Path) -> list[Path]:
     """I file `.py` di un percorso, che sia una cartella o un file solo.
 
@@ -1223,10 +1320,33 @@ def _albero_pulito() -> bool:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Rinomina gli identificatori di un sottosistema.")
-    p.add_argument("--percorso", required=True, help="es. hiris/app/consumi")
-    p.add_argument("--ambito", required=True, help="il sottosistema, per gli omonimi: es. consumi")
+    p.add_argument("--percorso", help="es. hiris/app/consumi")
+    p.add_argument("--ambito", help="il sottosistema, per gli omonimi: es. consumi")
     p.add_argument("--dry-run", action="store_true", help="non scrive, elenca soltanto")
+    p.add_argument("--citazioni", metavar="COPPIE.json",
+                   help="modo ENUMERAZIONE: elenca ogni citazione fra backtick "
+                        "che nomina uno dei nomi vecchi del file JSON "
+                        "{vecchio: nuovo}, con la riga intera come contesto. "
+                        "NON riscrive niente: la distinzione fra un puntatore "
+                        "(segue il codice) e un verbale (resta) la fa un umano, "
+                        "frase per frase")
     a = p.parse_args(argv)
+
+    if a.citazioni:
+        import json
+        coppie = json.loads(Path(a.citazioni).read_text(encoding="utf-8"))
+        trovate = citazioni(coppie)
+        print(f"{len(trovate)} citazioni da DECIDERE (nessuna e' stata "
+              f"riscritta): per ognuna, un puntatore segue il codice, un "
+              f"verbale resta coi nomi di allora")
+        for f, riga, vecchio, nuovo, testo in trovate:
+            print(f"  {rel(f)}:{riga}  {vecchio} -> {nuovo}")
+            print(f"      {testo}")
+        return 0
+
+    if not a.percorso or not a.ambito:
+        print("servono --percorso e --ambito (oppure --citazioni)")
+        return 1
 
     # Guardia 1: un diff da rivedere non deve mai mescolare la rinomina con
     # altro. E' l'unica cosa che rende leggibile un diff da migliaia di righe.
@@ -1303,11 +1423,9 @@ def main(argv=None) -> int:
         # da solo e' un rilevatore della RARITA' della parola: su parole
         # comuni marca zero certi mentre le sponde vere sono quindici (vedi
         # `chiamanti_orfani`). Si tengono entrambi, col primo per primo.
-        dichiarati = parametri_dichiarati()
-        certi = [o for o in orfani if o[4] in metodi]
-        restanti = [o for o in orfani if o not in certi]
-        mai_dichiarati = [o for o in restanti if o[2] not in dichiarati]
-        ambigui = len(restanti) - len(mai_dichiarati)
+        certi, mai_dichiarati, ambigui_l = triage_orfani(
+            orfani, metodi, parametri_dichiarati())
+        ambigui = len(ambigui_l)
         print(f"  -- {len(orfani)} chiamanti con la parola chiave vecchia FUORI "
               f"da {a.percorso} ({len(certi)} verso una firma di questo lotto, "
               f"{len(mai_dichiarati)} senza nessuna «def» che li dichiari, "

@@ -60,7 +60,7 @@ class FintoHA:
             k: {"valid": True, "error": None} for k in kw})
 
     async def save_configuration(self, domain, key, body):
-        self._forse_solleva("salva_configurazione")
+        self._forse_solleva("save_configuration")
         if "salva" in self._override:
             return self._override["salva"]
         self.salvate.append((domain, key, body))
@@ -78,12 +78,12 @@ class FintoHA:
         return {"salvato": True}
 
     async def delete_configuration(self, domain, key):
-        self._forse_solleva("cancella_configurazione")
+        self._forse_solleva("delete_configuration")
         self.cancellate.append((domain, key))
         return {"cancellato": True}
 
     async def read_configuration(self, domain, key):
-        self._forse_solleva("leggi_configurazione")
+        self._forse_solleva("read_configuration")
         if "leggi" in self._override:
             return self._override["leggi"]
         if not _CHIAVE_RE_FINTA.match(key or ""):
@@ -664,7 +664,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     officina, ha, archivio, _ = banco
     intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
     p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
-    ha._solleva.add("salva_configurazione")
+    ha._solleva.add("save_configuration")
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -686,7 +686,7 @@ async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco)
     per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
-    ha._solleva.add("salva_configurazione")
+    ha._solleva.add("save_configuration")
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -701,7 +701,7 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
     officina, ha, archivio, _ = banco
     p = await officina.propose(_intento(gesto="cancella", chiave="1771"),
                                actor="chat", exchange="t1", now=ADESSO)
-    ha._solleva.add("cancella_configurazione")
+    ha._solleva.add("delete_configuration")
 
     esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                    now=ADESSO + 60)
@@ -717,7 +717,7 @@ async def test_un_guasto_di_rete_durante_proponi_non_solleva(banco):
     il modulo dichiara «non solleva mai» anche qui, non solo durante
     `apply`."""
     officina, ha, archivio, _ = banco
-    ha._solleva.add("leggi_configurazione")
+    ha._solleva.add("read_configuration")
 
     esito = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
 
@@ -733,7 +733,7 @@ async def test_un_guasto_di_rete_durante_proponi_una_modifica_non_solleva(banco)
     anche qui, un `ConnectionError` di questo ramo usciva fuori dal modulo
     tale e quale, non trasformato in `{"errore": ...}`."""
     officina, ha, archivio, _ = banco
-    ha._solleva.add("leggi_configurazione")
+    ha._solleva.add("read_configuration")
 
     esito = await officina.propose(_intento(gesto="modifica", chiave="1771"),
                                    actor="chat", exchange="t1", now=ADESSO)
@@ -960,7 +960,7 @@ async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
     due volte."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
-    ha._solleva.add("salva_configurazione")
+    ha._solleva.add("save_configuration")
 
     with caplog.at_level(logging.WARNING,
                          logger="hiris.app.azione.costruzione.officina"):
