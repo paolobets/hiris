@@ -64,17 +64,17 @@ logger = logging.getLogger(__name__)
 #
 # Prefissi e non uguaglianze esatte: `[errore runner rc=...]` porta in coda un
 # dettaglio variabile, `[flusso incompleto]` una frase di spiegazione.
-PREFISSO_ERRORE_RUNNER = "[errore runner rc="
-SENTINELLA_RUNNER_ASSENTE = "[runner non disponibile]"
-SENTINELLA_VUOTO = "[vuoto]"
-SENTINELLA_MOCK = "[mock] risposta di prova"
-SENTINELLA_FLUSSO_INCOMPLETO = "[flusso incompleto]"
-SENTINELLE_DEL_PONTE = (
-    PREFISSO_ERRORE_RUNNER,
-    SENTINELLA_RUNNER_ASSENTE,
-    SENTINELLA_VUOTO,
-    SENTINELLA_MOCK,
-    SENTINELLA_FLUSSO_INCOMPLETO,
+RUNNER_ERROR_PREFIX = "[errore runner rc="
+MISSING_RUNNER_SENTINEL = "[runner non disponibile]"
+EMPTY_SENTINEL = "[vuoto]"
+MOCK_SENTINEL = "[mock] risposta di prova"
+INCOMPLETE_STREAM_SENTINEL = "[flusso incompleto]"
+BRIDGE_SENTINELS = (
+    RUNNER_ERROR_PREFIX,
+    MISSING_RUNNER_SENTINEL,
+    EMPTY_SENTINEL,
+    MOCK_SENTINEL,
+    INCOMPLETE_STREAM_SENTINEL,
 )
 
 # Un nome di strumento trapelato nel testo (un identificatore seguito da un
@@ -91,8 +91,8 @@ SENTINELLE_DEL_PONTE = (
 #
 # Vince la piu' TOLLERANTE: qui si riconosce, non si valida, e un
 # riconoscitore troppo stretto lascia passare il guasto che deve cogliere.
-RE_NOME_STRUMENTO_TRAPELATO = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
-_TOXIC_ASSISTANT_RE = RE_NOME_STRUMENTO_TRAPELATO
+LEAKED_TOOL_NAME_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]{2,})[^\x00-\x7F\s]")
+_TOXIC_ASSISTANT_RE = LEAKED_TOOL_NAME_RE
 _TOXIC_ASSISTANT_EXACT = frozenset({
     "Errore temporaneo del servizio AI. Riprova tra poco.",
     "Rate limit — riprova tra poco.",
@@ -102,7 +102,7 @@ _TOXIC_ASSISTANT_PREFIXES = (
     "Crediti OpenRouter insufficienti",
     "Il modello selezionato non gestisce correttamente i tool",
     # Le sentinelle del ponte: dall'elenco unico qui sopra, non ricopiate.
-    *SENTINELLE_DEL_PONTE,
+    *BRIDGE_SENTINELS,
 )
 
 
@@ -139,7 +139,7 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 # lettore che la importa per valore all'avvio. La sorgente di verita' e' ora
 # `ImpostazioniChat.giorni_conservazione` (`impostazioni_chat.py`): entrambi i
 # lettori la ricevono come PARAMETRO a ogni chiamata, non piu' come un globale
-# fissato una volta. `load_context` sotto porta `giorni` con un default (90,
+# fissato una volta. `load_context` sotto porta `days` con un default (90,
 # lo stesso valore che questa costante aveva) solo per i chiamanti di questo
 # repo che non hanno un'opinione sulla conservazione (i test che non la
 # esercitano); i due lettori di produzione lo passano sempre esplicitamente.
@@ -181,7 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_sess_last_msg ON chat_sessions(last_msg_at);
 """
 
 
-def _azzera(conn: sqlite3.Connection) -> None:
+def _reset(conn: sqlite3.Connection) -> None:
     """v1/v2 -> v3 ("un bot solo", fetta E4 Task 5): NESSUNA conversione.
 
     Decisione esplicita dell'utente (vedi il commit): *"anche se perdiamo i
@@ -226,7 +226,7 @@ class ChatStore:
     def __init__(self, db_path: str):
         self._conn = connect(db_path)
         self._mu = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3, migrations={2: _azzera, 3: _azzera})
+        init_schema(self._conn, _SCHEMA, version=3, migrations={2: _reset, 3: _reset})
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)
@@ -329,12 +329,12 @@ class ChatStore:
             )
             self._conn.commit()
 
-    def load_context(self, max_turns: int = 30, *, giorni: int = 90) -> list[dict]:
+    def load_context(self, max_turns: int = 30, *, days: int = 90) -> list[dict]:
         """Return last max_turns pairs from the active (non-stale) session.
 
-        `giorni` is the second job of `ImpostazioniChat.giorni_conservazione`
+        `days` is the second job of `ImpostazioniChat.giorni_conservazione`
         (Task 12): it does NOT free disk space here, it makes HIRIS forget
-        sooner -- messages older than `giorni` days, even inside the still-open
+        sooner -- messages older than `days` days, even inside the still-open
         active session, are not read back into the model's context. `0`
         disables this (never filters), matching the nightly pruning's own `if
         giorni > 0` in `delete_old_messages` below -- the two readers agree on
@@ -343,9 +343,9 @@ class ChatStore:
             sid = self._fresh_session_id()
             if not sid:
                 return []
-            if giorni > 0:
+            if days > 0:
                 cutoff = (
-                    datetime.now(UTC) - timedelta(days=giorni)
+                    datetime.now(UTC) - timedelta(days=days)
                 ).strftime(_TS_FMT)
                 rows = self._conn.execute(
                     "SELECT role, content FROM chat_messages "
@@ -437,14 +437,14 @@ def _get_store(data_dir: str) -> ChatStore:
 # minus `chatbot_id` -- fetta E4 Task 5, "un bot solo": c'e' UNA cronologia)
 # ---------------------------------------------------------------------------
 
-def load_history(data_dir: str, *, giorni: int = 90) -> list[dict]:
+def load_history(data_dir: str, *, days: int = 90) -> list[dict]:
     """Return [{role, content}] for the active session (Claude API format).
 
-    `giorni` threads through to `ChatStore.load_context` -- see its docstring
+    `days` threads through to `ChatStore.load_context` -- see its docstring
     for why this is NOT a housekeeping knob. Production callers pass
     `impostazioni_chat.giorni_conservazione` explicitly; the default here only
     covers this repo's callers that don't have an opinion on retention."""
-    return _get_store(data_dir).load_context(giorni=giorni)
+    return _get_store(data_dir).load_context(days=days)
 
 
 def append_messages(messages: list[dict], data_dir: str) -> None:

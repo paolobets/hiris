@@ -334,7 +334,7 @@ async def _enqueue_chat_job(
     # Task 12: stesso secondo lavoro di `giorni_conservazione` del ramo
     # sincrono qui sotto (`handle_chat`) — il ponte non deve rileggere piu'
     # conversazione di quanto l'utente abbia scelto.
-    history = load_history(data_dir, giorni=settings.giorni_conservazione)
+    history = load_history(data_dir, days=settings.giorni_conservazione)
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(settings)
 
@@ -817,7 +817,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
     # all'avvio: un utente che lo abbassa in `#/impostazioni` lo vede avere
     # effetto dal messaggio successivo, senza riavviare.
-    history = load_history(data_dir, giorni=settings.giorni_conservazione)
+    history = load_history(data_dir, days=settings.giorni_conservazione)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)

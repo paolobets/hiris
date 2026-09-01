@@ -83,7 +83,7 @@ def test_clear_history_noop_when_empty(tmp_path):
 # (`cs.HISTORY_RETENTION_DAYS = 30`, con un `finally` che la riportava a 90 --
 # lo stesso trucco che la revisione tecnica della fetta E4 (T19) aveva gia'
 # notato come fragile per un test che gira in parallelo ad altri). Ora
-# `giorni` e' un parametro esplicito di `load_context`: nessuna globale da
+# `days` e' un parametro esplicito di `load_context`: nessuna globale da
 # mutare e da rimettere a posto.
 # ---------------------------------------------------------------------------
 
@@ -107,7 +107,7 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
         (session_id, "assistant", "new msg", new_ts),
     )
     conn.commit()
-    result = store.load_context(giorni=30)
+    result = store.load_context(days=30)
     contents = [m["content"] for m in result]
     assert "old msg" not in contents
     assert "new msg" in contents
@@ -117,9 +117,9 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
 def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_path):
     """Il secondo lavoro dello stesso numero, che la vecchia descrizione
     dell'opzione dichiarava e la nuova pagina (#/impostazioni) deve
-    continuare a dichiarare: `giorni` non e' una soglia di pulizia qui --
+    continuare a dichiarare: `days` non e' una soglia di pulizia qui --
     `load_context` non cancella niente, filtra solo cio' che RILEGGE. Con
-    `giorni=1` un messaggio di due giorni fa, ancora nella sessione attiva
+    `days=1` un messaggio di due days fa, ancora nella sessione attiva
     (last_msg_at recente), non deve arrivare al modello -- ma resta sul
     disco: e' la prova gemella di `test_zero_giorni_non_cancella_mai_niente`
     sotto, sullo stesso dato."""
@@ -138,7 +138,7 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
     )
     conn.commit()
 
-    riletto = store.load_context(giorni=1)
+    riletto = store.load_context(days=1)
     assert "messaggio di due giorni fa" not in [m["content"] for m in riletto]
 
     # Non cancellato: e' ancora sul disco, la riga sopra e' un rifiuto di
@@ -152,7 +152,7 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
 
 
 def test_zero_giorni_non_cancella_mai_niente(tmp_path):
-    """`0` disattiva ENTRAMBI i lavori (`if giorni > 0` nei due lettori: qui
+    """`0` disattiva ENTRAMBI i lavori (`if days > 0` nei due lettori: qui
     e in `ChatStore.load_context`/`load_history` sopra) -- non «cancella
     subito», il contrario di cio' che chiunque si aspetta da una
     "conservazione" messa a zero."""
@@ -536,12 +536,12 @@ def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
 #   - i due test sulla migrazione v1->v2: `sqlite3.OperationalError: table
 #     chat_messages has no column named agent_id` non e' nemmeno il punto in
 #     cui falliscono -- `ChatStore(db_path)` sulla legacy-v1 db ora esegue
-#     `_azzera` (droppa+ricrea), quindi le colonne/indici "agent_id" che gli
+#     `_reset` (droppa+ricrea), quindi le colonne/indici "agent_id" che gli
 #     assert cercavano semplicemente non esistono piu' da nessuna parte: gli
 #     assert su `chatbot_id in msg_cols`/`idx_msg_chatbot` falliscono con
 #     `AssertionError` (chatbot_id non c'e' proprio piu', ne' nella forma
 #     vecchia ne' in quella "migrata" che il test si aspettava).
-# Quello che li sostituisce, sotto: `_azzera` droppa le tabelle 1.x/2.x e
+# Quello che li sostituisce, sotto: `_reset` droppa le tabelle 1.x/2.x e
 # ricrea lo schema nuovo, logga esplicitamente cosa ha buttato via, ed e'
 # pinnato con la stessa tecnica di tests/test_startup_legacy_db_silence.py.
 # ---------------------------------------------------------------------------
@@ -669,7 +669,7 @@ def test_azzeramento_logs_what_it_discards(tmp_path, caplog):
 def test_azzeramento_silent_second_pass_when_nothing_left_to_discard(tmp_path, caplog):
     """Un DB gia' alla baseline pre-versioning (nessun user_version
     stampato) attraversa sia il target 2 sia il target 3 -- entrambi mappati
-    su `_azzera` (vedi init_schema/migrations={2: _azzera, 3: _azzera}). La
+    su `_reset` (vedi init_schema/migrations={2: _reset, 3: _reset}). La
     seconda passata trova le tabelle gia' vuote/nuove: logga comunque (e'
     la stessa funzione, non un ramo silenzioso), ma dichiara zero righe."""
     db_path = str(tmp_path / "chat_history.db")
@@ -680,7 +680,7 @@ def test_azzeramento_silent_second_pass_when_nothing_left_to_discard(tmp_path, c
     store.close()
 
     matches = [r for r in caplog.records if "azzerata" in r.message]
-    assert len(matches) == 2, "target 2 e 3 richiamano entrambi _azzera su un DB pre-versioning"
+    assert len(matches) == 2, "target 2 e 3 richiamano entrambi _reset su un DB pre-versioning"
     assert "2 messaggi" in matches[0].message and "1 sessioni" in matches[0].message
     assert "0 messaggi" in matches[1].message and "0 sessioni" in matches[1].message
 

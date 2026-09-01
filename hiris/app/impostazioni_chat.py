@@ -178,10 +178,10 @@ DEFAULT_SYSTEM_PROMPT = (
 #      della conversazione in corso -- abbassarlo non libera spazio, fa
 #      DIMENTICARE PRIMA. Un file/opzione mai toccato non lo diceva: la
 #      descrizione in `#/impostazioni` lo dichiara adesso.
-# E `0` non cancella e non limita MAI niente (`if giorni > 0` in entrambi i
-# lettori) -- il contrario di cio' che chiunque si aspetta da una
-# "conservazione" messa a zero, e per questo va detto esplicitamente, non
-# lasciato dedurre.
+# E `0` non cancella e non limita MAI niente (`if days > 0` nei due lettori di
+# `chat_store`; qui il campo si chiama ancora `giorni_conservazione`) -- il contrario
+# di cio' che chiunque si aspetta da una "conservazione" messa a zero, e per
+# questo va detto esplicitamente, non lasciato dedurre.
 #
 # **Versione A della migrazione, applicata a questo singolo campo** (la
 # sorella maggiore, su tutto `models_config.json`, e' `migrazione_opzioni.py`

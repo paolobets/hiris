@@ -120,11 +120,11 @@ import httpx
 
 from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..chat_store import (
-    PREFISSO_ERRORE_RUNNER,
-    SENTINELLA_FLUSSO_INCOMPLETO,
-    SENTINELLA_MOCK,
-    SENTINELLA_RUNNER_ASSENTE,
-    SENTINELLA_VUOTO,
+    EMPTY_SENTINEL,
+    INCOMPLETE_STREAM_SENTINEL,
+    MISSING_RUNNER_SENTINEL,
+    MOCK_SENTINEL,
+    RUNNER_ERROR_PREFIX,
 )
 from ..decisione_modelli import SUBSCRIPTION_ALIAS
 from ..schedulatore.turno import promise_tools
@@ -711,7 +711,7 @@ def _safe_subprocess_env() -> dict:
 # la', e l'elenco e' gia' andato fuori sincrono una volta. Sta in `chat_store`
 # e non qui perche' quello e' una foglia -- lo puo' importare chiunque senza
 # rischiare un ciclo, il contrario no.
-_INCOMPLETE_STREAM_SENTINEL = SENTINELLA_FLUSSO_INCOMPLETO
+_INCOMPLETE_STREAM_SENTINEL = INCOMPLETE_STREAM_SENTINEL
 
 # fetta "il ponte riceve gli strumenti" (parita' B, Task 3), difesa (3) del
 # progetto: la riga rivolta ALL'UTENTE quando gli strumenti erano attesi e la
@@ -1207,7 +1207,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # Unico ritorno che non passa da `_reply` (fix round 2): siamo
         # PRIMA che il token sia in mano, e questa stringa e' una
         # costante che non ha mai visto ne' la CLI ne' la sua eco.
-        return {"reply": SENTINELLA_MOCK}
+        return {"reply": MOCK_SENTINEL}
     # Silenzio dichiarato ① della fetta: un job accodato PRIMA di questo
     # deploy e' stato scritto quando `_enqueue_chat_job` metteva nel context
     # solo `history` + `system_prompt`. Arriva qui senza la chiave `contesto`
@@ -1471,7 +1471,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     invocation = _invoca(tools)
     if invocation is None:
-        return _reply(SENTINELLA_RUNNER_ASSENTE)
+        return _reply(MISSING_RUNNER_SENTINEL)
 
     # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
     # La sonda ha detto di si' DAL NOSTRO LATO; qui parla la CLI. Se le due si
@@ -1509,7 +1509,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             ritentato = True
             invocation = _invoca(tools)
             if invocation is None:
-                return _reply(SENTINELLA_RUNNER_ASSENTE)
+                return _reply(MISSING_RUNNER_SENTINEL)
 
     # Da qui in giu' si legge UNA invocazione: la prima se e' bastata, la
     # seconda se la prima e' stata buttata. I rami sono gli stessi.
@@ -1537,7 +1537,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # meglio il flusso grezzo che un silenzio.
             detail = (stdout or stderr).strip()
         return _reply(
-            f"{PREFISSO_ERRORE_RUNNER}{invocation.rc}] "
+            f"{RUNNER_ERROR_PREFIX}{invocation.rc}] "
             f"{str(detail)[:300]}".strip())
 
     if not occurrence.has_result:
@@ -1573,7 +1573,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
     text = occurrence.text.strip()
     if not text:
-        return _reply(SENTINELLA_VUOTO)
+        return _reply(EMPTY_SENTINEL)
     if degrado:
         # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
         # `[runner non disponibile]`, `[flusso incompleto]` e `[vuoto]` sono

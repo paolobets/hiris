@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx as _httpx
 
-from ..chat_store import RE_NOME_STRUMENTO_TRAPELATO
+from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
     BASE_SYSTEM_PROMPT,
@@ -146,13 +146,13 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
 #   get_ha_healthיׂ{"sections":["all"]}
 #   await_user_confirmationיׄ**Confermi di...**
 # Persisting this verbatim into chat history poisons later turns.
-# La stessa regola di `chat_store.RE_NOME_STRUMENTO_TRAPELATO`, IMPORTATA.
+# La stessa regola di `chat_store.LEAKED_TOOL_NAME_RE`, IMPORTATA.
 #
 # Erano due regex identiche tranne che per uno spazio tollerato in testa: qui
 # si tollerava, la' no. La differenza contava sul disco -- `_purge_toxic_turns`
 # ripulisce le righe GIA' scritte, e una avvelenata con uno spazio iniziale non
 # veniva mai riconosciuta e tornava al modello a ogni turno, per sempre.
-_TOOL_LEAK_RE = RE_NOME_STRUMENTO_TRAPELATO
+_TOOL_LEAK_RE = LEAKED_TOOL_NAME_RE
 
 TOOL_LEAK_USER_MSG = (
     "Il modello selezionato non gestisce correttamente i tool tramite questo "
