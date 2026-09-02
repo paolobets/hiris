@@ -180,3 +180,37 @@ def test_la_guardia_non_blocca_un_nome_innocuo(capsys):
     rinomina_js.main(["--legami", _scrivi(dati)])
     fuori = capsys.readouterr().out
     assert "APPLICABILI: 1" in fuori and "pannello -> panel" in fuori
+
+
+def test_una_parola_raggiunta_per_alias_si_propone_e_non_si_applica(capsys):
+    """Un alias dice che due parole sono la STESSA parola, non che si scrivano
+    allo stesso modo in inglese: la flessione si perde.
+
+    Misurato il 02/09 su `config/api.js:105`, dove
+    `var righe = widget.querySelectorAll('.usage-row')` sarebbe diventato
+    `var line`: sbagliato nel numero (un NodeList non e' una riga) e sbagliato
+    nel senso (quelle sono righe di una TABELLA, `riga (api) -> row`, non
+    `riga (static) -> line`). Il gemello Python lo sapeva gia':
+    `rinomina.classifica('righe')` restituisce una Proposta, non una stringa."""
+    dati = _legami({"nome": "righe", "specie": "var", "ambito": 0,
+                    "dich": [0], "rif": [], "globale": False})
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "APPLICABILI: 0" in fuori
+    assert "raggiunta per alias" in fuori
+
+
+def test_nessun_rifiuto_con_una_ragione_sparisce_in_silenzio(capsys):
+    """La prima stesura elencava solo i rifiuti che cominciavano per
+    «composto», e quelli per alias non comparivano affatto: un nome che nessuno
+    vede e' un nome che nessuno decidera'. Qui si prova che il conto delle
+    proposte cresce, non che il rifiuto avvenga."""
+    dati = _legami(
+        {"nome": "righe", "specie": "var", "ambito": 0, "dich": [0], "rif": [],
+         "globale": False},
+        {"nome": "corpoPannello", "specie": "var", "ambito": 0, "dich": [5],
+         "rif": [], "globale": False},
+    )
+    rinomina_js.main(["--legami", _scrivi(dati)])
+    fuori = capsys.readouterr().out
+    assert "PROPOSTE (composti: lo strumento non indovina): 2" in fuori

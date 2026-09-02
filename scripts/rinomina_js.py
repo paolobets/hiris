@@ -125,11 +125,13 @@ def _pezzi_decisi(nome: str, g: rinomina.Glossario, ambito: str):
     """(inglese, ragione) -- `None` se lo strumento non e' autorizzato."""
     pezzi = rinomina.spezza(nome)
     fuori = []
+    per_alias = False
     for p in pezzi:
         low = p.lower()
         en = g.per(low, ambito)
         if en is None and low in g.alias:
             en = g.per(g.alias[low], ambito)
+            per_alias = True
         if en is None:
             en = VOCABOLARIO_FRONTEND.get(low)
         if en is None:
@@ -138,6 +140,20 @@ def _pezzi_decisi(nome: str, g: rinomina.Glossario, ambito: str):
     if len(pezzi) > 1:
         return None, ("composto: l'inglese inverte l'ordine e questo strumento "
                       f"non lo sa -- pezzi: {'+'.join(fuori)}")
+    if per_alias:
+        # **Un alias perde la flessione, e il gemello Python lo sa gia'.**
+        # `rinomina.classifica("righe")` restituisce una Proposta, non una
+        # stringa da applicare: l'alias dice che `righe` e' la stessa parola di
+        # `riga`, non che si scriva allo stesso modo in inglese. Misurato il
+        # 02/09 su `config/api.js:105`, dove `var righe =
+        # widget.querySelectorAll('.usage-row')` sarebbe diventato `var line`:
+        # sbagliato nel numero (un NodeList non e' una riga) e sbagliato nel
+        # senso (quelle sono RIGHE DI UNA TABELLA, cioe' `riga (api) -> row`,
+        # non `riga (static) -> line`). Due sensi della stessa parola dentro
+        # `static/`: e' il limite che il glossario documenta, e qui si vede.
+        return None, (f"raggiunta per alias (`{nome}` -> `{g.alias.get(nome, '?')}`): "
+                      f"l'inglese `{fuori[0]}` perde la flessione, e l'alias non "
+                      f"dice come si scrive il plurale. Da leggere")
     nuovo = fuori[0]
     # la maiuscola iniziale e il camelCase si conservano
     if nome[:1].isupper():
@@ -207,7 +223,12 @@ def main(argv=None) -> int:
             nome = l["nome"]
             nuovo, ragione = _pezzi_decisi(nome, g, a.ambito)
             if nuovo is None:
-                if any(rinomina.spezza(nome)) and ragione.startswith("composto"):
+                # **Ogni rifiuto con una ragione va elencato.** La prima
+                # stesura teneva solo quelli che cominciavano per «composto»,
+                # e i rifiuti per alias sparivano in silenzio -- lo stesso
+                # difetto che questa fetta insegue da otto giorni. Cio' che si
+                # tace e' cio' che nessuno decidera'.
+                if ragione and not ragione.endswith("da nessuna tabella"):
                     proposte.append((rel, nome, ragione, len(l["rif"])))
                 continue
             if nuovo == nome:
