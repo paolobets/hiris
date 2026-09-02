@@ -657,7 +657,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     «il bilancio dell'energia», punto 4, 27/08/2026: era gia' falsa da
     quando "consumo" e' entrata in `BALANCE_DIRECTIONS` come settimo totale
     -- vedi il commento sopra la costante -- ed era contraddetta da un test
-    dello stesso giro, `test_server_bilanci.py::
+    dello stesso giro, `test_server_balances.py::
     test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato`: un
     dispositivo con la sola direzione "consumo" e' gia' un candidato
     valido, e produce un bilancio, non piu' il suo episodio individuale).

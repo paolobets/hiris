@@ -45,7 +45,7 @@ def test_le_sette_dimensioni_note_diventano_totali_e_forma():
     """**Sette, non sei** (correzione ALTO della review, mandato «il
     bilancio dell'energia», punto 1, 27/08/2026): "consumo" e' entrato in
     `BALANCE_DIRECTIONS` come settimo totale, letto e non piu' derivato
-    (vedi `test_cervello_bilancio.py::test_quota_autosufficienza_...`
+    (vedi `test_mind_balance.py::test_quota_autosufficienza_...`
     sotto per la ragione).
 
     **`forma[d]` porta l'ORA di ogni punto** (correzione MEDIA, punto 2 del

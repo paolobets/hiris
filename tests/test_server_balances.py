@@ -10,7 +10,7 @@ import pytest
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.facts import day_boundaries
 from hiris.app.server import build_balances
-from tests.test_cervello_comprimari import _ClienteLegami
+from tests.test_mind_companions import _ClienteLegami
 
 G = "2026-08-24"
 
@@ -109,7 +109,7 @@ async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
     UNICA direzione utile e' "consumo" ora diventa un candidato come gli
     altri sei -- prima di questa correzione non lo era (il totale veniva
     buttato via in nome di un'identita' che su questa integrazione e'
-    falsa: vedi `test_cervello_bilancio.py`)."""
+    falsa: vedi `test_mind_balance.py`)."""
     casa = _casa(
         tmp_path,
         dispositivi=[{"id": "dev1", "name": "Inverter"}],

@@ -1950,7 +1950,7 @@ async def _on_startup(app: web.Application) -> None:
     # sbagliato, o spariva da entrambi, a OGNI riavvio dell'add-on -- cioe' a
     # ogni aggiornamento. Prova per esecuzione in
     # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
-    # (`tests/test_cervello_wiring.py`).
+    # (`tests/test_mind_wiring.py`).
     #
     # Nasce PRIMA di `UsageStore` qui sotto e prima di `rebuild`
     # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'

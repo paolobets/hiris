@@ -54,7 +54,7 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     # dell'energia»): "bilancio" e' nato in GENRES, ma non lo produce
     # `genre_for()` -- non nasce da un soggetto/gamba come gli altri
     # cinque, arriva gia' costruito da fuori (`aggregate_day(bilanci=...)`,
-    # vedi `test_cervello_bilancio.py`).
+    # vedi `test_mind_balance.py`).
     assert len(GENRES) == 6
     assert "bilancio" in GENRES
 

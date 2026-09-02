@@ -39,7 +39,7 @@ from hiris.app.server import build_companions
 
 class _ClienteLegami:
     """L'UNICA finta di `HAClient` per `legami`, importata anche da
-    `test_cervello_wiring.py`.
+    `test_mind_wiring.py`.
 
     **Perche' una sola** (difesa-profondita-brief.md, punto 4). Prima ce
     n'erano quattro, indipendenti, fra questo file e quello -- una delle
@@ -234,7 +234,7 @@ async def test_un_guasto_di_legami_logga_col_prefisso_cervello(caplog):
 
     **Correzione del residuo 2 (grilletto-brief.md, appendice):** l'assert
     controllava solo `startswith("cervello:")`, lo stesso schema gia'
-    corretto nel test gemello di `test_cervello_wiring.py` -- un messaggio
+    corretto nel test gemello di `test_mind_wiring.py` -- un messaggio
     DIVERSO col prefisso giusto sarebbe passato ugualmente. Qui si legge il
     messaggio preciso."""
     import logging

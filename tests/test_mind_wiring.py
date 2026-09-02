@@ -24,7 +24,7 @@ from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.server import watch_system_conditions
 from tests._contratti import assert_stessa_firma
-from tests.test_cervello_comprimari import _ClienteLegami
+from tests.test_mind_companions import _ClienteLegami
 
 # --------------------------------------------------------------------------
 # Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1)
@@ -1306,7 +1306,7 @@ def _punto_bilancio(cambio, ora=6):
     RAPPRESENTARE un istante, e a quel livello il contenuto della curva
     resta strutturalmente non verificabile. Questi test di cablaggio non
     leggono ancora `forma`/`ora` (la verifica del contenuto vive in
-    `test_cervello_bilancio.py`, pura), ma la finta deve poter reggere quel
+    `test_mind_balance.py`, pura), ma la finta deve poter reggere quel
     controllo il giorno in cui un test qui lo chiedesse."""
     return {"inizio": f"2026-08-24T{ora:02d}:00:00+00:00",
             "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
