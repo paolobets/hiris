@@ -638,8 +638,32 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # in `test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso`,
 # non qui, perche' non c'e' nessun `prima`/`dopo` da confrontare quando
 # lo strumento non tocca nulla.
+#
+# **Corretto il 02/09, dalla fetta dei nomi degli strumenti.** La riga qui
+# sopra non e' piu' vera: `schedulatore` porta ora DUE file di residuo. La
+# causa non e' un lotto che ha convertito male, e' il passo 0 di quella
+# fetta -- `concludi` e' il quattordicesimo strumento e il glossario non
+# l'aveva mai nominato; deciderlo (`concludi -> conclude`, «I nomi degli
+# strumenti») mette la parola nella mappa piatta, e da quel momento
+# `AgendaStore.concludi` e i suoi chiamanti dentro `schedulatore/` sono
+# identificatori GIA' DECISI e non piu' invisibili.
+#
+# **Non e' un debito nuovo: e' lo stesso debito, che smette di essere
+# invisibile.** Era gia' scritto -- «`store.concludi(...)`/
+# `_senza_conclusione` lasciati intatti di proposito ... mai decisi»
+# (docs/GLOSSARIO.md, elenco del debito) -- e la ragione registrata li'
+# («mai decisi») e' proprio quella che oggi cade. Quello che NON cambia e'
+# il perimetro: la fetta del 02/09 converte i NOMI DEGLI STRUMENTI, cioe'
+# le stringhe che il modello legge, non gli identificatori Python di un
+# ambito gia' chiuso -- e applicare `concludi -> conclude` qui sarebbe una
+# rinomina a meta', perche' `server.py:122`,
+# `api/handlers_reasoning.py:67` e `api/handlers_mcp.py:474` chiamano
+# `store.concludi(...)`/`sweeper.concludi_chiedi(...)` da FUORI
+# dell'ambito, dove un giro limitato a `schedulatore` non li vedrebbe.
+# Tracciato qui, con la grana fine sotto, invece che applicato di sfuggita.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
-    ("schedulatore", "schedulatore", frozenset()),
+    ("schedulatore", "schedulatore",
+     frozenset({Path("archivio.py"), Path("sweeper.py")})),
     # `proxy` entra il 01/09 col lotto 19c, e **senza residui**: zero
     # composti da decidere e zero applicazioni su tutti e quattro i suoi
     # file, misurato prima di scrivere questa riga. E' il primo
@@ -752,6 +776,31 @@ def test_il_residuo_di_casa_strumenti_e_solo_tempo_historian(tmp_path):
         "{('tempo', 'historian')} -- un nuovo nome e' comparso: decidilo "
         "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
         "un'eccezione a grana di file")
+
+
+def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
+    """La grana FINE del residuo di `schedulatore` (sopra, in `_SORVEGLIATI`),
+    nato il 02/09 quando `concludi` e' stato deciso nel glossario: due file
+    divergono, e su una SOLA coppia. `concludi_chiedi` non compare -- e' un
+    composto il cui secondo pezzo (`chiedi`) non e' mai stato deciso, quindi
+    lo strumento non lo applica da solo -- ed e' proprio il genere di cosa
+    che l'eccezione a grana di file nasconderebbe se comparisse domani."""
+    import shutil
+
+    from _comune import ROOT
+    for nome in ("archivio.py", "sweeper.py"):
+        base = ROOT / "hiris" / "app" / "schedulatore" / nome
+        copia = tmp_path / nome
+        shutil.copy(base, copia)
+        prima = copia.read_text(encoding="utf-8")
+        rinomina.applica(copia, "schedulatore", scrivi=True)
+        dopo = copia.read_text(encoding="utf-8")
+        sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
+        assert sostituzioni == {("concludi", "conclude")}, (
+            f"schedulatore/{nome} diverge su {sostituzioni}, atteso solo "
+            "{('concludi', 'conclude')} -- un nuovo nome e' comparso: "
+            "decidilo davvero (applicalo, o traccialo qui) invece di "
+            "lasciarlo dentro un'eccezione a grana di file")
 
 
 def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):

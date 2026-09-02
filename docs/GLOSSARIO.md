@@ -2250,7 +2250,17 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `AgendaStore.concludi` e `schedulatore/turno.py::_senza_conclusione`) **lasciati intatti di
   proposito**: stessa classe di residuo di `store.scadi`, sopra -- metodi/funzioni ancora italiani
   in un ambito gia' chiuso (`schedulatore/`), mai decisi. Entrambi nell'elenco unico del debito nel
-  report di Task 9, non ripetuti qui parola per parola.
+  report di Task 9, non ripetuti qui parola per parola. **Meta' di questa ragione e' caduta il
+  02/09**: `concludi` ORA e' deciso (`-> conclude`, «I nomi degli strumenti»), perche' la fetta che
+  applica i nomi degli strumenti non poteva rinominare il quattordicesimo senza prima nominarlo.
+  Cio' che resta vero e' il rinvio, non l'invisibilita': gli identificatori Python restano italiani
+  perche' quella fetta converte le STRINGHE che il modello legge, e i tre chiamanti fuori ambito
+  (`server.py`, `api/handlers_reasoning.py`, `api/handlers_mcp.py`) rendono un giro limitato a
+  `schedulatore/` una rinomina a meta'. Da invisibile il debito e' diventato **misurato**: due file
+  in `_SORVEGLIATI` e una prova a grana di parola
+  (`tests/test_rinomina_applica.py::test_il_residuo_di_schedulatore_e_solo_concludi_conclude`).
+  `_senza_conclusione`, `conclusione` e `concludi_chiedi` restano invisibili davvero -- composti i
+  cui altri pezzi non sono mai stati decisi.
 - **`ingresso -> input_tokens`, non `input` nudo**: `input` e' un builtin Python (`_pericoloso`),
   la stessa guardia di `classe`/`class` -- lo strumento lo segnala come proposta invece di
   applicarlo, e la scelta a mano riusa il nome del campo JSON che la variabile alimenta
@@ -2686,6 +2696,11 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 > si chiude una promessa -- che non e' un utensile della chat e vive nel turno
 > dello schedulatore. Verificato per enumerazione l'02/09, non per lettura.
 >
+> **Dal 02/09 la tabella qui sotto ha QUATTORDICI righe, non tredici**: `concludi` e' stato
+> deciso dalla fetta che applica questi nomi (vedi la nota dedicata sotto la tabella). Fino ad
+> allora era nominato in prosa e mai deciso -- e questa nota, che contava quattordici definizioni
+> davanti a tredici righe, era il posto dove quel buco si vedeva.
+>
 > La nota esiste perche' e' la sesta volta, in questa fetta, che un numero
 > GIUSTO su un perimetro sembra sbagliato su un altro: chi legge «i tredici
 > nomi degli strumenti» deve sapere quale perimetro sta contando, o cerchera'
@@ -2769,11 +2784,71 @@ codice:
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
 | andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend | ~ parziale |
 | accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca. **`diario` NON prende una riga, e il metodo `HAClient.logbook` si chiama comunque `logbook` (deciso a mano, lotto 19 di `proxy/`)**: `logbook` e' gia' l'inglese di `accaduto`, e una riga `diario -> logbook` renderebbe la collisione PERMANENTE e automatica. Ma i due nomi non sono due concetti: sono lo STESSO concetto a due strati -- `proxy/ha_client.py::logbook` e' la chiamata grezza a `GET /api/logbook`, `casa/tempo.py::logbook` e' la risposta che ci si costruisce sopra confrontandola con la cronaca. La legge del confine dice che al confine si prende il nome del sistema esterno, e Home Assistant quella cosa la chiama logbook a tutti e due gli strati. Chi legge deve saperlo, ed e' scritto qui invece che in un rapporto | logbook | ~ parziale |
+| concludi | Chiude il turno che un impegno differito ha svegliato, dicendo cosa si e' trovato: e' l'unico modo in cui quel turno puo' finire, e senza di lui chi l'ha svegliato non sa cosa dire alla persona. Porta un booleano che dichiara se la persona va disturbata adesso -- un "no" non e' un fallimento, e' la risposta giusta quando la condizione chiesta non si e' verificata, e viene registrata lo stesso -- e il testo che le si direbbe, che e' anche cio' che le arriva nella notifica. Non esiste nel catalogo della chat: li' a chiudere e' la risposta all'utente | conclude | ~ non provato (v. nota) |
 
 > **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
 > «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
 > collisione con un'altra riga lascia il nome ma porta l'annotazione del rischio specifico, cosi'
 > che chi rinomina sappia cosa verificare due volte.
+
+> **La quattordicesima riga, scritta il 02/09 dalla fetta che APPLICA questi nomi -- e la ragione
+> per cui non c'era.** La nota in cima a questa sezione dichiarava gia' che i `*_TOOL_DEF` sono
+> quattordici, ma la tabella ne aveva tredici: `concludi` era **nominato in prosa e mai deciso**.
+> Il Task 8 aveva misurato il perimetro della CHAT, e `concludi` in chat non c'e' -- vive solo nel
+> catalogo del turno di promessa (`schedulatore/turno.py::promise_tools`, sei lettori piu' lui).
+> **Il silenzio non era accettabile**, per due ragioni che si vedono solo quando si applica: un
+> catalogo di tredici inglesi piu' un italiano e' esattamente la mescolanza che questa fetta
+> esiste per curare, e `concludi` e' l'unico dei quattordici il cui **identificatore Python** era
+> anche italiano (`CONCLUDI_TOOL_DEF`, mentre gli altri tredici erano gia' `SEARCH_TOOL_DEF` &
+> co. dalla conversione di `casa/`).
+>
+> **Perche' `conclude`, e il controllo di collisione sul CODICE (passo 2), eseguito e non
+> presunto.** `conclude` ricorre **sette volte** in `hiris/` e `tests/`, e tutte e sette sono la
+> terza persona del verbo italiano dentro la prosa (`cervello/__init__.py:4`,
+> `schedulatore/sweeper.py:103`, cinque docstring di test): **non e' un identificatore da nessuna
+> parte**, e il falso amico e' l'italiano, non l'inglese. I candidati scartati, ciascuno per una
+> ragione che sta nel codice o in questo documento:
+>
+> - **`report`** -- gia' l'inglese di due cose decise: le due locali di `server.py` che la riga
+>   `esito` (sopra) manda a `report`, e `to_report`. Piu' `vive -> reported`. Tre usi per tre
+>   concetti diversi e' proprio il controllo che i controlli di completezza vietano.
+> - **`close`** -- `chiudi -> close` e' gia' una parola ordinaria decisa, e `close` ricorre 259
+>   volte in Python fra file, connessioni e socket: il nome direbbe "chiudi una risorsa".
+> - **`answer`** -- `risposta -> answer` e' gia' deciso, e `answer` e' la **variabile locale della
+>   funzione stessa che dispaccia questo strumento** (`schedulatore/turno.py::interpreta_promise`):
+>   contiene il testo che il modello ha scritto a parole, cioe' **cio' che questo strumento NON
+>   e'** -- il testo che nessuno legge, la ragione per cui `concludi` esiste. Un nome che indica
+>   il proprio contrario nello stesso file.
+> - **`finish`/`done`** -- perdono la meta' che conta: non "finisci", ma "finisci **dicendo cosa
+>   hai trovato**". Un modello che legge `finish` non ha motivo di riempire `testo`.
+>
+> **La coppia quasi-ortografica che questo nome potrebbe creare non esiste per il modello.**
+> `conclude` e `confirm` cominciano per "con", ed e' il tipo di rischio che la nota su
+> `promise`/`promises` dichiara insanabile dalla description. Ma i due nomi **non compaiono mai
+> nello stesso catalogo**: `concludi` vive solo in `promise_tools()`, e `conferma` non e' in
+> `SOLA_LETTURA` -- il turno di promessa non puo' scrivere configurazione. Il modello vede
+> `conclude` accanto a `search`, `view`, `related`, `fetch`, `trend`, `logbook`, e nessuno di
+> quei sei gli somiglia per una lettera. Verificato sul codice, non assunto.
+>
+> **Fondamenta n.3 (la stessa cosa ha la stessa forma da tutte le porte).** Il dominio dice gia'
+> "concludere" da ogni porta: `STATES_CONCLUSI` (`schedulatore/promise.py`), `AgendaStore.concludi`,
+> `schedulatore/turno.py::_senza_conclusione`, la risposta `{"concluso": True}`. E' la stessa
+> ragione n.2 con cui `prometti` e' diventato `promise`: lo strumento che chiude una promessa
+> porta il nome di cio' che fa al dominio. (`AgendaStore.concludi` resta italiano oggi -- e' il
+> residuo gia' dichiarato nell'elenco del debito, sopra -- ma il giorno in cui si decidera' andra'
+> a `conclude`, e non sara' un doppione: e' lo stesso concetto dalle due facce, il dato e lo
+> strumento che lo scrive, esattamente come `promise`.)
+>
+> **`~ non provato (v. nota)`: un esito nuovo, e va letto per quello che dice.** Non e' il `~` per
+> genericita' ne' il `~` per collisione della legenda in «I concetti»: significa che il nome e'
+> deciso **leggendo cosa fa lo strumento e passando il controllo di collisione sul codice**, ma
+> che la prova a lettori indipendenti su modelli diversi -- quella che le altre tredici righe
+> portano dal Task 8 e dal Task 8bis -- **su questa riga non e' stata eseguita**, perche' la fetta
+> che l'ha scritta non poteva dispacciare sub-agenti. La legge della fetta del glossario («una
+> riga senza l'esito della prova non e' decisa: e' un'opinione») e' rispettata dichiarando quale
+> pezzo manca, non fingendo che ci sia. **Cosa la falsificherebbe**: un lettore nudo che, davanti
+> al catalogo di sette del turno di promessa, legga `conclude` come "deduci qualcosa" invece che
+> "chiudi dicendo cosa hai trovato". E' la prova da eseguire quando qualcuno potra' eseguirla.
 
 > **Secondo giro di prova (dopo il commit 857eb6e): `view`, `defer`, `agenda` erano marcati
 > `~ non ri-provato`** -- cambiati dopo la prima prova, verificati solo sulla collisione col
