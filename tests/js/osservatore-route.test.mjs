@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* Giro di correzioni sulla pagina «L'osservatore» (config/osservatore-route.js),
+/* Giro di correzioni sulla pagina «L'osservatore» (config/watcher-route.js),
    guida-ux-osservatore in .superpowers/sdd/2026-08-26-l-osservatore/pagina-brief.md.
 
    E' anche il primo file di test di questa pagina: fino a qui `_rendiOsservate`
@@ -16,13 +16,13 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    chiudono quel buco usando esattamente quelle due funzioni. */
 
 const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hiris', 'app', 'static', 'config');
-const SORGENTE = readFileSync(join(CONFIG_DIR, 'osservatore-route.js'), 'utf8');
+const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-route.js'), 'utf8');
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/osservatore-route.js'];
+const SCRIPTS = ['config/watcher-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
@@ -299,7 +299,7 @@ test('CSS: il selettore che azzera min-width sugli span corrisponde a uno span c
   assert.ok(regola, 'nessuna regola `min-width: 0` subito dopo il commento «Terza recidiva»');
   const selettore = regola[1].trim();
 
-  // Stessa struttura di rigaOggetto() in osservatore-route.js: uno span
+  // Stessa struttura di rigaOggetto() in watcher-route.js: uno span
   // figlio diretto di una riga il cui style nasce da `style.cssText =
   // 'display:flex;...'`, dentro una `.section-card`.
   const dom = new JSDOM('<!doctype html><body><section class="section-card"><div class="sc-body"></div></section></body>');
@@ -580,7 +580,7 @@ test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () =>
     '(cancello-rilascio-brief.md, punto 2): l\'aggregazione e\' per giornata, e non puo\' ' +
     'promettere una continuita\' che non tiene oltre la mezzanotte');
   assert.match(corpo.textContent, /Problema Home Assistant: hue\.bridge_offline/,
-    'un protagonista "problema:" diventa un nome leggibile, come in albero-route.js');
+    'un protagonista "problema:" diventa un nome leggibile, come in tree-route.js');
 });
 
 test('seam _rendiOggetti: comprimari e misure stanno dietro un rivelatore sincrono, chiuso di default', () => {
@@ -881,7 +881,7 @@ test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'or
 // POSIZIONE e' cio' che si guarda per decidere, non l'etichetta.
 // Serve un ancoraggio ASSOLUTO: la coordinata x attesa, calcolata dalla SUA
 // ora con lo stesso contratto geometrico di `rendiCurvaBilancio`
-// (osservatore-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
+// (watcher-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
 // -- `L`/`sinistra`/`ORE_DEL_GIORNO` nel sorgente, non ricopiati per caso:
 // e' lo stesso disegno che la pagina dichiara nel suo `viewBox`, verificato
 // sotto). Una sola serie (produzione) rende l'indice di serie ininfluente

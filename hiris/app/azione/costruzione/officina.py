@@ -62,7 +62,7 @@ OPERATIONS = ("crea", "modifica", "cancella")
 # «un'scena» sono le forme sbagliate che comparivano in ogni anteprima --
 # sotto gli occhi dell'utente, nel testo su cui decide (ondata finale, punto
 # 7). La stessa distinzione (con l'apostrofo tipografico ’) vive in
-# `ARTICOLO_DOMINIO`, `costruzioni-route.js`: non e' importata da li' (i due
+# `ARTICOLO_DOMINIO`, `constructions-route.js`: non e' importata da li' (i due
 # lati non condividono un modulo), ma la scelta grammaticale e' la stessa.
 ARTICOLO_INDETERMINATIVO = {"automation": "un'automazione", "script": "uno script",
                             "scene": "una scena"}

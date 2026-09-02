@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta E5 Task 2: la pagina #/impostazioni (config/impostazioni-route.js).
+/* fetta E5 Task 2: la pagina #/impostazioni (config/settings-route.js).
    E' la prima interfaccia che i campi di ChatSettings abbiano mai avuto:
    fino a quel task si cambiavano solo scrivendo a mano
    /data/impostazioni_chat.json. Qui si verifica cio' che un tester UAT fa
@@ -18,7 +18,7 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/impostazioni-route.js'];
+const SCRIPTS = ['config/settings-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

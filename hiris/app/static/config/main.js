@@ -113,7 +113,7 @@
         '<div class="page-title">Cosa HIRIS sa</div><p class="page-subtitle">Caricamento…</p>';
     }
   });
-  /* Reperto 26: la faccia di `casa.piani` -- vedi config/albero-route.js
+  /* Reperto 26: la faccia di `casa.piani` -- vedi config/tree-route.js
      per il perché. */
   HirisRouter.register(/^#\/albero\/?$/, function() {
     setCrumbHere('Albero della casa');
@@ -124,7 +124,7 @@
     }
   });
   /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi
-     config/memoria-route.js per il perché. */
+     config/memory-route.js per il perché. */
   HirisRouter.register(/^#\/memoria\/?$/, function() {
     setCrumbHere('Memoria');
     if (window.HirisMemoriaRoute) {
@@ -134,7 +134,7 @@
     }
   });
   /* fetta «lo schedulatore» Task 9: la pagina #/promesse -- vedi
-     config/promesse-route.js per il perche'. Una sola rotta: la pagina
+     config/agenda-route.js per il perche'. Una sola rotta: la pagina
      legge UNA GET /api/agenda?all=1 e filtra lì per `stato`, invece di
      chiederne due -- lo stato di una promessa è un campo, non un
      endpoint. */
@@ -147,7 +147,7 @@
     }
   });
   /* fetta «costruire» Task 11: la pagina #/costruzioni -- vedi
-     config/costruzioni-route.js per il perche'. `mount(outlet)` porta il
+     config/constructions-route.js per il perche'. `mount(outlet)` porta il
      proprio outlet, a differenza delle altre route qui sopra: e' l'unico
      modulo di questa SPA con quella firma, pinnata dal Task 11. */
   HirisRouter.register(/^#\/costruzioni\/?$/, function() {
@@ -159,9 +159,9 @@
     }
   });
   /* fetta «l'osservatore» Task 7: la pagina #/osservatore -- vedi
-     config/osservatore-route.js per il perche'. `mount()` senza argomenti,
-     legge da solo `#route-outlet`: stesso pattern di albero-route.js e
-     memoria-route.js, non quello di costruzioni-route.js (che porta
+     config/watcher-route.js per il perche'. `mount()` senza argomenti,
+     legge da solo `#route-outlet`: stesso pattern di tree-route.js e
+     memory-route.js, non quello di constructions-route.js (che porta
      l'outlet come parametro). */
   HirisRouter.register(/^#\/osservatore\/?$/, function() {
     setCrumbHere('L’osservatore');

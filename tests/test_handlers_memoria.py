@@ -376,7 +376,7 @@ async def test_senza_archivio_le_rotte_dichiarano_il_guasto_con_la_chiave_del_co
     Nasce da una mutazione sfuggita: `{"error": ...}` rimesso a `{"errore":
     ...}` in questo ramo lasciava verdi tutti e quattro i cancelli, perche' i
     test che nominano `error` coprono solo i rami 400. Il ramo 503 non era
-    nominato da nessuno, e `memoria-route.js` legge `esito.json.error`.
+    nominato da nessuno, e `memory-route.js` legge `esito.json.error`.
     """
     from aiohttp import web
 

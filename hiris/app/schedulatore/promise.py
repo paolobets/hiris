@@ -23,7 +23,7 @@ STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # L'insieme «in sospeso» -- la sua UNICA casa (review finale, rilievo ②).
 # Prima viveva scritto a mano in due punti di `archivio.py` (due `WHERE
 # stato IN (...)` SQL letterali) e una terza volta in
-# `static/config/promesse-route.js::STATI_SOSPESO`, senza niente che li
+# `static/config/agenda-route.js::STATI_SOSPESO`, senza niente che li
 # legasse: uno stato non conclusivo aggiunto qui un domani sarebbe sparito
 # in silenzio dalla sezione azionabile della pagina, senza che niente
 # fallisse -- precisamente il rischio che la spec §12 nomina per la fetta

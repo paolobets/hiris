@@ -986,8 +986,8 @@
    Selettore corretto: nessuna dipendenza dall'attributo `style` (ne' dalla
    classe, ne' da `display:flex`). Si applica a OGNI span dentro una
    `.section-card`, quindi vale DAVVERO -- non solo a parole -- per ogni riga
-   gia' scritta in ciascuna sorella (albero-, memoria-, promesse-,
-   costruzioni-, osservatore-route.js) e per quella che la prossima pagina
+   gia' scritta in ciascuna sorella (tree-, memory-, agenda-,
+   constructions-, watcher-route.js) e per quella che la prossima pagina
    scrivera' domani, senza doversene ricordare: uno span che non sta mai in
    una riga flex non ha comunque bisogno di restringersi, quindi la regola
    resta innocua li'. Scoperta solo negli span (non nei bottoni/input): un
@@ -1048,7 +1048,7 @@
   /* `minmax(0, 1fr)`, non `1fr` nudo (correzione di questo giro, verificata
      dal vivo a 390px con Playwright): una colonna `1fr` porta comunque un
      minimo IMPLICITO di `auto`, cioe' il min-content del contenuto piu'
-     largo -- e il bilancio dell'energia (osservatore-route.js) mette dentro
+     largo -- e il bilancio dell'energia (watcher-route.js) mette dentro
      una tessera un badge di provenienza ("Dichiarata — dalla dashboard
      Energia") che nessun'altra consumatrice di `.stat-grid` porta.
      `.agent-badge` e' `white-space: nowrap` apposta altrove (badge brevi),
@@ -1151,7 +1151,7 @@
 /* fetta «lo schedulatore» Task 9 (#/promesse): mancava una variante ambra e
    una rossa di `.agent-badge` -- i token `--warn-*`/`--err-*` esistono dal
    principio e sono gia' usati come colore di testo inline in
-   memoria-route.js, ma nessuna pagina li aveva mai portati fin qui come
+   memory-route.js, ma nessuna pagina li aveva mai portati fin qui come
    badge. Non e' la resurrezione di `.badge-warn`/`.dot.warn`, usciti da
    questo file con la fetta «la catena e' l'unica verita'» (sopra, provider):
    e' un consumatore vivo nuovo, per un significato diverso -- lo stato di
@@ -1811,14 +1811,14 @@
 }
 
 /* Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026,
-   osservatore-route.js): STESSO grafico SVG a mano di .usage-grafico/
+   watcher-route.js): STESSO grafico SVG a mano di .usage-grafico/
    .usage-legenda qui sopra -- niente libreria, nessuna dipendenza nuova --
    ma un prefisso proprio (`bil-`, come `umr-`/`usec-` sopra sono il
    prefisso di "Consumi"): sono classi di UNA pagina diversa, e questo
    file le tiene distinte come tiene distinti tutti gli altri prefissi.
    `width:100%;height:auto` e' cio' che rende la curva (fino a 24 punti --
    meno se Home Assistant ne ha omessi alcuni, vedi l'avviso su
-   `rendiCurvaBilancio` in osservatore-route.js) responsive: lo stesso
+   `rendiCurvaBilancio` in watcher-route.js) responsive: lo stesso
    schema di .usage-grafico, la stessa ragione per cui non scorre in
    orizzontale a 390px. */
 .bil-grafico { width: 100%; height: auto; display: block; }
@@ -1849,7 +1849,7 @@
    `auto-fit` puo' calcolare un numero DISPARI di colonne a certe larghezze
    (misurato dal revisore: 1200px), e con dt/dd alternati piatti questo
    separa un'etichetta dal suo valore, che finisce affiancato all'etichetta
-   SUCCESSIVA invece che alla propria. `.bil-momento` (osservatore-route.js,
+   SUCCESSIVA invece che alla propria. `.bil-momento` (watcher-route.js,
    `rendiMomentiBilancio`) raggruppa ogni coppia in un div: e' LUI l'unico
    elemento di griglia, non i suoi due figli -- una coppia non puo' piu'
    spezzarsi, a nessuna larghezza. Verificato dal vivo a 1200px. */

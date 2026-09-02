@@ -46,7 +46,7 @@ def _senza_commenti_html(testo: str) -> str:
 
 HTML = _senza_commenti_html((BASE / "config.html").read_text(encoding="utf-8"))
 MAIN = _senza_commenti_js((BASE / "config" / "main.js").read_text(encoding="utf-8"))
-ROUTE = _senza_commenti_js((BASE / "config" / "impostazioni-route.js").read_text(encoding="utf-8"))
+ROUTE = _senza_commenti_js((BASE / "config" / "settings-route.js").read_text(encoding="utf-8"))
 
 
 def test_i_due_file_guardati_non_usano_commenti_di_riga():
@@ -56,7 +56,7 @@ def test_i_due_file_guardati_non_usano_commenti_di_riga():
     riga assume in questo stile di codice, e nessuna stringa o regex letterale
     puo' cominciare cosi'."""
     for nome, testo in (("main.js", "config/main.js"),
-                        ("impostazioni-route.js", "config/impostazioni-route.js")):
+                        ("settings-route.js", "config/settings-route.js")):
         grezzo = (BASE / testo).read_text(encoding="utf-8")
         righe = [i for i, r in enumerate(grezzo.splitlines(), 1) if r.lstrip().startswith("//")]
         assert not righe, (
@@ -70,7 +70,7 @@ def test_lo_script_e_dichiarato_in_config_html():
     """Come ogni altro modulo di config: `<script src>` statico, cosi'
     `_inject_version` (server.py) lo fingerprinta per conto suo e il
     cache-busting per-file funziona senza bump di versione."""
-    assert "config/impostazioni-route.js" in HTML
+    assert "config/settings-route.js" in HTML
 
 
 def test_la_voce_di_menu_esiste_e_punta_alla_route():

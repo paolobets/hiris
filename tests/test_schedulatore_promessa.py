@@ -130,7 +130,7 @@ def test_le_costanti_sono_quelle_dichiarate_nella_spec():
 # PENDING_STATES (JS, era STATI_SOSPESO) / STATI_CONCLUSI: lo stesso insieme di
 # STATES_SOSPESO / STATES_CONCLUSI (Python) e nel
 # JavaScript della pagina (review finale, rilievo ②). Il vocabolario di
-# `promesse-route.js` esiste PRIMA di questo test -- qui non e' un doppione
+# `agenda-route.js` esiste PRIMA di questo test -- qui non e' un doppione
 # costruito apposta, e' quello LEGATO da una prova (`scripts/doppioni.py`,
 # `_costanti_gia_legate`): la divergenza smette di essere silenziosa perche'
 # questo test la vede.
@@ -143,7 +143,7 @@ def test_le_costanti_sono_quelle_dichiarate_nella_spec():
 # ---------------------------------------------------------------------------
 
 def _promesse_route_js() -> str:
-    return (BASE / "config" / "promesse-route.js").read_text(encoding="utf-8")
+    return (BASE / "config" / "agenda-route.js").read_text(encoding="utf-8")
 
 
 def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
@@ -151,7 +151,7 @@ def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
     # Il nome JS e' passato all'inglese il 02/09 (fetta del frontend); questo
     # test lega i due INSIEMI e non i due nomi, quindi sopravvive.
     m = re.search(r"var PENDING_STATES = \[([^\]]*)\];", js)
-    assert m, "PENDING_STATES non trovata in promesse-route.js"
+    assert m, "PENDING_STATES non trovata in agenda-route.js"
     dal_js = {s.strip().strip("'\"") for s in m.group(1).split(",") if s.strip()}
     assert dal_js == set(STATES_SOSPESO)
 
@@ -160,7 +160,7 @@ def test_ogni_stato_concluso_ha_una_voce_in_stato_label_e_stato_badge():
     js = _promesse_route_js()
     label = re.search(r"var STATE_LABEL = \{([\s\S]*?)\};", js)
     badge = re.search(r"var STATE_BADGE = \{([\s\S]*?)\};", js)
-    assert label and badge, "STATE_LABEL / STATE_BADGE non trovati in promesse-route.js"
+    assert label and badge, "STATE_LABEL / STATE_BADGE non trovati in agenda-route.js"
     chiavi_label = set(re.findall(r"(\w+):", label.group(1)))
     chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
     for stato in STATES_CONCLUSI:

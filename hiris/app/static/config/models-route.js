@@ -52,7 +52,7 @@
    «funziona»: una chiave a credito esaurito era «Attivo».
 
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati server
-   (stesso vincolo di dashboard.js e impostazioni-route.js). */
+   (stesso vincolo di dashboard.js e settings-route.js). */
 (function() {
   'use strict';
 

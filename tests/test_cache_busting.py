@@ -57,23 +57,23 @@ def test_inject_version_appends_per_file_content_hash():
     html = (
         '<link rel="stylesheet" href="static/hiris.css">'
         '<script src="static/config/main.js"></script>'
-        '<script src="static/config/memoria-route.js"></script>'
+        '<script src="static/config/memory-route.js"></script>'
     )
     out = server._inject_version(html, "0.21.0")
     # Every local asset gets a ?v= fingerprint.
     assert 'static/hiris.css?v=' in out
     assert 'static/config/main.js?v=' in out
-    assert 'static/config/memoria-route.js?v=' in out
+    assert 'static/config/memory-route.js?v=' in out
 
 
 def test_different_files_get_different_hashes():
     html = (
         '<script src="static/config/main.js"></script>'
-        '<script src="static/config/memoria-route.js"></script>'
+        '<script src="static/config/memory-route.js"></script>'
     )
     out = server._inject_version(html, "0.21.0")
     main_v = out.split("main.js?v=")[1].split('"')[0]
-    mem_v = out.split("memoria-route.js?v=")[1].split('"')[0]
+    mem_v = out.split("memory-route.js?v=")[1].split('"')[0]
     assert main_v != mem_v
 
 

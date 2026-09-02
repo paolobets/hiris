@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 
 const SORGENTE = fs.readFileSync(
-  new URL('../../hiris/app/static/config/costruzioni-route.js', import.meta.url), 'utf8');
+  new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
 
 function montaCon(risposta) {
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });

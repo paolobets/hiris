@@ -66,7 +66,7 @@ async def test_gli_oggetti_si_leggono():
     # L'INVOLUCRO, per nome. Prima questi test guardavano solo lo `status`, e
     # la sorella `handle_watching` era l'unica delle due a nominare il proprio
     # (riga sopra, `corpo["watching"]`): rinominando `facts` in `oggetti` la
-    # rotta emetteva un corpo che `osservatore-route.js::esito.corpo.facts`
+    # rotta emetteva un corpo che `watcher-route.js::esito.corpo.facts`
     # non sa leggere, e tutti e quattro i cancelli restavano verdi. Trovato con
     # una batteria di mutazioni, una per involucro convertito -- non leggendo.
     assert set(_corpo(r)) == {"facts"}

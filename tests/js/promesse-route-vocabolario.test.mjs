@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
    degli stati «in sospeso» (`in_attesa`, `in_corso`) vive in Python
    (`hiris/app/schedulatore/promise.py::STATES_SOSPESO`, usata da
    `archivio.py` per le sue due query) E in JavaScript
-   (`static/config/promesse-route.js::STATI_SOSPESO`, che filtra
+   (`static/config/agenda-route.js::STATI_SOSPESO`, che filtra
    `GET /api/agenda?all=1` lato client) -- senza niente che li legasse.
    Il vocabolario degli stati «conclusi» (`STATES_CONCLUSI`) ha la stessa
    forma: Python lo usa per `concludi()`/potatura, il JavaScript lo rispecchia
@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
    Nota sulla rinomina in inglese: `promise.py` e' gia' stato convertito
    (`STATI_SOSPESO` -> `STATES_SOSPESO`, `STATI_CONCLUSI` -> `STATES_CONCLUSI`);
-   `promesse-route.js` no. I due lati parlano quindi due lingue diverse per i
+   `agenda-route.js` no. I due lati parlano quindi due lingue diverse per i
    NOMI delle costanti -- per questo il confronto qui sotto e' e resta sui
    VALORI (gli insiemi di stringhe), mai sui nomi degli identificatori.
 
@@ -38,7 +38,7 @@ import { readFileSync } from 'node:fs';
 const PROMESSA_PY = readFileSync(
   new URL('../../hiris/app/schedulatore/promise.py', import.meta.url), 'utf8');
 const ROUTE_JS = readFileSync(
-  new URL('../../hiris/app/static/config/promesse-route.js', import.meta.url), 'utf8');
+  new URL('../../hiris/app/static/config/agenda-route.js', import.meta.url), 'utf8');
 
 /* Una tupla Python di stringhe: `NOME = ("a", "b", ...)`. Regex, non un
    parser -- e' lo stesso grado di sofisticazione delle letture gia' in uso
@@ -51,7 +51,7 @@ function tuplaPython(nomeCostante) {
     .map((s) => s.replace(/^["']|["']$/g, ''));
 }
 
-test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e in promesse-route.js (PENDING_STATES)', () => {
+test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e in agenda-route.js (PENDING_STATES)', () => {
   const python = tuplaPython('STATES_SOSPESO');
   // Se questa riga fallisse, il problema e' la lettura del sorgente Python
   // (un rinominamento, un formato diverso), non ancora un confronto col JS:
@@ -63,7 +63,7 @@ test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e i
   // residuo del lotto Python -- questo test lega i due INSIEMI, non i due
   // nomi, ed e' per questo che sopravvive a una rinomina di un lato solo.
   const m = ROUTE_JS.match(/var PENDING_STATES = \[([^\]]*)\];/);
-  assert.ok(m, 'PENDING_STATES non trovata in promesse-route.js');
+  assert.ok(m, 'PENDING_STATES non trovata in agenda-route.js');
   const js = m[1].split(',').map((s) => s.trim()).filter(Boolean)
     .map((s) => s.replace(/^['"]|['"]$/g, ''));
 
@@ -77,14 +77,14 @@ test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una
 
   // Il JavaScript non ripete `STATI_CONCLUSI` come proprio insieme a se':
   // "concluso" e' li' "tutto cio' che non e' in STATI_SOSPESO" (vedi
-  // `carica()` in promesse-route.js -- e' l'insieme SOSPESO che va confrontato
+  // `carica()` in agenda-route.js -- e' l'insieme SOSPESO che va confrontato
   // per identita', non due volte lo stesso complemento). Cio' che PUO'
   // divergere in silenzio, e che questo test copre, sono le due tendine di
   // resa: uno stato concluso che ne fosse privo diventerebbe "undefined" a
   // schermo, o un badge neutro invece di uno che porta il significato.
   const chiaviDiOggetto = (nomeCostante) => {
     const m = ROUTE_JS.match(new RegExp('var ' + nomeCostante + ' = \\{([\\s\\S]*?)\\};'));
-    assert.ok(m, nomeCostante + ' non trovata in promesse-route.js');
+    assert.ok(m, nomeCostante + ' non trovata in agenda-route.js');
     return new Set(Array.from(m[1].matchAll(/(\w+):/g)).map((mm) => mm[1]));
   };
   const label = chiaviDiOggetto('STATE_LABEL');

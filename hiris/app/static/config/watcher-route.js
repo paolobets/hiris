@@ -56,7 +56,7 @@
    cinque portano `comprimari` (chi altro c'era, dal caso del lampadario) e
    `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
    durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
-   costruzioni-route.js §3: sono gia' nel payload, nasconderli dietro un
+   constructions-route.js §3: sono gia' nel payload, nasconderli dietro un
    fetch sarebbe la trappola che la guida delle Promesse vieta).
 
    -- Il SESTO genere, `bilancio`, e' un'ALTRA FORMA (mandato «il bilancio
@@ -99,7 +99,7 @@
    guardare.
 
    Sicurezza: testi via textContent/createElement, MAI innerHTML su dati del
-   server -- stessa disciplina di albero-route.js/memoria-route.js. Nessuna
+   server -- stessa disciplina di tree-route.js/memory-route.js. Nessuna
    POST in questa pagina: le due rotte sono GET, quindi nessun
    `X-Requested-With` da portare (non passano dal `csrf_middleware`). */
 window.HirisOsservatoreRoute = (function () {
@@ -111,7 +111,7 @@ window.HirisOsservatoreRoute = (function () {
   /* Letterale, identico a `pavimento.GAMBE` (vedi il commento di testa): sei
      gambe, quest'ordine. Una gamba che l'archivio manda e questa lista non
      conosce finisce comunque in coda, col suo nome grezzo -- non sparisce
-     mai, stessa regola di `NOMI_REGISTRI` in albero-route.js. I VALORI
+     mai, stessa regola di `NOMI_REGISTRI` in tree-route.js. I VALORI
      restano quelli letterali (identici a `pavimento.GAMBE`): solo la resa
      (`ETICHETTA_GAMBA` sotto) traduce la chiave in un'etichetta leggibile. */
   var ASPECT_ORDER = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
@@ -276,8 +276,8 @@ window.HirisOsservatoreRoute = (function () {
 
   /* Bottone «Riprova» (rilievo 4): era l'unica pagina di lettura senza,
      mentre l'errore piu' comune -- il riavvio dell'add-on -- e' esattamente
-     transitorio. Stesso bottone delle sorelle (memoria-/promesse-/
-     costruzioni-route.js): `btn btn-ghost btn-sm`, rilancia `ricarica`. Il
+     transitorio. Stesso bottone delle sorelle (memory-/agenda-/
+     constructions-route.js): `btn btn-ghost btn-sm`, rilancia `ricarica`. Il
      TESTO dei tre messaggi sotto non cambia (rilievo 4: "il migliore del
      pannello", non si riscrive). */
   function retryButton(body, reload) {
@@ -394,7 +394,7 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* `problema:dominio.id` / `integrazione:entry_id` -> un nome leggibile.
-     Stessa idea di `nomiRegistriInItaliano` in albero-route.js: un prefisso
+     Stessa idea di `nomiRegistriInItaliano` in tree-route.js: un prefisso
      tecnico non deve restare tale e quale sulla pagina. */
   function protagonistName(o) {
     var s = o.protagonista || '';
@@ -442,8 +442,8 @@ window.HirisOsservatoreRoute = (function () {
 
     /* Rilievo 8c: «Nascondi» da solo perde il referente quando piu' righe
        sono aperte insieme -- lo stesso principio di "Nascondi i dettagli
-       tecnici" in costruzioni-route.js e "Nascondi il dettaglio" in
-       promesse-route.js. */
+       tecnici" in constructions-route.js e "Nascondi il dettaglio" in
+       agenda-route.js. */
     return createDisclosure('Chi c’era intorno', 'Nascondi chi c’era intorno', function (panel) {
       if (companions.length) {
         line(panel, 'Insieme a: ' + companions.join(', '), 'font-size:var(--fs-12);' + TONE_CALM);
@@ -818,7 +818,7 @@ window.HirisOsservatoreRoute = (function () {
      era il testo piu' in evidenza, il fatto («25/08 15:30 → 17:05 · da 18,2
      a 21,0») stava nella classe delle note a margine. L'occhio cerca il
      contrario: il COSA E' SUCCESSO e' il contenuto, l'identificatore e' il
-     riferimento -- stessa gerarchia gia' in albero-route.js, il metro. */
+     riferimento -- stessa gerarchia gia' in tree-route.js, il metro. */
   function factLine(o) {
     // Il bilancio e' un genere a parte, con una forma diversa dall'episodio
     // (vedi il commento di testa del file): esce subito verso `rigaBilancio`,

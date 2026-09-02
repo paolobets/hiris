@@ -30,13 +30,13 @@
    2. Nessun `window.confirm()`: disdire non distrugge niente, la riga passa
       allo storico con `stato:'disdetta'`, resta leggibile per sempre ed e'
       reversibile chiedendo di nuovo a voce -- diverso dalla cancellazione di
-      un ricordo in memoria-route.js, che e' per sempre.
+      un ricordo in memory-route.js, che e' per sempre.
    3. La DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
       /api/memories/{id}: chi copia `res.status === 204` da li' legge un
       successo come un fallimento.
 
    Sicurezza: testi via textContent/createElement, mai innerHTML su dati
-   server (stessa disciplina di memoria-route.js/models-route.js) -- la
+   server (stessa disciplina di memory-route.js/models-route.js) -- la
    frase e il testo di una promessa sono stati scritti in chat.
 
    «Cosa e' cambiato» (review finale, rilievo ①): un `fai` mantenuto porta
@@ -145,7 +145,7 @@ window.HirisPromesseRoute = (function () {
   }
 
   /* Il colore del TESTO del motivo porta il significato, non solo il badge
-     (guida §3, stesso principio di rendiAncore in memoria-route.js): rosso
+     (guida §3, stesso principio di rendiAncore in memory-route.js): rosso
      solo per un vero fallimento, ambra per tutto il resto (compresa la
      nota su una "mantenuta" con motivo -- §6 della spec). */
   function reasonColor(state) {

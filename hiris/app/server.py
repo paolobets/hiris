@@ -2461,7 +2461,7 @@ async def _on_startup(app: web.Application) -> None:
     #   - la chat prende il contesto da `compose_briefing()` (Task 3 "il
     #     contesto della chat viene dal nucleo"), mai da `KnowledgeStore`;
     #   - la pagina Memoria interroga `memoria/archivio.py`, non la coda di
-    #     approvazione (config/memoria-route.js lo dichiara per iscritto);
+    #     approvazione (config/memory-route.js lo dichiara per iscritto);
     #   - `search()`, `declared()`, `recent()`, `upcoming_obligations()` e
     #     `search_chunks()` non avevano gia' oggi nessun chiamante di
     #     produzione, e le quattro rotte /api/knowledge* nessun frontend.
@@ -3568,7 +3568,7 @@ def create_app() -> web.Application:
     # (`save()` non aveva chiamanti di produzione). Il PUT passa dallo stesso
     # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
     # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
-    # (static/config/impostazioni-route.js), nello stesso commit.
+    # (static/config/settings-route.js), nello stesso commit.
     app.router.add_get("/api/chat-settings", handle_get_settings)
     app.router.add_put("/api/chat-settings", handle_save_settings)
     app.router.add_get("/api/models", handle_list_models)

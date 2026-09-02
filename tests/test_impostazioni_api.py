@@ -233,7 +233,7 @@ def csrf_stretto(monkeypatch):
 async def test_put_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     """La rotta nuova passa dallo stesso `csrf_middleware` delle altre: non ha
     un'autenticazione propria. E' anche il motivo per cui la pagina manda
-    sempre l'header (impostazioni-route.js, `api()`)."""
+    sempre l'header (settings-route.js, `api()`)."""
     resp = await client.put(ROTTA, json={"name": "Da un sito ostile"})
     assert resp.status == 403
     assert (await resp.json())["error"] == "csrf_required"

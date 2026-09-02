@@ -42,7 +42,7 @@
       e una casa letta a meta' non deve sembrare una casa piccola.
 
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati
-   server -- stessa disciplina di dashboard.js/memoria-route.js. */
+   server -- stessa disciplina di dashboard.js/memory-route.js. */
 window.HirisAlberoRoute = (function () {
   'use strict';
 
@@ -103,7 +103,7 @@ window.HirisAlberoRoute = (function () {
 
   /* Nomi italiani dei registri di `non_disponibili` -- stessa mappa di
      dashboard.js. Duplicata (non importata) di proposito: ogni route di
-     questa SPA e' autonoma, stesso pattern di memoria-route.js e
+     questa SPA e' autonoma, stesso pattern di memory-route.js e
      usage-route.js, che duplicano a loro volta i toni qui sopra invece di
      dipendere l'una dall'altra. */
   var NOMI_REGISTRI = {

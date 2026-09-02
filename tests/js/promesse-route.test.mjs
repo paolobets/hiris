@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta «lo schedulatore» Task 9: la pagina #/promesse (config/promesse-route.js).
+/* fetta «lo schedulatore» Task 9: la pagina #/promesse (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
    cosa e' in sospeso e annullarlo.» Legge UNA sola GET /api/agenda?all=1 e
    filtra lato client per `stato` -- lo stato e' un campo della stessa lista,
@@ -21,7 +21,7 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/promesse-route.js'];
+const SCRIPTS = ['config/agenda-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

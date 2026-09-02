@@ -100,7 +100,7 @@
     <!-- fetta «lo schedulatore» Task 9: la terza condizione della spec (§10)
          -- «si vede»: un posto dove guardare cosa e' in sospeso e
          annullarlo. Legge/disdice l'archivio vero (GET/DELETE
-         /api/agenda*, config/promesse-route.js). Icona orologio: nessun'
+         /api/agenda*, config/agenda-route.js). Icona orologio: nessun'
          altra voce dice "quando". -->
     <a class="nav-item" href="#/promesse" data-route="promesse" title="Promesse" aria-label="Promesse">
       <span class="nav-icon">
@@ -112,7 +112,7 @@
          rifiuta cio' che HIRIS propone di scrivere in Home Assistant, legge
          il confronto prima/dopo e rimette com'era un oggetto. Legge/scrive
          l'archivio vero (GET /api/constructions, POST .../confirm|reject|
-         restore, config/costruzioni-route.js). Icona chiave inglese:
+         restore, config/constructions-route.js). Icona chiave inglese:
          nessun'altra voce parla di "costruire" dentro la casa. -->
     <a class="nav-item" href="#/costruzioni" data-route="costruzioni" title="Costruzioni" aria-label="Costruzioni">
       <span class="nav-icon">
@@ -123,7 +123,7 @@
     <!-- fetta «l'osservatore» Task 7: guarda la casa e ne ricava oggetti --
          non conclude, non parla, non tocca niente
          (docs/design/2026-08-26-l-osservatore.md). Legge le due rotte GET
-         nuove, config/osservatore-route.js. Icona occhio: nessun'altra voce
+         nuove, config/watcher-route.js. Icona occhio: nessun'altra voce
          parla di "guardare" la casa. -->
     <a class="nav-item" href="#/osservatore" data-route="osservatore" title="L’osservatore" aria-label="L’osservatore">
       <span class="nav-icon">
@@ -199,32 +199,32 @@
   <script src="static/config/dashboard.js"></script>
   <!-- Reperto 26: pagina #/albero, la faccia di `casa.piani` (gerarchia()).
        Nessuna dipendenza (solo document e fetch, stesso pattern di
-       memoria-route.js/impostazioni-route.js), quindi la posizione
+       memory-route.js/settings-route.js), quindi la posizione
        nell'ordine non vincola niente. -->
-  <script src="static/config/albero-route.js"></script>
+  <script src="static/config/tree-route.js"></script>
   <script src="static/config/usage-route.js"></script>
   <script src="static/config/models-route.js"></script>
   <!-- fetta E5 Task 2: pagina #/impostazioni. Nessuna dipendenza (usa solo
        document e fetch), quindi la sua posizione nell'ordine non vincola
        niente: sta accanto a models-route.js perche' e' l'altra pagina che
        parla di modelli. -->
-  <script src="static/config/impostazioni-route.js"></script>
+  <script src="static/config/settings-route.js"></script>
   <!-- fetta E5 Task 9: pagina #/memoria. Nessuna dipendenza (solo document e
-       fetch, stesso pattern di impostazioni-route.js), quindi la posizione
+       fetch, stesso pattern di settings-route.js), quindi la posizione
        nell'ordine non vincola niente. -->
-  <script src="static/config/memoria-route.js"></script>
+  <script src="static/config/memory-route.js"></script>
   <!-- fetta «lo schedulatore» Task 9: pagina #/promesse. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di memoria-route.js), quindi
+       (solo document e fetch, stesso pattern di memory-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
-  <script src="static/config/promesse-route.js"></script>
+  <script src="static/config/agenda-route.js"></script>
   <!-- fetta «costruire» Task 11: pagina #/costruzioni. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di promesse-route.js), quindi
+       (solo document e fetch, stesso pattern di agenda-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
-  <script src="static/config/costruzioni-route.js"></script>
+  <script src="static/config/constructions-route.js"></script>
   <!-- fetta «l'osservatore» Task 7: pagina #/osservatore. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di albero-route.js), quindi la
+       (solo document e fetch, stesso pattern di tree-route.js), quindi la
        posizione nell'ordine non vincola niente. -->
-  <script src="static/config/osservatore-route.js"></script>
+  <script src="static/config/watcher-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>
 </html>

@@ -122,7 +122,7 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     app = _app(archivio)
     tutte = _corpo(await handle_get_constructions(FintaRichiesta(app)))
     # L'INVOLUCRO, per nome: e' il contratto che la pagina legge
-    # (`static/config/costruzioni-route.js::dati.constructions`), e nessun
+    # (`static/config/constructions-route.js::dati.constructions`), e nessun
     # altro test di questa rotta lo nomina.
     assert set(tutte) == {"constructions"}
     assert [c["id"] for c in tutte["constructions"]] == ["a", "b"]
@@ -158,7 +158,7 @@ async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
     con una batteria di mutazioni a fine fetta «la rinomina»: rimesso a
     `costruzione`, tutti e quattro i cancelli restavano verdi.
 
-    **Questa rotta non ha lettori nel frontend** (`costruzioni-route.js` prende
+    **Questa rotta non ha lettori nel frontend** (`constructions-route.js` prende
     l'elenco intero e filtra in locale), quindi non c'e' una pagina che possa
     andare rossa al posto suo: questo test e' l'unica cosa che pinza il suo
     contratto. E' anche il motivo per cui la rotta e' nella tabella del debito.

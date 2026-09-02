@@ -6,7 +6,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 /* Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): `GET
    /api/home-space` manda l'albero completo che `anagrafe.gerarchia()` costruisce
    (`casa.piani`), e prima usciva verso nessuna pagina. Questo file pinna la
-   pagina #/albero (config/albero-route.js), che lo mostra.
+   pagina #/albero (config/tree-route.js), che lo mostra.
 
    Ciò che conta qui non è l'impaginazione — è che le SEI cause distinte di
    silenzio che `gerarchia()` dichiara (Senza area / Area sconosciuta / Aree
@@ -17,7 +17,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 function rendi(casa) {
-  const ctx = loadScripts(['config/albero-route.js'], { html: HTML });
+  const ctx = loadScripts(['config/tree-route.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     chiamate.push(String(url));
@@ -246,7 +246,7 @@ test('`etichette: null`: lo dichiara, e nel frattempo gli id restano grezzi (mai
 });
 
 test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', async () => {
-  const ctx = loadScripts(['config/albero-route.js'], { html: HTML });
+  const ctx = loadScripts(['config/tree-route.js'], { html: HTML });
   const consoleVera = console.error;
   console.error = () => {};
   ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
@@ -261,8 +261,8 @@ test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', a
 test('wiring: la rotta #/albero e lo script sono registrati nella SPA', () => {
   const configHtml = readFileSync(
     new URL('../../hiris/app/static/config.html', import.meta.url), 'utf8');
-  assert.match(configHtml, /static\/config\/albero-route\.js/,
-    'config.html deve caricare config/albero-route.js');
+  assert.match(configHtml, /static\/config\/tree-route\.js/,
+    'config.html deve caricare config/tree-route.js');
   assert.match(configHtml, /href="#\/albero"/, 'deve esistere una voce di navigazione verso #/albero');
 
   const mainJs = readFileSync(

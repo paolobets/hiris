@@ -112,7 +112,7 @@
    con origine umana `ripristina` SCRIVE SUBITO (crea la proposta e la
    applica nella stessa chiamata): non c'e' il passaggio intermedio che rende
    sicuro "Approva" senza conferma. Stessa famiglia del `window.confirm()` di
-   «Dimentica» in memoria-route.js (azione distruttiva senza coda d'attesa).
+   «Dimentica» in memory-route.js (azione distruttiva senza coda d'attesa).
    Testo composto solo da campi reali (mai una frase generica).
    Errori: 404/409/503 portano gia' un testo corretto dal server -- si legge
    `errore` e si mostra verbatim, mai un messaggio sintetico per casi che il
@@ -124,7 +124,7 @@
 
    -- Sicurezza -- testi via textContent/createElement, MAI scrivendo markup
    HTML grezzo nel DOM: alias e anteprime nascono in una chat, e una chat puo'
-   contenere markup (stessa disciplina di memoria-route.js/promesse-route.js).
+   contenere markup (stessa disciplina di memory-route.js/agenda-route.js).
    Le tre POST portano `X-Requested-With`, o il middleware CSRF le rifiuta con
    403 (`hiris/app/api/middleware_csrf.py`). */
 window.HirisCostruzioni = (function () {

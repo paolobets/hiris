@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta E5 Task 9: la pagina #/memoria (config/memoria-route.js). Sostituisce
+/* fetta E5 Task 9: la pagina #/memoria (config/memory-route.js). Sostituisce
    il pannello Memoria della chat (coda di approvazione, uscita con questo
    stesso task) e interroga l'archivio vero (GET/PATCH/DELETE /api/memories*).
 
@@ -18,7 +18,7 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/memoria-route.js'];
+const SCRIPTS = ['config/memory-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

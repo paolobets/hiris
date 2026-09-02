@@ -22,7 +22,7 @@
    arriva dal backend, la pagina dice che non lo sa invece di stampare zero.
 
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati server
-   (stessa disciplina di memoria-route.js e models-route.js). */
+   (stessa disciplina di memory-route.js e models-route.js). */
 window.HirisDashboard = (function () {
   'use strict';
 

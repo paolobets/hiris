@@ -18,7 +18,7 @@ BASE = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 
 
 def _js() -> str:
-    return (BASE / "config" / "memoria-route.js").read_text(encoding="utf-8")
+    return (BASE / "config" / "memory-route.js").read_text(encoding="utf-8")
 
 
 def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
@@ -27,7 +27,7 @@ def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
     inizio = js.index("var MODALITY_LABELS")
     blocco = js[inizio:js.index("};", inizio)]
     mancanti = sorted(f for f in VOCABULARY["forza"] if f + ":" not in blocco)
-    assert mancanti == [], f"forze senza etichetta in memoria-route.js: {mancanti}"
+    assert mancanti == [], f"forze senza etichetta in memory-route.js: {mancanti}"
 
 
 def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
@@ -36,7 +36,7 @@ def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
     inizio = js.index("var MODALITY_OPTIONS")
     blocco = js[inizio:js.index("];", inizio)]
     mancanti = sorted(f for f in VOCABULARY["forza"] if "'" + f + "'" not in blocco)
-    assert mancanti == [], f"forze non scegliibili in memoria-route.js: {mancanti}"
+    assert mancanti == [], f"forze non scegliibili in memory-route.js: {mancanti}"
 
 
 def test_la_pagina_non_offre_forze_che_il_vocabolario_non_ammette():
