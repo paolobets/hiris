@@ -1549,7 +1549,7 @@ def accessi_dinamici(nomi: dict[str, str], radice: Path | None = None, *,
     **Cio' che questa rete non copre, e chi lo copre adesso.**
     `_FORME_DINAMICHE` e' un elenco di forme che leggono un ATTRIBUTO. Una
     stringa puo' anche diventare una PAROLA CHIAVE, ed e' successo:
-    `tests/test_decisione_modelli.py:347` aveva un involucro `def
+    `tests/test_model_resolution.py:347` aveva un involucro `def
     componi_topologia(**kw)` con `kw.setdefault("esiti", {})`, e rinominato
     il parametro la chiave letterale e' rimasta indietro. **L'ha presa la
     suite andando rossa, di nuovo fortuna e non rete** -- per un giorno. Ora
@@ -1594,7 +1594,7 @@ def chiavi_inoltrate(nomi: dict[str, str], radice: Path | None = None, *,
     `(file, riga, vecchio, nuovo, la forma che la scrive)`.
 
     **Trovata dalla suite andando rossa, come la settima, e scritta solo dopo
-    averla MISURATA.** Il caso: `tests/test_decisione_modelli.py` aveva un
+    averla MISURATA.** Il caso: `tests/test_model_resolution.py` aveva un
     involucro `def componi_topologia(**kw)` che faceva `kw.setdefault("esiti",
     {})` prima di `return _componi_topologia(**kw)`. Rinominato il parametro
     `esiti -> occurrences`, la chiave letterale e' rimasta indietro e il turno

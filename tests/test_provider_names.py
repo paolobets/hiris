@@ -33,7 +33,7 @@ _SUPERFICI = (
 def _righe_vive(percorso: Path) -> str:
     """Solo le righe non commentate: un commento che RACCONTA un nome ritirato
     non è quel nome vivo. Stesso criterio di
-    `test_pagina_configurazione.test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti`."""
+    `test_config_page.test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti`."""
     marcatore = "#" if percorso.suffix == ".py" else "//"
     return "\n".join(
         r for r in percorso.read_text(encoding="utf-8").splitlines()

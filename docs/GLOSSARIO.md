@@ -356,7 +356,7 @@ che sia un'ESPRESSIONE: `` `indice is None` `` non combacia con `indice`, `` `tu
 combacia con `id_turno`, `` `_LIMITE_RICORDI_MOSTRATI = 200` `` non combacia con la costante.
 Misurato dal vivo due volte: il lotto 9 aveva dichiarato di aver verificato tutte le citazioni del
 proprio file e ne aveva mancata una **nello stesso file** (`handlers_memory.py:118`); il lotto 10
-ne ha lasciata una in un test (`tests/test_rotta_mcp.py:652`), trovata solo dal lotto 11 col
+ne ha lasciata una in un test (`tests/test_mcp_route.py:652`), trovata solo dal lotto 11 col
 criterio corretto. Non e' distrazione: e' il criterio sbagliato.
 
 **Il frontend conta, e il confine che ha fatto sfuggire la prima citazione non e' la cartella:
@@ -417,8 +417,8 @@ racconta cosa faceva il codice PRIMA e' un verbale ovunque viva, anche dentro `s
 
 **E la nota onesta, per chi progettera' il giro finale**: questa fetta se n'e' accorta soltanto
 perche' i suoi verbali stanno tutti in sei file, che sono il diario del meccanismo stesso
-(`scripts/rinomina.py`, `tests/_contratti.py`, `tests/test_rinomina_applica.py`,
-`tests/test_contratto_ha_client.py`, `tests/test_preposizioni_italiane.py`, e questo glossario).
+(`scripts/rinomina.py`, `tests/_contracts.py`, `tests/test_rinomina_applica.py`,
+`tests/test_ha_client_contract.py`, `tests/test_preposizioni_italiane.py`, e questo glossario).
 Escluderli dall'automatismo e' bastato **qui**. Un'altra fetta avrebbe i verbali sparsi fra i
 commenti del prodotto, e non esiste nessun criterio meccanico che distingua «punta» da «registra»:
 li trova solo la lettura. Chi progetta il giro di fine fetta deve saperlo prima di stimarlo.
@@ -1518,7 +1518,7 @@ al Task 6 invece che deciso qui.
 | circuito | circuit |
 | citato | cited |
 | classe | class |
-| coda | tail | **`code` (il plurale) e' la trappola gemella di `rotta`, e la piu' insidiosa finora.** `codice -> code` produce un nome che il glossario stesso rilegge come ITALIANO: `code` e' il plurale di `coda`, quindi `classifica('_code_of')` propone `tail_of`. **Contro-esempio, e il punto e' tutto qui**: `_codice_di -> _code_of` SEMBRA inglese corretto, e nessuna review si ferma su di lui -- a differenza di `broken_config`, che almeno dice una cosa falsa. Il nome giusto e' quello del campo vero: `_status_code` (`backends/openai_compat_runner.py`, `exc.status_code`). **Misurato su tutto il glossario: e' l'UNICA coppia il cui inglese si rilegge come italiano**, e `test_nessuna_parola_produce_un_inglese_che_il_glossario_rilegge_da_capo` la tiene sola. Chi decide un inglese che potrebbe essere anche un plurale italiano (`code`, `note`, `pane`, `mare`) lo verifichi prima. | **due sensi vivi, e quello che lo strumento applica da solo e' il minoritario -- quarto caso della famiglia gia' descritta in «Il limite della qualificazione per ambito» (Task 9, lotto 12).** `tail` e' giusto per `agent/runner.py:1559` (`coda = stdout.strip()[-200:]`, l'ultimo pezzo del flusso letto) e per i due `_coda` di `tests/test_tools_to_bridge.py` e `tests/test_token_interno.py`. Ma in `api/handlers_chat.py::_downgrade_to_chain` e nei quattro file di test che la nominano (`test_reasoning_queue.py`, `test_instradamento.py::_CodaFinta`, `test_promise_from_bridge.py`, `test_keeper_exchange.py`) `coda` e' la CODA DI LAVORO, cioe' `ReasoningQueue`: `tail = request.app["reasoning_queue"]` sarebbe un nome che mente. Qualificare per ambito non aiuta -- i due sensi convivono dentro `agent/` come dentro `tests/` -- e nemmeno la forma li separa: sono entrambi NUDI, che e' esattamente il caso peggiore descritto per `fuori (home_space)`. Si decide occorrenza per occorrenza guardando il codice: `queue` quando e' `ReasoningQueue` (il nome che l'app usa gia' nella chiave `reasoning_queue` e nella classe), `tail` quando e' la coda di una stringa |
+| coda | tail | **`code` (il plurale) e' la trappola gemella di `rotta`, e la piu' insidiosa finora.** `codice -> code` produce un nome che il glossario stesso rilegge come ITALIANO: `code` e' il plurale di `coda`, quindi `classifica('_code_of')` propone `tail_of`. **Contro-esempio, e il punto e' tutto qui**: `_codice_di -> _code_of` SEMBRA inglese corretto, e nessuna review si ferma su di lui -- a differenza di `broken_config`, che almeno dice una cosa falsa. Il nome giusto e' quello del campo vero: `_status_code` (`backends/openai_compat_runner.py`, `exc.status_code`). **Misurato su tutto il glossario: e' l'UNICA coppia il cui inglese si rilegge come italiano**, e `test_nessuna_parola_produce_un_inglese_che_il_glossario_rilegge_da_capo` la tiene sola. Chi decide un inglese che potrebbe essere anche un plurale italiano (`code`, `note`, `pane`, `mare`) lo verifichi prima. | **due sensi vivi, e quello che lo strumento applica da solo e' il minoritario -- quarto caso della famiglia gia' descritta in «Il limite della qualificazione per ambito» (Task 9, lotto 12).** `tail` e' giusto per `agent/runner.py:1559` (`coda = stdout.strip()[-200:]`, l'ultimo pezzo del flusso letto) e per i due `_coda` di `tests/test_tools_to_bridge.py` e `tests/test_internal_token.py`. Ma in `api/handlers_chat.py::_downgrade_to_chain` e nei quattro file di test che la nominano (`test_reasoning_queue.py`, `test_steering.py::_CodaFinta`, `test_promise_from_bridge.py`, `test_keeper_exchange.py`) `coda` e' la CODA DI LAVORO, cioe' `ReasoningQueue`: `tail = request.app["reasoning_queue"]` sarebbe un nome che mente. Qualificare per ambito non aiuta -- i due sensi convivono dentro `agent/` come dentro `tests/` -- e nemmeno la forma li separa: sono entrambi NUDI, che e' esattamente il caso peggiore descritto per `fuori (home_space)`. Si decide occorrenza per occorrenza guardando il codice: `queue` quando e' `ReasoningQueue` (il nome che l'app usa gia' nella chiave `reasoning_queue` e nella classe), `tail` quando e' la coda di una stringa |
 | codice | code |
 | collega | connect |
 | colonna | column |
@@ -2209,7 +2209,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   02/09**: allora la stringa restava italiana perche' era il contratto col modello e nessuna suite
   poteva smentirne il cambio; la fetta dei nomi degli strumenti l'ha convertita, dopo essersi
   costruita il cancello che quella suite non aveva
-  (`tests/test_nomi_degli_strumenti.py`). Oggi il `"name"` e' inglese quanto la costante che lo
+  (`tests/test_tool_names.py`). Oggi il `"name"` e' inglese quanto la costante che lo
   porta, e cio' che resta italiano dentro la definizione sono le chiavi dello schema e la
   description.
 - **`entita` (bare, locale)**: tradotta `entity` dove il valore e' UNA cosa sola (`_andamento`,
@@ -2416,7 +2416,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `_count_round`, `_call_tool`, `is_notification`, `arguments`, `entries`, `definitions`,
   `rounds`, `rounds_per_exchange`, `content`.
 - **Il valore della chiave d'applicazione NON cambia**: `ROUNDS_PER_EXCHANGE_KEY` vale ancora
-  `"mcp_giri_per_turno"`, ed e' letto per stringa da `tests/test_rotta_mcp.py`
+  `"mcp_giri_per_turno"`, ed e' letto per stringa da `tests/test_mcp_route.py`
   (`client.app["mcp_giri_per_turno"]`). E' un accesso dinamico -- il §5 della spec: la costante e'
   un identificatore e si rinomina, la stringa e' un contratto interno fra `server.create_app()` e
   questa rotta e si tocca solo in una fetta che tocchi entrambe le sponde.
@@ -2628,7 +2628,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   senza suffisso di unita': `_timeout_ollama -> _ollama_timeout` (locale, `handlers_models.py:526`)
   e `timeout_ollama_s -> ollama_timeout_s`, che e' un parametro di
   `decisione_modelli.componi_topologia` -- quindi corretto su tutte e tre le sponde (la `def`, la
-  chiamata qui, e `tests/test_decisione_modelli.py:452`), col controllo di chiusura a confermare
+  chiamata qui, e `tests/test_model_resolution.py:452`), col controllo di chiusura a confermare
   zero chiamanti rimasti indietro. **Il secondo e' il caso istruttivo**: `ollama_timeout_s` e' fatto
   di parole gia' inglesi, quindi nessun dry-run lo avrebbe mai segnalato -- solo una misura
   sull'ORDINE poteva trovarlo. Nella stessa firma resta `scadenza_ponte_min`, che invece e' italiano

@@ -23,7 +23,7 @@ from hiris.app.home_space.historian import (
     trend,
 )
 from hiris.app.proxy.ha_client import HAClient
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 NOW = 1787572800.0  # 24 agosto 2026, 12:00 UTC = 14:00 a Roma
 

@@ -16,7 +16,7 @@ potenza, non solo l'energia). I `translation_key` misurati sull'integrazione
 `zcsazzurro` sono `power_<direzione>` (nessun suffisso `_today`) e
 `energy_<direzione>_today` -- non un pattern regex, sette voci esplicite.
 
-Stessa disciplina di `legami`/`problemi` (`test_ha_client_legami_problemi.py`):
+Stessa disciplina di `legami`/`problemi` (`test_ha_client_related_problems.py`):
 `{"errore": ...}` su guasto, mai un dizionario vuoto che significherebbe
 «nessuna direzione esiste»."""
 import pytest

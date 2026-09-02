@@ -132,7 +132,7 @@ def test_il_tetto_del_ponte_e_50():
     costo e' forfettario (nessun costo marginale sulle chiamate in piu').
 
     Pin diretto sulla costante (non sul comportamento, gia' pinnato da
-    `tests/test_rotta_mcp.py`): senza questo test la suite restava verde
+    `tests/test_mcp_route.py`): senza questo test la suite restava verde
     anche riportando il tetto del ponte a 10, perche' nessun altro test lo
     lega al valore -- tutti usano `handlers_mcp.MAX_TOOL_ROUNDS` in modo
     relativo. Se qualcuno lo riabbassa senza dichiararlo qui, questo test

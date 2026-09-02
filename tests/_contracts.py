@@ -137,7 +137,7 @@ def doppi(reale, moduli) -> list[tuple[str, str]]:
     ogni classe di ogni file di test; con questa riga raccoglie solo chi
     imita davvero un metodo. Nessun'altra esclusione e' stata necessaria:
     verificato eseguendo, non presunto -- il conto vero lo stampa
-    `tests/test_contratto_ha_client.py`, che e' il posto dove non puo'
+    `tests/test_ha_client_contract.py`, che e' il posto dove non puo'
     invecchiare.
     """
     metodi = {nome for nome, valore in vars(reale).items()

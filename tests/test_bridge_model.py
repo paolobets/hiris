@@ -17,7 +17,7 @@ non e' sparita, ha cambiato mestiere. Da traduttore chiamato a ogni turno e'
 diventata il VALIDATORE del campo (`handlers_models._clean_subscription_model`),
 e il suo silenzio dichiarato -- il `log.warning` su un modello non-Anthropic --
 serve adesso a chi scrive a mano `/data/models_config.json`. Il campo, la sua
-pulizia e la sua semina vivono in `tests/test_modello_del_piano.py`.
+pulizia e la sua semina vivono in `tests/test_subscription_model.py`.
 """
 import logging
 

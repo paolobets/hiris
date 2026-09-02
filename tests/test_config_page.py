@@ -1,6 +1,6 @@
 """La pagina di configurazione dell'add-on e' un ordine, non un insieme.
 
-`test_traduzioni_coprono_le_opzioni.py` sorveglia che ogni opzione **esista**
+`test_translations_cover_options.py` sorveglia che ogni opzione **esista**
 in tutti i posti dove deve esistere. Questo file sorveglia l'altra meta', quella
 che l'utente vede per prima: **dove** ogni opzione sta.
 

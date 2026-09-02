@@ -2,7 +2,7 @@
 
 Fixture `client`: l'app VERA (`create_app`), non un'app costruita a mano con
 le sole due rotte in prova -- vedi lo stesso ragionamento in
-`test_impostazioni_api.py`. La rotta nuova deve passare dagli stessi
+`test_settings_api.py`. La rotta nuova deve passare dagli stessi
 middleware di ogni altra (`internal_auth_middleware`, `csrf_middleware`): un
 test che li scavalcasse non direbbe niente su cio' che accade in produzione.
 
@@ -10,7 +10,7 @@ Per la maggior parte dei test il CSRF resta silenzioso perche' `conftest.py`
 mette `HIRIS_ALLOW_NO_CSRF=1` per l'intera suite. Ma l'invariante «questa
 DELETE rifiuta le scritture cross-site» merita un test proprio, non solo la
 copertura generica di `test_security.py`: la sorella `/api/memories/{id}` ha
-lo stesso trattamento in `test_impostazioni_api.py` (fixture `csrf_stretto`,
+lo stesso trattamento in `test_settings_api.py` (fixture `csrf_stretto`,
 riusata qui per import -- niente di specifico alle impostazioni, stesso
 riuso cross-file gia' praticato dal progetto per `client`). Senza un test
 dedicato, una futura esenzione aggiunta per errore (o una registrazione
@@ -29,9 +29,9 @@ from hiris.app.server import create_app
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),
 # senza niente di specifico alle impostazioni: stesso riuso cross-file gia'
-# praticato dal progetto per `client` (vedi `test_elenco_anthropic.py`,
+# praticato dal progetto per `client` (vedi `test_anthropic_list.py`,
 # `test_models_api.py`). Non ne scrivo una seconda identica.
-from tests.test_impostazioni_api import csrf_stretto  # noqa: F401
+from tests.test_settings_api import csrf_stretto  # noqa: F401
 
 
 @pytest.fixture(autouse=True)

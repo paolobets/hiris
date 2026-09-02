@@ -16,7 +16,7 @@ import pytest
 
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import verification
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {

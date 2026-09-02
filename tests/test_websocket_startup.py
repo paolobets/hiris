@@ -128,7 +128,7 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
         ChatSettings=_ImpostazioniChatFinte,
         AsyncIOScheduler=_fabbrica_scheduler,
         os=os_module,
-        logger=logging.getLogger("test_avvio_websocket"),
+        logger=logging.getLogger("test_websocket_startup"),
         file_lacks_retention_days=lambda data_dir: True,
     )
 

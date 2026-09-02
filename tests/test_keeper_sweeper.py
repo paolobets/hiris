@@ -7,7 +7,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.keeper.promise import TOLLERANZA_S
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 ADESSO = 1_755_600_000.0
 pytestmark = pytest.mark.asyncio

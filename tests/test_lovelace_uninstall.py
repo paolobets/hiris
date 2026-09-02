@@ -1,4 +1,4 @@
-# tests/test_lovelace_disinstallazione.py
+# tests/test_lovelace_uninstall.py
 """La card Lovelace esce dal prodotto: qui si pinna che si **disinstalli**.
 
 fetta E5 Task 5. Questo file sostituisce `tests/test_lovelace_registration.py`,
@@ -471,7 +471,7 @@ def test_find_ha_config_dir_not_mounted():
 # spento la disinstallazione **a suite verde**, ed e' esattamente la classe di
 # difetto che questo ramo continua a trovare. Il pin non e' un `in` sul
 # sorgente: estrae il blocco VERO da `_on_startup` (stessa tecnica di
-# `tests/test_avvio_websocket.py`) e lo **esegue** isolato, cosi' prova anche
+# `tests/test_websocket_startup.py`) e lo **esegue** isolato, cosi' prova anche
 # che gli argomenti siano quelli giusti.
 
 def _carica_blocco_disinstallazione():

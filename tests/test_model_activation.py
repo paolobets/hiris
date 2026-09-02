@@ -9,7 +9,7 @@ provider lavoravano mentre la pagina li mostrava spenti.
 
 Della vecchia regola resta nel repo la sola META' di compatibilita', in
 `server._chain_as_it_was`, ed e' provata li'
-(`tests/test_migrazione_opzioni.py`). Il ramo che leggeva gli interruttori e'
+(`tests/test_options_migration.py`). Il ramo che leggeva gli interruttori e'
 uscito con loro: senza nessuno che esporti i cinque `PROVIDER_*`, era
 irraggiungibile, e il test che lo esercitava difendeva uno stato che nessun
 utente puo' produrre.
@@ -70,7 +70,7 @@ def test_la_vecchia_derivazione_non_esiste_piu():
 # Non e' provabile con la fixture dell'app (`app.on_startup.clear()` in
 # tests/test_api.py: `_on_startup` non gira mai), quindi si ESTRAE il blocco
 # dal sorgente vero e lo si esegue isolato -- stessa tecnica di
-# tests/test_avvio_websocket.py e tests/test_migrazione_opzioni.py.
+# tests/test_websocket_startup.py e tests/test_options_migration.py.
 #
 # E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
 # `app["catena_modelli"]` aveva DUE scritture, `list(_chain)` dentro il ramo

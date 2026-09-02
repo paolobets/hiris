@@ -119,8 +119,8 @@ class _FintoLogger:
 def _blocco_risanamento_costruzioni():
     """Il blocco VERO di `_on_startup`, estratto e reso chiamabile.
 
-    Stessa tecnica di `tests/test_avvio_websocket.py` e
-    `tests/test_migrazione_opzioni.py`: si esegue il codice di produzione, non
+    Stessa tecnica di `tests/test_websocket_startup.py` e
+    `tests/test_options_migration.py`: si esegue il codice di produzione, non
     una sua parafrasi, cosi' che toglierlo da `_on_startup` -- o sbagliarne una
     parola chiave -- faccia fallire il test invece di lasciarlo verde.
     """

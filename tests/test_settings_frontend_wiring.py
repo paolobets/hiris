@@ -3,7 +3,7 @@
 Guardie di WIRING (testo sul sorgente), stessa forma di
 `tests/test_models_frontend_wiring.py` e famiglia. La copertura
 COMPORTAMENTALE (mount, GET che popola i campi, Salva che manda il PUT con
-l'header, l'errore che si vede) vive in `tests/js/impostazioni-route.test.mjs`
+l'header, l'errore che si vede) vive in `tests/js/settings-route.test.mjs`
 sotto `npm test`.
 
 Il motivo per cui questo file esiste separato dai test dell'API: una rotta che

@@ -458,7 +458,7 @@ def compose_now(
         # guasto, quindi in tondo. Senza niente sotto è GUASTO, e la frase non
         # promette un successivo che non c'è: il Task 1 lasciò questa riga
         # senza test, le due prove gemelle stanno in
-        # `tests/test_decisione_modelli.py`.
+        # `tests/test_model_resolution.py`.
         if chain:
             diagnosis.append({
                 "gravita": "fatto",
@@ -902,7 +902,7 @@ def provenance(provider_id: str, source: str, *, address: str = "",
     # Claude API cade nel percorso generico come gli altri due provider che si
     # interrogano davvero.
     #
-    # La frase esatta è vietata da `tests/test_elenco_anthropic.py` in TUTTO il
+    # La frase esatta è vietata da `tests/test_anthropic_list.py` in TUTTO il
     # sorgente, commenti compresi: un grep assoluto è una trappola più forte di
     # uno che deve distinguere una citazione da un'affermazione -- per questo
     # qui è parafrasata.

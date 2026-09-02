@@ -258,7 +258,7 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     detection end-to-end -- e' vivo (e' cosi' che funziona in produzione,
     dove la chat passa sempre `tools=KNOWLEDGE_TOOLS`): si sposta su
     `strumenti`, con due tool_def minimi locali (stesso pattern di
-    test_runner_catalogo.py's _FINTO_HTTP_REQUEST_TOOL_DEF)."""
+    test_runner_catalog.py's _FINTO_HTTP_REQUEST_TOOL_DEF)."""
     runner = OpenAICompatRunner(
         base_url="https://openrouter.ai/api/v1",
         api_key="sk-or-test",

@@ -150,7 +150,7 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # tetto, contatori diversi -- e' per questo che `agent/prompts.py::
 # _GUIDE_WITH_TOOLS` insegna al ponte una parsimonia che
 # `claude_runner.BASE_TOOL_RULES` non ha bisogno di insegnare al ramo
-# sincrono (vedi `tests/test_prompt_parallelismo.py`).
+# sincrono (vedi `tests/test_prompt_parallelism.py`).
 #
 # **Costante di modulo, non un'opzione dell'add-on** (regole della fetta): un
 # opzione vive in cinque posti (config.yaml options+schema, run.sh, le due
@@ -175,7 +175,7 @@ MAX_TOOL_ROUNDS = 50
 # FIFO vera un turno lungo verrebbe scartato dopo `_MAX_TRACKED_EXCHANGES`
 # turni altrui e il suo contatore ripartirebbe da zero, cioe' il tetto si
 # potrebbe aggirare semplicemente durando. La proprieta' e' pinnata in
-# `tests/test_rotta_mcp.py::test_un_turno_attivo_non_viene_mai_espulso`.
+# `tests/test_mcp_route.py::test_un_turno_attivo_non_viene_mai_espulso`.
 _MAX_TRACKED_EXCHANGES = 64
 
 # La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
@@ -517,7 +517,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
     manda `X-Requested-With`: passa quindi da quell'esenzione, che a sua volta
     e' viva solo perche' l'add-on genera un token interno quando l'opzione e'
     vuota (`internal_token.py`). Entrambe le vie sono pinnate in
-    `tests/test_rotta_mcp.py` con le valvole della suite rimosse -- e il Task 3,
+    `tests/test_mcp_route.py` con le valvole della suite rimosse -- e il Task 3,
     che scrive gli header della voce `--mcp-config`, ha per iscritto la
     raccomandazione di mandare **anche** `X-Requested-With`, cosi' che nessuno
     dei due rami resti da solo a reggere la rotta.

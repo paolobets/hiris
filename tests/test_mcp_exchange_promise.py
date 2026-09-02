@@ -27,7 +27,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 from tests.test_knowledge_tools import _semina_casa
 
 TOKEN = "token-di-prova-del-turno-di-promessa"

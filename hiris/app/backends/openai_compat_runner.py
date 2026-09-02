@@ -622,7 +622,7 @@ class OpenAICompatRunner:
         # Con questa correzione i TRE composizioni del prodotto mettono i
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
-        # `tests/test_ordine_di_composizione.py`.
+        # `tests/test_composition_order.py`.
         system_parts = [BASE_SYSTEM_PROMPT]
         if system_prompt:
             system_parts.append(system_prompt)

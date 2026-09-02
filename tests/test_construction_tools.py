@@ -5,7 +5,7 @@ from hiris.app.action.construction.workshop import Workshop
 from hiris.app.agent.runner import mcp_names
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import promise_tools
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 
 class FintaOfficina:

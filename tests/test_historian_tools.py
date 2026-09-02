@@ -13,7 +13,7 @@ from hiris.app.api import handlers_chat
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA, promise_tools
 from hiris.app.proxy.ha_client import HAClient
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 
 def test_il_catalogo_porta_tredici_strumenti():

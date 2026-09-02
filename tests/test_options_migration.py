@@ -174,7 +174,7 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
 # dimentica di persistere. `_on_startup` non e' pinnabile per intero (ogni
 # fixture fa `app.on_startup.clear()` -- e' il debito E dichiarato al Task 1),
 # quindi si usa la tecnica gia' in casa: si ESTRAE il blocco dal sorgente vero
-# e lo si esegue isolato (`tests/test_avvio_websocket.py`,
+# e lo si esegue isolato (`tests/test_websocket_startup.py`,
 # `tests/test_chat_subscription_path.py`).
 #
 # La finta e' scomoda apposta: il disco e' vero (tmp_path) e le funzioni di

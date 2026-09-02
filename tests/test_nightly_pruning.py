@@ -14,7 +14,7 @@ merita un pin: se il numero tornasse a essere catturato una volta sola
 all'avvio (o a leggere una costante fissa), un utente che abbassa la
 conservazione dalla pagina vedrebbe la potatura di stanotte ignorarlo.
 
-Tecnica di `tests/test_avvio_websocket.py`: si estrae dal sorgente VERO di
+Tecnica di `tests/test_websocket_startup.py`: si estrae dal sorgente VERO di
 `_on_startup` il blocco che costruisce `_run_retention` (da
 `from .chat_store import delete_old_messages as _delete_old_messages` alla
 fine della funzione), isolato dal resto del boot (Supervisor/scheduler/

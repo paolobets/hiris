@@ -341,7 +341,7 @@ def compose_topology(**kw):
     TOPOLOGIA (chi e' dentro, in che ordine, chi sta fuori) e non di esiti: un
     registro vuoto e un orologio fermo sono la condizione di un add-on appena
     partito, che e' la meno interessante per loro e la piu' onesta. Gli esiti
-    hanno i loro test, in `tests/test_esiti_provider.py` e piu' sotto in
+    hanno i loro test, in `tests/test_provider_occurrences.py` e piu' sotto in
     questo stesso file.
     """
     kw.setdefault("occurrences", {})

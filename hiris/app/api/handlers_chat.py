@@ -93,7 +93,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     che possono divergere sono esattamente il difetto da cui e' nata la fetta E2
     (tre cataloghi della stessa cosa): qui ce n'e' una sola, e un
     grep del nome della classe seguito da parentesi su `hiris/app/` lo dimostra
-    (e `tests/test_rotta_mcp.py` lo pinna). E' lo stesso
+    (e `tests/test_mcp_route.py` lo pinna). E' lo stesso
     principio gia' applicato al nucleo con `compose_briefing`
     (`handlers_home_space.py`: «la STESSA composizione, non due che potrebbero
     divergere»).
@@ -782,7 +782,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # appena installato HIRIS a cercare campi che nella sua pagina non
         # esistevano. Debito dichiarato dal Task 5 di questa fetta e chiuso dal
         # Task 15, con il pin che impedisce alla deriva di ripetersi:
-        # `tests/test_invarianti_modelli.py::test_il_messaggio_di_primo_avvio_
+        # `tests/test_model_invariants.py::test_il_messaggio_di_primo_avvio_
         # nomina_campi_che_esistono_davvero`, che confronta ogni «...» con i
         # `name` delle traduzioni. Chi cambia un'etichetta cambia anche questo
         # messaggio, o il test cade.

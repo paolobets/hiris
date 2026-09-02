@@ -24,7 +24,7 @@ def claude_con_elenco(client):
     I test che usano questa fixture parlano della FORMA della rotta -- quali id
     compaiono, che aspetto ha la voce «auto», che cosa NON c'e' piu' nel
     payload -- non della lettura, che vive tutta in
-    `tests/test_elenco_anthropic.py`. La chiave serve solo perche' senza di lei
+    `tests/test_anthropic_list.py`. La chiave serve solo perche' senza di lei
     Claude non comparirebbe affatto; il mock serve perche' una suite che esce
     sulla rete e' una suite che fallisce per ragioni sue.
     """
@@ -499,7 +499,7 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
     # di Anthropic: falso, `GET /v1/models` c'e'. Dalla fetta «il modello del
     # piano» Claude API si comporta come OpenAI e OpenRouter -- senza chiave,
     # «assente»; con la chiave, lettura viva e riserva dichiarata se fallisce
-    # (`tests/test_elenco_anthropic.py`).
+    # (`tests/test_anthropic_list.py`).
     assert p["fonte"] == "assente"
     assert "manca la chiave" in p["provenienza"]
     assert p["dove"] == ["provider_models", "claude"]

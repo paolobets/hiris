@@ -1717,7 +1717,7 @@ def test_un_file_che_non_e_una_pura_rinomina_si_dichiara_invece_di_indovinarlo()
 def test_l_ottava_rete_vede_una_parola_chiave_scritta_come_stringa(tmp_path):
     """L'OTTAVA specie, e come la settima l'ha trovata la suite andando rossa.
 
-    `tests/test_decisione_modelli.py` aveva un involucro `def
+    `tests/test_model_resolution.py` aveva un involucro `def
     componi_topologia(**kw)` che faceva `kw.setdefault("esiti", {})` prima di
     inoltrare `**kw`. Rinominato il parametro, la chiave letterale e' rimasta
     indietro: `TypeError: got an unexpected keyword argument 'esiti'`. Non e'
@@ -1763,7 +1763,7 @@ def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
     """Il perimetro si misura come il contenuto (regola scritta il 01/09 dopo
     il caso di `buchi`). Cinque involucri con `**kwargs` inoltrato in tutto il
     repo: tre `kwargs.get("model")` (`claude_runner.py`, `llm_router.py` due
-    volte) e i due dell'involucro di `tests/test_decisione_modelli.py`. Se ne
+    volte) e i due dell'involucro di `tests/test_model_resolution.py`. Se ne
     nasce un sesto, questo test lo dice: e' un posto dove una rinomina futura
     puo' rompersi in silenzio.
     """
@@ -1781,8 +1781,8 @@ def test_l_ottava_rete_conta_cinque_siti_nel_prodotto():
         ("hiris/app/claude_runner.py", "model"),
         ("hiris/app/llm_router.py", "model"),
         ("hiris/app/llm_router.py", "model"),
-        ("tests/test_decisione_modelli.py", "now"),
-        ("tests/test_decisione_modelli.py", "occurrences")], trovati
+        ("tests/test_model_resolution.py", "now"),
+        ("tests/test_model_resolution.py", "occurrences")], trovati
 
 
 _DATACLASS = """

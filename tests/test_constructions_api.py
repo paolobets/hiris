@@ -16,13 +16,13 @@ from hiris.app.api.handlers_constructions import (
     handle_restore_construction,
 )
 from hiris.app.server import create_app
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 from tests.test_construction_workshop import FintoHA
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite), senza niente di specifico alle impostazioni:
 # stesso riuso cross-file gia' praticato da `test_agenda_api.py`.
-from tests.test_impostazioni_api import csrf_stretto  # noqa: F401
+from tests.test_settings_api import csrf_stretto  # noqa: F401
 
 
 class FintoArchivio:

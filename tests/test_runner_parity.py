@@ -2,7 +2,7 @@
 
 **La regola esiste da prima di questa fetta** -- «ogni kwarg nuovo di
 `ClaudeRunner` dev'essere accettato anche dal runner compatibile» -- ed **era
-gia' difesa, piu' debolmente**, da `tests/test_runner_catalogo.py:59,69`, che
+gia' difesa, piu' debolmente**, da `tests/test_runner_catalog.py:59,69`, che
 pretende che i due runner accettino `tools` e `dispatcher`. Questo cancello non
 e' nuovo: e' piu' forte, perche' confronta le firme INTERE (ordine, nomi,
 default) invece di due nomi, e perche' i metodi li DERIVA invece di
@@ -27,7 +27,7 @@ import inspect
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import ClaudeRunner
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 # I kwarg che la regola del progetto nomina: chi ne aggiunge uno a
 # `ClaudeRunner` deve aggiungerlo anche qui, e questo elenco e' il posto dove

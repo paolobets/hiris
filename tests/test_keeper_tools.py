@@ -9,7 +9,7 @@ from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 # NON un `pytestmark` di modulo: a differenza di `test_keeper_sweeper.py`
 # (dove ogni test e' async), qui un test e' sincrono

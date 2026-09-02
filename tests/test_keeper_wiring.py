@@ -4,14 +4,14 @@ risanano PRIMA che il battito possa girare, e tutto si chiude in
 `_on_cleanup`.
 
 Nessun test qui avvia `_on_startup` per intero -- e' la stessa disciplina
-gia' scritta in `tests/test_avvio_websocket.py` ("review finale E3: nessun
+gia' scritta in `tests/test_websocket_startup.py` ("review finale E3: nessun
 test avvia il boot vero", perche' `_on_startup` tocca il Supervisor, il
 websocket di Home Assistant, e una lunga catena di migrazioni una-tantum che
 non hanno niente a che fare con lo schedulatore). Chi ha scritto questo file
 lo ha verificato di persona: `server.create_app()` non accetta un parametro
 `data_dir` (a differenza di quanto ipotizzava il brief del task), e nessun
 test esistente chiama mai `server._on_startup(app)` per davvero -- l'unica
-convenzione che lo fa (`test_avvio_websocket.py`) ESTRAE dal sorgente vero il
+convenzione che lo fa (`test_websocket_startup.py`) ESTRAE dal sorgente vero il
 solo blocco che le serve e lo esegue isolato, con doppi al posto di Home
 Assistant/scheduler. Questo file adotta la STESSA tecnica per i due blocchi
 nuovi di questo task (costruzione di cronaca/promesse/porta, e
@@ -112,7 +112,7 @@ def _load_battito_avvio():
 
 class _SchedulerRegistratore:
     """Registra ogni `add_job(...)` senza schedulare nulla per davvero --
-    stesso principio del `_SchedulerFinto` di `test_avvio_websocket.py`, solo
+    stesso principio del `_SchedulerFinto` di `test_websocket_startup.py`, solo
     che qui serve leggere GLI ARGOMENTI della chiamata, non l'ordine."""
 
     def __init__(self) -> None:
@@ -207,7 +207,7 @@ def _load_battito_closure():
     `_load_battito_avvio`) dal sorgente vero di `_on_startup`, e la
     restituisce pronta per essere chiamata con un `app` e un `_time` finti.
     Stessa tecnica delle altre estrazioni di questo file (e di
-    `test_avvio_websocket.py`): il corpo vero, non una sua imitazione."""
+    `test_websocket_startup.py`): il corpo vero, non una sua imitazione."""
     src = inspect.getsource(server._on_startup)
     start = src.index('    async def _battito() -> None:')
     end_marker = 'await app["orologio"].batti(_time.time())'

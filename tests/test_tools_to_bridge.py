@@ -48,15 +48,15 @@ from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
-from tests.test_knowledge_tools import _semina_casa
 
 # La fixture della configurazione PREDEFINITA dell'add-on, con le due valvole
 # della suite (`HIRIS_ALLOW_NO_TOKEN`, `HIRIS_ALLOW_NO_CSRF`) rimosse: si
 # importa invece di essere ricopiata qui: una seconda copia divergerebbe, e
 # senza le valvole rimosse questi test passerebbero anche col guasto in piedi.
-from tests.test_token_interno import (  # noqa: F401  (fixture usata da pytest)
+from tests.test_internal_token import (  # noqa: F401  (fixture usata da pytest)
     ponte_con_configurazione_predefinita,
 )
+from tests.test_knowledge_tools import _semina_casa
 
 _NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
@@ -207,7 +207,7 @@ def test_config_mcp_e_json_valido_con_la_url_e_le_due_intestazioni():
     assert voce["url"] == "http://127.0.0.1:8099/api/mcp"
     # ENTRAMBE: il token apre la rotta, l'X-Requested-With soddisfa il CSRF.
     # Mandarne uno solo farebbe dipendere la rotta da un solo ramo di un solo
-    # middleware -- e i due rami sono pinnati in tests/test_rotta_mcp.py
+    # middleware -- e i due rami sono pinnati in tests/test_mcp_route.py
     # proprio perche' nessuno dei due resti da solo a reggerla.
     assert voce["headers"]["X-HIRIS-Internal-Token"] == "IL-TOKEN"
     assert voce["headers"]["X-Requested-With"] == "hiris-mcp"

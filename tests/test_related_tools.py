@@ -1,7 +1,7 @@
 """«Chi tocca questa cosa»: i legami arrivano fino al modello.
 
 La porta verso Home Assistant (`HAClient.related`) esisteva gia' ed e' provata
-altrove (`tests/test_ha_client_legami_problemi.py`). Qui si prova il tratto
+altrove (`tests/test_ha_client_related_problems.py`). Qui si prova il tratto
 che mancava: dal client al modello, cioe' il vocabolario, la forma della
 risposta e -- soprattutto -- le due distinzioni che questo progetto paga da
 sempre quando le perde.

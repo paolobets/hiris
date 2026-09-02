@@ -350,8 +350,8 @@ def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
 # Si pinna il CABLAGGIO, non solo la funzione: la chiusura vive in
 # `_on_startup`, quindi si estrae il blocco dal sorgente vero e lo si esegue
 # isolato -- stessa tecnica (e stessa ragione: ogni fixture fa
-# `app.on_startup.clear()`) di `tests/test_avvio_websocket.py` e
-# `tests/test_migrazione_opzioni.py`.
+# `app.on_startup.clear()`) di `tests/test_websocket_startup.py` e
+# `tests/test_options_migration.py`.
 # ---------------------------------------------------------------------------
 def _blocco_giorni_dallo_startup():
     import inspect

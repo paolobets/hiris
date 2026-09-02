@@ -324,7 +324,7 @@ def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
     a rinfrescarsi solo a scadenza, con la suite tutta verde.
 
     Si legge il blocco dal sorgente vero di `_on_startup`, come fa
-    `tests/test_avvio_websocket.py` e per la stessa ragione: provare la
+    `tests/test_websocket_startup.py` e per la stessa ragione: provare la
     funzione non dimostra che qualcuno la chiami."""
     import inspect
 

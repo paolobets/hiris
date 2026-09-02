@@ -1,6 +1,6 @@
 """La rete sui doppi di `HAClient`, derivata invece che elencata.
 
-**Perche' esiste.** `tests/_contratti.py` e' la guardia contro «la finta e il
+**Perche' esiste.** `tests/_contracts.py` e' la guardia contro «la finta e il
 chiamante rinominati insieme nel modo sbagliato»: esiste da tre giorni, e
 copriva **sei** doppi di `HAClient` -- `leggi_registri`, `diario`, `storico`,
 `statistiche`. Il lotto 16 della rinomina, il commit piu' rischioso della
@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 from hiris.app.proxy.ha_client import HAClient
-from tests._contratti import buchi, doppi
+from tests._contracts import buchi, doppi
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +47,7 @@ def _sorgenti_prova():
 
     **Il perimetro e' `rglob("*.py")` e non `glob("test_*.py")`, ed e' una
     correzione**: la prima stesura diceva «misurato su tutta la suite» e
-    guardava i soli `test_*.py`, lasciando fuori `_contratti.py`, `conftest.py`
+    guardava i soli `test_*.py`, lasciando fuori `_contracts.py`, `conftest.py`
     e i file di `tests/js/`. Oggi nessun buco vive li' -- il conto non cambia --
     ma in un file la cui tesi e' «l'elenco si deriva, non si trascrive» il
     PERIMETRO merita la stessa onesta' del contenuto.

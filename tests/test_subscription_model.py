@@ -135,7 +135,7 @@ def test_il_segno_sopravvive_al_giro_load_save(tmp_path):
 #
 # La suite non avvia l'app intera per provare `_on_startup` (servirebbero
 # Supervisor, WebSocket di HA, MQTT). L'idioma del repo e' estrarre il blocco
-# dal sorgente vero ed eseguirlo isolato: `tests/test_avvio_websocket.py`.
+# dal sorgente vero ed eseguirlo isolato: `tests/test_websocket_startup.py`.
 # Provare la FUNZIONE non dimostra che qualcuno la chiami, e un cablaggio che
 # non c'e' e' esattamente il modo in cui una migrazione non avviene.
 

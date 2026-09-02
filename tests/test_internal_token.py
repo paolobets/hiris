@@ -248,7 +248,7 @@ def _carica_blocco_avvio_token():
     directory dei dati e il token interno -- da `data_dir = os.environ.get(...)`
     fino (incluso) ad `app["internal_token"] = prepare_internal_token(data_dir)`.
 
-    Stessa tecnica di `tests/test_avvio_websocket.py`: si esegue il codice di
+    Stessa tecnica di `tests/test_websocket_startup.py`: si esegue il codice di
     produzione, non una sua parafrasi, cosi' che togliere la chiamata da
     `_on_startup` faccia fallire il test invece di lasciarlo verde."""
     src = inspect.getsource(server._on_startup)

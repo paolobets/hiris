@@ -44,7 +44,7 @@ const RICORDO = {
 };
 
 /* Il finto server: risponde a GET/PATCH/DELETE api/memories*. Ogni test rompe
-   solo il pezzo che gli interessa, come in impostazioni-route.test.mjs. */
+   solo il pezzo che gli interessa, come in settings-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];

@@ -173,7 +173,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # chiamante cambia: `chat()` qui sotto, backends/openai_compat_runner.py
 # (`chat` e `chat_stream`) e tests/test_base_prompt_memory.py continuano a
 # vedere la STESSA costante con lo STESSO testo (pinnato da
-# tests/test_base_prompt_diviso.py).
+# tests/test_base_prompt_split.py).
 #
 # Perche' spezzarla: dal Task 2 questa costante arriva ANCHE al ponte (la chat
 # in abbonamento, agent/prompts.py), dove gli strumenti NON esistono. La
@@ -217,7 +217,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # Cambia la POSIZIONE della riga dentro quel testo -- subito dopo l'identita'
 # invece che in coda all'elenco "## Regole fondamentali", dove peraltro era
 # l'unico trattino che non parlava di strumenti. Pinnata da
-# `tests/test_base_prompt_diviso.py`, cosi' non migra piu' in silenzio.
+# `tests/test_base_prompt_split.py`, cosi' non migra piu' in silenzio.
 BASE_IDENTITY = (
     "Sei HIRIS, assistente AI integrata in Home Assistant: conosci la casa"
     " (aree, entità, dispositivi, automazioni e script) e la memoria di ciò"
@@ -817,7 +817,7 @@ class ClaudeRunner:
         # sull'ultimo blocco stabile, di la' e' il prefix caching implicito di
         # OpenAI/Ollama. I due punti gemelli sono stati allineati, non il
         # commento, e l'ordine e' ora pinnato per tutti e tre i composers
-        # (`tests/test_ordine_di_composizione.py`).
+        # (`tests/test_composition_order.py`).
         if restrict_to_home:
             system_blocks.append({"type": "text", "text": RESTRICT_PROMPT})
         # fetta E4 Task 6 ("un bot solo"): il parametro `require_confirmation`

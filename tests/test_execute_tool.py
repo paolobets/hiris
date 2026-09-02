@@ -19,7 +19,7 @@ import pytest
 
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 
 class FintaPorta:

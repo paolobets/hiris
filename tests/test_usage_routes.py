@@ -21,7 +21,7 @@ from hiris.app.api.handlers_usage import (
 )
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.usage.store import UsageStore
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00

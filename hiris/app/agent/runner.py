@@ -278,7 +278,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
         `csrf_middleware` esenta chi ne porta uno valido -- ma cosi' la rotta
         dipenderebbe da UN SOLO ramo di UN SOLO middleware. Mandandoli entrambi
         passa da qualunque dei due sopravviva (decisione A.3; entrambi i rami
-        sono pinnati in tests/test_rotta_mcp.py).
+        sono pinnati in tests/test_mcp_route.py).
     (3) **il nome del server viene da `_mcp_server_name()`**, non da una
         stringa scritta qui: e' lo stesso nome da cui discende il prefisso
         degli strumenti."""
@@ -457,7 +457,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     **Dove NON si applica, e perche'**: `probe_tools` continua a mettere
     nel motivo il messaggio grezzo. Non e' una dimenticanza -- vedi la nota
     nel suo docstring: quel comportamento e' pinnato contro un listener vero
-    in `tests/test_token_interno.py`, file che questa fetta non tocca."""
+    in `tests/test_internal_token.py`, file che questa fetta non tocca."""
     if token is None:
         token = os.environ.get("INTERNAL_TOKEN", "")
     return f"{type(exc).__name__}: {reda_segreti(str(exc), *token_forms(token))}"
@@ -503,7 +503,7 @@ def probe_tools(client, base_url: str, headers: dict,
     e' scoperta di proposito. Farla passare da `_exception_reason` (la
     redazione usata per il settimo canale, in `run_once`) chiuderebbe il buco
     da sola -- ma renderebbe rosso
-    `tests/test_token_interno.py::test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client`,
+    `tests/test_internal_token.py::test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client`,
     che pinna contro un listener VERO proprio il fatto che il valore finisce
     nel messaggio dell'eccezione, e quel file e' fra i «cosa RESTA e non si
     tocca» di questa fetta. Provato: la redazione funziona (il motivo diventa
@@ -700,7 +700,7 @@ def _safe_subprocess_env() -> dict:
 # biforcazione che questo task esiste per evitare.
 #
 # La funzione e' PURA: nessun subprocess, nessuna rete, nessun log. E' cio' che
-# la rende provabile senza la CLI (tests/test_flusso_stream_json.py).
+# la rende provabile senza la CLI (tests/test_json_stream.py).
 
 # Il sentinella del silenzio dichiarato (3) della fetta. Come gli altri quattro
 # del ponte, VIENE da `chat_store`: se finisse in chat_history.db tornerebbe al

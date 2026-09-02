@@ -23,7 +23,7 @@ from hiris.app import server
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.server import watch_system_conditions
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 from tests.test_mind_companions import _ClienteLegami
 
 # --------------------------------------------------------------------------
@@ -154,7 +154,7 @@ def _estrai_funzione_innestata(nome_funzione: str) -> str:
     """Il sorgente VERO di una funzione innestata in `_on_startup` (`async
     def <nome_funzione>...`), dalla sua riga di definizione alla riga vuota
     che la separa dal codice seguente (tipicamente `scheduler.add_job(...)`)
-    -- la stessa tecnica di `tests/test_avvio_websocket.py` e
+    -- la stessa tecnica di `tests/test_websocket_startup.py` e
     `tests/test_nightly_pruning.py`: si esegue il sorgente vero isolato,
     non un suo doppione riscritto a mano che potrebbe divergere da cio' che
     gira davvero."""

@@ -58,7 +58,7 @@ from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
-from tests._contratti import assert_stessa_firma
+from tests._contracts import assert_stessa_firma
 from tests.test_knowledge_tools import _semina_casa as _semina_casa_con_comportamento
 
 
@@ -406,7 +406,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # nuova deve saper fare meglio di quella vecchia, verificate col protocollo
 # VERO -- un `ClaudeRunner` reale, con SOLO la telefonata di rete
 # (`_client.messages.create`) finta. Riusa la stessa forma di
-# tests/test_runner_catalogo.py::test_claude_con_dispatcher_esterno_chiama_
+# tests/test_runner_catalog.py::test_claude_con_dispatcher_esterno_chiama_
 # linterfaccia_minima (risposte MagicMock in sequenza, stop_reason
 # "tool_use"/"end_turn", `runner._client.messages.create` sostituito): un
 # modello che simulasse la risposta finale senza passare da li' non
@@ -435,7 +435,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
 
     # Solo il client HTTP verso Anthropic e' finto (`anthropic.AsyncAnthropic`
     # patchato in costruzione, stessa forma della fixture `claude_runner` di
-    # tests/test_runner_catalogo.py) -- il resto del runner (il loop
+    # tests/test_runner_catalog.py) -- il resto del runner (il loop
     # tool_use/tool_result dentro `chat()`) e' vero.
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key")

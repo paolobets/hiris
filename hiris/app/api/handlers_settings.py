@@ -12,7 +12,7 @@ la catena e annullava il ripiego).
 Fino alla fetta E5 Task 2 si cambiavano **solo scrivendo a mano
 `/data/impostazioni_chat.json`**: `ChatSettings.save()` non aveva nessun
 chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
-`tests/test_impostazioni_chat.py`). Per chi installa l'add-on senza aprire una
+`tests/test_chat_settings.py`). Per chi installa l'add-on senza aprire una
 shell dentro il container, quei campi erano di fatto costanti.
 
 **Il contratto e' nuovo, non la superficie di compatibilita' inglese che

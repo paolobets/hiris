@@ -3,7 +3,7 @@ system_health (WS), diario (REST) e render_template (REST).
 
 Stile: fake della sessione aiohttp + asserzione sull'URL esatto chiamato.
 Tutti i metodi sono di sola lettura e degradano senza sollevare: `logbook`
-distingue pero' il vuoto dal guasto, vedi tests/test_ha_client_tempo.py.
+distingue pero' il vuoto dal guasto, vedi tests/test_ha_client_time_reads.py.
 """
 
 from datetime import UTC, datetime, timedelta

@@ -11,7 +11,7 @@ essere:
 2. **l'autenticazione, con le valvole della suite RIMOSSE.** `conftest.py`
    imposta `HIRIS_ALLOW_NO_TOKEN=1` e `HIRIS_ALLOW_NO_CSRF=1` per tutta la
    suite: senza toglierle, questi test passerebbero anche col guasto in piedi.
-   Il modello e' `tests/test_token_interno.py::ponte_con_configurazione_
+   Il modello e' `tests/test_internal_token.py::ponte_con_configurazione_
    predefinita`. Qui si esercitano **entrambi** i rami che tengono viva la
    rotta: quello del CSRF con `X-Requested-With` e quello dell'esenzione da
    token interno (che e' cio' che manda la CLI `claude`, e che vive solo perche'
