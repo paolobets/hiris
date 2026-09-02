@@ -251,11 +251,15 @@ def main(argv=None) -> int:
             applicabili.append((rel, nome, nuovo, len(l["dich"]), len(l["rif"]),
                                 sorted(l["dich"] + l["rif"])))
 
+    # **Niente cap di stampa.** La prima stesura mostrava le prime 200
+    # applicabili e le prime 60 proposte: su 161 proposte ne nascondeva
+    # cento, e chi leggeva il conto per file lo leggeva sbagliato. Un elenco
+    # troncato e' la stessa cosa di un rifiuto silenzioso, detta piu' piano.
     print(f"== APPLICABILI: {len(applicabili)} legami")
-    for rel, vecchio, nuovo, nd, nr, _pos in applicabili[:200]:
+    for rel, vecchio, nuovo, nd, nr, _pos in applicabili:
         print(f"   {rel}: {vecchio} -> {nuovo}  ({nd} dich, {nr} rif)")
     print(f"\n== PROPOSTE (composti: lo strumento non indovina): {len(proposte)}")
-    for rel, nome, ragione, nr in proposte[:60]:
+    for rel, nome, ragione, nr in proposte:
         print(f"   {rel}: {nome}  -- {ragione}")
     print(f"\n== COLLISIONI in ambito (la classe di server.py, 1 settembre): {len(collisioni)}")
     for rel, vecchio, nuovo, perche in collisioni:
