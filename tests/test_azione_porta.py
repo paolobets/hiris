@@ -1099,7 +1099,7 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
 
 @pytest.mark.asyncio
 async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
-    """L'invariante che la spec di `cronaca.py` dichiara con piu' enfasi: si
+    """L'invariante che la spec di `journal.py` dichiara con piu' enfasi: si
     registrano i tentativi che hanno SUPERATO la verifica, riusciti o
     falliti. Un rifiuto della verifica non e' un'esecuzione -- e' un errore
     del modello, gia' detto al modello -- e non deve mai riempire il

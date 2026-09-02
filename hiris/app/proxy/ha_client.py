@@ -229,7 +229,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 # forma non misurata della stessa risposta», della stessa specie dei due
 # difetti di `fields` in `action/registry.py`. L'argomento non e' stato
 # ignorato: e' stato applicato. Questa e' la forma non misurata **trattata
-# come tale**, cioe' esattamente come `registro.py` tratta `fields`:
+# come tale**, cioe' esattamente come `registry.py` tratta `fields`:
 #
 #   - difensiva -- ogni forma che non si sa leggere diventa «nessun
 #     cambiamento riportato», mai un'eccezione e mai un dato indovinato;
@@ -451,7 +451,7 @@ class HAClient:
 
     # Punto 6 (residuo, ondata finale punto 1): queste tre primitive sollevano
     # quello che rompe il trasporto -- non catturano niente da sole. Il loro
-    # UNICO chiamante (`azione/construction/workshop.py::Workshop._rete`) le
+    # UNICO chiamante (`action/construction/workshop.py::Workshop._rete`) le
     # avvolge apposta: quella guardia e' cio' che trasforma un guasto di rete
     # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
     # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a
@@ -485,7 +485,7 @@ class HAClient:
         """Scrive un oggetto di configurazione. La primitiva che COSTRUISCE.
 
         **Non chiamarla direttamente.** L'unico chiamante di produzione e'
-        `azione/construction/workshop.py`, che compone il corpo dai parametri,
+        `action/construction/workshop.py`, che compone il corpo dai parametri,
         lo valida, archivia il «prima» e rilegge dopo.
 
         **Non solleva sul rifiuto**, ed e' la differenza voluta con

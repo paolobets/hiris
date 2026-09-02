@@ -50,7 +50,7 @@ window.HirisTreeRoute = (function () {
   var TONE_PROBLEM = 'color:var(--err-ink)';
   var TONE_CALM = 'color:var(--text-3)';
 
-  /* Gli stessi id letterali che `anagrafe.py` usa per le pseudo-aree e i
+  /* Gli stessi id letterali che `topology.py` usa per le pseudo-aree e i
      due piani-contenitore (`_ID_*`). Non sono un'API pubblica dichiarata,
      ma sono stringhe stabili: `hierarchy()` le costruisce a mano, non le
      genera, e un test di mutazione su questo file prova che restano

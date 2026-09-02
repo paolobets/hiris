@@ -331,7 +331,7 @@ def instant_epoch(raw) -> float | None:
     `home_space/tools.py` (`_promise`) per l'istante che arriva dalla chat. Era
     scritta due volte (una in ciascun modulo, letteralmente identica); questo
     modulo e' leggero e non importa quasi niente, quindi resta qui e
-    `strumenti.py` la importa -- mai il contrario.
+    `tools.py` la importa -- mai il contrario.
     """
     if not isinstance(raw, str) or not raw.strip():
         return None

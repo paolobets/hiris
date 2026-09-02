@@ -86,7 +86,7 @@ window.HirisMemoryRoute = (function () {
     return fetch(path, opts);
   }
 
-  /* L'istante arriva in ISO 8601 UTC (`detto_il`, `archivio.py`): l'utente
+  /* L'istante arriva in ISO 8601 UTC (`detto_il`, `store.py`): l'utente
      legge l'ora locale. `null` se manca o non è interpretabile — si
      dichiara "data non disponibile", non se ne inventa una. */
   function fmtWhen(iso) {

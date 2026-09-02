@@ -66,7 +66,7 @@ gia' esiste, questi due fanno esistere o smettere di esistere qualcosa. Ed e'
 per questo che sono DUE e non uno: `propose` compone e fa validare contro
 QUESTA casa (mai uno YAML scritto a mano), `confirm` scrive -- e in mezzo
 deve starci un umano, riconosciuto dal TURNO e non da un campo che il modello
-potrebbe compilare da solo. Vedi `azione/construction/workshop.py` per il
+potrebbe compilare da solo. Vedi `action/construction/workshop.py` per il
 giro intero e la guardia.
 
     costruisci -- propone (crea, modifica, cancella): non scrive, restituisce
@@ -85,7 +85,7 @@ parte.
    automazione nuova cambia i legami di una luce nell'istante in cui viene
    salvata. Quindi si CHIEDONO quando servono, e non si salvano da nessuna
    parte: ne' in `casa.db`, ne' nell'anagrafe, ne' nel digesto del nucleo.
-2. **`view` e' pura e non fa I/O** (vedi il suo docstring in `domande.py`).
+2. **`view` e' pura e non fa I/O** (vedi il suo docstring in `queries.py`).
    Per infilarci i legami bisognerebbe che `_view` facesse un giro
    WebSocket PRIMA di ogni chiamata -- anche per `view("ricordo", 3)`, che
    con Home Assistant non c'entra nulla. Un costo di rete pagato da ogni
@@ -110,7 +110,7 @@ chiamava mai `MemoryStore.remember()`. Qui sotto, `remember` salva davvero
 (vedi `ToolDispatcher._remember`).
 
 Le due funzioni pure che fanno il lavoro vero -- `search()` e `view()` --
-vivono gia' in `domande.py`, e non si riscrivono qui: `ToolDispatcher`
+vivono gia' in `queries.py`, e non si riscrivono qui: `ToolDispatcher`
 e' solo il punto che le collega agli archivi (`home_space/store.py`,
 `memory/store.py`) e all'indice (`memory/resolver.py`), nella
 forma che il modello puo' chiamare.
@@ -295,7 +295,7 @@ VIEW_TOOL_DEF = {
 }
 
 # I tipi che `related` accetta, nel vocabolario di HIRIS. DERIVATI dalla
-# tabella di `domande.py` -- che e' anche quella con cui si traduce verso
+# tabella di `queries.py` -- che e' anche quella con cui si traduce verso
 # Home Assistant -- invece di riscritti qui: un elenco a mano nella
 # descrizione e un altro nel gestore sarebbero due vocabolari, e il primo a
 # divergere sarebbe quello che legge il modello.
@@ -969,7 +969,7 @@ class ToolDispatcher:
         # legittimo come per la porta: i tre strumenti dichiarano un errore
         # leggibile invece di sollevare.
         self._agenda = agenda
-        # L'officina (`azione/construction/workshop.py`), l'unico punto che
+        # L'officina (`action/construction/workshop.py`), l'unico punto che
         # scrive CONFIGURAZIONE. Sorella della porta, non sua sostituta: sono
         # due canali diversi (spec «un canale, una porta»). `None` e'
         # legittimo come per la porta: i due strumenti dichiarano un errore.

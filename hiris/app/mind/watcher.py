@@ -5,7 +5,7 @@ lo stesso che alimenta lo specchio delle entita': due sorgenti degli stessi
 eventi sarebbero due cose che possono divergere.
 
 **Non giudica niente.** Filtra col pavimento e scrive il cambio cosi' com'e'.
-Tutto il giudizio sta nell'aggregazione (`oggetti.py`), che e' rifacibile per
+Tutto il giudizio sta nell'aggregazione (`facts.py`), che e' rifacibile per
 21 giorni; una decisione presa qui non si corregge piu'.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # di `home_space/briefing.py::_BROKEN_INTEGRATION_STATES` (verificati su
 # `ConfigEntryState`, `homeassistant/config_entries.py`), che pero' non li
 # elenca perche' li esclude gia' per costruzione -- RICOPIATI, non importati,
-# per la stessa ragione di `pavimento.py`: «cosa e' un guasto QUI» e «cosa
+# per la stessa ragione di `baseline.py`: «cosa e' un guasto QUI» e «cosa
 # racconta l'anagrafe» sono due domande diverse i cui elenchi possono
 # divergere in futuro per ragioni proprie.
 _TRANSIENT_INTEGRATION_STATES = frozenset({"setup_in_progress", "unload_in_progress"})

@@ -1005,7 +1005,7 @@ async def test_il_messaggio_dell_eccezione_e_troncato(banco):
 def test_il_troncatore_dell_officina_e_lo_stesso_oggetto_di_sanitize():
     """Una review indipendente ha trovato una TERZA copia dell'algoritmo di
     troncamento gia' unificato da M1 (`_sanitize.py::truncate_with_marker`,
-    `ha_client.py::_truncate`): `officina.py::_tronca_errore_rete`, stesso
+    `ha_client.py::_truncate`): `workshop.py::_tronca_errore_rete`, stesso
     marcatore, stessa struttura a tre rami. Il commento che la giustificava
     diceva che `_truncate` era privata di `ha_client` -- non piu' vero da
     quando M1 l'ha resa pubblica in `_sanitize.py`. Non basta che si comporti

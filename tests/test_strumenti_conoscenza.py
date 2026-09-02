@@ -117,7 +117,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     Due -- `propose`, `confirm` (fetta «costruire», Task 9) -- sono la
     SECONDA strada che scrive su Home Assistant, e scrivono CONFIGURAZIONE
     (un'automazione, uno script, una scena), non un servizio: passano per
-    l'officina (`azione/construction/workshop.py`), sorella della porta e non
+    l'officina (`action/construction/workshop.py`), sorella della porta e non
     sua sostituta. `propose` non scrive neanche lui -- compone e fa
     validare, come `promise` verifica senza eseguire -- e' `confirm`, in un
     turno diverso, a far scrivere davvero.
@@ -855,7 +855,7 @@ from hiris.app.memory.lookup_cache import LookupCache
 
 def _conta_costruzioni(monkeypatch):
     """Spia su `costruisci_indice`, in ENTRAMBI i posti in cui e' importato
-    per nome (`strumenti.py`, per il ramo senza cache, e
+    per nome (`tools.py`, per il ramo senza cache, e
     `memory/lookup_cache.py`, per il ramo con cache -- un monkeypatch su un
     solo modulo non vedrebbe le chiamate che passano dall'altro): conta le
     costruzioni vere, non i risultati di `search` -- la mutazione 'non usare

@@ -1,7 +1,7 @@
 """Il registro delle esecuzioni -- una riga leggibile per ogni azione, e per
 ogni origine.
 
-La fetta «comandare» lo aveva promesso e non l'ha costruito: `porta.py`
+La fetta «comandare» lo aveva promesso e non l'ha costruito: `actuator.py`
 scriveva una riga di `logger.info` e basta. Per la fondamenta n.4 quel
 registro NON esisteva -- nessuno poteva chiederlo.
 
@@ -11,7 +11,7 @@ delle sole promesse avrebbe dato allo stesso fatto due trattamenti a seconda
 di chi l'ha chiesto -- fondamenta n.3 -- e i due registri sarebbero andati
 fusi dopo.
 
-**Il nome non e' `registro.py`**: in questa cartella quel nome e' gia' il
+**Il nome non e' `registry.py`**: in questa cartella quel nome e' gia' il
 registro dei SERVIZI (cosa Home Assistant sa fare). Due cose diverse non
 possono chiamarsi allo stesso modo in due file vicini.
 

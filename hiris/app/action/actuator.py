@@ -11,7 +11,7 @@ le sicurezze -- i controlli si scrivono UNA volta e valgono per chiunque.
 
 **Dalla fetta «costruire» i canali sono due, e le porte anche.** Questa e' la
 porta dei SERVIZI. La configurazione -- automazioni, script, scene, helper --
-passa da `azione/construction/workshop.py`, che e' un modulo diverso perche' e'
+passa da `action/construction/workshop.py`, che e' un modulo diverso perche' e'
 un canale diverso: altra rotta di Home Assistant, altra verifica
 (`validate_config` invece del registro dei servizi), altro «dopo» (un `reload`
 e un'entita' che compare, non un `state_changed`). Le due porte condividono la
@@ -436,7 +436,7 @@ class ActionActuator:
         self._ha = ha_client
         self._registry = registry
         self._cache = cache
-        # Il registro delle esecuzioni (`cronaca.py`). `None` e' legittimo e
+        # Il registro delle esecuzioni (`journal.py`). `None` e' legittimo e
         # non cambia niente per chi non lo passa: la porta scriveva gia' la
         # sua riga di log, e questa e' la stessa riga resa CHIEDIBILE.
         self._journal = journal

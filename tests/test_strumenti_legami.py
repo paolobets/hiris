@@ -70,7 +70,7 @@ def _dispatcher(casa, memoria, ha=None, actuator=None):
 # --- il vocabolario -------------------------------------------------------
 
 def test_il_vocabolario_copre_ESATTAMENTE_i_tipi_di_home_assistant():
-    """La tabella di `domande.py` e i quattordici tipi del client sono lo
+    """La tabella di `queries.py` e i quattordici tipi del client sono lo
     stesso elenco visto da due parti. Se Home Assistant ne aggiunge uno e il
     client lo accetta mentre la tabella no, il modello riceve un tipo che non
     sa nominare e non puo' richiedere: questa prova cade prima."""

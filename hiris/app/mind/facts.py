@@ -234,7 +234,7 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
     traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
     grezzo, non e' tolta dallo schema: e' `pavimento.aspect()` che non la
-    legge, non `archivio.py` che smette di conservarla -- i 22 giorni di
+    legge, non `store.py` che smette di conservarla -- i 22 giorni di
     grezzo permettono di rifare il giudizio anche se un domani tornasse a
     servire.
 
@@ -617,11 +617,11 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     fra un mese non legge piu' nessuno.
 
     **Secondo debito, dichiarato il 26/08/2026, CHIUSO il 27/08/2026**
-    (mandato «le direzioni dell'energia» -- vedi `pavimento.py::_ENERGIA`
+    (mandato «le direzioni dell'energia» -- vedi `baseline.py::_ENERGIA`
     per la storia): il riepilogo qui sotto era lo STESSO per un contatore
     che PRODUCE e uno che PRELEVA, entrambi `device_class: energy`/`power`.
     La GAMBA resta "energia" (non si sdoppia: e' vera per tutti e 17 i
-    sensori dell'inverter, produzione compresa -- `pavimento.py`), ma il
+    sensori dell'inverter, produzione compresa -- `baseline.py`), ma il
     CORPO di un episodio di energia ora porta `direzione`/`provenienza`
     quando `directions()`, sopra, le sa dire -- lette da `energy/get_prefs`
     (la dashboard Energia, dichiarata) e da `translation_key` (dedotta

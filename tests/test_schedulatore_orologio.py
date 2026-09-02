@@ -281,7 +281,7 @@ class _ClientSoloNotifica:
     """Home Assistant, ridotto al minimo che serve a questa cucitura: UN
     servizio, `notify.mobile_app_x`, che come i `notify.*` veri non dichiara
     un `target`. Nessun `add_state_listener`/`remove_state_listener`: la
-    riparazione di `porta.py` non deve aprirne uno per una chiamata senza
+    riparazione di `actuator.py` non deve aprirne uno per una chiamata senza
     bersaglio, e questo doppio lo dimostra non avendoli affatto -- se la
     porta provasse a chiamarli, la sospensione griderebbe `AttributeError`
     invece di restare silenziosa."""

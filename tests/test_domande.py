@@ -775,7 +775,7 @@ def test_guarda_un_dispositivo_riporta_le_nascoste_complete_in_una_chiave_a_part
 
 
 def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
-    """Stessa precedenza di `hierarchy()`/`nucleo.py`: chi e' disabilitata E
+    """Stessa precedenza di `hierarchy()`/`briefing.py`: chi e' disabilitata E
     nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate,
     marcata `disabilitata: true`, mai in `entita_nascoste`."""
     casa = _casa_sala_da_pranzo()

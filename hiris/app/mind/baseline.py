@@ -101,7 +101,7 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # `_EVENT_CLASSES`. La prima e' un giudizio del prodotto, misurato
 # sull'impianto, con gli stati verificati il 20/08/2026; la seconda e'
 # verificata sulla documentazione di Home Assistant il 16/08/2026. Qui NON
-# e' importato, e' RICOPIATO: `nucleo.py` risponde a
+# e' importato, e' RICOPIATO: `briefing.py` risponde a
 # «cosa e' notevole ADESSO» (un evento da annunciare), questo modulo
 # risponde a «cosa si osserva SEMPRE» (cosa entra nel pavimento) -- due
 # domande diverse i cui elenchi possono divergere in futuro per ragioni

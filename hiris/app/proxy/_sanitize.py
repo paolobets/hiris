@@ -213,7 +213,7 @@ def truncate_with_marker(text, cap: int) -> str:
     vanno fatti passare dal filtro di iniezione -- `sanitize_text` la
     richiama sotto DOPO aver gia' applicato quel filtro, per il proprio caso
     d'uso. Una TERZA copia, non censita dai primi due giri di correzione,
-    viveva anche in `azione/construction/workshop.py` (`_tronca_errore_rete`,
+    viveva anche in `action/construction/workshop.py` (`_tronca_errore_rete`,
     cap 300 per il messaggio di un guasto di rete verso Home Assistant, due
     delle quattro superfici in cui finisce sono permanenti nella cronaca
     SQLite) -- unificata qui nello stesso giro (M1, terzo giro,

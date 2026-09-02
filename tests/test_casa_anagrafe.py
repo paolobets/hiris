@@ -209,7 +209,7 @@ def test_un_area_senza_nascoste_ha_la_chiave_vuota(archivio):
 
 
 def test_una_entita_disabilitata_e_nascosta_resta_fra_le_disabilitate(archivio):
-    """Stessa precedenza che `nucleo.py` applica gia' al proprio conteggio
+    """Stessa precedenza che `briefing.py` applica gia' al proprio conteggio
     delle nascoste (`nascosta and not disabilitata`): chi e' entrambe le
     cose non duplica il fatto in due chiavi diverse."""
     registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [

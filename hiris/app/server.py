@@ -3423,7 +3423,7 @@ async def _on_cleanup(app: web.Application) -> None:
     if "cronaca" in app:
         app["cronaca"].close()
     # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
-    # dell'officina (`azione/construction/revisions.py`), costruito in
+    # dell'officina (`action/construction/revisions.py`), costruito in
     # `_on_startup` accanto a `app["cronaca"]`. Stessa disciplina dei due
     # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
     # al riavvio.

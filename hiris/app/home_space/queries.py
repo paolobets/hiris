@@ -749,7 +749,7 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
     versione di questa correzione sanificava il testo dentro `guarda()` ma
-    non dentro `strumenti.py::_recall` (che legge `MemoryStore.per_tether`
+    non dentro `tools.py::_recall` (che legge `MemoryStore.per_tether`
     direttamente, senza passare da qui) -- lo stesso ricordo usciva filtrato
     da una porta e grezzo dall'altra: la fondamenta 3 (consistenza fra porte)
     rotta dentro la correzione che doveva chiuderla. Un punto SOLO, importato

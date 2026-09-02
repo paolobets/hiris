@@ -85,7 +85,7 @@ async def test_gli_oggetti_filtrano_per_giorno_dalla_query():
 async def test_senza_giorno_nella_query_non_si_inventa_una_data():
     """`giorno` assente deve arrivare all'archivio come `None`, non come una
     stringa vuota o una data scelta qui: e' l'archivio a sapere cosa significa
-    "nessun filtro" (`archivio.py::facts`)."""
+    "nessun filtro" (`store.py::facts`)."""
     archivio = _FintoArchivio()
     r = await handle_facts(_richiesta({"osservazioni": archivio}))
     assert r.status == 200

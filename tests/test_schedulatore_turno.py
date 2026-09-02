@@ -144,7 +144,7 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
 #
 # Rilievo minore della review finale: `interpreta_promise` non era coperta
 # end-to-end. E' la SECONDA giuntura non attraversata da nessun test -- la
-# prima (`orologio.py` + `verifica.py`, vedi `test_schedulatore_orologio.py`)
+# prima (`orologio.py` + `verification.py`, vedi `test_schedulatore_orologio.py`)
 # si e' rivelata rotta, ed e' la priorita' fra i minori per lo stesso motivo:
 # ogni test altrove costruisce un `TurnoFinto` che RESTITUISCE gia' la
 # conclusione, mai un runner che la produce chiamando `conclude` attraverso

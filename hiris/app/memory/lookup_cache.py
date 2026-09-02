@@ -34,7 +34,7 @@ Chi chiama `get()` porta tre cose:
 - `aggiornata_il`: la data dell'ultima ricostruzione dell'anagrafe
   (`HomeSpaceStore.aggiornata_il()`), o `None` quando l'anagrafe non e' mai
   stata letta. `_remember` decide `casa={}` esattamente quando questo valore
-  e' `None` (vedi `strumenti.py::_remember`): passare lo STESSO valore letto
+  e' `None` (vedi `tools.py::_remember`): passare lo STESSO valore letto
   una volta sola alla decisione e alla chiave fa si' che "anagrafe non letta"
   e "anagrafe letta ma vuota" non si confondano mai, senza bisogno di un
   terzo campo esplicito.

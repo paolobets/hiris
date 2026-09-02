@@ -59,7 +59,7 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Journal.read`.
 
     404 «non ne ho piu' il dettaglio» copre sia l'id sbagliato sia la riga
-    potata dopo 90 giorni (`cronaca.py::EXECUTIONS_RETENTION_S`): dal
+    potata dopo 90 giorni (`journal.py::EXECUTIONS_RETENTION_S`): dal
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
     """

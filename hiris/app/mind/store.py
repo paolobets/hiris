@@ -51,12 +51,12 @@ def _migration_2(conn) -> None:
     mandato «il bilancio dell'energia», punto 4, 27/08/2026 -- falsa al
     presente: era vera ed era stata dichiarata fuori scope quando scritta
     il 26/08, la scelta giusta allora). Dopo la correzione del 27/08 sul
-    traffico di rete (`pavimento.py::aspect`, il suo docstring), `pavimento.
+    traffico di rete (`baseline.py::aspect`, il suo docstring), `pavimento.
     aspect()` legge solo `device_class` e `source_type` per decidere la
     gamba di `sensor` e `binary_sensor` -- `state_class` NON e' piu' fra i
     criteri. Resta comunque QUI, nel grezzo: non e' tolta dallo schema, e'
     `pavimento.aspect()` che ha smesso di leggerla per decidere la gamba, non
-    `archivio.py` che smette di conservarla -- i 22 giorni di grezzo
+    `store.py` che smette di conservarla -- i 22 giorni di grezzo
     permettono di rifare il giudizio anche se un domani tornasse a servire.
 
     Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano

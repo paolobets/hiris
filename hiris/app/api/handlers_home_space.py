@@ -124,7 +124,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # `(ambito, id)` dell'archivio esiste per chiudere.
         #
         # Perche' anche qui, e non solo in `guarda`: la fetta delle categorie
-        # ha cablato `anagrafe.categories_with_name` in `domande.py` e
+        # ha cablato `anagrafe.categories_with_name` in `queries.py` e
         # nell'indice di `cerca`, e ha saltato QUESTA porta -- cosi' la stessa
         # categoria usciva col nome dallo strumento e con l'id grezzo dalla
         # pagina. E' il pattern che la review ha nominato («una fetta unifica

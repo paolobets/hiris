@@ -237,7 +237,7 @@ def name_with_id(name: str, id_: str | None) -> str:
     2026-08-20).
 
     LA regola unica dietro ogni riferimento della casa che deve portare
-    entrambi -- il nome protagonista, l'id accessorio: nata in `nucleo.py`
+    entrambi -- il nome protagonista, l'id accessorio: nata in `briefing.py`
     per l'albero (aree, piani, automazioni/script -- le pseudo-aree la
     applicavano gia' da sole), qui perche' `labels_with_name` sotto la
     riusa per lo stesso motivo (T8, R2) -- **un posto solo**, non una
@@ -270,7 +270,7 @@ def label_names(home_space: dict) -> dict[str, str]:
     l'etichetta in Home Assistant lascia l'id com'era, quindi HIRIS
     continuerebbe a dire il vecchio nome per sempre.
 
-    Qui, e non in `domande.py`, perche' la stessa unione serve anche
+    Qui, e non in `queries.py`, perche' la stessa unione serve anche
     all'indice di `cerca` (`memory/resolver.py`): scritta due volte
     sarebbe una ricerca che trova per un nome e una risposta che ne mostra un
     altro.
@@ -347,7 +347,7 @@ def category_names(home_space: dict) -> dict[tuple[str, str], str]:
     sono due cose diverse, e indicizzarle per il solo id lascerebbe che l'una
     rispondesse per l'altra.
 
-    Qui, e non in `domande.py`, per la stessa ragione di
+    Qui, e non in `queries.py`, per la stessa ragione di
     `label_names`: la stessa unione serve all'indice di `cerca`
     (`memory/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
@@ -404,7 +404,7 @@ PROBLEM_SEVERITY = ("critical", "error", "warning")
 
 # --- il vocabolario degli stati -------------------------------------------
 #
-# Sta QUI e non in `nucleo.py`, dov'era nato: il significato di uno stato e' un
+# Sta QUI e non in `briefing.py`, dov'era nato: il significato di uno stato e' un
 # fatto sulla casa, non una proprieta' del digesto. Finche' e' stato li' dentro,
 # il digesto traduceva «bagnato» e `guarda` -- l'altra porta, quella che il
 # modello usa quando la domanda e' precisa -- rispondeva «on». La stessa
@@ -779,7 +779,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     filtrare.
 
     Una disabilitata e nascosta insieme finisce in `entita_disabilitate`, non
-    in `entita_nascoste`: stessa precedenza che `nucleo.py` applica gia' al
+    in `entita_nascoste`: stessa precedenza che `briefing.py` applica gia' al
     proprio conteggio delle nascoste (`nascosta and not disabilitata`) -- non
     due modi diversi di dire la stessa cosa su due rami diversi del prodotto.
 

@@ -51,7 +51,7 @@ un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
 configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
 la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
-`action/actuator.py` per i servizi, `azione/construction/workshop.py` per la
+`action/actuator.py` per i servizi, `action/construction/workshop.py` per la
 configurazione -- il ponte non ha una strada verso la casa che la chat non
 abbia, e non ne ha una sua. Un secondo punto di scrittura sarebbe un difetto,
 non un'ottimizzazione.

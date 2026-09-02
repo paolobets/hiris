@@ -8,7 +8,7 @@
 
    Guida di disegno: `.superpowers/sdd/2026-08-23-costruire/
    guida-ux-costruzioni.md`, prodotta da ux-ui-specialist dopo aver letto il
-   codice vero (`handlers_constructions.py`, `versioni.py`, `officina.py`), non
+   codice vero (`handlers_constructions.py`, `revisions.py`, `workshop.py`), non
    solo lo scheletro del brief. Cio' che segue e' la sua sostanza.
 
    -- Due scostamenti che la guida ha trovato leggendo il codice --
@@ -50,7 +50,7 @@
    gli entity_id in monospazio. Il codice qui sotto tratta anche `sequence`
    (il corpo di uno script) come sinonimo di "azioni": e' l'adattamento che il
    rapporto di questo task registra, la guida non lo nominava esplicitamente
-   ma il backend (`officina.py::_compatta`) conta anche quella chiave, e uno
+   ma il backend (`workshop.py::_compatta`) conta anche quella chiave, e uno
    script senza mai un numero di "azioni" sarebbe un buco silenzioso proprio
    sul dominio meno controllato lato Home Assistant.
    NON si ricostruisce mai una frase semantica leggendo dentro `actions`:
@@ -99,7 +99,7 @@
    registro participiale delle altre cinque etichette (In attesa, In corso,
    Applicata, Non riuscita, Scaduta) -- "Hai detto no", la prima versione,
    parlava in seconda persona e stonava nella fila dei badge (review Task 11).
-   SCOPERTA VERA, non solo del test: `versioni.py::mark_cancelled` scrive
+   SCOPERTA VERA, non solo del test: `revisions.py::mark_cancelled` scrive
    *letteralmente* `motivo="rifiutata dal proprietario"` su OGNI riga
    `disdetta` -- se la pagina mostrasse `motivo` verbatim anche li' (come fa
    per `rifiutata`), la parola tornerebbe dentro dalla porta sul retro. Questa
@@ -434,7 +434,7 @@ window.HirisConstructions = (function () {
 
     if (c.prima || c.dopo) box.appendChild(detailsDisclosure(c));
 
-    /* motivo: MAI per `disdetta` -- vedi il commento di testa, `versioni.py`
+    /* motivo: MAI per `disdetta` -- vedi il commento di testa, `revisions.py`
        scrive letteralmente "rifiutata dal proprietario" su ogni riga
        disdetta, e mostrarlo tornerebbe a far leggere quella parola su una
        riga che e' il "no" dell'utente. */

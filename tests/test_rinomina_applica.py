@@ -591,11 +591,11 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # sottosistemi su sei (schedulatore, memoria) -- un residuo trovato durante
 # il lotto 5 viveva in un ambito COPERTO ma non riverificato dopo
 # l'aggiunta di parole nuove al glossario; un secondo, in
-# `azione/construction/composer.py`, vive invece in un ambito che questo
+# `action/construction/composer.py`, vive invece in un ambito che questo
 # test non guardava affatto. Allargato a tutti e sei.
 #
-# `home_space/` non e' ancora finito (`domande.py` e `nucleo.py` restano in
-# parte italiani, `strumenti.py` per intero): elencare la cartella intera
+# `home_space/` non e' ancora finito (`queries.py` e `briefing.py` restano in
+# parte italiani, `tools.py` per intero): elencare la cartella intera
 # pretenderebbe zero anche li', cosa falsa per costruzione. Si elencano
 # invece i singoli file gia' chiusi, uno per lotto -- un dato esplicito
 # che chi legge puo' contare, non un'assenza silenziosa. Quando l'ultimo
@@ -608,7 +608,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # (`fine`, mai deciso nel glossario) avrebbe lasciato una coppia a meta'
 # tradotta (`start, fine = m.span()`), la STESSA asimmetria che ha
 # motivato la qualificazione `dopo (home_space)` invece di lasciarlo nudo. La
-# correzione tocca solo file gia' miei (`domande.py`), non `resolver.py`
+# correzione tocca solo file gia' miei (`queries.py`), non `resolver.py`
 # per intero (~30 identificatori italiani restano li', fuori dal
 # perimetro): chiudere le coppie (`fine -> end`,
 # `inizio_originale`/`fine_originale`, `candidati`) e' un giro a se',
@@ -628,7 +628,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 #
 # `schedulatore` mostra `frozenset()` (nessun residuo) qui sotto, ed e'
 # VERO -- lo strumento non cambia nulla su quell'ambito -- ma non e'
-# COMPLETO: `AgendaStore.list::solo_in_sospeso` (`archivio.py:213`) e'
+# COMPLETO: `AgendaStore.list::solo_in_sospeso` (`store.py:213`) e'
 # ancora italiano, invisibile perche' nessuno dei suoi tre pezzi (`solo`,
 # `in`, `sospeso`) e' mai stato deciso -- non una parola gia' decisa
 # rimandata (come `modo` sopra), una parola MAI vista dal glossario.
@@ -777,7 +777,7 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
 
 
 def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
-    """Il terzo gemello: `azione/construction/composer.py` in `_SORVEGLIATI`
+    """Il terzo gemello: `action/construction/composer.py` in `_SORVEGLIATI`
     porta DUE parole (`candidato`, `modo`), non una -- l'insieme atteso ha
     due elementi, non uno, ed e' comunque ESATTO: un terzo nome che comparisse
     domani deve far arrossire questa prova, non allargarla in silenzio."""
@@ -1038,7 +1038,7 @@ _MUTE_VOLUTE = {
     # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
     # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
     # cancello lo vede perche' guarda i PEZZI, e `note` e' anche un plurale
-    # italiano: e' lo stesso incrocio gia' descritto per `officina.py` accanto
+    # italiano: e' lo stesso incrocio gia' descritto per `workshop.py` accanto
     # alla riga `note (home_space)` del glossario, misurato una seconda volta.
     ("note", "radice"),
     # `dopo (home_space)` e' l'ordine temporale. In `action/` `dopo` e' la CHIAVE
@@ -1058,7 +1058,7 @@ _MUTE_VOLUTE = {
     # riguarda tutto questo insieme: l'unica occorrenza del pezzo `verifica`
     # in `home_space/` non era un identificatore di `home_space/` -- era il PERCORSO
     # dell'import differito `from ..azione.verifica import verification`
-    # dentro `strumenti.py`. Rinominata la cartella (`azione/verifica.py` ->
+    # dentro `tools.py`. Rinominata la cartella (`azione/verifica.py` ->
     # `action/verification.py`), il pezzo non compare piu' in quell'ambito e
     # la mutezza non esiste piu'. **Una voce di `_MUTE_VOLUTE` che viveva di
     # un percorso e non di un nome**: e' stato questo cancello a dirlo,

@@ -64,7 +64,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     per un momento futuro passando per l'archivio delle promesse
     (`keeper/store.py`), due (`propose`, `confirm`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
-    nuova -- passando per l'officina (`azione/construction/workshop.py`), e gli
+    nuova -- passando per l'officina (`action/construction/workshop.py`), e gli
     ultimi due (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
     mano di chi -- passando per `home_space/historian.py`. Il dispatcher si costruisce
@@ -135,7 +135,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.
         agenda=app.get("promesse"),
-        # L'officina (`azione/construction/workshop.py`, fetta «costruire»):
+        # L'officina (`action/construction/workshop.py`, fetta «costruire»):
         # la casa di `propose`/`confirm`. Sorella di `porta_azione`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
         workshop=app.get("officina"),

@@ -359,7 +359,7 @@ def cerca_vocabolari_paralleli(files: list[Path], js: list[Path],
     """Un vocabolario chiuso Python i cui membri compaiono TUTTI in un file JS.
 
     E' il controllo che trova il difetto peggiore della review: le quattro
-    forze di un ricordo vivevano in `interpretazione.py` e -- due volte -- in
+    forze di un ricordo vivevano in `interpretation.py` e -- due volte -- in
     `memoria-route.js`, senza niente che le legasse. Una quinta forza faceva
     ricadere la tendina su vuoto, e salvare una correzione qualunque
     CANCELLAVA la forza del ricordo.

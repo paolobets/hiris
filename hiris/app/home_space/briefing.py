@@ -412,7 +412,7 @@ def _count_per_domain(entity: list[dict]) -> dict[str, int]:
 
 
 # `name_with_id` (R1, fetta "i riferimenti", incidente 2026-08-20) ora vive in
-# `anagrafe.py`: T8 (R2) la riusa per le etichette di `view`, e una regola
+# `topology.py`: T8 (R2) la riusa per le etichette di `view`, e una regola
 # che deve valere per OGNI riferimento della casa non puo' avere due sedi --
 # scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
 
@@ -795,7 +795,7 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
 
 def _behavior_lines(behavior: list[dict]) -> list[str]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
-    stessa regola di `name_with_id` in `anagrafe.py`: fetta "i riferimenti",
+    stessa regola di `name_with_id` in `topology.py`: fetta "i riferimenti",
     incidente 2026-08-20) -- `view('automazione'/'script', ...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
