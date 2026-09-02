@@ -1,5 +1,49 @@
 # HIRIS — Changelog
 
+## [3.16.0] — Le rotte e la pagina web parlano inglese (2026-09-02)
+
+**Cosa cambia per chi usa HIRIS: niente che si veda.** Le frasi in chat, le parole della pagina, i
+nomi delle aree e dei dispositivi restano in italiano. La memoria della casa non e' toccata: nessuna
+tabella, nessuna colonna, nessun ricordo gia' salvato.
+
+**Cosa e' cambiato davvero.** Gli indirizzi interni che la pagina web usa per parlare col motore —
+`/api/casa` e' diventato `/api/home-space`, `/api/promesse` e' `/api/agenda`, e cosi' per quattordici
+— insieme a circa 134 nomi di campo nelle risposte. **Le due sponde sono cambiate nello stesso
+commit**, perche' la pagina viaggia dentro la stessa immagine del motore: non puo' esistere una
+pagina vecchia che parla con un motore nuovo. Misurato prima di cominciare: **nessun altro programma
+chiama quegli indirizzi** — il gateway MCP non li usa, il ponte usa indirizzi gia' inglesi.
+
+E i **22 file JavaScript della pagina** sono passati all'inglese: 413 nomi, 1.617 punti toccati,
+**zero commenti e zero frasi modificati** — il diff e' 1.221 righe aggiunte e 1.221 tolte, cioe' una
+rinomina pura. Restano fuori due file piccoli, dichiarati: 73 righe che nessun test esegue, dove
+rinominare sarebbe rischio senza guadagno.
+
+**Tre difetti veri, trovati mentre si convertiva e chiusi qui.**
+
+1. **La stessa quantita' usciva con due nomi diversi nella stessa risposta**: gli errori di limite
+   comparivano come `rate_limit_errors` in cima e `errori_rate_limit` dentro una sezione, e lo stesso
+   valeva per il costo e per il numero di richieste. Chi leggeva una delle due meta' vedeva un dato
+   che sembrava diverso ed era lo stesso.
+2. **Una rotta versava fuori la forma della propria tabella senza saperlo.** La cronologia dei
+   consumi rimandava indietro la riga del database cosi' com'era: da oggi ogni campo che esce e'
+   scritto uno per uno, e una colonna aggiunta domani non comparira' nella risposta da sola.
+3. **Una rotta poteva rompersi passando tutti i controlli.** Rinominando una parola in
+   `/api/constructions`, il motore emetteva un contenitore che la pagina non sapeva leggere — e le
+   3.001 prove automatiche, il linter e le prove della pagina **restavano tutti verdi**, perche' una
+   prova guardava solo un pezzo del testo e l'altra si costruiva la risposta da se'. Trovato mutando
+   dieci contenitori uno per uno: **otto su dieci erano scoperti**. Ora sono tutti sorvegliati.
+
+**Tre controlli nuovi sulla pagina web**, che prima non esistevano: uno che trova i nomi usati e mai
+dichiarati, uno che verifica che ogni file sia caricato **dopo** quello che gli serve, e una modifica
+che fa **fallire** le prove invece di lasciarle appese — prima un difetto di questa specie sembrava
+solo lentezza.
+
+**Cosa non e' cambiato, per decisione scritta:** il database (60 nomi di colonna su 102 non hanno mai
+avuto un inglese deciso), i **13 nomi degli strumenti** che HIRIS espone al modello, e le loro
+descrizioni, che restano in italiano perche' il prodotto parla italiano. Gli strumenti escono nel
+rilascio successivo, **da soli**, con la verifica sulla casa vera: sono dati che il modello legge, e
+nessuna prova automatica puo' dire se il cambio e' andato bene.
+
 ## [3.15.0] — Tutto il Python di HIRIS parla inglese (2026-09-01)
 
 **Non cambia niente che si possa vedere usando HIRIS**, e in un rilascio di 54 commit vale la pena
