@@ -1,6 +1,8 @@
 # HIRIS — Changelog
 
-## [Non rilasciato] — I nomi degli strumenti passano all'inglese
+## [3.17.0] — I tredici strumenti che HIRIS offre al modello parlano inglese (2026-09-02)
+
+— I nomi degli strumenti passano all'inglese
 
 **Cosa cambia per chi usa HIRIS: niente che si veda in chat.** HIRIS continua a rispondere in
 italiano, e le descrizioni che il modello legge per capire cosa fa ciascuno strumento sono rimaste
