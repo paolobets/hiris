@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from hiris.app.cervello.archivio import (
+from hiris.app.mind.store import (
     READING_RETENTION_S,
     ObservationsStore,
 )

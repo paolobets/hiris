@@ -277,7 +277,7 @@ qualificata altrove che ricompare nuda in un ambito nuovo non e' un composto: e'
 stesso identico modo, silenziosamente italiana per sempre finche' nessuno aggiunge la riga
 `parola (nuovo_ambito)` esplicita. Tredici parole sono gia' qualificate in questo glossario, e
 ciascuna e' cieca in ogni ambito che non compare fra parentesi: `ancora` (vede in `consumi`,
-`memoria`), `guarda` (`casa`, `cervello`), `verifica` (`azione`, `memoria`), `lettura` (`casa`,
+`memoria`), `guarda` (`casa`, `mind`), `verifica` (`azione`, `memoria`), `lettura` (`casa`,
 `consumi`), `riferimento` (`casa`, `memoria`), `riga` (`casa`), `dopo`/`fuori`/`loro`/`nostro`/
 `senza`/`note` (solo `casa`) -- misurato chiamando `Glossario.omonimi` da codice. Nei quattro
 ambiti non ancora aperti da questa fetta (`api`, `agent`, `proxy`, `backends`) tutte e tredici
@@ -649,7 +649,7 @@ di una variabile del frontend un campo. E' **come la usa il frontend** -- se la 
 o ATTRIBUTO, quella parola nomina un campo che viaggia sul filo; se la DICHIARA (`var`, `function`,
 parametro), e' una variabile nostra che per caso si scrive come una stringa del backend. Cosi'
 `bilancio` resta qui, perche' vive dentro `rigaBilancio` e `rendiMomentiBilancio`, mentre il valore
-`"bilancio"` sul filo -- membro di `GENRES` in `cervello/oggetti.py:44` accanto a `funzionamento`,
+`"bilancio"` sul filo -- membro di `GENRES` in `mind/facts.py:44` accanto a `funzionamento`,
 `energia`, `presenza`, `guasto`, `sicurezza` -- non si tocca. **Il limite, dichiarato**: una parola che
 il frontend usa in tutti e due i modi manda in errore questo criterio, e le parole rimaste «nostre»
 sono state ricontrollate a campione, non tutte.
@@ -712,7 +712,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction | ~ parziale |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
-| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **`energy_directions -> energy_directions` e' un nome deciso a mano, e `energia` NON prende una riga**: nuda si applicherebbe a `cervello/pavimento.py::_ENERGIA`, ambito stabile, che questa fetta non ha mandato di toccare -- un nome di una parola sola si applica DA SOLO, senza passare da una proposta. **La mappa che `proxy/ha_client.py::energy_directions` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memoria/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
+| direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **`energy_directions -> energy_directions` e' un nome deciso a mano, e `energia` NON prende una riga**: nuda si applicherebbe a `mind/baseline.py::_ENERGIA`, ambito stabile, che questa fetta non ha mandato di toccare -- un nome di una parola sola si applica DA SOLO, senza passare da una proposta. **La mappa che `proxy/ha_client.py::energy_directions` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memoria/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
 | dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' -- **quinto caso della famiglia «due sensi dentro lo stesso ambito»** (01/09, `server.py`): `occurrence` e' giusto per l'esito di un PROVIDER, che e' il concetto qui definito e vive in `esiti_provider.py`/`decisione_modelli.py`, cioe' nella stessa radice. Ma `server.py` usa `esito` **quattro** volte per il RISULTATO di una lettura -- il payload dei problemi di Home Assistant (651), il rapporto di `compare_with_home_assistant` (787), la risposta di `related` dentro `build_companions` (896) e quella di `hourly_statistics` dentro `build_balances` (1047) -- e li' `occurrence` direbbe una cosa che quel dizionario non e'. **La prima stesura di questa nota diceva «due»: le aveva contate a occhio invece che con `tokenize`, ed e' lo stesso difetto che il glossario vieta due paragrafi piu' su -- una cifra dichiarata «misurata» e scritta a mano.** Qualificare per ambito non separa niente, perche' i due sensi vivono nello stesso: si decide occorrenza per occorrenza guardando il codice, come per `coda`/`fuori (casa)`. Le due locali di `server.py` sono diventate `report` | occurrence | ✓ arriva |
@@ -724,8 +724,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
-| grezzo (cervello) | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato -- **qualificata l'01/09 per la stessa ragione di `forza (memoria)`.** Una riga di una parola sola si applica da sola, e lasciata nuda avrebbe scritto `reading` su una risposta HTTP (`server.py:889`, `grezzo = await ha_client.related(...)`) -- falso, e con l'aria di essere giusto. **La prima stesura di questa nota diceva che l'inglese non era MAI stato applicato: era falsa, e la review l'ha misurata.** `reading` e' applicato in otto file, e in UNO solo porta il concetto definito qui: `azione/porta.py:316,332,335,355`, dove e' proprio uno stato di Home Assistant «come lui lo riporta». Negli altri sette e' l'aggettivo ordinario applicato al senso sbagliato da lotti precedenti (`azione/verifica.py:318` una stringa di servizio, `azione/costruzione/composer.py:51` uno slug, `memoria/resolver.py:110` una lista, `schedulatore/promise.py:101` un JSON): **debito misurato, non causato da questa riga**, e una fetta a se' -- rinominarli adesso vorrebbe dire toccare quattro ambiti chiusi per una parola. Il caso che QUESTO blocco aveva scritto e' stato corretto: `impostazioni_chat.py::_retention_days_from_environment` leggeva una variabile d'ambiente e diceva `reading`, ora dice `raw`. **La qualificazione resta su `(cervello)` e non si sposta su `(azione)`**: cosi' com'e', `Glossario.per("grezzo", ambito)` tace ovunque e lo strumento non puo' riarmare la trappola da solo dentro `azione/`, che e' l'ambito dove i due sensi convivono | reading | ~ parziale |
-| guarda (cervello) | il verbo con cui l'osservatore si aggancia al rubinetto dei cambi di stato e delle condizioni di sistema e li annota cosi' come sono, senza interpretare nulla -- il meccanismo centrale della classe che lo fa (`Watcher`, ex `Osservatore`) | watch | ✓ arriva |
+| grezzo (mind) | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato -- **qualificata l'01/09 per la stessa ragione di `forza (memoria)`.** Una riga di una parola sola si applica da sola, e lasciata nuda avrebbe scritto `reading` su una risposta HTTP (`server.py:889`, `grezzo = await ha_client.related(...)`) -- falso, e con l'aria di essere giusto. **La prima stesura di questa nota diceva che l'inglese non era MAI stato applicato: era falsa, e la review l'ha misurata.** `reading` e' applicato in otto file, e in UNO solo porta il concetto definito qui: `azione/porta.py:316,332,335,355`, dove e' proprio uno stato di Home Assistant «come lui lo riporta». Negli altri sette e' l'aggettivo ordinario applicato al senso sbagliato da lotti precedenti (`azione/verifica.py:318` una stringa di servizio, `azione/costruzione/composer.py:51` uno slug, `memoria/resolver.py:110` una lista, `schedulatore/promise.py:101` un JSON): **debito misurato, non causato da questa riga**, e una fetta a se' -- rinominarli adesso vorrebbe dire toccare quattro ambiti chiusi per una parola. Il caso che QUESTO blocco aveva scritto e' stato corretto: `impostazioni_chat.py::_retention_days_from_environment` leggeva una variabile d'ambiente e diceva `reading`, ora dice `raw`. **La qualificazione resta su `(mind)` e non si sposta su `(azione)`**: cosi' com'e', `Glossario.per("grezzo", ambito)` tace ovunque e lo strumento non puo' riarmare la trappola da solo dentro `azione/`, che e' l'ambito dove i due sensi convivono | reading | ~ parziale |
+| guarda (mind) | il verbo con cui l'osservatore si aggancia al rubinetto dei cambi di stato e delle condizioni di sistema e li annota cosi' come sono, senza interpretare nulla -- il meccanismo centrale della classe che lo fa (`Watcher`, ex `Osservatore`) | watch | ✓ arriva |
 | impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
 | instradamento | la decisione, presa in un punto solo per ogni turno, se a rispondere sia il canale a forfait o quello a consumo -- e, se serve scendere al secondo, se e' una configurazione scelta dall'utente (silenziosa) o un ripiego vero da annunciare sempre | steering | ✓ arriva |
@@ -856,12 +856,12 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > l'ombra sarebbe legale in JS (scoping locale) ma illeggibile.
 
 > **`cambi` e `grezzo` sono un solo concetto, non due: stesso inglese per entrambi, e non e' un
-> doppione.** Aggiunta in fix round 1 (rilievo del coordinatore): `cervello/archivio.py:74`
+> doppione.** Aggiunta in fix round 1 (rilievo del coordinatore): `mind/store.py:74`
 > (`CREATE TABLE IF NOT EXISTS cambi`) e' esattamente cio' che la riga `grezzo` descrive -- *«un
 > cambiamento di stato registrato esattamente come Home Assistant lo riporta ... prima che
 > qualunque giudizio lo trasformi in un fatto interpretato»*. **Prova migliore, trovata dalla
 > review finale, sostituita a quella precedente:** il codice stesso usa le due parole attaccate,
-> `cervello/archivio.py:3`, *«I **cambi grezzi** vivono 22 giorni»* -- dimostra la fusione meglio
+> `mind/store.py:3`, *«I **cambi grezzi** vivono 22 giorni»* -- dimostra la fusione meglio
 > di una citazione di schema, perche' non e' un'inferenza di chi scrive il glossario, e' il
 > sottosistema che chiama la sua stessa tabella cosi'. Dare un secondo inglese a `cambi` (per
 > esempio applicando alla cieca `cambio → change`, parola ordinaria gia' in tabella) produrrebbe
@@ -954,7 +954,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > duplicati (sotto, «Controlli di completezza») confronta token esatti e non lo vede: `reading` e
 > `read` non sono la stessa stringa, quindi non compaiono insieme nel suo output, anche se dopo la
 > rinomina degli identificatori si otterrebbero funzioni/variabili `read_*` (da `leggi`/`letto`) e
-> una tabella o classe `Reading`/`reading` nello stesso sottosistema (`cervello/`) -- lo stesso
+> una tabella o classe `Reading`/`reading` nello stesso sottosistema (`mind/`) -- lo stesso
 > tipo di vicinanza visiva e concettuale che ha fatto scartare `raw` (radice condivisa con
 > "read" solo per assonanza, non e' questo il punto) e che rende `promise`/`promises` un rischio
 > anche quando la radice e' voluta. Non e' un'istruzione a cambiare nome: `reading` resta, la nota
@@ -1073,7 +1073,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > che condividono una proprieta' -- `STATI_CONCLUSI`/`STATI_SOSPESO`
 > (`schedulatore/promessa.py:22,34`, `azione/costruzione/versioni.py:36`), ma anche
 > `_STATI_ATTIVI` (`casa/nucleo.py:182`) e `_STATI_INTEGRAZIONE_ROTTA`
-> (`casa/nucleo.py:821`) / `_TRANSIENT_INTEGRATION_STATES` (ex `_STATI_INTEGRAZIONE_TRANSITORI`, rinominata dal Task 6, `cervello/osservatore.py:31`), tutte
+> (`casa/nucleo.py:821`) / `_TRANSIENT_INTEGRATION_STATES` (ex `_STATI_INTEGRAZIONE_TRANSITORI`, rinominata dal Task 6, `mind/watcher.py:31`), tutte
 > dello stesso schema `STATI_X = (valore, valore, ...)` usato per testare appartenenza, mai per
 > leggere un valore da solo. Non e' un secondo significato di `stato` (le tre accezioni gia' viste
 > restano tre), e' lo stesso concetto raccolto in insiemi con nome -- lo stesso schema gia' visto
@@ -1532,7 +1532,7 @@ al Task 6 invece che deciso qui.
 | conoscenza | knowledge |
 | conosciuto | known |
 | conservazione | retention. **`giorni_conservazione -> retention_days`, e il nome esisteva gia'** (01/09): `chat_store.ChatStore.delete_old_messages` porta `retention_days` da sempre, ed e' lo STESSO concetto -- i giorni oltre i quali un messaggio si dimentica. Un concetto, un nome: qui non si traduce, si riusa. Il campo e la chiave JSON `"giorni_conservazione"` restano distinti nel codice, che li mappava gia' a mano |
-| consumi | usage | **Il singolare `consumo` NON e' aliasato, ed e' una decisione**: `cervello/oggetti.py::consumo` e' una variabile di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). `registra_consumo -> log_usage` (`backends/`) si applica a mano. Stessa forma delle note su `prima`, `valida` e `scadute` |
+| consumi | usage | **Il singolare `consumo` NON e' aliasato, ed e' una decisione**: `mind/facts.py::consumo` e' una variabile di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). `registra_consumo -> log_usage` (`backends/`) si applica a mano. Stessa forma delle note su `prima`, `valida` e `scadute` |
 | conta | count |
 | conteggio | counts |
 | contenuto | content |
@@ -1620,7 +1620,7 @@ al Task 6 invece che deciso qui.
 | grana | granularity |
 | grandezza | magnitude |
 | gratuito | free | **`free` e' preso da QUESTO senso -- «senza costo» -- e non e' disponibile per `libero`, «non vincolato».** Misurato nel lotto 14 (`proxy/_sanitize.py`): `MAX_TESTO_LIBERO` andava all'inglese e il suggerimento meccanico era `max_text_libero`, meta' nome. Scrivere `libero -> free` avrebbe messo due parole italiane di senso diverso sullo stesso inglese in modo PERMANENTE -- la collisione che `Collisione` ferma dentro un file, resa regola. Risolto riusando il nome dell'interfaccia che la costante alimenta (`sanitize_ha_free_text` -> `MAX_FREE_TEXT`), e `libero` resta undecided: chi la incontra decide guardando il codice, non traducendo |
-| grezzo (static) | raw | **NON** `reading` di `grezzo (cervello)`, e la differenza si legge: la' e' una lettura di sensore non elaborata, qui e' l'aggettivo su un identificativo (`tree-route.js:467`, «resta visibile il solo identificativo grezzo»). Due sensi, due inglesi |
+| grezzo (static) | raw | **NON** `reading` di `grezzo (mind)`, e la differenza si legge: la' e' una lettura di sensore non elaborata, qui e' l'aggettivo su un identificativo (`tree-route.js:467`, «resta visibile il solo identificativo grezzo»). Due sensi, due inglesi |
 | griglia | grid |
 | gruppi | groups |
 | gruppo | group |
@@ -1898,21 +1898,21 @@ al Task 6 invece che deciso qui.
 > come parola ordinaria (`look`) ED era gia' un nome dei tredici strumenti (`view`, sotto): due
 > righe nude con inglesi diversi, senza che nessuna lo dichiarasse un omonimo. Vedi la nota alla
 > fine di «I nomi degli strumenti» per la correzione completa (`guarda (casa) -> view`, `guarda
-> (cervello) -> watch`).
+> (mind) -> watch`).
 
 > **`aperto -> open` e' protetto dalla guardia sulle keyword/builtin di `scripts/rinomina.py`
 > (Task 6): non si applica mai da solo su un identificatore nudo, perche' `open` e' un builtin
 > Python (il costruttore dei file) -- esce sempre come proposta, e chi la chiude decide un nome che
-> non lo ombreggi (`cervello/oggetti.py::aperti`, il caso vero, e' diventato `open_episodes`, non
+> non lo ombreggi (`mind/facts.py::aperti`, il caso vero, e' diventato `open_episodes`, non
 > `open`).**
 
-> **`spento` e `funziona`/`_FUNZIONANO` (`cervello/oggetti.py`) NON sono in questa tabella, di
+> **`spento` e `funziona`/`_FUNZIONANO` (`mind/facts.py`) NON sono in questa tabella, di
 > proposito.** Non sono traduzioni dirette del verbo italiano: `_SPENTO` (rinominata `_RESTING`)
 > raggruppa stati di riposo molto piu' larghi di "spento" alla lettera (`locked`, `docked`,
 > `idle`...), e `_FUNZIONANO` (rinominata `_OPERABLE`) descrive domini Home Assistant che si
 > accendono/spengono come un interruttore, non "che funzionano" in senso generico. Applicare
 > `off`/`function` alla cieca avrebbe detto una bugia sul contenuto delle due costanti -- decisioni
-> di giudizio locali a `cervello/`, non parole ordinarie da riusare altrove senza rileggerle.
+> di giudizio locali a `mind/`, non parole ordinarie da riusare altrove senza rileggerle.
 
 > **`carica → load` e' sbagliato in un senso su due -- nota di scissione aggiunta durante la
 > review finale del ramo, con lo stesso metodo gia' usato per `stato` e `riga`, sotto.** Il senso
@@ -1922,7 +1922,7 @@ al Task 6 invece che deciso qui.
 > configurazione, esattamente "load". Ma `carica`/`scarica` sono anche **due dei sette valori di
 > `DIREZIONI_BILANCIO`** («I valori di dominio», in fondo): li' significano carica **di batteria**,
 > non caricamento di un file -- `casa/anagrafe.py:469` (`"battery_charging": ("in carica", "non in
-> carica")`) e `cervello/oggetti.py:439` (`attive_scarica`, `fine_scarica_batteria`). In quel
+> carica")`) e `mind/facts.py:439` (`attive_scarica`, `fine_scarica_batteria`). In quel
 > contesto `load` mentirebbe: l'inglese giusto e' `charge`/`discharge`, non una forma di `load`.
 > La tabella sopra fissa `load` come equivalente di default (il senso maggioritario); chi traduce
 > i valori di `DIREZIONI_BILANCIO` deve usare `charge`/`discharge`, non applicare `load` alla
@@ -1933,10 +1933,10 @@ al Task 6 invece che deciso qui.
 > valore di `DIREZIONI_BILANCIO`, un posto che quella caccia non ha guardato.
 
 > **`riga`: omonimo per ambito, il sesto di questa fetta -- `riga (casa) -> line` in tabella,
-> sopra.** Negli archivi SQLite (`cervello/archivio.py`, `memoria/archivio.py`, `casa/archivio.py`,
+> sopra.** Negli archivi SQLite (`mind/store.py`, `memoria/archivio.py`, `casa/archivio.py`,
 > `azione/cronaca.py`, `schedulatore/promessa.py`, `decisione_modelli.py`) `riga`/`righe` e' una
 > riga di tabella: `row` e' corretto e non perde niente -- ed e' il senso DOMINANTE, misurato
-> (`cervello/archivio.py`: 53 occorrenze; `chat_store.py`: 17; piu' `azione/cronaca.py` e i
+> (`mind/store.py`: 53 occorrenze; `chat_store.py`: 17; piu' `azione/cronaca.py` e i
 > costruttori `_fact_row`/`_reading_row`), motivo per cui la riga nuda `riga -> row` resta cosi'
 > com'e'. Ma `casa/nucleo.py` costruisce il testo che il modello legge -- non una tabella -- e li'
 > `riga` e' sempre una riga di **testo**: la parola giusta e' `line`. **Applicato per intero nel
@@ -2048,7 +2048,7 @@ al Task 6 invece che deciso qui.
 > **Due forme flesse vere, `vivi` e `direzioni` — non compaiono ne' qui ne' in «I concetti», di
 > proposito.** L'estrazione allargata ha fatto uscire `vivi` (masch. plur. — `casa/domande.py:209,
 > 437,464,543,603,764` `attributi_vivi`, `casa/strumenti.py:1158` `nomi_vivi`) e `direzioni`
-> (plur. — `server.py:917`, `cervello/oggetti.py:570`, `proxy/ha_client.py:1482`
+> (plur. — `server.py:917`, `mind/facts.py:570`, `proxy/ha_client.py:1482`
 > `energy_directions`): la stessa radice, la stessa cosa, di due voci gia' in «I concetti» (`vive`,
 > `direzione`). Non le ho aggiunte qui come ordinarie ne' come nuove voci in «I concetti»: dare un
 > secondo inglese alla stessa radice violerebbe la fondamenta n.3 (stessa cosa, stessa forma) — ed
@@ -2830,7 +2830,7 @@ codice:
 >
 > **Perche' `conclude`, e il controllo di collisione sul CODICE (passo 2), eseguito e non
 > presunto.** `conclude` ricorre **sette volte** in `hiris/` e `tests/`, e tutte e sette sono la
-> terza persona del verbo italiano dentro la prosa (`cervello/__init__.py:4`,
+> terza persona del verbo italiano dentro la prosa (`mind/__init__.py:4`,
 > `schedulatore/sweeper.py:103`, cinque docstring di test): **non e' un identificatore da nessuna
 > parte**, e il falso amico e' l'italiano, non l'inglese. I candidati scartati, ciascuno per una
 > ragione che sta nel codice o in questo documento:
@@ -3184,10 +3184,10 @@ codice:
 > casa...», -> `view`) e la riga `guarda` di «Le parole ordinarie» (-> `look`) erano ENTRAMBE nude
 > (nessuna parentesi ambito), nella stessa mappa piatta: `leggi_glossario()` processa le tabelle in
 > ordine e l'ULTIMA scritta vince in silenzio -- qui `view`, senza che nessuna riga lo dichiarasse.
-> Il caso vero (Task 6, `cervello/osservatore.py`) ha aggiunto una TERZA lettura, `watch`
+> Il caso vero (Task 6, `mind/watcher.py`) ha aggiunto una TERZA lettura, `watch`
 > (`guarda_cambio`/`guarda_sistema`, il verbo del `Watcher`), rendendo `guarda` un omonimo a tre vie
 > mai dichiarato come tale. Corretto cosi': la riga qui sopra e' ora `guarda (casa)` (il vero
-> identificatore che descrive, `casa/domande.py::guarda`); `guarda (cervello) -> watch` e' una riga
+> identificatore che descrive, `casa/domande.py::guarda`); `guarda (mind) -> watch` e' una riga
 > a se' in «I concetti»; la riga `guarda -> look` di «Le parole ordinarie» e' stata tolta -- non
 > risultava applicata a nessun identificatore vero in nessun sottosistema gia' convertito (verificato
 > `grep` sui tre gia' fatti), era un default generico che nascondeva la collisione invece di
@@ -3203,7 +3203,7 @@ nome di modulo ne' di classe.
 
 Esiste uno strato di vocabolario che vive **come valore**, non come identificatore: tassonomie di
 dominio dichiarate come costanti Python e **persistite nei database** (`genere TEXT NOT NULL` in
-`cervello/archivio.py:91` e `azione/cronaca.py:65`, `specie TEXT NOT NULL` in
+`mind/store.py:91` e `azione/cronaca.py:65`, `specie TEXT NOT NULL` in
 `schedulatore/archivio.py:34`). **Sono dati, esattamente come i 13 nomi degli strumenti** qui sopra:
 il nome si decide qui, si applica in una fetta che sa gestire la migrazione di cio' che e' gia'
 scritto — non con la rinomina degli identificatori.
@@ -3243,12 +3243,12 @@ per usarla.)
 
 | costante | valori | dove vive | valori — inglese |
 |---|---|---|---|
-| `GENRES` (ex `GENERI`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `cervello/oggetti.py:44`; colonna `genere` in `cervello/archivio.py:91` e `azione/cronaca.py:65` |  |
-| `ASPECTS` (ex `GAMBE`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `cervello/pavimento.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
+| `GENRES` (ex `GENERI`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `mind/facts.py:44`; colonna `genere` in `mind/store.py:91` e `azione/cronaca.py:65` |  |
+| `ASPECTS` (ex `GAMBE`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `mind/baseline.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
 | `SPECIE` | fai · chiedi | `schedulatore/promessa.py:21`; colonna `specie` in `schedulatore/archivio.py:34` |  |
 | `STATES_CONCLUSI` (ex `STATI_CONCLUSI`, rinominata durante la conversione di `schedulatore/` -- solo il nome della costante, non i valori; non composta in `..._STATES` per il rischio di confusione con l'elenco vivo delle entita' di Home Assistant, vedi la nota sopra) | mantenuta · saltata · disdetta · fallita | `schedulatore/promise.py:22` — stato concluso delle promesse |  |
 | `STATES_SOSPESO` (ex `STATI_SOSPESO`, rinominata dal Task 7 (`azione/`), gia' applicata a `schedulatore/promise.py` durante la sua conversione -- solo il nome della costante, non i valori; stessa cautela sulla composizione della riga sopra) | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `schedulatore/promise.py:34` — definita due volte, stesso valore |  |
-| `BALANCE_DIRECTIONS` (ex `DIREZIONI_BILANCIO`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `cervello/oggetti.py:71` — le direzioni del bilancio energia dell'osservatore |  |
+| `BALANCE_DIRECTIONS` (ex `DIREZIONI_BILANCIO`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `mind/facts.py:71` — le direzioni del bilancio energia dell'osservatore |  |
 | `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | `esiti_provider.py:63` — famiglie di esito dei provider LLM |  |
 | `OPERATIONS` (ex `_GESTI`, rinominata dal Task 7 -- solo il nome della costante, non i valori; invisibile agli Step 1/2 perche' plurale, trovata solo eseguendo lo strumento sull'ambito `azione`) | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
 | `_TIPI_COMPORTAMENTO` | automazione · script | `casa/domande.py:68` — i tipi di comportamento della casa |  |
@@ -3286,7 +3286,7 @@ ponte (`agent/runner.py:309,518`) usa `/api/mcp` e le due di reasoning, gia' ing
 | `/api/constructions*`, `.../confirm`, `.../restore`, `.../reject` | `/api/costruzioni*`, `.../conferma`, `.../ripristina`, `.../rifiuta` | `costruzione -> construction`, `conferma -> confirm`, `ripristina -> restore`, `rifiuta -> reject` (il verbo, distinto da `rifiuto -> rejection`) |
 | `/api/chat-settings` | `/api/impostazioni-chat` | `impostazioni -> settings`, e l'ordine inglese: e' la chat a essere impostata |
 | `/api/chat/history` | `/api/chat/cronologia` | `cronologia -> history`, riga nuova di questo lotto |
-| `/api/mind/watching`, `/api/mind/facts` | `/api/cervello/osservate`, `/api/cervello/oggetti` | `cervello -> mind`, `guarda (cervello) -> watch`, `oggetti -> fact` |
+| `/api/mind/watching`, `/api/mind/facts` | `/api/cervello/osservate`, `/api/cervello/oggetti` | `cervello -> mind`, `guarda (mind) -> watch`, `oggetti -> fact` |
 | `/api/usage/history` | `/api/usage/storia` | l'handler si chiamava gia' `handle_usage_history` dal lotto 7 di `api/`. **Nessuna riga generale `storia -> history` e' stata scritta**, per la stessa ragione di allora: la farebbe applicare a `UsageStore.storia`, il metodo protetto da `_METODI_USAGE_STORE` |
 
 I parametri di query sono contratto quanto il percorso: `?tutte=1 -> ?all=1`,

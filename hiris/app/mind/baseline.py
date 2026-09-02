@@ -7,7 +7,7 @@ primo dispositivo nuovo e nessuno se ne accorge. **Non `state_class`**
 (correzione di parole della review, mandato «il bilancio dell'energia»,
 punto 7, 27/08/2026): dopo la correzione del 27/08 (vedi il docstring di
 `aspect` sotto), questa funzione non la legge piu' per decidere nessuna
-gamba -- resta grezzo conservato nell'archivio (`cervello/archivio.py`),
+gamba -- resta grezzo conservato nell'archivio (`mind/store.py`),
 non un criterio del pavimento.
 
 **Perche' esiste un pavimento.** Il prompt dell'obiettivo decide cosa entra
@@ -65,7 +65,7 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # sensori, produzione compresa, e il mandato vieta esplicitamente di
 # sdoppiarla («la direzione e' DENTRO l'episodio, non e' una gamba nuova»).
 # La distinzione vera vive ora un livello sopra, nel CORPO di ogni episodio
-# di energia (`cervello/oggetti.py::aggregate_day`, parametro `direzioni`):
+# di energia (`mind/facts.py::aggregate_day`, parametro `direzioni`):
 # `HAClient.energy_directions()` legge due fonti, sulla stessa connessione
 # --
 #

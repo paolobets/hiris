@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from hiris.app.cervello.archivio import ObservationsStore
-from hiris.app.cervello.oggetti import BALANCE_DIRECTIONS, aggregate_day, build_balance_body
+from hiris.app.mind.facts import BALANCE_DIRECTIONS, aggregate_day, build_balance_body
+from hiris.app.mind.store import ObservationsStore
 
 G = "2026-08-24"
 MEZZANOTTE = 1787522400.0   # 2026-08-23T22:00:00+00:00 = 24/08 00:00 +02:00 Roma
@@ -450,7 +450,7 @@ def test_il_bilancio_si_chiude_sempre_dentro_la_giornata(archivio):
                    balances=[_bilancio_valido(entita=["sensor.x"])])
 
     [o] = [x for x in archivio.facts(day=G) if x["genere"] == "bilancio"]
-    from hiris.app.cervello.oggetti import day_boundaries
+    from hiris.app.mind.facts import day_boundaries
     da_ts, a_ts = day_boundaries(G, "Europe/Rome")
     assert o["inizio_ts"] == da_ts
     assert o["fine_ts"] == a_ts

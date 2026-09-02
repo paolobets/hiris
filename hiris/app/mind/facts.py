@@ -30,7 +30,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..casa.tempo import home_space_zone
-from .pavimento import aspect
+from .baseline import aspect
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una

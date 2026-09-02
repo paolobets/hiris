@@ -44,7 +44,7 @@ def test_per_risolve_l_omonimo_col_sottosistema(g):
 
 def test_per_un_omonimo_senza_ambito_noto_non_indovina(g):
     """Meglio non rinominare che rinominare col significato sbagliato."""
-    assert g.per("ancora", "cervello") is None
+    assert g.per("ancora", "mind") is None
 
 
 def test_le_parole_scartate_non_si_rinominano_mai(g):
@@ -113,10 +113,10 @@ def test_un_trattino_basso_finale_si_conserva(g):
     trattino basso finale non e' una parola da tradurre, va conservato come
     quello iniziale. Trovato cercando di proposito una quarta variante di
     forma non coperta, dopo maiuscole, costanti TUTTE MAIUSCOLE e prefisso
-    privato: `gamba_` (`hiris/app/cervello/oggetti.py`, evita di ombreggiare
+    privato: `gamba_` (`hiris/app/mind/facts.py`, evita di ombreggiare
     `gamba`) sarebbe diventato `aspect`, non `aspect_`."""
     assert rinomina.classifica("tipo_", g, "casa") == "type_"
-    assert rinomina.classifica("gamba_", g, "cervello") == "aspect_"
+    assert rinomina.classifica("gamba_", g, "mind") == "aspect_"
     assert rinomina.classifica("_archivio_", g, "memoria") == "_store_"
 
 
@@ -195,7 +195,7 @@ def test_se_l_intestazione_della_tabella_alias_cambia_il_lettore_se_ne_accorge(t
 def test_una_keyword_python_non_si_applica_da_sola():
     """`classe -> class`: applicato a un identificatore nudo produrrebbe
     `class = ...`, un SyntaxError. Misurato dal vivo su
-    `cervello/pavimento.py` (Task 6)."""
+    `mind/baseline.py` (Task 6)."""
     gf = rinomina.Glossario(mappa={"classe": "class"})
     esito = rinomina.classifica("classe", gf, "qualunque")
     assert isinstance(esito, rinomina.Proposta), (
@@ -315,7 +315,7 @@ def test_le_costanti_vere_invisibili_ora_compaiono(g, costante):
     completamente invisibili al dry-run prima di questa guardia (nessuna
     proposta, nessun cambio -- `classifica()` tornava `None`). Ora devono
     comparire come proposte."""
-    esito = rinomina.classifica(costante, g, "cervello")
+    esito = rinomina.classifica(costante, g, "mind")
     assert isinstance(esito, rinomina.Proposta), (
         f"{costante} deve comparire come proposta, non sparire in silenzio")
 
@@ -450,7 +450,7 @@ def test_il_glossario_vero_non_ha_conflitti_silenziosi(g):
     passata per caricare `g` (fixture di modulo): se non sollevasse qui e
     l'avesse sollevato altrove, vorrebbe dire che la correzione di `guarda`
     non e' completa."""
-    assert g.omonimi["guarda"] == {"cervello": "watch", "casa": "view"}
+    assert g.omonimi["guarda"] == {"mind": "watch", "casa": "view"}
     assert "guarda" not in g.mappa
 
 

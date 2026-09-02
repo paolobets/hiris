@@ -691,7 +691,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("backends", "backends", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
     ("usage", "usage", frozenset()),
-    ("cervello", "cervello", frozenset()),
+    ("mind", "mind", frozenset()),
     ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
     ("casa/lettura_yaml.py", "casa", frozenset()),
     ("casa/comportamento.py", "casa", frozenset()),

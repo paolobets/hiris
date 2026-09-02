@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from hiris.app.cervello.archivio import ObservationsStore
-from hiris.app.cervello.oggetti import GENRES, aggregate_day, day_boundaries, genre_for
+from hiris.app.mind.facts import GENRES, aggregate_day, day_boundaries, genre_for
+from hiris.app.mind.store import ObservationsStore
 
 # 24 agosto 2026: mezzanotte a Roma e' 22:00 UTC del 23.
 G = "2026-08-24"

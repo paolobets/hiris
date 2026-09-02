@@ -284,7 +284,7 @@ def _pericoloso(parola: str) -> bool:
     caso non lo vede nessun cancello finche' qualcosa non lo chiama
     davvero, perche' `flake8-builtins` non e' nel set di regole attive.
     Misurato dal vivo (Task 6): il glossario decide `classe -> class`,
-    applicato a un identificatore nudo in `cervello/pavimento.py` ha
+    applicato a un identificatore nudo in `mind/baseline.py` ha
     prodotto `class = _text(...)`, trovato solo da `py_compile`. Non e' un
     giudizio sulla parola decisa -- resta decisa cosi' -- e' una guardia
     sulla FORMA nuda dell'applicazione, la stessa disciplina gia' in vigore
@@ -363,7 +363,7 @@ def classifica(nome: str, g: Glossario, ambito: str):
         # guardare le maiuscole e si rimettono identici alla fine. Senza,
         # `_fuso` (un aiutante privato) diventava `timezone` (interfaccia
         # pubblica) -- misurato su `usage/store.py` (Task 4). Stessa
-        # famiglia sul lato finale: `gamba_` (`cervello/oggetti.py`, evita
+        # famiglia sul lato finale: `gamba_` (`mind/facts.py`, evita
         # di ombreggiare la parola `gamba`) sarebbe diventato `aspect`,
         # perdendo il trattino che lo distingue dalla parola che ombreggia
         # -- trovato guardando se restasse una quarta variante di forma non

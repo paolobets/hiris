@@ -631,7 +631,7 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
 // Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026):
 // un oggetto al giorno per dispositivo, una QUANTITA' CON UNA FORMA, non un
 // episodio. La forma reale del corpo è quella di `build_balance_body`
-// (hiris/app/cervello/oggetti.py): {totali:{dimensione:{valore,provenienza}},
+// (hiris/app/mind/facts.py): {totali:{dimensione:{valore,provenienza}},
 // forma:{dimensione:[{ora,valore}...]}, momenti:{...}}, più `dispositivo`/`entita`
 // aggiunti da `aggregate_day`. Prima di questa fetta il genere "bilancio"
 // cadeva nel ramo di default di `mainPhrase` e mostrava «(nessun
@@ -642,7 +642,7 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
 // `forma[dimensione]` porta l'ORA VERA di ogni punto dal 27/08/2026 (mandato
 // «la pagina del bilancio -- le correzioni», punto 6): non piu' una lista
 // posizionale nuda, ma `[{"ora","valore"}, ...]` -- vedi `costruisci_corpo_
-// bilancio` in `hiris/app/cervello/oggetti.py`. Questo helper costruisce un
+// bilancio` in `hiris/app/mind/facts.py`. Questo helper costruisce un
 // ISO alla stessa ora LOCALE di questa macchina (stesso principio TZ-agnostico
 // di `giornoFa` sopra): `new Date(iso).getHours()`, nel codice sotto test,
 // torna esattamente `h`, qualunque sia il fuso di chi fa girare il test.
@@ -1014,7 +1014,7 @@ test('seam _rendiOggetti: ogni momento (dt+dd) è una coppia atomica, mai due ce
 
 // ---------------------------------------------------------------------------
 // Il consumo, settima direzione del bilancio (LETTA, non dedotta -- vedi il
-// commento sopra DIREZIONI_BILANCIO in cervello/oggetti.py, mandato «il
+// commento sopra DIREZIONI_BILANCIO in mind/facts.py, mandato «il
 // bilancio dell'energia», punto 1, 27/08/2026): la pagina deve poterlo
 // mostrare come le altre sei, con la stessa etichetta già usata dagli
 // episodi di energia.

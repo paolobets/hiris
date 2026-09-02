@@ -34,7 +34,7 @@
    stringhe letterali IDENTICHE a `pavimento.ASPECTS`, apostrofo compreso
    («chi c'e'»).
 
-   -- I SEI generi (`cervello/oggetti.py::GENRES`, contati nel sorgente
+   -- I SEI generi (`mind/facts.py::GENRES`, contati nel sorgente
       Python, non ricopiati -- correzione del giro «la pagina del bilancio»,
       punto 7, 27/08/2026: questa riga diceva "cinque", e da quando
       `bilancio` e' entrato in GENERI sono sei) --
@@ -51,7 +51,7 @@
    il campo manca del tutto se non si conosce, mai una "sconosciuta"
    travestita da dato -- `mainPhrase`/`provenanceDirectionBadge` sotto
    lo mostrano solo quando c'e'. La gamba resta "energia" (vedi
-   `cervello/pavimento.py::_ENERGIA`): la direzione vive nell'EPISODIO, non
+   `mind/baseline.py::_ENERGIA`): la direzione vive nell'EPISODIO, non
    e' una gamba nuova. Tutti e
    cinque portano `comprimari` (chi altro c'era, dal caso del lampadario) e
    `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
@@ -67,7 +67,7 @@
    Y», la freccia di `period()`) rifarebbe in pagina esattamente l'errore
    che il giro dei dati ha appena tolto dall'archivio (undici frammenti di
    energia per lo stesso dispositivo). Il suo `corpo` (`costruisci_corpo_
-   bilancio` in cervello/oggetti.py) non ha ne' `stato` ne' `valore_iniziale`/
+   bilancio` in mind/facts.py) non ha ne' `stato` ne' `valore_iniziale`/
    `valore_finale`: ha `totali` (SETTE dimensioni al massimo -- il consumo e'
    la settima, LETTA non dedotta: correzione ALTA della review, mandato «la
    pagina del bilancio», punto 1, 27/08/2026, vedi il commento sopra
@@ -78,7 +78,7 @@
    NUDA (l'indice non era l'ora, perche' HA omette le ore senza dati); ora
    ogni punto porta la SUA ora, `ora` e' lo stesso nome gia' usato da
    `picco_produzione` sotto -- vedi il contratto completo nel docstring di
-   `build_balance_body`, cervello/oggetti.py), `momenti` (fatti
+   `build_balance_body`, mind/facts.py), `momenti` (fatti
    derivati -- prima/ultima ora di produzione, il picco, le quote, tutti con
    l'istante VERO), piu' `dispositivo` (nome leggibile) ed `entita` (i
    sensori che lo compongono, aggiunti da `aggregate_day`). `balanceLine`
@@ -148,7 +148,7 @@ window.HirisWatcherRoute = (function () {
   };
 
   /* Le SETTE dimensioni di un bilancio, in quest'ordine -- letterale,
-     identico a `BALANCE_DIRECTIONS` in `cervello/oggetti.py` (contato nel
+     identico a `BALANCE_DIRECTIONS` in `mind/facts.py` (contato nel
      sorgente Python, non ricopiato). **Correzione ALTA della review**
      (mandato «la pagina del bilancio», punto 1, 27/08/2026): questa lista
      diceva "NON sette, consumo e' ridondante con autoconsumo+prelievo" --
@@ -579,8 +579,8 @@ window.HirisWatcherRoute = (function () {
      arrivo", mai un orario specifico -- l'unico modo onesto di non mentire
      con un dato che non c'era. **Ora ogni punto porta la SUA ora**
      (`{"ora","valore"}`, la stessa chiave gia' usata da `picco_produzione`
-     -- vedi il docstring di `build_balance_body` in cervello/
-     oggetti.py, letto per intero prima di questa correzione): le barre si
+     -- vedi il docstring di `build_balance_body` in mind/
+     facts.py, letto per intero prima di questa correzione): le barre si
      posizionano sull'ORA VERA di ciascun punto, in 24 posizioni fisse (una
      per ora del giorno, fuso del BROWSER come `fmtIsoHour` sopra) invece che
      in ordine di arrivo -- cosi' **un'ora senza dato resta uno spazio

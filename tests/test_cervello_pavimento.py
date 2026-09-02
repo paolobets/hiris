@@ -8,7 +8,7 @@ la review del primo task.
 """
 import pytest
 
-from hiris.app.cervello.pavimento import ASPECTS, aspect, in_baseline
+from hiris.app.mind.baseline import ASPECTS, aspect, in_baseline
 
 
 @pytest.mark.parametrize("eid, attributi, atteso", [

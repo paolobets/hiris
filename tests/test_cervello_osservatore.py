@@ -6,7 +6,7 @@ ragione per cui non si apre un secondo canale verso Home Assistant.
 """
 import pytest
 
-from hiris.app.cervello.osservatore import Watcher
+from hiris.app.mind.watcher import Watcher
 
 
 class _FintoArchivio:
@@ -156,7 +156,7 @@ def test_senza_last_changed_si_usa_l_orologio(coppia, caplog):
     archivio, osservatore = coppia
     ev = _evento("climate.camera_t", "off", "heat")
     del ev["new_state"]["last_changed"]
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.cervello.osservatore"):
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.mind.watcher"):
         assert osservatore.watch_reading(ev) is True
     assert archivio.annotati[0]["quando_ts"] == 1787572800.0  # adesso() iniettato
     assert any("last_changed" in r.message for r in caplog.records)

@@ -137,7 +137,7 @@ def test_una_parola_riservata_di_javascript_non_si_applica_mai(capsys):
     `config/usage-route.js:61` -- tre cancelli rossi insieme, ma un'ora prima
     la stessa parola sarebbe passata in un file che nessun test carica. La
     stessa classe era gia' costata un guasto nel Python (`class = _text(...)`
-    in `cervello/pavimento.py`, trovato solo da `py_compile`)."""
+    in `mind/baseline.py`, trovato solo da `py_compile`)."""
     dati = _legami({"nome": "classe", "specie": "var", "ambito": 0,
                     "dich": [0], "rif": [10], "globale": False})
     rinomina_js.main(["--legami", _scrivi(dati)])

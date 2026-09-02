@@ -21,7 +21,7 @@ from datetime import UTC
 
 from hiris.app import server
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.cervello.archivio import READING_RETENTION_S
+from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.server import watch_system_conditions
 from tests._contratti import assert_stessa_firma
 from tests.test_cervello_comprimari import _ClienteLegami
@@ -467,7 +467,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     collection dell'intero file -- la lezione del giro precedente."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -510,7 +510,7 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
     invece di `["light.secondario"]`."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -564,7 +564,7 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
     subito dopo."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -625,7 +625,7 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
     compare piu' nel log. Ripristinato subito dopo."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -674,7 +674,7 @@ def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
     non solo sul guasto totale provato sopra."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -722,7 +722,7 @@ def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
     subito dopo."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -761,7 +761,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
     per "ieri" vero, rispetto all'orologio reale del test."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -951,7 +951,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     from zoneinfo import ZoneInfo
 
     from hiris.app.casa.archivio import HomeSpaceStore
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     roma = ZoneInfo("Europe/Rome")
     # Due giorni fa: e' uno dei due bersagli della riparazione all'avvio
@@ -1091,7 +1091,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
     energia del giorno."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -1136,7 +1136,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
     solo un oggetto piu' povero."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -1177,7 +1177,7 @@ def test_la_riparazione_all_avvio_applica_le_direzioni(tmp_path):
     energia riscritti dalla riparazione portano `direzione`/`provenienza`."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -1216,7 +1216,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
     sostituito da uno senza -- `dopo != prima`. Ripristinato subito dopo."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -1256,7 +1256,7 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
     della riparazione, non una per giorno."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
@@ -1319,7 +1319,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
     episodio individuale, e nasce un oggetto di genere "bilancio"."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
@@ -1378,7 +1378,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
     fetta non esistesse."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
@@ -1424,7 +1424,7 @@ def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
     statistiche si leggono, la riparazione scrive il bilancio."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
@@ -1467,7 +1467,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
     -- `dopo != prima`. Ripristinato subito dopo."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
@@ -1515,7 +1515,7 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
     frammenti individuali -- l'esatto impoverimento misurato dalla review."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)
@@ -1566,8 +1566,8 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
     coinciderebbero, e non devono."""
     from datetime import datetime, timedelta
 
-    from hiris.app.cervello.archivio import ObservationsStore
-    from hiris.app.cervello.oggetti import day_boundaries
+    from hiris.app.mind.facts import day_boundaries
+    from hiris.app.mind.store import ObservationsStore
 
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     casa = _casa_con_un_dispositivo(tmp_path)

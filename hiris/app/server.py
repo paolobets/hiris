@@ -48,19 +48,19 @@ from .casa.comportamento import reread, reread_dashboards
 from .casa.domande import HA_LINK_TYPE
 from .casa.domande import related as _legami_leggibili
 from .casa.tempo import home_space_zone
-from .cervello.archivio import READING_RETENTION_S, ObservationsStore
-from .cervello.oggetti import (
-    BALANCE_DIRECTIONS,
-    aggregate_day,
-    build_balance_body,
-    day_boundaries,
-)
-from .cervello.osservatore import Watcher
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
 from .internal_token import prepare_internal_token
 from .memoria.archivio import MemoryStore
 from .memoria.cache_indice import LookupCache
+from .mind.facts import (
+    BALANCE_DIRECTIONS,
+    aggregate_day,
+    build_balance_body,
+    day_boundaries,
+)
+from .mind.store import READING_RETENTION_S, ObservationsStore
+from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
 from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache
@@ -1144,7 +1144,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     progetto ha gia' pagato altrove. Due giorni fissi non hanno stato:
     guariscono da soli una notte saltata, al costo di rifare un lavoro che
     il piu' delle volte non serviva -- un costo che si puo' permettere
-    perche' `replace_day` (`cervello/archivio.py`) e' **idempotente**:
+    perche' `replace_day` (`mind/store.py`) e' **idempotente**:
     rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
     lo raddoppia.
 
@@ -2648,7 +2648,7 @@ async def _on_startup(app: web.Application) -> None:
     )
 
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena
-    # finito (`cervello/oggetti.py::aggregate_day`). Gira alle 00:20 e non a
+    # finito (`mind/facts.py::aggregate_day`). Gira alle 00:20 e non a
     # mezzanotte: aggregare a mezzanotte esatta prenderebbe un giorno ancora
     # aperto, e venti minuti bastano perche' gli ultimi eventi della sera
     # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
@@ -2713,7 +2713,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
     # Il numero di giorni non si scrive a mano -- si deriva dalla costante
-    # dell'archivio (`cervello/archivio.READING_RETENTION_S`, 22 giorni: 21
+    # dell'archivio (`mind/store.READING_RETENTION_S`, 22 giorni: 21
     # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
     # la riga di log non puo' mentire quando la costante cambia
     # (task-5-correzioni.md, punto C).
@@ -3430,7 +3430,7 @@ async def _on_cleanup(app: web.Application) -> None:
     if "costruzioni" in app:
         app["costruzioni"].close()
     # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
-    # del cervello (`cervello/archivio.py`), costruito in `_on_startup`
+    # del cervello (`mind/store.py`), costruito in `_on_startup`
     # accanto a `app["cronaca"]`. Stessa disciplina degli archivi qui sopra:
     # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
     if "osservazioni" in app:

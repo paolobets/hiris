@@ -129,7 +129,7 @@ def home_space_zone(timezone: str | None):
     nell'istante, e chi legge puo' fare i conti.
 
     **Pubblica (giro di correzioni, punto 4):** prima era `_zona`, privata,
-    e `cervello/oggetti.py` la importava comunque per calcolare i confini
+    e `mind/facts.py` la importava comunque per calcolare i confini
     del giorno -- un nome con underscore attraversato da fuori e' esattamente
     come nascono i doppioni, perche' il prossimo che ne ha bisogno o importa
     il nome privato o riscrive il calcolo.

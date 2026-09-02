@@ -78,12 +78,12 @@ sample every 15 minutes (`server.py::tree_comparison_round`), the `mtime` sentin
 over `automations.yaml`/`scripts.yaml` every 5 minutes
 (`server.py::behavior_sentinel`), chat-history retention at 03:00, the
 reasoning-queue sweep every 2 minutes, and three more added by the "the
-observer" slice (`hiris/app/cervello/`): the system-conditions read — the same
+observer" slice (`hiris/app/mind/`): the system-conditions read — the same
 diagnosed issues plus the integrations Home Assistant has not loaded, folded
 into the observer's fault objects — every 10 minutes
 (`server.py::_watch_conditions`), the nightly aggregation of the previous
 day's raw state changes into objects at 00:20
-(`server.py::_aggrega_ieri` → `cervello/oggetti.py::aggregate_day`), and the
+(`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`), and the
 pruning of raw changes older than 22 days at 03:00
 (`server.py::_prune_observations`). The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with

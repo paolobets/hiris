@@ -14,7 +14,7 @@ import logging
 import time
 
 from ..casa.tempo import instant_epoch
-from .pavimento import aspect
+from .baseline import aspect
 
 logger = logging.getLogger(__name__)
 
