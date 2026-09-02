@@ -23,7 +23,7 @@ function rendi(casa) {
     chiamate.push(String(url));
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(casa) });
   };
-  return ctx.window.HirisAlberoRoute.mount().then(() => {
+  return ctx.window.HirisTreeRoute.mount().then(() => {
     ctx.testo = ctx.document.getElementById('route-outlet').textContent;
     ctx.chiamate = chiamate;
     return ctx;
@@ -250,7 +250,7 @@ test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', a
   const consoleVera = console.error;
   console.error = () => {};
   ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-  await ctx.window.HirisAlberoRoute.mount();
+  await ctx.window.HirisTreeRoute.mount();
   await tick(0);
   console.error = consoleVera;
   const testo = ctx.document.getElementById('route-outlet').textContent;
@@ -269,6 +269,6 @@ test('wiring: la rotta #/albero e lo script sono registrati nella SPA', () => {
     new URL('../../hiris/app/static/config/main.js', import.meta.url), 'utf8');
   assert.ok(mainJs.includes('HirisRouter.register(/^#\\/albero\\/?$/'),
     'main.js deve registrare la rotta #/albero presso HirisRouter');
-  assert.ok(mainJs.includes('HirisAlberoRoute.mount()'),
-    'la rotta registrata deve montare HirisAlberoRoute');
+  assert.ok(mainJs.includes('HirisTreeRoute.mount()'),
+    'la rotta registrata deve montare HirisTreeRoute');
 });

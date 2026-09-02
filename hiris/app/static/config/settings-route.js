@@ -29,7 +29,7 @@
    se' con `_route()`, saltava la catena e annullava il ripiego, e la pagina
    Modelli non lo nominava mai. Il sottotitolo lo DICE, una volta: un campo
    che sparisce senza dire dove e' andato e' una crudelta'. */
-window.HirisImpostazioniRoute = (function () {
+window.HirisSettingsRoute = (function () {
   'use strict';
 
   var SETTINGS_URL = 'api/chat-settings';

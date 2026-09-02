@@ -146,7 +146,7 @@ test('rilievo 3: la guardia del refuso cattura anche la maiuscola "E’ "', () =
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
   const { window, document } = montaConServer();
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -156,7 +156,7 @@ test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
 
 test('mount: il sottotitolo usa è, non e’, e chiama il materiale "episodi"', async () => {
   const { window, document } = montaConServer();
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const sottotitolo = document.querySelector('.page-subtitle').textContent;
@@ -172,7 +172,7 @@ test('mount: il sottotitolo usa è, non e’, e chiama il materiale "episodi"', 
 test('seam _rendiOsservate: la voce "pavimento" porta il badge «Di serie», non «Pavimento»', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOsservate(corpo, [
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
     { soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' },
   ]);
   const badge = corpo.querySelector('.agent-badge');
@@ -184,7 +184,7 @@ test('seam _rendiOsservate: la voce "pavimento" porta il badge «Di serie», non
 test('seam _rendiOsservate: una voce "obiettivo" resta distinguibile e dice che si può togliere', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOsservate(corpo, [
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
     { soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'obiettivo' },
   ]);
   assert.match(corpo.textContent, /si può togliere/);
@@ -194,7 +194,7 @@ test('mount: la descrizione della sezione 01 spiega «di serie» invece di ripet
   const { window, document } = montaConServer({
     watching: { watching: [{ soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' }] },
   });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const desc = document.querySelector('.sc-desc').textContent;
@@ -210,7 +210,7 @@ test('mount: la descrizione della sezione 01 spiega «di serie» invece di ripet
 test('seam _rendiOsservate: l\'intestazione di gamba mostra un\'etichetta leggibile, non la chiave grezza', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOsservate(corpo, [
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
     { soggetto: 'device_tracker.paolo', gamba: "chi c'e'", provenienza: 'pavimento' },
   ]);
   const sommario = corpo.querySelector('summary').textContent;
@@ -221,7 +221,7 @@ test('seam _rendiOsservate: l\'intestazione di gamba mostra un\'etichetta leggib
 test('seam _rendiOsservate: una gamba sconosciuta finisce in coda col suo nome grezzo, e non sparisce', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOsservate(corpo, [
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
     { soggetto: 'sensor.nuovo', gamba: 'una gamba mai vista', provenienza: 'pavimento' },
     { soggetto: 'lock.porta', gamba: 'sicurezza', provenienza: 'pavimento' },
   ]);
@@ -248,7 +248,7 @@ test('mount: il campo Giorno entra nei selettori del tema (input[type=date] cond
 
 test('mount: l\'etichetta «Giorno» è associata al campo data (for/id)', async () => {
   const { window, document } = montaConServer();
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const input = document.querySelector('input[type=date]');
@@ -324,7 +324,7 @@ test('CSS: il selettore che azzera min-width sugli span corrisponde a uno span c
 
 test('un errore nel leggere "cosa sto guardando" (503) offre Riprova, e il testo del messaggio non cambia', async () => {
   const { window, document } = montaConServer({ osservateStatus: 503, watching: {} });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -335,7 +335,7 @@ test('un errore nel leggere "cosa sto guardando" (503) offre Riprova, e il testo
 
 test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rilancia la richiesta', async () => {
   const { window, document, chiamate } = montaConServer({ osservateRotto: true });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const primaDelClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
@@ -350,7 +350,7 @@ test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rila
 
 test('un errore nel leggere "cosa è successo" (503) offre Riprova', async () => {
   const { window, document } = montaConServer({ oggettiStatus: 503, facts: {} });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -360,7 +360,7 @@ test('un errore nel leggere "cosa è successo" (503) offre Riprova', async () =>
 
 test('un guasto di rete su "cosa è successo" offre Riprova, e il bottone rilancia la richiesta con lo stesso giorno', async () => {
   const { window, document, chiamate } = montaConServer({ oggettiRotto: true });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const chiamateOggettiPrima = chiamate.filter((u) => u.indexOf('facts') !== -1);
@@ -381,7 +381,7 @@ test('un guasto di rete su "cosa è successo" offre Riprova, e il bottone rilanc
 
 test('nessun episodio per IERI: dice quando tornare (00:20), niente data ISO, niente ipotesi debole', async () => {
   const { window, document } = montaConServer({ facts: { facts: [] } });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20); // il campo nasce su "ieri" di default
 
   const messaggio = testoMessaggioOggetti(document);
@@ -395,7 +395,7 @@ test('nessun episodio per IERI: dice quando tornare (00:20), niente data ISO, ni
 
 test('nessun episodio per OGGI: stesso trattamento del primo giorno (ieri/oggi sono lo stesso caso)', async () => {
   const { window, document } = montaConServer({ facts: { facts: [] } });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const input = document.querySelector('input[type=date]');
@@ -410,7 +410,7 @@ test('nessun episodio per OGGI: stesso trattamento del primo giorno (ieri/oggi s
 
 test('nessun episodio per un giorno VECCHIO: l\'ipotesi doppia resta, ma la data è in gg/mm/aaaa', async () => {
   const { window, document } = montaConServer({ facts: { facts: [] } });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const input = document.querySelector('input[type=date]');
@@ -427,7 +427,7 @@ test('nessun episodio per un giorno VECCHIO: l\'ipotesi doppia resta, ma la data
 
 test('nessun episodio SENZA filtro (bottone "più recenti"): parla di episodi', async () => {
   const { window, document } = montaConServer({ facts: { facts: [] } });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const btnRecenti = bottone(document, 'Vedi i più recenti, senza filtro');
@@ -445,7 +445,7 @@ test('nessun episodio SENZA filtro (bottone "più recenti"): parla di episodi', 
 
 test('mount: la sezione 02 non dichiara una differenza di fuso in ore', async () => {
   const { window, document } = montaConServer();
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const descrizioni = Array.from(document.querySelectorAll('.sc-desc')).map((p) => p.textContent);
@@ -461,7 +461,7 @@ test('mount: la sezione 02 non dichiara una differenza di fuso in ore', async ()
 test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il contenuto è il testo prominente', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'funzionamento', protagonista: 'climate.riscaldamento_camera',
     inizio_ts: 1755270600, fine_ts: 1755277500,
     corpo: { stato: 'acceso' },
@@ -490,7 +490,7 @@ test('seam _rendiOggetti: l\'identificatore è in monospazio attenuato, il conte
 test('seam _rendiOggetti: un oggetto di energia mostra da/a e la differenza col segno', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'energia', protagonista: 'sensor.energia_forno',
     inizio_ts: 1755270600, fine_ts: 1755277500,
     corpo: { valore_iniziale: 12.5, valore_finale: 15.0, differenza: 2.5 },
@@ -502,7 +502,7 @@ test('seam _rendiOggetti: un oggetto di energia mostra da/a e la differenza col 
 test('seam _rendiOggetti: un oggetto di energia con differenza non calcolabile lo dichiara, mai un NaN silenzioso', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'energia', protagonista: 'sensor.contatore',
     inizio_ts: 1, fine_ts: 2,
     corpo: { valore_iniziale: 5, valore_finale: 'unavailable', differenza: null },
@@ -514,7 +514,7 @@ test('seam _rendiOggetti: un oggetto di energia con differenza non calcolabile l
 test('seam _rendiOggetti: un episodio di energia con direzione DICHIARATA la mostra in italiano e distingue la provenienza', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'energia', protagonista: 'sensor.energia_prodotta',
     inizio_ts: 1755270600, fine_ts: 1755277500,
     corpo: { valore_iniziale: 10, valore_finale: 25, differenza: 15,
@@ -529,14 +529,14 @@ test('seam _rendiOggetti: un episodio di energia con direzione DICHIARATA la mos
 test('seam _rendiOggetti: un episodio di energia con direzione DEDOTTA si distingue visibilmente dalla dichiarata', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const dichiarato = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(dichiarato, [{
+  window.HirisWatcherRoute._rendiOggetti(dichiarato, [{
     id: 1, genere: 'energia', protagonista: 'sensor.a',
     inizio_ts: 1, fine_ts: 2,
     corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
             direzione: 'prelievo', provenienza: 'dichiarata' },
   }], null);
   const dedotto = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(dedotto, [{
+  window.HirisWatcherRoute._rendiOggetti(dedotto, [{
     id: 2, genere: 'energia', protagonista: 'sensor.b',
     inizio_ts: 1, fine_ts: 2,
     corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1,
@@ -555,7 +555,7 @@ test('seam _rendiOggetti: un episodio di energia con direzione DEDOTTA si distin
 test('seam _rendiOggetti: un episodio di energia SENZA direzione nota non mostra nessun badge di provenienza in piu', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'energia', protagonista: 'sensor.energia_ignota',
     inizio_ts: 1, fine_ts: 2,
     corpo: { valore_iniziale: 1, valore_finale: 2, differenza: 1 },
@@ -569,7 +569,7 @@ test('seam _rendiOggetti: un episodio di energia SENZA direzione nota non mostra
 test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'guasto', protagonista: 'problema:hue.bridge_offline',
     inizio_ts: 1, fine_ts: null,
     corpo: { stato: 'aperto' },
@@ -588,7 +588,7 @@ test('seam _rendiOggetti: comprimari e misure stanno dietro un rivelatore sincro
   const corpo = document.createElement('div');
   document.body.appendChild(corpo);
 
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'funzionamento', protagonista: 'light.lampadario',
     inizio_ts: 1755270600, fine_ts: 1755277500,
     corpo: {
@@ -620,7 +620,7 @@ test('seam _rendiOggetti: comprimari e misure stanno dietro un rivelatore sincro
 test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivelatore', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [{
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
     id: 1, genere: 'presenza', protagonista: 'person.paolo',
     inizio_ts: 1, fine_ts: 2, corpo: { stato: 'a casa' },
   }], null);
@@ -686,7 +686,7 @@ function bilancioFixture(extra) {
 test('seam _rendiOggetti: un bilancio mostra i totali in kWh, non «(nessun dettaglio)»', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   assert.doesNotMatch(corpo.textContent, /nessun dettaglio/);
   assert.match(corpo.textContent, /24,5\s*kWh/, 'il totale di produzione deve leggersi in kWh, virgola italiana');
@@ -698,7 +698,7 @@ test('seam _rendiOggetti: un bilancio mostra i totali in kWh, non «(nessun dett
 test('seam _rendiOggetti: un bilancio NON si legge come un episodio (niente "da X a Y", niente freccia di periodo)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   assert.doesNotMatch(corpo.textContent, /→/,
     'un bilancio è una quantità con una forma, non un "da → a": niente freccia di periodo()');
@@ -709,7 +709,7 @@ test('seam _rendiOggetti: un bilancio NON si legge come un episodio (niente "da 
 test('seam _rendiOggetti: la provenienza di un totale riusa lo stesso badge dichiarata/dedotta degli episodi di energia', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   assert.match(corpo.textContent, /[Dd]ichiarat/, 'la provenienza "dichiarata" (immissione) deve comparire');
   assert.match(corpo.textContent, /[Dd]edott/, 'la provenienza "dedotta" (prelievo) deve comparire');
@@ -726,7 +726,7 @@ test('seam _rendiOggetti: la provenienza di un totale riusa lo stesso badge dich
 test('seam _rendiOggetti: un totale senza provenienza nota (produzione) non porta un badge di provenienza in più', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   // Un solo badge non porta ne' "dichiarat" ne' "dedott": e' il genere ("Bilancio").
   const badgeGenerici = Array.from(corpo.querySelectorAll('.agent-badge'))
@@ -737,7 +737,7 @@ test('seam _rendiOggetti: un totale senza provenienza nota (produzione) non port
 test('seam _rendiOggetti: una dimensione assente (es. batteria) non compare come totale a zero', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   assert.doesNotMatch(corpo.textContent, /[Cc]arica della batteria/,
     'nessuna entità batteria in questa fixture: "carica" non deve comparire');
@@ -749,7 +749,7 @@ test('seam _rendiOggetti: una dimensione assente (es. batteria) non compare come
 test('seam _rendiOggetti: la curva mostra produzione e prelievo sovrapposti, come barre SVG', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   const svg = corpo.querySelector('svg');
   assert.ok(svg, 'deve esserci un grafico SVG per la forma della giornata');
@@ -764,7 +764,7 @@ test('seam _rendiOggetti: senza `forma` non compare nessun grafico', () => {
   const corpo = document.createElement('div');
   const fx = bilancioFixture();
   delete fx.corpo.forma;
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [fx], null);
 
   assert.equal(corpo.querySelectorAll('svg').length, 0,
     'senza la forma della giornata non c\'è niente da disegnare');
@@ -785,7 +785,7 @@ test('seam _rendiOggetti: senza `forma` non compare nessun grafico', () => {
 test('seam _rendiOggetti: la curva del bilancio porta l\'ORA VERA di ogni barra, non la posizione nell\'array', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture({
     corpo: Object.assign({}, bilancioFixture().corpo, {
       // Le due ore sono deliberatamente NON in posizione 0/1 e distanti fra
       // loro: una resa che leggesse la posizione nell'array (0, 1, ...)
@@ -810,7 +810,7 @@ test('seam _rendiOggetti: la curva del bilancio porta l\'ORA VERA di ogni barra,
 test('seam _rendiOggetti: due punti lontani nel tempo restano distanti nel grafico -- i buchi si vedono', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture({
     corpo: Object.assign({}, bilancioFixture().corpo, {
       forma: { produzione: [puntoOra(4, 1), puntoOra(5, 1), puntoOra(18, 1)] },
     }),
@@ -842,7 +842,7 @@ test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date)
   const pad2 = (n) => (n < 10 ? '0' + n : String(n));
   const oraLocaleAttesa = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture({
     corpo: Object.assign({}, bilancioFixture().corpo, {
       forma: { produzione: [{ ora: isoConFusoEsplicito, valore: 2.5 }] },
     }),
@@ -860,7 +860,7 @@ test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date)
 test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'ora inventata)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture({
     corpo: Object.assign({}, bilancioFixture().corpo, {
       forma: { produzione: [{ ora: null, valore: 9.9 }] },
     }),
@@ -890,7 +890,7 @@ test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'or
 test('seam _rendiOggetti: la barra sta alla coordinata ASSOLUTA della sua ora, non solo in un ordine relativo alle altre (mutazione: un piazzamento spostato di un\'ora resta verde per tutti gli altri test)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture({
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture({
     corpo: Object.assign({}, bilancioFixture().corpo, {
       forma: { produzione: [puntoOra(13, 4.8)] },
     }),
@@ -925,7 +925,7 @@ test('seam _rendiOggetti: la barra sta alla coordinata ASSOLUTA della sua ora, n
 test('seam _rendiOggetti: la descrizione dell\'SVG non dichiara "gli stessi numeri" dei momenti', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   const desc = corpo.querySelector('svg desc').textContent;
   assert.doesNotMatch(desc, /stessi numeri/i,
@@ -937,7 +937,7 @@ test('seam _rendiOggetti: senza `momenti`, la descrizione dell\'SVG non rimanda 
   const corpo = document.createElement('div');
   const fx = bilancioFixture();
   delete fx.corpo.momenti;
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [fx], null);
 
   const desc = corpo.querySelector('svg desc').textContent;
   assert.doesNotMatch(desc, /momenti/, 'orfana se i momenti mancano: la frase non deve più nominarli');
@@ -946,7 +946,7 @@ test('seam _rendiOggetti: senza `momenti`, la descrizione dell\'SVG non rimanda 
 test('seam _rendiOggetti: i momenti si leggono come dati secchi (orario HH:MM, percentuale con la virgola)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   // Sul NODO giusto (rilievo 2 del brief «css-morto»: un assert sul testo di
   // TUTTA la pagina/riga può essere soddisfatto da un'altra sezione).
@@ -975,7 +975,7 @@ test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti der
   const corpo = document.createElement('div');
   const fx = bilancioFixture();
   delete fx.corpo.momenti;
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [fx], null);
 
   assert.doesNotMatch(corpo.textContent, /Prima ora di produzione/);
   assert.doesNotMatch(corpo.textContent, /Quota di autoconsumo/);
@@ -997,7 +997,7 @@ test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti der
 test('seam _rendiOggetti: ogni momento (dt+dd) è una coppia atomica, mai due celle indipendenti della griglia', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   const momenti = corpo.querySelector('.bil-momenti');
   const dts = Array.from(momenti.querySelectorAll('dt'));
@@ -1025,7 +1025,7 @@ test('seam _rendiOggetti: il totale "consumo" (settima direzione) si mostra come
   const corpo = document.createElement('div');
   const fx = bilancioFixture();
   fx.corpo.totali.consumo = { valore: 17.3, provenienza: null };
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [fx], null);
 
   assert.match(corpo.textContent, /Consumo della casa/);
   assert.match(corpo.textContent, /17,3\s*kWh/);
@@ -1035,7 +1035,7 @@ test('seam _rendiOggetti: le entità del bilancio stanno dietro un rivelatore si
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   document.body.appendChild(corpo);
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [bilancioFixture()], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
   const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
   assert.ok(btn, 'deve esserci un rivelatore per le entità del bilancio');
@@ -1056,7 +1056,7 @@ test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   const fx = bilancioFixture({ corpo: Object.assign({}, bilancioFixture().corpo, { entita: [] }) });
-  window.HirisOsservatoreRoute._rendiOggetti(corpo, [fx], null);
+  window.HirisWatcherRoute._rendiOggetti(corpo, [fx], null);
 
   const btn = Array.from(corpo.querySelectorAll('button')).find((b) => /sensori/.test(b.textContent));
   assert.equal(btn, undefined);
@@ -1064,7 +1064,7 @@ test('seam _rendiOggetti: un bilancio senza entità non mostra nessun rivelatore
 
 test('mount: un bilancio nella lista di "cosa è successo" si legge, non resta "(nessun dettaglio)"', async () => {
   const { window, document } = montaConServer({ facts: { facts: [bilancioFixture()] } });
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -1079,7 +1079,7 @@ test('mount: un bilancio nella lista di "cosa è successo" si legge, non resta "
 
 test('due cambi rapidi di giorno: la risposta più lenta e superata non deve vincere su quella giusta', async () => {
   const { window, document } = montaConServer();
-  window.HirisOsservatoreRoute.mount();
+  window.HirisWatcherRoute.mount();
   await tick(20);
 
   const risposte = {};

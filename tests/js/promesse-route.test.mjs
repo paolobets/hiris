@@ -104,7 +104,7 @@ function montaConServer(opts = {}) {
 
 async function monta(opts) {
   const { window, document, chiamate } = montaConServer(opts);
-  window.HirisPromesseRoute.mount();
+  window.HirisAgendaRoute.mount();
   await tick(20);
   return { window, document, chiamate };
 }

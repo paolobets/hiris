@@ -102,7 +102,7 @@
    server -- stessa disciplina di tree-route.js/memory-route.js. Nessuna
    POST in questa pagina: le due rotte sono GET, quindi nessun
    `X-Requested-With` da portare (non passano dal `csrf_middleware`). */
-window.HirisOsservatoreRoute = (function () {
+window.HirisWatcherRoute = (function () {
   'use strict';
 
   var TONE_PROBLEM = 'color:var(--err-ink)';

@@ -43,7 +43,7 @@
 
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati
    server -- stessa disciplina di dashboard.js/memory-route.js. */
-window.HirisAlberoRoute = (function () {
+window.HirisTreeRoute = (function () {
   'use strict';
 
   var TONE_UNKNOWN = 'color:var(--warn-ink)';

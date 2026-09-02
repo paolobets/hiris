@@ -127,7 +127,7 @@
    contenere markup (stessa disciplina di memory-route.js/agenda-route.js).
    Le tre POST portano `X-Requested-With`, o il middleware CSRF le rifiuta con
    403 (`hiris/app/api/middleware_csrf.py`). */
-window.HirisCostruzioni = (function () {
+window.HirisConstructions = (function () {
   'use strict';
 
   var OPEN_STATES = ['in_attesa', 'in_corso'];

@@ -117,8 +117,8 @@
      per il perché. */
   HirisRouter.register(/^#\/albero\/?$/, function() {
     setCrumbHere('Albero della casa');
-    if (window.HirisAlberoRoute) {
-      HirisAlberoRoute.mount();
+    if (window.HirisTreeRoute) {
+      HirisTreeRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Albero della casa</div>';
     }
@@ -127,8 +127,8 @@
      config/memory-route.js per il perché. */
   HirisRouter.register(/^#\/memoria\/?$/, function() {
     setCrumbHere('Memoria');
-    if (window.HirisMemoriaRoute) {
-      HirisMemoriaRoute.mount();
+    if (window.HirisMemoryRoute) {
+      HirisMemoryRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Memoria</div>';
     }
@@ -140,8 +140,8 @@
      endpoint. */
   HirisRouter.register(/^#\/promesse\/?$/, function() {
     setCrumbHere('Promesse');
-    if (window.HirisPromesseRoute) {
-      HirisPromesseRoute.mount();
+    if (window.HirisAgendaRoute) {
+      HirisAgendaRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Promesse</div>';
     }
@@ -152,8 +152,8 @@
      modulo di questa SPA con quella firma, pinnata dal Task 11. */
   HirisRouter.register(/^#\/costruzioni\/?$/, function() {
     setCrumbHere('Costruzioni');
-    if (window.HirisCostruzioni) {
-      HirisCostruzioni.mount(document.getElementById('route-outlet'));
+    if (window.HirisConstructions) {
+      HirisConstructions.mount(document.getElementById('route-outlet'));
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Costruzioni</div>';
     }
@@ -165,8 +165,8 @@
      l'outlet come parametro). */
   HirisRouter.register(/^#\/osservatore\/?$/, function() {
     setCrumbHere('L’osservatore');
-    if (window.HirisOsservatoreRoute) {
-      HirisOsservatoreRoute.mount();
+    if (window.HirisWatcherRoute) {
+      HirisWatcherRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">L’osservatore</div>';
     }
@@ -196,8 +196,8 @@
      `#/impostazioni`, i sette campi di ChatSettings. */
   HirisRouter.register(/^#\/impostazioni\/?$/, function() {
     setCrumbHere('Impostazioni chat');
-    if (window.HirisImpostazioniRoute) {
-      HirisImpostazioniRoute.mount();
+    if (window.HirisSettingsRoute) {
+      HirisSettingsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
         '<div class="page-title">Impostazioni chat</div>';

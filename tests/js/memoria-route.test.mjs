@@ -85,7 +85,7 @@ function bottone(document, testo, entro) {
 
 test('mount: mostra la frase e cosa HIRIS ha capito', async () => {
   const { window, document } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -98,7 +98,7 @@ test('mount: mostra la frase e cosa HIRIS ha capito', async () => {
 
 test('un\'ancora viva mostra il nome che l\'anagrafe conosce OGGI, non quello congelato', async () => {
   const { window, document } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -108,7 +108,7 @@ test('un\'ancora viva mostra il nome che l\'anagrafe conosce OGGI, non quello co
 
 test('un\'ancora sparita dall\'anagrafe (esiste: false) lo dice', async () => {
   const { window, document } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -117,7 +117,7 @@ test('un\'ancora sparita dall\'anagrafe (esiste: false) lo dice', async () => {
 
 test('«esiste: null» non si legge come un\'ancora cancellata (non ho potuto controllare vs non c\'è più)', async () => {
   const { window, document } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   // Ogni ancora e' un <li> a se': si confronta il testo di QUELLA riga, non
@@ -141,7 +141,7 @@ test('quando mostrati < totale, la pagina lo dichiara', async () => {
   const { window, document } = montaConServer({
     get: { available: true, memories: [RICORDO], total: 5, shown: 1 },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   assert.match(document.getElementById('route-outlet').textContent,
@@ -152,7 +152,7 @@ test('quando mostrati === totale, non si inventa un taglio che non c\'è', async
   const { window, document } = montaConServer({
     get: { available: true, memories: [RICORDO], total: 1, shown: 1 },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -168,7 +168,7 @@ test('nessun ricordo: lo dice, distinto da "non disponibile" e da "errore"', asy
   const { window, document } = montaConServer({
     get: { available: true, memories: [], total: 0, shown: 0 },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   assert.match(document.getElementById('route-outlet').textContent, /Nessun ricordo salvato/);
@@ -178,7 +178,7 @@ test('archivio non available: non si afferma "zero ricordi" come un fatto accert
   const { window, document } = montaConServer({
     get: { available: false, memories: [] },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -189,7 +189,7 @@ test('archivio non available: non si afferma "zero ricordi" come un fatto accert
 
 test('un errore di rete si dichiara, e offre un modo di riprovare', async () => {
   const { window, document } = montaConServer({ getRotto: true });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   const outlet = document.getElementById('route-outlet');
@@ -204,7 +204,7 @@ test('un errore di rete si dichiara, e offre un modo di riprovare', async () => 
 
 test('«Correggi» apre un modulo senza campo per il testo, e Salva manda un PATCH con solo i campi cambiati', async () => {
   const { window, document, chiamate } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -233,7 +233,7 @@ test('un PATCH rifiutato (400) mostra la ragione del server, non un errore gener
     patchStatus: 400,
     patchBody: { error: 'ancora area «veranda» non esiste nell\'anagrafe -- scartata', problemi: ['x'] },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -253,7 +253,7 @@ test('un PATCH su un ricordo sparito (404) lo dice e ricarica la lista', async (
     patchBody: { error: 'nessun ricordo con id 7' },
     getSuccessivo: { available: true, memories: [], total: 0, shown: 0 },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -271,7 +271,7 @@ test('una correzione accettata con un raddrizzamento lo dichiara, invece di tace
   const { window, document } = montaConServer({
     patchBody: { ok: true, correzioni: ['minimo (25.0) maggiore di massimo (20.0): intervallo invertito -- raddrizzato'] },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -289,7 +289,7 @@ test('una correzione accettata con un raddrizzamento lo dichiara, invece di tace
 
 test('«Dimentica» chiede conferma mostrando la frase esatta, e annullare non manda nulla', async () => {
   const { window, document, chiamate } = montaConServer();
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   let messaggioConferma = null;
@@ -309,7 +309,7 @@ test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricar
   const { window, document, chiamate } = montaConServer({
     getSuccessivo: { available: true, memories: [], total: 0, shown: 0 },
   });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   window.confirm = () => true;
@@ -326,7 +326,7 @@ test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricar
 
 test('un errore di rete sulla DELETE si vede, mai un catch vuoto', async () => {
   const { window, document } = montaConServer({ deleteRotto: true });
-  window.HirisMemoriaRoute.mount();
+  window.HirisMemoryRoute.mount();
   await tick(20);
 
   window.confirm = () => true;

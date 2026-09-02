@@ -54,7 +54,7 @@
    Sicurezza: testi via textContent / nodi DOM, mai innerHTML su dati
    server (stessa disciplina di dashboard.js/models-route.js) — il testo di un ricordo è stato scritto in chat,
    eventualmente da un modello su dettatura dell'utente. */
-window.HirisMemoriaRoute = (function () {
+window.HirisMemoryRoute = (function () {
   'use strict';
 
   var MODALITY_LABELS = {

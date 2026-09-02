@@ -83,7 +83,7 @@ function bottone(document, testo) {
 
 test('mount: il GET popola tutti e sette i campi', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   assert.equal(controllo(document, 'Nome').value, 'HIRIS');
@@ -97,7 +97,7 @@ test('mount: il GET popola tutti e sette i campi', async () => {
 
 test('mount: la pagina dichiara che il salvataggio vale subito, senza riavvio', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
   assert.match(document.getElementById('route-outlet').textContent,
     /non serve riavviare/,
@@ -106,7 +106,7 @@ test('mount: la pagina dichiara che il salvataggio vale subito, senza riavvio', 
 
 test('un GET fallito lo dice, invece di lasciare una pagina vuota', async () => {
   const { window, document } = montaConServer({ getRotto: true });
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
   const outlet = document.getElementById('route-outlet');
   assert.match(outlet.textContent, /Non è stato possibile leggere le impostazioni/);
@@ -120,7 +120,7 @@ test('un GET fallito lo dice, invece di lasciare una pagina vuota', async () => 
 
 test('«Salva» manda un PUT con X-Requested-With e i nomi dei campi del contratto', async () => {
   const { window, document, chiamate } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   controllo(document, 'Nome').value = 'Casa';
@@ -151,7 +151,7 @@ test('un esito riuscito si vede, e la pagina si riallinea a cio\' che il server 
       system_prompt: 'IL PROMPT PREDEFINITO NEL CODICE.',
     }),
   });
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   controllo(document, 'Prompt di sistema').value = '   ';
@@ -169,7 +169,7 @@ test('un 400 del server si vede, col messaggio che dice quale campo non va', asy
     putStatus: 400,
     putBody: { error: '«thinking_budget» non può essere negativo (ricevuto -1).', field: 'thinking_budget' },
   });
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   controllo(document, 'Budget di ragionamento (token)').value = '-1';
@@ -185,7 +185,7 @@ test('un 400 del server si vede, col messaggio che dice quale campo non va', asy
 
 test('un errore di rete sul PUT si vede: mai un catch vuoto', async () => {
   const { window, document } = montaConServer({ putRotto: true });
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   bottone(document, 'Salva').dispatchEvent(new window.Event('click', { bubbles: true }));
@@ -202,7 +202,7 @@ test('un errore di rete sul PUT si vede: mai un catch vuoto', async () => {
 
 test('«Ripristina il prompt predefinito» rimette il default che arriva dal server', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   const prompt = controllo(document, 'Prompt di sistema');
@@ -226,7 +226,7 @@ test('«Ripristina il prompt predefinito» rimette il default che arriva dal ser
 
 test('il modello non si sceglie più qui, e la pagina dice dove', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
   const outlet = document.getElementById('route-outlet');
   /* Si cerca il TITOLO di un campo, con la stessa regola di `controllo()`, non
@@ -249,7 +249,7 @@ test('il modello non si sceglie più qui, e la pagina dice dove', async () => {
 
 test('mount: la pagina non chiede più l\'elenco dei modelli', async () => {
   const { window, chiamate } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
   assert.deepEqual(chiamate.map((c) => c.url), ['api/chat-settings'],
     'questa pagina non ha piu\' nessuna ragione di conoscere i provider');
@@ -262,7 +262,7 @@ test('mount: la pagina non chiede più l\'elenco dei modelli', async () => {
 
 test('la descrizione di thinking_budget dice DOVE vale, e non promette effetto ovunque', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -284,7 +284,7 @@ test('la descrizione di thinking_budget dice DOVE vale, e non promette effetto o
 
 test('la descrizione dei giorni di conservazione dichiara ENTRAMBI i lavori, e cosa fa 0', async () => {
   const { window, document } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -300,7 +300,7 @@ test('la descrizione dei giorni di conservazione dichiara ENTRAMBI i lavori, e c
 
 test('salvare 0 giorni di conservazione manda davvero 0, non il valore corrente', async () => {
   const { window, document, chiamate } = montaConServer();
-  window.HirisImpostazioniRoute.mount();
+  window.HirisSettingsRoute.mount();
   await tick(20);
 
   controllo(document, 'Giorni di conservazione').value = '0';

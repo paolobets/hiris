@@ -82,9 +82,9 @@ function avvia() {
 test('main.js non dereferenzia nessun modulo di route al parse: senza NESSUNO di loro, tutte le route si registrano lo stesso', () => {
   const { window } = avvia();
 
-  for (const globale of ['HirisDashboard', 'HirisAlberoRoute', 'HirisMemoriaRoute', 'HirisPromesseRoute',
-                         'HirisCostruzioni', 'HirisOsservatoreRoute', 'HirisUsageRoute', 'HirisModelsRoute',
-                         'HirisImpostazioniRoute']) {
+  for (const globale of ['HirisDashboard', 'HirisTreeRoute', 'HirisMemoryRoute', 'HirisAgendaRoute',
+                         'HirisConstructions', 'HirisWatcherRoute', 'HirisUsageRoute', 'HirisModelsRoute',
+                         'HirisSettingsRoute']) {
     assert.equal(typeof window[globale], 'undefined',
       `precondizione: ${globale} non deve essere caricato in questo test`);
   }

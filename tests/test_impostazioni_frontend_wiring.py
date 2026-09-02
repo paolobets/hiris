@@ -90,7 +90,7 @@ def test_la_voce_di_menu_esiste_e_punta_alla_route():
 def test_main_registra_la_route_e_monta_il_modulo():
     assert re.search(r"HirisRouter\.register\(/\^#\\/impostazioni", MAIN), \
         "la route #/impostazioni deve essere registrata in main.js"
-    assert "HirisImpostazioniRoute.mount()" in MAIN
+    assert "HirisSettingsRoute.mount()" in MAIN
 
 
 def test_updatenavactive_conosce_impostazioni_e_non_ha_piu_il_ramo_orfano():

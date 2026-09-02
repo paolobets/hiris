@@ -57,7 +57,7 @@
    L'`avviso` della porta (`azione/porta.py`) non si appiattisce MAI in
    «niente e' cambiato»: e' un fatto dichiarato su cio' che HIRIS ha potuto
    vedere, e si mostra verbatim. */
-window.HirisPromesseRoute = (function () {
+window.HirisAgendaRoute = (function () {
   'use strict';
 
   /* Vocabolario dell'interfaccia (guida di disegno §0), diverso dai nomi
