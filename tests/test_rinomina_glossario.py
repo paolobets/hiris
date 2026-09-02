@@ -32,12 +32,12 @@ def test_gli_omonimi_non_finiscono_nella_mappa_semplice(g):
     rinominare meta' delle occorrenze col significato dell'altra."""
     assert "ancora" not in g.mappa
     assert "piano" not in g.mappa
-    assert g.omonimi["ancora"]["memoria"] == "tether"
+    assert g.omonimi["ancora"]["memory"] == "tether"
     assert g.omonimi["ancora"]["usage"] == "anchor"
 
 
 def test_per_risolve_l_omonimo_col_sottosistema(g):
-    assert g.per("ancora", "memoria") == "tether"
+    assert g.per("ancora", "memory") == "tether"
     assert g.per("ancora", "usage") == "anchor"
     assert g.per("adesso", "usage") == "now"
 
@@ -78,12 +78,12 @@ def test_spezza_tiene_il_trattino_basso_iniziale_fuori_dai_pezzi():
 
 
 def test_una_parola_sola_si_classifica_e_si_applica(g):
-    assert rinomina.classifica("archivio", g, "memoria") == "store"
+    assert rinomina.classifica("archivio", g, "memory") == "store"
 
 
 def test_una_parola_sola_maiuscola_diventa_PASCALCASE(g):
     """`Archivio` -> `Store`: la classe resta una classe."""
-    assert rinomina.classifica("Archivio", g, "memoria") == "Store"
+    assert rinomina.classifica("Archivio", g, "memory") == "Store"
 
 
 def test_una_costante_TUTTA_MAIUSCOLA_resta_TUTTA_MAIUSCOLA(g):
@@ -103,7 +103,7 @@ def test_un_prefisso_privato_si_conserva(g):
     dell'originale va conservata, non solo le maiuscole) -- trovato in
     produzione: `hiris/app/usage/store.py`, `_fuso` era diventato
     `timezone` invece di `_timezone`."""
-    assert rinomina.classifica("_archivio", g, "memoria") == "_store"
+    assert rinomina.classifica("_archivio", g, "memory") == "_store"
     assert rinomina.classifica("_fuso", g, "usage") == "_timezone"
 
 
@@ -117,7 +117,7 @@ def test_un_trattino_basso_finale_si_conserva(g):
     `gamba`) sarebbe diventato `aspect`, non `aspect_`."""
     assert rinomina.classifica("tipo_", g, "casa") == "type_"
     assert rinomina.classifica("gamba_", g, "mind") == "aspect_"
-    assert rinomina.classifica("_archivio_", g, "memoria") == "_store_"
+    assert rinomina.classifica("_archivio_", g, "memory") == "_store_"
 
 
 def test_un_composto_si_classifica_come_PROPOSTA_non_come_nome(g):
@@ -416,8 +416,8 @@ def test_un_omonimo_dichiarato_due_volte_in_disaccordo_ferma_la_lettura(tmp_path
 
 | italiano | che cosa fa | inglese | prova del lettore nuovo |
 |---|---|---|---|
-| prova (memoria) | placeholder uno | alpha | ✓ arriva |
-| prova (memoria) | placeholder due | beta | ✓ arriva |
+| prova (memory) | placeholder uno | alpha | ✓ arriva |
+| prova (memory) | placeholder due | beta | ✓ arriva |
 
 ## Le parole ordinarie
 

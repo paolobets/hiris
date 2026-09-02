@@ -5,7 +5,7 @@ funzioni qui sotto danno il DETTAGLIO, quando il modello (o l'utente dalla
 pagina) lo chiede esplicitamente:
 
 - `cerca(indice, testo)` -- trovare qualcosa per nome o alias. E' un guscio
-  sottile attorno a `Lookup.find()` (memoria/resolver.py): il
+  sottile attorno a `Lookup.find()` (memory/resolver.py): il
   contratto -- `candidati` sempre una lista, `ambiguo` dichiarato -- e' gia'
   li', e riscriverlo qui vorrebbe dire poterlo rompere in due punti invece
   che in uno. Due voci che si normalizzano uguali (due «Bagno» su piani
@@ -130,7 +130,7 @@ def search(lookup, text: str) -> list[dict]:
     - `nome_dedotto`, presente (col nome dedotto, come STRINGA -- mai un
       booleano: I2, review finale) quando il nome non e' dichiarato nel
       registro ma ricavato dal `friendly_name` dello specchio dello stato
-      (vedi `memoria/resolver.costruisci_indice`). Un nome dedotto e'
+      (vedi `memory/resolver.costruisci_indice`). Un nome dedotto e'
       un fatto diverso da un nome scelto dall'utente e non va spacciato per
       tale -- stessa forma di `nome_dedotto` in `guarda()`/`_view_entity`;
     - `nascosta` (solo per le entita', e solo quando e' vera), fetta
@@ -172,12 +172,12 @@ def search(lookup, text: str) -> list[dict]:
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
     """I ricordi di `ricordi` che portano un'ancora (tipo, riferimento)
     uguale a quella cercata -- stessa chiave di `MemoryStore.per_tether`
-    (memoria/archivio.py), ma su una lista gia' in memoria: `guarda` e'
+    (memory/store.py), ma su una lista gia' in memoria: `guarda` e'
     pura, non interroga l'archivio da sola.
 
     E' il senso delle ancore: «quali preferenze riguardano questa stanza».
     Un tipo come "automazione", "script" o "ricordo" -- fuori dal
-    vocabolario delle ancore (memoria/interpretazione.py: area, entita,
+    vocabolario delle ancore (memory/interpretation.py: area, entita,
     dispositivo) -- semplicemente non trova mai nulla qui: non e' un
     errore, e' un tipo di "cosa" per cui nessun ricordo si ancora.
     """
@@ -358,7 +358,7 @@ def _add_labels(detail: dict, entry: dict, label_lookup: dict[str, str]) -> dict
     solo perche' l'id serve, non al posto del nome. L'unione la fa
     `anagrafe.label_names`, la stessa che usa l'indice di `cerca` --
     che da T8 conosce anche le etichette stesse come candidati
-    (`memoria/resolver.py::costruisci_indice`), per chi sa solo il nome
+    (`memory/resolver.py::costruisci_indice`), per chi sa solo il nome
     e non ha ancora nessuna cosa che la porti.
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
@@ -421,7 +421,7 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     del Task 3 (review indipendente, confermata), perche' allora `cerca`
     non indicizzava automazioni/script: suggerire "chiama cerca" sarebbe
     stato un invito a una strada cieca. Da quando `cerca` li indicizza
-    (`memoria/resolver.py::costruisci_indice`), quella ragione non
+    (`memory/resolver.py::costruisci_indice`), quella ragione non
     vale piu', e il confine si sposta: `_view_behavior` chiama
     questa funzione come gli altri tre rami, invece di duplicarne la
     logica con un `file_non_letti` scambiato per `unavailable`.
@@ -756,7 +756,7 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
     da entrambe le porte, e' l'unico modo per cui questo non possa ripetersi
     con una terza porta futura.
 
-    Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola 1): questa
+    Il testo ARCHIVIATO non cambia (`memory/store.py`, regola 1): questa
     e' una copia, non una riscrittura -- vedi il docstring di `guarda()`."""
     return [dict(r, testo=sanitize_text(r["testo"])) if "testo" in r else r
            for r in (memories or [])]
@@ -812,7 +812,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     Task 3, review indipendente): `cerca` non li indicizzava ancora, e
     suggerirlo sarebbe stato un invito a una strada che non portava da
     nessuna parte. Da quando `cerca` li indicizza
-    (`memoria/resolver.py::costruisci_indice`), quella ragione e'
+    (`memory/resolver.py::costruisci_indice`), quella ragione e'
     caduta, e il confine si e' spostato con lei: vedi il docstring di
     `_not_found_detail`, che ora e' anche la porta di
     `_view_behavior`.
@@ -889,7 +889,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     un'automazione/script (`_view_behavior`). Un punto solo, non uno
     per ramo: la fondamenta 3 (consistenza fra porte) e' anche questo -- lo
     stesso ricordo non deve poter uscire filtrato da una via e grezzo da
-    un'altra. Il testo ARCHIVIATO non cambia (`memoria/archivio.py`, regola
+    un'altra. Il testo ARCHIVIATO non cambia (`memory/store.py`, regola
     1): questa e' una copia, non una riscrittura.
     """
     memories = sanitized_memories(memories)

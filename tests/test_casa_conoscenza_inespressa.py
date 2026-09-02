@@ -24,8 +24,8 @@ import pytest
 from hiris.app.casa.anagrafe import actual_unit
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import view
-from hiris.app.memoria.interpretazione import deduci_unit
-from hiris.app.memoria.resolver import costruisci_indice
+from hiris.app.memory.interpretation import deduci_unit
+from hiris.app.memory.resolver import costruisci_indice
 
 _REGISTRI = {
     # `labels` porta i label_id (slug), MAI i nomi: e' cosi' che Home Assistant
@@ -214,7 +214,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     from aiohttp import web
 
     from hiris.app.api.handlers_memory import handle_patch_memory
-    from hiris.app.memoria.archivio import MemoryStore
+    from hiris.app.memory.store import MemoryStore
 
     casa_archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
     casa_archivio.replace(_REGISTRI, [])

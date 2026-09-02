@@ -144,7 +144,7 @@ delle parole: lo chiede.
 3. **Rispetta le parole di confine.** Le righe che il glossario dichiara di Home Assistant o dei
    provider — `entity`, `state`, `unit`, `domain`, `model`, `tool`, `token` — sono in un elenco
    intoccabile, letto dal glossario e non scritto a mano nello strumento.
-4. **Risolve gli omonimi per sottosistema.** `ancora` è `tether` in `memoria/` e `anchor` in
+4. **Risolve gli omonimi per sottosistema.** `ancora` è `tether` in `memory/` e `anchor` in
    `consumi/`; `piano` è `floor` in `casa/` e `subscription` altrove. Lo strumento lo sa **solo
    perché gli si dice dove sta lavorando**, ed è il motivo per cui non esiste una modalità
    «rinomina tutto».
@@ -162,7 +162,7 @@ risparmiare tempo.
 |---|---|---|---|
 | 1 | lo strumento + cancellare `brain/` e `history/` | — | nessuna rinomina ancora |
 | 2 | `consumi/` | 3 file, 462 righe | **il più piccolo: prova lo strumento da capo a fondo** |
-| 3 | `schedulatore/` + `memoria/` | 10 file, 2.083 righe | → **rilascio** |
+| 3 | `schedulatore/` + `memory/` | 10 file, 2.083 righe | → **rilascio** |
 | 4 | `mind/` | 5 file, 1.624 righe | |
 | 5 | `azione/` | 10 file, 3.052 righe | |
 | 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |

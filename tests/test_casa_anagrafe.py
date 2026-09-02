@@ -258,7 +258,7 @@ def test_una_riga_di_registro_senza_id_non_fa_saltare_l_albero():
     `d["id"]` senza guardia: una riga di registro malformata sollevava
     `KeyError` e portava via l'INTERO albero della casa, per un oggetto che
     nessuna entita' avrebbe comunque potuto nominare. La gemella in
-    `memoria/interpretazione.py` la guardia ce l'aveva gia' -- ed e' il
+    `memory/interpretation.py` la guardia ce l'aveva gia' -- ed e' il
     genere di divergenza che due nomi diversi per lo stesso fatto
     (`device_area` contro `device_area`) tengono nascosta."""
     casa = {"piani": [],

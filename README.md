@@ -171,7 +171,7 @@ a summary nobody reads.
 Tell the chat something about the house and it is actually stored — with its
 strength (preference, prohibition, fact, rule), an optional value or range,
 optional conditions, and anchors to the areas/entities/devices it refers to
-(`hiris/app/memoria/archivio.py:86`). An anchor that does not exist in the house
+(`hiris/app/memory/store.py:86`). An anchor that does not exist in the house
 is not written, and the response says which one was dropped and why — the
 memory itself is still saved in full.
 

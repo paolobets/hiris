@@ -5,8 +5,8 @@ Ogni test qui sotto esiste per una mutazione plausibile dichiarata nel brief
 (`.superpowers/sdd/conoscenza/task-B7-brief.md`, sezione "Come si prova che i
 test valgono"): il commento sopra ogni test dice quale.
 """
-from hiris.app.memoria.cache_indice import LookupCache
-from hiris.app.memoria.resolver import Lookup
+from hiris.app.memory.lookup_cache import LookupCache
+from hiris.app.memory.resolver import Lookup
 
 
 def _casa(entita=()):
@@ -25,7 +25,7 @@ def _entita(id_, nome=None):
 
 def test_due_richieste_identiche_costruiscono_un_solo_indice(monkeypatch):
     chiamate = []
-    from hiris.app.memoria import cache_indice as modulo
+    from hiris.app.memory import lookup_cache as modulo
 
     originale = modulo.costruisci_indice
 
@@ -48,7 +48,7 @@ def test_due_richieste_identiche_costruiscono_un_solo_indice(monkeypatch):
 
 def test_cambia_aggiornata_il_ricostruisce(monkeypatch):
     chiamate = []
-    from hiris.app.memoria import cache_indice as modulo
+    from hiris.app.memory import lookup_cache as modulo
     originale = modulo.costruisci_indice
 
     def spia(casa, nomi=None, comportamento=None):
@@ -113,7 +113,7 @@ def test_non_e_eterna_cambia_e_si_accorge():
 
 def test_cambia_comportamento_letto_il_ricostruisce(monkeypatch):
     chiamate = []
-    from hiris.app.memoria import cache_indice as modulo
+    from hiris.app.memory import lookup_cache as modulo
     originale = modulo.costruisci_indice
 
     def spia(casa, nomi=None, comportamento=None):
@@ -186,7 +186,7 @@ def test_cerca_e_ricorda_non_condividono_lo_stesso_indice():
 
 def test_alternare_cerca_e_ricorda_non_fa_rimbalzare_la_cache(monkeypatch):
     chiamate = []
-    from hiris.app.memoria import cache_indice as modulo
+    from hiris.app.memory import lookup_cache as modulo
     originale = modulo.costruisci_indice
 
     def spia(casa, nomi=None, comportamento=None):

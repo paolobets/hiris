@@ -1,6 +1,6 @@
 import pytest
 
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 
 _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa"
 

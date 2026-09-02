@@ -168,7 +168,7 @@ class LookupCache:
         letto, passato dal chiamante (`_search`, che lo legge comunque per
         indicizzarlo). Solo `_remember` non lo passa affatto (`None`, il
         comportamento non e' un tipo di ancora -- vedi
-        `memoria/interpretazione.VOCABULARY`), e su quello spazio la sua
+        `memory/interpretation.VOCABULARY`), e su quello spazio la sua
         assenza dalla chiave non cambia nulla: non essendo mai indicizzato,
         non puo' mai andare stantio."""
         key = (aggiornata_il, behavior_loaded_at, _fingerprint_nomi(nomi_di_ripiego))

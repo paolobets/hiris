@@ -82,7 +82,7 @@ async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
     """La prova che conta: dall'anagrafe fino a `cerca`. Senza, l'alias
     sarebbe letto e salvato e non porterebbe a niente -- la fondamenta 4."""
     from hiris.app.casa.archivio import HomeSpaceStore
-    from hiris.app.memoria.resolver import costruisci_indice
+    from hiris.app.memory.resolver import costruisci_indice
 
     a = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
@@ -136,7 +136,7 @@ def test_l_indice_sopravvive_a_un_archivio_gia_avvelenato():
     un'installazione gia' avvelenata tiene `[null]` in archivio finche'
     l'anagrafe non si ricostruisce. Un indice che muore sul dato vecchio
     lascia `cerca` e `remember` rotti fino al riavvio successivo."""
-    from hiris.app.memoria.resolver import costruisci_indice
+    from hiris.app.memory.resolver import costruisci_indice
 
     casa = {"entita": [
         {"id": "light.salotto", "nome": "Piantana", "alias": [None, "nonna"]},

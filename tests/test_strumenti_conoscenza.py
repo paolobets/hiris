@@ -7,7 +7,7 @@ from hiris.app.casa.strumenti import (
     SEARCH_TOOL_DEF,
     ToolDispatcher,
 )
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from tests.test_nucleo import _CASA, _COMPORTAMENTO
 
 # _CASA/_COMPORTAMENTO sono di tests/test_nucleo.py, importati invece di
@@ -799,9 +799,9 @@ async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
 
 @pytest.mark.asyncio
 async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
-    """T7 (R2), regressione da non fare: `_ARCHIVI` (memoria/resolver.py)
+    """T7 (R2), regressione da non fare: `_ARCHIVI` (memory/resolver.py)
     ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
-    `remember` possa mai scrivere (`memoria/interpretazione.VOCABULARY`) --
+    `remember` possa mai scrivere (`memory/interpretation.VOCABULARY`) --
     la memoria continua a conoscere solo area/entita'/dispositivo. Se
     `_TETHER_TYPES` (casa/strumenti.py) fosse rimasto derivato da
     `STORE_KEY_PER_TYPE` invece che da `VOCABULARY["ancore"]`,
@@ -849,14 +849,14 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 # numero uno di questa campagna e' un test che non puo' fallire.
 
 import hiris.app.casa.strumenti as _modulo_strumenti
-import hiris.app.memoria.cache_indice as _cache_indice_modulo
-from hiris.app.memoria.cache_indice import LookupCache
+import hiris.app.memory.lookup_cache as _lookup_cache_modulo
+from hiris.app.memory.lookup_cache import LookupCache
 
 
 def _conta_costruzioni(monkeypatch):
     """Spia su `costruisci_indice`, in ENTRAMBI i posti in cui e' importato
     per nome (`strumenti.py`, per il ramo senza cache, e
-    `memoria/cache_indice.py`, per il ramo con cache -- un monkeypatch su un
+    `memory/lookup_cache.py`, per il ramo con cache -- un monkeypatch su un
     solo modulo non vedrebbe le chiamate che passano dall'altro): conta le
     costruzioni vere, non i risultati di `search` -- la mutazione 'non usare
     mai la cache anche quando c'e'' lascia i risultati identici e solo un
@@ -869,7 +869,7 @@ def _conta_costruzioni(monkeypatch):
         return originale(casa, nomi, comportamento)
 
     monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
-    monkeypatch.setattr(_cache_indice_modulo, "costruisci_indice", spia)
+    monkeypatch.setattr(_lookup_cache_modulo, "costruisci_indice", spia)
     return chiamate
 
 

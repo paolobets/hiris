@@ -1,7 +1,7 @@
 import pytest
 
 from hiris.app.casa.domande import search, view
-from hiris.app.memoria.resolver import costruisci_indice
+from hiris.app.memory.resolver import costruisci_indice
 from tests.test_nucleo import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 # _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_nucleo.py,

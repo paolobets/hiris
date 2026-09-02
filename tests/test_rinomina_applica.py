@@ -16,7 +16,7 @@ def g():
 
 
 def test_rinomina_un_identificatore(g):
-    fuori, _ = rinomina.riscrivi("archivio = 1\n", g, "memoria")
+    fuori, _ = rinomina.riscrivi("archivio = 1\n", g, "memory")
     assert fuori == "store = 1\n"
 
 
@@ -24,7 +24,7 @@ def test_NON_tocca_i_commenti(g):
     """IL CONFINE DEL MANDATO. «Solo ed esclusivamente cio' che e' codice»:
     il commento resta identico, parola per parola."""
     dentro = "# l'archivio dei ricordi\narchivio = 1\n"
-    fuori, _ = rinomina.riscrivi(dentro, g, "memoria")
+    fuori, _ = rinomina.riscrivi(dentro, g, "memory")
     assert fuori == "# l'archivio dei ricordi\nstore = 1\n"
 
 
@@ -33,7 +33,7 @@ def test_NON_tocca_le_stringhe(g):
     E la stessa guardia protegge le query SQL: i nomi delle tabelle sono in
     stringhe, e il database e' fuori perimetro."""
     dentro = 'msg = "l\'archivio e\' pieno"\narchivio = 1\n'
-    fuori, _ = rinomina.riscrivi(dentro, g, "memoria")
+    fuori, _ = rinomina.riscrivi(dentro, g, "memory")
     assert '"l\'archivio e\' pieno"' in fuori
     assert "store = 1" in fuori
 
@@ -42,7 +42,7 @@ def test_NON_tocca_le_query_sql(g):
     """La tabella `ricordi` non si tocca: il database e' fuori perimetro, e
     lo e' per costruzione perche' le query sono stringhe."""
     dentro = 'q = "SELECT * FROM ricordi"\nricordo = 1\n'
-    fuori, _ = rinomina.riscrivi(dentro, g, "memoria")
+    fuori, _ = rinomina.riscrivi(dentro, g, "memory")
     assert 'FROM ricordi' in fuori
 
 
@@ -56,13 +56,13 @@ def test_i_composti_escono_come_proposte_e_il_file_NON_cambia(g):
 def test_e_idempotente(g):
     """Rigirarlo non cambia nulla. Senza questa proprieta' non si potrebbe
     ri-applicare dopo una correzione senza rileggere tutto da capo."""
-    uno, _ = rinomina.riscrivi("archivio = 1\n", g, "memoria")
-    due, _ = rinomina.riscrivi(uno, g, "memoria")
+    uno, _ = rinomina.riscrivi("archivio = 1\n", g, "memory")
+    due, _ = rinomina.riscrivi(uno, g, "memory")
     assert uno == due
 
 
 def test_l_omonimo_segue_il_sottosistema(g):
-    assert rinomina.riscrivi("ancora = 1\n", g, "memoria")[0] == "tether = 1\n"
+    assert rinomina.riscrivi("ancora = 1\n", g, "memory")[0] == "tether = 1\n"
     assert rinomina.riscrivi("ancora = 1\n", g, "usage")[0] == "anchor = 1\n"
 
 
@@ -97,7 +97,7 @@ def test_un_file_che_non_si_puo_leggere_non_ferma_il_giro(g, tmp_path):
     sottosistema a meta'."""
     (tmp_path / "rotto.py").write_text("def (\n", encoding="utf-8")
     (tmp_path / "sano.py").write_text("archivio = 1\n", encoding="utf-8")
-    rinomina.applica(tmp_path, "memoria")
+    rinomina.applica(tmp_path, "memory")
     assert (tmp_path / "sano.py").read_text(encoding="utf-8") == "store = 1\n"
     assert (tmp_path / "rotto.py").read_text(encoding="utf-8") == "def (\n"
 
@@ -153,7 +153,7 @@ def test_la_guardia_e_un_allowlist_non_una_blocklist(g, prefisso, tipo_atteso):
     assert getattr(tokenize, tipo_atteso) in generati, (
         f"il caso di prova non genera {tipo_atteso}: la proprieta' non e' verificata"
     )
-    fuori, _ = rinomina.riscrivi(dentro, g, "memoria")
+    fuori, _ = rinomina.riscrivi(dentro, g, "memory")
     assert fuori == dentro
 
 
@@ -172,7 +172,7 @@ def test_NON_cambia_i_fine_riga_LF(g, tmp_path):
     cogliere."""
     f = tmp_path / "lf.py"
     f.write_bytes(b"archivio = 1\nx = 2\n")
-    rinomina.applica(tmp_path, "memoria")
+    rinomina.applica(tmp_path, "memory")
     dopo = f.read_bytes()
     assert b"\r\n" not in dopo
     assert dopo == b"store = 1\nx = 2\n"
@@ -192,7 +192,7 @@ def test_NON_cambia_i_fine_riga_CRLF(g, tmp_path):
     LF non ha nulla da normalizzare in lettura), ma fa fallire questo."""
     f = tmp_path / "crlf.py"
     f.write_bytes(b"archivio = 1\r\nx = 2\r\n")
-    rinomina.applica(tmp_path, "memoria")
+    rinomina.applica(tmp_path, "memory")
     dopo = f.read_bytes()
     assert dopo == b"store = 1\r\nx = 2\r\n"
 
@@ -206,7 +206,7 @@ def test_applica_su_un_file_singolo(g, tmp_path):
     successo, sul difetto peggiore che lo strumento possa avere."""
     f = tmp_path / "solo.py"
     f.write_text("archivio = 1\n", encoding="utf-8")
-    rinomina.applica(f, "memoria")
+    rinomina.applica(f, "memory")
     assert f.read_text(encoding="utf-8") == "store = 1\n"
 
 
@@ -569,7 +569,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
     `_verifica_idempotenza`): quel controllo dice CHE un file diverge, non
     COSA -- e un'eccezione a grana di file puo' nascondere un secondo
     debito nato dopo, nello stesso file, per una ragione diversa (misurato
-    dal vivo: `memoria/resolver.py::_compila` aveva sia `inizio` (residuo
+    dal vivo: `memory/resolver.py::_compila` aveva sia `inizio` (residuo
     dichiarato) sia `prefisso`/`suffisso` -- una meta' di quella seconda
     coppia era stata decisa nel glossario da questo stesso lotto per
     `casa/strumenti.py`, e la guardia a grana di file non l'avrebbe vista
@@ -612,7 +612,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # per intero (~30 identificatori italiani restano li', fuori dal
 # perimetro): chiudere le coppie (`fine -> end`,
 # `inizio_originale`/`fine_originale`, `candidati`) e' un giro a se',
-# rimandato al lotto che convertira' `memoria/` per intero -- e servirebbe
+# rimandato al lotto che convertira' `memory/` per intero -- e servirebbe
 # comunque a poco: due nomi corretti non avvicinano il file a
 # "convertito".
 #
@@ -687,9 +687,9 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # **Il residuo e' USCITO col lotto dei moduli di radice**, che ha
     # convertito i due runner nello stesso commit: qui resta la riga senza
     # eccezioni, e il canarino a grana fine e' stato tolto invece che
-    # aggiornato -- e' la disciplina scritta per `memoria/resolver.py`.
+    # aggiornato -- e' la disciplina scritta per `memory/resolver.py`.
     ("backends", "backends", frozenset()),
-    ("memoria", "memoria", frozenset({Path("resolver.py")})),
+    ("memory", "memory", frozenset({Path("resolver.py")})),
     ("usage", "usage", frozenset()),
     ("mind", "mind", frozenset()),
     ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
@@ -732,7 +732,7 @@ def test_gli_ambiti_chiusi_restano_idempotenti(tmp_path):
 
 
 def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
-    """La grana FINE del residuo noto di `memoria/resolver.py` (sopra, in
+    """La grana FINE del residuo noto di `memory/resolver.py` (sopra, in
     `_SORVEGLIATI`): non basta sapere che il file diverge, serve sapere
     COSA cambia -- l'eccezione a grana di file l'ha gia' nascosto una volta
     (vedi `_sostituzioni_di_identificatori`). Se domani un'altra parola di
@@ -741,15 +741,15 @@ def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
     import shutil
 
     from _comune import ROOT
-    base = ROOT / "hiris" / "app" / "memoria" / "resolver.py"
+    base = ROOT / "hiris" / "app" / "memory" / "resolver.py"
     copia = tmp_path / "resolver.py"
     shutil.copy(base, copia)
     prima = copia.read_text(encoding="utf-8")
-    rinomina.applica(copia, "memoria", scrivi=True)
+    rinomina.applica(copia, "memory", scrivi=True)
     dopo = copia.read_text(encoding="utf-8")
     sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
     assert sostituzioni == {("inizio", "start")}, (
-        f"memoria/resolver.py diverge su {sostituzioni}, atteso solo "
+        f"memory/resolver.py diverge su {sostituzioni}, atteso solo "
         "{('inizio', 'start')} -- un nuovo nome e' comparso: decidilo "
         "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
         "un'eccezione a grana di file")
@@ -760,7 +760,7 @@ def test_il_residuo_di_casa_strumenti_e_solo_tempo_historian(tmp_path):
     per il residuo di `casa/strumenti.py` in `_SORVEGLIATI`: la stessa cecita'
     a grana di file (un secondo debito italiano nello stesso file non
     l'avrebbe fatta arrossire) e' stata trovata dal vivo dal revisore --
-    la lezione del gemello di `memoria/` non era stata replicata qui."""
+    la lezione del gemello di `memory/` non era stata replicata qui."""
     import shutil
 
     from _comune import ROOT
@@ -875,7 +875,7 @@ def test_la_verifica_di_idempotenza_arrossisce_se_qualcosa_cambia(tmp_path):
     modulo = tmp_path / "sorgente.py"
     modulo.write_text("archivio = 1\n", encoding="utf-8")
     with pytest.raises(AssertionError):
-        _verifica_idempotenza(modulo, "memoria", tmp_path / "copia.py")
+        _verifica_idempotenza(modulo, "memory", tmp_path / "copia.py")
 
 
 def test_un_residuo_noto_dimenticato_arrossisce_anche_lui(tmp_path):
@@ -887,7 +887,7 @@ def test_un_residuo_noto_dimenticato_arrossisce_anche_lui(tmp_path):
     modulo = tmp_path / "sorgente.py"
     modulo.write_text("x = 1\n", encoding="utf-8")  # niente da rinominare
     with pytest.raises(AssertionError):
-        _verifica_idempotenza(modulo, "memoria", tmp_path / "copia.py",
+        _verifica_idempotenza(modulo, "memory", tmp_path / "copia.py",
                               residui_noti=frozenset({Path("sorgente.py")}))
 
 
@@ -1054,9 +1054,9 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 # qualificata, e la mutezza e' la risposta giusta. **Questo insieme non cala.**
 _MUTE_VOLUTE = {
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
-    # per intero o dentro residui gia' dichiarati (`memoria/resolver.py`,
+    # per intero o dentro residui gia' dichiarati (`memory/resolver.py`,
     # `schedulatore/turno.py::_senza_conclusione`).
-    ("senza", "api"), ("senza", "azione"), ("senza", "memoria"),
+    ("senza", "api"), ("senza", "azione"), ("senza", "memory"),
     ("senza", "schedulatore"),
     # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
@@ -1081,7 +1081,7 @@ _MUTE_VOLUTE = {
     # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
     # stanno in una riga sola, e non sono state decise per quell'ambito.
     ("loro", "azione"), ("nostro", "azione"),
-    # `verifica` e' qualificata `(azione)`/`(memoria)`; in `casa/strumenti.py`
+    # `verifica` e' qualificata `(azione)`/`(memory)`; in `casa/strumenti.py`
     # c'e' un'occorrenza sola, dentro il residuo dichiarato di quel file.
     ("verifica", "casa"),
 }

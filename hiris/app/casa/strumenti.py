@@ -112,7 +112,7 @@ chiamava mai `MemoryStore.remember()`. Qui sotto, `remember` salva davvero
 Le due funzioni pure che fanno il lavoro vero -- `search()` e `view()` --
 vivono gia' in `domande.py`, e non si riscrivono qui: `ToolDispatcher`
 e' solo il punto che le collega agli archivi (`casa/archivio.py`,
-`memoria/archivio.py`) e all'indice (`memoria/resolver.py`), nella
+`memory/store.py`) e all'indice (`memory/resolver.py`), nella
 forma che il modello puo' chiamare.
 
 `dispatch()` non solleva MAI: restituisce sempre un dizionario, e in caso di
@@ -127,10 +127,10 @@ import inspect
 import logging
 from typing import Any, ClassVar
 
-from ..memoria.archivio import MemoryStore
-from ..memoria.cache_indice import LookupCache
-from ..memoria.interpretazione import VOCABULARY, validate
-from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..memory.interpretation import VOCABULARY, validate
+from ..memory.lookup_cache import LookupCache
+from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..memory.store import MemoryStore
 from ..proxy.entity_cache import inventory_is_readable
 from . import tempo
 from .anagrafe import live_mirror
@@ -142,8 +142,8 @@ from .domande import search as _search_candidates
 from .domande import view as _view_detail
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
-# `memoria/interpretazione.VOCABULARY["ancore"]` -- la fonte vera, non
-# `STORE_KEY_PER_TYPE`. Ordinati (come fa gia' `interpretazione.py`
+# `memory/interpretation.VOCABULARY["ancore"]` -- la fonte vera, non
+# `STORE_KEY_PER_TYPE`. Ordinati (come fa gia' `interpretation.py`
 # per il proprio messaggio d'errore) perche' un frozenset non promette un
 # ordine stabile fra due letture, ed e' l'ordine in cui `fetch` cerca
 # quando il modello non specifica un `tipo` -- vedi `_recall`.
@@ -936,7 +936,7 @@ class ToolDispatcher:
         # (contratto della classe), e senza porta `execute` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
         self._actuator = actuator
-        # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
+        # Task B7: la cache del Lookup (`memory/lookup_cache.py`), di vita
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
@@ -1130,7 +1130,7 @@ class ToolDispatcher:
         # Task B7: con la cache, l'indice si RIUSA finche' l'anagrafe
         # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
         # T7) e i nomi vivi di ripiego non cambiano -- vedi
-        # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
+        # `memory/lookup_cache.py` per la chiave. Spazio "cerca", diverso da
         # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_remember` no,
         # e sulla stessa casa i due indici hanno contenuti diversi.
         if self._lookup_cache is not None:
@@ -1182,7 +1182,7 @@ class ToolDispatcher:
         reasons: list[str] = []
         # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
-        # `_ARCHIVI` in memoria/resolver.py -- allargarla rifarebbe il
+        # `_ARCHIVI` in memory/resolver.py -- allargarla rifarebbe il
         # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
         # una tabella vera di `_TABELLE` (casa/archivio.py) che PUO' cadere
         # in `non_disponibili()`, e da T8 (R2) `search` indicizza le
@@ -1410,7 +1410,7 @@ class ToolDispatcher:
         # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
         # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
-        # della casa piena non si confondono mai (memoria/cache_indice.py).
+        # della casa piena non si confondono mai (memory/lookup_cache.py).
         if self._lookup_cache is not None:
             lookup = self._lookup_cache.get_lazy("ricorda", _home_space_for_lookup, updated_at)
         else:
@@ -1433,7 +1433,7 @@ class ToolDispatcher:
             "ancore": arguments.get("ancore") or [],
             "condizioni": arguments.get("condizioni") or [],
         }
-        # Il CANCELLO (memoria/interpretazione.py): scarta cio' che non
+        # Il CANCELLO (memory/interpretation.py): scarta cio' che non
         # regge (un'ancora inventata, una forza fuori vocabolario) e lo
         # DICHIARA in `problemi` -- non lo lascia passare in silenzio, e non
         # butta via l'intero ricordo per questo. E' la differenza con

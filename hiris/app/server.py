@@ -51,8 +51,8 @@ from .casa.tempo import home_space_zone
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
 from .internal_token import prepare_internal_token
-from .memoria.archivio import MemoryStore
-from .memoria.cache_indice import LookupCache
+from .memory.lookup_cache import LookupCache
+from .memory.store import MemoryStore
 from .mind.facts import (
     BALANCE_DIRECTIONS,
     aggregate_day,
@@ -1801,7 +1801,7 @@ async def _on_startup(app: web.Application) -> None:
     # quanto il boot.
     await reread_ha_problems(app, ha_client)
 
-    # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
+    # Task B7: la cache del Lookup (`memory/lookup_cache.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
     # `ToolDispatcher` che la riceve (`create_tool_dispatcher`
     # in `api/handlers_chat.py`). Prima di questo task `_search`/`_remember`
@@ -2059,7 +2059,7 @@ async def _on_startup(app: web.Application) -> None:
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
     # (memoria.db), separato da casa.db -- e' cio' che l'utente ha detto e
     # cio' che HIRIS ne ha capito, non una REPLICA ricostruibile da HA (vedi
-    # memoria/archivio.py). Nessuna lettura iniziale da fare qui: a
+    # memory/store.py). Nessuna lettura iniziale da fare qui: a
     # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
     app["archivio_memoria"] = memory_store
@@ -2460,7 +2460,7 @@ async def _on_startup(app: web.Application) -> None:
     # nessun altro consumatore vivo:
     #   - la chat prende il contesto da `compose_briefing()` (Task 3 "il
     #     contesto della chat viene dal nucleo"), mai da `KnowledgeStore`;
-    #   - la pagina Memoria interroga `memoria/archivio.py`, non la coda di
+    #   - la pagina Memoria interroga `memory/store.py`, non la coda di
     #     approvazione (config/memory-route.js lo dichiara per iscritto);
     #   - `search()`, `declared()`, `recent()`, `upcoming_obligations()` e
     #     `search_chunks()` non avevano gia' oggi nessun chiamante di

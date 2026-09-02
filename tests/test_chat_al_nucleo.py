@@ -56,7 +56,7 @@ from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma
 from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento

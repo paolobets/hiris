@@ -47,7 +47,7 @@ import pytest
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
 # La fixture della configurazione PREDEFINITA dell'add-on, con le due valvole

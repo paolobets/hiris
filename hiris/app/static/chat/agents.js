@@ -55,7 +55,7 @@
      Verificato: `chat_store.ChatStore.clear()` svuota `chat_messages` e
      `chat_sessions`, quindi spariscono anche i riassunti delle sessioni chiuse
      che `handlers_chat.compose_chat_context` inietta nel prompt come
-     «Sessioni precedenti (memoria)». Non e' una conversazione: e' la
+     «Sessioni precedenti (memory)». Non e' una conversazione: e' la
      memoria delle conversazioni. */
   function domandaDiConferma() {
     var quanti = state.els.messages

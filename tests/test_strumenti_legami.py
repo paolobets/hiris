@@ -25,7 +25,7 @@ import pytest
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import LINK_NAME, related, view
 from hiris.app.casa.strumenti import ToolDispatcher
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests.test_cervello_comprimari import _ClienteLegami
 

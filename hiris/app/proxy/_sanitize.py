@@ -71,7 +71,7 @@ can enter the model's context calls one of the two functions below:
   one door and raw from another). A single shared function, not three copies
   of the same line, is what makes a fourth door impossible to forget: import
   it, do not re-derive it. Sanitized where the text becomes part of what the
-  model reads, NOT in `memoria/archivio.py` itself -- that archive's own
+  model reads, NOT in `memory/store.py` itself -- that archive's own
   contract ("il testo e' la verita'", rule 1 of its module docstring)
   promises the stored text matches what was said, verbatim, for the
   correction page and the record. Sanitizing on read, not on write, keeps

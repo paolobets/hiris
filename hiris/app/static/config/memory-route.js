@@ -172,7 +172,7 @@ window.HirisMemoryRoute = (function () {
     // del ricordo -- e la memoria e' l'unico archivio di HIRIS che non si
     // ricostruisce da nessuna parte.
     //
-    // Il vocabolario vero sta in `memoria/interpretazione.py::VOCABULARY`, ed
+    // Il vocabolario vero sta in `memory/interpretation.py::VOCABULARY`, ed
     // e' legato a questo file da `tests/test_memoria_frontend_wiring.py`: quel
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.

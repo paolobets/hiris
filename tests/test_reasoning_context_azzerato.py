@@ -171,7 +171,7 @@ from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 
 
 @pytest.fixture(autouse=True)

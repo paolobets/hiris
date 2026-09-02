@@ -73,9 +73,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# A001/A002 — 11 casi, TUTTI in `memoria/`, tutti `type` e `id` come parametri o
+# A001/A002 — 11 casi, TUTTI in `memory/`, tutti `type` e `id` come parametri o
 # locali, e tutti precedenti al giro che ha acceso la regola (li ha scritti la
-# conversione di `memoria/`, lotti 5-6). Non si toccano ADESSO per una ragione
+# conversione di `memory/`, lotti 5-6). Non si toccano ADESSO per una ragione
 # misurata e non per pigrizia: rinominare un parametro dentro un ambito CHIUSO
 # vuol dire riaprire le sue sponde, ed e' esattamente la manovra che l'01/09 ha
 # prodotto il guasto di `_security_headers` — a valle di un rilascio in
@@ -83,7 +83,7 @@ ignore = [
 # il resto, che e' il punto: da oggi un builtin ombreggiato NUOVO va rosso. Il
 # tredicesimo caso, `server.py::round`, e' stato rinominato invece che ignorato,
 # perche' quello lo aveva scritto il giro in corso.
-"hiris/app/memoria/*.py" = ["A001", "A002"]
+"hiris/app/memory/*.py" = ["A001", "A002"]
 # F811 — 56 casi, 55 FALSI POSITIVI: sono i parametri-fixture di pytest che
 #        ombreggiano il nome della fixture. L'unico caso vero (un test scritto
 #        due volte) e' stato sanato PRIMA di scrivere questa riga.

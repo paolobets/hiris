@@ -891,7 +891,7 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
 async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.api.handlers_chat import compose_chat_context
     from hiris.app.casa.archivio import HomeSpaceStore
-    from hiris.app.memoria.archivio import MemoryStore
+    from hiris.app.memory.store import MemoryStore
 
     app, q, _runner, _impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)

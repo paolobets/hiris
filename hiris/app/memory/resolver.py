@@ -64,7 +64,7 @@ from ..casa.anagrafe import (
 # registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
 # che non fa mai -- e avrebbe allargato `STORE_KEY_PER_TYPE` (e con
 # lei `_TETHER_TYPES` in casa/strumenti.py) a tipi che la memoria non puo'
-# mai scrivere come ancora (`memoria/interpretazione.VOCABULARY`),
+# mai scrivere come ancora (`memory/interpretation.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
 # `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
 # dei candidati, fonte e ciclo di vita diversi.
@@ -99,7 +99,7 @@ def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     cio' che l'utente ha scritto davvero (maiuscole, accenti, spaziatura),
     non il testo normalizzato: oggi non morde perche' nessuno lo archivia,
     ma nella fetta E sarebbe gia' una riscrittura silenziosa di cio' che
-    l'utente ha detto -- e il testo e' la verita' (memoria/archivio.py,
+    l'utente ha detto -- e il testo e' la verita' (memory/store.py,
     regola 1).
 
     Minuscolo e NFKD-senza-combinanti sono, carattere per carattere, quasi
@@ -206,7 +206,7 @@ class Lookup:
 
         `nome_visto` e' il testo ORIGINALE (maiuscole, accenti, spaziatura
         di chi ha scritto la frase), non il testo normalizzato su cui si
-        cerca: il testo e' la verita' (memoria/archivio.py, regola 1), e
+        cerca: il testo e' la verita' (memory/store.py, regola 1), e
         vale anche per il frammento riconosciuto, non solo per la frase
         intera.
         """

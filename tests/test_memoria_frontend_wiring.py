@@ -22,7 +22,7 @@ def _js() -> str:
 
 
 def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
-    from hiris.app.memoria.interpretazione import VOCABULARY
+    from hiris.app.memory.interpretation import VOCABULARY
     js = _js()
     inizio = js.index("var MODALITY_LABELS")
     blocco = js[inizio:js.index("};", inizio)]
@@ -31,7 +31,7 @@ def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
 
 
 def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
-    from hiris.app.memoria.interpretazione import VOCABULARY
+    from hiris.app.memory.interpretation import VOCABULARY
     js = _js()
     inizio = js.index("var MODALITY_OPTIONS")
     blocco = js[inizio:js.index("];", inizio)]
@@ -45,7 +45,7 @@ def test_la_pagina_non_offre_forze_che_il_vocabolario_non_ammette():
     andare a buon fine."""
     import re
 
-    from hiris.app.memoria.interpretazione import VOCABULARY
+    from hiris.app.memory.interpretation import VOCABULARY
     js = _js()
     inizio = js.index("var MODALITY_OPTIONS")
     blocco = js[inizio:js.index("];", inizio)]

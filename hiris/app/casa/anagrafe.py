@@ -271,7 +271,7 @@ def label_names(home_space: dict) -> dict[str, str]:
     continuerebbe a dire il vecchio nome per sempre.
 
     Qui, e non in `domande.py`, perche' la stessa unione serve anche
-    all'indice di `cerca` (`memoria/resolver.py`): scritta due volte
+    all'indice di `cerca` (`memory/resolver.py`): scritta due volte
     sarebbe una ricerca che trova per un nome e una risposta che ne mostra un
     altro.
     """
@@ -297,7 +297,7 @@ def labels_with_name(entry: dict, names: dict[str, str]) -> list[str]:
     """Le etichette di una voce dell'anagrafe, coi nomi al posto degli id.
 
     SOLO nomi, MAI l'id nel testo: alimenta anche l'indice di `cerca`
-    (`memoria/resolver.py::costruisci_indice`), che indicizza questi
+    (`memory/resolver.py::costruisci_indice`), che indicizza questi
     stessi nomi come TERMINI di ricerca -- un `label_id` mescolato nel
     testo renderebbe "da controllare" irriconoscibile, perche' il termine
     indicizzato sarebbe "da controllare (id: da_controllare)" e nessuno lo
@@ -349,7 +349,7 @@ def category_names(home_space: dict) -> dict[tuple[str, str], str]:
 
     Qui, e non in `domande.py`, per la stessa ragione di
     `label_names`: la stessa unione serve all'indice di `cerca`
-    (`memoria/resolver.py`), e scritta due volte sarebbe una ricerca che
+    (`memory/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
     """
     names: dict[tuple[str, str], str] = {}
@@ -583,7 +583,7 @@ def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
 
     Esiste come funzione per la stessa ragione di `actual_unit`: la
     prendono due posti diversi. `hierarchy()` la usa per costruire l'albero, e
-    `memoria.interpretazione.deduci_unit` per capire quale entita' di
+    `memory.interpretation.deduci_unit` per capire quale entita' di
     un'area puo' dare l'unita' a un ricordo. Scritta due volte lo era gia': il
     secondo confrontava il solo `area_id` proprio, quindi su una casa vera non
     trovava mai niente e archiviava «in cucina non sotto i 20» come «da 20»
@@ -605,7 +605,7 @@ def device_areas(devices) -> dict[str, str | None]:
     **Esisteva due volte, e due nomi diversi l'avevano resa invisibile**
     (misura ordine-e-preposizioni, 31/08): la stessa dict-comprehension viveva
     qui dentro `hierarchy()` come `device_area` e in
-    `memoria/interpretazione.py::deduci_unit` come `device_area`, passata
+    `memory/interpretation.py::deduci_unit` come `device_area`, passata
     alla stessa `actual_area()`. Nessuno strumento poteva vederlo -- il
     rilevatore di doppioni confronta i PEZZI dei nomi, e li' i pezzi erano gli
     stessi ma l'ordine no. E' la stessa ragione per cui `actual_area` esiste
@@ -685,7 +685,7 @@ def actual_unit(declared: str | None, live: str | None) -> str | None:
     Esiste come funzione, e non come due righe scritte dove servono, perche'
     questa decisione la prendono DUE posti diversi: cosa mostrare
     (`domande._con_nome_dedotto`) e cosa dedurre
-    (`memoria.interpretazione.deduci_unit`). Scritta due volte sarebbe la
+    (`memory.interpretation.deduci_unit`). Scritta due volte sarebbe la
     stessa forma di difetto che ha reso la pagina Modelli vera riga per riga e
     falsa nel complesso: due copie di una regola che nessuno tiene allineate.
 

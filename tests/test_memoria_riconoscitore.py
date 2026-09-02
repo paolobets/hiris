@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from hiris.app.memoria.resolver import costruisci_indice
+from hiris.app.memory.resolver import costruisci_indice
 
 _HOME_SPACE = {
     "aree": [
@@ -161,7 +161,7 @@ def test_nome_visto_conserva_il_testo_originale():
     """`nome_visto` e' cio' che l'utente ha scritto, non il testo
     normalizzato su cui si cerca -- oggi non morde perche' nessuno lo
     archivia, ma nella fetta E sarebbe gia' una riscrittura silenziosa
-    (memoria/archivio.py, regola 1: il testo e' la verita')."""
+    (memory/store.py, regola 1: il testo e' la verita')."""
     home_space = _casa_con_aree(
         [{"id": "camera_niccolo", "nome": "Camera di Niccolo'", "alias": []}])
     lookup = costruisci_indice(home_space)
@@ -278,7 +278,7 @@ def test_il_nome_dedotto_e_marcato_e_non_sovrascrive_quello_del_registro():
 
 def test_il_nome_dedotto_e_marcato_anche_sulle_voci_di_tutti():
     """`tutti("entita")` e' l'altra porta pubblica sull'anagrafe
-    (memoria/interpretazione.py la usa per dedurre l'unita' di un'area): il
+    (memory/interpretation.py la usa per dedurre l'unita' di un'area): il
     marchio deve esserci anche di la', o "dedotto" si vede da una porta e
     non dall'altra. Il resto della riga del registro sopravvive al marchio:
     la copia e' una copia, non una sostituzione."""

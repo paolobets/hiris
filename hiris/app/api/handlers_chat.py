@@ -109,7 +109,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     nuovo per turno. Il dispatcher stesso nasce a ogni turno (e' il motivo per
     cui questa funzione esiste), ma la cache dell'indice che gli si passa
     dentro no -- e' cosi' che il riuso vale FRA i turni, non solo dentro uno
-    (vedi `memoria/cache_indice.py` per la chiave e il perche').
+    (vedi `memory/lookup_cache.py` per la chiave e il perche').
     """
     return ToolDispatcher(
         app.get("archivio_casa"),
@@ -185,7 +185,7 @@ def compose_chat_context(app, data_dir: str) -> str:
     past = get_past_summaries(data_dir)
     past_str = ""
     if past:
-        lines = ["Sessioni precedenti (memoria):"]
+        lines = ["Sessioni precedenti (memory):"]
         for s in past:
             dt = s["started_at"][:10]
             lines.append(f"[{dt}] {s['summary']}")

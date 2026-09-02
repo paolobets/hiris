@@ -441,7 +441,7 @@ def test_nessuna_giuntura_italiana_nuova_in_un_identificatore():
     """Il cancello. Uguaglianza esatta nelle due direzioni.
 
     Provato per mutazione: rimesso `area_del_device` al posto di `device_area`
-    in `memoria/interpretazione.py` (occorrenze contate prima e dopo la
+    in `memory/interpretation.py` (occorrenze contate prima e dopo la
     scrittura, per non credere a una regex che non combacia), questo test va
     rosso col nome nell'elenco «mai visti prima»; ripristinato, torna verde.
     """

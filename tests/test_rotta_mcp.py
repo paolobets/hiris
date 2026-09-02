@@ -31,7 +31,7 @@ from hiris.app import server
 from hiris.app.api import handlers_mcp
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.chat_settings import ChatSettings
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
 # Il token dell'add-on per questi test: un valore qualunque, purche' quello che

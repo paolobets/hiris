@@ -214,7 +214,7 @@ def _validate_conditions(conditions, problemi: list[str]) -> list[dict]:
     (es. `sole: tramontato`), e la traduzione in automazione verifica il
     resto. Qui si restringe il `tipo` della condizione, e si richiede che
     `valore` ci sia: la colonna `condizioni.valore` e' `NOT NULL`
-    (memoria/archivio.py), quindi una condizione senza valore che
+    (memory/store.py), quindi una condizione senza valore che
     superasse questo cancello finirebbe a spaccare la scrittura con un
     `IntegrityError` invece di essere scartata e dichiarata qui -- ed e'
     esattamente il silenzio che questo cancello esiste per evitare."""

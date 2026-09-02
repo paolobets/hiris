@@ -6,7 +6,7 @@ E5 Task 9 la pagina "Memoria" interrogava la coda di approvazione di
 knowledge_store, vuota per costruzione da mesi perche' nessuno la riempiva
 piu'; dalla fetta "esce il documentale" quella coda non esiste piu' affatto,
 uscita con l'archivio che la conteneva. Questa vista interroga l'archivio vero
-(memoria/archivio.py) ed e' l'unica: rende reale la regola (2) del contratto,
+(memory/store.py) ed e' l'unica: rende reale la regola (2) del contratto,
 si puo' ricordare subito solo se poi si puo' guardare e correggere.
 
 Tre cose, non di piu':
@@ -20,9 +20,9 @@ Tre cose, non di piu':
    `esiste` resta `None`: "non ho potuto controllare" e "ho controllato e
    non c'e'" sono due fatti diversi, e confonderli fa sparire ancore vive
    ogni volta che Home Assistant non era pronto all'avvio.
-2. PATCH corregge l'interpretazione, mai il testo (memoria/archivio.py,
+2. PATCH corregge l'interpretazione, mai il testo (memory/store.py,
    regola 2): usa `validate()` -- lo stesso CANCELLO che gia' protegge
-   l'ingresso dal modello (interpretazione.py) -- cosi' un'ancora senza
+   l'ingresso dal modello (interpretation.py) -- cosi' un'ancora senza
    riscontro nell'anagrafe viene RIFIUTATA con la ragione, non accettata a
    meta' come farebbe l'ingestione normale (che scarta e prosegue). Un
    `PATCH` su un id sparito (cancellato da un'altra scheda, per esempio)
@@ -37,11 +37,11 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..casa.anagrafe import live_mirror
-from ..memoria.interpretazione import deduci_unit, validate
-from ..memoria.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..memory.interpretation import deduci_unit, validate
+from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
-# (memoria/archivio.py, `_CAMPI_MODIFICABILI`) piu' le due liste che quel
+# (memory/store.py, `_CAMPI_MODIFICABILI`) piu' le due liste che quel
 # metodo sostituisce per intero (`ancore`, `condizioni`). Duplicato qui
 # apposta invece di importare il nome con l'underscore da un altro modulo:
 # quel prefisso e' gia' il segnale "non e' superficie pubblica".
@@ -164,7 +164,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
         # ricordi oltre `_MEMORIES_SHOWN_LIMIT` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
-        # memoria non evapora (memoria/archivio.py), ma senza dichiarare
+        # memoria non evapora (memory/store.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
         "total": store.count(),
         "shown": len(memories),
@@ -237,7 +237,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     requested_maximum = fields.get("massimo") if "massimo" in fields else existing["massimo"]
 
     # `validate()` e' il CANCELLO gia' scritto per l'interpretazione del
-    # modello (interpretazione.py): qui si riusa per la correzione umana,
+    # modello (interpretation.py): qui si riusa per la correzione umana,
     # con la STESSA regola sulle ancore. I campi assenti dalla richiesta si
     # passano "neutri" (None/[]): non generano problemi propri (vedi
     # `_validate_modality`/`_validate_intervallo`/`_validate_ancore`/
@@ -284,7 +284,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         updates["massimo"] = cleaned["massimo"]
     if "unita" in fields:
         # `validate()` non prende `unita` in input: la deduce sempre da ancora
-        # + grandezza (interpretazione.deduci_unit), perche' quel percorso
+        # + grandezza (interpretation.deduci_unit), perche' quel percorso
         # e' per il modello ("l'unita' non si chiede, si deduce"). Qui invece
         # e' una correzione umana diretta a un campo che MemoryStore.
         # correggi() gia' accetta -- passa cosi' com'e', senza dedurla.

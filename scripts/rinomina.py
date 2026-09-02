@@ -550,7 +550,7 @@ def _righe_di_percorso_e_parola_chiave(
     METODO DI HACLIENT letto per attributo (`ha.history(...)`).
 
     Un percorso di import (`from ..casa.anagrafe import X`, `import
-    hiris.app.memoria.archivio`) e' un indirizzo verso UN ALTRO modulo, mai
+    hiris.app.memory.store`) e' un indirizzo verso UN ALTRO modulo, mai
     un identificatore del proprio ambito -- vale anche quando punta al
     proprio stesso sottosistema (il file, se deciso, si rinomina con
     `git mv`, non riscrivendo la stringa dell'import). Riconosciuto per

@@ -1231,7 +1231,7 @@ def _memory_lines(memories: list[dict]) -> list[str]:
     # (I-1: una `remember()` avvenuta in un turno iniettato tornerebbe nel
     # contesto di ogni turno successivo, per sempre). Sanificato QUI,
     # dove il testo diventa parte di cio' che il modello legge sempre --
-    # non nell'archivio (`memoria/archivio.py`), che resta la verita'
+    # non nell'archivio (`memory/store.py`), che resta la verita'
     # cosi' come e' stata detta (regola 1 del modulo): il testo
     # ARCHIVIATO non cambia, cambia solo cio' che esce da questa porta.
     sorted_memories = sorted(sanitized_memories(memories), key=lambda r: r.get("id", 0),

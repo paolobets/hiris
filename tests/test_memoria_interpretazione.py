@@ -1,7 +1,7 @@
 import pytest
 
-from hiris.app.memoria.interpretazione import VOCABULARY, validate
-from hiris.app.memoria.resolver import costruisci_indice
+from hiris.app.memory.interpretation import VOCABULARY, validate
+from hiris.app.memory.resolver import costruisci_indice
 
 _HOME_SPACE = {
     "aree": [{"id": "sala_pranzo", "nome": "Sala da pranzo", "alias": [], "piano_id": None}],
@@ -85,7 +85,7 @@ def test_un_intervallo_rovesciato_si_raddrizza(lookup):
 
 
 def test_una_condizione_senza_valore_si_scarta_e_si_dichiara(lookup):
-    """`condizioni.valore` e' `NOT NULL` in archivio (memoria/archivio.py):
+    """`condizioni.valore` e' `NOT NULL` in archivio (memory/store.py):
     una condizione senza valore che superasse il cancello spaccherebbe la
     scrittura con un IntegrityError invece di essere scartata qui, dove il
     problema si puo' ancora dichiarare a chi legge."""

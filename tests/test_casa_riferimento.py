@@ -21,7 +21,7 @@ from hiris.app.casa.anagrafe import rebuild, reference_frame
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.nucleo import compose
 from hiris.app.casa.strumenti import ToolDispatcher
-from hiris.app.memoria.archivio import MemoryStore
+from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS, HAClient
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che

@@ -31,7 +31,7 @@ import pytest
 from hiris.app.casa.anagrafe import category_names
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.domande import view
-from hiris.app.memoria.resolver import costruisci_indice
+from hiris.app.memory.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette
 # `ha_client.read_registries`, che chiede il registro una volta per ambito e
