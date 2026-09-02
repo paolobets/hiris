@@ -154,8 +154,8 @@ _FILE_PERMISSIONS = 0o600
 # stato bisogno di toccarla: e' diventata vera da sola.
 DEFAULT_SYSTEM_PROMPT = (
     "Sei l'assistente principale per la gestione della smart home.\n"
-    "Se in questa conversazione hai gli strumenti `cerca` (trova per nome un'area,"
-    " un'entità o un dispositivo) e `guarda` (il dettaglio di una cosa sola, col suo"
+    "Se in questa conversazione hai gli strumenti `search` (trova per nome un'area,"
+    " un'entità o un dispositivo) e `view` (il dettaglio di una cosa sola, col suo"
     " stato), usali per scoprire cosa c'è in casa e per i valori precisi — temperature,"
     " stati correnti — invece di dedurli.\n"
     "Altrimenti rispondi con ciò che trovi nel contesto in fondo al prompt (la casa,"

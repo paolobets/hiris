@@ -200,8 +200,8 @@ def _validate_ancore(ancore, lookup, tipi_non_verificabili: frozenset[str],
             problemi.append(
                 f"ancora {type} «{label}» non esiste nell'anagrafe -- scartata "
                 f"(un'ancora senza riscontro non si scrive). Se «{label}» e' un "
-                f"nome (non un id), chiama «cerca» per trovare l'id giusto e ripeti "
-                f"«ricorda» con quello.")
+                f"nome (non un id), chiama «search» per trovare l'id giusto e ripeti "
+                f"«remember» con quello.")
             continue
         pulite.append({"tipo": type, "riferimento": reference,
                         "nome_visto": tether.get("nome_visto")})

@@ -514,7 +514,7 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
         ok = q.submit(job_id, claimed["nonce"], {
             "reply": "Preso nota: la caldaia perde.",
             "tools_called": [
-                {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
+                {"tool": "mcp__hiris__remember", "input": {"testo": "la caldaia perde"}},
             ],
         }, now=6.0)
         assert ok is True

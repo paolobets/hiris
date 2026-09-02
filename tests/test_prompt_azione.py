@@ -60,7 +60,7 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
 # -- 1. `esegui` esiste -----------------------------------------------------
 
 def test_la_guida_nomina_esegui():
-    assert "esegui" in _GUIDE_WITH_TOOLS
+    assert "execute" in _GUIDE_WITH_TOOLS
 
 
 def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
@@ -73,8 +73,8 @@ def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
     «non ho realmente eseguito» e «azioni mai eseguite». Un pin che non puo'
     fallire non sorveglia niente -- verificato rimettendo il testo vecchio."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
-        assert "`esegui`" in testo, (
-            f"il prompt del percorso {percorso} non nomina `esegui`: il "
+        assert "`execute`" in testo, (
+            f"il prompt del percorso {percorso} non nomina `execute`: il "
             "modello riceve lo strumento e non sa di averlo")
 
 
@@ -87,7 +87,7 @@ def test_nessun_prompt_dichiara_piu_che_hiris_non_tocca_la_casa():
                         "non agisce", "non accendi", "non spegni"):
             assert falsita not in basso, (
                 f"il prompt del percorso {percorso} dice ancora «{falsita}» "
-                "mentre `esegui` e' fra gli strumenti serviti: il modello "
+                "mentre `execute` e' fra gli strumenti serviti: il modello "
                 "rifiutera' di agire, e il sintomo e' indistinguibile da "
                 "«gli strumenti sono rotti»")
 
@@ -140,7 +140,7 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
         for falsita in _FALSITA_IN_ENTRAMBE_LE_VOCI:
             assert falsita not in basso, (
                 f"«{falsita}» e' tornata in {nome}. Dal commit che ha dato "
-                "`esegui` al modello, HIRIS accende e spegne: una frase che lo "
+                "`execute` al modello, HIRIS accende e spegne: una frase che lo "
                 "nega e' falsa, e se sta sulla schermata iniziale e' la prima "
                 "cosa che l'utente legge del prodotto")
 
@@ -149,7 +149,7 @@ def test_cio_che_legge_l_utente_non_nega_piu_l_azione_in_nessuna_delle_due_voci(
 
 def test_la_guida_chiede_gli_id_non_i_nomi():
     basso = _GUIDE_WITH_TOOLS.lower()
-    assert "cerca" in basso and "id" in basso
+    assert "search" in basso and "id" in basso
 
 
 def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
@@ -159,8 +159,8 @@ def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
     una frase di errore invece di una luce accesa."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
         basso = testo.lower()
-        assert "id" in basso and "cerca" in basso, (
-            f"il prompt del percorso {percorso} non collega gli id a `cerca`")
+        assert "id" in basso and "search" in basso, (
+            f"il prompt del percorso {percorso} non collega gli id a `search`")
         assert "esatt" in basso, (
             f"il prompt del percorso {percorso} non dice che gli id devono "
             "essere ESATTI: «la luce della cucina» sembrera' un id accettabile")
@@ -285,7 +285,7 @@ def test_entrambi_i_percorsi_dicono_che_il_ricordo_e_una_preferenza_non_una_sost
             f"il prompt del percorso {percorso} non chiede la forma GENERALE "
             "del ricordo: il modello salvera' la sostituzione, che e' la "
             "forma che gli viene naturale")
-        assert "ricorda" in basso, (
+        assert "remember" in basso, (
             f"il prompt del percorso {percorso} parla di preferenze senza "
             "dire con quale strumento si salvano")
 
@@ -546,7 +546,7 @@ def test_entrambi_i_percorsi_mandano_a_GUARDARE_per_lo_stato_corrente():
 
 def test_il_prompt_dice_che_costruire_e_in_due_tempi():
     from hiris.app.claude_runner import BASE_TOOL_RULES
-    assert "costruisci" in BASE_TOOL_RULES
-    assert "conferma" in BASE_TOOL_RULES
+    assert "propose" in BASE_TOOL_RULES
+    assert "confirm" in BASE_TOOL_RULES
     # La regola che conta: non si concatena la conferma alla proposta.
     assert "stesso turno" in BASE_TOOL_RULES

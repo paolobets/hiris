@@ -390,8 +390,8 @@ def _search_suggestion(reference) -> str:
     invariati -- si nota, perche' la frase e' la stessa ovunque.
     """
     return (f"«{reference}» non e' stato trovato. Se e' un NOME (non un "
-            f"id), chiama «cerca» con questo testo per trovare l'id giusto, "
-            f"poi ripeti «guarda» con quello.")
+            f"id), chiama «search» con questo testo per trovare l'id giusto, "
+            f"poi ripeti «view» con quello.")
 
 
 def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:

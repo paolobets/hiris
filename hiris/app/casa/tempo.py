@@ -478,7 +478,7 @@ async def logbook(*, ha, journal, entity: str | None, hours,
     # (`_cecita` in strumenti.py): due facce diverse per due fatti diversi.
     journal_loaded = False
     if journal is None:
-        logger.debug("accaduto: nessuna cronaca disponibile, attribuzione persa")
+        logger.debug("logbook: nessuna cronaca disponibile, attribuzione persa")
     else:
         try:
             acts = journal.list(from_ts=now_ts - real_hours * 3600,
@@ -488,7 +488,7 @@ async def logbook(*, ha, journal, entity: str | None, hours,
             # L'attribuzione e' un di piu': un archivio che non risponde non
             # deve togliere all'utente la risposta sulla casa -- ma deve
             # dichiararsi, non sparire in silenzio (vedi sopra).
-            logger.warning("cronaca illeggibile durante «accaduto» (%s: %s)",
+            logger.warning("cronaca illeggibile durante «logbook» (%s: %s)",
                            type(error).__name__, error)
             acts = []
     entries = [_match(v, acts) for v in occurrence["voci"]]

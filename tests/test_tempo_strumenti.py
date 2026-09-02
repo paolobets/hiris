@@ -19,7 +19,7 @@ from tests._contratti import assert_stessa_firma
 def test_il_catalogo_porta_tredici_strumenti():
     assert len(KNOWLEDGE_TOOLS) == 13
     nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert {"andamento", "accaduto"} <= nomi
+    assert {"trend", "logbook"} <= nomi
 
 
 # La convenzione di nomenclatura `nome -> self._nome` regge su dodici dei
@@ -28,11 +28,11 @@ def test_il_catalogo_porta_tredici_strumenti():
 # `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
 # saltando la verifica per quel nome.
 _GESTORE_ATTESO = {
-    "cerca": "_search", "guarda": "_view", "legami": "_related",
-    "ricorda": "_remember", "richiama": "_recall", "esegui": "_execute",
-    "prometti": "_promise", "promesse": "_list_agenda", "disdici": "_cancel",
-    "costruisci": "_propose", "conferma": "_confirm", "andamento": "_trend",
-    "accaduto": "_happened",
+    "search": "_search", "view": "_view", "related": "_related",
+    "remember": "_remember", "fetch": "_recall", "execute": "_execute",
+    "promise": "_promise", "agenda": "_list_agenda", "cancel": "_cancel",
+    "propose": "_propose", "confirm": "_confirm", "trend": "_trend",
+    "logbook": "_happened",
 }
 
 
@@ -70,9 +70,9 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
 def test_i_due_lettori_entrano_nel_turno_delle_promesse():
     """`andamento` e `accaduto` LEGGONO e basta: escluderli sarebbe la scelta
     opposta a quella presa per `costruisci`, e per la ragione opposta."""
-    assert "andamento" in SOLA_LETTURA and "accaduto" in SOLA_LETTURA
+    assert "trend" in SOLA_LETTURA and "logbook" in SOLA_LETTURA
     nomi = {d["name"] for d in promise_tools()}
-    assert {"andamento", "accaduto"} <= nomi
+    assert {"trend", "logbook"} <= nomi
 
 
 def test_il_dispatcher_riceve_la_cronaca_dall_app():
@@ -86,7 +86,7 @@ def test_il_dispatcher_riceve_la_cronaca_dall_app():
 @pytest.mark.asyncio
 async def test_senza_canale_ha_i_due_strumenti_dichiarano_invece_di_sollevare():
     d = ToolDispatcher(None, None)
-    for nome in ("andamento", "accaduto"):
+    for nome in ("trend", "logbook"):
         esito = await d.dispatch(nome, {"entita": "sensor.x", "ore": 24})
         assert "errore" in esito
 
@@ -94,7 +94,7 @@ async def test_senza_canale_ha_i_due_strumenti_dichiarano_invece_di_sollevare():
 @pytest.mark.asyncio
 async def test_andamento_pretende_un_entita():
     d = ToolDispatcher(None, None, ha=object())
-    esito = await d.dispatch("andamento", {"ore": 24})
+    esito = await d.dispatch("trend", {"ore": 24})
     assert "errore" in esito and "entita" in esito["errore"]
 
 
@@ -123,7 +123,7 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
     modulo.tempo.trend = _finto_trend
     try:
         d = ToolDispatcher(None, None, cache=_Cache(), ha=object())
-        await d.dispatch("andamento", {"entita": "sensor.camera", "ore": 6})
+        await d.dispatch("trend", {"entita": "sensor.camera", "ore": 6})
     finally:
         modulo.tempo.trend = originale
     assert visti["unit"] == "°C"
@@ -152,7 +152,7 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     modulo.tempo.logbook = _finto_logbook
     try:
         d = ToolDispatcher(None, None, ha=object(), journal=cronaca_vera)
-        await d.dispatch("accaduto", {"ore": 6})
+        await d.dispatch("logbook", {"ore": 6})
     finally:
         modulo.tempo.logbook = originale
     assert visti["journal"] is cronaca_vera
@@ -201,6 +201,6 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
     ha = _HA()
     d = ToolDispatcher(None, None, cache=_Cache(), ha=ha)
     esito = await d.dispatch(
-        "andamento", {"entita": "sensor.vento_direzione", "ore": 48})
+        "trend", {"entita": "sensor.vento_direzione", "ore": 48})
     assert esito["grana"] == "dettaglio"
     assert ha.chiamate == ["storico"]

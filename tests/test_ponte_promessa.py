@@ -92,12 +92,12 @@ def test_i_nomi_attesi_seguono_il_catalogo_del_turno():
     chat = set(mcp_names())
     promessa = set(mcp_names(by_promise=True))
 
-    assert any(n.endswith("__concludi") for n in promessa), (
-        "senza «concludi» fra i nomi permessi il turno non ha modo di finire")
-    assert not any(n.endswith("__esegui") for n in promessa), (
+    assert any(n.endswith("__conclude") for n in promessa), (
+        "senza «conclude» fra i nomi permessi il turno non ha modo di finire")
+    assert not any(n.endswith("__execute") for n in promessa), (
         "un turno che gira senza nessuno davanti non tocca la casa")
-    assert any(n.endswith("__esegui") for n in chat), "la chat non cambia"
-    assert any(n.endswith("__guarda") for n in promessa), "i lettori restano"
+    assert any(n.endswith("__execute") for n in chat), "la chat non cambia"
+    assert any(n.endswith("__view") for n in promessa), "i lettori restano"
 
 
 def test_la_verifica_dell_init_non_pretende_gli_strumenti_della_chat():
@@ -127,5 +127,5 @@ def test_l_argv_permette_concludi_su_un_turno_di_promessa():
     argv = _chat_claude_args("sys", "user", "sonnet", active_tools=True,
                              mcp_config="{}", by_promise=True)
     permessi = argv[argv.index("--allowedTools") + 1]
-    assert "__concludi" in permessi
-    assert "__esegui" not in permessi
+    assert "__conclude" in permessi
+    assert "__execute" not in permessi

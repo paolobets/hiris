@@ -54,19 +54,19 @@ def _dispatcher(promesse, **extra):
 
 def test_i_tre_strumenti_sono_nel_catalogo():
     nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert {"prometti", "promesse", "disdici"} <= nomi
+    assert {"promise", "agenda", "cancel"} <= nomi
 
 
 @pytest.mark.asyncio
 async def test_senza_archivio_prometti_dichiara_l_assenza_e_non_solleva():
-    esito = await _dispatcher(None).dispatch("prometti", {"specie": "fai"})
+    esito = await _dispatcher(None).dispatch("promise", {"specie": "fai"})
     assert "errore" in esito
 
 
 @pytest.mark.asyncio
 async def test_prometti_un_chiedi_crea_la_promessa(promesse):
     d = _dispatcher(promesse)
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi",
         "frase": "fra un'ora verifica la temperatura della camera",
         "quando": _fra(60),
@@ -81,23 +81,23 @@ async def test_prometti_un_chiedi_crea_la_promessa(promesse):
 @pytest.mark.asyncio
 async def test_promesse_elenca_cio_che_e_in_sospeso(promesse):
     d = _dispatcher(promesse)
-    await d.dispatch("prometti", {
+    await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?"})
-    esito = await d.dispatch("promesse", {})
+    esito = await d.dispatch("agenda", {})
     assert len(esito["promesse"]) == 1
 
 
 @pytest.mark.asyncio
 async def test_disdici_annulla_e_una_gia_disdetta_lo_dichiara(promesse):
     d = _dispatcher(promesse)
-    creata = await d.dispatch("prometti", {
+    creata = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?"})
     ident = creata["promessa"]["id"]
 
-    assert "errore" not in await d.dispatch("disdici", {"id": ident})
-    secondo = await d.dispatch("disdici", {"id": ident})
+    assert "errore" not in await d.dispatch("cancel", {"id": ident})
+    secondo = await d.dispatch("cancel", {"id": ident})
     assert "errore" in secondo
 
 
@@ -115,7 +115,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     sollevare.
     """
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
         "chiamata": {"servizio": "light.inventato",
@@ -139,7 +139,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
     `azione/porta.py::_REGISTRO_MUTO`, spostata al momento della promessa.
     """
     d = _dispatcher(promesse)  # nessun registro, nessuna cache
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
@@ -166,7 +166,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
     # esiste per chiudere -- vedi `verification()` in `azione/verifica.py`.
     d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
@@ -185,7 +185,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
     stato verificato, mentre `PROMETTI_TOOL_DEF` dichiara al modello «viene
     VERIFICATA adesso» senza condizioni."""
     d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
@@ -205,7 +205,7 @@ async def test_un_chiedi_nasce_anche_senza_registro(promesse):
     qualcuno stringesse la guardia a TUTTE le specie se ne accorga subito."""
     d = _dispatcher(promesse)  # nessun registro, apposta
     assert d._registry is None
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica la temperatura",
         "quando": _fra(60), "domanda": "e' aumentata?"})
     assert "errore" not in esito
@@ -215,7 +215,7 @@ async def test_un_chiedi_nasce_anche_senza_registro(promesse):
 @pytest.mark.asyncio
 async def test_un_fai_valido_nasce(promesse):
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
         "chiamata": {"servizio": "light.turn_on",
@@ -229,7 +229,7 @@ async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
     quello di «non lo so ancora» -- le due frasi restano distinte (review
     Task 7, Rilievo 1)."""
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.non_esiste"})
     assert "errore" in esito
@@ -251,7 +251,7 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
     rumorosamente, fa si' che la risposta della promessa non arrivi a
     nessuno."""
     d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
     assert "errore" in esito
@@ -282,7 +282,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     registry = ServiceRegistry()
     assert registry.empty()  # la premessa esatta del difetto: mai caricato
     d = _dispatcher(promesse, registry=registry, ha=ha, cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
     assert "errore" not in esito
@@ -304,7 +304,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     """
     registry = _RegistroTracciaScaldamento()
     d = _dispatcher(promesse, registry=registry, cache=_CacheFinta())  # nessun ha
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
     assert not registry.chiamato  # non si e' nemmeno tentato di scaldarlo
@@ -315,7 +315,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
 @pytest.mark.asyncio
 async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica la temperatura",
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.camera_t"]})
@@ -339,13 +339,13 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_na
     lascerebbe passare una guardia rotta che rifiuta sempre, a caso.
     """
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica il soggiorno",
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
     assert "errore" in esito
     assert "sensor.soggiorno_t" in esito["errore"]
-    assert "cerca" in esito["errore"]
+    assert "search" in esito["errore"]
     assert promesse.list() == []
 
 
@@ -357,7 +357,7 @@ async def test_un_chiedi_senza_da_confrontare_resta_legittimo_anche_senza_specch
     la guardia nuova leggesse lo specchio anche a lista vuota, questo test lo
     direbbe (il rifiuto "non vedo lo stato di questa casa" comparirebbe)."""
     d = _dispatcher(promesse)  # nessuna cache, apposta
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": _fra(60),
         "domanda": "e' aumentata?"})
     assert "errore" not in esito
@@ -374,7 +374,7 @@ async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verifi
     senza uno specchio leggibile non si sa se il riferimento esiste, quindi
     non si tace facendo nascere una promessa mai verificata."""
     d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
-    esito = await d.dispatch("prometti", {
+    esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica il soggiorno",
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
@@ -409,7 +409,7 @@ def test_la_cache_finta_riproduce_la_forma_minimale_vera():
 
 @pytest.mark.asyncio
 async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
-    esito = await _dispatcher(promesse).dispatch("prometti", {
+    esito = await _dispatcher(promesse).dispatch("promise", {
         "specie": "chiedi", "frase": "x", "quando": "domani verso sera",
         "domanda": "e' aumentata?"})
     assert "errore" in esito

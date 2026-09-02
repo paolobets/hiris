@@ -429,7 +429,7 @@ def verification(call: dict, registry, states: dict[str, dict],
         # sempre sulle entita' nominate: cio' che non esiste si dice, e chi ha
         # chiesto corregge.
         return _no(f"questo bersaglio nomina cose che non esistono in questa "
-                   f"casa: {non_esiste}. Non ho toccato niente. Usa «cerca» per "
+                   f"casa: {non_esiste}. Non ho toccato niente. Usa «search» per "
                    f"trovare il nome giusto e ripeti il comando.")
 
     trovate = [e for e in resolved.get("entita") or [] if isinstance(e, str)]

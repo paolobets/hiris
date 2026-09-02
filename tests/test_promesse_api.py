@@ -169,7 +169,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
     da_http = (await (await client.get("/api/agenda")).json())["agenda"][0]
     d = ToolDispatcher(None, None, agenda=archivio)
-    da_strumento = (await d.dispatch("promesse", {}))["promesse"][0]
+    da_strumento = (await d.dispatch("agenda", {}))["promesse"][0]
 
     assert da_http == da_strumento
     # La lista non deve essere vuota: un confronto fra due liste vuote

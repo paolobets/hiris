@@ -59,7 +59,7 @@ def test_entrambe_le_guide_insegnano_il_batch_di_cerca():
     prompt lo diceva)."""
     for percorso, testo in _le_due_guide().items():
         basso = testo.lower()
-        assert "cerca" in basso and "una sola volta" in basso, (
+        assert "search" in basso and "una sola volta" in basso, (
             f"la guida {percorso} non insegna piu' il batch di cerca: un "
             "turno che deve risolvere N nomi torna a chiamare cerca N volte, "
             "il costo che questo task doveva evitare")

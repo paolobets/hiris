@@ -131,8 +131,8 @@ async def test_col_turno_di_promessa_il_catalogo_e_quello_della_promessa(rotta):
         client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, promessa=ident)
 
     nomi = _nomi(await risposta.json())
-    assert "concludi" in nomi, "senza «concludi» il turno non ha modo di finire"
-    for scrive in ("esegui", "ricorda", "prometti", "disdici"):
+    assert "conclude" in nomi, "senza «conclude» il turno non ha modo di finire"
+    for scrive in ("execute", "remember", "promise", "cancel"):
         assert scrive not in nomi, (
             f"«{scrive}» scrive: un turno che gira senza nessuno davanti non "
             "deve nemmeno vederlo")
@@ -146,8 +146,8 @@ async def test_senza_l_intestazione_il_catalogo_resta_quello_della_chat(rotta):
     risposta = await _jsonrpc(client, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 
     nomi = _nomi(await risposta.json())
-    assert "concludi" not in nomi
-    assert "esegui" in nomi
+    assert "conclude" not in nomi
+    assert "execute" in nomi
 
 
 @pytest.mark.asyncio
@@ -161,7 +161,7 @@ async def test_un_id_di_promessa_NON_in_corso_non_vale(rotta):
     risposta = await _jsonrpc(
         client, {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, promessa=inventato)
 
-    assert "concludi" not in _nomi(await risposta.json())
+    assert "conclude" not in _nomi(await risposta.json())
 
 
 @pytest.mark.asyncio
@@ -171,7 +171,7 @@ async def test_col_turno_di_promessa_esegui_viene_RIFIUTATO_e_la_casa_non_si_toc
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-        "params": {"name": "esegui",
+        "params": {"name": "execute",
                    "arguments": {"servizio": "light.turn_on",
                                  "bersaglio": {"entity_id": "light.cucina_1"}}},
     }, promessa=ident)
@@ -193,7 +193,7 @@ async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 5, "method": "tools/call",
-        "params": {"name": "guarda",
+        "params": {"name": "view",
                    "arguments": {"tipo": "entita", "riferimento": "light.cucina_1"}},
     }, promessa=ident)
 
@@ -216,7 +216,7 @@ async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(ro
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 6, "method": "tools/call",
-        "params": {"name": "concludi",
+        "params": {"name": "conclude",
                    "arguments": {"avvisare": True,
                                  "testo": "in bagno +0,4 gradi"}},
     }, promessa=ident)
@@ -242,7 +242,7 @@ async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
 
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 7, "method": "tools/call",
-        "params": {"name": "concludi",
+        "params": {"name": "conclude",
                    "arguments": {"avvisare": False, "testo": "tutto fermo"}},
     }, promessa=ident)
 
@@ -262,7 +262,7 @@ async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 8, "method": "tools/call",
-        "params": {"name": "concludi", "arguments": {"avvisare": "forse"}},
+        "params": {"name": "conclude", "arguments": {"avvisare": "forse"}},
     }, promessa=ident)
 
     assert (await risposta.json())["result"]["isError"] is True

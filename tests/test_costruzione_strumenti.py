@@ -39,29 +39,29 @@ def _dispatcher(**kw):
 
 def test_i_due_strumenti_sono_nel_catalogo():
     nomi = [d["name"] for d in KNOWLEDGE_TOOLS]
-    assert "costruisci" in nomi
-    assert "conferma" in nomi
+    assert "propose" in nomi
+    assert "confirm" in nomi
 
 
 def test_i_nomi_mcp_li_portano_al_ponte():
     """Difetto 3.10.1: i nomi si DERIVANO dal catalogo, non si riscrivono."""
-    assert "mcp__hiris__costruisci" in mcp_names()
-    assert "mcp__hiris__conferma" in mcp_names()
+    assert "mcp__hiris__propose" in mcp_names()
+    assert "mcp__hiris__confirm" in mcp_names()
 
 
 def test_il_turno_di_una_promessa_non_li_riceve():
     """`SOLA_LETTURA`: un turno che gira senza nessuno davanti non costruisce."""
     nomi = [d["name"] for d in promise_tools()]
-    assert "costruisci" not in nomi
-    assert "conferma" not in nomi
-    assert "mcp__hiris__costruisci" not in mcp_names(by_promise=True)
+    assert "propose" not in nomi
+    assert "confirm" not in nomi
+    assert "mcp__hiris__propose" not in mcp_names(by_promise=True)
 
 
 @pytest.mark.asyncio
 async def test_costruisci_passa_l_intento_e_il_turno_all_officina():
     workshop = FintaOfficina()
     d = _dispatcher(workshop=workshop, exchange="t7")
-    esito = await d.dispatch("costruisci", {
+    esito = await d.dispatch("propose", {
         "gesto": "crea", "dominio": "automation", "alias": "X",
         "descrizione": "d", "innesco": [{"trigger": "sun"}],
         "azioni": [{"action": "cover.open_cover"}]})
@@ -77,7 +77,7 @@ async def test_costruisci_passa_l_intento_e_il_turno_all_officina():
 async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
     workshop = FintaOfficina()
     d = _dispatcher(workshop=workshop, exchange="t7")
-    await d.dispatch("conferma", {"proposta_id": "p1"})
+    await d.dispatch("confirm", {"proposta_id": "p1"})
     verbo, proposta_id, _origine, exchange = workshop.chiamate[0]
     assert verbo == "apply"
     assert proposta_id == "p1"
@@ -96,8 +96,8 @@ async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
     fetta «costruire», review indipendente (I3)."""
     workshop = FintaOfficina()
     d = _dispatcher(workshop=workshop, exchange="stesso-turno-vero")
-    await d.dispatch("costruisci", {"gesto": "crea", "dominio": "automation"})
-    await d.dispatch("conferma", {"proposta_id": "p1"})
+    await d.dispatch("propose", {"gesto": "crea", "dominio": "automation"})
+    await d.dispatch("confirm", {"proposta_id": "p1"})
     assert len(workshop.chiamate) == 2
     turno_costruisci = workshop.chiamate[0][3]
     turno_conferma = workshop.chiamate[1][3]
@@ -107,7 +107,7 @@ async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
 @pytest.mark.asyncio
 async def test_senza_officina_lo_strumento_dichiara_un_errore_e_non_solleva():
     d = _dispatcher()
-    esito = await d.dispatch("costruisci", {"gesto": "crea", "dominio": "automation"})
+    esito = await d.dispatch("propose", {"gesto": "crea", "dominio": "automation"})
     assert "errore" in esito
 
 
@@ -115,7 +115,7 @@ async def test_senza_officina_lo_strumento_dichiara_un_errore_e_non_solleva():
 async def test_conferma_senza_identificatore_non_indovina():
     workshop = FintaOfficina()
     d = _dispatcher(workshop=workshop, exchange="t7")
-    esito = await d.dispatch("conferma", {})
+    esito = await d.dispatch("confirm", {})
     assert "errore" in esito
     assert workshop.chiamate == []
 
@@ -131,6 +131,6 @@ async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
     workshop = FintaOfficina(esito_applica={
         "errore": "Home Assistant non ha risposto: timeout", "guasto_rete": True})
     d = _dispatcher(workshop=workshop, exchange="t7")
-    esito = await d.dispatch("conferma", {"proposta_id": "p1"})
+    esito = await d.dispatch("confirm", {"proposta_id": "p1"})
     assert "guasto_rete" not in esito
     assert "errore" in esito

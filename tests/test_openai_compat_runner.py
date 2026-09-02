@@ -640,9 +640,9 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, ca
         base_url="https://api.openai.com/v1", api_key="sk-test",
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=[
-        _risposta_tool_call("guarda", '{"area": "cucina"}', "tc-1"),
-        _risposta_tool_call("guarda", '{"area": "salotto"}', "tc-2"),
-        _risposta_tool_call("cerca", '{"testo": "termostato"}', "tc-3"),
+        _risposta_tool_call("view", '{"area": "cucina"}', "tc-1"),
+        _risposta_tool_call("view", '{"area": "salotto"}', "tc-2"),
+        _risposta_tool_call("search", '{"testo": "termostato"}', "tc-3"),
     ])
     finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
@@ -656,7 +656,7 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, ca
     assert runner._client.chat.completions.create.call_count == 3
 
     warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+    assert any("3" in m and "view" in m and "search" in m for m in warning_messages), (
         f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
     )
     assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)
@@ -801,9 +801,9 @@ async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(
         return _FakeStream([_stream_chunk_tool([tc], finish_reason="tool_calls")])
 
     runner._client.chat.completions.create = AsyncMock(side_effect=[
-        _stream_sempre_tool("guarda", '{"area": "cucina"}', "tc-1"),
-        _stream_sempre_tool("guarda", '{"area": "salotto"}', "tc-2"),
-        _stream_sempre_tool("cerca", '{"testo": "termostato"}', "tc-3"),
+        _stream_sempre_tool("view", '{"area": "cucina"}', "tc-1"),
+        _stream_sempre_tool("view", '{"area": "salotto"}', "tc-2"),
+        _stream_sempre_tool("search", '{"testo": "termostato"}', "tc-3"),
     ])
     finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
@@ -824,7 +824,7 @@ async def test_chat_stream_esaurimento_iterazioni_emette_errore_non_done_muto(
     assert not any(e.get("type") == "done" for e in events)
 
     warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+    assert any("3" in m and "view" in m and "search" in m for m in warning_messages), (
         f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
     )
     assert not any("cucina" in m or "salotto" in m or "termostato" in m for m in warning_messages)

@@ -565,7 +565,7 @@ async def test_chat_processes_all_tool_use_blocks_of_one_response_in_one_iterati
     blocks = []
     for i in range(N):
         block = MagicMock(type="tool_use", id=f"tu-{i}", input={"area": f"stanza-{i}"})
-        block.name = "guarda"
+        block.name = "view"
         blocks.append(block)
     multi_tool_msg = MagicMock(stop_reason="tool_use", content=blocks, usage=_usage())
     text_block = MagicMock(type="text", text="fatto")
@@ -590,7 +590,7 @@ async def test_chat_processes_all_tool_use_blocks_of_one_response_in_one_iterati
     assert runner._client.messages.create.call_count == 2
     assert len(chiamate_dispatch) == N
     assert runner.last_tool_calls == [
-        {"tool": "guarda", "input": {"area": f"stanza-{i}"}} for i in range(N)
+        {"tool": "view", "input": {"area": f"stanza-{i}"}} for i in range(N)
     ]
 
 
@@ -623,9 +623,9 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(runner, capl
         return MagicMock(stop_reason="tool_use", content=[block], usage=_usage())
 
     runner._client.messages.create = AsyncMock(side_effect=[
-        _tool_msg("guarda", "cucina"),
-        _tool_msg("guarda", "salotto"),
-        _tool_msg("cerca", "termostato"),
+        _tool_msg("view", "cucina"),
+        _tool_msg("view", "salotto"),
+        _tool_msg("search", "termostato"),
     ])
     finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
@@ -637,7 +637,7 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(runner, capl
     assert runner._client.messages.create.call_count == 3
 
     warning_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("3" in m and "guarda" in m and "cerca" in m for m in warning_messages), (
+    assert any("3" in m and "view" in m and "search" in m for m in warning_messages), (
         f"nessun warning col conto delle iterazioni e i nomi degli strumenti: {warning_messages}"
     )
     # gli argomenti (nomi di stanza) non devono comparire nel log -- solo i

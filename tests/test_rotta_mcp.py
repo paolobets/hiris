@@ -190,7 +190,7 @@ async def test_tools_call_ricorda_scrive_davvero_in_memoria_db(rotta):
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 7, "method": "tools/call",
-        "params": {"name": "ricorda", "arguments": {"testo": frase}},
+        "params": {"name": "remember", "arguments": {"testo": frase}},
     })
     assert risposta.status == 200
     corpo = await risposta.json()
@@ -214,7 +214,7 @@ async def test_tools_call_cerca_risponde_dagli_archivi_dell_app(rotta):
     client, _ = rotta
     corpo = await (await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-        "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"testo": "cucina"}},
     })).json()
     esito = json.loads(corpo["result"]["content"][0]["text"])
     assert esito["trovati"]
@@ -237,7 +237,7 @@ async def test_tools_call_di_uno_strumento_inesistente_restituisce_l_errore_del_
     assert corpo["result"]["isError"] is True
     esito = json.loads(corpo["result"]["content"][0]["text"])
     assert "accendi" in esito["errore"]
-    assert "cerca" in esito["errore"], "il messaggio deve dire cosa esiste"
+    assert "search" in esito["errore"], "il messaggio deve dire cosa esiste"
 
 
 @pytest.mark.asyncio
@@ -246,7 +246,7 @@ async def test_tools_call_senza_archivi_dichiara_cosa_manca(rotta_senza_archivi)
     esplode e non tace: rimanda l'errore leggibile del dispatcher, marcato."""
     risposta = await _jsonrpc(rotta_senza_archivi, {
         "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-        "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"testo": "cucina"}},
     })
     assert risposta.status == 200
     corpo = await risposta.json()
@@ -266,7 +266,7 @@ async def test_tools_call_senza_nome_dice_quale_campo_manca(rotta):
     })).json()
     assert corpo["error"]["code"] == -32602
     assert "params.name" in corpo["error"]["message"]
-    assert "ricorda" in corpo["error"]["message"]
+    assert "remember" in corpo["error"]["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +279,7 @@ async def test_tools_call_senza_nome_dice_quale_campo_manca(rotta):
 async def _chiama_cerca(client, id_richiesta, intestazioni):
     return await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": id_richiesta, "method": "tools/call",
-        "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"testo": "cucina"}},
     }, intestazioni=intestazioni)
 
 
@@ -303,7 +303,7 @@ async def test_tetto_raggiunto_rifiuta_e_il_dispatcher_non_viene_invocato(rotta,
     with caplog.at_level(logging.WARNING):
         risposta = await _jsonrpc(client, {
             "jsonrpc": "2.0", "id": 999, "method": "tools/call",
-            "params": {"name": "ricorda", "arguments": {"testo": "scritto oltre il tetto"}},
+            "params": {"name": "remember", "arguments": {"testo": "scritto oltre il tetto"}},
         }, intestazioni=intestazioni)
 
     assert risposta.status == 200
@@ -387,7 +387,7 @@ async def test_senza_intestazione_di_turno_lo_strumento_si_esegue_e_il_log_lo_di
     assert esito["trovati"]  # lo strumento e' stato ESEGUITO davvero
 
     messaggi = [r.getMessage() for r in caplog.records]
-    assert any("X-HIRIS-Turno" in m and "cerca" in m for m in messaggi)
+    assert any("X-HIRIS-Turno" in m and "search" in m for m in messaggi)
 
 
 @pytest.mark.asyncio
@@ -715,7 +715,7 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
     intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-guardia-mcp"}
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "cerca", "arguments": {"testo": "cucina"}},
+        "params": {"name": "search", "arguments": {"testo": "cucina"}},
     }, intestazioni=intestazioni)
     assert len(chiamate) == 1
     _app_vista, turno_visto = chiamate[0]

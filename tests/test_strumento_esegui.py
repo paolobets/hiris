@@ -41,27 +41,27 @@ def test_la_finta_porta_combacia_con_la_firma_vera():
 
 def test_esegui_e_nel_catalogo_unico():
     nomi = [d["name"] for d in KNOWLEDGE_TOOLS]
-    assert "esegui" in nomi
+    assert "execute" in nomi
     assert len(nomi) == len(set(nomi)), "nessun nome duplicato nel catalogo"
 
 
 def test_esegui_si_propaga_ai_nomi_mcp():
     from hiris.app.agent.runner import mcp_names
-    assert "mcp__hiris__esegui" in mcp_names(), (
+    assert "mcp__hiris__execute" in mcp_names(), (
         "i nomi MCP si DERIVANO dal catalogo: se questo cade, "
         "qualcuno ha scritto i nomi a mano da qualche parte")
 
 
 def test_esegui_si_propaga_al_catalogo_del_ponte():
     from hiris.app.api.handlers_mcp import mcp_catalog
-    assert "esegui" in [d["name"] for d in mcp_catalog()]
+    assert "execute" in [d["name"] for d in mcp_catalog()]
 
 
 @pytest.mark.asyncio
 async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
     actuator = FintaPorta()
     d = ToolDispatcher(None, None, cache=None, actuator=actuator)
-    esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
+    esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
     chiamata, actor = actuator.chiamate[0]
@@ -72,7 +72,7 @@ async def test_dispatch_passa_alla_porta_e_dichiara_l_origine():
 @pytest.mark.asyncio
 async def test_senza_porta_lo_dichiara_invece_di_rompersi():
     d = ToolDispatcher(None, None, cache=None, actuator=None)
-    esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
+    esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert "errore" in esito
     assert "Home Assistant" in esito["errore"]
@@ -82,7 +82,7 @@ async def test_senza_porta_lo_dichiara_invece_di_rompersi():
 async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
     """La modifica a dispatch() non deve rompere i gestori che non sono coroutine."""
     d = ToolDispatcher(None, None, cache=None, actuator=None)
-    esito = await d.dispatch("cerca", {"testo": "salotto"})
+    esito = await d.dispatch("search", {"testo": "salotto"})
     assert "errore" in esito  # niente archivio casa: errore dichiarato, non eccezione
 
 
@@ -105,7 +105,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     actuator = FintaPorta()
     d = create_tool_dispatcher({"porta_azione": actuator})
 
-    esito = await d.dispatch("esegui", {"servizio": "light.turn_off",
+    esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
     assert esito["eseguito"] is True
     assert actuator.chiamate, "il dispatcher costruito dall'app non ha la porta"

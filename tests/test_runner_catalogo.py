@@ -232,7 +232,7 @@ async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_r
     tool_use_block = MagicMock()
     tool_use_block.type = "tool_use"
     tool_use_block.id = "tu_1"
-    tool_use_block.name = "cerca"
+    tool_use_block.name = "search"
     tool_use_block.input = {"testo": "bagno"}
     text_block = MagicMock(type="text", text="trovato")
     msg1 = MagicMock(stop_reason="tool_use", content=[tool_use_block])
@@ -247,14 +247,14 @@ async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_r
     )
 
     assert result == "trovato"
-    finto_dispatcher.dispatch.assert_awaited_once_with("cerca", {"testo": "bagno"})
+    finto_dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "bagno"})
 
 
 @pytest.mark.asyncio
 async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_runner):
     tc = MagicMock()
     tc.id = "tc_1"
-    tc.function.name = "cerca"
+    tc.function.name = "search"
     tc.function.arguments = '{"testo": "bagno"}'
     choice1 = MagicMock(finish_reason="tool_calls")
     choice1.message.content = None
@@ -280,7 +280,7 @@ async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_r
     )
 
     assert result == "trovato"
-    finto_dispatcher.dispatch.assert_awaited_once_with("cerca", {"testo": "bagno"})
+    finto_dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "bagno"})
 
 
 # --- Task 3: lo stesso, ma per `chat_stream()` -------------------------------
@@ -350,7 +350,7 @@ async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(o
     async def capture(**kwargs):
         chiamate["n"] += 1
         if chiamate["n"] == 1:
-            tc = _fake_tc_delta(0, id_="tc_1", name="cerca", arguments='{"testo": "bagno"}')
+            tc = _fake_tc_delta(0, id_="tc_1", name="search", arguments='{"testo": "bagno"}')
             return _fake_stream([_fake_chunk(tool_calls=[tc], finish_reason="tool_calls")])
         return _fake_stream([_fake_chunk(content="trovato", finish_reason="stop")])
 
@@ -361,4 +361,4 @@ async def test_openai_stream_con_dispatcher_esterno_chiama_linterfaccia_minima(o
     ):
         pass
 
-    finto_dispatcher.dispatch.assert_awaited_once_with("cerca", {"testo": "bagno"})
+    finto_dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "bagno"})

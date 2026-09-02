@@ -222,8 +222,8 @@ async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_
     assert isinstance(dispatcher._exchange, str) and dispatcher._exchange, (
         "il dispatcher che arriva al runner non porta un'identita' di turno "
         "non vuota: la guardia dell'officina rifiuterebbe QUALUNQUE "
-        "`conferma` fatta dalla chat sincrona, anche in un turno successivo "
-        "a quello della `costruisci`")
+        "`confirm` fatta dalla chat sincrona, anche in un turno successivo "
+        "a quello della `propose`")
 
 
 @pytest.mark.asyncio
@@ -557,7 +557,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
         giro["n"] += 1
         if giro["n"] == 1:
             return _falsa_risposta_tool_use(
-                "guarda", {"tipo": "automazione", "riferimento": "automation.sveglia"})
+                "view", {"tipo": "automazione", "riferimento": "automation.sveglia"})
         return _falsa_risposta_testo(
             "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero.")
 
@@ -572,7 +572,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     # legge piu' dal payload -- i nomi degli strumenti non si scrivono in chat --
     # ma dal canale che li ha sostituiti: la riga di log a livello debug. Questa
     # asserzione e' quindi anche la prova che quel canale esiste davvero.
-    assert "guarda" in _strumenti_loggati(caplog)
+    assert "view" in _strumenti_loggati(caplog)
 
     # La prova vera: il SECONDO giro della stessa conversazione -- non
     # un'assunzione del test, la vera seconda chiamata a
@@ -620,7 +620,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     async def _api_finta(**kwargs):
         giro["n"] += 1
         if giro["n"] == 1:
-            return _falsa_risposta_tool_use("ricorda", {"testo": frase, "forza": "preferenza"})
+            return _falsa_risposta_tool_use("remember", {"testo": frase, "forza": "preferenza"})
         return _falsa_risposta_testo("Preso nota -- e stavolta l'ho anche salvato.")
 
     runner._client.messages.create = _api_finta
@@ -628,7 +628,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
     resp = await client.post("/api/chat", json={"message": frase})
     assert resp.status == 200
     await resp.json()
-    assert "ricorda" in _strumenti_loggati(caplog)
+    assert "remember" in _strumenti_loggati(caplog)
 
     # La prova vera: NON il testo della risposta (che qui il modello finto
     # controlla), ma una richiesta HTTP separata sull'archivio vero.
@@ -714,7 +714,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
         giro["n"] += 1
         if giro["n"] == 1:
             return _falsa_risposta_tool_use(
-                "esegui", {"servizio": "light.turn_off",
+                "execute", {"servizio": "light.turn_off",
                            "bersaglio": {"entita": ["light.cucina_1"]}})
         return _falsa_risposta_testo("L'ho spenta.")
 
@@ -728,7 +728,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     # dei trentaquattro e' rientrato.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
     assert nomi_offerti == {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert "esegui" in nomi_offerti
+    assert "execute" in nomi_offerti
     strumenti_che_scrivono = {
         "call_ha_service", "trigger_automation", "toggle_automation",
         "set_input_helper", "create_ha_config",
@@ -737,7 +737,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
 
     # (2) la chiamata e' arrivata ALLA PORTA, una volta sola, con l'origine.
     assert len(actuator.chiamate) == 1, (
-        "la chat non ha raggiunto la porta: `esegui` e' stato offerto al "
+        "la chat non ha raggiunto la porta: `execute` e' stato offerto al "
         "modello ma la sua chiamata non e' arrivata all'unico punto che esegue")
     chiamata, actor = actuator.chiamate[0]
     assert chiamata["servizio"] == "light.turn_off"
@@ -761,7 +761,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     # e l'azione resta TRACCIABILE: non piu' con una targhetta all'interfaccia
     # (uscita il 17/08/2026) ma nella riga di log a livello debug che l'ha
     # sostituita. Per un'AZIONE questa e' la tracciabilita' che conta.
-    assert "esegui" in _strumenti_loggati(caplog)
+    assert "execute" in _strumenti_loggati(caplog)
 
     archivio_casa.close()
 
@@ -789,7 +789,7 @@ async def test_senza_porta_esegui_resta_offerto_ma_dichiara_il_motivo(
         giro["n"] += 1
         if giro["n"] == 1:
             return _falsa_risposta_tool_use(
-                "esegui", {"servizio": "light.turn_off",
+                "execute", {"servizio": "light.turn_off",
                            "bersaglio": {"entita": ["light.cucina_1"]}})
         return _falsa_risposta_testo("Non riesco a raggiungere Home Assistant.")
 
@@ -800,7 +800,7 @@ async def test_senza_porta_esegui_resta_offerto_ma_dichiara_il_motivo(
 
     # `esegui` e' offerto lo stesso: toglierlo dal catalogo quando manca la
     # porta darebbe al modello un prodotto diverso a ogni turno.
-    assert "esegui" in {t["name"] for t in richieste[0]["tools"]}
+    assert "execute" in {t["name"] for t in richieste[0]["tools"]}
     blocchi = [b for m in richieste[1]["messages"]
                for b in (m["content"] if isinstance(m["content"], list) else [])
                if isinstance(b, dict) and b.get("type") == "tool_result"]

@@ -87,7 +87,7 @@ async def test_i_legami_escono_nel_vocabolario_della_casa_e_ordinati(casa, memor
     ha = _ClienteLegami(default={"script": ["script.sera"], "automation": ["automation.a"],
                                   "entity": ["light.corridoio"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+        "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert esito["legami"] == {"automazione": ["automation.a"],
                                "entita": ["light.corridoio"],
                                "script": ["script.sera"]}
@@ -104,7 +104,7 @@ async def test_il_tipo_si_traduce_verso_home_assistant(casa, memoria):
     prodotto da noi che arriva al modello come un errore suo."""
     ha = _ClienteLegami()
     await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "dispositivo", "riferimento": "abc123"})
+        "related", {"tipo": "dispositivo", "riferimento": "abc123"})
     assert ha.chiesti == [("device", "abc123")]
 
 
@@ -113,7 +113,7 @@ async def test_un_tipo_che_home_assistant_non_conosce_si_ferma_prima_della_rete(
         casa, memoria):
     ha = _ClienteLegami()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "stanza", "riferimento": "cucina"})
+        "related", {"tipo": "stanza", "riferimento": "cucina"})
     assert "errore" in esito
     assert "legami" not in esito
     assert ha.chiesti == [], "non si disturba Home Assistant per un tipo che rifiuterebbe"
@@ -135,7 +135,7 @@ async def test_un_guasto_non_diventa_un_elenco_vuoto(casa, memoria):
     un'affermazione, e su un canale caduto e' falsa."""
     ha = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+        "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "errore" in esito
     assert "legami" not in esito, "un guasto con la forma di un elenco vuoto e' il difetto"
     assert "Home Assistant non ha risposto" in esito["errore"], (
@@ -149,7 +149,7 @@ async def test_nessun_legame_resta_dicibile(casa, memoria):
     sarebbe peggiore del male."""
     ha = _ClienteLegami()
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.mai_usata"})
+        "related", {"tipo": "entita", "riferimento": "light.mai_usata"})
     assert esito["legami"] == {}
     assert "errore" not in esito
 
@@ -167,7 +167,7 @@ async def test_senza_canale_verso_home_assistant_lo_strumento_lo_DICHIARA(casa, 
     ragione per cui quel cancello esiste (vedi il suo commento), quindi e'
     quello che questa prova sorveglia."""
     esito = await _dispatcher(casa, memoria).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+        "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "errore" in esito
     assert "legami" not in esito
     assert "Home Assistant" in esito["errore"]
@@ -192,7 +192,7 @@ async def test_senza_canale_lo_strumento_lo_DICHIARA_e_non_lo_cerca_altrove(casa
     """
     porta_con_canale = _FintaPorta(_ClienteLegami(default={"automation": ["automation.a"]}))
     esito = await _dispatcher(casa, memoria, actuator=porta_con_canale).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+        "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert "legami" not in esito, (
         "lo strumento ha trovato il canale dentro la porta: il ripiego "
         "sull'attributo privato e' tornato")
@@ -206,7 +206,7 @@ async def test_col_canale_passato_lo_strumento_risponde(casa, memoria):
     risponde MAI farebbe passare la prova qui sopra per il motivo sbagliato."""
     ha = _ClienteLegami(default={"automation": ["automation.a"]})
     esito = await _dispatcher(casa, memoria, ha=ha).dispatch(
-        "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+        "related", {"tipo": "entita", "riferimento": "light.corridoio"})
     assert esito["legami"] == {"automazione": ["automation.a"]}
 
 
@@ -238,7 +238,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
         prima = _impronta()
         ha = _ClienteLegami(default={"automation": ["automation.a"], "scene": ["scene.sera"]})
         esito = await _dispatcher(archivio, memoria, ha=ha).dispatch(
-            "legami", {"tipo": "entita", "riferimento": "light.corridoio"})
+            "related", {"tipo": "entita", "riferimento": "light.corridoio"})
         assert esito["legami"]
         assert _impronta() == prima, "i legami sono momentanei: non si archiviano"
     finally:

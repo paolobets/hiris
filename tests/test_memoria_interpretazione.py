@@ -61,8 +61,8 @@ def test_un_ancora_che_non_esiste_insegna_a_correggersi(lookup):
     _pulita, problemi, _correzioni = validate(
         {"ancore": [{"tipo": "area", "riferimento": "taverna", "nome_visto": "taverna"}]}, lookup)
     problem = next(p for p in problemi if "taverna" in p)
-    assert "cerca" in problem
-    assert "ricorda" in problem
+    assert "search" in problem
+    assert "remember" in problem
 
 
 def test_una_interpretazione_vuota_e_legittima(lookup):

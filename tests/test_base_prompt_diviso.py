@@ -6,7 +6,7 @@ Perche' esiste. Dal Task 2 `BASE_SYSTEM_PROMPT` arriva anche al ponte (la chat
 in abbonamento), dove gli strumenti di `casa/strumenti.py` non esistono.
 La prima stesura del task lo passava INTERO e lo faceva smentire dal testo che
 lo segue -- ma dentro ci sono ORDINI di chiamare uno strumento («Usa SEMPRE
-gli strumenti per dati sulla casa», «chiama ricorda subito»), e il commento
+gli strumenti per dati sulla casa», «chiama remember subito»), e il commento
 che questo prodotto ha scritto sopra quella costante
 (`claude_runner.py`, sopra `BASE_IDENTITY`) dice che «un prompt che ordina di
 chiamare uno strumento inesistente riapre dal lato del prompt esattamente il
@@ -44,7 +44,7 @@ def test_base_identita_non_contiene_istruzioni_sugli_strumenti():
     riga che nomina uno strumento, il ponte torna a ordinare al modello di
     chiamare qualcosa che non ha -- il difetto che questo taglio chiude."""
     minuscolo = BASE_IDENTITY.lower()
-    for proibito in ("strument", "tool", "ricorda", "richiama", "cerca", "guarda"):
+    for proibito in ("strument", "tool", "remember", "fetch", "search", "view"):
         assert proibito not in minuscolo, (
             f"{proibito!r} e' rientrato in BASE_IDENTITY: e' la meta' che il "
             "ponte emette SENZA avere gli strumenti")
@@ -57,7 +57,7 @@ def test_base_regole_strumenti_tiene_gli_ordini_che_presuppongono_un_tool():
     la prende questo."""
     assert "Hai a disposizione strumenti" in BASE_TOOL_RULES
     assert "Usa SEMPRE gli strumenti" in BASE_TOOL_RULES
-    assert "chiama ricorda subito" in BASE_TOOL_RULES
+    assert "chiama remember subito" in BASE_TOOL_RULES
     assert "l'azione" in BASE_TOOL_RULES and "disclaimers" in BASE_TOOL_RULES
 
 

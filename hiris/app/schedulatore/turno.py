@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 # basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare la
 # temperatura con quella di un'ora prima invece di portarsi dietro una
 # fotografia scattata alla nascita.
-SOLA_LETTURA = ("cerca", "guarda", "legami", "richiama", "andamento", "accaduto")
+SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook")
 
 CONCLUDI_TOOL_DEF = {
-    "name": "concludi",
+    "name": "conclude",
     "description": (
         "Chiudi questa promessa dicendo cosa hai trovato. E' l'UNICO modo in cui "
         "questo turno puo' finire: se non lo chiami, chi ti ha svegliato non "
@@ -48,7 +48,7 @@ CONCLUDI_TOOL_DEF = {
         "risposta giusta, e viene comunque registrata. Se lo metti a `true` la "
         "notifica alla persona la manda HIRIS per te, sul canale che lei aveva "
         "approvato quando ti ha fatto la promessa: qui non esiste uno strumento "
-        "per notificare, e non serve -- chiamare «concludi» E' il modo di "
+        "per notificare, e non serve -- chiamare «conclude» E' il modo di "
         "avvisarla. `testo` e' cio' che le diresti: una o due frasi, con i numeri "
         "veri e le loro unita', non un riassunto vago; ed e' anche cio' che le "
         "arriva nella notifica. Non puoi toccare la casa da qui: se la risposta "
@@ -102,11 +102,11 @@ class PromiseDispatcher:
 
     async def dispatch(self, name: str, argomenti: dict | None) -> dict:
         argomenti = argomenti or {}
-        if name == "concludi":
+        if name == "conclude":
             avvisare = argomenti.get("avvisare")
             text = argomenti.get("testo")
             if not isinstance(avvisare, bool) or not isinstance(text, str):
-                return {"errore": ("«concludi» vuole `avvisare` (vero o falso) e "
+                return {"errore": ("«conclude» vuole `avvisare` (vero o falso) e "
                                    "`testo` (cosa hai trovato).")}
             self.conclusione = {"avvisare": avvisare, "testo": text}
             return {"concluso": True}
@@ -174,7 +174,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
         return {"errore": f"il modello non ha risposto ({type(error).__name__})."}
 
     if dispatcher.conclusione is None:
-        logger.warning("promessa %s: il turno non ha chiamato «concludi»; "
+        logger.warning("promessa %s: il turno non ha chiamato «conclude»; "
                        "aveva risposto %d caratteri di testo",
                        promise["id"], len(answer or ""))
         return {"errore": _senza_conclusione(answer)}
@@ -311,14 +311,14 @@ def _system_prompt() -> str:
         "nessuno davanti allo schermo.\n"
         "Gli id fra parentesi che vedi nell'albero della casa -- `Nome (id: X)` -- "
         "sono gia' gli identificatori esatti per gli strumenti: usali direttamente, "
-        "non serve chiamare «cerca» per qualcosa che hai gia'.\n"
+        "non serve chiamare «search» per qualcosa che hai gia'.\n"
         "Se devi fare piu' letture indipendenti, chiamale IN PARALLELO nella stessa "
         "risposta: il ciclo conta un giro per risposta, non per chiamata.\n"
-        "Guarda con gli strumenti che hai, poi chiama SEMPRE «concludi». Se la "
+        "Guarda con gli strumenti che hai, poi chiama SEMPRE «conclude». Se la "
         "condizione che ti era stata chiesta non si e' verificata, concludi con "
         "avvisare=false: e' la risposta giusta, non un fallimento.\n"
         "Non puoi toccare la casa da qui. Se cio' che hai trovato richiede "
-        "un'azione, scrivila come proposta nel campo `testo` di «concludi» -- "
+        "un'azione, scrivila come proposta nel campo `testo` di «conclude» -- "
         "non nella tua risposta, che nessuno legge. E se quello che ti era "
         "stato chiesto includeva l'avvisare la persona, leggi cosa fa "
         "`avvisare`: e' li' che si avvisa, non altrove."

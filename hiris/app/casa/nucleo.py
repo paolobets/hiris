@@ -1425,7 +1425,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         entry = _plural(n, "entita' nascosta", "entita' nascoste")
         notices.append(
             f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
-            "perche' l'utente le ha nascoste, ma esistono e `guarda` le "
+            "perche' l'utente le ha nascoste, ma esistono e `view` le "
             "riporta se gliele chiedi.")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il

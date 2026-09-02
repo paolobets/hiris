@@ -423,7 +423,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # (`claude_runner.BASE_TOOL_RULES`), e applicate al `system`
     # COMPOSTO -- non alla costante.
     for ordine in ("Hai a disposizione strumenti", "Usa SEMPRE gli strumenti",
-                   "chiama ricorda subito"):
+                   "chiama remember subito"):
         assert ordine in BASE_TOOL_RULES, (
             f"{ordine!r} non e' piu' nel testo di BASE_TOOL_RULES: "
             "questa negativa non sta piu' sorvegliando niente")
@@ -545,7 +545,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     for negazione in ("non agisce", "non accendi", "non spegni"):
         assert negazione not in system, (
             f"il prompt del ramo ATTIVO dice «{negazione}» mentre la CLI gli "
-            "serve `mcp__hiris__esegui`: il modello rifiutera' di agire")
+            "serve `mcp__hiris__execute`: il modello rifiutera' di agire")
     # cio' che NON diventa vero nemmeno qui: nessuna conferma esiste, e il
     # prompt non deve prometterne una (ne' inventare azioni in sospeso).
     assert "nessuna conferma" in system
@@ -566,12 +566,12 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     assert "non e' aggiornabile in questo turno" not in system, (
         "il prompt del ramo ATTIVO dice al modello che la fotografia non e' "
         "aggiornabile in questo turno, mentre due righe sopra gli ordina di "
-        "chiamare `mcp__hiris__guarda` per i valori correnti: e' un "
+        "chiamare `mcp__hiris__view` per i valori correnti: e' un "
         "contrordine, ed e' falso -- la fotografia E' aggiornabile, con lo "
         "strumento")
     assert "invece di rispondere che non puoi richiamarlo" not in system, (
         "il prompt del ramo ATTIVO manda il modello a frugare nella fotografia "
-        "invece di chiamare `mcp__hiris__richiama`, che in questo turno c'e': "
+        "invece di chiamare `mcp__hiris__fetch`, che in questo turno c'e': "
         "quella clausola era la COMPENSAZIONE dell'assenza dello strumento, e "
         "con lo strumento presente diventa un contrordine")
     # ...e l'ordine che DEVE sopravvivere e' ancora li'
@@ -596,7 +596,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
                                                 active_tools=False)
 
-    assert "cerca" in DEFAULT_SYSTEM_PROMPT and "guarda" in DEFAULT_SYSTEM_PROMPT
+    assert "search" in DEFAULT_SYSTEM_PROMPT and "view" in DEFAULT_SYSTEM_PROMPT
     assert "quelle istruzioni non si applicano" in system
 
     # fetta E4, fix della review totale (m9): questi due assert erano su
@@ -614,8 +614,8 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # si adegua invece di essere cancellato (verificato prima dell'adeguamento
     # che falliva con AttributeError, cioe' per costruzione).
     guida = prompts._GUIDE_WITHOUT_TOOLS
-    assert "`cerca`" in guida and "`guarda`" in guida
-    assert "`ricorda`" in guida and "`richiama`" in guida
+    assert "`search`" in guida and "`view`" in guida
+    assert "`remember`" in guida and "`fetch`" in guida
     assert guida in system
 
 
@@ -648,7 +648,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     # ...e i due che la persona nomina davvero (impostazioni_chat.py ne scrive
     # due soli, ed e' una decisione: vedi il commento sopra
     # `DEFAULT_SYSTEM_PROMPT`) sono proprio quelli che la guida ricollega.
-    for nudo in ("`cerca`", "`guarda`"):
+    for nudo in ("`search`", "`view`"):
         assert nudo in DEFAULT_SYSTEM_PROMPT
 
 

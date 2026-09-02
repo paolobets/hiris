@@ -318,7 +318,7 @@ def test_guarda_col_registro_caduto_non_suggerisce_cerca():
         assert dettaglio["esiste"] is False
         assert dettaglio["non_disponibile"] is True
         assert "suggerimento" not in dettaglio, \
-            f"il ramo «{tipo}» suggerisce «cerca» anche col registro caduto"
+            f"il ramo «{tipo}» suggerisce «search» anche col registro caduto"
     # Il caso normale (nessun registro caduto) continua ad avere il
     # suggerimento -- la condizione nuova non lo cancella per tutti.
     senza_registro_caduto = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
@@ -381,7 +381,7 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
     for tipo, dettaglio in esiti.items():
         assert dettaglio["esiste"] is False
         assert "suggerimento" in dettaglio, f"manca il suggerimento nel ramo «{tipo}»"
-        assert "cerca" in dettaglio["suggerimento"]
+        assert "search" in dettaglio["suggerimento"]
     forme = {dettaglio["suggerimento"] for dettaglio in esiti.values()}
     assert len(forme) == 1, f"i rami non usano la stessa forma: {forme}"
 

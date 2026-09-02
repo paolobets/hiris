@@ -165,7 +165,7 @@ logger = logging.getLogger(__name__)
 
 
 SEARCH_TOOL_DEF = {
-    "name": "cerca",
+    "name": "search",
     "description": (
         "Trova nella casa un'area, un'entita', un dispositivo, un piano, "
         "un'automazione, uno script o un'etichetta a partire da un nome o alias "
@@ -183,24 +183,24 @@ SEARCH_TOOL_DEF = {
         "il `dominio` (`light`, `sensor`, `switch`, ...): **guarda il dominio prima di "
         "concludere**, perche' «luci» puo' corrispondere a un `sensor` che CONTA le luci "
         "invece che a una luce. Se compare anche `nome_dedotto` (una STRINGA, mai un "
-        "booleano -- la stessa forma in `guarda`), il nome che vedi in `nome` non l'ha "
+        "booleano -- la stessa forma in `view`), il nome che vedi in `nome` non l'ha "
         "scelto chi vive in questa casa: viene dedotto da cio' che Home Assistant mostra "
         "a schermo, e i due campi portano lo stesso testo. "
         "Un candidato di tipo `entita` può portare anche `nascosta: true`: l'utente l'ha "
         "tolta dalle proprie viste in Home Assistant, ma esiste comunque, ed è per questo "
-        "che qui NON viene esclusa come invece accade nelle liste di `guarda` — dire "
+        "che qui NON viene esclusa come invece accade nelle liste di `view` — dire "
         "«non esiste» di una cosa che c'è sarebbe peggio che dirla nascosta. Non proporla "
         "spontaneamente se la domanda non la riguarda; se invece la riguarda — l'utente "
         "ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — usala "
         "e dillo, non negarla. "
-        "Un candidato di tipo `piano` NON si passa a `guarda`, che non sa aprire un "
-        "piano da solo: serve a `esegui(piani=...)`, per agire su tutte le aree di "
-        "quel piano insieme. `automazione` e `script` invece si passano a `guarda` "
+        "Un candidato di tipo `piano` NON si passa a `view`, che non sa aprire un "
+        "piano da solo: serve a `execute(piani=...)`, per agire su tutte le aree di "
+        "quel piano insieme. `automazione` e `script` invece si passano a `view` "
         "esattamente come `area`/`entita`/`dispositivo`. "
-        "Un candidato di tipo `etichetta` NEMMENO si passa a `guarda` (non e' una "
+        "Un candidato di tipo `etichetta` NEMMENO si passa a `view` (non e' una "
         "cosa che si apre in dettaglio): il suo `riferimento` E' il `label_id` che "
-        "`esegui(bersaglio.etichette=[...])` pretende -- fino ad ora nessuna porta lo "
-        "faceva uscire per un'etichetta che nessuna entita' ancora porta; da «cerca» "
+        "`execute(bersaglio.etichette=[...])` pretende -- fino ad ora nessuna porta lo "
+        "faceva uscire per un'etichetta che nessuna entita' ancora porta; da «search» "
         "sul suo NOME si arriva al `label_id` con una chiamata sola. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
@@ -231,7 +231,7 @@ SEARCH_TOOL_DEF = {
 }
 
 VIEW_TOOL_DEF = {
-    "name": "guarda",
+    "name": "view",
     "description": (
         "Il dettaglio di UNA cosa sola della casa: un'area con le sue entita' e "
         "i loro stati, un'entita' con il suo stato e la sua classe, "
@@ -241,7 +241,7 @@ VIEW_TOOL_DEF = {
         "('area', 'entita', 'dispositivo', 'automazione', 'script' o 'ricordo') "
         "e `riferimento`: l'identificatore ESATTO della cosa (l'id di area/"
         "entita'/dispositivo, l'id dell'automazione o script, il numero del "
-        "ricordo) -- non un nome libero. Se hai solo un nome, usa prima `cerca`. "
+        "ricordo) -- non un nome libero. Se hai solo un nome, usa prima `search`. "
         "Restituisce SEMPRE la chiave `esiste`: quando e' `false` il resto non "
         "e' inventato -- nessuna lista di entita' o corpo che potrebbe passare "
         "per un fatto sulla casa invece che per 'non trovato'. Anche quando "
@@ -250,7 +250,7 @@ VIEW_TOOL_DEF = {
         "HIRIS dichiarato in `origine`, non un fatto sulla casa. Un'entita' -- "
         "da sola, o dentro le liste di un'area o di un dispositivo -- puo' "
         "avere `nome: null` e portare invece `nome_dedotto` (una STRINGA, mai "
-        "un booleano -- la stessa forma in `cerca`): quel testo E' il nome, "
+        "un booleano -- la stessa forma in `search`): quel testo E' il nome, "
         "solo non scelto da chi vive in questa casa ma letto da cio' che Home "
         "Assistant mostra a schermo. Non concludere «senza nome» quando "
         "`nome_dedotto` c'e'. "
@@ -268,7 +268,7 @@ VIEW_TOOL_DEF = {
         "Questo strumento porta il CORPO di una cosa -- cosa fa quell'automazione, "
         "cosa contiene quell'area -- non i suoi legami: per sapere CHI tocca una "
         "cosa (e quindi cosa smetterebbe di funzionare se la cancellassi) usa "
-        "`legami`, che e' una domanda diversa e una risposta diversa."
+        "`related`, che e' una domanda diversa e una risposta diversa."
     ),
     "input_schema": {
         "type": "object",
@@ -286,7 +286,7 @@ VIEW_TOOL_DEF = {
                     "L'identificatore esatto della cosa da guardare: l'id di "
                     "area/entita'/dispositivo o di automazione/script cosi' "
                     "come lo conosce Home Assistant, oppure il numero di un "
-                    "ricordo (visto in `guarda`/`richiama`)."
+                    "ricordo (visto in `view`/`fetch`)."
                 ),
             },
         },
@@ -302,7 +302,7 @@ VIEW_TOOL_DEF = {
 _OUR_LINK_TYPES = tuple(sorted(HA_LINK_TYPE))
 
 RELATED_TOOL_DEF = {
-    "name": "legami",
+    "name": "related",
     "description": (
         "CHI tocca una cosa della casa, secondo Home Assistant: quali "
         "automazioni, script, scene, gruppi o persone la nominano, e dove quella "
@@ -311,24 +311,24 @@ RELATED_TOOL_DEF = {
         "luce del corridoio?» e -- prima di proporre di cancellare o cambiare "
         "qualcosa -- «se tolgo questa, cosa smette di funzionare?». "
         "Richiede `tipo` (uno fra: " + ", ".join(_OUR_LINK_TYPES) + ") e "
-        "`riferimento`, l'identificatore ESATTO (usa `cerca` se hai solo un nome). "
+        "`riferimento`, l'identificatore ESATTO (usa `search` se hai solo un nome). "
         "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
         "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
-        "`guarda` legge due soli file: qui i legami sono completi, ma non c'e' il "
+        "`view` legge due soli file: qui i legami sono completi, ma non c'e' il "
         "CORPO. Le due cose non si sostituiscono: per sapere COSA FA "
-        "un'automazione che trovi qui, aprila con `guarda`. "
-        "**Come si legge la risposta.** `legami` e' un dizionario tipo -> "
+        "un'automazione che trovi qui, aprila con `view`. "
+        "**Come si legge la risposta.** `related` e' un dizionario tipo -> "
         "identificatori. Per un'entita' mescola chi la USA (automazione, script, "
         "scena, gruppo, persona) con dove STA (area, dispositivo, piano, "
         "integrazione, etichetta): se la domanda e' «cosa smette di funzionare», "
         "guarda i primi -- un'area non smette di funzionare perche' le togli una "
         "luce. Per un'area, invece, le entita' elencate sono cio' che l'area "
-        "CONTIENE. I tipi usano gli stessi nomi di `cerca` e `guarda`, quindi un "
-        "riferimento letto qui si passa a `guarda` cosi' com'e' -- ma `guarda` sa "
+        "CONTIENE. I tipi usano gli stessi nomi di `search` e `view`, quindi un "
+        "riferimento letto qui si passa a `view` cosi' com'e' -- ma `view` sa "
         "aprire solo area, entita, dispositivo, automazione e script: sugli altri "
         "risponde `non_so_guardare`, che significa «non lo so aprire», MAI «non "
         "esiste». "
-        "Un `legami` vuoto significa che Home Assistant non conosce nessun legame "
+        "Un `related` vuoto significa che Home Assistant non conosce nessun legame "
         "per questa cosa. Se invece non ha potuto rispondere ricevi `errore`, che "
         "non e' la stessa cosa: NON concludere che non la tocca nessuno."
     ),
@@ -354,7 +354,7 @@ RELATED_TOOL_DEF = {
 }
 
 REMEMBER_TOOL_DEF = {
-    "name": "ricorda",
+    "name": "remember",
     "description": (
         "Salva qualcosa che una persona ha detto sulla casa -- una preferenza, "
         "un divieto, un fatto, una regola -- cosi' che HIRIS se ne ricordi "
@@ -367,7 +367,7 @@ REMEMBER_TOOL_DEF = {
         "regola), un valore o intervallo (`grandezza` + `minimo`/`massimo`, es. "
         "una temperatura), `condizioni` (ora, giorno, presenza, sole, meteo, "
         "stagione) e `ancore` -- a quali aree, entita' o dispositivi si "
-        "riferisce, nominando il loro identificatore esatto (usa `cerca` per "
+        "riferisce, nominando il loro identificatore esatto (usa `search` per "
         "trovarlo, non inventarlo). Un'ancora che non esiste davvero nella casa "
         "NON viene scritta -- ma il ricordo si salva comunque, per intero: la "
         "risposta lo dichiara in `problemi`, cosi' sai cosa e' stato scartato e "
@@ -444,7 +444,7 @@ REMEMBER_TOOL_DEF = {
                         "riferimento": {
                             "type": "string",
                             "description": (
-                                "L'identificatore esatto (usa `cerca` per trovarlo, "
+                                "L'identificatore esatto (usa `search` per trovarlo, "
                                 "non inventarlo)."
                             ),
                         },
@@ -465,18 +465,18 @@ REMEMBER_TOOL_DEF = {
 }
 
 FETCH_TOOL_DEF = {
-    "name": "richiama",
+    "name": "fetch",
     "description": (
         "I ricordi gia' salvati che riguardano una parte della casa -- un'area, "
         "un'entita' o un dispositivo -- dato il suo identificatore esatto "
-        "(`riferimento`; usa `cerca` per trovarlo se hai solo un nome). Serve a "
+        "(`riferimento`; usa `search` per trovarlo se hai solo un nome). Serve a "
         "rispondere a domande come 'cosa mi hai gia' detto sulla cucina?' senza "
         "dover rileggere ogni ricordo uno per uno. Se `tipo` non e' specificato, "
         "cerca fra tutti e tre i tipi di ancora (area, entita', dispositivo); "
         "specificalo solo se lo sai gia' con certezza. Se nessun ricordo e' "
         "ancorato a quel riferimento, `ricordi` e' una lista vuota: non "
         "significa che la casa non ha ricordi, significa solo che nessuno di "
-        "quelli salvati nomina proprio questa parte -- prova `richiama` senza "
+        "quelli salvati nomina proprio questa parte -- prova `fetch` senza "
         "ancore su una parte piu' ampia, o chiedi all'utente."
     ),
     "input_schema": {
@@ -496,7 +496,7 @@ FETCH_TOOL_DEF = {
 }
 
 EXECUTE_TOOL_DEF = {
-    "name": "esegui",
+    "name": "execute",
     "description": (
         "Chiama un servizio di Home Assistant per far succedere qualcosa nella "
         "casa: accendere, spegnere, impostare. Richiede `servizio` nella forma "
@@ -505,7 +505,7 @@ EXECUTE_TOOL_DEF = {
         "«tutto in cucina»: `entita` con gli id ESATTI, oppure `aree`, `piani`, "
         "`etichette` o `dispositivi` con i loro id -- e in quel caso e' Home "
         "Assistant a dire cosa contengono. NON risolvere un'area a mano con "
-        "`cerca` per poi elencarne le entita': se te ne sfugge una tocchi quasi "
+        "`search` per poi elencarne le entita': se te ne sfugge una tocchi quasi "
         "tutto e credi di aver toccato tutto. Puoi combinarli. "
         "`dati` porta i parametri del servizio, se ne servono. "
         "La chiamata viene VERIFICATA contro questa installazione prima di "
@@ -561,8 +561,8 @@ EXECUTE_TOOL_DEF = {
                         "description": (
                             "Gli id delle etichette (`label_id`): tutto cio' che le "
                             "porta, entita', dispositivi o aree. Si prendono da "
-                            "«cerca» sul NOME dell'etichetta (il candidato di tipo "
-                            "«etichetta» porta il suo id), o da «guarda», dove "
+                            "«search» sul NOME dell'etichetta (il candidato di tipo "
+                            "«etichetta» porta il suo id), o da «view», dove "
                             "compaiono accanto al nome di ogni etichetta -- mai da "
                             "solo, sono slug che nessuno scrive a memoria."
                         ),
@@ -590,13 +590,13 @@ EXECUTE_TOOL_DEF = {
 }
 
 PROMISE_TOOL_DEF = {
-    "name": "prometti",
+    "name": "promise",
     "description": (
         "Metti da parte qualcosa da fare, o da guardare, PIU' TARDI: «alle 17 "
         "accendi lo studio», «fra un'ora verifica la temperatura e se e' "
         "aumentata avvisami», «fra due ore dimmi se posso aprire le finestre». "
         "Due specie. `fai`: un'azione, e vuole `chiamata` nella stessa forma di "
-        "«esegui» -- viene VERIFICATA adesso contro questa installazione, quindi "
+        "«execute» -- viene VERIFICATA adesso contro questa installazione, quindi "
         "un servizio o un'entita' che non esistono te li dico subito, non fra due "
         "ore. `chiedi`: a quell'ora guardi tu e rispondi, e vuole `domanda`; se la "
         "richiesta e' un CONFRONTO («se e' aumentata») elenca in `da_confrontare` "
@@ -604,7 +604,7 @@ PROMISE_TOOL_DEF = {
         "confrontare. `quando` e' un istante ISO-8601 col fuso: risolvilo tu da "
         "«fra un'ora» o «alle 17», e riporta in `quando_detto` le parole della "
         "persona. Un istante gia' passato viene rifiutato. `recapito` e' il "
-        "servizio notify con cui venirla a cercare (usa «cerca» per trovarne uno "
+        "servizio notify con cui venirla a cercare (usa «search» per trovarne uno "
         "vero): senza, la risposta resta solo nella pagina delle promesse. "
         "NON usare questo strumento per qualcosa che si ripete ogni giorno: "
         "quella e' un'automazione di Home Assistant, dillo alla persona."
@@ -629,7 +629,7 @@ PROMISE_TOOL_DEF = {
                 "type": "object",
                 "description": (
                     "Solo per «fai»: `servizio`, `bersaglio` e `dati`, "
-                    "come in «esegui»."
+                    "come in «execute»."
                 ),
             },
             "domanda": {
@@ -654,7 +654,7 @@ PROMISE_TOOL_DEF = {
 }
 
 AGENDA_TOOL_DEF = {
-    "name": "promesse",
+    "name": "agenda",
     "description": (
         "Cosa HIRIS ha promesso: cio' che e' ancora in sospeso e, se chiedi lo "
         "storico, com'e' andata -- mantenuta, saltata (col ritardo misurato), "
@@ -677,10 +677,10 @@ AGENDA_TOOL_DEF = {
 }
 
 CANCEL_TOOL_DEF = {
-    "name": "disdici",
+    "name": "cancel",
     "description": (
         "Annulla una promessa che non e' ancora stata mantenuta. Serve il suo "
-        "`id`: prendilo da «promesse», non inventarlo. Una promessa gia' "
+        "`id`: prendilo da «agenda», non inventarlo. Una promessa gia' "
         "mantenuta, saltata o disdetta non si annulla -- te lo dico invece di "
         "fingere di averlo fatto."
     ),
@@ -692,18 +692,18 @@ CANCEL_TOOL_DEF = {
 }
 
 PROPOSE_TOOL_DEF = {
-    "name": "costruisci",
+    "name": "propose",
     "description": (
         "PROPONE di creare, modificare o cancellare un'automazione, uno script "
         "o una scena in Home Assistant. **Non scrive niente**: compone, fa "
         "validare la configurazione a QUESTA casa e restituisce un'anteprima "
-        "con un `proposta_id`. Per farla diventare vera serve `conferma`, e "
+        "con un `proposta_id`. Per farla diventare vera serve `confirm`, e "
         "**non nello stesso turno**: mostra l'anteprima all'utente e aspetta "
         "che sia lui a dire di procedere. "
         "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
         "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
-        "`cerca` o `guarda`. "
+        "`search` o `view`. "
         "Componi con i PARAMETRI, non scrivendo YAML: `innesco`, `condizioni`, "
         "`azioni` per un'automazione; `azioni` per uno script; `stati` per una "
         "scena. Usa lo schema moderno di Home Assistant (`trigger:`, `action:` "
@@ -763,9 +763,9 @@ PROPOSE_TOOL_DEF = {
 }
 
 CONFIRM_TOOL_DEF = {
-    "name": "conferma",
+    "name": "confirm",
     "description": (
-        "Applica una proposta creata da `costruisci`: da qui in poi la cosa "
+        "Applica una proposta creata da `propose`: da qui in poi la cosa "
         "esiste davvero in Home Assistant. "
         "**Chiamalo SOLO dopo che l'utente ha detto di procedere**, in un turno "
         "successivo a quello in cui hai mostrato l'anteprima: se lo chiami nello "
@@ -778,19 +778,19 @@ CONFIRM_TOOL_DEF = {
         "type": "object",
         "properties": {
             "proposta_id": {"type": "string",
-                            "description": "L'identificatore restituito da `costruisci`."},
+                            "description": "L'identificatore restituito da `propose`."},
         },
         "required": ["proposta_id"],
     },
 }
 
 TREND_TOOL_DEF = {
-    "name": "andamento",
+    "name": "trend",
     "description": (
         "Come e' andato nel tempo il valore di UNA entita': la temperatura di "
         "una camera nelle ultime ore, se una porta e' rimasta aperta, quanto "
         "ha consumato un contatore. Richiede `entita` (l'identificatore "
-        "ESATTO -- se hai solo un nome, usa prima `cerca`) e `ore`, la "
+        "ESATTO -- se hai solo un nome, usa prima `search`) e `ore`, la "
         "finestra all'indietro da adesso. "
         "**La grana la scelgo io, non tu**, e la risposta te la dichiara: "
         "entro le ultime 24 ore ricevi i cambi veri (`grana: dettaglio`); su "
@@ -830,7 +830,7 @@ TREND_TOOL_DEF = {
 }
 
 LOGBOOK_TOOL_DEF = {
-    "name": "accaduto",
+    "name": "logbook",
     "description": (
         # F5 (onda finale): la versione precedente prometteva «quale
         # automazione, quale persona» come se fossero sempre disponibili. Il
@@ -989,14 +989,14 @@ class ToolDispatcher:
         self._journal = journal
 
     _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
-        "cerca": ("casa",), "guarda": ("casa", "memoria"),
-        "legami": ("ha",),
-        "ricorda": ("casa", "memoria"), "richiama": ("memoria",),
-        "esegui": ("porta",),
-        "prometti": ("promesse",), "promesse": ("promesse",),
-        "disdici": ("promesse",),
-        "costruisci": ("officina",), "conferma": ("officina",),
-        "andamento": ("ha",), "accaduto": ("ha",),
+        "search": ("casa",), "view": ("casa", "memoria"),
+        "related": ("ha",),
+        "remember": ("casa", "memoria"), "fetch": ("memoria",),
+        "execute": ("porta",),
+        "promise": ("promesse",), "agenda": ("promesse",),
+        "cancel": ("promesse",),
+        "propose": ("officina",), "confirm": ("officina",),
+        "trend": ("ha",), "logbook": ("ha",),
     }
 
     def _ha_channel(self):
@@ -1070,19 +1070,19 @@ class ToolDispatcher:
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
         handler = {
-            "cerca": self._search,
-            "guarda": self._view,
-            "legami": self._related,
-            "ricorda": self._remember,
-            "richiama": self._recall,
-            "esegui": self._execute,
-            "prometti": self._promise,
-            "promesse": self._list_agenda,
-            "disdici": self._cancel,
-            "costruisci": self._propose,
-            "conferma": self._confirm,
-            "andamento": self._trend,
-            "accaduto": self._happened,
+            "search": self._search,
+            "view": self._view,
+            "related": self._related,
+            "remember": self._remember,
+            "fetch": self._recall,
+            "execute": self._execute,
+            "promise": self._promise,
+            "agenda": self._list_agenda,
+            "cancel": self._cancel,
+            "propose": self._propose,
+            "confirm": self._confirm,
+            "trend": self._trend,
+            "logbook": self._happened,
         }[name]
         try:
             # `_esegui`, `_legami`, `_prometti`, `_costruisci`, `_conferma`,
@@ -1115,7 +1115,7 @@ class ToolDispatcher:
     def _search(self, arguments: dict[str, Any]) -> dict:
         text = arguments.get("testo")
         if not isinstance(text, str) or not text.strip():
-            return {"errore": "«cerca» richiede un «testo» non vuoto."}
+            return {"errore": "«search» richiede un «testo» non vuoto."}
         home_space = self._home_space.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
         # `guarda` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
@@ -1252,7 +1252,7 @@ class ToolDispatcher:
         kind = arguments.get("tipo")
         reference = arguments.get("riferimento")
         if not kind or reference is None:
-            return {"errore": "«guarda» richiede «tipo» e «riferimento»."}
+            return {"errore": "«view» richiede «tipo» e «riferimento»."}
         # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT):
         # il modello puo' passarlo come stringa (i JSON tool-call spesso lo
         # fanno). Un riferimento non convertibile non e' un errore da
@@ -1371,7 +1371,7 @@ class ToolDispatcher:
         kind = arguments.get("tipo")
         reference = arguments.get("riferimento")
         if not kind or not reference:
-            return {"errore": "«legami» richiede «tipo» e «riferimento»."}
+            return {"errore": "«related» richiede «tipo» e «riferimento»."}
         ha_kind = HA_LINK_TYPE.get(kind)
         if ha_kind is None:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
@@ -1389,7 +1389,7 @@ class ToolDispatcher:
     def _remember(self, arguments: dict[str, Any]) -> dict:
         text = arguments.get("testo")
         if not isinstance(text, str) or not text.strip():
-            return {"errore": "«ricorda» richiede un «testo» non vuoto."}
+            return {"errore": "«remember» richiede un «testo» non vuoto."}
 
         # `aggiornata_il` decide sia "anagrafe letta?" sia la chiave della
         # cache sotto: letto una volta sola, nessun await fra le due letture
@@ -1463,7 +1463,7 @@ class ToolDispatcher:
     def _recall(self, arguments: dict[str, Any]) -> dict:
         reference = arguments.get("riferimento")
         if reference is None:
-            return {"errore": "«richiama» richiede un «riferimento»."}
+            return {"errore": "«fetch» richiede un «riferimento»."}
         kind = arguments.get("tipo")
         # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
         # o "entita'" con l'accento -- plausibilissimo per un modello
@@ -1477,7 +1477,7 @@ class ToolDispatcher:
         # distinguibile da "non ti ho detto niente".
         if kind is not None and kind not in _TETHER_TYPES:
             available = ", ".join(_TETHER_TYPES)
-            return {"errore": f"«{kind}» non e' un tipo di ancora valido per «richiama» "
+            return {"errore": f"«{kind}» non e' un tipo di ancora valido per «fetch» "
                               f"({available})."}
         kinds = (kind,) if kind else _TETHER_TYPES
 
@@ -1556,7 +1556,7 @@ class ToolDispatcher:
             await self._registry.ensure_fresh(channel)
         except Exception as error:
             logger.warning(
-                "prometti: rinfresco del registro servizi fallito (%s: %s), "
+                "promise: rinfresco del registro servizi fallito (%s: %s), "
                 "resta il rifiuto onesto", type(error).__name__, error)
 
     async def _promise(self, arguments: dict[str, Any]) -> dict:
@@ -1634,7 +1634,7 @@ class ToolDispatcher:
 
         identifier = arguments.get("id")
         if not isinstance(identifier, str) or not identifier.strip():
-            return {"errore": "«disdici» ha bisogno dell'`id` della promessa."}
+            return {"errore": "«cancel» ha bisogno dell'`id` della promessa."}
         return self._agenda.cancel(identifier.strip(), now=_time.time())
 
     async def _propose(self, arguments: dict[str, Any]) -> dict:
@@ -1669,7 +1669,7 @@ class ToolDispatcher:
         import time as _time
         proposal_id = (arguments or {}).get("proposta_id")
         if not isinstance(proposal_id, str) or not proposal_id.strip():
-            return {"errore": "serve il `proposta_id` che ti ha dato `costruisci`."}
+            return {"errore": "serve il `proposta_id` che ti ha dato `propose`."}
         occurrence = await self._workshop.apply(
             proposal_id.strip(), actor="chat", exchange=self._exchange, now=_time.time())
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
@@ -1803,7 +1803,7 @@ class ToolDispatcher:
         unknown = [str(e) for e in entities if e not in states]
         if unknown:
             return ("non posso prometterlo: {} non esiste in questa casa. "
-                     "Usa «cerca» per trovare l'id esatto e ripeti la "
+                     "Usa «search» per trovare l'id esatto e ripeti la "
                      "richiesta.".format(", ".join(unknown)))
         return None
 
@@ -1935,7 +1935,7 @@ class ToolDispatcher:
         """
         entity = arguments.get("entita")
         if not isinstance(entity, str) or not entity.strip():
-            return {"errore": "«andamento» richiede «entita»: l'identificatore esatto."}
+            return {"errore": "«trend» richiede «entita»: l'identificatore esatto."}
         import time as _time
 
         entity = entity.strip()
@@ -1955,7 +1955,7 @@ class ToolDispatcher:
     async def _happened(self, arguments: dict[str, Any]) -> dict:
         entity = arguments.get("entita")
         if entity is not None and (not isinstance(entity, str) or not entity.strip()):
-            return {"errore": "«accaduto» vuole «entita» come identificatore, oppure niente."}
+            return {"errore": "«logbook» vuole «entita» come identificatore, oppure niente."}
         import time as _time
 
         return await tempo.logbook(

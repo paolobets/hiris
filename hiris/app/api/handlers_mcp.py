@@ -466,7 +466,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             # e' l'unico che puo' ancora fare qualcosa (riprovare, o dirlo nel
             # testo), e lo si scrive nel log per chi indaga.
             logger.error(
-                "MCP «concludi» per la promessa %s: orologio o archivio "
+                "MCP «conclude» per la promessa %s: orologio o archivio "
                 "assenti, la promessa NON e' stata chiusa", promise_id)
             result = {"errore": ("ho ricevuto la conclusione ma non ho "
                                  "potuto chiudere la promessa.")}

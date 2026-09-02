@@ -226,11 +226,11 @@ def test_init_con_server_mcp_failed_arriva_intero():
     # strumenti. Qui si pinna SOLO che arrivi intero: nessuna decisione.
     esito = runner.read_stream(_flusso(
         _init(mcp_servers=[{"name": "hiris", "status": "failed"}],
-              tools=["Task", "mcp__hiris__guarda"]),
+              tools=["Task", "mcp__hiris__view"]),
         _result("rispondo senza strumenti")))
 
     assert esito.init["mcp_servers"] == [{"name": "hiris", "status": "failed"}]
-    assert esito.init["tools"] == ["Task", "mcp__hiris__guarda"]
+    assert esito.init["tools"] == ["Task", "mcp__hiris__view"]
     assert esito.text == "rispondo senza strumenti"
 
 
@@ -458,15 +458,15 @@ def test_leggi_flusso_estrae_i_tool_use_in_ordine():
     # risoluzione -- quello ha i suoi test dedicati piu' sotto (fix round 1).
     esito = runner.read_stream(_flusso(
         _init(),
-        _tool_use("mcp__hiris__guarda", {"cosa": "salotto"}, id_="t1"),
+        _tool_use("mcp__hiris__view", {"cosa": "salotto"}, id_="t1"),
         _tool_result("t1", is_error=False),
-        _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}, id_="t2"),
+        _tool_use("mcp__hiris__remember", {"testo": "la caldaia perde"}, id_="t2"),
         _tool_result("t2", is_error=False),
         _result("fatto")))
 
     assert esito.tools_called == [
-        {"tool": "mcp__hiris__guarda", "input": {"cosa": "salotto"}},
-        {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}},
+        {"tool": "mcp__hiris__view", "input": {"cosa": "salotto"}},
+        {"tool": "mcp__hiris__remember", "input": {"testo": "la caldaia perde"}},
     ]
 
 
@@ -505,11 +505,11 @@ def test_la_forma_e_identica_a_quella_del_ramo_sincrono():
     # Risolta con successo: e' la forma del caso comune, quella che deve
     # combaciare col ramo sincrono bit-per-bit.
     esito = runner.read_stream(_flusso(
-        _init(), _tool_use("mcp__hiris__cerca", {"query": "termosifone"}, id_="t1"),
+        _init(), _tool_use("mcp__hiris__search", {"query": "termosifone"}, id_="t1"),
         _tool_result("t1", is_error=False), _result("ok")))
     voce = esito.tools_called[0]
     assert set(voce) == {"tool", "input"}
-    assert voce == {"tool": "mcp__hiris__cerca", "input": {"query": "termosifone"}}
+    assert voce == {"tool": "mcp__hiris__search", "input": {"query": "termosifone"}}
 
 
 def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
@@ -520,16 +520,16 @@ def test_una_chiamata_fallita_resta_distinguibile_da_una_riuscita():
     # lo dice.
     esito = runner.read_stream(_flusso(
         _init(),
-        _tool_use("mcp__hiris__ricorda", {"testo": "ok"}, id_="t-ok"),
+        _tool_use("mcp__hiris__remember", {"testo": "ok"}, id_="t-ok"),
         _tool_result("t-ok", is_error=False),
-        _tool_use("mcp__hiris__ricorda", {"testo": "fallita"}, id_="t-ko"),
+        _tool_use("mcp__hiris__remember", {"testo": "fallita"}, id_="t-ko"),
         _tool_result("t-ko", is_error=True, contenuto="errore: memoria non disponibile"),
         _result("fatto")))
 
     riuscita, fallita = esito.tools_called
-    assert riuscita == {"tool": "mcp__hiris__ricorda", "input": {"testo": "ok"}}
+    assert riuscita == {"tool": "mcp__hiris__remember", "input": {"testo": "ok"}}
     assert "is_error" not in riuscita  # la forma resta identica al ramo sincrono
-    assert fallita["tool"] == "mcp__hiris__ricorda"
+    assert fallita["tool"] == "mcp__hiris__remember"
     assert fallita["is_error"] is True
     assert fallita != riuscita, (
         "una chiamata fallita non deve avere la STESSA forma di una riuscita"
@@ -545,11 +545,11 @@ def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
     # l'Important ha trovato mancante (vedi il test gemello sotto).
     esito = runner.read_stream(_flusso(
         _init(),
-        _tool_use("mcp__hiris__guarda", {}, id_="t1"),
+        _tool_use("mcp__hiris__view", {}, id_="t1"),
         _tool_result("id-mai-visto", is_error=True),
         _result("ok")))
     assert esito.tools_called == [
-        {"tool": "mcp__hiris__guarda", "input": {}, "esito": "sconosciuto"}]
+        {"tool": "mcp__hiris__view", "input": {}, "esito": "sconosciuto"}]
 
 
 def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
@@ -566,11 +566,11 @@ def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     `result` finale): e' il caso (3) gia' dichiarato da
     `risultato_presente`, incontrato ora anche da `tools_called`."""
     esito = runner.read_stream(_flusso(
-        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "mai confermato"}, id_="t1")))
+        _init(), _tool_use("mcp__hiris__remember", {"testo": "mai confermato"}, id_="t1")))
 
     assert esito.has_result is False  # il troncamento vero, non simulato
     mai_risolta = esito.tools_called[0]
-    riuscita = {"tool": "mcp__hiris__ricorda", "input": {"testo": "mai confermato"}}
+    riuscita = {"tool": "mcp__hiris__remember", "input": {"testo": "mai confermato"}}
 
     assert mai_risolta != riuscita, (
         "una chiamata MAI risolta non deve avere la stessa forma di una riuscita")
@@ -598,10 +598,10 @@ def test_decision_mock_non_porta_tools_called():
 
 def test_decision_porta_le_chiamate_nella_stessa_forma_della_lista():
     decisione = _reason_full(_flusso(
-        _init(), _tool_use("mcp__hiris__ricorda", {"testo": "la caldaia perde"}, id_="t1"),
+        _init(), _tool_use("mcp__hiris__remember", {"testo": "la caldaia perde"}, id_="t1"),
         _tool_result("t1", is_error=False), _result("preso nota")))
     assert decisione["tools_called"] == [
-        {"tool": "mcp__hiris__ricorda", "input": {"testo": "la caldaia perde"}}]
+        {"tool": "mcp__hiris__remember", "input": {"testo": "la caldaia perde"}}]
 
 
 def test_il_token_non_compare_in_tools_called():
@@ -611,7 +611,7 @@ def test_il_token_non_compare_in_tools_called():
     token = "TOK-SEGRETO-123"
     decisione = _reason_full(
         _flusso(_init(),
-               _tool_use("mcp__hiris__ricorda", {"testo": f"il token e' {token}"}),
+               _tool_use("mcp__hiris__remember", {"testo": f"il token e' {token}"}),
                _result("preso nota")),
         headers={"X-HIRIS-Internal-Token": token})
 
@@ -627,8 +627,8 @@ def test_il_conteggio_e_la_lunghezza_della_lista_non_un_secondo_contatore():
     # secondo campo da tenere allineato con la lista che lo produce.
     decisione = _reason_full(_flusso(
         _init(),
-        _tool_use("mcp__hiris__guarda", {}, id_="t1"),
-        _tool_use("mcp__hiris__ricorda", {"testo": "x"}, id_="t2"),
+        _tool_use("mcp__hiris__view", {}, id_="t1"),
+        _tool_use("mcp__hiris__remember", {"testo": "x"}, id_="t2"),
         _result("fatto")))
     assert len(decisione["tools_called"]) == 2
 
@@ -687,7 +687,7 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     # risoluzione -- quello ha i suoi test dedicati (fix round 1, sopra).
     primo_giro = _flusso(
         _init(mcp_servers=[{"name": "hiris", "status": "failed"}]),
-        _tool_use("mcp__hiris__ricorda",
+        _tool_use("mcp__hiris__remember",
                   {"testo": "scritto durante il giro poi buttato"}, id_="t1"),
         _tool_result("t1", is_error=False),
         _result("mi sono segnato la cosa"))
@@ -704,7 +704,7 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     assert cli.chiamate == 2  # la contraddizione ha davvero fatto ricomporre
     # la chiamata del giro BUTTATO resta, da sola: e' l'unica che c'e' stata.
     assert decisione["tools_called"] == [
-        {"tool": "mcp__hiris__ricorda",
+        {"tool": "mcp__hiris__remember",
          "input": {"testo": "scritto durante il giro poi buttato"}}]
     # la reply che l'utente legge resta quella del SECONDO giro (Task 4: mai
     # promettere strumenti che non c'erano) -- questo task non cambia quella

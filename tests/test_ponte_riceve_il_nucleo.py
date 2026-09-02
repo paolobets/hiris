@@ -149,7 +149,7 @@ def test_base_system_prompt_e_importato_non_ricopiato():
 #
 # Prima di questo giro il ponte componeva `BASE_SYSTEM_PROMPT` intero, e la
 # guida che segue doveva smentirne quattro affermazioni. Ma «Usa SEMPRE gli
-# strumenti per dati sulla casa» e «chiama ricorda subito, senza chiedere il
+# strumenti per dati sulla casa» e «chiama remember subito, senza chiedere il
 # permesso» non sono affermazioni: sono ORDINI di chiamare uno strumento che
 # qui non esiste. Il caso peggiore -- l'utente dice "ricordati che la caldaia
 # perde", il modello obbedisce a BASE, lo strumento non c'e', e risponde
@@ -165,7 +165,7 @@ def test_senza_strumenti_il_ponte_non_emette_le_regole_sugli_strumenti():
     assert BASE_TOOL_RULES not in system
     # i quattro pezzi che sul ponte sarebbero falsi o ineseguibili, uno per uno
     assert "Usa SEMPRE gli strumenti" not in system
-    assert "chiama ricorda subito" not in system
+    assert "chiama remember subito" not in system
     assert "Hai a disposizione strumenti" not in system
     assert "non aggiungere disclaimers" not in system
 
@@ -180,7 +180,7 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
 
     assert BASE_SYSTEM_PROMPT.strip() in system
     assert "Usa SEMPRE gli strumenti" in system
-    assert "chiama ricorda subito" in system
+    assert "chiama remember subito" in system
 
 
 # ---------------------------------------------------------------------------

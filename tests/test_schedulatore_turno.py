@@ -15,15 +15,15 @@ from hiris.app.schedulatore.turno import (
 
 def test_il_catalogo_non_contiene_gli_strumenti_che_scrivono():
     nomi = {d["name"] for d in promise_tools()}
-    assert "esegui" not in nomi
-    assert "ricorda" not in nomi
-    assert "prometti" not in nomi
-    assert "disdici" not in nomi
+    assert "execute" not in nomi
+    assert "remember" not in nomi
+    assert "promise" not in nomi
+    assert "cancel" not in nomi
 
 
 def test_il_catalogo_contiene_i_lettori_e_concludi():
     nomi = {d["name"] for d in promise_tools()}
-    assert nomi == set(SOLA_LETTURA) | {"concludi"}
+    assert nomi == set(SOLA_LETTURA) | {"conclude"}
 
 
 def test_ogni_nome_ammesso_esiste_davvero_nel_catalogo_della_chat():
@@ -79,7 +79,7 @@ def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
     from hiris.app.schedulatore.turno import _system_prompt
 
     testo = _system_prompt()
-    assert "nel campo `testo` di «concludi»" in testo, (
+    assert "nel campo `testo` di «conclude»" in testo, (
         "«nel testo» da solo si legge come «nella tua risposta»")
     assert "leggi cosa fa `avvisare`" in testo, (
         "il caso «mi era stato chiesto di avvisare» deve portare a concludi")
@@ -101,7 +101,7 @@ class DispatcherFinto:
 async def test_esegui_non_arriva_al_dispatcher_sottostante():
     sotto = DispatcherFinto()
     d = PromiseDispatcher(sotto)
-    esito = await d.dispatch("esegui", {"servizio": "light.turn_on"})
+    esito = await d.dispatch("execute", {"servizio": "light.turn_on"})
     assert "errore" in esito
     assert sotto.chiamati == []
 
@@ -110,15 +110,15 @@ async def test_esegui_non_arriva_al_dispatcher_sottostante():
 async def test_un_lettore_passa_al_dispatcher_sottostante():
     sotto = DispatcherFinto()
     d = PromiseDispatcher(sotto)
-    assert await d.dispatch("guarda", {}) == {"ok": "guarda"}
-    assert sotto.chiamati == ["guarda"]
+    assert await d.dispatch("view", {}) == {"ok": "view"}
+    assert sotto.chiamati == ["view"]
 
 
 @pytest.mark.asyncio
 async def test_concludi_non_scende_e_resta_nel_wrapper():
     sotto = DispatcherFinto()
     d = PromiseDispatcher(sotto)
-    esito = await d.dispatch("concludi", {"avvisare": True, "testo": "fa caldo"})
+    esito = await d.dispatch("conclude", {"avvisare": True, "testo": "fa caldo"})
     assert "errore" not in esito
     assert sotto.chiamati == []
     assert d.conclusione == {"avvisare": True, "testo": "fa caldo"}
@@ -127,7 +127,7 @@ async def test_concludi_non_scende_e_resta_nel_wrapper():
 @pytest.mark.asyncio
 async def test_concludi_senza_avvisare_e_un_rifiuto_leggibile():
     d = PromiseDispatcher(DispatcherFinto())
-    esito = await d.dispatch("concludi", {"testo": "fa caldo"})
+    esito = await d.dispatch("conclude", {"testo": "fa caldo"})
     assert "errore" in esito
     assert d.conclusione is None
 
@@ -135,8 +135,8 @@ async def test_concludi_senza_avvisare_e_un_rifiuto_leggibile():
 @pytest.mark.asyncio
 async def test_l_ultima_conclusione_vince_e_non_si_accumula():
     d = PromiseDispatcher(DispatcherFinto())
-    await d.dispatch("concludi", {"avvisare": False, "testo": "niente"})
-    await d.dispatch("concludi", {"avvisare": True, "testo": "invece si'"})
+    await d.dispatch("conclude", {"avvisare": False, "testo": "niente"})
+    await d.dispatch("conclude", {"avvisare": True, "testo": "invece si'"})
     assert d.conclusione == {"avvisare": True, "testo": "invece si'"}
 
 
@@ -169,7 +169,7 @@ class _RunnerCheConclude:
     async def chat(self, **kwargs):
         self.chiamato_con = kwargs
         await kwargs["dispatcher"].dispatch(
-            "concludi", {"avvisare": self._avvisare, "testo": self._testo})
+            "conclude", {"avvisare": self._avvisare, "testo": self._testo})
 
 
 class _RunnerCheNonConclude:
@@ -201,7 +201,7 @@ async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
     # concludi), non il catalogo intero della chat -- e' la garanzia
     # strutturale della spec (§6.2), non solo un fatto su questo test
     assert ({d["name"] for d in runner.chiamato_con["tools"]}
-            == set(SOLA_LETTURA) | {"concludi"})
+            == set(SOLA_LETTURA) | {"conclude"})
     assert runner.chiamato_con["agent_type"] == "promessa"
 
 

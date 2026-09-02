@@ -529,7 +529,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
             lambda: http.post(
                 f"{_base_url(client)}/api/mcp", headers=runner.build_headers(),
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                      "params": {"name": "cerca", "arguments": {"testo": "cucina"}}}))
+                      "params": {"name": "search", "arguments": {"testo": "cucina"}}}))
 
     assert risposta.status_code == 200
     contenuto = risposta.json()["result"]
@@ -593,13 +593,13 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                                      "params": {"name": nome, "arguments": argomenti}})
                     return json.loads(risposta["result"]["content"][0]["text"])
 
-                visto["cerca"] = _chiama("cerca", {"testo": "cucina"})
-                visto["guarda"] = _chiama("guarda", {"tipo": "area",
+                visto["search"] = _chiama("search", {"testo": "cucina"})
+                visto["view"] = _chiama("view", {"tipo": "area",
                                                      "riferimento": "cucina"})
-                visto["ricorda"] = _chiama(
-                    "ricorda", {"testo": "in cucina si cena alle 20",
+                visto["remember"] = _chiama(
+                    "remember", {"testo": "in cucina si cena alle 20",
                                 "ancore": [{"tipo": "area", "riferimento": "cucina"}]})
-                visto["richiama"] = _chiama("richiama", {"riferimento": "cucina",
+                visto["fetch"] = _chiama("fetch", {"riferimento": "cucina",
                                                          "tipo": "area"})
             return _ProcFelice()
 
@@ -620,16 +620,16 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert visto["nomi"] == _NOMI_NUDI
 
         # `cerca` legge l'archivio della casa dell'app
-        assert visto["cerca"]["trovati"]
+        assert visto["search"]["trovati"]
         # `guarda` legge la STESSA entity_cache del turno sincrono: e' la
         # ragione per cui questa e' una rotta e non un sottoprocesso separato.
-        stati = {e["id"]: e["stato"] for e in visto["guarda"]["entita"]}
+        stati = {e["id"]: e["stato"] for e in visto["view"]["entita"]}
         assert stati["light.cucina_1"] == "on"
         assert stati["light.cucina_2"] == "off"
-        assert "stato_non_letto" not in visto["guarda"]
+        assert "stato_non_letto" not in visto["view"]
         # `ricorda` scrive davvero in memoria.db -- il guasto storico da cui
         # questo strumento e' nato («preso nota» senza salvare niente)
-        assert visto["ricorda"]["salvato"] is True
+        assert visto["remember"]["salvato"] is True
         conn = sqlite3.connect(memoria_db)
         try:
             righe = [r[0] for r in conn.execute("SELECT testo FROM ricordi")]
@@ -638,7 +638,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         assert righe == ["in cucina si cena alle 20"]
         # `richiama` rilegge cio' che `ricorda` ha appena scritto, dalla stessa
         # rotta e nello stesso turno
-        assert [r["testo"] for r in visto["richiama"]["ricordi"]] == [
+        assert [r["testo"] for r in visto["fetch"]["ricordi"]] == [
             "in cucina si cena alle 20"]
     finally:
         memoria.close()
