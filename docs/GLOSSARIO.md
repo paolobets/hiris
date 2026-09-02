@@ -2810,7 +2810,7 @@ codice:
 | conferma | Applica una proposta creata da `costruisci`, rendendola reale in Home Assistant -- solo dopo che l'utente ha detto esplicitamente di procedere, in un turno successivo a quello dell'anteprima | confirm | ~ parziale |
 | andamento | Come e' cambiato nel tempo il valore di UNA entita' -- temperatura, apertura, consumo -- in una finestra di ore all'indietro da adesso, con la grana scelta da HIRIS e dichiarata nella risposta | trend | ~ parziale |
 | accaduto | Cosa e' successo in casa in una finestra di tempo, e per mano di chi -- riconoscendo i propri atti confrontando il diario di Home Assistant con la propria cronaca. **`diario` NON prende una riga, e il metodo `HAClient.logbook` si chiama comunque `logbook` (deciso a mano, lotto 19 di `proxy/`)**: `logbook` e' gia' l'inglese di `accaduto`, e una riga `diario -> logbook` renderebbe la collisione PERMANENTE e automatica. Ma i due nomi non sono due concetti: sono lo STESSO concetto a due strati -- `proxy/ha_client.py::logbook` e' la chiamata grezza a `GET /api/logbook`, `casa/tempo.py::logbook` e' la risposta che ci si costruisce sopra confrontandola con la cronaca. La legge del confine dice che al confine si prende il nome del sistema esterno, e Home Assistant quella cosa la chiama logbook a tutti e due gli strati. Chi legge deve saperlo, ed e' scritto qui invece che in un rapporto | logbook | ~ parziale |
-| concludi | Chiude il turno che un impegno differito ha svegliato, dicendo cosa si e' trovato: e' l'unico modo in cui quel turno puo' finire, e senza di lui chi l'ha svegliato non sa cosa dire alla persona. Porta un booleano che dichiara se la persona va disturbata adesso -- un "no" non e' un fallimento, e' la risposta giusta quando la condizione chiesta non si e' verificata, e viene registrata lo stesso -- e il testo che le si direbbe, che e' anche cio' che le arriva nella notifica. Non esiste nel catalogo della chat: li' a chiudere e' la risposta all'utente | conclude | ~ non provato (v. nota) |
+| concludi | Chiude il turno che un impegno differito ha svegliato, dicendo cosa si e' trovato: e' l'unico modo in cui quel turno puo' finire, e senza di lui chi l'ha svegliato non sa cosa dire alla persona. Porta un booleano che dichiara se la persona va disturbata adesso -- un "no" non e' un fallimento, e' la risposta giusta quando la condizione chiesta non si e' verificata, e viene registrata lo stesso -- e il testo che le si direbbe, che e' anche cio' che le arriva nella notifica. Non esiste nel catalogo della chat: li' a chiudere e' la risposta all'utente | conclude | ~ parziale |
 
 > **Gli esiti della tabella seguono la stessa tabella azione-per-esito gia' scritta sopra (sezione
 > «I concetti», sotto «Cosa comporta ciascun esito»):** `✓` non richiede nessuna azione; `~` per
@@ -2865,16 +2865,51 @@ codice:
 > a `conclude`, e non sara' un doppione: e' lo stesso concetto dalle due facce, il dato e lo
 > strumento che lo scrive, esattamente come `promise`.)
 >
-> **`~ non provato (v. nota)`: un esito nuovo, e va letto per quello che dice.** Non e' il `~` per
-> genericita' ne' il `~` per collisione della legenda in «I concetti»: significa che il nome e'
-> deciso **leggendo cosa fa lo strumento e passando il controllo di collisione sul codice**, ma
-> che la prova a lettori indipendenti su modelli diversi -- quella che le altre tredici righe
-> portano dal Task 8 e dal Task 8bis -- **su questa riga non e' stata eseguita**, perche' la fetta
-> che l'ha scritta non poteva dispacciare sub-agenti. La legge della fetta del glossario («una
-> riga senza l'esito della prova non e' decisa: e' un'opinione») e' rispettata dichiarando quale
-> pezzo manca, non fingendo che ci sia. **Cosa la falsificherebbe**: un lettore nudo che, davanti
-> al catalogo di sette del turno di promessa, legga `conclude` come "deduci qualcosa" invece che
-> "chiudi dicendo cosa hai trovato". E' la prova da eseguire quando qualcuno potra' eseguirla.
+> **La prova del lettore nuovo E' STATA ESEGUITA, dal coordinatore, ed e' `~ parziale`: «si' con
+> riserva».** La riga era nata `~ non provato (v. nota)` -- un esito dichiarato apposta, perche' la
+> fetta che l'aveva scritta non poteva dispacciare i lettori, e una riga che si fosse presa un `✓`
+> senza la prova che il documento pretende da tutte le altre sarebbe stata un precedente peggiore
+> di un nome sbagliato. Quel simbolo e' scaduto qui, e non lascia traccia: da oggi la riga porta
+> l'esito che le altre tredici portano.
+>
+> **La riserva, con le parole del lettore.** `conclude` si legge **prima** come «trai una
+> conclusione» -- inferenza, facoltativa, per se' -- che come «esito registrato e letto da
+> qualcuno». E il nome **non dice tre cose che lo strumento e'**: che ha un **destinatario**, che e'
+> **obbligatorio ed e' l'unica uscita** dal turno, e che ha un **contenuto necessario**.
+>
+> **L'alternativa proposta era `verdict`**, e chiuderebbe tutte e tre: *«un verdetto e' cio' che
+> risulta, non cio' che si argomenta; si pronuncia davanti a chi aspetta; il processo non finisce
+> senza»*. Il prezzo e' un **tono giudiziario e binario**, che regge male su un esito che spesso e'
+> una misura o una descrizione («la temperatura e' scesa di due gradi»).
+>
+> **Tenuto `conclude`, e a decidere e' la frase con cui il lettore chiude**: *«nessuna singola
+> parola inglese dice "l'unico modo di terminare il turno, dichiarando cosa hai trovato". Quella
+> meta' obbligatoria la portera' comunque la descrizione dello strumento, qualunque nome
+> scegliate.»* Il cambio sarebbe un **miglioramento marginale, non una correzione**, e
+> sostituirebbe una riserva con un'altra.
+>
+> **La riserva ha una conseguenza OPERATIVA, non solo documentale, ed e' stata eseguita**: cio' che
+> il nome non dice, **la description deve dirlo**. Verificato nel testo vero
+> (`schedulatore/turno.py::CONCLUDI_TOOL_DEF`), non supposto: «l'unica uscita» c'era gia' («e'
+> l'UNICO modo in cui questo turno puo' finire»); **«obbligatorio» e «l'esito viene letto» erano
+> solo IMPLICATI**, il primo dalla conseguenza, il secondo da un «viene comunque registrata» che
+> dice archiviata, non letta. Aggiunti entrambi in chiaro, con il meccanismo vero accanto: il
+> `testo` finisce nella pagina delle promesse e la persona lo rilegge **anche quando
+> `avvisare=false`** (`static/config/promesse-route.js`, il blocco risposta di un `chiedi`
+> mantenuto), e un turno che non chiama lo strumento chiude la promessa come **fallita**
+> (`schedulatore/sweeper.py::_keep_chiedi`). La prima frase della description nega ora
+> esplicitamente la lettura sbagliata che la prova ha misurato: *«non e' una conclusione che trai
+> per te»*.
+>
+> **L'osservazione del lettore che vale oltre questo nome, e che nessuna riga di glossario poteva
+> rivelare.** In un catalogo dove **quasi tutto guarda**, `conclude` e `confirm` sono **i due soli
+> strumenti che parlano**: due atti performativi, entrambi finali. Non si confondono per
+> l'ortografia -- `conc-`/`conf-` divergono al quarto carattere, e nel catalogo ridotto del turno di
+> promessa `confirm` non c'e' nemmeno -- si confondono **perche' sono lo stesso tipo di atto**. E'
+> una proprieta' della **forma del catalogo**, non di una parola: si vede solo guardando i quattordici
+> insieme, ed e' invisibile a chi legge una riga alla volta. **Chi aggiungera' il quindicesimo
+> strumento deve saperla**: un secondo strumento che PARLA entra in un insieme di due, non in un
+> insieme di quattordici, e va confrontato con quei due.
 
 > **Secondo giro di prova (dopo il commit 857eb6e): `view`, `defer`, `agenda` erano marcati
 > `~ non ri-provato`** -- cambiati dopo la prima prova, verificati solo sulla collisione col

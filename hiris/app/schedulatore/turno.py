@@ -40,12 +40,16 @@ SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook")
 CONCLUDI_TOOL_DEF = {
     "name": "conclude",
     "description": (
-        "Chiudi questa promessa dicendo cosa hai trovato. E' l'UNICO modo in cui "
-        "questo turno puo' finire: se non lo chiami, chi ti ha svegliato non "
-        "sapra' cosa dire alla persona. `avvisare` dice se c'e' qualcosa per cui "
+        "Chiudi questa promessa dicendo cosa hai trovato. **Chiamarlo e' "
+        "OBBLIGATORIO, e non e' una conclusione che trai per te: e' l'UNICO "
+        "modo in cui questo turno puo' finire, e cio' che scrivi lo legge una "
+        "persona.** Se non lo chiami, chi ti ha svegliato non sapra' cosa dire "
+        "alla persona e la promessa risulta FALLITA. `avvisare` dice se c'e' qualcosa per cui "
         "valga la pena disturbarla: mettilo a `false` quando la condizione che ti "
         "era stata chiesta NON si e' verificata -- non e' un fallimento, e' la "
-        "risposta giusta, e viene comunque registrata. Se lo metti a `true` la "
+        "risposta giusta, e il tuo `testo` finisce comunque nella "
+        "pagina delle promesse, dove la persona lo rilegge: concludere in "
+        "silenzio non vuol dire che nessuno ti legga. Se lo metti a `true` la "
         "notifica alla persona la manda HIRIS per te, sul canale che lei aveva "
         "approvato quando ti ha fatto la promessa: qui non esiste uno strumento "
         "per notificare, e non serve -- chiamare «conclude» E' il modo di "
