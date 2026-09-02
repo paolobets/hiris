@@ -684,7 +684,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
 
     class _PortaFinta:
         """Sta al posto di `action/actuator.py` -- che ha i suoi test, con la
-        verifica e la rilettura vere (`tests/test_azione_porta.py`). Qui
+        verifica e la rilettura vere (`tests/test_action_actuator.py`). Qui
         interessa solo che la chat ci ARRIVI, e con cosa."""
         def __init__(self):
             self.chiamate = []

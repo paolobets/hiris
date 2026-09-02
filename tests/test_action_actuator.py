@@ -38,7 +38,7 @@ e' stato piegato al test. Espone anche `loaded`, la bandiera che distingue
 «casa senza entita'» da «inventario non ancora pronto», e da questa versione
 `add_state_listener`/`remove_state_listener`, il rubinetto degli annunci.
 
-Come in `tests/test_azione_verifica.py`: niente fixture asincrone — la suite
+Come in `tests/test_action_verification.py`: niente fixture asincrone — la suite
 gira in modalita' `strict` di pytest-asyncio, quindi ogni test async porta il
 suo `@pytest.mark.asyncio` e la preparazione sta in un helper `await`ato.
 """

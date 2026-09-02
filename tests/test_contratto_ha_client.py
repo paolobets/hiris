@@ -24,7 +24,7 @@ file, incomplete per tre volte di fila). Qui l'elenco si DERIVA: `doppi`
 legge le classi di ogni modulo di test e trova i doppi da se'.
 
 **Cosa NON copre, dichiarato.** Le finte definite DENTRO il corpo di una
-funzione di test (`test_azione_porta.py` ne ha quattro, tutte
+funzione di test (`test_action_actuator.py` ne ha quattro, tutte
 `ClientCheRompe`, tutte sottoclassi di `FintoClient` che ne riscrivono
 `call_service`): non sono attributi del modulo, e nessuna enumerazione statica
 le vede. Il rischio residuo e' piccolo perche' la loro classe base e' coperta
@@ -86,7 +86,7 @@ def test_ogni_doppio_di_haclient_porta_la_firma_vera():
     trovare doppi passerebbe verde dicendo di aver controllato tutto.
 
     Provato per mutazione: rinominato `domain -> dominio` nella firma di
-    `FintoClientPorta.call_service` (`tests/test_azione_bersagli.py`), questo
+    `FintoClientPorta.call_service` (`tests/test_action_targets.py`), questo
     test va rosso nominando la coppia esatta; ripristinato, torna verde.
     """
     coppie = doppi(HAClient, _moduli())

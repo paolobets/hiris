@@ -6,7 +6,7 @@ rinominati insieme, ALLA STESSA maniera sbagliata, la suite resta verde
 mentre il contratto reale e' gia' rotto (fetta «la rinomina», Task 7 —
 review indipendente, tre Critical: `home_space/tools.py` chiamava
 `Workshop.proponi`/`applica` con `origine=`/`turno=`/`adesso=` mentre il
-finto in `test_costruzione_strumenti.py` accettava esattamente quei nomi,
+finto in `test_construction_tools.py` accettava esattamente quei nomi,
 non quelli veri).
 
 Cosa confronta, e perche' fin qui e non oltre (review Task 7, round 3 --
@@ -182,7 +182,7 @@ def buchi(reale, file) -> list[tuple[str, str, int]]:
 
     **Si legge il SORGENTE, non le classi importate**, e non e' un dettaglio:
     due dei tre buchi di oggi vivono in una classe definita DENTRO il corpo di
-    una funzione di test (`ClientSordo`, `test_azione_porta.py`), che non e' un
+    una funzione di test (`ClientSordo`, `test_action_actuator.py`), che non e' un
     attributo del modulo e che nessuna introspezione a runtime raggiunge.
     Misurato: l'enumerazione a runtime ne trova **uno su tre**.
 
@@ -220,7 +220,7 @@ def _assert_sottoclasse_ridichiara_solo_membri_veri(reale, metodi, imitatori,
     metodo vero, e che smette di ombreggiarlo quando il metodo cambia nome.
 
     **Misurata dal vivo, e con un test verde su entrambi i lati** (fetta «la
-    rinomina», lotto 19c): `tests/test_azione_bersagli.py::
+    rinomina», lotto 19c): `tests/test_action_targets.py::
     FintoClientSenzaBocca` porta `estrai_dal_bersaglio = None` per dichiarare
     il client che NON sa risolvere i bersagli. Rinominato
     `HAClient.estrai_dal_bersaglio` in `extract_from_target`, quell'attributo

@@ -38,7 +38,7 @@ serve il dato grezzo, non una sua interpretazione: e' `action/verification.py` a
 decidere cosa significhi «un servizio senza `target`» (vedi
 `verifica._declare_target`), non questo modulo. `servizio("light", "turn_on") ==
 {"target": {}}` (con) e `servizio("light", "toggle") == {}` (senza -- la chiave non
-compare affatto) sono ENTRAMBI casi gia' pinnati da un test (`tests/test_azione_registro.py::
+compare affatto) sono ENTRAMBI casi gia' pinnati da un test (`tests/test_action_registry.py::
 test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 """
 import logging

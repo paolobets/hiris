@@ -321,7 +321,7 @@ def test_la_guida_senza_strumenti_continua_a_dire_cio_che_in_quel_turno_manca():
 # la porta rinominasse `cambiato`, il prompt continuerebbe a nominarlo, il
 # modello riceverebbe un dizionario senza quel campo e racconterebbe cio' che
 # e' stato CHIESTO invece di cio' che e' successo -- **in silenzio**, con la
-# suite verde: nessun test di `test_azione_porta.py` guarda il prompt, e
+# suite verde: nessun test di `test_action_actuator.py` guarda il prompt, e
 # nessun test del prompt guarda la porta.
 #
 # E' esattamente la famiglia di difetti di cui il Task 7 si occupa -- la
@@ -346,7 +346,7 @@ _CHIAVI_NOMINATE_DAL_PROMPT = ("prima", "dopo", "cambiato", "avviso")
 async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     """L'unione delle chiavi che `ActionActuator.execute` restituisce davvero.
 
-    Usa le stesse finte di `tests/test_azione_porta.py` (importate, non
+    Usa le stesse finte di `tests/test_action_actuator.py` (importate, non
     ricopiate: una seconda copia divergerebbe il giorno in cui la forma vera
     di `EntityCache` cambia) e la porta VERA.
 
@@ -354,12 +354,12 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     l'annuncio del cambiamento (`porta.STATE_WAIT_S`, 2 secondi), e il giro
     2 esiste proprio per il caso in cui quell'annuncio non arriva: senza
     accorciarla, questa guardia sul prompt pagherebbe due secondi per contare
-    delle chiavi. Il valore vero e' pinnato da `tests/test_azione_porta.py`.
+    delle chiavi. Il valore vero e' pinnato da `tests/test_action_actuator.py`.
     """
     from hiris.app.action import actuator as porta_modulo
     from hiris.app.action.actuator import ActionActuator
     from hiris.app.action.registry import ServiceRegistry
-    from tests.test_azione_porta import (
+    from tests.test_action_actuator import (
         ANNUNCIA_IL_SALOTTO_SPENTO,
         SALOTTO_ACCESO,
         SALOTTO_SPENTO,

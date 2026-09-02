@@ -214,7 +214,7 @@ def test_chat_policy_e_uscita_da_tutti_e_cinque_i_posti():
     # Nei due file di codice si guardano le righe VIVE: sia `run.sh` sia
     # `server.py` spiegano in un commento perche' l'opzione e' uscita, e un
     # commento che RACCONTA una cosa morta non e' quella cosa viva. (Stesso
-    # criterio di `test_prompt_azione._testi_che_legge_l_utente`.)
+    # criterio di `test_action_prompt._testi_che_legge_l_utente`.)
     def _righe_vive(percorso: Path) -> list[str]:
         return [r for r in percorso.read_text(encoding="utf-8").splitlines()
                 if not r.lstrip().startswith("#")]

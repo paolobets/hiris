@@ -8,7 +8,7 @@ Questo file pinna le istruzioni nuove -- "risolvi piu' nomi con UNA chiamata
 cerca" e la riga raccolta dal Task 4 che lega gli id `(id: X)` dell'albero
 agli strumenti -- su ENTRAMBE le guide: `claude_runner.BASE_TOOL_RULES`
 (il percorso sincrono, con chiave API) e `agent.prompts._GUIDE_WITH_TOOLS`
-(il ponte, chat in abbonamento) -- guardare `tests/test_prompt_azione.py` per
+(il ponte, chat in abbonamento) -- guardare `tests/test_action_prompt.py` per
 il perche' un'istruzione di prodotto deve stare in BASE_TOOL_RULES e non
 nella sola guida del ponte.
 

@@ -24,7 +24,7 @@ def test_reasoning_queue_importable():
 # archivio_casa)` dalla costruzione di `ReasoningQueue` in `server.py`,
 # l'intera suite restava verde. Il gemello nello stesso commit -- la
 # costruzione di `Workshop` -- quella mutazione la prende
-# (`tests/test_costruzione_wiring.py::
+# (`tests/test_construction_wiring.py::
 # test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta`), perche' quel test
 # confronta il TESTO esatto della chiamata. Qui si sceglie una forma diversa
 # apposta: un test che confronta il sorgente vedrebbe la stringa "read_timezone="

@@ -145,7 +145,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # fetta «parita'» ha passato due task a chiudere. Alla guida resta il suo
 # mestiere: i nomi PREFISSATI, che qui non avrebbero senso.
 #
-# Le regole e la ragione di ciascuna stanno in tests/test_prompt_azione.py.
+# Le regole e la ragione di ciascuna stanno in tests/test_action_prompt.py.
 # Una sola merita di essere ripetuta accanto al testo: sull'ambiguita'
 # («accendi il bagno») HIRIS AGISCE sulla lettura piu' naturale e non chiede
 # conferma -- in questa fetta ogni azione e' una chiamata a un servizio e si

@@ -113,7 +113,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
 
 def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
     """Pin sorgente sull'aggancio in `_on_startup` (stessa tecnica di
-    `tests/test_azione_registro.py::test_il_registro_e_agganciato_all_app`).
+    `tests/test_action_registry.py::test_il_registro_e_agganciato_all_app`).
 
     Due cose in un test solo perche' sono una: la riga deve esserci **e**
     deve stare DOPO `app["entity_cache"]`. Il brief la collocava accanto a

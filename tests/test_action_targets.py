@@ -34,7 +34,7 @@ una costante di Home Assistant e il suo valore hanno gia' divorziato una volta
 (`CO` vale `carbon_monoxide`), e un test che pinnasse il nome invece del
 valore non proverebbe niente.
 
-Come in `tests/test_azione_verifica.py` e `tests/test_azione_porta.py`:
+Come in `tests/test_action_verification.py` e `tests/test_action_actuator.py`:
 nessuna fixture asincrona -- la suite gira in modalita' `strict` di
 pytest-asyncio, quindi ogni test async porta il suo `@pytest.mark.asyncio` e
 la preparazione sta in un helper `await`ato.
@@ -47,7 +47,7 @@ from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
 
-# Come in `test_azione_porta.py`: cio' che si misura qui non e' la DURATA
+# Come in `test_action_actuator.py`: cio' che si misura qui non e' la DURATA
 # dell'attesa ma cosa si tocca, e due secondi per test non li paga nessuno.
 SCADENZA_NEI_TEST = 0.01
 

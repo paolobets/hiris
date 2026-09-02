@@ -17,7 +17,7 @@ from hiris.app.api.handlers_constructions import (
 )
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma
-from tests.test_costruzione_officina import FintoHA
+from tests.test_construction_workshop import FintoHA
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite), senza niente di specifico alle impostazioni:
@@ -108,7 +108,7 @@ def _corpo(risposta) -> dict:
     leggere la risposta.
 
     L'altro lato non poteva prenderlo: la finta di `tests/js/
-    costruzioni-route.test.mjs` fornisce quella chiave DA SE', quindi nessuno
+    constructions-route.test.mjs` fornisce quella chiave DA SE', quindi nessuno
     dei due lati la pinzava. Da qui in poi la pinza questo.
     """
     import json

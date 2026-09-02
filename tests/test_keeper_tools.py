@@ -15,10 +15,10 @@ from tests._contratti import assert_stessa_firma
 # (dove ogni test e' async), qui un test e' sincrono
 # (`test_i_tre_strumenti_sono_nel_catalogo`, sul solo catalogo statico) e la
 # suite gira in modalita' `strict` di pytest-asyncio -- vedi la stessa nota in
-# `test_azione_verifica.py`. Un `pytestmark` di modulo marcherebbe anche lui,
+# `test_action_verification.py`. Un `pytestmark` di modulo marcherebbe anche lui,
 # e pytest-asyncio avvisa (`PytestWarning`) per un mark su una funzione non
 # async: un warning nuovo che il resto della suite non ha. Si marca test per
-# test, come fa gia' `test_azione_verifica.py`.
+# test, come fa gia' `test_action_verification.py`.
 
 
 def _fra(minuti: int) -> str:
@@ -483,7 +483,7 @@ class _HaConServizi:
 
     Deve saper PRODURRE il difetto: `light`/`notify` con almeno un
     servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
-    (`tests/test_azione_porta.py`) -- una lista vuota o un'eccezione
+    (`tests/test_action_actuator.py`) -- una lista vuota o un'eccezione
     lascerebbe il registro vuoto comunque, e nasconderebbe che
     `ensure_fresh` non e' mai stata chiamata invece di provarlo.
     """
