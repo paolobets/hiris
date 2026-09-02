@@ -113,7 +113,13 @@ _LETTURE_VIVE_DELLA_CREDENZIALE = 6
 # `render*` qualunque sarebbe topologia ricalcolata nel frontend anche se il
 # totale restasse sei perche' qualcuno ne ha tolta un'altra.
 _FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE = {
-    "rigaProvider", "renderFuori", "ricomponiTopologia", "rifaiCatena",
+    # I nomi sono passati all'inglese il 02/09 (fetta del frontend): sono le
+    # STESSE quattro funzioni, non quattro funzioni nuove -- `rigaProvider`,
+    # `renderFuori`, `ricomponiTopologia`, `rifaiCatena`. Il pin e' sopravvissuto
+    # alla rinomina facendo il suo mestiere: ha nominato le quattro nuove e
+    # chiesto conto della differenza, invece di passare perche' il CONTEGGIO
+    # era rimasto quattro.
+    "providerRow", "renderOutside", "recomposeLayout", "redoChain",
 }
 
 
