@@ -1353,6 +1353,29 @@ def test_le_citazioni_si_ENUMERANO_col_contesto_e_non_si_riscrivono(tmp_path):
         "questo strumento DICHIARA: se riscrivesse, cancellerebbe i verbali")
 
 
+def test_le_citazioni_hanno_un_CONFINE_DI_PAROLA(tmp_path):
+    """`storico` non e' `storicone`, e il confine e' l'unica cosa che lo dice.
+
+    **Scritto il 02/09, curando la lentezza di `citazioni()`.** La cura sposta
+    la compilazione del pattern fuori dal ciclo, e nel farlo riscrive
+    l'espressione: e' esattamente il gesto in cui un confine di parola si perde
+    senza che niente diventi rosso. I due test qui sopra non lo prendono --
+    nelle loro finte `storico` non e' MAI sottostringa di un'altra parola,
+    quindi passerebbero anche col confine tolto del tutto.
+
+    Provato per mutazione: tolti i due confini dal pattern di `citazioni`,
+    questo test va rosso e nessun altro si muove.
+    """
+    (tmp_path / "p.md").write_text(
+        "`storico` e' il nome\n"
+        "`storicone` non lo e', e nemmeno `lo_storico_vecchio`\n",
+        encoding="utf-8")
+    trovate = rinomina.citazioni({"storico": "history"}, radice=tmp_path)
+    assert [r for _, r, _, _, _ in trovate] == [1], (
+        "il confine di parola deve escludere `storicone` e `lo_storico_vecchio`: "
+        f"trovate {trovate}")
+
+
 def test_le_citazioni_si_cercano_in_ogni_estensione_di_testo(tmp_path):
     """Le estensioni si elencano per ESCLUSIONE, mai per inclusione.
 

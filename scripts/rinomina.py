@@ -1799,6 +1799,19 @@ def citazioni(nomi: dict[str, str], radice: Path | None = None, *,
     Cerca in tutti i file di testo, `.py` compresi ma non solo: le citazioni
     vivono anche nei `.js`, nei `.mjs`, nei `.md`. Si escludono le estensioni
     BINARIE, mai si elencano quelle da guardare.
+
+    **I confini si compilano UNA VOLTA, e non e' un'ottimizzazione: e' cio' che
+    rende questa funzione usabile sul giro di FINE FETTA.** La prima stesura
+    costruiva il pattern dentro il ciclo piu' interno, cioe' ne faceva
+    compilare uno per ogni coppia (citazione, nome). `re` tiene una cache di
+    512 pattern: con i 40-50 nomi di un lotto non si vede niente, con i 928 di
+    un giro di fine fetta la cache va in **thrashing** -- ogni ricerca ne butta
+    fuori una che servira' subito dopo -- e il costo diventa quello di 928
+    compilazioni per citazione. Misurato il 02/09 sull'albero vero, 928 nomi su
+    `hiris/`+`tests/`+`scripts/`: **non finiva in dieci minuti**; coi pattern
+    compilati una volta sola, **103 secondi** per gli stessi 1.156 siti.
+    Il risultato e' identico -- e' la stessa espressione, compilata prima
+    invece che mille volte.
     """
     base = radice or ROOT
     saltati = {e.replace("\\", "/") for e in escludi}
@@ -1806,6 +1819,8 @@ def citazioni(nomi: dict[str, str], radice: Path | None = None, *,
     if not nomi:
         return fuori
     _RE_CITAZIONE = re.compile("`[^`\\n]+`")
+    confini = [(v, n, re.compile(r"\b" + re.escape(v) + r"\b"))
+               for v, n in nomi.items()]
     for f in sorted(base.rglob("*")):
         if not f.is_file() or f.suffix.lower() in _ESTENSIONI_BINARIE:
             continue
@@ -1820,9 +1835,8 @@ def citazioni(nomi: dict[str, str], radice: Path | None = None, *,
             continue
         for numero, riga in enumerate(testo.splitlines(), start=1):
             for citazione in _RE_CITAZIONE.findall(riga):
-                for vecchio, nuovo in nomi.items():
-                    confine = "\\b"
-                    if re.search(confine + re.escape(vecchio) + confine, citazione):
+                for vecchio, nuovo, confine in confini:
+                    if confine.search(citazione):
                         fuori.append((f, numero, vecchio, nuovo, riga.strip()))
     return fuori
 
