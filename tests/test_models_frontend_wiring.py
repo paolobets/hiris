@@ -193,7 +193,10 @@ def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
     importa Python), ma si possono tenere legate da un test che si rompe."""
     from hiris.app.decisione_modelli import FIXED_ORDER
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    atteso = "var ORDINE_FISSO = [" + ", ".join(f"'{p}'" for p in FIXED_ORDER) + "];"
+    # Dopo la rinomina del frontend i due nomi COINCIDONO -- `FIXED_ORDER` di
+    # qua e di la' -- ed e' il caso migliore per un pin che confronta due
+    # linguaggi: chi legge non deve piu' tenere a mente due parole.
+    atteso = "var FIXED_ORDER = [" + ", ".join(f"'{p}'" for p in FIXED_ORDER) + "];"
     assert atteso in js, f"atteso in models-route.js: {atteso}"
 
 
@@ -225,11 +228,11 @@ def test_il_pannello_non_conosce_i_casi_particolari_ma_obbedisce_a_un_percorso()
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     corpo = _codice_senza_commenti(js)
     assert "data.dove" in corpo
-    assert "scriviPercorso" in corpo and "leggiPercorso" in corpo
+    assert "writePath" in corpo and "readPath" in corpo
     for pid in ("'claude'", "'openrouter'", "'openai'", "'ollama'"):
         assert corpo.count(pid) == 4, (
             f"{pid} compare {corpo.count(pid)} volte: le sole citazioni ammesse "
-            "sono ORDINE_FISSO (1) e i tre preset (3), entrambi pinnati contro "
+            "sono FIXED_ORDER (1) e i tre preset (3), entrambi pinnati contro "
             "il backend"
         )
 

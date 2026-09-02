@@ -84,7 +84,7 @@
      quindi non può contraddire niente. DUPLICA `decisione_modelli.FIXED_ORDER`
      (il frontend non importa Python): le due liste sono tenute legate da un
      test che si rompe -- test_models_frontend_wiring.py. */
-  var ORDINE_FISSO = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
+  var FIXED_ORDER = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
 
   /* I tre ordini per esteso, da `llm_router._STRATEGY_ORDER`. Vivono qui
      perché un preset è un GESTO che riscrive la catena, non uno stato
@@ -98,7 +98,7 @@
     quality_first: { nome: 'Qualità massima', ordine: ['claude', 'openai', 'openrouter', 'ollama'] }
   };
 
-  var ERR_SALVATAGGIO = '⚠ Salvataggio non riuscito';
+  var ERR_SAVE = '⚠ Salvataggio non riuscito';
 
   /* ── Stato locale ──────────────────────────────────────────────────────
      Tutto viene dal payload di GET api/models/config e niente si deriva:
@@ -153,7 +153,7 @@
 
   /* I tre bottoni «Rifai la catena», per poterli abilitare quando il primo GET
      torna. Vivono fuori da `state` perché sono nodi del DOM, non dati. */
-  var bottoniPreset = [];
+  var presetButtons = [];
 
   /* ── PUT api/models/config — SEMPRE l'oggetto intero (§7.2), serializzato ──
      Due controlli che scrivono quasi in contemporanea potrebbero far arrivare
@@ -196,13 +196,13 @@
      interrompere, e non c'è nessun altro momento in cui questo testo cambi --
      i gesti sulla catena non ridisegnano il riquadro (la decisione nuova la
      dice il backend, alla prossima lettura). */
-  function renderAdesso() {
+  function renderNow() {
     var card = byId('adesso-card');
     if (!state.adesso || !state.adesso.frase) {
       if (card && card.parentNode) card.parentNode.removeChild(card);
       return;
     }
-    if (!card) card = creaGuscioAdesso();
+    if (!card) card = createNowShell();
     clearEl(card);
     card.appendChild(el('p', 'adesso-frase', state.adesso.frase));
 
@@ -218,7 +218,7 @@
            modello (`dati.dove`, Task 9). Senza `dove` non si disegna niente:
            un bottone senza bersaglio sarebbe un bottone che non fa niente. */
         if (d.azione && Array.isArray(d.azione.dove) && d.azione.dove.length) {
-          li.appendChild(bottoneAzione(d.azione));
+          li.appendChild(actionButton(d.azione));
         }
         ul.appendChild(li);
       });
@@ -226,10 +226,10 @@
     }
   }
 
-  function bottoneAzione(action) {
+  function actionButton(action) {
     var b = el('button', 'btn btn-sm diagnosi-azione', action.etichetta || '');
     b.type = 'button';
-    b.addEventListener('click', function() { applicaAzione(action); });
+    b.addEventListener('click', function() { applyAction(action); });
     return b;
   }
 
@@ -240,23 +240,23 @@
      calcolarlo, cioè rimettere la topologia nella pagina. In caso di
      fallimento si rimette il valore di prima: la pagina non deve restare a
      mostrare una scelta che il disco non ha accettato. */
-  function applicaAzione(action) {
+  function applyAction(action) {
     if (!state.caricato) return;
     var where = action.dove;
-    var precedente = leggiPercorso(where);
-    scriviPercorso(where, action.valore);
-    pulisciErroreCatena();
+    var precedente = readPath(where);
+    writePath(where, action.valore);
+    clearChainError();
     putModelsConfig().then(function(ok) {
       if (!ok) {
-        scriviPercorso(where, precedente);
-        mostraErroreCatena(ERR_SALVATAGGIO);
+        writePath(where, precedente);
+        showChainError(ERR_SAVE);
         return;
       }
       loadModelsAndConfig();
     });
   }
 
-  function creaGuscioAdesso() {
+  function createNowShell() {
     var card = el('div', 'adesso-card');
     card.id = 'adesso-card';
     card.setAttribute('aria-live', 'polite');
@@ -274,7 +274,7 @@
 
      Non calcola NIENTE: posizione, nome, modello, natura, che cosa manca e
      perché una riga non si muove arrivano dal payload. */
-  function rigaProvider(data, dentro) {
+  function providerRow(data, dentro) {
     /* `rifiuta` è un FATTO che arriva dal payload (`esito.tipo`), non una
        deduzione dal testo di stato: leggere una regola dentro una frase è come
        ricostruirla, e questa pagina ha smesso di ricostruire. Serve a due cose
@@ -308,7 +308,7 @@
     model.setAttribute('aria-expanded', 'false');
     model.setAttribute('aria-label',
       'Modello di «' + data.nome + '»: ' + (data.modello || 'nessuno') + '. Cambia');
-    model.addEventListener('click', function() { apriPannelloModello(data.id); });
+    model.addEventListener('click', function() { openModelPanel(data.id); });
     row.appendChild(model);
     row.appendChild(el('span', 'riga-natura',
       data.ha_credenziale ? data.natura : (data.manca || '')));
@@ -325,24 +325,24 @@
        `save_models_config` scarta `subscription` da `chain_order`, quindi un
        «Usa» sul piano scriverebbe una PUT accettata con 200 e buttata via.) */
     if (dentro && data.riordinabile) {
-      var su = bottoneIcona('↑', 'riga-su', 'Sposta «' + data.nome + '» su',
-        function() { spostaInCatena(data.id, -1); });
-      su.disabled = !vicinoInCatena(data.id, -1);
-      var down = bottoneIcona('↓', 'riga-giu', 'Sposta «' + data.nome + '» giù',
-        function() { spostaInCatena(data.id, 1); });
-      down.disabled = !vicinoInCatena(data.id, 1);
+      var su = iconButton('↑', 'riga-su', 'Sposta «' + data.nome + '» su',
+        function() { moveInChain(data.id, -1); });
+      su.disabled = !neighbourInChain(data.id, -1);
+      var down = iconButton('↓', 'riga-giu', 'Sposta «' + data.nome + '» giù',
+        function() { moveInChain(data.id, 1); });
+      down.disabled = !neighbourInChain(data.id, 1);
       actions.appendChild(su);
       actions.appendChild(down);
       /* Uscire dalla catena si può sempre, dove entrarci si può: è il gesto
          simmetrico di «Usa», e toglierlo lascerebbe una riga che non si può
          disfare. */
-      actions.appendChild(bottoneIcona('✕', 'riga-esci',
+      actions.appendChild(iconButton('✕', 'riga-esci',
         'Togli «' + data.nome + '» dalla catena',
-        function() { togliDallaCatena(data.id); }));
+        function() { removeFromChain(data.id); }));
     } else if (!dentro && data.ha_credenziale && data.riordinabile) {
       var use = el('button', 'btn btn-ghost btn-sm riga-usa', 'Usa');
       use.type = 'button';
-      use.addEventListener('click', function() { mettiInCatena(data.id); });
+      use.addEventListener('click', function() { putInChain(data.id); });
       actions.appendChild(use);
     }
     /* Senza credenziale non si offre «Usa»: sarebbe un bottone che non può
@@ -381,7 +381,7 @@
     return row;
   }
 
-  function bottoneIcona(testo, cls, label, action) {
+  function iconButton(testo, cls, label, action) {
     var b = el('button', 'btn-icon-only ' + cls, testo);
     b.type = 'button';
     b.setAttribute('aria-label', label);
@@ -413,18 +413,18 @@
      di Ollama non vive in `provider_models`: senza, servirebbe un
      `if (id === '...')`, cioè una regola del prodotto scritta una seconda
      volta in un altro linguaggio. */
-  function apriPannelloModello(idProvider) {
+  function openModelPanel(idProvider) {
     if (state.pannello && state.pannello.id === idProvider) {
-      chiudiPannello();
+      closePanel();
       return;
     }
-    chiudiPannello();
+    closePanel();
     state.pannello = { id: idProvider, dati: null, errore: false, filtro: '' };
-    disegnaPannello();
-    caricaPannello(idProvider);
+    drawPanel();
+    loadPanel(idProvider);
   }
 
-  function chiudiPannello() {
+  function closePanel() {
     var open = document.querySelector('.pannello-modello');
     if (open && open.parentNode) open.parentNode.removeChild(open);
     var button = document.querySelectorAll('.riga-modello[aria-expanded="true"]');
@@ -440,7 +440,7 @@
      di pazienza ciascuno -- per un risultato che dal Task 8 nessuno guardava.
      E rende vera la parola: «letti adesso» detto su una lettura fatta quando
      hai aperto la pagina sarebbe più largo del fatto. */
-  function caricaPannello(idProvider) {
+  function loadPanel(idProvider) {
     fetch('api/models?provider=' + encodeURIComponent(idProvider))
       .then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -453,13 +453,13 @@
         voci.forEach(function(v) { if (v && v.id === idProvider) data = v; });
         state.pannello.dati = data;
         state.pannello.errore = !data;
-        disegnaPannello();
+        drawPanel();
       })
       .catch(function(err) {
         console.error('api/models fetch failed', err);
         if (!state.pannello || state.pannello.id !== idProvider) return;
         state.pannello.errore = true;
-        disegnaPannello();
+        drawPanel();
       });
   }
 
@@ -468,7 +468,7 @@
      un blocco appeso al corpo della sezione sarebbe un figlio di `role="list"`
      che non è una voce di elenco. Dentro la riga, invece, è quello che è: un
      dettaglio di quella riga. */
-  function disegnaPannello() {
+  function drawPanel() {
     var precedente = document.querySelector('.pannello-modello');
     if (precedente && precedente.parentNode) {
       precedente.parentNode.removeChild(precedente);
@@ -486,7 +486,7 @@
        da un altro click è una trappola per chi naviga da tastiera. */
     box.addEventListener('keydown', function(ev) {
       if (ev.key === 'Escape' || ev.keyCode === 27) {
-        chiudiPannello();
+        closePanel();
         if (button && button.focus) button.focus();
       }
     });
@@ -495,8 +495,8 @@
     var titolo = el('h3', 'pannello-titolo',
       'Modello di ' + ((p.dati && p.dati.nome) || line.querySelector('.riga-nome').textContent));
     testa.appendChild(titolo);
-    testa.appendChild(bottoneIcona('✕', 'pannello-chiudi', 'Chiudi',
-      function() { chiudiPannello(); }));
+    testa.appendChild(iconButton('✕', 'pannello-chiudi', 'Chiudi',
+      function() { closePanel(); }));
     box.appendChild(testa);
     box.setAttribute('aria-label', titolo.textContent);
 
@@ -507,20 +507,20 @@
       ancora.type = 'button';
       ancora.addEventListener('click', function() {
         p.errore = false;
-        disegnaPannello();
-        caricaPannello(p.id);
+        drawPanel();
+        loadPanel(p.id);
       });
       box.appendChild(ancora);
     } else if (!p.dati) {
       box.appendChild(el('p', 'field-hint', 'Caricamento…'));
     } else {
-      corpoPannello(box, p);
+      panelBody(box, p);
     }
     line.appendChild(box);
     return box;
   }
 
-  function corpoPannello(box, p) {
+  function panelBody(box, p) {
     var data = p.dati;
     var writable = !!(data.dove && data.dove.length);
 
@@ -553,17 +553,17 @@
         p.filtro = filter.value;
         var old = box.querySelector('.pannello-elenco');
         if (!old) return;
-        old.parentNode.replaceChild(elencoPannello(data, p, writable), old);
+        old.parentNode.replaceChild(panelList(data, p, writable), old);
       });
       box.appendChild(filter);
     }
 
-    box.appendChild(elencoPannello(data, p, writable));
+    box.appendChild(panelList(data, p, writable));
 
     /* La casella vive SOTTO l'elenco che filtra, e la pagina non sa per chi:
        le arrivano un'etichetta e un percorso dentro l'oggetto che già salva. */
     if (data.casella && data.casella.dove) {
-      box.appendChild(casellaPannello(data.casella));
+      box.appendChild(panelBox(data.casella));
     }
     if (data.spiegazione) {
       box.appendChild(el('p', 'pannello-spiegazione', data.spiegazione));
@@ -583,11 +583,11 @@
     box.appendChild(stato);
   }
 
-  function elencoPannello(data, p, writable) {
+  function panelList(data, p, writable) {
     var list = el('div', 'pannello-elenco');
     list.setAttribute('role', 'radiogroup');
     vociVisibili(data, p.filtro).forEach(function(v) {
-      list.appendChild(voceModello(data, v, writable));
+      list.appendChild(modelEntry(data, v, writable));
     });
     if (!list.firstChild) list.appendChild(el('p', 'field-hint', 'Nessuno.'));
     return list;
@@ -615,7 +615,7 @@
     return voci.length ? voci : [{ valore: testo, nota: 'scritto da te' }];
   }
 
-  function voceModello(data, v, writable) {
+  function modelEntry(data, v, writable) {
     var lab = el('label', 'pannello-voce' + (data.alias ? ' voce-alias' : ''));
     var radio = el('input');
     radio.type = 'radio';
@@ -630,7 +630,7 @@
     radio.disabled = !writable;
     if (writable) {
       radio.addEventListener('change', function() {
-        if (radio.checked) scegliModello(v.valore);
+        if (radio.checked) chooseModel(v.valore);
       });
     }
     lab.appendChild(radio);
@@ -643,13 +643,13 @@
     return lab;
   }
 
-  function casellaPannello(casella) {
+  function panelBox(casella) {
     var lab = el('label', 'pannello-casella');
     var box = el('input');
     box.type = 'checkbox';
-    box.checked = !!leggiPercorso(casella.dove);
+    box.checked = !!readPath(casella.dove);
     box.addEventListener('change', function() {
-      cambiaCasella(casella.dove, box.checked);
+      changeBox(casella.dove, box.checked);
     });
     lab.appendChild(box);
     lab.appendChild(el('span', null, casella.etichetta || ''));
@@ -660,7 +660,7 @@
      `dove` è una lista di chiavi (`['provider_models','openrouter']`,
      `['ollama','modello']`, `['nascondi_gratuiti']`). Applicarla alla cieca è
      ciò che tiene questo file ignorante dei casi particolari. */
-  function leggiPercorso(where) {
+  function readPath(where) {
     var nodo = state.cfg;
     for (var i = 0; i < where.length; i++) {
       if (nodo == null) return undefined;
@@ -669,7 +669,7 @@
     return nodo;
   }
 
-  function scriviPercorso(where, value) {
+  function writePath(where, value) {
     var nodo = state.cfg;
     for (var i = 0; i < where.length - 1; i++) {
       if (nodo[where[i]] == null || typeof nodo[where[i]] !== 'object') nodo[where[i]] = {};
@@ -685,47 +685,47 @@
      conosce. Disegnarlo da qui vorrebbe dire calcolarlo. E la prima frase
      della pagina NOMINA il modello: lasciarla ferma la farebbe mentire di
      nuovo, in corpo 20. */
-  function scegliModello(value) {
+  function chooseModel(value) {
     if (!state.caricato) return;
     var p = state.pannello;
     if (!p || !p.dati) return;
     var where = p.dati.dove || [];
     if (!where.length) return;
-    var precedente = leggiPercorso(where);
-    scriviPercorso(where, value);
+    var precedente = readPath(where);
+    writePath(where, value);
     putModelsConfig().then(function(ok) {
       if (ok) {
-        chiudiPannello();
+        closePanel();
         loadModelsAndConfig();
         return;
       }
-      scriviPercorso(where, precedente);
-      mostraErrorePannello(ERR_SALVATAGGIO);
+      writePath(where, precedente);
+      showPanelError(ERR_SAVE);
     });
   }
 
   /* La casella invece NON ricarica la pagina: cambia l'elenco che si sta
      guardando, e il posto dove guardarlo è quello aperto adesso. */
-  function cambiaCasella(where, value) {
+  function changeBox(where, value) {
     if (!state.caricato) return;
     var p = state.pannello;
-    var precedente = leggiPercorso(where);
-    scriviPercorso(where, value);
+    var precedente = readPath(where);
+    writePath(where, value);
     putModelsConfig().then(function(ok) {
       if (!state.pannello || state.pannello !== p) return;
       if (ok) {
         state.pannello.dati = null;
-        disegnaPannello();
-        caricaPannello(state.pannello.id);
+        drawPanel();
+        loadPanel(state.pannello.id);
         return;
       }
-      scriviPercorso(where, precedente);
-      disegnaPannello();
-      mostraErrorePannello(ERR_SALVATAGGIO);
+      writePath(where, precedente);
+      drawPanel();
+      showPanelError(ERR_SAVE);
     });
   }
 
-  function mostraErrorePannello(testo) {
+  function showPanelError(testo) {
     var p = document.querySelector('.pannello-stato');
     if (!p) return;
     p.textContent = '';
@@ -761,7 +761,7 @@
   }
 
   /* ── 01 LA CATENA ──────────────────────────────────────────────────────── */
-  function renderCatena() {
+  function renderChain() {
     var body = clearEl(byId('catena-body'));
     if (!body) return;
     var card = byId('catena-card');
@@ -783,7 +783,7 @@
     }
 
     state.catena.forEach(function(data, i) {
-      body.appendChild(rigaProvider(data, true));
+      body.appendChild(providerRow(data, true));
       if (data.connettore && i < state.catena.length - 1) {
         body.appendChild(connettore('connettore', data.connettore));
       }
@@ -797,7 +797,7 @@
   }
 
   /* ── 02 FUORI DALLA CATENA ─────────────────────────────────────────────── */
-  function renderFuori() {
+  function renderOutside() {
     var body = clearEl(byId('fuori-body'));
     if (!body) return;
     var note = byId('fuori-nota');
@@ -809,7 +809,7 @@
     var missing = false;
     state.fuoriCatena.forEach(function(data) {
       if (!data.ha_credenziale) missing = true;
-      body.appendChild(rigaProvider(data, false));
+      body.appendChild(providerRow(data, false));
     });
     /* Il confine fra le due pagine, detto UNA volta e dove serve: le
        credenziali si custodiscono nella configurazione dell'add-on, le
@@ -828,29 +828,29 @@
      questa pagina ha già), si salva, e se il salvataggio fallisce si torna
      ESATTAMENTE allo stato precedente -- posizioni comprese, perché
      `ricomponiTopologia` le ricalcola dall'ordine. */
-  function scriviCatena(nuovoOrdine, errText) {
+  function writeChain(newOrder, errText) {
     /* Niente si scrive prima di aver letto: vedi `state.caricato`. */
     if (!state.caricato) return;
     var precedente = state.cfg.chain_order.slice();
     var strategiaPrecedente = state.cfg.strategia_ultima;
-    state.cfg.chain_order = nuovoOrdine;
-    ricomponiTopologia();
-    pulisciErroreCatena();
-    renderCatena();
-    renderFuori();
+    state.cfg.chain_order = newOrder;
+    recomposeLayout();
+    clearChainError();
+    renderChain();
+    renderOutside();
     /* Il pannello segue la sua riga invece di sparire con lei: un riordino
        ridisegna le due sezioni, e un dettaglio che si chiude perche' hai
        spostato la riga che stavi guardando e' una perdita senza ragione. */
-    disegnaPannello();
+    drawPanel();
     putModelsConfig().then(function(ok) {
       if (ok) return;
       state.cfg.chain_order = precedente;
       state.cfg.strategia_ultima = strategiaPrecedente;
-      ricomponiTopologia();
-      renderCatena();
-      renderFuori();
-      disegnaPannello();
-      mostraErroreCatena(errText || ERR_SALVATAGGIO);
+      recomposeLayout();
+      renderChain();
+      renderOutside();
+      drawPanel();
+      showChainError(errText || ERR_SAVE);
     });
   }
 
@@ -865,7 +865,7 @@
      test «la pagina NON ricostruisce la catena» (Task 2) monta la pagina con un
      payload in cui `chain_order` e `adesso` sono in disaccordo, e passa solo se
      al PRIMO disegno vince il payload. */
-  function ricomponiTopologia() {
+  function recomposeLayout() {
     var perId = {};
     state.catena.concat(state.fuoriCatena).forEach(function(r) { perId[r.id] = r; });
     /* Le righe che NON si governano da `chain_order` restano dove il backend
@@ -882,12 +882,12 @@
       return Object.assign({}, r, { posizione: i + 1 });
     });
     var idDentro = state.catena.map(function(r) { return r.id; });
-    state.fuoriCatena = ORDINE_FISSO.filter(function(id) {
+    state.fuoriCatena = FIXED_ORDER.filter(function(id) {
       return perId[id] && idDentro.indexOf(id) === -1;
     }).map(function(id) { return Object.assign({}, perId[id], { posizione: null }); });
   }
 
-  function rigaById(id) {
+  function rowById(id) {
     var line = state.catena.concat(state.fuoriCatena);
     for (var i = 0; i < line.length; i++) {
       if (line[i].id === id) return line[i];
@@ -895,8 +895,8 @@
     return null;
   }
 
-  function riordinabileById(id) {
-    var r = rigaById(id);
+  function reorderableById(id) {
+    var r = rowById(id);
     return !!(r && r.riordinabile);
   }
 
@@ -907,7 +907,7 @@
      righe VISIBILI e non a `chain_order` perché l'ordine salvato può contenere
      un provider senza credenziale, che non si disegna: scambiare con lui
      sembrerebbe una freccia rotta. */
-  function vicinoInCatena(id, direction) {
+  function neighbourInChain(id, direction) {
     var moving = state.catena.filter(function(r) { return r.riordinabile; })
       .map(function(r) { return r.id; });
     var k = moving.indexOf(id);
@@ -916,25 +916,25 @@
     return near == null ? null : near;
   }
 
-  function mettiInCatena(id) {
-    if (!riordinabileById(id)) return;
+  function putInChain(id) {
+    if (!reorderableById(id)) return;
     var order = state.cfg.chain_order.slice();
     if (order.indexOf(id) === -1) order.push(id);
-    scriviCatena(order);
+    writeChain(order);
   }
 
-  function togliDallaCatena(id) {
-    if (!riordinabileById(id)) return;
-    scriviCatena(state.cfg.chain_order.filter(function(k) { return k !== id; }));
+  function removeFromChain(id) {
+    if (!reorderableById(id)) return;
+    writeChain(state.cfg.chain_order.filter(function(k) { return k !== id; }));
   }
 
-  function spostaInCatena(id, direction) {
+  function moveInChain(id, direction) {
     /* Seconda guardia, sulla scrittura e non solo sul disegno: `chain_order`
        non contiene il piano (la sua posizione discende da `ponte.attivo`), e un
        id non riordinabile qui non troverebbe niente da spostare scrivendo
        comunque una PUT inutile. */
-    if (!riordinabileById(id)) return;
-    var near = vicinoInCatena(id, direction);
+    if (!reorderableById(id)) return;
+    var near = neighbourInChain(id, direction);
     if (!near) return;
     var order = state.cfg.chain_order.slice();
     var i = order.indexOf(id);
@@ -942,10 +942,10 @@
     if (i === -1 || j === -1) return;
     order[i] = near;
     order[j] = id;
-    scriviCatena(order, 'Errore salvataggio ordine. Riprova.');
+    writeChain(order, 'Errore salvataggio ordine. Riprova.');
   }
 
-  function rifaiCatena(key) {
+  function redoChain(key) {
     var p = PRESET[key];
     if (!p) return;
     /* Solo chi ha una credenziale: mettere in catena un provider senza
@@ -956,7 +956,7 @@
       credentialed[r.id] = r.ha_credenziale;
     });
     state.cfg.strategia_ultima = key;
-    scriviCatena(p.ordine.filter(function(id) { return credentialed[id]; }));
+    writeChain(p.ordine.filter(function(id) { return credentialed[id]; }));
   }
 
   /* La riga di esito delle scritture. Vive nel guscio della sezione e non nel
@@ -964,20 +964,20 @@
      fallimento; e si riscrive svuotandola, perché `aria-live` annuncia le
      mutazioni di contenuto e due fallimenti identici di seguito non
      produrrebbero nessuna mutazione da annunciare. */
-  function mostraErroreCatena(testo) {
+  function showChainError(testo) {
     var p = byId('catena-stato');
     if (!p) return;
     p.textContent = '';
     p.textContent = testo;
   }
 
-  function pulisciErroreCatena() {
+  function clearChainError() {
     var p = byId('catena-stato');
     if (p) p.textContent = '';
   }
 
-  function renderErrore() {
-    renderAdesso();
+  function renderError() {
+    renderNow();
     var body = clearEl(byId('catena-body'));
     if (body) {
       body.appendChild(el('p', 'proposals-error', 'Errore caricamento provider.'));
@@ -1028,15 +1028,15 @@
       /* L'UNICO posto che apre le scritture, ed è il ramo del GET riuscito:
          da qui in poi `state.cfg` è ciò che il prodotto ha davvero. */
       state.caricato = true;
-      bottoniPreset.forEach(function(b) { b.disabled = false; });
-      pulisciErroreCatena();
-      renderAdesso();
-      renderCatena();
-      renderFuori();
-      disegnaPannello();
+      presetButtons.forEach(function(b) { b.disabled = false; });
+      clearChainError();
+      renderNow();
+      renderChain();
+      renderOutside();
+      drawPanel();
     }).catch(function(err) {
       console.error('models/config fetch failed', err);
-      renderErrore();
+      renderError();
     });
   }
 
@@ -1070,7 +1070,7 @@
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
     outlet.appendChild(el('p', 'page-subtitle', 'Chi risponde alle tue domande, e in che ordine.'));
 
-    var catenaCard = buildSectionShell('01', 'catena', 'La catena',
+    var chainCard = buildSectionShell('01', 'catena', 'La catena',
       'Le righe in uso, in ordine. È l\'unica verità: un provider è usato se e solo se sta qui.',
       'list');
     /* I tre preset: un gesto che RIFÀ la catena, non uno stato da cui la catena
@@ -1078,7 +1078,7 @@
        la verità è di nuovo una sola. */
     var actions = el('div', 'sc-actions');
     actions.appendChild(el('span', 'sc-actions-label', 'Rifai la catena:'));
-    bottoniPreset = [];
+    presetButtons = [];
     Object.keys(PRESET).forEach(function(key) {
       var b = el('button', 'btn btn-ghost btn-sm', PRESET[key].nome);
       b.type = 'button';
@@ -1087,11 +1087,11 @@
          `state.caricato` rifiuta comunque la scrittura -- questo lo dice a
          schermo, che è la metà che l'utente vede. */
       b.disabled = true;
-      b.addEventListener('click', function() { rifaiCatena(key); });
-      bottoniPreset.push(b);
+      b.addEventListener('click', function() { redoChain(key); });
+      presetButtons.push(b);
       actions.appendChild(b);
     });
-    catenaCard.querySelector('.sc-header').appendChild(actions);
+    chainCard.querySelector('.sc-header').appendChild(actions);
     /* Qui viveva la confessione: «L'ordine si applica al riavvio
        dell'add-on». Era vera -- `handle_save_models_config` aggiornava
        l'archivio, ma la catena del router si costruiva all'avvio -- ed è
@@ -1102,21 +1102,21 @@
     var stato = el('p', 'catena-stato');
     stato.id = 'catena-stato';
     stato.setAttribute('aria-live', 'polite');
-    catenaCard.appendChild(stato);
-    outlet.appendChild(catenaCard);
+    chainCard.appendChild(stato);
+    outlet.appendChild(chainCard);
 
-    var fuoriCard = buildSectionShell('02', 'fuori', 'Fuori dalla catena',
+    var outsideCard = buildSectionShell('02', 'fuori', 'Fuori dalla catena',
       'Chi potrebbe entrare, e chi non può finché manca la credenziale.', 'list');
-    var fuoriNota = el('p', 'fuori-nota');
-    fuoriNota.id = 'fuori-nota';
-    fuoriCard.appendChild(fuoriNota);
-    outlet.appendChild(fuoriCard);
+    var outsideNote = el('p', 'fuori-nota');
+    outsideNote.id = 'fuori-nota';
+    outsideCard.appendChild(outsideNote);
+    outlet.appendChild(outsideCard);
 
     /* Il guscio del riquadro «Adesso», vuoto: esiste prima della fetch perché
        una regione viva annuncia ciò che le arriva dentro, non la propria
        comparsa. Sta sopra la prima sezione -- la risposta prima delle ragioni --
        e sparisce se il payload non porta la decisione (renderAdesso). */
-    creaGuscioAdesso();
+    createNowShell();
 
     /* Gli embedding non sono una sezione e non sono numerati: la numerazione,
        qui, significa «si decide qualcosa», e questi non fanno niente. Restano
