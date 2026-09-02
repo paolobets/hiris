@@ -75,13 +75,13 @@ function setupChat(t) {
     { html: fixtureHtml() },
   );
   if (t) t.after(() => {
-    /* `fermaTutteLeAttese()` PRIMA di chiudere: i timer dell'indicatore
+    /* `stopAllWaits()` PRIMA di chiudere: i timer dell'indicatore
        nascono da un `setTimeout` non qualificato, che in questo harness e'
        quello di Node e non quello di jsdom -- `window.close()` da solo non li
        spegne. Senza questa riga, un test che fallisce a meta' turno lascia
        pendenti fino a 4 minuti e mezzo di timer e il file di test non
        termina. */
-    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.window.HirisChatMessages.stopAllWaits();
     ctx.dom.window.close();
   });
   return ctx;
@@ -295,10 +295,10 @@ test('ramo diretto (200): senza nota non compare nessuna riga vuota', async (t) 
   assert.equal(document.querySelector('.msg-nota'), null);
 });
 
-test('appendNota con una nota vuota non disegna niente', (t) => {
+test('appendNote con una nota vuota non disegna niente', (t) => {
   /* La prova per mutazione lo ha chiesto: togliere `!testo` dalla guardia non
-     faceva cadere niente, perché send.js chiama `appendNota` solo dentro un
-     `if (data.nota)`. Ma `appendNota` è esportata su `window.HirisChatMessages`
+     faceva cadere niente, perché send.js chiama `appendNote` solo dentro un
+     `if (data.nota)`. Ma `appendNote` è esportata su `window.HirisChatMessages`
      e la nota è un campo FACOLTATIVO: la stringa vuota è il valore che
      `downgrade_note` restituisce quando non può parlare (motivo sconosciuto,
      natura sconosciuta), ed è precisamente il caso in cui non si deve vedere
@@ -306,9 +306,9 @@ test('appendNota con una nota vuota non disegna niente', (t) => {
      o si toglie, o si prova. */
   const { window, document } = setupChat(t);
   const riga = window.HirisChatMessages.appendMsg('assistant', 'Le luci accese sono due.');
-  window.HirisChatMessages.appendNota(riga, '');
+  window.HirisChatMessages.appendNote(riga, '');
   assert.equal(document.querySelector('.msg-nota'), null);
-  window.HirisChatMessages.appendNota(riga, 'una nota vera');
+  window.HirisChatMessages.appendNote(riga, 'una nota vera');
   assert.equal(document.querySelectorAll('.msg-nota').length, 1);
 });
 
@@ -390,7 +390,7 @@ test('l\'indicatore d\'attesa e\' uno solo: logo, scritta di marca e una regione
   assert.equal(document.querySelector('.thinking-code'), null,
     'l\'estetica "stile code" e\' uscita: non deve poter ricomparire da nessun ramo');
 
-  window.HirisChatMessages.fermaTutteLeAttese();
+  window.HirisChatMessages.stopAllWaits();
 });
 
 test('il cronometro non c\'e\' nei primi secondi, e compare quando l\'attesa si allunga', async (t) => {
@@ -409,7 +409,7 @@ test('il cronometro non c\'e\' nei primi secondi, e compare quando l\'attesa si 
     await tick(200);
     assert.equal(row.querySelector('.thinking-timer'), null,
       'e non deve comparire al primo giro dell\'event loop');
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
 
     soglie.timer = 40;
     const row2 = window.HirisChatMessages.showThinking();
@@ -419,7 +419,7 @@ test('il cronometro non c\'e\' nei primi secondi, e compare quando l\'attesa si 
        si rompe, il file deve diventare ROSSO, non piantarsi in silenzio. */
     /* L'id va preso ADESSO, non dentro il gancio: i ganci di `t.after` girano
        nell'ordine in cui sono stati registrati, e quello di `setupChat` viene
-       prima -- a quel punto `fermaTutteLeAttese()` ha gia' azzerato `_attesa` e
+       prima -- a quel punto `stopAllWaits()` ha gia' azzerato `_attesa` e
        il gancio non troverebbe piu' niente da spegnere. E `clearInterval`
        nudo, non `window.clearInterval`: in questo harness il `setInterval`
        nudo di messages.js e' quello di Node, e i due non condividono lo spazio
@@ -432,7 +432,7 @@ test('il cronometro non c\'e\' nei primi secondi, e compare quando l\'attesa si 
     assert.match(timer.textContent, /^\d+:\d\d$/, 'nel formato m:ss');
     assert.equal(timer.getAttribute('aria-hidden'), 'true',
       'un m:ss dentro una regione live verrebbe letto ogni secondo');
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
   } finally {
     soglie.timer = originale;
   }
@@ -869,7 +869,7 @@ test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spari
 
 /* ── La proprieta' cieca `alSicuro`: il test viene PRIMA della rinomina ─────
  *
- * `row._attesa.alSicuro` e' scritta in un posto (`attesaAlSicuroSulServer`) e
+ * `row._attesa.alSicuro` e' scritta in un posto (`waitSafeOnServer`) e
  * letta in un altro (la riga di servizio, dopo la soglia). Ogni sua lettura sta
  * in posizione di verita', ed e' la forma che la misura del 30/08 ha trovato
  * cieca: rinominata da un lato solo, la lettura orfana da' `undefined`,
@@ -882,26 +882,26 @@ test('la riga di servizio dice «puoi chiudere» solo quando il turno e\' davver
   const originale = soglie.servizio;
   soglie.servizio = 30;
   try {
-    /* 1. senza `attesaAlSicuroSulServer`: la pagina deve chiedere di NON chiudere */
+    /* 1. senza `waitSafeOnServer`: la pagina deve chiedere di NON chiudere */
     const riga = window.HirisChatMessages.showThinking();
     await tick(120);
     const avvisoA = riga.querySelector('.tl-servizio');
     assert.ok(avvisoA, 'dopo la soglia la riga di servizio deve esserci');
     assert.match(avvisoA.textContent, /Tieni aperta questa pagina/,
       'senza il ponte il turno muore chiudendo la pagina, e la riga deve dirlo');
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
 
-    /* 2. con `attesaAlSicuroSulServer`: la pagina deve dire che si puo' chiudere */
+    /* 2. con `waitSafeOnServer`: la pagina deve dire che si puo' chiudere */
     const riga2 = window.HirisChatMessages.showThinking();
-    window.HirisChatMessages.attesaAlSicuroSulServer(riga2, 0);
+    window.HirisChatMessages.waitSafeOnServer(riga2, 0);
     await tick(120);
     const avvisoB = riga2.querySelector('.tl-servizio');
     assert.ok(avvisoB, 'la riga di servizio deve comparire anche sul percorso del ponte');
     assert.match(avvisoB.textContent, /Puoi anche chiudere/,
       'il turno e\' al sicuro sul server: dirgli di tenere aperto sarebbe falso');
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
   } finally {
     soglie.servizio = originale;
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
   }
 });

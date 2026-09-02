@@ -55,7 +55,7 @@
     "HirisUsageRoute": "readonly",
     "applyTheme": "readonly",
     "esc": "readonly",
-    "fmtDataOra": "readonly",
+    "fmtDateTime": "readonly",
     "fmtEuro": "readonly",
     "fmtNum": "readonly",
     "loadUsage": "readonly"
@@ -90,7 +90,7 @@
         "HirisUsageRoute": "writable",
         "applyTheme": "writable",
         "esc": "writable",
-        "fmtDataOra": "writable",
+        "fmtDateTime": "writable",
         "fmtEuro": "writable",
         "fmtNum": "writable",
         "loadUsage": "writable"

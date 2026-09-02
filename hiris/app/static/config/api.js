@@ -48,7 +48,7 @@ function fmtEuro(n, decimals) {
    Restituisce stringa vuota su un valore assente o illeggibile, cosi' chi
    chiama puo' decidere se scrivere un trattino o niente -- e non finisce mai
    con un `Invalid Date` stampato addosso all'utente. */
-function fmtDataOra(v) {
+function fmtDateTime(v) {
   if (!v) return '';
   var d = new Date(v);
   return isNaN(d.getTime()) ? '' : d.toLocaleString('it-IT');
@@ -137,7 +137,7 @@ async function loadUsage() {
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
     _setUsageText('u-cost', fmtEuro(d.cost_eur));
-    var when = fmtDataOra(d.last_reset);
+    var when = fmtDateTime(d.last_reset);
     /* «Conta da», non «Azzerato il»: dalla fetta «i consumi, per modello»
        il pulsante sposta un'ancora e non cancella piu' niente, e `last_reset`
        porta l'istante di quell'ancora. Dire «azzerato» descriverebbe un gesto

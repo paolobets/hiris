@@ -51,7 +51,7 @@
                identici -- quindi un client che lo ignori continua a
                funzionare. Una riga per ramo, e le due righe sono gemelle:
                quella del ramo diretto sta in fondo a send(). */
-            if (data.nota) window.HirisChatMessages.appendNota(placeholderRow, data.nota);
+            if (data.nota) window.HirisChatMessages.appendNote(placeholderRow, data.nota);
             /* Qui il ramo del ponte disegnava le targhette degli strumenti,
                aggiunte l'11 agosto perche' l'osservabilita' di una scrittura di
                `ricorda` mancava proprio sul percorso che la produce. Sono uscite
@@ -123,8 +123,8 @@
        -- gia' pagata in token -- veniva poi scritta dentro una riga staccata
        dal DOM, che nessuno vedeva mai. E' la stessa condizione che blocca il
        composer, quindi vive qui e non in un secondo posto da tenere allineato. */
-    var btnCancella = document.getElementById('cancella-conv-btn');
-    if (btnCancella) btnCancella.disabled = loading;
+    var clearBtn = document.getElementById('cancella-conv-btn');
+    if (clearBtn) clearBtn.disabled = loading;
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
@@ -163,7 +163,7 @@
            aspettare. Sul ramo diretto la `fetch` qui sotto non ha ne un
            `AbortController` ne un timeout: nessuna scadenza da dichiarare, e
            l'indicatore infatti non ne promette una. */
-        window.HirisChatMessages.attesaAlSicuroSulServer(pending, CHAT_POLL_MAX_MS);
+        window.HirisChatMessages.waitSafeOnServer(pending, CHAT_POLL_MAX_MS);
         handedOff = true;
         pollChatReply(data.job_id, pending);
         return;
@@ -177,7 +177,7 @@
       /* Vedi la gemella nel ramo del poll, sopra. Qui il ripiego e' quello a
          monte: il piano non poteva ricevere il turno (niente token, o tetto
          giornaliero pieno) e la catena ha risposto sincrona. */
-      if (data.nota) window.HirisChatMessages.appendNota(pending, data.nota);
+      if (data.nota) window.HirisChatMessages.appendNote(pending, data.nota);
       state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();

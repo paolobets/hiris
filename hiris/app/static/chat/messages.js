@@ -113,7 +113,7 @@
      nota appartiene a QUELLA risposta e a nessun'altra.
 
      textContent, mai innerHTML: il testo viene dal server. */
-  function appendNota(row, text) {
+  function appendNote(row, text) {
     if (!row || !text) return;
     var note = document.createElement('div');
     note.className = 'msg-nota';
@@ -172,7 +172,7 @@
     /* Quanto PRIMA della scadenza avvisare che sta per arrendersi. La scadenza
        non e' scritta qui: la porta chi ce l'ha davvero, cioe' chat/send.js, e
        arriva insieme al fatto che il turno e' al sicuro sul server (vedi
-       `attesaAlSicuroSulServer`). Qui c'era un `270000` con scritto accanto
+       `waitSafeOnServer`). Qui c'era un `270000` con scritto accanto
        "CHAT_POLL_MAX_MS meno mezzo minuto": un secondo numero, in un secondo
        file, che dichiarava un legame inesistente -- bastava cambiare la
        scadenza vera perche' l'avviso mentisse in silenzio. */
@@ -242,7 +242,7 @@
 
   /* Chiamata da chi svuota la conversazione: senza, i cronometri delle righe
      appena cancellate continuavano a girare su nodi che non esistono piu'. */
-  function fermaTutteLeAttese() {
+  function stopAllWaits() {
     while (waits.length) stopWait(waits[waits.length - 1]);
   }
 
@@ -253,7 +253,7 @@
      non ne tiene una copia da mantenere allineata. Due conseguenze, entrambe
      sul VERO: la frase dei due minuti dice che si puo' chiudere, e l'avviso di
      resa viene programmato -- perche' su questo percorso una resa c'e'. */
-  function attesaAlSicuroSulServer(row, deadlineMs) {
+  function waitSafeOnServer(row, deadlineMs) {
     if (!row || !row._attesa) return;
     row._attesa.safeOnServer = true;
     if (!deadlineMs) return;
@@ -338,7 +338,7 @@
     }, WAIT_THRESHOLDS.servizio));
 
     /* L'avviso di resa NON si programma qui: qui non si sa ancora se una resa
-       esistera'. Lo programma `attesaAlSicuroSulServer` quando il ponte porta
+       esistera'. Lo programma `waitSafeOnServer` quando il ponte porta
        la sua scadenza. Questo timer copre il caso opposto -- nessuna scadenza,
        cioe' il percorso diretto -- e dice quello, invece di promettere una fine
        che non arrivera'. Se la scadenza nel frattempo e' arrivata, tace: ne
@@ -354,10 +354,10 @@
   window.HirisChatMessages = {
     appendMsg: appendMsg,
     updateBubble: updateBubble,
-    appendNota: appendNota,
+    appendNote: appendNote,
     showThinking: showThinking,
-    attesaAlSicuroSulServer: attesaAlSicuroSulServer,
-    fermaTutteLeAttese: fermaTutteLeAttese,
+    waitSafeOnServer: waitSafeOnServer,
+    stopAllWaits: stopAllWaits,
     SOGLIE_ATTESA: WAIT_THRESHOLDS,
   };
 })();

@@ -63,7 +63,7 @@ window.HirisPromesseRoute = (function () {
   /* Vocabolario dell'interfaccia (guida di disegno §0), diverso dai nomi
      tecnici di `stato` in archivio: non toccare senza rileggere quella
      guida, la distinzione non e' un dettaglio estetico. */
-  var STATO_LABEL = {
+  var STATE_LABEL = {
     in_attesa: 'In attesa',
     in_corso: 'In corso',
     mantenuta: 'Mantenuta',
@@ -71,7 +71,7 @@ window.HirisPromesseRoute = (function () {
     fallita: 'Non riuscita',
     disdetta: 'Disdetta'
   };
-  var STATO_BADGE = {
+  var STATE_BADGE = {
     in_attesa: 'badge-off',
     in_corso: 'badge-on',
     mantenuta: 'badge-on',
@@ -338,8 +338,8 @@ window.HirisPromesseRoute = (function () {
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
 
-    line.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[p.stato] || 'badge-off'),
-      STATO_LABEL[p.stato] || p.stato));
+    line.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[p.stato] || 'badge-off'),
+      STATE_LABEL[p.stato] || p.stato));
 
     if (p.motivo) {
       var reason = el('p', null, p.motivo);

@@ -95,7 +95,7 @@
        cronometro su un nodo che non esiste piu'. In pratica non ci si arriva
        (il bottone e' spento durante l'elaborazione), ma un timer orfano non
        deve dipendere da un `disabled` per non nascere. */
-    window.HirisChatMessages.fermaTutteLeAttese();
+    window.HirisChatMessages.stopAllWaits();
     state.els.messages.innerHTML = '';
     state.els.messages.appendChild(state.els.welcome);
     state.els.welcome.style.display = '';

@@ -158,11 +158,11 @@ def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
 
 def test_ogni_stato_concluso_ha_una_voce_in_stato_label_e_stato_badge():
     js = _promesse_route_js()
-    label = re.search(r"var STATO_LABEL = \{([\s\S]*?)\};", js)
-    badge = re.search(r"var STATO_BADGE = \{([\s\S]*?)\};", js)
-    assert label and badge, "STATO_LABEL / STATO_BADGE non trovati in promesse-route.js"
+    label = re.search(r"var STATE_LABEL = \{([\s\S]*?)\};", js)
+    badge = re.search(r"var STATE_BADGE = \{([\s\S]*?)\};", js)
+    assert label and badge, "STATE_LABEL / STATE_BADGE non trovati in promesse-route.js"
     chiavi_label = set(re.findall(r"(\w+):", label.group(1)))
     chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
     for stato in STATES_CONCLUSI:
-        assert stato in chiavi_label, f"STATO_LABEL non conosce «{stato}»"
-        assert stato in chiavi_badge, f"STATO_BADGE non conosce «{stato}»"
+        assert stato in chiavi_label, f"STATE_LABEL non conosce «{stato}»"
+        assert stato in chiavi_badge, f"STATE_BADGE non conosce «{stato}»"

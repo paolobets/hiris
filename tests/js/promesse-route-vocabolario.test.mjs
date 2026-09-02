@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
    `GET /api/agenda?all=1` lato client) -- senza niente che li legasse.
    Il vocabolario degli stati «conclusi» (`STATES_CONCLUSI`) ha la stessa
    forma: Python lo usa per `concludi()`/potatura, il JavaScript lo rispecchia
-   in `STATO_LABEL`/`STATO_BADGE`.
+   in `STATE_LABEL`/`STATE_BADGE`.
 
    Nota sulla rinomina in inglese: `promise.py` e' gia' stato convertito
    (`STATI_SOSPESO` -> `STATES_SOSPESO`, `STATI_CONCLUSI` -> `STATES_CONCLUSI`);
@@ -71,7 +71,7 @@ test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e i
     'gli stati "in sospeso" devono essere lo stesso insieme in Python e in JavaScript');
 });
 
-test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una voce in STATO_LABEL e in STATO_BADGE', () => {
+test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una voce in STATE_LABEL e in STATE_BADGE', () => {
   const python = tuplaPython('STATES_CONCLUSI');
   assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'disdetta', 'fallita']));
 
@@ -87,11 +87,11 @@ test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una
     assert.ok(m, nomeCostante + ' non trovata in promesse-route.js');
     return new Set(Array.from(m[1].matchAll(/(\w+):/g)).map((mm) => mm[1]));
   };
-  const label = chiaviDiOggetto('STATO_LABEL');
-  const badge = chiaviDiOggetto('STATO_BADGE');
+  const label = chiaviDiOggetto('STATE_LABEL');
+  const badge = chiaviDiOggetto('STATE_BADGE');
 
   for (const stato of python) {
-    assert.ok(label.has(stato), 'STATO_LABEL non conosce lo stato concluso "' + stato + '"');
-    assert.ok(badge.has(stato), 'STATO_BADGE non conosce lo stato concluso "' + stato + '"');
+    assert.ok(label.has(stato), 'STATE_LABEL non conosce lo stato concluso "' + stato + '"');
+    assert.ok(badge.has(stato), 'STATE_BADGE non conosce lo stato concluso "' + stato + '"');
   }
 });

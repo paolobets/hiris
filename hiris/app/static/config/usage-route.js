@@ -130,7 +130,7 @@
   }
 
   function bar(u) {
-    var da = fmtDataOra(u.last_reset);
+    var da = fmtDateTime(u.last_reset);
     return '<div class="usage-barra">'
       + '<div class="usage-quando" role="group" aria-label="Da quando contare">'
       + '<button class="btn btn-ghost' + (state.daAncora ? ' attivo' : '') + '" '

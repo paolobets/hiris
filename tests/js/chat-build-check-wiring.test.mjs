@@ -101,7 +101,7 @@ async function avvia(t, { buildLocale, buildRemoto }) {
     globalThis.setInterval = veroSet;
   }
   if (t) t.after(() => {
-    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.window.HirisChatMessages.stopAllWaits();
     ctx.dom.window.close();
   });
   return { ...ctx, reloadCalls };
@@ -179,7 +179,7 @@ test('boot della chat: HirisBuildCheck presente ma verifica() solleva dentro -- 
     globalThis.setInterval = veroSet;
   }
   t.after(() => {
-    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.window.HirisChatMessages.stopAllWaits();
     ctx.dom.window.close();
   });
 
@@ -217,7 +217,7 @@ test('boot della chat: guscio precedente a B8 (senza build-check.js) -- il palli
     globalThis.setInterval = veroSet;
   }
   t.after(() => {
-    ctx.window.HirisChatMessages.fermaTutteLeAttese();
+    ctx.window.HirisChatMessages.stopAllWaits();
     ctx.dom.window.close();
   });
 
