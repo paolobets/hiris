@@ -105,8 +105,8 @@
 window.HirisOsservatoreRoute = (function () {
   'use strict';
 
-  var TONO_PROBLEMA = 'color:var(--err-ink)';
-  var TONO_QUIETO = 'color:var(--text-3)';
+  var TONE_PROBLEM = 'color:var(--err-ink)';
+  var TONE_CALM = 'color:var(--text-3)';
 
   /* Letterale, identico a `pavimento.GAMBE` (vedi il commento di testa): sei
      gambe, quest'ordine. Una gamba che l'archivio manda e questa lista non
@@ -114,7 +114,7 @@ window.HirisOsservatoreRoute = (function () {
      mai, stessa regola di `NOMI_REGISTRI` in albero-route.js. I VALORI
      restano quelli letterali (identici a `pavimento.GAMBE`): solo la resa
      (`ETICHETTA_GAMBA` sotto) traduce la chiave in un'etichetta leggibile. */
-  var ORDINE_GAMBE = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
+  var ASPECT_ORDER = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
 
   /* Rilievo 8a della review: le intestazioni di gamba erano chiavi grezze
      ("chi c'e' — 95 voci", apostrofo ASCII e minuscola) in una pagina con
@@ -123,12 +123,12 @@ window.HirisOsservatoreRoute = (function () {
      resta quella che il pavimento dichiara. Una gamba non in questa mappa
      (coda di `raggruppaPerGamba`) mostra comunque il suo nome grezzo, mai
      "undefined". */
-  var ETICHETTA_GAMBA = {
+  var ASPECT_LABEL = {
     "chi c'e'": 'Chi c’è', comfort: 'Comfort', dispersione: 'Dispersione',
     energia: 'Energia', 'buono stato': 'Buono stato', sicurezza: 'Sicurezza'
   };
 
-  var ETICHETTA_GENERE = {
+  var GENRE_LABEL = {
     funzionamento: 'Funzionamento', presenza: 'Presenza / assenza',
     energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza',
     bilancio: 'Bilancio'
@@ -140,7 +140,7 @@ window.HirisOsservatoreRoute = (function () {
      direzione non in questa mappa (un genere futuro che il backend sapesse
      dire e questa pagina non ancora) mostra comunque la sua parola grezza,
      mai "undefined" -- stessa regola di `ETICHETTA_GAMBA`/`ETICHETTA_GENERE`. */
-  var ETICHETTA_DIREZIONE = {
+  var DIRECTION_LABEL = {
     produzione: 'Produzione', prelievo: 'Prelievo dalla rete',
     immissione: 'Immissione in rete', carica: 'Carica della batteria',
     scarica: 'Scarica della batteria', consumo: 'Consumo della casa',
@@ -162,7 +162,7 @@ window.HirisOsservatoreRoute = (function () {
      rete"/"prelevato dalla rete"/"consumo della casa" gia' usato dagli
      episodi di energia -- il mandato chiede di riusare le stesse parole,
      non inventarne di nuove. */
-  var ORDINE_DIREZIONI_BILANCIO = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica', 'consumo'];
+  var BALANCE_DIRECTION_ORDER = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica', 'consumo'];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -231,7 +231,7 @@ window.HirisOsservatoreRoute = (function () {
       var g = v.gamba || '(senza gamba)';
       (groups[g] = groups[g] || []).push(v);
     });
-    var order = ORDINE_GAMBE.slice();
+    var order = ASPECT_ORDER.slice();
     Object.keys(groups).forEach(function (g) {
       if (order.indexOf(g) === -1) order.push(g);
     });
@@ -239,10 +239,10 @@ window.HirisOsservatoreRoute = (function () {
       .map(function (g) { return { gamba: g, voci: groups[g] }; });
   }
 
-  function rendiGruppoGamba(body, group) {
+  function renderAspectGroup(body, group) {
     var det = el('details');
     det.open = false;
-    var label = ETICHETTA_GAMBA[group.gamba] || group.gamba;
+    var label = ASPECT_LABEL[group.gamba] || group.gamba;
     var summary = el('summary', null,
       label + ' — ' + group.voci.length + (group.voci.length === 1 ? ' voce' : ' voci'));
     summary.style.cssText = 'cursor:pointer;font-weight:500';
@@ -268,10 +268,10 @@ window.HirisOsservatoreRoute = (function () {
       line(body,
         'Non sto guardando ancora niente. Se HIRIS è appena partito e' +
         ' Home Assistant non ha ancora mandato nessun cambio, è normale — torna fra poco.',
-        TONO_QUIETO);
+        TONE_CALM);
       return;
     }
-    raggruppaPerGamba(osservate).forEach(function (g) { rendiGruppoGamba(body, g); });
+    raggruppaPerGamba(osservate).forEach(function (g) { renderAspectGroup(body, g); });
   }
 
   /* Bottone «Riprova» (rilievo 4): era l'unica pagina di lettura senza,
@@ -280,7 +280,7 @@ window.HirisOsservatoreRoute = (function () {
      costruzioni-route.js): `btn btn-ghost btn-sm`, rilancia `ricarica`. Il
      TESTO dei tre messaggi sotto non cambia (rilievo 4: "il migliore del
      pannello", non si riscrive). */
-  function bottoneRiprova(body, reload) {
+  function retryButton(body, reload) {
     var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
     retry.type = 'button';
     retry.addEventListener('click', reload);
@@ -292,12 +292,12 @@ window.HirisOsservatoreRoute = (function () {
       line(body,
         'L’osservatore non è disponibile: HIRIS non sta guardando niente in questo momento. ' +
         'Non è una lista vuota — è l’osservatore stesso ad essere fermo (riprova dopo un riavvio dell’add-on).',
-        TONO_PROBLEMA);
+        TONE_PROBLEM);
     } else {
       line(body, 'Non è stato possibile leggere cosa sta guardando l’osservatore. Riprova più tardi.',
-        TONO_PROBLEMA);
+        TONE_PROBLEM);
     }
-    bottoneRiprova(body, reload);
+    retryButton(body, reload);
   }
 
   /* --------------------------------------------------------------- «cosa è successo» */
@@ -314,7 +314,7 @@ window.HirisOsservatoreRoute = (function () {
     return isoData(d);
   }
 
-  function oggiLocale() { return isoData(new Date()); }
+  function localToday() { return isoData(new Date()); }
 
   /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `giornoIso` arriva dal
      valore di `<input type=date>`, sempre `AAAA-MM-GG` per specifica HTML. */
@@ -349,7 +349,7 @@ window.HirisOsservatoreRoute = (function () {
   /* La frase che apre la riga: cosa e' successo, per genere -- il corpo ha
      forma diversa per ciascuno (vedi il commento di testa). Nessuna frase
      generica: campi reali o niente. */
-  function frasePrincipale(o) {
+  function mainPhrase(o) {
     var c = o.corpo || {};
     if (o.genere === 'energia') {
       var base;
@@ -363,7 +363,7 @@ window.HirisOsservatoreRoute = (function () {
          campo non c'e' affatto quando non si conosce (ne' la dichiarata ne'
          la dedotta la sanno dire) -- niente "sconosciuta" nel testo. */
       if (c.direzione) {
-        base += ' · ' + (ETICHETTA_DIREZIONE[c.direzione] || c.direzione);
+        base += ' · ' + (DIRECTION_LABEL[c.direzione] || c.direzione);
       }
       return base;
     }
@@ -396,7 +396,7 @@ window.HirisOsservatoreRoute = (function () {
   /* `problema:dominio.id` / `integrazione:entry_id` -> un nome leggibile.
      Stessa idea di `nomiRegistriInItaliano` in albero-route.js: un prefisso
      tecnico non deve restare tale e quale sulla pagina. */
-  function nomeProtagonista(o) {
+  function protagonistName(o) {
     var s = o.protagonista || '';
     if (s.indexOf('problema:') === 0) return 'Problema Home Assistant: ' + s.slice('problema:'.length);
     if (s.indexOf('integrazione:') === 0) return 'Integrazione non caricata: ' + s.slice('integrazione:'.length);
@@ -411,22 +411,22 @@ window.HirisOsservatoreRoute = (function () {
      sarebbe il doppione che le fondamenta di questo prodotto vietano.
      `riempiPannello(pannello)` scrive il contenuto specifico di ogni
      chiamante dentro il pannello gia' creato, chiuso, con lo stile giusto. */
-  function creaRivelatore(testoChiuso, testoAperto, riempiPannello) {
+  function createDisclosure(closedText, openText, fillPanel) {
     var wrap = el('div', 'field-group');
-    var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
+    var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
 
     var panel = el('div');
     panel.hidden = true;
     panel.style.cssText = 'margin-top:6px';
-    riempiPannello(panel);
+    fillPanel(panel);
 
     btn.addEventListener('click', function () {
       var open = btn.getAttribute('aria-expanded') === 'true';
       panel.hidden = open;
       btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-      btn.textContent = open ? testoChiuso : testoAperto;
+      btn.textContent = open ? closedText : openText;
     });
 
     wrap.appendChild(btn);
@@ -434,7 +434,7 @@ window.HirisOsservatoreRoute = (function () {
     return wrap;
   }
 
-  function rivelatoreDettagli(o) {
+  function detailsDisclosure(o) {
     var companions = (o.corpo && o.corpo.comprimari) || [];
     var measurements = (o.corpo && o.corpo.misure) || {};
     var chiaviMisure = Object.keys(measurements);
@@ -444,13 +444,13 @@ window.HirisOsservatoreRoute = (function () {
        sono aperte insieme -- lo stesso principio di "Nascondi i dettagli
        tecnici" in costruzioni-route.js e "Nascondi il dettaglio" in
        promesse-route.js. */
-    return creaRivelatore('Chi c’era intorno', 'Nascondi chi c’era intorno', function (panel) {
+    return createDisclosure('Chi c’era intorno', 'Nascondi chi c’era intorno', function (panel) {
       if (companions.length) {
-        line(panel, 'Insieme a: ' + companions.join(', '), 'font-size:var(--fs-12);' + TONO_QUIETO);
+        line(panel, 'Insieme a: ' + companions.join(', '), 'font-size:var(--fs-12);' + TONE_CALM);
       }
       chiaviMisure.forEach(function (k) {
         var m = measurements[k];
-        line(panel, k + ': da ' + m.da + ' a ' + m.a, 'font-size:var(--fs-12);' + TONO_QUIETO);
+        line(panel, k + ': da ' + m.da + ' a ' + m.a, 'font-size:var(--fs-12);' + TONE_CALM);
       });
     });
   }
@@ -535,14 +535,14 @@ window.HirisOsservatoreRoute = (function () {
      «la pagina del bilancio», punto 1, 27/08/2026) chiude l'elenco. */
   function rendiTotaliBilancio(box, totali) {
     if (!totali) return;
-    var present = ORDINE_DIREZIONI_BILANCIO.filter(function (d) { return totali[d]; });
+    var present = BALANCE_DIRECTION_ORDER.filter(function (d) { return totali[d]; });
     if (!present.length) return;
 
     var grid = el('div', 'stat-grid');
     present.forEach(function (d) {
       var t = totali[d];
       var tile = el('div', 'stat-tile');
-      tile.appendChild(el('div', 'st-label', ETICHETTA_DIREZIONE[d] || d));
+      tile.appendChild(el('div', 'st-label', DIRECTION_LABEL[d] || d));
       tile.appendChild(el('div', 'st-value', fmtKwh(t.valore)));
       // Punto 4 del brief: la provenienza della direzione, STESSO meccanismo
       // gia' usato dagli episodi di energia -- niente badge quando non si
@@ -608,14 +608,14 @@ window.HirisOsservatoreRoute = (function () {
      `fmtOraIso` sopra) al posto di quello del browser -- una fetta a se'. */
   var ORE_DEL_GIORNO = 24;
 
-  function rendiCurvaBilancio(box, form, haiMomenti) {
+  function renderBalanceCurve(box, form, haiMomenti) {
     if (!form) return;
     var series = [];
     if (form.produzione) {
-      series.push({ punti: form.produzione, colore: 'var(--bilancio-produzione)', etichetta: ETICHETTA_DIREZIONE.produzione });
+      series.push({ punti: form.produzione, colore: 'var(--bilancio-produzione)', etichetta: DIRECTION_LABEL.produzione });
     }
     if (form.prelievo) {
-      series.push({ punti: form.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: ETICHETTA_DIREZIONE.prelievo });
+      series.push({ punti: form.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: DIRECTION_LABEL.prelievo });
     }
     if (!series.length) return;
     var haPunti = series.some(function (s) { return s.punti && s.punti.length; });
@@ -629,7 +629,7 @@ window.HirisOsservatoreRoute = (function () {
 
     var L = 640, A = 140, base = A - 20, left = 4;
     var passo = (L - left * 2) / ORE_DEL_GIORNO;
-    var larghezzaBarra = Math.max(1, (passo - 2) / series.length);
+    var barWidth = Math.max(1, (passo - 2) / series.length);
 
     var svg = svgEl('svg', {
       class: 'bil-grafico', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
@@ -660,16 +660,16 @@ window.HirisOsservatoreRoute = (function () {
         if (d == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
         var hour = d.getHours();
         var h = (v / maximum) * (base - 6);
-        var x = left + hour * passo + si * larghezzaBarra;
+        var x = left + hour * passo + si * barWidth;
         var y = base - h;
         var rect = svgEl('rect', {
           x: x.toFixed(1), y: y.toFixed(1),
-          width: larghezzaBarra.toFixed(1), height: h.toFixed(1),
+          width: barWidth.toFixed(1), height: h.toFixed(1),
           fill: s.colore
         });
-        var titoloBarra = document.createElementNS(SVG_NS, 'title');
-        titoloBarra.textContent = s.etichetta + ' — ' + formattaOraDaData(d) + ': ' + fmtKwh(v);
-        rect.appendChild(titoloBarra);
+        var barTitle = document.createElementNS(SVG_NS, 'title');
+        barTitle.textContent = s.etichetta + ' — ' + formattaOraDaData(d) + ': ' + fmtKwh(v);
+        rect.appendChild(barTitle);
         svg.appendChild(rect);
       });
     });
@@ -729,7 +729,7 @@ window.HirisOsservatoreRoute = (function () {
     return voci;
   }
 
-  function rendiMomentiBilancio(box, moments) {
+  function renderBalanceMoments(box, moments) {
     var voci = vociMomenti(moments);
     if (!voci.length) return;
 
@@ -757,10 +757,10 @@ window.HirisOsservatoreRoute = (function () {
   /* Le entita' che compongono il bilancio (trasparenza, spec §7): STESSO
      rivelatore sincrono di `rivelatoreDettagli`, riusato via `creaRivelatore`
      -- non un secondo componente. */
-  function rivelatoreEntitaBilancio(entity) {
+  function balanceEntityDisclosure(entity) {
     if (!entity || !entity.length) return null;
-    return creaRivelatore('Quali sensori', 'Nascondi quali sensori', function (panel) {
-      line(panel, entity.join(', '), 'font-size:var(--fs-12);' + TONO_QUIETO);
+    return createDisclosure('Quali sensori', 'Nascondi quali sensori', function (panel) {
+      line(panel, entity.join(', '), 'font-size:var(--fs-12);' + TONE_CALM);
     });
   }
 
@@ -772,7 +772,7 @@ window.HirisOsservatoreRoute = (function () {
      (sempre chiuso, mai `fine_ts: None`: `aggrega_giorno`), non l'apertura e
      la chiusura di un evento: mostrarli con la freccia di `periodo()`
      rifarebbe esattamente lo stampo sbagliato che il mandato vieta. */
-  function rigaBilancio(o) {
+  function balanceLine(o) {
     var c = o.corpo || {};
     var box = el('div');
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
@@ -780,7 +780,7 @@ window.HirisOsservatoreRoute = (function () {
 
     var testa = el('div');
     testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    testa.appendChild(el('span', 'agent-badge badge-off', ETICHETTA_GENERE.bilancio));
+    testa.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL.bilancio));
     testa.appendChild(el('span', 'text-mono field-hint', o.protagonista || ''));
     box.appendChild(testa);
 
@@ -788,7 +788,7 @@ window.HirisOsservatoreRoute = (function () {
     // CONTENUTO, non l'identificatore tecnico (`protagonista`, il
     // `dispositivo_id` opaco di HA, gia' nel monospazio sopra) -- stessa
     // gerarchia contenuto/riferimento del rilievo 7 (vedi `rigaOggetto`).
-    var title = el('p', null, c.dispositivo || nomeProtagonista(o));
+    var title = el('p', null, c.dispositivo || protagonistName(o));
     title.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
     box.appendChild(title);
 
@@ -797,19 +797,19 @@ window.HirisOsservatoreRoute = (function () {
     // accessibile della curva deve sapere se la sezione dei momenti
     // renderà davvero qualcosa, non solo se il campo esiste (punto 4 del
     // brief-dodicesima, vedi il commento sopra `vociMomenti`).
-    rendiCurvaBilancio(box, c.forma, vociMomenti(c.momenti).length > 0);
-    rendiMomentiBilancio(box, c.momenti);
+    renderBalanceCurve(box, c.forma, vociMomenti(c.momenti).length > 0);
+    renderBalanceMoments(box, c.momenti);
 
     // Difensivo: l'invariante di scrittura garantisce sempre almeno un
     // totale (`aggrega_giorno`: "un bilancio senza nemmeno un totale ...
     // NON si scrive"), ma un payload malformato non deve tornare a
     // "(nessun dettaglio)" -- lo stesso buco che questa fetta chiude.
     if (!c.totali && !c.forma && !c.momenti) {
-      line(box, '(nessun dato per questo bilancio)', TONO_QUIETO);
+      line(box, '(nessun dato per questo bilancio)', TONE_CALM);
     }
 
-    var entitaRivelatore = rivelatoreEntitaBilancio(c.entita);
-    if (entitaRivelatore) box.appendChild(entitaRivelatore);
+    var entityDisclosure = balanceEntityDisclosure(c.entita);
+    if (entityDisclosure) box.appendChild(entityDisclosure);
 
     return box;
   }
@@ -819,12 +819,12 @@ window.HirisOsservatoreRoute = (function () {
      a 21,0») stava nella classe delle note a margine. L'occhio cerca il
      contrario: il COSA E' SUCCESSO e' il contenuto, l'identificatore e' il
      riferimento -- stessa gerarchia gia' in albero-route.js, il metro. */
-  function rigaOggetto(o) {
+  function factLine(o) {
     // Il bilancio e' un genere a parte, con una forma diversa dall'episodio
     // (vedi il commento di testa del file): esce subito verso `rigaBilancio`,
     // che NON riusa `periodo()`/`frasePrincipale()` -- quelle presuppongono
     // un "da → a" che il bilancio non ha.
-    if (o.genere === 'bilancio') return rigaBilancio(o);
+    if (o.genere === 'bilancio') return balanceLine(o);
 
     var box = el('div');
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
@@ -832,7 +832,7 @@ window.HirisOsservatoreRoute = (function () {
 
     var testa = el('div');
     testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    testa.appendChild(el('span', 'agent-badge badge-off', ETICHETTA_GENERE[o.genere] || o.genere));
+    testa.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL[o.genere] || o.genere));
     // La provenienza della direzione (mandato, punto 4): un secondo badge,
     // SOLO quando `corpo.direzione` c'e' -- niente badge per un episodio di
     // energia la cui direzione non si conosce, che e' l'esito onesto, non
@@ -847,24 +847,24 @@ window.HirisOsservatoreRoute = (function () {
     // span { min-width: 0 }` (hiris-config.css, rilievo 1): senza, un
     // identificatore da 93 caratteri dentro questa riga flessibile
     // sfonderebbe lo schermo di un telefono.
-    testa.appendChild(el('span', 'text-mono field-hint', nomeProtagonista(o)));
+    testa.appendChild(el('span', 'text-mono field-hint', protagonistName(o)));
     box.appendChild(testa);
 
-    var content = el('p', null, period(o) + ' · ' + frasePrincipale(o));
+    var content = el('p', null, period(o) + ' · ' + mainPhrase(o));
     content.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0;overflow-wrap:anywhere';
     box.appendChild(content);
 
-    var details = rivelatoreDettagli(o);
+    var details = detailsDisclosure(o);
     if (details) box.appendChild(details);
 
     return box;
   }
 
-  function rendiOggetti(body, fact, giornoFiltro) {
+  function renderFacts(body, fact, dayFilter) {
     if (!fact.length) {
-      if (!giornoFiltro) {
+      if (!dayFilter) {
         line(body, 'Non c’è ancora nessun episodio: l’aggregazione notturna gira una volta al giorno, alle 00:20.',
-          TONO_QUIETO);
+          TONE_CALM);
         return;
       }
       /* Rilievo 5: il giorno dell'aggiornamento (e ogni "ieri"/"oggi") e' lo
@@ -872,35 +872,35 @@ window.HirisOsservatoreRoute = (function () {
          tornare, non seminare il dubbio che la casa non abbia fatto niente
          (con ~14.600 cambi al giorno misurati, quasi impossibile). Per un
          giorno piu' vecchio l'ipotesi doppia attuale resta corretta. */
-      var dataItaliana = ggMmAaaa(giornoFiltro);
-      var text = (giornoFiltro === oggiLocale() || giornoFiltro === ieriLocale())
+      var dataItaliana = ggMmAaaa(dayFilter);
+      var text = (dayFilter === localToday() || dayFilter === ieriLocale())
         ? 'Nessun episodio per il ' + dataItaliana + '. Non è un errore: gli episodi di ogni giornata ' +
           'vengono scritti la notte successiva, alle 00:20 — nel frattempo guarda «Cosa sto guardando» ' +
           'qui sopra.'
         : 'Nessun episodio per il ' + dataItaliana + '. Non è un errore: quel giorno la casa potrebbe ' +
           'non aver fatto niente di osservabile, oppure l’aggregazione notturna non è ancora passata.';
-      line(body, text, TONO_QUIETO);
+      line(body, text, TONE_CALM);
       return;
     }
-    fact.forEach(function (o) { body.appendChild(rigaOggetto(o)); });
+    fact.forEach(function (o) { body.appendChild(factLine(o)); });
   }
 
-  function rendiOggettiErrore(body, status, reload) {
+  function renderFactsError(body, status, reload) {
     if (status === 503) {
       line(body,
         'L’archivio degli episodi non è disponibile in questo momento. Non è una lista vuota — è l’archivio stesso ad essere fermo.',
-        TONO_PROBLEMA);
+        TONE_PROBLEM);
     } else {
-      line(body, 'Non è stato possibile leggere gli episodi. Riprova più tardi.', TONO_PROBLEMA);
+      line(body, 'Non è stato possibile leggere gli episodi. Riprova più tardi.', TONE_PROBLEM);
     }
-    bottoneRiprova(body, reload);
+    retryButton(body, reload);
   }
 
   /* ------------------------------------------------------------------------ mount */
 
   function caricaOsservate(body) {
     clearEl(body);
-    line(body, 'Caricamento…', TONO_QUIETO);
+    line(body, 'Caricamento…', TONE_CALM);
     function reload() { return caricaOsservate(body); }
     return read('api/mind/watching').then(function (occurrence) {
       clearEl(body);
@@ -917,23 +917,23 @@ window.HirisOsservatoreRoute = (function () {
      sbagliato. Un contatore di generazione, incrementato ad ogni chiamata:
      solo l'ultima "vince" la resa, qualunque ordine di arrivo prendano le
      risposte. */
-  var generazioneOggetti = 0;
+  var factsGeneration = 0;
 
-  function caricaOggetti(body, day) {
-    var miaGenerazione = ++generazioneOggetti;
+  function loadFacts(body, day) {
+    var miaGenerazione = ++factsGeneration;
     clearEl(body);
-    line(body, 'Caricamento…', TONO_QUIETO);
-    function reload() { return caricaOggetti(body, day); }
+    line(body, 'Caricamento…', TONE_CALM);
+    function reload() { return loadFacts(body, day); }
     var path = 'api/mind/facts' + (day ? '?day=' + encodeURIComponent(day) : '');
     return read(path).then(function (occurrence) {
-      if (miaGenerazione !== generazioneOggetti) return; // superata da un cambio di giorno più recente
+      if (miaGenerazione !== factsGeneration) return; // superata da un cambio di giorno più recente
       clearEl(body);
-      if (!occurrence.ok) { rendiOggettiErrore(body, occurrence.status, reload); return; }
-      rendiOggetti(body, occurrence.corpo.facts || [], day);
+      if (!occurrence.ok) { renderFactsError(body, occurrence.status, reload); return; }
+      renderFacts(body, occurrence.corpo.facts || [], day);
     }, function () {
-      if (miaGenerazione !== generazioneOggetti) return;
+      if (miaGenerazione !== factsGeneration) return;
       clearEl(body);
-      rendiOggettiErrore(body, null, reload);
+      renderFactsError(body, null, reload);
     });
   }
 
@@ -976,7 +976,7 @@ window.HirisOsservatoreRoute = (function () {
 
     var controls = el('div');
     controls.style.cssText = 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px';
-    var campoGiorno = el('div');
+    var dayField = el('div');
     var labelGiorno = el('label', 'field-hint', 'Giorno');
     var inputGiorno = el('input');
     inputGiorno.type = 'date';
@@ -984,37 +984,37 @@ window.HirisOsservatoreRoute = (function () {
     // di schermo il campo era una data anonima.
     inputGiorno.id = 'osservatore-giorno';
     labelGiorno.setAttribute('for', inputGiorno.id);
-    campoGiorno.appendChild(labelGiorno);
+    dayField.appendChild(labelGiorno);
     inputGiorno.value = ieriLocale();
     inputGiorno.style.cssText = 'display:block;padding:6px 8px;border-radius:8px;min-height:38px;box-sizing:border-box';
-    campoGiorno.appendChild(inputGiorno);
-    controls.appendChild(campoGiorno);
+    dayField.appendChild(inputGiorno);
+    controls.appendChild(dayField);
 
     var btnRecenti = el('button', 'btn btn-ghost btn-sm', 'Vedi i più recenti, senza filtro');
     btnRecenti.type = 'button';
     controls.appendChild(btnRecenti);
     card2.appendChild(controls);
 
-    var corpoOggetti = el('div', 'sc-body');
-    card2.appendChild(corpoOggetti);
+    var factsBody = el('div', 'sc-body');
+    card2.appendChild(factsBody);
     outlet.appendChild(card2);
 
     inputGiorno.addEventListener('change', function () {
-      caricaOggetti(corpoOggetti, inputGiorno.value || null);
+      loadFacts(factsBody, inputGiorno.value || null);
     });
     btnRecenti.addEventListener('click', function () {
       inputGiorno.value = '';
-      caricaOggetti(corpoOggetti, null);
+      loadFacts(factsBody, null);
     });
 
     caricaOsservate(corpoOsservate);
-    caricaOggetti(corpoOggetti, inputGiorno.value);
+    loadFacts(factsBody, inputGiorno.value);
   }
 
   return {
     mount: mount,
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
     _rendiOsservate: rendiOsservate,
-    _rendiOggetti: rendiOggetti
+    _rendiOggetti: renderFacts
   };
 })();
