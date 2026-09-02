@@ -187,13 +187,17 @@ def _prose_runtime():
     from hiris.app.agent.prompts import (
         _GUIDE_WITH_TOOLS,
         _GUIDE_WITHOUT_TOOLS,
+        _OLD_NAMES_NOTICE,
     )
     from hiris.app.claude_runner import BASE_TOOL_RULES
     from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
     from hiris.app.schedulatore.turno import _system_prompt
     return [
         ("agent/prompts._GUIDE_WITHOUT_TOOLS", _GUIDE_WITHOUT_TOOLS),
-        ("agent/prompts._GUIDE_WITH_TOOLS", _GUIDE_WITH_TOOLS),
+        # MENO l'avviso sui nomi vecchi, che e' l'unico testo del prodotto
+        # autorizzato a nominarli -- e ha la sua regola, nel test sotto.
+        ("agent/prompts._GUIDE_WITH_TOOLS",
+         _GUIDE_WITH_TOOLS.replace(_OLD_NAMES_NOTICE, "")),
         ("claude_runner.BASE_TOOL_RULES", BASE_TOOL_RULES),
         ("schedulatore/turno._system_prompt()", _system_prompt()),
         ("impostazioni_chat.DEFAULT_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
@@ -218,3 +222,67 @@ def test_nessun_prompt_a_runtime_nomina_uno_strumento_che_non_esiste():
     assert not falsi, (
         f"la prosa a runtime cita nomi di strumento che il catalogo non "
         f"espone: {falsi}. Il catalogo di oggi e' {sorted(_catalogo())}")
+
+# La corrispondenza vecchio -> nuovo, per il solo avviso di compatibilita'.
+# Non e' un doppione dell'elenco storico sopra: quello dice CHE una parola e'
+# stata un nome di strumento, questo dice A QUALE nome corrisponde oggi.
+_NOMI_NUOVI = {
+    "cerca": "search", "guarda": "view", "legami": "related",
+    "ricorda": "remember", "richiama": "fetch", "esegui": "execute",
+    "prometti": "promise", "promesse": "agenda", "disdici": "cancel",
+    "costruisci": "propose", "conferma": "confirm", "andamento": "trend",
+    "accaduto": "logbook", "concludi": "conclude",
+}
+
+
+def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
+    """`_OLD_NAMES_NOTICE` nomina i nomi VECCHI apposta, ed e' l'unico posto
+    del prodotto che possa farlo: serve a chi ha gia' salvato il proprio
+    prompt di sistema e continua a scriverci «usa `cerca`».
+
+    Il cancello sopra lo sottrae dalla guida invece di guardarlo con la
+    regola generale -- che lo farebbe arrossire per costruzione -- ma non lo
+    lascia scoperto: qui vale una regola SUA, e piu' stretta di uno
+    scarto. Ogni nome vecchio che l'avviso cita deve (1) essere davvero
+    fuori dal catalogo di oggi, (2) avere il proprio nome nuovo **citato
+    nell'avviso stesso**, e (3) quel nome nuovo deve essere nel catalogo.
+    Cosi' il giorno in cui uno dei tredici venisse rinominato di nuovo,
+    l'avviso diventerebbe rosso invece di restare a insegnare una
+    corrispondenza scaduta.
+
+    **La quarta asserzione e' la condizione di uscita, resa eseguibile**:
+    un avviso che non nomina piu' nessun nome vecchio non serve piu' a
+    nessuno e va TOLTO, non lasciato a occupare il prompt. Quando quel
+    giorno arriva, questo test lo dice."""
+    from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _OLD_NAMES_NOTICE
+
+    assert _OLD_NAMES_NOTICE in _GUIDE_WITH_TOOLS, (
+        "l'avviso non e' piu' dentro la guida: o e' stato tolto (e allora va "
+        "tolto anche di qui), o la guida non lo emette piu' -- e chi ha "
+        "salvato il proprio prompt resta senza il ponte fra i due nomi")
+
+    catalogo = _catalogo()
+    citati = {parola for parola, _ in _citazioni(_OLD_NAMES_NOTICE)}
+    vecchi = sorted(citati & (_NOMI_MAI_STATI_STRUMENTO - catalogo))
+
+    assert vecchi, (
+        "l'avviso non nomina piu' nessun nome vecchio: e' la sua CONDIZIONE "
+        "DI USCITA (vedi il commento sopra `_OLD_NAMES_NOTICE`). Toglilo "
+        "dalla guida invece di lasciarlo li' a occupare il prompt")
+
+    for vecchio in vecchi:
+        nuovo = _NOMI_NUOVI[vecchio]
+        assert nuovo in catalogo, (
+            f"l'avviso manda `{vecchio}` su `{nuovo}`, che non e' nel "
+            f"catalogo di oggi ({sorted(catalogo)}): la corrispondenza e' "
+            "scaduta e l'avviso sta insegnando un nome inesistente")
+        assert nuovo in citati, (
+            f"l'avviso nomina il vecchio `{vecchio}` ma non il nuovo "
+            f"`{nuovo}`: un nome vecchio senza il suo nuovo accanto dice al "
+            "modello che qualcosa non va e non gli dice cosa usare")
+
+    # ...e nient'altro: ogni parola citata dall'avviso e' o un nome vecchio
+    # dell'elenco sopra o un nome del catalogo. Un terzo caso sarebbe un
+    # refuso che nessun altro test vedrebbe.
+    estranee = citati - _NOMI_MAI_STATI_STRUMENTO
+    assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"

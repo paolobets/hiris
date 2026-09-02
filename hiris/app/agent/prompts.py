@@ -220,6 +220,42 @@ _GUIDE_WITHOUT_TOOLS = (
 #   cinque (nessuna regola del giro in due tempi da ripetere): guardano
 #   INDIETRO nel tempo invece che lo stato di adesso, ed e' l'unica cosa
 #   che questo testo -- quello dei NOMI -- deve dire su di loro.
+# **La riga di compatibilita' sui nomi VECCHI degli strumenti -- temporanea, e
+# qui sotto c'e' scritto cosa la fa sparire.**
+#
+# Il 02/09 i quattordici nomi che il modello legge sono passati all'inglese.
+# Questa guida ricollega gia' i nomi nudi del prompt della persona ai nomi
+# prefissati (`_GUIDE_WITH_TOOLS`, il capoverso qui sotto) -- ma quel
+# ricollegamento elenca i nomi NUOVI, e la persona nel proprio prompt continua
+# a scrivere quelli vecchi: `impostazioni_chat.py::DEFAULT_SYSTEM_PROMPT` e' un
+# DEFAULT, e chi ha salvato il proprio testo almeno una volta serve al modello
+# «usa `cerca` e `guarda`» anche dopo l'aggiornamento. Senza questa riga il
+# modello legge un'istruzione che nomina uno strumento che non esiste piu' --
+# e il dispatcher lo rifiuta davvero (`casa/strumenti.py`, `name not in
+# _TOOL_NAMES`), quindi il turno si brucia o, peggio, il modello se ne
+# dimentica e racconta di aver guardato.
+#
+# **Dice tre cose e nessuna di piu'**: che i nomi italiani nel testo sopra sono
+# i nomi VECCHI, a quali nuovi corrispondono, e che valgono quelli del
+# catalogo. NON dice «sono gli stessi strumenti coi nomi di prima»: quella
+# forma suggerirebbe che i nomi vecchi funzionino ancora, e non e' vero.
+#
+# **Condizione di uscita, scritta perche' una riga di compatibilita' senza una
+# condizione resta li' per sempre e nessuno sa piu' perche':** questa riga si
+# toglie il giorno in cui nessun `impostazioni_chat.json` in circolazione
+# contiene piu' un nome italiano di strumento -- cioe' quando ogni
+# installazione ha o il default nuovo o un prompt riscritto a mano. Non si
+# misura dal repository: si misura sulle installazioni vive.
+#
+# I tre esempi bastano perche' il catalogo intero e' elencato due righe sopra,
+# e perche' il default storico ne nominava DUE soli (`cerca`, `guarda`) -- il
+# terzo copre il caso piu' frequente fra i prompt riscritti a mano.
+_OLD_NAMES_NOTICE = (
+    "Se il testo qui sopra nomina gli strumenti in italiano (`cerca`, "
+    "`guarda`, `ricorda`...), sono i nomi DI PRIMA: oggi si chiamano "
+    "`search`, `view`, `remember`. Usa i nomi del catalogo.\n"
+)
+
 _GUIDE_WITH_TOOLS = (
     "In questa conversazione HAI gli strumenti di HIRIS. Nell'elenco degli "
     "strumenti li trovi col prefisso del server che te li serve, ed e' quella "
@@ -245,6 +281,7 @@ _GUIDE_WITH_TOOLS = (
     "o `logbook` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
+) + _OLD_NAMES_NOTICE + (
     "Quando serve un valore CORRENTE chiama lo strumento invece di rispondere "
     "con cio' che leggi nel contesto qui sotto: guarda adesso. Non inventare "
     "stati, valori o entita', e non dire di aver guardato, di aver preso "

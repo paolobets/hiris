@@ -2258,6 +2258,20 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   perimetro-file di questo lotto: segnalato qui perche' chi apre `azione/costruzione/versioni.py`
   lo sappia prima di scoprirlo per caso.
 
+- **L'involucro dello strumento `agenda` si chiama ancora `promesse`** (`casa/strumenti.py::
+  _list_agenda`, `{"promesse": [...]}`) -- **debito dichiarato il 02/09, non chiuso, e la
+  distinzione che lo tiene aperto va scritta perche' e' sottile.** La fetta dei campi JSON ha deciso
+  che i **record** restano italiani (sono le colonne, sono i campi del corpo PATCH) mentre gli
+  **involucri di rotta** passano all'inglese: `/api/agenda` emette `{"agenda": [...]}`. Questo qui
+  non e' ne' l'uno ne' l'altro: e' l'involucro di uno STRUMENTO, cioe' una chiave che **il modello
+  legge**, dentro uno strumento che da oggi si chiama `agenda`. La coerenza con i record regge -- e'
+  un dict letterale accanto a quarantadue chiavi di `input_schema` lasciate italiane per la stessa
+  ragione -- ma resta l'unico punto in cui questa fetta lascia **due nomi per la stessa cosa sulla
+  stessa porta**: il modello chiama `agenda` e si vede rispondere `promesse`. Non si e' chiuso qui
+  perche' cambiarlo e' decidere se gli involucri degli strumenti seguano i record (italiani) o i
+  nomi degli strumenti (inglesi), e quella e' una fetta con la sua misura: gli involucri di tutti e
+  quattordici, non uno. Pinzato oggi da `tests/test_promesse_api.py`, il cui docstring porta la
+  stessa distinzione.
 - `store.concludi(...)`/`_senza_conclusione` (`handlers_reasoning.py`, verso
   `AgendaStore.concludi` e `schedulatore/turno.py::_senza_conclusione`) **lasciati intatti di
   proposito**: stessa classe di residuo di `store.scadi`, sopra -- metodi/funzioni ancora italiani

@@ -20,14 +20,20 @@ se ne accorge: **misurato, 3012 prove su 3013 restavano verdi**. Prima di toccar
 stato scritto un controllo che quella meta' la vede, e provato facendogli produrre il difetto cinque
 volte.
 
-**UNA COSA DA SAPERE DOPO L'AGGIORNAMENTO.** Il testo del prompt di sistema della chat
-(Impostazioni → Chat) nomina due strumenti. Quel testo e' un **valore di partenza**: chi non l'ha
-mai toccato riceve la versione nuova, che dice `search` e `view`; **chi l'ha modificato e salvato
-almeno una volta continua a servire al modello il testo che ha scritto lui**, coi nomi vecchi. Non
-si rompe niente -- HIRIS spiega comunque al modello con che nome chiamare gli strumenti -- ma il
-proprio prompt vale la pena rileggerlo, e chi ci ha scritto «usa `cerca`» puo' aggiornarlo. Lo
-stesso vale, sul ponte, per la frase che ricollega i nomi scritti nel proprio prompt a quelli veri:
-oggi elenca i nomi inglesi.
+**UNA COSA DA SAPERE DOPO L'AGGIORNAMENTO, e cosa HIRIS fa per te.** Il testo del prompt di
+sistema della chat (Impostazioni → Chat) nomina due strumenti. Quel testo e' un **valore di
+partenza**: chi non l'ha mai toccato riceve la versione nuova, che dice `search` e `view`; **chi
+l'ha modificato e salvato almeno una volta continua a servire al modello il testo che ha scritto
+lui**, coi nomi vecchi.
+
+Perche' non si rompa niente, il prompt dice ora anche questo: *«Se il testo qui sopra nomina gli
+strumenti in italiano (`cerca`, `guarda`, `ricorda`...), sono i nomi DI PRIMA: oggi si chiamano
+`search`, `view`, `remember`. Usa i nomi del catalogo.»* Non dice che i nomi vecchi funzionino
+ancora -- **non funzionano**, HIRIS li rifiuta -- dice a quali nuovi corrispondono.
+
+**Quella riga e' temporanea, e la sua condizione di uscita e' scritta nel codice**: si toglie il
+giorno in cui nessuna installazione ha piu' un nome italiano di strumento nel proprio prompt
+salvato. Nel frattempo vale la pena rileggere il proprio prompt e riscriverlo coi nomi nuovi.
 
 **Cosa NON e' cambiato, e non per dimenticanza.** Le descrizioni dei quattordici strumenti restano
 in italiano. Le chiavi degli argomenti (`testo`, `riferimento`, `grandezza`, ...) restano in
